@@ -1,5 +1,5 @@
 'use client';
-import type { ChainId } from '@colosseum/schemas';
+import { type ChainId, chainFamily } from '@colosseum/schemas';
 import Link from 'next/link';
 import { type ReactNode, useId } from 'react';
 import { CardWait } from '../../components/shell/Wait';
@@ -53,10 +53,18 @@ export function MonitorScreen() {
   const vaults = chains.flatMap((entry) => entry.vaults);
   // The chains the person holds a vault on. On one, the page is that chain's; on more, it is grouped.
   const held = chains.filter((entry) => entry.vaults.length > 0);
-  const grouped = held.length > 1;
+  // The bar's chain with no vault on it, while another chain holds one: the page says so first, then
+  // shows what is held under its own chain's heading, so the bar and the page never disagree.
+  const elsewhere =
+    outcome?.current === 'read' &&
+    chain !== null &&
+    held.length > 0 &&
+    !held.some((entry) => entry.chain === chain);
+  const grouped = held.length > 1 || elsewhere;
   const read = held.length === 1 ? held[0] : chains[0];
   const shownChain = read?.chain ?? chain;
   const nameOf = (id: ChainId) => port.network(id)?.name ?? t.chain.names[id];
+  const walletHere = chain !== null && port.active(chainFamily(chain)) !== null;
   // How the chain is run: the API's word on the chain it read, or else the wallet's.
   const chainLabel = read?.provenance ?? network?.provenance ?? 'mock';
   /** What a chain's vaults are worth together, with the pin of that sum. */
@@ -179,13 +187,18 @@ export function MonitorScreen() {
                       </Status>
                     </li>
                   ))}
+                  {/* "Not held" is said only where no wallet of theirs signs there. A wallet the bar
+                      shows is held: a server that left its chain out did not read it this time. */}
                   {state.outcome.current === 'not-held' && chain && (
                     <li data-chain={chain}>
-                      <Status status="watch">{words.notHeld(nameOf(chain))}</Status>
+                      <Status status="watch">
+                        {walletHere ? words.chainOut(nameOf(chain)) : words.notHeld(nameOf(chain))}
+                      </Status>
                     </li>
                   )}
                 </ul>,
-                ...(state.outcome.unavailable.some((u) => u.retryable)
+                ...(state.outcome.unavailable.some((u) => u.retryable) ||
+                (state.outcome.current === 'not-held' && walletHere)
                   ? [<div key="again">{readAgain}</div>]
                   : []),
               ]
@@ -210,7 +223,21 @@ export function MonitorScreen() {
               ? null
               : grouped
                 ? [
-                    <AcrossChains key="across" totals={held.map(totalOf)} />,
+                    ...(elsewhere
+                      ? [
+                          <div key="none-here" data-ui="none-here">
+                            {say(
+                              words.empty(chainName),
+                              <Link href="/goal" className={link}>
+                                {words.startGoal}
+                              </Link>,
+                            )}
+                          </div>,
+                        ]
+                      : []),
+                    ...(held.length > 1
+                      ? [<AcrossChains key="across" totals={held.map(totalOf)} />]
+                      : []),
                     ...held.map(chainGroup),
                   ]
                 : held.flatMap((entry) => entry.vaults.map((vault) => vaultBlock(entry, vault))),

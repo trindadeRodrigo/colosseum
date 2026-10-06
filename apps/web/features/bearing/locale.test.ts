@@ -80,7 +80,8 @@ describe('the figures and dates in the reader’s locale', () => {
     expect(pt.pct(0.0682)).toBe('6,82%');
     expect(plain(pt.usd1(184_100))).toBe('US$ 184,1 mil');
     expect(plain(pt.usd(100_000))).toBe('US$ 100.000');
-    expect(plain(pt.minute('2026-10-03T15:07:00Z'))).toBe('3 de out. de 2026, 15:07 UTC');
+    // the one way the app writes an instant, in either language (figures.ts `utc`)
+    expect(plain(pt.minute('2026-10-03T15:07:00Z'))).toBe('2026-10-03 15:07 UTC');
     expect(plain(pt.day('2026-10-03T15:07:00Z'))).toBe('3 de out. de 2026');
   });
 });

@@ -13,6 +13,8 @@ import { displayName } from '../order/plain';
 import { dollars, drift, share, tokens, utc } from './figures';
 import {
   assetName,
+  cashHolding,
+  cashSource,
   type PortfolioChain,
   type Position,
   positionValueSource,
@@ -37,6 +39,15 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
   const heading = useId();
   const live = vault.provenance === 'live';
   const missing = unpriced(vault);
+  // Cash is a holding like the rest, the last row: with it the weights add up to the whole.
+  const cash = cashHolding(vault);
+  const rows: Position[] = [...vault.positions, cash];
+  const isCash = (row: Position) => row === cash;
+  // A card on a test network says that, in one line; a sample card says it is sample.
+  const mockLabels =
+    vault.provenance === 'sandbox'
+      ? { announce: t.shell.testNetworkFigures }
+      : { announce: t.shell.mockAnnounce };
 
   const columns: Column<Position>[] = [
     {
@@ -59,6 +70,14 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
       header: words.columns.price,
       numeric: true,
       cell: (row) => {
+        if (isCash(row))
+          return (
+            <ProvenancePin
+              value={dollars(lang, '1')}
+              obs={cashSource(chain, vault, words.cashMethod)}
+              labels={t.pin}
+            />
+          );
         const price = priceOf(chain, row.asset);
         return price ? (
           <ProvenancePin
@@ -79,6 +98,14 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
       header: words.columns.value,
       numeric: true,
       cell: (row) => {
+        if (isCash(row))
+          return (
+            <ProvenancePin
+              value={dollars(lang, row.valueUsd ?? '0')}
+              obs={cashSource(chain, vault, words.cashMethod)}
+              labels={t.pin}
+            />
+          );
         const price = priceOf(chain, row.asset);
         return row.valueUsd !== null && price ? (
           <ProvenancePin
@@ -117,10 +144,7 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
       aria-labelledby={heading}
       density="dense"
       mock={!live}
-      mockLabels={{
-        announce: t.shell.mockAnnounce,
-        note: vault.provenance === 'sandbox' ? t.shell.testNetwork : undefined,
-      }}
+      mockLabels={mockLabels}
     >
       <CardHeader
         title={words.title}
@@ -139,21 +163,6 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
       />
       {/* Below the plate of a mocked card, so nothing in the body is narrowed by it. */}
       <CardBody density="dense" className="clear-right flex flex-col gap-3">
-        {/* The vault's facts as chips, as his case states its limits. */}
-        <ul aria-label={words.chips.label} className="flex flex-wrap gap-1.5">
-          {[
-            [words.chips.address, shorten(vault.address)],
-            [words.chips.version, String(vault.acceptedVersion)],
-            [words.chips.follow, (vault.autoFollow ? words.on : words.off).toLowerCase()],
-          ].map(([key, value]) => (
-            <li
-              key={key}
-              className="rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-[12px]"
-            >
-              {key}: {value}
-            </li>
-          ))}
-        </ul>
         {/* The value on a line of its own: with its pin and the plate it is wider than a cell of a
             phone's two columns. */}
         <dl data-ui="vault-value">
@@ -173,10 +182,15 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
               {assetName(vault.cash.asset)}
             </span>
           </Stat>
-          <Stat label={words.autoFollow}>
-            <span className="font-sans">{vault.autoFollow ? words.on : words.off}</span>
-          </Stat>
-          <Stat label={words.lossUsed}>{share(lang, vault.lossUsedBps)}</Stat>
+          {/* The keeper trades a vault only with auto-follow on: off, there is nothing of it to show. */}
+          {vault.autoFollow && (
+            <>
+              <Stat label={words.autoFollow}>
+                <span className="font-sans">{words.on}</span>
+              </Stat>
+              <Stat label={words.lossUsed}>{share(lang, vault.lossUsedBps)}</Stat>
+            </>
+          )}
         </StatRow>
         {missing > 0 && (
           <p className="text-body-sm text-muted-foreground">{words.unpriced(missing)}</p>
@@ -194,17 +208,30 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
         )}
       </CardBody>
       <CardBody density="dense">
-        {vault.positions.length > 0 ? (
-          <DataTable
-            caption={words.holdings}
-            columns={columns}
-            rows={vault.positions}
-            rowKey={(row) => row.asset}
-            dense
-          />
-        ) : (
-          <p className="text-body-sm">{words.onlyCash}</p>
-        )}
+        {vault.positions.length === 0 && <p className="pb-3 text-body-sm">{words.onlyCash}</p>}
+        <DataTable
+          caption={words.holdings}
+          columns={columns}
+          rows={rows}
+          rowKey={(row) => row.asset}
+          dense
+        />
+        {/* What the team reads, not the person: the address, the version followed, the switch. */}
+        <details data-ui="vault-details" className="pt-3 text-body-sm">
+          <summary className="cursor-pointer text-muted-foreground">{words.details.label}</summary>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 pt-2">
+            <dt className="text-muted-foreground">{words.address}</dt>
+            <dd className="font-mono text-source break-all">{vault.address}</dd>
+            {vault.recipeOnchainId !== null && (
+              <>
+                <dt className="text-muted-foreground">{words.details.version}</dt>
+                <dd className="tabular-nums">{vault.acceptedVersion}</dd>
+              </>
+            )}
+            <dt className="text-muted-foreground">{words.autoFollow}</dt>
+            <dd>{vault.autoFollow ? words.on : words.off}</dd>
+          </dl>
+        </details>
       </CardBody>
       <CardFooter
         density="dense"
@@ -254,10 +281,11 @@ export function PlanParts({ vault }: { vault: Vault }) {
       aria-labelledby={heading}
       density="dense"
       mock={vault.provenance !== 'live'}
-      mockLabels={{
-        announce: t.shell.mockAnnounce,
-        note: vault.provenance === 'sandbox' ? t.shell.testNetwork : undefined,
-      }}
+      mockLabels={
+        vault.provenance === 'sandbox'
+          ? { announce: t.shell.testNetworkFigures }
+          : { announce: t.shell.mockAnnounce }
+      }
     >
       <CardHeader title={words.planTitle(parts.length)} level={3} id={heading} density="dense" />
       <CardBody density="dense" className="clear-right">

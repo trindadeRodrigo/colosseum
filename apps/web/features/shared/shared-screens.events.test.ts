@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { solanaVaultAddress } from '@colosseum/sdk';
-import { createElement } from 'react';
+import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
@@ -499,6 +499,68 @@ describe('a vault’s public page', () => {
     // no priced holding: the value stands on the chain's read of the vault, at its time
     const line = find(host, '[data-ui="pin-source"]').textContent ?? '';
     for (const part of ['Solana', en.portfolio.vault.valueMethod]) expect(line).toContain(part);
+  });
+
+  it('writes its figures as the portfolio does, and asks for the vault once', async () => {
+    const asked: string[] = [];
+    portStore.setApi(async (path) => {
+      asked.push(path);
+      if (path === '/v1/me') return json(person);
+      if (path === `/v1/vaults/solana/${VAULT}`)
+        return json({
+          chain: 'solana',
+          name: 'Solana',
+          mode: 'live',
+          provenance: 'sandbox',
+          vault: {
+            ...vaultOf({
+              valueUsd: '10',
+              cash: { asset: 'solana:usdc', raw: '3000000', multiplier: '1', display: '3' },
+              positions: [
+                {
+                  asset: 'solana:spyx',
+                  raw: '837024',
+                  multiplier: '1',
+                  display: '0.00837024899664214',
+                  valueUsd: '6.5',
+                  weightBps: 6500,
+                  targetBps: 6500,
+                  driftBps: 0,
+                  lastKeeperAt: 0,
+                },
+              ],
+            }),
+            provenance: 'sandbox',
+          },
+          prices: [
+            {
+              asset: 'solana:spyx',
+              usdPerToken: '377.4',
+              source: 'test feed',
+              fetchedAt: '2026-10-05T12:00:00.000Z',
+              method: 'read',
+              provenance: 'sandbox',
+              ageSeconds: 1,
+              maxAgeSeconds: 600,
+              market: 'open',
+            },
+          ],
+          disclaimer: 'd',
+        });
+      return json({ error: 'not found' }, 404);
+    });
+    const host = await show(createElement(VaultScreen, { chain: 'solana', address: VAULT }));
+    const cells = [...find(host, 'tbody tr').children].map((c) => c.textContent ?? '');
+    // six places at most, two decimals of a dollar, one of a percent
+    expect(cells[1]).toBe('0.00837');
+    expect(cells[2]).toContain('$377.40');
+    expect(cells.slice(3)).toEqual(['65%', '65%', '0%']);
+    expect(host.textContent).toContain('$10.00');
+    expect(host.textContent).not.toContain('0.00837024899664214');
+    // the sign-in settling does not read it again
+    await act(async () => portStore.set(signedInPort(EMBEDDED, { userId: USER })));
+    await settle(50);
+    expect(asked.filter((p) => p.startsWith('/v1/vaults/'))).toHaveLength(1);
   });
 });
 

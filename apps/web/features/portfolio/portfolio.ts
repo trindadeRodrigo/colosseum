@@ -216,6 +216,37 @@ export function chainTotal(
   };
 }
 
+/**
+ * Cash as a holding like any other: what the vault holds of its dollar, counted at one dollar, with the
+ * weight the other holdings leave and the target their targets leave. With it the weights of a vault
+ * add up to the whole.
+ */
+export function cashHolding(vault: Vault): Position & { cash: true } {
+  const held = vault.positions.reduce((sum, p) => sum + p.weightBps, 0);
+  const targeted = vault.positions.reduce((sum, p) => sum + p.targetBps, 0);
+  const weightBps = Math.max(0, 10_000 - held);
+  const targetBps = Math.max(0, 10_000 - targeted);
+  return {
+    ...vault.cash,
+    valueUsd: vault.cash.display,
+    weightBps,
+    targetBps,
+    driftBps: weightBps - targetBps,
+    cash: true,
+  } as Position & { cash: true };
+}
+
+/** The pin of the vault's cash: read from the vault with it, counted at one dollar. */
+export function cashSource(chain: PortfolioChain, vault: Vault, method: string): PinSource {
+  return {
+    source: chain.name,
+    fetchedAt: vault.observedAt,
+    method,
+    provenance: vault.provenance,
+    staleAgeSec: null,
+  };
+}
+
 /** How many holdings the value leaves out, because the API had no price for them. */
 export const unpriced = (vault: Vault): number =>
   vault.positions.filter((position) => position.valueUsd === null).length;

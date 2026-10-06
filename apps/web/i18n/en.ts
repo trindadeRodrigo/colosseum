@@ -41,6 +41,8 @@ export const en = {
     slowDown: 'Our server asked me to slow down. Wait a minute, then try again.',
     /** A sample card's one quiet line (MOCK-QUIET). */
     mockAnnounce: 'Sample figures',
+    /** The one line of a card whose figures are read from a test network: real reads, not live money. */
+    testNetworkFigures: 'Test network figures',
     /** A sample glyph's name for a screen reader. */
     sampleFigure: 'sample figure',
     /** A wait for data (components/ui/Skeleton.tsx). */
@@ -433,7 +435,7 @@ export const en = {
     notHeld: (chain: string) => `${chain} isn’t held in this sign-in.`,
     title: (vaults: number): string =>
       vaults > 1 ? 'What your vaults hold.' : 'What your vault holds.',
-    lead: 'Read from each chain your plans live on, each time you open this page. Nothing here signs or moves anything.',
+    lead: 'Your vaults on every chain you hold one on, read each time you open this page. Nothing here signs or moves anything.',
     chain: 'Chain',
     reading: 'Reading your vault…',
     signedOut:
@@ -485,23 +487,25 @@ export const en = {
       off: 'Off',
       /** The vault's weekly loss counter, as a share of its value. */
       lossUsed: 'Keeper losses, last 7 days',
-      holdings: 'Holdings',
-      /** The vault's facts as chips, his case's limits line. */
-      chips: { label: 'The vault', address: 'address', version: 'version', follow: 'auto-follow' },
+      holdings: 'What you hold',
+      /** The vault's facts for the team, folded away. */
+      details: { label: 'Details', version: 'Version of the portfolio it follows' },
+      /** The method line in the pin of the vault's cash. */
+      cashMethod: 'cash read from the vault, counted at one dollar',
       parts: 'Its parts, by weight',
       planTitle: (parts: number) =>
         parts === 1 ? 'Your plan · 1 part' : `Your plan · ${parts} parts`,
       tooMany: 'More parts than a bar can show: each one is in the table below.',
-      target: (share: string) => `target ${share}`,
+      target: (share: string) => `planned ${share}`,
       onlyCash: 'Only cash so far: nothing has been bought into this vault yet.',
       columns: {
         asset: 'Asset',
         amount: 'Amount',
         price: 'Price',
         value: 'Value',
-        weight: 'Weight',
-        target: 'Target',
-        drift: 'Drift',
+        weight: 'Share now',
+        target: 'Planned share',
+        drift: 'Difference',
       },
       noPrice: 'no price',
       unpriced: (n: number) =>
@@ -524,7 +528,8 @@ export const en = {
       /** The income plan's verdict in figures: what it paid a month of what was asked. */
       builtPaid: (paid: string, asked: string) =>
         `When this plan was built, it paid ${paid} a month of the ${asked} you asked for.`,
-      noStatus: 'No status yet: the engine gives none for a vault',
+      /** In place of a status, which no vault has yet: when its plan runs to. */
+      runsTo: (when: string) => `Runs to ${when}`,
       unknown: (chain: string) => `Your vault on ${chain}.`,
       notJoined:
         'I can’t tell which goal this vault was bought for: it was bought in another browser, or before this one kept goals. What it holds is below.',

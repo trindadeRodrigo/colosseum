@@ -268,20 +268,25 @@ describe('how the figures are written', () => {
     expect(dollars('pt', '1040').replace(/\s/g, ' ')).toBe('US$ 1.040,00');
   });
 
-  it('as shares and drifts with two decimals, and a true minus', () => {
-    expect(share('en', 6346)).toBe('63.46%');
-    expect(drift('en', 346)).toBe('+3.46%');
-    expect(drift('en', -250)).toBe('−2.50%');
+  it('as shares and drifts to one decimal at most, and a true minus', () => {
+    // a hundredth of a percent is noise: 24.99% of a 25% target reads 25%
+    expect(share('en', 2499)).toBe('25%');
+    expect(share('en', 2500)).toBe('25%');
+    expect(share('en', 6346)).toBe('63.5%');
+    expect(drift('en', 346)).toBe('+3.5%');
+    expect(drift('en', -250)).toBe('−2.5%');
     expect(drift('en', -250)).not.toContain('-');
-    expect(drift('en', 0)).toBe('0.00%');
-    expect(drift('pt', -250).replace(/\s/g, ' ')).toBe('−2,50%');
+    expect(drift('en', 0)).toBe('0%');
+    // a difference too small to show has no sign
+    expect(drift('en', -1)).toBe('0%');
+    expect(drift('pt', -250).replace(/\s/g, ' ')).toBe('−2,5%');
   });
 
-  it('as token amounts, and instants in UTC that say so', () => {
+  it('as token amounts, and instants in UTC that say so, written the one way the app writes a time', () => {
     expect(tokens('en', '0.05')).toBe('0.05');
     expect(tokens('pt', '1234.5')).toBe('1.234,5');
-    expect(utc('en', READ_AT)).toBe('Oct 5, 2026, 14:00 UTC');
-    expect(utc('en', Date.parse(READ_AT) / 1000)).toBe('Oct 5, 2026, 14:00 UTC');
+    expect(utc('en', READ_AT)).toBe('2026-10-05 14:00 UTC');
+    expect(utc('pt', Date.parse(READ_AT) / 1000)).toBe('2026-10-05 14:00 UTC');
   });
 
   it('names an asset by the part of its id after the chain', () => {

@@ -69,7 +69,7 @@ export function fmtFor(lang: Lang) {
   /** A capacity of 0 is measured: not even the smallest size measured ($100) sells within the tolerance. */
   const capW = (v: number) => (v === 0 ? `< ${usd(100)}` : usd1(v));
   const num = (v: number, digits = 0) => minus(n({ maximumFractionDigits: digits }).format(v));
-  /** A time to the minute, in UTC: `2026-10-03 15:07 UTC`, `3 de out. de 2026, 15:07 UTC`. */
+  /** A time to the minute, in UTC: `2026-10-03 15:07 UTC`, in either language. */
   const minute = (t: string | number) =>
     en ? `${new Date(t).toISOString().slice(0, 16).replace('T', ' ')} UTC` : utc(lang, String(t));
   /** A time to the second, in UTC: his banner's `2026-10-03 15:07:00 UTC`. */

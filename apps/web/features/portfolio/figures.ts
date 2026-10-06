@@ -1,3 +1,4 @@
+import { utcMinute } from '../../components/ui/ExecutionList';
 import { type Lang, LOCALE } from '../../i18n';
 
 // How the monitor writes the API's figures, in the language of the view. Each formats what it is
@@ -19,30 +20,28 @@ export const dollars = (lang: Lang, decimal: string): string =>
 export const tokens = (lang: Lang, decimal: string): string =>
   new Intl.NumberFormat(LOCALE[lang], { maximumFractionDigits: 6 }).format(Number(decimal));
 
-/** Basis points as a share, with two decimals: `25.00%`. */
+/** Basis points as a share, to one decimal at most: `25%`, `24.9%`. A hundredth of a percent is noise. */
 export const share = (lang: Lang, bps: number): string =>
   new Intl.NumberFormat(LOCALE[lang], {
     style: 'percent',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
   }).format(bps / 10_000);
 
-/** A drift in basis points, signed: `+1.20%`, `−0.40%`, `0.00%`. */
+/** A drift in basis points, signed, to one decimal at most: `+1.2%`, `−0.4%`, `0%`. */
 export const drift = (lang: Lang, bps: number): string =>
   trueMinus(
     new Intl.NumberFormat(LOCALE[lang], {
       style: 'percent',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 1,
       signDisplay: 'exceptZero',
-    }).format(bps / 10_000),
+    }).format(Math.round(bps / 10) / 1000),
   );
 
-/** An instant, in UTC and saying so: `Oct 5, 2026, 14:02 UTC`. From an ISO string or unix seconds. */
-export const utc = (lang: Lang, when: string | number): string =>
-  `${new Intl.DateTimeFormat(LOCALE[lang], {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'UTC',
-    hourCycle: 'h23',
-  }).format(typeof when === 'number' ? when * 1000 : Date.parse(when))} UTC`;
+/**
+ * An instant, in UTC and saying so, the one way the app writes a time (ExecutionList's `utcMinute`):
+ * `2026-10-05 14:02 UTC`. From an ISO string or unix seconds.
+ */
+export const utc = (_lang: Lang, when: string | number): string =>
+  utcMinute(typeof when === 'number' ? new Date(when * 1000).toISOString() : when);

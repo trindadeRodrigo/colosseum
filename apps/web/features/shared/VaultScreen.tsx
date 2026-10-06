@@ -1,7 +1,7 @@
 'use client';
 import { ChainId, type Price, type VaultResponse } from '@colosseum/schemas';
 import Link from 'next/link';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
@@ -12,18 +12,18 @@ import { PAGE_TITLE } from '../../components/ui/heading';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { pinSourceOfPrice } from '../../components/ui/price-source';
 import { SkeletonSummary } from '../../components/ui/Skeleton';
-import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { dollars } from '../goal/sheet';
-import { assetTicker, formatBps } from '../order/amounts';
+import { assetTicker } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
+import { dollars, drift, share, tokens } from '../portfolio/figures';
 import { vaultValueSource } from '../portfolio/portfolio';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { readVault } from './shared-api';
 
 // A vault, read-only, for anybody (DESIGN-VAULT section 11, the public vault page): its owner, what it
 // follows, its value, and each position with its weight, target, drift and price, as its chain holds
-// it now (GET /v1/vaults/{chain}/{address}). Every price carries its pin (STYLE.md rule 1); a vault on
+// it now (GET /v1/vaults/{chain}/{address}), every figure written as the portfolio writes it
+// (features/portfolio/figures.ts). Every price carries its pin (STYLE.md rule 1); a vault on
 // the mock or a test network carries the plate.
 
 type Load = { kind: 'loading' } | { kind: 'read'; read: VaultResponse } | { kind: CallFailure };
@@ -39,18 +39,22 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
   const titleId = useId();
   const known = ChainId.safeParse(chain);
 
+  // Anybody may read a vault: it is asked for once for this address, and again only when asked, not
+  // each time the sign-in settles and the fetch with it changes.
+  const call = useRef(apiFetch);
+  call.current = apiFetch;
   // biome-ignore lint/correctness/useExhaustiveDependencies: `round` reads the vault again
   useEffect(() => {
     if (!known.success) return setLoad({ kind: 'no-plan' });
     let mine = true;
     setLoad({ kind: 'loading' });
-    readVault(apiFetch, known.data, address).then((read) => {
+    readVault((path, init) => call.current(path, init), known.data, address).then((read) => {
       if (mine) setLoad(read.kind === 'read' ? { kind: 'read', read: read.value } : read);
     });
     return () => {
       mine = false;
     };
-  }, [apiFetch, chain, address, round]);
+  }, [chain, address, round]);
 
   if (load.kind === 'loading')
     return (
@@ -82,7 +86,6 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
 
   const { read } = load;
   const { vault } = read;
-  const locale = LOCALE[lang];
   const priceOf = (asset: string): Price | undefined => read.prices.find((p) => p.asset === asset);
   const follows = vault.recipeOnchainId;
   return (
@@ -112,7 +115,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
               {/* The value stands on the prices and the read of the vault: its pin says so
                   (STYLE.md rule 1), as the monitor's does. */}
               <ProvenancePin
-                value={dollars(Number(vault.valueUsd), lang)}
+                value={dollars(lang, vault.valueUsd)}
                 obs={vaultValueSource(
                   { ...read, vaults: [vault] },
                   vault,
@@ -138,7 +141,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
             </dd>
             <dt className="text-muted-foreground">{v.cash}</dt>
             <dd className="tabular-nums">
-              {vault.cash.display}{' '}
+              {tokens(lang, vault.cash.display)}{' '}
               <span className="text-caption text-muted-foreground">
                 {assetTicker(vault.cash.asset)}
               </span>
@@ -156,7 +159,12 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                 rowHeader: true,
                 cell: (r) => assetTicker(r.asset),
               },
-              { key: 'held', header: v.columns.held, numeric: true, cell: (r) => r.display },
+              {
+                key: 'held',
+                header: v.columns.held,
+                numeric: true,
+                cell: (r) => tokens(lang, r.display),
+              },
               {
                 key: 'price',
                 header: v.columns.price,
@@ -165,7 +173,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                   const price = priceOf(r.asset);
                   return price ? (
                     <ProvenancePin
-                      value={dollars(Number(price.usdPerToken), lang)}
+                      value={dollars(lang, price.usdPerToken)}
                       obs={pinSourceOfPrice(price)}
                       labels={t.pin}
                     />
@@ -178,20 +186,19 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                 key: 'weight',
                 header: v.columns.weight,
                 numeric: true,
-                cell: (r) => formatBps(r.weightBps, locale),
+                cell: (r) => share(lang, r.weightBps),
               },
               {
                 key: 'target',
                 header: v.columns.target,
                 numeric: true,
-                cell: (r) => formatBps(r.targetBps, locale),
+                cell: (r) => share(lang, r.targetBps),
               },
               {
                 key: 'drift',
                 header: v.columns.drift,
                 numeric: true,
-                cell: (r) =>
-                  `${r.driftBps < 0 ? '−' : r.driftBps > 0 ? '+' : ''}${formatBps(Math.abs(r.driftBps), locale)}`,
+                cell: (r) => drift(lang, r.driftBps),
               },
             ]}
           />

@@ -36,6 +36,7 @@ export const pt: Dictionary = {
     testNetwork: 'rede de teste',
     slowDown: 'Nosso servidor pediu para eu ir mais devagar. Espere um minuto e tente de novo.',
     mockAnnounce: 'Números de exemplo',
+    testNetworkFigures: 'Números de rede de teste',
     sampleFigure: 'número de exemplo',
     wait: {
       slow: 'Acordando o serviço de dados: da primeira vez isso pode levar até um minuto.',
@@ -386,7 +387,7 @@ export const pt: Dictionary = {
     notHeld: (chain: string) => `${chain} não está nesta conta.`,
     title: (vaults: number) =>
       vaults > 1 ? 'O que seus cofres guardam.' : 'O que seu cofre guarda.',
-    lead: 'Lido de cada rede onde seus planos ficam, cada vez que você abre esta página. Nada aqui assina ou move coisa alguma.',
+    lead: 'Seus cofres em todas as redes em que você tem um, lidos cada vez que você abre esta página. Nada aqui assina ou move coisa alguma.',
     chain: 'Rede',
     reading: 'Lendo seu cofre…',
     signedOut:
@@ -432,22 +433,23 @@ export const pt: Dictionary = {
       on: 'Ativado',
       off: 'Desativado',
       lossUsed: 'Perdas do agente, últimos 7 dias',
-      holdings: 'Posições',
-      chips: { label: 'O cofre', address: 'endereço', version: 'versão', follow: 'seguir' },
+      holdings: 'O que você tem',
+      details: { label: 'Detalhes', version: 'Versão do portfólio que ele segue' },
+      cashMethod: 'dinheiro lido do cofre, contado a um dólar',
       parts: 'As partes, por peso',
       planTitle: (parts: number) =>
         parts === 1 ? 'Seu plano · 1 parte' : `Seu plano · ${parts} partes`,
       tooMany: 'Mais partes do que uma barra mostra: cada uma está na tabela abaixo.',
-      target: (share: string) => `alvo ${share}`,
+      target: (share: string) => `planejado ${share}`,
       onlyCash: 'Só caixa por enquanto: nada foi comprado para este cofre ainda.',
       columns: {
         asset: 'Ativo',
         amount: 'Quantidade',
         price: 'Preço',
         value: 'Valor',
-        weight: 'Peso',
-        target: 'Alvo',
-        drift: 'Desvio',
+        weight: 'Parcela agora',
+        target: 'Parcela planejada',
+        drift: 'Diferença',
       },
       noPrice: 'sem preço',
       unpriced: (n: number) =>
@@ -466,7 +468,7 @@ export const pt: Dictionary = {
       builtShort: 'Abaixo da renda quando o plano foi montado',
       builtPaid: (paid: string, asked: string) =>
         `Quando este plano foi montado, ele pagava ${paid} por mês dos ${asked} que você pediu.`,
-      noStatus: 'Ainda sem situação: o motor não dá uma para um cofre',
+      runsTo: (when: string) => `Vai até ${when}`,
       unknown: (chain: string) => `Seu cofre na ${chain}.`,
       notJoined:
         'Não sei para qual objetivo este cofre foi comprado: a compra foi feita em outro navegador, ou antes de este guardar objetivos. O que ele guarda está abaixo.',

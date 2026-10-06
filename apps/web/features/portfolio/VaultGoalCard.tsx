@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { GoalCard } from '../../components/ui/GoalCard';
 import { type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -13,8 +14,8 @@ import { dueOf, type VaultGoal } from './vault-goal';
 // A vault as his guide's goal card (guidelines.html, "Goal card and plan"; goal-card.md): the goal in
 // one serif sentence, where it stands with its date, what the vault is worth against what the confirmed
 // deposits put in, the access to cash its plan promised to keep, and one link. Where it stands is the
-// engine's word or nothing: the engine gives no status for a vault, so the card says there is none,
-// except that an income plan's verdict is said as the verdict when the plan was built, and only when
+// engine's word or nothing: the engine gives no status for a vault, so the card says only when the
+// plan runs to, except that an income plan's verdict is said as the verdict when the plan was built, and only when
 // what went in is the plan's amount. A vault this browser cannot join to a goal gets the card with what is known.
 
 const monthYear = (lang: Lang, date: Date) =>
@@ -44,6 +45,10 @@ export function VaultGoalCard({
     obs: vaultValueSource(chain, vault, t.portfolio.vault.valueMethod),
   };
   const mock = vault.provenance !== 'live';
+  // One line under a card that is not live: a test network's figures say so, a sample's say sample.
+  const labels = {
+    sample: vault.provenance === 'sandbox' ? t.shell.testNetworkFigures : t.shell.mockAnnounce,
+  };
 
   if (!joined)
     return (
@@ -56,6 +61,8 @@ export function VaultGoalCard({
         action={{ label: words.startGoal, href: '/goal' }}
         mock={mock}
         chain={chain.chain}
+        linkAs={Link}
+        labels={labels}
       />
     );
 
@@ -67,7 +74,10 @@ export function VaultGoalCard({
   const asked = sheet.incomeTargetUsdMonthly;
   return (
     <GoalCard
-      sentence={goalLine(sheet, t, whole(sheet.amountUsd, lang), (usd) => whole(usd, lang))}
+      // What went in leads, where the chain confirms it: a goal of $50,000 bought with $40 reads $40.
+      sentence={goalLine(sheet, t, whole(putIn ?? sheet.amountUsd, lang), (usd) =>
+        whole(usd, lang),
+      )}
       status={
         // The engine gives no status for a vault. The one word it gave is the income plan's verdict
         // when the plan was built, for the plan's amount: it is said, as that, only when what went in
@@ -87,7 +97,8 @@ export function VaultGoalCard({
               : { kind: 'off-track', word: words.builtShort, date: due }
           : null
       }
-      noStatus={{ sentence: words.noStatus, date: due }}
+      // No status is worked out for a vault: the card says when the plan runs to, and no more.
+      noStatus={{ sentence: words.runsTo(due) }}
       reason={
         builtFor && !builtFor.met && asked === undefined
           ? t.plan.verdict.gap(whole(builtFor.gapUsdMonthly, lang))
@@ -105,6 +116,8 @@ export function VaultGoalCard({
       }
       mock={mock}
       chain={chain.chain}
+      linkAs={Link}
+      labels={labels}
     />
   );
 }

@@ -1,6 +1,7 @@
 import type { ChainId } from '@colosseum/schemas';
-import { useId } from 'react';
+import { type ElementType, type ReactNode, useId } from 'react';
 import { Button } from './Button';
+import { buttonClass } from './button-class';
 import { ChainBadge } from './ChainBadge';
 import { cn } from './cn';
 import { HatchBand, SampleNote } from './internal/mock-parts';
@@ -45,6 +46,11 @@ type Common = {
   mock?: boolean;
   /** The chain the goal's plan or vault is on, as a badge after the status. */
   chain?: ChainId;
+  /**
+   * What draws the action: a plain anchor by default, or the router's link (`next/link`) where the
+   * card leads to a page of the same app, so the page changes without a reload.
+   */
+  linkAs?: ElementType<{ href: string; className?: string; children?: ReactNode }>;
   labels?: Partial<GoalCardLabels>;
   className?: string;
 };
@@ -89,6 +95,7 @@ export function GoalCard(props: GoalCardProps) {
     meta,
     mock = false,
     chain,
+    linkAs: A,
     labels,
     className,
   } = props;
@@ -170,13 +177,25 @@ export function GoalCard(props: GoalCardProps) {
         {props.state === 'draft' && chain && <ChainBadge chain={chain} />}
         {mock && <SampleNote line={labels?.sample ?? GOAL_CARD_LABELS.sample} />}
         {header && meta && <p className="text-caption text-muted-foreground">{meta}</p>}
-        <Button
-          variant="link"
-          href={action.href}
-          className="after:absolute after:inset-0 group-hover/goal:decoration-2"
-        >
-          {action.label}
-        </Button>
+        {A ? (
+          <A
+            href={action.href}
+            className={cn(
+              buttonClass({ variant: 'link' }),
+              'after:absolute after:inset-0 group-hover/goal:decoration-2',
+            )}
+          >
+            {action.label}
+          </A>
+        ) : (
+          <Button
+            variant="link"
+            href={action.href}
+            className="after:absolute after:inset-0 group-hover/goal:decoration-2"
+          >
+            {action.label}
+          </Button>
+        )}
       </div>
     </article>
   );
