@@ -596,6 +596,7 @@ export type GetFundingResponse = {
   steps: number;
   newVault: boolean;
   ok: boolean;
+  testFunds?: boolean;
 };
 
 /** GET /v1/indexes/{slug}: params. A shared portfolio, its recipes read from their chains */
@@ -1355,6 +1356,33 @@ export type GetShelfResponse = {
   disclaimer: string;
 };
 
+/** POST /v1/testnet/fund: body. Test network only: send the signed-in wallet the test tokens and gas a buy is missing */
+export type PostTestnetFundBody = {
+  wallet?: string | string;
+  amountUsd: number;
+  proposalId?: string;
+  family?: string;
+};
+
+/** POST /v1/testnet/fund: response. Test network only: send the signed-in wallet the test tokens and gas a buy is missing */
+export type PostTestnetFundResponse = {
+  chain: 'solana' | 'base' | 'robinhood';
+  provenance: 'sandbox';
+  wallet: string | string;
+  cash: {
+    symbol: string;
+    decimals: number;
+    raw: string;
+  };
+  gas: {
+    symbol: string;
+    decimals: number;
+    raw: string;
+  };
+  txIds: string[];
+  left: number;
+};
+
 /** GET /v1/vaults/{chain}/{address}: params. One vault, read from its chain, for anybody */
 export type GetVaultsByChainByAddressParams = {
   chain: 'solana' | 'base' | 'robinhood';
@@ -1467,6 +1495,7 @@ export interface ApiRoutes {
   };
   'GET /v1/portfolio': { response: GetPortfolioResponse };
   'GET /v1/shelf': { query: GetShelfQuery; response: GetShelfResponse };
+  'POST /v1/testnet/fund': { body: PostTestnetFundBody; response: PostTestnetFundResponse };
   'GET /v1/vaults/{chain}/{address}': {
     params: GetVaultsByChainByAddressParams;
     response: GetVaultsByChainByAddressResponse;

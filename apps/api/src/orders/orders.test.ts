@@ -824,6 +824,7 @@ describe('the /v1 route table', () => {
       '/v1/orders/{id}/legs/{legId}/report',
       '/v1/portfolio',
       '/v1/shelf',
+      '/v1/testnet/fund',
       '/v1/vaults/{chain}/{address}',
     ]);
     // No route lets a caller through without a token: 503 with no Privy app set, 401 with one.
@@ -874,7 +875,10 @@ describe('no /v1 route can make the server sign', () => {
 
   it('reaches no key, no signer and no chain package that can sign', () => {
     const { files, packages } = reach(join(src, 'routes/v1/index.ts'));
+    // The test faucet's rules are here; its signing file is not: one dynamic import loads it, only when
+    // a faucet key is set (tests/boundaries.test.ts, BEHIND_A_FLAG).
     expect(files.map((f) => relative(src, f)).sort()).toEqual([
+      'faucet/test-funds.ts',
       'orders/chains.ts',
       'orders/errors.ts',
       'orders/families.ts',
@@ -896,6 +900,7 @@ describe('no /v1 route can make the server sign', () => {
       'routes/v1/orders.ts',
       'routes/v1/portfolio.ts',
       'routes/v1/shared.ts',
+      'routes/v1/testnet.ts',
       'routes/v1/vault.ts',
     ]);
     // The chain packages that can sign keep that behind their `./server` entry, and neither the
