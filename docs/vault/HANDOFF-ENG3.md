@@ -49,7 +49,7 @@ Left before slice 3 merges: `/review-pr` by an agent that did not write it, Thom
 
 - **Rodrigo:**
   - the stress sizes (`stress` in `params.ts`, the old engine's: yields −50%, credit gated 6 months, the goal currency ±20% over 12 months; stocks and gold fall `fallBps`);
-  - the candidate overrides (`candidates` in `params.ts`: Cover 12 months, credit 0, tau 0.5%, shareOfDepth 0.125; Spread one band, issuer 30%; distinct from 1,000 bps), and `wayScaleStepBps` (1%);
+  - the candidate overrides (`candidates` in `params.ts`: Cover 12 months, credit half the person's limit (set: gate `COVER-CREDIT`), tau 0.5%, shareOfDepth 0.125; Spread one band, issuer 30%; distinct from 1,000 bps), and `wayScaleStepBps` (1%);
   - the working names Cover, Spread, Carry (and Cobertura, Diversificação, Rendimento) in `WORDS.candidate`: a brand decision;
   - the 25% cash in Solana income plans;
   - the Solana AI theme list in slice 4.

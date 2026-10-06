@@ -83,7 +83,7 @@ Tests (C5 to C7, C19):
 
 What it delivers:
 - Three candidates (`THREE-PLANS`), all inside the person's limits:
-  - Cover: more months set aside, no credit leg, tighter exit tolerance.
+  - Cover: more months set aside, at most half the person's credit limit in credit legs (gate `COVER-CREDIT`, Oct 5; it was none), tighter exit tolerance.
   - Spread: equal fill within caps, tighter issuer cap.
   - Carry: the banded fill, credit up to the person's tolerance.
 - If two come out within 10 points of each other (half the sum of absolute weight differences), return fewer and say why. Never a foil.

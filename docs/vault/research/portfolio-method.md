@@ -135,7 +135,7 @@ Each candidate is the same engine with a different objective, inside the same li
 
 | Working name | What it optimises | Parameters that move | Wins on |
 |---|---|---|---|
-| Cover | Obligations matched by date in the goal's currency, lowest exit cost | Dedication months up (12 where today's is 6); credit share 0; stocks at the lower budget; `tau` and `shareOfDepth` tighter | Months covered; exit cost at the person's size |
+| Cover | Obligations matched by date in the goal's currency, lowest exit cost | Dedication months up (12 where today's is 6); credit share 0 (changed on 2026-10-05, gate `COVER-CREDIT`: at most half the person's credit limit); stocks at the lower budget; `tau` and `shareOfDepth` tighter | Months covered; exit cost at the person's size |
 | Spread | Least concentration | Dedication as today; yield legs filled equally within caps; issuer and chain caps tighter | Largest issuer share; number of issuers |
 | Carry | Most observed haircut yield inside the limits | Dedication at the window only; credit share at the person's tolerance; yield legs filled by band | Observed carry; funded ratio |
 
