@@ -289,15 +289,16 @@ describe('one chain per order (gate ONE-CHAIN)', () => {
     }
   });
 
-  it('refuses a plan made for another chain, and one spread over several', async () => {
+  it('refuses a plan on a chain the owner has no wallet on, and one spread over several', async () => {
     const a = await someone('solana');
     const buy = (proposalId: string) =>
       post(a, '/v1/orders', { type: 'buy', owner: a.owner, amountUsd: 1000, proposalId });
 
+    // The plan is bought on its own chain (CHAIN-SWITCH), and a Solana wallet cannot own a vault there.
     const elsewhere = await buy(plans.robinhood);
     expect(elsewhere.statusCode).toBe(422);
     expect(elsewhere.json().error).toBe(
-      'this plan was made for Robinhood Chain, and your plans live on Solana: make the plan again',
+      'the owner has no evm address, and this plan is on Robinhood Chain',
     );
 
     // A plan as API-1 took them: a recipe on each chain, the amount split 600 to 400.

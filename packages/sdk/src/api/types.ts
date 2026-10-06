@@ -695,7 +695,7 @@ export type GetIndexesBySlugVersionsResponse = {
   }[];
 };
 
-/** GET /v1/me: response. The signed-in person: their wallets, and the chain their plans live on */
+/** GET /v1/me: response. The signed-in person: their wallets, and the chain their new plans are made on */
 export type GetMeResponse = {
   userId: string;
   wallets: {
@@ -708,12 +708,12 @@ export type GetMeResponse = {
   chainOptions: ('solana' | 'base' | 'robinhood')[];
 };
 
-/** PUT /v1/me/chain: body. Pick the chain your plans live on. Once */
+/** PUT /v1/me/chain: body. Pick or switch the chain your new plans are made on */
 export type PutMeChainBody = {
   chain: 'solana' | 'base' | 'robinhood';
 };
 
-/** PUT /v1/me/chain: response. Pick the chain your plans live on. Once */
+/** PUT /v1/me/chain: response. Pick or switch the chain your new plans are made on */
 export type PutMeChainResponse = {
   userId: string;
   wallets: {
@@ -1230,7 +1230,7 @@ export type PostOrdersByIdLegsByLegIdReportResponse = {
   }[];
 };
 
-/** GET /v1/portfolio: response. The signed-in person's vaults on their chain, with holdings, prices and drift */
+/** GET /v1/portfolio: response. The signed-in person's vaults on every chain, with holdings, prices and drift */
 export type GetPortfolioResponse = {
   chains: {
     chain: 'solana' | 'base' | 'robinhood';

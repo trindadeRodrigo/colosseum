@@ -5,7 +5,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { ChainEntry } from '../../orders/chains';
 import { refusing } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
-import { homeChain } from '../../orders/person';
+import { chainsHeld } from '../../orders/person';
 import { cacheVault } from '../../orders/store';
 import { signedIn } from './orders';
 
@@ -46,18 +46,21 @@ export function registerPortfolioRoute(scope: FastifyInstance, deps: OrderDeps) 
       config: { auth: 'user', limit: 'standard' },
       schema: {
         tags: ['portfolio'],
-        summary: "The signed-in person's vaults on their chain, with holdings, prices and drift",
+        summary: "The signed-in person's vaults on every chain, with holdings, prices and drift",
         description:
-          'Read from the one chain the person’s plans live on (`GET /v1/me`), for the wallets in the identity token: `chains` has that one entry. `driftBps` is the weight of a position minus its target. The entry and every price carry `provenance`; anything that is not `live` is a test network or MOCK.',
+          'Read from every chain this server runs that the person holds a wallet for, whatever their current chain is: each plan lives on its own chain, and `chains` has an entry for each, in the server’s order. The wallets are those of the identity token. `driftBps` is the weight of a position minus its target. The entry and every price carry `provenance`; anything that is not `live` is a test network or MOCK.',
         response: { 200: PortfolioResponse, default: OrderError },
       },
     },
     async (req) => {
       const principal = signedIn(req);
-      // One chain: a plan lives where the person's wallet is, and so does every vault of theirs.
-      const entry = deps.chains.get(await homeChain(deps.db, principal));
-      const chain = await refusing(() => chainPortfolio(deps, entry, principal.wallets));
-      return { chains: [chain], disclaimer: DISCLAIMER.en };
+      // Every chain the person can hold a vault on, not only the current one (CHAIN-SWITCH).
+      const held = new Set(chainsHeld(principal));
+      const entries = deps.chains.active().filter((e) => held.has(e.chain));
+      const chains = await refusing(() =>
+        Promise.all(entries.map((entry) => chainPortfolio(deps, entry, principal.wallets))),
+      );
+      return { chains, disclaimer: DISCLAIMER.en };
     },
   );
 }

@@ -1031,7 +1031,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -2051,7 +2052,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -2747,7 +2749,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -3090,7 +3093,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -3110,7 +3114,7 @@
       "get": {
         "summary": "What the signed-in wallet is missing on its chain: the dollar token and native gas",
         "tags": ["funding"],
-        "description": "For the one chain the person’s plans live on. With `amountUsd` and `proposalId` (a plan) or `family` (a shared portfolio’s slug), the need is that of a buy of that amount: the whole deposit in the chain’s dollar token, and the network fee of every step the order would have. With neither, the need is nothing and the answer is what the wallet holds. `missingRaw` is what to add. It reads one wallet, named in the answer: `wallet` when the query names one of the person’s on that chain, and otherwise the wallet their plans are held by (the outside wallet when that names the chain, the wallet made in the app when the chain was picked). An order may name any of the person’s wallets of that family as its owner: ask about the one the order will name. Every figure carries its source, its time and its method, and `provenance`: `mock` on the mock chain, `sandbox` on a test network.",
+        "description": "On the chain of the plan that `proposalId` names, which a buy of it is on; otherwise on the person’s current chain (`GET /v1/me`). With `amountUsd` and `proposalId` (a plan) or `family` (a shared portfolio’s slug), the need is that of a buy of that amount: the whole deposit in the chain’s dollar token, and the network fee of every step the order would have. With neither, the need is nothing and the answer is what the wallet holds. `missingRaw` is what to add. It reads one wallet, named in the answer: `wallet` when the query names one of the person’s on that chain, and otherwise the wallet their plans are held by (the outside wallet when that names the chain, the wallet made in the app when the chain was picked). An order may name any of the person’s wallets of that family as its owner: ask about the one the order will name. Every figure carries its source, its time and its method, and `provenance`: `mock` on the mock chain, `sandbox` on a test network.",
         "parameters": [
           {
             "schema": {
@@ -3472,7 +3476,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -3915,7 +3920,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -4192,7 +4198,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -4210,9 +4217,9 @@
     },
     "/v1/me": {
       "get": {
-        "summary": "The signed-in person: their wallets, and the chain their plans live on",
+        "summary": "The signed-in person: their wallets, and the chain their new plans are made on",
         "tags": ["person"],
-        "description": "A plan lives on one chain, the chain of the person’s wallet. Someone who connected an outside wallet is on the chain of that wallet’s family: Solana, or Robinhood Chain for an EVM wallet (`chainSource` is `wallet`). Someone who made a wallet in the app picks the chain once: until then `chain` is null and `chainOptions` lists what may be picked. The wallets are those of the verified identity token.",
+        "description": "`chain` is the current chain: a new plan is made there. Each plan lives on one chain, its own, and stays there when the current chain changes. Someone who connected an outside wallet starts on the chain of that wallet’s family: Solana, or Robinhood Chain for an EVM wallet (`chainSource` is `wallet`). Someone who made a wallet in the app picks the chain: until then `chain` is null. `chainOptions` lists the chains the person holds a wallet for, which they may switch to with `PUT /v1/me/chain`. The wallets are those of the verified identity token.",
         "security": [
           {
             "accessToken": [],
@@ -4419,7 +4426,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -4437,9 +4445,9 @@
     },
     "/v1/me/chain": {
       "put": {
-        "summary": "Pick the chain your plans live on. Once",
+        "summary": "Pick or switch the chain your new plans are made on",
         "tags": ["person"],
-        "description": "For someone who made a wallet in the app. The chain has to be one they hold a wallet for and one this server runs: Solana or Robinhood Chain. The pick is stored once and never changes: the same chain again answers as before, another chain answers 409. Someone whose chain is that of the outside wallet they connected has nothing to pick, and another chain answers 409 too.",
+        "description": "Sets the current chain. It may be changed at any time; plans already made stay on their own chains, and are bought there. The chain has to be one this server offers (Solana or Robinhood Chain; another answers 422) and one the person holds a wallet for: a chain none of their wallets signs on answers 409 with code `NO_WALLET_FOR_CHAIN`, so someone signed in with an EVM wallet alone cannot switch to Solana. The same chain again answers as before and writes nothing.",
         "requestBody": {
           "required": true,
           "content": {
@@ -4664,7 +4672,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -5475,7 +5484,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -6024,7 +6034,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -6490,7 +6501,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -7049,7 +7061,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -7641,7 +7654,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -7659,9 +7673,9 @@
     },
     "/v1/portfolio": {
       "get": {
-        "summary": "The signed-in person's vaults on their chain, with holdings, prices and drift",
+        "summary": "The signed-in person's vaults on every chain, with holdings, prices and drift",
         "tags": ["portfolio"],
-        "description": "Read from the one chain the person’s plans live on (`GET /v1/me`), for the wallets in the identity token: `chains` has that one entry. `driftBps` is the weight of a position minus its target. The entry and every price carry `provenance`; anything that is not `live` is a test network or MOCK.",
+        "description": "Read from every chain this server runs that the person holds a wallet for, whatever their current chain is: each plan lives on its own chain, and `chains` has an entry for each, in the server’s order. The wallets are those of the identity token. `driftBps` is the weight of a position minus its target. The entry and every price carry `provenance`; anything that is not `live` is a test network or MOCK.",
         "security": [
           {
             "accessToken": [],
@@ -8160,7 +8174,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -8597,7 +8612,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
@@ -9127,7 +9143,8 @@
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
-                        "CURRENCY_UNSUPPORTED"
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN"
                       ]
                     },
                     "fix": {
