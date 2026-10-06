@@ -122,7 +122,7 @@ You can let a model in a chat (Claude Code, with any model you pick, say Sonnet 
 I have $20,000 and want it to grow over 10 years, medium risk. I live in Brazil.
 ```json reply sonnet
 {"goal":"grow","risk":"medium","amountUsd":20000,"incomeTargetUsdMonthly":null,"horizonMonths":120,
- "currency":null,"country":"BR","chain":null,"portfolios":[],"noCredit":null,"cannotHold":[],
+ "currency":null,"country":"BR","chain":null,"portfolios":[],"noCredit":false,"cannotHold":[],
  "language":"en","unclear":[]}
 ```
 ````

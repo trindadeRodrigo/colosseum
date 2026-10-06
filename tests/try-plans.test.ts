@@ -183,7 +183,7 @@ describe('a model reply pasted in the file', () => {
       country: 'BR',
       chain: null,
       portfolios: [],
-      noCredit: null,
+      noCredit: false,
       cannotHold: [],
       language: 'en',
       unclear: [],
