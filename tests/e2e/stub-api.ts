@@ -586,7 +586,9 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       wallet,
       cash: {
         ...stamp,
-        method: 'MOCK: the wallet’s balance on the mock chain',
+        method: testNetwork
+          ? 'the wallet’s balance, read by the stub as a test network'
+          : 'MOCK: the wallet’s balance on the mock chain',
         asset: world.adapter.mock.cash,
         symbol: CASH_SYMBOL,
         decimals: 6,
@@ -596,7 +598,9 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       },
       gas: {
         ...stamp,
-        method: 'MOCK: the wallet’s gas on the mock chain',
+        method: testNetwork
+          ? 'the wallet’s gas, read by the stub as a test network'
+          : 'MOCK: the wallet’s gas on the mock chain',
         ...GAS,
         haveRaw: f.gasHaveRaw,
         needRaw: f.gasNeedRaw,
