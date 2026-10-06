@@ -15,7 +15,7 @@ import {
 import { location, router } from '../../features/wallet/test/mock-next';
 import { portStore } from '../../features/wallet/test/mock-provider';
 import { dictionary, type Lang, type ThemeChoice } from '../../i18n';
-import { click, find, mount, settle, unmountAll } from '../ui/test/dom';
+import { click, find, mount, press, settle, unmountAll } from '../ui/test/dom';
 import { hatchProblems } from '../ui/test/hatch';
 import { parse } from '../ui/test/html';
 import { remember } from './remember';
@@ -34,6 +34,12 @@ const en = dictionary('en').shell;
 
 const shell = (lang: Lang = 'en', theme: ThemeChoice = 'auto') =>
   mount(inShell(lang, theme, createElement('p', null, 'the page')));
+/** The bar's account control for someone signed in, and the menu it opens. */
+const menuButton = (host: HTMLElement) => find(host, '[data-ui="account-menu-button"]');
+const openMenu = async (host: HTMLElement) => {
+  await click(menuButton(host));
+  return find(host, '[data-ui="account-menu"]');
+};
 const pressed = (group: Element) =>
   [...group.querySelectorAll('button')]
     .filter((b) => b.getAttribute('aria-pressed') === 'true')
@@ -194,15 +200,15 @@ describe('who is signed in, in the bar', () => {
     expect(here.className).not.toContain('border');
   });
 
-  it('shows the wallet and "Sign out" on the sign-in screen once someone is signed in', async () => {
+  it('shows the account control on the sign-in screen once someone is signed in', async () => {
     location.pathname = '/sign-in';
     portStore.set(signedInPort(EMBEDDED));
     const host = await shell();
     await settle();
     expect(host.querySelector('[data-ui="sign-in-here"]')).toBeNull();
-    expect(find(host, '[data-ui="account"]').textContent).toContain(en.signOut);
     // the same size as "Sign in" elsewhere: the bar keeps its height
-    expect(find(find(host, '[data-ui="account"]'), 'button').className).toContain('h-10');
+    expect(menuButton(host).className).toContain('h-10');
+    expect((await openMenu(host)).textContent).toContain(en.signOut);
   });
 
   it('underlines the bar’s link to the page in view, as compact-nav.md marks a current link', async () => {
@@ -232,11 +238,12 @@ describe('who is signed in, in the bar', () => {
     const account = find(host, '[data-ui="account"]');
     expect(account.textContent).toContain('So11…1112');
     expect(account.querySelector('[title]')?.getAttribute('title')).toBe(SOLANA);
-    expect(account.innerHTML).not.toContain(EVM);
-    expect(account.innerHTML).not.toContain('0x20');
     // a real wallet carries no MOCK plate
     expect(account.querySelector('.tf-mock-plate')).toBeNull();
-    await click(find(account, 'button'));
+    const menu = await openMenu(host);
+    expect(account.innerHTML).not.toContain(EVM);
+    expect(account.innerHTML).not.toContain('0x20');
+    await click(find(menu, '[data-ui="sign-out"]'));
     await settle();
     expect(signOut).toHaveBeenCalledTimes(1);
     expect(find<HTMLAnchorElement>(host, 'header a[href="/sign-in"]').textContent).toBe(en.signIn);
@@ -246,8 +253,10 @@ describe('who is signed in, in the bar', () => {
     portStore.set(signedInPort(EMBEDDED));
     const host = await shell();
     await settle();
-    const account = find(host, '[data-ui="account"]');
-    expect(account.textContent).toBe(`${en.signOut}${en.signingOut}`);
+    // the control names no chain and no address, and its menu holds the way out alone
+    expect(menuButton(host).textContent).toBe(en.account);
+    const menu = await openMenu(host);
+    expect(menu.textContent).toBe(en.signOut);
   });
 
   it('says nothing about anyone before the wallet has loaded', async () => {
@@ -268,10 +277,11 @@ describe('who is signed in, in the bar', () => {
       );
       const host = await shell();
       await settle();
-      const account = find(host, '[data-ui="account"]');
       // no address: there is no chain, and no wallet to show for one
-      expect(account.textContent).toBe(`${en.signOut}${en.signingOut}`);
-      await click(find(account, 'button'));
+      expect(menuButton(host).textContent).toBe(en.account);
+      const menu = await openMenu(host);
+      expect(menu.textContent).toBe(en.signOut);
+      await click(find(menu, '[data-ui="sign-out"]'));
       await settle();
       expect(signOut).toHaveBeenCalledTimes(1);
       expect(find(host, 'header a[href="/sign-in"]').textContent).toBe(en.signIn);
@@ -285,7 +295,7 @@ describe('who is signed in, in the bar', () => {
     portStore.set(signedInPort(EMBEDDED, { signOut }));
     const host = await shell();
     await settle();
-    const out = find(find(host, '[data-ui="account"]'), 'button');
+    const out = find(await openMenu(host), '[data-ui="sign-out"]');
     out.focus();
     await click(out);
     await settle();
@@ -301,12 +311,13 @@ describe('who is signed in, in the bar', () => {
     portStore.set(signedInPort(EMBEDDED, { signOut }));
     const host = await shell();
     await settle();
-    await click(find(find(host, '[data-ui="account"]'), 'button'));
+    const menu = await openMenu(host);
+    await click(find(menu, '[data-ui="sign-out"]'));
     await settle();
-    expect(find(host, 'header [role="alert"]').textContent).toBe(en.signOutFailed);
+    expect(find(menu, '[role="alert"]').textContent).toBe(en.signOutFailed);
     expect(find(host, '[data-ui="account-said"]').textContent).toBe('');
     // still the way out, to try again
-    expect(find(find(host, '[data-ui="account"]'), 'button').textContent).toContain(en.signOut);
+    expect(find(menu, '[data-ui="sign-out"]').textContent).toBe(en.signOut);
   });
 
   it('says nothing and moves no focus when the page loads signed out', async () => {
@@ -327,6 +338,151 @@ describe('who is signed in, in the bar', () => {
     expect(account.querySelectorAll('.tf-hatch')).toHaveLength(1);
     expect(account.textContent).not.toContain('MOCK');
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
+  });
+});
+
+describe('the account control of someone signed in (Thom, Oct 6)', () => {
+  const words = dictionary('en');
+  /** A passkey person on Solana, and the switches sent to the API. */
+  const onSolana = () => {
+    const puts: unknown[] = [];
+    let chain = 'solana';
+    portStore.setApi(async (path, init) => {
+      if (path === '/v1/me/chain') {
+        chain = JSON.parse(String(init?.body)).chain;
+        puts.push(chain);
+      }
+      return json({
+        userId: 'did:privy:test',
+        wallets: EMBEDDED,
+        chain,
+        chainSource: 'picked',
+        chainOptions: ['solana', 'robinhood'],
+      });
+    });
+    portStore.set(signedInPort(EMBEDDED));
+    return puts;
+  };
+
+  it('is one button with the chain and the short address, named with the whole address', async () => {
+    onSolana();
+    const host = await shell();
+    await settle();
+    const bar = find(host, '[data-ui="account-control"]');
+    // one control: no chain switcher beside it, no "Sign out" button in the bar
+    expect(bar.querySelectorAll('button')).toHaveLength(1);
+    expect(bar.querySelector('[data-ui="chain-switch"]')).toBeNull();
+    const button = menuButton(host);
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+    expect(button.textContent).toContain('Solana');
+    expect(button.textContent).toContain('So11…1112');
+    // a screen reader hears the whole address, not the cut one
+    const heard = [...button.querySelectorAll('*')]
+      .filter((el) => el.children.length === 0 && el.getAttribute('aria-hidden') !== 'true')
+      .map((el) => el.textContent)
+      .join(' ');
+    expect(heard).toContain(`${en.account}:`);
+    expect(heard).toContain(SOLANA);
+    expect(heard).not.toContain('So11…1112');
+    // a hairline and 2px corners, never a pill
+    expect(button.className).toContain('rounded-md');
+    expect(button.className).not.toContain('rounded-full');
+  });
+
+  it('opens with the chains, the address, the explorer and "Sign out" last, and closes with Escape', async () => {
+    onSolana();
+    const host = await shell();
+    await settle();
+    menuButton(host).focus();
+    const menu = await openMenu(host);
+    expect(menuButton(host).getAttribute('aria-expanded')).toBe('true');
+    expect(menuButton(host).getAttribute('aria-controls')).toBe(menu.id);
+    const group = find(menu, '[role="group"]');
+    expect(pressed(group).join('')).toContain('Solana');
+    expect(find(menu, '[data-ui="account-address"]').textContent).toBe(SOLANA);
+    const items = [...menu.querySelectorAll('button, a')].map((el) => el.textContent);
+    expect(items.slice(-3)).toEqual([en.copyAddress, en.viewOn('Solscan'), en.signOut]);
+    const explorer = find<HTMLAnchorElement>(menu, '[data-ui="account-explorer"]');
+    expect(explorer.getAttribute('href')).toContain(`/account/${SOLANA}`);
+    expect(explorer.getAttribute('target')).toBe('_blank');
+    // from an item inside it: focus goes back to the control
+    find(menu, '[data-ui="sign-out"]').focus();
+    await press(find(menu, '[data-ui="sign-out"]'), 'Escape');
+    expect(host.querySelector('[data-ui="account-menu"]')).toBeNull();
+    expect(document.activeElement).toBe(menuButton(host));
+  });
+
+  it('switches the chain from the menu, closes, and says where the person is now', async () => {
+    const puts = onSolana();
+    const host = await shell();
+    await settle();
+    const menu = await openMenu(host);
+    await click(find(menu, 'button[data-chain="robinhood"]'));
+    await settle();
+    expect(puts).toEqual(['robinhood']);
+    expect(host.querySelector('[data-ui="account-menu"]')).toBeNull();
+    expect(menuButton(host).textContent).toContain('Robinhood Chain');
+    expect(menuButton(host).textContent).toContain('0x20…0498');
+    expect(find(host, '[data-ui="chain-said"]').textContent).toBe(
+      words.chain.switch.done('Robinhood Chain'),
+    );
+  });
+
+  it('copies the whole address, and says "Copied"', async () => {
+    onSolana();
+    const writeText = vi.fn(async () => {});
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    try {
+      const host = await shell();
+      await settle();
+      const menu = await openMenu(host);
+      const copy = find(menu, '[data-ui="copy-address"]');
+      expect(copy.textContent).toBe(en.copyAddress);
+      expect(find(menu, '[data-ui="copy-said"]').textContent).toBe('');
+      await click(copy);
+      await settle();
+      expect(writeText).toHaveBeenCalledWith(SOLANA);
+      expect(find(menu, '[data-ui="copy-said"]').textContent).toBe(en.copied);
+      expect(copy.textContent).toBe(en.copied);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('heads the phone’s sheet with the same block: the chains, the address, "Sign out"', async () => {
+    const puts = onSolana();
+    const signOut = vi.fn(async () => {
+      portStore.set(fakePort());
+    });
+    portStore.set(signedInPort(EMBEDDED, { signOut }));
+    const host = await shell();
+    await settle();
+    const sheet = find(host, '[data-ui="compact-nav-sheet"]');
+    const block = find(sheet, '[data-ui="account-block"]');
+    // at its top, before the links
+    expect(sheet.firstElementChild?.contains(block)).toBe(true);
+    expect(sheet.firstElementChild?.nextElementSibling?.tagName).toBe('A');
+    expect(find(block, '[data-ui="account-address"]').textContent).toBe(SOLANA);
+    expect(find(block, '[data-ui="copy-address"]').textContent).toBe(en.copyAddress);
+    await click(find(block, 'button[data-chain="robinhood"]'));
+    await settle();
+    expect(puts).toEqual(['robinhood']);
+    await click(find(find(host, '[data-ui="compact-nav-sheet"]'), '[data-ui="sign-out"]'));
+    await settle();
+    expect(signOut).toHaveBeenCalledTimes(1);
+    // signed out, the sheet has no account block
+    expect(
+      host.querySelector('[data-ui="compact-nav-sheet"] [data-ui="account-block"]'),
+    ).toBeNull();
+  });
+
+  it('signed out, keeps the chain switcher and the one primary "Sign in"', async () => {
+    const host = await shell();
+    await settle();
+    const bar = find(host, '[data-ui="account-control"]');
+    expect(bar.querySelector('[data-ui="chain-switch"]')).not.toBeNull();
+    expect(bar.querySelector('[data-ui="account"]')).toBeNull();
+    expect(find<HTMLAnchorElement>(bar, 'a[href="/sign-in"]').textContent).toBe(en.signIn);
   });
 });
 
