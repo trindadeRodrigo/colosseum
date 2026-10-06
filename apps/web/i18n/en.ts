@@ -684,6 +684,18 @@ export const en = {
     },
     accept: 'I’ve read this and I accept it',
     accepted: 'You’ve accepted this notice in this browser.',
+    /** The four points of the notice in short, with the whole notice one click away. */
+    short: {
+      title: 'What you’re trusting',
+      unaudited: 'The vault code hasn’t been audited outside the team.',
+      keys: 'The team holds keys that can upgrade the vault code.',
+      keeper: (tolerance: string, loss: string) =>
+        `With auto-follow on, our keeper trades within limits: at most ${tolerance} off the reference price, and at most ${loss} of your vault lost in a week.`,
+      keeperUnset:
+        'The keeper’s limits aren’t set on this chain, so auto-follow isn’t offered here.',
+      issuers: 'The issuers of stock tokens can freeze or take back their tokens.',
+      full: 'Read the full list',
+    },
   },
 
   buy: {
@@ -692,10 +704,49 @@ export const en = {
       `The whole amount goes into a vault only you can withdraw from, on ${chain}, then buys each asset of the plan.`,
     amount: {
       label: 'Amount (dollars)',
-      hint: (planned: string) => `From $10 to $1,000,000. Your plan was built for ${planned}.`,
+      hint: (planned: string) => `Your plan was built for ${planned}. From $10 to $1,000,000.`,
+    },
+    /** The four steps of a buy, one open at a time. */
+    steps: {
+      label: 'Steps to buy',
+      names: { amount: 'Amount', funds: 'Funds', trust: 'Trust', review: 'Sign' },
+      /** Read after a step's name by a screen reader. */
+      done: 'done',
+      next: 'Continue',
+      funds: { ready: 'Ready', short: 'Something is missing', reading: 'Reading…' },
+      trust: { accepted: 'Accepted', open: 'Not accepted yet' },
+      reviewLead: (amount: string, chain: string) =>
+        `You’re buying ${amount} of your plan on ${chain}. Next you review every step, then sign each one in your wallet.`,
+      /** The one line over the card when its figures are not live. */
+      note: {
+        testNetwork: (chain: string) => `Test network · ${chain} · not live`,
+      },
     },
     funding: {
       title: 'What your wallet needs',
+      /** The need in one line: the deposit, and the fees. */
+      needs: (cash: string, gas: string) => `You need ${cash} and ${gas} for fees.`,
+      haveNone: 'You have none yet.',
+      lacking: (list: string) => `You’re still short ${list}.`,
+      and: (a: string, b: string) => `${a} and ${b}`,
+      details: 'Show the details',
+      testFunds: 'Get test funds',
+      testFunding: 'Sending test funds…',
+      testNote: 'Test tokens have no value. They exist only on the test network.',
+      testSent: (list: string) => `I sent ${list} to your wallet on the test network.`,
+      testFailure: {
+        busy: 'You’ve had test funds as often as a day allows. Try again tomorrow, or fund the wallet yourself.',
+        tooMuch:
+          'This amount needs more than one send of test funds gives. Choose a smaller amount, then ask again.',
+        enough: 'Your wallet already has what this buy needs.',
+        lowCash:
+          'Our test funds are low. Ask the team to top them up, or fund the wallet yourself.',
+        lowGas: 'Our test gas is low. Ask the team to top it up, or fund the wallet yourself.',
+        refused:
+          'Our server didn’t send test funds for this buy. Read your wallet again, then try again.',
+        unreachable:
+          'The test network didn’t take the transfer, or our server didn’t answer. Read your wallet again: part of it may have arrived.',
+      },
       reading: 'Reading your wallet…',
       cash: (symbol: string) => `Cash to deposit (${symbol})`,
       gas: (symbol: string) => `Network fees (${symbol})`,
@@ -722,8 +773,8 @@ export const en = {
     reviewing: 'Making your order…',
     blocked: {
       amount: 'Enter an amount from $10 to $1,000,000 to continue.',
-      funding: 'Your wallet needs what is missing above before you can continue.',
-      trust: 'Accept the notice above to continue.',
+      funding: 'Your wallet needs what is missing before you can continue.',
+      trust: 'Accept the notice to continue.',
       wallet: 'No wallet of yours is signed in on this chain.',
     },
     failure: {
