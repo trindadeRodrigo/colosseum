@@ -34,12 +34,29 @@ const SPYX = 'XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W';
 const QQQX = 'Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ';
 
 const registry: RegistryAsset[] = [
-  { assetSymbol: 'SPYx', assetMint: SPYX, tvlUsd: 5_000_000 },
-  { assetSymbol: 'SPYx', assetMint: SPYX, tvlUsd: 900_000 },
-  { assetSymbol: 'QQQx', assetMint: QQQX, tvlUsd: 400_000 },
-  // an EVM registry row under the same name is another family's, never a Solana twin
-  { assetSymbol: 'SPYx', assetMint: '0x1111111111111111111111111111111111111111', tvlUsd: 9e9 },
+  { chain: 'solana', assetSymbol: 'SPYx', assetMint: SPYX, tvlUsd: 5_000_000 },
+  { chain: 'solana', assetSymbol: 'SPYx', assetMint: SPYX, tvlUsd: 900_000 },
+  { chain: 'solana', assetSymbol: 'QQQx', assetMint: QQQX, tvlUsd: 400_000 },
+  // a bare "SPY" with more TVL is not SPY's xStock: the xStock's name is tried first
+  {
+    chain: 'solana',
+    assetSymbol: 'SPY',
+    assetMint: 'SpyNotTheXstock1111111111111111111111111111',
+    tvlUsd: 9e9,
+  },
+  // an EVM row under the same name is another chain's, never a Solana twin
+  {
+    chain: 'robinhood',
+    assetSymbol: 'SPYx',
+    assetMint: '0x1111111111111111111111111111111111111111',
+    tvlUsd: 9e9,
+  },
 ];
+/** The chain the devnet shelf runs on, as the chain registry labels it. */
+const SANDBOX = 'sandbox';
+const tierFile = JSON.parse(
+  readFileSync(join(DEPLOYMENTS_DIR, '..', 'fixtures/risk/launch-shelf-tiers.json'), 'utf8'),
+);
 
 const calendar = JSON.parse(
   readFileSync(join(DEPLOYMENTS_DIR, '..', 'fixtures/risk/us-market-holidays.json'), 'utf8'),
@@ -98,37 +115,55 @@ const rulesOn = (plan: ReturnType<typeof planWith>, id: string) =>
 
 describe('the twins of the devnet stand-ins', () => {
   it('are the registry assets their models name, on the same family of chains', () => {
-    const twins = exitTwins(standIns(shelf), registry);
+    const twins = exitTwins(standIns(shelf, SANDBOX), registry);
     expect(twins.map((t) => [t.symbol, t.twinSymbol, t.twinMint])).toEqual([
       ['tSPYx', 'SPYx', SPYX],
       ['tQQQx', 'QQQx', QQQX],
     ]);
   });
 
-  it('are found in any case on EVM, where symbols are not spelled one way', () => {
+  it('are found on the stand-in’s own chain, in any case on EVM', () => {
     const token = {
       ...(shelf.find((a) => a.symbol === 'tSPYx') as BasketAsset),
+      chain: 'robinhood' as const,
       id: 'robinhood:spy',
       symbol: 'tSPY',
       underlying: 'SPY',
       address: '0xAbCdEf0000000000000000000000000000000001',
     };
-    const evm = '0x8F3C0000000000000000000000000000000000Aa';
+    const rh = '0x8F3C0000000000000000000000000000000000Aa';
+    const base = '0x8F3C0000000000000000000000000000000000Bb';
+    const rows: RegistryAsset[] = [
+      // Base's SPY, with the same name and more TVL: another chain's
+      { chain: 'base', assetSymbol: 'SPY', assetMint: base, tvlUsd: 9e9 },
+      { chain: 'robinhood', assetSymbol: 'spy', assetMint: rh, tvlUsd: 1 },
+    ];
+    expect(exitTwins([token], rows).map((t) => t.twinMint)).toEqual([rh]);
+  });
+
+  it('take the mint the price index pins for the xStock over any registry row of its name', () => {
+    const pinned = 'XsPinnedSpyx11111111111111111111111111111111';
+    const rows: RegistryAsset[] = [
+      ...registry,
+      { chain: 'solana', assetSymbol: 'SPYx', assetMint: pinned, tvlUsd: null, pinned: true },
+    ];
     expect(
-      exitTwins([token], [{ assetSymbol: 'spy', assetMint: evm, tvlUsd: 1 }]).map(
-        (t) => t.twinMint,
-      ),
-    ).toEqual([evm]);
+      exitTwins(standIns(shelf, SANDBOX), rows).find((t) => t.symbol === 'tSPYx')?.twinMint,
+    ).toBe(pinned);
   });
 
   it('are none for a live token or for cash: only a test-network token stands in', () => {
     const live = shelf.map((a) => ({ ...a, provenance: 'live' as const }));
-    expect(exitTwins(standIns(live), registry)).toEqual([]);
-    expect(standIns(shelf).some((a) => a.cls === 'cash')).toBe(false);
+    expect(exitTwins(standIns(live, SANDBOX), registry)).toEqual([]);
+    expect(standIns(shelf, SANDBOX).some((a) => a.cls === 'cash')).toBe(false);
+  });
+
+  it('are none on a chain that does not run as a test network, whatever its tokens say', () => {
+    for (const p of ['mock', 'live', undefined]) expect(standIns(shelf, p)).toEqual([]);
   });
 
   it('name whose depth each stand-in reads in the source', () => {
-    const twins = exitTwins(standIns(shelf), registry);
+    const twins = exitTwins(standIns(shelf, SANDBOX), registry);
     expect(twinSource('Bearing', twins)).toBe(
       'Bearing; mainnet depth applied to the test-network tokens that model it (SPYx for tSPYx, QQQx for tQQQx)',
     );
@@ -144,7 +179,7 @@ describe('a plan to grow $20,000 on devnet', () => {
   });
 
   it('with SPYx’s measured depth, holds tSPYx past the ceiling, labelled sandbox with its twin named', () => {
-    const twins = exitTwins(standIns(shelf), registry);
+    const twins = exitTwins(standIns(shelf, SANDBOX), registry);
     const ids = twins.map((t) => t.id);
     const plan = planWith({
       provider: asSandbox(providerFor(ids)),
@@ -170,23 +205,17 @@ describe('a plan to grow $20,000 on devnet', () => {
 // The plan of the report, made as the server makes it: the stand-ins read their twins' depth, those
 // with no measured twin take their model's tier on the mainnet launch shelf, the dollar-yield ones
 // their models' yields; SPY and QQQ are index funds (the record's `etf`).
-const seed = JSON.parse(
-  readFileSync(
-    join(DEPLOYMENTS_DIR, '..', 'docs/vault/research/open-questions/launch-shelf.seed.json'),
-    'utf8',
-  ),
-);
 const READINGS = z
   .array(z.object({ symbol: z.string(), reading: YieldObservation }))
   .parse(readings);
 
 describe('the plan to grow $20,000 over 63 months at high risk on devnet, as the server makes it', () => {
-  const tokens = standIns(shelf);
+  const tokens = standIns(shelf, SANDBOX);
   const twins = exitTwins(tokens, registry);
   const provider = asSandbox(providerFor(twins.map((t) => t.id)));
   const tiers = tierTwins(
     tokens.filter((t) => !provider.covers(t.id)),
-    shelfTiers(seed),
+    shelfTiers(tierFile),
   ).map((t) => ({
     assetId: t.id,
     tier: t.tier,

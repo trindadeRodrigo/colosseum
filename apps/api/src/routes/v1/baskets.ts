@@ -71,7 +71,7 @@ export function registerBasketRoutes(
       chains: deps.chains,
       homeChain: chain,
       loadFamilies: (on) => loadFamilies(deps.db, on),
-      inputs: (on, assets) => inputs({ db: deps.db, chain: on, assets }),
+      inputs: (on, assets, provenance) => inputs({ db: deps.db, chain: on, assets, provenance }),
       now: deps.now().toISOString(),
     });
 

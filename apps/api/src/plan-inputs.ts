@@ -28,45 +28,86 @@ import type { PlanInputs } from './orders/personalize';
 // environment, which no file the /v1 routes reach may do (apps/api/src/orders/orders.test.ts).
 
 const ROOT = process.env.REPO_ROOT ?? join(import.meta.dirname, '..', '..', '..');
+const readJson = <T>(file: string): T | null => {
+  try {
+    return JSON.parse(readFileSync(join(ROOT, file), 'utf8')) as T;
+  } catch {
+    return null;
+  }
+};
 /**
- * The mainnet tokens' tiers: the launch shelf (a proposal, Oct 1), the one place that gives syrupUSDC
- * and jlUSDC a tier. A stand-in whose model Bearing does not measure takes its model's from it.
+ * The mainnet tokens' tiers, copied from the launch shelf (a proposal, Oct 1), the one place that gives
+ * syrupUSDC and jlUSDC a tier. A stand-in whose model Bearing does not measure takes its model's from
+ * it; without the file it keeps its own (C on a test network).
  */
-const SHELF_FILE = 'docs/vault/research/open-questions/launch-shelf.seed.json';
-const SHELF_AT = '2026-10-01T14:00:00.000Z';
-const SHELF = shelfTiers(JSON.parse(readFileSync(join(ROOT, SHELF_FILE), 'utf8')));
+type TierFile = {
+  source: string;
+  fetchedAt: string;
+  rows: Array<{ chain: string; symbol: string; tier: string }>;
+};
+const TIER_FILE = readJson<TierFile>('fixtures/risk/launch-shelf-tiers.json');
+const SHELF = TIER_FILE ? shelfTiers(TIER_FILE) : [];
+/** The xStocks' mints by symbol (the Solana price index): a Solana stand-in's twin is pinned by mint. */
+const SCOPE = readJson<{ assets: Array<{ symbol: string; mint: string }> }>(
+  'fixtures/solana-vault/scope-indexes.json',
+);
 
 export const BEARING_SOURCE = `Bearing: sell-side depth measured on chain (risk_depth_curves, ${RISK_METHOD_VERSION})`;
 
-export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets }) => {
+export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets, provenance }) => {
   const addresses = assets.filter((a) => a.cls !== 'cash').map((a) => a.address);
   if (!addresses.length) return {};
-  // A test-network token reads the depth of the mainnet token it models (model-exits.ts); every other
-  // token reads its own.
-  const tokens = standIns(assets);
+  // On a chain that runs as a test network, a test-network token reads the depth of the mainnet token it
+  // models (model-exits.ts); every other token reads its own.
+  const tokens = standIns(assets, provenance);
   const names = [...new Set(tokens.flatMap(twinSymbols))];
   const lower = names.map((n) => n.toLowerCase());
   // Solana's stocks are in Bearing's pool registry; the EVM stocks have no pool rows there (PLAN-UNIVERSE
   // RU.14, DU6) and are found by their seeded `assets` rows, under the collector's spelling.
+  // The pool registry is Solana's; an EVM stock's chain is the prefix of its seeded row's id.
   const registry: RegistryAsset[] = lower.length
     ? [
-        ...(await db
-          .select({
-            assetSymbol: riskPools.assetSymbol,
-            assetMint: riskPools.assetMint,
-            tvlUsd: riskPools.tvlUsd,
-          })
-          .from(riskPools)
-          .where(inArray(sql`lower(${riskPools.assetSymbol})`, lower))),
+        ...(SCOPE?.assets ?? [])
+          .filter((a) => names.includes(a.symbol))
+          .map((a) => ({
+            chain: 'solana',
+            assetSymbol: a.symbol,
+            assetMint: a.mint,
+            tvlUsd: null,
+            pinned: true,
+          })),
         ...(
           await db
-            .select({ assetSymbol: assetsTable.symbol, assetMint: assetsTable.mint })
+            .select({
+              assetSymbol: riskPools.assetSymbol,
+              assetMint: riskPools.assetMint,
+              tvlUsd: riskPools.tvlUsd,
+            })
+            .from(riskPools)
+            .where(inArray(sql`lower(${riskPools.assetSymbol})`, lower))
+        ).map((r) => ({ ...r, chain: 'solana' })),
+        ...(
+          await db
+            .select({
+              id: assetsTable.id,
+              assetSymbol: assetsTable.symbol,
+              assetMint: assetsTable.mint,
+            })
             .from(assetsTable)
             .where(
               and(eq(assetsTable.chain, 'evm'), inArray(sql`lower(${assetsTable.symbol})`, lower)),
             )
         ).flatMap((r) =>
-          r.assetMint ? [{ assetSymbol: r.assetSymbol, assetMint: r.assetMint, tvlUsd: null }] : [],
+          r.assetMint
+            ? [
+                {
+                  chain: r.id.split(':')[0] as string,
+                  assetSymbol: r.assetSymbol,
+                  assetMint: r.assetMint,
+                  tvlUsd: null,
+                },
+              ]
+            : [],
         ),
       ]
     : [];
@@ -83,9 +124,9 @@ export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets }) => {
   ).map((t) => ({
     assetId: t.id,
     tier: t.tier,
-    source: `tier ${t.tier} of ${t.twinSymbol} on mainnet (${SHELF_FILE}), applied to the test-network token ${t.symbol}`,
+    source: `tier ${t.tier} of ${t.twinSymbol} on mainnet (${TIER_FILE?.source}), applied to the test-network token ${t.symbol}`,
     method: 'the launch shelf tier of the token it models; its exit is not measured',
-    fetchedAt: SHELF_AT,
+    fetchedAt: TIER_FILE?.fetchedAt ?? '',
     provenance: 'sandbox' as const,
   }));
   const provider = loaded && read.length ? asSandbox(loaded) : loaded;

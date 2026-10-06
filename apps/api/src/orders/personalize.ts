@@ -15,6 +15,7 @@ import {
   currencyOf,
   type LiquidityProvider,
   type ObservationRef,
+  type Provenance,
   type RiskRollUp,
   type Shelf,
   type Sourced,
@@ -34,7 +35,13 @@ import { Refusal, refusing } from './errors';
  * measured exit a line's ceiling is its tier's and the plan says so (`ceiling_from_tier:<asset>`);
  * without a yield the card counts none for that token.
  */
-export type PlanInputs = (q: { db: Db; chain: ChainId; assets: BasketAsset[] }) => Promise<{
+export type PlanInputs = (q: {
+  db: Db;
+  chain: ChainId;
+  assets: BasketAsset[];
+  /** The chain's own label as it runs now: only a test network's tokens borrow a model's figures. */
+  provenance?: Provenance;
+}) => Promise<{
   liquidity?: { provider: LiquidityProvider; source: string };
   yields?: YieldObservation[];
   /**
@@ -50,7 +57,7 @@ export type PersonalizeContext = {
   homeChain(): Promise<ChainId>;
   /** The shared portfolios that have a recipe on `chain`, each with that recipe as it is in effect. */
   loadFamilies(chain: ChainId): Promise<Shelf['families']>;
-  inputs(chain: ChainId, assets: BasketAsset[]): ReturnType<PlanInputs>;
+  inputs(chain: ChainId, assets: BasketAsset[], provenance: Provenance): ReturnType<PlanInputs>;
   /** ISO time: the plan is made at it, and the goal's date counts from it. */
   now: string;
 };
@@ -161,7 +168,7 @@ export async function personalize(
   const entry = ctx.chains.get(chain);
   const listed = await refusing(() => entry.adapter.listAssets());
   const families = await ctx.loadFamilies(chain);
-  const figures = await ctx.inputs(chain, listed);
+  const figures = await ctx.inputs(chain, listed, entry.provenance);
   const assets = withTiers(listed, figures.tiers);
   const shelf: Shelf = { version: shelfVersionOf(chain, assets, families), assets, families };
   let plan: PersonalProposal;
