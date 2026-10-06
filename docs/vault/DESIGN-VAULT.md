@@ -42,7 +42,7 @@ Nothing here has run on mainnet. The three $10 runs come first in time.
 - EVM vaults are beacon proxies, so one transaction can fix every vault. Withdrawals go only to the owner, on both chain families. The value check is per trade.
 - Solana: Kamino Scope prices cover ten stock tokens and gold, which on Solana is PAXG (Scope 454, capped and floored to Chainlink's XAU/USD; gate `GOLD-PAXG`), and nothing else, so auto-follow runs only on vaults whose every asset is in that list. A shared portfolio that holds an asset with no oracle is not keeper-rebalanced: its followers get the one-tap prompt, and the app does not offer the auto-follow switch on it (gate `GOLD-ONE-TAP`).
 - EVM: a fresh price does not prove an open market, so stock legs trade only in a fixed weekday window, minus a list of closed days.
-- The model fills a form and nothing else. Explanation text comes from templates.
+- The model reads the goal into the sheet, asks questions where it is unclear, and says back what it understood; the person confirms before the engine runs (decided on Oct 5, gate `GUIDED-INTAKE`). It never sets weights or figures. Explanation text comes from templates.
 - The keeper runs as a loop on a machine the team controls. GitHub's scheduler only runs workflows from the default branch **[C 16]**, which is `main`.
 - The publish delay has a one-way launch latch: short while only team money is in, 48 hours and locked before the public link.
 - Hostile cases A1 to A18, a two-tier security gate per chain, and a separate gate before the public link is shared.
@@ -149,7 +149,7 @@ Nothing in the tree breaks these rules now, and the test's list of exemptions is
 
 Frozen in two steps. **v0 on Oct 2**, with the first types and the mock: streams start against it, and one named owner (Thom) approves any change. A walking skeleton on the mock (a buy on each chain through API, order, legs and report) proves it by Oct 3. **Final on Oct 4 evening**, after each real adapter has built and simulated a create, a deposit, one swap and one keeper leg on a fork. Only then does `tests/frozen.test.ts` start hashing the files; it hashes new files only, never his. Later changes are additive. Each TypeScript type below has a zod schema of the same name in `packages/schemas/src/`.
 
-**v0 as built (FRAME-1, Oct 2).** Where the listings below left a choice open, this is what the code in `packages/schemas` does. Thom approves a change until the freeze.
+**v0 as built (FRAME-1, Oct 2).** Where the listings below left a choice open, this is what the code in `packages/schemas` does. Thom approves a change.
 
 | Point | What the code does |
 |---|---|
@@ -162,7 +162,7 @@ Frozen in two steps. **v0 on Oct 2**, with the first types and the mock: streams
 | The parser's draft | `BasketSheetDraft`: every field of `BasketSheet`, each nullable (section 7) |
 | Interfaces | `ChainReader`, `OwnerBuilder`, `KeeperBuilder`, `TxProbe`, `Submitter`, `Signer`, `WalletPort` and `RollUpContext` are TypeScript types only: they hold functions |
 | Amended on Oct 3 (FRAME-1b) | What the first nine slots and their reviews asked for, before the freeze: a person's targets may leave a cash share; the author-limit reasons, the delay and `allowedAt`; the program's appended errors and the contracts' errors as codes; four more wallet codes and the message hash per family; `TxProbe`; an approval by plan; one expected figure per trade and the minimums in the preview; `OrderError`, `OrderDetail`, `PortfolioResponse`; a price's maximum age, a scheduled multiplier, a reader's label. After its review the same day: `preview.minimums` is required; an EVM transaction states its nonce and gas limit, and an EVM attempt is the pair (messageHash, nonce); `carries` has three answers; `nonceOf`. The listings below show the types as they are now |
-| Statuses and kinds in the database | `text`, typed from the zod types, not Postgres enums, so a change before the freeze is not a migration |
+| Statuses and kinds in the database | `text`, typed from the zod types, not Postgres enums, so a change to them is not a migration |
 | `leg_attempts` | Points at a row of `legs` or of `keeper_legs`, with a check that exactly one is set |
 | `orders` | The owner as two columns, `owner_solana` and `owner_evm`, and the request as it came |
 | `TxStatus.explorerUrl` | Required, and empty on a network with no explorer |
@@ -1002,17 +1002,19 @@ Three pure steps. **Exposure:** how big each sleeve is (stocks and crypto, dolla
 |---|---|---|
 | Goal | What the plan may hold, by the asset registry: income, dollar yield and cash; protect, dollar yield, gold and cash; grow, everything | "Storm Cellar is left out: it holds SPY, and the asset list does not allow SPY in a plan for a goal to protect" |
 | Goal, risk | A table gives the three sleeve sizes | "For a goal to grow at medium risk, the starting share of dollar yield is 15%" |
+| Sleeves, or goal and risk | The person may split the plan into sleeves (a goal with dates, a theme, the safest liquid yield), each with its share; otherwise a table by goal and risk gives the sleeve sizes. Whether a grown sleeve is brought back to its share is the person's choice (decided on Oct 5, gate `SLEEVES`) | "50% AI theme, 50% dollar yield: your split" |
 | Time frame | A floor on dollar yield that rises as the date nears; what dollar yield has no room for stays in cash | "At least 40% is kept out of stocks, crypto and gold, in dollar yield or cash: you need this money in 18 months" |
-| Themes | Decide what is inside each sleeve | "From Sand to Server" |
+| Themes | Decide what is inside each sleeve. Which tokens count for a theme on each chain is curated by the team; a social side comes later (decided on Oct 5, gate `THEMES`) | "From Sand to Server" |
 | Holdings | Target is set on amount plus holdings, then holdings are subtracted | "No NVDA: you already hold $4,000" |
 | Risk | Cap per single stock and per issuer. Where an issuer's cap cuts a portfolio's stocks, each is cut in proportion to its weight | "No more than 70% of the plan with one issuer at medium risk" |
 | Amount | Dollar ceiling per token = 0.25 × its measured exit capacity (gate `EXIT-SOURCE`). Where nothing is measured, the ceiling of its tier, said on the line and flagged. Overflow goes to dollar yield on the same chain, then to cash | "GLDx is limited to $10,000: beyond that, selling it would cost too much" |
 | Country | Blocked tokens are skipped; the rest of the sleeve takes their place | "TSLAx is left out: it is not offered in Brazil" |
 
 - A prototype over the launch shelf passes the handoff's test: three people, three plans, and each input alone moves the plan and adds a reason naming it. Its numbers are placeholders for Rodrigo.
+- The engine offers three candidate plans from one goal, each a different setting of the same engine inside the person's limits; the person chooses, and none is pre-selected (decided on Oct 5, gate `THREE-PLANS`). The rules that keep them distinct are in `docs/vault/research/portfolio-method.md` section 2.4.
 - A plan holds at most 8 lines in the MVP (`maxLinesPerChain`: the shared type's name, and with one chain per plan it is the plan's limit). The vault itself allows 16.
 - **The card:** money needed today; expected return (a yield range on the dollar-yield share; stocks and gold assume no return, plus the dollar loss in a 20% fall); total term; cash-flow pattern; when you can get out. Income goals add a verdict with the gap and each way to close it.
-- **The model** fills `BasketSheetDraft` (every field nullable) and nothing else: Claude Haiku 4.5 on Anthropic's Messages API with structured outputs, about $0.002 a parse **[C 11]**. The call lives in `apps/api/src/llm.ts` with a 6-second timeout and a daily budget.
+- **The model** fills `BasketSheetDraft` (every field nullable), asks the person about each field the text leaves open or unclear, and says back what it understood before the confirm step (gate `GUIDED-INTAKE`). It never sets weights, picks assets or states a figure: Claude Haiku 4.5 on Anthropic's Messages API with structured outputs, about $0.002 a parse **[C 11]**. The call lives in `apps/api/src/llm.ts` with a 6-second timeout and a daily budget.
 - Checks after the model, in pure code: the amount and time frame must appear in the text; themes must be shelf slugs; any disagreement with the regex parser is flagged per field. The form is always the confirm step. Model down: the regex parser pre-fills it. That fails: it opens with defaults.
 - Shared portfolio names never reach the model. Explanation text is one template per rule, in English and Portuguese. A 12-goal evaluation set guards the parser.
 - A test bans "recommend", "suitable" and "best for you" in templates; the disclaimer stays in its one constant (section 17). This is positioning only: a plan built from a person's circumstances can count as advice whatever the wording.
@@ -1329,7 +1331,7 @@ One contract, three faces. Fastify emits the OpenAPI document, committed at `pac
 
 Abuse limits. Portfolio names and descriptions: 280 characters, links stripped, returned in a field named `untrusted`. An order cannot switch auto-follow on or accept a new asset by itself. `agentLabel` is shown as "unverified". A daily budget on the model; past it, the regex parser answers. A plan's quotes are all on its chain; they run in parallel with 8 seconds for the chain, from the cache where they can.
 
-## 13. Security model and tests before the freeze
+## 13. Security model and tests before the submission
 
 The keeper is the bounded risk: a leaked keeper key can cost each auto-follow vault at most 2% of the vault in any seven days (twice the weekly cap parameter, section 5) plus any error in the price reference, which on Solana is held inside the range the admin gave each asset. The upgrade key is the unbounded one: it can replace vault code, and there is no deposit cap. The API cannot sign, and it cannot make the keeper sign: the keeper plans from chain state and never reads a job the API wrote.
 
@@ -1455,8 +1457,8 @@ Stock markets are closed on Oct 3, 4, 10 and 11. Keeper trades on stocks, and an
 | Tue Oct 6 | A buy with a passkey wallet on each chain; publish and follow. In session: auto-follow cycles on Robinhood Chain; rehearsal 1 on Solana and Robinhood Chain. MCP against the real API |
 | Wed Oct 7 | In session: rehearsal 2, and the market-open footage. Portfolio and rebalance end to end. Sheets render. Add-backs decided |
 | Thu Oct 8 | `G-SEC` per chain at 12:00 BRT. Then `launch()`: the delay is 48 hours from here on. Then `G-LINK`, and only then is the link shared. Pause drill in session. In session: publish a version of the demo portfolio |
-| Fri Oct 9 | Spare session for a failed test cycle. Freeze at 18:00 BRT; tag. The version published on Oct 8 takes effect on Saturday, when the stock market is closed, so its rebalance waits for Monday |
-| Sat Oct 10 | P0 fixes only, each with a test. README, `HANDOFF-VAULT`, `DESIGN-VAULT`, `PRIOR-WORK`. Record the remaining screens |
+| Fri Oct 9 | Spare session for a failed test cycle; building continues, no freeze (gate `NO-FREEZE`). The version published on Oct 8 takes effect on Saturday, when the stock market is closed, so its rebalance waits for Monday |
+| Sat Oct 10 | Building continues, each change with its tests. README, `HANDOFF-VAULT`, `DESIGN-VAULT`, `PRIOR-WORK`. Record the remaining screens |
 | Sun Oct 11 | Edit both videos. Fill the submission form |
 | Mon Oct 12 | In session: the Oct 8 version adopts and rebalances at production settings. If it fails, auto-follow is switched off on that chain. Then submit with a buffer |
 
