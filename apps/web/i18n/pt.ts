@@ -357,9 +357,12 @@ export const pt: Dictionary = {
   },
 
   portfolio: {
+    chainOut: (chain: string) => `${chain} está indisponível agora.`,
+    chainOff: (chain: string) => `${chain} está indisponível no nosso servidor por enquanto.`,
+    notHeld: (chain: string) => `${chain} não está nesta conta.`,
     title: (vaults: number) =>
       vaults > 1 ? 'O que seus cofres guardam.' : 'O que seu cofre guarda.',
-    lead: 'Lido da rede onde seu plano fica, cada vez que você abre esta página. Nada aqui assina ou move coisa alguma.',
+    lead: 'Lido de cada rede onde seus planos ficam, cada vez que você abre esta página. Nada aqui assina ou move coisa alguma.',
     chain: 'Rede',
     reading: 'Lendo seu cofre…',
     signedOut:
