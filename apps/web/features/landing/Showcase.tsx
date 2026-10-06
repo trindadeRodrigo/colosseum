@@ -230,7 +230,7 @@ export function Showcase({ lang }: { lang: Lang }) {
                 lang={lang}
                 labels={{ ...chartLabels, chart: t.trip.chart }}
                 payout={t.trip.payout}
-                money={money}
+                parts={t.trip.legs.map((leg) => leg.name(TICKERS.cash))}
               />
             }
             legs={TRIP.legs}
@@ -263,7 +263,6 @@ export function Showcase({ lang }: { lang: Lang }) {
                 labels={{ ...chartLabels, chart: t.growth.chart }}
                 goal={t.growth.goalLine}
                 weak={t.growth.weak}
-                money={money}
               />
             }
             legs={GROWTH.legs}

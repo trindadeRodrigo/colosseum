@@ -29,6 +29,8 @@ export const TRIP = {
   ] satisfies SampleLeg[],
   /** What the person puts in each month, in dollars. */
   saveUsd: 106,
+  /** What each of the three trip months pays out, in dollars. */
+  payoutUsd: 1000,
   months: 27,
   /** Dollars earned on top of what was put in, by the trip. */
   earnedUsd: 127,

@@ -504,6 +504,10 @@ export const en = {
       high: 'high end',
       note: 'Only what the dollar yield pays is projected. Prices of stocks and gold are not, and can fall.',
       table: 'The projection',
+      /** A month of the term, counted from the start, in the readout under the chart. */
+      month: (m: number) => (m === 1 ? 'month 1' : `month ${m}`),
+      hint: 'Point at the chart, tap it or use the arrow keys to read a month.',
+      series: 'What the chart draws',
     },
     exitPlan: 'Exit plan',
     costPrefix: 'cost',
@@ -1086,6 +1090,18 @@ export const en = {
       chartTable: 'The chart as a table',
       month: 'Month',
       balance: 'Balance',
+      /** The line under a chart that reads out the month under the crosshair. */
+      readout: {
+        hint: 'Point at the chart, tap it or use the arrow keys to read a month.',
+        series: 'What the chart draws',
+        putIn: 'put in',
+        paidOut: 'paid out',
+        base: 'base case',
+        range: 'weak to strong case',
+        weak: 'weak case',
+        strong: 'strong case',
+        goal: 'goal',
+      },
       exitPlan: 'Exit plan before investing',
       trip: {
         label: 'Example: a trip in 2029',
