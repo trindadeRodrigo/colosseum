@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import evalSet from './fixtures/goals-eval.json';
 import recorded from './fixtures/intake-replies.json';
-import { conversationText, type IntakeInput, runIntake, type ShelfPortfolio } from './intake';
+import {
+  conversationText,
+  type IntakeAnswers,
+  type IntakeInput,
+  runIntake,
+  type ShelfPortfolio,
+} from './intake';
 import {
   MARKET_IDS,
   type Market,
@@ -14,6 +20,8 @@ import {
 import {
   attributeKey,
   type FilterMatch,
+  isMatchedSlug,
+  MARKET_FILTER_BY,
   type MarketFilter,
   matchedSlug,
   type ShelfLabel,
@@ -63,6 +71,11 @@ const ATTRIBUTES: Record<string, FilterMatch> = {
 };
 const matchOf = (filter: MarketFilter): FilterMatch | null =>
   ATTRIBUTES[`${filter.by}:${attributeKey(filter.value)}`] ?? null;
+/** The filter an entry of `ATTRIBUTES` answers, from its key and its value. */
+const filterOf = (key: string, value: string): MarketFilter => ({
+  by: MARKET_FILTER_BY.find((by) => key.startsWith(`${by}:`)) ?? 'keyword',
+  value,
+});
 
 const reply = (over: Record<string, unknown> = {}) => ({
   goal: 'grow',
@@ -1449,5 +1462,219 @@ describe('the read-back and the assumptions, in English and Portuguese', () => {
     expect(asked.questions.map((q) => q.text)).toEqual([
       'Quanto dos US$ 2.000 para semicondutores?',
     ]);
+  });
+});
+
+// Whatever the text says, whatever the shelf holds and whatever is answered: goals put together from
+// parts, each read on shelves with other labels and other matches, and answered as a form would, turn
+// after turn. No clock and no random source: the sequence below is the same on every run.
+describe('whatever the text, the shelf and the answers', () => {
+  const openers: { text: string; reply: Record<string, unknown> }[] = [
+    { text: 'I want to grow $2,000 over 5 years.', reply: {} },
+    {
+      text: 'Quero fazer US$ 2.000 crescer em 5 anos.',
+      reply: { language: 'pt' },
+    },
+    {
+      text: 'I want $50 a month of income from $10,000 for 5 years.',
+      reply: { goal: 'income', amountUsd: 10_000, incomeTargetUsdMonthly: 50 },
+    },
+    {
+      text: 'Protect $8,000 for 2 years, low risk.',
+      reply: { goal: 'protect', amountUsd: 8000, horizonMonths: 24, risk: 'low' },
+    },
+    { text: 'I have some savings.', reply: { goal: null, amountUsd: null, horizonMonths: null } },
+  ];
+  const named = [
+    'big tech',
+    'the S&P 500',
+    'AI',
+    'semiconductors',
+    'AI infrastructure',
+    'space',
+    'quantum computing',
+    'software',
+    'defense stocks',
+    'setor de defesa',
+    'obesity drugs',
+    'The Seven',
+    'Chips & Agents',
+  ];
+  const said: ((n: string) => string)[] = [
+    (n) => `Invest in ${n}.`,
+    (n) => `All of it in ${n}.`,
+    (n) => `Put $500 in ${n}.`,
+    (n) => `I like ${n}.`,
+    (n) => `No ${n}.`,
+    (n) => `Put 30% in ${n}.`,
+    (n) => `Put $900 in ${n} and $300 in AI.`,
+    (n) => `I work in ${n}.`,
+    (n) => `Quero investir em ${n}.`,
+  ];
+  const more = [
+    '',
+    'All of it in stocks.',
+    '70% stocks and 30% cash.',
+    '70% safe and 30% to risk.',
+  ];
+  const mixes = [
+    { growthBps: 5000, dollarYieldBps: 0, goldBps: 0, cashBps: 5000 },
+    { growthBps: 3000, dollarYieldBps: 0, goldBps: 7000, cashBps: 0 },
+    { growthBps: WHOLE, dollarYieldBps: 0, goldBps: 0, cashBps: 0 },
+  ];
+
+  it('never throws, never holds what the shelf has not, never a mix with sleeves, never asks the risk with a share', () => {
+    let state = 20_261_006;
+    const next = () => {
+      state = (state * 1_103_515_245 + 12_345) % 2_147_483_648;
+      return state / 2_147_483_648;
+    };
+    const pick = <T>(from: readonly T[]): T => from[Math.floor(next() * from.length)] as T;
+    let sheets = 0;
+    let themed = 0;
+    for (let run = 0; run < 400; run += 1) {
+      const opener = pick(openers);
+      const words = [pick(named), pick(named)].slice(0, Math.floor(next() * 3));
+      const text = [opener.text, ...words.map((w) => pick(said)(w)), pick(more)]
+        .filter(Boolean)
+        .join(pick([' ', '\n\n']));
+      const labels = LABELS.filter(() => next() < 0.7).map((l) => ({
+        ...l,
+        status: pick(['confirmed', 'confirmed', 'proposed'] as const),
+        listed: pick([0, 1, 5]),
+      }));
+      const shelf = portfolios.filter(() => next() < 0.7);
+      const match = next() < 0.7 ? matchOf : undefined;
+      const usable = (slug: string) =>
+        labels.some((l) => l.slug === slug && l.status === 'confirmed' && l.listed > 0) ||
+        (isMatchedSlug(slug) &&
+          match !== undefined &&
+          Object.entries(ATTRIBUTES).some(
+            ([key, m]) => m.listed > 0 && matchedSlug(filterOf(key, m.value)) === slug,
+          ));
+      const r =
+        next() < 0.7
+          ? reply({
+              ...opener.reply,
+              mix: pick([
+                null,
+                null,
+                { growthPct: 100, dollarYieldPct: 0, goldPct: 0, cashPct: 0 },
+              ]),
+              marketFilter: pick([
+                null,
+                { by: 'keyword', value: 'GLP-1', words: 'obesity drugs' },
+                { by: 'industry', value: 'Software', words: words[0] ?? 'savings' },
+                { by: 'ticker', value: 'LLY', words: 'obesity drugs' },
+              ]),
+            })
+          : null;
+      const homeChain = pick(['solana', 'solana', 'robinhood', null] as const);
+      let answers: IntakeAnswers = {};
+      for (let turn = 0; turn < 4; turn += 1) {
+        const input = { labels, portfolios: shelf, matchOf: match, homeChain, answers };
+        const result = intake(text, r, input);
+        const where = JSON.stringify({ text, answers, homeChain });
+        // The same input gives the same answer, in any order of the labels and the portfolios.
+        expect(JSON.stringify(intake(text, r, input)), where).toBe(JSON.stringify(result));
+        expect(
+          JSON.stringify(
+            intake(text, r, {
+              ...input,
+              labels: [...labels].reverse(),
+              portfolios: [...shelf].reverse(),
+            }),
+          ),
+          where,
+        ).toBe(JSON.stringify(result));
+        // No sentence has a hole in it.
+        const sentences = [
+          ...result.assumptions,
+          ...(result.readBack ?? []),
+          ...result.questions.map((q) => q.text),
+        ];
+        expect(sentences.join(' '), where).not.toMatch(/[{}]|undefined|NaN/);
+        // Each narrative reads to what the shelf has, and one with nothing is said.
+        for (const n of result.narratives) {
+          if (n.kind === 'portfolio')
+            expect(
+              shelf.map((p) => p.slug),
+              where,
+            ).toContain(n.slug);
+          if (n.kind === 'label' || n.kind === 'matched')
+            expect(usable(n.slug as string), where).toBe(true);
+          if (n.kind === 'none') {
+            expect([n.slug, n.filter, n.name], where).toEqual([null, null, null]);
+            expect(
+              result.assumptions.some(
+                (s) =>
+                  s.includes(`“${n.words}”`) && /There is no stock for|não há nenhuma ação/.test(s),
+              ),
+              where,
+            ).toBe(true);
+          }
+        }
+        if (homeChain === null) {
+          expect(result.narratives, where).toEqual([]);
+          expect(result.sheet, where).toBeNull();
+          expect(result.assumptions.join(' '), where).not.toMatch(
+            /There is no stock for|não há nenhuma ação|curated list|lista com curadoria/,
+          );
+        }
+        const asked = fields(result);
+        expect(new Set(asked).size, where).toBe(asked.length);
+        expect(asked.includes('risk') && asked.includes('mix'), where).toBe(false);
+        const sheet = result.sheet;
+        if (sheet) {
+          sheets += 1;
+          expect(asked, where).toEqual([]);
+          expect(PersonalSheet.safeParse(sheet).success, where).toBe(true);
+          expect(sheet.mix !== undefined && sheet.sleeves !== undefined, where).toBe(false);
+          const held = (sheet.sleeves ?? []).flatMap((s) => (s.kind === 'theme' ? [s.theme] : []));
+          if (held.length > 0) themed += 1;
+          for (const slug of held) expect(usable(slug), where).toBe(true);
+          // A theme the text names is never held on a goal of income or to protect.
+          if (sheet.goal !== 'grow' && answers.sleeves === undefined)
+            expect(held, where).toEqual([]);
+          break;
+        }
+        if (asked.every((f) => f === 'chains')) break;
+        // Something is asked, or there is a sheet: never neither.
+        expect(asked.length, where).toBeGreaterThan(0);
+        // Answer what is asked, as a form would; a split that was refused is not sent again.
+        const slugs = result.narratives.flatMap((n) =>
+          (n.kind === 'label' || n.kind === 'matched') && n.slug ? [n.slug] : [],
+        );
+        const refused = result.flags.includes('answer_not_on_shelf:sleeves');
+        const before = JSON.stringify(answers);
+        answers = {
+          ...answers,
+          ...(asked.includes('goal') ? { goal: pick(['grow', 'grow', 'income'] as const) } : {}),
+          ...(asked.includes('amountUsd') ? { amountUsd: 2000 } : {}),
+          ...(asked.includes('horizonMonths') ? { horizonMonths: 60 } : {}),
+          ...(asked.includes('risk') ? { risk: pick(['low', 'medium', 'high'] as const) } : {}),
+          ...(asked.includes('incomeTargetUsdMonthly') ? { incomeTargetUsdMonthly: 20 } : {}),
+          ...(asked.includes('currency') ? { currency: 'USD' } : {}),
+          ...(asked.includes('themes') ? { themes: [] } : {}),
+          ...(asked.includes('mix') ? { mix: pick(mixes) } : {}),
+          ...(asked.includes('sleeves')
+            ? {
+                sleeves: refused
+                  ? [safe(7000), { kind: 'goal' as const, shareBps: 3000 }]
+                  : pick([
+                      [theme(slugs[0] ?? 'moon-rockets', 6000), safe(4000)],
+                      [theme(slugs[0] ?? 'ai', 3000), { kind: 'goal' as const, shareBps: 7000 }],
+                      [safe(7000), { kind: 'goal' as const, shareBps: 3000 }],
+                    ]),
+              }
+            : {}),
+        };
+        // Every turn moves: the same question is never asked of the same answers.
+        expect(JSON.stringify(answers), where).not.toBe(before);
+      }
+    }
+    // The run reaches sheets, and sheets that hold a theme: the checks above were not idle.
+    expect(sheets).toBeGreaterThan(100);
+    expect(themed).toBeGreaterThan(20);
   });
 });
