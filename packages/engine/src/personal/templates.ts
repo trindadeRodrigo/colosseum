@@ -33,6 +33,7 @@ export const INPUT_NAMES = [
   'sleeves',
   'currency',
   'obligations',
+  'mix',
 ] as const;
 export type InputName = (typeof INPUT_NAMES)[number];
 
@@ -45,6 +46,22 @@ export const REASON_TEMPLATES = {
     ['goal', 'risk'],
     'For {goal|goal} at {risk|risk}, the starting share of {sleeve|sleeve} is {sleeveBps|pct}.',
     'Para {goal|goal}, com {risk|risk}, a parcela inicial de {sleeve|sleeve} é {sleeveBps|pct}.',
+  ),
+  // What the person said they want held (gate EXPLICIT-MIX): it replaces the row of the table.
+  MIX: rule(
+    ['mix'],
+    'You asked for {sleeveBps|pct} of the plan in {sleeve|sleeve}.',
+    'Você pediu {sleeveBps|pct} do plano em {sleeve|sleeve}.',
+  ),
+  MIX_ALL: rule(
+    ['mix'],
+    'You asked for all of it in {sleeve|sleeve}.',
+    'Você pediu tudo em {sleeve|sleeve}.',
+  ),
+  MIX_LIMITS: rule(
+    ['mix'],
+    'To hold {sleeveBps|pct} of the plan in stocks and crypto, the plan uses the limits for {risk|risk}: at most {stockCapBps|pct} in one stock or crypto asset, and {issuerCapBps|pct} with one issuer.',
+    'Para ter {sleeveBps|pct} do plano em ações e cripto, o plano usa os limites de {risk|risk}: no máximo {stockCapBps|pct} em uma só ação ou cripto, e {issuerCapBps|pct} com um só emissor.',
   ),
   // The person's split of the plan (gate SLEEVES).
   SPLIT_GOAL: rule(
@@ -61,6 +78,73 @@ export const REASON_TEMPLATES = {
     ['sleeves', 'chain'],
     'No token you can hold on {chain|chain} pays a rate alone, so {usd|usd} of the part you set apart for it stays in cash.',
     'Nenhum token que você pode ter na {chain|chain} paga só uma taxa, então {usd|usd} da parte separada para isso fica em caixa.',
+  ),
+  // A theme sleeve (gates SLEEVES, THEMES): equal shares of the names on a curated list.
+  THEME_SLEEVE: rule(
+    ['sleeves', 'themes', 'chain'],
+    'You set {shareBps|pct} of the plan for the theme {theme}: equal shares of the names on its list for {chain|chain} that you can hold and that can be sold at this size, each up to its limit.',
+    'Você destinou {shareBps|pct} do plano para o tema {theme}: partes iguais dos nomes da lista dele na {chain|chain} que você pode ter e que podem ser vendidos neste tamanho, cada um até o seu limite.',
+  ),
+  THEME_MEMBER: rule(
+    ['themes', 'chain'],
+    '{asset} is on the {theme} list for {chain|chain}, version {version}, kept by {curator}: {why}.',
+    '{asset} está na lista {theme} da {chain|chain}, versão {version}, mantida por {curator}: {why}.',
+  ),
+  THEME_EASIEST: rule(
+    ['themes'],
+    '{theme} lists more names than this plan has parts left, so it holds the {count} easiest to sell: first the names whose exit is measured, by how much of each can be sold, then the others, by their tier.',
+    '{theme} tem mais nomes do que as partes que restam neste plano, então fica com os {count} mais fáceis de vender: primeiro os nomes com saída medida, por quanto de cada um pode ser vendido, depois os outros, pela faixa.',
+  ),
+  THEME_HELD: rule(
+    ['holdings', 'themes'],
+    'Less {asset} in {theme}: of the {totalUsd|usd} of it you hold, {heldUsd|usd} counts here, so the theme buys it only up to the total of each of its other names.',
+    'Menos {asset} em {theme}: dos {totalUsd|usd} que você tem desse ativo, {heldUsd|usd} contam aqui, então o tema compra só até o total de cada um dos outros nomes.',
+  ),
+  THEME_HELD_NONE: rule(
+    ['holdings', 'themes'],
+    'No {asset} in {theme}: of the {totalUsd|usd} of it you hold, {heldUsd|usd} counts here, as much as each of its other names holds.',
+    'Sem {asset} em {theme}: dos {totalUsd|usd} que você tem desse ativo, {heldUsd|usd} contam aqui, tanto quanto cada um dos outros nomes.',
+  ),
+  // What the person holds, where a theme counted part of it first (gate THEME-FIRST).
+  ALREADY_HELD_PART: rule(
+    ['holdings', 'themes'],
+    'Less {asset}: of the {totalUsd|usd} of it you hold, {heldUsd|usd} counts here; a theme you asked for counts the rest.',
+    'Menos {asset}: dos {totalUsd|usd} que você tem desse ativo, {heldUsd|usd} contam aqui; um tema que você pediu conta o resto.',
+  ),
+  ALREADY_HELD_NONE_PART: rule(
+    ['holdings', 'themes'],
+    'No {asset}: of the {totalUsd|usd} of it you hold, {heldUsd|usd} counts here; a theme you asked for counts the rest.',
+    'Sem {asset}: dos {totalUsd|usd} que você tem desse ativo, {heldUsd|usd} contam aqui; um tema que você pediu conta o resto.',
+  ),
+  MORE_BECAUSE_HELD_PART: rule(
+    ['holdings', 'themes'],
+    'A larger share here: of the {totalUsd|usd} of {asset} you hold, {heldUsd|usd} counts here, so this part buys less of it.',
+    'Uma parcela maior aqui: dos {totalUsd|usd} de {asset} que você tem, {heldUsd|usd} contam aqui, então esta parte compra menos desse ativo.',
+  ),
+  OVERFLOW_HELD_PART: rule(
+    ['holdings', 'themes'],
+    '{usd|usd} this plan does not put in {assets|list} is held in dollar yield or cash instead: of the {totalUsd|usd} of it you hold, {heldUsd|usd} counts here.',
+    '{usd|usd} que este plano não coloca em {assets|list} fica em rendimento em dólar ou caixa: dos {totalUsd|usd} que você tem desse ativo, {heldUsd|usd} contam aqui.',
+  ),
+  ISSUER_CAP_THEME: rule(
+    ['risk', 'sleeves', 'themes'],
+    'No more than {capBps|pct} of the plan with one issuer at {risk|risk}: {issuer} is at that limit, and the theme {themes|list} you asked for holds its share of it first.',
+    'No máximo {capBps|pct} do plano com um só emissor, com {risk|risk}: {issuer} está nesse limite, e o tema {themes|list} que você pediu fica com a parte dele primeiro.',
+  ),
+  THEME_TOO_THIN: rule(
+    ['amount', 'themes'],
+    '{asset} is left out of {theme}: selling it at this size would cost too much, so it cannot take {minUsd|usd}, the least a part of your plan can be.',
+    '{asset} fica de fora de {theme}: vender neste tamanho custaria caro demais, então ele não comporta {minUsd|usd}, o mínimo de uma parte do seu plano.',
+  ),
+  THEME_NO_LIST: rule(
+    ['themes', 'chain'],
+    'The theme {theme} holds no name: there is no list for it on {chain|chain}.',
+    'O tema {theme} não tem nenhum nome: não há lista para ele na {chain|chain}.',
+  ),
+  THEME_NOT_CONFIRMED: rule(
+    ['themes', 'chain'],
+    'The theme {theme} holds no name: its list for {chain|chain} is proposed and not confirmed yet.',
+    'O tema {theme} não tem nenhum nome: a lista dele na {chain|chain} foi proposta e ainda não foi confirmada.',
   ),
   // A goal in a currency other than dollars.
   FX_OPEN: rule(
@@ -284,6 +368,16 @@ export const REASON_TEMPLATES = {
     'No more than {capBps|pct} of the plan in tokens that lend to borrowers or trade a spread, at the credit risk you accept: those tokens together are at that limit.',
     'No máximo {capBps|pct} do plano em tokens que emprestam a tomadores ou operam uma diferença de taxas, com o risco de crédito que você aceita: esses tokens juntos estão nesse limite.',
   ),
+  CREDIT_BUDGET_MIX: rule(
+    ['mix'],
+    'You asked for up to {capBps|pct} of the plan in tokens that lend to borrowers or trade a spread: those tokens together are at that limit.',
+    'Você pediu até {capBps|pct} do plano em tokens que emprestam a tomadores ou operam uma diferença de taxas: esses tokens juntos estão nesse limite.',
+  ),
+  CREDIT_NONE_MIX: rule(
+    ['mix'],
+    '{asset} is left out: it lends to borrowers or trades a spread, and the mix you asked for holds none of those.',
+    '{asset} fica de fora: ele empresta a tomadores ou opera uma diferença de taxas, e a composição que você pediu não tem nenhum desses.',
+  ),
   CREDIT_NONE: rule(
     ['credit'],
     '{asset} is left out: it lends to borrowers or trades a spread, and you accept no credit risk.',
@@ -383,6 +477,21 @@ export const REASON_TEMPLATES = {
     '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: the asset list does not allow it in a plan for {goal|goal}.',
     '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: a lista de ativos não permite esse ativo em um plano para {goal|goal}.',
   ),
+  OVERFLOW_ISSUER_THEME: rule(
+    ['risk', 'sleeves', 'themes'],
+    '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: no more than {capBps|pct} of the plan is with one issuer at {risk|risk}, {issuer} is at that limit, and the theme {themes|list} you asked for holds its share of it first.',
+    '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: no máximo {capBps|pct} do plano fica com um só emissor, com {risk|risk}, {issuer} está nesse limite, e o tema {themes|list} que você pediu fica com a parte dele primeiro.',
+  ),
+  OVERFLOW_THEME_NO_LIST: rule(
+    ['themes', 'chain'],
+    '{usd|usd} meant for the theme {assets|list} is held in dollar yield or cash instead: there is no list for it on {chain|chain}.',
+    '{usd|usd} que iria para o tema {assets|list} fica em rendimento em dólar ou caixa: não há lista para ele na {chain|chain}.',
+  ),
+  OVERFLOW_THEME_NOT_CONFIRMED: rule(
+    ['themes', 'chain'],
+    '{usd|usd} meant for the theme {assets|list} is held in dollar yield or cash instead: its list for {chain|chain} is not confirmed yet.',
+    '{usd|usd} que iria para o tema {assets|list} fica em rendimento em dólar ou caixa: a lista dele na {chain|chain} ainda não foi confirmada.',
+  ),
   OVERFLOW_HELD: rule(
     ['holdings'],
     '{usd|usd} this plan does not put in {assets|list} is held in dollar yield or cash instead: you already hold {heldUsd|usd} of it.',
@@ -472,6 +581,10 @@ export const TEXT_TEMPLATES = {
   CANDIDATE_IDENTICAL: {
     en: '{plan|candidate} is not shown: it holds the same as {other|candidate}.',
     pt: '{plan|candidate} não aparece: ele guarda o mesmo que {other|candidate}.',
+  },
+  CANDIDATE_BREAKS_MIX: {
+    en: '{plan|candidate} is not shown: it would hold {heldBps|pct} of the plan in {sleeve|sleeve}, which is not the mix you asked for.',
+    pt: '{plan|candidate} não aparece: ele teria {heldBps|pct} do plano em {sleeve|sleeve}, o que não é a composição que você pediu.',
   },
   CANDIDATE_DOMINATED: {
     en: '{plan|candidate} is not shown: {other|candidate} is as good on every line of the comparison, and better on one.',

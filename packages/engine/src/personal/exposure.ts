@@ -27,6 +27,8 @@ export type SleevePlan = {
    */
   goalBps: number;
   safeYieldBps: number;
+  /** Each theme sleeve (gate SLEEVES), in the sheet's order: its slug and its share of the whole plan. */
+  themes: { slug: string; shareBps: number }[];
   /**
    * Of the goal sleeve, what is set aside for the next withdrawals (slice 2): taken off before the
    * row is scaled, so `sized` adds up to `goalBps - setAsideBps`. Placed apart, before anything else.
@@ -49,8 +51,8 @@ function floorAt<T extends { monthsLeft: number }>(
 
 /**
  * The size of each sleeve, in basis points of the whole plan. With no split they add up to 10,000;
- * with one, the goal sleeve's sizes add up to its share and the safe-yield sleeve holds the rest
- * (gate SLEEVES). A theme sleeve is refused before this runs.
+ * with one, the goal sleeve's sizes add up to its share, and the safe-yield sleeve and each theme
+ * sleeve hold their own (gate SLEEVES).
  *
  * A nearer date never gives less cash, and never less in cash and dollar yield together: each floor
  * is taken from the steps the date has not passed, and is filled from stocks and crypto first, then
@@ -62,40 +64,80 @@ export function sizeSleeves(w: World, setAside = 0): SleevePlan {
   const split = sleevesOf(sheet);
   const goalBps = sum(split.filter((x) => x.kind === 'goal').map((x) => x.shareBps));
   const safeYieldBps = sum(split.filter((x) => x.kind === 'safe_yield').map((x) => x.shareBps));
+  const themes = split.flatMap((x) =>
+    x.kind === 'theme' ? [{ slug: x.theme, shareBps: x.shareBps }] : [],
+  );
   // What is set aside for withdrawals comes off the goal sleeve first; the table shares the rest.
-  const setAsideBps = Math.min(goalBps, Math.max(0, setAside));
+  // With a mix (gate EXPLICIT-MIX), it comes out of the mix's dollar yield and cash, never out of
+  // the shares the person stated for stocks, crypto and gold.
+  const mix = sheet.mix;
+  const setAsideBps = mix
+    ? Math.min(mix.dollarYieldBps + mix.cashBps, Math.max(0, setAside))
+    : Math.min(goalBps, Math.max(0, setAside));
   const restBps = goalBps - setAsideBps;
   /** A share of the goal sleeve, as basis points of the whole plan: rounded down, or up for a floor. */
   const ofGoal = (bps: number, up = false) =>
     up ? Math.ceil((bps * restBps) / BPS) : Math.floor((bps * restBps) / BPS);
-  const row = P.sleeves[`${sheet.goal}:${sheet.risk}`] ?? {
-    growthBps: 0,
-    dollarYieldBps: 0,
-    goldBps: 0,
-  };
-  const growth = ofGoal(row.growthBps);
-  const dollarYield = ofGoal(row.dollarYieldBps);
-  const gold = ofGoal(row.goldBps);
-  const table: SleeveSizes = {
-    growth,
-    dollarYield,
-    gold,
-    cash: restBps - growth - dollarYield - gold,
-  };
+  let table: SleeveSizes;
+  if (mix) {
+    const fromYield = Math.min(mix.dollarYieldBps, setAsideBps);
+    table = {
+      growth: mix.growthBps,
+      dollarYield: mix.dollarYieldBps - fromYield,
+      gold: mix.goldBps,
+      cash: mix.cashBps - (setAsideBps - fromYield),
+    };
+  } else {
+    const row = P.sleeves[`${sheet.goal}:${sheet.risk}`] ?? {
+      growthBps: 0,
+      dollarYieldBps: 0,
+      goldBps: 0,
+    };
+    const growth = ofGoal(row.growthBps);
+    const dollarYield = ofGoal(row.dollarYieldBps);
+    const gold = ofGoal(row.goldBps);
+    table = { growth, dollarYield, gold, cash: restBps - growth - dollarYield - gold };
+  }
   const sized = { ...table };
   const reasons: SleevePlan['reasons'] = { growth: [], dollarYield: [], gold: [], cash: [] };
   const goalPart =
     goalBps < BPS ? [reason('SPLIT_GOAL', { shareBps: goalBps, goal: sheet.goal }, lang)] : [];
+  const asked: Record<Sleeve, number> = mix
+    ? {
+        growth: mix.growthBps,
+        dollarYield: mix.dollarYieldBps,
+        gold: mix.goldBps,
+        cash: mix.cashBps,
+      }
+    : table;
   for (const sleeve of SLEEVES)
     if (table[sleeve] > 0)
       reasons[sleeve].push(
         ...goalPart,
-        reason(
-          'SLEEVE',
-          { sleeveBps: table[sleeve], sleeve, goal: sheet.goal, risk: sheet.risk },
-          lang,
-        ),
+        mix
+          ? asked[sleeve] >= BPS
+            ? reason('MIX_ALL', { sleeve }, lang)
+            : reason('MIX', { sleeveBps: asked[sleeve], sleeve }, lang)
+          : reason(
+              'SLEEVE',
+              { sleeveBps: table[sleeve], sleeve, goal: sheet.goal, risk: sheet.risk },
+              lang,
+            ),
       );
+  // The limits that let the plan hold the mix's stocks and crypto, said once on that sleeve.
+  if (mix && table.growth > 0)
+    reasons.growth.push(
+      reason(
+        'MIX_LIMITS',
+        {
+          sleeveBps: mix.growthBps,
+          risk: sheet.risk,
+          stockCapBps: P.capPerStockBps[sheet.risk] ?? 0,
+          issuerCapBps: P.capPerIssuerBps[sheet.risk] ?? 0,
+        },
+        lang,
+      ),
+    );
 
   /** Moves up to `need` into one sleeve from the others, in turn. Returns the sleeves that gave. */
   const raise = (to: Sleeve, need: number, from: Sleeve[]): Sleeve[] => {
@@ -161,7 +203,7 @@ export function sizeSleeves(w: World, setAside = 0): SleevePlan {
       if (gave.length > 0) say(why, ['dollarYield', 'cash', ...gave]);
     }
   }
-  return { table, sized, goalBps, safeYieldBps, setAsideBps, reasons };
+  return { table, sized, goalBps, safeYieldBps, themes, setAsideBps, reasons };
 }
 
 export type Part = { asset: BasketAsset; bps: number };
@@ -293,6 +335,25 @@ export function unitsOf(
   }));
 }
 
+/**
+ * A sentence about what the person holds of an underlying. It always says the whole holding, as
+ * `w.held` has it; where a theme counted part of it first (gate THEME-FIRST) and `counted` is the
+ * rest, it says both: "of the $3,000 you hold, $2,167 counts here".
+ */
+export function heldReason(
+  w: World,
+  rule: 'ALREADY_HELD' | 'ALREADY_HELD_NONE' | 'MORE_BECAUSE_HELD',
+  asset: string,
+  counted: number,
+): Reason {
+  const whole = w.held.get(asset) ?? counted;
+  if (whole <= counted) return reason(rule, { asset, heldUsd: toUsd(whole) }, w.lang);
+  return reason(`${rule}_PART`, { asset, totalUsd: toUsd(whole), heldUsd: toUsd(counted) }, w.lang);
+}
+
+/** What the goal sleeve counts of the person's holdings: all of them, or what the themes left. */
+export type GoalHeld = { byName: Map<string, number>; total: number };
+
 /** Cents that no unit took, with the name they were meant for and what kept them out. */
 export type Unbought = { names: string[]; cents: number; cause: Reason };
 
@@ -309,13 +370,14 @@ export function adjustForHoldings(
   units: Unit[],
   fixed: Sized[],
   removed: Removed[],
+  goalHeld: GoalHeld = { byName: w.held, total: w.heldTotal },
 ): Unbought[] {
-  if (w.heldTotal <= 0) return [];
+  if (goalHeld.total <= 0) return [];
   const all: Sized[] = [...units, ...fixed];
   const free = sum(all.map((u) => u.cents));
   if (free <= 0) return [];
-  const wealth = BigInt(w.amount + w.heldTotal);
-  const heldOf = (at: number) => w.held.get(units[at]?.name ?? '') ?? 0;
+  const wealth = BigInt(w.amount + goalHeld.total);
+  const heldOf = (at: number) => goalHeld.byName.get(units[at]?.name ?? '') ?? 0;
   const buys = all.map((u, at) => {
     const buy = BigInt(u.cents) * wealth - BigInt(heldOf(at)) * BigInt(w.amount);
     return buy > 0n ? buy : 0n;
@@ -329,13 +391,12 @@ export function adjustForHoldings(
     const held = heldOf(at);
     const now = scaled[at] ?? 0;
     if (u.cents <= 0 || held <= 0 || now >= u.cents) return;
-    const values = { asset: u.name, heldUsd: toUsd(held) };
-    larger.push(reason('MORE_BECAUSE_HELD', values, w.lang));
+    larger.push(heldReason(w, 'MORE_BECAUSE_HELD', u.name, held));
     if (now <= 0) {
-      const why = reason('ALREADY_HELD_NONE', values, w.lang);
+      const why = heldReason(w, 'ALREADY_HELD_NONE', u.name, held);
       none.set(u, why);
       removed.push({ ref: u.name, reasons: [why] });
-    } else u.reasons.push(reason('ALREADY_HELD', values, w.lang));
+    } else u.reasons.push(heldReason(w, 'ALREADY_HELD', u.name, held));
   });
   // When the person holds enough of everything, nothing is bought, and no unit grew: each unit's
   // cents are handed back, with the holding that kept them out.

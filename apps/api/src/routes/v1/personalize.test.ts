@@ -94,6 +94,36 @@ const plansOf = async (sub: string) => {
 };
 
 describe('POST /v1/baskets/personalize', () => {
+  it('makes a theme sleeve from the curated list of the person’s chain (gates SLEEVES, THEMES)', async () => {
+    const who = await someone('solana');
+    const asked = sheet({
+      goal: 'grow',
+      risk: 'high',
+      amountUsd: 10_000,
+      sleeves: [
+        { kind: 'goal', shareBps: 5000 },
+        { kind: 'theme', shareBps: 5000, theme: 'ai' },
+      ],
+    });
+    const res = await post(who, PATH, { sheet: asked });
+    expect(res.statusCode, res.body).toBe(200);
+    const { proposal } = PersonalizeResponse.parse(res.json());
+    // The mock lists two of the seven names on Solana: both are held for the theme, and the five it
+    // does not list are left out with why.
+    const themed = proposal.lines.filter((l) =>
+      l.reasons.some((r) => r.rule === 'THEME_SLEEVE' && r.params.theme === 'AI'),
+    );
+    expect(themed.map((l) => l.assetId).sort()).toEqual(
+      mockAssets('solana')
+        .filter((a) => a.symbol === 'NVDAx' || a.symbol === 'TSLAx')
+        .map((a) => a.id)
+        .sort(),
+    );
+    const out = new Map(proposal.removed.map((r) => [r.ref, r.reasons.map((x) => x.rule)]));
+    for (const symbol of ['AAPLx', 'AMZNx', 'GOOGLx', 'METAx', 'MSFTx'])
+      expect(out.get(symbol), symbol).toEqual(['NOT_ON_CHAIN']);
+  });
+
   it('keeps the currency, the sleeves and the restore choice, as sent and as stored', async () => {
     const who = await someone('solana');
     const asked = sheet({
@@ -138,16 +168,21 @@ describe('POST /v1/baskets/personalize', () => {
     });
     expect(inReais.statusCode, inReais.body).toBe(422);
     expect(inReais.body).toContain('USDBRL');
-    // A theme sleeve is refused until the engine applies it, never ignored.
+    // A theme sleeve is built (ENG-3 slice 4). This plan is to protect, so it holds no stock: the
+    // theme's names are left out with why, and its share is held in dollar yield and cash.
     const theme = {
       sleeves: [
-        { kind: 'theme', shareBps: 5000, theme: 'ai' },
-        { kind: 'safe_yield', shareBps: 5000 },
+        { kind: 'theme' as const, shareBps: 5000, theme: 'ai' },
+        { kind: 'safe_yield' as const, shareBps: 5000 },
       ],
     };
-    const refused = await post(who, PATH, { sheet: { ...asked, ...theme } });
-    expect(refused.statusCode).toBeGreaterThanOrEqual(400);
-    expect(refused.statusCode).toBeLessThan(500);
+    const themed = await post(who, PATH, { sheet: { ...asked, ...theme } });
+    expect(themed.statusCode, themed.body).toBe(200);
+    const plan = PersonalizeResponse.parse(themed.json()).proposal;
+    expect(plan.sheet.sleeves).toEqual(theme.sleeves);
+    expect(plan.flags).toContain('theme_empty:ai');
+    const cls = classOf('solana');
+    expect(plan.lines.every((l) => cls.get(l.assetId) !== 'stock')).toBe(true);
   });
 
   it('makes a plan to protect with no stock token, stores it, and a buy buys it on the same chain', async () => {

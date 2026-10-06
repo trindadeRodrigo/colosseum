@@ -16,6 +16,7 @@ import {
 } from '@colosseum/schemas';
 import { z } from 'zod';
 import { LegType } from './leg-types';
+import type { ThemeList } from './theme-list';
 
 // The types of the personalization engine that packages/schemas does not hold yet. Each is marked
 // LOCAL TYPE and listed in DESIGN-VAULT 3.6: it moves to packages/schemas when the frame takes it.
@@ -56,20 +57,76 @@ export const PersonalLimits = z.object({
 });
 export type PersonalLimits = z.infer<typeof PersonalLimits>;
 
+const MixBps = z.number().int().min(0).max(10_000);
+
+/**
+ * LOCAL TYPE. What the person said they want held (gate EXPLICIT-MIX, Rodrigo, Oct 6): "all in
+ * stocks", "70% stocks and 30% cash", "only credit". In basis points of the whole plan, adding up to
+ * 10,000. It replaces the table row for the goal and the risk, and the limits follow it: the plan
+ * takes the lowest risk whose caps admit it (`riskForMix`), so risk is never asked.
+ */
+export const PersonalMix = z
+  .object({
+    /** Stocks and crypto. */
+    growthBps: MixBps,
+    dollarYieldBps: MixBps,
+    goldBps: MixBps,
+    cashBps: MixBps,
+    /**
+     * Of the dollar yield, the most of the plan in credit and basis legs, when the person said so
+     * ("only credit", "only high yield"). It is their credit budget, and those legs fill first.
+     */
+    creditBps: MixBps.optional(),
+  })
+  .refine((m) => m.growthBps + m.dollarYieldBps + m.goldBps + m.cashBps === 10_000, {
+    message: 'a mix adds up to 100%',
+  })
+  .refine((m) => (m.creditBps ?? 0) <= m.dollarYieldBps, {
+    message: 'credit is part of dollar yield: it cannot be more than the dollar yield of the mix',
+    path: ['creditBps'],
+  });
+export type PersonalMix = z.infer<typeof PersonalMix>;
+
 /**
  * LOCAL TYPE. `BasketSheet` with the person's limits. This is what `compose` validates and runs on.
  *
  * A plan lives on one chain: the chain of the wallet the person signed in with (decided on
  * 2026-10-03). `chains` keeps the list shape of the shared type and must name exactly one.
  */
-export const PersonalSheet = BasketSheet.extend({ limits: PersonalLimits.optional() })
+export const PersonalSheet = BasketSheet.extend({
+  limits: PersonalLimits.optional(),
+  mix: PersonalMix.optional(),
+})
   .refine((s) => (s.limits?.mustKeepUsd ?? 0) <= s.amountUsd, {
     message: 'what must not be lost cannot be more than the amount',
     path: ['limits', 'mustKeepUsd'],
   })
+  // A theme sleeve holds stocks (gate SLEEVES): what must not be lost is kept by the other sleeves,
+  // so it cannot be more than they hold. Compared in cents and basis points, as the engine counts.
+  .refine(
+    (s) =>
+      Math.round((s.limits?.mustKeepUsd ?? 0) * 100) * 10_000 <=
+      Math.round(s.amountUsd * 100) *
+        (10_000 - (s.sleeves ?? []).reduce((n, x) => n + (x.kind === 'theme' ? x.shareBps : 0), 0)),
+    {
+      message: 'what must not be lost cannot be more than the sleeves outside the themes hold',
+      path: ['limits', 'mustKeepUsd'],
+    },
+  )
   .refine((s) => s.chains.length === 1, {
     message: 'a plan lives on one chain: name exactly one',
     path: ['chains'],
+  })
+  // Gate PROTECT-NO-STOCKS holds over a mix: a plan for income or to protect holds no stocks, so a
+  // mix with stocks in it is a conflict the intake asks about, never a plan.
+  .refine((s) => !s.mix || s.goal === 'grow' || s.mix.growthBps === 0, {
+    message:
+      'a plan for income or to protect holds no stocks or crypto: ask whether the goal is to grow, or the mix holds none',
+    path: ['mix', 'growthBps'],
+  })
+  .refine((s) => !s.mix || !s.sleeves, {
+    message: 'a mix is of the whole plan: it cannot be set with a split',
+    path: ['mix'],
   });
 export type PersonalSheet = z.infer<typeof PersonalSheet>;
 
@@ -133,7 +190,7 @@ export const PersonalParameters = PersonalParams.extend({
   }),
   /** The most of the plan with one issuer, for dollar yield, gold and cash. Stocks keep `capPerIssuerBps`. */
   issuerCapBps: Bps,
-  /** The most of the plan in credit and basis legs, by the person's credit tolerance. */
+  /** The most of the plan in credit and basis legs, by the person's credit tolerance (a mix's credit share replaces it). */
   creditShareBps: z.record(z.enum(['none', 'limited', 'accept']), Bps),
   /** The credit tolerance of a person who has not said. */
   defaultCreditTolerance: z.enum(['none', 'limited', 'accept']),
@@ -199,6 +256,11 @@ export type ComposeContext = {
   liquiditySource?: string;
   /** The parameter table. Left out: `PERSONAL_PARAMS`, the starting table. */
   params?: PersonalParameters;
+  /**
+   * The curated theme lists (gate THEMES), one per theme per chain, as `content/themes/` holds them.
+   * A theme sleeve reads the list of its slug on the person's chain; with none, it holds no name.
+   */
+  themes?: ThemeList[];
 };
 
 /**
@@ -238,11 +300,13 @@ export type PersonalProposal = Omit<BasketProposal, 'sheet' | 'observations' | '
   sleeves: { sleeve: Sleeve; weightBps: number; amountUsd: number }[];
   /**
    * Present when the person split the plan (gate SLEEVES): each of their sleeves, its share and its
-   * dollars, and for the safe-yield sleeve what it holds by token (cash included), before the lines
-   * are rounded to whole basis points. The goal sleeve is the rest of every line.
+   * dollars, and for the safe-yield and theme sleeves what each holds by token (cash included), before
+   * the lines are rounded to whole basis points. The goal sleeve is the rest of every line.
    */
   split?: {
     kind: PlanSleeve['kind'];
+    /** A theme sleeve's slug. */
+    theme?: string;
     shareBps: number;
     amountUsd: number;
     holds: { assetId: string; amountUsd: number }[];

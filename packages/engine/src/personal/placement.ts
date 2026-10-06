@@ -52,6 +52,7 @@ const OVERFLOW_FOR: Partial<Record<string, RuleId>> = {
   EXIT_CEILING: 'OVERFLOW_CEILING',
   TIER_CEILING: 'OVERFLOW_CEILING',
   ISSUER_CAP: 'OVERFLOW_ISSUER',
+  ISSUER_CAP_THEME: 'OVERFLOW_ISSUER_THEME',
   ISSUER_CAP_PLAN: 'OVERFLOW_ISSUER_PLAN',
   MAX_LINES: 'OVERFLOW_MAX_LINES',
   BELOW_MINIMUM: 'OVERFLOW_TOO_SMALL',
@@ -60,6 +61,10 @@ const OVERFLOW_FOR: Partial<Record<string, RuleId>> = {
   NOT_FOR_GOAL: 'OVERFLOW_NOT_FOR_GOAL',
   SINGLE_STOCK_CAP: 'OVERFLOW_STOCK_CAP',
   ALREADY_HELD_NONE: 'OVERFLOW_HELD',
+  THEME_HELD_NONE: 'OVERFLOW_HELD_PART',
+  ALREADY_HELD_NONE_PART: 'OVERFLOW_HELD_PART',
+  THEME_NO_LIST: 'OVERFLOW_THEME_NO_LIST',
+  THEME_NOT_CONFIRMED: 'OVERFLOW_THEME_NOT_CONFIRMED',
 };
 
 /** Basis points in one whole: a yield band of 0.005 is 50. */
@@ -81,11 +86,34 @@ export class Book {
   /** The same, counting dollar yield, gold and cash only: what the plan's issuer cap reads (Rodrigo, Oct 5). */
   private readonly withIssuerOutsideGrowth = new Map<string, number>();
 
+  /**
+   * Room held for the theme sleeves, by issuer, while the goal sleeve follows a shared portfolio
+   * before them (gate THEME-FIRST): counted against stocks and crypto as if it were placed.
+   */
+  readonly reserved = new Map<string, number>();
+  /**
+   * The themes that hold names of an issuer, by issuer, once they are placed: where that issuer's cap
+   * then stops the goal's stocks, the reason says the theme came first (gate THEME-FIRST).
+   */
+  readonly themeFirst = new Map<string, string[]>();
+
   /** What is already with this token's issuer, as the cap for its sleeve counts it. */
   private usedOf(asset: BasketAsset): number {
-    const counted =
-      this.w.sleeveOf(asset) === 'growth' ? this.withIssuer : this.withIssuerOutsideGrowth;
-    return counted.get(asset.issuer) ?? 0;
+    if (this.w.sleeveOf(asset) !== 'growth')
+      return this.withIssuerOutsideGrowth.get(asset.issuer) ?? 0;
+    return (this.withIssuer.get(asset.issuer) ?? 0) + (this.reserved.get(asset.issuer) ?? 0);
+  }
+
+  /** Cents held of an underlying in stocks and crypto, on every line. */
+  heldOfUnderlying(underlying: string): number {
+    let n = 0;
+    for (const l of this.lines.values())
+      if (
+        (l.asset.cls === 'stock' || l.asset.cls === 'crypto') &&
+        l.asset.underlying === underlying
+      )
+        n += l.cents;
+    return n;
   }
 
   constructor(private readonly w: World) {}
@@ -101,9 +129,27 @@ export class Book {
     return { cents: Math.max(0, underCeiling), why: w.ceilingWhy(asset) };
   }
 
+  /** How many more cents this token's issuer may take, as the cap for its sleeve counts it. */
+  issuerRoom(asset: BasketAsset): number {
+    return Math.max(0, this.w.issuerCapOf(asset) - this.usedOf(asset));
+  }
+
   /** Why an issuer takes no more: the most of a plan one issuer may hold, at the person's risk. */
   private issuerWhy(asset: BasketAsset): Reason {
-    return this.w.issuerWhy(asset);
+    const { w } = this;
+    const themes = this.themeFirst.get(asset.issuer);
+    if (themes && themes.length > 0 && w.sleeveOf(asset) === 'growth')
+      return reason(
+        'ISSUER_CAP_THEME',
+        {
+          capBps: w.P.capPerIssuerBps[w.sheet.risk] ?? 0,
+          risk: w.sheet.risk,
+          issuer: asset.issuer,
+          themes: themes.join(','),
+        },
+        w.lang,
+      );
+    return w.issuerWhy(asset);
   }
 
   /** The reason a token gets no line of its own when the plan is full, or null when it may. */
@@ -180,9 +226,11 @@ export class Book {
       reason(
         w.creditBudget.byPlan
           ? 'CREDIT_BUDGET_PLAN'
-          : w.creditBudget.stated
-            ? 'CREDIT_BUDGET'
-            : 'CREDIT_BUDGET_UNSAID',
+          : w.creditBudget.fromMix
+            ? 'CREDIT_BUDGET_MIX'
+            : w.creditBudget.stated
+              ? 'CREDIT_BUDGET'
+              : 'CREDIT_BUDGET_UNSAID',
         { capBps: w.creditBudget.bps },
         w.lang,
       );
@@ -193,9 +241,11 @@ export class Book {
       if (w.isCredit(a.asset) && w.creditBudget.cents - this.creditUsed <= 0)
         return w.creditBudget.bps === 0 && w.creditBudget.byPlan
           ? reason('CREDIT_NONE_PLAN', { asset: a.asset.symbol }, w.lang)
-          : w.creditBudget.bps === 0 && w.creditBudget.stated
-            ? reason('CREDIT_NONE', { asset: a.asset.symbol }, w.lang)
-            : creditWhy(a.asset);
+          : w.creditBudget.bps === 0 && w.creditBudget.fromMix
+            ? reason('CREDIT_NONE_MIX', { asset: a.asset.symbol }, w.lang)
+            : w.creditBudget.bps === 0 && w.creditBudget.stated
+              ? reason('CREDIT_NONE', { asset: a.asset.symbol }, w.lang)
+              : creditWhy(a.asset);
       return null;
     };
     // A token with no room takes no line, and the limit that stops it is said.
@@ -203,7 +253,12 @@ export class Book {
       const stop = full(a);
       if (!stop) return true;
       why.push(stop);
-      if (stop.rule === 'CREDIT_NONE' || stop.rule === 'CREDIT_NONE_PLAN') leave(a.asset, stop);
+      if (
+        stop.rule === 'CREDIT_NONE' ||
+        stop.rule === 'CREDIT_NONE_PLAN' ||
+        stop.rule === 'CREDIT_NONE_MIX'
+      )
+        leave(a.asset, stop);
       return false;
     });
     const dropped = new Set<string>();
@@ -496,11 +551,32 @@ export class Book {
     const able = ordered.filter((u) => tokens.has(u));
     const tokenOf = (u: Unit) => tokens.get(u) as BasketAsset;
     const hasLine = (u: Unit) => this.lines.has(tokenOf(u).id);
+    const ceilingRoomOf = (u: Unit) =>
+      Math.max(0, w.ceilingOf(tokenOf(u)) - (this.lines.get(tokenOf(u).id)?.cents ?? 0));
+    // The cap on one stock counts what a theme sleeve placed before holds of it (gate THEME-FIRST).
+    const stockRoom = new Map(
+      able.map((u) => {
+        const t = tokenOf(u);
+        const capped = t.cls === 'stock' || t.cls === 'crypto';
+        return [
+          u,
+          capped
+            ? Math.max(0, w.stockCap - this.heldOfUnderlying(t.underlying))
+            : Number.POSITIVE_INFINITY,
+        ];
+      }),
+    );
     const askOf = (u: Unit) =>
-      Math.min(
-        u.cents,
-        Math.max(0, w.ceilingOf(tokenOf(u)) - (this.lines.get(tokenOf(u).id)?.cents ?? 0)),
+      Math.min(u.cents, ceilingRoomOf(u), stockRoom.get(u) ?? Number.POSITIVE_INFINITY);
+    const stockWhy = (u: Unit) =>
+      reason(
+        'SINGLE_STOCK_CAP',
+        { asset: u.name, capBps: w.P.capPerStockBps[w.sheet.risk] ?? 0, risk: w.sheet.risk },
+        w.lang,
       );
+    /** Whether the cap on one stock, not the token's ceiling, is what holds this unit under its cents. */
+    const byStockCap = (u: Unit) =>
+      (stockRoom.get(u) ?? Number.POSITIVE_INFINITY) < Math.min(u.cents, ceilingRoomOf(u));
 
     const tooSmall = new Map<Unit, Reason>();
     let noLine = new Set<Unit>();
@@ -541,16 +617,28 @@ export class Book {
         last.cents < w.minLine
           ? reason('BELOW_MINIMUM', { asset: last.name, usd: toUsd(last.cents) }, w.lang)
           : askOf(last) < w.minLine
-            ? w.ceilingWhy(token)
+            ? byStockCap(last)
+              ? stockWhy(last)
+              : w.ceilingWhy(token)
             : this.issuerWhy(token),
       );
     }
 
+    /** Each issuer's room before this sleeve is placed. */
+    const roomBefore = new Map(able.map((u) => [u, this.issuerRoom(tokenOf(u))]));
     const over: { unit: Unit; cents: number }[] = [];
     for (const u of able) {
       const token = tokenOf(u);
       const small = tooSmall.get(u);
-      const out = small ?? (noLine.has(u) ? this.noLineLeft(token) : null);
+      // A unit with no line whose issuer has no room either is out for the issuer: a line would not
+      // have held it.
+      const out =
+        small ??
+        (noLine.has(u)
+          ? (roomBefore.get(u) ?? 0) <= 0
+            ? this.issuerWhy(token)
+            : this.noLineLeft(token)
+          : null);
       if (out) {
         this.removed.push({ ref: u.name, reasons: [out] });
         this.spill([u.name], u.cents, out);
@@ -559,11 +647,14 @@ export class Book {
       const ask = askOf(u);
       const take = takes.get(u) ?? 0;
       const reasons = [...u.reasons];
-      if (ask < u.cents) reasons.push(w.ceilingWhy(token));
+      const stock = byStockCap(u);
+      if (ask < u.cents) reasons.push(stock ? stockWhy(u) : w.ceilingWhy(token));
       if (take < ask) reasons.push(this.issuerWhy(token));
       if (take > 0) this.put(token, take, reasons);
       this.spill([u.name], ask - take, this.issuerWhy(token));
-      if (u.cents > ask) over.push({ unit: u, cents: u.cents - ask });
+      // Over the cap on one stock: no other token of it may take it either.
+      if (stock) this.spill([u.name], u.cents - ask, stockWhy(u));
+      else if (u.cents > ask) over.push({ unit: u, cents: u.cents - ask });
     }
     // What is over a token's own ceiling may go to another token of the same underlying.
     for (const { unit, cents } of over) {
@@ -585,11 +676,13 @@ export class Book {
 
   /**
    * What is waiting to be held in dollar yield, with one reason for each thing that kept money out of
-   * where it was meant to go: how much, meant for what, and the real cause.
+   * where it was meant to go: how much, meant for what, and the real cause. Taking it empties the
+   * wait, so each sleeve hands on only its own.
    */
   overflow(): Sized {
     const { w } = this;
     const entries = [...this.spilled.values()];
+    this.spilled.clear();
     return {
       cents: sum(entries.map((e) => e.cents)),
       reasons: entries.map(({ cents, names, cause }) => {

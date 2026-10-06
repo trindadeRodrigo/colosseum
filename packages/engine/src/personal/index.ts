@@ -3,8 +3,9 @@
 // to read what it returns.
 
 export { candidates } from './candidates';
-export { compose, composeAs, PERSONAL_ENGINE_VERSION } from './compose';
+export { compose, composeAs, PERSONAL_ENGINE_VERSION, riskForMix } from './compose';
 export { draftFromRules } from './draft';
+export { growthRoomBps, RISKS } from './mix';
 export { PERSONAL_PARAMS, PERSONAL_PARAMS_STATUS } from './params';
 export { eligibleForGoal, profileOfGoal, registryRowOf, sleeveOfClass } from './registry';
 export {
@@ -14,4 +15,5 @@ export {
   type RuleId,
   TEXT_TEMPLATES,
 } from './templates';
+export { parseThemeList, ThemeList } from './theme-list';
 export * from './types';

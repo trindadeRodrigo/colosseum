@@ -13,10 +13,12 @@ import {
 import { z } from 'zod';
 import { pickPrimaryYield } from '../risk/index';
 import { CREDIT_LEG_TYPES, legTypesOf } from './leg-types';
+import { riskOfWorld } from './mix';
 import { BPS, byName, ceilCents, floorCents, shareOf, toCents, toUsd } from './money';
 import { PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
 import { reason } from './templates';
+import { ThemeList } from './theme-list';
 import {
   type CandidateId,
   type ComposeContext,
@@ -109,7 +111,7 @@ export type World = {
    * The most cents in credit and basis legs, by the person's credit tolerance, and its share. `byPlan`
    * when a candidate holds less than the person allows: the limit is the plan's, not theirs.
    */
-  creditBudget: { cents: number; bps: number; stated: boolean; byPlan: boolean };
+  creditBudget: { cents: number; bps: number; stated: boolean; byPlan: boolean; fromMix: boolean };
   flags: Set<string>;
   /** Every figure the plan was shaped by, whether or not its token ends up in the plan. */
   observations: Map<string, PersonalObservation>;
@@ -123,6 +125,12 @@ export type World = {
   ceilingOf(asset: BasketAsset): number;
   /** Why this token takes no more than that: the measured cost of selling, or its tier. */
   ceilingWhy(asset: BasketAsset): Reason;
+  /** The token's measured exit capacity at `tau`, in dollars, or null where nothing is measured. */
+  measuredUsdOf(asset: BasketAsset): number | null;
+  /** The curated theme list of this slug on the person's chain (gate THEMES), or null when none is given. */
+  themeListOf(slug: string): ThemeList | null;
+  /** The theme lists given for the person's chain, by slug: what the hash of the inputs pins. */
+  themeLists: ThemeList[];
   /**
    * What a line of this token says about where its limit came from: that it is a tier and not a
    * measurement, or that the measurement leaves out a time of the week. Nothing when it is measured
@@ -138,7 +146,7 @@ export type Withdrawal = { month: string; amount: number; currency: string; cent
 export const reportsRegimes = (p: LiquidityProvider): p is RegimeLiquidityProvider =>
   typeof (p as Partial<RegimeLiquidityProvider>).regimes === 'function';
 
-type Ceiling = { cents: number; why: Reason; notes: Reason[] };
+type Ceiling = { cents: number; why: Reason; notes: Reason[]; measuredUsd: number | null };
 
 const issues = (error: z.ZodError) =>
   error.issues.map((i) => ({ path: i.path.join('.'), message: i.message }));
@@ -220,11 +228,6 @@ export function buildWorld(
   const parsedSheet = PersonalSheet.safeParse(sheetIn);
   if (!parsedSheet.success) throw new PersonalInputError('InvalidSheet', issues(parsedSheet.error));
   const sheet = parsedSheet.data;
-  // A theme sleeve needs the curated lists of slice 4; it is refused until then, never ignored.
-  if (sheet.sleeves?.some((x) => x.kind === 'theme'))
-    throw new PersonalInputError('InvalidSheet', [
-      { path: 'sleeves', message: 'a theme sleeve is not built yet' },
-    ]);
 
   const parsedParams = PersonalParameters.safeParse(context.params ?? PERSONAL_PARAMS);
   if (!parsedParams.success)
@@ -252,6 +255,15 @@ export function buildWorld(
   const parsedYields = z.array(YieldRead).safeParse(context.yields ?? []);
   if (!parsedYields.success)
     throw new PersonalInputError('InvalidContext', issues(parsedYields.error));
+  // Theme lists: validated, and one per theme on a chain. A theme sleeve reads its list on the chain.
+  const parsedThemes = z.array(ThemeList).safeParse(context.themes ?? []);
+  if (!parsedThemes.success)
+    throw new PersonalInputError('InvalidContext', issues(parsedThemes.error));
+  const themeKeys = parsedThemes.data.map((t) => `${t.chain}:${t.slug}`);
+  if (new Set(themeKeys).size !== themeKeys.length)
+    throw new PersonalInputError('InvalidContext', [
+      { path: 'themes', message: 'a theme has two lists on one chain' },
+    ]);
   const parsedFx = z.array(FxRead).safeParse(context.fx ?? []);
   if (!parsedFx.success) throw new PersonalInputError('InvalidContext', issues(parsedFx.error));
   // In one order, each once; of two readings for one pair the latest counts, then the lowest value.
@@ -362,7 +374,7 @@ export function buildWorld(
         notes.push(reason('EXIT_PARTLY_MEASURED', { asset: a.symbol, when: when.join(',') }, lang));
       }
       const why = reason('EXIT_CEILING', { asset: a.symbol, maxUsd: toUsd(cents) }, lang);
-      made = { cents, why, notes };
+      made = { cents, why, notes, measuredUsd: measured.capacityUsd };
     } else {
       // Nothing measured: the tier on the asset list stands in, and the plan says that it does. A
       // token the provider has curves for and no figure is flagged as that, never passed in silence.
@@ -370,12 +382,17 @@ export function buildWorld(
       flags.add(`ceiling_from_tier:${a.id}`);
       if (covered) flags.add(`exit_capacity_thin:${a.id}`);
       const why = reason('TIER_CEILING', { asset: a.symbol, maxUsd: toUsd(cents) }, lang);
-      made = { cents, why, notes: [why] };
+      made = { cents, why, notes: [why], measuredUsd: null };
     }
     ceilings.set(a.id, made);
     return made;
   };
 
+  // In one order, names and all: the order a list is written in decides nothing.
+  const themeLists = byName(
+    parsedThemes.data.filter((t) => t.chain === chain),
+    (t) => t.slug,
+  ).map((t) => ({ ...t, members: byName(t.members, (m) => m.symbol) }));
   const nowMonth = monthAfter(context.now, 0);
   const world: World = {
     sheet,
@@ -456,15 +473,18 @@ export function buildWorld(
     },
     creditBudget: (() => {
       const tolerance = sheet.limits?.creditTolerance ?? P.defaultCreditTolerance;
-      const theirs = P.creditShareBps[tolerance] ?? 0;
+      // A credit share the person stated in their mix is their budget (gate EXPLICIT-MIX).
+      const fromMix = sheet.mix?.creditBps !== undefined;
+      const theirs = sheet.mix?.creditBps ?? P.creditShareBps[tolerance] ?? 0;
       const plans =
         candidate === 'cover' ? shareOf(theirs, P.candidates.cover.creditOfLimitBps) : theirs;
       const bps = Math.min(theirs, plans);
       return {
         cents: shareOf(amount, bps),
         bps,
-        stated: sheet.limits?.creditTolerance !== undefined,
+        stated: fromMix || sheet.limits?.creditTolerance !== undefined,
         byPlan: plans < theirs,
+        fromMix,
       };
     })(),
     flags,
@@ -474,6 +494,9 @@ export function buildWorld(
     ceilingOf: (a) => ceiling(a).cents,
     ceilingWhy: (a) => ceiling(a).why,
     ceilingNotes: (a) => ceiling(a).notes,
+    measuredUsdOf: (a) => ceiling(a).measuredUsd,
+    themeListOf: (slug) => themeLists.find((t) => t.slug === slug) ?? null,
+    themeLists,
   };
 
   // Withdrawals, in dollars. One before this month is past and counts for nothing, and the plan says
@@ -503,5 +526,12 @@ export function buildWorld(
         message: `a withdrawal in ${cur} needs an FX reading for USD${cur}`,
       })),
     );
+  // A stated mix sets the limits (gate EXPLICIT-MIX): the lowest risk whose caps admit it. The world
+  // is made again at that risk, so every cap, reason and check reads it; the plan's sheet says it.
+  if (sheet.mix) {
+    const risk = riskOfWorld(world);
+    if (risk !== sheet.risk) return buildWorld({ ...sheet, risk }, shelf, context, candidate);
+    flags.add(`limits_from_mix:${risk}`);
+  }
   return world;
 }

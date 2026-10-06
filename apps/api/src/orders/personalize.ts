@@ -8,6 +8,7 @@ import {
   PersonalInputError,
   type PersonalProposal,
   type PersonalSheet,
+  type ThemeList,
 } from '@colosseum/engine/personal';
 import {
   type BasketAsset,
@@ -33,13 +34,15 @@ import { Refusal, refusing } from './errors';
 
 /**
  * The figures a plan is shaped by besides the shelf, for the tokens of one chain: Bearing's measured
- * exit (gate EXIT-SOURCE) with where it comes from, and the yields. Either may be missing. Without a
- * measured exit a line's ceiling is its tier's and the plan says so (`ceiling_from_tier:<asset>`);
- * without a yield the card counts none for that token.
+ * exit (gate EXIT-SOURCE) with where it comes from, the yields, and the curated theme lists of the
+ * chain (gate THEMES), which a theme sleeve is made from. Any may be missing; a theme sleeve with no
+ * list holds no name and says so. Without a measured exit a line's ceiling is its tier's and the
+ * plan says so (`ceiling_from_tier:<asset>`); without a yield the card counts none for that token.
  */
 export type PlanInputs = (q: { db: Db; chain: ChainId; assets: BasketAsset[] }) => Promise<{
   liquidity?: { provider: LiquidityProvider; source: string };
   yields?: YieldObservation[];
+  themes?: ThemeList[];
 }>;
 
 export type PersonalizeContext = {
@@ -141,6 +144,7 @@ export async function personalize(
   const context: ComposeContext = {
     now: ctx.now,
     ...(figures.yields ? { yields: figures.yields } : {}),
+    ...(figures.themes ? { themes: figures.themes } : {}),
     ...(figures.liquidity
       ? { liquidity: figures.liquidity.provider, liquiditySource: figures.liquidity.source }
       : {}),
