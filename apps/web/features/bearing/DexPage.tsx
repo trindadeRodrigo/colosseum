@@ -23,6 +23,7 @@ import {
 } from './dex';
 import { type Fact, mk, none } from './fact';
 import { capW, iso, num, pct, RW, reasonW, usd1 } from './format';
+import { HeatTile } from './HeatTile';
 import {
   Card,
   Count,
@@ -226,6 +227,12 @@ function DexView({
           )
         }
       />
+      {selIds.length === 1 && byId.get(selIds[0] as string) && (
+        // one asset: its hours of the week, as its sheet in the first view and the old /risk/<asset> had them
+        <div className="mt-4">
+          <HeatTile asset={byId.get(selIds[0] as string) as AssetsBody['assets'][number]} />
+        </div>
+      )}
       <section aria-labelledby="bearing-table" className="mt-8">
         <h2 id="bearing-table" className="mb-2 text-b-section font-semibold">
           Assets

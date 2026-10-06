@@ -144,3 +144,11 @@ export type RecovBody = {
     source: string;
   } | null;
 };
+
+export type HeatmapBody = {
+  asset: string;
+  notionalUsd?: number;
+  cells: Array<{ hourOfWeekEt: number; medianCost: number; samples: number }>;
+  timezone?: string;
+  hourOfWeek?: string;
+};

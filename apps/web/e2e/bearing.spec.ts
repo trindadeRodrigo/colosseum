@@ -87,6 +87,22 @@ test.describe('Bearing analytics on the recorded risk API', () => {
     ).toContainText('52.57%');
   });
 
+  test('one asset gets its hours of the week: the heatmap tile, by keyboard', async ({ page }) => {
+    await open(page, '/analytics/commodities');
+    const grid = page.getByRole('grid', { name: /Median sell cost of GLDx/ });
+    await expect(grid).toBeVisible();
+    await expect(grid.locator('td[tabindex="0"]')).toHaveCount(1);
+    await grid.locator('td[data-how="0"]').focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(grid.locator('td[data-how="1"]')).toBeFocused();
+    await expect(page.locator('[data-ui="heatmap-tile"] [aria-live="polite"]')).toContainText(
+      'Mon 01:00 ET',
+    );
+    // stale with the rest of the page: the band and the plate
+    await expect(page.locator('[data-ui="heatmap-tile"]')).toHaveAttribute('data-state', 'stale');
+    await expect(page.locator('[data-ui="heatmap-tile"] [data-ui="stale-plate"]')).toBeVisible();
+  });
+
   test('the tolerance box refuses a value out of range and keeps the page', async ({ page }) => {
     await open(page, '/analytics/lending');
     const box = page.getByRole('textbox', { name: /Tolerance/ });

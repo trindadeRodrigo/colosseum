@@ -29,6 +29,7 @@ import {
   EXIT_TIERS,
   FIGURE,
   FIXTURE_OBS,
+  HEAT_CELLS,
   LEGS,
   LIVE_SPECIMEN,
   MOCK_OBS,
@@ -39,11 +40,13 @@ import {
   sheetGroups,
 } from '../../../../components/ui/fixtures/mock';
 import { GoalCard } from '../../../../components/ui/GoalCard';
+import { type HeatmapState, HeatmapTile } from '../../../../components/ui/HeatmapTile';
 import { Icon, type IconName } from '../../../../components/ui/Icon';
 import { LatticeStatus } from '../../../../components/ui/Lattice';
 import { MockFrame, MockPlate, StalePlate } from '../../../../components/ui/MockPlate';
 import { PlanLegs } from '../../../../components/ui/PlanLegs';
 import { ProvenancePin } from '../../../../components/ui/ProvenancePin';
+import type { PinSource } from '../../../../components/ui/provenance';
 import { Status, StatusBadge } from '../../../../components/ui/StatusMark';
 import { SubscribeBlock, type SubscribeStatus } from '../../../../components/ui/SubscribeBlock';
 
@@ -110,6 +113,31 @@ function Section({
         ))}
       </div>
     </section>
+  );
+}
+
+/** The heatmap tile on made-up depth: dollars sellable at ≤ 2%, every figure pinned. */
+function HeatSample({ obs, state }: { obs: PinSource; state: HeatmapState }) {
+  const usdM = (v: number) => `$${(v / 1e6).toFixed(2)}M`;
+  const pin = (v: number) => <ProvenancePin value={usdM(v)} obs={obs} />;
+  const values = HEAT_CELLS.map((c) => c.value);
+  return (
+    <HeatmapTile
+      head="xAAPL · sellable at ≤ 2% impact"
+      kpi={pin(Math.min(...values))}
+      emph="thinnest: Sat 03:00 UTC"
+      cells={HEAT_CELLS}
+      deeper="high"
+      fmt={usdM}
+      what="at ≤ 2%"
+      zone="UTC"
+      least={pin(Math.min(...values))}
+      most={pin(Math.max(...values))}
+      cellFigure={(c) => pin(c.value)}
+      meta="USD · n=412 · method v1.3 · as of 2026-10-01 14:00 UTC"
+      state={state}
+      aria="Sample: dollars sellable at ≤ 2% by hour of week"
+    />
   );
 }
 
@@ -1061,13 +1089,25 @@ export function Showcase() {
         </Specimen>
       </Section>
 
+      <Section
+        spec="bearing-heatmap-tile.md"
+        title="Bearing heatmap tile"
+        note="Hours with no sample are the ground with an en dash, never hatched: the hatch means MOCK or stale. The grid is one tab stop; the arrow keys move through the hours."
+      >
+        <Specimen state="live" wide>
+          <HeatSample obs={LIVE_SPECIMEN} state={{ kind: 'live' }} />
+        </Specimen>
+        <Specimen state="stale: band and plate, the pin hollow" wide>
+          <HeatSample obs={STALE_SPECIMEN} state={{ kind: 'stale', ageSec: 9 * 3600 }} />
+        </Specimen>
+        <Specimen state="MOCK: band and plate, the pin hatched" wide>
+          <HeatSample obs={MOCK_OBS} state={{ kind: 'mock' }} />
+        </Specimen>
+      </Section>
+
       <div className="tf-app light border-t border-border px-6 py-10">
         <h2 className="text-h3 font-semibold">Not built</h2>
         <ul className="mt-3 flex max-w-(--tf-measure-body) list-disc flex-col gap-2 pl-5 text-body-sm">
-          <li>
-            bearing-heatmap-tile.md: it needs the condensed face, which is loaded with the first
-            Bearing screen, and a decision on how a cell with no sample is drawn.
-          </li>
           <li>
             goal-showcase-case.md: a marketing composite that needs photographs and a chart that has
             no spec of its own yet.

@@ -85,6 +85,8 @@ export const R = {
   lend: (account: string) => `/risk/facts/lending/${enc(account)}`,
   lendH: (account: string, days: number) =>
     `/risk/facts/lending/${enc(account)}/history?days=${days}`,
+  heatmap: (asset: string, n: number) =>
+    `/risk/assets/${enc(asset)}/heatmap?notional=${Math.round(n)}`,
   liquidity: (pool: string) => `/risk/pools/${enc(pool)}/liquidity?bands=60&rangePct=0.3`,
   recorded: () => '/risk/pools/recorded',
   liqHist: (pool: string) => `/risk/pools/${enc(pool)}/liquidity/history?hours=720`,
