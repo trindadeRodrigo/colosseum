@@ -735,7 +735,9 @@ group('builds', {
       await c.a.buildKeeperLeg(c.f.vault, c.f.keeperTrade),
     ];
     expect(new Set(txs.map((tx) => tx.messageHash)).size).toBe(txs.length);
-    expect(new Set(txs.map((tx) => tx.payload)).size).toBe(txs.length);
+    // On EVM the payload is the call data alone and the target is in `evm.to`: the same deposit into
+    // two vaults is one payload sent to two addresses. The transaction is the two together.
+    expect(new Set(txs.map((tx) => `${tx.evm?.to ?? ''}:${tx.payload}`)).size).toBe(txs.length);
   },
 
   'lets the keeper end inside the band, short of the target or a little past it': async (c) => {

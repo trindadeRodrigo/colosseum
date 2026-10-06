@@ -437,7 +437,9 @@ async function buySteps(
 /**
  * What each trade of a leg is expected to pay out, from a quote taken now: one entry per trade, in the
  * order of the trades, and none for a leg that trades nothing. `minOutRaw` is the quote less the
- * slippage the order is built with.
+ * slippage the order is built with. Two trades of one pair in one leg follow each other: the second is
+ * quoted after the first, as the quote of both less the quote of the first, as the EVM builder quotes
+ * them.
  */
 export async function expectedOf(
   entry: ChainEntry,
@@ -446,12 +448,18 @@ export async function expectedOf(
   slippageBps: number,
 ): Promise<Leg['expected']> {
   const expected: Leg['expected'] = [];
+  const before = new Map<string, { in: bigint; out: bigint }>();
   for (const trade of trades) {
-    const quote = await entry.adapter.quote(trade, taker);
+    const pair = `${trade.sell}>${trade.buy}`;
+    const prior = before.get(pair) ?? { in: 0n, out: 0n };
+    const total = prior.in + BigInt(trade.amountInRaw);
+    const quote = await entry.adapter.quote({ ...trade, amountInRaw: total.toString() }, taker);
+    const out = BigInt(quote.outRaw) - prior.out;
+    before.set(pair, { in: total, out: BigInt(quote.outRaw) });
     expected.push({
       inRaw: trade.amountInRaw,
-      outRaw: quote.outRaw,
-      minOutRaw: lessBps(BigInt(quote.outRaw), slippageBps).toString(),
+      outRaw: (out > 0n ? out : 0n).toString(),
+      minOutRaw: lessBps(out > 0n ? out : 0n, slippageBps).toString(),
       costBps: quote.costBps,
     });
   }
