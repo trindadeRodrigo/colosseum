@@ -17,11 +17,14 @@ import { z } from 'zod';
 export const MARKET_FILTER_BY = ['sector', 'industry', 'sub_industry', 'keyword'] as const;
 export type MarketFilterBy = (typeof MARKET_FILTER_BY)[number];
 
-/** LOCAL TYPE. One attribute and the value it must carry, as written ("Aerospace & Defense", "GLP-1"). */
+/**
+ * LOCAL TYPE. One attribute and the value it must carry, as written ("Aerospace & Defense", "GLP-1").
+ * No length is set here: this file holds no number, and whoever reads a value from outside bounds it.
+ */
 export const MarketFilter = z
   .object({
     by: z.enum(MARKET_FILTER_BY),
-    value: z.string().trim().min(1).max(80),
+    value: z.string().trim().min(1),
   })
   .strict();
 export type MarketFilter = z.infer<typeof MarketFilter>;
