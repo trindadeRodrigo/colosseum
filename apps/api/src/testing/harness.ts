@@ -30,6 +30,7 @@ import { type ChainRegistry, createChainRegistry } from '../orders/chains';
 import type { PlanInputs } from '../orders/personalize';
 import { IDENTITY_TOKEN_HEADER, type TokenIssuer } from '../plugins/auth';
 import { LIMITS, type Limits } from '../plugins/limits';
+import type { LinkedPlanLimits } from '../routes/v1/baskets';
 
 // For tests only. Nothing the server runs imports this file: the tokens here are signed with a key
 // pair made in the test, and the app under test is handed that pair's public half as its only issuer.
@@ -302,7 +303,24 @@ export async function testDb() {
       await publish(components);
       return { slug, publish };
     },
+    /** Remembers a shared portfolio a test published through the API, so its rows go at the end. */
+    trackFamily(familyId: string) {
+      families.push(familyId);
+    },
     async cleanUp() {
+      // Before the people: a family a test published names its creator's user row.
+      if (families.length) {
+        const mine = await db
+          .select({ id: recipes.id })
+          .from(recipes)
+          .where(inArray(recipes.familyId, families));
+        const recipeIds = mine.map((r) => r.id);
+        if (recipeIds.length) {
+          await db.delete(recipeVersions).where(inArray(recipeVersions.recipeId, recipeIds));
+          await db.delete(recipes).where(inArray(recipes.id, recipeIds));
+        }
+        await db.delete(indexFamilies).where(inArray(indexFamilies.familyId, families));
+      }
       if (owners.length) {
         const mine = await db
           .select({ id: orders.id })
@@ -335,18 +353,6 @@ export async function testDb() {
         await db.delete(users).where(inArray(users.privyId, people));
       }
       if (plans.length) await db.delete(proposals).where(inArray(proposals.id, plans));
-      if (families.length) {
-        const mine = await db
-          .select({ id: recipes.id })
-          .from(recipes)
-          .where(inArray(recipes.familyId, families));
-        const recipeIds = mine.map((r) => r.id);
-        if (recipeIds.length) {
-          await db.delete(recipeVersions).where(inArray(recipeVersions.recipeId, recipeIds));
-          await db.delete(recipes).where(inArray(recipes.id, recipeIds));
-        }
-        await db.delete(indexFamilies).where(inArray(indexFamilies.familyId, families));
-      }
       await client.end();
     },
   };
@@ -369,6 +375,8 @@ export async function testApp(a: {
   env?: EnvLike;
   now?: () => Date;
   limits?: Limits;
+  /** The daily cap and keeping time of plans made from a link. */
+  linkedPlans?: LinkedPlanLimits;
   /** Wraps the registry, to make a chain misbehave. */
   wrap?: (registry: ChainRegistry) => ChainRegistry;
   /** The figures a plan is made with. Default: the server's reader of the stored ones. */
@@ -387,6 +395,7 @@ export async function testApp(a: {
       db: a.db,
       now: a.now,
       limits: a.limits ?? ROOMY,
+      ...(a.linkedPlans ? { linkedPlans: a.linkedPlans } : {}),
       ...(a.planInputs ? { planInputs: a.planInputs } : {}),
     },
   });

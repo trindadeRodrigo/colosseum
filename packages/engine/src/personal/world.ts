@@ -2,6 +2,7 @@ import { EXIT_WINDOW_DAYS } from '@colosseum/basket';
 import {
   type BasketAsset,
   type ChainId,
+  FxObservation,
   type Language,
   type LiquidityProvider,
   type Reason,
@@ -11,7 +12,8 @@ import {
 } from '@colosseum/schemas';
 import { z } from 'zod';
 import { pickPrimaryYield } from '../risk/index';
-import { BPS, byName, floorCents, shareOf, toCents, toUsd } from './money';
+import { CREDIT_LEG_TYPES, legTypesOf } from './leg-types';
+import { BPS, byName, ceilCents, floorCents, shareOf, toCents, toUsd } from './money';
 import { PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
 import { reason } from './templates';
@@ -41,8 +43,17 @@ export type World = {
   amount: number;
   /** The person's chain: the one chain the plan lives on. */
   chain: ChainId;
-  /** That chain's cash token, which a vault is funded in. */
+  /** That chain's cash token in dollars, which a vault is funded in. */
   cash: BasketAsset;
+  /** The goal's currency (ISO 4217); dollars unless the sheet says otherwise. */
+  currency: string;
+  /**
+   * The matching leg for a currency other than dollars: the chain's cash token counted in it, or null
+   * when the shelf lists none (gate SOLVER; the BRL leg for reais, with no code of its own).
+   */
+  matchingOf(currency: string): BasketAsset | null;
+  /** The FX reading for dollars into this currency, recorded on the plan once used; null if none. */
+  fxOf(currency: string): FxObservation | null;
   /** What the chain lists that a plan can hold, by id. The cash token is not one of them. */
   tokens: BasketAsset[];
   /** Every token on the shelf, on any chain: a holding may be of one the person's chain lacks. */
@@ -54,14 +65,40 @@ export type World = {
   /** The yield the plan counts for each token: the best observation given for it. */
   yields: Map<string, YieldObservation>;
   /** Everything that was given, validated and in one order, for the hash of the inputs. */
-  given: { yields: YieldObservation[]; holdings: HeldPosition[]; liquiditySource: string | null };
+  given: {
+    yields: YieldObservation[];
+    fx: FxObservation[];
+    holdings: HeldPosition[];
+    liquiditySource: string | null;
+  };
   liquidity: LiquidityProvider | undefined;
   /** The month of the goal's date, YYYY-MM. */
   goalMonth: string;
+  /** The month the plan is made in, YYYY-MM. */
+  nowMonth: string;
+  /**
+   * The sheet's withdrawals from this month on, each in dollars too, in order of month, currency and
+   * amount. One in another currency than dollars is converted at its FX reading, which is required.
+   */
+  withdrawals: Withdrawal[];
   /** The smallest line, the most with one issuer, and the most in one stock or crypto asset: cents. */
   minLine: number;
-  issuerCap: number;
   stockCap: number;
+  /** The most cents with this token's issuer: by risk for stocks and crypto, the plan's cap for the rest. */
+  issuerCapOf(asset: BasketAsset): number;
+  /** Why an issuer takes no more, for this token's sleeve. */
+  issuerWhy(asset: BasketAsset): Reason;
+  /**
+   * For a dollar-yield token: the most cents it may take, the smaller of its cap in the plan and its exit
+   * ceiling, with the reason for whichever binds. Null when its leg type is not on the list.
+   */
+  yieldCapOf(asset: BasketAsset): { cents: number; why: Reason } | null;
+  /** Whether a dollar-yield token counts against the credit budget. */
+  isCredit(asset: BasketAsset): boolean;
+  /** Whether a dollar-yield token is a rate leg and nothing else: what a safe-yield sleeve holds. */
+  isRateOnly(asset: BasketAsset): boolean;
+  /** The most cents in credit and basis legs, by the person's credit tolerance, and its share. */
+  creditBudget: { cents: number; bps: number; stated: boolean };
   flags: Set<string>;
   /** Every figure the plan was shaped by, whether or not its token ends up in the plan. */
   observations: Map<string, PersonalObservation>;
@@ -83,6 +120,9 @@ export type World = {
   ceilingNotes(asset: BasketAsset): Reason[];
 };
 
+/** A dated withdrawal, as the sheet gives it and in whole cents of dollars, rounded up. */
+export type Withdrawal = { month: string; amount: number; currency: string; cents: number };
+
 /** A provider that says which times of the week its figures were measured in. */
 export const reportsRegimes = (p: LiquidityProvider): p is RegimeLiquidityProvider =>
   typeof (p as Partial<RegimeLiquidityProvider>).regimes === 'function';
@@ -93,6 +133,11 @@ const issues = (error: z.ZodError) =>
   error.issues.map((i) => ({ path: i.path.join('.'), message: i.message }));
 
 const IsoTime = z.string().datetime();
+/** An FX reading as `compose` takes it: a pair of two currencies and a finite rate. */
+const FxRead = FxObservation.extend({
+  pair: z.string().regex(/^[A-Z]{6}$/),
+  value: z.number().positive().finite(),
+});
 /** A yield observation as `compose` takes it: complete, and its yields finite numbers. */
 const YieldRead = YieldObservation.extend({
   quotedYield: z.number().finite(),
@@ -117,7 +162,7 @@ function inOrder(yields: YieldObservation[]): YieldObservation[] {
 const MONTHS_IN_A_YEAR = 12;
 
 /** The month `months` after the month of an ISO time, as YYYY-MM. Read from the text: no clock. */
-function monthAfter(iso: string, months: number): string {
+export function monthAfter(iso: string, months: number): string {
   const [year = '0', month = '1'] = iso.split('-');
   const index = Number(year) * MONTHS_IN_A_YEAR + (Number(month) - 1) + months;
   const y = Math.floor(index / MONTHS_IN_A_YEAR);
@@ -130,6 +175,11 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
   const parsedSheet = PersonalSheet.safeParse(sheetIn);
   if (!parsedSheet.success) throw new PersonalInputError('InvalidSheet', issues(parsedSheet.error));
   const sheet = parsedSheet.data;
+  // A theme sleeve needs the curated lists of slice 4; it is refused until then, never ignored.
+  if (sheet.sleeves?.some((x) => x.kind === 'theme'))
+    throw new PersonalInputError('InvalidSheet', [
+      { path: 'sleeves', message: 'a theme sleeve is not built yet' },
+    ]);
 
   const parsedParams = PersonalParameters.safeParse(context.params ?? PERSONAL_PARAMS);
   if (!parsedParams.success)
@@ -157,6 +207,20 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
   const parsedYields = z.array(YieldRead).safeParse(context.yields ?? []);
   if (!parsedYields.success)
     throw new PersonalInputError('InvalidContext', issues(parsedYields.error));
+  const parsedFx = z.array(FxRead).safeParse(context.fx ?? []);
+  if (!parsedFx.success) throw new PersonalInputError('InvalidContext', issues(parsedFx.error));
+  // In one order, each once; of two readings for one pair the latest counts, then the lowest value.
+  const fxInOrder = byName(parsedFx.data, (f) => JSON.stringify(Object.entries(f).sort()));
+  const fxByPair = new Map<string, FxObservation>();
+  for (const f of fxInOrder) {
+    const had = fxByPair.get(f.pair);
+    if (
+      !had ||
+      f.fetchedAt > had.fetchedAt ||
+      (f.fetchedAt === had.fetchedAt && f.value < had.value)
+    )
+      fxByPair.set(f.pair, f);
+  }
 
   const listed = byName(shelf.assets, (a) => a.id);
   const byId = new Map(listed.map((a) => [a.id, a]));
@@ -172,13 +236,15 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
 
   // The sheet names exactly one chain (PersonalSheet holds it to that).
   const [chain] = sheet.chains;
-  const cash = listed.find((a) => a.chain === chain && a.cls === 'cash');
+  const isDollars = (a: BasketAsset) => (a.currency ?? 'USD') === 'USD';
+  const cash = listed.find((a) => a.chain === chain && a.cls === 'cash' && isDollars(a));
   // A vault is funded in its chain's dollar token, so a chain with none listed cannot hold a plan.
   if (!chain || !cash)
     throw new PersonalInputError('InvalidShelf', [
       { path: 'assets', message: `the shelf lists no cash token on ${chain}` },
     ]);
   const tokens = listed.filter((a) => a.chain === chain && a.cls !== 'cash');
+  const currency = sheet.currency ?? 'USD';
 
   const amount = toCents(sheet.amountUsd);
   // What the person holds, by underlying. A holding under the threshold is ignored everywhere: it
@@ -265,7 +331,8 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
     return made;
   };
 
-  return {
+  const nowMonth = monthAfter(context.now, 0);
+  const world: World = {
     sheet,
     lang,
     P,
@@ -274,6 +341,24 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
     amount,
     chain,
     cash,
+    currency,
+    matchingOf: (cur) =>
+      cur === 'USD'
+        ? null
+        : (listed.find((a) => a.chain === chain && a.cls === 'cash' && a.currency === cur) ?? null),
+    fxOf: (cur) => {
+      const read = fxByPair.get(`USD${cur}`) ?? null;
+      if (read)
+        observations.set(`fx ${read.pair}`, {
+          id: read.pair,
+          kind: 'fx',
+          source: read.source,
+          method: read.method,
+          fetchedAt: read.fetchedAt,
+          provenance: read.provenance,
+        });
+      return read;
+    },
     tokens,
     byId,
     families,
@@ -282,15 +367,55 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
     yields: pickPrimaryYield(inOrder(parsedYields.data)),
     given: {
       yields: inOrder(parsedYields.data),
+      fx: fxInOrder,
       holdings: byName(parsedHoldings.data, (h) => JSON.stringify(Object.entries(h).sort())),
       liquiditySource: context.liquiditySource?.trim() || null,
     },
     liquidity,
     goalMonth: monthAfter(context.now, sheet.horizonMonths),
+    nowMonth,
+    withdrawals: [],
     // A vault's target is at least one basis point, so a line is too, whatever the table says.
     minLine: Math.max(toCents(P.minLineUsd), Math.ceil((amount * Math.max(1, P.minLineBps)) / BPS)),
-    issuerCap: shareOf(amount, capIssuer),
     stockCap: shareOf(amount, capStock),
+    issuerCapOf: (a) =>
+      sleeveOfClass(a.cls) === 'growth'
+        ? shareOf(amount, capIssuer)
+        : shareOf(amount, P.issuerCapBps),
+    issuerWhy: (a) =>
+      sleeveOfClass(a.cls) === 'growth'
+        ? reason('ISSUER_CAP', { capBps: capIssuer, risk: sheet.risk, issuer: a.issuer }, lang)
+        : reason('ISSUER_CAP_PLAN', { capBps: P.issuerCapBps, issuer: a.issuer }, lang),
+    yieldCapOf: (a) => {
+      const row = legTypesOf(a.symbol);
+      if (!row) return null;
+      const named = P.capPerAssetBps.bySymbol[a.symbol];
+      const capBps =
+        named ?? Math.min(...row.types.map((t) => P.capPerAssetBps.byLegType[t] ?? BPS));
+      const capCents = shareOf(amount, capBps);
+      const exit = ceiling(a);
+      // The smaller limit binds; on a tie the exit figure is named, as the one source (EXIT-SOURCE).
+      return exit.cents <= capCents
+        ? { cents: exit.cents, why: exit.why }
+        : {
+            cents: capCents,
+            why: reason('ASSET_CAP', { asset: a.symbol, capBps, maxUsd: toUsd(capCents) }, lang),
+          };
+    },
+    isCredit: (a) => (legTypesOf(a.symbol)?.types ?? []).some((t) => CREDIT_LEG_TYPES.includes(t)),
+    isRateOnly: (a) => {
+      const types = legTypesOf(a.symbol)?.types ?? [];
+      return types.length > 0 && types.every((t) => t === 'rate');
+    },
+    creditBudget: (() => {
+      const tolerance = sheet.limits?.creditTolerance ?? P.defaultCreditTolerance;
+      const bps = P.creditShareBps[tolerance] ?? 0;
+      return {
+        cents: shareOf(amount, bps),
+        bps,
+        stated: sheet.limits?.creditTolerance !== undefined,
+      };
+    })(),
     flags,
     observations,
     sleeveOf: (a) => sleeveOfClass(a.cls),
@@ -299,4 +424,33 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
     ceilingWhy: (a) => ceiling(a).why,
     ceilingNotes: (a) => ceiling(a).notes,
   };
+
+  // Withdrawals, in dollars. One before this month is past and counts for nothing, and the plan says
+  // so. One in another currency needs its FX reading: never guessed.
+  const missing = new Set<string>();
+  for (const o of byName(sheet.obligations ?? [], (o) => `${o.month} ${o.currency} ${o.amount}`)) {
+    if (o.month < nowMonth) {
+      flags.add('obligations_past');
+      continue;
+    }
+    let usd = o.amount;
+    if (o.currency !== 'USD') {
+      const fx = world.fxOf(o.currency);
+      if (!fx) {
+        missing.add(o.currency);
+        continue;
+      }
+      usd = o.amount / fx.value;
+    }
+    world.withdrawals.push({ ...o, cents: ceilCents(usd) });
+  }
+  if (missing.size > 0)
+    throw new PersonalInputError(
+      'InvalidContext',
+      [...missing].sort().map((cur) => ({
+        path: 'fx',
+        message: `a withdrawal in ${cur} needs an FX reading for USD${cur}`,
+      })),
+    );
+  return world;
 }

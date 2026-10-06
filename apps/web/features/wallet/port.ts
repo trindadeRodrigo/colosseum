@@ -255,7 +255,20 @@ export function createWalletPort(
     }
     if (!isHex(tx.payload, { strict: true }) || tx.payload.length % 2 !== 0)
       throw fail('bad_transaction', 'the call data is not whole bytes of hex');
-    return { to: to as `0x${string}`, data: tx.payload, value, chainId: tx.evm.chainId };
+    const call = { to: to as `0x${string}`, data: tx.payload, value, chainId: tx.evm.chainId };
+    // The server states the nonce, the gas and the whole fee (the gas at its price per gas): the price
+    // per gas is that fee over the gas, with no tip, which keeps gas times price at the stated fee.
+    const fee = RawAmount.safeParse(tx.preview.feeNativeRaw);
+    const { nonce, gas } = tx.evm;
+    if (nonce === undefined || gas === undefined || !fee.success || BigInt(fee.data) === 0n)
+      return call;
+    return {
+      ...call,
+      nonce,
+      gas: BigInt(gas),
+      maxFeePerGas: BigInt(fee.data) / BigInt(gas),
+      maxPriorityFeePerGas: 0n,
+    };
   };
 
   /** The most the wallet may commit to fees on this transaction. */
@@ -269,8 +282,8 @@ export function createWalletPort(
 
   /**
    * The signed transaction is the call that was asked, in a form this app signs, with a fee under the
-   * ceiling, signed by this account. The wallet fills in the nonce, the gas and the fee, so on EVM
-   * this is the only place the whole of what was signed is seen.
+   * ceiling, signed by this account. The wallet is handed the nonce, gas and fee the server stated and
+   * may sign with others, so on EVM this is the only place the whole of what was signed is seen.
    */
   const sameCall = async (
     account: WalletAccount,

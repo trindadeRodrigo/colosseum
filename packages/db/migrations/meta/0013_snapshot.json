@@ -1,5 +1,5 @@
 {
-  "id": "c29facba-c305-4135-9b04-c2ad0544044c",
+  "id": "83a9d454-ddda-4b58-8e4a-fcb6616f2b52",
   "prevId": "e5217f12-3ddb-4af8-b7b1-cd411457a81d",
   "version": "7",
   "dialect": "postgresql",
@@ -3146,24 +3146,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "venue": {
-          "name": "venue",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "quote_symbol": {
-          "name": "quote_symbol",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "quote_mint": {
-          "name": "quote_mint",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "source": {
           "name": "source",
           "type": "text",
@@ -5606,6 +5588,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "from_link": {
+          "name": "from_link",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "created_at": {
           "name": "created_at",

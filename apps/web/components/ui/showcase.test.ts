@@ -33,8 +33,9 @@ const BUILT = [
   'embed-shell',
   'subscribe-block',
   'token-mapping',
+  'bearing-heatmap-tile',
 ];
-const NOT_BUILT = ['bearing-heatmap-tile', 'goal-showcase-case', 'joint-stage'];
+const NOT_BUILT = ['goal-showcase-case', 'joint-stage'];
 
 describe('the showcase (/dev/ui)', () => {
   it('accounts for every component spec: built and shown, or listed as not built', () => {

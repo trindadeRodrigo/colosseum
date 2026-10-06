@@ -48,6 +48,11 @@ export function draftFromRules(
     incomeTargetUsdMonthly: null,
     rules: null,
     language: field(shape.language, c.language),
+    // The rules parser reads every amount as reais and knows no sleeves: it says nothing of these.
+    currency: null,
+    obligations: null,
+    sleeves: null,
+    restoreSplit: null,
   };
   return { draft, outcome };
 }

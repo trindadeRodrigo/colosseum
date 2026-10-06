@@ -1,5 +1,5 @@
 import { apportion } from '@colosseum/basket';
-import type { BasketAsset, Reason } from '@colosseum/schemas';
+import { type BasketAsset, type Reason, sleevesOf } from '@colosseum/schemas';
 import { BPS, bpsOf, byName, split, sum, toCents, toUsd } from './money';
 import { once, type Removed, type Sized, type Unit } from './placement';
 import { eligibleForGoal } from './registry';
@@ -13,10 +13,25 @@ import type { Family, World } from './world';
 
 export type SleeveSizes = Record<Sleeve, number>;
 export type SleevePlan = {
-  /** The row of the table for this goal and risk, in basis points; cash is what the row leaves. */
+  /**
+   * The row of the table for this goal and risk, in basis points of the whole plan, scaled to the
+   * goal sleeve's share; cash is what the row leaves of that share.
+   */
   table: SleeveSizes;
   /** The sleeves once the date, the need for cash and what must not be lost are applied. */
   sized: SleeveSizes;
+  /**
+   * The person's split (gate SLEEVES): the goal sleeve's share and the safe-yield sleeve's, in basis
+   * points of the whole plan. With no split, the goal sleeve is the whole plan. `sized` adds up to
+   * `goalBps`; `safeYieldBps` is placed apart, in rate legs only.
+   */
+  goalBps: number;
+  safeYieldBps: number;
+  /**
+   * Of the goal sleeve, what is set aside for the next withdrawals (slice 2): taken off before the
+   * row is scaled, so `sized` adds up to `goalBps - setAsideBps`. Placed apart, before anything else.
+   */
+  setAsideBps: number;
   /** Why each sleeve is the size it is. Every line of a sleeve carries these. */
   reasons: Record<Sleeve, Reason[]>;
 };
@@ -33,30 +48,48 @@ function floorAt<T extends { monthsLeft: number }>(
 }
 
 /**
- * The size of each sleeve, in basis points adding up to 10,000.
+ * The size of each sleeve, in basis points of the whole plan. With no split they add up to 10,000;
+ * with one, the goal sleeve's sizes add up to its share and the safe-yield sleeve holds the rest
+ * (gate SLEEVES). A theme sleeve is refused before this runs.
  *
  * A nearer date never gives less cash, and never less in cash and dollar yield together: each floor
  * is taken from the steps the date has not passed, and is filled from stocks and crypto first, then
- * gold.
+ * gold. Within a split, the table's shares and the floors of the date are the goal sleeve's, scaled
+ * to its share; what must not be lost is a sum of money, and the safe-yield sleeve counts toward it.
  */
-export function sizeSleeves(w: World): SleevePlan {
+export function sizeSleeves(w: World, setAside = 0): SleevePlan {
   const { sheet, P, lang } = w;
+  const split = sleevesOf(sheet);
+  const goalBps = sum(split.filter((x) => x.kind === 'goal').map((x) => x.shareBps));
+  const safeYieldBps = sum(split.filter((x) => x.kind === 'safe_yield').map((x) => x.shareBps));
+  // What is set aside for withdrawals comes off the goal sleeve first; the table shares the rest.
+  const setAsideBps = Math.min(goalBps, Math.max(0, setAside));
+  const restBps = goalBps - setAsideBps;
+  /** A share of the goal sleeve, as basis points of the whole plan: rounded down, or up for a floor. */
+  const ofGoal = (bps: number, up = false) =>
+    up ? Math.ceil((bps * restBps) / BPS) : Math.floor((bps * restBps) / BPS);
   const row = P.sleeves[`${sheet.goal}:${sheet.risk}`] ?? {
     growthBps: 0,
     dollarYieldBps: 0,
     goldBps: 0,
   };
+  const growth = ofGoal(row.growthBps);
+  const dollarYield = ofGoal(row.dollarYieldBps);
+  const gold = ofGoal(row.goldBps);
   const table: SleeveSizes = {
-    growth: row.growthBps,
-    dollarYield: row.dollarYieldBps,
-    gold: row.goldBps,
-    cash: BPS - row.growthBps - row.dollarYieldBps - row.goldBps,
+    growth,
+    dollarYield,
+    gold,
+    cash: restBps - growth - dollarYield - gold,
   };
   const sized = { ...table };
   const reasons: SleevePlan['reasons'] = { growth: [], dollarYield: [], gold: [], cash: [] };
+  const goalPart =
+    goalBps < BPS ? [reason('SPLIT_GOAL', { shareBps: goalBps, goal: sheet.goal }, lang)] : [];
   for (const sleeve of SLEEVES)
     if (table[sleeve] > 0)
       reasons[sleeve].push(
+        ...goalPart,
         reason(
           'SLEEVE',
           { sleeveBps: table[sleeve], sleeve, goal: sheet.goal, risk: sheet.risk },
@@ -81,7 +114,10 @@ export function sizeSleeves(w: World): SleevePlan {
 
   // The date: a floor on dollar yield that rises as it nears. The person can switch this off.
   if (sheet.rules.glide) {
-    const floor = floorAt(P.glideFloor, sheet.horizonMonths, (step) => step.dollarYieldBps);
+    const floor = ofGoal(
+      floorAt(P.glideFloor, sheet.horizonMonths, (step) => step.dollarYieldBps),
+      true,
+    );
     if (sized.dollarYield < floor) {
       const gave = raise('dollarYield', floor - sized.dollarYield, ['growth', 'gold']);
       const why = reason(
@@ -103,7 +139,10 @@ export function sizeSleeves(w: World): SleevePlan {
         ? { months: dated, rule: 'CASH_NEAR_DATE' }
         : null;
   if (soonest) {
-    const floor = floorAt(P.cashFloor, soonest.months, (step) => step.cashBps);
+    const floor = ofGoal(
+      floorAt(P.cashFloor, soonest.months, (step) => step.cashBps),
+      true,
+    );
     if (sized.cash < floor) {
       const gave = raise('cash', floor - sized.cash, ['growth', 'gold', 'dollarYield']);
       const why = reason(soonest.rule, { floorBps: floor, months: soonest.months }, lang);
@@ -115,14 +154,14 @@ export function sizeSleeves(w: World): SleevePlan {
   const keep = sheet.limits?.mustKeepUsd ?? 0;
   if (keep > 0) {
     const floor = Math.min(BPS, bpsOf(toCents(keep), w.amount));
-    const kept = sized.dollarYield + sized.cash;
+    const kept = sized.dollarYield + sized.cash + safeYieldBps + setAsideBps;
     if (kept < floor) {
       const gave = raise('dollarYield', floor - kept, ['growth', 'gold']);
       const why = reason('MUST_KEEP', { floorBps: floor, keepUsd: keep }, lang);
       if (gave.length > 0) say(why, ['dollarYield', 'cash', ...gave]);
     }
   }
-  return { table, sized, reasons };
+  return { table, sized, goalBps, safeYieldBps, setAsideBps, reasons };
 }
 
 export type Part = { asset: BasketAsset; bps: number };

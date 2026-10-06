@@ -200,6 +200,11 @@ export const proposals = pgTable('proposals', {
   engineVersion: text('engine_version').notNull(),
   shelfVersion: text('shelf_version').notNull(),
   paramsHash: text('params_hash').notNull(),
+  /**
+   * Made from a link (`POST /v1/baskets/propose`, gate `AGENT-LINK`): stored with no person, read back
+   * by anybody holding its id, and a buyer's vault numbered from the plan and the buyer.
+   */
+  fromLink: boolean('from_link').notNull().default(false),
   createdAt: ts('created_at').notNull().defaultNow(),
 });
 
