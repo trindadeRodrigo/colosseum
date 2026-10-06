@@ -8,8 +8,9 @@ import { readPreferences } from '../../i18n/server';
 
 // His landing page's document (compact-nav.md, joint-stage.md): the three faces, the language, and
 // the ground. Marketing is dark unless the visitor chose otherwise (token-mapping.md, section 6), so
-// with no choice made the class is `dark`, not `tf-auto` (features/landing/theme.ts). No wallet, no sign-in and no API here: the
-// page sends a goal on to the product (`/goal`), which has all three.
+// with no choice made the class is `dark`, not `tf-auto` (features/landing/theme.ts). No wallet and no
+// API at first load: the page sends a goal on to the product (`/goal`), and its "Sign in" loads the
+// wallet and the sign-in dialog on the first press only (features/landing/LandingSignIn.tsx).
 
 export async function generateMetadata() {
   const { lang } = await readPreferences();

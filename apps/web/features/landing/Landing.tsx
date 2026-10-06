@@ -4,6 +4,7 @@ import { dictionary, type Lang, type ThemeChoice } from '../../i18n';
 import { Closing } from './Closing';
 import { JointStage } from './JointStage';
 import { LandingNav } from './LandingNav';
+import { LandingSignIn } from './LandingSignIn';
 import { Showcase } from './Showcase';
 import { Simulate } from './Simulate';
 
@@ -17,6 +18,8 @@ export function Landing({ lang, theme }: { lang: Lang; theme: ThemeChoice }) {
   return (
     <>
       <LandingNav />
+      {/* "Sign in" opens the sign-in dialog over the landing, loaded on the first press. */}
+      <LandingSignIn />
       <main id="content" tabIndex={-1} className="outline-none">
         <JointStage />
         <Showcase lang={lang} />

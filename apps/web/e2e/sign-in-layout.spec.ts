@@ -122,3 +122,28 @@ test('the bar keeps its height: signed out, on /sign-in, and signed in', async (
   await expect(page.locator('header [data-ui="account"]')).toBeVisible();
   expect(await height()).toBe(out);
 });
+
+test('on the landing, "Sign in" opens the dialog over it, the URL stays /, and Escape gives focus back', async ({
+  page,
+}) => {
+  // with reduced motion the landing's bar is compact at once, with its call to action
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  const cta = page.locator('[data-ui="compact-nav"] a[href^="/sign-in"]').first();
+  await expect(cta).toBeVisible({ timeout: 60_000 });
+  await cta.click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toHaveAttribute('aria-modal', 'true');
+  await expect(page).toHaveURL(/\/$/);
+  // the panel arrives in it: the same two ways in as the product's
+  await expect(dialog.locator('[data-ui="sign-in"][data-state="ready"]')).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(dialog.getByRole('button', { name: /Continue with a passkey/ })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL(/\/$/);
+  expect(await page.evaluate(() => document.activeElement?.getAttribute('href'))).toMatch(
+    /^\/sign-in/,
+  );
+});

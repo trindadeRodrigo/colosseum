@@ -86,7 +86,8 @@ describe('the sign-in dialog', () => {
     expect(box?.querySelector('[data-ui="disclaimer"]')).not.toBeNull();
     // the page stays: no navigation, and nothing behind can be reached or scrolled
     expect(router.push).not.toHaveBeenCalled();
-    expect(find(host, '[data-ui="app-shell"]').inert).toBe(true);
+    expect(find(host, '[data-ui="app-shell"]').closest('[inert]')).not.toBeNull();
+    expect(box?.closest('[inert]')).toBeNull();
     expect(document.documentElement.style.overflow).toBe('hidden');
     // focus is in the dialog
     expect(box?.contains(document.activeElement)).toBe(true);
@@ -105,7 +106,7 @@ describe('the sign-in dialog', () => {
       else await click(find(box, `button[aria-label="${en.signIn.close}"]`));
       expect(dialog(), close).toBeNull();
       expect(document.activeElement, close).toBe(trigger);
-      expect(find(host, '[data-ui="app-shell"]').inert, close).toBe(false);
+      expect(find(host, '[data-ui="app-shell"]').closest('[inert]'), close).toBeNull();
       expect(document.documentElement.style.overflow, close).toBe('');
     }
   });

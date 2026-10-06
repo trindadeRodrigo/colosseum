@@ -71,6 +71,8 @@ export type WalletChoice = {
 export const BOTH_FAMILIES: ReadonlyArray<{ key: string; solana: string; evm: string }> = [
   { key: 'phantom', solana: 'solana:Phantom', evm: 'evm:app.phantom' },
   { key: 'backpack', solana: 'solana:Backpack', evm: 'evm:app.backpack' },
+  // The throwaway wallet of development signs on both too (test/test-driver.ts); its ids are its own.
+  { key: 'throwaway', solana: 'test:solana', evm: 'test:evm' },
 ];
 
 export function walletChoices(found: readonly FoundWallet[]): WalletChoice[] {
