@@ -148,13 +148,24 @@ async function buildFor(
   const family = request.family ? await familyBySlug(deps.db, request.family) : null;
   if (request.family && !family)
     throw new Refusal(409, 'the shared portfolio this order buys is gone');
-  const basketId = family
-    ? basketIdOf(family.familyId)
-    : basketIdOfBuy(
-        request.proposalId ?? '',
-        await isLinkedProposal(deps.db, request.proposalId ?? ''),
-        buyer,
-      );
+  // A plan's order is built only while its plan is there: a plan made from a link that nobody bought is
+  // deleted after a few days, and an order that raced that is refused here, not signed half way.
+  if (!family && request.proposalId && !(await loadProposal(deps.db, request.proposalId)))
+    throw new Refusal(409, 'the plan this order buys is gone', {
+      code: 'VERSION_CHANGED',
+      fix: 'Make the plan again, then the order.',
+    });
+  // The vault the order was made for, as it was stored with it. An order made before the number was
+  // stored works it out as it was worked out then.
+  const basketId =
+    stored.order.basketId ??
+    (family
+      ? basketIdOf(family.familyId)
+      : basketIdOfBuy(
+          request.proposalId ?? '',
+          await isLinkedProposal(deps.db, request.proposalId ?? ''),
+          buyer,
+        ));
   const slippageBps = slippageOf(request);
   const trades = leg.trades.length ? leg.trades : undefined;
   const shared = nonce === undefined ? {} : { nonce };

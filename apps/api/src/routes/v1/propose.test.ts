@@ -1,6 +1,7 @@
-import { proposals } from '@colosseum/db';
+import { baskets, proposals, users } from '@colosseum/db';
 import {
   type BasketSheet,
+  OrderDetail,
   OrderError,
   PortfolioResponse,
   YieldObservation,
@@ -289,5 +290,96 @@ describe('a plan proposed from a link', () => {
     // two buyers, two numbers, and neither is the one the plan's id gives by itself
     expect(new Set(numbers).size).toBe(2);
     expect(numbers).not.toContain(basketIdOf(id));
+  });
+
+  it('takes a sheet with every withdrawal it may hold, and refuses a body larger than that', async () => {
+    const obligations = Array.from({ length: 480 }, (_, i) => ({
+      month: `${2027 + Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`,
+      amount: 1_000.25,
+      currency: 'USD',
+    }));
+    const body = { sheet: sheet({ amountUsd: 9_873, horizonMonths: 480, obligations }) };
+    expect(JSON.stringify(body).length).toBeGreaterThan(16 * 1024);
+    const all = await post(null, '/v1/baskets/propose', body);
+    expect(all.statusCode, all.body).not.toBe(413);
+    expect(all.statusCode).toBeLessThan(500);
+    const big = await post(null, '/v1/baskets/propose', {
+      ...body,
+      padding: 'x'.repeat(33 * 1024),
+    });
+    expect(big.statusCode).toBe(413);
+  });
+
+  it('keeps the vault’s number with the order, and builds nothing once the plan is gone', async () => {
+    const { id } = PersonalizeResponse.parse(
+      (await post(null, '/v1/baskets/propose', { sheet: sheet({ amountUsd: 2_600 }) })).json(),
+    );
+    const buyer = data.track(await person(issuer, 'solana'));
+    await fund(buyer, undefined, 3_000);
+    const placed = await order(buyer, { proposalId: id, amountUsd: 2_600 });
+    expect(placed.basketId).toBe(basketIdOfLinked(id, buyer.sub));
+    const read = OrderDetail.parse((await get(buyer, `/v1/orders/${placed.id}`)).json());
+    expect(read.basketId).toBe(basketIdOfLinked(id, buyer.sub));
+    // the plan goes (the cleanup raced the order): the order is refused, not built half way
+    await data.db.delete(proposals).where(eq(proposals.id, id));
+    const leg = placed.legs[0];
+    if (!leg) throw new Error('no leg');
+    const build = await post(buyer, `/v1/orders/${placed.id}/legs/${leg.id}/build`);
+    expect(build.statusCode).toBe(409);
+    expect(OrderError.parse(build.json())).toMatchObject({
+      error: 'the plan this order buys is gone',
+      code: 'VERSION_CHANGED',
+    });
+  });
+
+  it('never takes a plan stored with no person but not from a link for one', async () => {
+    // a plan stored with no user row, as a test fixture or a person with none yet stores one
+    const plain = await data.storePlan();
+    const [row] = await data.db
+      .select({ userId: proposals.userId, fromLink: proposals.fromLink })
+      .from(proposals)
+      .where(eq(proposals.id, plain));
+    expect(row).toEqual({ userId: null, fromLink: false });
+    expect((await get(null, `/v1/baskets/${plain}`)).statusCode).toBe(404);
+    // old and never bought, and still kept by the cleanup: it is not a link's
+    await data.db
+      .update(proposals)
+      .set({ createdAt: sql`now() - interval '30 days'` })
+      .where(eq(proposals.id, plain));
+    await post(null, '/v1/baskets/propose', { sheet: sheet({ amountUsd: 3_101 }) });
+    expect(
+      await data.db.select({ id: proposals.id }).from(proposals).where(eq(proposals.id, plain)),
+    ).toHaveLength(1);
+  });
+
+  it('keeps a plan from a link that a person’s plan names, however old', async () => {
+    const { id } = PersonalizeResponse.parse(
+      (await post(null, '/v1/baskets/propose', { sheet: sheet({ amountUsd: 3_201 }) })).json(),
+    );
+    const someone = data.track(await person(issuer, 'solana'));
+    const [user] = await data.db
+      .insert(users)
+      .values({ privyId: someone.sub })
+      .onConflictDoNothing()
+      .returning({ id: users.id });
+    const userId =
+      user?.id ??
+      (await data.db.select({ id: users.id }).from(users).where(eq(users.privyId, someone.sub)))[0]
+        ?.id;
+    if (!userId) throw new Error('no user row');
+    const [kept] = await data.db
+      .insert(baskets)
+      .values({ userId, kind: 'personal', proposalId: id })
+      .returning({ id: baskets.id });
+    try {
+      await data.db
+        .update(proposals)
+        .set({ createdAt: sql`now() - interval '30 days'` })
+        .where(eq(proposals.id, id));
+      await post(null, '/v1/baskets/propose', { sheet: sheet({ amountUsd: 3_202 }) });
+      expect((await get(null, `/v1/baskets/${id}`)).statusCode).toBe(200);
+    } finally {
+      if (kept) await data.db.delete(baskets).where(eq(baskets.id, kept.id));
+    }
   });
 });

@@ -95,6 +95,7 @@ function toOrder(r: OrderRow, legRows: LegRow[]): Order {
     },
     summary: r.summary,
     ...(deposit ? { depositRaw: deposit } : {}),
+    ...(r.basketId ? { basketId: r.basketId } : {}),
     legs: legRows
       .map(toLeg)
       .sort((a, b) => chainOrder(a.chain) - chainOrder(b.chain) || a.seq - b.seq),
@@ -120,6 +121,7 @@ export async function insertOrder(db: Db, order: Order, request: IntentRequest):
       ownerEvm: order.owner.evm ?? null,
       summary: order.summary,
       request,
+      basketId: order.basketId ?? null,
       warnings: order.warnings,
       needsConsent: order.needsConsent,
       fees: order.fees,

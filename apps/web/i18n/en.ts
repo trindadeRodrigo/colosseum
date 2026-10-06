@@ -1027,7 +1027,7 @@ export const en = {
         'no-lock':
           'This browser can’t keep an order to one tab, so I won’t sign here. Open the page in a current browser.',
         'plan-mismatch':
-          'The plan kept for this order is for another chain, so nothing was signed. Make a new order.',
+          'The plan kept for this order doesn’t match it (another chain, or another vault), so nothing was signed. Make a new order.',
       },
       crashed:
         'Something stopped the order before it finished. What was signed is kept. Try again.',

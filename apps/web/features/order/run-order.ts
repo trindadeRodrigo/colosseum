@@ -62,8 +62,10 @@ export type RunInput = {
   plan: {
     proposalId: string;
     lines: readonly BasketLine[];
-    /** For a plan made from a link: the buyer's user id, which its vault's number takes. */
-    buyer?: string | null;
+    /** The person the order is for: a plan made from a link numbers their vault with it. */
+    userId: string;
+    /** This browser kept the plan as one made from a link: for an order that states no number. */
+    linked?: boolean;
   };
   /**
    * For an order about a shared portfolio: the terms its screen showed (features/shared/terms.ts),
@@ -139,6 +141,21 @@ export const localSigned: SignedStore = {
   },
 };
 
+/**
+ * The vault's number for a plan's order: the one the order states, held to a number this app works out
+ * itself (the plan's, or the person's own for a plan made from a link, gate `AGENT-LINK`); null when it
+ * is neither. An order that states none, made before the API kept it, is numbered as this browser kept
+ * the plan.
+ */
+export function planNumberOf(
+  stated: string | undefined,
+  plan: { proposalId: string; userId: string; linked?: boolean },
+): string | null {
+  const own = [basketOfPlan(plan.proposalId), basketOfPlan(plan.proposalId, plan.userId)];
+  if (stated !== undefined) return own.includes(stated) ? stated : null;
+  return basketOfPlan(plan.proposalId, plan.linked ? plan.userId : null);
+}
+
 /** True when this browser keeps what is written to local storage. */
 function storageWorks(): boolean {
   try {
@@ -169,6 +186,9 @@ export function useOrderRunner(): { run: (input: RunInput) => Promise<RunOutcome
       const plan = input.terms ? planTermsOf(input.terms) : null;
       const targets = input.terms ? [] : targetsOfPlan(input.plan.lines, chain, deployment.cash);
       if (!targets) return { status: 'not-runnable', why: 'plan-mismatch' };
+      const basketId = input.terms ? null : planNumberOf(order.basketId, input.plan);
+      if (!input.terms && basketId === null)
+        return { status: 'not-runnable', why: 'plan-mismatch' };
       if (!storageWorks()) return { status: 'not-runnable', why: 'no-store' };
       if (typeof navigator === 'undefined' || !navigator.locks)
         return { status: 'not-runnable', why: 'no-lock' };
@@ -179,7 +199,7 @@ export function useOrderRunner(): { run: (input: RunInput) => Promise<RunOutcome
           signer: port,
           deployments,
           plan: plan ?? {
-            basketId: basketOfPlan(input.plan.proposalId, input.plan.buyer ?? null),
+            basketId: basketId ?? '',
             targets,
             autoFollow: false,
           },

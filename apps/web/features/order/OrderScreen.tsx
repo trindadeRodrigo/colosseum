@@ -124,7 +124,8 @@ export function OrderScreen({ id }: { id: string }) {
         plan: {
           proposalId: record.proposalId,
           lines: record.lines,
-          buyer: record.linked ? record.userId : null,
+          userId: record.userId,
+          ...(record.linked ? { linked: true } : {}),
         },
         ...(record.terms ? { terms: record.terms } : {}),
         consents: approved.consents,

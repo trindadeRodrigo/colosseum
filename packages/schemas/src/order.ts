@@ -171,6 +171,16 @@ export const OrderBase = z.object({
    * for an order that deposits nothing.
    */
   depositRaw: RawAmount.optional(),
+  /**
+   * For a buy: the vault's number on chain, which the vault's address is derived from. A plan's, a
+   * shared portfolio's, or, for a plan made from a link, the buyer's own (gate `AGENT-LINK`). Stored
+   * with the order when it is made, so a step is built for it whatever happens to the plan after. A
+   * client holds it to a number it works out itself. Absent on orders made before it was stored.
+   */
+  basketId: z
+    .string()
+    .regex(/^\d{1,20}$/)
+    .optional(),
   legs: z.array(Leg),
   warnings: z.array(z.object({ code: z.string(), text: z.string() })),
   /** Granted only on the approval page. */

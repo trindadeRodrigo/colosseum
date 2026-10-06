@@ -1009,7 +1009,7 @@ export const pt: Dictionary = {
         'no-lock':
           'Este navegador não consegue manter uma ordem em uma só aba, então não vou assinar aqui. Abra a página num navegador atual.',
         'plan-mismatch':
-          'O plano guardado para esta ordem é de outra rede, então nada foi assinado. Crie uma nova ordem.',
+          'O plano guardado para esta ordem não confere com ela (outra rede ou outro cofre), então nada foi assinado. Crie uma nova ordem.',
       },
       crashed: 'Algo parou a ordem antes do fim. O que foi assinado fica guardado. Tente de novo.',
       newOrder: 'Criar uma nova ordem',

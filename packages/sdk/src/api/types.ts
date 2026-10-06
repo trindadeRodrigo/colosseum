@@ -800,6 +800,7 @@ export type PostOrdersResponse = {
   };
   summary: string;
   depositRaw?: string;
+  basketId?: string;
   legs: {
     id: string;
     orderId: string | null;
@@ -889,6 +890,7 @@ export type GetOrdersByIdResponse = {
   };
   summary: string;
   depositRaw?: string;
+  basketId?: string;
   legs: {
     id: string;
     orderId: string | null;
@@ -1053,6 +1055,7 @@ export type PostOrdersByIdLegsByLegIdCancelResponse = {
   };
   summary: string;
   depositRaw?: string;
+  basketId?: string;
   legs: {
     id: string;
     orderId: string | null;
@@ -1152,6 +1155,7 @@ export type PostOrdersByIdLegsByLegIdReportResponse = {
   };
   summary: string;
   depositRaw?: string;
+  basketId?: string;
   legs: {
     id: string;
     orderId: string | null;
