@@ -7,7 +7,10 @@ import {
   type LiquidityProvider,
   type ObservationRef,
   PersonalParams,
+  PlanCandidateId,
+  type PlanScorecard,
   type PlanSleeve,
+  type PlanStatus,
   type Verdict,
   type YieldObservation,
 } from '@colosseum/schemas';
@@ -254,42 +257,11 @@ export type PersonalProposal = Omit<BasketProposal, 'sheet' | 'observations' | '
 };
 
 /** The three candidates of gate THREE-PLANS, in their fixed order. None is marked or selected. */
-export const CANDIDATES = ['cover', 'spread', 'carry'] as const;
-export type CandidateId = (typeof CANDIDATES)[number];
+export const CANDIDATES = PlanCandidateId.options;
+export type CandidateId = PlanCandidateId;
 
-/**
- * LOCAL TYPE. What a candidate is compared on (C11; section 2.4 of the research note). Every figure
- * comes from the plan and the figures it was made with. Two items of the note are not here: yield
- * confidence and primary redemption need data the shelf does not carry yet.
- */
-export type Scorecard = {
-  /**
-   * Months of withdrawals that cash and the matching legs pay at par, from this month on, in order;
-   * null with no withdrawals to come.
-   */
-  monthsCovered: number | null;
-  /** Months paid at the rates observed, and under each named stress (the status); null with none. */
-  base: { monthsPaid: number; monthsWithWithdrawal: number; shortfall: number } | null;
-  stresses: { id: string; monthsPaid: number; shortfall: number }[];
-  /** The dollar-yield lines at their yield after haircut, over the whole plan. */
-  carryObservedBps: number;
-  /** Measured exit cost at the person's size, worst regime (`rollUp`), and the share measured. */
-  exit: { costBps: number | null; measuredShareBps: number };
-  /** By issuer and by class (`rollUp`), the largest issuer's share and how many issuers. */
-  concentration: {
-    byIssuer: { key: string; bps: number }[];
-    byClass: { key: string; bps: number }[];
-    largestIssuerBps: number;
-    issuers: number;
-  };
-  /** The share of the plan in credit and basis legs. */
-  creditBasisBps: number;
-  /**
-   * For a goal not in dollars: dollars of withdrawals in the goal's currency beyond what its matching
-   * leg holds. Left out for a goal in dollars (C19).
-   */
-  openFxUsd?: number;
-};
+/** What a candidate is compared on (C11): the shared `PlanScorecard` of packages/schemas. */
+export type Scorecard = PlanScorecard;
 
 /** LOCAL TYPE. The candidates shown, in the fixed order, and the ones not shown with why. */
 export type PersonalCandidates = {
@@ -297,35 +269,8 @@ export type PersonalCandidates = {
   notShown: { id: CandidateId; why: string }[];
 };
 
-/**
- * LOCAL TYPE. The status of a plan with withdrawals (slice 3): no odds and no projected return.
- * Months paid at the rates observed on `observedOn`, the same under each named stress that applies,
- * and the carry the withdrawals need (a flat yearly rate on dollar yield) beside the carry observed.
- * Carry needed is null when no rate up to 100% pays every month. `met`: every month paid in the base
- * case and under every stress.
- */
-export type PersonalStatus = {
-  observedOn: string | null;
-  base: { monthsPaid: number; monthsWithWithdrawal: number; shortfall: number };
-  stresses: {
-    id: string;
-    params: Record<string, number>;
-    monthsPaid: number;
-    monthsWithWithdrawal: number;
-    shortfall: number;
-  }[];
-  carryObservedBps: number;
-  carryNeededBps: number | null;
-  met: boolean;
-  /**
-   * Each way to close a gap, found by running the engine again with one input changed and the others
-   * fixed; listed only if the plan it gives is met. A later start and a monthly contribution have no
-   * field on the sheet, so they are not tried.
-   */
-  ways: { change: string; closesGap: true }[];
-  /** That no larger amount gives a plan that is met: beside the ways, not among them. */
-  noAmountCloses?: string;
-};
+/** The status of a plan with withdrawals (slice 3): the shared `PlanStatus` of packages/schemas. */
+export type PersonalStatus = PlanStatus;
 
 /**
  * LOCAL TYPE. The plan month by month in the goal's currency (slice 2): what is withdrawn, what is

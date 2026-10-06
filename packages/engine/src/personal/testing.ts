@@ -8,6 +8,8 @@ import {
   type FactRegime,
   type FxObservation,
   normalizeAddress,
+  PlanScorecard,
+  PlanStatus,
   type Reason,
   type Recipe,
   type RegimeLiquidityProvider,
@@ -1291,8 +1293,11 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
     (plan.candidate === undefined) === (plan.scorecard === undefined),
     'a scorecard without a candidate, or the other way',
   );
+  if (plan.status)
+    say(PlanStatus.safeParse(plan.status).success, 'the status is not the shared PlanStatus');
   const card = plan.scorecard;
   if (card) {
+    say(PlanScorecard.safeParse(card).success, 'the scorecard is not the shared PlanScorecard');
     const creditBps = sum(
       plan.lines
         .filter((l) => {
