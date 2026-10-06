@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { solanaVaultAddress } from '@colosseum/sdk';
+import { deploymentsOf, type GuardDeployment, solanaVaultAddress } from '@colosseum/sdk';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
@@ -9,6 +9,7 @@ import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
 import { recallOrder } from '../order/order-record';
+import { publishableOn } from '../order/readiness';
 import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
@@ -366,28 +367,37 @@ describe('the publish form', () => {
       { asset: 'solana:tslax', bps: 3000 },
     ];
     const form = (name: string, copy: string) => ({ name, slug: 'x', copy, rows });
-    expect(problemsOf(form('Three of the largest', 'Three test tokens.'), 'solana')).toEqual([]);
-    expect(problemsOf(form('Go to evil.xyz', ''), 'solana')).toEqual(['name']);
-    expect(problemsOf(form('U.S. stocks', 'see evil.xyz/airdrop'), 'solana')).toEqual(['copy']);
-    expect(problemsOf(form('Three', 'write to me@mail.com'), 'solana')).toEqual(['copy']);
-    expect(problemsOf(form('Three', 'plain\u202etext'), 'solana')).toEqual(['copy']);
-    expect(problemsOf(form('Three', 'two lines\nare fine'), 'solana')).toEqual([]);
+    expect(problemsOf(form('Three of the largest', 'Three test tokens.'))).toEqual([]);
+    expect(problemsOf(form('Go to evil.xyz', ''))).toEqual(['name']);
+    expect(problemsOf(form('U.S. stocks', 'see evil.xyz/airdrop'))).toEqual(['copy']);
+    expect(problemsOf(form('Three', 'write to me@mail.com'))).toEqual(['copy']);
+    expect(problemsOf(form('Three', 'plain\u202etext'))).toEqual(['copy']);
+    expect(problemsOf(form('Three', 'two lines\nare fine'))).toEqual([]);
   });
 
-  it('is not offered on Robinhood Chain, where the guard signs no publish yet (AGT-4)', async () => {
+  it('is offered on Robinhood Chain, whose deployment names its registry (AGT-4)', async () => {
     const calls = api({ family: null, chain: 'robinhood' });
     const shelf = await show(createElement(ShelfScreen));
     expect(calls.some((c) => c.path === '/v1/shelf?chain=robinhood')).toBe(true);
-    expect(shelf.querySelector('a[href="/publish"]')).toBeNull();
+    expect(shelf.querySelector('a[href="/publish"]')).not.toBeNull();
   });
 
-  it('says on Robinhood Chain that publishing is Solana only, with no form', async () => {
-    const calls = api({ family: null, chain: 'robinhood' });
+  it('shows the form on Robinhood Chain, and not the notice that publishing is closed', async () => {
+    api({ family: null, chain: 'robinhood' });
     const host = await show(createElement(PublishScreen));
-    expect(host.textContent).toContain(en.shared.publish.problems.chain);
-    expect(host.querySelector('input')).toBeNull();
-    expect(button(host, en.shared.publish.review)).toBeUndefined();
-    expect(calls.some((c) => c.path === '/v1/orders')).toBe(false);
+    expect(host.textContent).not.toContain(en.shared.publish.problems.chain);
+    expect(host.querySelector('input')).not.toBeNull();
+    expect(button(host, en.shared.publish.review)).toBeDefined();
+  });
+
+  it('is closed on an EVM chain whose deployment names no registry', () => {
+    const robinhood = deploymentsOf('testnet').robinhood;
+    expect(publishableOn(robinhood)).toBe(true);
+    const { registry: _, ...without } = robinhood as Extract<GuardDeployment, { family: 'evm' }>;
+    expect(publishableOn(without as GuardDeployment)).toBe(false);
+    expect(publishableOn(deploymentsOf('testnet').solana)).toBe(true);
+    // no deployment at all is a chain not ready, which the screens say on their own
+    expect(publishableOn(undefined)).toBe(true);
   });
 
   it('refuses an address that is another creator’s', async () => {

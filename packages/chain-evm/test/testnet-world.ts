@@ -80,6 +80,8 @@ export type TestnetWorld = {
   recipeA: Hex;
   recipeB: Hex;
   familyA: string;
+  /** B's family id: its version 3 waits. */
+  familyB: string;
   sign(tx: BuiltTx): Promise<string>;
   send(tx: BuiltTx): Promise<{ txId: string; validUntil?: string }>;
   withPriceMoved(asset: string, bps: number, work: () => Promise<void>): Promise<void>;
@@ -416,6 +418,7 @@ export async function buildTestnetWorld(forkUrl: string, port: number): Promise<
       recipeA,
       recipeB,
       familyA,
+      familyB,
       sign,
       send,
       withPriceMoved,

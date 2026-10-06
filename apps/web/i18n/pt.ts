@@ -798,7 +798,7 @@ export const pt: Dictionary = {
         weight: 'Cada peso vai de 2% a 50%, em passos de 0,5%.',
         sum: 'Os pesos somam 100%.',
         twice: 'Um ativo aparece uma vez só.',
-        chain: 'Por enquanto, publicar só funciona na Solana.',
+        chain: 'Publicar ainda não está aberto nesta rede.',
       },
       failure: {
         said: (error: string) => `Nosso servidor recusou: ${error}.`,
