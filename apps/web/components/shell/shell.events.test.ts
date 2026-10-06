@@ -399,9 +399,21 @@ describe('the account control of someone signed in (Thom, Oct 6)', () => {
     expect(menuButton(host).getAttribute('aria-controls')).toBe(menu.id);
     const group = find(menu, '[role="group"]');
     expect(pressed(group).join('')).toContain('Solana');
-    expect(find(menu, '[data-ui="account-address"]').textContent).toBe(SOLANA);
-    const items = [...menu.querySelectorAll('button, a')].map((el) => el.textContent);
+    // the address cut short, the whole one for a screen reader and under the pointer
+    const address = find(menu, '[data-ui="account-address"]');
+    expect(find(address, '[aria-hidden="true"]').textContent).toBe('So11…1112');
+    expect(find(address, '.sr-only').textContent).toBe(SOLANA);
+    expect(address.getAttribute('title')).toBe(SOLANA);
+    // its copy is an icon on the same line, not a row of its own
+    const copy = find(address.parentElement as HTMLElement, '[data-ui="copy-button"]');
+    expect(copy.getAttribute('aria-label')).toBe(en.copyAddress);
+    expect(copy.getAttribute('title')).toContain(SOLANA);
+    expect(copy.textContent).toBe('');
+    const items = [...menu.querySelectorAll('button, a')].map(
+      (el) => el.textContent || el.getAttribute('aria-label'),
+    );
     expect(items.slice(-3)).toEqual([en.copyAddress, en.viewOn('Solscan'), en.signOut]);
+    expect(menu.textContent).not.toContain(en.copyAddress);
     const explorer = find<HTMLAnchorElement>(menu, '[data-ui="account-explorer"]');
     expect(explorer.getAttribute('href')).toContain(`/account/${SOLANA}`);
     expect(explorer.getAttribute('target')).toBe('_blank');
@@ -436,14 +448,22 @@ describe('the account control of someone signed in (Thom, Oct 6)', () => {
       const host = await shell();
       await settle();
       const menu = await openMenu(host);
-      const copy = find(menu, '[data-ui="copy-address"]');
-      expect(copy.textContent).toBe(en.copyAddress);
-      expect(find(menu, '[data-ui="copy-said"]').textContent).toBe('');
+      const copy = find(menu, '[data-ui="copy-button"]');
+      const said = () => (copy.nextElementSibling as HTMLElement).textContent;
+      const drawn = () =>
+        [...copy.querySelectorAll('svg path')].map((path) => path.getAttribute('d')).join(' ');
+      expect(copy.getAttribute('aria-label')).toBe(en.copyAddress);
+      expect(said()).toBe('');
+      const before = drawn();
       await click(copy);
       await settle();
+      // the whole address, never the short one on screen
       expect(writeText).toHaveBeenCalledWith(SOLANA);
-      expect(find(menu, '[data-ui="copy-said"]').textContent).toBe(en.copied);
-      expect(copy.textContent).toBe(en.copied);
+      expect(copy.nextElementSibling?.getAttribute('role')).toBe('status');
+      expect(said()).toBe(en.copied);
+      // the copy icon turns into the tick
+      expect(drawn()).not.toBe(before);
+      expect(drawn()).toBe('M4 12L9 17L20 6');
     } finally {
       vi.unstubAllGlobals();
     }
@@ -462,8 +482,10 @@ describe('the account control of someone signed in (Thom, Oct 6)', () => {
     // at its top, before the links
     expect(sheet.firstElementChild?.contains(block)).toBe(true);
     expect(sheet.firstElementChild?.nextElementSibling?.tagName).toBe('A');
-    expect(find(block, '[data-ui="account-address"]').textContent).toBe(SOLANA);
-    expect(find(block, '[data-ui="copy-address"]').textContent).toBe(en.copyAddress);
+    expect(find(block, '[data-ui="account-address"] [aria-hidden="true"]').textContent).toBe(
+      'So11…1112',
+    );
+    expect(find(block, '[data-ui="copy-button"]').getAttribute('aria-label')).toBe(en.copyAddress);
     await click(find(block, 'button[data-chain="robinhood"]'));
     await settle();
     expect(puts).toEqual(['robinhood']);

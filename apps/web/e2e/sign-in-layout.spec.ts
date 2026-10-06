@@ -133,7 +133,7 @@ test('the bar keeps its height: signed out, on /sign-in, and signed in', async (
   await control.click();
   const menu = page.locator('[data-ui="account-menu"]');
   await expect(menu.getByRole('group')).toBeVisible();
-  await expect(menu.locator('[data-ui="copy-address"]')).toBeVisible();
+  await expect(menu.getByRole('button', { name: 'Copy address' })).toBeVisible();
   await expect(menu.locator('button, a').last()).toHaveAttribute('data-ui', 'sign-out');
   expect(await height()).toBe(out);
   await page.keyboard.press('Escape');
