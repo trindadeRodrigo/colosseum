@@ -196,6 +196,8 @@ export const en = {
         'Protect $50,000 for 18 months, low risk',
         '$80,000 for $300 a month of income',
       ],
+      /** The sheet's source line, for an example sent as it is: its limits are the app's own. */
+      source: 'this example’s own limits',
     },
     readFailure: {
       unreachable:

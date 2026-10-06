@@ -205,6 +205,62 @@ describe('the goal screen, before anything is read', () => {
     expect(sheet(host)).toBeNull();
   });
 
+  it('reads every example back as it says, in each language, without asking the reader', async () => {
+    // what each chip says, field by field: the goal, the amount, the time frame, the risk, the income
+    const said = [
+      { goal: 'grow', amount: '2000', horizon: '120', risk: 'high', income: '' },
+      { goal: 'protect', amount: '50000', horizon: '18', risk: 'low', income: '' },
+      { goal: 'income', amount: '80000', horizon: '', risk: '', income: '300' },
+    ];
+    for (const lang of ['en', 'pt'] as const) {
+      const words = dictionary(lang);
+      expect(words.goal.examples.list).toHaveLength(said.length);
+      for (const [i, example] of words.goal.examples.list.entries()) {
+        const server = api({});
+        const host = await screen(lang);
+        await click(
+          [...host.querySelectorAll('button')].find(
+            (b) => b.textContent === example,
+          ) as HTMLElement,
+        );
+        await press(box(host), 'Enter');
+        await settle();
+        const want = said[i] as (typeof said)[number];
+        expect(
+          {
+            goal: find<HTMLSelectElement>(host, `#${FIELD_ID.goal}`).value,
+            amount: input(host, 'amount').value.replace(/\D/g, ''),
+            horizon: input(host, 'horizon').value,
+            risk: find<HTMLSelectElement>(host, `#${FIELD_ID.risk}`).value,
+            // the income field is there for a goal of income only
+            income: host.querySelector<HTMLInputElement>(`#${FIELD_ID.income}`)?.value ?? '',
+          },
+          `${lang}: ${example}`,
+        ).toEqual(want);
+        // the page's own example: the reader made for reais is not asked, and does not say so
+        expect(server.to('/goals')).toEqual([]);
+        expect(find(host, '#limits').textContent).toContain(words.goal.examples.source);
+        expect(host.textContent).not.toContain(words.goal.readerMissed('').slice(0, 20));
+        await unmountAll();
+        window.sessionStorage.clear();
+      }
+    }
+  });
+
+  it('reads an example the person changed like any other text', async () => {
+    const server = api({});
+    const host = await screen();
+    await click(
+      [...host.querySelectorAll('button')].find(
+        (b) => b.textContent === en.goal.examples.list[1],
+      ) as HTMLElement,
+    );
+    await type(box(host), `${en.goal.examples.list[1]} and some cash`);
+    await press(box(host), 'Enter');
+    await settle();
+    expect(server.to('/goals')).toHaveLength(1);
+  });
+
   it('does not send an empty box', async () => {
     const server = api({});
     const host = await screen();

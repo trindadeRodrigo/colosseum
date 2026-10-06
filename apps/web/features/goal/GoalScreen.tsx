@@ -19,6 +19,7 @@ import { rememberPlan } from '../order/plan-store';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { type BuildOutcome, buildPlan, planProvenance } from './build-plan';
 import { GOAL_DRAFT, GOAL_HANDOFF } from './draft';
+import { exampleDraft } from './examples';
 import { GOAL_TEXT, type ReadFailure, ReadGoalError, readGoal } from './read-goal';
 import {
   checkSheet,
@@ -147,6 +148,24 @@ export function GoalScreen() {
     setReading(true);
     setReadFailure(null);
     forget();
+    // One of this page's own examples, sent as it is: its limits are known here (examples.ts).
+    const known = exampleDraft(typed, t.goal.examples.list, lang);
+    if (known) {
+      const fields = fieldsOfDraft(known, lang);
+      setSheet({
+        goalText: typed.trim(),
+        source: {
+          method: t.goal.examples.source,
+          fetchedAt: new Date().toISOString(),
+          provenance: 'live',
+        },
+        firstReader: false,
+        read: fields,
+        fields,
+      });
+      setReading(false);
+      return;
+    }
     try {
       const reading = await readGoal(apiFetch, typed, lang);
       const fields = fieldsOfDraft(reading.draft, lang);

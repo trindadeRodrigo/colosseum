@@ -179,6 +179,7 @@ export const pt: Dictionary = {
         'Proteger US$ 50.000 por 18 meses, risco baixo',
         'US$ 80.000 para ter US$ 300 por mês de renda',
       ],
+      source: 'os limites do próprio exemplo',
     },
     readFailure: {
       unreachable:
