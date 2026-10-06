@@ -301,6 +301,70 @@ describe('the walk', () => {
     expect(swaps.length).toBe(fx.summary.rows);
   });
 
+  it('a window the endpoint timed out on is halved too, and an unreachable endpoint is waited out', async () => {
+    const { from, to } = fx.newestWindow;
+    const whole = requestKey(logQuery(swapFilters(robinhood, fx.pools)[1] as never, from, to));
+    let timedOut = 0;
+    let thrown = 0;
+    const rpc = replayRpc(fx.answers, (r) => {
+      if (requestKey(r) === whole && timedOut === 0) {
+        timedOut++;
+        return { error: { message: 'log query timed out' } };
+      }
+      return undefined;
+    });
+    const batch = rpc.batch;
+    rpc.batch = async (requests) => {
+      if (thrown === 0 && requests[0]?.method === 'eth_getLogs') {
+        thrown++;
+        throw new Error('RPC unreachable after 3 tries (HTTP 429)');
+      }
+      return batch(requests);
+    };
+    const waits: number[] = [];
+    const root = mkdtempSync(join(tmpdir(), 'risk-evm-history-'));
+    const events: Record<string, unknown>[] = [];
+    const summary = await runHistory(
+      {
+        rpc,
+        sleep: async (ms) => {
+          waits.push(ms);
+        },
+        log: (e) => events.push(e),
+        now: () => new Date(fx.recordedAt),
+      },
+      robinhood,
+      fx.pools,
+      root,
+      fx.opts,
+    );
+    expect(timedOut).toBe(1);
+    expect(summary).toMatchObject({
+      halvings: 1,
+      backoffs: 1,
+      rows: fx.summary.rows,
+      complete: true,
+    });
+    expect(events.find((e) => e.event === 'backoff')).toMatchObject({ attempt: 1, waitS: 30 });
+    expect(waits).toContain(30_000);
+    // a refusal for rate inside the reply is asked again after a wait, not halved and not fatal
+    let limited = 0;
+    const again = await walk((r) => {
+      if (r.method === 'eth_getLogs' && limited === 0) {
+        limited++;
+        return { error: { code: 429, message: 'rate limit exceeded' } };
+      }
+      return undefined;
+    });
+    expect(limited).toBe(1);
+    expect(again.summary).toMatchObject({
+      halvings: 0,
+      backoffs: 1,
+      rows: fx.summary.rows,
+      complete: true,
+    });
+  });
+
   it('any other refusal stops the walk; the next run resumes from the oldest window done', async () => {
     let windowsSeen = 0;
     const root = mkdtempSync(join(tmpdir(), 'risk-evm-history-'));
@@ -534,6 +598,37 @@ describe('prices by the hour and the quote in dollars', () => {
     expect(row('pa', 'all', '28d')?.source).toMatch(
       /Robinhood Chain Swap events \(history-evm-0.1/,
     );
+  });
+
+  it('a swap the event logged with nothing on either side (a v4 hook took it) is counted, not fatal', () => {
+    const hooked: SwapRow = {
+      ...swap(pa, h0 + 60, 100, 21),
+      kind: 'v4',
+      amount0: '0',
+      amount1: '0',
+    };
+    const sold: SwapRow = {
+      ...swap(pa, h0 + 90, 100, 22),
+      amount0: `${10n ** 18n}`,
+      amount1: '-100000000',
+    };
+    const built = buildFlowRows({
+      chain: robinhood,
+      pools: [pa],
+      decimals,
+      swaps: [hooked, sold],
+      span: { fromT: h0 - 3600, headT: h0 + 3600 },
+      regimeAt: regimeOfT,
+      fetchedAt: new Date('2026-10-06T00:00:00Z'),
+    });
+    const all = built.rows.find((r) => r.regime === 'all' && r.window === '28d');
+    expect(all).toMatchObject({ swaps: 2, unpricedSwaps: 1, sellSwaps: 1, sellUsd: 100 });
+    expect(built.perPool[0]).toMatchObject({
+      swaps: 2,
+      unpriced: 1,
+      withoutSide: 1,
+      unpricedReason: 'swap_without_a_side',
+    });
   });
 });
 

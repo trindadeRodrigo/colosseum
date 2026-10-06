@@ -11,6 +11,7 @@ import {
 } from '@colosseum/risk';
 import type { ChainConfig } from './config';
 import {
+  dollarPoolOf,
   flowSwap,
   HISTORY_METHOD,
   type HistoryPool,
@@ -60,6 +61,8 @@ export type FlowBuild = {
     swaps: number;
     duplicates: number;
     unpriced: number;
+    /** Swaps the event logged with nothing on either side (a v4 hook took them); counted, unvalued. */
+    withoutSide: number;
     unpricedReason: string | null;
     volume28dUsd: number;
   }>;
@@ -93,6 +96,7 @@ export function buildFlowRows(inp: {
     swaps.push(s);
   }
   const hours = hoursOf(inp.span.fromT, inp.span.headT);
+  const dollarPools = dollarPoolOf(inp.pools, inp.chain.dollar.address);
   const hourly = hourlyRows({
     pools: inp.pools,
     decimals: inp.decimals,
@@ -131,12 +135,18 @@ export function buildFlowRows(inp: {
     const buckets = new Map<string, FlowBucket>();
     const mine = byPool.get(p.address) ?? [];
     let unpriced = 0;
+    let withoutSide = 0;
     for (const s of mine) {
-      const f = d
-        ? flowSwap(s, { assetIsToken0: p.assetIsToken0, ...d })
-        : { t: s.t, side: 'buy' as const, quote: 0 };
+      let f: { t: number; side: 'sell' | 'buy'; quote: number } | null = null;
+      if (d)
+        try {
+          f = flowSwap(s, { assetIsToken0: p.assetIsToken0, ...d });
+        } catch {
+          // a v4 hook can take the whole swap itself and the manager logs Swap(…, 0, 0, …): counted, unvalued
+          withoutSide++;
+        }
       // a pool with unknown decimals has no priced hour: every swap counts, none is valued
-      addSwap(buckets, f, d ? hs : new Map(), inp.regimeAt);
+      addSwap(buckets, f ?? { t: s.t, side: 'buy', quote: 0 }, f ? hs : new Map(), inp.regimeAt);
     }
     const aggs = poolFlow(buckets.values(), hs.values(), to);
     for (const g of aggs)
@@ -164,13 +174,20 @@ export function buildFlowRows(inp: {
       });
     const all = aggs.find((g) => g.regime === 'all' && g.window === '28d');
     for (const b of buckets.values()) unpriced += b.unpriced;
+    const quoteStockHasDollarPool = !p.otherIsStock || dollarPools.has(p.other);
     const reason = !d
       ? 'quote_decimals_unknown'
-      : unpriced > 0
-        ? p.other === inp.chain.dollar.address.toLowerCase()
-          ? 'unexpected'
-          : 'no_dollar_price_for_the_quote_that_hour'
-        : null;
+      : unpriced === 0
+        ? null
+        : withoutSide === unpriced
+          ? 'swap_without_a_side'
+          : p.other === inp.chain.dollar.address.toLowerCase()
+            ? withoutSide > 0
+              ? 'swap_without_a_side_and_other'
+              : 'unexpected'
+            : !quoteStockHasDollarPool
+              ? 'quote_stock_has_no_dollar_pool_in_the_cut'
+              : 'no_dollar_price_for_the_quote_that_hour';
     perPool.push({
       pool: p.address,
       symbol: p.symbol,
@@ -179,6 +196,7 @@ export function buildFlowRows(inp: {
       swaps: mine.length,
       duplicates: duplicates.get(p.address) ?? 0,
       unpriced,
+      withoutSide,
       unpricedReason: reason,
       volume28dUsd: Math.round((all?.sellUsd ?? 0) + (all?.buyUsd ?? 0)),
     });

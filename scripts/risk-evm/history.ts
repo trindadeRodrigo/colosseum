@@ -9,13 +9,15 @@ import { TOPIC, words, wordToAddress, wordToInt } from './abi';
 import type { ChainConfig } from './config';
 import type { CutRow } from './cut';
 import { blockWindows, type RawLog, tooManyLogs, ZERO_ADDRESS } from './discovery';
-import type { Rpc } from './rpc';
+import { isTransient, type Rpc } from './rpc';
 
 export const HISTORY_METHOD = 'history-evm-0.1';
 /** Blocks per `eth_getLogs` query: the most the public endpoint allows (RU.2's probe). */
 export const DEFAULT_WINDOW = 100_000;
 /** Blocks between the headers a swap's time is interpolated from: 1 s off at most (the probe of Oct 6). */
 export const DEFAULT_HEADER_STEP = 10_000;
+/** The endpoint gave up on a window ("log query timed out", 2026-10-06): a smaller one answers. */
+export const QUERY_TIMED_OUT = /timed out|timeout/i;
 /** Log queries in one HTTP request: a halved busy window is heavy, and twelve in one request drew a 429. */
 export const DEFAULT_BATCH = 2;
 /** The waits before asking again when the endpoint cannot be reached; then the walk stops (it resumes). */
@@ -236,6 +238,7 @@ export async function walkSwaps(
   let halvings = 0;
   let rows = 0;
   let backoffs = 0;
+  let transient = 0;
   /** One HTTP request; when the endpoint cannot be reached (rate, outage) the walk waits and asks again. */
   const ask = async (requests: ReturnType<typeof logQuery>[]) => {
     for (let attempt = 0; ; attempt++) {
@@ -268,7 +271,17 @@ export async function walkSwaps(
         const r = replies[i];
         if (r?.error || !Array.isArray(r?.result)) {
           const message = r?.error?.message ?? 'no result';
-          if (tooManyLogs(message) && j.b > j.a) {
+          // refused for rate inside the reply (the client's own retries spent): asked again after a wait
+          if (r && isTransient(r)) {
+            const wait = backoff[Math.min(transient++, backoff.length - 1)] as number;
+            backoffs++;
+            deps.log({ event: 'backoff', attempt: transient, waitS: wait / 1000, error: message });
+            await deps.sleep(wait);
+            jobs.push(j);
+            continue;
+          }
+          // too many logs, too large a reply, or too slow to answer: the same window, halved
+          if ((tooManyLogs(message) || QUERY_TIMED_OUT.test(message)) && j.b > j.a) {
             const mid = j.a + Math.floor((j.b - j.a) / 2);
             jobs.push({ f: j.f, a: j.a, b: mid }, { f: j.f, a: mid + 1, b: j.b });
             wh++;
@@ -439,7 +452,6 @@ export function dollarPoolOf(pools: HistoryPool[], dollar: string): Map<string, 
  * the reference has no price leaves the quote without a dollar value, and its swaps unpriced.
  */
 export function hourlyRows(inp: PricingInput): HourRow[] {
-  const byPool = new Map<string, HistoryPool>(inp.pools.map((p) => [p.address, p]));
   const dollar = inp.dollar.toLowerCase();
   const dollarPool = dollarPoolOf(inp.pools, dollar);
   // the last swap of each pool in each hour
@@ -498,7 +510,7 @@ export function hourlyRows(inp: PricingInput): HourRow[] {
       if (p.other === dollar) {
         quoteUsd = 1;
         method = 'usdg_at_par';
-      } else if (p.otherIsStock && byPool.size) {
+      } else if (p.otherIsStock) {
         const r = usdOfStock(p.other, h);
         if (r) {
           quoteUsd = r.v;

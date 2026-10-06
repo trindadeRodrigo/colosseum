@@ -146,8 +146,8 @@ Quotes cannot be backfilled: the public RPC keeps a block's state for minutes, s
 | DU4 | A second oracle on Solana for the 8 stocks Scope does not price | Not now. The vault reads Scope only; the 8 are tracked and owner-signed. Pyth lists feeds for most of them, unverified on chain | default; Thom's side if reopened |
 | DU5 | Where the Robinhood loop and its database run | On the founder's machine, locally, with the local database, as a new job started on his word. Thom's loop keeps running until the new one has a clean day. A dedicated machine or cloud infrastructure may take it over later; nothing is built for that now | decided 2026-10-05 (founder) |
 | DU6 | A `chain` column on `risk_pools` and `risk_asset_snapshots` | Not in the first pass. An EVM address cannot collide with a Solana one, and `venue` names the chain's exchange. Asked for later, with the migration token | default |
-| DU7 | History on Robinhood Chain | Trades, not quotes: 30 days of `Swap` events for every pool of the cut, from the public RPC; no archive replay of quotes. The files live with the collector's, outside the repo | decided 2026-10-06 (founder) |
 | DU7 | ETFs in the Robinhood registry (SPY, GLD, SGOV, USO, SLV) | Ranked with the stocks: they are the same issuer's tokens in the same pools. Their class is set on the list row | default |
+| DU8 | History on Robinhood Chain | Trades, not quotes: 30 days of `Swap` events for every pool of the cut, from the public RPC; no archive replay of quotes. The files live with the collector's, outside the repo | decided 2026-10-06 (founder) |
 
 Settled by the founder on 2026-10-05 (gate `UNIVERSE`): the rule of §1, both chains, and the oracle as a condition of automatic rebalancing.
 

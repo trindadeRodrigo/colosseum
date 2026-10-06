@@ -91,7 +91,7 @@ const P = defaultRegimeParams(
   JSON.parse(readFileSync('fixtures/risk/us-market-holidays.json', 'utf8')),
 );
 const regimeOfT = (t: number): Regime => regimeAt(new Date(t * 1000), P);
-// a walk still in progress is imported from the oldest block it has; data_from says so
+// a walk still in progress is imported from the oldest block it has: its hourly rows start there, so `hours` says so
 const span = { fromT: cursor.complete ? cursor.fromT : cursor.oldestDoneT, headT: cursor.headT };
 const built = buildFlowRows({
   chain,
