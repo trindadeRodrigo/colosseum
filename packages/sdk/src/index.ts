@@ -5,4 +5,4 @@
 
 export * from './executor';
 export * from './guard';
-export { basketIdOfPlan } from './plan';
+export { basketIdOfPlan, familyIdOf } from './plan';
