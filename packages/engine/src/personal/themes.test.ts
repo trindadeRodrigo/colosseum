@@ -58,6 +58,7 @@ const namesHeld = (plan: PersonalProposal) =>
 const removedWhy = (plan: PersonalProposal, ref: string) =>
   plan.removed.find((r) => r.ref === ref)?.reasons.map((r) => r.rule) ?? [];
 const every = (cents: number) => Math.round(cents * 100);
+const roomyLines = () => ctxWith({ params: { ...PERSONAL_PARAMS, maxLinesPerChain: 16 } });
 
 describe('the list is data', () => {
   it('every file under content/themes validates, sits at <chain>/<slug>.json, and names tokens its chain lists', () => {
@@ -97,14 +98,22 @@ describe('the list is data', () => {
     ).toThrow('a theme has two lists on one chain');
   });
 
-  it('the list is pinned by the hash of the inputs', () => {
+  it('the hash of the inputs pins the lists the sheet names, and only those', () => {
     const one = compose(themed(), shelf, ctx).inputsHash;
     const two = compose(themed(), shelf, ctxWith({ themes: [{ ...ai, version: 2 }] })).inputsHash;
     expect(two).not.toBe(one);
-    // A plan with no theme lists hashes as it did before them.
-    expect(compose(sheet(), shelf, fixtureContext()).inputsHash).toBe(
-      compose(sheet(), shelf, fixtureContext({ themes: [] })).inputsHash,
+    // A plan with no theme sleeve hashes exactly as it did with no list given.
+    const plain = compose(sheet(), shelf, fixtureContext()).inputsHash;
+    expect(compose(sheet(), shelf, ctx).inputsHash).toBe(plain);
+    expect(compose(sheet(), shelf, ctxWith({ themes: [{ ...ai, version: 9 }] })).inputsHash).toBe(
+      plain,
     );
+    // Editing a list the sheet does not name re-hashes nothing.
+    const other: ThemeList = { ...ai, slug: 'chips', version: 1 };
+    expect(compose(themed(), shelf, ctxWith({ themes: [ai, other] })).inputsHash).toBe(one);
+    expect(
+      compose(themed(), shelf, ctxWith({ themes: [ai, { ...other, version: 2 }] })).inputsHash,
+    ).toBe(one);
   });
 });
 
@@ -138,18 +147,28 @@ describe('a split goal 50% / theme 50%', () => {
     );
   });
 
-  it('at medium risk, the cap on one issuer holds the names to its room, and the rest is said and held in dollar yield or cash', () => {
+  it('THEME-FIRST: at medium risk the theme keeps its share of the one issuer, and the goal’s SPYx shrinks, said', () => {
     const plan = run(themed());
     const theme = themeOf(plan);
     expect(theme?.amountUsd).toBe(5000);
     const held = [...namesHeld(plan).values()];
-    // Every stock token on Solana has one issuer (Backed): 70% of the plan at medium risk, and the
-    // goal's SPYx and GLDx already hold $4,250 of it.
-    expect(held.reduce((n, x) => n + x, 0)).toBe(2750);
-    expect(new Set(held).size).toBe(1);
-    expect(allReasons(plan).some((r) => r.rule === 'OVERFLOW_ISSUER')).toBe(true);
-    const outside = (theme?.holds ?? []).filter((h) => !SYMBOLS.has(symbolOf(h.assetId)));
-    expect(outside.reduce((n, h) => n + every(h.amountUsd), 0)).toBe(every(2250));
+    // Every stock token on Solana has one issuer (Backed): 70% of the plan at medium risk. The theme
+    // holds its $5,000 in full, in equal parts; the goal's GLDx keeps $250, and SPYx takes the rest.
+    expect(every(held.reduce((n, x) => n + x, 0))).toBe(every(5000));
+    expect(Math.max(...held) - Math.min(...held)).toBeLessThanOrEqual(0.01);
+    expect(theme?.holds.every((h) => SYMBOLS.has(symbolOf(h.assetId)))).toBe(true);
+    const spy = plan.lines.find((l) => l.assetId === 'solana:spyx');
+    expect(spy?.amountUsd).toBe(1750);
+    expect(spy?.reasons.map((r) => r.rule)).toContain('ISSUER_CAP');
+    const said = allReasons(plan).find((r) => r.rule === 'OVERFLOW_ISSUER');
+    expect(said?.params.assets).toBe('SPY');
+    expect(said?.params.usd).toBe(2250);
+  });
+
+  it('THEME-FIRST holds when the goal follows a shared portfolio of the same issuer', () => {
+    // The Seven is held whole only if it fits beside the theme; else it is opened and shrinks.
+    const plan = run(themed({ themes: ['the-seven'] }));
+    expect(every([...namesHeld(plan).values()].reduce((n, x) => n + x, 0))).toBe(every(5000));
   });
 
   it('the theme in Portuguese names it IA, with the reason in Portuguese', () => {
@@ -211,7 +230,7 @@ describe('C17: at most the lines left, each within its cap, the same under shuff
         expect(removedWhy(plan, symbol), symbol).toContain('MAX_LINES');
       // Each within its cap: the cap on one stock, its exit ceiling, its issuer (violations checks
       // them all); and the names not at a limit in equal parts.
-      const stockCap = (10_000 * 3500) / 10_000;
+      const stockCap = (10_000 * (PERSONAL_PARAMS.capPerStockBps.high ?? 0)) / 10_000;
       for (const usd of held.values()) expect(usd).toBeLessThanOrEqual(stockCap);
     },
   );
@@ -364,4 +383,120 @@ describe('the three candidates with a theme sleeve', () => {
       }
     },
   );
+});
+
+describe('C17: names on a tier that tie are ordered by id, whatever the order given', () => {
+  it('with nothing measured, the tier-B names fill the lines left in the order of their ids', () => {
+    // NVDAx and TSLAx are tier A, the other five tier B at one ceiling: a tie, broken by id.
+    const c = ctxWith({
+      liquidity: fixtureLiquidity({}),
+      params: { ...PERSONAL_PARAMS, maxLinesPerChain: 6 },
+    });
+    const s = themed({ risk: 'high' });
+    const base = run(s, c);
+    const held = [...namesHeld(base).keys()].sort();
+    const tierB = ['AAPLx', 'AMZNx', 'GOOGLx', 'METAx', 'MSFTx'];
+    const takenB = held.filter((x) => tierB.includes(x));
+    expect(held).toEqual(expect.arrayContaining(['NVDAx', 'TSLAx']));
+    expect(takenB.length).toBeGreaterThan(0);
+    expect(takenB.length).toBeLessThan(tierB.length);
+    // By id: solana:aaplx < solana:amznx < solana:googlx < solana:metax < solana:msftx.
+    expect(takenB).toEqual(tierB.slice(0, takenB.length));
+    for (let seed = 1; seed <= 20; seed += 1) {
+      const order = (key: string) =>
+        [...key].reduce((n, ch) => (n * seed + ch.charCodeAt(0)) % 9973, seed);
+      const assets = [...shelf.assets].sort((a, b) => order(a.id) - order(b.id));
+      const members = [...ai.members].sort((a, b) => order(a.symbol) - order(b.symbol));
+      expect(compose(s, { ...shelf, assets }, { ...c, themes: [{ ...ai, members }] })).toEqual(
+        base,
+      );
+    }
+  });
+});
+
+describe('what the person already holds counts in the theme sleeve, as in the goal', () => {
+  it('NVDA held in full: the theme buys no NVDAx, says so, and the others take more', () => {
+    const s = themed({ risk: 'high', rules: { useHoldings: true, glide: true } });
+    const plain = run(s);
+    const plan = run(s, ctxWith({ holdings: [{ underlying: 'NVDA', valueUsd: 9000 }] }));
+    expect(namesHeld(plain).has('NVDAx')).toBe(true);
+    expect(namesHeld(plan).has('NVDAx')).toBe(false);
+    expect(removedWhy(plan, 'NVDAx')).toEqual(['ALREADY_HELD_NONE']);
+    const texts = allReasons(plan).map((r) => r.text);
+    expect(texts).toContain('No NVDA: you already hold $9,000 of it.');
+    const others = [...namesHeld(plan).values()];
+    expect(every(others.reduce((n, x) => n + x, 0))).toBe(every(5000));
+    expect(texts).toContain(
+      'A larger share here: you already hold $9,000 of NVDA, so this plan buys less of it.',
+    );
+  });
+
+  it('NVDA held in part: NVDAx is bought less, and its line says why', () => {
+    const s = themed({ risk: 'high', rules: { useHoldings: true, glide: true } });
+    const plan = run(s, ctxWith({ holdings: [{ underlying: 'NVDA', valueUsd: 300 }] }));
+    const nvda = namesHeld(plan).get('NVDAx') ?? 0;
+    const others = [...namesHeld(plan).entries()].filter(([k]) => k !== 'NVDAx').map(([, v]) => v);
+    expect(nvda).toBeGreaterThan(0);
+    expect(nvda).toBeLessThan(Math.min(...others));
+    const line = plan.lines.find((l) => l.assetId === 'solana:nvdax');
+    expect(line?.reasons.map((r) => r.rule)).toContain('ALREADY_HELD');
+  });
+
+  it('with holdings switched off, a holding changes nothing', () => {
+    const s = themed({ risk: 'high', rules: { useHoldings: false, glide: true } });
+    const withHeld = compose(
+      s,
+      shelf,
+      ctxWith({ holdings: [{ underlying: 'NVDA', valueUsd: 9000 }] }),
+    );
+    expect(withHeld.lines).toEqual(compose(s, shelf, ctx).lines);
+  });
+});
+
+describe('edge cases of the names', () => {
+  it('two tokens under one symbol: the first by id the person can hold is the name’s', () => {
+    const nvda = shelf.assets.find((a) => a.id === 'solana:nvdax');
+    if (!nvda) throw new Error('no NVDAx');
+    const twin = { ...nvda, id: 'solana:nvdax-a', issuer: 'Twin issuer', blockedCountries: ['BR'] };
+    const second = { ...nvda, id: 'solana:nvdax-b', issuer: 'Twin issuer' };
+    const doubled = {
+      ...shelf,
+      assets: [...shelf.assets.filter((a) => a.id !== 'solana:nvdax'), second, twin],
+    };
+    const plan = run(themed({ risk: 'high' }), roomyLines(), doubled);
+    expect(plan.lines.some((l) => l.assetId === 'solana:nvdax-b')).toBe(true);
+    expect(plan.lines.some((l) => l.assetId === 'solana:nvdax-a')).toBe(false);
+    // Both blocked: the name is left out for the first one's reason.
+    const both = editShelf(doubled, (a) =>
+      a.id === 'solana:nvdax-b' ? { ...a, blockedCountries: ['BR'] } : a,
+    );
+    expect(removedWhy(run(themed({ risk: 'high' }), roomyLines(), both), 'NVDAx')).toEqual([
+      'NOT_IN_COUNTRY',
+    ]);
+  });
+
+  it('a list with a stock and a gold token of one issuer reads each name’s own issuer room', () => {
+    const mixed: ThemeList = {
+      ...ai,
+      slug: 'mixed',
+      members: [
+        { symbol: 'GLDx', reason: { en: 'gold', pt: 'ouro' } },
+        { symbol: 'NVDAx', reason: { en: 'chips', pt: 'chips' } },
+      ],
+    };
+    // The plan's issuer cap (dollar yield, gold and cash) at 1%: gold is held to it, the stock is not.
+    const c = ctxWith({
+      themes: [mixed],
+      params: { ...PERSONAL_PARAMS, issuerCapBps: 100, maxLinesPerChain: 16 },
+    });
+    const plan = run(
+      sheet({ risk: 'high', sleeves: [{ kind: 'theme', shareBps: 10_000, theme: 'mixed' }] }),
+      c,
+    );
+    const holds = new Map(
+      (themeOf(plan, 'mixed')?.holds ?? []).map((h) => [symbolOf(h.assetId), h.amountUsd]),
+    );
+    expect(holds.get('GLDx')).toBe(100);
+    expect(holds.get('NVDAx')).toBe(3500);
+  });
 });
