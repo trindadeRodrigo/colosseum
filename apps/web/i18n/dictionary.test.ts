@@ -65,6 +65,7 @@ const BEARING_NAMES = new Set(
  * fragments, kept as he wrote them. Each is named: a new one has to be added here on purpose.
  */
 const BEARING_FRAGMENTS = new Set([
+  'bearing.chain.sideBySide.caption',
   'bearing.dex.capacity.aria',
   'bearing.dex.capacity.note',
   'bearing.dex.liquidity.aria',

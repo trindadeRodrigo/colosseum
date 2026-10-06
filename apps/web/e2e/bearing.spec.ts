@@ -200,13 +200,90 @@ test.describe('Bearing analytics on the recorded risk API', () => {
     await open(page, '/analytics/methodology');
     await expect(page.getByRole('heading', { name: 'What a number means' })).toBeVisible();
     await check(page, 'methodology');
+    // the section names the chain it reads in the address once it opens (Solana, with none chosen)
     await page.goto('/risk');
-    await expect(page).toHaveURL(/\/analytics\/stocks$/);
+    await expect(page).toHaveURL(/\/analytics\/stocks(\?chain=solana)?$/);
     await page.goto('/risk/methodology');
-    await expect(page).toHaveURL(/\/analytics\/methodology$/);
+    await expect(page).toHaveURL(/\/analytics\/methodology(\?chain=solana)?$/);
     await page.clock.setFixedTime(CAPTURED + 3 * 3600e3);
     await page.goto('/risk/gldx');
-    await expect(page).toHaveURL(/\/analytics\/commodities\?asset=GLDx$/);
+    await expect(page).toHaveURL(/\/analytics\/commodities\?asset=GLDx(&chain=solana)?$/);
     await expect(page.getByRole('button', { name: /Assets/ })).toContainText('GLDx');
+  });
+});
+
+// Bearing per chain (web/bearing-chains). Robinhood Chain's answers come from a fixture
+// (fixtures/risk/bearing-robinhood.json), which the recording predates: every one of its figures is
+// labelled fixture, so the page shows it with the MOCK plate and never as a measurement.
+test.describe('Bearing on each chain', () => {
+  async function openOn(page: Page, path: string) {
+    await page.clock.setFixedTime(CAPTURED + 3 * 3600e3);
+    await page.goto(path);
+    await expect(page.locator('main [data-ui="waiting"]')).toHaveCount(0, { timeout: 60_000 });
+    await expect(page.locator('main p', { hasText: /^(Reading|Pricing)/ })).toHaveCount(0, {
+      timeout: 60_000,
+    });
+  }
+  const pressed = (page: Page) =>
+    page.locator('[data-ui="bearing-chain"] button[aria-pressed="true"]');
+
+  test('Robinhood Chain: its stocks, each figure and row named by chain, fixture never live', async ({
+    page,
+  }) => {
+    await openOn(page, '/analytics/stocks?chain=robinhood');
+    await expect(pressed(page)).toHaveText('Robinhood Chain');
+    const kpis = page.locator('main [data-ui="bearing-kpi"]');
+    await expect(kpis).toHaveCount(5);
+    for (const badge of await kpis.locator('[data-ui="chain-badge"]').all())
+      await expect(badge).toHaveText('Robinhood Chain');
+    // its pools are not in Bearing's registry yet: said, by the chain's name, with no figure
+    await expect(kpis.first()).toContainText('not collected yet on Robinhood Chain');
+    const row = page.locator('section[aria-labelledby="bearing-table"] tbody tr');
+    await expect(row.first().locator('th')).toContainText('NVDA');
+    await expect(row.first().locator('[data-ui="chain-badge"]')).toHaveText('Robinhood Chain');
+    // every figure is the fixture's, so every one has the MOCK plate: none is shown as live
+    const figures = page.locator('main [data-ui="figure"]:not([data-state="missing"])');
+    expect(await figures.count()).toBeGreaterThan(0);
+    await expect(page.locator('main [data-ui="figure"][data-state="live"]')).toHaveCount(0);
+    await expect(page.locator('main [data-ui="figure"][data-state="stale"]')).toHaveCount(0);
+    await check(page, 'stocks on Robinhood Chain');
+  });
+
+  test('the toggle moves the page to Solana and back, in the address, and the menu keeps it', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openOn(page, '/analytics/stocks');
+    await expect(page).toHaveURL(/\/analytics\/stocks\?chain=solana$/);
+    await expect(pressed(page)).toHaveText('Solana');
+    await pinned(page, 'stocks on Solana');
+    await page
+      .locator('[data-ui="bearing-chain"]')
+      .getByRole('button', { name: 'Robinhood Chain' })
+      .click();
+    await expect(page).toHaveURL(/\/analytics\/stocks\?chain=robinhood$/);
+    await expect(
+      page.locator('main [data-ui="bearing-kpi"] [data-ui="chain-badge"]').first(),
+    ).toHaveText('Robinhood Chain');
+    await expect(page.locator('#bearing-nav a', { hasText: 'Lending' })).toHaveAttribute(
+      'href',
+      '/analytics/lending?chain=robinhood',
+    );
+    await page.locator('[data-ui="bearing-chain"]').getByRole('button', { name: 'Solana' }).click();
+    await expect(page).toHaveURL(/\/analytics\/stocks\?chain=solana$/);
+    await expect(
+      page.locator('main [data-ui="bearing-kpi"] [data-ui="chain-badge"]').first(),
+    ).toHaveText('Solana');
+  });
+
+  test('a page Robinhood Chain has nothing collected for says so, axe clean', async ({ page }) => {
+    for (const id of ['lending', 'stablecoins'] as const) {
+      await openOn(page, `/analytics/${id}?chain=robinhood`);
+      await expect(page.locator('[data-ui="bearing-not-on-chain"]')).toHaveText(
+        'Not collected yet on Robinhood Chain: Bearing measures this page on Solana only for now.',
+      );
+      await expect(page.locator('main [data-ui="figure"]')).toHaveCount(0);
+      await check(page, `${id} on Robinhood Chain`);
+    }
   });
 });

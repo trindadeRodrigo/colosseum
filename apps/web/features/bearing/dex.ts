@@ -14,7 +14,8 @@ import type {
 // The stocks and commodities pages, worked out from the API's answers (analytics2.js, dexRender).
 // Every derived figure is a fact whose method names its parts and its formula.
 
-export const COMMODITIES = ['GLDx'];
+// Gold: the xStock on Solana, the stock token on Robinhood Chain.
+export const COMMODITIES = ['GLDx', 'GLD'];
 export const HOUR = 3600e3;
 export const DAY = 864e5;
 export const hourOf = (t: string | number) => Math.floor(new Date(t).getTime() / HOUR) * HOUR;
@@ -39,6 +40,7 @@ export function capFact(a: AssetRow | undefined, r: string, body: AssetsBody): F
     regime: r,
     method: `largest sale at cost ≤ τ = ${pct(body.tau)} on the fitted sell curve`,
     methodVersion: body.methodVersion,
+    provenance: a?.provenance,
   });
 }
 
@@ -187,6 +189,7 @@ export function capacitySeries(
           fetchedAt: last,
           method: `${src.method}; summed over the selected assets per UTC hour`,
           methodVersion: src.methodVersion,
+          provenance: src.provenance,
           quality: lastP.ns < n || lastP.lb ? 'lower_bound' : 'measured',
         })
       : none('not_collected');
