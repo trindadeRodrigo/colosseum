@@ -8,8 +8,8 @@ import { R, type Res } from './data';
 import { capFact } from './dex';
 import { FlowChart } from './Flow';
 import type { Fact } from './fact';
-import { pct, REGIMES, usd, usd1 } from './format';
-import { Card, Count, Fig, Kpi, Kpis, Loading, Reason, useWords } from './parts';
+import { REGIMES } from './format';
+import { Card, Count, Fig, Kpi, Kpis, Loading, Reason, useFmt, useWords } from './parts';
 import { chunksFor, parseAmount, type SimPath, simPaths } from './sim';
 import { etLabel, regimeAt } from './time';
 import type { RecovBody, SheetBody, SplitBody } from './types';
@@ -120,6 +120,7 @@ function SimForm({ b }: { b: Base }) {
 }
 
 function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
+  const fm = useFmt();
   const { reader, clock } = useBearing();
   const words = useWords();
   const t = words.sim;
@@ -140,7 +141,7 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
       ]),
     [id, n, chunks, reader],
   );
-  if (!rs || !body || !cap) return <Loading>{t.pricing(usd(n), id)}</Loading>;
+  if (!rs || !body || !cap) return <Loading>{t.pricing(fm.usd(n), id)}</Loading>;
   const [s, recov, sc, fNow, fSplit] = rs as [
     Res<SheetBody>,
     Res<RecovBody>,
@@ -164,6 +165,7 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
     chunkSheet: sc,
     recov,
     words,
+    fmt: fm,
   });
   const ex = best?.ex ?? null;
   const parts: Array<[string, Fact | undefined]> = ex
@@ -204,13 +206,13 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
       cell: (p) =>
         p.assumption ? (
           <>
-            <Fig f={p.capF} fmt={usd1} />
+            <Fig f={p.capF} fmt={fm.usd1} />
             <span className="block font-mono text-b-meta text-muted-foreground">
               {t.capacityNotCost}
             </span>
           </>
         ) : (
-          <Fig f={p.total} fmt={pct} />
+          <Fig f={p.total} fmt={fm.pct} />
         ),
     },
     {
@@ -221,7 +223,7 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
         p.assumption ? (
           <span className="text-muted-foreground">{t.neverChosen}</span>
         ) : (
-          <Fig f={p.loss} fmt={usd} />
+          <Fig f={p.loss} fmt={fm.usd} />
         ),
     },
   ];
@@ -248,7 +250,7 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
       numeric: true,
       cell: (g) => {
         const e = costIn(g);
-        return e ? <Fig f={e.total} fmt={pct} /> : <Reason code="no_samples_in_regime" />;
+        return e ? <Fig f={e.total} fmt={fm.pct} /> : <Reason code="no_samples_in_regime" />;
       },
     },
     {
@@ -257,7 +259,7 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
       numeric: true,
       cell: (g) => {
         const e = costIn(g);
-        return e ? <Fig f={e.lossUsd} fmt={usd} /> : <Reason code="no_samples_in_regime" />;
+        return e ? <Fig f={e.lossUsd} fmt={fm.usd} /> : <Reason code="no_samples_in_regime" />;
       },
     },
   ];
@@ -266,19 +268,19 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
       <div className="mt-4">
         <Kpis>
           <Kpi label={t.kpi.sale} note={t.kpi.saleNote(id)}>
-            <Count>{usd(n)}</Count>
+            <Count>{fm.usd(n)}</Count>
           </Kpi>
           <Kpi label={t.kpi.now} note={etLabel(at, words.heat.days)}>
             <span className="font-sans text-[1.0625rem]">{words.regimes[r]}</span>
           </Kpi>
           <Kpi label={t.kpi.capacity} note={t.kpi.capacityNote}>
-            <Fig f={cap} fmt={usd1} />
+            <Fig f={cap} fmt={fm.usd1} />
           </Kpi>
           <Kpi
             label={t.kpi.loss}
-            note={best?.loss.value != null ? t.kpi.lossNote(pct(best.loss.value / n)) : ''}
+            note={best?.loss.value != null ? t.kpi.lossNote(fm.pct(best.loss.value / n)) : ''}
           >
-            {best ? <Fig f={best.loss} fmt={usd} /> : <Reason code="no_samples_in_regime" />}
+            {best ? <Fig f={best.loss} fmt={fm.usd} /> : <Reason code="no_samples_in_regime" />}
           </Kpi>
         </Kpis>
       </div>
@@ -319,7 +321,7 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
                 <div key={label} className="border-t border-border pt-1.5">
                   <dt className="text-caption text-muted-foreground">{label}</dt>
                   <dd className="m-0 mt-0.5 font-mono text-[0.875rem]/5 font-medium">
-                    <Fig f={f} fmt={pct} />
+                    <Fig f={f} fmt={fm.pct} />
                   </dd>
                 </div>
               ) : null,
@@ -328,7 +330,7 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
               <div className="border-t border-border pt-1.5">
                 <dt className="text-caption text-muted-foreground">{t.parts.networkFee}</dt>
                 <dd className="m-0 mt-0.5 font-mono text-[0.875rem]/5 font-medium">
-                  <Fig f={ex.networkFeeUsd} fmt={usd} />
+                  <Fig f={ex.networkFeeUsd} fmt={fm.usd} />
                 </dd>
               </div>
             )}

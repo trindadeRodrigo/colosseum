@@ -9,9 +9,9 @@ import { Icon } from '../../components/ui/Icon';
 import { useLang } from '../../i18n/I18nProvider';
 import { useBearing } from './BearingProvider';
 import { RISK_API } from './data';
-import { hhmm, iso } from './format';
+import { hhmm } from './format';
 import { href, METHODOLOGY, PAGES } from './pages';
-import { useWords } from './parts';
+import { useFmt, useWords } from './parts';
 import { etLabel, regimeAt } from './time';
 
 // The frame of Bearing's analytics (Rodrigo's Analytics 2.0): a retractable side menu beside the page,
@@ -160,6 +160,7 @@ export function BearingShell({ children }: { children: ReactNode }) {
 export function Banner() {
   const { mode, newest, clock } = useBearing();
   const t = useWords();
+  const fm = useFmt();
   const w = t.banner;
   const box =
     'mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 border border-l-2 border-border border-l-primary px-3 py-2';
@@ -185,7 +186,7 @@ export function Banner() {
           <b className="font-semibold">
             {newest
               ? w.stale(
-                  iso(newest).replace('T', ' ').replace('Z', ' UTC'),
+                  fm.second(newest),
                   formatAge((clock.now - Date.parse(newest)) / 1000)?.short ?? w.unknownAge,
                 )
               : w.noReading}

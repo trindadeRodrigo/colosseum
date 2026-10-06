@@ -74,7 +74,7 @@ test.describe('Bearing analytics on the recorded risk API', () => {
       await check(page, id);
     });
 
-  test('in Portuguese for a Portuguese reader, axe clean, the figures unchanged', async ({
+  test('in Portuguese for a Portuguese reader, its figures in Brazil’s format, axe clean', async ({
     page,
     context,
     baseURL,
@@ -92,7 +92,8 @@ test.describe('Bearing analytics on the recorded risk API', () => {
     const kpi = page.locator('[data-ui="bearing-kpi"]', {
       has: page.getByText('Coberto agora', { exact: true }),
     });
-    await expect(kpi).toContainText('≥ 6.82%');
+    // the same figure, written as Brazil writes it
+    await expect(kpi).toContainText('≥ 6,82%');
     await check(page, 'lending in Portuguese');
   });
 

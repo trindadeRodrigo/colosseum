@@ -22,7 +22,7 @@ export const DAY_MS = 864e5;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** Ticks on a time axis, at most `maxN`, in UTC, with the format that suits their step. */
-export function timeTicks(t0: number, t1: number, maxN: number) {
+export function timeTicks(t0: number, t1: number, maxN: number, locale = 'en-US') {
   const span = t1 - t0;
   const steps = [1, 3, 6, 12, 24, 48, 168, 336]
     .map((h) => h * HOUR_MS)
@@ -41,14 +41,25 @@ export function timeTicks(t0: number, t1: number, maxN: number) {
   const fmt = (v: number) => {
     const d = new Date(v);
     if (step < DAY_MS) return `${String(d.getUTCHours()).padStart(2, '0')}:00`;
-    if (step < 30 * DAY_MS) return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
-    return d.getUTCMonth() === 0 ? String(d.getUTCFullYear()) : (MONTHS[d.getUTCMonth()] as string);
+    const month = locale.startsWith('en')
+      ? (MONTHS[d.getUTCMonth()] as string)
+      : new Intl.DateTimeFormat(locale, { month: 'short', timeZone: 'UTC' })
+          .format(d)
+          .replace('.', '');
+    if (step < 30 * DAY_MS) return `${d.getUTCDate()} ${month}`;
+    return d.getUTCMonth() === 0 ? String(d.getUTCFullYear()) : month;
   };
   return { ticks, fmt };
 }
 
 /** A time as the readout prints it: `2026-10-03 15:00 UTC`, or the date alone for daily points. */
-export function fullDate(t: number, hourly: boolean): string {
+export function fullDate(t: number, hourly: boolean, locale = 'en-US'): string {
+  if (!locale.startsWith('en')) {
+    const o: Intl.DateTimeFormatOptions = hourly
+      ? { dateStyle: 'short', timeStyle: 'short', timeZone: 'UTC' }
+      : { dateStyle: 'short', timeZone: 'UTC' };
+    return `${new Intl.DateTimeFormat(locale, o).format(new Date(t))}${hourly ? ' UTC' : ''}`;
+  }
   const s = new Date(t).toISOString();
   return hourly ? `${s.slice(0, 16).replace('T', ' ')} UTC` : s.slice(0, 10);
 }

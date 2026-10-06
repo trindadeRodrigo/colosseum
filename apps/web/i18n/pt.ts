@@ -847,7 +847,7 @@ export const pt: Dictionary = {
         capacity: 'Capacidade de saída agora',
         capacityNote: (regime: string) => `venda com custo ≤ 1%, ${regime}`,
         volume: 'Volume 24 h',
-        volumeNote: (to: string) => `até ${to} UTC, o histórico de swaps mais recente`,
+        volumeNote: (to: string) => `até ${to}, o histórico de swaps mais recente`,
         lp: 'Fatia dos 3 maiores LPs',
         lpNote: 'maior pool, por posição',
       },
@@ -902,7 +902,7 @@ export const pt: Dictionary = {
         both: 'Liquidez por faixa de preço, os dois lados',
         failed: (error: string) =>
           `${error}. O coletor registra só os pools que formam os 80% maiores do TVL do registro; escolha um sem “não registrado”, ou espere pela leitura ao vivo.`,
-        recordedAt: (at: string) => `o registro horário mais recente do coletor, ${at} UTC`,
+        recordedAt: (at: string) => `o registro horário mais recente do coletor, ${at}`,
         liveAt: (at: string) => `lido ao vivo às ${at} UTC`,
         note: (when: string) =>
           `guardada a até ±30% do preço, a partir de ${when}; o ativo espera acima do preço (vendido conforme sobe), a moeda de cotação abaixo (usada para comprar conforme cai); + e − para zoom`,

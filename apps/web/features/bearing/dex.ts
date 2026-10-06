@@ -147,6 +147,7 @@ export function capacitySeries(
   selIds: readonly string[],
   dd: Record<string, DexAsset>,
   partial: PartialW = (k, n) => `(${k} of ${n} assets)`,
+  money: (v: number) => string = usd1,
 ) {
   type B = { t: number; s: number; b: number; ns: number; nb: number; lb?: boolean };
   const bucket = new Map<number, B>();
@@ -177,7 +178,7 @@ export function capacitySeries(
     }
   }
   const pts = [...bucket.values()].sort((x, y) => x.t - y.t);
-  const part = (v: number, k: number) => (k < n ? `${usd1(v)} ${partial(k, n)}` : usd1(v));
+  const part = (v: number, k: number) => (k < n ? `${money(v)} ${partial(k, n)}` : money(v));
   const lastP = pts.filter((q) => q.ns).pop();
   const fact: Fact =
     src && lastP
@@ -211,6 +212,7 @@ export function tvlSeries(
   hs: ReadonlyArray<Res<LiqHistBody>>,
   n: number,
   partial: PartialW = (k, of) => `(${k} of ${of} pools)`,
+  money: (v: number) => string = usd1,
 ) {
   const CARRY = 6 * HOUR;
   let src: LiqHistBody | null = null;
@@ -263,7 +265,7 @@ export function tvlSeries(
   const value: TPoint[] = pts.map((q) => ({
     t: q.t,
     v: q.k ? q.v : null,
-    show: q.k ? `${usd1(q.v)}${q.k < n ? ` ${partial(q.k, n)}` : ''}` : null,
+    show: q.k ? `${money(q.v)}${q.k < n ? ` ${partial(q.k, n)}` : ''}` : null,
   }));
   const held: TPoint[] = pts.map((q) => ({ t: q.t, v: q.k ? q.a : null }));
   return { fact, value, held };

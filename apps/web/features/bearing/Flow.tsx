@@ -2,8 +2,8 @@
 import { useState } from 'react';
 import type { Res } from './data';
 import { mk } from './fact';
-import { iso, num, pct, pct0, type Regime, short, usd, usd1, venueW } from './format';
-import { SrcLine, useReason, useWords } from './parts';
+import { type Regime, short, venueW } from './format';
+import { SrcLine, useFmt, useReason, useWords } from './parts';
 import type { SimPath } from './sim';
 import type { SplitBody } from './types';
 
@@ -54,6 +54,7 @@ export function FlowChart(o: {
   splitChunk: Res<SplitBody> | null;
   chunks: number;
 }) {
+  const fm = useFmt();
   const [focus, setFocus] = useState<number | null>(null);
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -73,7 +74,7 @@ export function FlowChart(o: {
   const w = useWords();
   const say = useReason();
   const t = w.flow;
-  const start = node('start', 0, `${o.id} · ${usd(o.n)}`, t.position(w.regimes[o.r]), 'pos');
+  const start = node('start', 0, `${o.id} · ${fm.usd(o.n)}`, t.position(w.regimes[o.r]), 'pos');
   const recv = node('recv', 4, t.received, t.receivedSub, 'recv');
   const notes: string[] = [];
   let rank = 1;
@@ -81,27 +82,31 @@ export function FlowChart(o: {
     const f = p === o.best ? 1 : ++rank;
     const cls = `f${f}${p === o.best ? ' best' : ''}${p.assumption ? ' assume' : ''}`;
     const pn = node(`path:${p.key}`, 1, p.name, p.when, `path ${cls}`);
-    edge(start, pn, cls, '', 2.5, t.tips.into(usd(o.n), o.id, p.name));
+    edge(start, pn, cls, '', 2.5, t.tips.into(fm.usd(o.n), o.id, p.name));
     const sp = p.key === 'now' ? o.splitNow : p.key === 'split' ? o.splitChunk : null;
     const lossTxt =
-      p.loss.value != null ? usd1(o.n - p.loss.value) : p.assumption ? t.assumption : t.notMeasured;
+      p.loss.value != null
+        ? fm.usd1(o.n - p.loss.value)
+        : p.assumption
+          ? t.assumption
+          : t.notMeasured;
     const lossTip =
       p.loss.value != null
         ? t.tips.receive(
             p.name,
-            usd(o.n - p.loss.value),
-            usd(p.loss.value),
-            pct(p.loss.value / o.n),
+            fm.usd(o.n - p.loss.value),
+            fm.usd(p.loss.value),
+            fm.pct(p.loss.value / o.n),
           )
         : `${p.name}: ${lossTxt}`;
     if (sp?.ok && sp.body.legs.length) {
       const sb = sp.body;
       const per = p.key === 'split' ? o.n / o.chunks : o.n;
       const quotes: Record<string, number> = {};
-      const when = `${iso(sb.fetchedAt).slice(0, 16).replace('T', ' ')} UTC, ${w.regimes[sb.regime as keyof typeof w.regimes] ?? sb.regime}`;
+      const when = `${fm.minute(sb.fetchedAt)}, ${w.regimes[sb.regime as keyof typeof w.regimes] ?? sb.regime}`;
       notes.push(
         sb.notionalUsd !== Math.round(per)
-          ? t.nearest(p.name, usd(sb.notionalUsd), when)
+          ? t.nearest(p.name, fm.usd(sb.notionalUsd), when)
           : t.exact(p.name, when),
       );
       for (const l of sb.legs) {
@@ -109,7 +114,7 @@ export function FlowChart(o: {
           `pool:${l.pool}`,
           2,
           `${venueW(l.venue)} · ${l.quote || w.dex.liquidity.quoteNotNamed}`,
-          `${short(l.pool)}${l.feeRate != null ? t.fee(pct(l.feeRate)) : ''}`,
+          `${short(l.pool)}${l.feeRate != null ? t.fee(fm.pct(l.feeRate)) : ''}`,
           'pool',
           l.pool,
         );
@@ -120,14 +125,14 @@ export function FlowChart(o: {
           pn,
           pool,
           cls,
-          `${pct0(l.share)} · ${usd1(amt)}${k > 1 ? ` ×${k}` : ''}`,
+          `${fm.pct0(l.share)} · ${fm.usd1(amt)}${k > 1 ? ` ×${k}` : ''}`,
           1 + 5 * l.share,
           t.tips.leg(
             p.name,
-            pct(l.share),
-            usd(amt),
+            fm.pct(l.share),
+            fm.usd(amt),
             k,
-            tok != null ? `${num(tok, tok < 10 ? 2 : 1)} ${o.id}` : null,
+            tok != null ? `${fm.num(tok, tok < 10 ? 2 : 1)} ${o.id}` : null,
             `${venueW(l.venue)} ${short(l.pool)}`,
           ),
         );
@@ -140,12 +145,12 @@ export function FlowChart(o: {
           pool,
           qn,
           cls,
-          l.costPct != null ? t.cost(pct(l.costPct)) : t.noCost,
+          l.costPct != null ? t.cost(fm.pct(l.costPct)) : t.noCost,
           1 + 5 * l.share,
           t.tips.legCost(
             p.name,
-            l.costPct != null ? pct(l.costPct) : null,
-            l.feeRate != null ? pct(l.feeRate) : null,
+            l.costPct != null ? fm.pct(l.costPct) : null,
+            l.feeRate != null ? fm.pct(l.feeRate) : null,
             l.quote || null,
           ),
         );
@@ -157,14 +162,14 @@ export function FlowChart(o: {
           byId.get(`q:${qk}`) as Node,
           recv,
           cls,
-          qk === 'usd' ? lossTxt : t.ofIt(pct0(share)),
+          qk === 'usd' ? lossTxt : t.ofIt(fm.pct0(share)),
           1 + 5 * share,
-          qk === 'usd' ? lossTip : t.tips.sol(p.name, pct(share)),
+          qk === 'usd' ? lossTip : t.tips.sol(p.name, fm.pct(share)),
         );
       }
     } else if (p.assumption) {
       const iss = node('issuer', 3, t.issuer, t.issuerSub, 'quote assume');
-      edge(pn, iss, cls, usd1(o.n), 2, t.tips.redeem(usd(o.n)));
+      edge(pn, iss, cls, fm.usd1(o.n), 2, t.tips.redeem(fm.usd(o.n)));
       edge(iss, recv, cls, t.assumption, 2, t.tips.issuerPays);
     } else {
       const why =
@@ -264,7 +269,7 @@ export function FlowChart(o: {
           viewBox={`0 0 ${W} ${H}`}
           width="100%"
           role="img"
-          aria-label={t.aria(usd(o.n), o.id)}
+          aria-label={t.aria(fm.usd(o.n), o.id)}
           className="mx-auto block h-auto min-w-[880px]"
           style={{ maxWidth: W }}
         >

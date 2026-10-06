@@ -4,8 +4,8 @@ import type { HeatCell } from '../../components/ui/heatmap';
 import { useAnswer, useBearing } from './BearingProvider';
 import { R } from './data';
 import { type Fact, maxT, mk } from './fact';
-import { iso, num, pct, REGIMES, usd } from './format';
-import { Fig, Reason, useWords } from './parts';
+import { iso, REGIMES } from './format';
+import { Fig, Reason, useFmt, useWords } from './parts';
 import type { AssetRow, HeatmapBody } from './types';
 
 // One asset's sell cost by hour of week (bearing-heatmap-tile.md; Rodrigo's first view drew it in an
@@ -19,13 +19,14 @@ import type { AssetRow, HeatmapBody } from './types';
 export const HEAT_SIZE = 50_000;
 
 export function HeatTile({ asset }: { asset: AssetRow }) {
+  const fm = useFmt();
   const { reader, clock } = useBearing();
   const t = useWords().heat;
   const res = useAnswer(
     () => reader.get<HeatmapBody>(R.heatmap(asset.symbol, HEAT_SIZE)),
     [asset.symbol, reader],
   );
-  const title = t.head(asset.symbol, usd(HEAT_SIZE));
+  const title = t.head(asset.symbol, fm.usd(HEAT_SIZE));
   if (!res) return <p className="text-caption text-muted-foreground">{t.reading}</p>;
   if (!res.ok || !res.body.cells.length)
     return (
@@ -41,7 +42,7 @@ export function HeatTile({ asset }: { asset: AssetRow }) {
   const meta = {
     source: 'risk_asset_snapshots (GET /risk/assets/:id/heatmap)',
     fetchedAt: at,
-    method: `median of the best single-pool sell cost per snapshot in that ET hour at ${usd(n)}; the route gives no measurement time, so the time is the asset’s newest capacity reading`,
+    method: `median of the best single-pool sell cost per snapshot in that ET hour at ${fm.usd(n)}; the route gives no measurement time, so the time is the asset’s newest capacity reading`,
     methodVersion: 'risk-0.3',
   };
   const fact = (v: number, samples: number): Fact => mk(v, { ...meta, samples, sizeUsd: n });
@@ -60,25 +61,25 @@ export function HeatTile({ asset }: { asset: AssetRow }) {
   return (
     <HeatmapTile
       head={title}
-      kpi={<Fig f={fact(worst.medianCost, worst.samples)} fmt={pct} />}
+      kpi={<Fig f={fact(worst.medianCost, worst.samples)} fmt={fm.pct} />}
       emph={t.thinnest(when(worst.hourOfWeekEt))}
       note={t.note}
       cells={cells}
       deeper="low"
-      fmt={pct}
-      what={t.what(usd(n))}
+      fmt={fm.pct}
+      what={t.what(fm.usd(n))}
       zone="ET"
-      least={<Fig f={fact(worst.medianCost, worst.samples)} fmt={pct} />}
-      most={<Fig f={fact(best.medianCost, best.samples)} fmt={pct} />}
-      cellFigure={(c) => <Fig f={fact(c.value, c.samples)} fmt={pct} />}
+      least={<Fig f={fact(worst.medianCost, worst.samples)} fmt={fm.pct} />}
+      most={<Fig f={fact(best.medianCost, best.samples)} fmt={fm.pct} />}
+      cellFigure={(c) => <Fig f={fact(c.value, c.samples)} fmt={fm.pct} />}
       meta={t.meta(
-        num(samples),
+        fm.num(samples),
         h.cells.length,
         `${h.timezone ?? 'America/New_York'}, ${h.hourOfWeek ?? 'Mon 00:00 = 0'}`,
-        iso(at),
+        at ? fm.second(at) : iso(at),
       )}
       state={clock.stale ? { kind: 'stale', ageSec: age } : { kind: 'live' }}
-      aria={t.aria(asset.symbol, usd(n))}
+      aria={t.aria(asset.symbol, fm.usd(n))}
       labels={t}
     />
   );

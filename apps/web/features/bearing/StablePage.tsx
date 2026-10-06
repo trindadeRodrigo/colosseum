@@ -6,7 +6,7 @@ import { Segmented, TimeChart } from '../../components/ui/TimeChart';
 import { useAnswer, useBearing } from './BearingProvider';
 import { ChartGrid, picked, RANGES, usePageState } from './DexPage';
 import { none, sumFact } from './fact';
-import { num, pct, usd1 } from './format';
+
 import { AvailChart } from './LendingPage';
 import {
   histFact,
@@ -31,6 +31,7 @@ import {
   Pie,
   Reason,
   SrcLine,
+  useFmt,
   useWords,
 } from './parts';
 
@@ -60,6 +61,7 @@ export function StablePage() {
 type Token = { t: string; rs: LendRow[] } | { t: string; rs: null };
 
 function StableView({ rows }: { rows: LendRow[] }) {
+  const fm = useFmt();
   const { clock } = useBearing();
   const wds = useWords();
   const w = wds.stable;
@@ -102,14 +104,19 @@ function StableView({ rows }: { rows: LendRow[] }) {
   const src = selRows.map(lendSrc).find(Boolean) ?? null;
   let chart: ReactNode;
   if (metric === 'tvl') {
-    const sup = markPartial(summed(selRows, 'suppliedUsd', now), wds.lending.supplied.partial);
+    const sup = markPartial(
+      summed(selRows, 'suppliedUsd', now),
+      wds.lending.supplied.partial,
+      fm.usd1,
+    );
     const tf = seriesFact(sup, src, 'supplied summed over the selected reserves');
     chart = (
       <TimeChart
         title={w.supplied.title}
         labels={wds.chart}
+        locale={fm.locale}
         tools={tools}
-        value={<Fig f={tf} fmt={usd1} />}
+        value={<Fig f={tf} fmt={fm.usd1} />}
         note={w.supplied.note}
         ranges={RANGES}
         range={range}
@@ -118,7 +125,7 @@ function StableView({ rows }: { rows: LendRow[] }) {
         panes={[
           {
             h: 260,
-            fmt: usd1,
+            fmt: fm.usd1,
             series: [
               { type: 'area', cls: 's1', label: wds.lending.supplied.supplied, data: sup },
               {
@@ -128,6 +135,7 @@ function StableView({ rows }: { rows: LendRow[] }) {
                 data: markPartial(
                   summed(selRows, 'borrowedUsd', now),
                   wds.lending.supplied.partial,
+                  fm.usd1,
                 ),
               },
             ],
@@ -182,7 +190,7 @@ function StableView({ rows }: { rows: LendRow[] }) {
       key: 'n',
       header: w.table.reserves,
       numeric: true,
-      cell: (x) => (x.rs ? <Count>{num(x.rs.length)}</Count> : missing),
+      cell: (x) => (x.rs ? <Count>{fm.num(x.rs.length)}</Count> : missing),
     },
     {
       key: 'sup',
@@ -195,7 +203,7 @@ function StableView({ rows }: { rows: LendRow[] }) {
               x.rs.map((row) => histFact(row, 'suppliedUsd', 'supplied')),
               { method: 'sum of supplied over the reserves' },
             )}
-            fmt={usd1}
+            fmt={fm.usd1}
           />
         ) : (
           missing
@@ -209,7 +217,7 @@ function StableView({ rows }: { rows: LendRow[] }) {
         x.rs ? (
           <Fig
             f={sumFact(x.rs.map(availOf), { method: 'sum of available over the reserves' })}
-            fmt={usd1}
+            fmt={fm.usd1}
           />
         ) : (
           missing
@@ -224,7 +232,7 @@ function StableView({ rows }: { rows: LendRow[] }) {
         const big = biggest(x.rs);
         return big.sheet.ok ? (
           <>
-            <Fig f={big.sheet.body.withdrawal.shareLentOut} fmt={pct} />
+            <Fig f={big.sheet.body.withdrawal.shareLentOut} fmt={fm.pct} />
             {note(x.rs)}
           </>
         ) : (
@@ -242,7 +250,7 @@ function StableView({ rows }: { rows: LendRow[] }) {
         const big = biggest(x.rs);
         return big.sheet.ok ? (
           <>
-            <Fig f={big.sheet.body.lenders.top1Share} fmt={pct} />
+            <Fig f={big.sheet.body.lenders.top1Share} fmt={fm.pct} />
             {note(x.rs)}
           </>
         ) : (
@@ -286,19 +294,19 @@ function StableView({ rows }: { rows: LendRow[] }) {
       </div>
       <Kpis>
         <Kpi label={w.kpi.supplied}>
-          <Fig f={supF} fmt={usd1} />
+          <Fig f={supF} fmt={fm.usd1} />
         </Kpi>
         <Kpi label={w.kpi.borrowed}>
-          <Fig f={borF} fmt={usd1} />
+          <Fig f={borF} fmt={fm.usd1} />
         </Kpi>
         <Kpi label={w.kpi.available} note={w.kpi.availableNote}>
-          <Fig f={avF} fmt={usd1} />
+          <Fig f={avF} fmt={fm.usd1} />
         </Kpi>
         <Kpi label={w.kpi.lent}>
-          <Fig f={shF} fmt={pct} />
+          <Fig f={shF} fmt={fm.pct} />
         </Kpi>
         <Kpi label={w.kpi.reserves} note={w.kpi.reservesNote}>
-          <Count>{num(selRows.length)}</Count>
+          <Count>{fm.num(selRows.length)}</Count>
         </Kpi>
       </Kpis>
       <ChartGrid
@@ -310,7 +318,7 @@ function StableView({ rows }: { rows: LendRow[] }) {
               value: histFact(row, 'suppliedUsd', 'supplied').value || 0,
             }))}
             total={supF.value || 0}
-            totalHtml={<Fig f={supF} fmt={usd1} />}
+            totalHtml={<Fig f={supF} fmt={fm.usd1} />}
           />
         }
         chart={chart}

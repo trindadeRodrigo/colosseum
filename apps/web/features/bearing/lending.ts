@@ -92,8 +92,9 @@ export function summed(
 export function markPartial(
   pts: SumPoint[],
   partial: (k: number, n: number) => string = (k, n) => `(${k} of ${n} pools)`,
+  money: (v: number) => string = usd1,
 ): SumPoint[] {
-  for (const p of pts) if (p.v != null && p.partial) p.show = `${usd1(p.v)} ${partial(p.k, p.of)}`;
+  for (const p of pts) if (p.v != null && p.partial) p.show = `${money(p.v)} ${partial(p.k, p.of)}`;
   return pts;
 }
 
@@ -396,8 +397,9 @@ export function availability(
   rows: readonly LendRow[],
   now: number,
   partial?: (k: number, n: number) => string,
+  money?: (v: number) => string,
 ) {
-  const av = markPartial(summed(rows, 'availableUsd', now), partial);
+  const av = markPartial(summed(rows, 'availableUsd', now), partial, money);
   const s2 = summed(rows, 'suppliedUsd', now);
   const b2 = summed(rows, 'borrowedUsd', now);
   const src = rows.map(lendSrc).find(Boolean) ?? null;

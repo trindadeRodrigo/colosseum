@@ -2,10 +2,11 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { cn } from '../../components/ui/cn';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
-import { useT } from '../../i18n/I18nProvider';
+import { LOCALE } from '../../i18n';
+import { useLang, useT } from '../../i18n/I18nProvider';
 import { useBearing } from './BearingProvider';
 import { cleanSource, type Fact, factDetail, pinSource } from './fact';
-import { iso, pct, reasonW, usd1 } from './format';
+import { type Fmt, fmtFor, iso, reasonW } from './format';
 
 // The pieces every Bearing page is built from (Rodrigo's Analytics 2.0): a figure with its pin, the
 // reason in place of a missing one, the row of counters, the asset and pool filters, the pie of value
@@ -16,6 +17,18 @@ import { iso, pct, reasonW, usd1 } from './format';
 /** The page's words, in the person's language. */
 export function useWords() {
   return useT().bearing;
+}
+
+const FMT = new Map<string, Fmt>();
+/** The page's figures and dates in the person's locale: en-US as Rodrigo wrote them, pt-BR for Brazil. */
+export function useFmt(): Fmt {
+  const locale = LOCALE[useLang()] === 'pt-BR' ? 'pt-BR' : 'en-US';
+  let f = FMT.get(locale);
+  if (!f) {
+    f = fmtFor(locale);
+    FMT.set(locale, f);
+  }
+  return f;
 }
 
 /** A reason code in the person's language; one the dictionary does not know, as the API wrote it. */
@@ -329,6 +342,7 @@ export function Pie({
   totalHtml: ReactNode;
   note?: string;
 }) {
+  const fm = useFmt();
   const [on, setOn] = useState<number | null>(null);
   const t = useWords().pie;
   const slices = given.filter((s) => s.value > 0).sort((a, b) => b.value - a.value);
@@ -356,7 +370,7 @@ export function Pie({
     a0 = a1;
     return { s, i, color, d, full };
   });
-  const share = (v: number) => pct(v / total);
+  const share = (v: number) => fm.pct(v / total);
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the titles, the legend and the table
     <div data-ui="bearing-pie" onMouseLeave={() => setOn(null)}>
@@ -389,7 +403,7 @@ export function Pie({
                   opacity={on != null && on !== i ? 0.35 : 1}
                   onMouseEnter={() => setOn(i)}
                 >
-                  <title>{`${s.label} · ${usd1(s.value)} · ${share(s.value)}`}</title>
+                  <title>{`${s.label} · ${fm.usd1(s.value)} · ${share(s.value)}`}</title>
                 </circle>
               ) : (
                 // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the titles, the legend and the table
@@ -403,7 +417,7 @@ export function Pie({
                   opacity={on != null && on !== i ? 0.35 : 1}
                   onMouseEnter={() => setOn(i)}
                 >
-                  <title>{`${s.label} · ${usd1(s.value)} · ${share(s.value)}`}</title>
+                  <title>{`${s.label} · ${fm.usd1(s.value)} · ${share(s.value)}`}</title>
                 </path>
               ),
             )}
@@ -413,7 +427,7 @@ export function Pie({
               textAnchor="middle"
               className="fill-foreground font-mono text-[13px] font-medium"
             >
-              {on != null && top[on] ? usd1(top[on].value) : ''}
+              {on != null && top[on] ? fm.usd1(top[on].value) : ''}
             </text>
             <text
               x={72}

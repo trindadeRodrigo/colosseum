@@ -69,6 +69,8 @@ export type TimeChartProps = {
   empty?: ReactNode;
   /** The chart's own words: the range tabs, the readout. */
   labels?: Partial<ChartLabels>;
+  /** The locale of the dates on the axis and in the readout. */
+  locale?: string;
   className?: string;
 };
 
@@ -330,7 +332,9 @@ export function TimeChart(props: TimeChartProps) {
         data-ui="chart-readout"
         className="flex min-h-5 flex-wrap gap-x-4 gap-y-0.5 font-mono text-b-meta/5 text-muted-foreground"
       >
-        {readT != null && <Readout t={readT} panes={panes} hourly={hourly} text={text} />}
+        {readT != null && (
+          <Readout t={readT} panes={panes} hourly={hourly} text={text} locale={props.locale} />
+        )}
       </div>
       <div
         ref={box}
@@ -366,7 +370,12 @@ export function TimeChart(props: TimeChartProps) {
               />
             ))}
             {(() => {
-              const tt = timeTicks(geo.t0, geo.tMax, Math.max(2, Math.floor(plotW / 90)));
+              const tt = timeTicks(
+                geo.t0,
+                geo.tMax,
+                Math.max(2, Math.floor(plotW / 90)),
+                props.locale,
+              );
               return tt.ticks.map((t) => {
                 const px = X(t);
                 if (px < 20 || px > 8 + plotW - 10) return null;
@@ -386,7 +395,9 @@ export function TimeChart(props: TimeChartProps) {
               });
             })()}
             <line x1={8} x2={8 + plotW} y1={plotH} y2={plotH} stroke="var(--input)" />
-            {at != null && hover && <Cross t={at} py={hover.py} geo={geo} W={W} hourly={hourly} />}
+            {at != null && hover && (
+              <Cross t={at} py={hover.py} geo={geo} W={W} hourly={hourly} locale={props.locale} />
+            )}
           </svg>
         )}
       </div>
@@ -525,12 +536,14 @@ function Cross({
   geo,
   W,
   hourly,
+  locale,
 }: {
   t: number;
   py: number | null;
   geo: { X: (t: number) => number; plotW: number; plotH: number; panes: Geo[] };
   W: number;
   hourly: boolean;
+  locale?: string;
 }) {
   const px = geo.X(t);
   const pane = py == null ? undefined : geo.panes.find((g) => py >= g.top && py <= g.top + g.h);
@@ -547,7 +560,7 @@ function Cross({
       <Tag
         x={px}
         y={geo.plotH + 11}
-        text={fullDate(t, hourly).replace(' UTC', '')}
+        text={fullDate(t, hourly, locale).replace(' UTC', '')}
         anchor="middle"
       />
       {pane && py != null && (
@@ -596,15 +609,17 @@ function Readout({
   panes,
   hourly,
   text,
+  locale,
 }: {
   t: number;
   panes: readonly TimePane[];
   hourly: boolean;
   text: ChartLabels;
+  locale?: string;
 }) {
   return (
     <>
-      <span className="text-foreground">{fullDate(t, hourly)}</span>
+      <span className="text-foreground">{fullDate(t, hourly, locale)}</span>
       {panes.flatMap((p) =>
         p.series.map((s) => {
           const q = s.data.find((d) => d.t === t);

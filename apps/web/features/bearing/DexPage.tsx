@@ -23,7 +23,7 @@ import {
   vol24,
 } from './dex';
 import { type Fact, mk, none } from './fact';
-import { capW, iso, num, pct, usd1 } from './format';
+import { type Fmt, iso } from './format';
 import { HeatTile } from './HeatTile';
 import {
   Card,
@@ -37,6 +37,7 @@ import {
   Pie,
   Reason,
   SrcLine,
+  useFmt,
   useReason,
   useWords,
 } from './parts';
@@ -119,6 +120,7 @@ function DexView({
   ids: string[];
   dd: Record<string, DexAsset>;
 }) {
+  const fm = useFmt();
   const { clock } = useBearing();
   const all = useWords();
   const t = all.dex;
@@ -129,7 +131,7 @@ function DexView({
   const assetOpts = ids.map((id) => ({
     id,
     label: id,
-    sub: t.poolsSub(num(poolsOf(dd[id]).length)),
+    sub: t.poolsSub(fm.num(poolsOf(dd[id]).length)),
   }));
   const selIds = ids.filter((id) => picked(sel.assets, id));
   const many = selIds.length > 1;
@@ -139,7 +141,7 @@ function DexView({
   const poolOpts = allPools.map((p) => ({
     id: p.address,
     label: poolLabel(p, many, t.liquidity.quoteNotNamed),
-    sub: usd1(p.tvlUsd || 0),
+    sub: fm.usd1(p.tvlUsd || 0),
   }));
   const pools = allPools.filter((p) => picked(sel.pools, p.address));
   const k = dexCounters(body, selIds, dd, pools, r, sel.pools != null && sel.pools.length === 0);
@@ -178,22 +180,19 @@ function DexView({
       </div>
       <Kpis>
         <Kpi label={t.kpi.tvl} note={t.kpi.tvlNote}>
-          <Fig f={k.tvl} fmt={usd1} />
+          <Fig f={k.tvl} fmt={fm.usd1} />
         </Kpi>
-        <Kpi label={t.kpi.pools} note={t.kpi.poolsNote(num(allPools.length))}>
-          <Count>{num(pools.length)}</Count>
+        <Kpi label={t.kpi.pools} note={t.kpi.poolsNote(fm.num(allPools.length))}>
+          <Count>{fm.num(pools.length)}</Count>
         </Kpi>
         <Kpi label={t.kpi.capacity} note={t.kpi.capacityNote(rw)}>
-          <Fig f={k.cap} fmt={usd1} />
+          <Fig f={k.cap} fmt={fm.usd1} />
         </Kpi>
-        <Kpi
-          label={t.kpi.volume}
-          note={k.volTo ? t.kpi.volumeNote(iso(k.volTo).slice(0, 16).replace('T', ' ')) : ''}
-        >
-          <Fig f={k.vol} fmt={usd1} />
+        <Kpi label={t.kpi.volume} note={k.volTo ? t.kpi.volumeNote(fm.minute(k.volTo)) : ''}>
+          <Fig f={k.vol} fmt={fm.usd1} />
         </Kpi>
         <Kpi label={t.kpi.lp} note={t.kpi.lpNote}>
-          <Fig f={k.lp} fmt={pct} />
+          <Fig f={k.lp} fmt={fm.pct} />
         </Kpi>
       </Kpis>
       <ChartGrid
@@ -205,7 +204,7 @@ function DexView({
               value: p.tvlUsd || 0,
             }))}
             total={k.tvl.value || 0}
-            totalHtml={<Fig f={k.tvl} fmt={usd1} />}
+            totalHtml={<Fig f={k.tvl} fmt={fm.usd1} />}
             note={t.pie.note}
           />
         }
@@ -250,7 +249,7 @@ function DexView({
             captionHidden
             rows={selIds}
             rowKey={(id) => id}
-            columns={assetColumns(body, byId, dd, pools, sel.pools != null, t.table)}
+            columns={assetColumns(body, byId, dd, pools, sel.pools != null, t.table, fm)}
           />
         ) : (
           <p>
@@ -272,12 +271,13 @@ function assetColumns(
   pools: readonly Pool[],
   poolsChosen: boolean,
   t: Dictionary['bearing']['dex']['table'],
+  fm: Fmt,
 ): Column<string>[] {
   const cap = (r: keyof typeof t.capacity): Column<string> => ({
     key: r,
     header: t.capacity[r],
     numeric: true,
-    cell: (id) => <Fig f={capFact(byId.get(id), r, body)} fmt={capW} />,
+    cell: (id) => <Fig f={capFact(byId.get(id), r, body)} fmt={fm.capW} />,
   });
   return [
     {
@@ -302,10 +302,10 @@ function assetColumns(
         if (!d?.pools.ok) return <Reason code={d?.pools.reason} />;
         return (
           <>
-            <Count>{num(pools.filter((p) => p.assetSymbol === id).length)}</Count>
+            <Count>{fm.num(pools.filter((p) => p.assetSymbol === id).length)}</Count>
             {poolsChosen && (
               <span className="block font-mono text-b-meta text-muted-foreground">
-                {t.poolsOf(num(poolsOf(d).length))}
+                {t.poolsOf(fm.num(poolsOf(d).length))}
               </span>
             )}
           </>
@@ -320,7 +320,7 @@ function assetColumns(
       key: 'vol',
       header: t.volume,
       numeric: true,
-      cell: (id) => <Fig f={dd[id] ? vol24(dd[id].sheet) : none('not_collected')} fmt={usd1} />,
+      cell: (id) => <Fig f={dd[id] ? vol24(dd[id].sheet) : none('not_collected')} fmt={fm.usd1} />,
     },
     {
       key: 'lp',
@@ -329,7 +329,7 @@ function assetColumns(
       cell: (id) => {
         const s = dd[id]?.sheet;
         return s?.ok ? (
-          <Fig f={s.body.liquidityStability.lpTop3Share} fmt={pct} />
+          <Fig f={s.body.liquidityStability.lpTop3Share} fmt={fm.pct} />
         ) : (
           <Reason code={s?.reason} />
         );
@@ -374,16 +374,18 @@ function CapacityChart({
   range: number;
   setRange: (r: number) => void;
 }) {
+  const fm = useFmt();
   const all = useWords();
   const t = all.dex.capacity;
-  const s = capacitySeries(selIds, dd, t.partial);
+  const s = capacitySeries(selIds, dd, t.partial, fm.usd1);
   return (
     <TimeChart
       title={t.title}
       labels={all.chart}
+      locale={fm.locale}
       tools={tools}
-      value={<Fig f={s.fact} fmt={usd1} />}
-      note={t.note(s.from ? iso(s.from).slice(0, 10) : t.firstCurve)}
+      value={<Fig f={s.fact} fmt={fm.usd1} />}
+      note={t.note(s.from ? fm.day(s.from) : t.firstCurve)}
       ranges={RANGES}
       range={range}
       onRange={setRange}
@@ -391,7 +393,7 @@ function CapacityChart({
       panes={[
         {
           h: 260,
-          fmt: usd1,
+          fmt: fm.usd1,
           series: [
             { type: 'area', cls: 's1', label: t.sell, data: s.sell },
             { type: 'line', cls: 's2', label: t.buy, data: s.buy },
@@ -424,6 +426,7 @@ function TvlChart({
   range: number;
   setRange: (r: number) => void;
 }) {
+  const fm = useFmt();
   const { reader } = useBearing();
   const all = useWords();
   const say = useReason();
@@ -445,16 +448,17 @@ function TvlChart({
     );
   if (!hs) return <Loading>{t.reading(rec.length)}</Loading>;
   const n = rec.length;
-  const s = tvlSeries(hs, n, t.partial);
+  const s = tvlSeries(hs, n, t.partial, fm.usd1);
   const recTvl = rec.reduce((a, p) => a + (p.tvlUsd || 0), 0);
   const share = tvl ? recTvl / tvl : null;
   return (
     <TimeChart
       title={t.recorded}
       labels={all.chart}
+      locale={fm.locale}
       tools={tools}
-      value={<Fig f={s.fact} fmt={usd1} />}
-      note={t.note(n, pools.length, share != null ? pct(share) : null)}
+      value={<Fig f={s.fact} fmt={fm.usd1} />}
+      note={t.note(n, pools.length, share != null ? fm.pct(share) : null)}
       ranges={RANGES}
       range={range}
       onRange={setRange}
@@ -462,7 +466,7 @@ function TvlChart({
       panes={[
         {
           h: 260,
-          fmt: usd1,
+          fmt: fm.usd1,
           series: [
             { type: 'area', cls: 's1', label: t.value, data: s.value },
             { type: 'line', cls: 's2', label: t.held, data: s.held },
@@ -491,6 +495,7 @@ function LiquidityChart({
   many: boolean;
   tools: ReactNode;
 }) {
+  const fm = useFmt();
   const { reader } = useBearing();
   const all = useWords();
   const say = useReason();
@@ -541,13 +546,13 @@ function LiquidityChart({
     const total: Fact = mk((d.totalAssetUsd || 0) + (d.totalQuoteUsd || 0), meta);
     const when =
       d.basis === 'recorded'
-        ? t.recordedAt(iso(d.fetchedAt).slice(0, 16).replace('T', ' '))
+        ? t.recordedAt(fm.minute(d.fetchedAt))
         : t.liveAt(iso(d.fetchedAt).slice(11, 16));
     body = (
       <DistChart
         title={t.both}
         labels={all.chart}
-        value={<Fig f={total} fmt={usd1} />}
+        value={<Fig f={total} fmt={fm.usd1} />}
         note={t.note(when)}
         bands={d.bands.map((x) => ({
           lo: x.priceLow,
@@ -557,8 +562,8 @@ function LiquidityChart({
         }))}
         mid={d.midPrice}
         unit={`${d.quote ?? ''}/${d.asset ?? ''}`}
-        fmtP={(v) => num(v, v < 10 ? 4 : 2)}
-        fmtY={usd1}
+        fmtP={(v) => fm.num(v, v < 10 ? 4 : 2)}
+        fmtY={fm.usd1}
         asset={d.asset || t.asset}
         quote={d.quote || t.quote}
         aria={t.aria(d.pool)}
@@ -581,7 +586,7 @@ function LiquidityChart({
               <option key={p.address} value={p.address}>
                 {t.option(
                   poolLabel(p, many, t.quoteNotNamed),
-                  usd1(p.tvlUsd || 0),
+                  fm.usd1(p.tvlUsd || 0),
                   b.recorded.has(p.address),
                 )}
               </option>

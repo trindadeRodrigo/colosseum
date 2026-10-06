@@ -249,8 +249,11 @@ describe('the language of the person', () => {
     expect(text).toContain('Capacidade de saída agora');
     expect(text).toContain('Ver como tabela');
     expect(text).toContain(DISCLAIMER.pt);
-    // the figures do not change with the language
-    expect(find(host, '[data-ui="bearing-kpis"]').textContent).toContain('$184.1K');
+    // the same figures, written as Brazil writes them
+    const kpis = (find(host, '[data-ui="bearing-kpis"]').textContent ?? '').replace(/\u00a0/g, ' ');
+    expect(kpis).toContain('US$ 184,1 mil');
+    expect(kpis).toContain('30,33%');
+    expect(kpis).not.toContain('$184.1K');
     for (const phrase of english) expect(text, phrase).not.toContain(phrase);
   });
 

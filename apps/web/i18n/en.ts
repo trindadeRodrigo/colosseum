@@ -865,7 +865,7 @@ export const en = {
         capacity: 'Exit capacity now',
         capacityNote: (regime: string) => `sale at ≤ 1% cost, ${regime}`,
         volume: 'Volume 24 h',
-        volumeNote: (to: string) => `to ${to} UTC, the newest swap history`,
+        volumeNote: (to: string) => `to ${to}, the newest swap history`,
         lp: 'Top-3 LP share',
         lpNote: 'largest pool, by position',
       },
@@ -920,7 +920,7 @@ export const en = {
         both: 'Liquidity by price band, both sides',
         failed: (error: string) =>
           `${error}. The collector records only the pools that make up the top 80% of registry TVL; pick one without “not recorded”, or wait for the live read.`,
-        recordedAt: (at: string) => `the collector’s newest hourly recording, ${at} UTC`,
+        recordedAt: (at: string) => `the collector’s newest hourly recording, ${at}`,
         liveAt: (at: string) => `read live ${at} UTC`,
         note: (when: string) =>
           `held within ±30% of the price, from ${when}; the asset waits above the price (sold into as it rises), the quote below (bought with as it falls); + and − zoom`,

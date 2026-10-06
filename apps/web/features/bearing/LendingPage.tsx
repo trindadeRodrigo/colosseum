@@ -7,7 +7,7 @@ import { useAnswer, useBearing } from './BearingProvider';
 import { ChartGrid, picked, RANGES, usePageState } from './DexPage';
 import { inPool, R, type Res } from './data';
 import { type Fact, mk, none, sumFact } from './fact';
-import { iso, minus, nf, pct, pct0, type Regime, short, usd1 } from './format';
+import { type Fmt, type Regime, short } from './format';
 import {
   availability,
   collateralAssets,
@@ -26,7 +26,18 @@ import {
   seriesFact,
   summed,
 } from './lending';
-import { Fig, Kpi, Kpis, Loading, MultiSelect, Pie, Reason, SrcLine, useWords } from './parts';
+import {
+  Fig,
+  Kpi,
+  Kpis,
+  Loading,
+  MultiSelect,
+  Pie,
+  Reason,
+  SrcLine,
+  useFmt,
+  useWords,
+} from './parts';
 import { regimeAt } from './time';
 import type { AssetsBody, HistBody } from './types';
 
@@ -118,14 +129,14 @@ function LendView({
   );
 }
 
-export const tolW = (tol: number) =>
-  `${minus(nf({ maximumFractionDigits: 2 }).format(tol * 100))}%`;
+export const tolW = (tol: number, fm: Fmt) => `${fm.num(tol * 100, 2)}%`;
 
 /** The tolerance box: a sale counts as covered when it costs at most this. */
 function TolBox() {
   const { ui, setUi } = useBearing();
+  const fm = useFmt();
   const w = useWords().lending;
-  const [text, setText] = useState(nf({ maximumFractionDigits: 2 }).format(ui.tol * 100));
+  const [text, setText] = useState(fm.num(ui.tol * 100, 2));
   const [err, setErr] = useState('');
   const apply = () => {
     const v = Number.parseFloat(text.replace(',', '.').replace('%', ''));
@@ -189,12 +200,13 @@ function LendBody(p: {
   sel: { assets: string[] | null; pools: string[] | null };
   setSel: (s: Partial<{ assets: string[] | null; pools: string[] | null }>) => void;
 }) {
+  const fm = useFmt();
   const { clock, ui } = useBearing();
   const wds = useWords();
   const t = wds.lending;
   const rw = wds.regimes[p.r];
   const { rows, selRows, covs, all, perRow, body, r } = p;
-  const tw = tolW(ui.tol);
+  const tw = tolW(ui.tol, fm);
   const facts = covFacts(all, r, body);
   const supF = sumFact(
     selRows.map((row) => histFact(row, 'suppliedUsd', 'supplied')),
@@ -245,9 +257,10 @@ function LendBody(p: {
       <TimeChart
         title={t.covered.title(tw)}
         labels={wds.chart}
+        locale={fm.locale}
         tools={tools}
-        value={<Fig f={cf} fmt={pct} />}
-        note={t.covered.note(from ? iso(from).slice(0, 10) : '2026-10-01')}
+        value={<Fig f={cf} fmt={fm.pct} />}
+        note={t.covered.note(fm.day(from ?? '2026-10-01'))}
         ranges={RANGES}
         range={p.range}
         onRange={p.setRange}
@@ -256,7 +269,7 @@ function LendBody(p: {
         panes={[
           {
             h: 260,
-            fmt: pct0,
+            fmt: fm.pct0,
             max: 1,
             tagSeries: 1,
             series: [
@@ -268,14 +281,14 @@ function LendBody(p: {
                 data: cs.map((x) => ({
                   t: x.t,
                   v: x.v == null ? null : 1,
-                  show: x.v == null ? null : pct(1 - x.v),
+                  show: x.v == null ? null : fm.pct(1 - x.v),
                 })),
               },
               {
                 type: 'area',
                 cls: 'cv',
                 label: t.covered.covered,
-                data: cs.map((x) => ({ t: x.t, v: x.v, show: x.v == null ? null : pct(x.v) })),
+                data: cs.map((x) => ({ t: x.t, v: x.v, show: x.v == null ? null : fm.pct(x.v) })),
               },
             ],
           },
@@ -290,14 +303,15 @@ function LendBody(p: {
       />
     );
   } else if (p.metric === 'tvl') {
-    const sup = markPartial(summed(selRows, 'suppliedUsd', now), t.supplied.partial);
+    const sup = markPartial(summed(selRows, 'suppliedUsd', now), t.supplied.partial, fm.usd1);
     const tf = seriesFact(sup, src, 'supplied summed over the selected pools');
     chart = (
       <TimeChart
         title={t.supplied.title}
         labels={wds.chart}
+        locale={fm.locale}
         tools={tools}
-        value={<Fig f={tf} fmt={usd1} />}
+        value={<Fig f={tf} fmt={fm.usd1} />}
         note={t.supplied.note}
         ranges={RANGES}
         range={p.range}
@@ -307,14 +321,14 @@ function LendBody(p: {
         panes={[
           {
             h: 260,
-            fmt: usd1,
+            fmt: fm.usd1,
             series: [
               { type: 'area', cls: 's1', label: t.supplied.supplied, data: sup },
               {
                 type: 'line',
                 cls: 's2',
                 label: t.supplied.borrowed,
-                data: markPartial(summed(selRows, 'borrowedUsd', now), t.supplied.partial),
+                data: markPartial(summed(selRows, 'borrowedUsd', now), t.supplied.partial, fm.usd1),
               },
             ],
           },
@@ -372,7 +386,7 @@ function LendBody(p: {
       key: 'sup',
       header: t.table.supplied,
       numeric: true,
-      cell: ({ row }) => <Fig f={histFact(row, 'suppliedUsd', 'supplied')} fmt={usd1} />,
+      cell: ({ row }) => <Fig f={histFact(row, 'suppliedUsd', 'supplied')} fmt={fm.usd1} />,
     },
     {
       key: 'avail',
@@ -384,7 +398,7 @@ function LendBody(p: {
         ) : row.meta.venue === 'jupiter_lend' ? (
           <Reason code="not_applicable" detail={t.table.jupiterAvailable} />
         ) : (
-          <Fig f={row.sheet.body.withdrawal.availableUsd} fmt={usd1} />
+          <Fig f={row.sheet.body.withdrawal.availableUsd} fmt={fm.usd1} />
         ),
     },
     {
@@ -393,7 +407,7 @@ function LendBody(p: {
       numeric: true,
       cell: ({ row }) =>
         row.sheet.ok ? (
-          <Fig f={row.sheet.body.withdrawal.shareLentOut} fmt={pct} />
+          <Fig f={row.sheet.body.withdrawal.shareLentOut} fmt={fm.pct} />
         ) : (
           <Reason code={row.sheet.reason} />
         ),
@@ -404,7 +418,7 @@ function LendBody(p: {
       numeric: true,
       cell: ({ row }) =>
         row.sheet.ok ? (
-          <Fig f={row.sheet.body.lenders.top1Share} fmt={pct} />
+          <Fig f={row.sheet.body.lenders.top1Share} fmt={fm.pct} />
         ) : (
           <Reason code={row.sheet.reason} />
         ),
@@ -418,7 +432,7 @@ function LendBody(p: {
         const parts = covs[i] ?? [];
         return (
           <>
-            <Fig f={f.collF} fmt={usd1} />
+            <Fig f={f.collF} fmt={fm.usd1} />
             {parts.length > 0 && (
               <span
                 title={parts.map((x) => x.asset).join(', ')}
@@ -435,13 +449,13 @@ function LendBody(p: {
       key: 'cov',
       header: t.table.covered,
       numeric: true,
-      cell: ({ i }) => <Fig f={covFacts(perRow[i] ?? [], r, body).covF} fmt={pct} />,
+      cell: ({ i }) => <Fig f={covFacts(perRow[i] ?? [], r, body).covF} fmt={fm.pct} />,
     },
     {
       key: 'max',
       header: t.table.largest,
       numeric: true,
-      cell: ({ i }) => <Fig f={covFacts(perRow[i] ?? [], r, body).maxF} fmt={usd1} />,
+      cell: ({ i }) => <Fig f={covFacts(perRow[i] ?? [], r, body).maxF} fmt={fm.usd1} />,
     },
     {
       key: 'loss',
@@ -451,10 +465,10 @@ function LendBody(p: {
         const f = covFacts(perRow[i] ?? [], r, body);
         return (
           <>
-            <Fig f={f.lossF} fmt={usd1} />
+            <Fig f={f.lossF} fmt={fm.usd1} />
             {f.lossPF.value != null && (
               <span className="block font-mono text-b-meta text-muted-foreground">
-                {t.table.lossShare(pct(f.lossPF.value))}
+                {t.table.lossShare(fm.pct(f.lossPF.value))}
               </span>
             )}
           </>
@@ -496,25 +510,25 @@ function LendBody(p: {
       </div>
       <Kpis>
         <Kpi label={t.kpi.supplied}>
-          <Fig f={supF} fmt={usd1} />
+          <Fig f={supF} fmt={fm.usd1} />
         </Kpi>
         <Kpi label={t.kpi.borrowed}>
-          <Fig f={borF} fmt={usd1} />
+          <Fig f={borF} fmt={fm.usd1} />
         </Kpi>
         <Kpi label={t.kpi.collateral} note={t.kpi.collateralNote}>
-          <Fig f={facts.collF} fmt={usd1} />
+          <Fig f={facts.collF} fmt={fm.usd1} />
         </Kpi>
         <Kpi label={t.kpi.covered} note={t.kpi.coveredNote(tw, rw)}>
-          <Fig f={facts.covF} fmt={pct} />
+          <Fig f={facts.covF} fmt={fm.pct} />
         </Kpi>
         <Kpi label={t.kpi.largest} note={t.kpi.largestNote(tw)}>
-          <Fig f={facts.maxF} fmt={usd1} />
+          <Fig f={facts.maxF} fmt={fm.usd1} />
         </Kpi>
         <Kpi
           label={t.kpi.loss}
-          note={facts.lossPF.value != null ? t.kpi.lossNote(pct(facts.lossPF.value)) : ''}
+          note={facts.lossPF.value != null ? t.kpi.lossNote(fm.pct(facts.lossPF.value)) : ''}
         >
-          <Fig f={facts.lossF} fmt={usd1} />
+          <Fig f={facts.lossF} fmt={fm.usd1} />
         </Kpi>
       </Kpis>
       <ChartGrid
@@ -526,7 +540,7 @@ function LendBody(p: {
               value: histFact(row, 'suppliedUsd', 'supplied').value || 0,
             }))}
             total={supF.value || 0}
-            totalHtml={<Fig f={supF} fmt={usd1} />}
+            totalHtml={<Fig f={supF} fmt={fm.usd1} />}
             note={t.pie.note}
           />
         }
@@ -566,16 +580,18 @@ export function AvailChart({
   range: number;
   setRange: (r: number) => void;
 }) {
+  const fm = useFmt();
   const { clock } = useBearing();
   const all = useWords();
   const t = all.lending.avail;
-  const a = availability(rows, clock.now || Date.now(), all.lending.supplied.partial);
+  const a = availability(rows, clock.now || Date.now(), all.lending.supplied.partial, fm.usd1);
   return (
     <TimeChart
       title={t.title}
       labels={all.chart}
+      locale={fm.locale}
       tools={tools}
-      value={<Fig f={a.fact} fmt={usd1} />}
+      value={<Fig f={a.fact} fmt={fm.usd1} />}
       note={t.note(note)}
       ranges={RANGES}
       range={range}
@@ -585,12 +601,12 @@ export function AvailChart({
       panes={[
         {
           h: 200,
-          fmt: usd1,
+          fmt: fm.usd1,
           series: [{ type: 'area', cls: 's1', label: t.available, data: a.av }],
         },
         {
           h: 90,
-          fmt: pct0,
+          fmt: fm.pct0,
           max: 1,
           title: t.lent,
           series: [{ type: 'line', cls: 's2', label: t.lent, data: a.lent }],

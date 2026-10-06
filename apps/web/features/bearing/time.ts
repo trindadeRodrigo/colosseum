@@ -100,11 +100,15 @@ export type WaitWords = {
 };
 const WAIT_EN: WaitWords = { min: (n) => `${n} min`, h: (n) => `${n} h`, days: (n) => `${n} days` };
 
-export function wait(ms: number, w: WaitWords = WAIT_EN): string {
+export function wait(
+  ms: number,
+  w: WaitWords = WAIT_EN,
+  one: (v: number) => string = (v) => nf({ maximumFractionDigits: 1 }).format(v),
+): string {
   const h = ms / HOUR;
   if (h < 1) return w.min(String(Math.round(h * 60)));
-  if (h < 48) return w.h(nf({ maximumFractionDigits: 1 }).format(h));
-  return w.days(nf({ maximumFractionDigits: 1 }).format(h / 24));
+  if (h < 48) return w.h(one(h));
+  return w.days(one(h / 24));
 }
 
 /** "Sat 14:58 ET", with the day in the person's language. */

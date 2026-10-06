@@ -1,7 +1,7 @@
 import { type Dictionary, dictionary } from '../../i18n';
 import type { Res } from './data';
 import { type Fact, mk, none } from './fact';
-import { num, pct, type Regime, usd } from './format';
+import { EN_FMT, type Fmt, type Regime, usd } from './format';
 import { etLabel, nextOpen, wait } from './time';
 import type { Exit, RecovBody, SheetBody } from './types';
 
@@ -44,9 +44,12 @@ export function simPaths(o: {
   recov: Res<RecovBody>;
   /** The page's words, in the person's language. English when not given. */
   words?: Dictionary['bearing'];
+  /** The figures in the person's locale; en-US when not given. */
+  fmt?: Fmt;
 }) {
   const { id, n, at, r, sheet, chunks } = o;
   const b = o.words ?? dictionary('en').bearing;
+  const fm = o.fmt ?? EN_FMT;
   const w = b.sim.paths;
   const rw = b.regimes[r];
   const miss = none('no_samples_in_regime');
@@ -69,7 +72,10 @@ export function simPaths(o: {
       name: w.open.name,
       how: w.open.how,
       when: op
-        ? w.open.when(wait(op.getTime() - at.getTime(), b.sim.wait), etLabel(op, b.heat.days))
+        ? w.open.when(
+            wait(op.getTime() - at.getTime(), b.sim.wait, (v) => fm.num(v, 1)),
+            etLabel(op, b.heat.days),
+          )
         : w.open.notFound,
       total: mh ? mh.total : miss,
       loss: mh ? mh.lossUsd : miss,
@@ -98,7 +104,7 @@ export function simPaths(o: {
     paths.push({
       key: 'split',
       name: w.split.name(chunks),
-      how: w.split.how(chunks, usd(per), h90 != null ? num(h90 * 60, 0) : null),
+      how: w.split.how(chunks, fm.usd(per), h90 != null ? fm.num(h90 * 60, 0) : null),
       when: w.split.when(chunks, rw),
       total: ce ? ce.total : miss,
       loss: lossS,
@@ -115,7 +121,7 @@ export function simPaths(o: {
         pr.issuer || w.issuer.theIssuer,
         pr.status ? String(pr.status).replace(/_/g, ' ') : w.issuer.noStatus,
         pr.settlementHours != null
-          ? w.issuer.settles(num(pr.settlementHours / 24, 0))
+          ? w.issuer.settles(fm.num(pr.settlementHours / 24, 0))
           : w.issuer.noSettle,
       ),
       when: pr.openHoursInHorizon ? w.issuer.when(pr.openHoursInHorizon) : w.issuer.never,
@@ -145,19 +151,19 @@ export function simPaths(o: {
   const v = b.sim.verdict;
   const verdict = !best
     ? v.none(
-        usd(n),
+        fm.usd(n),
         id,
         b.reasons[(first.total.reason ?? 'not_served') as keyof typeof b.reasons] ??
           String(first.total.reason),
       )
     : `${v.best(
-        usd(n),
+        fm.usd(n),
         id,
         best.name.toLowerCase(),
         best.loss.quality === 'lower_bound',
-        usd(best.loss.value as number),
-        pct((best.loss.value as number) / n),
-      )}${best.key === 'now' || first.loss.value == null ? v.end : v.against(usd(first.loss.value))}${
+        fm.usd(best.loss.value as number),
+        fm.pct((best.loss.value as number) / n),
+      )}${best.key === 'now' || first.loss.value == null ? v.end : v.against(fm.usd(first.loss.value))}${
         best.waits ? v.waits : ''
       }`;
   return { paths, best, verdict };
