@@ -1,0 +1,13 @@
+{
+  "kind": "render",
+  "author": "tenonfi",
+  "licence": "our own; no third-party texture, scan or environment map is used",
+  "source_file": "apps/web/features/landing/joint-scene.ts (still framing), photographed by apps/web/scripts/joint-stills.mjs from /dev/joint",
+  "made_at": "2026-10-05",
+  "files": [
+    "joint-apart-dark.webp",
+    "joint-apart-light.webp",
+    "joint-seated-dark.webp",
+    "joint-seated-light.webp"
+  ]
+}

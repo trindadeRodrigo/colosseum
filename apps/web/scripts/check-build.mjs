@@ -4,8 +4,9 @@
 // file of a development-only folder (DEV_ONLY below) in what a route was built from.
 // It also looks for one string every build ships and one file every route is built from, so a change
 // in where Next writes its output makes this check fail instead of pass on nothing.
-// Last, it runs the design system's test of the built stylesheet and fonts, which a plain test run
-// skips for want of a build (components/ui/forbidden.test.ts).
+// Last, it runs the design system's test of the built stylesheet and fonts, and the weight of the
+// landing's 3D chunk, which a plain test run skips for want of a build
+// (components/ui/forbidden.test.ts, features/landing/joint-budget.test.ts).
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -143,16 +144,19 @@ export function checkBuild(out) {
 
 /** The test file that reads the built stylesheet and fonts, as a path from the repository root. */
 export const BUILT_CSS_TEST = 'apps/web/components/ui/forbidden.test.ts';
+/** The test file that weighs the landing's 3D chunk (joint-stage.md: at most 180 KB gzipped). */
+export const JOINT_BUDGET_TEST = 'apps/web/features/landing/joint-budget.test.ts';
 
 /**
- * Runs that test once more, now that there is a build to read. REQUIRE_WEB_BUILD makes its two build
+ * Runs those tests once more, now that there is a build to read. REQUIRE_WEB_BUILD makes their build
  * checks fail on a missing or stale build instead of being skipped. Returns the exit code.
  */
 function builtStylesheetCheck() {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
   const require = createRequire(join(root, 'package.json'));
   const vitest = join(dirname(require.resolve('vitest/package.json')), 'vitest.mjs');
-  const run = spawnSync(process.execPath, [vitest, 'run', '--root', root, BUILT_CSS_TEST], {
+  const tests = [BUILT_CSS_TEST, JOINT_BUDGET_TEST];
+  const run = spawnSync(process.execPath, [vitest, 'run', '--root', root, ...tests], {
     stdio: 'inherit',
     env: { ...process.env, REQUIRE_WEB_BUILD: '1' },
   });

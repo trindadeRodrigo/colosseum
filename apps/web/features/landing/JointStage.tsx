@@ -3,17 +3,19 @@ import { useEffect, useRef, useState } from 'react';
 import { cn } from '../../components/ui/cn';
 import { useT } from '../../i18n/I18nProvider';
 import { JointDrawing } from './JointDrawing';
+import { JointStill } from './JointStill';
 import type { JointScene } from './joint-scene';
 
 // The pinned hero of his landing page (joint-stage.md): the joint sits behind the copy and seats as the
 // reader scrolls through the three steps, then the stage lets go and scrolls away. The pose follows the
 // reader and nothing else: there is no loop and no idle motion.
 //
-// - Motion allowed, WebGL there, data not saved: the 3D scene, loaded once the stage is in view, drawn
-//   only while the pose moves and the stage is on screen.
-// - No WebGL, or data saved: the line drawing in the same pinned layer, exploded, then seated from
-//   step 03.
-// - Reduced motion: nothing is pinned. The drawing stands beside the copy, seated, and the steps scroll
+// - Motion allowed, WebGL there, data not saved: the 3D scene, loaded after the first paint, faded in
+//   once its first frame is drawn, and drawn only while the pose moves and the stage is on screen.
+//   Phones and small GPUs get its lighter path.
+// - No WebGL: stills of the same scene in the same pinned layer, apart, then seated from step 03.
+// - Data saved: the line drawing there instead, which costs nothing to fetch. So does no script.
+// - Reduced motion: nothing is pinned. The seated still stands beside the copy and the steps scroll
 //   as text. This is CSS alone, so the server's page is already right.
 // The copy is the page's: a screen reader and a keyboard reach every step in order, whatever is drawn.
 
@@ -29,7 +31,8 @@ export function JointStage() {
   const scene = useRef<JointScene | null>(null);
   const [progress, setProgress] = useState(0);
   const [on, setOn] = useState<number | null>(null);
-  const [drawn, setDrawn] = useState(false);
+  /** What the pinned layer shows: nothing yet, the 3D scene, the stills, or the line drawing. */
+  const [mode, setMode] = useState<'pending' | '3d' | 'still' | 'drawing'>('pending');
 
   // The reader's progress, and which step is in the middle of the screen.
   useEffect(() => {
@@ -74,7 +77,11 @@ export function JointStage() {
     const saveData =
       (navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData ===
       true;
-    if (reduce || saveData || !hasWebGL()) return;
+    if (reduce) return;
+    if (saveData || !hasWebGL()) {
+      setMode(saveData ? 'drawing' : 'still');
+      return;
+    }
     let alive = true;
     let observer: IntersectionObserver | null = null;
     const onResize = () => scene.current?.resize();
@@ -83,11 +90,14 @@ export function JointStage() {
       import('./joint-scene').then(({ createJointScene }) => {
         if (!alive) return;
         try {
-          scene.current = createJointScene(el);
+          scene.current = createJointScene(el, {
+            onReady: () => alive && setMode('3d'),
+            light: window.innerWidth < 820 || (navigator.hardwareConcurrency ?? 8) <= 4,
+          });
         } catch {
-          return; // the drawing stays
+          setMode('still');
+          return;
         }
-        setDrawn(true);
         const step3 = document.getElementById(STEP_IDS[2]);
         const vh = window.innerHeight;
         const end = step3 ? step3.offsetTop + step3.offsetHeight / 2 - vh / 2 : 1;
@@ -112,7 +122,7 @@ export function JointStage() {
     };
   }, []);
 
-  const seated = progress >= 0.72;
+  const seated = progress >= 0.86;
   return (
     <section ref={stage} id="stage" aria-label={t.label} data-ui="joint-stage" className="relative">
       {/* The pinned layer: one screen tall, under the copy. Not drawn at all with reduced motion. */}
@@ -120,15 +130,48 @@ export function JointStage() {
         aria-hidden="true"
         className="sticky top-0 z-0 -mb-[100svh] h-svh overflow-hidden motion-reduce:hidden"
       >
-        <canvas ref={canvas} className={cn('block size-full', !drawn && 'invisible')} />
-        {!drawn && (
-          <div className="absolute inset-0 mx-auto flex max-w-page items-center justify-end px-[clamp(16px,4vw,56px)] max-[819px]:items-start max-[819px]:justify-center max-[819px]:pt-24">
-            <JointDrawing
-              seated={seated}
-              className="w-[min(440px,70vw)] max-[819px]:w-[min(300px,70vw)]"
-            />
+        <canvas
+          ref={canvas}
+          className={cn(
+            'block size-full transition-opacity duration-700 ease-seat',
+            mode === '3d' ? 'opacity-100' : 'opacity-0',
+          )}
+        />
+        {(mode === 'still' || mode === 'drawing') && (
+          <div className="absolute inset-0 mx-auto flex max-w-page items-center justify-end px-[clamp(16px,4vw,56px)] max-[819px]:items-start max-[819px]:justify-center max-[819px]:pt-20">
+            {mode === 'still' ? (
+              <div className="relative w-[min(600px,46vw)] max-[819px]:w-[min(380px,92vw)]">
+                {/* apart, then seated from step 03: a crossfade, as joint-stage.md has it */}
+                <JointStill
+                  seated={false}
+                  className={cn(
+                    'transition-opacity duration-(--tf-dur-slide)',
+                    seated ? 'opacity-0' : 'opacity-100',
+                  )}
+                />
+                <div
+                  className={cn(
+                    'absolute inset-0 transition-opacity duration-(--tf-dur-slide)',
+                    seated ? 'opacity-100' : 'opacity-0',
+                  )}
+                >
+                  <JointStill seated />
+                </div>
+              </div>
+            ) : (
+              <JointDrawing
+                seated={seated}
+                className="w-[min(440px,70vw)] max-[819px]:w-[min(300px,70vw)]"
+              />
+            )}
           </div>
         )}
+        {/* Without script nothing above runs: the drawing stands in, seated. */}
+        <noscript>
+          <div className="absolute inset-0 mx-auto flex max-w-page items-center justify-end px-[clamp(16px,4vw,56px)]">
+            <JointDrawing seated className="w-[min(440px,70vw)]" />
+          </div>
+        </noscript>
       </div>
       <div className="relative z-[1] mx-auto w-full max-w-page px-[clamp(16px,4vw,56px)]">
         <div className="flex min-h-svh items-center max-[819px]:items-end max-[819px]:pb-[10vh] motion-reduce:min-h-0 motion-reduce:items-start motion-reduce:py-28">
@@ -149,10 +192,10 @@ export function JointStage() {
               </p>
             </div>
             {/* With reduced motion the joint stands here, seated, and does not move. */}
-            <JointDrawing
+            <JointStill
               seated
-              title={t.drawing}
-              className="hidden w-full max-w-[440px] justify-self-end motion-reduce:block"
+              alt={t.drawing}
+              className="hidden w-full max-w-[480px] justify-self-end motion-reduce:block"
             />
           </div>
         </div>

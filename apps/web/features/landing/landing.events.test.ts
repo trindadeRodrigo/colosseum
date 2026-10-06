@@ -12,7 +12,7 @@ import { router } from '../wallet/test/mock-next';
 import { Landing } from './Landing';
 
 const scene = vi.hoisted(() => ({
-  create: vi.fn(() => ({
+  create: vi.fn((_canvas: HTMLCanvasElement, _options?: { onReady?: () => void }) => ({
     setProgress: vi.fn(),
     resize: vi.fn(),
     setVisible: vi.fn(),
@@ -34,8 +34,9 @@ const landing = async (lang: Lang = 'en') => {
   return host;
 };
 
-/** What the browser says about reduced motion and WebGL, for one test. */
-function browser({ reduce = false, webgl = false } = {}) {
+/** What the browser says about reduced motion, WebGL and saving data, for one test. */
+function browser({ reduce = false, webgl = false, saveData = false } = {}) {
+  Object.defineProperty(navigator, 'connection', { value: { saveData }, configurable: true });
   vi.spyOn(window, 'matchMedia').mockImplementation(
     (query: string) =>
       ({
@@ -79,32 +80,65 @@ describe('the hero', () => {
     browser({ webgl: true });
     const host = await landing();
     expect(scene.create).toHaveBeenCalledTimes(1);
-    expect(scene.create).toHaveBeenCalledWith(find(host, 'canvas'));
+    expect(scene.create).toHaveBeenCalledWith(
+      find(host, 'canvas'),
+      expect.objectContaining({ onReady: expect.any(Function), light: expect.any(Boolean) }),
+    );
     const made = scene.create.mock.results[0]?.value as { setProgress: ReturnType<typeof vi.fn> };
     expect(made.setProgress).toHaveBeenCalled();
-    // the drawing that stood in is gone once the scene draws
+    // nothing stands in while it loads, and the canvas shows once its first frame is drawn
     expect(host.querySelector('.sticky [data-ui="joint-drawing"]')).toBeNull();
+    expect(host.querySelector('.sticky [data-ui="joint-still"]')).toBeNull();
+    expect(find(host, 'canvas').className).toContain('opacity-0');
+    await act(async () => scene.create.mock.calls[0]?.[1]?.onReady?.());
+    expect(find(host, 'canvas').className).toContain('opacity-100');
   });
 
-  it('draws no 3D at all with reduced motion: the still drawing, seated, beside the copy', async () => {
+  it('draws no 3D at all with reduced motion: the still, seated, beside the copy', async () => {
     browser({ webgl: true, reduce: true });
     const host = await landing();
     expect(scene.create).not.toHaveBeenCalled();
-    const still = [...host.querySelectorAll('[data-ui="joint-drawing"]')].find(
-      (d) => d.getAttribute('role') === 'img',
+    const still = [...host.querySelectorAll('[data-ui="joint-still"]')].find(
+      (d) => d.getAttribute('aria-hidden') !== 'true',
     );
-    expect(still?.getAttribute('aria-label')).toBe(en.landing.stage.drawing);
     expect(still?.getAttribute('data-seated')).toBe('true');
+    const frames = [...(still?.querySelectorAll('img') ?? [])];
+    expect(frames.map((img) => img.getAttribute('src'))).toEqual([
+      '/landing/joint/joint-seated-dark.webp',
+      '/landing/joint/joint-seated-light.webp',
+    ]);
+    // each frame says what the joint does; the theme shows one of them, so one is read
+    for (const img of frames) expect(img.getAttribute('alt')).toBe(en.landing.stage.drawing);
+    for (const img of frames) expect(img.getAttribute('loading')).toBe('lazy');
     // and the nav does not wait for the stage: it is compact at once
     await settle(10);
     expect(find(host, '[data-ui="compact-nav"]').getAttribute('data-compact')).toBe('true');
   });
 
-  it('keeps the line drawing, and loads nothing, where there is no WebGL', async () => {
+  it('shows the stills of the same joint, and loads no scene, where there is no WebGL', async () => {
     browser({ webgl: false });
     const host = await landing();
     expect(scene.create).not.toHaveBeenCalled();
+    const stills = [...host.querySelectorAll('.sticky [data-ui="joint-still"]')];
+    expect(stills.map((s) => s.getAttribute('data-seated'))).toEqual(['false', 'true']);
+    expect(host.querySelector('.sticky [data-ui="joint-drawing"]')).toBeNull();
+  });
+
+  it('falls back to the stills when the scene cannot start', async () => {
+    browser({ webgl: true });
+    scene.create.mockImplementationOnce(() => {
+      throw new Error('no context');
+    });
+    const host = await landing();
+    expect(host.querySelectorAll('.sticky [data-ui="joint-still"]')).toHaveLength(2);
+  });
+
+  it('fetches nothing for the joint when the visitor saves data: the line drawing stands in', async () => {
+    browser({ webgl: true, saveData: true });
+    const host = await landing();
+    expect(scene.create).not.toHaveBeenCalled();
     expect(host.querySelector('.sticky [data-ui="joint-drawing"]')).not.toBeNull();
+    expect(host.querySelector('.sticky [data-ui="joint-still"]')).toBeNull();
   });
 });
 

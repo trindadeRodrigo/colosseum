@@ -26,9 +26,10 @@ section.stage
 
 | Condition | Render |
 |---|---|
-| WebGL available, motion allowed | three.js scene (pinned version, self-hosted, not a CDN `<script>`), lazy-initialised when the stage is near the viewport; pixel ratio ≤ 2; pause rendering when off-screen or tab hidden |
-| `prefers-reduced-motion: reduce` | **No scroll-linked motion.** Show the 2D line drawing (H3) in two static states: exploded for the hero/steps 01–02, seated from step 03 (120ms crossfade). Steps scroll normally; no sticky |
-| No WebGL / JS off / low-power (`navigator.connection.saveData`) | Static 2D seated drawing (SVG, hinoki on black / hardwood on paper), no sticky. Copy fully readable |
+| WebGL available, motion allowed | three.js scene (pinned version, self-hosted, not a CDN `<script>`), lazy-initialised after the first paint, faded in on its first frame; pixel ratio ≤ 2 (1.5 on phones and small GPUs); pause rendering when off-screen or tab hidden. The wood and the studio light are computed, nothing else is fetched (gate `JOINT-3D`) |
+| `prefers-reduced-motion: reduce` | **No scroll-linked motion.** The seated still of the same scene (black or paper, by theme) stands beside the copy. Steps scroll normally; no sticky |
+| No WebGL | Stills of the same scene in the pinned layer: apart for the hero and steps 01–02, seated from step 03 (crossfade). Copy fully readable |
+| JS off / low-power (`navigator.connection.saveData`) | Static 2D drawing (SVG, hinoki on black / hardwood on paper), apart then seated; nothing fetched for it. Copy fully readable |
 | Print | the static drawing |
 
 ## Constraints applied
