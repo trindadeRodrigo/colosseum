@@ -324,7 +324,8 @@ function made(raw: World, stocks?: StockAttributesFile): { shelf: Shelf; context
       // Every world can convert reais: a withdrawal in reais needs the rate, and an unused one only
       // changes the hash.
       fx: [usdBrl()],
-      // The theme lists as content/themes holds them: the Solana AI list.
+      // The Solana AI list as content/themes holds it. The server hands every list of the chain, so a
+      // property below also runs each plan with lists the sheet does not name.
       themes: [aiList()],
       ...(stocks ? { stocks } : {}),
     },
@@ -345,6 +346,41 @@ describe.each(CHAINS)('for any valid sheet, on %s alone', (chain) => {
           expect(violations(plan, shelf, context)).toEqual([]);
         }),
         { numRuns: RUNS * 2 },
+      );
+    },
+    PATIENCE,
+  );
+
+  // The server hands every list of the chain (apps/api/src/plan-inputs.ts). A list the sheet does not
+  // name, proposed or confirmed, must change nothing, whatever tokens it names.
+  it(
+    'lists the sheet does not name change nothing: not a line, not what is left out, not the hash',
+    () => {
+      fc.assert(
+        fc.property(anyone, world, (sheet, raw) => {
+          const { shelf, context } = made(raw);
+          const plan = compose(sheet, shelf, context);
+          const ai = aiList();
+          const every = shelf.assets
+            .filter((a) => a.chain === chain && a.cls !== 'cash')
+            .map((a) => ({ symbol: a.symbol, reason: { en: 'a name', pt: 'um nome' } }))
+            .filter((m, i, all) => all.findIndex((x) => x.symbol === m.symbol) === i);
+          const bystanders = (['proposed', 'confirmed'] as const).map((status) => ({
+            ...ai,
+            chain,
+            slug: `bystander-${status}`,
+            status,
+            members: every,
+          }));
+          const served = compose(sheet, shelf, {
+            ...context,
+            themes: [...(context.themes ?? []), ...bystanders],
+          });
+          expect(served.lines).toEqual(plan.lines);
+          expect(served.removed).toEqual(plan.removed);
+          expect(served.inputsHash).toBe(plan.inputsHash);
+        }),
+        { numRuns: RUNS },
       );
     },
     PATIENCE,

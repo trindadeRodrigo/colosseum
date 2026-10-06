@@ -128,6 +128,59 @@ describe('the list is data', () => {
       compose(themed(), shelf, ctxWith({ themes: [ai, { ...other, version: 2 }] })).inputsHash,
     ).toBe(one);
   });
+
+  // The server hands every list of the chain. A list the sheet does not name must change nothing,
+  // whatever it names: found by the review of the stock labels (Oct 6), when a proposed list that
+  // names SPYx took the goal's line for it away.
+  it('a list the sheet does not name changes nothing in the plan, whatever it names', () => {
+    const s = sheet({
+      risk: 'low',
+      amountUsd: 2000,
+      sleeves: [
+        { kind: 'goal', shareBps: 9000 },
+        { kind: 'theme', shareBps: 1000, theme: 'ai' },
+      ],
+    });
+    const alone = run(s);
+    expect(alone.lines.map((l) => l.assetId)).toContain('solana:spyx');
+    const reasonOf = (ai.members[0] as ThemeList['members'][number]).reason;
+    const funds = ['SPYx', 'QQQx', 'NVDAx'].map((symbol) => ({ symbol, reason: reasonOf }));
+    const proposed: ThemeList = { ...ai, slug: 'index-funds', status: 'proposed', members: funds };
+    const confirmed: ThemeList = { ...proposed, slug: 'more-funds', status: 'confirmed' };
+    for (const themes of [
+      [ai, proposed],
+      [ai, confirmed],
+      [confirmed, proposed, ai],
+    ]) {
+      const plan = run(s, ctxWith({ themes }));
+      expect(plan.lines).toEqual(alone.lines);
+      expect(plan.removed).toEqual(alone.removed);
+      expect(plan.inputsHash).toBe(alone.inputsHash);
+    }
+  });
+
+  it('the plan is the same with every list content/themes holds for the chain as with the one it names', () => {
+    const root = join(import.meta.dirname, '../../../../content/themes/solana');
+    const all = readdirSync(root).map((file) =>
+      parseThemeList(JSON.parse(readFileSync(join(root, file), 'utf8')), file),
+    );
+    expect(all.length).toBeGreaterThan(1);
+    for (const risk of ['low', 'medium', 'high'] as const)
+      for (const shareBps of [1000, 5000, 9000]) {
+        const s = sheet({
+          risk,
+          sleeves: [
+            { kind: 'goal', shareBps: 10_000 - shareBps },
+            { kind: 'theme', shareBps, theme: 'ai' },
+          ],
+        });
+        const named = run(s);
+        const served = run(s, ctxWith({ themes: all }));
+        expect(served.lines, `${risk} ${shareBps}`).toEqual(named.lines);
+        expect(served.removed, `${risk} ${shareBps}`).toEqual(named.removed);
+        expect(served.inputsHash, `${risk} ${shareBps}`).toBe(named.inputsHash);
+      }
+  });
 });
 
 describe('equal parts, each up to its cap', () => {

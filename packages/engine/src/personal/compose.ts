@@ -500,7 +500,7 @@ function build(
   // what is left. The lines its stocks need are kept for them. What no name of a theme takes is held
   // in dollar yield, then cash, and the sleeve records where.
   book.reserved.clear();
-  // The names of the curated lists and of the matched themes the sheet asks for.
+  // The matched themes the sheet asks for, with or without a stock: what the hash of the inputs pins.
   const matchedLists = byName(
     sleeves.themes.flatMap((t): MatchedList[] => {
       const list = w.themeListOf(t.slug);
@@ -508,8 +508,13 @@ function build(
     }),
     (list) => list.slug,
   );
+  // The names a theme sleeve of this sheet may take a line for: those of the lists that fill one. A
+  // list the sheet does not name, or one that fills nothing (proposed, or a filter with no stock
+  // here), takes no line, so it keeps none from the goal's stocks and changes nothing in the plan.
   const members = new Set(
-    [...w.themeLists, ...matchedLists].flatMap((t) => t.members.map((m) => m.symbol)),
+    byName(sleeves.themes, (t) => t.slug).flatMap((t) =>
+      (fillingList(w, t.slug)?.members ?? []).map((m) => m.symbol),
+    ),
   );
   const goalTokens = new Set(
     growthUnits
