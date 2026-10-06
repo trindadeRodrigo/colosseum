@@ -216,7 +216,7 @@ describe('properties: any mix', () => {
       fc.property(
         mixes,
         fc.constantFrom<ChainId>('solana', 'robinhood', 'base'),
-        fc.constantFrom([], ['the-seven'], ['the-500'], ['storm-cellar']),
+        fc.constantFrom<string[]>([], ['the-seven'], ['the-500'], ['storm-cellar']),
         fc.constantFrom(2000, 10_000, 250_000),
         fc.boolean(),
         (m, chain, themes, amountUsd, glide) => {
