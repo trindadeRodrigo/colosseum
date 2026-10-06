@@ -127,7 +127,7 @@ const buy = async () => {
   return host;
 };
 /** The buy's one button that makes the order: in its last step, "Review and sign". */
-const SIGN = '[data-step="sign"] [data-variant="primary"]';
+const SIGN = '[data-step="review"] [data-variant="primary"]';
 const label = (el: Element) =>
   el.querySelector('.grid > span:not([aria-hidden])')?.textContent ?? el.textContent;
 const primaryLink = (host: HTMLElement) =>

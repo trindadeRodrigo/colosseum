@@ -586,12 +586,12 @@ export const pt: Dictionary = {
     },
     steps: {
       label: 'Passos para comprar',
-      names: { amount: 'Valor', funds: 'Fundos', trust: 'Confiança', sign: 'Assinar' },
+      names: { amount: 'Valor', funds: 'Fundos', trust: 'Confiança', review: 'Assinar' },
       done: 'feito',
       next: 'Continuar',
       funds: { ready: 'Pronto', short: 'Falta algo', reading: 'Lendo…' },
       trust: { accepted: 'Aceito', open: 'Ainda não aceito' },
-      sign: (amount: string, chain: string) =>
+      reviewLead: (amount: string, chain: string) =>
         `Você está comprando ${amount} do seu plano em ${chain}. Em seguida você revisa cada passo e assina cada um na sua carteira.`,
       testNetwork: (chain: string) => `Em ${chain}, rede de teste`,
     },

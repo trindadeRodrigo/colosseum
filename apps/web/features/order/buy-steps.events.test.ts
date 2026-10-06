@@ -210,9 +210,11 @@ describe('the steps', () => {
     expect(next(host, 'trust').getAttribute('aria-disabled')).toBe('true');
     await click(find(panel(host, 'trust'), 'input[type="checkbox"]'));
     await click(next(host, 'trust'));
-    expect(opened(host)).toEqual(['sign']);
-    expect(panel(host, 'sign').textContent).toContain(en.buy.steps.sign('$40,000', 'Solana'));
-    const review = find(panel(host, 'sign'), '[data-variant="primary"]');
+    expect(opened(host)).toEqual(['review']);
+    expect(panel(host, 'review').textContent).toContain(
+      en.buy.steps.reviewLead('$40,000', 'Solana'),
+    );
+    const review = find(panel(host, 'review'), '[data-variant="primary"]');
     expect(review.getAttribute('aria-disabled')).toBeNull();
 
     // any step opens again from its heading, and closes the one that was open

@@ -20,13 +20,13 @@ import { unitsFor } from './units';
 // where the person is: each step's number and name, filled once it is done. Every step can be opened
 // again from its heading; "Continue" opens the next one and moves the focus to it. The card carries the
 // MOCK plate, or the test network's, once for every figure in it. The plan's buy and a shared
-// portfolio's share it; what is checked before an order is made stays theirs (`sign.blocked`).
+// portfolio's share it; what is checked before an order is made stays theirs (`order.blocked`).
 
 export const MIN_USD = 10;
 export const MAX_USD = 1_000_000;
 
-export type StepId = 'amount' | 'funds' | 'trust' | 'sign';
-const STEPS: readonly StepId[] = ['amount', 'funds', 'trust', 'sign'];
+export type StepId = 'amount' | 'funds' | 'trust' | 'review';
+const STEPS: readonly StepId[] = ['amount', 'funds', 'trust', 'review'];
 
 export type BuyStepsProps = {
   chain: ChainId;
@@ -47,7 +47,7 @@ export type BuyStepsProps = {
   /** Read the wallet again. */
   onReadAgain: () => void;
   trust: { accepted: boolean; checked: boolean; onCheck: (yes: boolean) => void };
-  sign: {
+  order: {
     /** Names the action and the amount. */
     label: string;
     busy: boolean;
@@ -69,7 +69,7 @@ export function BuySteps({
   buyOf,
   onReadAgain,
   trust,
-  sign,
+  order,
 }: BuyStepsProps) {
   const t = useT();
   const lang = useLang();
@@ -90,7 +90,7 @@ export function BuySteps({
     amount: confirmed && amount.value !== null,
     funds: read?.ok === true,
     trust: trust.accepted || trust.checked,
-    sign: false,
+    review: false,
   };
   // The label of the whole card: the chain's as it runs now, and what the funding read said.
   const provenance = read?.provenance ?? (mock ? 'mock' : port.network(chain)?.provenance);
@@ -140,7 +140,7 @@ export function BuySteps({
         ? t.buy.steps.funds.reading
         : null,
     trust: done.trust ? t.buy.steps.trust.accepted : t.buy.steps.trust.open,
-    sign: null,
+    review: null,
   };
 
   const continueButton = (step: StepId, kind: 'button' | 'submit' = 'button') => (
@@ -209,35 +209,38 @@ export function BuySteps({
         {continueButton('trust')}
       </div>
     ),
-    sign: (
+    review: (
       <div className="flex flex-col items-start gap-3">
         <p className="max-w-(--tf-measure-body) text-body">
-          {t.buy.steps.sign(amount.value === null ? '' : dollars(amount.value, lang), chainName)}
+          {t.buy.steps.reviewLead(
+            amount.value === null ? '' : dollars(amount.value, lang),
+            chainName,
+          )}
         </p>
         <Button
           variant="primary"
-          busy={sign.busy}
-          busyLabel={sign.busyLabel}
-          disabled={sign.blocked.length > 0}
-          aria-describedby={sign.blocked.length > 0 ? reasonId : undefined}
-          onClick={sign.onReview}
+          busy={order.busy}
+          busyLabel={order.busyLabel}
+          disabled={order.blocked.length > 0}
+          aria-describedby={order.blocked.length > 0 ? reasonId : undefined}
+          onClick={order.onReview}
         >
-          {sign.label}
+          {order.label}
         </Button>
-        {sign.blocked.length > 0 && (
+        {order.blocked.length > 0 && (
           <ul id={reasonId} className="flex max-w-(--tf-measure-body) flex-col gap-1 text-body-sm">
-            {sign.blocked.map((reason) => (
+            {order.blocked.map((reason) => (
               <li key={reason}>{reason}</li>
             ))}
           </ul>
         )}
-        {sign.failure && (
+        {order.failure && (
           <p
             role="alert"
             className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm text-destructive"
           >
             <StatusMark status="off-track" size={12} className="mt-1.5" />
-            <span>{sign.failure}</span>
+            <span>{order.failure}</span>
           </p>
         )}
       </div>

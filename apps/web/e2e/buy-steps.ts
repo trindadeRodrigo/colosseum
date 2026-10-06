@@ -10,7 +10,7 @@ const en = dictionary('en');
 
 export async function throughBuySteps(
   page: Page,
-  o: { amount?: string; fund?: 'mock' | 'test'; before?: (step: 'sign') => Promise<void> } = {},
+  o: { amount?: string; fund?: 'mock' | 'test' } = {},
 ) {
   if (o.amount !== undefined)
     await page.getByLabel(en.buy.amount.label, { exact: true }).fill(o.amount);
@@ -29,7 +29,6 @@ export async function throughBuySteps(
   await page.getByLabel(en.trust.accept).check();
   await page.getByRole('button', { name: en.buy.steps.next }).click();
   await expect(
-    page.getByRole('button', { name: new RegExp(`^${en.buy.steps.names.sign}`), expanded: true }),
+    page.getByRole('button', { name: new RegExp(`^${en.buy.steps.names.review}`), expanded: true }),
   ).toBeVisible();
-  await o.before?.('sign');
 }

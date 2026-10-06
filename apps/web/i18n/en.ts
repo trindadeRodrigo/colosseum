@@ -623,13 +623,13 @@ export const en = {
     /** The four steps of a buy, one open at a time. */
     steps: {
       label: 'Steps to buy',
-      names: { amount: 'Amount', funds: 'Funds', trust: 'Trust', sign: 'Sign' },
+      names: { amount: 'Amount', funds: 'Funds', trust: 'Trust', review: 'Sign' },
       /** Read after a step's name by a screen reader. */
       done: 'done',
       next: 'Continue',
       funds: { ready: 'Ready', short: 'Something is missing', reading: 'Reading…' },
       trust: { accepted: 'Accepted', open: 'Not accepted yet' },
-      sign: (amount: string, chain: string) =>
+      reviewLead: (amount: string, chain: string) =>
         `You’re buying ${amount} of your plan on ${chain}. Next you review every step, then sign each one in your wallet.`,
       testNetwork: (chain: string) => `On ${chain}, test network`,
     },

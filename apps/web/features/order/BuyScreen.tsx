@@ -179,7 +179,7 @@ export function BuyScreen({ id }: { id: string }) {
         buyOf={{ proposalId: plan.id }}
         onReadAgain={() => setRound((n) => n + 1)}
         trust={{ accepted, checked: ticked, onCheck: setTicked }}
-        sign={{
+        order={{
           label: t.buy.review(
             amount === null ? dollars(plan.proposal.sheet.amountUsd, lang) : dollars(amount, lang),
           ),

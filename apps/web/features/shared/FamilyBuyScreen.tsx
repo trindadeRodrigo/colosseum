@@ -239,7 +239,7 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
         buyOf={{ family: slug }}
         onReadAgain={() => setRound((n) => n + 1)}
         trust={{ accepted, checked: ticked, onCheck: setTicked }}
-        sign={{
+        order={{
           label: t.shared.buy.review(dollars(amount ?? MIN_USD, lang)),
           busy: placing,
           busyLabel: t.buy.reviewing,
