@@ -9,6 +9,7 @@ import { defineConfig, devices } from '@playwright/test';
 // server another checkout left up is never taken for this one's.
 const WEB = Number(process.env.E2E_WEB_PORT ?? 3100);
 const API = Number(process.env.E2E_API_PORT ?? 3901);
+const MCP = Number(process.env.E2E_MCP_PORT ?? 3902);
 
 export default defineConfig({
   testDir: './e2e',
@@ -32,6 +33,19 @@ export default defineConfig({
       command: 'pnpm exec tsx ../../tests/e2e/stub-api.ts',
       url: `http://localhost:${API}/v1/config`,
       env: { STUB_API_PORT: String(API), WEB_ORIGIN: `http://localhost:${WEB}` },
+      reuseExistingServer: !process.env.CI,
+      timeout: 60_000,
+    },
+    {
+      // The MCP server in front of the stub (AGT-2), for the spec of an agent's plan (agent.spec.ts).
+      command: 'pnpm --filter @colosseum/mcp start',
+      url: `http://localhost:${MCP}/health`,
+      env: {
+        TENONFI_API_URL: `http://localhost:${API}`,
+        TENONFI_APP_URL: `http://localhost:${WEB}`,
+        PORT: String(MCP),
+        HOST: '127.0.0.1',
+      },
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
     },

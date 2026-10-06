@@ -34,7 +34,8 @@ import { riskAnswer } from './stub-risk';
 //
 //   tsx tests/e2e/stub-api.ts            STUB_API_PORT (3901), WEB_ORIGIN (http://localhost:3100)
 //
-// Three routes of its own, for the spec: POST /__stub/reset forgets everything, GET /__stub/reports
+// Plans an agent proposes from a link are made and read back as the API does (AGT-2). Three routes of
+// its own, for the spec: POST /__stub/reset forgets everything, GET /__stub/reports
 // lists the steps the web reported as signed, and POST
 // /__stub/tamper makes the next swap it builds carry a lower minimum than the order states, as a
 // server that lies would. MOCK throughout: every figure says so. The /risk routes are the one
@@ -73,6 +74,16 @@ const freshWorld = (): World => ({
 });
 let world: World = freshWorld();
 let tamperNext = false;
+/** The plan an agent proposed from a link (`POST /v1/baskets/propose`), read back by its id. */
+let linked: ReturnType<typeof proposal> | null = null;
+/** The risk roll-up of a plan an agent proposed: MOCK, nothing measured, as on the mock chain. */
+const ROLL_UP = {
+  byIssuer: [{ key: 'mock', bps: 10_000 }],
+  byChain: [{ key: CHAIN, bps: 10_000 }],
+  byClass: [{ key: 'stock', bps: 10_000 }],
+  flags: ['exit_not_measured', 'exit_quote_missing'],
+  exit: { quotedBps: null, quotedAt: null, measuredWorstBps: null, measuredShareBps: 0 },
+};
 /** The steps the web reported signed bytes or an id for, in order. */
 let reports: string[] = [];
 
@@ -431,6 +442,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     world = freshWorld();
     tamperNext = false;
     reports = [];
+    linked = null;
     return send(res, 200, { ok: true });
   }
   if (path === '/__stub/reports') return send(res, 200, reports);
@@ -462,6 +474,17 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       parser: { method: 'rules' },
       disclaimer: 'MOCK',
     });
+  // A plan an agent proposes for a person (AGT-2): no sign-in, the same plan, read back by its id.
+  if (path === '/v1/baskets/propose' && method === 'POST') {
+    const body = (await read(req)) as { sheet: BasketSheet };
+    linked = proposal(body.sheet);
+    return send(res, 200, { id: PLAN_ID, proposal: linked, rollUp: ROLL_UP });
+  }
+  if (path.startsWith('/v1/baskets/') && method === 'GET') {
+    if (path !== `/v1/baskets/${PLAN_ID}` || !linked)
+      return send(res, 404, { error: 'no plan made from a link has that id' });
+    return send(res, 200, { id: PLAN_ID, proposal: linked });
+  }
   if (path === '/v1/baskets/personalize' && method === 'POST') {
     const body = (await read(req)) as { sheet: BasketSheet };
     return send(res, 200, { id: PLAN_ID, proposal: proposal(body.sheet) });
