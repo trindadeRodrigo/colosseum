@@ -183,7 +183,8 @@ export function notFound(fields: SheetFields, read: SheetFields): FieldKey[] {
 export function goalSentence(fields: SheetFields, t: Dictionary, lang: Lang): string | null {
   const amount = parseNumber(fields.amount);
   const months = /^\d+$/.test(fields.horizon.trim()) ? Number(fields.horizon.trim()) : null;
-  if (fields.goal === '' || amount === null || Number.isNaN(amount) || months === null) return null;
+  // a time frame still being typed ("0") is not one yet
+  if (fields.goal === '' || amount === null || Number.isNaN(amount) || !months) return null;
   // an income goal that names what it wants a month says so
   const income = fields.goal === 'income' ? parseNumber(fields.income) : null;
   if (income !== null && !Number.isNaN(income) && income > 0)
@@ -208,15 +209,20 @@ export function sheetGroups(
   lang: Lang,
   /** The country is the one the browser's language names, as yet unchanged by the person. */
   countryFromBrowser = false,
-): { groups: SheetGroup[]; amount: SheetField } {
+  /** The fields the goal did not say and the reader filled with a start of its own. */
+  assumed: readonly FieldKey[] = [],
+): { groups: SheetGroup[]; more: SheetGroup[]; amount: SheetField } {
   const g = t.goal;
   const empty = new Set(notFound(fields, read));
   const field = (key: FieldKey, rest: Omit<SheetField, 'id' | 'label' | 'value'>): SheetField => {
     const error = errors[key];
     // What the reader did not find says so, before what the field takes.
+    // What the goal did not say and the reader assumed says so too, until the person changes it.
     const hint = empty.has(key)
       ? [g.hints.notFound, rest.hint].filter(Boolean).join(' ')
-      : rest.hint;
+      : assumed.includes(key) && fields[key] === read[key]
+        ? [g.hints.assumed, rest.hint].filter(Boolean).join(' ')
+        : rest.hint;
     return {
       id: FIELD_ID[key],
       label: g.fields[key],
@@ -295,6 +301,14 @@ export function sheetGroups(
               ? g.hints.countryFromBrowser
               : g.hints.country,
         }),
+      ],
+    },
+  ];
+  // What a first plan seldom changes, folded under "More limits" (the flow audit, finding 6).
+  const more: SheetGroup[] = [
+    {
+      legend: g.groups.shape,
+      fields: [
         field('holdings', {
           kind: 'select',
           schemaKey: 'rules.useHoldings',
@@ -326,7 +340,7 @@ export function sheetGroups(
     },
   ];
   const amount = field('amount', { kind: 'amount', schemaKey: 'amountUsd', hint: g.hints.amount });
-  return { groups, amount };
+  return { groups, more, amount };
 }
 
 /** A goal that has been read: the text, how it was read, what was read and what the person made of it. */
@@ -339,6 +353,8 @@ export type ReadSheet = {
   fields: SheetFields;
   /** The country was taken from the browser's language, not from the person (pre-read.ts). */
   countryFromBrowser?: boolean;
+  /** The fields the goal did not say, which the reader filled with a start of its own. */
+  assumed?: FieldKey[];
 };
 
 /** What the goal screen keeps in the tab, so a trip to sign in and back loses nothing typed. */
@@ -413,6 +429,13 @@ export function restoreGoal(raw: string | null): StoredGoal | null {
       read: s.read,
       fields: s.fields,
       ...(s.countryFromBrowser === true ? { countryFromBrowser: true } : {}),
+      ...(Array.isArray(s.assumed)
+        ? {
+            assumed: s.assumed.filter((key): key is FieldKey =>
+              oneOf(key, ...Object.keys(FIELD_ID)),
+            ),
+          }
+        : {}),
     },
   };
 }

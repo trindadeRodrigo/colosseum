@@ -190,11 +190,9 @@ export const pt: Dictionary = {
       list: [
         'Fazer US$ 2.000 crescerem por dez anos, risco alto',
         'Proteger US$ 50.000 por 18 meses, risco baixo',
-        'US$ 80.000 para ter US$ 300 por mês de renda',
+        'US$ 80.000 para ter US$ 300 por mês de renda, 5 anos, risco baixo',
       ],
-      source: 'os limites do próprio exemplo',
     },
-    filledFromWords: 'preenchido a partir das suas palavras',
     readFailure: {
       unreachable:
         'Não consegui falar com nosso servidor para ler isso. Seu texto continua aqui. Tente de novo daqui a pouco.',
@@ -203,10 +201,8 @@ export const pt: Dictionary = {
       unreadable:
         'Recebi uma resposta que não consegui ler. Seu texto continua aqui. Tente de novo.',
     },
-    readerNote:
-      'O leitor de hoje foi feito para objetivos em reais, então pode deixar passar um valor em dólares ou uma data. Confira cada campo: o que ele não encontrou ficou em branco para você.',
     readerMissed: (fields: string) =>
-      `O leitor de hoje foi feito para objetivos em reais, então não encontrou isto no seu objetivo: ${fields}. Preencha abaixo. Nada é montado até que todos os campos estejam certos.`,
+      `Não encontrei isto no seu objetivo: ${fields}. Preencha abaixo.`,
     sheet: {
       title: 'Como li seu objetivo',
       parser: 'leitor',
@@ -216,6 +212,8 @@ export const pt: Dictionary = {
       missingOther: 'Ainda faltam {n} coisas. Preencha para montar o plano.',
       goToField: 'Ir para o campo',
       build: 'Montar meu plano',
+      signInToBuild: 'Entrar para montar meu plano',
+      more: 'Mais limites',
       building: 'Montando seu plano…',
       fixOne: 'Corrija o campo acima para continuar.',
       fixOther: 'Corrija os {n} campos acima para continuar.',
@@ -252,6 +250,7 @@ export const pt: Dictionary = {
       holdings: 'O plano preenche lacunas e evita repetir o que você já tem.',
       amount: 'Com quanto o plano começa, de US$ 10 a US$ 1.000.000.',
       notFound: 'Não encontrei no seu objetivo: preencha.',
+      assumed: 'Seu objetivo não disse isto: eu assumi. Mude se estiver errado.',
     },
     captions: {
       income: 'Um plano de renda não tem ações tokenizadas.',
@@ -287,7 +286,6 @@ export const pt: Dictionary = {
       unknown: 'Ainda não sei',
     },
     blocked: {
-      signedOut: 'Entre para montar: um plano é montado para a rede da sua carteira.',
       chainNotChosen: 'Escolha primeiro uma rede na barra no topo.',
       chainUnknown:
         'Ainda não sei em qual rede seu plano fica, então não consigo montar para ela. Pergunte de novo, acima.',

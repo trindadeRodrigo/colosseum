@@ -222,13 +222,11 @@ export const en = {
       list: [
         'Grow $2,000 for ten years, high risk',
         'Protect $50,000 for 18 months, low risk',
-        '$80,000 for $300 a month of income',
+        '$80,000 for $300 a month of income, 5 years, low risk',
       ],
       /** The sheet's source line, for an example sent as it is: its limits are the app's own. */
-      source: 'this example’s own limits',
     },
     /** Beside the reader on the sheet's source line, when the words of the goal filled what it left empty. */
-    filledFromWords: 'filled from your words',
     readFailure: {
       unreachable:
         'I couldn’t reach our server to read that. Your text is still here. Try again in a moment.',
@@ -237,11 +235,9 @@ export const en = {
       unreadable: 'I got an answer I couldn’t read. Your text is still here. Try again.',
     },
     /** Under the sheet's title, while the only reader is the one made for goals in reais. */
-    readerNote:
-      'Today’s reader was made for goals in reais, so it can miss a dollar amount or a date. Check each field: what it didn’t find is left empty for you.',
-    /** The same note, naming what the reader left empty: "Amount (dollars), Time frame (months)". */
+    /** What the reading left empty, by name: "Amount (dollars) and Time frame (months)". */
     readerMissed: (fields: string) =>
-      `Today’s reader was made for goals in reais, so it didn’t find these in your goal: ${fields}. Fill them in below. Nothing is built until every field fits.`,
+      `I didn’t find these in your goal: ${fields}. Fill them in below.`,
     sheet: {
       title: 'How I read your goal',
       parser: 'parser',
@@ -252,6 +248,10 @@ export const en = {
       missingOther: '{n} things are still missing. Fill them in to build the plan.',
       goToField: 'Go to field',
       build: 'Build my plan',
+      /** The next step for a visitor, in the build button's place: not an error. */
+      signInToBuild: 'Sign in to build my plan',
+      /** The fold over the limits a first plan seldom needs. */
+      more: 'More limits',
       building: 'Building your plan…',
       fixOne: 'Fix the field above to continue.',
       fixOther: 'Fix the {n} fields above to continue.',
@@ -285,6 +285,8 @@ export const en = {
       amount: 'What this plan starts with, from $10 to $1,000,000.',
       /** Before the hint of a field the reader left empty. */
       notFound: 'Not found in your goal: fill it in.',
+      /** A field the goal did not say, filled with a starting value the person can change. */
+      assumed: 'Not said in your goal: I assumed this. Change it if it’s wrong.',
     },
     captions: {
       income: 'An income plan holds no stock tokens.',
@@ -319,7 +321,6 @@ export const en = {
       unknown: 'Not known yet',
     },
     blocked: {
-      signedOut: 'Sign in to build: a plan is built for the chain of your wallet.',
       chainNotChosen: 'Choose a chain from the bar at the top first.',
       chainUnknown:
         'I can’t tell yet which chain your plan lives on, so I can’t build for it. Ask again, above.',

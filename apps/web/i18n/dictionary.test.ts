@@ -223,7 +223,7 @@ describe('the words of the product, in each language', () => {
     expect(en.goal.examples.list).toEqual([
       'Grow $2,000 for ten years, high risk',
       'Protect $50,000 for 18 months, low risk',
-      '$80,000 for $300 a month of income',
+      '$80,000 for $300 a month of income, 5 years, low risk',
     ]);
   });
 

@@ -27,12 +27,13 @@ export const EXAMPLE_FIELDS: readonly Pick<
     risk: 'low',
     incomeTargetUsdMonthly: null,
   },
-  // "$80,000 for $300 a month of income": no time frame and no risk, which the person fills
+  // "$80,000 for $300 a month of income, 5 years, low risk": whole, as the other two are, so the
+  // product's own example opens with nothing left to fill
   {
     goal: 'income',
     amountUsd: 80_000,
-    horizonMonths: null,
-    risk: null,
+    horizonMonths: 60,
+    risk: 'low',
     incomeTargetUsdMonthly: 300,
   },
 ];

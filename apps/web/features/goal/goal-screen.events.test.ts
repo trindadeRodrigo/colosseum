@@ -210,17 +210,19 @@ describe('the goal screen, before anything is read', () => {
     expect(signedIn.textContent).not.toContain(en.goal.visitor.after);
   });
 
-  it('fills the box from an example and hands it over, without sending it', async () => {
+  it('reads an example on the click: the box is filled and the limits open, with no Enter', async () => {
     const server = api({});
     const host = await screen();
     const example = en.goal.examples.list[1] as string;
     await click(
       [...host.querySelectorAll('button')].find((b) => b.textContent === example) as HTMLElement,
     );
+    await settle();
     expect(box(host).value).toBe(example);
-    expect(document.activeElement).toBe(box(host));
+    expect(sheet(host)).not.toBeNull();
+    expect(find(host, '#limits').textContent).toContain(`“${example}”`);
+    // the page's own example: its limits are known here, and the reader is not asked
     expect(server.to('/goals')).toEqual([]);
-    expect(sheet(host)).toBeNull();
   });
 
   it('reads every example back as it says, in each language, without asking the reader', async () => {
@@ -228,8 +230,10 @@ describe('the goal screen, before anything is read', () => {
     const said = [
       { goal: 'grow', amount: '2000', horizon: '120', risk: 'high', income: '' },
       { goal: 'protect', amount: '50000', horizon: '18', risk: 'low', income: '' },
-      { goal: 'income', amount: '80000', horizon: '', risk: '', income: '300' },
+      { goal: 'income', amount: '80000', horizon: '60', risk: 'low', income: '300' },
     ];
+    // a browser that names a country, as most do: nothing is left for the person to fill
+    browserSays(['en-US']);
     for (const lang of ['en', 'pt'] as const) {
       const words = dictionary(lang);
       expect(words.goal.examples.list).toHaveLength(said.length);
@@ -241,7 +245,6 @@ describe('the goal screen, before anything is read', () => {
             (b) => b.textContent === example,
           ) as HTMLElement,
         );
-        await press(box(host), 'Enter');
         await settle();
         const want = said[i] as (typeof said)[number];
         expect(
@@ -257,15 +260,18 @@ describe('the goal screen, before anything is read', () => {
         ).toEqual(want);
         // the page's own example: the reader made for reais is not asked, and does not say so
         expect(server.to('/goals')).toEqual([]);
-        expect(find(host, '#limits').textContent).toContain(words.goal.examples.source);
         expect(host.textContent).not.toContain(words.goal.readerMissed('').slice(0, 20));
+        // our own example is complete: nothing is missing, nothing is assumed, nothing is in red
+        expect(summary(host), `${lang}: ${example}`).toBeNull();
+        expect(host.textContent).not.toContain(words.goal.hints.notFound);
+        expect(host.textContent).not.toContain(words.goal.hints.assumed);
         await unmountAll();
         window.sessionStorage.clear();
       }
     }
   });
 
-  it('fills what the reader leaves from the goal’s own words, and says so on the sheet', async () => {
+  it('fills what the reader leaves from the goal’s own words', async () => {
     // the reader made for reais answers "accumulation", "medium" and no amount or time frame
     const cases = [
       [
@@ -310,7 +316,12 @@ describe('the goal screen, before anything is read', () => {
         },
         `${lang}: ${text}`,
       ).toEqual({ goal, amount, horizon, risk, income });
-      expect(find(host, '#limits').textContent).toContain(words.goal.filledFromWords);
+      // what the words said is read, not assumed; the risk the reader gives any income is assumed
+      const hints = (key: 'goal' | 'risk') =>
+        find(host, `#${FIELD_ID[key]}`).closest('[data-ui="field"]')?.textContent;
+      expect(hints('goal')).not.toContain(words.goal.hints.assumed);
+      if (goal === 'income') expect(hints('risk')).toContain(words.goal.hints.assumed);
+      else expect(hints('risk')).not.toContain(words.goal.hints.assumed);
       await unmountAll();
       window.sessionStorage.clear();
     }
@@ -387,7 +398,9 @@ describe('reading a typed goal', () => {
     expect(find(limits, 'h2').textContent).toBe(en.goal.sheet.title);
     // the goal as the person wrote it, and how it was read, with the time
     expect(limits.textContent).toContain(`“${GOAL}”`);
-    expect(limits.textContent).toMatch(/parser: llm \(a-model\) · \d{4}-\d{2}-\d{2}T[\d:]+Z/);
+    // how it was read is the fields below, not a line about the reader (the flow audit, finding 4)
+    expect(limits.textContent).not.toMatch(/parser|a-model|\d{4}-\d{2}-\d{2}T/);
+    expect(host.textContent).not.toMatch(/reais/);
     // what the reader found is filled in; what it did not is empty for the person
     expect(find<HTMLSelectElement>(host, `#${FIELD_ID.goal}`).value).toBe('grow');
     expect(find<HTMLSelectElement>(host, `#${FIELD_ID.risk}`).value).toBe('medium');
@@ -407,12 +420,29 @@ describe('reading a typed goal', () => {
     );
   });
 
+  it('shows the five limits a first plan needs and folds the rest under “More limits”', async () => {
+    api({});
+    const host = await screen();
+    await read(host);
+    const more = find<HTMLDetailsElement>(host, '[data-ui="sheet-more"]');
+    expect(find(more, 'summary').textContent).toBe(en.goal.sheet.more);
+    expect(more.open).toBe(false);
+    const folded = (['holdings', 'glide', 'language'] as const).map((key) => FIELD_ID[key]);
+    expect([...more.querySelectorAll('select, input')].map((el) => el.id)).toEqual(folded);
+    const shown = [...find(host, '#limits').querySelectorAll('select, input')]
+      .map((el) => el.id)
+      .filter((id) => !folded.includes(id));
+    expect(shown).toEqual(
+      (['goal', 'horizon', 'risk', 'country', 'amount'] as const).map((key) => FIELD_ID[key]),
+    );
+  });
+
   it('stops naming a field once the person has filled it', async () => {
     api({});
     const host = await screen();
     await read(host);
     await fill(host);
-    expect(host.textContent).toContain(en.goal.readerNote);
+    expect(host.textContent).not.toContain(en.goal.readerMissed('').slice(0, 20));
     expect(host.textContent).not.toContain(en.goal.hints.notFound);
   });
 
@@ -534,19 +564,25 @@ describe('“Build my plan”', () => {
     ]);
   });
 
-  it('does not build for someone who is not signed in: a plan is for the chain of a wallet', async () => {
+  it('gives someone who is not signed in the next step, not an error: a link to sign in where the build button is', async () => {
     const server = api({});
     const host = await screen();
     await read(host);
     await fill(host);
-    expect(summary(host)?.textContent).toContain(en.goal.blocked.signedOut);
-    await click(buildButton(host));
-    await settle();
+    expect(summary(host)).toBeNull();
+    expect(host.querySelector('button[data-variant="primary"]')).toBeNull();
+    const next = find(host, 'a[data-variant="primary"]');
+    expect(next.textContent).toBe(en.goal.sheet.signInToBuild);
+    expect(next.getAttribute('href')).toBe('/sign-in?next=/goal');
     expect(server.to(PERSONALIZE_PATH)).toEqual([]);
     // the limits themselves fit: the card says so, and nobody is told to fix a field
     expect(find(host, '[data-ui="goal-card"]').textContent).toContain(en.goal.card.draftSet);
     expect(host.textContent).not.toContain(en.goal.sheet.fixOne);
-    expect(buildButton(host).getAttribute('aria-describedby')).toBe(summary(host)?.id);
+    // the risk the reader answers when the goal names none is marked as assumed, until it is changed
+    const risk = () => find(host, `#${FIELD_ID.risk}`).closest('[data-ui="field"]')?.textContent;
+    expect(risk()).toContain(en.goal.hints.assumed);
+    await choose(host, 'risk', 'low');
+    expect(risk()).not.toContain(en.goal.hints.assumed);
     // and the way to sign in comes back to this screen
     const facts = find(host, '[data-ui="sheet-facts"]');
     expect(facts.textContent).toContain(en.goal.chain.unset);
@@ -678,6 +714,8 @@ describe('an answer that arrives late', () => {
     await settle();
     expect(host.textContent).toContain(en.goal.built.done.title);
     expect(input(host, 'amount').value).toBe('40,000');
+    // the plan lands below the limits: the keyboard goes to it
+    expect(document.activeElement).toBe(find(host, '[data-ui="built-plan"]'));
   });
 
   it('is not shown to whoever is there by then: the person signed out while it was built', async () => {
@@ -1031,8 +1069,7 @@ describe('the goal screen and the rest of the product', () => {
     expect(box(host).getAttribute('lang')).toBe('pt-BR');
     await read(host, 'Juntar US$ 40.000 até junho de 2028');
     expect(find(find(host, '#limits'), 'h2').textContent).toBe(pt.goal.sheet.title);
-    expect(buildButton(host).textContent).toContain(pt.goal.sheet.build);
-    expect(host.textContent).toContain(pt.goal.blocked.signedOut);
+    expect(find(host, 'a[data-variant="primary"]').textContent).toBe(pt.goal.sheet.signInToBuild);
   });
 
   it('holds the binding rules at every step: no hatch without its word, no exclamation mark, labels on every control', async () => {

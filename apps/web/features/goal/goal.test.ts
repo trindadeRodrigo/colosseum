@@ -530,7 +530,13 @@ describe('the goal as one sentence', () => {
   });
 
   it('is not made while any of the three cannot be read', () => {
-    for (const over of [{ goal: '' as const }, { amount: '' }, { amount: 'x' }, { horizon: '' }])
+    for (const over of [
+      { goal: '' as const },
+      { amount: '' },
+      { amount: 'x' },
+      { horizon: '' },
+      { horizon: '0' },
+    ])
       expect(goalSentence({ ...FIELDS, ...over }, en, 'en')).toBeNull();
   });
 });
