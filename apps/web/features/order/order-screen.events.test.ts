@@ -73,7 +73,7 @@ function installLocks() {
   Object.defineProperty(window.navigator, 'locks', { value: locks, configurable: true });
 }
 
-const person = (chain: 'solana' | 'robinhood'): Person => ({
+const person = (chain: 'solana' | 'robinhood' | 'base'): Person => ({
   userId: USER,
   wallets: EMBEDDED,
   chain,
@@ -82,7 +82,7 @@ const person = (chain: 'solana' | 'robinhood'): Person => ({
 });
 
 /** The API: GET /v1/me, and GET /v1/orders/{id} with the order given. */
-function api(order: OrderDetail, chain: 'solana' | 'robinhood' = 'solana') {
+function api(order: OrderDetail, chain: 'solana' | 'robinhood' | 'base' = 'solana') {
   portStore.setApi(async (path) => {
     if (path === '/v1/me') return json(person(chain));
     if (path === `/v1/orders/${ORDER_ID}`) return json(order);
@@ -434,17 +434,66 @@ describe('what a run is handed after a reload', () => {
   });
 });
 
-describe('a chain that is not ready', () => {
-  it('signs nothing on Robinhood Chain until its deployment is committed, and says so', async () => {
-    window.localStorage.clear();
-    portStore.set(signedInPort(EMBEDDED, { userId: USER }));
+describe('a buy on Robinhood Chain', () => {
+  it('reviews the approval of the deposit, then the create that buys, in the record’s units', async () => {
     api(orderOn('robinhood'), 'robinhood');
     seed(recordOf('robinhood'));
+    const host = await screen();
+    const steps = [...host.querySelectorAll('[data-ui="order-step"]')].map((s) => s.textContent);
+    expect(steps).toHaveLength(2);
+    expect(steps[0]).toContain(en.order.kind.approve);
+    expect(steps[0]).toContain('10 tUSDG');
+    expect(steps[1]).toContain(en.order.kind.create_vault);
+    expect(steps[1]).toContain('10 tUSDG');
+    expect(steps[1]).toContain(en.order.review.spend('6 tUSDG', 'tspy'));
+    expect(label(primary(host))).toBe(en.order.signAndBuy('$10'));
+    expect(host.textContent).toContain(en.shell.testNetwork);
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(run.calls).toHaveLength(0);
+  });
+
+  it('hands the executor the order as shown and the test network’s deployment, Robinhood Chain in it', async () => {
+    api(orderOn('robinhood'), 'robinhood');
+    seed(recordOf('robinhood'));
+    run.answer = async () => ({ status: 'done', order: doneOrder('robinhood') });
+    const host = await screen();
+    await click(primary(host));
+    await settle();
+    expect(run.calls).toHaveLength(1);
+    const [{ order, deps }] = run.calls as [{ order: OrderDetail; deps: ExecutorDeps }];
+    expect(order).toEqual(orderOn('robinhood'));
+    expect(deps.deployments).toEqual(deploymentsOf('testnet'));
+    expect(deps.deployments.robinhood?.family).toBe('evm');
+    expect(deps.plan).toEqual({
+      basketId: basketIdOfPlan(PLAN_ID),
+      targets: [
+        { asset: 'robinhood:tspy', weightBps: 6000 },
+        { asset: 'robinhood:tgld', weightBps: 3500 },
+      ],
+      autoFollow: false,
+    });
+    // done, with each step's link on the test network's explorer
+    expect(status(host)).toBe(en.order.outcome.done('Robinhood Chain'));
+    const links = [
+      ...host.querySelectorAll(
+        '[data-ui="order-step"] a[href^="https://explorer.testnet.chain.robinhood.com/tx/"]',
+      ),
+    ];
+    expect(links).toHaveLength(2);
+  });
+});
+
+describe('a chain that is not ready', () => {
+  it('signs nothing on a chain whose deployment is not committed, and says so', async () => {
+    window.localStorage.clear();
+    portStore.set(signedInPort(EMBEDDED, { userId: USER }));
+    api(orderOn('base'), 'base');
+    seed(recordOf('base'));
     const host = await screen();
     expect(host.querySelector('[data-variant="primary"]')).toBeNull();
     expect(run.calls).toHaveLength(0);
     expect(find(host, '[role="alert"]').textContent).toBe(
-      en.order.outcome.notRunnable['no-deployment']('Robinhood Chain'),
+      en.order.outcome.notRunnable['no-deployment']('Base'),
     );
   });
 });
