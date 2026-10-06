@@ -203,7 +203,8 @@ export function registerBasketRoutes(
   f.get(
     '/v1/baskets/:id',
     {
-      config: { auth: 'public', limit: 'standard' },
+      // Open to anybody for a plan from a link; a sign-in, when one is sent, opens the caller's own.
+      config: { auth: 'public', limit: 'standard', optionalSignIn: true },
       schema: {
         tags: ['plans'],
         summary: 'A stored plan by its id: one made from a link, or the caller’s own',
