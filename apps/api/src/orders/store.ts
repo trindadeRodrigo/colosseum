@@ -22,7 +22,19 @@ import {
   type Shelf,
   type VaultView,
 } from '@colosseum/schemas';
-import { and, asc, desc, eq, gte, inArray, isNotNull, ne, notInArray, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  notInArray,
+  sql,
+} from 'drizzle-orm';
 import { Refusal } from './errors';
 
 // The order tables (DESIGN-VAULT section 4), read and written through Drizzle. A leg row mirrors its
@@ -178,6 +190,22 @@ export async function loadProposal(db: Db, id: string): Promise<BasketProposal |
     .select({ proposal: proposals.proposal })
     .from(proposals)
     .where(eq(proposals.id, id));
+  if (!row) return null;
+  const parsed = BasketProposal.safeParse(row.proposal);
+  if (!parsed.success)
+    throw new Refusal(409, 'the stored plan cannot be read: make the plan again');
+  return parsed.data;
+}
+
+/**
+ * A plan made from a link (`POST /v1/baskets/propose`), by its id: one stored with no person. A plan a
+ * person made in the app is theirs, and is not answered here.
+ */
+export async function loadLinkedProposal(db: Db, id: string): Promise<BasketProposal | null> {
+  const [row] = await db
+    .select({ proposal: proposals.proposal })
+    .from(proposals)
+    .where(and(eq(proposals.id, id), isNull(proposals.userId)));
   if (!row) return null;
   const parsed = BasketProposal.safeParse(row.proposal);
   if (!parsed.success)
