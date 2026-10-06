@@ -6,7 +6,7 @@ import { launchShelf } from '../packages/engine/src/personal/testing';
 import { fixturesSource } from '../scripts/try/data';
 import { parseArgs } from '../scripts/try/main';
 import { monthsOf, PromptFileError, parsePromptFile } from '../scripts/try/prompt-file';
-import { renderReport } from '../scripts/try/report';
+import { incomeOf, incomeWords, renderReport, summary } from '../scripts/try/report';
 import { type GoalRun, runGoal } from '../scripts/try/run';
 
 // The plan playground (scripts/try, try/README.md): the prompt file format, and a smoke run of
@@ -204,6 +204,109 @@ describe('a model reply pasted in the file', () => {
     expect(problemsOf('## Bad\nGrow $1,000.\n```json reply\n{nope\n```')).toEqual([
       expect.stringMatching(/line 3: the json reply is not JSON/),
     ]);
+  });
+});
+
+describe("an income goal's verdict", () => {
+  // The goal of try/mine/chat.md, with its reply pasted and no answer for the time frame.
+  const source = [
+    '## Income for 15 years',
+    "I'm 45, I have $80,000 saved and I'd like it to pay me around $500 a month for the next 15 years. I don't want anything risky and no lending stuff. I live in Portugal.",
+    '```json reply sonnet',
+    JSON.stringify({
+      goal: 'income',
+      amountUsd: 80000,
+      incomeTargetUsdMonthly: 500,
+      horizonMonths: 180,
+      risk: 'low',
+      currency: null,
+      country: 'PT',
+      chain: null,
+      portfolios: [],
+      language: 'en',
+      noCredit: true,
+      cannotHold: [],
+      unclear: [],
+    }),
+    '```',
+    '```yaml answers',
+    'risk: low',
+    '```',
+  ].join('\n');
+  const goalRun = async () => {
+    const [goal] = parsePromptFile(source, 'test.md');
+    if (!goal) throw new Error('no goal');
+    return runGoal(goal, { data: fixturesSource(), model: null, now: NOW });
+  };
+
+  it('"for the next 15 years" asks no time-frame question', async () => {
+    const r = await goalRun();
+    expect(r.open.map((q) => q.key)).not.toContain('horizon');
+    expect(r.intake.draft.horizonMonths).toBe(180);
+    expect(r.made?.shown.length).toBeGreaterThan(0);
+  });
+
+  it('is read for the plain plan and each candidate: target, pay, gap, ways', async () => {
+    const r = await goalRun();
+    const plans = [r.plain, ...(r.made?.shown ?? []).map((c) => c.plan)];
+    for (const plan of plans) {
+      if (!plan?.verdict) throw new Error('no verdict');
+      const inc = incomeOf(plan);
+      expect(inc?.targetUsd).toBe(500);
+      expect(inc?.met).toBe(plan.verdict.met);
+      expect(inc?.gapUsd).toBe(plan.verdict.gapUsdMonthly);
+      if (inc && !inc.met) expect(inc.paysUsd + inc.gapUsd).toBeCloseTo(500, 2);
+      expect(inc?.ways).toEqual(plan.verdict.ways.map((w) => w.change));
+      expect(inc?.noAmountCloses).toBe(plan.verdict.noAmountCloses ?? null);
+    }
+  });
+
+  it('shows the Income block, the ways and the sentence on the page, and in the terminal line', async () => {
+    const r = await goalRun();
+    const page = renderReport([r], { file: 'test.md', mode: 'fixtures', now: NOW.toISOString() });
+    const plain = r.plain ? incomeOf(r.plain) : null;
+    if (!plain) throw new Error('no income');
+    expect(page).toContain('<h5>Income</h5>');
+    expect(page).toContain('Target a month');
+    expect(page).toContain('$500.00');
+    expect(page).toContain('Paid a month at observed yields, after haircut');
+    for (const way of plain.ways) expect(page).toContain(way);
+    if (plain.noAmountCloses) expect(page).toContain(plain.noAmountCloses);
+    const [line] = summary([r]);
+    expect(line).toContain(`income ${incomeWords(plain)}`);
+    if (!plain.met) expect(line).toMatch(/income short by \$[\d,.]+\/month of \$500\.00/);
+    if (plain.noAmountCloses) expect(line).toContain('no larger amount closes it');
+  });
+
+  it('words a verdict met and one short', () => {
+    const base = { targetUsd: 500, ways: [], noAmountCloses: null };
+    expect(incomeWords({ ...base, paysUsd: 520, met: true, gapUsd: 0 })).toBe(
+      'met ($500.00/month)',
+    );
+    expect(
+      incomeWords({
+        ...base,
+        paysUsd: 103,
+        met: false,
+        gapUsd: 397,
+        ways: ['aim lower'],
+        noAmountCloses: 'No larger amount closes the gap.',
+      }),
+    ).toBe('short by $397.00/month of $500.00, no larger amount closes it, 1 way(s)');
+  });
+
+  it('gives no Income block for a goal that is not an income', async () => {
+    const [goal] = parsePromptFile(
+      '## Grow\nGrow $10,000 over 10 years, high risk.\n```yaml answers\ngoal: grow\namount: 10000\nhorizon: 10y\nrisk: high\ncountry: gb\n```',
+      'test.md',
+    );
+    if (!goal) throw new Error('no goal');
+    const r = await runGoal(goal, { data: fixturesSource(), model: null, now: NOW });
+    expect(r.plain).not.toBeNull();
+    if (r.plain) expect(incomeOf(r.plain)).toBeNull();
+    const page = renderReport([r], { file: 'test.md', mode: 'fixtures', now: NOW.toISOString() });
+    expect(page).not.toContain('<h5>Income</h5>');
+    expect(summary([r])[0]).not.toContain('income');
   });
 });
 

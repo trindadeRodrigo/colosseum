@@ -156,6 +156,63 @@ function status(plan: PersonalProposal): string {
     ${st.noAmountCloses ? `<p>${esc(st.noAmountCloses)}</p>` : ''}`;
 }
 
+/** An income goal's verdict, with what the plan pays a month: null for any other goal. */
+export type Income = {
+  targetUsd: number;
+  /**
+   * What the plan pays a month at the yields observed, after haircut. Short: the target less the gap,
+   * as the engine counts it. Met: from the card's low return, never under the target.
+   */
+  paysUsd: number;
+  met: boolean;
+  gapUsd: number;
+  ways: string[];
+  noAmountCloses: string | null;
+};
+
+const MONTHS = 12;
+const PERCENT = 100;
+
+export function incomeOf(plan: PersonalProposal): Income | null {
+  const v = plan.verdict;
+  const target = plan.sheet.incomeTargetUsdMonthly;
+  if (!v || target === undefined) return null;
+  const fromCard = (plan.sheet.amountUsd * plan.card.expectedReturn.lowPct) / PERCENT / MONTHS;
+  return {
+    targetUsd: target,
+    paysUsd: v.met ? Math.max(target, fromCard) : Math.max(0, target - v.gapUsdMonthly),
+    met: v.met,
+    gapUsd: v.gapUsdMonthly,
+    ways: v.ways.map((w) => w.change),
+    noAmountCloses: v.noAmountCloses ?? null,
+  };
+}
+
+function incomeBlock(plan: PersonalProposal): string {
+  const inc = incomeOf(plan);
+  if (!inc) return '';
+  const rows: [string, string][] = [
+    ['Target a month', usd(inc.targetUsd)],
+    [
+      'Paid a month at observed yields, after haircut',
+      `${inc.met ? 'about ' : ''}${usd(inc.paysUsd)}`,
+    ],
+    ['Verdict', inc.met ? 'met' : 'short'],
+    ['Gap a month', usd(inc.gapUsd)],
+  ];
+  return `<h5>Income</h5><table class="kv">${rows.map(([k, v]) => `<tr><th>${esc(k)}</th><td class="n">${esc(v)}</td></tr>`).join('')}</table>
+    ${inc.met ? '' : `<h5>Ways to reach the income</h5>${list(inc.ways.map(esc))}`}
+    ${inc.noAmountCloses ? `<p>${esc(inc.noAmountCloses)}</p>` : ''}`;
+}
+
+/** The income verdict in a few words for the terminal: "short by $397/month, no larger amount closes it". */
+export function incomeWords(inc: Income): string {
+  if (inc.met) return `met (${usd(inc.targetUsd)}/month)`;
+  const gap = `short by ${usd(inc.gapUsd)}/month of ${usd(inc.targetUsd)}`;
+  const ways = inc.ways.length ? `, ${inc.ways.length} way(s)` : '';
+  return `${gap}${inc.noAmountCloses ? ', no larger amount closes it' : ''}${ways}`;
+}
+
 function observations(plan: PersonalProposal, mode: DataMode): string {
   if (!plan.observations.length) return '<p class="none">none</p>';
   return `<table class="obs"><thead><tr><th>Figure</th><th>Source, method, time</th><th></th></tr></thead><tbody>${plan.observations
@@ -173,6 +230,7 @@ function candidateCard(id: string, plan: PersonalProposal, run: GoalRun, mode: D
     <h4>${esc(name)} ${mode === 'fixtures' ? plate('fixture-mode') : ''}</h4>
     ${linesTable(plan, run.symbols)}
     ${plan.removed.length ? `<h5>Left out</h5>${list(plan.removed.map((r) => `<code>${esc(r.ref)}</code>: ${r.reasons.map((x) => esc(x.text)).join(' ')}`))}` : ''}
+    ${incomeBlock(plan)}
     <h5>Scorecard</h5>${scorecard(plan)}
     <h5>Status</h5>${status(plan)}
     <h5>Flags</h5>${codes(plan.flags)}
@@ -191,8 +249,8 @@ function plansSection(run: GoalRun, mode: DataMode): string {
   const carry = run.made.shown.find((c) => c.id === 'carry');
   const plainNote =
     carry && sameLines(carry.plan, run.plain)
-      ? '<p class="meta">The plain plan (<code>compose</code>) holds the same as Carry.</p>'
-      : `<details><summary>The plain plan (<code>compose</code>)</summary>${linesTable(run.plain, run.symbols)}<h5>Flags</h5>${codes(run.plain.flags)}</details>`;
+      ? `<p class="meta">The plain plan (<code>compose</code>) holds the same as Carry.</p>${incomeBlock(run.plain)}`
+      : `<details${run.plain.verdict ? ' open' : ''}><summary>The plain plan (<code>compose</code>)</summary>${linesTable(run.plain, run.symbols)}${incomeBlock(run.plain)}${run.plain.status ? `<h5>Status</h5>${status(run.plain)}` : ''}<h5>Flags</h5>${codes(run.plain.flags)}</details>`;
   return `
     <h3>Candidates</h3>
     <p class="meta">In the fixed order, none marked. ${run.made.shown.length} shown.</p>
@@ -294,6 +352,14 @@ export function summary(runs: GoalRun[]): string[] {
       return `- ${r.goal.title} [${reader}]: ${r.open.length} question(s) open: ${r.open.map((q) => q.key).join(', ')}`;
     const shown = r.made.shown.map((c) => c.id).join(', ');
     const hidden = r.made.notShown.map((c) => c.id).join(', ');
-    return `- ${r.goal.title} [${reader}]: shown ${shown}${hidden ? `; not shown ${hidden}` : ''}`;
+    const plain = r.plain ? incomeOf(r.plain) : null;
+    const each = r.made.shown.flatMap((c) => {
+      const inc = incomeOf(c.plan);
+      return inc ? [`${c.id} ${inc.met ? 'met' : `short ${usd(inc.gapUsd)}`}`] : [];
+    });
+    const income = plain
+      ? `; income ${incomeWords(plain)}${each.length ? ` (${each.join(', ')})` : ''}`
+      : '';
+    return `- ${r.goal.title} [${reader}]: shown ${shown}${hidden ? `; not shown ${hidden}` : ''}${income}`;
   });
 }

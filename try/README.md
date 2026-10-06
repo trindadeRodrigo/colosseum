@@ -104,10 +104,14 @@ live figure is marked `live`.
 
 The goal text; what was read and by which reader; the questions left open and the intake's flags; the
 read-back the person would confirm; then the candidates in their fixed order (Cover, Spread, Carry), none
-marked: each line with its token, weight, dollars and every reason sentence, the scorecard, the status
-with months paid, the stresses and the ways to close a gap, the flags, and the figures with their
-provenance. Candidates not shown are listed with why. The plain plan (`compose`) is the same as Carry
-unless the page says otherwise.
+marked: each line with its token, weight, dollars and every reason sentence; for an income goal, the
+Income block (the target a month, what the plan pays a month at the yields observed after haircut, met
+or short, the gap, the ways to reach it, and the sentence when no larger amount closes it); the
+scorecard, the status with months paid, the stresses and the ways to close a gap, the flags, and the
+figures with their provenance. Candidates not shown are listed with why. The plain plan (`compose`) is
+the same as Carry unless the page says otherwise; its Income block is shown either way. For an income
+goal the terminal line adds the verdict: "income short by $396.50/month of $500.00, no larger amount
+closes it".
 
 The page uses the time from `--now`, or the clock: the same file and `--now` give the same page.
 
