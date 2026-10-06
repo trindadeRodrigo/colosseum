@@ -16,6 +16,7 @@ import {
 } from '@colosseum/schemas';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
+import { type IntakeModel, intakeModelFromEnv } from '../../llm';
 import { type ChainRegistry, createChainRegistry, type SolanaInputs } from '../../orders/chains';
 import { Refusal, refusalFromChainError } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
@@ -25,11 +26,13 @@ import { type Limits, registerLimits, requireDeclared } from '../../plugins/limi
 import { registerBasketRoutes } from './baskets';
 import { buildConfig, registerConfigRoute } from './config';
 import { registerFundingRoute } from './funding';
+import { registerIntakeRoute } from './intake';
 import { registerMeRoutes } from './me';
 import { registerMockRoutes } from './mock';
 import { registerOrderRoutes } from './orders';
 import { registerPortfolioRoute } from './portfolio';
 import { registerSharedRoutes } from './shared';
+import { registerVaultRoute } from './vault';
 
 /**
  * What the /v1 routes run on. Left out, each comes from the environment the app hands in. A test hands
@@ -55,6 +58,11 @@ export type V1Deps = {
    * ceiling is its tier's and says so. The server hands in the reader of the stored figures.
    */
   planInputs?: PlanInputs;
+  /**
+   * The model the guided intake reads a goal with. Default: Anthropic's when `ANTHROPIC_API_KEY` is
+   * set, else none, and the intake reads with the rules parser alone. A test hands in a replay.
+   */
+  intakeModel?: IntakeModel | null;
   /** The rate limits. Default: `LIMITS`, the ones a server runs with. */
   limits?: Limits;
   /**
@@ -130,8 +138,14 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
     registerFundingRoute(scope, orderDeps);
     registerOrderRoutes(scope, orderDeps);
     registerBasketRoutes(scope, orderDeps, deps.planInputs ?? (async () => ({})));
+    registerIntakeRoute(
+      scope,
+      orderDeps,
+      deps.intakeModel === undefined ? intakeModelFromEnv(env, deps.now) : deps.intakeModel,
+    );
     registerPortfolioRoute(scope, orderDeps);
     registerSharedRoutes(scope, orderDeps);
+    registerVaultRoute(scope, orderDeps);
     // Out of the route table altogether unless a chain runs on the mock.
     if (chains.active().some((entry) => entry.mock)) registerMockRoutes(scope, orderDeps);
   });

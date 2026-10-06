@@ -42,3 +42,23 @@ export function unitsFor(chain: ChainId, mock: boolean): ChainUnits | null {
     ),
   };
 }
+
+/**
+ * The mock chain's shelf (packages/chain-mock), by slug: what a portfolio can be published with on the
+ * mock, where the committed deployment names the cash token and nothing else. MOCK throughout.
+ */
+const MOCK_SHELF = ['spy', 'nvda', 'tsla', 'gold', 'yield'] as const;
+
+/**
+ * The assets a portfolio may name on this chain, other than cash: the committed deployment's on a real
+ * network, the mock's shelf on the mock. Empty when no deployment is committed: nothing is published.
+ */
+export function assetsFor(chain: ChainId, mock: boolean): { id: AssetId; symbol: string }[] {
+  const units = unitsFor(chain, mock);
+  if (!units) return [];
+  if (mock)
+    return MOCK_SHELF.map((slug) => ({ id: `${chain}:${slug}`, symbol: slug.toUpperCase() }));
+  return Object.entries(units.tokens)
+    .filter(([id]) => id !== units.cash)
+    .map(([id, token]) => ({ id, symbol: token?.symbol ?? id }));
+}

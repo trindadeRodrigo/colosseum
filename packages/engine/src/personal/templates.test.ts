@@ -2,8 +2,11 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  CLASS_WORDS,
   INPUT_NAMES,
   placeholdersOf,
+  QUESTION_TEMPLATES,
+  READBACK_TEMPLATES,
   REASON_TEMPLATES,
   type RuleId,
   reason,
@@ -274,6 +277,49 @@ describe('explanation templates', () => {
     for (const rule of rules) {
       const t = REASON_TEMPLATES[rule];
       expect(reason(rule, sampleParams(t.en), 'en').inputs).toEqual([...t.inputs]);
+    }
+  });
+});
+
+// The guided intake's wording (ENG-3 slice 4): the questions and the read-back are held to the same
+// bans. A question ends with a question mark, or with a full stop where it asks for an action.
+describe('intake templates', () => {
+  const intake = [
+    ...Object.entries(QUESTION_TEMPLATES).map(([id, t]) => ({ id, ...t })),
+    ...Object.entries(READBACK_TEMPLATES).map(([id, t]) => ({ id, ...t })),
+  ];
+
+  it('are plain sentences in both languages, with the same values, filled with no hole', () => {
+    for (const t of intake) {
+      const keys = (text: string) =>
+        placeholdersOf(text)
+          .map((p) => `${p.key}|${p.format}`)
+          .sort();
+      expect(keys(t.pt), t.id).toEqual(keys(t.en));
+      for (const lang of LANGUAGES) {
+        const text = t[lang];
+        expect(text, `${t.id}.${lang}`).toMatch(/[.?]$/);
+        expect(text, `${t.id}.${lang}`).not.toMatch(/!/);
+        expect(text, `${t.id}.${lang}`).toMatch(/^[\p{L}\p{N}\p{P}\p{Zs}$|]+$/u);
+        const filled = render(text, sampleParams(text), lang);
+        expect(filled, `${t.id}.${lang}`).not.toMatch(/[{}]|undefined|NaN|null/);
+      }
+    }
+  });
+
+  it('ban what reads as advice or a return promise', () => {
+    for (const lang of LANGUAGES) {
+      const texts = [
+        ...intake.map((t) => ({ id: t.id, text: t[lang] })),
+        ...intake.map((t) => ({
+          id: `${t.id} filled`,
+          text: render(t[lang], sampleParams(t[lang]), lang),
+        })),
+        ...Object.values(CLASS_WORDS[lang]).map((text) => ({ id: 'a class', text })),
+      ];
+      for (const { id, text } of texts)
+        for (const pattern of [...BANNED[lang], ...BRAND_BANNED])
+          expect(text, `${id}.${lang} against ${pattern}`).not.toMatch(pattern);
     }
   });
 });

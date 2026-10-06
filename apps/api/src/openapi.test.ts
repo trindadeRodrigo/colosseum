@@ -107,6 +107,7 @@ describe('the committed OpenAPI document (packages/sdk/openapi.json)', () => {
       'GET /v1/indexes/{slug}',
       'GET /v1/indexes/{slug}/versions',
       'GET /v1/shelf',
+      'GET /v1/vaults/{chain}/{address}',
     ]);
     // The routes that ask a chain for quotes, and the one that runs the engine on a chain's shelf,
     // are the ones with the tighter budget.
@@ -115,7 +116,8 @@ describe('the committed OpenAPI document (packages/sdk/openapi.json)', () => {
       'POST /v1/orders',
       'POST /v1/orders/{id}/legs/{legId}/build',
     ]);
-    expect(classes.parse).toBeUndefined();
+    // The guided intake calls a model: its own, tighter budget.
+    expect(classes.parse).toEqual(['POST /v1/baskets/intake']);
   });
 
   it('self-check: a route whose rule changed is another document', () => {

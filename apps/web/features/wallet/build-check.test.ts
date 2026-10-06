@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -8,6 +9,7 @@ import {
   DEV_ONLY,
   FORBIDDEN,
   REQUIRED,
+  STAGE_BUDGET,
 } from '../../scripts/check-build.mjs';
 import { DEV_PAGE_MARKER } from './dev/marker';
 import { WALLET_MARKER } from './marker';
@@ -61,6 +63,19 @@ describe('the check that runs after every production build', () => {
 
   it('passes a build with none of it', () => {
     expect(checkBuild(build(CLEAN))).toEqual([]);
+  });
+
+  it('holds the landing’s 3D joint to its budget, gzipped', () => {
+    // a chunk that compresses to little passes, however long it is
+    const small = build({
+      ...CLEAN,
+      'static/chunks/3d.js': `new WebGLRenderer;${'a'.repeat(400_000)}`,
+    });
+    expect(checkBuild(small)).toEqual([]);
+    // one that does not, over the budget, fails
+    const noise = randomBytes(STAGE_BUDGET * 2).toString('base64');
+    const big = build({ ...CLEAN, 'static/chunks/3d.js': `new WebGLRenderer;${noise}` });
+    expect(checkBuild(big)).toEqual([expect.stringContaining('the 3D joint')]);
   });
 
   it('fails when the throwaway wallet is in a chunk', () => {

@@ -1,0 +1,486 @@
+import { BasketSheetDraft } from '@colosseum/schemas';
+import { describe, expect, it } from 'vitest';
+import { draftFromRules } from './draft';
+import evalSet from './fixtures/goals-eval.json';
+import recorded from './fixtures/intake-replies.json';
+import {
+  type IntakeAnswers,
+  type IntakeInput,
+  QUESTION_FIELDS,
+  readReply,
+  runIntake,
+  type ShelfPortfolio,
+} from './intake';
+import {
+  amountInText,
+  countryNamed,
+  goalCuesIn,
+  horizonsIn,
+  mentionsIn,
+  refusalsIn,
+  riskCuesIn,
+} from './intake-text';
+import { QUESTION_TEMPLATES, render } from './templates';
+import { launchShelf } from './testing';
+import { PersonalSheet } from './types';
+
+// The guided intake (gate GUIDED-INTAKE; C14 and C16 to C18 of ENG-3 slice 4). The model's replies are
+// MOCK: written by hand in the shape the API asks the model for, and replayed here. No test reaches a
+// network. What is under test is everything after the model: the checks in pure code, the questions,
+// the sheet the person confirms.
+
+type Goal = (typeof evalSet.goals)[number];
+const goals = evalSet.goals as Goal[];
+const replies = recorded.replies as Record<string, unknown>;
+const adversarial = recorded.adversarial as Record<string, { goal: string; reply: unknown }>;
+const NOW = evalSet.nowMonth;
+
+const portfolios: ShelfPortfolio[] = launchShelf().families.map((f) => ({
+  slug: f.meta.slug,
+  name: f.meta.name,
+}));
+const goalOf = (id: string): Goal => {
+  const g = goals.find((x) => x.id === id);
+  if (!g) throw new Error(`no goal ${id}`);
+  return g;
+};
+const run = (id: string, over: Partial<IntakeInput> = {}) =>
+  runIntake({
+    text: goalOf(id).text,
+    nowMonth: NOW,
+    reply: replies[id] ?? null,
+    homeChain: 'solana',
+    portfolios,
+    ...over,
+  });
+
+// Answers a person might give to whatever is asked, one per field.
+const ANSWER: Required<Pick<IntakeAnswers, 'goal' | 'amountUsd' | 'horizonMonths' | 'risk'>> &
+  IntakeAnswers = {
+  goal: 'grow',
+  amountUsd: 2500,
+  incomeTargetUsdMonthly: 20,
+  horizonMonths: 24,
+  risk: 'medium',
+  country: 'US',
+  currency: 'USD',
+  themes: [],
+};
+const answersFor = (questions: { field: string }[]): IntakeAnswers =>
+  Object.fromEntries(
+    questions
+      .filter((q) => q.field !== 'chains')
+      .map((q) => [q.field, ANSWER[q.field as keyof IntakeAnswers]]),
+  ) as IntakeAnswers;
+
+describe('the recorded replies (MOCK) are labelled as such', () => {
+  it('says they are hand-written, not recorded from a live model, and has one per goal', () => {
+    expect(recorded.provenance).toBe('mock');
+    expect(recorded.about).toMatch(/^MOCK\./);
+    expect(recorded.about).toMatch(/not recorded from a live model/);
+    expect(Object.keys(replies).sort()).toEqual(goals.map((g) => g.id).sort());
+  });
+});
+
+describe('the checks after the model, on the evaluation set (C14)', () => {
+  it('turns each recorded reply into the draft the set expects, and the refusals it expects', () => {
+    for (const g of goals) {
+      const result = run(g.id);
+      expect(result.method, g.id).toBe('model');
+      expect(BasketSheetDraft.safeParse(result.draft).success, g.id).toBe(true);
+      expect(result.draft, g.id).toEqual(g.expect);
+      expect(result.limits, g.id).toEqual(g.expectLimits);
+    }
+  });
+
+  it('a goal in reais: the amount the model read as dollars is dropped, and asked in dollars', () => {
+    const result = run('pt-protect-reais-sem-acoes');
+    expect(result.draft.amountUsd).toBeNull();
+    expect(result.draft.currency).toBe('BRL');
+    expect(result.flags).toContain('other_currency:amountUsd');
+    const ask = result.questions.find((q) => q.field === 'amountUsd');
+    expect(ask?.template).toBe('amountOtherCurrency');
+    expect(ask?.text).toBe(
+      'Você escreveu 3.000 BRL. Quanto é isso em dólares, a moeda em que o plano é aplicado?',
+    );
+    // The model said it could not read the risk, and the rules parser reads "guardar" as a goal to
+    // grow where the model reads one to protect: both are asked, in the person's language.
+    expect(result.flags).toContain('disagrees_with_rules:goal');
+    expect(result.questions.map((q) => q.field)).toEqual(['goal', 'amountUsd', 'risk', 'country']);
+  });
+
+  it('two amounts in one sentence: each is held to the text, and one figure for both is doubted', () => {
+    for (const id of ['en-income-two-amounts', 'pt-income-two-amounts-mil']) {
+      const result = run(id);
+      expect(
+        result.flags.filter((f) => !f.startsWith('disagrees_with_rules:')),
+        id,
+      ).toEqual([]);
+      expect(result.draft.amountUsd, id).not.toBe(result.draft.incomeTargetUsdMonthly);
+    }
+    const swapped = adversarial.income_swapped as { goal: string; reply: unknown };
+    const result = run(swapped.goal, { reply: swapped.reply });
+    // $250 is written as a rate a month: it is the income, never the sum put in.
+    expect(result.flags).toContain('wrong_role:amountUsd');
+    expect(result.draft.amountUsd).toBeNull();
+    // The two figures swapped: each is written, in the other role, and neither is taken.
+    const base = replies['en-income-two-amounts'] as Record<string, unknown>;
+    const crossed = run('en-income-two-amounts', {
+      reply: { ...base, amountUsd: 250, incomeTargetUsdMonthly: 40_000 },
+    });
+    expect(crossed.flags).toEqual(
+      expect.arrayContaining(['wrong_role:amountUsd', 'wrong_role:incomeTargetUsdMonthly']),
+    );
+    expect(crossed.draft).toMatchObject({ amountUsd: null, incomeTargetUsdMonthly: null });
+    expect(result.questions.map((q) => q.field)).toContain('amountUsd');
+  });
+
+  it('drops what the text does not hold, and asks about it', () => {
+    const cases: [string, string[], Partial<Record<string, unknown>>, string[]][] = [
+      ['amount_not_in_text', ['not_in_text:amountUsd'], { amountUsd: null }, ['amountUsd']],
+      [
+        'horizon_not_in_text',
+        ['not_in_text:horizonMonths'],
+        { horizonMonths: null },
+        ['horizonMonths'],
+      ],
+      ['portfolio_not_on_shelf', ['not_on_shelf:themes'], { themes: null }, ['themes']],
+      ['currency_not_in_text', ['not_in_text:currency'], { currency: null }, ['currency']],
+      [
+        'invalid_fields',
+        ['model_invalid:goal', 'model_invalid:risk', 'model_invalid:country'],
+        { goal: null, risk: null, country: null },
+        ['goal', 'risk', 'country'],
+      ],
+    ];
+    for (const [name, flags, draft, asked] of cases) {
+      const { goal, reply } = adversarial[name] as { goal: string; reply: unknown };
+      const result = run(goal, { reply });
+      expect(result.flags, name).toEqual(expect.arrayContaining(flags));
+      expect(result.draft, name).toMatchObject(draft);
+      expect(
+        result.questions.map((q) => q.field),
+        name,
+      ).toEqual(expect.arrayContaining(asked));
+      expect(result.sheet, name).toBeNull();
+    }
+  });
+
+  it('keeps a refusal only where the text writes it', () => {
+    const { goal, reply } = adversarial.refusal_not_in_text as { goal: string; reply: unknown };
+    const result = run(goal, { reply });
+    expect(result.limits).toEqual({ creditTolerance: null, cannotHoldClasses: null });
+    expect(result.flags).toEqual(
+      expect.arrayContaining(['not_in_text:cannotHold:gold', 'not_in_text:noCredit']),
+    );
+  });
+
+  it('a reply that is not an object: every field is null, and every field is asked', () => {
+    const { goal, reply } = adversarial.not_an_object as { goal: string; reply: unknown };
+    const result = run(goal, { reply });
+    expect(result.flags).toEqual(['model_unreadable']);
+    expect(result.questions.map((q) => q.field)).toEqual([
+      'goal',
+      'amountUsd',
+      'horizonMonths',
+      'risk',
+      'country',
+    ]);
+  });
+
+  it('flags every field where the model and the rules parser disagree, and asks about it', () => {
+    const result = run('en-protect-country-no-stocks');
+    // The rules parser reads "no stocks" as high risk; the model reads low. Neither wins: the person says.
+    expect(result.disagreements).toContainEqual({ field: 'risk', model: 'low', rules: 'high' });
+    expect(result.flags).toContain('disagrees_with_rules:risk');
+    const risk = result.questions.find((q) => q.field === 'risk');
+    expect(risk?.read).toBe('low');
+    expect(risk?.options).toEqual(['low', 'medium', 'high']);
+    // On every goal, a disagreement is flagged by field and the field is asked unless it is the language.
+    for (const g of goals) {
+      const r = run(g.id);
+      const rules = draftFromRules(g.text, NOW).draft;
+      for (const field of ['goal', 'horizonMonths', 'risk'] as const) {
+        const [a, b] = [r.draft[field], rules[field]];
+        // One month apart is the same time frame (the rules parser counts "for 5 years" as 61).
+        const near =
+          field === 'horizonMonths' && typeof a === 'number' && typeof b === 'number'
+            ? Math.abs(a - b) <= 1
+            : false;
+        const differ = a !== null && b !== null && a !== b && !near;
+        expect(r.flags.includes(`disagrees_with_rules:${field}`), `${g.id} ${field}`).toBe(differ);
+        if (differ)
+          expect(
+            r.questions.map((q) => q.field),
+            g.id,
+          ).toContain(field);
+      }
+    }
+  });
+
+  it('names the wallet chain when the text names another, and builds on the wallet chain', () => {
+    const result = run('en-grow-by-2031-theme-chain', { homeChain: 'robinhood' });
+    expect(result.flags).toContain('other_chain:solana');
+  });
+});
+
+describe('the review of Oct 5: what the model gives that the text does not support is asked', () => {
+  it('a country, a goal or a risk with no word for it in the text is the suggestion, not the reading', () => {
+    const cases: [string, string, string, unknown][] = [
+      ['country_not_in_text', 'country', 'no_cue:country', 'BR'],
+      ['goal_without_cue', 'goal', 'no_cue:goal', 'protect'],
+      ['risk_without_cue', 'risk', 'no_cue:risk', 'high'],
+    ];
+    for (const [name, field, flag, value] of cases) {
+      const { goal, reply } = adversarial[name] as { goal: string; reply: unknown };
+      const result = run(goal, { reply, answers: field === 'country' ? {} : { country: 'US' } });
+      expect(result.flags, name).toContain(flag);
+      const q = result.questions.find((x) => x.field === field);
+      expect(q, name).toMatchObject({ read: value });
+      expect(result.sheet, name).toBeNull();
+    }
+    // Where the text says it, it is taken: "I live in Brazil", "Moro no Brasil".
+    for (const id of ['en-protect-country-no-stocks', 'pt-protect-country-no-stocks'])
+      expect(run(id).flags, id).not.toContain('no_cue:country');
+  });
+
+  it('an amount in euros, pounds or another currency never passes as dollars', () => {
+    for (const text of [
+      'Grow 3k€ for 2 years',
+      'Grow 3.000 € for 2 years',
+      'Grow EUR 3,000 for 2 years',
+      'Grow 3,000 in euros for 2 years',
+      'Grow £3,000 for 2 years',
+      'Grow C$ 3,000 for 2 years',
+      'Crescer 3 mil pesos por 2 anos',
+    ])
+      expect(amountInText(text, 3000), text).toBe('other_currency');
+    expect(amountInText('Grow 3,000 for 2 years', 3000)).toBe('dollars');
+    expect(amountInText('Grow US$ 3,000, not 3,000 €', 3000)).toBe('dollars');
+    const euro = runIntake({
+      text: 'Grow 3k€ over 2 years, high risk.',
+      nowMonth: NOW,
+      reply: { goal: 'grow', amountUsd: 3000, horizonMonths: 24, risk: 'high', language: 'en' },
+      homeChain: 'solana',
+      portfolios,
+    });
+    expect(euro.draft.amountUsd).toBeNull();
+    expect(euro.questions.find((q) => q.field === 'amountUsd')?.text).toBe(
+      'You wrote 3,000 EUR. How much is that in dollars, the currency the plan is funded in?',
+    );
+  });
+
+  it('binds each amount to its role', () => {
+    const text = 'From $40,000 I want $250 a month of income for 10 years.';
+    expect(amountInText(text, 40_000, 'amount')).toBe('dollars');
+    expect(amountInText(text, 250, 'income')).toBe('dollars');
+    expect(amountInText(text, 250, 'amount')).toBe('wrong_role');
+    expect(amountInText(text, 40_000, 'income')).toBe('wrong_role');
+    expect(amountInText('A monthly income of $300 from $80,000', 300, 'income')).toBe('dollars');
+  });
+
+  it('a duration is a time frame only where the text says it as one, never an age', () => {
+    expect(horizonsIn('I am 35 years old and want to grow $5,000 over 10 years', NOW)).toEqual([
+      120,
+    ]);
+    expect(horizonsIn('Tenho 35 anos de idade', NOW)).toEqual([]);
+    expect(horizonsIn('My 2 kids, 5 years apart', NOW)).toEqual([]);
+    const aged = runIntake({
+      text: 'I am 35 years old and want to grow $5,000, high risk.',
+      nowMonth: NOW,
+      reply: { goal: 'grow', amountUsd: 5000, horizonMonths: 420, risk: 'high', language: 'en' },
+      homeChain: 'solana',
+      portfolios,
+    });
+    expect(aged.flags).toContain('not_in_text:horizonMonths');
+    expect(aged.draft.horizonMonths).toBeNull();
+  });
+});
+
+describe('the re-review of Oct 5', () => {
+  it('a country named only under a negation is no cue for it', () => {
+    expect(countryNamed('Not in Brazil anymore, I moved to Portugal', 'BR')).toBe(false);
+    expect(countryNamed('Not in Brazil anymore, I moved to Portugal', 'PT')).toBe(true);
+    expect(countryNamed('I no longer live in Brazil', 'BR')).toBe(false);
+    expect(countryNamed('Não moro mais no Brasil', 'BR')).toBe(false);
+    expect(countryNamed('Saí do Brasil em 2024', 'BR')).toBe(false);
+    expect(countryNamed('Moro no Brasil', 'BR')).toBe(true);
+    expect(countryNamed('I left Chile and now live in Brazil', 'BR')).toBe(true);
+    const moved = runIntake({
+      text: 'Not in Brazil anymore, I moved to Portugal. Grow $5,000 over 2 years, high risk.',
+      nowMonth: NOW,
+      reply: { goal: 'grow', amountUsd: 5000, horizonMonths: 24, risk: 'high', country: 'BR' },
+      homeChain: 'solana',
+      portfolios,
+    });
+    expect(moved.flags).toContain('no_cue:country');
+    expect(moved.questions.find((q) => q.field === 'country')).toMatchObject({ read: 'BR' });
+  });
+
+  it('cues match whole words only: "highly" is not high, "lowest" not low, "keeper" not keep', () => {
+    expect(riskCuesIn('I am highly motivated')).toEqual([]);
+    expect(riskCuesIn('the lowest fees, a medium-sized sum')).toEqual(['medium']);
+    expect(riskCuesIn('risco alto')).toEqual(['high']);
+    expect(goalCuesIn('a goalkeeper with an incomer')).toEqual([]);
+    expect(goalCuesIn('Grow it')).toEqual(['grow']);
+    const highly = runIntake({
+      text: 'I am highly motivated to grow $5,000 over 2 years.',
+      nowMonth: NOW,
+      reply: { goal: 'grow', amountUsd: 5000, horizonMonths: 24, risk: 'high' },
+      homeChain: 'solana',
+      portfolios,
+    });
+    expect(highly.flags).toContain('no_cue:risk');
+  });
+
+  it('a time frame one month from the rules parser is the same one: no disagreement is flagged', () => {
+    // The rules parser reads "for 5 years" as 61 months; the model's 60 is the same time frame.
+    const rules = draftFromRules(goalOf('en-income-300-month').text, NOW).draft;
+    expect(rules.horizonMonths).toBe(61);
+    const result = run('en-income-300-month');
+    expect(result.draft.horizonMonths).toBe(60);
+    expect(result.flags).not.toContain('disagrees_with_rules:horizonMonths');
+    expect(result.disagreements.map((d) => d.field)).not.toContain('horizonMonths');
+    expect(result.questions.map((q) => q.field)).not.toContain('horizonMonths');
+  });
+});
+
+describe('questions', () => {
+  it('asks one question per field, from its template, in the person language, in a fixed order', () => {
+    for (const g of goals)
+      for (const reply of [replies[g.id], null]) {
+        const result = run(g.id, { reply });
+        const fields = result.questions.map((q) => q.field);
+        expect(new Set(fields).size, g.id).toBe(fields.length);
+        expect(fields, g.id).toEqual(QUESTION_FIELDS.filter((f) => fields.includes(f)));
+        for (const q of result.questions) {
+          const template = QUESTION_TEMPLATES[q.template as keyof typeof QUESTION_TEMPLATES];
+          expect(template, q.template).toBeDefined();
+          if (q.template !== 'amountOtherCurrency')
+            expect(q.text).toBe(render(template[result.language], {}, result.language));
+        }
+      }
+  });
+
+  it('asks for the chain while the person has none, and makes no sheet', () => {
+    const result = run('en-grow-10y-high', { homeChain: null });
+    expect(result.questions.map((q) => q.field)).toEqual(['country', 'chains']);
+    const answered = run('en-grow-10y-high', { homeChain: null, answers: { country: 'US' } });
+    expect(answered.questions.map((q) => q.field)).toEqual(['chains']);
+    expect(answered.sheet).toBeNull();
+  });
+
+  it('a portfolio answered off the shelf is refused and asked again', () => {
+    const result = run('en-grow-10y-high', {
+      answers: { country: 'US', themes: ['moon-rockets'] },
+    });
+    expect(result.flags).toContain('answer_not_on_shelf:themes');
+    expect(result.questions.map((q) => q.field)).toEqual(['themes']);
+    expect(result.sheet).toBeNull();
+  });
+});
+
+describe('the person confirms a sheet', () => {
+  it('once every question is answered, the sheet validates, on the wallet chain, with its read-back', () => {
+    for (const g of goals)
+      for (const reply of [replies[g.id], null]) {
+        const first = run(g.id, { reply });
+        expect(first.sheet === null, g.id).toBe(first.questions.length > 0);
+        const done = run(g.id, { reply, answers: answersFor(first.questions) });
+        expect(done.questions, g.id).toEqual([]);
+        expect(done.sheet, g.id).not.toBeNull();
+        expect(PersonalSheet.safeParse(done.sheet).success, g.id).toBe(true);
+        expect(done.sheet?.chains, g.id).toEqual(['solana']);
+        expect(done.readBack?.length, g.id).toBeGreaterThan(3);
+      }
+  });
+
+  it('the answers win over what was read, and the refusals read become limits', () => {
+    const result = run('pt-protect-reais-sem-acoes', {
+      answers: { goal: 'protect', amountUsd: 550, risk: 'low', country: 'BR' },
+    });
+    expect(result.sheet).toMatchObject({
+      goal: 'protect',
+      amountUsd: 550,
+      horizonMonths: 12,
+      risk: 'low',
+      currency: 'BRL',
+      country: 'BR',
+      language: 'pt',
+      limits: { cannotHold: { classes: ['stock'] } },
+    });
+    const noCredit = run('en-grow-3y-no-credit', { answers: { country: 'US' } });
+    expect(noCredit.sheet?.limits).toEqual({ creditTolerance: 'none' });
+  });
+
+  it('the same goal sent 10 times gives one sheet (C16)', () => {
+    for (const g of goals) {
+      const first = run(g.id);
+      const answers = answersFor(first.questions);
+      const sent = Array.from({ length: 10 }, () => JSON.stringify(run(g.id, { answers })));
+      expect(new Set(sent).size, g.id).toBe(1);
+    }
+  });
+});
+
+describe('the model off (C17)', () => {
+  it('pre-fills from the rules parser, asks the same kind of questions, and never fails', () => {
+    for (const g of goals) {
+      const result = run(g.id, { reply: null });
+      expect(result.method).toBe('rules');
+      const rules = draftFromRules(g.text, NOW).draft;
+      expect(result.draft, g.id).toEqual(rules);
+      // Every field the rules parser read is put to the person once, its reading the start.
+      const read = (['goal', 'horizonMonths', 'risk'] as const).filter((f) => rules[f] !== null);
+      expect(result.flags, g.id).toEqual(read.map((f) => `from_rules:${f}`));
+      for (const f of read)
+        expect(
+          result.questions.find((q) => q.field === f),
+          `${g.id} ${f}`,
+        ).toMatchObject({ read: rules[f] });
+      // Nothing the rules parser cannot read is guessed: it reads no amount, so the amount is asked.
+      expect(
+        result.questions.map((q) => q.field),
+        g.id,
+      ).toContain('amountUsd');
+    }
+  });
+});
+
+describe('what the text holds, read by code', () => {
+  it('reads one amount in its four ways, and only the reais as another currency', () => {
+    expect(amountInText('Guardar R$ 3.000,00', 3000)).toBe('other_currency');
+    expect(amountInText('Guardar 3 mil dólares', 3000)).toBe('dollars');
+    expect(amountInText('Grow $3k', 3000)).toBe('dollars');
+    expect(amountInText('Grow 3,000 for a year', 3000)).toBe('dollars');
+    expect(amountInText('Grow 3,000 for a year', 30_000)).toBe('absent');
+    expect(mentionsIn('US$ 1.500,50 e 2,5 mil').map((m) => m.value)).toEqual([1500.5, 2500]);
+  });
+
+  it('reads time frames in months, years, words and dates, and not a rate as a time frame', () => {
+    expect(horizonsIn('for 18 months', NOW)).toEqual([18]);
+    expect(horizonsIn('em 10 anos', NOW)).toEqual([120]);
+    expect(horizonsIn('for five years', NOW)).toEqual([60]);
+    expect(horizonsIn('por um ano', NOW)).toEqual([12]);
+    expect(horizonsIn('for half a year', NOW)).toEqual([6]);
+    expect(horizonsIn('by 2031', NOW)).toEqual([51]);
+    expect(horizonsIn('$300 a month', NOW)).toEqual([]);
+  });
+
+  it('reads refusals, and not a class named without a negation', () => {
+    expect(refusalsIn('sem ações')).toEqual({ classes: ['stock'], noCredit: false });
+    expect(refusalsIn('no credit, without crypto')).toEqual({
+      classes: ['crypto'],
+      noCredit: true,
+    });
+    expect(refusalsIn('I like stocks and gold')).toEqual({ classes: [], noCredit: false });
+  });
+
+  it('reads each field of a reply on its own', () => {
+    const { reply, flags } = readReply({ goal: 'grow', risk: 'extreme', amountUsd: '5000' });
+    expect(reply.goal).toBe('grow');
+    expect(reply.risk).toBeNull();
+    expect(reply.amountUsd).toBeNull();
+    expect(flags).toEqual(['model_invalid:amountUsd', 'model_invalid:risk']);
+  });
+});
