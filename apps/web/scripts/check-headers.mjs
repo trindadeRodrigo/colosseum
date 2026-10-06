@@ -1,5 +1,7 @@
 // Run by check-frames.mjs against the production build it starts: every address answers the headers
-// of lib/security-headers.ts, a page, the embed, a redirect and an address no route has alike. The
+// of lib/security-headers.ts, a page, the embed and an address no route has alike. A redirect written
+// in next.config.ts (`/risk`) is answered before Next's header rules are read and carries none of
+// them; it has no body, and the address it leads to answers them all. The
 // values are written again here on purpose: the check is of what the build serves, not of the list.
 // It also asks two pages for the policy the browser only reports on, and reads their scripts.
 
@@ -11,7 +13,14 @@ export const WANTED = [
   ['permissions-policy', /^camera=\(\), microphone=\(\), geolocation=\(\), browsing-topics=\(\)$/],
 ];
 
-export const HEADER_CASES = ['/', '/goal', '/sign-in', '/embed', '/risk', '/no-such-page'];
+export const HEADER_CASES = [
+  '/',
+  '/goal',
+  '/sign-in',
+  '/embed',
+  '/analytics/stocks',
+  '/no-such-page',
+];
 
 /** What `path` answered that it should not have; empty when every header is as wanted. */
 export function judgeHeaders(path, headers) {
