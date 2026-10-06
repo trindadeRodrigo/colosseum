@@ -227,6 +227,8 @@ export const en = {
       /** The sheet's source line, for an example sent as it is: its limits are the app's own. */
       source: 'this example’s own limits',
     },
+    /** Beside the reader on the sheet's source line, when the words of the goal filled what it left empty. */
+    filledFromWords: 'filled from your words',
     readFailure: {
       unreachable:
         'I couldn’t reach our server to read that. Your text is still here. Try again in a moment.',
@@ -276,6 +278,9 @@ export const en = {
       income: 'What you need each month. Leave it empty if you have no figure.',
       horizon: 'From 1 to 480.',
       country: 'You state it. It decides which assets you may hold.',
+      /** The country's hint while it is the one this browser's language names, unchanged. */
+      countryFromBrowser:
+        'Taken from this browser’s language. Change it if you live elsewhere: it decides which assets you may hold.',
       holdings: 'The plan fills gaps and avoids doubling up.',
       amount: 'What this plan starts with, from $10 to $1,000,000.',
       /** Before the hint of a field the reader left empty. */

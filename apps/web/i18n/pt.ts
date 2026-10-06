@@ -196,6 +196,7 @@ export const pt: Dictionary = {
       ],
       source: 'os limites do próprio exemplo',
     },
+    filledFromWords: 'preenchido a partir das suas palavras',
     readFailure: {
       unreachable:
         'Não consegui falar com nosso servidor para ler isso. Seu texto continua aqui. Tente de novo daqui a pouco.',
@@ -248,6 +249,8 @@ export const pt: Dictionary = {
       income: 'Quanto você precisa por mês. Deixe em branco se não tiver um número.',
       horizon: 'De 1 a 480.',
       country: 'É você quem declara. Define quais ativos você pode ter.',
+      countryFromBrowser:
+        'Tirado do idioma deste navegador. Mude se você mora em outro país: ele define quais ativos você pode ter.',
       holdings: 'O plano preenche lacunas e evita repetir o que você já tem.',
       amount: 'Com quanto o plano começa, de US$ 10 a US$ 1.000.000.',
       notFound: 'Não encontrei no seu objetivo: preencha.',

@@ -198,6 +198,8 @@ export function sheetGroups(
   t: Dictionary,
   said: Dictionary,
   lang: Lang,
+  /** The country is the one the browser's language names, as yet unchanged by the person. */
+  countryFromBrowser = false,
 ): { groups: SheetGroup[]; amount: SheetField } {
   const g = t.goal;
   const empty = new Set(notFound(fields, read));
@@ -280,7 +282,10 @@ export function sheetGroups(
           schemaKey: 'country',
           width: '22ch',
           options: [choose, ...countryOptions(LOCALE[lang])],
-          hint: g.hints.country,
+          hint:
+            countryFromBrowser && fields.country === read.country
+              ? g.hints.countryFromBrowser
+              : g.hints.country,
         }),
         field('holdings', {
           kind: 'select',
@@ -324,6 +329,8 @@ export type ReadSheet = {
   /** The fields as the reader gave them: what "edited" is measured against. */
   read: SheetFields;
   fields: SheetFields;
+  /** The country was taken from the browser's language, not from the person (pre-read.ts). */
+  countryFromBrowser?: boolean;
 };
 
 /** What the goal screen keeps in the tab, so a trip to sign in and back loses nothing typed. */
@@ -374,7 +381,7 @@ export function restoreGoal(raw: string | null): StoredGoal | null {
     s.goalText.length > 2000 ||
     typeof s.firstReader !== 'boolean' ||
     typeof source.method !== 'string' ||
-    source.method.length > 40 ||
+    source.method.length > 80 ||
     typeof source.fetchedAt !== 'string' ||
     source.fetchedAt.length > 40 ||
     source.provenance !== 'live' ||
@@ -397,6 +404,7 @@ export function restoreGoal(raw: string | null): StoredGoal | null {
       firstReader: s.firstReader,
       read: s.read,
       fields: s.fields,
+      ...(s.countryFromBrowser === true ? { countryFromBrowser: true } : {}),
     },
   };
 }

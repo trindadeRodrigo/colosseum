@@ -1,8 +1,9 @@
 import { BasketSheetDraft, type Language } from '@colosseum/schemas';
 import type { ApiFetch } from '../account/person';
+import type { WordField } from './pre-read';
 
-// Reading a typed goal into a draft of the limits. The reader is the API's: the web reads nothing out
-// of the sentence itself.
+// Reading a typed goal into a draft of the limits. The reader is the API's; what it leaves empty, or
+// answers with a default of its own (`readerGuesses`), the words of the goal may fill (pre-read.ts).
 //
 // What `staging` offers today is POST /goals, the first structurer's reader. It was made for goals in
 // reais and answers in its own sheet, so its answer is carried over field by field into the draft of
@@ -20,6 +21,8 @@ export type GoalReading = {
    * the person knows why a dollar amount was not found.
    */
   firstReader: boolean;
+  /** The fields the reader answered with a default of its own, not from the text. */
+  guessed: ReadonlySet<WordField>;
 };
 
 /** What the reader takes: the API's own bounds on the text of a goal (PostGoalsRequest). */
@@ -88,6 +91,25 @@ export function draftFromFirstReader(body: unknown): BasketSheetDraft | null {
   return draft.success ? draft.data : null;
 }
 
+/**
+ * The fields the first structurer's reader answers with a default of its own rather than from the
+ * text: "accumulation" for any goal with no monthly figure (and "high_risk" for one that names stocks
+ * or risk, which is not a goal), "medium" for any risk (it has no word for medium), and the low risk
+ * and the ten years it gives any income. The words of the goal may fill these (pre-read.ts).
+ */
+export function readerGuesses(body: unknown): Set<WordField> {
+  const answer = record(body);
+  const read = record(answer.sheet ?? answer.candidate);
+  const guessed = new Set<WordField>();
+  if (read.profile === 'accumulation' || read.profile === 'high_risk') guessed.add('goal');
+  if (read.riskBudget === 'medium') guessed.add('risk');
+  if (read.profile === 'income') {
+    guessed.add('risk');
+    guessed.add('horizonMonths');
+  }
+  return guessed;
+}
+
 /** POST /goals with the text, and the answer as a draft. Throws a `ReadGoalError`. */
 export async function readGoal(
   apiFetch: ApiFetch,
@@ -125,5 +147,6 @@ export async function readGoal(
       provenance: 'live',
     },
     firstReader: true,
+    guessed: readerGuesses(body),
   };
 }

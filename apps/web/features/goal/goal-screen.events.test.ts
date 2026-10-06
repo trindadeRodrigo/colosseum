@@ -35,7 +35,10 @@ vi.mock('next/link', () => import('../wallet/test/mock-next'));
 // as `staging` answers it, GET /v1/me, and the route that builds a plan, which is not there yet.
 
 const en = dictionary('en');
-const GOAL = 'Grow $40,000 for an apartment by June 2028';
+// Words the reader here does not read either (pre-read.ts), so what the API's reader leaves empty stays
+// empty for the person; the words that do fill it are read in 'the words of a goal fill what the
+// reader leaves'.
+const GOAL = 'Grow forty thousand for an apartment by June 2028';
 
 type Call = { method: string; path: string; body?: unknown };
 
@@ -106,9 +109,16 @@ async function fill(host: HTMLElement) {
   await choose(host, 'country', 'BR');
 }
 
+/** The browser's languages, as navigator.languages says them. */
+function browserSays(languages: string[]) {
+  Object.defineProperty(window.navigator, 'languages', { value: languages, configurable: true });
+}
+
 beforeEach(() => {
   window.sessionStorage.clear();
   portStore.set(fakePort());
+  // a language that names no country, so the country is the person's to state unless a test says
+  browserSays(['en']);
 });
 afterEach(unmountAll);
 
@@ -245,6 +255,73 @@ describe('the goal screen, before anything is read', () => {
         window.sessionStorage.clear();
       }
     }
+  });
+
+  it('fills what the reader leaves from the goal’s own words, and says so on the sheet', async () => {
+    // the reader made for reais answers "accumulation", "medium" and no amount or time frame
+    const cases = [
+      [
+        'en',
+        'Protect $50,000 for 18 months, low risk, please',
+        ['protect', '50000', '18', 'low', ''],
+      ],
+      ['en', 'Pay me $500 a month from $150,000', ['income', '150000', '', 'low', '500']],
+      [
+        'pt',
+        'Quero proteger US$ 50.000 por 18 meses, risco baixo',
+        ['protect', '50000', '18', 'low', ''],
+      ],
+      [
+        'pt',
+        'Fazer 20k dólares crescer em 2 anos, risco alto',
+        ['grow', '20000', '24', 'high', ''],
+      ],
+    ] as const;
+    for (const [lang, text, [goal, amount, horizon, risk, income]] of cases) {
+      const words = dictionary(lang);
+      const server = api(
+        goal === 'income'
+          ? {
+              reading: {
+                ...READ_IN_DOLLARS,
+                candidate: { ...READ_IN_DOLLARS.candidate, profile: 'income', riskBudget: 'low' },
+              },
+            }
+          : {},
+      );
+      const host = await screen(lang);
+      await read(host, text);
+      expect(server.to('/goals')).toHaveLength(1);
+      expect(
+        {
+          goal: find<HTMLSelectElement>(host, `#${FIELD_ID.goal}`).value,
+          amount: input(host, 'amount').value.replace(/\D/g, ''),
+          horizon: input(host, 'horizon').value,
+          risk: find<HTMLSelectElement>(host, `#${FIELD_ID.risk}`).value,
+          income: host.querySelector<HTMLInputElement>(`#${FIELD_ID.income}`)?.value ?? '',
+        },
+        `${lang}: ${text}`,
+      ).toEqual({ goal, amount, horizon, risk, income });
+      expect(find(host, '#limits').textContent).toContain(words.goal.filledFromWords);
+      await unmountAll();
+      window.sessionStorage.clear();
+    }
+  });
+
+  it('takes the country from the browser’s language when nothing says it, and says where it came from', async () => {
+    browserSays(['pt-BR', 'en']);
+    api({});
+    const host = await screen();
+    await read(host);
+    expect(find<HTMLSelectElement>(host, `#${FIELD_ID.country}`).value).toBe('BR');
+    const field = () =>
+      find(host, `#${FIELD_ID.country}`).closest('[data-ui="field"]')?.textContent;
+    expect(field()).toContain(en.goal.hints.countryFromBrowser);
+    expect(field()).not.toContain(en.goal.hints.notFound);
+    // once the person picks their own, the hint is the field's own again
+    await choose(host, 'country', 'PT');
+    expect(field()).toContain(en.goal.hints.country);
+    expect(field()).not.toContain(en.goal.hints.countryFromBrowser);
   });
 
   it('reads an example the person changed like any other text', async () => {
