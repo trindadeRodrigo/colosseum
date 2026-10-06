@@ -128,7 +128,8 @@ export function checkSheet(fields: SheetFields, chain: ChainId | null): SheetChe
     risk: fields.risk === '' ? undefined : fields.risk,
     // The shelf is not served yet, so no shared portfolio can be named on the sheet.
     themes: [],
-    country: fields.country,
+    // Optional since gate COUNTRY-REMOVED (Oct 6): the picker stays, and an empty one sends none.
+    ...(fields.country === '' ? {} : { country: fields.country }),
     // A placeholder while there is no chain: the fields are checked, and no sheet comes out.
     chains: [chain ?? 'solana'],
     ...(income === null ? {} : { incomeTargetUsdMonthly: income }),

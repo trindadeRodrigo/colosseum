@@ -62,8 +62,14 @@ export const BasketSheet = z.object({
   risk: z.enum(['low', 'medium', 'high']),
   /** Family slugs. */
   themes: z.array(z.string().min(1)).max(3),
-  /** ISO two-letter, self-declared. */
-  country: z.string().regex(/^[A-Z]{2}$/),
+  /**
+   * ISO two-letter, self-declared. Optional and unused in planning (gate COUNTRY-REMOVED, Rodrigo,
+   * Oct 6): no plan is shaped by it. Kept so stored sheets that carry one still parse.
+   */
+  country: z
+    .string()
+    .regex(/^[A-Z]{2}$/)
+    .optional(),
   chains: z.array(ChainId).min(1),
   incomeTargetUsdMonthly: z.number().positive().optional(),
   rules: z.object({ useHoldings: z.boolean(), glide: z.boolean() }),

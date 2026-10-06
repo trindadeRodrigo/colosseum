@@ -498,6 +498,10 @@ describe('vault schemas, v0 (DESIGN-VAULT 3.1 to 3.6)', () => {
     expect(BasketSheet.safeParse({ ...sheet, horizonMonths: 481 }).success).toBe(false);
     expect(BasketSheet.safeParse({ ...sheet, themes: ['a', 'b', 'c', 'd'] }).success).toBe(false);
     expect(BasketSheet.safeParse({ ...sheet, country: 'Brazil' }).success).toBe(false);
+    // Gate COUNTRY-REMOVED (Oct 6): optional and unused in planning; a stored sheet with one parses.
+    const { country: _, ...noCountry } = sheet;
+    expect(BasketSheet.safeParse(noCountry).success).toBe(true);
+    expect(BasketSheet.safeParse({ ...sheet, country: 'BR' }).success).toBe(true);
     expect(BasketSheet.safeParse({ ...sheet, chains: [] }).success).toBe(false);
 
     const line = {
