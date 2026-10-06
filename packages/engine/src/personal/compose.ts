@@ -103,6 +103,12 @@ type Run = {
    * again one risk up may go up again. Left out, the run settles the risk itself.
    */
   mix?: { risk: RiskLevel; settled: boolean };
+  /**
+   * The risk the mix takes on its own, where a run before this one has tried it. It depends on
+   * neither the amount nor the withdrawals, which are all that the runs a plan makes of itself
+   * change, so they are handed it and do not try it again.
+   */
+  alone?: RiskLevel;
 };
 
 /** JSON with every object's keys in order, so the same value always gives the same text. */
@@ -283,19 +289,32 @@ function riskOfMixAlone(w: World, shelf: Shelf, context: ComposeContext): RiskLe
  * The world a plan is built in. A stated mix sets the limits (gate EXPLICIT-MIX): the world is made at
  * the risk the mix takes, so every cap, reason and check reads it, and the plan's sheet and a flag say
  * which. A candidate takes the limits of the plan made for the mix as it is: they are not its to vary.
+ * `alone` is the risk the mix takes on its own, for the runs this plan makes of itself.
  */
-function worldOf(sheetIn: PersonalSheet, shelf: Shelf, context: ComposeContext, run: Run): World {
+function worldOf(
+  sheetIn: PersonalSheet,
+  shelf: Shelf,
+  context: ComposeContext,
+  run: Run,
+): { w: World; alone: RiskLevel | undefined } {
   const w = buildWorld(sheetIn, shelf, context, run.candidate);
-  if (!w.sheet.mix) return w;
-  const risk =
-    run.mix?.risk ??
-    (run.candidate === null
-      ? riskOfMixAlone(w, shelf, context)
-      : build(sheetIn, shelf, context, { ways: false, status: false, candidate: null }).sheet.risk);
+  if (!w.sheet.mix) return { w, alone: undefined };
+  let { alone } = run;
+  let risk = run.mix?.risk;
+  if (risk === undefined) {
+    // The mix alone is tried under the person's own table, whichever candidate this plan is.
+    const plain = run.candidate === null ? w : buildWorld(sheetIn, shelf, context);
+    alone ??= riskOfMixAlone(plain, shelf, context);
+    risk =
+      run.candidate === null
+        ? alone
+        : build(sheetIn, shelf, context, { ways: false, status: false, candidate: null, alone })
+            .sheet.risk;
+  }
   const at =
     risk === w.sheet.risk ? w : buildWorld({ ...w.sheet, risk }, shelf, context, run.candidate);
   at.flags.add(`limits_from_mix:${risk}`);
-  return at;
+  return { w: at, alone };
 }
 
 function build(
@@ -305,7 +324,7 @@ function build(
   run: Run,
 ): PersonalProposal {
   const withWays = run.ways;
-  const w = worldOf(sheetIn, shelf, context, run);
+  const { w, alone } = worldOf(sheetIn, shelf, context, run);
   const { sheet, P, lang } = w;
 
   // ---- Exposure: how big each sleeve is. What the next withdrawals need comes off the goal first.
@@ -540,7 +559,11 @@ function build(
     !run.mix?.settled &&
     book.keptOutBy(CAPS_BY_RISK) > Math.max(P.maxLinesPerChain, w.amount / BPS)
   )
-    return build(sheetIn, shelf, context, { ...run, mix: { risk: riskUp, settled: false } });
+    return build(sheetIn, shelf, context, {
+      ...run,
+      alone,
+      mix: { risk: riskUp, settled: false },
+    });
   // What stocks, crypto and gold could not take is held in dollar yield, then in cash.
   intoYield(book.overflow());
   // One sentence for each reason money meant for dollar yield stays in cash, with the whole of it.
@@ -638,8 +661,8 @@ function build(
   // plan it gives is met. A later start and a monthly contribution have no field on the sheet.
   if (status && !status.met && withWays) {
     const met = (s: PersonalSheet) =>
-      build(s, shelf, context, { ways: false, status: true, candidate: run.candidate }).status
-        ?.met === true;
+      build(s, shelf, context, { ways: false, status: true, candidate: run.candidate, alone })
+        .status?.met === true;
     const enough = smallestThatMeets(sheet.amountUsd, P.wayStepUsd, (amountUsd) =>
       met({ ...sheet, amountUsd }),
     );
@@ -684,6 +707,7 @@ function build(
             ways: false,
             status: false,
             candidate: run.candidate,
+            alone,
           }).verdict?.met === true;
         const enough = smallestThatMeets(sheet.amountUsd, P.wayStepUsd, meets);
         if (enough === null) {

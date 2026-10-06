@@ -7,11 +7,14 @@ import {
   allReasons,
   expectedSleeves,
   fixtureContext,
+  fixtureLiquidity,
   fixtureYields,
+  LIQUIDITY_SOURCE,
   launchShelf,
   NOW,
   sheet,
   sleeveBps,
+  usdBrl,
   violations,
   withCapsOf,
 } from './testing';
@@ -19,6 +22,7 @@ import {
   type ComposeContext,
   PersonalInputError,
   type PersonalMix,
+  PersonalParameters,
   type PersonalProposal,
   PersonalSheet,
   type RiskLevel,
@@ -854,6 +858,120 @@ describe('properties: any mix', () => {
         },
       ),
       { numRuns: 60 },
+    );
+  }, 240_000);
+
+  // The mix's own properties above run on the fixture's figures, for someone who holds nothing and
+  // sets no limit. Here the world moves too: what is measured, which yields are read, what the
+  // person holds, what they must keep or may need, what they cannot hold, withdrawals in dollars and
+  // in reais, a goal in either, and a table whose caps by risk come in any order.
+  const launch = shelf;
+  const TOKENS = launch.assets.filter((a) => a.cls !== 'cash');
+  const TICKERS = [...new Set(TOKENS.map((a) => a.underlying))];
+  const SLUGS = launch.families.map((f) => f.meta.slug);
+  const bps = fc.integer({ min: 0, max: 10_000 });
+  const maybe = <T>(arb: fc.Arbitrary<T>) => fc.option(arb, { nil: undefined });
+  const filled = <T extends object>(value: T): T =>
+    Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as T;
+  const byRisk = fc.record({ low: bps, medium: bps, high: bps });
+  const tables = fc.oneof(
+    fc.constant(PERSONAL_PARAMS),
+    fc
+      .record({
+        capPerStockBps: byRisk,
+        capPerIssuerBps: byRisk,
+        issuerCapBps: bps,
+        minLineBps: fc.integer({ min: 0, max: 600 }),
+        minLineUsd: fc.integer({ min: 0, max: 200 }),
+        maxLinesPerChain: fc.integer({ min: 1, max: 16 }),
+      })
+      .map((over) =>
+        PersonalParameters.parse({ ...PERSONAL_PARAMS, ...over, version: 'generated' }),
+      ),
+  );
+  const someone = fc
+    .record({
+      chain: fc.constantFrom<ChainId>('solana', 'robinhood', 'base'),
+      goal: fc.constantFrom('grow' as const, 'income' as const, 'protect' as const),
+      amountUsd: fc.oneof(
+        fc.integer({ min: 10, max: 1_000_000 }),
+        fc.integer({ min: 1000, max: 100_000_000 }).map((cents) => cents / 100),
+      ),
+      horizonMonths: fc.constantFrom(1, 6, 12, 24, 36, 60, 120),
+      themes: fc.uniqueArray(fc.constantFrom(...SLUGS, 'no-such-portfolio'), { maxLength: 3 }),
+      rules: fc.record({ useHoldings: fc.boolean(), glide: fc.boolean() }),
+      language: fc.constantFrom('en' as const, 'pt' as const),
+      currency: maybe(fc.constantFrom('USD', 'BRL')),
+      keepShare: maybe(fc.integer({ min: 0, max: 100 })),
+      mayNeedInMonths: maybe(fc.integer({ min: 1, max: 480 })),
+      cannotHold: maybe(
+        fc.uniqueArray(fc.constantFrom(...TICKERS), { maxLength: 3 }).map((underlyings) => ({
+          underlyings,
+        })),
+      ),
+      obligations: maybe(
+        fc.array(
+          fc.record({
+            month: fc.integer({ min: -2, max: 14 }).map((m) => monthAfter(NOW, m)),
+            amount: fc.integer({ min: 1, max: 200_000 }),
+            currency: fc.constantFrom('USD', 'BRL'),
+          }),
+          { maxLength: 4 },
+        ),
+      ),
+      mix: mixes,
+    })
+    .map(({ chain, keepShare, mayNeedInMonths, cannotHold, mix: m, ...rest }) => {
+      const limits = filled({
+        mustKeepUsd:
+          keepShare === undefined ? undefined : Math.floor((rest.amountUsd * keepShare) / 100),
+        mayNeedInMonths,
+        cannotHold,
+      });
+      return PersonalSheet.parse(
+        filled({
+          ...sheet(),
+          ...rest,
+          chains: [chain],
+          // No stocks for income or to protect: their share is asked for in cash instead.
+          mix: rest.goal === 'grow' ? m : { ...m, growthBps: 0, cashBps: m.cashBps + m.growthBps },
+          limits: Object.keys(limits).length > 0 ? limits : undefined,
+        }),
+      );
+    });
+  const worlds = fc.record({
+    measured: fc.array(
+      fc.tuple(fc.constantFrom(...TOKENS.map((a) => a.id)), fc.integer({ min: 0, max: 5_000_000 })),
+      { maxLength: 12 },
+    ),
+    read: fc.subarray(fixtureYields().map((y) => y.assetId)),
+    holdings: fc.array(
+      fc.record({
+        underlying: fc.constantFrom(...TICKERS),
+        valueUsd: fc.integer({ min: 0, max: 300_000 }),
+      }),
+      { maxLength: 4 },
+    ),
+    params: tables,
+  });
+
+  it('the plan and each candidate shown keep every rule, and nothing makes the engine give up', () => {
+    fc.assert(
+      fc.property(someone, worlds, (s, raw) => {
+        const context: ComposeContext = {
+          now: NOW,
+          holdings: raw.holdings,
+          yields: fixtureYields().filter((y) => raw.read.includes(y.assetId)),
+          liquidity: fixtureLiquidity(Object.fromEntries(raw.measured)),
+          liquiditySource: LIQUIDITY_SOURCE,
+          params: raw.params,
+          fx: [usdBrl()],
+        };
+        expect(violations(compose(s, launch, context), launch, context)).toEqual([]);
+        for (const c of candidates(s, launch, context).shown)
+          expect(violations(c.plan, launch, context), c.id).toEqual([]);
+      }),
+      { numRuns: 100 },
     );
   }, 240_000);
 });
