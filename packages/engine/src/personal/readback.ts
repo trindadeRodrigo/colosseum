@@ -19,15 +19,25 @@ export function readBack(sheet: PersonalSheet, portfolios: ShelfPortfolio[]): st
   const out: string[] = [];
 
   // A goal with no date is said as one: the months it is built over are a parameter, not the person's.
+  // With a stated mix the risk is the mix's, said once in the assumptions (gate EXPLICIT-MIX).
+  const mixed = sheet.mix !== undefined;
   out.push(
     sheet.horizonOpen
-      ? say('GOAL_OPEN', { goal: sheet.goal, amount: sheet.amountUsd, risk: sheet.risk })
-      : say('GOAL', {
-          goal: sheet.goal,
-          amount: sheet.amountUsd,
-          months: sheet.horizonMonths,
-          risk: sheet.risk,
-        }),
+      ? mixed
+        ? say('GOAL_OPEN_MIX', { goal: sheet.goal, amount: sheet.amountUsd })
+        : say('GOAL_OPEN', { goal: sheet.goal, amount: sheet.amountUsd, risk: sheet.risk })
+      : mixed
+        ? say('GOAL_MIX', {
+            goal: sheet.goal,
+            amount: sheet.amountUsd,
+            months: sheet.horizonMonths,
+          })
+        : say('GOAL', {
+            goal: sheet.goal,
+            amount: sheet.amountUsd,
+            months: sheet.horizonMonths,
+            risk: sheet.risk,
+          }),
   );
   if (sheet.goal === 'income' && sheet.incomeTargetUsdMonthly !== undefined)
     out.push(say('INCOME', { income: sheet.incomeTargetUsdMonthly }));

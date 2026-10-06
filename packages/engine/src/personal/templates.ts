@@ -1022,6 +1022,17 @@ export const READBACK_TEMPLATES = {
     en: 'You set {goal|goal} with ${amount|amount}, with no date set, at {risk|risk}.',
     pt: 'Você definiu {goal|goal} com US$ {amount|amount}, sem data definida, com {risk|risk}.',
   },
+  // With a stated mix (gate EXPLICIT-MIX) the risk is the mix's, said once as an assumption: not here.
+  GOAL_MIX: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
+    en: 'You set {goal|goal} with ${amount|amount} over {months|months}.',
+    pt: 'Você definiu {goal|goal} com US$ {amount|amount} em {months|months}.',
+  },
+  GOAL_OPEN_MIX: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
+    en: 'You set {goal|goal} with ${amount|amount}, with no date set.',
+    pt: 'Você definiu {goal|goal} com US$ {amount|amount}, sem data definida.',
+  },
   INCOME: {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
     en: 'You aim for ${income|amount} a month of income.',

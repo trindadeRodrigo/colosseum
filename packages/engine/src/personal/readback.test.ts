@@ -178,6 +178,14 @@ function sheets(): PersonalSheet[] {
     risk: 'medium',
     mix: { growthBps: 4000, dollarYieldBps: 3000, goldBps: 2000, cashBps: 1000, creditBps: 1500 },
   });
+  // A mix with no date: the goal line names no risk either.
+  out.push({
+    ...noSplit,
+    goal: 'grow',
+    risk: 'high',
+    horizonOpen: true,
+    mix: { growthBps: 10_000, dollarYieldBps: 0, goldBps: 0, cashBps: 0 },
+  });
   return [
     ...out,
     ...out.map((s) => ({ ...s, language: s.language === 'en' ? 'pt' : 'en' }) as PersonalSheet),
@@ -185,6 +193,11 @@ function sheets(): PersonalSheet[] {
 }
 
 describe('the read-back (C18)', () => {
+  it('with a mix, says the risk once, as the assumption, never in the goal line', () => {
+    for (const s of sheets().filter((x) => x.mix))
+      expect(readBack(s, [])[0]).not.toMatch(/risk|risco/);
+  });
+
   const all = sheets();
 
   it('is made for every goal of the set and uses every sentence it has', () => {
