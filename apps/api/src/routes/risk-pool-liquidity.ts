@@ -80,10 +80,15 @@ export function rpcDetail(e: unknown): string | null {
   return parts.length ? parts.join(' ').slice(0, 200) : null;
 }
 
+/**
+ * The pools Bearing measures are mainnet's. A server whose chain runs on a test network (its
+ * SOLANA_RPC_URL is devnet's) reads them through RISK_SOLANA_RPC_URL, a mainnet RPC for these routes
+ * only; without it, through SOLANA_RPC_URL as before.
+ */
 export function rpcChainReader(): ChainReader {
   let rpc: SolanaRpc | null = null;
   const client = () => {
-    rpc ??= createRpc();
+    rpc ??= createRpc(process.env.RISK_SOLANA_RPC_URL?.trim() || undefined);
     return rpc;
   };
   type Addr = Parameters<SolanaRpc['getMultipleAccounts']>[0][number];

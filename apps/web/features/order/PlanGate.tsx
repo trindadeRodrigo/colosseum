@@ -53,9 +53,6 @@ export function PlanGate({
       label: t.goal.chain.choose,
     });
   if (state.kind === 'missing') return say(t.plan.missing.title, t.plan.missing.body, goal);
-  return say(
-    t.plan.title,
-    t.plan.otherChain(t.chain.names[state.planChain], t.chain.names[state.chain]),
-    goal,
-  );
+  if (state.kind === 'split') return say(t.plan.title, t.plan.split, goal);
+  return say(t.plan.title, t.plan.unsignable(t.chain.names[state.planChain]), goal);
 }
