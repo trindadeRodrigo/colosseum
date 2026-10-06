@@ -153,10 +153,10 @@ describe('the showcase', () => {
     // no photograph, and no caption saying one was there
     for (const c of cases) expect(c.querySelector('img, figcaption')).toBeNull();
     expect(host.textContent).not.toContain('placeholder photo');
-    // the route to the trip's end, and the summit held level as the goal line is
-    expect(drawings[0]?.querySelector('[data-part="route"]')).not.toBeNull();
+    // the trail to the trip's end, and the summit, each marked
+    expect(drawings[0]?.querySelector('[data-part="trail"]')).not.toBeNull();
     expect(drawings[0]?.querySelector('[data-part="mark"]')).not.toBeNull();
-    expect(drawings[1]?.querySelector('[data-part="goal"]')).not.toBeNull();
+    expect(drawings[1]?.querySelector('[data-part="ridge"]')).not.toBeNull();
     expect(drawings[1]?.querySelector('[data-part="mark"]')).not.toBeNull();
   });
 

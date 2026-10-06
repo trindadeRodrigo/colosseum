@@ -20,13 +20,15 @@ describe('the case drawings', () => {
       const strokes = [...svg.querySelectorAll('[stroke-width]')].map((p) =>
         Number(p.getAttribute('stroke-width')),
       );
-      expect(new Set(strokes)).toEqual(new Set([1.5, 0.85, 1.25]));
+      expect(new Set(strokes)).toEqual(new Set([1.5, 0.85]));
       for (const p of svg.querySelectorAll('path[stroke="currentColor"]'))
         expect(p.getAttribute('vector-effect')).toBe('non-scaling-stroke');
       // colours only by token: no literal colour anywhere in the drawing
       expect(svg.outerHTML).not.toMatch(/#[0-9a-f]{3,6}\b|rgb\(|hsl\(/i);
-      // the far is dashed, and so is the route or the goal; the rest is solid
+      // lines only, as an etching: nothing filled; the far dashed, the near in the outline weight
+      for (const p of svg.querySelectorAll('path')) expect(p.getAttribute('fill')).toBe('none');
       expect(svg.querySelectorAll('[data-part="far"][stroke-dasharray]').length).toBeGreaterThan(0);
+      expect(svg.querySelector('[stroke-width="1.5"]')).not.toBeNull();
       // covers its slot as the photograph did, and is named for a reader
       expect(svg.getAttribute('preserveAspectRatio')).toBe('xMidYMid slice');
       expect(svg.getAttribute('role')).toBe('img');
@@ -35,15 +37,12 @@ describe('the case drawings', () => {
     });
   }
 
-  it('gives each ridge its own clip, so two on one page cannot share one', () => {
-    const host = document.createElement('div');
-    host.innerHTML = renderToStaticMarkup(
-      createElement('div', null, [
-        createElement(CaseDrawing, { key: 1, place: 'ridge', label: 'a' }),
-        createElement(CaseDrawing, { key: 2, place: 'ridge', label: 'b' }),
-      ]),
-    );
-    const ids = [...host.querySelectorAll('clipPath')].map((c) => c.id);
-    expect(new Set(ids).size).toBe(2);
+  it('stops each ridge where a nearer one stands in front of it, so no two cross', () => {
+    const svg = draw('ridge');
+    const far = svg.querySelectorAll('[data-part="far"]').length;
+    const middle = svg.querySelectorAll('[data-part="middle"]').length;
+    // the far and middle ridges are cut into pieces by the nearer ones and the cloud
+    expect(far).toBeGreaterThan(1);
+    expect(middle).toBeGreaterThan(1);
   });
 });

@@ -114,7 +114,7 @@ The landing's pictures, drawn in the brand's ink.
 
 | Gate | Status | Decision | Facts |
 |---|---|---|---|
-| **SHOWCASE-INK** — the showcase cases' pictures | DECIDED | The two sample cases show an ink drawing of the person's place, never a photograph and never a person, in the hero joint's style (`JOINT-3D`): Mariana's coastline with a dashed route to a flag at the trip's end, Diego's ridge above the cloud with the summit marked and held level like his goal line. Inline SVG in the page's tokens, the same slot as the photo, no caption | The photos were low-resolution generated previews captioned "placeholder photo · generated"; Thom asked for drawings in the hero's line on Oct 6. The two closing photos are not part of this (DES-2) |
+| **SHOWCASE-INK** — the showcase cases' pictures | DECIDED | The two sample cases show an ink drawing of the person's place, never a photograph and never a person, in the hero joint's style (`JOINT-3D`): drawn as a landscape etching with lines only: Mariana's headland over the sea with a dashed trail along the cliff top to a small cross where the trip ends, Diego's natural ridgelines above a dotted cloud layer with a flag on the dominant summit. Inline SVG in the page's tokens, the same slot as the photo, no caption | The photos were low-resolution generated previews captioned "placeholder photo · generated"; Thom asked for drawings in the hero's line on Oct 6. The two closing photos are not part of this (DES-2) |
 
 ## Decided on 2026-10-05 (Rodrigo)
 
