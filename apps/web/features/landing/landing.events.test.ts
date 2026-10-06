@@ -295,7 +295,11 @@ describe('the showcase', () => {
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
     // the page never writes the word MOCK: its foot and each case say "sample" (MOCK-QUIET)
     expect(host.textContent).not.toMatch(/MOCK/);
-    expect(host.querySelectorAll('[data-ui="sample-note"]')).toHaveLength(2);
+    // once in each case, and once under the closing's plan of coins
+    expect(
+      host.querySelectorAll('article[data-ui="showcase-case"] [data-ui="sample-note"]'),
+    ).toHaveLength(2);
+    expect(host.querySelectorAll('#updates [data-ui="sample-note"]')).toHaveLength(1);
   });
 
   it('draws each plan as a joint whose parts are its legend’s, share for share', async () => {
