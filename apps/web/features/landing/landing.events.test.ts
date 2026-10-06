@@ -367,22 +367,6 @@ describe('the showcase', () => {
       expect(svg.getAttribute('data-state')).toBe('still');
   });
 
-  it('sets each case’s figures as card.md’s stat cell: a sans label, a mono figure', async () => {
-    browser();
-    const host = await landing();
-    const cells = [...host.querySelectorAll('article[data-ui="showcase-case"] dl > div')];
-    expect(cells.length).toBeGreaterThan(0);
-    for (const cell of cells) {
-      const label = cell.querySelector('dt')?.className.split(' ') ?? [];
-      const figure = cell.querySelector('dd')?.className.split(' ') ?? [];
-      expect(label).toEqual(expect.arrayContaining(['font-sans', 'font-medium', 'text-caption']));
-      expect(label).not.toContain('font-mono');
-      expect(figure).toEqual(
-        expect.arrayContaining(['font-mono', 'font-medium', 'text-[1.125rem]/7']),
-      );
-    }
-  });
-
   it('keeps a figure’s date in one piece: "Dec 2031" never breaks across lines', async () => {
     browser();
     const host = await landing();

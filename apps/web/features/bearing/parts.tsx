@@ -439,7 +439,7 @@ export function Pie({
               x={72}
               y={86}
               textAnchor="middle"
-              className="fill-muted-foreground font-mono text-[12px]"
+              className="fill-muted-foreground font-mono text-[11px]"
             >
               {on != null && top[on] ? share(top[on].value) : ''}
             </text>

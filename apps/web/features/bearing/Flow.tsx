@@ -334,7 +334,7 @@ export function FlowChart(o: {
                   x={e.lx}
                   y={e.ly + 3.5}
                   textAnchor="middle"
-                  className={`font-mono text-[12px] ${best ? 'fill-foreground' : 'fill-muted-foreground'}`}
+                  className={`font-mono text-[10.5px] ${best ? 'fill-foreground' : 'fill-muted-foreground'}`}
                 >
                   {txt}
                 </text>
@@ -377,7 +377,7 @@ export function FlowChart(o: {
                 <text
                   x={nd.x + 10}
                   y={nd.y + 35}
-                  className="fill-muted-foreground font-mono text-[12px]"
+                  className="fill-muted-foreground font-mono text-[11px]"
                 >
                   {trunc(nd.sub, nd.cls.includes('best') ? 28 : 38)}
                 </text>
@@ -387,7 +387,7 @@ export function FlowChart(o: {
                     y={nd.y + 35}
                     textAnchor="end"
                     fill="var(--tf-bearing-cv)"
-                    className="text-[12px] font-semibold"
+                    className="text-[11px] font-semibold"
                   >
                     {t.best}
                   </text>
@@ -401,7 +401,7 @@ export function FlowChart(o: {
               key={t}
               x={X[c]}
               y={16}
-              className="fill-muted-foreground font-condensed text-[12px] font-medium"
+              className="fill-muted-foreground font-condensed text-[11.5px] font-medium"
             >
               {t}
             </text>

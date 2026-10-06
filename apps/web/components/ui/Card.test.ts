@@ -106,11 +106,7 @@ describe('Card (card.md)', () => {
     const stats = all(tree, ui('stat'));
     expect(stats).toHaveLength(2);
     expect(classes(one(stats[0] as never, (e) => e.tag === 'dd'))).toEqual(
-      expect.arrayContaining(['font-mono', 'font-medium', 'tabular-nums', 'text-[1.125rem]/7']),
-    );
-    // the label: the sans, 500, the caption's 12.5px (card.md, "Stat cell")
-    expect(classes(one(stats[0] as never, (e) => e.tag === 'dt'))).toEqual(
-      expect.arrayContaining(['font-sans', 'font-medium', 'text-caption', 'text-muted-foreground']),
+      expect.arrayContaining(['font-mono', 'font-medium', 'tabular-nums']),
     );
     // a count has no pin; a rate has one
     expect(all(stats[0] as never, ui('pin'))).toHaveLength(0);

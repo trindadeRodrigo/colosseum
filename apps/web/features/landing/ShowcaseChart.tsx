@@ -36,7 +36,7 @@ const W_DEFAULT = 640;
 const H = 220;
 const TOP = 14;
 const BOTTOM = 26;
-const MONO = { fontFamily: 'var(--font-mono)', fontSize: 12 } as const;
+const MONO = { fontFamily: 'var(--font-mono)', fontSize: 10 } as const;
 
 const monthName = (lang: Lang, ym: string) =>
   new Intl.DateTimeFormat(LOCALE[lang], {

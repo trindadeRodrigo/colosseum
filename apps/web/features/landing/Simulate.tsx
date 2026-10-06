@@ -83,7 +83,7 @@ export function Simulate() {
             ))}
           </ul>
           <div className="flex flex-wrap justify-between gap-x-6 gap-y-2 text-[13px] text-muted-foreground">
-            <p id={hintId} className="pt-0.5 font-mono text-[12px]">
+            <p id={hintId} className="pt-0.5 font-mono text-[11px]">
               {d.goal.composer.hint}
             </p>
             <p>
