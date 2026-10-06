@@ -21,7 +21,7 @@ export function loadEvmKey(path: string): PrivateKeyAccount {
 
 /**
  * A fresh EVM key for a test-network wallet, with its address: for a file outside every checkout
- * (scripts/testnet/faucet-keys.ts). The caller writes the key and prints only the address.
+ * (scripts/testnet/make-faucet-keys.ts). The caller writes the key and prints only the address.
  */
 export function newEvmKey(): { key: Hex; address: string } {
   const key = generatePrivateKey();

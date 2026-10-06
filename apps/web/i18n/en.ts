@@ -654,6 +654,9 @@ export const en = {
         tooMuch:
           'This amount needs more than one send of test funds gives. Choose a smaller amount, then ask again.',
         enough: 'Your wallet already has what this buy needs.',
+        lowCash:
+          'Our test funds are low. Ask the team to top them up, or fund the wallet yourself.',
+        lowGas: 'Our test gas is low. Ask the team to top it up, or fund the wallet yourself.',
         refused:
           'Our server didn’t send test funds for this buy. Read your wallet again, then try again.',
         unreachable:

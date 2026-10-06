@@ -150,11 +150,15 @@ export function FundingStep({
         ? t.buy.funding.testFailure.busy
         : outcome.kind === 'too-much'
           ? t.buy.funding.testFailure.tooMuch
-          : outcome.kind === 'enough'
-            ? t.buy.funding.testFailure.enough
-            : outcome.kind === 'refused'
-              ? t.buy.funding.testFailure.refused
-              : t.buy.funding.testFailure.unreachable;
+          : outcome.kind === 'low'
+            ? outcome.of === 'gas'
+              ? t.buy.funding.testFailure.lowGas
+              : t.buy.funding.testFailure.lowCash
+            : outcome.kind === 'enough'
+              ? t.buy.funding.testFailure.enough
+              : outcome.kind === 'refused'
+                ? t.buy.funding.testFailure.refused
+                : t.buy.funding.testFailure.unreachable;
 
   return (
     <div data-ui="funding-step" className="flex flex-col gap-4">

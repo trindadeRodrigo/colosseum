@@ -10,7 +10,7 @@ import { getAddressDecoder } from '@solana/kit';
 // funded from the deployer by a person, and never an authority or a role. Written to a folder outside
 // every checkout, never over a key already there; only the public addresses are printed.
 //
-//   pnpm exec tsx scripts/testnet/faucet-keys.ts [--out <dir>]
+//   pnpm exec tsx scripts/testnet/make-faucet-keys.ts [--out <dir>]
 //
 // <dir> defaults to `testnet-keys` beside the checkout. The server reads each key from a variable a
 // person sets: TESTNET_FAUCET_SOLANA_KEY (the JSON array in the .json file), TESTNET_FAUCET_ROBINHOOD_KEY

@@ -614,6 +614,10 @@ export const pt: Dictionary = {
         tooMuch:
           'Este valor precisa de mais do que um envio de fundos de teste dá. Escolha um valor menor e peça de novo.',
         enough: 'Sua carteira já tem o que esta compra precisa.',
+        lowCash:
+          'Nossos fundos de teste estão baixos. Peça à equipe para completar, ou coloque fundos na carteira você mesmo.',
+        lowGas:
+          'Nosso gás de teste está baixo. Peça à equipe para completar, ou coloque fundos na carteira você mesmo.',
         refused:
           'Nosso servidor não enviou fundos de teste para esta compra. Leia sua carteira de novo e tente outra vez.',
         unreachable:

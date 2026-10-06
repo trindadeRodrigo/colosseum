@@ -203,7 +203,7 @@ export function createTestFunds(options: {
 
 /** The float cannot cover the send: a person tops it up from the deployer. */
 const low = (why: string) =>
-  new Refusal(503, why, {
+  new Refusal(409, why, {
     fix: 'The test faucet needs topping up. Ask the team, or fund the wallet yourself.',
     details: { retryable: false },
   });

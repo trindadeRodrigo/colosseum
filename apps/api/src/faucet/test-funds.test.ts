@@ -234,7 +234,7 @@ describe('the test faucet', () => {
       gasRaw: 12_625_000n + RESERVE - 1n,
     }));
     const gas = await refusal(ask(thin.funds));
-    expect(gas.status).toBe(503);
+    expect(gas.status).toBe(409);
     expect(gas.body().error).toBe(TEST_FUNDS_LOW.gas);
     expect(thin.sender.send).not.toHaveBeenCalled();
     // Cash: the float's test dollars.
@@ -243,7 +243,7 @@ describe('the test faucet', () => {
       gasRaw: 10n ** 12n,
     }));
     const cash = await refusal(ask(poor.funds));
-    expect(cash.status).toBe(503);
+    expect(cash.status).toBe(409);
     expect(cash.body().error).toBe(TEST_FUNDS_LOW.cash);
     expect(poor.sender.send).not.toHaveBeenCalled();
     // Just enough: it sends, and the refusals above used none of the person's three.

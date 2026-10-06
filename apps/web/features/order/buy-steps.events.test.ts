@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { TRUST_STATUS } from '@colosseum/schemas';
+import { TEST_FUNDS_LOW, TRUST_STATUS } from '@colosseum/schemas';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
@@ -328,6 +328,21 @@ describe('the funds', () => {
     );
     expect(server.to('/v1/testnet/fund')).toHaveLength(1);
     expect(next(host, 'funds').getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('says when the faucet’s float is low, and that the team tops it up', async () => {
+    for (const [error, sentence] of [
+      [TEST_FUNDS_LOW.cash, en.buy.funding.testFailure.lowCash],
+      [TEST_FUNDS_LOW.gas, en.buy.funding.testFailure.lowGas],
+    ] as const) {
+      api({ funded: false, faucet: true, fund: () => json({ error }, 409) });
+      const host = await buy();
+      await click(next(host, 'amount'));
+      await click(button(host, en.buy.funding.testFunds) as HTMLButtonElement);
+      await settle();
+      expect(find(panel(host, 'funds'), '[role="alert"]').textContent).toBe(sentence);
+      await unmountAll();
+    }
   });
 });
 

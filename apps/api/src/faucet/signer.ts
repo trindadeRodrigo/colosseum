@@ -28,7 +28,7 @@ import type { ChainEntry, EvmInputs, SolanaInputs } from '../orders/chains';
 import { onTestNetwork, type TestFundsSend, type TestFundsSender } from './test-funds';
 
 // The one file of apps/api that holds a key (DESIGN-VAULT section 2, rule 5, held to a condition): the
-// test faucet's, a wallet of its own made for it (scripts/testnet/faucet-keys.ts) that holds a float of
+// test faucet's, a wallet of its own made for it (scripts/testnet/make-faucet-keys.ts) that holds a float of
 // test tokens and transfers from it. It mints nothing and holds no authority or role: never the admin,
 // upgrade or deployer key. Nothing loads it but one dynamic import in routes/v1/index.ts, inside
 // `if (faucetKeys)`, which is set only when a faucet key is configured for a chain that runs on its

@@ -4,6 +4,7 @@ import {
   FundingResponse,
   OrderDetail,
   type OrderErrorCode,
+  TEST_FUNDS_LOW,
   TestFundsResponse,
 } from '@colosseum/schemas';
 import type { ApiFetch } from '../account/person';
@@ -179,6 +180,8 @@ export type TestFundsOutcome =
   | { kind: 'too-much' }
   /** 409: nothing is missing. */
   | { kind: 'enough' }
+  /** 409: the faucet's float cannot cover this send, of test gas or of test dollars. */
+  | { kind: 'low'; of: 'gas' | 'cash' }
   /** Refused, or the server could not be read. */
   | { kind: 'refused' }
   /** No answer, a 5xx, or the test network did not take it. */
@@ -205,7 +208,12 @@ export async function requestTestFunds(
   const body = await bodyOf(res);
   if (res.status === 429) return { kind: 'busy' };
   if (res.status === 422) return { kind: 'too-much' };
-  if (res.status === 409) return { kind: 'enough' };
+  if (res.status === 409)
+    return body.error === TEST_FUNDS_LOW.gas
+      ? { kind: 'low', of: 'gas' }
+      : body.error === TEST_FUNDS_LOW.cash
+        ? { kind: 'low', of: 'cash' }
+        : { kind: 'enough' };
   if (res.status >= 500) return { kind: 'unreachable' };
   if (!res.ok) return { kind: 'refused' };
   const sent = TestFundsResponse.safeParse(body);
