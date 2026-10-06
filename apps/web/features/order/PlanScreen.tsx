@@ -5,6 +5,7 @@ import { useId } from 'react';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/Card';
+import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
 import { ExitPlanLine } from '../../components/ui/ExitPlanLine';
 import { MAX_LEGS, PlanLegs } from '../../components/ui/PlanLegs';
@@ -99,7 +100,8 @@ export function PlanScreen({ id }: { id: string }) {
 
   return (
     <div data-ui="plan-screen" className="flex flex-col gap-8">
-      <header className="flex flex-col gap-3">
+      <header className="flex flex-col items-start gap-3">
+        <ChainBadge chain={chain} />
         <h1
           id={headingId}
           className="max-w-(--tf-measure-display) font-display text-h1 font-normal"

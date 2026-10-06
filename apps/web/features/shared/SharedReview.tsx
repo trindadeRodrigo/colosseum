@@ -4,7 +4,7 @@ import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { DataTable } from '../../components/ui/DataTable';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { assetName, formatBps } from '../order/amounts';
+import { assetTicker, formatBps } from '../order/amounts';
 import { onMock } from '../order/readiness';
 import { useWalletPort } from '../wallet/WalletProvider';
 import { SourceMark } from './SourceMark';
@@ -31,7 +31,7 @@ export function SharedReview({ terms, chain }: { terms: SharedTerms; chain: Chai
           key: 'asset',
           header: t.plan.columns.asset,
           rowHeader: true,
-          cell: (r) => assetName(r.asset).toUpperCase(),
+          cell: (r) => assetTicker(r.asset),
         },
         {
           key: 'share',

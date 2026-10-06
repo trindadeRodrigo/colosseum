@@ -1,5 +1,4 @@
 import { rebalancePlan } from '@colosseum/basket';
-import type { KeeperContext, SolanaVaultAdapter } from '@colosseum/chain-solana/vault';
 import {
   type AssetId,
   type BuiltTx,
@@ -8,7 +7,8 @@ import {
   type Trade,
   type TxStatus,
 } from '@colosseum/schemas';
-import { type KeeperMemory, legKey, newMemory, versionPrefix } from './memory';
+import type { KeeperAdapter, KeeperView } from './chain';
+import { type InFlight, type KeeperMemory, legKey, newMemory, versionPrefix } from './memory';
 import { legBlocked, nextTrade, REVERTED, syncDecision } from './policy';
 
 export { type KeeperMemory, newMemory } from './memory';
@@ -35,7 +35,7 @@ export type VaultLine = {
 };
 
 export type KeeperOptions = {
-  adapter: SolanaVaultAdapter;
+  adapter: KeeperAdapter;
   /** Signs a built transaction with the keeper's key: the signed bytes and the transaction's id. */
   sign(tx: BuiltTx): Promise<{ wire: string; txId: string }>;
   /** Sends signed bytes. Default: the adapter's relay, with the node's preflight. */
@@ -51,6 +51,8 @@ export type KeeperOptions = {
   /** The order vaults are visited in; random by default, so no vault always goes last. */
   shuffle?: <T>(items: T[]) => T[];
   log?: (line: VaultLine) => void;
+  /** What every line's reason is said with: the keeper takes the nodes' addresses out of it. */
+  hide?: (text: string) => string;
 };
 
 const shuffled = <T>(items: T[]): T[] => {
@@ -62,6 +64,9 @@ const shuffled = <T>(items: T[]): T[] => {
   return out;
 };
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/** When a built transaction stops being able to land, as the chain states it: none for an EVM keeper leg. */
+const validUntilOf = (tx: BuiltTx) =>
+  tx.lastValidBlockHeight === undefined ? undefined : String(tx.lastValidBlockHeight);
 const codeOf = (e: unknown) =>
   e instanceof ChainError ? e.code : e instanceof Error ? e.message : String(e);
 
@@ -71,6 +76,7 @@ export async function runRound(
 ): Promise<VaultLine[]> {
   const { adapter } = o;
   const log = o.log ?? (() => {});
+  const hide = o.hide ?? ((text: string) => text);
   const send = o.send ?? ((signed: string) => adapter.relay(signed));
   const save = async () => {
     await o.save?.(memory);
@@ -83,7 +89,7 @@ export async function runRound(
   const lines: VaultLine[] = [];
 
   /** Polls a sent transaction until the chain settles it or the wait is over. */
-  async function settle(txId: string, validUntil: string): Promise<TxStatus> {
+  async function settle(txId: string, validUntil: string | undefined): Promise<TxStatus> {
     const until = Date.now() + settleMs;
     for (;;) {
       const status = await adapter.track(txId, validUntil);
@@ -98,35 +104,94 @@ export async function runRound(
     await send(signed.wire, tx);
     return {
       txId: signed.txId,
-      status: await settle(signed.txId, String(tx.lastValidBlockHeight)),
+      status: await settle(signed.txId, validUntilOf(tx)),
     };
   }
 
   /**
    * The fate of the leg sent earlier for this vault, if there is one. A leg that landed or expired
    * frees the vault, one that reverted joins the reverted set, one that is still open holds the vault.
+   * On EVM, an open leg the node does not hold frees the vault too, and the next leg takes its nonce
+   * (`pin`): of the two, at most one can land.
    */
-  async function earlier(vault: string): Promise<{ hold: string | null; note: string | null }> {
+  async function earlier(
+    vault: string,
+  ): Promise<{ hold: string | null; note: string | null; pin: number | null }> {
     const sent = memory.inFlight.get(vault);
-    if (!sent) return { hold: null, note: null };
+    if (!sent) return { hold: null, note: null, pin: null };
     let status: TxStatus;
+    // Which leg the fate is of: this one, or a leg it replaced that took the nonce first.
+    let txId = sent.txId;
+    let key = sent.key;
     try {
-      status = await adapter.track(sent.txId, sent.validUntil);
+      status = await adapter.track(sent.txId, sent.validUntil ?? undefined);
+      // EVM: a leg with no deadline is still pending until its nonce says otherwise. Taken by another
+      // call, it can never land; taken by this one, it is read again under the id the chain has.
+      if (
+        status.status === 'pending' &&
+        sent.nonce !== undefined &&
+        sent.messageHash &&
+        sent.signer
+      ) {
+        const fate = await adapter.fate({
+          messageHash: sent.messageHash,
+          signer: sent.signer,
+          validUntil: sent.validUntil,
+          nonce: sent.nonce,
+        });
+        if (fate.state === 'gone') {
+          const took = await tookNonce(sent);
+          if (took) {
+            ({ txId, key } = took);
+            status = await adapter.track(took.landedAs);
+          } else status = { status: 'expired', explorerUrl: status.explorerUrl };
+        } else if (fate.state === 'landed') status = await adapter.track(fate.txId);
+        else if ((await adapter.carries(sent.txId, sent.messageHash)) === 'unseen')
+          // Open, and the node has never seen it: it was turned away, or it is somewhere the node
+          // cannot see. It stays remembered until a leg on its nonce replaces it.
+          return {
+            hold: null,
+            note: `leg ${sent.txId} is not held by the node; the next leg takes its nonce ${sent.nonce}`,
+            pin: sent.nonce,
+          };
+      }
     } catch (e) {
-      return { hold: `the fate of leg ${sent.txId} could not be read (${codeOf(e)})`, note: null };
+      return {
+        hold: `the fate of leg ${sent.txId} could not be read (${codeOf(e)})`,
+        note: null,
+        pin: null,
+      };
     }
     if (status.status === 'pending')
-      return { hold: `leg ${sent.txId} is not settled yet`, note: null };
-    if (status.status === 'reverted') memory.reverted.add(sent.key);
+      return { hold: `leg ${sent.txId} is not settled yet`, note: null, pin: null };
+    if (status.status === 'reverted') memory.reverted.add(key);
     memory.inFlight.delete(vault);
     await save();
     return {
       hold: null,
+      pin: null,
       note:
         status.status === 'reverted'
-          ? `leg ${sent.txId} reverted: ${status.error?.code ?? ''}; it is not sent again`
-          : `leg ${sent.txId} ${status.status}`,
+          ? `leg ${txId} reverted: ${status.error?.code ?? ''}; it is not sent again`
+          : `leg ${txId} ${status.status}`,
     };
+  }
+
+  /** EVM: a leg that `sent` replaced on its nonce and that took the nonce itself, if one did. */
+  async function tookNonce(
+    sent: InFlight,
+  ): Promise<{ txId: string; key: string; landedAs: string } | null> {
+    if (sent.nonce === undefined || !sent.signer) return null;
+    for (const r of sent.replaced ?? []) {
+      const fate = await adapter.fate({
+        messageHash: r.messageHash,
+        signer: sent.signer,
+        validUntil: sent.validUntil,
+        nonce: sent.nonce,
+      });
+      if (fate.state === 'landed') return { txId: r.txId, key: r.key, landedAs: fate.txId };
+    }
+    return null;
   }
 
   for (const vault of vaults) {
@@ -140,7 +205,8 @@ export async function runRound(
       const l: VaultLine = {
         vault,
         outcome,
-        reason: [...did, reason].join('; ') + budget,
+        // A vault's failure can quote the transport, which can name the node: never its address.
+        reason: hide([...did, reason].join('; ') + budget),
         txIds,
         alert: alert || raise,
       };
@@ -164,7 +230,7 @@ export async function runRound(
     };
 
     try {
-      const before = await earlier(vault);
+      let before = await earlier(vault);
       if (before.hold) {
         stop(before.hold, true);
         continue;
@@ -217,7 +283,20 @@ export async function runRound(
         }
         did.push(`adopted version ${pending.version}`);
         adopted = true;
-        ctx = (await adapter.getKeeperContext(vault)) as KeeperContext;
+        // The adoption went out on the nonce a held leg was pinned to: that leg's fate is read again
+        // now, and the next leg takes the signer's next nonce.
+        if (before.pin !== null) {
+          before = await earlier(vault);
+          if (before.hold) {
+            stop(before.hold, true);
+            continue;
+          }
+          if (before.note) {
+            did.push(before.note);
+            alert ||= before.note.includes('reverted');
+          }
+        }
+        ctx = (await adapter.getKeeperContext(vault)) as KeeperView;
         await forgetOtherVersions(ctx.vault.acceptedVersion);
       }
 
@@ -228,6 +307,10 @@ export async function runRound(
         continue;
       }
       if (sync.sync) {
+        if (!adapter.buildSyncBalances) {
+          stop('records differ from the accounts, and this chain has no sync', true);
+          continue;
+        }
         if (o.dryRun) {
           line('would-act', 'would sync its records');
           continue;
@@ -240,7 +323,7 @@ export async function runRound(
         }
         did.push('synced its records');
         synced = true;
-        ctx = (await adapter.getKeeperContext(vault)) as KeeperContext;
+        ctx = (await adapter.getKeeperContext(vault)) as KeeperView;
       }
 
       // 3. One leg toward the targets, if the program would take one now.
@@ -286,7 +369,11 @@ export async function runRound(
       }
       let leg: BuiltTx;
       try {
-        leg = await adapter.buildKeeperLeg(vault, trade);
+        leg = await adapter.buildKeeperLeg(
+          vault,
+          trade,
+          before.pin !== null ? { nonce: before.pin } : undefined,
+        );
       } catch (e) {
         // The builder simulated it and the program would refuse it: no fee is spent.
         if (!(e instanceof ChainError)) throw e;
@@ -300,14 +387,31 @@ export async function runRound(
 
       // From here the leg may land whatever the node answers: it is remembered before it is sent,
       // and only its fate on the chain takes it out of memory.
+      // A leg pinned to a held leg's nonce replaces it in memory, and keeps it, since either may land.
+      const replacing = before.pin !== null ? memory.inFlight.get(vault) : undefined;
       const signed = await o.sign(leg);
-      const validUntil = String(leg.lastValidBlockHeight);
+      const validUntil = validUntilOf(leg);
       memory.inFlight.set(vault, {
         vault,
         key: key(trade),
         txId: signed.txId,
-        validUntil,
+        validUntil: validUntil ?? null,
         sentAt: new Date().toISOString(),
+        ...(leg.evm?.nonce !== undefined
+          ? { nonce: leg.evm.nonce, messageHash: leg.messageHash, signer: leg.signer }
+          : {}),
+        ...(replacing?.messageHash
+          ? {
+              replaced: [
+                ...(replacing.replaced ?? []),
+                {
+                  txId: replacing.txId,
+                  key: replacing.key,
+                  messageHash: replacing.messageHash,
+                },
+              ],
+            }
+          : {}),
       });
       await save();
       txIds.push(signed.txId);
@@ -316,6 +420,16 @@ export async function runRound(
         await send(signed.wire, leg);
         status = await settle(signed.txId, validUntil);
       } catch (e) {
+        if (e instanceof ChainError && e.unsent) {
+          // Refused before it left this process (the node's preflight): it can never land.
+          memory.inFlight.delete(vault);
+          await save();
+          stop(
+            `the leg ${trade.sell} -> ${trade.buy} was refused before it was sent: ${e.code}; nothing left the keeper`,
+            !e.retryable,
+          );
+          continue;
+        }
         stop(
           `the leg ${trade.sell} -> ${trade.buy} was sent and no answer settled it (${codeOf(e)}); its fate is read before the vault is planned again`,
           true,

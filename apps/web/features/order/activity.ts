@@ -5,7 +5,8 @@ import { assetName } from './amounts';
 import { explorerUrlFor } from './readiness';
 
 // What was done on chain, as his guide writes it (guidelines.html, "Disclaimer and activity"): one
-// line per step that reached the chain, with what it was, where it stands, when, and its explorer link.
+// line per step that reached the chain, with what it was, the chain it is on, where it stands, when, and
+// its explorer link with the explorer's name.
 // Read from the order as the API last said it: a step with no transaction is not activity.
 
 const STATUS: Partial<Record<LegStatus, ExecutionStatus>> = {
@@ -19,7 +20,6 @@ const STATUS: Partial<Record<LegStatus, ExecutionStatus>> = {
 export function activityOf(
   order: OrderDetail,
   t: Dictionary,
-  explorer: string,
   /** The chain runs on the mock: its transactions link to the mock's own address. */
   mock: boolean,
 ): Execution[] {
@@ -42,7 +42,8 @@ export function activityOf(
         at: last?.builtAt ?? order.createdAt,
         signature: leg.txId,
         explorerUrl: explorerUrlFor(leg.chain, leg.txId, mock),
-        explorer,
+        explorer: t.chain.explorers[leg.chain],
+        chain: leg.chain,
         provenance: leg.provenance,
       };
     })

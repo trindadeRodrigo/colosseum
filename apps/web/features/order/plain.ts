@@ -1,6 +1,7 @@
 import type { BasketLine, BasketProposal } from '@colosseum/schemas';
 import { type Dictionary, type Lang, LOCALE } from '../../i18n';
 import { dollars } from '../goal/sheet';
+import { assetTicker } from './amounts';
 
 // The plan in plain words (Thom, Oct 6: the plan screen read as a list of engine codes). Nothing here
 // shows an engine code: an asset by its name, a kind of asset by a word, a flag by a sentence, and a
@@ -71,7 +72,14 @@ export const isCashId = (assetId: string) =>
  */
 export function displayName(assetId: string, words: Pick<Dictionary['plan'], 'cash'>): string {
   const tail = assetId.slice(assetId.indexOf(':') + 1).toLowerCase();
-  if (CASH.has(tail)) return words.cash(tail.replace(/^t(?=usd)/, '').toUpperCase());
+  // A chain's dollar goes by that chain's name for it (amounts.ts): Robinhood Chain's is tUSDG, also
+  // where the mock stands in for it, and a Robinhood plan never says USDC.
+  if (CASH.has(tail)) {
+    const named = assetTicker(assetId);
+    return words.cash(
+      named === tail.toUpperCase() ? tail.replace(/^t(?=usd)/, '').toUpperCase() : named,
+    );
+  }
   const bare = SYMBOLS[tail] ? tail : tail.replace(/^t(?=[a-z])/, '');
   const symbol = SYMBOLS[bare] ?? (bare === 'gold' ? 'Gold' : bare.toUpperCase());
   const issuer = ISSUERS[bare];

@@ -36,6 +36,14 @@ const LEGACY: Record<string, readonly Kind[]> = {
   'features/wallet/dev/DevWallet.tsx': ['hue'],
 };
 
+/**
+ * Pictures drawn at build by `next/og`, which reads no stylesheet and so no `var(--font-…)`: each
+ * names the brand's face itself, and that finding alone is excused.
+ */
+const DRAWN: Record<string, string> = {
+  'app/opengraph-image.tsx': "fontFamily: 'Newsreader'",
+};
+
 /** The product's own routes and what they are built from: none of it may ever be on the list above. */
 const PRODUCT =
   /^(app\/\((app|marketing|embed)\)|components\/shell|features\/(account|goal|portfolio|landing|order|embed)|i18n)\//;
@@ -252,7 +260,16 @@ describe('the forbidden things', () => {
     });
 
     it('finds nothing forbidden outside the pages listed as legacy', () => {
-      const fresh = found.filter((f) => !LEGACY[f.file]?.includes(f.kind));
+      const fresh = found.filter(
+        (f) =>
+          !LEGACY[f.file]?.includes(f.kind) && !(f.kind === 'font' && DRAWN[f.file] === f.what),
+      );
+      // and each picture's excuse is still needed
+      for (const [file, what] of Object.entries(DRAWN))
+        expect(
+          found.some((f) => f.file === file && f.what === what),
+          file,
+        ).toBe(true);
       expect(fresh.map((f) => `${f.file}: ${f.kind}: ${f.what}`)).toEqual([]);
     });
 

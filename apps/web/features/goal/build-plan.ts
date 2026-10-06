@@ -46,6 +46,8 @@ export type BuildOutcome =
   | { kind: 'no-chain' }
   /** The server is the final gate and refused the sheet. */
   | { kind: 'refused' }
+  /** The goal or a withdrawal is in another currency than US dollars (gate USD-ONLY). */
+  | { kind: 'currency' }
   /** A valid sheet, and no plan fits it. */
   | { kind: 'no-plan' }
   | { kind: 'busy' }
@@ -94,6 +96,7 @@ export async function buildPlan(apiFetch: ApiFetch, sheet: BasketSheet): Promise
   // and a different one for each thing the person can do about it.
   if (res.status >= 400 && res.status < 500) {
     if (answer.code === 'GOAL_NOT_ACHIEVABLE') return { kind: 'no-plan' };
+    if (answer.code === 'CURRENCY_UNSUPPORTED') return { kind: 'currency' };
     if (res.status === 401 || res.status === 403) return { kind: 'signed-out' };
     if (res.status === 409) return { kind: 'no-chain' };
     return { kind: 'refused' };

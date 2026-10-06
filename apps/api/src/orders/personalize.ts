@@ -14,6 +14,7 @@ import {
   type BasketAsset,
   BasketProposal,
   type ChainId,
+  currencyOf,
   type LiquidityProvider,
   type ObservationRef,
   type PlanCandidateId,
@@ -127,6 +128,16 @@ export async function personalize(
   candidates: MadeCandidate[];
   notShown: PlanCandidateNotShown[];
 }> {
+  // Plans are in US dollars for now (gate USD-ONLY): a goal or a withdrawal in another currency is
+  // refused before anything is read, rather than answered with a plan that cannot pay it.
+  const other = [currencyOf(sheet), ...(sheet.obligations ?? []).map((o) => o.currency)].some(
+    (c) => c !== 'USD',
+  );
+  if (other)
+    throw new Refusal(422, 'Plans are in US dollars for now', {
+      code: 'CURRENCY_UNSUPPORTED',
+      fix: 'Send the goal and every withdrawal in USD.',
+    });
   const chain = await ctx.homeChain();
   const asked = sheet.chains[0];
   if (sheet.chains.length !== 1 || asked !== chain)

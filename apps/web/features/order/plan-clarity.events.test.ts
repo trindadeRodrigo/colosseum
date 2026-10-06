@@ -150,7 +150,10 @@ describe('the plan in plain words', () => {
     expect(name('solana:syrupusdc')).toBe('syrupUSDC (Maple)');
     expect(name('solana:jlusdc')).toBe('jlUSDC (Jupiter Lend)');
     expect(name('solana:usdc')).toBe('Cash (USDC)');
-    expect(name('robinhood:tusdg')).toBe('Cash (USDG)');
+    // a chain's dollar by that chain's name for it: Robinhood Chain's is tUSDG, the mock's stand-in too
+    expect(name('robinhood:tusdg')).toBe('Cash (tUSDG)');
+    expect(name('robinhood:usdc')).toBe('Cash (tUSDG)');
+    expect(name('solana:tusdc')).toBe('Cash (USDC)');
     expect(name('solana:spyx')).toBe('SPYx');
     expect(name('robinhood:tspy')).toBe('SPY');
     expect(name('solana:gold')).toBe('Gold');
@@ -244,6 +247,19 @@ describe('the plan in plain words', () => {
       .map((t) => t.textContent)
       .filter((s) => s?.startsWith('$'));
     expect(ticks).toEqual(['$100', '$101']);
+  });
+
+  it('never says USDC on a Robinhood plan: its dollar is tUSDG, in the summary and the legs', async () => {
+    const plan = planOn('robinhood', 'sandbox');
+    rememberPlan(plan);
+    portStore.setApi(async (path) =>
+      path === '/v1/me'
+        ? json({ ...person, chain: 'robinhood' })
+        : json({ error: 'not found' }, 404),
+    );
+    const host = await shown();
+    expect(find(host, '[data-ui="plan-summary"]').textContent).toContain('Cash (tUSDG)');
+    expect(host.textContent).not.toMatch(/usdc/i);
   });
 
   it('is plain in Portuguese too', async () => {
