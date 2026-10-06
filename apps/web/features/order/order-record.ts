@@ -65,6 +65,11 @@ export type OrderRecord = {
    * too (`basketIdOfLinkedPlan`), so the link alone does not lead to the vault.
    */
   linked?: true;
+  /**
+   * The vault's number on chain as the server's list of plans gave it (`GET /v1/me/plans`), for a
+   * record made from that list and not kept in this browser (features/portfolio/server-plans.ts).
+   */
+  basketId?: string;
 };
 
 function readGoal(value: unknown): PlacedGoal | null {
