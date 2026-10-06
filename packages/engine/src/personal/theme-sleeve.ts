@@ -215,15 +215,18 @@ export function placeThemeSleeve(
   if (cents <= 0) return { holds: held, short: false };
   const list = fillingList(w, slug);
   if (!list) {
-    // No list, a list not confirmed yet, or a filter no stock of the chain matches: the sleeve holds
-    // no name, and its money is held in dollar yield, then cash, with the one of the three it is.
+    // No list, a list not confirmed yet, a filter with no attributes to read, or one no stock of the
+    // chain matches: the sleeve holds no name, and its money is held in dollar yield, then cash, with
+    // the one of the four it is.
     const known = w.themeListOf(slug);
     const theme = known ? known.name[lang] : slug;
     const [rule, flag] = !known
       ? (['THEME_NO_LIST', 'no_list'] as const)
-      : isMatchedList(known)
-        ? (['THEME_NO_MATCH', 'no_match'] as const)
-        : (['THEME_NOT_CONFIRMED', 'not_confirmed'] as const);
+      : !isMatchedList(known)
+        ? (['THEME_NOT_CONFIRMED', 'not_confirmed'] as const)
+        : known.attributes === null
+          ? (['THEME_NO_ATTRIBUTES', 'no_attributes'] as const)
+          : (['THEME_NO_MATCH', 'no_match'] as const);
     const why = reason(rule, { theme, chain: w.chain }, lang);
     w.flags.add(`theme_${flag}:${slug}`);
     book.removed.push({ ref: slug, reasons: [why] });

@@ -152,8 +152,8 @@ export const REASON_TEMPLATES = {
   // the value a filter names. Every line says it is matched, and by what: never a curated theme.
   THEME_MATCHED_SLEEVE: rule(
     ['sleeves', 'themes', 'chain'],
-    "You set {shareBps|pct} of the plan for stocks matched by {by|by}: {value}. Matched from each stock's sourced attributes, not a curated theme: equal shares of the ones you can hold on {chain|chain} and that can be sold at this size, each up to its limit.",
-    'Você destinou {shareBps|pct} do plano para ações filtradas por {by|by}: {value}. Filtradas pelos atributos de cada ação, que têm fonte, e não por um tema com curadoria: partes iguais das que você pode ter na {chain|chain} e que podem ser vendidas neste tamanho, cada uma até o seu limite.',
+    'You set {shareBps|pct} of the plan for names matched by {by|by}: {value}. Matched from the sourced attributes of each, not a curated theme: equal shares of the ones you can hold on {chain|chain} and that can be sold at this size, each up to its limit.',
+    'Você destinou {shareBps|pct} do plano para nomes filtrados por {by|by}: {value}. Filtrados pelos atributos de cada um, que têm fonte, e não por um tema com curadoria: partes iguais dos que você pode ter na {chain|chain} e que podem ser vendidos neste tamanho, cada um até o seu limite.',
   ),
   THEME_MATCHED_MEMBER: rule(
     ['themes', 'chain'],
@@ -166,6 +166,12 @@ export const REASON_TEMPLATES = {
     ['themes', 'chain'],
     'There is no stock for {theme} on {chain|chain} at the moment. We will be adding more soon.',
     'No momento não há nenhuma ação para {theme} na {chain|chain}. Vamos incluir mais em breve.',
+  ),
+  // No attributes were given for the chain: nothing can be said to match or not.
+  THEME_NO_ATTRIBUTES: rule(
+    ['themes', 'chain'],
+    'Nothing is held for {theme}: the stocks of {chain|chain} have no sourced attributes to match by yet.',
+    'Nada fica em {theme}: as ações da {chain|chain} ainda não têm atributos com fonte para filtrar.',
   ),
   // A goal in a currency other than dollars.
   FX_OPEN: rule(
@@ -518,6 +524,11 @@ export const REASON_TEMPLATES = {
     '{usd|usd} meant for {theme} is held in dollar yield or cash instead: there is no stock for it on {chain|chain} at the moment.',
     '{usd|usd} que iria para {theme} fica em rendimento em dólar ou caixa: no momento não há nenhuma ação para isso na {chain|chain}.',
   ),
+  OVERFLOW_THEME_NO_ATTRIBUTES: rule(
+    ['themes', 'chain'],
+    '{usd|usd} meant for {theme} is held in dollar yield or cash instead: the stocks of {chain|chain} have no sourced attributes to match by yet.',
+    '{usd|usd} que iria para {theme} fica em rendimento em dólar ou caixa: as ações da {chain|chain} ainda não têm atributos com fonte para filtrar.',
+  ),
   OVERFLOW_HELD: rule(
     ['holdings'],
     '{usd|usd} this plan does not put in {assets|list} is held in dollar yield or cash instead: you already hold {heldUsd|usd} of it.',
@@ -636,6 +647,8 @@ type Words = Record<
   by: Record<MarketFilterBy, string>;
   /** A stock's own fact about it, which its value follows: "its industry is Aerospace & Defense". */
   itsBy: Record<MarketFilterBy, string>;
+  /** The same for a fund matched by a keyword, which says what it holds or is: "a fund described as gold". */
+  fundIs: string;
   and: string;
 };
 
@@ -657,7 +670,7 @@ export const WORDS: Record<Language, Words> = {
       sector: 'sector',
       industry: 'industry',
       sub_industry: 'sub-industry',
-      keyword: 'business line',
+      keyword: 'keyword',
     },
     itsBy: {
       sector: 'its sector is',
@@ -665,6 +678,7 @@ export const WORDS: Record<Language, Words> = {
       sub_industry: 'its sub-industry is',
       keyword: 'one of its business lines is',
     },
+    fundIs: 'a fund described as',
     // The times of the week the risk layer measures apart, in the order they are written.
     regime: {
       us_market_hours: 'in US market hours',
@@ -720,7 +734,7 @@ export const WORDS: Record<Language, Words> = {
       sector: 'setor',
       industry: 'indústria',
       sub_industry: 'subindústria',
-      keyword: 'linha de negócio',
+      keyword: 'palavra-chave',
     },
     // "Dela": of the company.
     itsBy: {
@@ -729,6 +743,7 @@ export const WORDS: Record<Language, Words> = {
       sub_industry: 'a subindústria dela é',
       keyword: 'uma das linhas de negócio dela é',
     },
+    fundIs: 'um fundo descrito como',
     regime: {
       us_market_hours: 'no horário do mercado dos EUA',
       us_offhours_weekday: 'em dias úteis fora do horário do mercado dos EUA',

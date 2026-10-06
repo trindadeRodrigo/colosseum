@@ -8,6 +8,7 @@ import {
   type ShelfLabel,
 } from './market-filter';
 import { byName } from './money';
+import { STOCK_KEYWORDS } from './params';
 import { sleeveOfClass } from './registry';
 import type { StockAttributes, StockAttributesFile } from './stock-attributes';
 import { WORDS } from './templates';
@@ -27,13 +28,24 @@ export type FilterRead = MarketFilter | { by: MarketFilterBy; key: string };
 const keyOf = (filter: FilterRead): string =>
   'key' in filter ? filter.key : attributeKey(filter.value);
 
+/** The field of a row each kind of filter reads. */
+const FIELD = {
+  sector: 'sector',
+  industry: 'industry',
+  sub_industry: 'subIndustry',
+  keyword: 'keywords',
+} as const satisfies Record<MarketFilterBy, keyof StockAttributes>;
+
 /**
- * What a row writes for one attribute. A fund has no sector, industry or sub-industry of its own, so
- * it is matched by keyword only. So is a preferred stock: its row carries its issuer's
- * classification, and a person who names a sector asks for its companies, not for a share that pays
- * a set dividend.
+ * What a row writes for one attribute, as far as a filter may read it.
+ * - Nothing where the row marks that field unverified: a filter matches only on what a source read
+ *   supports, since the plan says the match is from sourced attributes.
+ * - A fund has no sector, industry or sub-industry of its own, so it is matched by keyword only. So
+ *   is a preferred stock: its row carries its issuer's classification, and a person who names a
+ *   sector asks for its companies, not for a share that pays a set dividend.
  */
 function writtenBy(row: StockAttributes, by: MarketFilterBy): string[] {
+  if (row.unverified.includes(FIELD[by])) return [];
   if (by === 'keyword') return row.keywords;
   if (row.kind === 'preferred') return [];
   const value = by === 'sector' ? row.sector : by === 'industry' ? row.industry : row.subIndustry;
@@ -48,6 +60,10 @@ const carried = (row: StockAttributes, by: MarketFilterBy, key: string): string 
  * The stocks a filter matches: the rows whose attribute carries its value, two writings of one value
  * held equal as `attributeKey` holds them and nothing else folded. In the order of their symbols, so
  * the order of the rows decides nothing. The rows are one file's: a symbol is there once.
+ *
+ * A keyword selects nothing unless at least `STOCK_KEYWORDS.carriers` rows carry it. A keyword one
+ * stock alone carries would be that stock's name by another word, and whoever named it, a model
+ * included, would have picked the stock.
  */
 export function matchStocks(
   filter: FilterRead,
@@ -55,10 +71,11 @@ export function matchStocks(
 ): StockAttributes[] {
   const key = keyOf(filter);
   if (key === '') return [];
-  return byName(
+  const found = byName(
     rows.filter((row) => carried(row, filter.by, key) !== null),
     (row) => row.symbol,
   );
+  return filter.by === 'keyword' && found.length < STOCK_KEYWORDS.carriers ? [] : found;
 }
 
 /**
@@ -102,9 +119,13 @@ export function matchedListOf(
   const rows = file ? matchStocks(filter, file.stocks) : [];
   const [first] = rows;
   const value = first ? carried(first, by, key) : null;
-  const name = value ?? key;
+  // Where no stock carries the value, the key's own words name it.
+  const name = value ?? key.replaceAll('-', ' ');
+  // A fund's keywords say what it holds or is, not a line of business.
   const whyOf = (row: StockAttributes, lang: 'en' | 'pt') =>
-    `${row.company}: ${WORDS[lang].itsBy[by]} ${carried(row, by, key) ?? name}`;
+    `${row.company}: ${
+      by === 'keyword' && row.kind === 'fund' ? WORDS[lang].fundIs : WORDS[lang].itsBy[by]
+    } ${carried(row, by, key) ?? name}`;
   return {
     slug,
     name: { en: name, pt: name },
@@ -186,8 +207,10 @@ export function attributeVocabularyOf(file: StockAttributesFile | null | undefin
     for (const row of rows)
       for (const value of writtenBy(row, by)) {
         const key = attributeKey(value);
-        // A value with no letter or digit has nothing to match by: no filter can name it.
-        if (key !== '' && !written.has(key)) written.set(key, value);
+        // Only a value a filter can select by: one with a letter or digit, that is not unverified on
+        // its row, and for a keyword that enough stocks carry (`matchStocks`).
+        if (key !== '' && !written.has(key) && matchStocks({ by, key }, rows).length > 0)
+          written.set(key, value);
       }
     return byName([...written], ([key]) => key).map(([, value]) => value);
   };

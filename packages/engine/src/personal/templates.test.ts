@@ -295,13 +295,13 @@ describe('explanation templates', () => {
       'sector',
       'industry',
       'sub-industry',
-      'business line',
+      'keyword',
     ]);
     expect(kinds.map((by) => said(by, 'pt'))).toEqual([
       'setor',
       'indústria',
       'subindústria',
-      'linha de negócio',
+      'palavra-chave',
     ]);
     expect(Object.keys(WORDS.en.by)).toEqual(kinds);
     expect(Object.keys(WORDS.pt.by)).toEqual(kinds);

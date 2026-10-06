@@ -161,7 +161,7 @@ describe('POST /v1/baskets/personalize', () => {
     expect(matched.map((l) => l.assetId)).toEqual([nvda?.id]);
     expect(matched[0]?.reasons.map((r) => r.text)).toEqual(
       expect.arrayContaining([
-        "You set 30% of the plan for stocks matched by industry: Semiconductors and Semiconductor Equipment. Matched from each stock's sourced attributes, not a curated theme: equal shares of the ones you can hold on Solana and that can be sold at this size, each up to its limit.",
+        'You set 30% of the plan for names matched by industry: Semiconductors and Semiconductor Equipment. Matched from the sourced attributes of each, not a curated theme: equal shares of the ones you can hold on Solana and that can be sold at this size, each up to its limit.',
         'NVDAx is matched by industry: Semiconductors and Semiconductor Equipment (attributes version 1, read 2026-10-06), not from a curated theme: NVIDIA Corporation: its industry is Semiconductors & Semiconductor Equipment.',
       ]),
     );

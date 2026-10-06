@@ -214,8 +214,11 @@ export const PERSONAL_PARAMS_STATUS: Record<Exclude<keyof PersonalParameters, 'v
 };
 
 /**
- * Not a number of the table, and so in no plan's hash: the shape of a content file. How many
- * business-line keywords a row of `content/stocks/<chain>.json` carries (gate THEME-MATCHED). It is
- * written here because the logic of this folder holds no number of its own (`params.test.ts`).
+ * Not a number of the table, and so in no plan's hash: the shape of a content file, and what a keyword
+ * must be to select anything (gate THEME-MATCHED). A row of `content/stocks/<chain>.json` carries
+ * `least` to `most` business-line keywords. A filter by keyword matches only where at least `carriers`
+ * tracked stocks of the chain carry it: a keyword one stock alone carries is that stock's name by
+ * another word, and naming it would be picking the stock. Written here because the logic of this
+ * folder holds no number of its own (`params.test.ts`).
  */
-export const STOCK_KEYWORDS = { least: 3, most: 8 } as const;
+export const STOCK_KEYWORDS = { least: 3, most: 8, carriers: 2 } as const;

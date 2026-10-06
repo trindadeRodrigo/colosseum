@@ -53,8 +53,8 @@ const HARDWARE = slugOf('industry', 'Technology Hardware, Storage & Peripherals'
 const DEFENSE = slugOf('industry', 'Aerospace & Defense');
 /** No stock at all. */
 const UTILITIES = slugOf('sector', 'Utilities');
-/** GLDx: a fund, of gold. */
-const GOLD = slugOf('keyword', 'gold');
+/** GLDx: a fund, of gold. SLVx carries the keyword too, and Solana does not list it. */
+const GOLD = slugOf('keyword', 'bullion');
 
 const halfIn = (theme: string): PlanSleeve[] => [
   { kind: 'goal', shareBps: 5000 },
@@ -117,7 +117,7 @@ describe('a matched theme sleeve holds the stocks its filter matches, as a curat
     });
     expect(textsOf(plan, 'solana:nvdax')).toEqual(
       expect.arrayContaining([
-        "You set 50% of the plan for stocks matched by sector: Information Technology. Matched from each stock's sourced attributes, not a curated theme: equal shares of the ones you can hold on Solana and that can be sold at this size, each up to its limit.",
+        'You set 50% of the plan for names matched by sector: Information Technology. Matched from the sourced attributes of each, not a curated theme: equal shares of the ones you can hold on Solana and that can be sold at this size, each up to its limit.',
         'NVDAx is matched by sector: Information Technology (attributes version 3, read 2026-10-06), not from a curated theme: NVIDIA Corporation: its sector is Information Technology.',
       ]),
     );
@@ -156,8 +156,8 @@ describe('a matched theme sleeve holds the stocks its filter matches, as a curat
     expect(namesHeld(plan, CLOUD)).toEqual(['AMZNx', 'GOOGLx', 'MSFTx']);
     expect(textsOf(plan, 'solana:amznx')).toEqual(
       expect.arrayContaining([
-        'Você destinou 50% do plano para ações filtradas por linha de negócio: cloud. Filtradas pelos atributos de cada ação, que têm fonte, e não por um tema com curadoria: partes iguais das que você pode ter na Solana e que podem ser vendidas neste tamanho, cada uma até o seu limite.',
-        'AMZNx entra pelo filtro de linha de negócio: cloud (atributos na versão 3, lidos em 2026-10-06), e não por um tema com curadoria: Amazon.com, Inc.: uma das linhas de negócio dela é cloud.',
+        'Você destinou 50% do plano para nomes filtrados por palavra-chave: cloud. Filtrados pelos atributos de cada um, que têm fonte, e não por um tema com curadoria: partes iguais dos que você pode ter na Solana e que podem ser vendidos neste tamanho, cada um até o seu limite.',
+        'AMZNx entra pelo filtro de palavra-chave: cloud (atributos na versão 3, lidos em 2026-10-06), e não por um tema com curadoria: Amazon.com, Inc.: uma das linhas de negócio dela é cloud.',
       ]),
     );
   });
@@ -166,7 +166,7 @@ describe('a matched theme sleeve holds the stocks its filter matches, as a curat
     for (const [by, value] of [
       ['keyword', 'Cloud'],
       ['sector', 'information technology'],
-      ['keyword', 'gold'],
+      ['keyword', 'bullion'],
     ] as const) {
       const slug = slugOf(by, value);
       const found = filterMatchOf({ by, value }, stocks, shelf.assets);
@@ -198,6 +198,58 @@ describe('a matched theme sleeve holds the stocks its filter matches, as a curat
     expect(spy?.amountUsd).toBe(1750);
     expect(spy?.reasons.map((r) => r.text)).toContain(
       'No more than 70% of the plan with one issuer at medium risk: Backed (xStocks) is at that limit, and the theme Information Technology you asked for holds its share of it first.',
+    );
+  });
+
+  // The goal follows a shared portfolio of the same issuer whole, and that is placed before the
+  // themes: the issuer keeps room for the matched theme until then, as it does for a curated one.
+  it('THEME-FIRST holds when the goal follows a shared portfolio of the same issuer', () => {
+    const plan = run(themed(TECH, { risk: 'medium', themes: ['the-seven'] }));
+    // In its three names, not in what a sleeve holds aside: without the room kept it is $3,000.
+    const names = new Set(['solana:aaplx', 'solana:msftx', 'solana:nvdax']);
+    const inNames = (themeOf(plan, TECH)?.holds ?? [])
+      .filter((h) => names.has(h.assetId))
+      .reduce((n, h) => n + cents(h.amountUsd), 0);
+    expect(inNames).toBe(cents(5000));
+  });
+
+  // The three rules that keep a match honest, in a plan: what the filter does not read is not held.
+  it('holds no preferred stock for a sector, nothing by an unverified field, nothing by a keyword of one stock', () => {
+    const with_ = (symbol: string, change: Partial<(typeof rows)[number]>) =>
+      ctxWith({
+        stocks: {
+          ...stocks,
+          stocks: rows.map((r) => (r.symbol === symbol ? { ...r, ...change } : r)),
+        },
+      });
+    expect(namesHeld(run(themed(TECH, { risk: 'high' })), TECH)).toEqual([
+      'AAPLx',
+      'MSFTx',
+      'NVDAx',
+    ]);
+    for (const change of [{ kind: 'preferred' as const }, { unverified: ['sector' as const] }]) {
+      const context = with_('NVDAx', change);
+      const plan = run(themed(TECH, { risk: 'high' }), context);
+      expect(namesHeld(plan, TECH)).toEqual(['AAPLx', 'MSFTx']);
+      // And a plan that held it all the same is seen: the plan made from the plain attributes,
+      // checked against these.
+      const wrong = violations(run(themed(TECH, { risk: 'high' })), shelf, context);
+      expect(wrong.join(' | ')).toContain('solana:nvdax, which its filter does not match');
+    }
+    // "cloud" with one carrier left selects nothing: the sleeve holds no name, and says so.
+    const lone = ctxWith({
+      stocks: {
+        ...stocks,
+        stocks: rows.map((r) =>
+          ['GOOGLx', 'MSFTx'].includes(r.symbol) ? { ...r, unverified: ['keywords' as const] } : r,
+        ),
+      },
+    });
+    const plan = run(themed(CLOUD), lone);
+    expect(namesHeld(plan, CLOUD)).toEqual([]);
+    expect(plan.flags).toContain(`theme_no_match:${CLOUD}`);
+    expect(violations(run(themed(CLOUD)), shelf, lone).join(' | ')).toContain(
+      'which its filter does not match',
     );
   });
 
@@ -395,18 +447,26 @@ describe('a filter with no stock on the chain: the sleeve holds no name, and say
     expect(plan.flags).not.toContain(`theme_empty:${DEFENSE}`);
   });
 
-  it('no attributes handed in: the same, by the key of the slug', () => {
+  // Found by the review of Oct 6: with no attributes the plan said "there is no stock" on a chain
+  // whose shelf lists one. Nothing is known to match or not, and the plan says that.
+  it('no attributes handed in: nothing is held, and the plan says the chain has none to match by', () => {
     const plan = run(themed(TECH), fixtureContext({ themes: [ai] }));
-    expect(plan.flags).toContain(`theme_no_match:${TECH}`);
+    expect(plan.flags).toContain(`theme_no_attributes:${TECH}`);
+    expect(plan.flags).not.toContain(`theme_no_match:${TECH}`);
     expect(removedSays(plan, TECH)).toEqual([
-      'There is no stock for information-technology on Solana at the moment. We will be adding more soon.',
+      'Nothing is held for information technology: the stocks of Solana have no sourced attributes to match by yet.',
     ]);
+    expect(allReasons(plan).map((r) => r.rule)).toContain('OVERFLOW_THEME_NO_ATTRIBUTES');
+    expect(allReasons(plan).map((r) => r.rule)).not.toContain('OVERFLOW_THEME_NO_MATCH');
     expect(themeOf(plan, TECH)?.matched).toEqual({ by: 'sector', value: 'information-technology' });
     heldAside(plan, TECH);
-    // Attributes with no row in them say the same.
+    // Attributes given with no row in them: then there is no stock for it, in the founder's words.
     const bare = run(themed(TECH), ctxWith({ stocks: { ...stocks, stocks: [] } }));
-    expect(removedSays(bare, TECH)).toEqual(removedSays(plan, TECH));
+    expect(removedSays(bare, TECH)).toEqual([
+      'There is no stock for information technology on Solana at the moment. We will be adding more soon.',
+    ]);
     expect(bare.flags).toContain(`theme_no_match:${TECH}`);
+    expect(bare.flags).not.toContain(`theme_no_attributes:${TECH}`);
   });
 
   it('in Portuguese, in the founder’s words', () => {
@@ -680,19 +740,19 @@ describe('violations() sees a matched sleeve that breaks its rule', () => {
       broken((copy) => {
         copy.flags = copy.flags.filter((f) => !f.startsWith('theme_no_match:'));
       }, empty),
-      'the no-match flag is missing',
+      'the flag theme_no_match is missing',
     );
     flagged(
       broken((copy) => {
         copy.removed = copy.removed.filter((r) => r.ref !== DEFENSE);
       }, empty),
-      'matches no stock the chain lists, and the plan does not say so',
+      'holds no stock, and the plan does not say why (THEME_NO_MATCH)',
     );
     flagged(
       broken((copy) => {
         copy.flags.push(`theme_no_match:${TECH}`);
       }),
-      'the no-match flag is misplaced',
+      'the flag theme_no_match is misplaced',
     );
     flagged(
       broken((copy) => {

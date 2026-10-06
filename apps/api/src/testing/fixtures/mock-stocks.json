@@ -2,7 +2,7 @@
   "chain": "solana",
   "version": 1,
   "readOn": "2026-10-06",
-  "note": "MOCK: stock attributes for the mock chain's stand-in tokens, written for the tests. No source was read for any row, and each row says so.",
+  "note": "MOCK: stock attributes for the mock chain's stand-in tokens, written for the tests. No source was read for any row: each row's source says so. `unverified` is empty so that a filter can read the rows (it reads nothing of a field marked unverified).",
   "stocks": [
     {
       "symbol": "NVDAx",
@@ -23,17 +23,7 @@
           "readOn": "2026-10-06"
         }
       ],
-      "unverified": [
-        "underlying",
-        "kind",
-        "company",
-        "headquarters",
-        "sector",
-        "industry",
-        "subIndustry",
-        "keywords",
-        "tracks"
-      ]
+      "unverified": []
     },
     {
       "symbol": "AVGOx",
@@ -54,17 +44,7 @@
           "readOn": "2026-10-06"
         }
       ],
-      "unverified": [
-        "underlying",
-        "kind",
-        "company",
-        "headquarters",
-        "sector",
-        "industry",
-        "subIndustry",
-        "keywords",
-        "tracks"
-      ]
+      "unverified": []
     },
     {
       "symbol": "TSLAx",
@@ -85,17 +65,7 @@
           "readOn": "2026-10-06"
         }
       ],
-      "unverified": [
-        "underlying",
-        "kind",
-        "company",
-        "headquarters",
-        "sector",
-        "industry",
-        "subIndustry",
-        "keywords",
-        "tracks"
-      ]
+      "unverified": []
     },
     {
       "symbol": "SPYx",
@@ -116,17 +86,7 @@
           "readOn": "2026-10-06"
         }
       ],
-      "unverified": [
-        "underlying",
-        "kind",
-        "company",
-        "headquarters",
-        "sector",
-        "industry",
-        "subIndustry",
-        "keywords",
-        "tracks"
-      ]
+      "unverified": []
     }
   ]
 }

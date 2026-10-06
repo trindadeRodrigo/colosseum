@@ -57,10 +57,11 @@ describe('the fixture attributes', () => {
       // A row is in the shelf's set exactly when the launch shelf lists its symbol there.
       for (const row of file.stocks)
         expect(row.sets.includes('shelf'), `${chain} ${row.symbol}`).toBe(listed.has(row.symbol));
-      // Every row says it is a fixture: no source was read, and no field is supported.
+      // Every row says it is a fixture in its source: none was read. No field is marked unverified,
+      // since a filter reads nothing of a field that is, and these rows are here to be matched.
       for (const row of file.stocks) {
         expect(row.sources.map((s) => s.title).join(' ')).toContain('MOCK');
-        expect(row.unverified.length).toBe(9);
+        expect(row.unverified).toEqual([]);
       }
     }
     expect(fixtureStocks('solana').stocks.map((row) => row.symbol)).toContain('NVDAx');
@@ -94,7 +95,64 @@ describe('the filter: pure code selects the stocks', () => {
       expect(symbols({ by: 'industry', value }), value).toEqual(['NVDAx', 'TSMx']);
     // NVDAx writes "ai chips", TSMx "AI chips".
     expect(symbols({ by: 'keyword', value: 'AI Chips' })).toEqual(['NVDAx', 'TSMx']);
-    expect(symbols({ by: 'keyword', value: 'GLP-1' })).toEqual(['LLYx']);
+    expect(symbols({ by: 'keyword', value: 'ONLINE  ADS' })).toEqual(['GOOGLx', 'METAx']);
+  });
+
+  // Found by the review of Oct 6: nine keywords in ten were carried by one stock, so whoever named
+  // one, a model included, picked that stock.
+  it('selects nothing by a keyword one stock alone carries: it would be that stock’s name', () => {
+    for (const [value, alone] of [
+      ['GLP-1', 'LLYx'],
+      ['gold', 'GLDx'],
+      ['data centers', 'NVDAx'],
+      ['electric vehicles', 'TSLAx'],
+    ] as const) {
+      expect(
+        rows.filter((row) => row.keywords.includes(value.toLowerCase())).map((r) => r.symbol),
+      ).toEqual([alone]);
+      expect(symbols({ by: 'keyword', value }), value).toEqual([]);
+      expect(matchedListOf(slugOf('keyword', value), stocks)?.members).toEqual([]);
+      expect(filterMatchOf({ by: 'keyword', value }, stocks, shelf.assets)).toBeNull();
+      expect(attributeVocabularyOf(stocks).keywords).not.toContain(value.toLowerCase());
+    }
+    // A sector, an industry or a sub-industry one stock alone carries is still matched: those names
+    // are a public classification, not words of ours.
+    expect(symbols({ by: 'industry', value: 'Pharmaceuticals' })).toEqual(['LLYx']);
+    // Carried by a second stock, the same keyword selects both.
+    const second = { ...(rows.find((row) => row.symbol === 'MSFTx') as (typeof rows)[number]) };
+    second.keywords = [...second.keywords.slice(0, 2), 'glp-1'];
+    const both = rows.map((row) => (row.symbol === 'MSFTx' ? second : row));
+    expect(matchStocks({ by: 'keyword', value: 'GLP-1' }, both).map((r) => r.symbol)).toEqual([
+      'LLYx',
+      'MSFTx',
+    ]);
+  });
+
+  // Found by the review of Oct 6: a row's unverified sub-industry filled a sleeve under a line that
+  // said "sourced attributes".
+  it('reads nothing of a field a row marks unverified', () => {
+    const marked = (symbol: string, unverified: (typeof rows)[number]['unverified']) =>
+      rows.map((row) => (row.symbol === symbol ? { ...row, unverified } : row));
+    const found = (filter: MarketFilter, among: typeof rows) =>
+      matchStocks(filter, among).map((row) => row.symbol);
+    const semis = { by: 'sub_industry', value: 'Semiconductors' } as const;
+    expect(found(semis, rows)).toEqual(['NVDAx', 'TSMx']);
+    expect(found(semis, marked('TSMx', ['subIndustry']))).toEqual(['NVDAx']);
+    // Its other fields are still read.
+    const industry = { by: 'industry', value: 'Semiconductors & Semiconductor Equipment' } as const;
+    expect(found(industry, marked('TSMx', ['subIndustry']))).toEqual(['NVDAx', 'TSMx']);
+    expect(found(industry, marked('TSMx', ['industry']))).toEqual(['NVDAx']);
+    expect(
+      found({ by: 'sector', value: 'Information Technology' }, marked('NVDAx', ['sector'])),
+    ).not.toContain('NVDAx');
+    const chips = { by: 'keyword', value: 'ai chips' } as const;
+    expect(found(chips, rows)).toEqual(['NVDAx', 'TSMx']);
+    // One carrier left whose keywords are verified: the keyword selects nothing.
+    expect(found(chips, marked('TSMx', ['keywords']))).toEqual([]);
+    // And a model is not shown a value only unverified fields carry.
+    const file = { ...stocks, stocks: marked('LLYx', ['sector', 'industry', 'subIndustry']) };
+    expect(attributeVocabularyOf(file).sectors).not.toContain('Health Care');
+    expect(attributeVocabularyOf(stocks).sectors).toContain('Health Care');
   });
 
   it('reads the one attribute it names, and folds nothing but the writing', () => {
@@ -104,8 +162,8 @@ describe('the filter: pure code selects the stocks', () => {
       expect(symbols({ by, value: 'Semiconductors' }), by).toEqual([]);
     expect(symbols({ by: 'sector', value: 'cloud' })).toEqual([]);
     // No plural, no synonym, no part of a value.
-    expect(symbols({ by: 'keyword', value: 'data centers' })).toEqual(['NVDAx']);
-    expect(symbols({ by: 'keyword', value: 'data center' })).toEqual([]);
+    expect(symbols({ by: 'keyword', value: 'online ads' })).toEqual(['GOOGLx', 'METAx']);
+    expect(symbols({ by: 'keyword', value: 'online ad' })).toEqual([]);
     expect(symbols({ by: 'keyword', value: 'chips' })).toEqual([]);
     expect(symbols({ by: 'sector', value: 'Technology' })).toEqual([]);
     // A value with no letter or digit has nothing to match by.
@@ -118,7 +176,7 @@ describe('the filter: pure code selects the stocks', () => {
 
   it('matches a fund by keyword only: never by sector, industry or sub-industry', () => {
     const funds = rows.filter((row) => row.kind === 'fund').map((row) => row.symbol);
-    expect(funds.sort()).toEqual(['GLDx', 'QQQx', 'SPYx']);
+    expect(funds.sort()).toEqual(['GLDx', 'QQQx', 'SLVx', 'SPYx']);
     const vocabulary = attributeVocabularyOf(stocks);
     const classified = [
       ['sector', vocabulary.sectors],
@@ -134,7 +192,7 @@ describe('the filter: pure code selects the stocks', () => {
       for (const value of ['the price of gold', 'SPDR Gold Shares', 'gold', 'index fund'])
         expect(symbols({ by, value }), `${by} ${value}`).toEqual([]);
     }
-    expect(symbols({ by: 'keyword', value: 'gold' })).toEqual(['GLDx']);
+    expect(symbols({ by: 'keyword', value: 'bullion' })).toEqual(['GLDx', 'SLVx']);
     expect(symbols({ by: 'keyword', value: 'index fund' })).toEqual(['QQQx', 'SPYx']);
   });
 
@@ -180,7 +238,8 @@ describe('the filter: pure code selects the stocks', () => {
       ...vocabulary.subIndustries.map((value) => ({ by: 'sub_industry' as const, value })),
       ...vocabulary.keywords.map((value) => ({ by: 'keyword' as const, value })),
     ];
-    expect(filters.length).toBeGreaterThan(40);
+    // Every value a filter can select by: the keywords among them are the ones two stocks carry.
+    expect(filters.length).toBeGreaterThan(25);
     for (const filter of filters) {
       const base = matchStocks(filter, rows);
       const names = base.map((row) => row.symbol);
@@ -266,10 +325,16 @@ describe('the matched list: what a theme sleeve is filled from', () => {
       en: 'Microsoft Corporation: its sub-industry is Systems Software',
       pt: 'Microsoft Corporation: a subindústria dela é Systems Software',
     });
-    expect(why('keyword', 'GLP-1')).toEqual({
-      en: 'Eli Lilly and Company: one of its business lines is glp-1',
-      pt: 'Eli Lilly and Company: uma das linhas de negócio dela é glp-1',
+    expect(why('keyword', 'Cloud')).toEqual({
+      en: 'Amazon.com, Inc.: one of its business lines is cloud',
+      pt: 'Amazon.com, Inc.: uma das linhas de negócio dela é cloud',
     });
+    // A fund has no line of business: its keywords say what it holds or is.
+    expect(why('keyword', 'bullion')).toEqual({
+      en: 'SPDR Gold Shares: a fund described as bullion',
+      pt: 'SPDR Gold Shares: um fundo descrito como bullion',
+    });
+    for (const lang of ['en', 'pt'] as const) expect(WORDS[lang].fundIs).not.toMatch(/[.!:]$/);
     // Each kind has its words, and none ends the sentence it is written into.
     for (const by of MARKET_FILTER_BY)
       for (const lang of ['en', 'pt'] as const) {
@@ -289,7 +354,8 @@ describe('the matched list: what a theme sleeve is filled from', () => {
     for (const none of [null, undefined])
       expect(matchedListOf(TECH, none)).toEqual({
         slug: TECH,
-        name: { en: 'information-technology', pt: 'information-technology' },
+        // Named by the key's own words where no stock carries the value.
+        name: { en: 'information technology', pt: 'information technology' },
         matched: { by: 'sector', key: 'information-technology', value: null },
         attributes: null,
         members: [],
@@ -371,7 +437,7 @@ describe('what the intake reads: labels, a filter’s match, the vocabulary', ()
     expect(match('keyword', 'cloud', stocks, onBase)).toEqual({ value: 'cloud', listed: 0 });
     expect(match('keyword', 'cloud', stocks, [])).toEqual({ value: 'cloud', listed: 0 });
     // A fund of gold is a gold token on the shelf, and counts as the sleeve counts it.
-    expect(match('keyword', 'gold')).toEqual({ value: 'gold', listed: 1 });
+    expect(match('keyword', 'bullion')).toEqual({ value: 'bullion', listed: 1 });
     // The value is the one the matched list is named by, and the count is of its members.
     for (const [by, value] of [
       ['keyword', 'Cloud'],
@@ -401,7 +467,10 @@ describe('what the intake reads: labels, a filter’s match, the vocabulary', ()
     expect(vocabulary.keywords).toContain('ai chips');
     expect(vocabulary.keywords).not.toContain('AI chips');
     // A fund gives its keywords and nothing else.
-    expect(vocabulary.keywords).toEqual(expect.arrayContaining(['gold', 'index fund']));
+    expect(vocabulary.keywords).toEqual(expect.arrayContaining(['bullion', 'index fund']));
+    // And only keywords a filter can select by: not one a single stock carries.
+    for (const alone of ['gold', 'silver', 'glp-1', 'gpus'])
+      expect(vocabulary.keywords).not.toContain(alone);
     const lists = Object.values(vocabulary);
     for (const list of lists) {
       const keys = list.map(attributeKey);

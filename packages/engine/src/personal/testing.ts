@@ -345,7 +345,8 @@ const MEDIA = 'Interactive Media & Services';
 /**
  * MOCK: a few stocks by the ticker of the underlying, written for the tests. No source was read for
  * any of it. TSM writes two values another way than NVDA does ("and" for "&", capitals), which a
- * filter holds equal; LMT and LLY are on no chain's launch shelf.
+ * filter holds equal; LMT and LLY are on no chain's launch shelf. "glp-1", "gold" and "data centers"
+ * are each carried by one row alone, which a filter by keyword does not select.
  */
 const FIXTURE_STOCKS: FixtureStock[] = [
   company(
@@ -432,14 +433,23 @@ const FIXTURE_STOCKS: FixtureStock[] = [
     'index fund',
   ]),
   fund('GLD', 'SPDR Gold Shares', 'the price of gold', ['gold', 'bullion', 'precious metals']),
+  // A second fund of a metal, so that "bullion" and "precious metals" are carried by two rows: a
+  // keyword one row alone carries selects nothing. Solana's launch shelf does not list it.
+  fund('SLV', 'iShares Silver Trust', 'the price of silver', [
+    'silver',
+    'bullion',
+    'precious metals',
+  ]),
 ];
 /** How the launch shelf writes a stock token's symbol on each chain: NVDAx, NVDAc, NVDA. */
 const SYMBOL_END: Record<ChainId, string> = { solana: 'x', base: 'c', robinhood: '' };
 
 /**
  * MOCK: the stock attributes of one chain (gate THEME-MATCHED), for the tests only. Every row is a
- * fixture and says so: its source is no source, and `unverified` names every field. A row's symbol
- * is the one the launch shelf would list it under on the chain, whether or not it lists it.
+ * fixture and says so in the file's note and in its source, which is no source. `unverified` is
+ * empty all the same: a filter reads nothing of a field a row marks unverified, and these rows are
+ * here to be matched (a test that needs an unverified field marks it). A row's symbol is the one the
+ * launch shelf would list it under on the chain, whether or not it lists it.
  */
 export function fixtureStocks(chain: ChainId = 'solana'): StockAttributesFile {
   const onShelf = new Set(
@@ -464,7 +474,7 @@ export function fixtureStocks(chain: ChainId = 'solana'): StockAttributesFile {
               readOn: '2026-10-06',
             },
           ],
-          unverified: [...STOCK_FACTS],
+          unverified: [],
         };
       }),
     },
@@ -1200,11 +1210,16 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
   // names only where the shelf lists one of those stocks on the chain.
   const lists = (ctx.themes ?? []).filter((t) => t.chain === s.chains[0]);
   const attrs = ctx.stocks?.chain === s.chains[0] ? ctx.stocks : undefined;
-  const writtenBy = (row: StockAttributes, by: MarketFilterBy): string[] =>
-    (by === 'keyword'
-      ? row.keywords
-      : [by === 'sector' ? row.sector : by === 'industry' ? row.industry : row.subIndustry]
-    ).flatMap((value) => (value === null ? [] : [value]));
+  // What a filter may read of a row, written out here and not taken from the engine: nothing of a
+  // field the row marks unverified; a fund (it has no classification) and a preferred stock (it
+  // carries its issuer's) by keyword only.
+  const fieldOf = { sector: 'sector', industry: 'industry', sub_industry: 'subIndustry' } as const;
+  const writtenBy = (row: StockAttributes, by: MarketFilterBy): string[] => {
+    if (by === 'keyword') return row.unverified.includes('keywords') ? [] : row.keywords;
+    if (row.unverified.includes(fieldOf[by]) || row.kind === 'preferred') return [];
+    const value = row[fieldOf[by]];
+    return value === null ? [] : [value];
+  };
   const nameable = (symbol: string) =>
     shelf.assets.some(
       (a) =>
@@ -1218,14 +1233,17 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
     if (!filter) return null;
     const carried = (row: StockAttributes) =>
       writtenBy(row, filter.by).find((value) => attributeKey(value) === filter.key);
-    const rows = (attrs?.stocks ?? [])
+    const carriers = (attrs?.stocks ?? [])
       .filter((row) => carried(row) !== undefined)
       .sort((a, b) => (a.symbol < b.symbol ? -1 : a.symbol > b.symbol ? 1 : 0));
+    // A keyword one stock alone carries selects nothing: it would be that stock's name by another
+    // word. Two, written here as this check's own number: if the table's moves, this says so.
+    const rows = filter.by === 'keyword' && carriers.length < 2 ? [] : carriers;
     return {
       ...filter,
       symbols: rows.map((row) => row.symbol),
-      // As the first matching stock by symbol writes it; the key where none carries it.
-      name: (rows[0] && carried(rows[0])) ?? filter.key,
+      // As the first matching stock by symbol writes it; the key's own words where none carries it.
+      name: (rows[0] && carried(rows[0])) ?? filter.key.replaceAll('-', ' '),
       fills: rows.some((row) => nameable(row.symbol)),
     };
   };
@@ -1286,22 +1304,33 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
       );
     }
     // "No stock for it on the chain" is said of a matched theme of the sheet, by its name, and only
-    // where the shelf lists none of the stocks its filter matches.
+    // where attributes were given and the shelf lists none of the stocks its filter matches. With no
+    // attributes given nothing is known to match or not, and the plan says that instead.
+    const empty = (given: boolean) =>
+      themeSleeves.some((x) => {
+        const matched = matchedOf(x.theme);
+        return (
+          matched !== null &&
+          !matched.fills &&
+          (attrs !== undefined) === given &&
+          r.params.theme === matched.name
+        );
+      });
     if (r.rule === 'THEME_NO_MATCH' || r.rule === 'OVERFLOW_THEME_NO_MATCH')
+      say(empty(true), `"${r.text}" said of a plan with no matched theme that matches nothing`);
+    if (r.rule === 'THEME_NO_ATTRIBUTES' || r.rule === 'OVERFLOW_THEME_NO_ATTRIBUTES')
       say(
-        themeSleeves.some((x) => {
-          const matched = matchedOf(x.theme);
-          return matched !== null && !matched.fills && r.params.theme === matched.name;
-        }),
-        `"${r.text}" said of a plan with no matched theme that matches nothing`,
+        empty(false),
+        `"${r.text}" said of a plan whose chain has attributes, or no matched theme`,
       );
   }
   for (const flag of plan.flags)
-    if (flag.startsWith('theme_no_match:'))
-      say(
-        themeSleeves.some((x) => flag === `theme_no_match:${x.theme}`),
-        `${flag} names no theme sleeve of the sheet`,
-      );
+    for (const kind of ['theme_no_match:', 'theme_no_attributes:'])
+      if (flag.startsWith(kind))
+        say(
+          themeSleeves.some((x) => flag === `${kind}${x.theme}`),
+          `${flag} names no theme sleeve of the sheet`,
+        );
   if (!s.sleeves) {
     say(plan.split === undefined, 'a split on a plan whose sheet has none');
     say(splitSaid.length === 0, `"${splitSaid[0]?.text}" said of a plan with no split`);
@@ -1367,18 +1396,21 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
         `the theme ${x.theme} is ${matched ? 'not labelled as matched' : 'labelled as matched'} on the split`,
       );
       if (matched) {
-        // A filter that matches no stock the chain lists: flagged, and said by the theme's slug.
+        // A filter that matches no stock the chain lists, or that has no attributes to read: flagged
+        // as the one it is, and said by the theme's slug.
         const none = cents(x.amountUsd) > 0 && !matched.fills;
-        say(
-          plan.flags.includes(`theme_no_match:${x.theme}`) === none,
-          `the theme ${x.theme}: the no-match flag is ${none ? 'missing' : 'misplaced'}`,
-        );
+        const [flag, rule] = attrs
+          ? (['theme_no_match', 'THEME_NO_MATCH'] as const)
+          : (['theme_no_attributes', 'THEME_NO_ATTRIBUTES'] as const);
+        for (const each of ['theme_no_match', 'theme_no_attributes'])
+          say(
+            plan.flags.includes(`${each}:${x.theme}`) === (none && each === flag),
+            `the theme ${x.theme}: the flag ${each} is ${none && each === flag ? 'missing' : 'misplaced'}`,
+          );
         if (none)
           say(
-            plan.removed.some(
-              (r) => r.ref === x.theme && r.reasons.some((q) => q.rule === 'THEME_NO_MATCH'),
-            ),
-            `the theme ${x.theme} matches no stock the chain lists, and the plan does not say so`,
+            plan.removed.some((r) => r.ref === x.theme && r.reasons.some((q) => q.rule === rule)),
+            `the theme ${x.theme} holds no stock, and the plan does not say why (${rule})`,
           );
       }
       say(
