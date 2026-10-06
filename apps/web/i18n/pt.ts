@@ -1280,7 +1280,12 @@ export const pt: Dictionary = {
       title: 'Construído peça por peça. Veja tomar forma.',
       lede: 'Novidades do produto a cada peça cortada, e uma carta curta sobre objetivos, liquidez e o que os ativos tokenizados pagam de verdade. Sem hype, sem palpite de preço.',
       drawingAlt:
-        'Um desenho a tinta do encaixe se fechando: um trilho passa a espiga pelo pilar, e um pino desce na fenda para travá-lo.',
+        'Dez moedas, cada uma um ativo que um plano pode ter, de ações e ouro a títulos do Tesouro tokenizados, se juntando uma a uma num só plano, cada uma do tamanho da sua parte.',
+      coins: {
+        line: 'Um plano, dez peças, um cofre.',
+        sample: 'Partes de exemplo, só para ilustrar.',
+        parts: 'As partes do plano de exemplo',
+      },
       email: 'E-mail',
       subscribe: 'Inscrever',
       subscribing: 'Inscrevendo…',

@@ -1292,7 +1292,13 @@ export const en = {
       title: 'Built piece by piece. Watch it come together.',
       lede: 'Product updates as new pieces are cut, and a short letter on goals, liquidity and what tokenized assets really pay. No hype, no price calls.',
       drawingAlt:
-        'An ink drawing of the joint coming together: a rail slides its tenon through a post, and a pin drops into the slot to lock it.',
+        'Ten coins, each an asset a plan can hold, from stocks and gold to tokenized treasuries, gathering one by one into one plan, each as large as its share.',
+      /** The coins of the closing (gate CLOSING-COINS). */
+      coins: {
+        line: 'One plan, ten pieces, one vault.',
+        sample: 'Sample shares, for illustration.',
+        parts: 'The sample plan’s parts',
+      },
       email: 'Email address',
       subscribe: 'Subscribe',
       subscribing: 'Subscribing…',
