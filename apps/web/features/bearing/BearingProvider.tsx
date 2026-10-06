@@ -11,14 +11,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import {
-  type BearingChain,
-  FIRST,
-  pickChain,
-  recallChain,
-  rememberChain,
-  withChain,
-} from './chain';
+import { recallChain, rememberChain } from '../account/chain-choice';
+import { type BearingChain, FIRST, pickChain, withChain } from './chain';
 import { inPool, makeReader, R, type Reader, type Res } from './data';
 import type { DexAsset } from './dex';
 import { type Clock, maxT, STALE_AFTER_MS } from './fact';

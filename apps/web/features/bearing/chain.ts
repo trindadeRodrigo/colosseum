@@ -2,15 +2,14 @@ import type { ChainId } from '@colosseum/schemas';
 
 // The chain Bearing's figures are read for: Solana or Robinhood Chain, one at a time, named in the
 // address (`?chain=robinhood`) so a link opens on it. With none named it follows the chain the app's bar
-// is on, else the one this browser was last on (the bar's own memory, `tf-chain`, gate CHAIN-SWITCH),
-// else Solana. Choosing one here is remembered the same way, so the bar and Bearing agree.
+// is on, else the one this browser was last on (the bar's own memory, `recallChain` of
+// features/account/chain-choice.ts, gate CHAIN-SWITCH), else Solana. Choosing one here is remembered
+// the same way (`rememberChain`), so the bar of someone signed out opens on it next time. It does not
+// move a signed-in person's chain: that is where their plans are made, and the bar's to change.
 
 export const BEARING_CHAINS = ['solana', 'robinhood'] as const satisfies readonly ChainId[];
 export type BearingChain = (typeof BEARING_CHAINS)[number];
 export const FIRST: BearingChain = 'solana';
-
-/** The bar's key for the chain this browser was last on (features/account/chain-choice.ts). */
-export const CHAIN_KEY = 'tf-chain';
 
 export const isBearingChain = (v: unknown): v is BearingChain =>
   BEARING_CHAINS.some((c) => c === v);
@@ -33,22 +32,6 @@ export function pickChain(
     (isBearingChain(stored) ? stored : null) ??
     FIRST
   );
-}
-
-export function recallChain(): string | null {
-  try {
-    return window.localStorage.getItem(CHAIN_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function rememberChain(chain: BearingChain): void {
-  try {
-    window.localStorage.setItem(CHAIN_KEY, chain);
-  } catch {
-    // Storage is off: the address still names the chain.
-  }
 }
 
 /** The address with the chain named in it, the rest of its query kept. */
