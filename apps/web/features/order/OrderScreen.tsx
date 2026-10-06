@@ -2,11 +2,13 @@
 import type { ConsentKind, Leg, OrderDetail } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardBody, CardHeader, CardLoading, Stat, StatRow } from '../../components/ui/Card';
+import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/Card';
 import { CopyButton } from '../../components/ui/CopyButton';
 import { ExplorerLink } from '../../components/ui/ExplorerLink';
+import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { type Dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -147,7 +149,7 @@ export function OrderScreen({ id }: { id: string }) {
   if (port.status === 'loading' || account.status === 'loading' || record === undefined)
     return (
       <Card>
-        <CardLoading label={t.order.loading} />
+        <CardWait label={t.order.loading} skeleton={<SkeletonSummary />} />
       </Card>
     );
   if (port.status === 'signed-out')
@@ -162,7 +164,7 @@ export function OrderScreen({ id }: { id: string }) {
   if (load.kind === 'loading')
     return (
       <Card>
-        <CardLoading label={t.order.loading} />
+        <CardWait label={t.order.loading} skeleton={<SkeletonSummary />} />
       </Card>
     );
   if (load.kind !== 'read') {

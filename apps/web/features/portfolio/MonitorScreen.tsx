@@ -1,9 +1,11 @@
 'use client';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardBody, CardEmpty, CardLoading } from '../../components/ui/Card';
+import { Card, CardBody, CardEmpty } from '../../components/ui/Card';
+import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { Status } from '../../components/ui/StatusMark';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
@@ -66,7 +68,7 @@ export function MonitorScreen() {
   if (state.kind === 'loading' || state.kind === 'reading')
     body = (
       <Card>
-        <CardLoading label={words.reading} />
+        <CardWait label={words.reading} skeleton={<SkeletonSummary />} />
       </Card>
     );
   else if (state.kind === 'signed-out')

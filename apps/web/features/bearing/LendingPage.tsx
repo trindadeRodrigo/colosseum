@@ -32,6 +32,7 @@ import {
   Kpis,
   Loading,
   MultiSelect,
+  PageWait,
   Pie,
   Reason,
   SrcLine,
@@ -69,7 +70,21 @@ export function LendingPage() {
     [key, reader],
   );
   if (!b || !rows || !assets || (assets.ok && b.lendList.ok && !hist))
-    return <Loading>{t.lending.reading}</Loading>;
+    return (
+      <PageWait
+        label={t.lending.reading}
+        kpis={[
+          { label: t.lending.kpi.supplied },
+          { label: t.lending.kpi.borrowed },
+          { label: t.lending.kpi.collateral, note: t.lending.kpi.collateralNote },
+          {
+            label: t.lending.kpi.covered,
+            note: t.lending.kpi.coveredNote('1.00%', t.regimes.us_market_hours),
+          },
+          { label: t.lending.kpi.largest, note: t.lending.kpi.largestNote('1.00%') },
+        ]}
+      />
+    );
   if (!b.lendList.ok || !assets.ok)
     return (
       <p className="mt-6">

@@ -2,11 +2,13 @@
 import { chainFamily, type FundingFigure, TRUST_STATUS } from '@colosseum/schemas';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
+import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
-import { Card, CardBody, CardFooter, CardHeader, CardLoading } from '../../components/ui/Card';
+import { Card, CardBody, CardFooter, CardHeader } from '../../components/ui/Card';
 import { DataTable } from '../../components/ui/DataTable';
 import { utcMinute } from '../../components/ui/ExecutionList';
 import { Field, Input } from '../../components/ui/Field';
+import { SkeletonRows } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -351,7 +353,7 @@ export function FundingCard({
     >
       <CardHeader title={t.buy.funding.title} level={2} id={id} />
       {funding.kind === 'reading' || funding.kind === 'idle' ? (
-        <CardLoading label={t.buy.funding.reading} />
+        <CardWait label={t.buy.funding.reading} skeleton={<SkeletonRows rows={2} columns={4} />} />
       ) : (
         <CardBody className="flex flex-col gap-4">
           <div aria-live="polite" className="flex flex-col gap-4">
