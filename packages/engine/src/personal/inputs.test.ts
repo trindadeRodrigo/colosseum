@@ -126,21 +126,24 @@ describe('each input alone moves the plan and says so', () => {
     expect(distanceBps(base, off)).toBe(0);
   });
 
-  it('country', () => {
-    // A fixture rule, not a legal claim: the Solana stock tokens are not offered in the US.
+  // Gate COUNTRY-REMOVED (Rodrigo, Oct 6): the country shapes no plan. Until then this test held that
+  // a country where the Solana stock tokens are blocked left them, and The Seven, out.
+  it('country: moves nothing, and an asset blocked somewhere is held when otherwise eligible', () => {
     const blocked = editShelf(shelf, (a) =>
-      a.chain === 'solana' && a.cls === 'stock' ? { ...a, blockedCountries: ['US'] } : a,
+      a.chain === 'solana' && a.cls === 'stock' ? { ...a, blockedCountries: ['US', 'BR'] } : a,
     );
-    const here = compose(BASE, blocked, roomy());
-    expect(distanceBps(base, here)).toBe(0);
-    const plan = changed({ country: 'US' }, {}, blocked);
-    expect(movedBecauseOf('country', plan)).toEqual(['NOT_IN_COUNTRY']);
-    expect(plan.lines.some((l) => l.assetId === 'solana:nvdax')).toBe(false);
-    // No part of The Seven can be held there, so it is left out as one, and says why.
-    expect(plan.removed.find((r) => r.ref === 'the-seven')?.reasons.map((r) => r.text)).toEqual([
-      'The Seven is left out: it is not offered in the United States.',
-    ]);
-    expect(plan.lines.some((l) => l.assetId === 'solana:spyx')).toBe(true);
+    for (const country of ['US', 'BR', undefined]) {
+      const plan = compose({ ...BASE, country }, blocked, roomy());
+      expect(distanceBps(base, plan), String(country)).toBe(0);
+      expect(
+        plan.lines.some((l) => l.assetId === 'solana:nvdax'),
+        String(country),
+      ).toBe(true);
+      expect(
+        plan.removed.find((r) => r.ref === 'the-seven'),
+        String(country),
+      ).toBeUndefined();
+    }
   });
 
   it('the chain the person is on', () => {

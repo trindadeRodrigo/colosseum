@@ -204,8 +204,6 @@ function leftOut(w: World, rule: string, name: string): Reason {
   const { sheet, lang } = w;
   if (rule === 'NOT_FOR_GOAL')
     return reason('NOT_FOR_GOAL', { asset: name, goal: sheet.goal }, lang);
-  if (rule === 'NOT_IN_COUNTRY')
-    return reason('NOT_IN_COUNTRY', { asset: name, country: sheet.country }, lang);
   if (rule === 'EXCLUDED') return reason('EXCLUDED', { asset: name }, lang);
   return reason('NOT_ON_CHAIN', { asset: name, chain: w.chain }, lang);
 }

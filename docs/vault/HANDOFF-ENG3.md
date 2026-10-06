@@ -45,6 +45,10 @@ Left before slice 3 merges: `/review-pr` by an agent that did not write it, Thom
 - Themes: the Solana AI list is confirmed (Rodrigo, Oct 5, gate `THEME-AI-SOLANA`; `content/themes/solana/ai.json`). The theme sleeve is built on branch `engine/themes`, stacked on `engine/plans` (DESIGN-VAULT section 7, "As built (ENG-3 slice 4, the theme sleeve)").
 - Rebalancing per sleeve, with the safe-yield switch (the 7-day rule) and the monthly refill of the set-aside: built on branch `engine/rebalance` (#73), stacked on `engine/themes`, and fixed after its review (DESIGN-VAULT section 7, "As built (ENG-3 slice 4, rebalancing)"). `proposeSleeveRebalances` in `rebalance.ts`; who owns what is the sleeve book (LOCAL TYPE `SleeveBook`, settled by `settleBook`); `split` is in the shared `BasketProposal` (commit `56cf503`, for Thom). Not built: the API route, and storing the sleeve book beside the plan (what both need is in that section), and the new split once a switch is accepted.
 
+## Gate COUNTRY-REMOVED (Rodrigo, Oct 6)
+
+The engine has no country rule: `blockOf` ignores `blockedCountries` and `sheet.country`, `NOT_IN_COUNTRY` and its overflow sentence are gone, and `BasketSheet.country` is optional (`941e3580`, and the shared-type commit `158f4974` for Thom). Tests that held a blocked asset out now hold it in (`inputs.test.ts` "country", `said.test.ts`). Restrictions on who may hold an asset are for sign-up and the terms of service: open for the founders.
+
 ## Open items for people
 
 - **Rodrigo:**
