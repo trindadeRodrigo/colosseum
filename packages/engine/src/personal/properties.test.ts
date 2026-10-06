@@ -5,6 +5,7 @@ import { sizeSleeves } from './exposure';
 import { candidates, compose } from './index';
 import { PERSONAL_PARAMS } from './params';
 import {
+  aiList,
   editShelf,
   expectedSleeves,
   fixtureLiquidity,
@@ -101,34 +102,57 @@ const withdrawal = fc.record({
   currency: fc.constantFrom('USD', 'BRL'),
 });
 
+/** A theme a sheet may name: the one with a list (on Solana), and one with none anywhere. */
+const THEME_SLUGS = ['ai', 'no-such-theme'];
+
 /**
- * The same, and sometimes split (gate SLEEVES), in a currency, with withdrawals: a goal sleeve and a safe-yield sleeve, or the whole
- * plan in one of them.
+ * The same, and sometimes split (gate SLEEVES), in a currency, with withdrawals: a goal sleeve, a
+ * safe-yield sleeve and up to two theme sleeves, or the whole plan in any one of them. What must not
+ * be lost is held to what the sleeves outside the themes hold, as the sheet requires.
  */
 const splitOn = (chain: ChainId): fc.Arbitrary<PersonalSheet> =>
   fc
     .tuple(
       personOn(chain),
-      maybe(fc.integer({ min: 0, max: 10_000 })),
+      maybe(
+        fc.record({
+          weights: fc.array(fc.integer({ min: 0, max: 10 }), { minLength: 4, maxLength: 4 }),
+          slugs: fc.shuffledSubarray(THEME_SLUGS, { minLength: 2, maxLength: 2 }),
+        }),
+      ),
       maybe(fc.constantFrom('USD', 'BRL')),
       maybe(fc.array(withdrawal, { maxLength: 6 })),
     )
-    .map(([sheet, safe, currency, obligations]) =>
-      PersonalSheet.parse(
-        filled({
-          ...sheet,
-          currency,
-          obligations,
-          sleeves:
-            safe === undefined
-              ? undefined
-              : [
-                  ...(safe < 10_000 ? [{ kind: 'goal' as const, shareBps: 10_000 - safe }] : []),
-                  ...(safe > 0 ? [{ kind: 'safe_yield' as const, shareBps: safe }] : []),
-                ],
-        }),
-      ),
-    );
+    .map(([sheet, cut, currency, obligations]) => {
+      // Four weights for the goal, the safe yield and two themes: the shares of 10,000 they give.
+      const weights = cut && cut.weights.some((x) => x > 0) ? cut.weights : undefined;
+      const total = weights ? weights.reduce((n, x) => n + x, 0) : 0;
+      const shares = weights ? weights.map((x) => Math.floor((x * 10_000) / total)) : [];
+      if (weights) {
+        const first = shares.findIndex((x) => x > 0);
+        shares[first] = (shares[first] ?? 0) + 10_000 - shares.reduce((n, x) => n + x, 0);
+      }
+      const [goal = 0, safe = 0, themeA = 0, themeB = 0] = shares;
+      const sleeves = weights
+        ? [
+            ...(goal > 0 ? [{ kind: 'goal' as const, shareBps: goal }] : []),
+            ...(safe > 0 ? [{ kind: 'safe_yield' as const, shareBps: safe }] : []),
+            ...[themeA, themeB].flatMap((shareBps, i) =>
+              shareBps > 0
+                ? [{ kind: 'theme' as const, shareBps, theme: cut?.slugs[i] ?? 'ai' }]
+                : [],
+            ),
+          ]
+        : undefined;
+      const outside = 10_000 - themeA - themeB;
+      const keep = sheet.limits?.mustKeepUsd;
+      const most = Math.floor((Math.round(sheet.amountUsd * 100) * outside) / 10_000) / 100;
+      const limits =
+        sheet.limits && keep !== undefined && keep > most
+          ? { ...sheet.limits, mustKeepUsd: most }
+          : sheet.limits;
+      return PersonalSheet.parse(filled({ ...sheet, limits, currency, obligations, sleeves }));
+    });
 
 const sleeveRow = fc.tuple(bps, bps, bps).map(([growth, dollarYield, gold]) => {
   const growthBps = growth;
@@ -254,6 +278,8 @@ function made(raw: World): { shelf: Shelf; context: ComposeContext } {
       // Every world can convert reais: a withdrawal in reais needs the rate, and an unused one only
       // changes the hash.
       fx: [usdBrl()],
+      // The theme lists as content/themes holds them: the Solana AI list.
+      themes: [aiList()],
     },
   };
 }

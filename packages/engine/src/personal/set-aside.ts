@@ -157,7 +157,7 @@ type Reading = {
  *
  * Where it falls short, the part of a leg that cannot be sold in time moves to cash, the largest
  * first; then stocks, crypto and gold, the largest first. What still falls short is said and flagged.
- * `safe` is what the safe-yield sleeve holds by token: the check does not move it.
+ * `safe` is what the safe-yield and theme sleeves hold by token: the check does not move it.
  */
 export function checkCoverage(w: World, book: Book, sa: SetAside, safe: Map<string, number>): void {
   const { lang, P, liquidity } = w;
@@ -282,14 +282,19 @@ export function checkCoverage(w: World, book: Book, sa: SetAside, safe: Map<stri
       for (const line of largestFirst(
         [...book.lines.values()].filter(
           (l) =>
-            l.cents > 0 && (w.sleeveOf(l.asset) === 'growth' || w.sleeveOf(l.asset) === 'gold'),
+            l.cents > (safe.get(l.asset.id) ?? 0) &&
+            (w.sleeveOf(l.asset) === 'growth' || w.sleeveOf(l.asset) === 'gold'),
         ),
         (l) => l.cents,
         (l) => l.asset.id,
       )) {
         if (need <= 0) break;
-        let take = Math.min(line.cents, need);
-        if (line.cents - take < w.minLine) take = line.cents;
+        const kept = safe.get(line.asset.id) ?? 0;
+        const movable = line.cents - kept;
+        let take = Math.min(movable, need);
+        // A line is not left smaller than the least a line can be: what would be left goes too,
+        // unless another sleeve holds part of it.
+        if (line.cents - take < w.minLine && kept === 0) take = line.cents;
         book.toCash(
           line.asset.id,
           take,

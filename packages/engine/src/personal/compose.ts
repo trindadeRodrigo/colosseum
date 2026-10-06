@@ -28,6 +28,7 @@ import { scorecardOf } from './scorecard';
 import { checkCoverage, placeSetAside, setAsideOf } from './set-aside';
 import { statusOf } from './status';
 import { reason, text } from './templates';
+import { placeThemeSleeve } from './theme-sleeve';
 import {
   type CandidateId,
   type ComposeContext,
@@ -252,10 +253,19 @@ function build(
   // ---- Exposure: how big each sleeve is. What the next withdrawals need comes off the goal first.
   const sa = setAsideOf(w);
   const sleeves = sizeSleeves(w, sa?.bps ?? 0);
-  const [growth = 0, dollarYield = 0, gold = 0, cash = 0, safeYield = 0, setAside = 0] = split(
-    w.amount,
-    [...SLEEVES.map((sleeve) => sleeves.sized[sleeve]), sleeves.safeYieldBps, sleeves.setAsideBps],
-  );
+  // The person's sleeves first, each its share of the amount to the cent; then the goal sleeve's own
+  // parts, out of its cents, so each sleeve is its share whatever the rounding inside it.
+  const [goalPart = 0, safeYield = 0, ...themeSplit] = split(w.amount, [
+    sleeves.goalBps,
+    sleeves.safeYieldBps,
+    ...sleeves.themes.map((t) => t.shareBps),
+  ]);
+  const [growth = 0, dollarYield = 0, gold = 0, cash = 0, setAside = 0] = split(goalPart, [
+    ...SLEEVES.map((sleeve) => sleeves.sized[sleeve]),
+    sleeves.setAsideBps,
+  ]);
+  /** Each theme sleeve's cents, by slug. */
+  const themeCents = new Map(sleeves.themes.map((t, i) => [t.slug, themeSplit[i] ?? 0]));
   const book = new Book(w);
   const themes = resolveThemes(w, book.removed);
 
@@ -428,6 +438,25 @@ function build(
   book.placeTogether(growthUnits, (unit) => tokensOf(w, unit.name, 'growth'));
   // What stocks, crypto and gold could not take is held in dollar yield, then in cash.
   intoYield(book.overflow());
+  // ---- The theme sleeves (gates SLEEVES, THEMES), after the goal: they take the lines left. What
+  // no name of a theme takes is held in dollar yield, then cash, and the sleeve records where.
+  const themed = new Map<string, Map<string, number>>();
+  for (const t of byName(sleeves.themes, (x) => x.slug)) {
+    const holds = placeThemeSleeve(w, book, t.slug, t.shareBps, themeCents.get(t.slug) ?? 0);
+    const spilled = book.overflow();
+    if (spilled.cents > 0) {
+      const lineCents = () => new Map([...book.lines].map(([id, l]) => [id, l.cents]));
+      const before = { lines: lineCents(), cash: book.cash.cents };
+      intoYield(spilled);
+      for (const [id, now] of lineCents()) {
+        const took = now - (before.lines.get(id) ?? 0);
+        if (took > 0) holds.set(id, (holds.get(id) ?? 0) + took);
+      }
+      const stayed = book.cash.cents - before.cash;
+      if (stayed > 0) holds.set(w.cash.id, stayed);
+    }
+    themed.set(t.slug, holds);
+  }
   // One sentence for each reason money meant for dollar yield stays in cash, with the whole of it.
   for (const [rule, cents] of stays) {
     const usd = toUsd(cents);
@@ -436,10 +465,13 @@ function build(
     );
   }
 
-  // ---- The coverage check: the next withdrawals can be paid in time, or money moves to cash.
+  // ---- The coverage check: the next withdrawals can be paid in time, or money moves to cash. What
+  // the safe-yield and theme sleeves hold is theirs: the goal's withdrawals do not move it.
   if (sa) {
     const held = new Map<string, number>();
     for (const h of safe) held.set(h.assetId, (held.get(h.assetId) ?? 0) + h.cents);
+    for (const holds of themed.values())
+      for (const [id, c] of holds) if (id !== w.cash.id) held.set(id, (held.get(id) ?? 0) + c);
     checkCoverage(w, book, sa, held);
   }
 
@@ -457,17 +489,26 @@ function build(
     if ((w.byId.get(l.assetId)?.currency ?? 'USD') !== w.currency)
       l.reasons.push(reason('FX_OPEN', { currency: w.currency }, lang));
   // With a split, what each sleeve of the person's holds, by token, before the lines are rounded.
-  const goalCents = w.amount - safeYield;
+  const goalCents = goalPart;
   const asSplit = sheet.sleeves
     ? sleevesOf(sheet).map((x) => {
         const holds =
           x.kind === 'safe_yield'
             ? [...safe, ...(safeCash > 0 ? [{ assetId: w.cash.id, cents: safeCash }] : [])]
-            : [];
+            : x.kind === 'theme'
+              ? [...(themed.get(x.theme) ?? [])].map(([assetId, cents]) => ({ assetId, cents }))
+              : [];
         return {
           kind: x.kind,
+          ...(x.kind === 'theme' ? { theme: x.theme } : {}),
           shareBps: x.shareBps,
-          amountUsd: toUsd(x.kind === 'safe_yield' ? safeYield : goalCents),
+          amountUsd: toUsd(
+            x.kind === 'safe_yield'
+              ? safeYield
+              : x.kind === 'theme'
+                ? (themeCents.get(x.theme) ?? 0)
+                : goalCents,
+          ),
           holds: byName(holds, (h) => h.assetId).map((h) => ({
             assetId: h.assetId,
             amountUsd: toUsd(h.cents),
@@ -636,6 +677,8 @@ function build(
     yields: w.given.yields,
     // Left out when none is given, so a plan with no FX reading hashes as it did before.
     fx: w.given.fx.length > 0 ? w.given.fx : undefined,
+    // The theme lists of the person's chain, the same way.
+    themes: w.themeLists.length > 0 ? w.themeLists : undefined,
     liquidity: liquidity
       ? {
           method: liquidity.methodVersion,

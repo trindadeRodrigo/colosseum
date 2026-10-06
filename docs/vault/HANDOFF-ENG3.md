@@ -42,7 +42,7 @@ Left before slice 3 merges: `/review-pr` by an agent that did not write it, Thom
 ## Slice 4 (after slice 3), as the prompt orders it
 
 - The guided intake (`apps/api`) needs only slice 2's schema, now on `staging`: it can run beside slice 3 in its own worktree.
-- Themes and the safe-yield switch: the proposed Solana AI list is **Rodrigo's to confirm** (`THEMES`).
+- Themes: the Solana AI list is confirmed (Rodrigo, Oct 5, gate `THEME-AI-SOLANA`; `content/themes/solana/ai.json`). The theme sleeve is built on branch `engine/themes`, stacked on `engine/plans` (DESIGN-VAULT section 7, "As built (ENG-3 slice 4, the theme sleeve)"). The safe-yield switch (the 7-day rule) is not built yet.
 - Rebalancing per sleeve needs `split` in the shared `BasketProposal`: Thom.
 
 ## Open items for people
@@ -52,7 +52,7 @@ Left before slice 3 merges: `/review-pr` by an agent that did not write it, Thom
   - the candidate overrides (`candidates` in `params.ts`: Cover 12 months, credit half the person's limit (set: gate `COVER-CREDIT`), tau 0.5%, shareOfDepth 0.125; Spread one band, issuer 30%; distinct from 1,000 bps), and `wayScaleStepBps` (1%);
   - the working names Cover, Spread, Carry (and Cobertura, Diversificação, Rendimento) in `WORDS.candidate`: a brand decision;
   - the 25% cash in Solana income plans;
-  - the Solana AI theme list in slice 4.
+  - the theme sleeve's choices listed in its pull request (placed after the goal sleeve, so the goal's stocks use the issuer's room and the lines first; a theme in a plan to protect or for income is held in dollar yield and cash, not refused).
 - **Thom:**
   - read slice 2's two schema commits, merged without his approval;
   - approve the shared types of slice 3 (`ebdbb13`: `PlanCandidate`, `PlanScorecard`, `PlanStatus`, additive);

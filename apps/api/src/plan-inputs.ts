@@ -3,9 +3,11 @@ import type { YieldObservation } from '@colosseum/schemas';
 import { desc, eq, inArray } from 'drizzle-orm';
 import { loadLiquidityProvider, RISK_METHOD_VERSION } from './liquidity';
 import type { PlanInputs } from './orders/personalize';
+import { loadThemeLists } from './theme-lists';
 
 // What the server hands `POST /v1/baskets/personalize` (gate EXIT-SOURCE): Bearing's measured sell
-// depth and the stored yields, for the tokens of the person's chain. Both are matched by the token's
+// depth and the stored yields, for the tokens of the person's chain, and the curated theme lists of
+// that chain (gate THEMES, `content/themes/<chain>/`). Both are matched by the token's
 // address, so a token is measured only under its own mint. A token on a test network or the mock has
 // no measurement under its address: its line takes its tier's ceiling and says so.
 //
@@ -14,9 +16,11 @@ import type { PlanInputs } from './orders/personalize';
 
 export const BEARING_SOURCE = `Bearing: sell-side depth measured on chain (risk_depth_curves, ${RISK_METHOD_VERSION})`;
 
-export const bearingPlanInputs: PlanInputs = async ({ db, assets }) => {
+export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets }) => {
+  const lists = loadThemeLists(chain);
+  const themes = lists.length ? { themes: lists } : {};
   const addresses = assets.filter((a) => a.cls !== 'cash').map((a) => a.address);
-  if (!addresses.length) return {};
+  if (!addresses.length) return themes;
   const provider = await loadLiquidityProvider(
     db,
     assets.map((a) => ({ id: a.id, mint: a.address })),
@@ -49,5 +53,6 @@ export const bearingPlanInputs: PlanInputs = async ({ db, assets }) => {
   return {
     ...(provider ? { liquidity: { provider, source: BEARING_SOURCE } } : {}),
     ...(yields.length ? { yields } : {}),
+    ...themes,
   };
 };

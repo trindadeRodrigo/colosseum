@@ -27,6 +27,8 @@ export type SleevePlan = {
    */
   goalBps: number;
   safeYieldBps: number;
+  /** Each theme sleeve (gate SLEEVES), in the sheet's order: its slug and its share of the whole plan. */
+  themes: { slug: string; shareBps: number }[];
   /**
    * Of the goal sleeve, what is set aside for the next withdrawals (slice 2): taken off before the
    * row is scaled, so `sized` adds up to `goalBps - setAsideBps`. Placed apart, before anything else.
@@ -49,8 +51,8 @@ function floorAt<T extends { monthsLeft: number }>(
 
 /**
  * The size of each sleeve, in basis points of the whole plan. With no split they add up to 10,000;
- * with one, the goal sleeve's sizes add up to its share and the safe-yield sleeve holds the rest
- * (gate SLEEVES). A theme sleeve is refused before this runs.
+ * with one, the goal sleeve's sizes add up to its share, and the safe-yield sleeve and each theme
+ * sleeve hold their own (gate SLEEVES).
  *
  * A nearer date never gives less cash, and never less in cash and dollar yield together: each floor
  * is taken from the steps the date has not passed, and is filled from stocks and crypto first, then
@@ -62,6 +64,9 @@ export function sizeSleeves(w: World, setAside = 0): SleevePlan {
   const split = sleevesOf(sheet);
   const goalBps = sum(split.filter((x) => x.kind === 'goal').map((x) => x.shareBps));
   const safeYieldBps = sum(split.filter((x) => x.kind === 'safe_yield').map((x) => x.shareBps));
+  const themes = split.flatMap((x) =>
+    x.kind === 'theme' ? [{ slug: x.theme, shareBps: x.shareBps }] : [],
+  );
   // What is set aside for withdrawals comes off the goal sleeve first; the table shares the rest.
   const setAsideBps = Math.min(goalBps, Math.max(0, setAside));
   const restBps = goalBps - setAsideBps;
@@ -161,7 +166,7 @@ export function sizeSleeves(w: World, setAside = 0): SleevePlan {
       if (gave.length > 0) say(why, ['dollarYield', 'cash', ...gave]);
     }
   }
-  return { table, sized, goalBps, safeYieldBps, setAsideBps, reasons };
+  return { table, sized, goalBps, safeYieldBps, themes, setAsideBps, reasons };
 }
 
 export type Part = { asset: BasketAsset; bps: number };

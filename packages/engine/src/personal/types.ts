@@ -16,6 +16,7 @@ import {
 } from '@colosseum/schemas';
 import { z } from 'zod';
 import { LegType } from './leg-types';
+import type { ThemeList } from './theme-list';
 
 // The types of the personalization engine that packages/schemas does not hold yet. Each is marked
 // LOCAL TYPE and listed in DESIGN-VAULT 3.6: it moves to packages/schemas when the frame takes it.
@@ -67,6 +68,18 @@ export const PersonalSheet = BasketSheet.extend({ limits: PersonalLimits.optiona
     message: 'what must not be lost cannot be more than the amount',
     path: ['limits', 'mustKeepUsd'],
   })
+  // A theme sleeve holds stocks (gate SLEEVES): what must not be lost is kept by the other sleeves,
+  // so it cannot be more than they hold. Compared in cents and basis points, as the engine counts.
+  .refine(
+    (s) =>
+      Math.round((s.limits?.mustKeepUsd ?? 0) * 100) * 10_000 <=
+      Math.round(s.amountUsd * 100) *
+        (10_000 - (s.sleeves ?? []).reduce((n, x) => n + (x.kind === 'theme' ? x.shareBps : 0), 0)),
+    {
+      message: 'what must not be lost cannot be more than the sleeves outside the themes hold',
+      path: ['limits', 'mustKeepUsd'],
+    },
+  )
   .refine((s) => s.chains.length === 1, {
     message: 'a plan lives on one chain: name exactly one',
     path: ['chains'],
@@ -199,6 +212,11 @@ export type ComposeContext = {
   liquiditySource?: string;
   /** The parameter table. Left out: `PERSONAL_PARAMS`, the starting table. */
   params?: PersonalParameters;
+  /**
+   * The curated theme lists (gate THEMES), one per theme per chain, as `content/themes/` holds them.
+   * A theme sleeve reads the list of its slug on the person's chain; with none, it holds no name.
+   */
+  themes?: ThemeList[];
 };
 
 /**
@@ -238,11 +256,13 @@ export type PersonalProposal = Omit<BasketProposal, 'sheet' | 'observations' | '
   sleeves: { sleeve: Sleeve; weightBps: number; amountUsd: number }[];
   /**
    * Present when the person split the plan (gate SLEEVES): each of their sleeves, its share and its
-   * dollars, and for the safe-yield sleeve what it holds by token (cash included), before the lines
-   * are rounded to whole basis points. The goal sleeve is the rest of every line.
+   * dollars, and for the safe-yield and theme sleeves what each holds by token (cash included), before
+   * the lines are rounded to whole basis points. The goal sleeve is the rest of every line.
    */
   split?: {
     kind: PlanSleeve['kind'];
+    /** A theme sleeve's slug. */
+    theme?: string;
     shareBps: number;
     amountUsd: number;
     holds: { assetId: string; amountUsd: number }[];

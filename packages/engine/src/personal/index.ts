@@ -14,4 +14,5 @@ export {
   type RuleId,
   TEXT_TEMPLATES,
 } from './templates';
+export { parseThemeList, ThemeList } from './theme-list';
 export * from './types';

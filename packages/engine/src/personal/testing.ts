@@ -19,12 +19,14 @@ import {
   YieldObservation,
 } from '@colosseum/schemas';
 import { z } from 'zod';
+import aiOnSolana from '../../../../content/themes/solana/ai.json';
 import seedFile from '../../../../docs/vault/research/open-questions/launch-shelf.seed.json';
 import yieldRows from './fixtures/yields.json';
 import { LEG_TYPES } from './leg-types';
 import { PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
 import { INPUT_NAMES, REASON_TEMPLATES } from './templates';
+import { parseThemeList, type ThemeList } from './theme-list';
 import {
   type ComposeContext,
   type PersonalParameters,
@@ -276,6 +278,11 @@ export function fixtureLiquidity(
     entryCostIn: () => null,
     exitCapacityIn: () => null,
   };
+}
+
+/** The Solana AI list as `content/themes/solana/ai.json` holds it (gate THEME-AI-SOLANA). */
+export function aiList(): ThemeList {
+  return parseThemeList(aiOnSolana, 'content/themes/solana/ai.json');
 }
 
 /** A context with the fixture yields and the fixture liquidity, at a fixed time. */
@@ -883,6 +890,15 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
   // sleeve in rate legs and cash only, never more of a token than its line holds.
   const lineUsd = new Map(plan.lines.map((l) => [l.assetId, cents(l.amountUsd)]));
   const splitSaid = allReasons(plan).filter((r) => r.rule.startsWith('SPLIT_'));
+  // A theme's sentence is said only of a theme the sheet asks for, at its share.
+  for (const r of allReasons(plan))
+    if (r.rule === 'THEME_SLEEVE')
+      say(
+        (s.sleeves ?? []).some(
+          (x) => x.kind === 'theme' && x.shareBps === Number(r.params.shareBps),
+        ),
+        `"${r.text}" said of a plan with no such theme sleeve`,
+      );
   if (!s.sleeves) {
     say(plan.split === undefined, 'a split on a plan whose sheet has none');
     say(splitSaid.length === 0, `"${splitSaid[0]?.text}" said of a plan with no split`);
@@ -921,6 +937,63 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
           `the safe-yield sleeve holds ${h.amountUsd} of ${h.assetId}, more than its line`,
         );
       }
+    }
+    // A theme sleeve (gates SLEEVES, THEMES): it holds names of its list on the chain, dollar yield
+    // and cash, never more of a token than its line; its names in equal parts, unless the line says
+    // which limit holds one to less; each name's line says the theme and why the name is on it.
+    const lists = (ctx.themes ?? []).filter((t) => t.chain === s.chains[0]);
+    for (const x of plan.split ?? []) {
+      if (x.kind !== 'theme') continue;
+      const list = lists.find((t) => t.slug === x.theme && t.status === 'confirmed');
+      const members = new Set(list?.members.map((m) => m.symbol) ?? []);
+      say(
+        sum(x.holds.map((h) => cents(h.amountUsd))) === cents(x.amountUsd),
+        `the theme ${x.theme} holds more or less than its dollars`,
+      );
+      const slack = Math.ceil(amount / 10_000) + 1;
+      const named: { a: BasketAsset; cents: number }[] = [];
+      for (const h of x.holds) {
+        const a = byId.get(h.assetId);
+        const member = a !== undefined && members.has(a.symbol) && a.cls !== 'dollar_yield';
+        say(
+          member || a?.cls === 'cash' || a?.cls === 'dollar_yield',
+          `the theme ${x.theme} holds ${h.assetId}, which is not on its list`,
+        );
+        say(
+          cents(h.amountUsd) <= (lineUsd.get(h.assetId) ?? 0) + slack,
+          `the theme ${x.theme} holds ${h.amountUsd} of ${h.assetId}, more than its line`,
+        );
+        if (a && member) named.push({ a, cents: cents(h.amountUsd) });
+      }
+      const top = Math.max(0, ...named.map((n) => n.cents));
+      const name = list?.name[s.language];
+      for (const { a, cents: held } of named) {
+        const reasons = plan.lines.find((l) => l.assetId === a.id)?.reasons ?? [];
+        say(
+          reasons.some((r) => r.rule === 'THEME_SLEEVE' && r.params.theme === name) &&
+            reasons.some((r) => r.rule === 'THEME_MEMBER' && r.params.asset === a.symbol),
+          `${a.id} is held for the theme ${x.theme} and its line does not say so`,
+        );
+        const limited = reasons.some(
+          (r) =>
+            ((r.rule === 'EXIT_CEILING' || r.rule === 'TIER_CEILING') &&
+              r.params.asset === a.symbol) ||
+            (r.rule === 'SINGLE_STOCK_CAP' && r.params.asset === a.underlying) ||
+            ((r.rule === 'ISSUER_CAP' || r.rule === 'ISSUER_CAP_PLAN') &&
+              r.params.issuer === a.issuer),
+        );
+        say(
+          held >= top - 1 || limited,
+          `${a.id} holds ${held / 100} of the theme ${x.theme}, under the ${top / 100} of another name, and no limit is said`,
+        );
+      }
+      // What the theme holds outside its names is said: some limit kept it out.
+      const elsewhere =
+        sum(x.holds.map((h) => cents(h.amountUsd))) - sum(named.map((n) => n.cents));
+      say(
+        elsewhere <= 0 || allReasons(plan).some((r) => r.rule.startsWith('OVERFLOW_')),
+        `the theme ${x.theme} holds ${elsewhere / 100} outside its names, and no line says why`,
+      );
     }
     const goalShare = s.sleeves.find((x) => x.kind === 'goal')?.shareBps ?? 0;
     for (const r of splitSaid)

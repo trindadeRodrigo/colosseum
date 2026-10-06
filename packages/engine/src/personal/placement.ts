@@ -61,6 +61,8 @@ const OVERFLOW_FOR: Partial<Record<string, RuleId>> = {
   NOT_IN_COUNTRY: 'OVERFLOW_NOT_IN_COUNTRY',
   SINGLE_STOCK_CAP: 'OVERFLOW_STOCK_CAP',
   ALREADY_HELD_NONE: 'OVERFLOW_HELD',
+  THEME_NO_LIST: 'OVERFLOW_THEME_NO_LIST',
+  THEME_NOT_CONFIRMED: 'OVERFLOW_THEME_NOT_CONFIRMED',
 };
 
 /** Basis points in one whole: a yield band of 0.005 is 50. */
@@ -100,6 +102,11 @@ export class Book {
     if (underIssuerCap < underCeiling)
       return { cents: Math.max(0, underIssuerCap), why: this.issuerWhy(asset) };
     return { cents: Math.max(0, underCeiling), why: w.ceilingWhy(asset) };
+  }
+
+  /** How many more cents this token's issuer may take, as the cap for its sleeve counts it. */
+  issuerRoom(asset: BasketAsset): number {
+    return Math.max(0, this.w.issuerCapOf(asset) - this.usedOf(asset));
   }
 
   /** Why an issuer takes no more: the most of a plan one issuer may hold, at the person's risk. */
@@ -586,11 +593,13 @@ export class Book {
 
   /**
    * What is waiting to be held in dollar yield, with one reason for each thing that kept money out of
-   * where it was meant to go: how much, meant for what, and the real cause.
+   * where it was meant to go: how much, meant for what, and the real cause. Taking it empties the
+   * wait, so each sleeve hands on only its own.
    */
   overflow(): Sized {
     const { w } = this;
     const entries = [...this.spilled.values()];
+    this.spilled.clear();
     return {
       cents: sum(entries.map((e) => e.cents)),
       reasons: entries.map(({ cents, names, cause }) => {

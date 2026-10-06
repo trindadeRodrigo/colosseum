@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   INPUT_NAMES,
@@ -133,6 +135,28 @@ describe('explanation templates', () => {
         for (const pattern of [...BANNED[lang], ...BRAND_BANNED])
           expect(text, `${id}.${lang} against ${pattern}`).not.toMatch(pattern);
     }
+  });
+
+  it('holds the curated reasons of the theme lists to the same ban: a line shows them', () => {
+    const root = join(import.meta.dirname, '../../../../content/themes');
+    for (const chain of readdirSync(root))
+      for (const file of readdirSync(join(root, chain))) {
+        const list = JSON.parse(readFileSync(join(root, chain, file), 'utf8')) as {
+          name: Record<string, string>;
+          members: { symbol: string; reason: Record<string, string> }[];
+        };
+        for (const lang of LANGUAGES)
+          for (const text of [
+            list.name[lang] ?? '',
+            ...list.members.map((m) => m.reason[lang] ?? ''),
+          ]) {
+            expect(text, `${chain}/${file}.${lang}`).not.toBe('');
+            // Written into a sentence that ends it: no full stop of its own, no exclamation mark.
+            expect(text, `${chain}/${file}.${lang}`).not.toMatch(/[.!]$/);
+            for (const pattern of [...BANNED[lang], ...BRAND_BANNED])
+              expect(text, `${chain}/${file}.${lang} against ${pattern}`).not.toMatch(pattern);
+          }
+      }
   });
 
   it('self-check: the ban sees what it bans', () => {

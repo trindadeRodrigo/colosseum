@@ -62,6 +62,37 @@ export const REASON_TEMPLATES = {
     'No token you can hold on {chain|chain} pays a rate alone, so {usd|usd} of the part you set apart for it stays in cash.',
     'Nenhum token que você pode ter na {chain|chain} paga só uma taxa, então {usd|usd} da parte separada para isso fica em caixa.',
   ),
+  // A theme sleeve (gates SLEEVES, THEMES): equal shares of the names on a curated list.
+  THEME_SLEEVE: rule(
+    ['sleeves', 'themes', 'chain'],
+    'You set {shareBps|pct} of the plan for the theme {theme}: equal shares of the names on its list for {chain|chain} that you can hold and that can be sold at this size, each up to its limit.',
+    'Você destinou {shareBps|pct} do plano para o tema {theme}: partes iguais dos nomes da lista dele na {chain|chain} que você pode ter e que podem ser vendidos neste tamanho, cada um até o seu limite.',
+  ),
+  THEME_MEMBER: rule(
+    ['themes', 'chain'],
+    '{asset} is on the {theme} list for {chain|chain}, version {version}, kept by {curator}: {why}.',
+    '{asset} está na lista {theme} da {chain|chain}, versão {version}, mantida por {curator}: {why}.',
+  ),
+  THEME_EASIEST: rule(
+    ['themes'],
+    '{theme} lists more names than this plan has parts left, so it holds the {count} easiest to sell: first the names whose exit is measured, by how much of each can be sold, then the others, by their tier.',
+    '{theme} tem mais nomes do que as partes que restam neste plano, então fica com os {count} mais fáceis de vender: primeiro os nomes com saída medida, por quanto de cada um pode ser vendido, depois os outros, pela faixa.',
+  ),
+  THEME_TOO_THIN: rule(
+    ['amount', 'themes'],
+    '{asset} is left out of {theme}: selling it at this size would cost too much, so it cannot take {minUsd|usd}, the least a part of your plan can be.',
+    '{asset} fica de fora de {theme}: vender neste tamanho custaria caro demais, então ele não comporta {minUsd|usd}, o mínimo de uma parte do seu plano.',
+  ),
+  THEME_NO_LIST: rule(
+    ['themes', 'chain'],
+    'The theme {theme} holds no name: there is no list for it on {chain|chain}.',
+    'O tema {theme} não tem nenhum nome: não há lista para ele na {chain|chain}.',
+  ),
+  THEME_NOT_CONFIRMED: rule(
+    ['themes', 'chain'],
+    'The theme {theme} holds no name: its list for {chain|chain} is proposed and not confirmed yet.',
+    'O tema {theme} não tem nenhum nome: a lista dele na {chain|chain} foi proposta e ainda não foi confirmada.',
+  ),
   // A goal in a currency other than dollars.
   FX_OPEN: rule(
     ['currency'],
@@ -392,6 +423,16 @@ export const REASON_TEMPLATES = {
     ['country'],
     '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: it is not offered {country|inCountry}.',
     '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: não é oferecido {country|inCountry}.',
+  ),
+  OVERFLOW_THEME_NO_LIST: rule(
+    ['themes', 'chain'],
+    '{usd|usd} meant for the theme {assets|list} is held in dollar yield or cash instead: there is no list for it on {chain|chain}.',
+    '{usd|usd} que iria para o tema {assets|list} fica em rendimento em dólar ou caixa: não há lista para ele na {chain|chain}.',
+  ),
+  OVERFLOW_THEME_NOT_CONFIRMED: rule(
+    ['themes', 'chain'],
+    '{usd|usd} meant for the theme {assets|list} is held in dollar yield or cash instead: its list for {chain|chain} is not confirmed yet.',
+    '{usd|usd} que iria para o tema {assets|list} fica em rendimento em dólar ou caixa: a lista dele na {chain|chain} ainda não foi confirmada.',
   ),
   OVERFLOW_HELD: rule(
     ['holdings'],
