@@ -4,6 +4,7 @@ import {
   IntakeAnswers,
   IntakeQuestion,
   LimitsDraft,
+  PersonalMix,
   PersonalSheet,
   runIntake,
 } from '@colosseum/engine/personal';
@@ -66,6 +67,11 @@ export const IntakeResponse = z.object({
   readBack: z.array(z.string()).nullable(),
   /** What was assumed from the person's words ("I took 'go crazy' as high risk"), from templates. */
   assumptions: z.array(z.string()),
+  /**
+   * What the person said to hold (gate EXPLICIT-MIX: "all of it in stocks", "70% stocks and 30% cash",
+   * "only credit"), as written in the text; null when none is. The risk is then not asked.
+   */
+  mix: PersonalMix.nullable(),
 });
 export type IntakeResponse = z.infer<typeof IntakeResponse>;
 
@@ -87,7 +93,7 @@ export function registerIntakeRoute(
         summary:
           'Read a goal into a sheet, ask what it leaves open, and say back what was understood',
         description:
-          'The guided intake. Send the text of a goal, and on later turns the same text with the person\'s later messages in `followUps` (their own words, read again with the text by the same reader and checks) or `answers` (by field, from a form). A model reads the text into a draft of the sheet; it never sets weights, picks assets or states a figure, and every value it gives is checked in code: an amount must be written in the text in its role (the income as a rate a month, the sum put in never as one) and in dollars (an amount in another currency is asked in dollars), a time frame must be written as one (not an age), a shared portfolio must be on the shelf of the person\'s chain, a refusal ("no stocks", "sem crédito") must be written, a goal or a risk the text has no word for is asked with the model\'s value as the start, a time to get the money out ("can take up to 3 months to get out") is never the time frame, a goal with no date ("no hard cap") is built with no date and said back so, a split ("70% safe, 30% to risk") must be written and add up to the whole, and a field the rules parser reads differently is flagged and asked. The glide is off unless the text asks for it or names a date the money is needed by. The country is neither asked nor read (gate COUNTRY-REMOVED). With no model (none configured, down, out of the daily budget for everyone or for this person), the rules parser fills the draft, every field it read is asked once, and the same questions are asked; `reader` says which read it; a failed call is not cached, so a later turn may be read by the model and the draft can change. `questions` holds one question per field still open or unclear, in the person\'s language, from fixed templates. Once none is left, `sheet` is the validated sheet on the chain of the person\'s wallet and `readBack` says it back sentence by sentence, from templates, never from the model. Nothing is built or stored: the person\'s confirm sends `sheet` to `POST /v1/baskets/personalize`. The plan that follows is not advice: see its `disclaimer`.',
+          'The guided intake. Send the text of a goal, and on later turns the same text with the person\'s later messages in `followUps` (their own words, read again with the text by the same reader and checks) or `answers` (by field, from a form). A model reads the text into a draft of the sheet; it never sets weights, picks assets or states a figure, and every value it gives is checked in code: an amount must be written in the text in its role (the income as a rate a month, the sum put in never as one) and in dollars (an amount in another currency is asked in dollars), a time frame must be written as one (not an age), a shared portfolio must be on the shelf of the person\'s chain, a refusal ("no stocks", "sem crédito") must be written, a goal or a risk the text has no word for is asked with the model\'s value as the start, a time to get the money out ("can take up to 3 months to get out") is never the time frame, a goal with no date ("no hard cap") is built with no date and said back so, a split ("70% safe, 30% to risk") must be written and add up to the whole, and a field the rules parser reads differently is flagged and asked. The glide is off unless the text asks for it or names a date the money is needed by. The country is neither asked nor read (gate COUNTRY-REMOVED). What the person says to hold (gate EXPLICIT-MIX: "all of it in stocks", "70% stocks and 30% cash", "only credit", "tudo em ações") is taken only as written in English or Portuguese and goes in `mix`: the risk is then never asked, and the read-back says once which limits the plan uses for it; a mix with stocks on a goal of income or to protect is asked once (grow, or no stocks). A market or a trend ("big tech", "the S&P") is read to a shared portfolio on the shelf, and one the shelf has none for is said in one line. The text may be in any language: the questions and the read-back are in English or Portuguese (any other language is answered in English), and a value the English and Portuguese checks cannot find in the text is asked, never taken. With no model (none configured, down, out of the daily budget for everyone or for this person), the rules parser fills the draft, every field it read is asked once, and the same questions are asked; `reader` says which read it; a failed call is not cached, so a later turn may be read by the model and the draft can change. `questions` holds one question per field still open or unclear, in the person\'s language, from fixed templates. Once none is left, `sheet` is the validated sheet on the chain of the person\'s wallet and `readBack` says it back sentence by sentence, from templates, never from the model. Nothing is built or stored: the person\'s confirm sends `sheet` to `POST /v1/baskets/personalize`. The plan that follows is not advice: see its `disclaimer`.',
         body: IntakeRequest,
         response: { 200: IntakeResponse, default: OrderError },
       },
@@ -133,6 +139,7 @@ export function registerIntakeRoute(
         sheet: result.sheet,
         readBack: result.readBack,
         assumptions: result.assumptions,
+        mix: result.mix,
       };
     },
   );

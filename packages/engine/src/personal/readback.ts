@@ -57,6 +57,15 @@ export function readBack(sheet: PersonalSheet, portfolios: ShelfPortfolio[]): st
 
   for (const o of sheet.obligations ?? [])
     out.push(say('OBLIGATION', { amount: o.amount, currency: o.currency, month: o.month }));
+  // What the person said to hold (gate EXPLICIT-MIX), part by part.
+  const mix = sheet.mix;
+  if (mix) {
+    if (mix.growthBps > 0) out.push(say('MIX_GROWTH', { share: mix.growthBps }));
+    if (mix.dollarYieldBps > 0) out.push(say('MIX_DOLLAR_YIELD', { share: mix.dollarYieldBps }));
+    if (mix.creditBps) out.push(say('MIX_CREDIT', { share: mix.creditBps }));
+    if (mix.goldBps > 0) out.push(say('MIX_GOLD', { share: mix.goldBps }));
+    if (mix.cashBps > 0) out.push(say('MIX_CASH', { share: mix.cashBps }));
+  }
   for (const sleeve of sheet.sleeves ?? []) {
     if (sleeve.kind === 'goal') out.push(say('SLEEVE_GOAL', { share: sleeve.shareBps }));
     if (sleeve.kind === 'safe_yield')

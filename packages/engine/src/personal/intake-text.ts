@@ -116,8 +116,10 @@ const PER_MONTH_BEFORE = /(?:monthly|mensal|por m[eê]s)\s+(?:income|renda)?\s*(
 // What makes a duration a time frame: a word before it ("for", "over", "em", "por"), or one of these
 // and "the next", "the coming", "próximos", "até" ("for the next 15 years", "em até 3 anos"), and no
 // age after.
+// A soft time frame is one too (EXPLICIT-MIX, Oct 6): "I don't have a term, but I would say 5 years",
+// "about 5 years", "uns 5 anos". It is a time frame with no glide: the glide stays opt-in.
 const TIME_FRAME_BEFORE =
-  /(?:^|[\s,(])(?:for|over|in|within|during|after|next|coming|em|por|durante|dentro de|daqui a|depois de|pr[oó]ximos?|em at[eé]|(?:for|over|within|invest\p{L}*)\s+up to|(?:por|durante|investir)\s+at[eé])\s*$/iu;
+  /(?:^|[\s,(])(?:for|over|in|within|during|after|next|coming|em|por|durante|dentro de|daqui a|depois de|pr[oó]ximos?|em at[eé]|(?:for|over|within|invest\p{L}*)\s+up to|(?:por|durante|investir)\s+at[eé]|(?:i'?d|i would|would|let'?s)\s+say|say|about|around|roughly|approximately|maybe|perhaps|diria|digamos|uns|umas|cerca de|aproximadamente|talvez)\s*$/iu;
 const AGE_AFTER = /^\s*(?:old|of age|de idade)\b/iu;
 const inTimeFrame = (text: string, at: number, end: number) =>
   TIME_FRAME_BEFORE.test(text.slice(0, at)) && !AGE_AFTER.test(text.slice(end));
@@ -295,7 +297,7 @@ function phraseAround(text: string, at: number, end: number): string {
 
 // No date for the goal (gate GLIDE-OPT-IN, Oct 6): "no hard cap", "no date", "open-ended", "sem prazo".
 const OPEN_ENDED =
-  /(?<![\p{L}])(?:no (?:hard )?(?:cap|deadline|date|end date|time limit|horizon|time frame|timeframe|rush)|(?:do not|don't|dont|do n't) have (?:a |any )?(?:hard )?(?:cap|deadline|date|end date|time limit|horizon|time frame|timeframe)|open[- ]ended|indefinitely|no particular (?:date|time)|sem (?:prazo|data|pressa|horizonte)|n[aã]o tenho (?:um )?(?:prazo|data|horizonte)|prazo indefinido|por tempo indeterminado)(?![\p{L}])/iu;
+  /(?<![\p{L}])(?:no (?:hard )?(?:cap|deadline|date|end date|time limit|horizon|time frame|timeframe|rush)|(?:do not|don't|dont|do n't) have (?:a |any )?(?:hard )?(?:cap|deadline|date|end date|time limit|horizon|time frame|timeframe|term)|open[- ]ended|indefinitely|no particular (?:date|time)|sem (?:prazo|data|pressa|horizonte)|n[aã]o tenho (?:um )?(?:prazo|data|horizonte)|prazo indefinido|por tempo indeterminado)(?![\p{L}])/iu;
 /** The words that say the goal has no date, as written; null when the text has none. */
 export const openEndedIn = (text: string): string | null => OPEN_ENDED.exec(text)?.[0] ?? null;
 
@@ -451,3 +453,156 @@ export function looseRiskWordsIn(text: string, risk: 'low' | 'medium' | 'high'):
   // The last one written: on a later turn, the person's own answer.
   return looseMatches(loose, text).at(-1) ?? null;
 }
+
+// ---------------------------------------------------------------------------------------------------
+// What the person wants held (gate EXPLICIT-MIX, Rodrigo, Oct 6): "all of it in stocks", "70% stocks
+// and 30% cash", "only credit", "tudo em ações". English and Portuguese only: a mix written in another
+// language gives nothing here, so the model's reading of it is dropped and nothing is taken in silence.
+
+/** The parts of a mix, as `PersonalMix` holds them (basis points of the whole plan). */
+export type MixRead = {
+  growthBps: number;
+  dollarYieldBps: number;
+  goldBps: number;
+  cashBps: number;
+  creditBps?: number;
+};
+type MixPart = 'growth' | 'dollarYield' | 'gold' | 'cash' | 'credit';
+
+// The words for each part. Credit is dollar yield that lends or trades a spread ("only high yield").
+const MIX_CLASSES: [MixPart, string][] = [
+  [
+    'growth',
+    String.raw`stocks?|equit(?:y|ies)|shares|a[cç][oõ]es|a[cç][aã]o|crypto\p{L}*|cripto\p{L}*|bitcoin`,
+  ],
+  ['credit', 'credit|cr[eé]dito|high[- ]yield'],
+  [
+    'dollarYield',
+    'dollar yield|rendimento em d[oó]lar|treasur(?:y|ies)|t-bills|bonds|t[ií]tulos do tesouro|renda fixa',
+  ],
+  ['gold', 'gold|ouro'],
+  ['cash', 'cash|caixa'],
+];
+const CLASS_ANY = MIX_CLASSES.map(([, w]) => w).join('|');
+const partOf = (word: string): MixPart | null => {
+  for (const [part, words] of MIX_CLASSES)
+    if (new RegExp(`^(?:${words})$`, 'iu').test(word)) return part;
+  return null;
+};
+// "All of it in stocks", "everything in gold", "only credit", "just stocks", "100% stocks", "tudo em
+// ações", "só crédito", "somente ouro". The class word is captured.
+const ALL_IN = new RegExp(
+  String.raw`(?<![\p{L}])(?:(?:all|everything)(?:\s+of\s+(?:it|my money|the money|this|that))?(?:\s+(?:of\s+)?(?:my|the)\s+money)?\s+(?:in|into)\s+(?:the\s+)?|(?:only|just|purely|exclusively|entirely)\s+(?:in\s+)?|100\s*%\s*(?:(?:of\s+it\s+)?in\s+|em\s+|de\s+)?|tudo\s+(?:em|no|na|nos|nas)\s+|(?:s[oó]|somente|apenas|exclusivamente)\s+(?:em\s+|no\s+|na\s+|nos\s+|nas\s+)?)(?<cls>${CLASS_ANY})(?![\p{L}])`,
+  'giu',
+);
+// "70% stocks", "70% in stocks", "30% em caixa", "30% de ouro".
+const PCT_IN = new RegExp(
+  String.raw`(?<![\d.,])(?<pct>\d{1,3})\s*%\s*(?:(?:of\s+it|of\s+the\s+money|do\s+dinheiro)\s+)?(?:(?:in|into|em|de|no|na|nos|nas)\s+)?(?:the\s+)?(?<cls>${CLASS_ANY})(?![\p{L}])`,
+  'giu',
+);
+// A mix under a negation is no mix: "I don't want all of it in stocks", "não quero tudo em ações".
+const MIX_NEGATED =
+  /(?<![\p{L}])(?:not|no|never|don'?t|do not|doesn'?t|won'?t|n[aã]o|nunca|nem)(?:\s+[^\s,;.!?]+){0,3}\s*$/iu;
+// "Only stocks and gold" names two parts with no shares: no mix is read, the person is asked.
+const AND_ANOTHER = new RegExp(
+  String.raw`^\s*(?:,|and|or|e|ou|&|\+)\s*(?:(?:in|em|no|na)\s+)?(?<cls>${CLASS_ANY})(?![\p{L}])`,
+  'iu',
+);
+
+const WHOLE_BPS = 10_000;
+const BPS_PER_PCT = 100;
+
+function mixOf(parts: [MixPart, number][]): MixRead {
+  const m: MixRead = { growthBps: 0, dollarYieldBps: 0, goldBps: 0, cashBps: 0 };
+  let credit = 0;
+  for (const [part, bps] of parts) {
+    if (part === 'credit') {
+      m.dollarYieldBps += bps;
+      credit += bps;
+    } else m[`${part}Bps`] += bps;
+  }
+  if (credit > 0) m.creditBps = credit;
+  return m;
+}
+
+/**
+ * The mix the text writes, with the words it is written in; null when it writes none, or writes one
+ * this file cannot read one way only (shares that are not the whole, two parts with no shares, a
+ * percent of the money that is not in a part). Every share is written: nothing is filled in.
+ */
+export function mixIn(text: string): { mix: MixRead; words: string } | null {
+  const notNegated = (m: RegExpMatchArray) => !MIX_NEGATED.test(text.slice(0, m.index ?? 0));
+  // Shares written as percents of named parts.
+  const pcts = [...text.matchAll(PCT_IN)].filter(notNegated);
+  if (pcts.length > 0) {
+    const parts = pcts.flatMap((m): [MixPart, number][] => {
+      const part = partOf(m.groups?.cls ?? '');
+      return part ? [[part, Number(m.groups?.pct) * BPS_PER_PCT]] : [];
+    });
+    const total = parts.reduce((n, [, bps]) => n + bps, 0);
+    // Every percent of the money written is one of these shares: "70% stocks, and keep 50% safe" is
+    // not read.
+    const written = splitIn(text).ofMoney.length;
+    if (parts.length === pcts.length && total === WHOLE_BPS && written === pcts.length)
+      return {
+        mix: mixOf(parts),
+        words: phraseOf(text, pcts[0]?.index ?? 0, endOf(pcts.at(-1))),
+      };
+    return null;
+  }
+  // All of it in one part.
+  for (const m of [...text.matchAll(ALL_IN)].filter(notNegated)) {
+    const part = partOf(m.groups?.cls ?? '');
+    if (!part) continue;
+    const at = m.index ?? 0;
+    const end = at + m[0].length;
+    const next = AND_ANOTHER.exec(text.slice(end));
+    const other = next ? partOf(next.groups?.cls ?? '') : null;
+    if (other !== null && other !== part) return null;
+    return { mix: mixOf([[part, WHOLE_BPS]]), words: text.slice(at, end).trim() };
+  }
+  return null;
+}
+const endOf = (m: RegExpMatchArray | undefined) => (m ? (m.index ?? 0) + m[0].length : 0);
+const phraseOf = (text: string, at: number, end: number) => text.slice(at, end).trim();
+
+// A market or a trend the person names (gate EXPLICIT-MIX): read to a shared portfolio on the shelf,
+// by its slug, or to a theme that has none yet. English and Portuguese words only.
+export type Market = 'big_tech' | 'us_market' | 'ai';
+const MARKETS: [Market, RegExp][] = [
+  [
+    'big_tech',
+    /(?<![\p{L}])(?:big[- ]?techs?|magnificent (?:7|seven)|mag(?:nificent)? ?7|(?:us|american) tech giants|tech giants|grandes? (?:empresas )?de tecnologia|gigantes (?:da|de) tecnologia)(?![\p{L}])/iu,
+  ],
+  [
+    'us_market',
+    /(?<![\p{L}])(?:s&p(?: ?500)?|s and p(?: 500)?|sp ?500|(?:the )?(?:us|u\.s\.|american) (?:stock )?market|(?:us|u\.s\.|american) stocks|bolsa americana|mercado americano|a[cç][oõ]es americanas)(?![\p{L}])/iu,
+  ],
+  // "AI" and "IA" only in capitals: "ai" is a word in Portuguese ("ai, não sei").
+  [
+    'ai',
+    /(?<![\p{L}])(?:AI|IA|A\.I\.|artificial intelligence|intelig[eê]ncia artificial)(?![\p{L}])/u,
+  ],
+];
+/** The shared portfolio a market reads to; null for a market that has none on any shelf yet. */
+export const MARKET_SLUG: Record<Market, string | null> = {
+  big_tech: 'the-seven',
+  us_market: 'the-500',
+  // TODO(engine/themes): "AI" is a theme sleeve, `{ kind: 'theme', theme: 'ai' }`, once theme sleeves
+  // are built. Until then no portfolio is named for it: no slug is made up.
+  ai: null,
+};
+/** The markets the text names, with the words, in the order of the list. */
+export function marketsIn(text: string): { market: Market; words: string }[] {
+  return MARKETS.flatMap(([market, pattern]) => {
+    const m = pattern.exec(text);
+    return m ? [{ market, words: m[0] }] : [];
+  });
+}
+
+// A text in a language other than English and Portuguese (gate EXPLICIT-MIX: any language is read,
+// and the read-back is in English). Words that are neither, common in a goal in Spanish or French.
+const OTHER_LANGUAGE =
+  /(?<![\p{L}'])(?:tengo|quiero|quisiera|años|acciones|dinero|ahorros|invertir|también|j'ai|je|veux|voudrais|ans|argent|aussi|épargne|placer|tout)(?![\p{L}])/iu;
+/** Whether the text reads as written in another language than English or Portuguese. */
+export const otherLanguageIn = (text: string): boolean => OTHER_LANGUAGE.test(text);

@@ -493,6 +493,59 @@
           }
         ]
       }
+    },
+    "big-tech-chat-oct6": {
+      "about": "MOCK. The /plan-chat of Oct 6 that asked the risk twice and found no big tech list (gate EXPLICIT-MIX), message by message as written, with a reply written by hand for each turn as the model would read the whole conversation so far. Not recorded from a live model.",
+      "messages": [
+        "I have 2k that I want to invest in the big tech industry, I dont have a term, but I would say 5 years",
+        "I want all of it in stocks"
+      ],
+      "replies": [
+        {
+          "goal": "grow",
+          "amountUsd": 2000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": 60,
+          "risk": null,
+          "currency": null,
+          "chain": null,
+          "portfolios": [],
+          "language": "en",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": [],
+          "openEnded": true,
+          "mayNeedInMonths": null,
+          "sleeves": null,
+          "markets": ["big_tech"],
+          "mix": null
+        },
+        {
+          "goal": "grow",
+          "amountUsd": 2000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": 60,
+          "risk": null,
+          "currency": null,
+          "chain": null,
+          "portfolios": [],
+          "language": "en",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": [],
+          "openEnded": true,
+          "mayNeedInMonths": null,
+          "sleeves": null,
+          "markets": ["big_tech"],
+          "mix": {
+            "growthPct": 100,
+            "dollarYieldPct": 0,
+            "goldPct": 0,
+            "cashPct": 0,
+            "creditPct": null
+          }
+        }
+      ]
     }
   }
 }

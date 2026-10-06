@@ -9,6 +9,7 @@ import {
   type IntakeInput,
   QUESTION_FIELDS,
   readReply,
+  riskForMixEstimate,
   runIntake,
   type ShelfPortfolio,
 } from './intake';
@@ -18,6 +19,7 @@ import {
   goalCuesIn,
   horizonsIn,
   mentionsIn,
+  mixIn,
   refusalsIn,
   riskCuesIn,
 } from './intake-text';
@@ -797,5 +799,351 @@ describe('the glide is opt-in (gate GLIDE-OPT-IN, Oct 6)', () => {
     );
     expect(horizonsIn('posso precisar em 3 meses', NOW)).toEqual([]);
     expect(horizonsIn('Grow $5,000 in 3 months', NOW)).toEqual([3]);
+  });
+});
+
+// Gate EXPLICIT-MIX (Rodrigo, Oct 6): what the person says to hold, the plan holds, and no risk
+// question is asked. The model's replies here are MOCK, written by hand in the shape the API asks for.
+describe('a stated mix and a named market (gate EXPLICIT-MIX)', () => {
+  const reply = (over: Record<string, unknown> = {}) => ({
+    goal: null,
+    amountUsd: null,
+    incomeTargetUsdMonthly: null,
+    horizonMonths: null,
+    risk: null,
+    currency: null,
+    chain: null,
+    portfolios: [],
+    language: 'en',
+    noCredit: false,
+    cannotHold: [],
+    unclear: [],
+    openEnded: false,
+    mayNeedInMonths: null,
+    sleeves: null,
+    markets: [],
+    mix: null,
+    ...over,
+  });
+  const ALL_STOCKS = { growthPct: 100, dollarYieldPct: 0, goldPct: 0, cashPct: 0, creditPct: null };
+  const intake = (text: string, r: unknown, over: Partial<IntakeInput> = {}) =>
+    runIntake({ text, nowMonth: NOW, reply: r, homeChain: 'solana', portfolios, ...over });
+
+  // The chat that failed in /plan-chat: the risk was asked twice, and big tech had no list.
+  const FIRST =
+    'I have 2k that I want to invest in the big tech industry, I dont have a term, but I would say 5 years';
+  const SECOND = 'I want all of it in stocks';
+  const chatReply = reply({
+    goal: 'grow',
+    amountUsd: 2000,
+    horizonMonths: 60,
+    openEnded: true,
+    markets: ['big_tech'],
+    mix: ALL_STOCKS,
+  });
+
+  it('the shelf holds The Seven and The 500 on the chain used here', () => {
+    expect(portfolios.map((p) => p.slug)).toEqual(expect.arrayContaining(['the-seven', 'the-500']));
+  });
+
+  it('the failed chat, as two turns: no risk question, The Seven, all in stocks, high risk said once', () => {
+    const result = intake(conversationText(FIRST, [SECOND]), chatReply);
+    expect(result.questions).toEqual([]);
+    expect(result.questions.map((q) => q.field)).not.toContain('risk');
+    expect(result.mix).toEqual({ growthBps: 10_000, dollarYieldBps: 0, goldBps: 0, cashBps: 0 });
+    const sheet = result.sheet as PersonalSheet;
+    expect(sheet.themes).toEqual(['the-seven']);
+    expect(sheet.mix?.growthBps).toBe(10_000);
+    expect(sheet.risk).toBe('high');
+    // A soft time frame is a time frame, with no glide and no "no date".
+    expect(sheet.horizonMonths).toBe(60);
+    expect(sheet.horizonOpen).toBeUndefined();
+    expect(sheet.rules.glide).toBe(false);
+    const limits = (result.readBack ?? []).filter((s) => /limits for high risk/.test(s));
+    expect(limits).toEqual([
+      'To hold “all of it in stocks”, the plan uses the limits for high risk.',
+    ]);
+    expect(result.assumptions.filter((s) => /high risk/.test(s))).toHaveLength(1);
+    expect(result.readBack).toContain('100% of the plan in stocks and crypto.');
+    expect(result.flags).toContain('risk_from_mix');
+  });
+
+  it('the failed chat, as one text, reads the same; with no model, the mix and the market still hold', () => {
+    const joined = `${FIRST}. ${SECOND}`;
+    const byModel = intake(joined, chatReply);
+    expect(byModel.sheet?.mix?.growthBps).toBe(10_000);
+    expect(byModel.sheet?.themes).toEqual(['the-seven']);
+    const byRules = intake(joined, null);
+    expect(byRules.mix?.growthBps).toBe(10_000);
+    expect(byRules.draft.themes).toEqual(['the-seven']);
+    expect(byRules.questions.map((q) => q.field)).not.toContain('risk');
+  });
+
+  it('a soft time frame with this exact text is 60 months and no glide', () => {
+    expect(horizonsIn(FIRST, NOW)).toEqual([60]);
+    const result = intake(FIRST, reply({ goal: 'grow', amountUsd: 2000, horizonMonths: 60 }), {
+      answers: { risk: 'medium' },
+    });
+    expect(result.sheet?.horizonMonths).toBe(60);
+    expect(result.sheet?.rules.glide).toBe(false);
+    expect(result.sheet?.horizonOpen).toBeUndefined();
+  });
+
+  it('"70% stocks and 30% cash" is a mix of 7,000 and 3,000 at medium risk, with no split asked', () => {
+    const text = 'I have $5,000 to invest for 10 years, 70% stocks and 30% cash';
+    const r = reply({
+      goal: 'grow',
+      amountUsd: 5000,
+      horizonMonths: 120,
+      mix: { growthPct: 70, dollarYieldPct: 0, goldPct: 0, cashPct: 30, creditPct: null },
+    });
+    for (const result of [intake(text, r), intake(text, null, { answers: { goal: 'grow' } })]) {
+      expect(result.mix).toEqual({ growthBps: 7000, dollarYieldBps: 0, goldBps: 0, cashBps: 3000 });
+      expect(result.questions.map((q) => q.field)).not.toContain('risk');
+      expect(result.questions.map((q) => q.field)).not.toContain('sleeves');
+    }
+    const sheet = intake(text, r).sheet as PersonalSheet;
+    expect(sheet.risk).toBe('medium');
+    expect(sheet.sleeves).toBeUndefined();
+  });
+
+  it('"only credit" is all dollar yield, all of it allowed in credit', () => {
+    const text = 'I want to grow $3,000 over 5 years, only credit';
+    const result = intake(
+      text,
+      reply({
+        goal: 'grow',
+        amountUsd: 3000,
+        horizonMonths: 60,
+        mix: { growthPct: 0, dollarYieldPct: 100, goldPct: 0, cashPct: 0, creditPct: 100 },
+      }),
+    );
+    expect(result.mix).toEqual({
+      growthBps: 0,
+      dollarYieldBps: 10_000,
+      goldBps: 0,
+      cashBps: 0,
+      creditBps: 10_000,
+    });
+    expect(result.sheet?.risk).toBe('low');
+    expect(result.readBack).toContain(
+      'Of the dollar yield, up to 100% of the plan in tokens that lend to borrowers or trade a spread.',
+    );
+  });
+
+  it('reads the mixes it is meant to, in English and Portuguese, and nothing it cannot', () => {
+    const growth = { growthBps: 10_000, dollarYieldBps: 0, goldBps: 0, cashBps: 0 };
+    for (const text of [
+      'all of it in stocks',
+      'everything in stocks',
+      'only stocks',
+      '100% stocks',
+      'quero tudo em ações',
+      'só ações',
+      'all in crypto',
+    ])
+      expect(mixIn(text)?.mix, text).toEqual(growth);
+    expect(mixIn('all in gold')?.mix.goldBps).toBe(10_000);
+    expect(mixIn('only high yield')?.mix.creditBps).toBe(10_000);
+    expect(mixIn('só crédito')?.mix.creditBps).toBe(10_000);
+    expect(mixIn('60% ações, 30% ouro e 10% caixa')?.mix).toEqual({
+      growthBps: 6000,
+      dollarYieldBps: 0,
+      goldBps: 3000,
+      cashBps: 1000,
+    });
+    for (const text of [
+      "I don't want all of it in stocks",
+      'não quero tudo em ações',
+      'only stocks and gold',
+      '70% stocks',
+      '70% stocks, and keep 50% safe',
+      'no stocks',
+      'I like AI',
+      'todo en acciones',
+      'tout en actions',
+    ])
+      expect(mixIn(text), text).toBeNull();
+  });
+
+  it('a mix the model reads that the text does not write is dropped, flagged, and the risk asked', () => {
+    const text = 'I want to grow $2,000 over 5 years';
+    const result = intake(
+      text,
+      reply({ goal: 'grow', amountUsd: 2000, horizonMonths: 60, mix: ALL_STOCKS }),
+    );
+    expect(result.flags).toContain('no_cue:mix');
+    expect(result.mix).toBeNull();
+    expect(result.questions.map((q) => q.field)).toEqual(['risk']);
+  });
+
+  it('income with "all in stocks" asks once whether the goal is to grow or the plan holds no stocks', () => {
+    const text = 'I want $50 a month of income from $10,000, all of it in stocks';
+    const r = reply({
+      goal: 'income',
+      amountUsd: 10_000,
+      incomeTargetUsdMonthly: 50,
+      openEnded: false,
+      mix: ALL_STOCKS,
+    });
+    const asked = intake(text, r, { answers: { horizonMonths: 60 } });
+    const goalQs = asked.questions.filter((q) => q.field === 'goal');
+    expect(goalQs).toHaveLength(1);
+    expect(goalQs[0]?.template).toBe('goalMixConflict');
+    expect(goalQs[0]?.text).toMatch(/Do you mean a goal to grow, or the plan with no stocks\?$/);
+    expect(asked.questions.map((q) => q.field)).not.toContain('risk');
+    expect(asked.flags).toContain('mix_conflicts_goal');
+    expect(asked.sheet).toBeNull();
+    // To grow: the mix is held.
+    const grow = intake(text, r, { answers: { horizonMonths: 60, goal: 'grow' } });
+    expect(grow.sheet?.mix?.growthBps).toBe(10_000);
+    expect(grow.sheet?.risk).toBe('high');
+    // The goal kept: no stocks, said so, and the risk is asked as for any goal.
+    const kept = intake(text, r, { answers: { horizonMonths: 60, goal: 'income' } });
+    expect(kept.mix).toBeNull();
+    expect(kept.flags).toContain('mix_dropped_for_goal');
+    expect(kept.questions.map((q) => q.field)).toEqual(['risk']);
+    const done = intake(text, r, { answers: { horizonMonths: 60, goal: 'income', risk: 'low' } });
+    expect(done.sheet?.mix).toBeUndefined();
+    expect(done.assumptions).toContain(
+      'A plan for a goal of income holds no stocks or crypto, so “all of it in stocks” is not held.',
+    );
+    // Or the person answers with a mix with no stocks.
+    const cash = intake(text, r, {
+      answers: {
+        horizonMonths: 60,
+        risk: 'low',
+        mix: { growthBps: 0, dollarYieldBps: 10_000, goldBps: 0, cashBps: 0 },
+      },
+    });
+    expect(cash.sheet?.goal).toBe('income');
+    expect(cash.sheet?.mix?.dollarYieldBps).toBe(10_000);
+  });
+
+  it('a market with no shared portfolio is said in one line; a market the text does not name is asked', () => {
+    const ai = intake(
+      'I want to grow $2,000 in AI over 5 years, all of it in stocks',
+      reply({ goal: 'grow', amountUsd: 2000, horizonMonths: 60, markets: ['ai'], mix: ALL_STOCKS }),
+    );
+    expect(ai.flags).toContain('market_not_on_shelf:ai');
+    expect(ai.sheet?.themes).toEqual([]);
+    expect(ai.assumptions).toContain(
+      'No shared portfolio on your chain holds “AI” yet, so the plan does not start from one.',
+    );
+    const sp = intake(
+      'I want to grow $2,000 in the S&P 500 over 5 years, all of it in stocks',
+      reply({ goal: 'grow', amountUsd: 2000, horizonMonths: 60, mix: ALL_STOCKS }),
+    );
+    expect(sp.sheet?.themes).toEqual(['the-500']);
+    const unnamed = intake(
+      'I want to grow $2,000 over 5 years, all of it in stocks',
+      reply({ goal: 'grow', amountUsd: 2000, horizonMonths: 60, markets: ['big_tech'] }),
+    );
+    expect(unnamed.flags).toContain('no_cue:market:big_tech');
+    expect(unnamed.questions.map((q) => q.field)).toEqual(['themes']);
+  });
+
+  it('the risk a mix needs: the lowest risk whose cap per issuer admits its stocks', () => {
+    const at = (growthBps: number) => riskForMixEstimate({ growthBps });
+    expect([at(0), at(5000), at(7000), at(7001), at(10_000)]).toEqual([
+      'low',
+      'low',
+      'medium',
+      'high',
+      'high',
+    ]);
+  });
+});
+
+// Any language (gate EXPLICIT-MIX): the reader reads it, the intake answers in English, and what the
+// English and Portuguese checks cannot find in the text is asked, never taken.
+describe('a goal in another language than English or Portuguese', () => {
+  const base = {
+    incomeTargetUsdMonthly: null,
+    risk: null,
+    chain: null,
+    portfolios: [],
+    noCredit: false,
+    cannotHold: [],
+    unclear: [],
+    openEnded: false,
+    mayNeedInMonths: null,
+    sleeves: null,
+    currency: null,
+  };
+
+  it('Spanish: answered in English; the market and the mix it cannot find are asked', () => {
+    const text = 'Tengo 3000 dólares y quiero todo en acciones de grandes tecnológicas';
+    const result = runIntake({
+      text,
+      nowMonth: NOW,
+      homeChain: 'solana',
+      portfolios,
+      reply: {
+        ...base,
+        goal: 'grow',
+        amountUsd: 3000,
+        horizonMonths: null,
+        language: 'es',
+        markets: ['big_tech'],
+        mix: { growthPct: 100, dollarYieldPct: 0, goldPct: 0, cashPct: 0, creditPct: null },
+      },
+    });
+    expect(result.language).toBe('en');
+    expect(result.flags).toEqual(
+      expect.arrayContaining(['language_other:es', 'no_cue:mix', 'no_cue:market:big_tech']),
+    );
+    expect(result.mix).toBeNull();
+    expect(result.draft.themes).toBeNull();
+    // "dólares" is dollars in Portuguese too: the amount is found, and taken.
+    expect(result.draft.amountUsd).toBe(3000);
+    const asked = result.questions.map((q) => q.field);
+    expect(asked).toEqual(expect.arrayContaining(['goal', 'horizonMonths', 'risk', 'themes']));
+    expect(result.questions.every((q) => /^[\x20-\x7E’“”]+$/.test(q.text))).toBe(true);
+    expect(result.sheet).toBeNull();
+    // With no model: the same language, and nothing taken that the checks cannot find.
+    const rules = runIntake({ text, nowMonth: NOW, homeChain: 'solana', portfolios, reply: null });
+    expect(rules.language).toBe('en');
+    expect(rules.mix).toBeNull();
+    expect(rules.sheet).toBeNull();
+  });
+
+  it('French: answered in English; the amount in euros, the time frame and the mix are asked', () => {
+    const text = "J'ai 5000 euros, je veux tout en actions, sur 10 ans";
+    const result = runIntake({
+      text,
+      nowMonth: NOW,
+      homeChain: 'solana',
+      portfolios,
+      reply: {
+        ...base,
+        goal: 'grow',
+        amountUsd: 5000,
+        horizonMonths: 120,
+        language: 'fr',
+        markets: [],
+        mix: { growthPct: 100, dollarYieldPct: 0, goldPct: 0, cashPct: 0, creditPct: null },
+      },
+    });
+    expect(result.language).toBe('en');
+    expect(result.flags).toEqual(
+      expect.arrayContaining([
+        'language_other:fr',
+        'no_cue:mix',
+        'other_currency:amountUsd',
+        'not_in_text:horizonMonths',
+      ]),
+    );
+    expect(result.draft.amountUsd).toBeNull();
+    expect(result.draft.horizonMonths).toBeNull();
+    expect(result.mix).toBeNull();
+    const asked = result.questions.map((q) => q.field);
+    expect(asked).toEqual(expect.arrayContaining(['amountUsd', 'horizonMonths', 'risk']));
+    expect(result.questions.find((q) => q.field === 'amountUsd')?.text).toBe(
+      'You wrote 5,000 EUR. How much is that in dollars, the currency the plan is funded in?',
+    );
+    const rules = runIntake({ text, nowMonth: NOW, homeChain: 'solana', portfolios, reply: null });
+    expect(rules.language).toBe('en');
+    expect(rules.sheet).toBeNull();
   });
 });

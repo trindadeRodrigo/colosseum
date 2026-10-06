@@ -16,9 +16,14 @@ import {
   goalCuesIn,
   horizonsIn,
   looseRiskWordsIn,
+  MARKET_SLUG,
+  type Market,
+  marketsIn,
   maxYieldAskedIn,
   mentionsIn,
+  mixIn,
   openEndedIn,
+  otherLanguageIn,
   refusalsIn,
   riskCuesIn,
   splitIn,
@@ -32,7 +37,13 @@ import {
   type QuestionId,
   render,
 } from './templates';
-import { HoldableClass, PersonalLimits, PersonalSheet } from './types';
+import {
+  HoldableClass,
+  PersonalLimits,
+  PersonalMix,
+  type PersonalParameters,
+  PersonalSheet,
+} from './types';
 
 // The guided intake (gate GUIDED-INTAKE; DESIGN-VAULT section 7). A model reads the person's goal into
 // a draft of the sheet and says which fields it could not read. Everything after that is here, in pure
@@ -80,6 +91,11 @@ export const IntakeAnswers = z
     limits: PersonalLimits,
     /** The person has no date for the goal (gate GLIDE-OPT-IN, Oct 6). */
     horizonOpen: z.boolean(),
+    /**
+     * What the person wants held (gate EXPLICIT-MIX, Oct 6), or null for no mix: the answer to a mix
+     * with stocks on a goal of income or to protect, when the person keeps the goal.
+     */
+    mix: PersonalMix.nullable(),
   })
   .partial()
   .strict();
@@ -148,7 +164,34 @@ export type IntakeResult = {
   readBack: string[] | null;
   /** What was assumed from the person's words, from templates, so they can correct it (Oct 6). */
   assumptions: string[];
+  /** What the person wants held, as read and checked (gate EXPLICIT-MIX); null when none is. */
+  mix: PersonalMix | null;
 };
+
+const RISKS = ['low', 'medium', 'high'] as const;
+
+/**
+ * The risk a mix needs, as the intake estimates it (gate EXPLICIT-MIX): the lowest risk whose cap per
+ * issuer admits the mix's share in stocks and crypto, low for none. The engine on engine/plans derives
+ * the exact one from the tokens the mix would hold (`riskForMix(sheet, shelf, ctx)`), which replaces
+ * this where both are present.
+ */
+export function riskForMixEstimate(
+  mix: Pick<PersonalMix, 'growthBps'>,
+  params: Pick<PersonalParameters, 'capPerIssuerBps'> = PERSONAL_PARAMS,
+): (typeof RISKS)[number] {
+  return (
+    RISKS.find((r) => mix.growthBps <= (params.capPerIssuerBps[r] ?? Number.NEGATIVE_INFINITY)) ??
+    'high'
+  );
+}
+
+const sameMix = (a: PersonalMix, b: PersonalMix) =>
+  a.growthBps === b.growthBps &&
+  a.dollarYieldBps === b.dollarYieldBps &&
+  a.goldBps === b.goldBps &&
+  a.cashBps === b.cashBps &&
+  (a.creditBps ?? 0) === (b.creditBps ?? 0);
 
 /**
  * The text the intake reads: the first message and every later one, in order (Oct 6). A follow-up in
@@ -171,7 +214,18 @@ const REPLY_FIELDS = {
   currency: GoalCurrency,
   chain: z.enum(['solana', 'base', 'robinhood']),
   portfolios: BasketSheet.shape.themes,
-  language: Language,
+  // Any language the text is written in (EXPLICIT-MIX): en and pt are kept, any other is read in en.
+  language: z.string().trim().toLowerCase().min(2).max(12),
+  /** Markets and trends named ("big tech", "AI"): read to the shelf in code, never by the model. */
+  markets: z.array(z.enum(['big_tech', 'us_market', 'ai'])),
+  /** What the person said to hold, in whole percents of the plan (gate EXPLICIT-MIX). */
+  mix: z.object({
+    growthPct: z.number().int().min(0).max(100),
+    dollarYieldPct: z.number().int().min(0).max(100),
+    goldPct: z.number().int().min(0).max(100),
+    cashPct: z.number().int().min(0).max(100),
+    creditPct: z.number().int().min(0).max(100).nullable().optional(),
+  }),
   noCredit: z.boolean(),
   cannotHold: z.array(HoldableClass),
   unclear: z.array(z.string()),
@@ -268,9 +322,18 @@ export function runIntake(input: IntakeInput): IntakeResult {
   // A date or a time frame written in the text wins over "no rush" ("no rush, but I need it by 2030").
   const dated = horizonsIn(text, nowMonth).length > 0;
   let openEnded = false;
+  // What the model read as a mix and as markets (gate EXPLICIT-MIX); null with no model.
+  let replyMix: PersonalMix | null = null;
+  let replyMarkets: Market[] | null = null;
 
   if (input.reply === null) {
     Object.assign(draft, rules);
+    // A text in another language than en or pt (EXPLICIT-MIX): the rules parser reads only those two,
+    // and its guess of one is not the text's. The intake speaks English; the chat translates.
+    if (otherLanguageIn(text)) {
+      draft.language = 'en';
+      flags.push('language_other');
+    }
     // The rules parser misreads ("for 5 years" as 61 months, "no stocks" as high risk): with no model
     // to check it against, every field it read is put to the person once, its reading the start.
     for (const field of ['goal', 'horizonMonths', 'risk'] as const)
@@ -288,7 +351,26 @@ export function runIntake(input: IntakeInput): IntakeResult {
     const r = read.reply;
     draft.goal = r.goal;
     draft.risk = r.risk;
-    draft.language = r.language;
+    // Any language is read (EXPLICIT-MIX); the questions and the read-back are in en or pt, and a text
+    // in any other is answered in en.
+    if (r.language === 'en' || r.language === 'pt') draft.language = r.language;
+    else if (r.language !== null) {
+      draft.language = 'en';
+      flags.push(`language_other:${r.language}`);
+    }
+    replyMarkets = r.markets;
+    if (r.mix !== null) {
+      const m = r.mix;
+      const parsed = PersonalMix.safeParse({
+        growthBps: m.growthPct * 100,
+        dollarYieldBps: m.dollarYieldPct * 100,
+        goldBps: m.goldPct * 100,
+        cashBps: m.cashPct * 100,
+        ...(m.creditPct ? { creditBps: m.creditPct * 100 } : {}),
+      });
+      if (parsed.success) replyMix = parsed.data;
+      else flags.push('model_invalid:mix');
+    }
 
     // An amount must be written in the text, in dollars or with no currency beside it.
     for (const field of ['amountUsd', 'incomeTargetUsdMonthly'] as const) {
@@ -461,6 +543,41 @@ export function runIntake(input: IntakeInput): IntakeResult {
     }
   }
 
+  // What the person wants held (gate EXPLICIT-MIX, Rodrigo, Oct 6). A mix is taken only as written:
+  // code reads it from the text in English or Portuguese ("all of it in stocks", "70% stocks and 30%
+  // cash", "só crédito"). A mix the model reads that the text does not write is dropped and flagged;
+  // where both read one and differ, the text's is taken and the difference flagged.
+  const written = mixIn(text);
+  let mixRead: PersonalMix | null = null;
+  if (replyMix && !written) flags.push('no_cue:mix');
+  if (written) {
+    const parsed = PersonalMix.safeParse(written.mix);
+    if (parsed.success) {
+      mixRead = parsed.data;
+      if (replyMix && !sameMix(replyMix, parsed.data)) flags.push('disagrees_with_rules:mix');
+    }
+  }
+  // Markets and trends ("big tech", "the S&P", "AI") read to the shelf: the market's words must be
+  // in the text. One the model names that the text has no word for is dropped and asked.
+  const marketWords = marketsIn(text);
+  for (const m of replyMarkets ?? [])
+    if (!marketWords.some((w) => w.market === m)) {
+      flags.push(`no_cue:market:${m}`);
+      unclear.add('themes');
+    }
+  // A market with no shared portfolio on the person's shelf is said in one line, never guessed.
+  const marketsMissing: string[] = [];
+  for (const { market, words } of marketWords) {
+    const slug = MARKET_SLUG[market];
+    if (slug && portfolios.some((p) => p.slug === slug)) {
+      const themes = draft.themes ?? [];
+      if (!themes.includes(slug)) draft.themes = [...themes, slug];
+    } else {
+      flags.push(`market_not_on_shelf:${market}`);
+      marketsMissing.push(words);
+    }
+  }
+
   // "70% ... and the other half" is more than the whole: the split is asked, never guessed.
   let mismatch: { pct: number; rest: number } | null = null;
   if (
@@ -494,7 +611,37 @@ export function runIntake(input: IntakeInput): IntakeResult {
     currency: answers.currency ?? draft.currency,
     themes: answers.themes ?? draft.themes,
   };
-  const sleeves = answers.sleeves ?? draft.sleeves;
+  // The mix (gate EXPLICIT-MIX): the person's answer over what was read. A mix is of the whole plan,
+  // so a split read beside it is not kept: the percents are the mix's.
+  let mix: PersonalMix | null = 'mix' in answers ? (answers.mix ?? null) : mixRead;
+  const mixWords = (m: PersonalMix) => written?.words ?? mixPhrase(m, language);
+  // A goal of income or to protect holds no stocks (gate PROTECT-NO-STOCKS): a mix with stocks on one
+  // is asked once, as whether the goal is to grow or the plan holds no stocks. An answered goal that
+  // keeps income or protect keeps the goal, and the mix is not held, and said so.
+  let mixConflict = false;
+  let mixDropped: { words: string; goal: string } | null = null;
+  if (mix && mix.growthBps > 0 && (value.goal === 'income' || value.goal === 'protect')) {
+    if (answers.goal !== undefined) {
+      flags.push('mix_dropped_for_goal');
+      mixDropped = { words: mixWords(mix), goal: value.goal };
+      mix = null;
+    } else {
+      flags.push('mix_conflicts_goal');
+      mixConflict = true;
+      unclear.add('goal');
+    }
+  }
+  // With a mix, the risk is never asked: the limits follow what is held, and the read-back says so.
+  // While the goal is asked against the mix, nothing else about the risk is asked either.
+  if (mix || mixConflict) {
+    unclear.delete('risk');
+    if (mix && !mixConflict) {
+      value.risk = answers.risk ?? riskForMixEstimate(mix);
+      flags.push('risk_from_mix');
+    }
+    if (mix && answers.sleeves === undefined) unclear.delete('sleeves');
+  }
+  const sleeves = mix ? null : (answers.sleeves ?? draft.sleeves);
   const keptSafe = sleeves?.some((x) => x.kind === 'safe_yield') === true && sleeves.length > 1;
   // An answer naming a portfolio is held to the shelf too.
   if (answers.themes) {
@@ -511,8 +658,9 @@ export function runIntake(input: IntakeInput): IntakeResult {
     switch (field) {
       case 'goal':
       case 'amountUsd':
-      case 'risk':
         return value[field] === null || unclear.has(field);
+      case 'risk':
+        return !mixConflict && (value[field] === null || unclear.has(field));
       case 'horizonMonths':
         return !horizonOpen && (value[field] === null || unclear.has(field));
       case 'sleeves':
@@ -533,6 +681,8 @@ export function runIntake(input: IntakeInput): IntakeResult {
       return { id: 'amountOtherCurrency', params: { ...otherCurrency } };
     if (field === 'sleeves' && mismatch) return { id: 'sleevesMismatch', params: { ...mismatch } };
     if (field === 'risk' && keptSafe) return { id: 'riskGoalPart', params: {} };
+    if (field === 'goal' && mixConflict && mix && value.goal)
+      return { id: 'goalMixConflict', params: { words: mixWords(mix), goal: value.goal } };
     return { id: field, params: {} };
   };
   const questions: IntakeQuestion[] = QUESTION_FIELDS.filter(needed).map((field) =>
@@ -565,6 +715,7 @@ export function runIntake(input: IntakeInput): IntakeResult {
       ...(value.currency !== null ? { currency: value.currency } : {}),
       ...(answers.obligations ? { obligations: answers.obligations } : {}),
       ...(sleeves ? { sleeves } : {}),
+      ...(mix ? { mix } : {}),
       ...(answers.restoreSplit !== undefined ? { restoreSplit: answers.restoreSplit } : {}),
       ...(limitsOut ? { limits: limitsOut } : {}),
     };
@@ -586,8 +737,11 @@ export function runIntake(input: IntakeInput): IntakeResult {
   const assumptions: string[] = [];
   const assume = (id: AssumptionId, params: Record<string, Value> = {}) =>
     assumptions.push(render(ASSUMPTION_TEMPLATES[id][language], params, language));
+  // With a mix the risk is the mix's, said once below; loose risk words are not read as it.
   const loose =
-    answers.risk === undefined && value.risk !== null ? looseRiskWordsIn(text, value.risk) : null;
+    answers.risk === undefined && value.risk !== null && !mix
+      ? looseRiskWordsIn(text, value.risk)
+      : null;
   const goalPart = sleeves?.find((x) => x.kind === 'goal');
   if (loose && value.risk !== null)
     if (keptSafe && goalPart)
@@ -598,6 +752,10 @@ export function runIntake(input: IntakeInput): IntakeResult {
   const exit = exits.find((e) => e.months !== limits.mayNeedInMonths);
   if (exit) assume('EXIT_TIME', { words: exit.words });
   if (flags.includes('max_yield_asked')) assume('MAX_YIELD_LATER');
+  if (mix && !mixConflict && answers.risk === undefined && value.risk !== null)
+    assume('MIX_LIMITS', { words: mixWords(mix), risk: value.risk });
+  if (mixDropped) assume('MIX_DROPPED', mixDropped);
+  for (const words of marketsMissing) assume('MARKET_NONE', { words });
   if (sheet && !sheet.rules.glide && !horizonOpen && answers.rules === undefined)
     assume('GLIDE_OFFER');
 
@@ -613,7 +771,23 @@ export function runIntake(input: IntakeInput): IntakeResult {
     sheet,
     readBack: said ? [...said.slice(0, -1), ...assumptions, ...said.slice(-1)] : null,
     assumptions,
+    mix,
   };
+}
+
+/** A mix in words, for a mix the person gave as an answer: "70% stocks and crypto and 30% cash". */
+function mixPhrase(mix: PersonalMix, language: Language): string {
+  const parts = (
+    [
+      ['growth', mix.growthBps],
+      ['dollarYield', mix.dollarYieldBps],
+      ['gold', mix.goldBps],
+      ['cash', mix.cashBps],
+    ] as const
+  ).filter(([, bps]) => bps > 0);
+  return parts
+    .map(([sleeve, bps]) => render('{bps|pct} {sleeve|sleeve}', { bps, sleeve }, language))
+    .join(language === 'pt' ? ' e ' : ' and ');
 }
 
 function limitsOf(read: LimitsDraft): PersonalLimits | null {

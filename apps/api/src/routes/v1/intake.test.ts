@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { budgetedModel, type IntakeModel, type ReadCall } from '../../llm';
 import type { ChainRegistry } from '../../orders/chains';
+import { loadFamilies } from '../../orders/store';
 import { orderFlow } from '../../testing/flow';
 import {
   type PersonKind,
@@ -41,10 +42,17 @@ const chat = recorded.conversations['first-chat-oct6'] as {
   messages: string[];
   replies: unknown[];
 };
+// The chat that asked the risk twice and found no big tech list (gate EXPLICIT-MIX, Oct 6).
+const bigTech = recorded.conversations['big-tech-chat-oct6'] as {
+  messages: string[];
+  replies: unknown[];
+};
 // The conversation's replies, by the text each turn reads: the messages so far, joined as the route joins them.
 const replyByText = new Map<string, unknown>([
   ...evalSet.goals.map((g): [string, unknown] => [g.text, recorded.replies[g.id]]),
-  ...chat.replies.map((r, i): [string, unknown] => [chat.messages.slice(0, i + 1).join('\n\n'), r]),
+  ...[chat, bigTech].flatMap((c) =>
+    c.replies.map((r, i): [string, unknown] => [c.messages.slice(0, i + 1).join('\n\n'), r]),
+  ),
 ]);
 const goal = (id: string) => evalSet.goals.find((g) => g.id === id) as (typeof evalSet.goals)[0];
 
@@ -319,6 +327,51 @@ describe('POST /v1/baskets/intake', () => {
     // The confirm makes the plan from it.
     const plan = await post(who, '/v1/baskets/personalize', { sheet: second.sheet });
     expect(plan.statusCode, plan.body).toBe(200);
+  });
+
+  it('holds what the person says to hold: big tech, all in stocks, no risk question (EXPLICIT-MIX)', async () => {
+    const who = await someone('solana');
+    const [text = '', ...later] = bigTech.messages;
+    // The Seven is on the shelf only where the database has it; where it has none, that is said.
+    const onShelf = (await loadFamilies(data.db, 'solana')).some(
+      (f) => f.meta.slug === 'the-seven',
+    );
+    const themes = onShelf ? ['the-seven'] : [];
+    const turn = async (n: number) => {
+      const res = await post(who, PATH, { text, followUps: later.slice(0, n - 1) });
+      expect(res.statusCode, res.body).toBe(200);
+      return IntakeResponse.parse(res.json());
+    };
+    // The first message says no mix and no risk: the risk is asked, once.
+    const first = await turn(1);
+    expect(first.reader.provenance).toBe('mock');
+    expect(first.questions.map((q) => q.field)).toEqual(['risk']);
+    expect(first.draft.themes).toEqual(onShelf ? themes : null);
+    expect(first.mix).toBeNull();
+    // "I want all of it in stocks": the plan holds it, and the risk is not asked again.
+    const second = await turn(2);
+    expect(second.questions).toEqual([]);
+    expect(second.mix).toEqual({ growthBps: 10_000, dollarYieldBps: 0, goldBps: 0, cashBps: 0 });
+    expect(second.sheet).toMatchObject({
+      goal: 'grow',
+      amountUsd: 2000,
+      horizonMonths: 60,
+      risk: 'high',
+      themes,
+      rules: { useHoldings: true, glide: false },
+      mix: { growthBps: 10_000 },
+    });
+    expect(second.sheet?.horizonOpen).toBeUndefined();
+    expect(
+      second.assumptions.filter(
+        (s) => s === 'To hold “all of it in stocks”, the plan uses the limits for high risk.',
+      ),
+    ).toHaveLength(1);
+    if (onShelf) expect(second.readBack).toContain('The plan starts from The Seven.');
+    else
+      expect(second.assumptions).toContain(
+        'No shared portfolio on your chain holds “big tech” yet, so the plan does not start from one.',
+      );
   });
 
   it('a person with no chain yet is asked to pick one, and no sheet is made', async () => {
