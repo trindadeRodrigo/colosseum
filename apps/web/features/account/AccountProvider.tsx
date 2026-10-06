@@ -46,7 +46,7 @@ export type AccountValue = {
   account: Account;
   /**
    * The person is the throwaway wallet of development: the API has no account for them, so their
-   * chain is worked out here and kept only while the page is open. Shown with the MOCK plate.
+   * chain is worked out here and kept only while the page is open. Shown with the sample glyph.
    */
   mock: boolean;
   /** Stores the choice. Throws a `PersonError` whose kind says why it was not stored. */

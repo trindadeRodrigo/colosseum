@@ -75,11 +75,12 @@ describe('GoalCard (goal-card.md)', () => {
     expect(all(c, ui('pin'))).toHaveLength(0);
   });
 
-  it('with mock inputs has the hatch band on its left edge and the plate after the status', () => {
+  it('with mock inputs has the hatch band on its left edge and one quiet line, never MOCK', () => {
     const c = one(render(goalCard.watch), ui('goal-card'));
     expect(all(c, ui('hatch-band'))).toHaveLength(1);
     expect(c.children[0]).toMatchObject({ attrs: { 'data-ui': 'hatch-band' } });
-    expect(all(c, ui('mock-plate'))).toHaveLength(1);
+    expect(text(one(c, ui('sample-note')))).toBe('Sample figures');
+    expect(text(c)).not.toContain('MOCK');
     expect(all(card, ui('hatch-band'))).toHaveLength(0);
   });
 

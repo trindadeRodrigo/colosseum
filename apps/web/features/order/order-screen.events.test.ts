@@ -137,9 +137,11 @@ describe('the review', () => {
     expect(steps[1]).toContain(en.order.review.atLeastWhole('0.0099 tSPYx'));
     expect(steps[1]).toContain(en.order.review.under('1%'));
     expect(label(primary(host))).toBe(en.order.signAndBuy('$10'));
-    // on a test network: the plate, the hatch and the words, together
-    expect(host.textContent).toContain('MOCK');
-    expect(host.textContent).toContain(en.shell.testNetwork);
+    // on a test network: the hatch and one quiet line that says so, never the word MOCK
+    expect(host.textContent).not.toContain('MOCK');
+    expect(host.querySelector('[data-ui="sample-note"]')?.textContent).toBe(
+      `${en.shell.mockAnnounce} · ${en.shell.testNetwork}`,
+    );
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
     expect(run.calls).toHaveLength(0);
   });
