@@ -233,6 +233,149 @@ describe('the showcase', () => {
     expect(host.textContent).not.toContain('placeholder photo');
   });
 
+  it('puts the person and their words above the drawing of their plan, in every case', async () => {
+    browser();
+    const host = await landing();
+    for (const c of host.querySelectorAll('article[data-ui="showcase-case"]')) {
+      const quote = find(c as HTMLElement, 'blockquote');
+      const drawing = find(c as HTMLElement, 'svg[data-ui="plan-drawing"]');
+      // the quote comes first in the page, so it is read and laid out first at every width
+      expect(
+        quote.compareDocumentPosition(drawing) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(quote.parentElement?.nextElementSibling).toBe(drawing);
+    }
+  });
+
+  it('lights a part on the drawing and in the list together, from either side', async () => {
+    browser();
+    const host = await landing();
+    const growth = [
+      ...host.querySelectorAll<HTMLElement>('article[data-ui="showcase-case"]'),
+    ][1] as HTMLElement;
+    const layer = (n: number) => find(growth, `[data-part="layer"][data-chart="${n}"]`);
+    const row = (n: number) => find(growth, `[data-ui="case-leg"][data-chart="${n}"]`);
+    const mouse = (type: string, el: Element) =>
+      act(async () => {
+        el.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            pointerType: 'mouse',
+            relatedTarget: document.body,
+          }),
+        );
+      });
+    // the stocks layer, 45%: named for a reader, lit, the others dimmed, and its row lit
+    expect(layer(3).getAttribute('aria-label')).toBe('Tokenized stocks (SPYx, QQQx), 45%');
+    await mouse('pointerover', layer(3));
+    expect(layer(3).getAttribute('data-lit')).toBe('true');
+    expect(layer(3).getAttribute('aria-pressed')).toBe('true');
+    expect(layer(1).getAttribute('class')).toContain('opacity-35');
+    expect(row(3).getAttribute('data-lit')).toBe('true');
+    expect(row(1).getAttribute('class')).toContain('opacity-45');
+    await mouse('pointerout', layer(3));
+    expect(row(3).getAttribute('data-lit')).toBe('false');
+    // and back: a row lights its layer
+    await mouse('pointerover', row(2));
+    expect(layer(2).getAttribute('data-lit')).toBe('true');
+    await mouse('pointerout', row(2));
+    expect(layer(2).getAttribute('data-lit')).toBe('false');
+  });
+
+  it('lights the trip’s bars for the part lit on its drawing', async () => {
+    browser();
+    const host = await landing();
+    const trip = host.querySelector('article[data-ui="showcase-case"]') as HTMLElement;
+    await act(async () => {
+      find(trip, '[data-part="layer"][data-chart="2"]').dispatchEvent(
+        new PointerEvent('pointerover', {
+          bubbles: true,
+          pointerType: 'mouse',
+          relatedTarget: document.body,
+        }),
+      );
+    });
+    const opacity = (n: number) =>
+      new Set(
+        [...trip.querySelectorAll(`rect[data-series="part-${n}"]`)].map((r) =>
+          r.getAttribute('opacity'),
+        ),
+      );
+    expect(opacity(2)).toEqual(new Set(['1']));
+    expect(opacity(1)).toEqual(new Set(['0.25']));
+  });
+
+  it('is one tab stop the arrows step through, layer by layer; Escape lets go', async () => {
+    browser();
+    const host = await landing();
+    const growth = [
+      ...host.querySelectorAll<HTMLElement>('article[data-ui="showcase-case"]'),
+    ][1] as HTMLElement;
+    const layers = [...growth.querySelectorAll<HTMLElement>('[data-part="layer"]')];
+    expect(layers.map((l) => l.getAttribute('tabindex'))).toEqual(['0', '-1', '-1', '-1']);
+    await act(async () => layers[0]?.focus());
+    expect(layers[0]?.getAttribute('data-lit')).toBe('true');
+    expect(find(growth, '[data-ui="case-leg"][data-chart="1"]').getAttribute('data-lit')).toBe(
+      'true',
+    );
+    await press(layers[0] as HTMLElement, 'ArrowUp');
+    expect(document.activeElement).toBe(layers[1]);
+    expect(layers[1]?.getAttribute('data-lit')).toBe('true');
+    expect(layers.map((l) => l.getAttribute('tabindex'))).toEqual(['-1', '0', '-1', '-1']);
+    await press(layers[1] as HTMLElement, 'End');
+    expect(document.activeElement).toBe(layers[3]);
+    await press(layers[3] as HTMLElement, 'Escape');
+    expect(layers.map((l) => l.getAttribute('data-lit'))).toEqual([
+      'false',
+      'false',
+      'false',
+      'false',
+    ]);
+  });
+
+  it('picks a part with a tap and lets it go with a tap outside', async () => {
+    browser();
+    const host = await landing();
+    const growth = [
+      ...host.querySelectorAll<HTMLElement>('article[data-ui="showcase-case"]'),
+    ][1] as HTMLElement;
+    const layer = find(growth, '[data-part="layer"][data-chart="4"]');
+    await act(async () => {
+      layer.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch' }));
+    });
+    expect(layer.getAttribute('data-lit')).toBe('true');
+    await act(async () => {
+      document.body.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' }),
+      );
+    });
+    expect(layer.getAttribute('data-lit')).toBe('false');
+  });
+
+  it('lifts a lit layer only where motion is welcome; with reduced motion only its colour changes', async () => {
+    browser({ reduce: true });
+    const host = await landing();
+    const layer = host.querySelector('[data-part="layer"][data-chart="1"]') as HTMLElement;
+    await act(async () => layer.focus());
+    const cls = layer.getAttribute('class') ?? '';
+    expect(cls).toContain('-translate-y-1.5');
+    expect(cls).toContain('motion-reduce:translate-y-0');
+    expect(cls).toContain('motion-safe:transition-[translate,opacity]');
+    for (const svg of host.querySelectorAll('svg[data-ui="plan-drawing"]'))
+      expect(svg.getAttribute('data-state')).toBe('still');
+  });
+
+  it('keeps a figure’s date in one piece: "Dec 2031" never breaks across lines', async () => {
+    browser();
+    const host = await landing();
+    const growth = [
+      ...host.querySelectorAll<HTMLElement>('article[data-ui="showcase-case"]'),
+    ][1] as HTMLElement;
+    const units = [...growth.querySelectorAll('dd small')];
+    const date = units.find((u) => u.textContent === 'Dec 2031');
+    expect(date?.getAttribute('class')).toContain('whitespace-nowrap');
+  });
+
   it('settles the joint in from the bottom when the card comes into view, and not with reduced motion', async () => {
     const seen: ((entries: { isIntersecting: boolean }[]) => void)[] = [];
     vi.stubGlobal(
