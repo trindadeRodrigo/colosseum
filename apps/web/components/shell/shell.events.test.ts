@@ -166,6 +166,53 @@ describe('who is signed in, in the bar', () => {
     expect(host.querySelector('[data-ui="account"]')).toBeNull();
   });
 
+  it('draws "Sign in" as the bar’s one primary action on every page but the sign-in screen', async () => {
+    for (const path of ['/goal', '/shelf', '/analytics/stocks']) {
+      location.pathname = path;
+      const host = await shell();
+      const link = find<HTMLAnchorElement>(host, 'header a[href="/sign-in"]');
+      expect(link.className, path).toContain('bg-primary');
+      expect(link.className, path).toContain('h-10');
+      expect(link.getAttribute('aria-current'), path).toBeNull();
+      await unmountAll();
+    }
+  });
+
+  it('marks "Sign in" as the page the person is on, on the sign-in screen, and not as a button', async () => {
+    location.pathname = '/sign-in';
+    const host = await shell();
+    const links = host.querySelectorAll<HTMLAnchorElement>('header a[href="/sign-in"]');
+    expect(links).toHaveLength(1);
+    const here = links[0] as HTMLAnchorElement;
+    expect(here.textContent).toBe(en.signIn);
+    expect(here.getAttribute('aria-current')).toBe('page');
+    expect(here.getAttribute('data-ui')).toBe('sign-in-here');
+    // the bar's current-link mark, and no button of any kind: the screen's own primary stands alone
+    expect(here.className).toContain('underline');
+    expect(here.className).toContain('decoration-primary');
+    expect(here.className).not.toContain('bg-primary');
+    expect(here.className).not.toContain('border');
+  });
+
+  it('shows the wallet and "Sign out" on the sign-in screen once someone is signed in', async () => {
+    location.pathname = '/sign-in';
+    portStore.set(signedInPort(EMBEDDED));
+    const host = await shell();
+    await settle();
+    expect(host.querySelector('[data-ui="sign-in-here"]')).toBeNull();
+    expect(find(host, '[data-ui="account"]').textContent).toContain(en.signOut);
+    // the same size as "Sign in" elsewhere: the bar keeps its height
+    expect(find(find(host, '[data-ui="account"]'), 'button').className).toContain('h-10');
+  });
+
+  it('underlines the bar’s link to the page in view, as compact-nav.md marks a current link', async () => {
+    location.pathname = '/goal';
+    const host = await shell();
+    const invest = find<HTMLAnchorElement>(host, 'nav > a[href="/goal"]');
+    expect(invest.getAttribute('aria-current')).toBe('page');
+    expect(invest.className).toContain('aria-[current=page]:underline');
+  });
+
   it('shows the wallet of the chain the plan lives on, and no other, with a way out', async () => {
     portStore.setApi(async () =>
       json({

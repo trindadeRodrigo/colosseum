@@ -32,7 +32,11 @@ export function AppShell({ lang, theme, children }: AppShellProps) {
       >
         {children}
       </main>
-      <footer data-ui="app-foot" className="flex flex-col gap-6 border-t border-border py-8">
+      {/* A page on one centred column (the sign-in screen) has the foot on the same column. */}
+      <footer
+        data-ui="app-foot"
+        className="flex flex-col gap-6 border-t border-border py-8 group-has-[main_[data-column=centred]]/shell:mx-auto group-has-[main_[data-column=centred]]/shell:w-full group-has-[main_[data-column=centred]]/shell:max-w-[860px]"
+      >
         <Disclaimer
           lang={lang}
           label={t.disclaimer}

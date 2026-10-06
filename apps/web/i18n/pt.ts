@@ -44,21 +44,30 @@ export const pt: Dictionary = {
     title: 'Entre com uma carteira que é sua.',
     lead: 'Seu plano fica em um cofre de onde só você pode sacar, então ele precisa de uma carteira que seja sua. Crie uma com uma chave de acesso ou conecte uma que você já usa.',
     loading: 'Carregando o login…',
+    notLoaded: 'O login não carregou aqui.',
+    openPage: 'Abrir a página de login',
+    close: 'Fechar o login',
     passkey: {
       title: 'Chave de acesso',
-      body: 'Você não precisa anotar frase de recuperação. A chave de acesso fica no seu aparelho, e só ela abre a carteira que criamos para você.',
-      create: 'Criar uma chave de acesso',
-      use: 'Usar uma chave de acesso que já tenho',
+      body: 'Você não precisa anotar frase de recuperação. Eu uso a chave de acesso que este aparelho guarda para este site. A carteira que criamos para você só abre com essa chave.',
+      continue: 'Continuar com uma chave de acesso',
+      createNew: 'Criar uma chave de acesso nova',
       waiting: 'Aguardando sua chave de acesso…',
       making: 'Criando sua carteira…',
     },
     wallet: {
       title: 'Carteira',
       body: 'Conecte uma carteira que você já usa. Seu plano fica na rede dela: Solana para uma carteira Solana, Robinhood Chain para uma carteira Ethereum.',
+      connect: 'Conectar uma carteira',
       found: 'Carteiras encontradas neste navegador',
-      family: { solana: 'Solana', evm: 'Ethereum' },
       waiting: 'Aguardando sua carteira…',
-      none: 'Nenhuma carteira foi encontrada neste navegador. Instale uma, abra esta página no navegador da própria carteira ou use uma chave de acesso.',
+      none: 'Nenhuma carteira foi encontrada neste navegador. Instale uma ou abra esta página no navegador da própria carteira. Ou continue com uma chave de acesso: não precisa instalar nada.',
+      both: (wallet: string) =>
+        `${wallet} funciona na Solana e na Robinhood Chain. Escolha a rede onde seu plano fica: isso não pode ser mudado depois.`,
+      before: 'Já entrou antes? Escolha a rede que você escolheu naquela vez.',
+      off: (wallet: string) =>
+        `${wallet} só funciona em redes indisponíveis no nosso servidor por enquanto, então não pode ser usada para entrar. Use outra carteira ou uma chave de acesso.`,
+      chains: 'A rede do seu plano',
     },
     off: {
       api: 'O login está indisponível no momento: nosso servidor não está respondendo. Eu tento de novo a cada poucos segundos, e esta página se atualiza sozinha.',
@@ -72,7 +81,7 @@ export const pt: Dictionary = {
       passkeyNotCreated:
         'A chave de acesso não foi criada: a janela foi fechada ou o tempo acabou. Nada foi salvo. Tente de novo quando quiser.',
       passkeyNotUsed:
-        'Nenhuma chave de acesso foi usada: a janela foi fechada ou o tempo acabou. Se você ainda não tem uma chave de acesso para este site, crie uma.',
+        'Nenhuma chave de acesso foi usada. Se você criou uma em outro aparelho, use esse aparelho ou escolha “usar um celular” na janela. É novo aqui? Crie uma chave de acesso: ela abre uma conta nova, com uma carteira nova e vazia.',
       passkeyUnknown: 'Não reconheço essa chave de acesso. Crie uma nova ou conecte uma carteira.',
       passkeyNotRegistered:
         'Essa chave de acesso não está registrada aqui. Escolha outra ou crie uma.',
