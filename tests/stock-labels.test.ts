@@ -46,16 +46,21 @@ const labels: { chain: string; file: string; list: ThemeList }[] = readdirSync(
     }),
 );
 
-type SeedAsset = { symbol: string; cls: string };
+type SeedAsset = { symbol: string; cls: string; tier: string };
 const seed = read('docs/vault/research/open-questions/launch-shelf.seed.json') as {
   assets: Record<string, SeedAsset[]>;
 };
-/** The launch shelf's tokens of listed securities on a chain: stocks, funds, gold and commodity funds, and SGOV. */
-const onShelf = (chain: Chain) =>
+/**
+ * The tokens of listed securities in the launch shelf's seed on a chain (stocks, funds, gold and
+ * commodity funds, and SGOV): the ones the shelf lists (tier A to C), or the ones it measured too
+ * thin to list (tier X).
+ */
+const inSeed = (chain: Chain, listed: boolean) =>
   (seed.assets[chain] ?? [])
     .filter(
       (a) => ['stock', 'stock-index', 'gold', 'commodity'].includes(a.cls) || a.symbol === 'SGOV',
     )
+    .filter((a) => (a.tier === 'X') !== listed)
     .map((a) => a.symbol);
 const inSet = (chain: Chain, set: string) =>
   sorted(stocks[chain].stocks.filter((s) => s.sets.includes(set as never)).map((s) => s.symbol));
@@ -79,7 +84,8 @@ describe('the sourced attributes of the tracked stocks (content/stocks)', () => 
     const universe = trackedSet(fx.pools, { share: 0.8, minPoolUsd: 1000 }).assets;
     expect(universe).toHaveLength(18);
     expect(inSet('solana', 'universe')).toEqual(sorted(universe));
-    expect(inSet('solana', 'shelf')).toEqual(sorted(onShelf('solana')));
+    expect(inSet('solana', 'shelf')).toEqual(sorted(inSeed('solana', true)));
+    expect(inSet('solana', 'thin')).toEqual(sorted(inSeed('solana', false)));
     expect(inSet('solana', 'cut')).toEqual([]);
   });
 
@@ -90,7 +96,9 @@ describe('the sourced attributes of the tracked stocks (content/stocks)', () => 
     const cut = cutReport(fx, { share: 0.8, minPoolUsd: 1000, collected: [] }).tracked;
     expect(cut).toHaveLength(30);
     expect(inSet('robinhood', 'cut')).toEqual(sorted(cut.map((t) => t.symbol)));
-    expect(inSet('robinhood', 'shelf')).toEqual(sorted(onShelf('robinhood')));
+    expect(inSet('robinhood', 'shelf')).toEqual(sorted(inSeed('robinhood', true)));
+    expect(inSet('robinhood', 'thin')).toEqual(sorted(inSeed('robinhood', false)));
+    expect(inSet('robinhood', 'thin').length).toBeGreaterThan(0);
     expect(inSet('robinhood', 'universe')).toEqual([]);
   });
 
@@ -102,6 +110,7 @@ describe('the sourced attributes of the tracked stocks (content/stocks)', () => 
         expect(s.sets.length, `${chain} ${s.symbol}`).toBeGreaterThan(0);
   });
 
+  // The facts of the security, not of a chain's token: what the token is has its own source per chain.
   it('one listed security carries the same facts on every chain', () => {
     const facts = (s: StockAttributesFile['stocks'][number]) => ({
       kind: s.kind,
@@ -112,7 +121,6 @@ describe('the sourced attributes of the tracked stocks (content/stocks)', () => 
       subIndustry: s.subIndustry,
       keywords: s.keywords,
       tracks: s.tracks,
-      sources: s.sources,
       unverified: s.unverified,
     });
     const onSolana = new Map(stocks.solana.stocks.map((s) => [s.underlying, s]));
@@ -122,6 +130,21 @@ describe('the sourced attributes of the tracked stocks (content/stocks)', () => 
       expect(facts(s), s.underlying).toEqual(
         facts(onSolana.get(s.underlying) as StockAttributesFile['stocks'][number]),
       );
+  });
+
+  // Found by the review of Oct 6: the Robinhood rows of 16 securities cited the Solana issuer's pages.
+  it('says what each token is from its own issuer: Robinhood\u2019s registry there, Backed\u2019s page on Solana', () => {
+    const hosts = (s: StockAttributesFile['stocks'][number]) =>
+      s.sources.map((source) => new URL(source.url).host);
+    for (const s of stocks.robinhood.stocks) {
+      expect(hosts(s), `robinhood ${s.symbol}`).toContain('api.robinhood.com');
+      expect(hosts(s), `robinhood ${s.symbol}`).not.toContain('assets.backed.fi');
+      expect(s.note ?? '', `robinhood ${s.symbol}`).not.toMatch(/xStock/i);
+    }
+    for (const s of stocks.solana.stocks) {
+      expect(hosts(s), `solana ${s.symbol}`).toContain('assets.backed.fi');
+      expect(hosts(s), `solana ${s.symbol}`).not.toContain('api.robinhood.com');
+    }
   });
 
   it('writes one value one way: no two spellings of a sector, an industry or a sub-industry', () => {
@@ -187,14 +210,24 @@ describe('the stock labels (content/themes)', () => {
     }
   });
 
-  it('a confirmed list names the decision that confirmed it, and docs/GATES.md has that row', () => {
+  // Membership is a person's call (gate THEMES): a list is confirmed here, by name, with the decision
+  // that confirmed it, or it is proposed. Confirming a list means adding it to this table with its
+  // gate row, in the same change: a status flipped in a file alone fails.
+  const CONFIRMED: Record<string, string> = { 'solana/ai': 'THEME-AI-SOLANA' };
+  it('the confirmed lists are exactly the ones a recorded decision confirmed; every other is proposed', () => {
     const gates = readFileSync(join(ROOT, 'docs/GATES.md'), 'utf8');
     const confirmed = labels.filter((l) => l.list.status === 'confirmed');
-    // The Solana AI list (gate THEME-AI-SOLANA) is confirmed; no test here confirms another.
-    expect(confirmed.map((l) => `${l.chain}/${l.list.slug}`)).toContain('solana/ai');
+    expect(confirmed.map((l) => `${l.chain}/${l.list.slug}`).sort()).toEqual(
+      Object.keys(CONFIRMED).sort(),
+    );
     for (const { chain, file, list } of confirmed) {
-      expect(list.gate, `${chain}/${file}`).toBeDefined();
+      expect(list.gate, `${chain}/${file}`).toBe(CONFIRMED[`${chain}/${list.slug}`]);
       expect(gates, `${chain}/${file}`).toContain(`| **${list.gate}** |`);
     }
+    for (const { chain, file, list } of labels)
+      if (list.status !== 'confirmed') {
+        expect(list.status, `${chain}/${file}`).toBe('proposed');
+        expect(list.gate, `${chain}/${file}`).toBeUndefined();
+      }
   });
 });

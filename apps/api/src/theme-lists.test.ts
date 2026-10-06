@@ -15,16 +15,16 @@ describe('loadThemeLists', () => {
     const solana = loadThemeLists('solana');
     // The Solana AI list is confirmed (gate THEME-AI-SOLANA). The stock labels beside it are proposed
     // until a person confirms each (gate THEMES); tests/stock-labels.test.ts holds what they contain.
-    expect(solana.map((t) => [t.slug, t.status, t.members.length])).toContainEqual([
-      'ai',
-      'confirmed',
-      7,
-    ]);
+    // Exactly one list is confirmed, as before the labels: a status flipped in a file fails here.
+    expect(
+      solana.filter((t) => t.status === 'confirmed').map((t) => [t.slug, t.members.length]),
+    ).toEqual([['ai', 7]]);
     expect(solana.length).toBeGreaterThan(1);
     expect(solana.every((t) => t.chain === 'solana')).toBe(true);
     const robinhood = loadThemeLists('robinhood');
     expect(robinhood.length).toBeGreaterThan(1);
     expect(robinhood.every((t) => t.chain === 'robinhood')).toBe(true);
+    expect(robinhood.filter((t) => t.status === 'confirmed')).toEqual([]);
     expect(loadThemeLists('base')).toEqual([]);
   });
 

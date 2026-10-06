@@ -1,8 +1,8 @@
 {
   "slug": "ev-autonomy",
   "name": {
-    "en": "Electric vehicles and autonomy",
-    "pt": "Veículos elétricos e autonomia"
+    "en": "Electric vehicles and self-driving",
+    "pt": "Veículos elétricos e direção autônoma"
   },
   "chain": "robinhood",
   "version": 1,

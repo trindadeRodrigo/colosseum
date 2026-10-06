@@ -9,7 +9,7 @@
   "curator": "Rodrigo",
   "status": "proposed",
   "decidedOn": "2026-10-06",
-  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/solana.json; the membership is Rodrigo's to confirm (gate THEMES). Companies whose business or core plan is crypto. A company that only holds bitcoin in its treasury (GameStop, Trump Media, Tesla) is left out, and so is STRC, a preferred stock.",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/solana.json; the membership is Rodrigo's to confirm (gate THEMES). Companies whose business or core plan is crypto. A company that only holds bitcoin in its treasury (GameStop, Tesla) is left out, and so is STRC, a preferred stock.",
   "members": [
     {
       "symbol": "COINx",
@@ -35,8 +35,8 @@
     {
       "symbol": "MSTRx",
       "reason": {
-        "en": "MSTR's issuer, formerly MicroStrategy, holds bitcoin as its main treasury reserve asset",
-        "pt": "a emissora de MSTR, antes MicroStrategy, mantém bitcoin como principal ativo de reserva de tesouraria"
+        "en": "the company behind MSTR, formerly MicroStrategy, holds bitcoin as its main treasury reserve asset",
+        "pt": "a empresa por trás de MSTR, antes MicroStrategy, mantém bitcoin como principal ativo de reserva de tesouraria"
       }
     }
   ]

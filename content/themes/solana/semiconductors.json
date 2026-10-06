@@ -9,7 +9,7 @@
   "curator": "Rodrigo",
   "status": "proposed",
   "decidedOn": "2026-10-06",
-  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/solana.json; the membership is Rodrigo's to confirm (gate THEMES). Sandisk is classified under technology hardware, not semiconductors; it is here because its filing calls it a semiconductor memory company. IonQ and Rigetti are classified under semiconductors and are left to the quantum computing list.",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/solana.json; the membership is Rodrigo's to confirm (gate THEMES). Nvidia is the one tracked chip maker on Solana.",
   "members": [
     {
       "symbol": "NVDAx",

@@ -25,8 +25,8 @@
       "sets": ["cut", "shelf"],
       "sources": [
         {
-          "url": "https://assets.backed.fi/products/apple-xstock",
-          "title": "Apple xStock - Backed Assets (issuer's product page: AAPLx tracks Apple Inc.)",
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Apple, ISIN US0378331005",
           "readOn": "2026-10-06"
         },
         {
@@ -161,8 +161,8 @@
       "sets": ["cut", "shelf"],
       "sources": [
         {
-          "url": "https://assets.backed.fi/products/amazon-xstock",
-          "title": "Amazon xStock - Backed Assets (issuer's product page: AMZNx tracks Amazon.com, Inc.)",
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Amazon, ISIN US0231351067",
           "readOn": "2026-10-06"
         },
         {
@@ -186,7 +186,7 @@
     {
       "symbol": "ASML",
       "underlying": "ASML",
-      "kind": "adr",
+      "kind": "common",
       "company": "ASML Holding N.V.",
       "headquarters": "Netherlands",
       "sector": "Information Technology",
@@ -200,7 +200,7 @@
         "metrology and inspection"
       ],
       "tracks": null,
-      "sets": ["shelf"],
+      "sets": ["thin"],
       "sources": [
         {
           "url": "https://api.robinhood.com/rhj/assets",
@@ -234,7 +234,7 @@
         }
       ],
       "unverified": [],
-      "note": "New York shares listed on Nasdaq; shares also listed on Euronext Amsterdam; headquartered in Veldhoven, the Netherlands."
+      "note": "New York registry shares of a Dutch company, listed on Nasdaq; shares also listed on Euronext Amsterdam; headquartered in Veldhoven, the Netherlands."
     },
     {
       "symbol": "BABA",
@@ -305,7 +305,7 @@
       "subIndustry": "Application Software",
       "keywords": ["bitcoin mining", "data centers", "power assets"],
       "tracks": null,
-      "sets": ["shelf"],
+      "sets": ["thin"],
       "sources": [
         {
           "url": "https://api.robinhood.com/rhj/assets",
@@ -343,7 +343,7 @@
           "readOn": "2026-10-06"
         }
       ],
-      "unverified": [],
+      "unverified": ["industry", "subIndustry"],
       "note": "Fidelity's fund report files CleanSpark under Application Software, alongside other bitcoin miners, while Wikipedia's S&P 600 list shows Internet Services & Infrastructure; the filing calls CleanSpark a data center developer that is pursuing AI and HPC hosting."
     },
     {
@@ -368,8 +368,8 @@
       "sets": ["cut", "shelf"],
       "sources": [
         {
-          "url": "https://assets.backed.fi/products/coinbase-xstock",
-          "title": "Coinbase xStock - Backed Assets (issuer's product page: COINx tracks Coinbase Global, Inc.)",
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Coinbase, ISIN US19260Q1076",
           "readOn": "2026-10-06"
         },
         {
@@ -449,8 +449,8 @@
       "sets": ["cut", "shelf"],
       "sources": [
         {
-          "url": "https://assets.backed.fi/products/circle-xstock",
-          "title": "Circle xStock - Backed Assets (issuer's product page: CRCLx tracks Circle Internet Group)",
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Circle Internet Group, ISIN US1725731079",
           "readOn": "2026-10-06"
         },
         {
@@ -485,7 +485,7 @@
         }
       ],
       "unverified": ["subIndustry"],
-      "note": "Class A common stock on the NYSE. Not in the S&P 500. Sector read on iShares' IGV holdings list (Information Technology, not Financials); industry Software follows from that fund's published breakdown, where every Information Technology holding is Application Software or Systems Software; which of the two was not read on a published page, so the sub-industry is my assignment."
+      "note": "Class A common stock on the NYSE. Not in the S&P 500. Sector read on iShares' IGV holdings list (Information Technology, not Financials); industry Software follows from that fund's published breakdown, where every Information Technology holding is Application Software or Systems Software; which of the two was not read on a published page, so the sub-industry is an assignment, not a reading."
     },
     {
       "symbol": "CRWV",
@@ -498,7 +498,7 @@
       "subIndustry": "Internet Services & Infrastructure",
       "keywords": ["ai cloud", "gpu compute", "data centers", "ai model training", "ai inference"],
       "tracks": null,
-      "sets": ["shelf"],
+      "sets": ["thin"],
       "sources": [
         {
           "url": "https://api.robinhood.com/rhj/assets",
@@ -632,7 +632,7 @@
       "subIndustry": null,
       "keywords": ["south korea", "south korean equities", "emerging markets"],
       "tracks": "MSCI Korea 25/50 Index",
-      "sets": ["shelf"],
+      "sets": ["thin"],
       "sources": [
         {
           "url": "https://api.robinhood.com/rhj/assets",
@@ -667,8 +667,8 @@
       "sets": ["cut", "shelf"],
       "sources": [
         {
-          "url": "https://assets.backed.fi/products/gold-xstock",
-          "title": "Gold xStock - Backed Assets (issuer's product page: GLDx tracks SPDR Gold Shares)",
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): SPDR Gold Trust, ISIN US78463V1070",
           "readOn": "2026-10-06"
         },
         {
@@ -712,8 +712,8 @@
       "sets": ["cut", "shelf"],
       "sources": [
         {
-          "url": "https://assets.backed.fi/products/gamestop-xstock",
-          "title": "Gamestop xStock - Backed Assets (issuer's product page: GMEx tracks GameStop Corp.)",
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): GameStop, ISIN US36467W1099",
           "readOn": "2026-10-06"
         },
         {
@@ -761,8 +761,8 @@
       "sets": ["cut", "shelf"],
       "sources": [
         {
-          "url": "https://assets.backed.fi/products/alphabet-xstock",
-          "title": "Alphabet xStock - Backed Assets (issuer's product page: GOOGLx tracks Alphabet Inc. Class A)",
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Alphabet Class A, ISIN US02079K3059",
           "readOn": "2026-10-06"
         },
         {
@@ -896,7 +896,7 @@
         "semiconductor foundry"
       ],
       "tracks": null,
-      "sets": ["shelf"],
+      "sets": ["thin"],
       "sources": [
         {
           "url": "https://api.robinhood.com/rhj/assets",
@@ -1007,8 +1007,8 @@
       "sets": ["cut", "shelf"],
       "sources": [
         {
-          "url": "https://assets.backed.fi/products/meta-xstock",
-          "title": "Meta xStock - Backed Assets (issuer's product page: METAx tracks Meta Platforms, Inc.)",
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Meta Platforms, ISIN US30303M1027",
           "readOn": "2026-10-06"
         },
         {
@@ -1051,8 +1051,8 @@
       "sets": ["cut", "shelf"],
       "sources": [
         {
-          "url": "https://assets.backed.fi/products/microsoft-xstock",
-          "title": "Microsoft xStock - Backed Assets (issuer's product page: MSFTx tracks Microsoft Corporation)",
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Microsoft, ISIN US5949181045",
           "readOn": "2026-10-06"
         },
         {
@@ -1093,8 +1093,8 @@
       "sets": ["cut", "shelf"],
       "sources": [
         {
-          "url": "https://assets.backed.fi/products/microstrategy-xstock",
-          "title": "MicroStrategy xStock - Backed Assets (issuer's product page: MSTRx tracks the stock with symbol MSTR, ISIN US5949724083)",
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Strategy Inc., ISIN US5949724083",
           "readOn": "2026-10-06"
         },
         {
@@ -1129,7 +1129,7 @@
         }
       ],
       "unverified": ["subIndustry"],
-      "note": "Class A common stock. Renamed from MicroStrategy Incorporated to Strategy Inc on August 11, 2025; the token issuer's page still uses the old name. Not in the S&P 500: sector read on iShares' IGV holdings list; industry Software follows from that fund's published breakdown, where every Information Technology holding is Application Software or Systems Software; which of the two was not read on a published page, so the sub-industry is my assignment."
+      "note": "Class A common stock. Renamed from MicroStrategy Incorporated to Strategy Inc on August 11, 2025. Not in the S&P 500: sector read on iShares' IGV holdings list; industry Software follows from that fund's published breakdown, where every Information Technology holding is Application Software or Systems Software; which of the two was not read on a published page, so the sub-industry is an assignment, not a reading."
     },
     {
       "symbol": "MU",
@@ -1185,7 +1185,7 @@
       "subIndustry": "Systems Software",
       "keywords": ["ai cloud", "gpu compute", "data centers", "ai infrastructure"],
       "tracks": null,
-      "sets": ["shelf"],
+      "sets": ["thin"],
       "sources": [
         {
           "url": "https://api.robinhood.com/rhj/assets",
@@ -1244,8 +1244,8 @@
       "sets": ["cut", "shelf"],
       "sources": [
         {
-          "url": "https://assets.backed.fi/products/nvidia-xstock",
-          "title": "NVIDIA xStock - Backed Assets (issuer's product page: NVDAx tracks NVIDIA Corp)",
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): NVIDIA, ISIN US67066G1040",
           "readOn": "2026-10-06"
         },
         {
@@ -1285,7 +1285,7 @@
         "engineered systems"
       ],
       "tracks": null,
-      "sets": ["shelf"],
+      "sets": ["thin"],
       "sources": [
         {
           "url": "https://api.robinhood.com/rhj/assets",
@@ -1323,7 +1323,7 @@
           "readOn": "2026-10-06"
         }
       ],
-      "unverified": [],
+      "unverified": ["subIndustry"],
       "note": "Fund reports (Fidelity MSCI Information Technology Index ETF, Alger) list Oracle under Systems Software; Wikipedia's S&P 500 list shows Application Software."
     },
     {
@@ -1348,8 +1348,8 @@
       "sets": ["cut", "shelf"],
       "sources": [
         {
-          "url": "https://assets.backed.fi/products/palantir-xstock",
-          "title": "Palantir xStock - Backed Assets (issuer's product page: PLTRx tracks Palantir Technologies Inc.)",
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Palantir Technologies, ISIN US69608A1088",
           "readOn": "2026-10-06"
         },
         {
@@ -1391,8 +1391,8 @@
       "sets": ["cut", "shelf"],
       "sources": [
         {
-          "url": "https://assets.backed.fi/products/nasdaq-xstock",
-          "title": "Nasdaq xStock - Backed Assets (issuer's product page: QQQx tracks Invesco QQQ Trust)",
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Invesco QQQ, ISIN US46090E1038",
           "readOn": "2026-10-06"
         },
         {
@@ -1407,7 +1407,7 @@
         }
       ],
       "unverified": [],
-      "note": "The token is named Nasdaq xStock but tracks this fund, not the index itself; the Nasdaq-100 leaves out companies classified as financials."
+      "note": "The token references this fund, not the index itself; the Nasdaq-100 leaves out companies classified as financials."
     },
     {
       "symbol": "RDDT",
@@ -1462,7 +1462,7 @@
         "quantum cloud services"
       ],
       "tracks": null,
-      "sets": ["shelf"],
+      "sets": ["thin"],
       "sources": [
         {
           "url": "https://api.robinhood.com/rhj/assets",
@@ -1510,7 +1510,7 @@
         "space systems"
       ],
       "tracks": null,
-      "sets": ["shelf"],
+      "sets": ["thin"],
       "sources": [
         {
           "url": "https://api.robinhood.com/rhj/assets",
@@ -1666,8 +1666,8 @@
       "sets": ["cut", "shelf"],
       "sources": [
         {
-          "url": "https://assets.backed.fi/products/spacex-xstock",
-          "title": "SpaceX xStock - Backed Assets (issuer's product page: SPCXx tracks Space Exploration Technologies Corp., symbol SPCX, ISIN US84615Q1031)",
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Space Exploration Technologies Corp. Class A Common Stock, ISIN US84615Q1031",
           "readOn": "2026-10-06"
         },
         {
@@ -1708,8 +1708,8 @@
       "sets": ["cut", "shelf"],
       "sources": [
         {
-          "url": "https://assets.backed.fi/products/sp500-xstock",
-          "title": "SP500 xStock - Backed Assets (issuer's product page: SPYx tracks SPDR S&P 500 ETF Trust)",
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): SPDR S&P 500 ETF Trust, ISIN US78462F1030",
           "readOn": "2026-10-06"
         },
         {
@@ -1724,7 +1724,7 @@
         }
       ],
       "unverified": [],
-      "note": "The token is named SP500 xStock but tracks this fund, not the index itself. A unit investment trust; its prospectus dated January 26, 2026 names it State Street SPDR S&P 500 ETF Trust, formerly SPDR S&P 500 ETF Trust."
+      "note": "The token references this fund, not the index itself. A unit investment trust; its prospectus dated January 26, 2026 names it State Street SPDR S&P 500 ETF Trust, formerly SPDR S&P 500 ETF Trust."
     },
     {
       "symbol": "TSLA",
@@ -1748,8 +1748,8 @@
       "sets": ["cut", "shelf"],
       "sources": [
         {
-          "url": "https://assets.backed.fi/products/tesla-xstock",
-          "title": "Tesla xStock - Backed Assets (issuer's product page: TSLAx tracks Tesla, Inc.)",
+          "url": "https://api.robinhood.com/rhj/assets",
+          "title": "Robinhood stock token registry (the assets endpoint named in docs.robinhood.com/chain/stock-tokens): Tesla, ISIN US88160R1014",
           "readOn": "2026-10-06"
         },
         {
@@ -1847,7 +1847,7 @@
         "mining"
       ],
       "tracks": null,
-      "sets": ["shelf"],
+      "sets": ["thin"],
       "sources": [
         {
           "url": "https://api.robinhood.com/rhj/assets",

@@ -16,8 +16,12 @@ const Text = z.string().trim().min(1);
 
 /** What a row is of: a company's common share, a depositary receipt, a preferred share, or a fund. */
 export const STOCK_KINDS = ['common', 'adr', 'preferred', 'fund'] as const;
-/** Why a row is tracked: the sets it is in. A row names at least one. */
-export const STOCK_SETS = ['universe', 'shelf', 'cut'] as const;
+/**
+ * Why a row is tracked: the sets it is in. A row names at least one. `universe`: a stock of gate
+ * UNIVERSE on Solana. `cut`: a stock of the 80% cut on Robinhood Chain. `shelf`: a token the launch
+ * shelf lists. `thin`: a token the launch shelf's seed measured too thin to list.
+ */
+export const STOCK_SETS = ['universe', 'shelf', 'cut', 'thin'] as const;
 /** The fields of a row that a source read supports, or does not (`unverified`). */
 export const STOCK_FACTS = [
   'underlying',

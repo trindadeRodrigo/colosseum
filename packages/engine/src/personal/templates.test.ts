@@ -138,6 +138,40 @@ describe('explanation templates', () => {
     }
   });
 
+  // A matched theme's lines print the attributes as they are written (gate THEME-MATCHED): the value
+  // matched by, and each stock's company. Found by the review of Oct 6: nothing held that text to the
+  // ban. A company's legal name is a fact and is held to the ban on advice and promises only, not to
+  // the brand's words ("Strategy Inc" is a name, not our voice).
+  it('holds the stock attributes a matched line prints to the same ban', () => {
+    const root = join(import.meta.dirname, '../../../../content/stocks');
+    for (const file of readdirSync(root)) {
+      const { stocks } = JSON.parse(readFileSync(join(root, file), 'utf8')) as {
+        stocks: {
+          symbol: string;
+          company: string;
+          sector: string | null;
+          industry: string | null;
+          subIndustry: string | null;
+          keywords: string[];
+          tracks: string | null;
+        }[];
+      };
+      expect(stocks.length, file).toBeGreaterThan(0);
+      for (const row of stocks) {
+        const values = [row.sector, row.industry, row.subIndustry, row.tracks, ...row.keywords];
+        for (const text of values.flatMap((v) => (v === null ? [] : [v]))) {
+          expect(text, `${file} ${row.symbol}`).not.toMatch(/[.!]$/);
+          for (const lang of LANGUAGES)
+            for (const pattern of [...BANNED[lang], ...BRAND_BANNED])
+              expect(text, `${file} ${row.symbol} against ${pattern}`).not.toMatch(pattern);
+        }
+        for (const lang of LANGUAGES)
+          for (const pattern of BANNED[lang])
+            expect(row.company, `${file} ${row.symbol} against ${pattern}`).not.toMatch(pattern);
+      }
+    }
+  });
+
   it('holds the curated reasons of the theme lists to the same ban: a line shows them', () => {
     const root = join(import.meta.dirname, '../../../../content/themes');
     for (const chain of readdirSync(root))

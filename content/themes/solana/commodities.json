@@ -9,7 +9,7 @@
   "curator": "Rodrigo",
   "status": "proposed",
   "decidedOn": "2026-10-06",
-  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/solana.json; the membership is Rodrigo's to confirm (gate THEMES). Three funds that hold a commodity, and USA Rare Earth, a company that mines and processes one.",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/solana.json; the membership is Rodrigo's to confirm (gate THEMES). One fund, which holds gold.",
   "members": [
     {
       "symbol": "GLDx",

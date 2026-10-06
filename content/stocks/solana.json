@@ -186,7 +186,7 @@
         }
       ],
       "unverified": ["subIndustry"],
-      "note": "Class A common stock on the NYSE. Not in the S&P 500. Sector read on iShares' IGV holdings list (Information Technology, not Financials); industry Software follows from that fund's published breakdown, where every Information Technology holding is Application Software or Systems Software; which of the two was not read on a published page, so the sub-industry is my assignment."
+      "note": "Class A common stock on the NYSE. Not in the S&P 500. Sector read on iShares' IGV holdings list (Information Technology, not Financials); industry Software follows from that fund's published breakdown, where every Information Technology holding is Application Software or Systems Software; which of the two was not read on a published page, so the sub-industry is an assignment, not a reading."
     },
     {
       "symbol": "GLDx",
@@ -551,7 +551,7 @@
         }
       ],
       "unverified": ["subIndustry"],
-      "note": "Class A common stock. Renamed from MicroStrategy Incorporated to Strategy Inc on August 11, 2025; the token issuer's page still uses the old name. Not in the S&P 500: sector read on iShares' IGV holdings list; industry Software follows from that fund's published breakdown, where every Information Technology holding is Application Software or Systems Software; which of the two was not read on a published page, so the sub-industry is my assignment."
+      "note": "Class A common stock. Renamed from MicroStrategy Incorporated to Strategy Inc on August 11, 2025; the token issuer's page still uses the old name. Not in the S&P 500: sector read on iShares' IGV holdings list; industry Software follows from that fund's published breakdown, where every Information Technology holding is Application Software or Systems Software; which of the two was not read on a published page, so the sub-industry is an assignment, not a reading."
     },
     {
       "symbol": "NVDAx",
@@ -814,7 +814,7 @@
         }
       ],
       "unverified": ["subIndustry"],
-      "note": "Preferred stock, not common: Variable Rate Series A Perpetual Stretch Preferred Stock of Strategy Inc, listed on Nasdaq, with cumulative dividends paid monthly at a rate the company can adjust. Sector, industry and sub-industry are those of the issuer (see MSTR), not of the security; the sub-industry is my assignment."
+      "note": "Preferred stock, not common: Variable Rate Series A Perpetual Stretch Preferred Stock of Strategy Inc, listed on Nasdaq, with cumulative dividends paid monthly at a rate the company can adjust. Sector, industry and sub-industry are those of the issuer (see MSTR), not of the security; the sub-industry is an assignment, not a reading."
     },
     {
       "symbol": "TSLAx",
