@@ -20,13 +20,24 @@ const EVM = '0x204faca1764b154221e35c0d20abb3c525710498';
 export const PLAN_ID = '0f6a3b9e-2c4d-4e5f-8a7b-1c2d3e4f5a6b';
 export const ORDER_ID = '5b1e7c2d-3a4f-4b6c-9d8e-7f6a5b4c3d2e';
 
+/**
+ * The ids of the assets these fixtures buy, as the test network's committed deployment names them:
+ * on Solana its tUSDC, tSPYx and tGLDx; on Robinhood Chain its tUSDG, tSPY and tGLD
+ * (deployments/robinhood-testnet.json). Any other chain keeps made-up ids.
+ */
+export function assetsOn(chain: ChainId) {
+  if (chain === 'robinhood')
+    return { cash: 'robinhood:tusdg', spy: 'robinhood:tspy', gold: 'robinhood:tgld' };
+  return { cash: `${chain}:usdc`, spy: `${chain}:spyx`, gold: `${chain}:gldx` };
+}
+
 export function linesOn(chain: ChainId): BasketLine[] {
-  const cash = chain === 'solana' ? 'solana:usdc' : `${chain}:usdc`;
+  const { cash, spy, gold } = assetsOn(chain);
   return [
-    { chain, assetId: `${chain}:spyx`, weightBps: 6000, amountUsd: 24_000, reasons: [] },
+    { chain, assetId: spy, weightBps: 6000, amountUsd: 24_000, reasons: [] },
     {
       chain,
-      assetId: `${chain}:gldx`,
+      assetId: gold,
       weightBps: 3500,
       amountUsd: 14_000,
       reasons: [{ rule: 'gold', inputs: [], params: {}, text: 'Gold steadies the plan.' }],
@@ -103,7 +114,14 @@ export function planOn(chain: ChainId = 'solana', provenance = 'sandbox' as cons
 export const LEG_CREATE = '11111111-1111-4111-8111-111111111111';
 export const LEG_SWAP = '22222222-2222-4222-8222-222222222222';
 
-/** A buy of $10 on a chain: open the vault with the deposit, then one swap. */
+/** The leg that approves the deposit on an EVM chain. */
+export const LEG_APPROVE = '33333333-3333-4333-8333-333333333333';
+
+/**
+ * A buy of $10 on a chain, as the API plans it. Solana: open the vault with the deposit, then one swap
+ * (no trade rides in a create there). An EVM chain: allow the deposit to the plan's vault, then open
+ * the vault with the deposit and the trade in the same step (`tradesInCreate`, `needsApprove`).
+ */
 export function orderOn(chain: ChainId = 'solana', minOutRaw = '990000'): OrderDetail {
   const evm = chain !== 'solana';
   const leg = {
@@ -120,31 +138,49 @@ export function orderOn(chain: ChainId = 'solana', minOutRaw = '990000'): OrderD
     provenance: 'sandbox',
     status: 'planned',
   } as const;
+  const { cash, spy } = assetsOn(chain);
+  const trade = { sell: cash, buy: spy, amountInRaw: '6000000' };
+  const expected = { inRaw: '6000000', outRaw: '1000000', minOutRaw, costBps: 10 };
+  const legs = evm
+    ? [
+        {
+          ...leg,
+          id: LEG_APPROVE,
+          seq: 0,
+          kind: 'approve',
+          cashRaw: '10000000',
+          trades: [],
+          expected: [],
+        },
+        {
+          ...leg,
+          id: LEG_CREATE,
+          seq: 1,
+          kind: 'create_vault',
+          cashRaw: '10000000',
+          trades: [trade],
+          expected: [expected],
+        },
+      ]
+    : [
+        {
+          ...leg,
+          id: LEG_CREATE,
+          seq: 0,
+          kind: 'create_vault',
+          cashRaw: '10000000',
+          trades: [],
+          expected: [],
+        },
+        { ...leg, id: LEG_SWAP, seq: 1, kind: 'swap', trades: [trade], expected: [expected] },
+      ];
   return Order.parse({
     id: ORDER_ID,
     type: 'buy',
     owner: evm ? { evm: EVM } : { solana: SOLANA },
     summary: 'server text',
     depositRaw: '10000000',
-    legs: [
-      {
-        ...leg,
-        id: LEG_CREATE,
-        seq: 0,
-        kind: 'create_vault',
-        cashRaw: '10000000',
-        trades: [],
-        expected: [],
-      },
-      {
-        ...leg,
-        id: LEG_SWAP,
-        seq: 1,
-        kind: 'swap',
-        trades: [{ sell: `${chain}:usdc`, buy: `${chain}:spyx`, amountInRaw: '6000000' }],
-        expected: [{ inRaw: '6000000', outRaw: '1000000', minOutRaw, costBps: 10 }],
-      },
-    ],
+    legs,
     warnings: [],
     needsConsent: [],
     fees: [],
@@ -169,7 +205,10 @@ export function doneOrder(chain: ChainId = 'solana'): OrderDetail {
       status: 'confirmed',
       attempt: 1,
       txId: `sig${i}`,
-      explorerUrl: `https://explorer.example/tx/sig${i}?cluster=devnet`,
+      explorerUrl:
+        chain === 'robinhood'
+          ? `https://explorer.testnet.chain.robinhood.com/tx/0x${String(i).repeat(64)}`
+          : `https://explorer.example/tx/sig${i}?cluster=devnet`,
     })),
   };
 }

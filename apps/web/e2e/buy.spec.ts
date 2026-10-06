@@ -10,6 +10,9 @@ import { dictionary } from '../i18n';
 // light and in dark, and for no sideways scroll.
 
 const en = dictionary('en');
+
+// These run on the stub's Solana; the Robinhood Chain run (E2E_CHAIN=robinhood) is buy-robinhood.spec.ts.
+test.skip(process.env.E2E_CHAIN === 'robinhood', 'the stub runs Robinhood Chain');
 const STUB = `http://localhost:${process.env.E2E_API_PORT ?? 3901}`;
 /** Screenshots are taken only for a run that names a folder for them (SCREENSHOTS_DIR). */
 const SHOTS = process.env.SCREENSHOTS_DIR;
@@ -80,6 +83,40 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
   await expect(page).toHaveURL(/\/goal$/);
   // the goal screen reads what the landing handed it
   await expect(page.getByText(en.goal.sheet.title).first()).toBeVisible();
+});
+
+test('the two sample cases fit their cards on a phone and a tablet, in English and Portuguese', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  for (const lang of ['en', 'pt'] as const) {
+    await context.addCookies([{ name: 'tf-lang', value: lang, url: baseURL ?? '' }]);
+    for (const width of [360, 390, 768]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto('/');
+      await expect(page.locator('article[data-ui="showcase-case"]')).toHaveCount(2);
+      // every box inside a case that is drawn at all stays within the case's own edges; a box inside
+      // a part that scrolls on its own (the chart on a phone) is held to that part instead
+      const out = await page.evaluate(() =>
+        [...document.querySelectorAll('article[data-ui="showcase-case"]')].flatMap((card) => {
+          const edge = card.getBoundingClientRect();
+          const scrolls = (el: Element) => {
+            for (let a = el.parentElement; a && a !== card; a = a.parentElement)
+              if (/auto|scroll|hidden|clip/.test(getComputedStyle(a).overflowX)) return true;
+            return false;
+          };
+          return [...card.querySelectorAll('*')].flatMap((el) => {
+            const r = el.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0 || el.closest('.sr-only') || scrolls(el)) return [];
+            const over = r.right - edge.right > 0.5 || edge.left - r.left > 0.5;
+            return over ? [`${el.tagName} "${(el.textContent ?? '').slice(0, 30)}"`] : [];
+          });
+        }),
+      );
+      expect(out, `${lang} at ${width}px`).toEqual([]);
+    }
+  }
 });
 
 async function toReview(page: Page) {

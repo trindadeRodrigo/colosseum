@@ -25,7 +25,8 @@ import { useSharedPerson } from './use-person';
 // order screen and signed through the executor with the consent `publish`: the guard holds the bytes to
 // this form's id, text and weights, and hashes the text itself (AGT-4). The limits a portfolio follows
 // are checked here first so the person is told before anything is asked; the server and the registry
-// check them again. Solana only for now: Robinhood Chain's registry calls wait for EVM-3.
+// check them again. Solana only for now: on an EVM chain the form is not shown, since the guard does not
+// sign a publish there until AGT-4 and our server refuses one.
 
 export const LIMITS = { min: 3, max: 12, low: 200, high: 5000, step: 50, chars: 280 } as const;
 
@@ -171,6 +172,13 @@ export function PublishScreen() {
         <Link href="/sign-in?next=/publish" className={buttonClass({ variant: 'secondary' })}>
           {t.shell.signIn}
         </Link>
+      </section>
+    );
+  if (!person.publishable)
+    return (
+      <section className="flex flex-col items-start gap-4">
+        <h1 className="font-sans text-h2 font-semibold">{p.title}</h1>
+        <p className="max-w-(--tf-measure-body) text-body">{p.problems.chain}</p>
       </section>
     );
 

@@ -11,6 +11,9 @@ import { dictionary } from '../i18n';
 // checked with axe at 375 px, in light and in dark, and for no sideways scroll.
 
 const en = dictionary('en');
+
+// These run on the stub's Solana; the Robinhood Chain run (E2E_CHAIN=robinhood) is buy-robinhood.spec.ts.
+test.skip(process.env.E2E_CHAIN === 'robinhood', 'the stub runs Robinhood Chain');
 const STUB = `http://localhost:${process.env.E2E_API_PORT ?? 3901}`;
 const SHOTS = process.env.SCREENSHOTS_DIR;
 const shot = (name: string) => `${SHOTS}/${name}.png`;

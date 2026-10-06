@@ -6,6 +6,7 @@ import { useAccount } from '../account/AccountProvider';
 import { activityOf } from '../order/activity';
 import { readOrder } from '../order/order-api';
 import { type OrderRecord, recallOrders } from '../order/order-record';
+import { onMock } from '../order/readiness';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 
 // The orders this browser placed for the person, and what of them reached the chain: each read again
@@ -26,6 +27,7 @@ export function useVaultHistory(): VaultHistory {
   const { account } = useAccount();
   const chain = account.status === 'ready' ? account.chain : null;
   const userId = port.userId;
+  const mock = chain ? onMock(port, chain) : false;
   const [records, setRecords] = useState<OrderRecord[]>([]);
   const [activity, setActivity] = useState<Execution[]>([]);
   const [deposited, setDeposited] = useState<ReadonlySet<string>>(new Set());
@@ -63,7 +65,7 @@ export function useVaultHistory(): VaultHistory {
       setActivity(
         read
           .flatMap((answer) =>
-            answer.kind === 'read' ? activityOf(answer.order, t, explorer) : [],
+            answer.kind === 'read' ? activityOf(answer.order, t, explorer, mock) : [],
           )
           .sort((a, b) => b.at.localeCompare(a.at)),
       );
@@ -71,7 +73,7 @@ export function useVaultHistory(): VaultHistory {
     return () => {
       live = false;
     };
-  }, [ids, chain, apiFetch, t]);
+  }, [ids, chain, mock, apiFetch, t]);
 
   return { records, activity, deposited };
 }

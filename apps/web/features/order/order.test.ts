@@ -10,7 +10,7 @@ import { keepOrder, recallOrder } from './order-record';
 import { outcomeView, refusalKind, stepOf } from './order-view';
 import { recallPlan, rememberPlan } from './plan-store';
 import { targetsOfPlan } from './plan-terms';
-import { chainReady, deploymentsFor, networkFor } from './readiness';
+import { chainReady, deploymentsFor, explorerUrlFor, networkFor } from './readiness';
 import {
   LEG_CREATE,
   LEG_SWAP,
@@ -115,15 +115,28 @@ describe('what this browser keeps', () => {
 
 describe('which chains can be signed on', () => {
   it('takes the deployment from the file committed for this app’s network, never the API', () => {
-    // unset means the test network, and its file has Solana only until Robinhood Chain is deployed
+    // unset means the test network, and its file has Solana, and Robinhood Chain since ADE-2 deployed it
     expect(networkFor('solana', false)).toBe('testnet');
     expect(deploymentsFor('solana', false)?.solana?.family).toBe('solana');
     expect(chainReady('solana', false)).toBe(true);
-    expect(chainReady('robinhood', false)).toBe(false);
-    expect(deploymentsFor('robinhood', false)).toBeNull();
+    expect(networkFor('robinhood', false)).toBe('testnet');
+    expect(chainReady('robinhood', false)).toBe(true);
+    expect(deploymentsFor('robinhood', false)?.robinhood?.family).toBe('evm');
+    // Base is deployed on no network yet: nothing is signed there
+    expect(chainReady('base', false)).toBe(false);
+    expect(deploymentsFor('base', false)).toBeNull();
     // on the mock both are the mock's
     expect(networkFor('robinhood', true)).toBe('mock');
     expect(deploymentsFor('robinhood', true)?.robinhood?.family).toBe('mock');
+  });
+
+  it('links a transaction on Robinhood Chain to the test network’s explorer, never mainnet’s', () => {
+    const link = explorerUrlFor('robinhood', '0xab', false);
+    expect(link).toBe('https://explorer.testnet.chain.robinhood.com/tx/0xab');
+    expect(new URL(link ?? '').origin).not.toBe('https://explorer.chain.robinhood.com');
+    // the mock's transactions are no network's: the mock's own link
+    expect(explorerUrlFor('robinhood', '0xab', true)).toBe('mock://robinhood/tx/0xab');
+    expect(explorerUrlFor('robinhood', null, false)).toBeNull();
   });
 
   it('signs nothing on mainnet, which has no deployment file', () => {
@@ -319,7 +332,12 @@ describe('an order holds the amount the person typed, in committed units', () =>
     expect(units?.tokens['solana:spyx']).toEqual({ symbol: 'tSPYx', decimals: 8 });
     expect(unitsFor('solana', true)?.cash).toBe(deploymentsOf('mock').solana?.cash);
     expect(unitsFor('robinhood', true)?.cash).toBe(deploymentsOf('mock').robinhood?.cash);
-    expect(unitsFor('robinhood', false)).toBeNull();
+    // Robinhood Chain's test network: the units of its committed deployment, the names of its record
+    const robinhood = unitsFor('robinhood', false);
+    expect(robinhood?.cash).toBe(deploymentsOf('testnet').robinhood?.cash);
+    expect(robinhood?.tokens[robinhood.cash]).toEqual({ symbol: 'tUSDG', decimals: 6 });
+    expect(robinhood?.tokens['robinhood:tspy']).toEqual({ symbol: 'tSPY', decimals: 18 });
+    expect(unitsFor('base', false)).toBeNull();
   });
 
   it('takes every decimals from the deployment file the guard reads, and the mock’s from cashDecimals', () => {

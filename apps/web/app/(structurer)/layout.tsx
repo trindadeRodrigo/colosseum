@@ -5,8 +5,8 @@ import { plexMono } from '../fonts-mono';
 import '../globals.css';
 import { Providers } from './providers';
 
-// The pages written before the design system: the plan view, the partner embed and
-// the /risk pages. They keep the shell they had (the top bar with the wallet-adapter button, the
+// The pages written before the design system: the plan view, and the page for an address no route
+// has. They keep the shell they had (the top bar with the wallet-adapter button, the
 // disclaimer as footer text) until each is rebuilt on the primitives (WEB-2). `tf-system-faces` keeps
 // the system's own typefaces for them; the mono face is the one they already had.
 
