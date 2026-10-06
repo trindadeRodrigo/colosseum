@@ -13,7 +13,12 @@ export type VaultGoal = { goal: PlacedGoal; record: OrderRecord };
 
 /** The orders this browser placed into this vault, newest first. */
 export const ordersOfVault = (vault: Vault, records: readonly OrderRecord[]): OrderRecord[] =>
-  records.filter((r) => r.chain === vault.chain && basketOfPlan(r.proposalId) === vault.basketId);
+  records.filter(
+    (r) =>
+      r.chain === vault.chain &&
+      (r.approved?.order.basketId ?? basketOfPlan(r.proposalId, r.linked ? r.userId : null)) ===
+        vault.basketId,
+  );
 
 /** The goal of the newest of those orders that kept one, or null. */
 export function goalOfVault(vault: Vault, records: readonly OrderRecord[]): VaultGoal | null {

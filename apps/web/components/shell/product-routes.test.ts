@@ -605,7 +605,9 @@ describe('rule 3: no screen can reach a key', () => {
       'deployments,',
       // a plan's terms, or a shared portfolio's (planTermsOf, WEB-4)
       'plan: plan ?? {',
-      'basketId: basketIdOfPlan(input.plan.proposalId)',
+      // a plan's number: the order's, held to one this app works out (gate AGENT-LINK)
+      'const basketId = input.terms ? null : planNumberOf(order.basketId, input.plan);',
+      "basketId: basketId ?? '',",
       'consents: input.consents',
       'signed: localSigned',
       'chainRead: chainReadFor(',

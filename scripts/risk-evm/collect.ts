@@ -1,7 +1,9 @@
 import 'dotenv/config';
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { AssetList } from '@colosseum/schemas';
 import { CHAINS, type ChainConfig } from './config';
+import { type ListRun, listRun } from './listed';
 import { acquireLock, type MissedWhy, runLoop, type Slot } from './loop';
 import { collectOnce } from './run';
 import {
@@ -20,6 +22,9 @@ import {
 //   pnpm risk-evm:collect --loop          one run an hour until stopped
 //   pnpm risk-evm:collect --rediscover    look for the deepest pools again before the run
 //   pnpm risk-evm:collect --chain base    a chain that is switched off in config.ts
+//   pnpm risk-evm:collect --list          the tracked stocks of scripts/risk/universe/<chain>.json and every
+//                                         reachable pool of each (PLAN-UNIVERSE RU.6); also with --loop.
+//                                         Without it the run is the hand list of config.ts, as before.
 const args = process.argv.slice(2);
 const flag = (name: string) => args.includes(name);
 const option = (name: string) => {
@@ -31,6 +36,8 @@ const num = (name: string, fallback: number) => {
   return Number.isFinite(v) && v > 0 ? v : fallback;
 };
 
+/** "Every pool": a limit no token reaches. */
+const ALL_POOLS = Number.MAX_SAFE_INTEGER;
 /** A pool below this DexScreener liquidity is not worth a call. */
 const MIN_POOL_USD = 10_000;
 /** The pool list is looked up again once it is a day old: the deepest pool of a token changes slowly. */
@@ -45,6 +52,46 @@ if (chains.length === 0) {
 }
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** Where the asset lists are (DU2). */
+const LIST_DIR = process.env.RISK_UNIVERSE_DIR ?? 'scripts/risk/universe';
+/**
+ * `--list`: each chain's tokens and pools from its asset list and the cut that list names. A chain with
+ * no list file keeps the hand list of config.ts, and the run says so. A list whose cut is not on this
+ * machine, or is another cut, stops the run: the list holds counts, the cut holds the pools.
+ */
+const lists = new Map<string, { chain: ChainConfig; listed: ListRun }>();
+if (flag('--list')) {
+  for (const chain of chains) {
+    const listPath = join(LIST_DIR, `${chain.id}.json`);
+    if (!existsSync(listPath)) {
+      console.error(
+        `${listPath} is absent: ${chain.id} is collected from the hand list of config.ts`,
+      );
+      continue;
+    }
+    try {
+      const list = AssetList.parse(JSON.parse(readFileSync(listPath, 'utf8')));
+      const cutName = list.inputs.cut ?? '';
+      const cutPath = join(dir, cutName);
+      if (!cutName || !existsSync(cutPath))
+        throw new Error(
+          `${listPath} was written from ${cutName || 'no cut'}, which is not in ${dir}: run pnpm risk-evm:pareto, pnpm risk-evm:oracles and pnpm risk:universe ${chain.id} on this machine`,
+        );
+      const { tokens, listed } = listRun(chain, list, JSON.parse(readFileSync(cutPath, 'utf8')), {
+        list: listPath,
+        cut: cutName,
+      });
+      lists.set(chain.id, { chain: { ...chain, tokens }, listed });
+      console.error(
+        `${chain.id}: ${tokens.length} tracked stocks from ${listPath} (${cutName})${listed.handListNotTracked.length ? `; in config.ts and not tracked, not read in this run: ${listed.handListNotTracked.join(', ')}` : ''}`,
+      );
+    } catch (e) {
+      console.error(message(e));
+      process.exit(1);
+    }
+  }
+}
 const iso = (ms: number) => new Date(ms).toISOString();
 const log = (event: Record<string, unknown>) =>
   console.error(JSON.stringify({ at: new Date().toISOString(), ...event }));
@@ -71,11 +118,13 @@ let rediscover = flag('--rediscover');
 
 /** One attempt at one chain: the tokens named, or all of them. Holds the run lock while it measures. */
 async function attempt(
-  chain: ChainConfig,
+  configured: ChainConfig,
   slot: Slot,
   tokens: ReadonlySet<string> | null,
   n: number,
 ): Promise<Attempt> {
+  const fromList = lists.get(configured.id);
+  const chain = fromList?.chain ?? configured;
   const scheduledAt = iso(slot.at);
   let release: (() => void) | null = null;
   try {
@@ -84,7 +133,9 @@ async function attempt(
     if (!release) throw new Error(`another run holds ${join(dir, 'run.lock')}`);
     const s = await collectOnce(chain, {
       dir,
-      maxPools: num('RISK_EVM_MAX_POOLS', 3),
+      // the per-token pool limit is a setting: three on the hand list, every reachable pool on the asset list
+      maxPools: num('RISK_EVM_MAX_POOLS', fromList ? ALL_POOLS : 3),
+      listed: fromList?.listed,
       minLiquidityUsd: MIN_POOL_USD,
       poolsMaxAgeHours: POOLS_MAX_AGE_HOURS,
       rediscover,
@@ -141,7 +192,7 @@ async function runAll(
     rows.push(outcome.rows.length);
     const line = slotLine(
       event,
-      chain,
+      lists.get(chain.id)?.chain ?? chain,
       { scheduledAt: slot.at, startedAt, finishedAt: Date.now() },
       outcome,
     );
@@ -154,7 +205,7 @@ async function runAll(
 /** A scheduled hour that passed with no run at all. */
 function recordMissed(at: number, why: MissedWhy): void {
   for (const chain of chains) {
-    const line = missedLine(chain, at, Date.now(), why);
+    const line = missedLine(lists.get(chain.id)?.chain ?? chain, at, Date.now(), why);
     record(line);
     log({ ...line, event: 'slot_missed' });
   }

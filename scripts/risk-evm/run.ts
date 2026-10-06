@@ -28,9 +28,12 @@ import {
   type Side,
   sellAmounts,
 } from './curve';
+import { type ListRun, listCandidates, poolRows } from './listed';
+import { oracleCalls, oracleRows } from './oracle';
 import {
   cacheIsFresh,
   cachePath,
+  confirm,
   discover,
   type PoolCache,
   type PoolRef,
@@ -100,6 +103,12 @@ export type RunOptions = {
   poolsMaxAgeHours: number;
   rediscover: boolean;
   env?: Record<string, string | undefined>;
+  /**
+   * A run on the asset list (PLAN-UNIVERSE RU.6): the chain's tokens are the list's, each token's pools
+   * are the cut's reachable dollar pools confirmed on chain, and every reachable pool gets a row of its
+   * own in pools/<day>.jsonl. Absent = the run is as it always was.
+   */
+  listed?: ListRun;
   /** Measure only these tokens (by symbol): a second attempt within the hour fills in what the first missed. */
   only?: ReadonlySet<string> | null;
   /**
@@ -148,6 +157,22 @@ export type RunSummary = {
   httpRequests: number;
   durationMs: number;
   methodVersion: string;
+  /** A list run only: the files it read, the pools it was given and the pool rows it wrote. */
+  list?: {
+    list: string;
+    cut: string;
+    poolsConfirmed: number;
+    poolRows: number;
+    poolRowsQuoted: number;
+    poolRowsByReason: Record<string, number>;
+    poolsFile: string;
+    handListNotTracked: string[];
+    /** The oracle read of the run (RU.7): rows written, how many carry a price, and why not when it failed. */
+    oracleRows: number;
+    oracleRowsRead: number;
+    oracleFile: string;
+    oracleError?: string;
+  };
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -297,7 +322,7 @@ async function pinLatest(rpc: Rpc, now: () => number): Promise<Pin> {
   }
 }
 
-type TokenPools = { token: TokenConfig; pools: PoolRef[] };
+type TokenPools = { token: TokenConfig; pools: PoolRef[]; confirmed: PoolRef[] };
 /** Pool prices read at one block. Quotes for these tokens are asked at the same block, never another. */
 type Mids = { pin: Pin; byToken: Map<string, LivePool[]> };
 
@@ -365,28 +390,36 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
 
   // 2. the pool list, from the file unless it is missing, old or asked for. The lookup reads the
   // chain as it is now, not at the pinned block: it takes a while and only needs today's pools.
-  const path = cachePath(opts.dir, chain);
+  // A list run keeps its own file: the hand list's pools and the list's never replace each other.
+  const listed = opts.listed;
+  const path = listed ? join(opts.dir, `pools-${chain.id}-list.json`) : cachePath(opts.dir, chain);
   let cache: PoolCache | null = readCache(path);
   let poolsRediscovered = false;
-  const fresh = cacheIsFresh(cache, chain, {
-    maxPools: opts.maxPools,
-    maxAgeHours: opts.poolsMaxAgeHours,
-    now: new Date(now()),
-  });
+  const fresh =
+    cacheIsFresh(cache, chain, {
+      maxPools: opts.maxPools,
+      maxAgeHours: opts.poolsMaxAgeHours,
+      now: new Date(now()),
+    }) &&
+    (!listed || cache.cut === listed.cut);
   if (opts.rediscover || !fresh) {
     try {
-      cache = await discover(chain, rpc, {
-        maxPools: opts.maxPools,
-        minLiquidityUsd: opts.minLiquidityUsd,
-        candidateLimit: opts.maxPools * 4,
-        blockTag: 'latest',
-        previous: cache,
-        log: opts.log,
-      });
+      cache = listed
+        ? await confirmListed(chain, rpc, listed, opts.maxPools, new Date(now()))
+        : await discover(chain, rpc, {
+            maxPools: opts.maxPools,
+            minLiquidityUsd: opts.minLiquidityUsd,
+            candidateLimit: opts.maxPools * 4,
+            blockTag: 'latest',
+            previous: cache,
+            log: opts.log,
+          });
       writeCache(path, cache);
       poolsRediscovered = true;
     } catch (e) {
       if (e instanceof RpcUnreachable || !cache) throw e;
+      // a list run never falls back to pools confirmed from another cut: its rows would name this one
+      if (listed && cache.cut !== listed.cut) throw e;
       opts.log({ event: 'discover_failed_using_old_list', error: String(e) });
     }
   }
@@ -394,16 +427,99 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
   const todo: TokenPools[] = chain.tokens
     .filter((token) => !opts.only || opts.only.has(token.symbol))
     .map((token) => {
-      const listed = cache.tokens[token.symbol];
-      const sameToken = listed?.address.toLowerCase() === token.address.toLowerCase();
-      return { token, pools: sameToken ? listed.pools : [] };
+      const kept = cache.tokens[token.symbol];
+      const sameToken = kept?.address.toLowerCase() === token.address.toLowerCase();
+      const confirmed = sameToken ? kept.pools : [];
+      // a list run's file holds every confirmed pool; the limit is applied here, so a pool left out by
+      // it is known as confirmed and says so on its row
+      return { token, confirmed, pools: listed ? confirmed.slice(0, opts.maxPools) : confirmed };
     });
 
   // 3. per token: the pools' prices and their quotes, both at one block, then the row
   const sourceAt = (p: Pin) =>
-    `eth_call at block ${p.number} on ${chain.name} (chain ${chain.chainId}) through ${label}: Uniswap-v3-style pools by an injected quoter (state override), Uniswap v4 pools by the deployed Quoter; pool list from DexScreener`;
+    `eth_call at block ${p.number} on ${chain.name} (chain ${chain.chainId}) through ${label}: Uniswap-v3-style pools by an injected quoter (state override), Uniswap v4 pools by the deployed Quoter; pool list from ${listed ? `${listed.cut} through ${listed.list}` : 'DexScreener'}`;
   const fileAt = (p: Pin) => join(opts.dir, 'assets', `${p.time.toISOString().slice(0, 10)}.jsonl`);
   mkdirSync(join(opts.dir, 'assets'), { recursive: true });
+  const poolsFileAt = (p: Pin) =>
+    join(opts.dir, 'pools', `${p.time.toISOString().slice(0, 10)}.jsonl`);
+  if (listed) mkdirSync(join(opts.dir, 'pools'), { recursive: true });
+  const poolTally = { rows: 0, quoted: 0, byReason: {} as Record<string, number> };
+  /** A list run: one row per reachable pool of the token, with its own quote or the reason it has none. */
+  const writePoolRows = (
+    token: TokenConfig,
+    confirmed: PoolRef[],
+    asked: PoolRef[],
+    at: Pin,
+    priced: LivePool[],
+    quotes: PoolQuotes[],
+  ) => {
+    if (!listed) return;
+    const lines = poolRows({
+      chain,
+      token,
+      listed,
+      blockTime: at.time,
+      blockNumber: at.number,
+      confirmed,
+      asked,
+      priced,
+      quotes,
+      source: sourceAt(at),
+    });
+    if (lines.length === 0) return;
+    appendFileSync(poolsFileAt(at), `${lines.map((l) => JSON.stringify(l)).join('\n')}\n`);
+    for (const l of lines) {
+      poolTally.rows++;
+      if (l.reason === null) poolTally.quoted++;
+      else poolTally.byReason[l.reason] = (poolTally.byReason[l.reason] ?? 0) + 1;
+    }
+  };
+  // A list run: the feed of every token it is about to measure, in one call at the block it holds.
+  // The oracle is recorded beside the pool price, never blended with it (ORACLE-VS-DEX); a failed read
+  // costs the run nothing but these rows.
+  const oracleFileAt = (p: Pin) =>
+    join(opts.dir, 'oracle', `${p.time.toISOString().slice(0, 10)}.jsonl`);
+  const oracle: { rows: number; read: number; error?: string } = { rows: 0, read: 0 };
+  if (listed) {
+    const withFeed = todo.flatMap(({ token }) => {
+      const feed = listed.feeds[token.symbol];
+      return feed ? [{ token, feed }] : [];
+    });
+    try {
+      if (withFeed.length > 0) {
+        const [reply] = await rpc.batch([
+          {
+            method: 'eth_call',
+            params: [
+              {
+                to: chain.multicall3,
+                data: encodeAggregate3(oracleCalls(withFeed.map((t) => t.feed))),
+              },
+              pin.tag,
+            ],
+          },
+        ]);
+        if (!reply || reply.error || typeof reply.result !== 'string')
+          throw new Error(reply?.error?.message ?? 'no result');
+        const lines = oracleRows({
+          chain: chain.id,
+          tokens: withFeed,
+          replies: decodeAggregate3(reply.result),
+          blockTime: pin.time,
+          blockNumber: pin.number,
+          source: `latestRoundData() of each feed's proxy by eth_call (Multicall3) at block ${pin.number} on ${chain.name} (chain ${chain.chainId}) through ${label}; feeds from ${listed.list}`,
+        });
+        mkdirSync(join(opts.dir, 'oracle'), { recursive: true });
+        appendFileSync(oracleFileAt(pin), `${lines.map((l) => JSON.stringify(l)).join('\n')}\n`);
+        oracle.rows = lines.length;
+        oracle.read = lines.filter((l) => l.price !== null).length;
+      }
+    } catch (e) {
+      if (e instanceof RpcUnreachable) throw e;
+      oracle.error = e instanceof Error ? e.message : String(e);
+      opts.log({ event: 'oracle_read_failed', block: pin.number, error: oracle.error });
+    }
+  }
   const results: TokenResult[] = [];
   let mids: Mids | null = null;
   /** Set when the block in use must be replaced before the next read: why, for the log. */
@@ -416,7 +532,7 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
   /** Paused past the hour: what is not measured yet belongs to the next run, which is due now. */
   const nextRunDue = () => opts.until !== undefined && now() >= opts.until;
   const NEXT_RUN_DUE = 'the next scheduled run is due';
-  for (const [i, { token, pools }] of todo.entries()) {
+  for (const [i, { token, pools, confirmed }] of todo.entries()) {
     if (nextRunDue()) {
       aborted = NEXT_RUN_DUE;
       left = { error: `not tried: ${aborted}`, retry: false };
@@ -432,6 +548,9 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
     results.push(result);
     if (pools.length === 0) {
       result.error = 'no eligible pool';
+      // its reachable pools are all against another token: each still gets its row, with the reason,
+      // stamped with the block the run holds (nothing is read for it)
+      writePoolRows(token, confirmed, pools, pin, [], []);
       continue;
     }
     for (let again = 0; ; ) {
@@ -467,14 +586,17 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
           result.error = priced.length
             ? 'the pools disagree on the price'
             : 'no pool returned a price';
+          writePoolRows(token, confirmed, pools, at, priced, []);
           break;
         }
+        const quotes = await quoteToken(chain, rpc, token, live, at.tag, opts.log);
+        writePoolRows(token, confirmed, pools, at, priced, quotes);
         const row = buildRow({
           token,
           dollarDecimals: chain.dollar.decimals,
           blockTime: at.time,
           blockNumber: at.number,
-          pools: await quoteToken(chain, rpc, token, live, at.tag, opts.log),
+          pools: quotes,
           source: sourceAt(at),
         });
         if (!row.sell.some((p) => p.outUsd !== null)) {
@@ -535,5 +657,61 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
     httpRequests: stats.httpRequests,
     durationMs: now() - started,
     methodVersion: METHOD_VERSION,
+    ...(listed
+      ? {
+          list: {
+            list: listed.list,
+            cut: listed.cut,
+            poolsConfirmed: todo.reduce((n, t) => n + t.pools.length, 0),
+            poolRows: poolTally.rows,
+            poolRowsQuoted: poolTally.quoted,
+            poolRowsByReason: poolTally.byReason,
+            poolsFile: poolsFileAt(first),
+            handListNotTracked: listed.handListNotTracked,
+            oracleRows: oracle.rows,
+            oracleRowsRead: oracle.read,
+            oracleFile: oracleFileAt(first),
+            ...(oracle.error ? { oracleError: oracle.error } : {}),
+          },
+        }
+      : {}),
+  };
+}
+
+/**
+ * The pool list of a list run: the cut's reachable dollar pools of each token, kept only when the chain
+ * confirms them, exactly as a DexScreener candidate is. Two calls; DexScreener is not asked.
+ */
+async function confirmListed(
+  chain: ChainConfig,
+  rpc: Rpc,
+  listed: ListRun,
+  maxPools: number,
+  at: Date,
+): Promise<PoolCache> {
+  const confirmed = await confirm(
+    chain,
+    rpc,
+    chain.tokens.map((token) => ({
+      token,
+      cands: listCandidates(chain, listed.pools[token.symbol] ?? []),
+    })),
+    Number.MAX_SAFE_INTEGER,
+    'latest',
+  );
+  return {
+    chain: chain.id,
+    chainId: chain.chainId,
+    discoveredAt: at.toISOString(),
+    source: `${listed.cut} through ${listed.list}, then token0(), token1(), the factory's getPool() and the position manager's poolKeys() on chain`,
+    method: 'cut_candidates_confirmed_onchain',
+    maxPools,
+    cut: listed.cut,
+    tokens: Object.fromEntries(
+      confirmed.map((f) => [
+        f.token.symbol,
+        { address: f.token.address, pools: f.pools, skipped: f.skipped },
+      ]),
+    ),
   };
 }

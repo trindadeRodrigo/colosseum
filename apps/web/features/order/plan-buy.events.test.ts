@@ -80,6 +80,8 @@ function api(
     order?: () => Response;
     /** Changes the funding answer before it is sent. */
     say?: (answer: ReturnType<typeof funding>) => unknown;
+    /** Answers GET /v1/baskets/{id}: a plan made from a link. */
+    linked?: unknown;
   } = {},
 ) {
   const calls: Call[] = [];
@@ -98,6 +100,7 @@ function api(
     if (path.startsWith('/v1/funding?'))
       return json(o.say ? o.say(funding(funded)) : funding(funded));
     if (path === '/v1/orders' && method === 'POST') return o.order ? o.order() : json(orderOn());
+    if (path === `/v1/baskets/${PLAN_ID}` && o.linked !== undefined) return json(o.linked);
     return json({ error: 'not found' }, 404);
   });
   return {
@@ -325,6 +328,46 @@ describe('the plan screen', () => {
     expect(host.querySelector('[data-ui="plan-screen"]')).toBeNull();
   });
 
+  it('opens a plan made from a link, read from the API by its id, and says where it came from', async () => {
+    const server = api({ linked: { id: PLAN_ID, proposal: planOn().proposal } });
+    const host = await plan();
+    expect(server.to('/v1/baskets/').map((c) => c.path)).toEqual([`/v1/baskets/${PLAN_ID}`]);
+    expect(find(host, '[data-ui="plan-screen"]')).toBeTruthy();
+    expect(find(host, '[data-ui="plan-from-link"]').textContent).toBe(en.plan.fromLink);
+    expect(primaryLink(host)?.getAttribute('href')).toBe(`/plan/${PLAN_ID}/buy`);
+    await unmountAll();
+    // kept in the tab, so the buy screen opens on it without asking again, and buys it by its id
+    const bought = await buy();
+    expect(server.to('/v1/baskets/')).toHaveLength(1);
+    await type(find<HTMLInputElement>(bought, 'input[inputmode="decimal"]'), '10');
+    await settle(350);
+    await click(find(bought, '[data-ui="trust-notice"] input[type="checkbox"]'));
+    await click(find(bought, '[data-variant="primary"]'));
+    await settle();
+    expect(server.to('/v1/orders').map((c) => c.body)).toEqual([
+      { type: 'buy', owner: { solana: SOLANA }, amountUsd: 10, proposalId: PLAN_ID },
+    ]);
+    // kept as a plan from a link, so the order screen names the buyer's own vault
+    expect(recallOrder(ORDER_ID, USER)?.linked).toBe(true);
+  });
+
+  it('shows no plan from a link the API answers for another id, or that is not a plan', async () => {
+    for (const linked of [
+      { id: 'another', proposal: planOn().proposal },
+      { id: PLAN_ID, proposal: { ...planOn().proposal, lines: [] } },
+    ]) {
+      window.sessionStorage.clear();
+      api({ linked });
+      const host = await plan();
+      expect(find(host, 'h1').textContent).toBe(en.plan.missing.title);
+      await unmountAll();
+    }
+    // and a plan this tab built is never said to come from a link
+    api();
+    rememberPlan(planOn());
+    expect((await plan()).querySelector('[data-ui="plan-from-link"]')).toBeNull();
+  });
+
   it('offers no buy of a plan made for another chain than the person’s', async () => {
     api({ chain: 'robinhood' });
     rememberPlan(planOn('solana'));
@@ -420,6 +463,7 @@ describe('the buy screen', () => {
     expect(kept?.goal?.card).toEqual(planOn().proposal.card);
     expect(Number.isNaN(Date.parse(kept?.goal?.placedAt ?? ''))).toBe(false);
     expect(kept?.lines).toEqual(planOn().proposal.lines);
+    expect(kept?.linked).toBeUndefined();
     expect(trustAccepted(USER, TRUST_STATUS.textVersion)).toBe(true);
   });
 

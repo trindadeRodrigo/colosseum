@@ -9,6 +9,7 @@ import {
   ReadoutFigure,
 } from '../../components/ui/CaseChart';
 import {
+  axisLeft,
   nearestIndex,
   SERIES_FADE,
   seriesOpacity,
@@ -36,7 +37,6 @@ const W_DEFAULT = 640;
 const H = 200;
 const TOP = 14;
 const BOTTOM = 24;
-const LEFT = 56;
 const RIGHT = 70;
 
 export function PlanChart({
@@ -69,7 +69,9 @@ export function PlanChart({
 
   const [box, measured] = useWidth<HTMLDivElement>();
   const W = measured || W_DEFAULT;
-  const x = (month: number) => LEFT + (month / months) * (W - LEFT - RIGHT);
+  // the value axis is as wide as its widest label in the reader's language ("US$ 40.000")
+  const left = axisLeft([amountUsd, (amountUsd + high) / 2, high].map(money), 56);
+  const x = (month: number) => left + (month / months) * (W - left - RIGHT);
   const [focus, setFocus] = useState<string | null>(null);
   const series: CaseSeries[] = [
     { id: 'high', label: words.high, color: 'var(--chart-1)', dashed: true },
@@ -121,8 +123,8 @@ export function PlanChart({
           >
             {grid.map((g) => (
               <g key={g}>
-                <line x1={LEFT} x2={W - RIGHT} y1={y(g)} y2={y(g)} stroke="var(--border)" />
-                <text x={LEFT - 6} y={y(g) + 3} textAnchor="end" fill="var(--muted-foreground)">
+                <line x1={left} x2={W - RIGHT} y1={y(g)} y2={y(g)} stroke="var(--border)" />
+                <text x={left - 6} y={y(g) + 3} textAnchor="end" fill="var(--muted-foreground)">
                   {money(g)}
                 </text>
               </g>
@@ -159,7 +161,7 @@ export function PlanChart({
                 {words.low}
               </text>
             </g>
-            <text x={LEFT} y={H - 6} fill="var(--muted-foreground)">
+            <text x={left} y={H - 6} fill="var(--muted-foreground)">
               0
             </text>
             <text x={x(months)} y={H - 6} textAnchor="end" fill="var(--muted-foreground)">

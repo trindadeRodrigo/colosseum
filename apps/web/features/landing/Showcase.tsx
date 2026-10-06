@@ -4,12 +4,13 @@ import { Disclaimer } from '../../components/ui/Disclaimer';
 import { MockPlate } from '../../components/ui/MockPlate';
 import { PinGlyph, ProvenancePin } from '../../components/ui/ProvenancePin';
 import { dictionary, type Lang, LOCALE } from '../../i18n';
+import { CaseScope, Legs } from './CaseParts';
 import { PlanDrawing } from './PlanDrawing';
 import { GrowthChart, TripChart } from './ShowcaseChart';
 import { GROWTH, SAMPLE, type SampleLeg, TICKERS, TRIP } from './sample';
 
 // "Same pieces. Different people. Different fit." (goal-showcase-case.md): two sample people, each
-// with the goal in their own words under their plan drawn as a joint, and the plan cut for it beside them: the limits
+// with the goal in their own words over their plan drawn as a joint, and the plan cut for it beside them: the limits
 // as chips, four figures, the chart, the parts and the exit plan. Everything in a case is MOCK, and
 // says so with the plate in its head and the hatched pin on every figure that stands on a rate. The
 // full disclaimer sits once under the section.
@@ -27,9 +28,6 @@ const monthYear = (lang: Lang, ym: string) =>
     year: 'numeric',
     timeZone: 'UTC',
   }).format(new Date(`${ym}-01T00:00:00Z`));
-
-/** The swatch of a part: the plan-leg colour of its place (STYLE.md, plan leg). */
-const SWATCH = { 1: 'bg-leg-1', 2: 'bg-leg-2', 3: 'bg-leg-3', 4: 'bg-leg-4' } as const;
 
 type Kpi = { label: string; value: ReactNode; unit?: string };
 
@@ -56,7 +54,8 @@ function Kpis({ items }: { items: Kpi[] }) {
           <dd className="mt-0.5 text-[1.125rem]/7 font-medium tabular-nums @max-[12rem]:[&_[data-ui=figure]_[data-ui=mock-plate]]:ml-0 @max-[12rem]:[&_[data-ui=figure]_[data-ui=mock-plate]]:flex @max-[12rem]:[&_[data-ui=figure]_[data-ui=mock-plate]]:w-fit">
             {kpi.value}
             {kpi.unit && (
-              <small className="ml-1 font-mono text-[11px] font-normal text-muted-foreground">
+              // a unit such as "Dec 2031" is never broken across lines
+              <small className="ml-1 font-mono text-[11px] font-normal whitespace-nowrap text-muted-foreground">
                 {kpi.unit}
               </small>
             )}
@@ -64,43 +63,6 @@ function Kpis({ items }: { items: Kpi[] }) {
         </div>
       ))}
     </dl>
-  );
-}
-
-function Legs({
-  legs,
-  names,
-  label,
-}: {
-  legs: readonly SampleLeg[];
-  names: { name: string; why: string }[];
-  label: string;
-}) {
-  return (
-    <ul
-      aria-label={label}
-      className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-x-4 gap-y-1.5"
-    >
-      {legs.map((leg, i) => {
-        const name = names[i];
-        if (!name) return null;
-        return (
-          <li
-            key={leg.chart}
-            className="grid grid-cols-[10px_1fr_auto] items-baseline gap-x-2 text-[13px]/5"
-          >
-            <span aria-hidden="true" className={`size-2.5 translate-y-px ${SWATCH[leg.chart]}`} />
-            <span>{name.name}</span>
-            <span className="font-mono text-[12px] font-medium tabular-nums">
-              {leg.weightBps / 100}%
-            </span>
-            <span className="col-start-2 col-end-4 -mt-0.5 text-[12px]/4 text-muted-foreground">
-              {name.why}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
   );
 }
 
@@ -135,52 +97,54 @@ function Case({
       data-ui="showcase-case"
       className="grid overflow-hidden rounded-md border border-border bg-card min-[980px]:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]"
     >
-      <div className="flex flex-col border-border max-[979px]:border-b min-[980px]:border-r">
-        {/* The plan as a joint: its parts are the legend's, read from the same case data. */}
-        <PlanDrawing
-          parts={legs.map((leg, i) => ({ leg, name: names[i]?.name ?? '' }))}
-          label={words.alt}
-          className="aspect-[6/5] w-full min-[980px]:aspect-auto min-[980px]:min-h-[300px] min-[980px]:flex-1"
-        />
-        {/* The goal in the person's own words, on a solid plate under the drawing, never on it. */}
-        <div className="flex flex-col gap-2 px-5 pt-3 pb-5">
-          <p className="font-mono text-[12px] text-primary">{words.who}</p>
-          <blockquote className="m-0 font-display text-[clamp(1.15rem,1rem+0.6vw,1.45rem)]/[1.35] font-normal">
-            “{words.quote}”
-          </blockquote>
-        </div>
-      </div>
-      <div className="flex min-w-0 flex-col gap-4 px-6 pt-5.5 pb-4.5">
-        <div data-ui="case-head" className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h3 className="text-[1.125rem]/[1.3] font-medium">{words.title}</h3>
-            <p className="mt-0.5 text-[13px] text-muted-foreground">{words.sub}</p>
+      <CaseScope>
+        <div className="flex flex-col border-border max-[979px]:border-b min-[980px]:border-r">
+          {/* The goal in the person's own words first, on a solid plate, then the plan it asks for. */}
+          <div className="flex flex-col gap-2 px-5 pt-5 pb-1">
+            <p className="font-mono text-[12px] text-primary">{words.who}</p>
+            <blockquote className="m-0 font-display text-[clamp(1.15rem,1rem+0.6vw,1.45rem)]/[1.35] font-normal">
+              “{words.quote}”
+            </blockquote>
           </div>
-          <MockPlate labels={{ announce: mockAnnounce }} />
+          {/* The plan as a joint: its parts are the legend's, read from the same case data. */}
+          <PlanDrawing
+            parts={legs.map((leg, i) => ({ leg, name: names[i]?.name ?? '' }))}
+            label={words.alt}
+            className="aspect-[6/5] w-full min-[980px]:aspect-auto min-[980px]:min-h-[300px] min-[980px]:flex-1"
+          />
         </div>
-        <ul aria-label={t.chips} className="flex flex-wrap gap-1.5">
-          {chips.map((chip) => (
-            <li
-              key={chip}
-              className="rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-[12px]"
-            >
-              {chip}
-            </li>
-          ))}
-        </ul>
-        <Kpis items={kpis} />
-        {chart}
-        <Legs legs={legs} names={names} label={t.legs} />
-        <p className="border-l-2 border-primary py-0.5 pl-2.5 text-[13px]/5">
-          {t.exitPlan}: {exit} <span className="text-muted-foreground">{exitNote}</span>
-        </p>
-        <div className="flex flex-wrap justify-between gap-3 border-t border-border pt-2.5 font-mono text-[11px] text-muted-foreground">
-          <span className="inline-flex items-center gap-1">
-            {t.sample} <PinGlyph state="mock" />
-          </span>
-          <span>{foot ? `${foot} ${DISCLAIMER_SHORT}` : DISCLAIMER_SHORT}</span>
+        <div className="flex min-w-0 flex-col gap-4 px-6 pt-5.5 pb-4.5">
+          <div data-ui="case-head" className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-[1.125rem]/[1.3] font-medium">{words.title}</h3>
+              <p className="mt-0.5 text-[13px] text-muted-foreground">{words.sub}</p>
+            </div>
+            <MockPlate labels={{ announce: mockAnnounce }} />
+          </div>
+          <ul aria-label={t.chips} className="flex flex-wrap gap-1.5">
+            {chips.map((chip) => (
+              <li
+                key={chip}
+                className="rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-[12px]"
+              >
+                {chip}
+              </li>
+            ))}
+          </ul>
+          <Kpis items={kpis} />
+          {chart}
+          <Legs legs={legs} names={names} label={t.legs} />
+          <p className="border-l-2 border-primary py-0.5 pl-2.5 text-[13px]/5">
+            {t.exitPlan}: {exit} <span className="text-muted-foreground">{exitNote}</span>
+          </p>
+          <div className="flex flex-wrap justify-between gap-3 border-t border-border pt-2.5 font-mono text-[11px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1">
+              {t.sample} <PinGlyph state="mock" />
+            </span>
+            <span>{foot ? `${foot} ${DISCLAIMER_SHORT}` : DISCLAIMER_SHORT}</span>
+          </div>
         </div>
-      </div>
+      </CaseScope>
     </article>
   );
 }

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { DISCLAIMER, type OrderDetail } from '@colosseum/schemas';
 import {
+  basketIdOfLinkedPlan,
   basketIdOfPlan,
   deploymentsOf,
   type ExecutionResult,
@@ -173,6 +174,53 @@ describe('the review', () => {
     });
     // and the order the person approved is kept, so a reload runs the same one
     expect(recallOrder(ORDER_ID, USER)?.approved?.order).toEqual(orderOn());
+  });
+
+  it('names the buyer’s own vault for a plan made from a link, never the one the link gives', async () => {
+    api(orderOn());
+    seed({ ...recordOf(), linked: true });
+    run.answer = async (order) => ({ status: 'done', order: doneOrder() ?? order });
+    const host = await screen();
+    await click(primary(host));
+    await settle();
+    const [{ deps }] = run.calls as [{ order: OrderDetail; deps: ExecutorDeps }];
+    // the number the API gives this buyer's vault (gate AGENT-LINK): from the plan and the person
+    expect(deps.plan.basketId).toBe(basketIdOfLinkedPlan(PLAN_ID, USER));
+    expect(deps.plan.basketId).not.toBe(basketIdOfPlan(PLAN_ID));
+    expect(deps.plan.basketId).not.toBe(basketIdOfLinkedPlan(PLAN_ID, 'did:privy:someone-else'));
+  });
+
+  it('takes the vault’s number from the order when it is one this app works out, and no other', async () => {
+    // the order states the buyer's own number for a plan made from a link: it is used, whatever this
+    // browser kept about the plan
+    api({ ...orderOn(), basketId: basketIdOfLinkedPlan(PLAN_ID, USER) });
+    seed();
+    run.answer = async (order) => ({ status: 'done', order: doneOrder() ?? order });
+    let host = await screen();
+    await click(primary(host));
+    await settle();
+    const [{ deps }] = run.calls as [{ order: OrderDetail; deps: ExecutorDeps }];
+    expect(deps.plan.basketId).toBe(basketIdOfLinkedPlan(PLAN_ID, USER));
+    await unmountAll();
+    window.localStorage.clear();
+    run.calls.length = 0;
+    // a number that is neither the plan's nor this person's own is not signed for, and for a plan this
+    // browser kept as one from a link, the plan's shared number is not either
+    for (const [basketId, record] of [
+      [basketIdOfLinkedPlan(PLAN_ID, 'did:privy:someone-else'), recordOf()],
+      ['42', recordOf()],
+      [basketIdOfPlan(PLAN_ID), { ...recordOf(), linked: true as const }],
+    ] as const) {
+      api({ ...orderOn(), basketId });
+      seed(record);
+      host = await screen();
+      await click(primary(host));
+      await settle();
+      expect(run.calls).toHaveLength(0);
+      expect(host.textContent).toContain(en.order.outcome.notRunnable['plan-mismatch']);
+      await unmountAll();
+      window.localStorage.clear();
+    }
   });
 
   it('shows each confirmed step with its explorer link once the order is done', async () => {

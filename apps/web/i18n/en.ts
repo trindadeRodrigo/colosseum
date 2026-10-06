@@ -287,6 +287,9 @@ export const en = {
       chainUnknown:
         'I can’t tell yet which chain your plan lives on, so I can’t build for it. Ask again, above.',
       refused: 'Our server didn’t accept these limits. Check each field, then try again.',
+      /** The goal or a withdrawal is in another currency (gate USD-ONLY). */
+      currency:
+        'Plans are in dollars for now: the amount and every withdrawal. Give them in dollars, then build again.',
       /** The server answered 401 or 403 to "Build my plan". */
       signInAgain:
         'Our server doesn’t recognise your sign-in any more, so the plan wasn’t built. Sign out, then sign in again.',
@@ -464,6 +467,8 @@ export const en = {
   plan: {
     title: 'Your plan',
     signedOut: 'Sign in to see this plan. A plan is one person’s, on the chain of their wallet.',
+    fromLink:
+      'This plan came from a link: our engine made it from the limits the link carried, which someone else may have set. Check the goal, the amount and the limits above before you buy.',
     missing: {
       title: 'I don’t have this plan in this tab.',
       body: 'A plan is kept in the browser tab that built it, and this one isn’t here. Build it again from your goal: your limits are kept.',
@@ -1012,6 +1017,8 @@ export const en = {
       lookAgain: 'Look again',
       error:
         'Our server refused or didn’t answer, so the order stopped. What was signed is kept. Try again.',
+      planGone:
+        'The plan this order buys isn’t stored any more: a plan from a link that nobody buys is deleted after a few days. The order stopped, and what was signed is kept. Build the plan again from your goal.',
       tryAgain: 'Try again',
       elsewhere:
         'This order is running in another tab of this browser. Follow it there; nothing was done here.',
@@ -1025,7 +1032,7 @@ export const en = {
         'no-lock':
           'This browser can’t keep an order to one tab, so I won’t sign here. Open the page in a current browser.',
         'plan-mismatch':
-          'The plan kept for this order is for another chain, so nothing was signed. Make a new order.',
+          'The plan kept for this order doesn’t match it (another chain, or another vault), so nothing was signed. Make a new order.',
       },
       crashed:
         'Something stopped the order before it finished. What was signed is kept. Try again.',
@@ -1175,9 +1182,8 @@ export const en = {
       eyebrow: 'Follow along',
       title: 'Built piece by piece. Watch it come together.',
       lede: 'Product updates as new pieces are cut, and a short letter on goals, liquidity and what tokenized assets really pay. No hype, no price calls.',
-      photoAlt:
-        'Offset timber beams, stacked and interlocked, frame a view of a forest through tall windows.',
-      photoCaption: 'stacked offset beams · reference photo',
+      drawingAlt:
+        'An ink drawing of the joint coming together: a rail slides its tenon through a post, and a pin drops into the slot to lock it.',
       email: 'Email address',
       subscribe: 'Subscribe',
       subscribing: 'Subscribing…',

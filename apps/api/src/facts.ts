@@ -37,10 +37,11 @@ import {
 } from '@colosseum/risk';
 import type { AssetFacts, PlanFacts } from '@colosseum/schemas';
 import { and, desc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm';
+import { curveVersionOf, RISK_METHOD_VERSION } from './curve-version';
 import { capacityAtTau } from './history';
 
 const ROOT = process.env.REPO_ROOT ?? join(import.meta.dirname, '..', '..', '..');
-const CURVE_METHOD_VERSION = 'risk-0.3';
+const CURVE_METHOD_VERSION = RISK_METHOD_VERSION;
 const fixture = (name: string) =>
   JSON.parse(readFileSync(join(ROOT, 'fixtures/risk', name), 'utf8'));
 
@@ -182,10 +183,11 @@ export async function loadFlow(db: Db, mint: string | null): Promise<AssetFactsI
   const pools = new Map<string, NonNullable<AssetFactsInput['flow']>['pools'][number]>();
   for (const r of rows) {
     const f = r.flow;
+    // the row's own venue and quote (RU.14: an EVM pool has no risk_pools row), else risk_pools', else unknown
     const p = pools.get(f.pool) ?? {
       pool: f.pool,
-      venue: r.venue ?? 'unknown',
-      quote: r.quoteSymbol ?? r.quoteMint ?? 'unknown',
+      venue: f.venue ?? r.venue ?? 'unknown',
+      quote: f.quoteSymbol ?? f.quoteMint ?? r.quoteSymbol ?? r.quoteMint ?? 'unknown',
       rows: [],
     };
     p.rows.push({
@@ -297,10 +299,12 @@ export async function loadAssetFacts(
     platformFeeBps: params.platformFeeBps,
     gapGridPct: defaultLendingReportParams().gapGridPct,
   };
+  // an EVM address is read under the EVM collector's version, a Solana one under risk-0.3
+  const curveVersion = mint ? curveVersionOf(mint) : CURVE_METHOD_VERSION;
   const none = {
     source: 'risk_depth_curves',
     method: 'fitCurve_isotonic_pl_ln_notional',
-    methodVersion: CURVE_METHOD_VERSION,
+    methodVersion: curveVersion,
     provenance: 'live' as const,
   };
   const curveRows = mint
@@ -308,10 +312,7 @@ export async function loadAssetFacts(
         .select()
         .from(riskDepthCurves)
         .where(
-          and(
-            eq(riskDepthCurves.assetMint, mint),
-            eq(riskDepthCurves.methodVersion, CURVE_METHOD_VERSION),
-          ),
+          and(eq(riskDepthCurves.assetMint, mint), eq(riskDepthCurves.methodVersion, curveVersion)),
         )
     : [];
   if (!curveRows.some((r) => r.side === 'sell'))
@@ -531,7 +532,9 @@ export async function loadAssetFacts(
     flow: await loadFlow(db, mint),
     marketRisk: await loadMarketSeries(db, mint, now, params.marketRiskWindowDays),
     splitMinSamples: params.splitMinSamples,
-    networkFee: await loadNetworkFee(db, params.splitMinSamples),
+    // the fee table and the issuer model below are Solana's and the xStocks issuer's: not another chain's
+    networkFee:
+      base.chain === 'solana' ? await loadNetworkFee(db, params.splitMinSamples) : undefined,
     lp,
     lpWithdrawals: {
       count: withdrawals?.n ?? 0,
@@ -553,7 +556,8 @@ export async function loadAssetFacts(
     lendingCollateral,
     // the lending oracles' gaps are a report until item 11 imports them
     tracking: lendingCollateral ? tracking : [],
-    issuer: xstocks ? { ...xstocks, fetchedAt: issuers.fetchedAt } : null,
+    issuer:
+      xstocks && base.chain === 'solana' ? { ...xstocks, fetchedAt: issuers.fetchedAt } : null,
   });
 }
 
@@ -603,6 +607,7 @@ export async function loadPlanFacts(
     null;
   const legs: PlanLeg[] = [];
   const illiquid: Array<{ assetId: string; valueUsd: number; curves: AssetCurves }> = [];
+  const curveVersions = new Set<string>();
   let cashUsd = 0;
   for (const p of positions) {
     const sheet =
@@ -654,6 +659,7 @@ export async function loadPlanFacts(
     if (cls === 'cash') cashUsd += p.valueUsd;
     else if (mint && p.valueUsd > 0) {
       const curves = await sellCurvesOf(db, mint, sheet?.assetId ?? p.assetId);
+      if (curves) curveVersions.add(curveVersionOf(mint));
       if (curves)
         illiquid.push({ assetId: sheet?.assetId ?? p.assetId, valueUsd: p.valueUsd, curves });
     }
@@ -682,7 +688,7 @@ export async function loadPlanFacts(
     breach: breach
       ? {
           result: breach,
-          source: `risk_depth_curves (${CURVE_METHOD_VERSION}) of ${illiquid.length} legs`,
+          source: `risk_depth_curves (${[...curveVersions].sort().reverse().join(', ')}) of ${illiquid.length} legs`,
           method: 'assessLiquidity (breach.ts, risk-0.2): shareOfDepth 0.25, dryFactorFloor 0.25',
           methodVersion: 'risk-0.2',
         }
@@ -690,7 +696,7 @@ export async function loadPlanFacts(
   });
 }
 
-/** The sell curves of one mint (current method version), or null when it has none. */
+/** The sell curves of one mint, under the method version its address is read under, or null when it has none. */
 async function sellCurvesOf(db: Db, mint: string, assetId: string): Promise<AssetCurves | null> {
   const rows = await db
     .select()
@@ -699,7 +705,7 @@ async function sellCurvesOf(db: Db, mint: string, assetId: string): Promise<Asse
       and(
         eq(riskDepthCurves.assetMint, mint),
         eq(riskDepthCurves.side, 'sell'),
-        eq(riskDepthCurves.methodVersion, CURVE_METHOD_VERSION),
+        eq(riskDepthCurves.methodVersion, curveVersionOf(mint)),
       ),
     );
   if (!rows.length) return null;

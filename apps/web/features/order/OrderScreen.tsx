@@ -121,7 +121,12 @@ export function OrderScreen({ id }: { id: string }) {
       setOutcome(null);
       const answer = await run({
         order: approved.order,
-        plan: { proposalId: record.proposalId, lines: record.lines },
+        plan: {
+          proposalId: record.proposalId,
+          lines: record.lines,
+          userId: record.userId,
+          ...(record.linked ? { linked: true } : {}),
+        },
         ...(record.terms ? { terms: record.terms } : {}),
         consents: approved.consents,
         ...(again ? { approvedAgain: again } : {}),

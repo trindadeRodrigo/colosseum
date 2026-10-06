@@ -713,6 +713,14 @@ describe('what comes back from “Build my plan”', () => {
     const refused = await built(() => json({ error: 'body/sheet must be object' }, 400));
     expect(summary(refused.host)?.textContent).toContain(en.goal.blocked.refused);
     expect(refused.host.textContent).not.toContain('body/sheet');
+    await unmountAll();
+    window.sessionStorage.clear();
+    // plans are in dollars for now (gate USD-ONLY): said plainly, not as a refusal of the limits
+    const currency = await built(() =>
+      json({ error: 'Plans are in US dollars for now', code: 'CURRENCY_UNSUPPORTED' }, 422),
+    );
+    expect(summary(currency.host)?.textContent).toContain(en.goal.blocked.currency);
+    expect(summary(currency.host)?.textContent).not.toContain(en.goal.blocked.refused);
   });
 
   it.each([401, 403])(

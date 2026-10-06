@@ -807,6 +807,8 @@ describe('the /v1 route table', () => {
     await app.ready();
     expect(v1Paths(app.swagger())).toEqual([
       '/v1/baskets/personalize',
+      '/v1/baskets/propose',
+      '/v1/baskets/{id}',
       '/v1/config',
       '/v1/funding',
       '/v1/indexes/{slug}',
