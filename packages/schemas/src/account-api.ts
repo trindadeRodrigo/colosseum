@@ -6,15 +6,17 @@ import { ORDER_LIMITS } from './order';
 import { WalletAccount } from './wallet';
 
 // The bodies of the /v1 routes about the signed-in person and their wallet: who they are and which
-// chain their plans live on (gates ONE-CHAIN and CHAIN-PICK), and what the wallet is missing there.
+// current chain, where their new plans are made (gates ONE-CHAIN and CHAIN-SWITCH), and what the
+// wallet is missing there.
 
 /**
- * GET /v1/me, and the answer of PUT /v1/me/chain. A person's plans live on one chain.
- * - Someone who connected an outside wallet is on the chain of that wallet's family: a Solana wallet
- *   means Solana, an EVM wallet means Robinhood Chain while Base is not deployed. `chainSource` is
- *   `wallet`, and there is nothing to pick.
- * - Someone who made a wallet in the app picks the chain once. Until then `chain` is null and
- *   `chainOptions` lists what they may pick; after, `chainSource` is `picked` and it never changes.
+ * GET /v1/me, and the answer of PUT /v1/me/chain. `chain` is the current chain: a new plan is made
+ * there. Each plan lives on one chain, its own, and stays there when the current chain changes.
+ * - Someone who connected an outside wallet starts on the chain of that wallet's family: a Solana
+ *   wallet means Solana, an EVM wallet means Robinhood Chain while Base is not deployed. `chainSource`
+ *   is `wallet`.
+ * - Someone who made a wallet in the app picks the chain. Until then `chain` is null.
+ * - Either may switch to any chain in `chainOptions`; after a switch `chainSource` is `picked`.
  */
 export const PersonResponse = z.object({
   /** The person, as the sign-in provider names them. */
@@ -23,12 +25,12 @@ export const PersonResponse = z.object({
   wallets: z.array(WalletAccount),
   chain: ChainId.nullable(),
   chainSource: z.enum(['picked', 'wallet']).nullable(),
-  /** The chains this person may pick. Empty once there is a chain. */
+  /** The chains this person holds a wallet for, and so may switch to. An EVM wallet alone: Robinhood Chain. */
   chainOptions: z.array(ChainId),
 });
 export type PersonResponse = z.infer<typeof PersonResponse>;
 
-/** PUT /v1/me/chain. Set once: the same chain again answers as before, another one is refused. */
+/** PUT /v1/me/chain. Switches the current chain; the same chain again answers as before. */
 export const PickChainRequest = z.strictObject({ chain: ChainId });
 export type PickChainRequest = z.infer<typeof PickChainRequest>;
 

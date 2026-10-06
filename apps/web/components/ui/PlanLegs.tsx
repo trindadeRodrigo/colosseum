@@ -37,7 +37,7 @@ export type PlanLeg = {
   note?: string;
   /** One line of why this leg is in the plan. */
   why?: string;
-  /** Not live. The segment is hatched, and the label carries the hatch band and the MOCK plate. */
+  /** Not live. The segment is hatched, and the label carries the hatch band and the sample glyph. */
   mock?: boolean;
 };
 

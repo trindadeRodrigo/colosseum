@@ -47,14 +47,16 @@ describe('PlanLegs (plan-leg.md)', () => {
     ]);
   });
 
-  it('hatches a mock leg instead of filling it, and labels it with the band and the plate', () => {
+  it('hatches a mock leg instead of filling it, and labels it with the band and the named glyph', () => {
     const mock = segments[3];
     expect(classes(mock as never)).toEqual(expect.arrayContaining(['tf-hatch', 'bg-card']));
     expect(classes(mock as never).some((c) => c.startsWith('bg-leg-'))).toBe(false);
     const label = labels[3];
     expect(all(label as never, ui('hatch-band'))).toHaveLength(1);
-    expect(all(label as never, ui('mock-plate'))).toHaveLength(1);
-    expect(text(label as never)).toContain('BRL leg·10%MOCK·integration in progress');
+    expect(all(label as never, ui('sample-glyph'))).toHaveLength(1);
+    // a leg with no rate says nothing about one: no dash in its place
+    expect(text(label as never)).toContain('BRL leg·10%·integration in progress');
+    expect(text(label as never)).not.toContain('MOCK');
     for (const live of labels.slice(0, 3))
       expect(all(live as never, ui('hatch-band'))).toHaveLength(0);
   });

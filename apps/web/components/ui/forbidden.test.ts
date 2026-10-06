@@ -305,12 +305,12 @@ describe('the forbidden things', () => {
       expect(blamed.filter((b) => !base(b) && !legacy(b) && !centred(b)).map(say)).toEqual([]);
     });
 
-    it('sets uppercase on the MOCK plate and nowhere else but one legacy label', () => {
+    it('sets uppercase nowhere but one legacy label: the boxed MOCK is gone (MOCK-QUIET)', () => {
       const upper: string[] = [];
       root.walkDecls('text-transform', (decl) => {
         if (/uppercase/.test(decl.value)) upper.push((decl.parent as postcss.Rule).selector);
       });
-      expect(upper.sort()).toEqual(['.tf-mock-plate', '.uppercase']);
+      expect(upper.sort()).toEqual(['.uppercase']);
       expect(users('uppercase').sort()).toEqual(['components/Provenance.tsx']);
     });
 

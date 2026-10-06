@@ -90,6 +90,7 @@ const PORTFOLIO = {
   chains: [
     { chain: 'solana', name: 'Solana', mode: 'mock', provenance: 'mock', vaults: [], prices: [] },
   ],
+  unavailable: [],
   disclaimer: 'Not advice.',
 };
 

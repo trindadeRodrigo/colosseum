@@ -247,25 +247,26 @@ describe('the sign-in panel: when sign-in is off', () => {
 });
 
 describe('the sign-in panel: the throwaway wallet of development', () => {
-  it('carries the hatch and the word MOCK on both ways in, and no hatch without the word', () => {
+  it('carries the hatch and a quiet line on both ways in, and no hatch without it', () => {
     portStore.set(fakePort({ found: FOUND, test: true }));
     const page = render(createElement(SignIn));
     expect(hatchProblems(page)).toEqual([]);
-    expect(all(page, ui('mock-plate'))).toHaveLength(2);
+    expect(all(page, ui('sample-note'))).toHaveLength(2);
     expect(all(page, ui('hatch-band'))).toHaveLength(2);
     // a real wallet draws neither
     portStore.set(fakePort({ found: FOUND }));
     const real = render(createElement(SignIn));
     expect(hatchProblems(real)).toEqual([]);
-    expect(all(real, (el) => ui('hatch-band')(el) || ui('mock-plate')(el))).toEqual([]);
+    expect(all(real, (el) => ui('hatch-band')(el) || ui('sample-note')(el))).toEqual([]);
   });
 
-  it('says the words a screen reader hears after MOCK in the language of the page', async () => {
+  it('says the quiet line in the language of the page', async () => {
     portStore.set(fakePort({ found: FOUND, test: true }));
     for (const lang of ['en', 'pt'] as const) {
       const host = await screen(lang);
-      const plates = [...host.querySelectorAll('.tf-mock-plate')].map((p) => p.textContent);
-      expect(plates).toEqual(Array(2).fill(`MOCK${dictionary(lang).shell.mockAnnounce}`));
+      const lines = [...host.querySelectorAll('[data-ui="sample-note"]')].map((p) => p.textContent);
+      expect(lines).toEqual(Array(2).fill(dictionary(lang).shell.mockAnnounce));
+      expect(host.textContent).not.toContain('MOCK');
       await unmountAll();
     }
   });
