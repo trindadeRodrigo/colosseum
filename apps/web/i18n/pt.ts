@@ -996,6 +996,8 @@ export const pt: Dictionary = {
       lookAgain: 'Olhar de novo',
       error:
         'Nosso servidor recusou ou não respondeu, então a ordem parou. O que foi assinado fica guardado. Tente de novo.',
+      planGone:
+        'O plano desta ordem não está mais guardado: um plano vindo de um link que ninguém compra é apagado depois de alguns dias. A ordem parou, e o que foi assinado fica guardado. Monte o plano de novo a partir do seu objetivo.',
       tryAgain: 'Tentar de novo',
       elsewhere:
         'Esta ordem está rodando em outra aba deste navegador. Acompanhe por lá; nada foi feito aqui.',
@@ -1009,7 +1011,7 @@ export const pt: Dictionary = {
         'no-lock':
           'Este navegador não consegue manter uma ordem em uma só aba, então não vou assinar aqui. Abra a página num navegador atual.',
         'plan-mismatch':
-          'O plano guardado para esta ordem é de outra rede, então nada foi assinado. Crie uma nova ordem.',
+          'O plano guardado para esta ordem não confere com ela (outra rede ou outro cofre), então nada foi assinado. Crie uma nova ordem.',
       },
       crashed: 'Algo parou a ordem antes do fim. O que foi assinado fica guardado. Tente de novo.',
       newOrder: 'Criar uma nova ordem',

@@ -43,10 +43,11 @@ export type LinkedPlanResponse = z.infer<typeof LinkedPlanResponse>;
 export const BasketIdParams = z.object({ id: z.string().uuid() });
 
 /**
- * What plans made from a link may take of the server (gate `AGENT-LINK`): a body of at most 16 KB, at
- * most `perDay` of them in any 24 hours across every caller, and an unbought one kept `keepDays` days.
+ * What plans made from a link may take of the server (gate `AGENT-LINK`): a body of at most 32 KB (a
+ * sheet with all 480 withdrawals is about 25 KB), at most `perDay` of them in any 24 hours across every
+ * caller together, and an unbought one kept `keepDays` days.
  */
-export const LINKED_PLANS = { bodyBytes: 16 * 1024, perDay: 500, keepDays: 7 } as const;
+export const LINKED_PLANS = { bodyBytes: 32 * 1024, perDay: 500, keepDays: 7 } as const;
 export type LinkedPlanLimits = { perDay: number; keepDays: number };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -108,7 +109,7 @@ export function registerBasketRoutes(
         summary:
           'Make a plan from a goal and its limits for a person to open from a link. Nothing is bought',
         description:
-          "For an agent that works for a person without their sign-in. Served while the agent surface is on (`flags.agentSurface` of `GET /v1/config`); off, it answers 404. A theme has to be the slug of a shared portfolio on that chain (422 otherwise); the body is at most 16 KB; the server makes at most a set number of these a day across every caller (429 `RATE_LIMITED` past it), and deletes one nobody bought after 7 days. A buyer's vault is numbered from the plan and the buyer, so the plan's id does not lead to it. The plan is made as `POST /v1/baskets/personalize` makes it, on the one chain the sheet names (a chain this server has switched off is refused), and stored with no person: `GET /v1/baskets/{id}` reads it back for anybody holding its id. The person opens `/plan/{id}` in the app, signed in, and buys it there; it can be bought only on the chain their plans live on (gate ONE-CHAIN). Nothing is bought or signed here. The plan is not advice: see `disclaimer`.",
+          "For an agent that works for a person without their sign-in. Served while the agent surface is on (`flags.agentSurface` of `GET /v1/config`); off, it answers 404. A theme has to be the slug of a shared portfolio on that chain (422 otherwise); the body is at most 32 KB; the server makes at most a set number of these a day across every caller together, so one caller can use up the day for the rest (429 `RATE_LIMITED` past it), and deletes one nobody bought after 7 days. A buyer's vault is numbered from the plan and the buyer, so the plan's id does not lead to it. The plan is made as `POST /v1/baskets/personalize` makes it, on the one chain the sheet names (a chain this server has switched off is refused), and stored with no person: `GET /v1/baskets/{id}` reads it back for anybody holding its id. The person opens `/plan/{id}` in the app, signed in, and buys it there; it can be bought only on the chain their plans live on (gate ONE-CHAIN). Nothing is bought or signed here. The plan is not advice: see `disclaimer`.",
         body: PersonalizeRequest,
         response: { 200: PersonalizeResponse, default: OrderError },
       },

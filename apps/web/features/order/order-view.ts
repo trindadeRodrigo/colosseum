@@ -106,6 +106,9 @@ export function outcomeView(outcome: RunOutcome, t: Dictionary, chain: ChainId):
         alarm: false,
       };
     case 'error':
+      // A plan that is gone cannot be bought by trying again: it is made again from the goal.
+      if (outcome.error.body?.code === 'PLAN_GONE')
+        return { sentence: o.planGone, next: { kind: 'none' }, alarm: true };
       return { sentence: o.error, next: { kind: 'run' }, alarm: true };
     case 'elsewhere':
       return { sentence: o.elsewhere, next: { kind: 'none' }, alarm: false };

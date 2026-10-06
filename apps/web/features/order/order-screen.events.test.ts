@@ -190,6 +190,39 @@ describe('the review', () => {
     expect(deps.plan.basketId).not.toBe(basketIdOfLinkedPlan(PLAN_ID, 'did:privy:someone-else'));
   });
 
+  it('takes the vault’s number from the order when it is one this app works out, and no other', async () => {
+    // the order states the buyer's own number for a plan made from a link: it is used, whatever this
+    // browser kept about the plan
+    api({ ...orderOn(), basketId: basketIdOfLinkedPlan(PLAN_ID, USER) });
+    seed();
+    run.answer = async (order) => ({ status: 'done', order: doneOrder() ?? order });
+    let host = await screen();
+    await click(primary(host));
+    await settle();
+    const [{ deps }] = run.calls as [{ order: OrderDetail; deps: ExecutorDeps }];
+    expect(deps.plan.basketId).toBe(basketIdOfLinkedPlan(PLAN_ID, USER));
+    await unmountAll();
+    window.localStorage.clear();
+    run.calls.length = 0;
+    // a number that is neither the plan's nor this person's own is not signed for, and for a plan this
+    // browser kept as one from a link, the plan's shared number is not either
+    for (const [basketId, record] of [
+      [basketIdOfLinkedPlan(PLAN_ID, 'did:privy:someone-else'), recordOf()],
+      ['42', recordOf()],
+      [basketIdOfPlan(PLAN_ID), { ...recordOf(), linked: true as const }],
+    ] as const) {
+      api({ ...orderOn(), basketId });
+      seed(record);
+      host = await screen();
+      await click(primary(host));
+      await settle();
+      expect(run.calls).toHaveLength(0);
+      expect(host.textContent).toContain(en.order.outcome.notRunnable['plan-mismatch']);
+      await unmountAll();
+      window.localStorage.clear();
+    }
+  });
+
   it('shows each confirmed step with its explorer link once the order is done', async () => {
     api(orderOn());
     seed();

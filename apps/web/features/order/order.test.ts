@@ -306,6 +306,18 @@ describe('what the order screen says about each answer of the executor', () => {
     expect(
       view({ status: 'error', order, legId: null, error: { status: 500, message: 'x' } }).next.kind,
     ).toBe('run');
+    // a plan that is gone is not bought by trying again: the person is told to make it again
+    const gone = view({
+      status: 'error',
+      order,
+      legId: LEG_SWAP,
+      error: {
+        status: 409,
+        message: 'the plan this order buys is gone',
+        body: { error: 'the plan this order buys is gone', code: 'PLAN_GONE' },
+      },
+    });
+    expect([gone.sentence, gone.next.kind]).toEqual([en.order.outcome.planGone, 'none']);
     // a revert is never sent again, and an expired order is over
     expect(view({ status: 'failed', order, legId: LEG_SWAP, error: null }).next.kind).toBe(
       'new-order',

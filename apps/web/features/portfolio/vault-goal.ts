@@ -16,7 +16,8 @@ export const ordersOfVault = (vault: Vault, records: readonly OrderRecord[]): Or
   records.filter(
     (r) =>
       r.chain === vault.chain &&
-      basketOfPlan(r.proposalId, r.linked ? r.userId : null) === vault.basketId,
+      (r.approved?.order.basketId ?? basketOfPlan(r.proposalId, r.linked ? r.userId : null)) ===
+        vault.basketId,
   );
 
 /** The goal of the newest of those orders that kept one, or null. */

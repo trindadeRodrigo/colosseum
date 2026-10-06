@@ -1014,6 +1014,8 @@ export const en = {
       lookAgain: 'Look again',
       error:
         'Our server refused or didn’t answer, so the order stopped. What was signed is kept. Try again.',
+      planGone:
+        'The plan this order buys isn’t stored any more: a plan from a link that nobody buys is deleted after a few days. The order stopped, and what was signed is kept. Build the plan again from your goal.',
       tryAgain: 'Try again',
       elsewhere:
         'This order is running in another tab of this browser. Follow it there; nothing was done here.',
@@ -1027,7 +1029,7 @@ export const en = {
         'no-lock':
           'This browser can’t keep an order to one tab, so I won’t sign here. Open the page in a current browser.',
         'plan-mismatch':
-          'The plan kept for this order is for another chain, so nothing was signed. Make a new order.',
+          'The plan kept for this order doesn’t match it (another chain, or another vault), so nothing was signed. Make a new order.',
       },
       crashed:
         'Something stopped the order before it finished. What was signed is kept. Try again.',

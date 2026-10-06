@@ -1029,7 +1029,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -1049,7 +1050,7 @@
       "post": {
         "summary": "Make a plan from a goal and its limits for a person to open from a link. Nothing is bought",
         "tags": ["plans"],
-        "description": "For an agent that works for a person without their sign-in. Served while the agent surface is on (`flags.agentSurface` of `GET /v1/config`); off, it answers 404. A theme has to be the slug of a shared portfolio on that chain (422 otherwise); the body is at most 16 KB; the server makes at most a set number of these a day across every caller (429 `RATE_LIMITED` past it), and deletes one nobody bought after 7 days. A buyer's vault is numbered from the plan and the buyer, so the plan's id does not lead to it. The plan is made as `POST /v1/baskets/personalize` makes it, on the one chain the sheet names (a chain this server has switched off is refused), and stored with no person: `GET /v1/baskets/{id}` reads it back for anybody holding its id. The person opens `/plan/{id}` in the app, signed in, and buys it there; it can be bought only on the chain their plans live on (gate ONE-CHAIN). Nothing is bought or signed here. The plan is not advice: see `disclaimer`.",
+        "description": "For an agent that works for a person without their sign-in. Served while the agent surface is on (`flags.agentSurface` of `GET /v1/config`); off, it answers 404. A theme has to be the slug of a shared portfolio on that chain (422 otherwise); the body is at most 32 KB; the server makes at most a set number of these a day across every caller together, so one caller can use up the day for the rest (429 `RATE_LIMITED` past it), and deletes one nobody bought after 7 days. A buyer's vault is numbered from the plan and the buyer, so the plan's id does not lead to it. The plan is made as `POST /v1/baskets/personalize` makes it, on the one chain the sheet names (a chain this server has switched off is refused), and stored with no person: `GET /v1/baskets/{id}` reads it back for anybody holding its id. The person opens `/plan/{id}` in the app, signed in, and buys it there; it can be bought only on the chain their plans live on (gate ONE-CHAIN). Nothing is bought or signed here. The plan is not advice: see `disclaimer`.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2047,7 +2048,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -2741,7 +2743,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -3082,7 +3085,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -3462,7 +3466,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -3903,7 +3908,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -4178,7 +4184,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -4403,7 +4410,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -4646,7 +4654,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -4986,6 +4995,10 @@
                       "maxLength": 78,
                       "pattern": "^(?:0|[1-9]\\d*)$"
                     },
+                    "basketId": {
+                      "type": "string",
+                      "pattern": "^\\d{1,20}$"
+                    },
                     "legs": {
                       "type": "array",
                       "items": {
@@ -5451,7 +5464,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -5529,6 +5543,10 @@
                       "maxLength": 78,
                       "pattern": "^(?:0|[1-9]\\d*)$"
                     },
+                    "basketId": {
+                      "type": "string",
+                      "pattern": "^\\d{1,20}$"
+                    },
                     "legs": {
                       "type": "array",
                       "items": {
@@ -5994,7 +6012,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -6458,7 +6477,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -6545,6 +6565,10 @@
                       "type": "string",
                       "maxLength": 78,
                       "pattern": "^(?:0|[1-9]\\d*)$"
+                    },
+                    "basketId": {
+                      "type": "string",
+                      "pattern": "^\\d{1,20}$"
                     },
                     "legs": {
                       "type": "array",
@@ -7011,7 +7035,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -7132,6 +7157,10 @@
                       "maxLength": 78,
                       "pattern": "^(?:0|[1-9]\\d*)$"
                     },
+                    "basketId": {
+                      "type": "string",
+                      "pattern": "^\\d{1,20}$"
+                    },
                     "legs": {
                       "type": "array",
                       "items": {
@@ -7597,7 +7626,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -8114,7 +8144,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -8549,7 +8580,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -9077,7 +9109,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
