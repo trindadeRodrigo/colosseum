@@ -73,18 +73,13 @@ describe('reading the portfolio', () => {
       expect((await readPortfolio(answering(json(answer)), 'solana')).kind).toBe('unreadable');
   });
 
-  it('reads the person’s chain from the answer, and nothing for another chain', async () => {
+  it('shows nothing for another chain than the person’s, nor for two chains (ONE-CHAIN)', async () => {
     const other = chainOf([vault({ chain: 'robinhood' })], { chain: 'robinhood' });
     const evmVault = { ...portfolioBody(), chains: [other] };
     // the answer is for Robinhood Chain; the person's plan lives on Solana
     expect((await readPortfolio(answering(json(evmVault)), 'solana')).kind).toBe('unreadable');
-    // Every chain the person holds a wallet for (CHAIN-SWITCH): the Solana entry is read.
-    const both = { ...portfolioBody(), chains: [other, chainOf()] };
-    const read = await readPortfolio(answering(json(both)), 'solana');
-    expect(read.kind === 'read' && read.chain.chain).toBe('solana');
-    // Two entries for one chain: not shown.
-    const twice = { ...portfolioBody(), chains: [chainOf(), chainOf()] };
-    expect((await readPortfolio(answering(json(twice)), 'solana')).kind).toBe('unreadable');
+    const both = { ...portfolioBody(), chains: [chainOf(), other] };
+    expect((await readPortfolio(answering(json(both)), 'solana')).kind).toBe('unreadable');
     // a vault of another chain inside the person's chain
     const mixed = { ...portfolioBody(), chains: [chainOf([vault(), vault({ chain: 'base' })])] };
     expect((await readPortfolio(answering(json(mixed)), 'solana')).kind).toBe('unreadable');

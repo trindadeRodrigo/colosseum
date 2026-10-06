@@ -51,9 +51,8 @@ const record = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 
 /**
- * The person's vaults on `chain`. The API answers for every chain the person holds a wallet for
- * (CHAIN-SWITCH); this reads that chain's entry. An answer with no entry for it, two entries for it, or
- * a vault of another chain inside it is not shown.
+ * The person's vaults on `chain`, the chain their plan lives on. An answer that names another chain,
+ * or more than one, is not shown: a plan lives on one chain (gate ONE-CHAIN).
  */
 export async function readPortfolio(apiFetch: ApiFetch, chain: ChainId): Promise<PortfolioOutcome> {
   let res: Response;
@@ -80,8 +79,8 @@ export async function readPortfolio(apiFetch: ApiFetch, chain: ChainId): Promise
   if (!res.ok) return { kind: 'unreachable' };
   const parsed = PortfolioResponse.safeParse(body);
   if (!parsed.success) return { kind: 'unreadable' };
-  const [only, ...more] = parsed.data.chains.filter((entry) => entry.chain === chain);
-  if (!only || more.length > 0) return { kind: 'unreadable' };
+  const [only, ...more] = parsed.data.chains;
+  if (!only || more.length > 0 || only.chain !== chain) return { kind: 'unreadable' };
   if (only.vaults.some((vault) => vault.chain !== chain)) return { kind: 'unreadable' };
   return { kind: 'read', chain: only };
 }
