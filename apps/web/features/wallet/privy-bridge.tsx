@@ -68,7 +68,8 @@ function privyConfig(chains: WalletChains): PrivyClientConfig {
   });
   return {
     loginMethods: ['passkey', 'wallet'],
-    // Sign-in is our own screen (app/(app)/sign-in), on Privy's hooks that open no window of Privy's.
+    // Sign-in is our own dialog and page (features/account/SignInDialog.tsx, app/(app)/sign-in), on
+    // Privy's hooks that open no window of Privy's.
     // What is left of its appearance is the one window it still owns: the export of a key.
     appearance: {
       theme: 'light',

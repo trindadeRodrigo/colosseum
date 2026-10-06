@@ -87,11 +87,14 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
 
 async function toReview(page: Page) {
   await page.request.post(`${STUB}/__stub/reset`);
-  await page.goto('/sign-in');
-  await page.getByRole('button', { name: en.signIn.passkey.continue }).click();
-  await page.getByRole('button', { name: 'Solana' }).click();
-  await page.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
-  // sign-in leads to the goal; `/` is his landing page for a visitor (WEB-2b)
+  // the bar's "Sign in" opens the sign-in dialog over the goal (SIGN-IN-FLOW); the person stays there
+  await page.goto('/goal');
+  await page.locator('header a[href="/sign-in"]').click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
+  await dialog.getByRole('button', { name: 'Solana' }).click();
+  await dialog.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
+  await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/goal$/);
   await check(page, 'home');
 

@@ -499,6 +499,11 @@
   --ease-seat: var(--tf-ease-seat);
   --animate-seat: seat var(--tf-dur-slide) var(--tf-ease-seat) both;
   --animate-pin-drop: pin-drop var(--tf-dur-fade) var(--tf-ease-seat) var(--tf-delay-pin) both;
+  /* A dialog rises 12px as it fades in (320ms); its scrim fades (160ms). With reduced motion both are
+   * a 120ms crossfade (STYLE.md, Motion). */
+  --animate-dialog-in: dialog-in var(--tf-dur-slide) var(--tf-ease-seat) both;
+  --animate-scrim-in: fade var(--tf-dur-fade) var(--tf-ease-seat) both;
+  --animate-crossfade: fade 120ms linear both;
   --default-transition-duration: 160ms;
   --default-transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 
@@ -518,6 +523,17 @@
 @keyframes pin-drop {
   from {
     transform: translateY(-6px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    transform: translateY(12px);
     opacity: 0;
   }
   to {

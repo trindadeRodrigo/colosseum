@@ -27,7 +27,18 @@ type Stage = 'out' | 'making' | 'reading' | 'pick' | 'unknown' | 'no-wallet' | '
 /** The stages a person waits through. Focus rests on the heading until one of the others comes. */
 const PASSING: readonly Stage[] = ['making', 'reading'];
 
-export function SignInScreen({ next = AFTER_SIGN_IN }: { next?: string }) {
+export type SignInScreenProps = {
+  /** Where the person goes once the chain is known, when this is the page at `/sign-in`. */
+  next?: string;
+  /**
+   * In the sign-in dialog: called once the chain is known, in place of going to `next`, and the
+   * title is the dialog's (an h2 with this id) rather than the page's h1.
+   */
+  onDone?: () => void;
+  titleId?: string;
+};
+
+export function SignInScreen({ next = AFTER_SIGN_IN, onDone, titleId }: SignInScreenProps) {
   const t = useT();
   const port = useWalletPort();
   const { account, retry, overruled } = useAccount();
@@ -47,8 +58,10 @@ export function SignInScreen({ next = AFTER_SIGN_IN }: { next?: string }) {
   // A person whose choice was not kept is not moved on by the page: they read why first.
   const settled = account.status === 'ready' && overruled === null;
   useEffect(() => {
-    if (arrived && settled) router.replace(next);
-  }, [arrived, settled, next, router]);
+    if (!arrived || !settled) return;
+    if (onDone) onDone();
+    else router.replace(next);
+  }, [arrived, settled, next, router, onDone]);
 
   async function makeWallet() {
     acted.current = true;
@@ -160,13 +173,24 @@ export function SignInScreen({ next = AFTER_SIGN_IN }: { next?: string }) {
       className="mx-auto flex w-full max-w-[860px] flex-col gap-8"
     >
       <header className="flex flex-col gap-3">
-        <h1
-          ref={heading}
-          tabIndex={-1}
-          className="max-w-(--tf-measure-display) font-display text-h1 font-normal"
-        >
-          {signedIn ? t.signIn.done.title : t.signIn.title}
-        </h1>
+        {onDone ? (
+          <h2
+            ref={heading}
+            id={titleId}
+            tabIndex={-1}
+            className="max-w-(--tf-measure-display) font-display text-h2 font-normal"
+          >
+            {signedIn ? t.signIn.done.title : t.signIn.title}
+          </h2>
+        ) : (
+          <h1
+            ref={heading}
+            tabIndex={-1}
+            className="max-w-(--tf-measure-display) font-display text-h1 font-normal"
+          >
+            {signedIn ? t.signIn.done.title : t.signIn.title}
+          </h1>
+        )}
         {!signedIn && (
           <p className="max-w-(--tf-measure-body) text-body-lg text-foreground">{t.signIn.lead}</p>
         )}
