@@ -126,7 +126,7 @@ describe('the prompt file', () => {
     expect(problems).toContainEqual(expect.stringMatching(/^line 3 .*risk: /));
     expect(problems).toContainEqual(expect.stringMatching(/^line 8 .*chain `tron` is not one of/));
     expect(problems).toContainEqual(
-      expect.stringMatching(/^line 11: only a ```yaml answers block is read/),
+      expect.stringMatching(/^line 11: only a ```yaml answers or a ```json reply block is read/),
     );
     expect(problems).toContainEqual(expect.stringMatching(/^line 14 .*has no text/));
     expect(problems).toContainEqual(expect.stringMatching(/^line 15: .*not valid YAML/));
@@ -165,6 +165,45 @@ describe('the prompt file', () => {
     expect(() => parseArgs(['f.md', '--data', 'live'], clock)).toThrow(/fixtures or db/);
     expect(() => parseArgs(['f.md', '--now', 'tomorrow'], clock)).toThrow(/ISO time/);
     expect(() => parseArgs([], clock)).toThrow(/usage/);
+  });
+});
+
+describe('a model reply pasted in the file', () => {
+  const source = [
+    '## Pasted',
+    'I have $20,000 and want it to grow over 10 years, medium risk. I live in Brazil.',
+    '```json reply sonnet',
+    JSON.stringify({
+      goal: 'grow',
+      risk: 'medium',
+      amountUsd: 20000,
+      incomeTargetUsdMonthly: null,
+      horizonMonths: 120,
+      currency: null,
+      country: 'BR',
+      chain: null,
+      portfolios: [],
+      noCredit: null,
+      cannotHold: [],
+      language: 'en',
+      unclear: [],
+    }),
+    '```',
+  ].join('\n');
+
+  it("is read as the model's reply, checked the same way, and labelled mock with who wrote it", async () => {
+    const [goal] = parsePromptFile(source, 'test.md');
+    expect(goal?.reply?.by).toBe('sonnet');
+    if (!goal) return;
+    const run = await runGoal(goal, { data: fixturesSource(), model: null, now: NOW });
+    expect(run.reader).toMatchObject({ method: 'model', provenance: 'mock' });
+    expect(run.reader.model).toContain('sonnet');
+  });
+
+  it('refuses a reply that is not JSON, by line', () => {
+    expect(problemsOf('## Bad\nGrow $1,000.\n```json reply\n{nope\n```')).toEqual([
+      expect.stringMatching(/line 3: the json reply is not JSON/),
+    ]);
   });
 });
 

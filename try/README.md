@@ -112,3 +112,19 @@ unless the page says otherwise.
 The page uses the time from `--now`, or the clock: the same file and `--now` give the same page.
 
 The code is in `scripts/try/`; the tests are in `tests/try-plans.test.ts`.
+
+## Reading the goal with a model in a chat
+
+You can let a model in a chat (Claude Code, with any model you pick, say Sonnet or Haiku) read a goal, and run what it read through the engine here. The model gets the same instructions as the API's reader (`SYSTEM` in `apps/api/src/llm.ts`) and answers in the same JSON shape. Paste its answer under the goal in a block named `json reply <who>`:
+
+````
+## Grow for ten years
+I have $20,000 and want it to grow over 10 years, medium risk. I live in Brazil.
+```json reply sonnet
+{"goal":"grow","risk":"medium","amountUsd":20000,"incomeTargetUsdMonthly":null,"horizonMonths":120,
+ "currency":null,"country":"BR","chain":null,"portfolios":[],"noCredit":null,"cannotHold":[],
+ "language":"en","unclear":[]}
+```
+````
+
+The reply goes through the same checks as one from the API (every amount and date must be in the text, every field the text gives no cue for is asked), so a model that guesses is caught here as it would be live. The report names who wrote it and labels it mock: it was not read through the API. A goal with a pasted reply does not call the API, with or without `ANTHROPIC_API_KEY`.

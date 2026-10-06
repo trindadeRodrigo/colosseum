@@ -69,9 +69,13 @@ export async function runGoal(goal: PromptGoal, opts: RunOptions): Promise<GoalR
   const nowMonth = nowIso.slice(0, 7);
   const data = await opts.data.forChain(goal.chain);
   const language: Language | undefined = goal.answers.language;
-  const read = opts.model
-    ? await opts.model.read(goal.text, nowMonth, language, opts.who ?? 'plan-playground')
-    : { reply: null, why: 'model_not_configured' };
+  // A reply pasted in the file (a model run outside this tool) is read as the model's, and checked
+  // the same way; it is never live, so it is labelled mock.
+  const read = goal.reply
+    ? { reply: goal.reply.value }
+    : opts.model
+      ? await opts.model.read(goal.text, nowMonth, language, opts.who ?? 'plan-playground')
+      : { reply: null, why: 'model_not_configured' };
   const intake = runIntake({
     text: goal.text,
     nowMonth,
@@ -81,11 +85,16 @@ export async function runGoal(goal: PromptGoal, opts: RunOptions): Promise<GoalR
     homeChain: goal.chain,
     portfolios: data.portfolios,
   });
-  const byModel = read.reply !== null && opts.model !== null;
+  const pasted = goal.reply !== undefined && read.reply !== null;
+  const byModel = read.reply !== null && opts.model !== null && !pasted;
   const reader: Reader = {
     method: intake.method,
-    model: byModel && opts.model ? opts.model.id : null,
-    provenance: byModel && opts.model ? opts.model.provenance : null,
+    model: pasted
+      ? `pasted reply (${goal.reply?.by})`
+      : byModel && opts.model
+        ? opts.model.id
+        : null,
+    provenance: pasted ? 'mock' : byModel && opts.model ? opts.model.provenance : null,
     why: 'why' in read && typeof read.why === 'string' ? read.why : null,
   };
   const open = intake.questions.map((q) => ({

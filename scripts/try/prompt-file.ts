@@ -30,6 +30,12 @@ export type PromptGoal = {
   holdings: HeldPosition[];
   /** The answers block as written, for the report. Empty when the goal has none. */
   answersText: string;
+  /**
+   * A model's reply to the goal, pasted in a ```json reply <who>``` block: what a model read when it
+   * was run outside this tool (in a chat, say). It goes through the same checks as a reply from the
+   * API, and the report says who wrote it.
+   */
+  reply?: { value: unknown; by: string };
 };
 
 export class PromptFileError extends Error {
@@ -208,6 +214,7 @@ export function parsePromptFile(source: string, file = 'prompt file'): PromptGoa
     const textLines: string[] = [];
     let answersYaml: { n: number; lines: string[] } | null = null;
     let chainLine: string | null = null;
+    let reply: { n: number; by: string; lines: string[] } | null = null;
     for (let k = 0; k < s.body.length; k++) {
       const row = s.body[k];
       if (!row) continue;
@@ -227,12 +234,18 @@ export function parsePromptFile(source: string, file = 'prompt file'): PromptGoa
           inner.push(r.text);
         }
         if (!closed) continue; // said once above
+        const replied = info.match(/^json\s+reply(?:\s+(\S+))?$/i);
+        if (replied) {
+          if (reply) problems.push(`line ${row.n}: a goal has one \`json reply\` block`);
+          else reply = { n: row.n, by: replied[1] ?? 'unnamed', lines: inner };
+          continue;
+        }
         if (/^ya?ml\s+answers$/i.test(info)) {
           if (answersYaml) problems.push(`line ${row.n}: a goal has one \`yaml answers\` block`);
           else answersYaml = { n: row.n, lines: inner };
         } else
           problems.push(
-            `line ${row.n}: only a \`\`\`yaml answers block is read in a goal (this one is \`${info || 'no name'}\`)`,
+            `line ${row.n}: only a \`\`\`yaml answers or a \`\`\`json reply block is read in a goal (this one is \`${info || 'no name'}\`)`,
           );
         continue;
       }
@@ -313,7 +326,16 @@ export function parsePromptFile(source: string, file = 'prompt file'): PromptGoa
       for (const i of answers.error.issues)
         problems.push(`${where}: ${i.path.join('.') || 'answers'}: ${i.message}`);
 
+    let replyValue: { value: unknown; by: string } | undefined;
+    if (reply) {
+      try {
+        replyValue = { value: JSON.parse(reply.lines.join('\n')) as unknown, by: reply.by };
+      } catch (e) {
+        problems.push(`line ${reply.n}: the json reply is not JSON (${(e as Error).message})`);
+      }
+    }
     goals.push({
+      ...(replyValue ? { reply: replyValue } : {}),
       title: s.title,
       line: s.line,
       text,
