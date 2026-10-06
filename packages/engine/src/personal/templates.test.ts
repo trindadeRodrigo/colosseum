@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  asListed,
   INPUT_NAMES,
   placeholdersOf,
   REASON_TEMPLATES,
@@ -231,6 +232,49 @@ describe('explanation templates', () => {
     expect(names('AAPL,MSFT,NVDA', 'en')).toBe('AAPL, MSFT and NVDA');
     expect(names('AAPL,MSFT,NVDA', 'pt')).toBe('AAPL, MSFT e NVDA');
     expect(() => names('AAPL,,NVDA', 'en')).toThrow(/list of names/);
+  });
+
+  it('keeps a name with a comma in it whole in a list (gate THEME-MATCHED)', () => {
+    // A list is joined by commas with no space after them, so a comma followed by a space is part of
+    // a name: an industry is often written with one.
+    const hardware = 'Technology Hardware, Storage & Peripherals';
+    const names = (list: string[], lang: 'en' | 'pt' = 'en') =>
+      render('{n|list}', { n: list.map(asListed).join(',') }, lang);
+    expect(names([hardware])).toBe(hardware);
+    expect(names(['AI', hardware])).toBe('AI and Technology Hardware, Storage & Peripherals');
+    expect(names([hardware, 'AI', 'Oil, Gas & Consumable Fuels'], 'pt')).toBe(
+      'Technology Hardware, Storage & Peripherals, AI e Oil, Gas & Consumable Fuels',
+    );
+    expect(names(['AAPL', 'MSFT', 'NVDA'])).toBe('AAPL, MSFT and NVDA');
+    // A name written with no space after its comma is given one before it is listed, so it is never
+    // split either; a name with no comma is left as it is.
+    expect(asListed('Oil,Gas & Consumable Fuels')).toBe('Oil, Gas & Consumable Fuels');
+    expect(names(['AI', 'Oil,Gas & Consumable Fuels'])).toBe('AI and Oil, Gas & Consumable Fuels');
+    expect(asListed(hardware)).toBe(hardware);
+    expect(asListed('NVDA')).toBe('NVDA');
+  });
+
+  it('says what a market filter reads in each language (gate THEME-MATCHED)', () => {
+    const said = (by: string, lang: 'en' | 'pt') => render('{by|by}', { by }, lang);
+    const kinds = ['sector', 'industry', 'sub_industry', 'keyword'];
+    expect(kinds.map((by) => said(by, 'en'))).toEqual([
+      'sector',
+      'industry',
+      'sub-industry',
+      'business line',
+    ]);
+    expect(kinds.map((by) => said(by, 'pt'))).toEqual([
+      'setor',
+      'indústria',
+      'subindústria',
+      'linha de negócio',
+    ]);
+    expect(Object.keys(WORDS.en.by)).toEqual(kinds);
+    expect(Object.keys(WORDS.pt.by)).toEqual(kinds);
+    expect(Object.keys(WORDS.en.itsBy)).toEqual(kinds);
+    expect(Object.keys(WORDS.pt.itsBy)).toEqual(kinds);
+    // What this file does not know is printed as it came, never dropped.
+    expect(said('country', 'en')).toBe('country');
   });
 
   it('never writes a small amount as zero, and rounds a loss up', () => {
