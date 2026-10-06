@@ -6,6 +6,7 @@ import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/Card';
+import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { pinSourceOfPrice } from '../../components/ui/price-source';
@@ -13,7 +14,7 @@ import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars } from '../goal/sheet';
-import { assetName, formatBps } from '../order/amounts';
+import { assetTicker, formatBps } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { vaultValueSource } from '../portfolio/portfolio';
 import { useApiFetch } from '../wallet/WalletProvider';
@@ -85,7 +86,8 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
   const follows = vault.recipeOnchainId;
   return (
     <div data-ui="vault-screen" className="flex flex-col gap-8">
-      <header className="flex flex-col gap-3">
+      <header className="flex flex-col items-start gap-3">
+        <ChainBadge chain={read.chain} />
         <h1 id={titleId} className="max-w-(--tf-measure-display) font-display text-h1 font-normal">
           {v.title}
         </h1>
@@ -134,7 +136,12 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
               )}
             </dd>
             <dt className="text-muted-foreground">{v.cash}</dt>
-            <dd className="tabular-nums">{vault.cash.display}</dd>
+            <dd className="tabular-nums">
+              {vault.cash.display}{' '}
+              <span className="text-caption text-muted-foreground">
+                {assetTicker(vault.cash.asset)}
+              </span>
+            </dd>
           </dl>
           <DataTable<Row>
             caption={read.name}
@@ -146,7 +153,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                 key: 'asset',
                 header: v.columns.asset,
                 rowHeader: true,
-                cell: (r) => assetName(r.asset).toUpperCase(),
+                cell: (r) => assetTicker(r.asset),
               },
               { key: 'held', header: v.columns.held, numeric: true, cell: (r) => r.display },
               {

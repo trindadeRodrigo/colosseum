@@ -6,6 +6,7 @@ import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/Card';
+import { ChainBadge } from '../../components/ui/ChainBadge';
 import { CopyButton } from '../../components/ui/CopyButton';
 import { ExplorerLink } from '../../components/ui/ExplorerLink';
 import { SkeletonSummary } from '../../components/ui/Skeleton';
@@ -256,7 +257,8 @@ export function OrderScreen({ id }: { id: string }) {
 
   return (
     <div data-ui="order-screen" className="flex flex-col gap-8">
-      <header className="flex flex-col gap-3">
+      <header className="flex flex-col items-start gap-3">
+        <ChainBadge chain={chain} />
         <h1 id={titleId} className="max-w-(--tf-measure-display) font-display text-h1 font-normal">
           {record.approved ? t.order.title : t.order.review.title}
         </h1>
@@ -274,7 +276,7 @@ export function OrderScreen({ id }: { id: string }) {
           note: testNetwork ? t.shell.testNetwork : undefined,
         }}
       >
-        <CardHeader title={t.order.stepsTitle} level={2} meta={t.chain.names[chain]} />
+        <CardHeader title={t.order.stepsTitle} level={2} meta={<ChainBadge chain={chain} />} />
         <CardBody className="flex flex-col gap-4">
           <StatRow>
             {buying && <Stat label={t.order.review.deposit}>{depositShown}</Stat>}
@@ -301,7 +303,7 @@ export function OrderScreen({ id }: { id: string }) {
                   now={standing}
                   phase={phase?.legId === leg.id ? phase.phase : null}
                   units={units}
-                  explorer={`${t.chain.names[chain]} ${t.order.explorer}`}
+                  explorer={t.chain.explorers[chain]}
                   mock={onMock(port, chain)}
                   t={t}
                   locale={LOCALE[lang]}
@@ -438,12 +440,7 @@ export function OrderScreen({ id }: { id: string }) {
       {/* His "Disclaimer and activity": what reached the chain, line by line with its link, beside the
           disclaimer. */}
       <ActivityPanel
-        executions={activityOf(
-          now,
-          t,
-          `${t.chain.names[chain]} ${t.order.explorer}`,
-          onMock(port, chain),
-        )}
+        executions={activityOf(now, t, onMock(port, chain))}
         empty={t.activity.noneYet}
       />
     </div>

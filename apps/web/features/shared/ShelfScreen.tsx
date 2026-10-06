@@ -6,11 +6,12 @@ import { Wait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardEmpty, CardHeader } from '../../components/ui/Card';
+import { ChainBadges } from '../../components/ui/ChainBadge';
 import { SkeletonCards } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { assetName, formatBps } from '../order/amounts';
+import { assetTicker, formatBps } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { networkFor } from '../order/readiness';
 import { useApiFetch } from '../wallet/WalletProvider';
@@ -156,7 +157,9 @@ function FamilyCard({ family }: { family: SharedFamily }) {
               recipe.chain,
               recipe.creator,
             ) && <span className="font-medium text-foreground">{c.platform}</span>}
-          <span>{c.on(family.chains.map((chain) => t.chain.names[chain]).join(', '))}</span>
+          <span className="inline-flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
+            {c.on} <ChainBadges chains={family.chains} />
+          </span>
         </p>
         {family.copy && (
           <p className="line-clamp-3 max-w-(--tf-measure-body) text-body-sm [overflow-wrap:anywhere]">
@@ -184,7 +187,7 @@ export function Weights({ recipe, locale }: { recipe: SharedRecipe; locale: stri
   return (
     <p className="font-mono text-source [overflow-wrap:anywhere]">
       {recipe.active.components
-        .map((c) => `${assetName(c.asset).toUpperCase()} ${formatBps(c.weightBps, locale)}`)
+        .map((c) => `${assetTicker(c.asset)} ${formatBps(c.weightBps, locale)}`)
         .join(' · ')}
     </p>
   );
@@ -199,7 +202,7 @@ export function Offer({ recipe }: { recipe: SharedRecipe }) {
   const sentence = offer.offered
     ? o.offered
     : offer.reason === 'no_oracle'
-      ? o.noOracle(offer.assets.map((a) => assetName(a).toUpperCase()).join(', '), name)
+      ? o.noOracle(offer.assets.map((a) => assetTicker(a)).join(', '), name)
       : o.switchedOff(name);
   return (
     <p

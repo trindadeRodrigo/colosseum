@@ -109,6 +109,7 @@ export const pt: Dictionary = {
 
   chain: {
     names: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
+    explorers: { solana: 'Solscan', robinhood: 'explorador da Robinhood', base: 'Basescan' },
     pick: {
       title: 'Escolha a rede onde seu plano vai ficar',
       asked: {
@@ -279,6 +280,8 @@ export const pt: Dictionary = {
       chainUnknown:
         'Ainda não sei em qual rede seu plano fica, então não consigo montar para ela. Pergunte de novo, acima.',
       refused: 'Nosso servidor não aceitou esses limites. Confira cada campo e tente de novo.',
+      currency:
+        'Os planos são em dólares por enquanto: o valor e cada saque. Informe-os em dólares e monte de novo.',
       signInAgain:
         'Nosso servidor não reconhece mais o seu login, então o plano não foi montado. Saia e entre de novo.',
       noIdentity:
@@ -383,6 +386,15 @@ export const pt: Dictionary = {
     empty: (chain: string) =>
       `Você ainda não tem cofre na ${chain}. Um cofre é criado quando você compra seu primeiro plano.`,
     startGoal: 'Comece pelo seu objetivo',
+    group: {
+      worth: (vaults: number, chain: string) =>
+        vaults > 1 ? `Seus ${vaults} cofres na ${chain} valem` : `Seu cofre na ${chain} vale`,
+      method: (vaults: number, chain: string) =>
+        `seus ${vaults} cofres na ${chain}, cada um avaliado como mostrado, somados`,
+      across: (chains: number) =>
+        chains === 2 ? 'Nas duas redes, juntas' : `Nas ${chains} redes, juntas`,
+      acrossMethod: (chains: number) => `os totais das ${chains} redes acima, somados`,
+    },
     vault: {
       title: 'Seu cofre',
       address: 'Endereço do cofre',
@@ -437,6 +449,7 @@ export const pt: Dictionary = {
       title: 'Seu portfólio',
       worth: (chain: string) => `Seu cofre na ${chain} vale`,
       many: (vaults: number, chain: string) => `Você tem ${vaults} cofres na ${chain}.`,
+      manyChains: (vaults: number, chains: string) => `Você tem ${vaults} cofres, na ${chains}.`,
       see: 'Ver seu portfólio',
     },
   },
@@ -645,7 +658,7 @@ export const pt: Dictionary = {
         version: (n: number) => `versão ${n}`,
         waiting: (n: number) => `versão ${n} aguarda`,
         open: (name: string) => `Abrir ${name}`,
-        on: (chains: string) => `na ${chains}`,
+        on: 'na',
       },
       failure: {
         unreachable:
@@ -951,7 +964,6 @@ export const pt: Dictionary = {
       waiting: 'Aguardando…',
       settled: 'Concluído',
     },
-    explorer: 'explorador',
     signature: 'assinatura',
     notRetried: '(sem nova tentativa)',
     link: {

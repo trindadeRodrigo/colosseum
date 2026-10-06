@@ -3,6 +3,7 @@ import { DISCLAIMER, DISCLAIMER_SHORT, TRUST_STATUS } from '@colosseum/schemas';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buttonClass } from '../../components/ui/button-class';
+import { CHAIN_NAMES } from '../../components/ui/ChainBadge';
 import {
   click,
   find,
@@ -539,5 +540,46 @@ describe('the buy screen', () => {
     await settle();
     expect(find(host, '[role="alert"]').textContent).toBe(en.buy.failure.VERSION_CHANGED);
     expect(router.push).not.toHaveBeenCalled();
+  });
+});
+
+describe.each(['solana', 'robinhood'] as const)('the chain, on %s', (chain) => {
+  /** Every chain badge on the screen, by the chain it names. */
+  const badges = (host: HTMLElement) =>
+    [...host.querySelectorAll('[data-ui="chain-badge"]')].map((b) => [
+      b.getAttribute('data-chain'),
+      b.textContent,
+    ]);
+  const named = [chain, CHAIN_NAMES[chain]];
+  const onChain = (a: ReturnType<typeof funding>) =>
+    chain === 'solana'
+      ? a
+      : {
+          ...a,
+          chain,
+          name: 'Robinhood Chain',
+          wallet: EVM,
+          cash: { ...a.cash, asset: 'robinhood:tusdg', symbol: 'tUSDG' },
+          gas: { ...a.gas, symbol: 'ETH', decimals: 18, needRaw: '24000000000000' },
+        };
+
+  it('is badged on the plan screen, and a Robinhood plan never says USDC', async () => {
+    api({ chain });
+    rememberPlan(planOn(chain));
+    const host = await plan();
+    expect(badges(host)).toEqual([named]);
+    expect(find(host, 'header [data-ui="chain-badge"]').textContent).toBe(CHAIN_NAMES[chain]);
+    if (chain === 'robinhood') expect(host.textContent).not.toMatch(/usdc/i);
+  });
+
+  it('is badged on the buy screen, and a Robinhood buy never says USDC', async () => {
+    api({ chain, say: onChain });
+    rememberPlan(planOn(chain));
+    const host = await buy();
+    expect(badges(host)).toEqual([named]);
+    if (chain === 'robinhood') {
+      expect(host.textContent).toContain('tUSDG');
+      expect(host.textContent).not.toMatch(/usdc/i);
+    }
   });
 });

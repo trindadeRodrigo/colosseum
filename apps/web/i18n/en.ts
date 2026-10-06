@@ -117,6 +117,8 @@ export const en = {
 
   chain: {
     names: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
+    /** The explorer each chain's transaction links open, named beside the link. */
+    explorers: { solana: 'Solscan', robinhood: 'Robinhood explorer', base: 'Basescan' },
     pick: {
       title: 'Choose the chain your plan lives on',
       /** Why this person is asked: they made their wallet here, or connected wallets of both kinds. */
@@ -293,6 +295,9 @@ export const en = {
       chainUnknown:
         'I can’t tell yet which chain your plan lives on, so I can’t build for it. Ask again, above.',
       refused: 'Our server didn’t accept these limits. Check each field, then try again.',
+      /** The goal or a withdrawal is in another currency (gate USD-ONLY). */
+      currency:
+        'Plans are in dollars for now: the amount and every withdrawal. Give them in dollars, then build again.',
       /** The server answered 401 or 403 to "Build my plan". */
       signInAgain:
         'Our server doesn’t recognise your sign-in any more, so the plan wasn’t built. Sign out, then sign in again.',
@@ -403,6 +408,19 @@ export const en = {
     empty: (chain: string) =>
       `You have no vault on ${chain} yet. A vault is made when you buy your first plan.`,
     startGoal: 'Start with your goal',
+    /** Vaults on more than one chain: a heading per chain, with what that chain's vaults are worth. */
+    group: {
+      worth: (vaults: number, chain: string) =>
+        vaults > 1
+          ? `Your ${vaults} vaults on ${chain} are worth`
+          : `Your vault on ${chain} is worth`,
+      method: (vaults: number, chain: string) =>
+        `your ${vaults} vaults on ${chain}, each valued as shown, added up`,
+      /** The one total that adds chains up, and says so. */
+      across: (chains: number) =>
+        chains === 2 ? 'Across both chains, together' : `Across all ${chains} chains, together`,
+      acrossMethod: (chains: number) => `the totals of the ${chains} chains above, added up`,
+    },
     vault: {
       title: 'Your vault',
       address: 'Vault address',
@@ -463,6 +481,8 @@ export const en = {
       title: 'Your portfolio',
       worth: (chain: string) => `Your vault on ${chain} is worth`,
       many: (vaults: number, chain: string) => `You have ${vaults} vaults on ${chain}.`,
+      /** Vaults on more than one chain: counted, never added up across them. */
+      manyChains: (vaults: number, chains: string) => `You have ${vaults} vaults, on ${chains}.`,
       see: 'See your portfolio',
     },
   },
@@ -669,7 +689,7 @@ export const en = {
         version: (n: number) => `version ${n}`,
         waiting: (n: number) => `version ${n} waits`,
         open: (name: string) => `Open ${name}`,
-        on: (chains: string) => `on ${chains}`,
+        on: 'on',
       },
       failure: {
         unreachable: 'I couldn’t read the shared portfolios: our server didn’t answer. Try again.',
@@ -970,7 +990,6 @@ export const en = {
       waiting: 'Waiting…',
       settled: 'Settled',
     },
-    explorer: 'explorer',
     signature: 'signature',
     notRetried: '(not retried)',
     link: {

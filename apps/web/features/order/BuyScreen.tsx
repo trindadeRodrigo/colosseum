@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardFooter, CardHeader } from '../../components/ui/Card';
+import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
 import { utcMinute } from '../../components/ui/ExecutionList';
 import { Field, Input } from '../../components/ui/Field';
@@ -181,7 +182,8 @@ export function BuyScreen({ id }: { id: string }) {
 
   return (
     <div data-ui="buy-screen" className="flex flex-col gap-8">
-      <header className="flex flex-col gap-3">
+      <header className="flex flex-col items-start gap-3">
+        <ChainBadge chain={chain} />
         <h1 className="max-w-(--tf-measure-display) font-display text-h1 font-normal">
           {t.buy.title}
         </h1>
