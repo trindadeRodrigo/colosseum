@@ -1,18 +1,29 @@
 import type { ChainId } from '@colosseum/schemas';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { candidates, compose, riskForMix } from './index';
+import { candidates, compose, composeAs, riskForMix } from './index';
 import { PERSONAL_PARAMS } from './params';
 import {
   allReasons,
   expectedSleeves,
   fixtureContext,
+  fixtureYields,
   launchShelf,
+  NOW,
   sheet,
   sleeveBps,
   violations,
+  withCapsOf,
 } from './testing';
-import { PersonalInputError, type PersonalMix, PersonalSheet } from './types';
+import {
+  type ComposeContext,
+  PersonalInputError,
+  type PersonalMix,
+  type PersonalProposal,
+  PersonalSheet,
+  type RiskLevel,
+} from './types';
+import { monthAfter } from './world';
 
 // Gate EXPLICIT-MIX (Rodrigo, Oct 6): when a person states what they want held, the plan holds it and
 // no risk question is asked. The mix replaces the table's row; the limits are the lowest risk whose
@@ -21,9 +32,9 @@ import { PersonalInputError, type PersonalMix, PersonalSheet } from './types';
 
 const shelf = launchShelf();
 const ctx = fixtureContext();
-const run = (s: PersonalSheet) => {
-  const plan = compose(s, shelf, ctx);
-  expect(violations(plan, shelf, ctx)).toEqual([]);
+const run = (s: PersonalSheet, c: ComposeContext = ctx) => {
+  const plan = compose(s, shelf, c);
+  expect(violations(plan, shelf, c)).toEqual([]);
   return plan;
 };
 const mix = (over: Partial<PersonalMix>): PersonalMix => ({
@@ -34,6 +45,22 @@ const mix = (over: Partial<PersonalMix>): PersonalMix => ({
   ...over,
 });
 const rules = (plan: ReturnType<typeof compose>) => allReasons(plan).map((r) => r.rule);
+const noGlide = { useHoldings: true, glide: false };
+/** `usd` a month for `months` months, from the month the plan is made in (October 2026). */
+const monthly = (usd: number, months: number) =>
+  Array.from({ length: months }, (_, m) => ({
+    month: monthAfter(NOW, m),
+    amount: usd,
+    currency: 'USD',
+  }));
+const said = (plan: PersonalProposal, assetId: string) =>
+  plan.lines.find((l) => l.assetId === assetId)?.reasons ?? [];
+const heldIn = (plan: PersonalProposal) => ({
+  growth: sleeveBps(plan, shelf, 'growth'),
+  dollarYield: sleeveBps(plan, shelf, 'dollarYield'),
+  gold: sleeveBps(plan, shelf, 'gold'),
+  cash: sleeveBps(plan, shelf, 'cash'),
+});
 
 describe('the chat of Oct 6: $2,000 in big tech, all of it in stocks, about 5 years', () => {
   // The intake reads "big tech" as The Seven, "all of it in stocks" as the mix, and "I would say
@@ -195,6 +222,156 @@ describe('no stocks in a plan for income or to protect (gate PROTECT-NO-STOCKS)'
   });
 });
 
+describe('the limits admit the mix as placement places it (review of Oct 6, finding 3)', () => {
+  it('Base, Chips & Agents, 60% stocks and 40% cash: the limits of medium risk, and the 60% is held', () => {
+    // Nine tenths of the portfolio is Coinbase stock tokens and one tenth VIRTUAL. At low risk
+    // Coinbase may hold 50% of the plan and its names ask for 54%: they are cut together, and VIRTUAL
+    // keeps its own weight, so 56.67% is held. A sum of each issuer's room called that a fit.
+    const s = sheet({
+      chains: ['base'],
+      themes: ['chips-and-agents'],
+      rules: noGlide,
+      mix: mix({ growthBps: 6000, cashBps: 4000 }),
+    });
+    const plan = run(s);
+    expect(plan.sheet.risk).toBe('medium');
+    expect(riskForMix(s, shelf, ctx)).toBe('medium');
+    expect(heldIn(plan)).toEqual({ growth: 6000, dollarYield: 0, gold: 0, cash: 4000 });
+    expect(rules(plan)).not.toContain('OVERFLOW_ISSUER');
+  });
+
+  it('Solana, The 500 with Home Team, all in stocks: the limits of medium risk, and all of it is held', () => {
+    // At low risk Home Team's largest names pass the cap on one crypto asset. What is over moves to
+    // the sleeve's other names, The 500 among them, whose issuer then passes its 50%: 91.67% held.
+    const s = sheet({
+      themes: ['the-500', 'home-team'],
+      rules: noGlide,
+      mix: mix({ growthBps: 10_000 }),
+    });
+    const plan = run(s);
+    expect(plan.sheet.risk).toBe('medium');
+    expect(riskForMix(s, shelf, ctx)).toBe('medium');
+    expect(heldIn(plan)).toEqual({ growth: 10_000, dollarYield: 0, gold: 0, cash: 0 });
+  });
+
+  it('counts the gold and the dollar yield of the mix that sit with the issuer of the stocks', () => {
+    // On Solana the gold token and the stock tokens have one issuer. 30% in gold leaves that issuer
+    // room for 20% in stocks at low risk and 40% at medium: only the limits of high risk hold 50%.
+    const solana = sheet({
+      rules: noGlide,
+      mix: mix({ growthBps: 5000, goldBps: 3000, cashBps: 2000 }),
+    });
+    expect(riskForMix(solana, shelf, ctx)).toBe('high');
+    expect(heldIn(run(solana))).toEqual({ growth: 5000, dollarYield: 0, gold: 3000, cash: 2000 });
+    // On Robinhood Chain the dollar-yield token and the gold token are that issuer's too.
+    const robinhood = run(
+      sheet({
+        chains: ['robinhood'],
+        rules: noGlide,
+        mix: mix({ growthBps: 4000, dollarYieldBps: 3000, goldBps: 3000 }),
+      }),
+    );
+    expect(robinhood.sheet.risk).toBe('high');
+    expect(heldIn(robinhood).growth).toBe(4000);
+  });
+
+  it('the three candidates take the limits of the plan, and Carry is the plan', () => {
+    const s = sheet({
+      chains: ['robinhood'],
+      rules: noGlide,
+      obligations: monthly(300, 8),
+      mix: mix({ growthBps: 5000, cashBps: 5000 }),
+    });
+    const plan = compose(s, shelf, ctx);
+    expect(plan.sheet.risk).toBe('medium');
+    for (const id of ['cover', 'spread', 'carry'] as const)
+      expect(composeAs(id, s, shelf, ctx).sheet.risk, id).toBe('medium');
+    const { candidate: _c, scorecard: _s, ...carry } = composeAs('carry', s, shelf, ctx);
+    expect(carry).toEqual(plan);
+  });
+
+  it('takes the highest risk when none admits the mix, and the cap says what keeps the plan from it', () => {
+    // Home Team with three of its five names ruled out: two crypto assets, 35% each at the most.
+    const plan = run(
+      sheet({
+        themes: ['home-team'],
+        rules: noGlide,
+        limits: { cannotHold: { underlyings: ['RAY', 'MET', 'KMNO'] } },
+        mix: mix({ growthBps: 10_000 }),
+      }),
+    );
+    expect(plan.sheet.risk).toBe('high');
+    expect(heldIn(plan).growth).toBe(7000);
+    expect(said(plan, 'solana:jup').map((r) => r.rule)).toContain('SINGLE_STOCK_CAP');
+    expect(rules(plan)).toContain('OVERFLOW_STOCK_CAP');
+  });
+
+  it('a date keeps the limits the mix takes: it moves money out of stocks whatever the risk', () => {
+    // 70% in stocks takes the limits of medium risk. A date a year out leaves 10% in stocks. The
+    // limits stay the ones the read-back stated for the mix, and the line says what the date did.
+    const plan = run(sheet({ horizonMonths: 12, mix: mix({ growthBps: 7000, cashBps: 3000 }) }));
+    expect(plan.sheet.risk).toBe('medium');
+    expect(heldIn(plan).growth).toBe(1000);
+    expect(said(plan, 'solana:spyx').map((r) => r.rule)).toEqual(
+      expect.arrayContaining(['MIX_LIMITS', 'GLIDE']),
+    );
+  });
+
+  it('the mix alone takes one risk at any amount, and it is the risk the plan takes', () => {
+    // What a read-back asks before the amount is known: the mix, the portfolios and the chain.
+    const cases: [string[], PersonalMix, RiskLevel][] = [
+      [['the-seven'], mix({ growthBps: 10_000 }), 'high'],
+      [[], mix({ growthBps: 7000, cashBps: 3000 }), 'medium'],
+      [['the-500', 'home-team'], mix({ growthBps: 10_000 }), 'medium'],
+      [[], mix({ growthBps: 5000, goldBps: 3000, cashBps: 2000 }), 'high'],
+      [[], mix({ growthBps: 5000, dollarYieldBps: 5000 }), 'low'],
+    ];
+    for (const [themes, m, risk] of cases)
+      for (const amountUsd of [10, 1000.01, 10_000, 1_000_000]) {
+        const s = sheet({
+          amountUsd,
+          themes,
+          rules: { useHoldings: false, glide: false },
+          mix: m,
+        });
+        expect(riskForMix(s, shelf, ctx), `${themes} at ${amountUsd}`).toBe(risk);
+        expect(compose(s, shelf, ctx).sheet.risk, `${themes} at ${amountUsd}`).toBe(risk);
+      }
+  });
+});
+
+describe('self-check: the measure sees what it measures (review of Oct 6, finding 8)', () => {
+  /** A copy of a plan with something changed, as a broken engine would have made it. */
+  const tampered = (plan: PersonalProposal, change: (copy: PersonalProposal) => void) => {
+    const copy = structuredClone(plan);
+    change(copy);
+    return violations(copy, shelf, ctx);
+  };
+  const chips = sheet({
+    chains: ['base'],
+    themes: ['chips-and-agents'],
+    rules: noGlide,
+    mix: mix({ growthBps: 6000, cashBps: 4000 }),
+  });
+
+  it('a plan at a lower risk than the mix needs, or a higher one, is seen', () => {
+    const plan = run(chips);
+    expect(plan.sheet.risk).toBe('medium');
+    const relabel = (risk: RiskLevel) => (copy: PersonalProposal) => {
+      copy.sheet.risk = risk;
+      copy.flags = copy.flags.map((f) =>
+        f.startsWith('limits_from_mix:') ? `limits_from_mix:${risk}` : f,
+      );
+    };
+    expect(tampered(plan, relabel('low'))).toContain(
+      'the mix alone needs the limits of medium risk, and the plan took low',
+    );
+    expect(tampered(plan, relabel('high'))).toContain(
+      'at medium risk no cap keeps stocks out of this plan, and it took high',
+    );
+  });
+});
+
 describe('properties: any mix', () => {
   /** A mix in whole percents, adding up to 100%. */
   const mixes = fc
@@ -248,4 +425,79 @@ describe('properties: any mix', () => {
       { numRuns: 60 },
     );
   }, 120_000);
+});
+describe('properties: the risk a mix takes', () => {
+  const RISKS: RiskLevel[] = ['low', 'medium', 'high'];
+  // A table with nothing in the way of a mix but the caps by risk: no ceiling at these amounts, a
+  // line for every name, and a least line of one basis point. No date, no withdrawal, no holding.
+  const roomy = {
+    ...PERSONAL_PARAMS,
+    tierCeilingUsd: { A: 10_000_000, B: 10_000_000, C: 10_000_000 },
+    minLineBps: 1,
+    minLineUsd: 0,
+    maxLinesPerChain: 16,
+  };
+  const context: ComposeContext = { now: NOW, yields: fixtureYields(), params: roomy };
+  /** A mix in whole percents: stocks first, then dollar yield, gold and cash of what is left. */
+  const wholeMixes = fc
+    .tuple(
+      fc.integer({ min: 0, max: 100 }),
+      fc.integer({ min: 0, max: 100 }),
+      fc.integer({ min: 0, max: 100 }),
+    )
+    .map(([stocks, a, b]): PersonalMix => {
+      const rest = 100 - stocks;
+      const dollarYield = Math.floor((rest * a) / 200);
+      const gold = Math.floor(((rest - dollarYield) * b) / 200);
+      return mix({
+        growthBps: stocks * 100,
+        dollarYieldBps: dollarYield * 100,
+        goldBps: gold * 100,
+        cashBps: (rest - dollarYield - gold) * 100,
+      });
+    });
+  const starts: [ChainId, string[]][] = [
+    ['solana', []],
+    ['solana', ['the-seven']],
+    ['solana', ['the-500', 'home-team']],
+    ['solana', ['the-seven', 'home-team']],
+    ['solana', ['crypto-in-a-suit']],
+    ['solana', ['storm-cellar']],
+    ['base', ['chips-and-agents']],
+    ['base', ['the-seven']],
+    ['base', ['home-team', 'chips-and-agents']],
+    ['robinhood', []],
+    ['robinhood', ['sand-to-server']],
+    ['robinhood', ['crypto-in-a-suit', 'the-500']],
+    ['robinhood', ['storm-cellar']],
+  ];
+
+  it('at the risk taken the stated share is held unless no risk admits it, and no lower risk would hold it', () => {
+    fc.assert(
+      fc.property(
+        wholeMixes,
+        fc.constantFrom(...starts),
+        fc.constantFrom(2000, 10_000, 250_000),
+        (m, [chain, themes], amountUsd) => {
+          const s = sheet({ chains: [chain], themes, amountUsd, rules: noGlide, mix: m });
+          const plan = compose(s, shelf, context);
+          expect(violations(plan, shelf, context)).toEqual([]);
+          const growthUsd = (p: PersonalProposal) =>
+            p.sleeves.find((x) => x.sleeve === 'growth')?.amountUsd ?? 0;
+          const asked = (amountUsd * m.growthBps) / 10_000;
+          const short = (p: PersonalProposal) => asked - growthUsd(p) >= amountUsd / 10_000;
+          // What this sheet holds under the caps of each risk, composed by the engine's one entry
+          // with those caps at every risk: no helper of the engine's says what fits.
+          const holds = (risk: RiskLevel) =>
+            !short(compose(s, shelf, { ...context, params: withCapsOf(roomy, risk) }));
+          const lowest = RISKS.find(holds) ?? 'high';
+          expect(plan.sheet.risk).toBe(lowest);
+          expect(riskForMix(s, shelf, context)).toBe(lowest);
+          // Held at the risk taken, unless no risk admits it: then the highest, and less is held.
+          expect(short(plan)).toBe(!holds(lowest));
+        },
+      ),
+      { numRuns: 100 },
+    );
+  }, 240_000);
 });

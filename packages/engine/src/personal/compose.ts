@@ -20,6 +20,7 @@ import {
   tokensOf,
   unitsOf,
 } from './exposure';
+import { aloneOf, holdsGrowth, RISKS, riskAfter } from './mix';
 import { BPS, byName, ceilCents, shareOf, split, sum, toCents, toUsd } from './money';
 import { packageUp } from './packaging';
 import { Book, once, type Removed, type Sized, type Unit } from './placement';
@@ -27,7 +28,7 @@ import { type ScheduleInputs, scheduleOf } from './schedule';
 import { scorecardOf } from './scorecard';
 import { checkCoverage, placeSetAside, setAsideOf } from './set-aside';
 import { statusOf } from './status';
-import { reason, text } from './templates';
+import { type RuleId, reason, text } from './templates';
 import {
   type CandidateId,
   type ComposeContext,
@@ -36,6 +37,7 @@ import {
   type PersonalSheet,
   type PersonalStatus,
   type PersonalVerdict,
+  type RiskLevel,
   reportsPools,
   SLEEVES,
   type Sleeve,
@@ -91,7 +93,17 @@ function largestScaleThatMeets(step: number, meets: (bps: number) => boolean): n
  * does not (`ways: false`). A run that asks only whether an income target is met needs no schedule
  * (`status: false`). `candidate` is the candidate the plan is made as, or null.
  */
-type Run = { ways: boolean; status: boolean; candidate: CandidateId | null };
+type Run = {
+  ways: boolean;
+  status: boolean;
+  candidate: CandidateId | null;
+  /**
+   * The risk a plan with a mix is made at, where the caller has settled it (gate EXPLICIT-MIX).
+   * `settled`: the plan takes it as given, as a trial of the mix alone does; left false, the plan made
+   * again one risk up may go up again. Left out, the run settles the risk itself.
+   */
+  mix?: { risk: RiskLevel; settled: boolean };
+};
 
 /** JSON with every object's keys in order, so the same value always gives the same text. */
 function canonical(value: unknown): string {
@@ -239,6 +251,53 @@ function yieldTokens(w: World): BasketAsset[] {
   );
 }
 
+/**
+ * The caps by risk: the two limits that keep stocks and crypto out of a plan at one risk and not at
+ * another.
+ */
+const CAPS_BY_RISK: readonly RuleId[] = ['ISSUER_CAP', 'SINGLE_STOCK_CAP'];
+
+/**
+ * The risk the mix takes on its own (./mix.ts): the lowest at which a plan of the mix alone holds its
+ * whole share in stocks and crypto, as placement places it; the highest when none does. A mix with
+ * no stocks or crypto takes the lowest.
+ */
+function riskOfMixAlone(w: World, shelf: Shelf, context: ComposeContext): RiskLevel {
+  const [lowest = w.sheet.risk] = RISKS;
+  if ((w.sheet.mix?.growthBps ?? 0) === 0) return lowest;
+  const admits = (risk: RiskLevel) => {
+    const alone = aloneOf(w.sheet, context, w.P, w.tokens.length, risk);
+    return holdsGrowth(
+      build(alone.sheet, shelf, alone.context, {
+        ways: false,
+        status: false,
+        candidate: null,
+        mix: { risk, settled: true },
+      }),
+    );
+  };
+  return RISKS.find(admits) ?? RISKS.at(-1) ?? w.sheet.risk;
+}
+
+/**
+ * The world a plan is built in. A stated mix sets the limits (gate EXPLICIT-MIX): the world is made at
+ * the risk the mix takes, so every cap, reason and check reads it, and the plan's sheet and a flag say
+ * which. A candidate takes the limits of the plan made for the mix as it is: they are not its to vary.
+ */
+function worldOf(sheetIn: PersonalSheet, shelf: Shelf, context: ComposeContext, run: Run): World {
+  const w = buildWorld(sheetIn, shelf, context, run.candidate);
+  if (!w.sheet.mix) return w;
+  const risk =
+    run.mix?.risk ??
+    (run.candidate === null
+      ? riskOfMixAlone(w, shelf, context)
+      : build(sheetIn, shelf, context, { ways: false, status: false, candidate: null }).sheet.risk);
+  const at =
+    risk === w.sheet.risk ? w : buildWorld({ ...w.sheet, risk }, shelf, context, run.candidate);
+  at.flags.add(`limits_from_mix:${risk}`);
+  return at;
+}
+
 function build(
   sheetIn: PersonalSheet,
   shelf: Shelf,
@@ -246,7 +305,7 @@ function build(
   run: Run,
 ): PersonalProposal {
   const withWays = run.ways;
-  const w = buildWorld(sheetIn, shelf, context, run.candidate);
+  const w = worldOf(sheetIn, shelf, context, run);
   const { sheet, P, lang } = w;
 
   // ---- Exposure: how big each sleeve is. What the next withdrawals need comes off the goal first.
@@ -437,6 +496,20 @@ function build(
   intoYield(yieldUnit);
   book.placeTogether(goldUnits, (unit) => tokensOf(w, unit.name, 'gold'));
   book.placeTogether(growthUnits, (unit) => tokensOf(w, unit.name, 'growth'));
+  // A stated mix (gate EXPLICIT-MIX): where a cap by risk still keeps stocks or crypto out of the plan
+  // as it is built, the plan is made again at the next risk, until none does or the highest is
+  // reached. What is set aside for withdrawals can sit with the issuer of the stocks, and what the
+  // person holds can move the plan toward one name: the mix alone shows neither. A cent for each
+  // line a plan may hold, or a basis point of the plan, is the rounding of the parts and not a cap.
+  const riskUp = riskAfter(sheet.risk);
+  if (
+    sheet.mix &&
+    riskUp &&
+    run.candidate === null &&
+    !run.mix?.settled &&
+    book.keptOutBy(CAPS_BY_RISK) > Math.max(P.maxLinesPerChain, w.amount / BPS)
+  )
+    return build(sheetIn, shelf, context, { ...run, mix: { risk: riskUp, settled: false } });
   // What stocks, crypto and gold could not take is held in dollar yield, then in cash.
   intoYield(book.overflow());
   // One sentence for each reason money meant for dollar yield stays in cash, with the whole of it.
@@ -716,15 +789,20 @@ export function compose(
 }
 
 /**
- * The risk whose limits a plan takes. With a stated mix (gate EXPLICIT-MIX), the lowest whose caps per
- * stock and per issuer admit it, which the read-back states as an assumption; otherwise the sheet's.
+ * The risk whose limits a plan takes: the risk `compose` builds this sheet at, found the same way.
+ * With a stated mix (gate EXPLICIT-MIX), the lowest at which the caps per stock and per issuer keep
+ * none of the mix's stocks and crypto out, as placement places them, which the read-back states as an
+ * assumption; otherwise the sheet's. What the mix takes on its own does not depend on the amount, the
+ * date or the withdrawals, so a read-back may ask with a sheet that has only the mix, the portfolios
+ * and the chain. The plan can then be one risk higher, where what else it holds takes the stocks'
+ * room (./mix.ts); its line says which limits it took.
  */
 export function riskForMix(
   sheet: PersonalSheet,
   shelf: Shelf,
   context: ComposeContext,
 ): PersonalSheet['risk'] {
-  return buildWorld(sheet, shelf, context).sheet.risk;
+  return build(sheet, shelf, context, { ways: false, status: false, candidate: null }).sheet.risk;
 }
 
 /**
