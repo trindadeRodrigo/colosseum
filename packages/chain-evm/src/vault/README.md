@@ -90,7 +90,7 @@ Every builder returns one unsigned transaction (`BuiltTx`) and refuses with a `C
 
 A trade is an exact-input swap in one hookless Uniswap v4 pool through Universal Router 2.1.x (`SWAP_EXACT_IN_SINGLE`, `SETTLE_ALL`, `TAKE_ALL`, so the output goes to the vault), quoted by Uniswap's v4 Quoter. Its `minOut` is the quote less the slippage asked for. The router's own minimum is zero: the vault holds the swap to `minOut` by its own balances, so a price that moved is refused as the vault's `ReceivedTooLittle`, not wrapped as `RouterFailed`. Two trades in one pool are quoted one after the other (the cumulative amount less what came before), a unit lower for the pool's rounding; a pool traded both ways in one transaction is refused (`BadTrade`). An owner's trade carries a deadline `DEADLINE_S` (900 s) after the block's time, which the guard holds to at most 1,800 s ahead of its own clock; the adapter states it as the attempt's `validUntil` (`lastValidBlockHeight`). Calls that do not trade carry none.
 
-Every owner step is the shape the guard of `packages/sdk` takes: one call, no value, to the cash token, the factory or the person's own vault, at most the deployment's gas and fee. `tests/evm-vault/guard.test.ts` holds each to the guard with the deployment committed for the test network. The guard does not sign a `publish` step on EVM yet (AGT-4): the registry's three calls are built and simulated, and a creator's wallet signs them only once the guard takes them.
+Every owner step is the shape the guard of `packages/sdk` takes: one call, no value, to the cash token, the factory or the person's own vault, at most the deployment's gas and fee. Each passed the guard with the test network's deployment on Oct 6. The guard's deployment for 46630 and the test that holds every owner step to it are on the branch `ade/guard-robinhood`: committing that entry switches the web's Robinhood Chain buy on, which the web's own tests say is off, so it waits for the web's word. The guard does not sign a `publish` step on EVM yet (AGT-4): the registry's three calls are built and simulated, and a creator's wallet signs them only once the guard takes them.
 
 ## The probe
 
@@ -117,10 +117,10 @@ cd contracts && forge build && cd ..
 RH_FORK_URL=https://robinhood.drpc.org pnpm exec vitest run packages/chain-evm/test/fork.test.ts
 ```
 
-The builders and the probe run the whole adapter contract, its seven groups, on a copy of Robinhood Chain's test network as TNET-1 and TNET-2 deployed it (`packages/chain-evm/test/testnet.test.ts`): anvil forks 46630 at its latest block, every vault, shared portfolio, deposit and trade of the world is built by the adapter and sent from anvil's own accounts, and on the copy only the deployer sets the keeper to an anvil account, opens the session to the whole day and shortens the publish delay to 60 s. The guard runs on the same kind of copy (`tests/evm-vault/guard.test.ts`). Nothing is sent to the test network.
+The builders and the probe run the whole adapter contract, its seven groups, on a copy of Robinhood Chain's test network as TNET-1 and TNET-2 deployed it (`packages/chain-evm/test/testnet.test.ts`): anvil forks 46630 at its latest block, every vault, shared portfolio, deposit and trade of the world is built by the adapter and sent from anvil's own accounts, and on the copy only the deployer sets the keeper to an anvil account, opens the session to the whole day and shortens the publish delay to 60 s. Nothing is sent to the test network.
 
 ```
-RH_TESTNET_FORK_URL=https://rpc.testnet.chain.robinhood.com pnpm exec vitest run packages/chain-evm/test/testnet.test.ts tests/evm-vault/guard.test.ts
+RH_TESTNET_FORK_URL=https://rpc.testnet.chain.robinhood.com pnpm exec vitest run packages/chain-evm/test/testnet.test.ts
 ```
 
 The keeper's cases need a weekday by UTC: the copy opens the session to the whole day, not the week.

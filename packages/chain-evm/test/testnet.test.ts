@@ -1,6 +1,6 @@
 import { adapterContract, type ContractFixture } from '@colosseum/chain-mock/contract';
 import { isStalePrice } from '@colosseum/schemas';
-import { afterAll, describe, vi } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import {
   ACCOUNTS,
   buildTestnetWorld,
@@ -34,6 +34,30 @@ describe.skipIf(!FORK_URL)('on a copy of Robinhood Chain test network', () => {
   vi.setConfig({ hookTimeout: 600_000, testTimeout: 180_000 });
   const notBefore = new Date().toISOString();
   afterAll(async () => (await world)?.stop());
+
+  it("states a trade's deadline as its validUntil, and none for a call that does not trade", async () => {
+    const w = await startTestnet();
+    const wall = Math.floor(Date.now() / 1000);
+    const swap = await w.adapter.buildOwnerSwap({
+      vault: w.vault,
+      trades: [{ sell: id('tusdg'), buy: id('tspy'), amountInRaw: '1000000' }],
+      slippageBps: 100,
+    });
+    expect(swap.lastValidBlockHeight).toBeGreaterThan(wall);
+    // The guard passes a deadline at most 1,800 s ahead of its clock.
+    expect(swap.lastValidBlockHeight).toBeLessThanOrEqual(wall + 1_800);
+    const create = await w.adapter.buildCreateVault({
+      owner: ACCOUNTS.owner,
+      basketId: '77',
+      targets: [{ asset: id('tspy'), weightBps: 5000 }],
+      autoFollow: false,
+      depositRaw: DEPOSIT_RAW.toString(),
+      slippageBps: 100,
+    });
+    expect(create.lastValidBlockHeight).toBeGreaterThan(wall);
+    const toggle = await w.adapter.buildSetAutoFollow({ vault: w.manualVault, on: false });
+    expect(toggle.lastValidBlockHeight).toBeUndefined();
+  });
 
   adapterContract(
     'robinhood adapter, copy of the test network',
