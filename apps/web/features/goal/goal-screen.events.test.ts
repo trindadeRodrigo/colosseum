@@ -101,7 +101,7 @@ const confirm = (host: HTMLElement) =>
   ) as HTMLElement;
 const sendAnswers = (host: HTMLElement) =>
   [...host.querySelectorAll('button[type="submit"]')].find((b) =>
-    [en.goal.intake.questions.send, en.goal.intake.questions.update].some((w) =>
+    [en.goal.intake.questions.reply, en.goal.intake.questions.update].some((w) =>
       b.textContent?.startsWith(w),
     ),
   ) as HTMLElement;
@@ -690,7 +690,7 @@ describe('the goal screen and the rest of the product', () => {
     expect(box(host).getAttribute('lang')).toBe('pt-BR');
     await read(host, 'Juntar US$ 40.000 até junho de 2028');
     expect(find(intake(host) as HTMLElement, 'h2').textContent).toBe(pt.goal.intake.title);
-    expect(host.textContent).toContain(pt.goal.intake.questions.send);
+    expect(host.textContent).toContain(pt.goal.intake.questions.reply);
   });
 
   it('holds the binding rules at every step: no hatch without its word, no exclamation mark, a label on every control', async () => {

@@ -224,7 +224,7 @@ export const en = {
         one: 'One thing is still open. Answer it here, or tell me in the box above.',
         other: (n: number) =>
           `${n} things are still open. Answer them here, or tell me in the box above.`,
-        send: 'Send my answers',
+        reply: 'Send my answers',
         update: 'Update',
         sending: 'Sending…',
         inWords: 'Answer this one in your own words, in the box above.',

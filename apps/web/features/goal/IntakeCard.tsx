@@ -389,7 +389,7 @@ export function IntakeCard({
                 busyLabel={words.questions.sending}
                 disabled={building}
               >
-                {open ? words.questions.send : words.questions.update}
+                {open ? words.questions.reply : words.questions.update}
               </Button>
             </div>
           </form>

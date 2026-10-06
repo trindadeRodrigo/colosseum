@@ -33,7 +33,7 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   await goal.press('Enter');
   // The intake asks what the goal leaves open, then says back what it understood (GUIDED-INTAKE).
   await page.getByLabel('How much do you put in, in dollars?', { exact: true }).fill('40');
-  await page.getByRole('button', { name: en.goal.intake.questions.send }).click();
+  await page.getByRole('button', { name: en.goal.intake.questions.reply }).click();
   await expect(page.getByText('You set growing it with $40 over 36 months')).toBeVisible();
   await page.getByRole('button', { name: en.goal.intake.readBack.confirm }).click();
   await page.getByRole('link', { name: en.goal.built.done.see(3) }).click();

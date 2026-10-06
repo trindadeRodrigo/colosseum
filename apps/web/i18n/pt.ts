@@ -207,7 +207,7 @@ export const pt: Dictionary = {
         title: 'O que ainda preciso saber',
         one: 'Falta uma coisa. Responda aqui, ou me diga na caixa acima.',
         other: (n: number) => `Faltam ${n} coisas. Responda aqui, ou me diga na caixa acima.`,
-        send: 'Enviar respostas',
+        reply: 'Enviar respostas',
         update: 'Atualizar',
         sending: 'Enviando…',
         inWords: 'Responda esta com as suas palavras, na caixa acima.',
