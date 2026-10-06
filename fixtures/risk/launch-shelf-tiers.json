@@ -1,0 +1,399 @@
+{
+  "source": "docs/vault/research/open-questions/launch-shelf.seed.json (the launch shelf, a proposal: \"proposal, not approved; weights in bps; costs are price impact only\")",
+  "method": "the shelf tier of each token: A = leg up to $50k at <=35 bps impact; B = leg up to $10k at <=35 bps; C = leg up to about $1k-2k at <=30 bps; X = not listed at launch",
+  "fetchedAt": "2026-10-01T14:00:00.000Z",
+  "provenance": "live",
+  "note": "Copied for the API, which reads no research note at run time. A test-network token whose model Bearing does not measure takes its model's tier from here (gate ENG-DEVNET-EXIT-TWIN). Redone once the shelf is decided.",
+  "rows": [
+    {
+      "chain": "solana",
+      "symbol": "SPYx",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "QQQx",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "NVDAx",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "TSLAx",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "AAPLx",
+      "tier": "B"
+    },
+    {
+      "chain": "solana",
+      "symbol": "GOOGLx",
+      "tier": "B"
+    },
+    {
+      "chain": "solana",
+      "symbol": "METAx",
+      "tier": "B"
+    },
+    {
+      "chain": "solana",
+      "symbol": "MSFTx",
+      "tier": "B"
+    },
+    {
+      "chain": "solana",
+      "symbol": "AMZNx",
+      "tier": "B"
+    },
+    {
+      "chain": "solana",
+      "symbol": "SPCXx",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "MSTRx",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "CRCLx",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "HOODx",
+      "tier": "C"
+    },
+    {
+      "chain": "solana",
+      "symbol": "COINx",
+      "tier": "C"
+    },
+    {
+      "chain": "solana",
+      "symbol": "PLTRx",
+      "tier": "C"
+    },
+    {
+      "chain": "solana",
+      "symbol": "GLDx",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "jlUSDC",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "syrupUSDC",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "SOL",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "JitoSOL",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "cbBTC",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "JUP",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "RAY",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "PUMP",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "MET",
+      "tier": "B"
+    },
+    {
+      "chain": "solana",
+      "symbol": "KMNO",
+      "tier": "B"
+    },
+    {
+      "chain": "solana",
+      "symbol": "JTO",
+      "tier": "C"
+    },
+    {
+      "chain": "solana",
+      "symbol": "PYTH",
+      "tier": "C"
+    },
+    {
+      "chain": "solana",
+      "symbol": "TRUMP",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "PENGU",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "BONK",
+      "tier": "B"
+    },
+    {
+      "chain": "solana",
+      "symbol": "Fartcoin",
+      "tier": "B"
+    },
+    {
+      "chain": "solana",
+      "symbol": "USELESS",
+      "tier": "A"
+    },
+    {
+      "chain": "solana",
+      "symbol": "WIF",
+      "tier": "C"
+    },
+    {
+      "chain": "solana",
+      "symbol": "MEW",
+      "tier": "B"
+    },
+    {
+      "chain": "solana",
+      "symbol": "POPCAT",
+      "tier": "C"
+    },
+    {
+      "chain": "solana",
+      "symbol": "SPX",
+      "tier": "C"
+    },
+    {
+      "chain": "base",
+      "symbol": "NVDAc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "AAPLc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "METAc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "GOOGLc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "AMZNc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "MSFTc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "MSTRc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "SNDKc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "SPCXc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "TSLAc",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "AERO",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "cbBTC",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "cbETH",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "VIRTUAL",
+      "tier": "A"
+    },
+    {
+      "chain": "base",
+      "symbol": "MORPHO",
+      "tier": "A"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "SPY",
+      "tier": "A"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "NVDA",
+      "tier": "A"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "GLD",
+      "tier": "A"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "META",
+      "tier": "A"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "SPCX",
+      "tier": "A"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "MSTR",
+      "tier": "B"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "CRCL",
+      "tier": "B"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "SGOV",
+      "tier": "A"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "GOOGL",
+      "tier": "A"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "USO",
+      "tier": "A"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "TSLA",
+      "tier": "A"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "AAPL",
+      "tier": "A"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "COIN",
+      "tier": "C"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "MU",
+      "tier": "B"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "QQQ",
+      "tier": "A"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "INTC",
+      "tier": "B"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "GME",
+      "tier": "B"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "AMZN",
+      "tier": "B"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "MSFT",
+      "tier": "B"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "PLTR",
+      "tier": "B"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "AMD",
+      "tier": "C"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "SLV",
+      "tier": "B"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "SNDK",
+      "tier": "C"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "TSM",
+      "tier": "B"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "DELL",
+      "tier": "C"
+    },
+    {
+      "chain": "robinhood",
+      "symbol": "BABA",
+      "tier": "C"
+    }
+  ]
+}

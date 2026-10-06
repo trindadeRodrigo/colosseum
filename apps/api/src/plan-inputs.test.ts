@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { deploymentAssets, SolanaDeploymentRecord } from '@colosseum/chain-solana/vault';
-import { assets as assetsTable, createDb, yieldObservations } from '@colosseum/db';
+import { assets as assetsTable, createDb, riskDepthCurves, yieldObservations } from '@colosseum/db';
 import { YieldObservation } from '@colosseum/schemas';
-import { inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { DEPLOYMENTS_DIR } from './deployments';
@@ -57,7 +57,43 @@ async function storeReading(symbol: string, chain: 'solana' | 'evm', provenance:
   });
 }
 
+// SPYx's measured depth, under the mint the price index pins for it (fixtures/solana-vault/
+// scope-indexes.json). A row the database already holds stays; only this test's rows, told apart by
+// their computing time, are removed after.
+const twinMint = 'XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W';
+const computedAt = new Date('2031-01-02T00:00:00.000Z');
+async function storeTwin() {
+  const at = new Date('2026-10-06T00:00:00.000Z');
+  const prov = { source: 'test row', method: 'test', fetchedAt: at, provenance: 'live' as const };
+  const points = [100, 10_000, 1_000_000].map((n) => ({
+    notionalUsd: n,
+    cost: n / 100_000_000,
+    samples: 50,
+  }));
+  for (const regime of ['us_market_hours', 'us_offhours_weekday', 'weekend']) {
+    await db
+      .insert(riskDepthCurves)
+      .values({
+        assetMint: twinMint,
+        assetSymbol: 'SPYx',
+        side: 'sell',
+        regime,
+        points,
+        quantile: 0.5,
+        minSamples: 8,
+        samples: 50,
+        dataFrom: at,
+        dataTo: at,
+        computedAt,
+        methodVersion: 'risk-0.3',
+        ...prov,
+      })
+      .onConflictDoNothing();
+  }
+}
+
 beforeAll(async () => {
+  await storeTwin();
   await storeReading('jlUSDC', 'solana', 'live');
   await storeReading('syrupUSDC', 'solana', 'live');
   // Neither of these is a Solana model's live reading: another family's, and a mock figure.
@@ -65,6 +101,11 @@ beforeAll(async () => {
   await storeReading('jlUSDC', 'solana', 'mock');
 });
 afterAll(async () => {
+  await db
+    .delete(riskDepthCurves)
+    .where(
+      and(eq(riskDepthCurves.assetMint, twinMint), eq(riskDepthCurves.computedAt, computedAt)),
+    );
   await db.delete(yieldObservations).where(inArray(yieldObservations.assetId, ids));
   await db.delete(assetsTable).where(inArray(assetsTable.id, ids));
   await client.end();
@@ -72,7 +113,12 @@ afterAll(async () => {
 
 describe('the devnet stand-ins, with their models’ readings stored', () => {
   it('take the live Solana readings of the tokens they model, labelled sandbox', async () => {
-    const { yields = [] } = await bearingPlanInputs({ db, chain: 'solana', assets: shelf });
+    const { yields = [] } = await bearingPlanInputs({
+      db,
+      chain: 'solana',
+      assets: shelf,
+      provenance: 'sandbox',
+    });
     const mine = yields.filter((y) => y.fetchedAt === fetchedAt.toISOString());
     expect(mine.map((y) => y.assetId).sort()).toEqual(['solana:jlusdc', 'solana:syrupusdc']);
     for (const y of mine) {
@@ -85,5 +131,43 @@ describe('the devnet stand-ins, with their models’ readings stored', () => {
       new Set(['solana:jlusdc', 'solana:syrupusdc']),
     );
     expect(yields.every((y) => y.provenance === 'sandbox')).toBe(true);
+  });
+});
+
+describe('the devnet stand-ins, with their models’ depth stored', () => {
+  it('read the sell depth of the mainnet token they model, labelled sandbox with the twin named', async () => {
+    const { liquidity } = await bearingPlanInputs({
+      db,
+      chain: 'solana',
+      assets: shelf,
+      provenance: 'sandbox',
+    });
+    expect(liquidity?.provider.covers('solana:spyx')).toBe(true);
+    expect(liquidity?.provider.provenance).toBe('sandbox');
+    expect(liquidity?.source).toContain('SPYx for tSPYx');
+    // a stand-in whose model has no depth stored reads none
+    expect(liquidity?.provider.covers('solana:paxg')).toBe(false);
+  });
+
+  it('read nothing for a live shelf: a live token is measured only under its own address', async () => {
+    const live = shelf.map((a) => ({ ...a, provenance: 'live' as const }));
+    const { liquidity } = await bearingPlanInputs({
+      db,
+      chain: 'solana',
+      assets: live,
+      provenance: 'sandbox',
+    });
+    expect(liquidity?.provider.covers('solana:spyx') ?? false).toBe(false);
+  });
+
+  it('read nothing on a chain that does not run as a test network', async () => {
+    const { liquidity, tiers } = await bearingPlanInputs({
+      db,
+      chain: 'solana',
+      assets: shelf,
+      provenance: 'mock',
+    });
+    expect(liquidity?.provider.covers('solana:spyx') ?? false).toBe(false);
+    expect(tiers).toBeUndefined();
   });
 });

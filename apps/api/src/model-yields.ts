@@ -9,8 +9,7 @@ import type { BasketAsset, YieldObservation } from '@colosseum/schemas';
 // readings as it would the model's (`pickPrimaryYield`), and so is the time. A rate is never made up: a model with no reading leaves the token without one,
 // and the engine leaves it out (NO_YIELD).
 //
-// Only readings: a test token's exit stays its tier's ceiling. Bearing's measured depth is a mainnet
-// pool's, and the liquidity provider has no `sandbox` label to carry it to a test token under.
+// Only readings here: a test token's exit depth is carried over by model-exits.ts.
 
 /** A stored reading of a live token, with the symbol of the token it was read for. */
 export type ModelReading = { symbol: string; reading: YieldObservation };
