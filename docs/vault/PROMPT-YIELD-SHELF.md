@@ -79,7 +79,7 @@ For every candidate, verify from primary sources (the issuer's docs, the token's
 - the Solana mint or the Robinhood Chain contract address, decimals, and token program or standard;
 - transfer restrictions (freeze authority, allowlist, transfer hooks);
 - redemption path and its delays;
-- geo-blocks (they become `blockedCountries`);
+- geo-blocks, recorded in the research note as information (gate `COUNTRY-REMOVED`, Oct 6: they are not set as engine blocks; `blockedCountries` may carry them as information, and the engine ignores it);
 - the DEX pools and the depth at $10k and $50k;
 - whether a yield figure can be read live with source, time and method (an API or on-chain rate), for the rollout;
 - known incidents;
@@ -101,7 +101,7 @@ Use the house style of `docs/vault/research/portfolio-method.md`: numbered sourc
   - class `dollar_yield`, except the Etherfuse bonds;
   - the issuer as the research names it (issuer caps depend on it);
   - a tier from the measured depth (`tierCeilingUsd` A/B/C);
-  - `blockedCountries` from the geo-blocks;
+  - `blockedCountries` from the geo-blocks, as information only: the engine never acts on it (gate `COUNTRY-REMOVED`);
   - the real mint or contract where verified;
   - the verdict and the source in a comment field if the type allows, otherwise in the research note.
 - **Leg types:** one `LEG_TYPES` row per new symbol, each with the research note as its source and the date read. Use the four types that exist (rate, credit, basis, market_deposit), more than one where the research says so. If a token fits none of the four (for example a stablecoin LP like USD*, or reinsurance like ONyc), stop and bring Rodrigo the choice with a recommendation: map it to the nearest existing type, or add a type (and its cap and credit-budget rule). Do not invent a type silently.
@@ -128,7 +128,6 @@ Use the house style of `docs/vault/research/portfolio-method.md`: numbered sourc
     - the safe-yield sleeve on Solana holds a rate token;
     - "no lending" leaves out credit and basis tokens and still has a rate token to hold;
     - the share stuck in cash falls on the grid, by how much stated;
-    - a token blocked in a country is never held for a person there;
     - the existing tests on the launch shelf are unchanged.
 - **The comparison report:** `docs/vault/research/yield-shelf/comparison.md`. Run the playground on the same goals with `--shelf launch` and `--shelf extended` and record what changed, per chain: lines, cash share, candidates shown, scorecard lines, income verdicts. The goals are `try/prompts/examples.md` plus 6 new ones, written to exercise the new tokens:
   - low-risk income;
@@ -136,7 +135,7 @@ Use the house style of `docs/vault/research/portfolio-method.md`: numbered sourc
   - protect;
   - a reais goal with withdrawals in reais;
   - a USDG goal on Robinhood Chain;
-  - a person in a country one token blocks.
+  - (no country goal: the plan reads no country since gate `COUNTRY-REMOVED`).
 
 ### Uniswap LP and Pendle PT (Robinhood Chain)
 
