@@ -40,6 +40,7 @@ async function settle(host: HTMLElement, done: (h: HTMLElement) => boolean) {
   if (!done(host)) throw new Error('the page never finished reading');
 }
 const busy = (h: HTMLElement) =>
+  h.querySelector('[data-ui="waiting"]') != null ||
   [...h.querySelectorAll('p')].some((p) => /^(Reading|Pricing)/.test(p.textContent ?? ''));
 
 describe('the commodities page on the recording', () => {
@@ -63,6 +64,31 @@ describe('the commodities page on the recording', () => {
     expect(kpis).toContain('$184.1K');
     expect(kpis).toContain('≥ $870.3K');
     expect(kpis).toContain('weekend');
+  });
+
+  it('pins every figure a chart’s readout names, as the figures beside it are (rule 1)', async () => {
+    const host = await mount(onSnapshot(createElement(DexPage, { page: 'commodities' })));
+    await settle(host, (h) => h.querySelector('[data-ui="bearing-kpis"]') != null && !busy(h));
+    const readouts = [...host.querySelectorAll('[data-ui="chart-readout"]')];
+    expect(readouts.length).toBeGreaterThan(0);
+    for (const readout of readouts) {
+      const figures = [...readout.querySelectorAll('[data-ui="figure"]')];
+      expect(figures.length, readout.textContent ?? '').toBeGreaterThan(0);
+      for (const f of figures) {
+        expect(f.querySelector('[data-ui="pin"]')).not.toBeNull();
+        // the recording is old: its pins say so, with the age
+        expect(f.getAttribute('data-state')).toBe('stale');
+      }
+    }
+  });
+
+  it('makes each ticker in the table a 24px target (WCAG 2.5.8)', async () => {
+    const host = await mount(onSnapshot(createElement(DexPage, { page: 'commodities' })));
+    await settle(host, (h) => h.querySelector('[data-ui="bearing-kpis"]') != null && !busy(h));
+    const tickers = [...host.querySelectorAll('a[href^="/analytics/simulation?asset="]')];
+    expect(tickers.length).toBeGreaterThan(0);
+    for (const a of tickers)
+      expect(a.className.split(' ')).toEqual(expect.arrayContaining(['min-h-6', 'min-w-6']));
   });
 
   it('the asset filter narrows every block, and None says nothing is selected', async () => {
@@ -347,6 +373,40 @@ describe('the banner: live, stale with time, or the API down', () => {
     expect(banner(host).getAttribute('data-mode')).toBe('live');
     expect(banner(host).textContent).toContain('Live from the collectors, as of 15:07 UTC.');
     expect(banner(host).textContent).toContain('now: weekend');
+  });
+
+  it('waits in the page’s own boxes: its figures’ labels, the chart cards and the table, busy', async () => {
+    // a reader that has not answered yet
+    const waiting = { get: () => new Promise<never>(() => {}), probe: async () => true };
+    const host = await mount(
+      createElement(BearingProvider, {
+        reader: waiting,
+        now: Date.parse('2026-10-03T15:17:00Z'),
+        children: [
+          createElement(Banner, { key: 'b' }),
+          createElement(DexPage, { key: 'p', page: 'stocks' }),
+        ],
+      } as never),
+    );
+    const region = find(host, '[data-ui="waiting"]');
+    expect(region.getAttribute('aria-busy')).toBe('true');
+    const kpis = [...region.querySelectorAll('[data-ui="bearing-kpi"]')];
+    expect(kpis.map((k) => k.firstElementChild?.textContent)).toEqual([
+      'Pool TVL',
+      'Pools',
+      'Exit capacity now',
+      'Volume 24 h',
+      'Top-3 LP share',
+    ]);
+    expect(kpis.every((k) => k.querySelectorAll('[data-ui="skeleton"]').length === 2)).toBe(true);
+    expect(
+      region.querySelectorAll('[data-ui="bearing-card"] [data-ui="skeleton-chart"]'),
+    ).toHaveLength(2);
+    expect(region.querySelector('[data-ui="skeleton-rows"]')).not.toBeNull();
+    // the banner keeps its box, still, and says nothing a screen reader would read twice
+    expect(banner(host).getAttribute('aria-hidden')).toBe('true');
+    expect(banner(host).getAttribute('role')).toBeNull();
+    expect(host.querySelectorAll('[data-ui="figure"]')).toHaveLength(0);
   });
 
   it('says the API did not answer, and makes up nothing in its place', async () => {

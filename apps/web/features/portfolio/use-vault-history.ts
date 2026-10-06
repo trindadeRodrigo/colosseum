@@ -45,7 +45,6 @@ export function useVaultHistory(): VaultHistory {
       setDeposited(new Set());
       return;
     }
-    const explorer = `${t.chain.names[chain]} ${t.order.explorer}`;
     Promise.all(records.map((r) => readOrder(apiFetch, r.orderId))).then((read) => {
       if (!live) return;
       setDeposited(
@@ -64,9 +63,7 @@ export function useVaultHistory(): VaultHistory {
       );
       setActivity(
         read
-          .flatMap((answer) =>
-            answer.kind === 'read' ? activityOf(answer.order, t, explorer, mock) : [],
-          )
+          .flatMap((answer) => (answer.kind === 'read' ? activityOf(answer.order, t, mock) : []))
           .sort((a, b) => b.at.localeCompare(a.at)),
       );
     });

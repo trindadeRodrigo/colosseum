@@ -2,11 +2,15 @@
 import type { ConsentKind, Leg, OrderDetail } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardBody, CardHeader, CardLoading, Stat, StatRow } from '../../components/ui/Card';
+import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/Card';
+import { ChainBadge } from '../../components/ui/ChainBadge';
 import { CopyButton } from '../../components/ui/CopyButton';
 import { ExplorerLink } from '../../components/ui/ExplorerLink';
+import { PAGE_TITLE } from '../../components/ui/heading';
+import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { type Dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -147,7 +151,7 @@ export function OrderScreen({ id }: { id: string }) {
   if (port.status === 'loading' || account.status === 'loading' || record === undefined)
     return (
       <Card>
-        <CardLoading label={t.order.loading} />
+        <CardWait label={t.order.loading} skeleton={<SkeletonSummary />} />
       </Card>
     );
   if (port.status === 'signed-out')
@@ -162,7 +166,7 @@ export function OrderScreen({ id }: { id: string }) {
   if (load.kind === 'loading')
     return (
       <Card>
-        <CardLoading label={t.order.loading} />
+        <CardWait label={t.order.loading} skeleton={<SkeletonSummary />} />
       </Card>
     );
   if (load.kind !== 'read') {
@@ -176,7 +180,7 @@ export function OrderScreen({ id }: { id: string }) {
             : t.order.failure.unreachable;
     return (
       <section aria-labelledby={titleId} className="flex flex-col items-start gap-4">
-        <h1 id={titleId} className="font-sans text-h2 font-semibold">
+        <h1 id={titleId} className={PAGE_TITLE}>
           {t.order.title}
         </h1>
         <p className="max-w-(--tf-measure-body) text-body">{body}</p>
@@ -254,8 +258,9 @@ export function OrderScreen({ id }: { id: string }) {
 
   return (
     <div data-ui="order-screen" className="flex flex-col gap-8">
-      <header className="flex flex-col gap-3">
-        <h1 id={titleId} className="max-w-(--tf-measure-display) font-display text-h1 font-normal">
+      <header className="flex flex-col items-start gap-3">
+        <ChainBadge chain={chain} />
+        <h1 id={titleId} className={PAGE_TITLE}>
           {record.approved ? t.order.title : t.order.review.title}
         </h1>
         {!record.approved && (
@@ -272,7 +277,7 @@ export function OrderScreen({ id }: { id: string }) {
           note: testNetwork ? t.shell.testNetwork : undefined,
         }}
       >
-        <CardHeader title={t.order.stepsTitle} level={2} meta={t.chain.names[chain]} />
+        <CardHeader title={t.order.stepsTitle} level={2} meta={<ChainBadge chain={chain} />} />
         <CardBody className="flex flex-col gap-4">
           <StatRow>
             {buying && <Stat label={t.order.review.deposit}>{depositShown}</Stat>}
@@ -299,7 +304,7 @@ export function OrderScreen({ id }: { id: string }) {
                   now={standing}
                   phase={phase?.legId === leg.id ? phase.phase : null}
                   units={units}
-                  explorer={`${t.chain.names[chain]} ${t.order.explorer}`}
+                  explorer={t.chain.explorers[chain]}
                   mock={onMock(port, chain)}
                   t={t}
                   locale={LOCALE[lang]}
@@ -436,12 +441,7 @@ export function OrderScreen({ id }: { id: string }) {
       {/* His "Disclaimer and activity": what reached the chain, line by line with its link, beside the
           disclaimer. */}
       <ActivityPanel
-        executions={activityOf(
-          now,
-          t,
-          `${t.chain.names[chain]} ${t.order.explorer}`,
-          onMock(port, chain),
-        )}
+        executions={activityOf(now, t, onMock(port, chain))}
         empty={t.activity.noneYet}
       />
     </div>
@@ -462,7 +462,7 @@ function Notice({
   const id = useId();
   return (
     <section aria-labelledby={id} className="flex flex-col items-start gap-4">
-      <h1 id={id} className="font-sans text-h2 font-semibold">
+      <h1 id={id} className={PAGE_TITLE}>
         {title}
       </h1>
       <p className="max-w-(--tf-measure-body) text-body">{body}</p>

@@ -23,7 +23,9 @@ import { COMPACT_NAV_LABELS, type CompactNavLabels } from './labels';
 // The compact bar floats, and the page scrolls under it. So that no line of copy is ever read behind
 // it or beside it, the band it floats in (the top of the window down to 12px under the bar) is the
 // page's own ground while the bar is compact: copy passes under that ground, and the bar still sits
-// on the page as it does in hero-3d.html. Over the hero, before step 03, there is no ground.
+// on the page as it does in hero-3d.html. Over the hero, before step 03, the bar is see-through until
+// copy reaches it: the ground is drawn while any element marked `data-under-bar` is in the band, so
+// the hero's heading never runs through the wordmark (compact-nav.md: the bar stays legible).
 //
 // The mark and the wordmark are handed in: there is no final logo artwork yet (DES-1).
 
@@ -82,9 +84,17 @@ export type CompactNavProps = {
 };
 
 const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring';
+/**
+ * A link to where the person is (compact-nav.md, link current): the 2px primary underline at a 6px
+ * offset, for a section in view (`aria-current="true"`) and for the page itself (`"page"`).
+ */
+const NAV_CURRENT = cn(
+  'aria-[current=true]:underline aria-[current=true]:decoration-primary aria-[current=true]:decoration-2 aria-[current=true]:underline-offset-[6px]',
+  'aria-[current=page]:underline aria-[current=page]:decoration-primary aria-[current=page]:decoration-2 aria-[current=page]:underline-offset-[6px]',
+);
 const LINK = cn(
   'rounded-md px-3 py-2 text-[0.875rem]/5 font-medium whitespace-nowrap text-foreground transition-colors hover:bg-accent',
-  'aria-[current=true]:underline aria-[current=true]:decoration-primary aria-[current=true]:decoration-2 aria-[current=true]:underline-offset-[6px]',
+  NAV_CURRENT,
   FOCUS,
 );
 
@@ -106,6 +116,8 @@ export function CompactNav({
 }: CompactNavProps) {
   const text = { ...COMPACT_NAV_LABELS, ...labels };
   const [seen, setSeen] = useState(stage === undefined);
+  /** Copy has reached the band the full bar sits in: the bar gets its ground. */
+  const [covered, setCovered] = useState(false);
   const [open, setOpen] = useState(false);
   const sheet = useId();
   const header = useRef<HTMLElement>(null);
@@ -133,6 +145,16 @@ export function CompactNav({
       const line = window.innerHeight * 0.6;
       if (step.getBoundingClientRect().top < line) setSeen(true);
       else if (before.getBoundingClientRect().top >= line) setSeen(false);
+      const band = (
+        header.current?.querySelector('[data-ui="compact-nav-bar"]') as HTMLElement | null
+      )?.getBoundingClientRect().bottom;
+      const edge = (band || 56) + 12;
+      setCovered(
+        [...document.querySelectorAll('[data-under-bar]')].some((el) => {
+          const r = el.getBoundingClientRect();
+          return r.height > 0 && r.top < edge && r.bottom > 0;
+        }),
+      );
     };
     const schedule = () => {
       if (frame === 0) frame = requestAnimationFrame(decide);
@@ -189,10 +211,11 @@ export function CompactNav({
       <div
         aria-hidden="true"
         data-ui="compact-nav-ground"
+        data-on={compact || covered}
         className={cn(
           'fixed inset-x-0 top-0 z-30 h-[calc(env(safe-area-inset-top,0px)+82px)] bg-background',
           'transition-opacity duration-[480ms] ease-seat motion-reduce:transition-none',
-          compact ? 'opacity-100' : 'pointer-events-none opacity-0',
+          compact || covered ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
       />
       <div

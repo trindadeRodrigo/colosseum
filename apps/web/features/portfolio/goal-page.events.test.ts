@@ -11,7 +11,14 @@ import { withAccount } from '../account/test/screen';
 import { fakePort, json, PHANTOM, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
 import { PORTFOLIO_PATH } from './portfolio';
-import { chainOf, portfolioBody, SECOND_VAULT, vault } from './test/portfolio';
+import {
+  chainOf,
+  portfolioBody,
+  portfolioOf,
+  robinhoodChain,
+  SECOND_VAULT,
+  vault,
+} from './test/portfolio';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -85,9 +92,11 @@ describe('home', () => {
       en.portfolio.summary.see,
       '/monitor',
     ]);
-    // a test network: the hatch, MOCK, and the words
-    expect(card.querySelector('[data-ui="mock-plate"]')).not.toBeNull();
-    expect(find(card, '[data-ui="mock-note"]').textContent).toBe(en.shell.testNetwork);
+    // a test network: the hatch and one quiet line with the words, never MOCK
+    expect(card.textContent).not.toContain('MOCK');
+    expect(find(card, '[data-ui="sample-note"]').textContent).toBe(
+      `${en.shell.mockAnnounce} · ${en.shell.testNetwork}`,
+    );
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
     // still one serif line on the page, and no primary button but the goal's own
     expect(host.querySelectorAll('.font-display')).toHaveLength(1);
@@ -100,6 +109,27 @@ describe('home', () => {
     const card = summary(await home()) as HTMLElement;
     expect(card.textContent).toContain(en.portfolio.summary.many(2, 'Solana'));
     expect(card.querySelector('[data-ui="figure"]')).toBeNull();
+  });
+
+  it('names the chain of the vault with its badge', async () => {
+    api(onSolana);
+    portStore.set(signedInPort(PHANTOM));
+    const card = summary(await home()) as HTMLElement;
+    const badges = [...card.querySelectorAll('[data-ui="chain-badge"]')];
+    expect(badges.map((b) => b.getAttribute('data-chain'))).toEqual(['solana']);
+  });
+
+  it('counts vaults on two chains with both named, and adds nothing across them', async () => {
+    api(onSolana, () => json(portfolioOf(chainOf(), robinhoodChain())));
+    portStore.set(signedInPort(PHANTOM));
+    const card = summary(await home()) as HTMLElement;
+    expect(card.textContent).toContain(
+      en.portfolio.summary.manyChains(2, 'Solana and Robinhood Chain'),
+    );
+    expect(card.querySelector('[data-ui="figure"]')).toBeNull();
+    const badges = [...card.querySelectorAll('[data-ui="chain-badge"]')];
+    expect(badges.map((b) => b.getAttribute('data-chain'))).toEqual(['solana', 'robinhood']);
+    expect(card.textContent).not.toMatch(/usdc/i);
   });
 
   it.each([

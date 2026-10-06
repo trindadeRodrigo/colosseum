@@ -36,9 +36,24 @@ export const InFlight = z.object({
   /** `legKey`: what joins the reverted set if it reverts. */
   key: z.string(),
   txId: z.string(),
-  /** The last block height the transaction can land in. */
-  validUntil: z.string().regex(/^\d+$/),
+  /**
+   * When the transaction stops being able to land: the last block height on Solana. Null on EVM,
+   * where a keeper leg carries no deadline and is found by its nonce instead.
+   */
+  validUntil: z.string().regex(/^\d+$/).nullable(),
   sentAt: z.string(),
+  /** EVM: the nonce it was signed on, the call's hash and its signer, for `fate`. */
+  nonce: z.number().int().nonnegative().optional(),
+  messageHash: z.string().optional(),
+  signer: z.string().optional(),
+  /**
+   * EVM: the earlier legs of the vault on the same nonce that this one replaced (the node never held
+   * them). One of them may still take the nonce, so when the nonce goes to another call, these are
+   * asked first: a replaced leg that landed and reverted joins the reverted set.
+   */
+  replaced: z
+    .array(z.object({ txId: z.string(), key: z.string(), messageHash: z.string() }))
+    .optional(),
 });
 export type InFlight = z.infer<typeof InFlight>;
 

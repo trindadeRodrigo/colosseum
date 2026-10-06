@@ -1,8 +1,11 @@
 'use client';
 import Link from 'next/link';
 import { useId } from 'react';
+import { CardWait } from '../../components/shell/Wait';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardLoading } from '../../components/ui/Card';
+import { Card } from '../../components/ui/Card';
+import { PAGE_TITLE } from '../../components/ui/heading';
+import { SkeletonPlan } from '../../components/ui/Skeleton';
 import { useT } from '../../i18n/I18nProvider';
 import type { PlanState } from './use-plan';
 
@@ -24,12 +27,12 @@ export function PlanGate({
   if (state.kind === 'loading')
     return (
       <Card>
-        <CardLoading label={t.chain.reading} />
+        <CardWait label={t.chain.reading} skeleton={<SkeletonPlan />} />
       </Card>
     );
   const say = (title: string, body: string, action: { href: string; label: string }) => (
     <section aria-labelledby={titleId} className="flex flex-col items-start gap-4">
-      <h1 id={titleId} className="font-sans text-h2 font-semibold">
+      <h1 id={titleId} className={PAGE_TITLE}>
         {title}
       </h1>
       <p className="max-w-(--tf-measure-body) text-body">{body}</p>

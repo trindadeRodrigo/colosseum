@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
+import { throughBuySteps } from './buy-steps';
 
 // A person's buy, end to end in a browser, on the mock chain: sign in with the throwaway wallet, read a
 // goal, build the plan, look at it, buy it, review every step and sign. The order screen's executor
@@ -10,6 +11,7 @@ import { dictionary } from '../i18n';
 // light and in dark, and for no sideways scroll.
 
 const en = dictionary('en');
+const pt = dictionary('pt');
 
 // These run on the stub's Solana; the Robinhood Chain run (E2E_CHAIN=robinhood) is buy-robinhood.spec.ts.
 test.skip(process.env.E2E_CHAIN === 'robinhood', 'the stub runs Robinhood Chain');
@@ -76,7 +78,35 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
     page.locator('[data-ui="compact-nav"]').getByRole('link', { name: en.landing.nav.cta }),
   ).toBeVisible();
   await page.keyboard.press('Home');
+  await expect(page.locator('main')).not.toContainText('MOCK');
   await check(page, 'landing');
+  // the closing: its heading over the joint's canvas, readable (CLOSING-INK, Oct 6)
+  const words = page.locator('#updates [data-ui="closing-words"]');
+  await words.scrollIntoViewIfNeeded();
+  await expect(page.locator('#updates canvas[data-ui="closing-canvas"]')).toHaveCount(1);
+  // CI's browser has no GPU: the plan drawn flat, its ten coins, and the line under it
+  await expect(page.locator('#updates [data-ui="coins-still"] [data-part="coin"]')).toHaveCount(10);
+  await expect(page.locator('#updates [data-ui="closing-plan-line"]')).toContainText(
+    en.landing.closing.coins.line,
+  );
+  await expect(words.getByRole('heading', { level: 2 })).toHaveText(en.landing.closing.title);
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate((t) => {
+      const html = document.documentElement;
+      html.classList.remove('light', 'dark', 'tf-auto');
+      html.classList.add(t);
+    }, theme);
+    await page.waitForTimeout(100);
+    const read = await new AxeBuilder({ page })
+      .include('#updates [data-ui="closing-words"]')
+      .withRules(['color-contrast'])
+      .analyze();
+    expect(
+      read.violations.map((v) => v.id),
+      theme,
+    ).toEqual([]);
+  }
+  await page.keyboard.press('Home');
   const box = page.locator('#simulate textarea');
   await box.fill('Grow $2,000 for ten years, high risk');
   await box.press('Enter');
@@ -157,13 +187,39 @@ test('the plan drawn as a joint answers a mouse and a finger, and lights its par
   await phone.close();
 });
 
-async function toReview(page: Page) {
+test('signed in, the logo leads to the landing, and its bar leads back into the app', async ({
+  page,
+}) => {
   await page.request.post(`${STUB}/__stub/reset`);
   await page.goto('/sign-in');
-  await page.getByRole('button', { name: en.signIn.passkey.create }).click();
+  await page.getByRole('button', { name: en.signIn.passkey.continue }).click();
   await page.getByRole('button', { name: 'Solana' }).click();
   await page.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
-  // sign-in leads to the goal; `/` is his landing page for a visitor (WEB-2b)
+  await expect(page).toHaveURL(/\/goal$/);
+  await page.getByRole('link', { name: en.shell.home }).click();
+  // the landing, not a redirect back to the goal
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.landing.stage.title);
+  await page.keyboard.press('End');
+  const bar = page.locator('[data-ui="compact-nav"]');
+  await expect(bar).toHaveAttribute('data-compact', 'true');
+  await expect(bar.getByRole('link', { name: en.landing.nav.cta })).toHaveCount(0);
+  await bar.getByRole('link', { name: en.landing.nav.openApp }).click();
+  await expect(page).toHaveURL(/\/goal$/);
+});
+
+/** From a signed-out page to the buy screen of a $40 plan, on the stub's mock or its test network. */
+async function toBuy(page: Page, o: { fund?: 'mock' | 'test' } = {}) {
+  await page.request.post(`${STUB}/__stub/reset`);
+  if (o.fund === 'test') await page.request.post(`${STUB}/__stub/test-network`);
+  // the bar's "Sign in" opens the sign-in dialog over the goal (SIGN-IN-FLOW); the person stays there
+  await page.goto('/goal');
+  await page.locator('header a[href="/sign-in"]').click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
+  await dialog.getByRole('button', { name: 'Solana' }).click();
+  await dialog.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
+  await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/goal$/);
   await check(page, 'home');
 
@@ -177,18 +233,27 @@ async function toReview(page: Page) {
 
   await expect(page).toHaveURL(/\/plan\/[^/]+$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Grow $40 over 36 months.');
+  await expect(page.locator('main')).not.toContainText('MOCK');
   await check(page, 'plan');
   await page.getByRole('link', { name: en.plan.buy }).click();
 
   await expect(page).toHaveURL(/\/plan\/[^/]+\/buy$/);
-  await page.getByRole('button', { name: en.buy.funding.mockFund }).click();
-  await expect(page.getByText(en.buy.funding.ok)).toBeVisible();
-  await page.getByLabel(en.trust.accept).check();
+}
+
+async function toReview(page: Page, o: { fund?: 'mock' | 'test' } = {}) {
+  await toBuy(page, o);
+  // the amount starts at the plan's
+  await expect(page.getByLabel(en.buy.amount.label, { exact: true })).toHaveValue('40');
+  await check(page, 'buy-amount');
+  await throughBuySteps(page, { fund: o.fund ?? 'mock' });
+  await expect(page.locator('main')).not.toContainText('MOCK');
   await check(page, 'buy');
   await page.getByRole('button', { name: en.buy.review('$40') }).click();
 
   await expect(page).toHaveURL(/\/orders\/[^/]+$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.order.review.title);
+  // the review names the chain over the page and over its steps
+  await expect(page.locator('main [data-ui="chain-badge"]')).toHaveText(['Solana', 'Solana']);
 }
 
 test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', async ({ page }) => {
@@ -206,7 +271,7 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
     await expect(steps.nth(i)).toHaveAttribute('data-status', 'confirmed');
   await check(page, 'done');
 
-  // The monitor reads the vault the buy opened, with a pin on its value, under the MOCK plate.
+  // The monitor reads the vault the buy opened, with a pin on its value, its card saying it is sample.
   // at 375 px his bar keeps its links in the sheet under the menu button
   await go(page, en.shell.portfolio);
   await expect(page).toHaveURL(/\/monitor$/);
@@ -220,7 +285,9 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
     page.locator('[data-ui="activity-panel"] [data-ui="execution-list"] li a[href]'),
   ).toHaveCount(4);
   await expect(vault.locator('[data-ui="vault-value"] [data-ui="figure"]')).toHaveCount(1);
-  await expect(vault.locator('[data-ui="mock-plate"]').first()).toBeVisible();
+  await expect(vault.locator('[data-ui="sample-note"]')).toBeVisible();
+  await expect(page.locator('main')).not.toContainText('MOCK');
+  await expect(vault.locator('[data-ui="chain-badge"]')).toHaveText('Solana');
   await check(page, 'monitor');
   // the disclaimer is under the vault, once: the shell's foot does not repeat it
   await expect(page.locator('main [data-ui="disclaimer"]')).toBeVisible();
@@ -231,6 +298,55 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   // a page with no disclaimer of its own keeps the foot's
   await expect(page.locator('footer [data-ui="disclaimer"]')).toBeVisible();
   await expect(page.locator('[data-ui="disclaimer"]:visible')).toHaveCount(1);
+});
+
+test('a buy on a test network: test funds sent for what is missing, then every step signed', async ({
+  page,
+}) => {
+  await toReview(page, { fund: 'test' });
+  const steps = page.locator('[data-ui="order-step"]');
+  await expect(steps).toHaveCount(4);
+  await page.getByRole('button', { name: en.order.signAndBuy('$40') }).click();
+  await expect(page.locator('[data-ui="order-status"]')).toHaveText(
+    en.order.outcome.done('Solana'),
+    { timeout: 90_000 },
+  );
+});
+
+test('the buy’s steps by keyboard, in Portuguese, at 375 and 1440 px', async ({ page }) => {
+  await toBuy(page, { fund: 'test' });
+  // Portuguese from the switch in the foot: the page is asked for again, and the sign-in stays
+  await page
+    .locator('[data-ui="language-switch"]')
+    .getByRole('button', { name: 'Português' })
+    .click();
+  const amount = page.getByLabel(pt.buy.amount.label, { exact: true });
+  await expect(amount).toHaveValue('40');
+  // Enter in the amount continues, and the focus moves to the step it opens
+  await amount.focus();
+  await page.keyboard.press('Enter');
+  const funds = page.getByRole('button', { name: new RegExp(`^${pt.buy.steps.names.funds}`) });
+  await expect(funds).toHaveAttribute('aria-expanded', 'true');
+  await expect(funds).toBeFocused();
+  await expect(page.getByRole('button', { name: pt.buy.funding.testFunds })).toBeVisible();
+  await expect(page.locator('[data-ui="data-note"]')).toHaveText(
+    pt.buy.steps.note.testNetwork('Solana'),
+  );
+  // no MOCK word anywhere on the buy screen: the card's one line says what the figures are
+  await expect(page.locator('main')).not.toContainText('MOCK');
+  await check(page, 'buy-pt');
+  // the full notice is one Tab and Enter away in the trust step
+  await page.getByRole('button', { name: new RegExp(`^${pt.buy.steps.names.trust}`) }).click();
+  const full = page.locator('details[data-ui="trust-full"] summary');
+  await full.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('details[data-ui="trust-full"]')).toHaveAttribute('open', '');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const result = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .analyze();
+  expect(result.violations.map((v) => v.id)).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440);
 });
 
 test('a step the server lies about is refused by the guard, and nothing is signed for it', async ({

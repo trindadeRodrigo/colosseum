@@ -26,11 +26,12 @@ import {
   Fig,
   Kpi,
   Kpis,
-  Loading,
   MultiSelect,
+  PageWait,
   Pie,
   Reason,
   SrcLine,
+  useChartPin,
   useFmt,
   useWords,
 } from './parts';
@@ -43,8 +44,23 @@ export function StablePage() {
   const { base, lending } = useBearing();
   const b = useAnswer(() => base(), [base]);
   const all = useAnswer(() => lending(), [lending]);
-  const reading = useWords().stable.reading;
-  if (!b || !all) return <Loading>{reading}</Loading>;
+  const words = useWords();
+  const reading = words.stable.reading;
+  if (!b || !all) {
+    const k = words.stable.kpi;
+    return (
+      <PageWait
+        label={reading}
+        kpis={[
+          { label: k.supplied },
+          { label: k.borrowed },
+          { label: k.available, note: k.availableNote },
+          { label: k.lent },
+          { label: k.reserves, note: k.reservesNote },
+        ]}
+      />
+    );
+  }
   if (!b.lendList.ok)
     return (
       <p className="mt-6">
@@ -61,6 +77,7 @@ export function StablePage() {
 type Token = { t: string; rs: LendRow[] } | { t: string; rs: null };
 
 function StableView({ rows }: { rows: LendRow[] }) {
+  const chartPin = useChartPin();
   const fm = useFmt();
   const { clock } = useBearing();
   const wds = useWords();
@@ -112,6 +129,7 @@ function StableView({ rows }: { rows: LendRow[] }) {
     const tf = seriesFact(sup, src, 'supplied summed over the selected reserves');
     chart = (
       <TimeChart
+        {...chartPin(tf)}
         title={w.supplied.title}
         labels={wds.chart}
         locale={fm.locale}

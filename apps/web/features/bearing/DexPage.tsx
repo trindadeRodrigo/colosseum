@@ -34,9 +34,11 @@ import {
   Kpis,
   Loading,
   MultiSelect,
+  PageWait,
   Pie,
   Reason,
   SrcLine,
+  useChartPin,
   useFmt,
   useReason,
   useWords,
@@ -97,7 +99,20 @@ export function DexPage({ page }: { page: 'stocks' | 'commodities' }) {
     else state.setSel({ assets: [symbol], pools: null });
   }, [asked, b, page, router, state]);
 
-  if (!b || (b.assets.ok && !dd)) return <Loading>{t.dex.reading}</Loading>;
+  const k = t.dex.kpi;
+  if (!b || (b.assets.ok && !dd))
+    return (
+      <PageWait
+        label={t.dex.reading}
+        kpis={[
+          { label: k.tvl, note: k.tvlNote },
+          { label: k.pools, note: k.poolsNote('0') },
+          { label: k.capacity, note: k.capacityNote(t.regimes.us_market_hours) },
+          { label: k.volume, note: k.volumeNote('2026-01-01 00:00') },
+          { label: k.lp, note: k.lpNote },
+        ]}
+      />
+    );
   if (!b.assets.ok)
     return (
       <p className="mt-6">
@@ -287,7 +302,7 @@ function assetColumns(
       cell: (id) => (
         <Link
           href={`/analytics/simulation?asset=${encodeURIComponent(id)}`}
-          className="font-semibold underline decoration-1 underline-offset-[3px] hover:decoration-2"
+          className="inline-flex min-h-6 min-w-6 items-center font-semibold underline decoration-1 underline-offset-[3px] hover:decoration-2"
         >
           {id}
         </Link>
@@ -374,12 +389,14 @@ function CapacityChart({
   range: number;
   setRange: (r: number) => void;
 }) {
+  const chartPin = useChartPin();
   const fm = useFmt();
   const all = useWords();
   const t = all.dex.capacity;
   const s = capacitySeries(selIds, dd, t.partial, fm.usd1);
   return (
     <TimeChart
+      {...chartPin(s.fact)}
       title={t.title}
       labels={all.chart}
       locale={fm.locale}
@@ -426,6 +443,7 @@ function TvlChart({
   range: number;
   setRange: (r: number) => void;
 }) {
+  const chartPin = useChartPin();
   const fm = useFmt();
   const { reader } = useBearing();
   const all = useWords();
@@ -453,6 +471,7 @@ function TvlChart({
   const share = tvl ? recTvl / tvl : null;
   return (
     <TimeChart
+      {...chartPin(s.fact)}
       title={t.recorded}
       labels={all.chart}
       locale={fm.locale}

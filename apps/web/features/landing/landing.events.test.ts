@@ -23,6 +23,15 @@ const scene = vi.hoisted(() => ({
   })),
 }));
 vi.mock('./joint-scene', () => ({ createJointScene: scene.create }));
+const coinsScene = vi.hoisted(() => ({
+  create: vi.fn((_canvas: HTMLCanvasElement, _options?: { onReady?: () => void }) => ({
+    setProgress: vi.fn(),
+    resize: vi.fn(),
+    setVisible: vi.fn(),
+    dispose: vi.fn(),
+  })),
+}));
+vi.mock('./coins-scene', () => ({ createCoinsScene: coinsScene.create }));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
 vi.mock('next/link', () => import('../wallet/test/mock-next'));
 
@@ -31,8 +40,10 @@ vi.mock('next/link', () => import('../wallet/test/mock-next'));
 // product, and an email field that sends nothing and says so.
 
 const en = dictionary('en');
-const landing = async (lang: Lang = 'en') => {
-  const host = await mount(inLanguage(lang, createElement(Landing, { lang, theme: 'auto' })));
+const landing = async (lang: Lang = 'en', signedIn = false) => {
+  const host = await mount(
+    inLanguage(lang, createElement(Landing, { lang, theme: 'auto', signedIn })),
+  );
   await settle(10);
   return host;
 };
@@ -67,6 +78,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   router.push.mockClear();
   scene.create.mockClear();
+  coinsScene.create.mockClear();
 });
 afterEach(async () => {
   await unmountAll();
@@ -85,7 +97,7 @@ describe('the hero', () => {
     );
     // the stage is named, and what is drawn is not read out
     expect(find(host, '#stage').getAttribute('aria-label')).toBe(en.landing.stage.label);
-    expect(find(host, 'canvas').closest('[aria-hidden="true"]')).not.toBeNull();
+    expect(find(host, '#stage canvas').closest('[aria-hidden="true"]')).not.toBeNull();
   });
 
   it('offers Products, Invest and Analytics in its bar, and no Resources (Thom, Oct 6)', async () => {
@@ -107,7 +119,7 @@ describe('the hero', () => {
     const host = await landing();
     expect(scene.create).toHaveBeenCalledTimes(1);
     expect(scene.create).toHaveBeenCalledWith(
-      find(host, 'canvas'),
+      find(host, '#stage canvas'),
       expect.objectContaining({ onReady: expect.any(Function), light: expect.any(Boolean) }),
     );
     // the context that only asked whether WebGL is there is let go
@@ -116,9 +128,9 @@ describe('the hero', () => {
     expect(made.setProgress).toHaveBeenCalled();
     // nothing stands in while it loads, and the canvas shows once its first frame is drawn
     expect(host.querySelector('.sticky [data-ui="joint-still"]')).toBeNull();
-    expect(find(host, 'canvas').className).toContain('opacity-0');
+    expect(find(host, '#stage canvas').className).toContain('opacity-0');
     await act(async () => scene.create.mock.calls[0]?.[1]?.onReady?.());
-    expect(find(host, 'canvas').className).toContain('opacity-100');
+    expect(find(host, '#stage canvas').className).toContain('opacity-100');
   });
 
   it('draws no 3D at all with reduced motion: the still, seated, beside the copy', async () => {
@@ -189,9 +201,79 @@ describe('the hero', () => {
       expect(img.getAttribute('loading')).toBe('lazy');
   });
 });
+describe('the hero on a phone (hero-3d.html, its 820px rule)', () => {
+  /** A copy block placed by a test: its middle at `share` of an 844px screen. */
+  const place = (el: Element, share: number) => {
+    const mid = 844 * share;
+    el.getBoundingClientRect = () =>
+      ({
+        top: mid - 100,
+        bottom: mid + 100,
+        height: 200,
+        width: 390,
+        left: 0,
+        right: 390,
+      }) as DOMRect;
+  };
+  const scrollNow = async () => {
+    await act(async () => {
+      window.dispatchEvent(new Event('scroll'));
+      await new Promise((done) => requestAnimationFrame(() => done(null)));
+    });
+  };
+
+  it('keeps the copy at the foot, and fades a line before it can rise into the joint', async () => {
+    browser();
+    const width = Object.getOwnPropertyDescriptor(window, 'innerWidth');
+    const height = Object.getOwnPropertyDescriptor(window, 'innerHeight');
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 844 });
+    try {
+      const host = await landing();
+      const hero = find(host, '#stage [data-low]');
+      // the copy sits at the foot of the screen on a phone, as his prototype has it
+      expect(hero.parentElement?.parentElement?.className).toContain('max-[819px]:items-end');
+      const step = find(host, '#step-1 [data-on]');
+      // low on the screen: shown
+      place(hero, 0.75);
+      place(step, 0.7);
+      await scrollNow();
+      expect(hero.getAttribute('data-low')).toBe('true');
+      expect(hero.className).not.toContain('max-[819px]:opacity-0');
+      expect(step.getAttribute('data-on')).toBe('true');
+      expect(step.className).not.toContain('max-[819px]:opacity-0');
+      // risen toward the joint, which takes the top third: faded before its plate gets there
+      place(hero, 0.3);
+      place(step, 0.3);
+      await scrollNow();
+      expect(hero.getAttribute('data-low')).toBe('false');
+      expect(hero.className).toContain('max-[819px]:opacity-0');
+      expect(step.getAttribute('data-on')).toBe('false');
+      expect(step.className).toContain('max-[819px]:opacity-0');
+      // with reduced motion nothing is pinned, and nothing fades
+      expect(step.className).toContain('motion-reduce:opacity-100');
+      // the copy marks itself for the bar, which takes its ground when copy reaches it
+      expect(hero.hasAttribute('data-under-bar')).toBe(true);
+      expect(step.hasAttribute('data-under-bar')).toBe(true);
+    } finally {
+      if (width) Object.defineProperty(window, 'innerWidth', width);
+      if (height) Object.defineProperty(window, 'innerHeight', height);
+    }
+  });
+
+  it('fades nothing on a wide screen: the copy stands beside the joint there', async () => {
+    browser();
+    const host = await landing();
+    const step = find(host, '#step-1 [data-on]');
+    place(step, 0.3);
+    await scrollNow();
+    // on a wide screen a step is read from 15% of the way down
+    expect(step.getAttribute('data-on')).toBe('true');
+  });
+});
 
 describe('the showcase', () => {
-  it('shows his two sample people, each case MOCK in its head and on every pinned figure', async () => {
+  it('shows his two sample people, each case sample on every pinned figure and said once', async () => {
     browser();
     const host = await landing();
     const cases = [...host.querySelectorAll('article[data-ui="showcase-case"]')];
@@ -200,10 +282,9 @@ describe('the showcase', () => {
       en.landing.show.growth.label,
     ]);
     for (const c of cases) {
-      // the plate in the case's head, not only the pins' own
-      expect(
-        c.querySelector('[data-ui="case-head"] [data-ui="mock-plate"]')?.textContent,
-      ).toContain('MOCK');
+      // said once at the case's foot, not by a word beside each figure (MOCK-QUIET)
+      expect(c.textContent).not.toContain('MOCK');
+      expect(c.textContent).toContain(en.landing.show.sample);
       const pins = [...c.querySelectorAll('[data-ui="figure"]')];
       expect(pins.length).toBeGreaterThan(0);
       // nothing in a sample case is drawn as live
@@ -212,6 +293,13 @@ describe('the showcase', () => {
       expect(c.querySelector('blockquote')?.textContent).toMatch(/^“.+”$/);
     }
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
+    // the page never writes the word MOCK: its foot and each case say "sample" (MOCK-QUIET)
+    expect(host.textContent).not.toMatch(/MOCK/);
+    // once in each case, and once under the closing's plan of coins
+    expect(
+      host.querySelectorAll('article[data-ui="showcase-case"] [data-ui="sample-note"]'),
+    ).toHaveLength(2);
+    expect(host.querySelectorAll('#updates [data-ui="sample-note"]')).toHaveLength(1);
   });
 
   it('draws each plan as a joint whose parts are its legend’s, share for share', async () => {
@@ -506,46 +594,32 @@ describe('the closing', () => {
     expect(closing.textContent).toContain(en.landing.closing.status['invalid-email']);
   });
 
-  it('shows the joint drawn in ink, coming together, and no photograph (CLOSING-INK)', async () => {
+  it('sets the coins behind its heading, with no frame, the words on top (CLOSING-COINS, Oct 6)', async () => {
     browser();
     const host = await landing();
     const closing = find(host, '#updates');
-    expect(closing.querySelector('img, figure, figcaption')).toBeNull();
-    const drawing = find(closing, 'svg[data-ui="closing-drawing"]');
-    expect(drawing.getAttribute('role')).toBe('img');
-    expect(drawing.getAttribute('aria-label')).toBe(en.landing.closing.drawingAlt);
-    // the three pieces, the guides that show how they meet, and nothing raster
-    for (const part of ['rail', 'post', 'nose', 'pin', 'guides'])
-      expect(drawing.querySelector(`[data-part="${part}"]`), part).not.toBeNull();
-    expect(drawing.querySelector('image, foreignObject')).toBeNull();
-    // happy-dom has no IntersectionObserver: the drawing stays exploded, the guides shown
-    expect(drawing.getAttribute('data-state')).toBe('apart');
+    expect(closing.querySelector('img, figure, figcaption, [data-ui="subscribe-art"]')).toBeNull();
+    // the joint is gone from the closing: it is the hero's alone
+    expect(closing.querySelector('[data-ui="closing-drawing"]')).toBeNull();
+    const track = find(closing, '[data-ui="closing-track"]');
+    const canvas = find(track, 'canvas[data-ui="closing-canvas"]');
+    const words = find(track, '[data-ui="closing-words"]');
+    expect(words.querySelector('h2')?.textContent).toBe(en.landing.closing.title);
+    expect(canvas.className).toContain('z-0');
+    expect(canvas.className).toContain('pointer-events-none');
+    expect(words.className).toContain('z-10');
+    expect(canvas.compareDocumentPosition(words) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(track.className).toContain('h-[200svh]');
+    expect(find(track, '.sticky').className).toContain('h-svh');
+    expect(track.querySelector('input[type="email"]')).toBeNull();
+    expect(closing.querySelector('input[type="email"]')).not.toBeNull();
+    // the plan's parts, for a screen reader, each with its share
+    const parts = [...find(track, 'ul.sr-only').querySelectorAll('li')].map((li) => li.textContent);
+    expect(parts).toContain('SPY · 15%');
+    expect(parts).toHaveLength(10);
   });
 
-  it('stands assembled and still with reduced motion, by CSS before any script', async () => {
-    browser({ reduce: true });
-    vi.stubGlobal(
-      'IntersectionObserver',
-      class {
-        observe() {}
-        disconnect() {}
-      },
-    );
-    const host = await landing();
-    const drawing = find(host, 'svg[data-ui="closing-drawing"]');
-    expect(drawing.getAttribute('data-state')).toBe('still');
-    for (const part of ['rail', 'nose', 'pin']) {
-      const cls = find(drawing, `[data-part="${part}"]`).getAttribute('class') ?? '';
-      expect(cls, part).toContain('motion-reduce:!translate-none');
-      expect(cls, part).toContain('motion-reduce:transition-none');
-    }
-    expect(find(drawing, '[data-part="guides"]').getAttribute('class')).toContain(
-      'motion-reduce:opacity-0',
-    );
-    vi.unstubAllGlobals();
-  });
-
-  it('closes together once when it comes into view, where motion is welcome', async () => {
+  it('stands the plan drawn flat, every coin with its ticker and share, where there is no WebGL', async () => {
     const seen: ((entries: { isIntersecting: boolean }[]) => void)[] = [];
     vi.stubGlobal(
       'IntersectionObserver',
@@ -557,18 +631,86 @@ describe('the closing', () => {
         disconnect() {}
       },
     );
-    browser();
+    browser({ webgl: false });
     const host = await landing();
-    const drawing = find(host, 'svg[data-ui="closing-drawing"]');
-    const rail = () =>
-      (find(drawing, '[data-part="rail"]') as unknown as SVGElement).style.translate;
-    expect(drawing.getAttribute('data-state')).toBe('apart');
-    expect(rail()).not.toBe('');
     await act(async () => {
       for (const cb of seen) cb([{ isIntersecting: true }]);
     });
-    expect(drawing.getAttribute('data-state')).toBe('in');
-    expect(rail()).toBe('');
+    await settle(10);
+    const track = find(host, '[data-ui="closing-track"]');
+    expect(track.getAttribute('data-mode')).toBe('still');
+    const still = find(track, 'svg[data-ui="coins-still"]');
+    expect(still.getAttribute('aria-label')).toBe(en.landing.closing.drawingAlt);
+    const coins = [...still.querySelectorAll('[data-part="coin"]')];
+    expect(coins).toHaveLength(10);
+    for (const coin of coins) {
+      // the face is text: its ticker and its share, no picture
+      expect(coin.querySelector('text')?.textContent).toBe(coin.getAttribute('data-ticker'));
+      expect(coin.querySelector('[data-part="share"]')?.textContent).toMatch(/^\d+%$/);
+    }
+    expect(still.querySelector('image, foreignObject')).toBeNull();
+    expect(find(track, 'canvas').getAttribute('aria-hidden')).toBe('true');
+    expect(coinsScene.create).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('holds nothing and moves nothing with reduced motion: the plan, whole', async () => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    browser({ reduce: true, webgl: true });
+    const host = await landing();
+    await settle(10);
+    const track = find(host, '[data-ui="closing-track"]');
+    expect(track.className).toContain('motion-reduce:h-svh');
+    expect(
+      find(track, 'svg[data-ui="coins-still"]').querySelectorAll('[data-part="coin"]'),
+    ).toHaveLength(10);
+    expect(coinsScene.create).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('makes one canvas only when the section comes near, and pauses it while it is away', async () => {
+    const observers: { cb: (e: { isIntersecting: boolean }[]) => void; els: Element[] }[] = [];
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        els: Element[] = [];
+        constructor(cb: (e: { isIntersecting: boolean }[]) => void) {
+          observers.push({ cb, els: this.els });
+        }
+        observe(el: Element) {
+          this.els.push(el);
+        }
+        disconnect() {}
+      },
+    );
+    browser({ webgl: true });
+    const host = await landing();
+    await settle(10);
+    const track = find(host, '[data-ui="closing-track"]');
+    const mine = observers.find((o) => o.els.includes(track));
+    expect(mine).toBeTruthy();
+    expect(coinsScene.create).not.toHaveBeenCalled();
+    await act(async () => mine?.cb([{ isIntersecting: true }]));
+    await settle(10);
+    expect(coinsScene.create).toHaveBeenCalledTimes(1);
+    expect(coinsScene.create.mock.calls[0]?.[0]).toBe(find(track, 'canvas'));
+    const made = coinsScene.create.mock.results[0]?.value as {
+      setVisible: ReturnType<typeof vi.fn>;
+      setProgress: ReturnType<typeof vi.fn>;
+    };
+    expect(made.setProgress).toHaveBeenCalled();
+    await act(async () => mine?.cb([{ isIntersecting: false }]));
+    expect(made.setVisible).toHaveBeenLastCalledWith(false);
+    await act(async () => mine?.cb([{ isIntersecting: true }]));
+    expect(made.setVisible).toHaveBeenLastCalledWith(true);
+    expect(coinsScene.create).toHaveBeenCalledTimes(1);
+    expect(track.querySelectorAll('canvas')).toHaveLength(1);
     vi.unstubAllGlobals();
   });
 });
@@ -610,4 +752,46 @@ it('keeps “System” as a choice on the landing, so the next visit follows the
   const system = [...find(host, '[data-ui="theme-switch"]').querySelectorAll('button')][0];
   await click(system as HTMLElement);
   expect(document.cookie).toContain('tf-theme=auto');
+});
+
+describe('the bar’s action', () => {
+  const action = (host: HTMLElement) =>
+    [...host.querySelectorAll<HTMLAnchorElement>('[data-ui="compact-nav"] a')].filter((a) =>
+      [
+        en.landing.nav.cta,
+        en.landing.nav.openApp,
+        pt.landing.nav.cta,
+        pt.landing.nav.openApp,
+      ].includes(a.textContent ?? ''),
+    );
+  const pt = dictionary('pt');
+
+  it('is "Sign in" for a visitor, and the visitor line asks them to sign in', async () => {
+    browser();
+    const host = await landing();
+    expect(action(host).map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      [en.landing.nav.cta, '/sign-in?next=/goal'],
+    ]);
+    expect(host.textContent).toContain(en.goal.visitor.link);
+  });
+
+  it.each(['en', 'pt'] as const)(
+    'leads a person signed in back into the app, in the same style, and asks nothing of them (%s)',
+    async (lang) => {
+      browser();
+      const words = dictionary(lang);
+      const host = await landing(lang, true);
+      const [open] = action(host);
+      expect(action(host)).toHaveLength(1);
+      expect(open?.textContent).toBe(words.landing.nav.openApp);
+      expect(open?.getAttribute('href')).toBe('/goal');
+      expect(host.querySelector('a[href^="/sign-in"]')).toBeNull();
+      expect(host.textContent).not.toContain(words.landing.nav.cta);
+      expect(host.textContent).not.toContain(words.goal.visitor.link);
+      // the filled style of "Sign in"
+      await unmountAll();
+      const visitor = await landing(lang);
+      expect(open?.className).toBe(action(visitor)[0]?.className);
+    },
+  );
 });

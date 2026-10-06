@@ -2,6 +2,7 @@
 import { DISCLAIMER, DISCLAIMER_SHORT } from '@colosseum/schemas';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CHAIN_NAMES } from '../../components/ui/ChainBadge';
 import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
@@ -15,7 +16,16 @@ import { EMBEDDED, fakePort, json, PHANTOM, signedInPort } from '../wallet/test/
 import { portStore } from '../wallet/test/mock-provider';
 import { MonitorScreen } from './MonitorScreen';
 import { PORTFOLIO_PATH } from './portfolio';
-import { chainOf, labelled, portfolioBody, SECOND_VAULT, VAULT, vault } from './test/portfolio';
+import {
+  chainOf,
+  labelled,
+  portfolioBody,
+  portfolioOf,
+  robinhoodChain,
+  SECOND_VAULT,
+  VAULT,
+  vault,
+} from './test/portfolio';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -145,14 +155,16 @@ describe('the monitor, for a person with a vault on their chain', () => {
       expect(pin.querySelector('button')?.getAttribute('aria-label')).toMatch(/^Source for /);
   });
 
-  it('draws a test network as the hatch and MOCK, with the words, never as live (rule 2)', async () => {
+  it('draws a test network as the hatch and a quiet line with the words, never as live (rule 2)', async () => {
     api({ person: onSolana });
     signIn();
     const host = await screen();
     const card = panel(host);
     expect(card.querySelector('.tf-hatch')).not.toBeNull();
-    expect(card.querySelector('[data-ui="mock-plate"]')?.textContent).toContain('MOCK');
-    expect(find(card, '[data-ui="mock-note"]').textContent).toBe(en.shell.testNetwork);
+    expect(card.textContent).not.toContain('MOCK');
+    expect(find(card, '[data-ui="sample-note"]').textContent).toBe(
+      `${en.shell.mockAnnounce} · ${en.shell.testNetwork}`,
+    );
     // the chain line says it too
     expect(find(host, 'header [data-ui="chain-name"]').textContent).toContain(en.shell.testNetwork);
     // no figure is drawn live
@@ -160,11 +172,11 @@ describe('the monitor, for a person with a vault on their chain', () => {
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
 
-  it('draws a live vault with live pins and no plate, and the same vault on the mock with MOCK alone', async () => {
+  it('draws a live vault with live pins and no mark, and the same vault on the mock with the line alone', async () => {
     api({ person: onSolana, portfolio: () => json(portfolioBody(labelled('live'))) });
     signIn(PHANTOM, 'live');
     const live = await screen();
-    expect(live.querySelector('[data-ui="mock-plate"]')).toBeNull();
+    expect(live.querySelector('[data-ui="sample-note"]')).toBeNull();
     expect(live.querySelector('.tf-hatch')).toBeNull();
     expect(new Set(pins(live).map((pin) => pin.getAttribute('data-state')))).toEqual(
       new Set(['live']),
@@ -174,8 +186,7 @@ describe('the monitor, for a person with a vault on their chain', () => {
     signIn(PHANTOM, 'mock');
     const mocked = await screen();
     const card = panel(mocked);
-    expect(card.querySelector('[data-ui="mock-plate"]')).not.toBeNull();
-    expect(card.querySelector('[data-ui="mock-note"]')).toBeNull();
+    expect(find(card, '[data-ui="sample-note"]').textContent).toBe(en.shell.mockAnnounce);
     expect(hatchProblems(parse(mocked.innerHTML))).toEqual([]);
   });
 
@@ -247,7 +258,7 @@ describe('the monitor, for a person with a vault on their chain', () => {
     const chips = find(host, `ul[aria-label="${en.portfolio.vault.chips.label}"]`).textContent;
     expect(chips).toContain('version: 1');
     expect(chips).toContain('auto-follow: on');
-    expect(host.textContent).toContain(DISCLAIMER_SHORT);
+    expect(host.textContent).toContain(DISCLAIMER_SHORT.en);
   });
 
   it('says a vault of cash alone in words, with no empty table', async () => {
@@ -587,7 +598,9 @@ describe('the monitor in Portuguese', () => {
       expect(text(host)).toContain(label);
     expect(text(host).replace(/\s/g, ' ')).toContain('US$ 1.040,00');
     expect(text(host)).toContain('−2,50%');
-    expect(find(panel(host), '[data-ui="mock-note"]').textContent).toBe(pt.shell.testNetwork);
+    expect(find(panel(host), '[data-ui="sample-note"]').textContent).toBe(
+      `${pt.shell.mockAnnounce} · ${pt.shell.testNetwork}`,
+    );
     for (const pin of pins(host))
       expect(pin.querySelector('button')?.getAttribute('aria-label')).toMatch(/^Fonte de /);
     expect(text(host)).not.toContain(en.portfolio.vault.title);
@@ -600,4 +613,172 @@ it('names the vault by its address, cut, with the whole of it kept for whoever a
   const host = await screen();
   const meta = find(host, `[title="${VAULT}"]`);
   expect(meta.textContent).toContain('EPjF…kGDw');
+});
+
+describe('the chain of each vault', () => {
+  const onRobinhood: Person = { ...onSolana, wallets: EMBEDDED, chain: 'robinhood' };
+  const chainsOf = (host: HTMLElement, where = '') =>
+    [...host.querySelectorAll(`${where} [data-ui="chain-badge"]`)].map((b) =>
+      b.getAttribute('data-chain'),
+    );
+
+  it.each([
+    ['solana', onSolana, () => portfolioBody()],
+    ['robinhood', onRobinhood, () => portfolioOf(robinhoodChain())],
+  ] as const)(
+    'is badged on the goal card and the vault panel, on %s',
+    async (chain, person, body) => {
+      api({ person, portfolio: () => json(body()) });
+      signIn(chain === 'solana' ? PHANTOM : EMBEDDED, chain === 'solana' ? 'sandbox' : 'mock');
+      const host = await screen();
+      const vault = find(host, '[data-ui="vault"]');
+      expect(chainsOf(vault as HTMLElement)).toEqual([chain, chain]);
+      expect(chainsOf(vault as HTMLElement, '[data-ui="goal-card"]')).toEqual([chain]);
+      expect(chainsOf(vault as HTMLElement, '[data-ui="card-header"]')).toEqual([chain]);
+      // the page's chain line names it too, and there is nothing to group
+      expect(find(host, 'header [data-ui="chain-badge"]').textContent).toBe(CHAIN_NAMES[chain]);
+      expect(host.querySelector('[data-ui="chain-group"]')).toBeNull();
+      expect(host.querySelector('[data-ui="across-chains"]')).toBeNull();
+    },
+  );
+
+  it('says tUSDG for a Robinhood vault’s dollar, and never USDC, in English and Portuguese', async () => {
+    for (const lang of ['en', 'pt'] as const) {
+      api({ person: onRobinhood, portfolio: () => json(portfolioOf(robinhoodChain())) });
+      signIn(EMBEDDED, 'mock');
+      const host = await screen(lang);
+      const vault = find(host, '[data-ui="vault"]');
+      expect(vault.textContent).toContain('tUSDG');
+      expect(vault.textContent).not.toMatch(/usdc/i);
+      expect(host.textContent).not.toMatch(/usdc/i);
+      await unmountAll();
+    }
+  });
+
+  it('groups vaults on two chains under a heading each, with a total each, and adds them only where it says so', async () => {
+    api({ person: onSolana, portfolio: () => json(portfolioOf(chainOf(), robinhoodChain())) });
+    signIn();
+    const host = await screen();
+    const groups = [...host.querySelectorAll<HTMLElement>('[data-ui="chain-group"]')];
+    expect(groups.map((g) => g.getAttribute('data-chain'))).toEqual(['solana', 'robinhood']);
+    expect(groups.map((g) => g.querySelector('h2')?.textContent)).toEqual([
+      expect.stringContaining('Solana'),
+      expect.stringContaining('Robinhood Chain'),
+    ]);
+    // each chain's vaults sit under its heading, each badged with that chain
+    for (const group of groups) {
+      const chain = group.getAttribute('data-chain');
+      expect(group.querySelectorAll('[data-ui="vault"]')).toHaveLength(1);
+      expect(new Set(chainsOf(group))).toEqual(new Set([chain]));
+    }
+    // a total per chain, each with its pin, never one chain's figure under the other's heading
+    const totals = groups.map((g) => find(g, '[data-ui="chain-total"]').textContent);
+    expect(totals[0]).toContain(en.portfolio.group.worth(1, 'Solana'));
+    expect(totals[0]).toContain('$1,040.00');
+    expect(totals[1]).toContain(en.portfolio.group.worth(1, 'Robinhood Chain'));
+    expect(totals[1]).toContain('$26.50');
+    expect(totals[1]).not.toContain('$1,040.00');
+    for (const group of groups)
+      expect(find(group, '[data-ui="chain-total"] [data-ui="pin"]')).toBeTruthy();
+    // the one figure across chains says so
+    const across = find(host, '[data-ui="across-chains"]').textContent ?? '';
+    expect(across).toContain(en.portfolio.group.across(2));
+    expect(en.portfolio.group.across(2)).toBe('Across both chains, together');
+    expect(across).toContain('$1,066.50');
+    // the Robinhood vault still never says USDC
+    expect(groups[1]?.textContent).not.toMatch(/usdc/i);
+    // no single chain line in the header once there are two
+    expect(host.querySelector('header [data-ui="chain-badge"]')).toBeNull();
+  });
+
+  it('shows the chain that was read when another is unavailable, and says which, in English and Portuguese', async () => {
+    const out = {
+      chain: 'solana',
+      name: 'Solana',
+      code: 'CHAIN_UNAVAILABLE',
+      error: 'the node did not answer',
+      retryable: true,
+    };
+    for (const lang of ['en', 'pt'] as const) {
+      api({
+        person: onSolana,
+        portfolio: () => json({ ...portfolioOf(robinhoodChain()), unavailable: [out] }),
+      });
+      signIn();
+      const host = await screen(lang);
+      // the Robinhood vault is shown, not a sentence that the portfolio could not be read
+      expect(host.querySelectorAll('[data-ui="vault"]')).toHaveLength(1);
+      expect(host.textContent).not.toContain(dictionary(lang).portfolio.unreadable);
+      expect(find(host, '[data-ui="chains-out"] [data-chain="solana"]').textContent).toBe(
+        dictionary(lang).portfolio.chainOut('Solana'),
+      );
+      await unmountAll();
+    }
+    expect(en.portfolio.chainOut('Robinhood Chain')).toBe(
+      'Robinhood Chain is unavailable right now.',
+    );
+  });
+
+  it('never says there is no vault on a chain it could not read, nor while another chain is out', async () => {
+    const out = (chain: 'solana' | 'robinhood', retryable: boolean) => ({
+      chain,
+      name: chain === 'solana' ? 'Solana' : 'Robinhood Chain',
+      code: 'CHAIN_UNAVAILABLE',
+      error: 'x',
+      retryable,
+    });
+    for (const answer of [
+      // the current chain could not be read, and no vault was read anywhere
+      { ...portfolioOf(robinhoodChain([])), unavailable: [out('solana', true)] },
+      // the current chain is not held, and nothing was read
+      { ...portfolioOf(robinhoodChain([])), unavailable: [] },
+      // the current chain was read empty, but another could not be read
+      { ...portfolioOf(chainOf([])), unavailable: [out('robinhood', false)] },
+    ]) {
+      api({ person: onSolana, portfolio: () => json(answer) });
+      signIn();
+      const host = await screen();
+      expect(host.textContent).not.toContain(en.portfolio.empty('Solana'));
+      expect(host.querySelector('[data-ui="chains-out"]')).not.toBeNull();
+      await unmountAll();
+    }
+    // a chain switched off here is said so, and not offered a read again
+    api({
+      person: onSolana,
+      portfolio: () =>
+        json({ ...portfolioOf(chainOf([])), unavailable: [out('robinhood', false)] }),
+    });
+    signIn();
+    const host = await screen();
+    expect(find(host, '[data-ui="chains-out"] [data-chain="robinhood"]').textContent).toBe(
+      en.portfolio.chainOff('Robinhood Chain'),
+    );
+    expect(host.textContent).not.toContain(en.portfolio.again);
+    // and when every chain was read and holds none, it is said
+    await unmountAll();
+    api({ person: onSolana, portfolio: () => json(portfolioOf(chainOf([]))) });
+    signIn();
+    expect((await screen()).textContent).toContain(en.portfolio.empty('Solana'));
+  });
+
+  it('says the current chain is not held in this sign-in when the answer has none of it', async () => {
+    api({ person: onSolana, portfolio: () => json(portfolioOf(robinhoodChain())) });
+    signIn();
+    const host = await screen();
+    expect(host.querySelectorAll('[data-ui="vault"]')).toHaveLength(1);
+    expect(find(host, '[data-ui="chains-out"] [data-chain="solana"]').textContent).toBe(
+      en.portfolio.notHeld('Solana'),
+    );
+  });
+
+  it('groups in Portuguese too, with the label that says it adds the chains up', async () => {
+    api({ person: onSolana, portfolio: () => json(portfolioOf(chainOf(), robinhoodChain())) });
+    signIn();
+    const host = await screen('pt');
+    const pt = dictionary('pt');
+    expect(find(host, '[data-ui="across-chains"]').textContent).toContain(
+      pt.portfolio.group.across(2),
+    );
+    expect(host.querySelectorAll('[data-ui="chain-group"]')).toHaveLength(2);
+  });
 });

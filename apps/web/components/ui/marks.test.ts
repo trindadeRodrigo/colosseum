@@ -81,11 +81,31 @@ describe('formatters', () => {
   });
 
   it('writes an age in minutes, hours or days', () => {
-    expect(formatAge(90)).toEqual({ short: '2 min', long: '2 minutes old' });
-    expect(formatAge(3 * 3600)).toEqual({ short: '3 h', long: '3 hours old' });
-    expect(formatAge(3600)).toEqual({ short: '1 h', long: '1 hour old' });
-    expect(formatAge(3 * 86_400)).toEqual({ short: '3 d', long: '3 days old' });
-    expect(formatAge(0)).toEqual({ short: '1 min', long: '1 minute old' });
+    expect(formatAge(90)).toEqual({
+      short: '2 min',
+      long: '2 minutes old',
+      count: 2,
+      unit: 'minute',
+    });
+    expect(formatAge(3 * 3600)).toEqual({
+      short: '3 h',
+      long: '3 hours old',
+      count: 3,
+      unit: 'hour',
+    });
+    expect(formatAge(3600)).toEqual({ short: '1 h', long: '1 hour old', count: 1, unit: 'hour' });
+    expect(formatAge(3 * 86_400)).toEqual({
+      short: '3 d',
+      long: '3 days old',
+      count: 3,
+      unit: 'day',
+    });
+    expect(formatAge(0)).toEqual({
+      short: '1 min',
+      long: '1 minute old',
+      count: 1,
+      unit: 'minute',
+    });
   });
 
   it('gives no age for what is not one', () => {

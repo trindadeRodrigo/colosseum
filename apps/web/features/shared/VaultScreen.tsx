@@ -2,16 +2,20 @@
 import { ChainId, type Price, type VaultResponse } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useEffect, useId, useState } from 'react';
+import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardBody, CardHeader, CardLoading, Stat, StatRow } from '../../components/ui/Card';
+import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/Card';
+import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
+import { PAGE_TITLE } from '../../components/ui/heading';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { pinSourceOfPrice } from '../../components/ui/price-source';
+import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars } from '../goal/sheet';
-import { assetName, formatBps } from '../order/amounts';
+import { assetTicker, formatBps } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { vaultValueSource } from '../portfolio/portfolio';
 import { useApiFetch } from '../wallet/WalletProvider';
@@ -51,13 +55,13 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
   if (load.kind === 'loading')
     return (
       <Card>
-        <CardLoading label={v.loading} />
+        <CardWait label={v.loading} skeleton={<SkeletonSummary />} />
       </Card>
     );
   if (load.kind !== 'read')
     return (
       <section aria-labelledby={titleId} className="flex flex-col items-start gap-4">
-        <h1 id={titleId} className="font-sans text-h2 font-semibold">
+        <h1 id={titleId} className={PAGE_TITLE}>
           {load.kind === 'no-plan' || load.kind === 'refused' ? v.missing : v.title}
         </h1>
         {load.kind !== 'no-plan' && load.kind !== 'refused' && (
@@ -83,8 +87,9 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
   const follows = vault.recipeOnchainId;
   return (
     <div data-ui="vault-screen" className="flex flex-col gap-8">
-      <header className="flex flex-col gap-3">
-        <h1 id={titleId} className="max-w-(--tf-measure-display) font-display text-h1 font-normal">
+      <header className="flex flex-col items-start gap-3">
+        <ChainBadge chain={read.chain} />
+        <h1 id={titleId} className={PAGE_TITLE}>
           {v.title}
         </h1>
         <p className="max-w-(--tf-measure-body) text-body-lg">{v.lead(read.name)}</p>
@@ -132,7 +137,12 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
               )}
             </dd>
             <dt className="text-muted-foreground">{v.cash}</dt>
-            <dd className="tabular-nums">{vault.cash.display}</dd>
+            <dd className="tabular-nums">
+              {vault.cash.display}{' '}
+              <span className="text-caption text-muted-foreground">
+                {assetTicker(vault.cash.asset)}
+              </span>
+            </dd>
           </dl>
           <DataTable<Row>
             caption={read.name}
@@ -144,7 +154,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                 key: 'asset',
                 header: v.columns.asset,
                 rowHeader: true,
-                cell: (r) => assetName(r.asset).toUpperCase(),
+                cell: (r) => assetTicker(r.asset),
               },
               { key: 'held', header: v.columns.held, numeric: true, cell: (r) => r.display },
               {

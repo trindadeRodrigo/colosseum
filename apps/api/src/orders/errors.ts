@@ -54,13 +54,24 @@ const CHAIN_TO_ORDER: Partial<Record<ChainErrorCode, Mapped>> = {
   Unknown: { status: 500 },
 };
 
+/**
+ * What an answer says for a chain error whose own text is not ours to show: one the adapter made from
+ * something it did not expect (`Unknown`), or one that wraps a raw error (`cause`). A library's message
+ * can carry the node's URL, and a node URL can carry its key ("HTTP request failed. URL: …").
+ */
+export const UNSAID_CHAIN_ERROR = 'the chain could not be read or reached as expected just now';
+
 export function refusalFromChainError(e: ChainError): Refusal {
   const mapped = CHAIN_TO_ORDER[e.code] ?? { status: 409 };
-  return new Refusal(mapped.status, e.message, {
+  const sayable = e.code !== 'Unknown' && e.cause === undefined;
+  const refusal = new Refusal(mapped.status, sayable ? e.message : UNSAID_CHAIN_ERROR, {
     ...(mapped.code ? { code: mapped.code } : {}),
     ...(mapped.fix ? { fix: mapped.fix } : {}),
     details: { chainCode: e.code, retryable: e.retryable },
   });
+  // The raw error stays for the server's log, never for the answer.
+  refusal.cause = e;
+  return refusal;
 }
 
 /** Runs chain work and reports a ChainError as a Refusal. Anything else is a bug and passes through. */

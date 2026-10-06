@@ -778,7 +778,7 @@ export function createEvmVaultAdapter(options: EvmVaultAdapterOptions): EvmVault
         });
       }),
 
-    buildKeeperLeg: (vaultArg, tradeArg) =>
+    buildKeeperLeg: (vaultArg, tradeArg, options: { nonce?: number } = {}) =>
       guarded(async () => {
         builds();
         const vault = evm(vaultArg, 'vault');
@@ -828,6 +828,9 @@ export function createEvmVaultAdapter(options: EvmVaultAdapterOptions): EvmVault
             args: [swap],
           }),
           vault,
+          // Pinned where an earlier leg of this vault holds a nonce the node does not have: of the
+          // two, at most one can land.
+          ...(options.nonce !== undefined ? { nonce: options.nonce } : {}),
           summary: `Keeper: sell ${amountIn} raw ${t.sell} for at least ${minOut} raw ${t.buy} in vault ${vault}, toward its target`,
           minimums: [
             { sell: t.sell, buy: t.buy, inRaw: t.amountInRaw, minOutRaw: minOut.toString() },

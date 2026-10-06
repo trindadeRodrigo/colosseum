@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { fontVariables } from '../../app/fonts';
 import '../../app/globals.css';
 import { AccountProvider } from '../../features/account/AccountProvider';
+import { SignInDialogProvider } from '../../features/account/SignInDialog';
 import { WalletProvider } from '../../features/wallet/WalletProvider';
 import { LOCALE, THEME_CLASS } from '../../i18n';
 import { I18nProvider } from '../../i18n/I18nProvider';
@@ -25,9 +26,12 @@ export async function AppDocument({ children }: { children: ReactNode }) {
         <I18nProvider lang={lang}>
           <WalletProvider>
             <AccountProvider>
-              <AppShell lang={lang} theme={theme}>
-                {children}
-              </AppShell>
+              {/* Every link to /sign-in in the product opens the sign-in dialog over the page. */}
+              <SignInDialogProvider>
+                <AppShell lang={lang} theme={theme}>
+                  {children}
+                </AppShell>
+              </SignInDialogProvider>
             </AccountProvider>
           </WalletProvider>
         </I18nProvider>

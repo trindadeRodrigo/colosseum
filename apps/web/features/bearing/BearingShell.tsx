@@ -6,6 +6,7 @@ import { cn } from '../../components/ui/cn';
 import { Disclaimer } from '../../components/ui/Disclaimer';
 import { formatAge } from '../../components/ui/format';
 import { Icon } from '../../components/ui/Icon';
+import { Skeleton } from '../../components/ui/Skeleton';
 import { useLang } from '../../i18n/I18nProvider';
 import { useBearing } from './BearingProvider';
 import { RISK_API } from './data';
@@ -131,7 +132,7 @@ export function BearingShell({ children }: { children: ReactNode }) {
               aria-current={current === METHODOLOGY ? 'page' : undefined}
               onClick={followed}
               className={cn(
-                'underline decoration-1 underline-offset-[3px] hover:decoration-2',
+                'inline-flex min-h-6 items-center underline decoration-1 underline-offset-[3px] hover:decoration-2',
                 FOCUS,
               )}
             >
@@ -165,10 +166,20 @@ export function Banner() {
   const w = t.banner;
   const box =
     'mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 border border-l-2 border-border border-l-primary px-3 py-2';
+  // While the readings come, the banner keeps its box in the shape of what it will say; the page's own
+  // wait says in words what is awaited.
   if (mode === 'loading')
     return (
-      <div role="status" data-ui="bearing-banner" data-mode={mode} className={box}>
-        <span className="text-muted-foreground">{w.loading}</span>
+      <div data-ui="bearing-banner" data-mode={mode} aria-hidden="true" className={box}>
+        {/* Each bar sits on a line of the live banner's own type, so the box is that banner's height. */}
+        <b className="font-semibold">
+          {'\u200b'}
+          <Skeleton className="inline-block h-3.5 w-56 align-middle" />
+        </b>
+        <span className="font-mono text-b-meta">
+          {'\u200b'}
+          <Skeleton className="inline-block h-3 w-40 align-middle" />
+        </span>
       </div>
     );
   const now = new Date(clock.now);

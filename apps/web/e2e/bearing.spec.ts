@@ -20,6 +20,7 @@ async function open(page: Page, path: string) {
   await expect(page.locator('main p', { hasText: /^(Reading|Pricing)/ })).toHaveCount(0, {
     timeout: 60_000,
   });
+  await expect(page.locator('main [data-ui="waiting"]')).toHaveCount(0, { timeout: 60_000 });
 }
 
 async function check(page: Page, name: string) {
@@ -60,6 +61,39 @@ async function pinned(page: Page, name: string) {
 }
 
 test.describe('Bearing analytics on the recorded risk API', () => {
+  test('waits in the page’s own boxes: the row of figures does not move when the data comes', async ({
+    page,
+  }) => {
+    await page.clock.setFixedTime(CAPTURED + 3 * 3600e3);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    // the risk API answers slowly, as Render's free plan does after it slept
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(/\/risk\//, async (route) => {
+      await held;
+      await route.continue();
+    });
+    await page.goto('/analytics/stocks');
+    const wait = page.locator('main [data-ui="waiting"]');
+    await expect(wait).toHaveAttribute('aria-busy', 'true');
+    await expect(wait.locator('[role="status"]')).toHaveText('Reading the pools…');
+    const kpis = page.locator('main [data-ui="bearing-kpis"]');
+    const before = await kpis.boundingBox();
+    // the wait itself passes axe in light and dark, with no sideways scroll
+    await check(page, 'waiting');
+    await page.setViewportSize({ width: 1440, height: 900 });
+    // after 4 seconds, one calm line: the data service may be waking
+    await expect(wait.locator('[data-ui="waiting-slow"]')).toBeVisible({ timeout: 6_000 });
+    release();
+    await expect(wait).toHaveCount(0, { timeout: 60_000 });
+    await expect(page.locator('main [data-ui="figure"]').first()).toBeVisible();
+    const after = await kpis.boundingBox();
+    expect(before).not.toBeNull();
+    expect(after).toEqual(before);
+  });
+
   for (const id of PAGES)
     test(`${id}: stale figures with their pins, axe, no sideways scroll`, async ({ page }) => {
       await open(page, `/analytics/${id}`);
