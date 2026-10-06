@@ -191,6 +191,61 @@ export const pt: Dictionary = {
       'O leitor de hoje foi feito para objetivos em reais, então pode deixar passar um valor em dólares ou uma data. Confira cada campo: o que ele não encontrou ficou em branco para você.',
     readerMissed: (fields: string) =>
       `O leitor de hoje foi feito para objetivos em reais, então não encontrou isto no seu objetivo: ${fields}. Preencha abaixo. Nada é montado até que todos os campos estejam certos.`,
+    intake: {
+      title: 'Como li seu objetivo',
+      readBy: {
+        model: (model: string) => `lido por ${model}, conferido por código`,
+        rules: 'lido pelo leitor de regras',
+      },
+      followUp: {
+        label: 'Conte mais sobre o seu objetivo',
+        placeholder: 'Acrescente ou mude algo, com as suas palavras…',
+        submit: 'Enviar',
+      },
+      said: 'O que você escreveu',
+      questions: {
+        title: 'O que ainda preciso saber',
+        one: 'Falta uma coisa. Responda aqui, ou me diga na caixa acima.',
+        other: (n: number) => `Faltam ${n} coisas. Responda aqui, ou me diga na caixa acima.`,
+        send: 'Enviar respostas',
+        update: 'Atualizar',
+        sending: 'Enviando…',
+        inWords: 'Responda esta com as suas palavras, na caixa acima.',
+        noDate: 'Sem data',
+        none: 'Nenhum',
+        currencyHint: 'O código de três letras.',
+      },
+      withdrawals: {
+        legend: 'Saques',
+        hint: 'Dinheiro que você vai tirar numa data, e que o plano precisa pagar.',
+        month: 'Mês',
+        amount: 'Valor',
+        currency: 'Moeda',
+        add: 'Adicionar um saque',
+        remove: (month: string) => `Remover o saque de ${month}`,
+        none: 'Nenhum ainda.',
+      },
+      readBack: {
+        title: 'O que entendi',
+        confirm: 'Montar meu plano',
+        building: 'Montando seu plano…',
+      },
+      errors: {
+        amount: 'Informe o valor em dólares, como um número de 10 a 1.000.000.',
+        income: 'Informe a renda mensal em dólares, como um número acima de zero.',
+        horizon: 'Informe meses inteiros de 1 a 480, ou marque “Sem data”.',
+        currency: 'Informe a moeda pelo código de três letras.',
+        withdrawal: 'Dê a cada saque um mês e um valor acima de zero.',
+        choose: 'Escolha uma opção.',
+      },
+      failure: {
+        signedOut:
+          'Entre para eu ler o seu objetivo: eu leio para a rede da sua carteira. Seu texto fica guardado.',
+        refused: 'Nosso servidor não aceitou essa resposta. Confira e envie de novo.',
+        unavailable:
+          'A parte do nosso servidor que lê objetivos ainda não está conectada. Seu texto fica guardado.',
+      },
+    },
     sheet: {
       title: 'Como li seu objetivo',
       parser: 'leitor',

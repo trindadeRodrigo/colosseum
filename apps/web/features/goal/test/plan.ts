@@ -192,3 +192,68 @@ export function builtFor(
       .map((candidate) => ({ candidate, why: `${candidate} holds the same as another.` })),
   };
 }
+
+/** POST /v1/baskets/intake, the rules parser reading GOAL with three things open. */
+export function intakeAsking(
+  over: { provenance?: 'live' | 'mock' | null; method?: 'model' | 'rules' } = {},
+) {
+  const method = over.method ?? 'rules';
+  return {
+    reader: {
+      method,
+      model: method === 'model' ? 'claude-haiku-4-5' : null,
+      provenance: over.provenance ?? null,
+      why: method === 'rules' ? 'model_not_configured' : null,
+    },
+    language: 'en',
+    draft: {
+      basketType: 'standard',
+      goal: 'grow',
+      amountUsd: null,
+      horizonMonths: null,
+      risk: 'medium',
+      themes: [],
+      chains: ['solana'],
+      rules: { useHoldings: true, glide: false },
+      language: 'en',
+    },
+    limits: { creditTolerance: null, cannotHoldClasses: null },
+    questions: [
+      { field: 'amountUsd', template: 'AMOUNT', text: 'How much do you put in, in dollars?' },
+      {
+        field: 'horizonMonths',
+        template: 'HORIZON',
+        text: 'Is there a date by which you need this money? If not, say so and the plan has none.',
+      },
+      {
+        field: 'risk',
+        template: 'RISK',
+        text: 'How much risk can you take: low, medium or high?',
+        options: ['low', 'medium', 'high'],
+        read: 'medium',
+      },
+    ],
+    flags: ['from_rules:risk'],
+    disagreements: [],
+    sheet: null,
+    readBack: null,
+    assumptions: [],
+  };
+}
+
+/** The same goal once everything is answered: the sheet, with a limit the server added, and its read-back. */
+export function intakeSaid(
+  sheet: BasketSheet = { ...SHEET, rules: { useHoldings: true, glide: false } },
+) {
+  return {
+    ...intakeAsking(),
+    questions: [],
+    flags: [],
+    sheet: { ...sheet, limits: { creditTolerance: 'none' } },
+    readBack: [
+      'You set growing it with $40,000 over 36 months, at medium risk.',
+      'No tokens that lend to borrowers or trade a spread.',
+      'If this is right, confirm it and the plan is made from it.',
+    ],
+  };
+}

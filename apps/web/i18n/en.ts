@@ -202,6 +202,67 @@ export const en = {
       tooLong: 'That’s too long for me to read. Keep it under 2,000 characters.',
       unreadable: 'I got an answer I couldn’t read. Your text is still here. Try again.',
     },
+    /**
+     * The guided intake (gate GUIDED-INTAKE): I read the goal, ask what it leaves open, say back what
+     * I understood, and the person confirms before anything is built. The questions and the read-back
+     * come from the server's templates, in the person's language; these are the words around them.
+     */
+    intake: {
+      title: 'How I read your goal',
+      readBy: {
+        model: (model: string) => `read by ${model}, checked by code`,
+        rules: 'read by the rules parser',
+      },
+      followUp: {
+        label: 'Tell me more about your goal',
+        placeholder: 'Add or change something, in your own words…',
+        submit: 'Send',
+      },
+      said: 'What you wrote',
+      questions: {
+        title: 'What I still need to know',
+        one: 'One thing is still open. Answer it here, or tell me in the box above.',
+        other: (n: number) =>
+          `${n} things are still open. Answer them here, or tell me in the box above.`,
+        send: 'Send my answers',
+        update: 'Update',
+        sending: 'Sending…',
+        inWords: 'Answer this one in your own words, in the box above.',
+        noDate: 'No date',
+        none: 'None',
+        currencyHint: 'Its three-letter code.',
+      },
+      withdrawals: {
+        legend: 'Withdrawals',
+        hint: 'Money you will take out on a date, which the plan must pay.',
+        month: 'Month',
+        amount: 'Amount',
+        currency: 'Currency',
+        add: 'Add a withdrawal',
+        remove: (month: string) => `Remove the withdrawal in ${month}`,
+        none: 'None yet.',
+      },
+      readBack: {
+        title: 'What I understood',
+        confirm: 'Build my plan',
+        building: 'Building your plan…',
+      },
+      errors: {
+        amount: 'Enter the amount in dollars, as a number from 10 to 1,000,000.',
+        income: 'Enter the monthly income in dollars, as a number above zero.',
+        horizon: 'Enter whole months from 1 to 480, or tick “No date”.',
+        currency: 'Enter the currency as its three-letter code.',
+        withdrawal: 'Give each withdrawal a month and an amount above zero.',
+        choose: 'Choose one.',
+      },
+      failure: {
+        signedOut:
+          'Sign in so I can read your goal: I read it for the chain of your wallet. Your text is kept.',
+        refused: 'Our server didn’t take that answer. Check it and send it again.',
+        unavailable:
+          'The part of our server that reads goals isn’t connected yet. Your text is kept.',
+      },
+    },
     /** Under the sheet's title, while the only reader is the one made for goals in reais. */
     readerNote:
       'Today’s reader was made for goals in reais, so it can miss a dollar amount or a date. Check each field: what it didn’t find is left empty for you.',

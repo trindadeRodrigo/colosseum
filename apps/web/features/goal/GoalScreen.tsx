@@ -1,41 +1,40 @@
 'use client';
-import type { BasketSheet } from '@colosseum/schemas';
+import type { BasketSheet, SharedFamily } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { Composer } from '../../components/ui/Composer';
-import { ConstraintSheet, type SheetFact } from '../../components/ui/ConstraintSheet';
 import { cn } from '../../components/ui/cn';
 import { GoalCard } from '../../components/ui/GoalCard';
 import { StatusMark } from '../../components/ui/StatusMark';
-import { dictionary, LOCALE } from '../../i18n';
+import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
-import { ChainName } from '../account/ChainName';
 import { rememberChoice, rememberPlan } from '../order/plan-store';
+import { readShelf } from '../shared/shared-api';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { type BuildOutcome, buildPlan, planProvenance } from './build-plan';
 import { GOAL_DRAFT, GOAL_HANDOFF } from './draft';
-import { GOAL_TEXT, type ReadFailure, ReadGoalError, readGoal } from './read-goal';
+import { IntakeCard } from './IntakeCard';
 import {
-  checkSheet,
-  fieldOfId,
-  fieldsOfDraft,
-  goalSentence,
-  notFound,
-  type ReadSheet,
-  restoreGoal,
-  sheetGroups,
-} from './sheet';
+  type IntakeAnswers,
+  type IntakeOutcome,
+  type IntakeReading,
+  type IntakeRequest,
+  readIntake,
+} from './intake';
+import { GOAL_TEXT } from './read-goal';
+import { dollars } from './sheet';
 
-// The goal screen: the person says what their money needs to do, reads how it was read as limits they
-// can change, and only then asks for a plan. The goal comes first: there is no shelf here and no
-// figure. Nothing is built from limits the shared schema did not parse, and until the API has the
-// route that builds a plan the screen says so and shows nothing in its place.
+// The goal screen (gate GUIDED-INTAKE): the person says what their money needs to do; I read it,
+// ask what it leaves open, and say back what I understood; the person answers, in the form or in their
+// own words, until nothing is left to ask, and only on their confirm is a plan built, from the sheet the
+// server said back. The goal comes first: there is no shelf here and no figure. Until the API has the
+// routes that read a goal and build a plan, the screen says so and shows nothing in their place.
 
-/** Where the limits sit in the page: "Edit limits" leads here. */
+/** Where the reading sits in the page: "Edit limits" leads here. */
 const LIMITS = 'limits';
 const STORE = GOAL_DRAFT;
 const SIGN_IN = '/sign-in?next=/goal';
@@ -47,6 +46,31 @@ type Build =
   /** The candidates, kept in the tab under `key`, which the plan screen opens on. */
   | (Extract<BuildOutcome, { kind: 'built' }> & { key: string });
 
+/** What was sent to the intake: the goal's text, the person's later words, and their answers. */
+type Turn = Omit<IntakeRequest, 'language'>;
+type Failure = Exclude<IntakeOutcome, { kind: 'read' }>['kind'];
+
+/** What a tab kept, if it still reads: the text in the box and the last turn sent. */
+function restoreTurn(raw: string | null): { text: string; turn: Turn | null } | null {
+  try {
+    const v = JSON.parse(raw ?? 'null') as { text?: unknown; turn?: Partial<Turn> | null } | null;
+    if (!v || typeof v.text !== 'string' || v.text.length > GOAL_TEXT.max) return null;
+    const t = v.turn;
+    const turn =
+      t &&
+      typeof t.text === 'string' &&
+      Array.isArray(t.followUps) &&
+      t.followUps.every((f) => typeof f === 'string') &&
+      typeof t.answers === 'object' &&
+      t.answers !== null
+        ? { text: t.text, followUps: t.followUps, answers: t.answers as IntakeAnswers }
+        : null;
+    return { text: v.text, turn };
+  } catch {
+    return null;
+  }
+}
+
 export function GoalScreen() {
   const t = useT();
   const lang = useLang();
@@ -54,39 +78,44 @@ export function GoalScreen() {
   const apiFetch = useApiFetch();
   const { account, retry } = useAccount();
   const [text, setText] = useState('');
-  const [reading, setReading] = useState(false);
-  const [readFailure, setReadFailure] = useState<ReadFailure | null>(null);
-  const [sheet, setSheet] = useState<ReadSheet | null>(null);
+  const [turn, setTurn] = useState<Turn | null>(null);
+  const [reading, setReading] = useState<IntakeReading | null>(null);
+  const [sending, setSending] = useState(false);
+  const [failure, setFailure] = useState<Failure | null>(null);
+  const [shelf, setShelf] = useState<SharedFamily[]>([]);
   const [build, setBuild] = useState<Build>({ kind: 'idle' });
   const composer = useRef<HTMLDivElement>(null);
   const outcomeId = useId();
   const hintId = useId();
-  // Which request for a plan is still wanted. An answer is shown only for the limits it was asked
-  // for: when the limits change, are read again, or the person changes, the number moves on and an
-  // answer on its way is dropped.
+  // Which request for a plan is still wanted. An answer is shown only for the reading it was asked
+  // for: when the goal is read again, or the person changes, the number moves on and an answer on its
+  // way is dropped. The same for a reading: only the last turn sent is shown.
   const wanted = useRef(0);
+  const asking = useRef(0);
   const solving = build.kind === 'solving';
+  const signedIn = port.status === 'ready' && port.userId !== null;
 
-  // What was typed and read is kept in the tab, so signing in and coming back loses nothing. It is
+  // What was typed and sent is kept in the tab, so signing in and coming back loses nothing. It is
   // read back once, and only after that is anything written.
   const [restored, setRestored] = useState(false);
   const asked = useRef(false);
-  /** A goal the landing page handed over, to be read once the screen has opened. */
-  const handed = useRef<string | null>(null);
+  /** A turn to send as soon as someone is signed in: kept from before, or a goal handed over. */
+  const pending = useRef<Turn | null>(null);
   useEffect(() => {
     if (asked.current) return;
     asked.current = true;
     try {
-      const stored = restoreGoal(window.sessionStorage.getItem(STORE));
+      const stored = restoreTurn(window.sessionStorage.getItem(STORE));
       if (stored) {
         setText(stored.text);
-        setSheet(stored.sheet);
+        setTurn(stored.turn);
+        pending.current = stored.turn;
       }
       // A goal handed over by the landing page (in the tab), or by a partner's embed, whose frame
       // shares no storage with this tab: in the fragment of the address, which no server sees. The
       // fragment is taken out of the address once read. Any site can link here with a goal of its
-      // own: it is only text in the box, read by the public reader (`POST /goals`), and nothing is
-      // built or signed until the person asks.
+      // own: it is only text in the box, read for the person once they are signed in, and nothing is
+      // built or signed until they confirm.
       const fragment = /^#goal=(.*)$/.exec(window.location.hash)?.[1];
       let typed = window.sessionStorage.getItem(GOAL_HANDOFF);
       window.sessionStorage.removeItem(GOAL_HANDOFF);
@@ -99,8 +128,9 @@ export function GoalScreen() {
         window.history.replaceState(null, '', window.location.pathname + window.location.search);
       }
       if (typed !== null && typed.trim() !== '' && typed.length <= GOAL_TEXT.max) {
-        handed.current = typed.trim();
-        setText(handed.current);
+        setText(typed.trim());
+        setTurn(null);
+        pending.current = { text: typed.trim(), followUps: [], answers: {} };
       }
     } catch {
       // No storage in this browser: the screen works without it.
@@ -110,21 +140,13 @@ export function GoalScreen() {
   useEffect(() => {
     if (!restored) return;
     try {
-      window.sessionStorage.setItem(STORE, JSON.stringify({ text, sheet }));
+      window.sessionStorage.setItem(STORE, JSON.stringify({ text, turn }));
     } catch {
       // As above.
     }
-  }, [restored, text, sheet]);
+  }, [restored, text, turn]);
 
   const chain = account.status === 'ready' ? account.chain : null;
-  const check = sheet ? checkSheet(sheet.fields, chain) : null;
-  const fits = check !== null && Object.keys(check.errors).length === 0;
-
-  /** The limits on the page are no longer the ones a plan was asked for. */
-  function forget() {
-    wanted.current += 1;
-    setBuild({ kind: 'idle' });
-  }
 
   // A plan is one person's, on their chain: an answer for someone else, or for another chain, is not
   // shown to whoever is here now. While the chain is being read again it is not known to have
@@ -141,51 +163,70 @@ export function GoalScreen() {
     // The goal on the page was the person's who was here: when they sign out, or another person
     // signs in, it goes with them. Someone who was signed out and signs in keeps what they typed.
     if (last.who !== '' && last.who !== who) {
+      asking.current += 1;
       setText('');
-      setSheet(null);
-      setReadFailure(null);
+      setTurn(null);
+      setReading(null);
+      setFailure(null);
+      pending.current = null;
     }
   }, [who, where]);
 
-  async function read(typed: string) {
-    setReading(true);
-    setReadFailure(null);
-    forget();
-    try {
-      const reading = await readGoal(apiFetch, typed, lang);
-      const fields = fieldsOfDraft(reading.draft, lang);
-      setSheet({
-        goalText: typed,
-        source: reading.source,
-        firstReader: reading.firstReader,
-        read: fields,
-        fields,
-      });
-    } catch (e) {
-      // The text stays in the box, and a sheet read before stays as it was.
-      setReadFailure(e instanceof ReadGoalError ? e.kind : 'unreachable');
-    } finally {
-      setReading(false);
+  /** Sends a turn to the intake. Signed out, nothing is sent: the person is asked to sign in. */
+  async function send(next: Turn) {
+    wanted.current += 1;
+    setBuild({ kind: 'idle' });
+    setFailure(null);
+    // What the reader does not take is said at once, signed in or not.
+    const words = [next.text, ...next.followUps].map((w) => w.trim());
+    if (next.text.trim().length < GOAL_TEXT.min || words.some((w) => w === ''))
+      return setFailure('too_short');
+    if (words.some((w) => w.length > GOAL_TEXT.max)) return setFailure('too_long');
+    if (!signedIn) {
+      pending.current = next;
+      setFailure('signed-out');
+      return;
     }
+    asking.current += 1;
+    const mine = asking.current;
+    setSending(true);
+    const outcome = await readIntake(apiFetch, { ...next, language: lang });
+    if (asking.current !== mine) return;
+    setSending(false);
+    if (outcome.kind !== 'read') return setFailure(outcome.kind);
+    setTurn(next);
+    setReading(outcome.reading);
   }
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: read once, when the screen has opened; `read` is this render's
+  // A turn kept from before, or a goal handed over, is sent once someone is signed in.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sent once, when the screen has opened and someone is signed in; `send` is this render's
   useEffect(() => {
-    if (!restored || handed.current === null) return;
-    const typed = handed.current;
-    handed.current = null;
-    void read(typed);
-  }, [restored]);
+    if (!restored || !signedIn || pending.current === null) return;
+    const next = pending.current;
+    pending.current = null;
+    void send(next);
+  }, [restored, signedIn]);
 
-  function change(fieldId: string, value: string) {
-    const key = fieldOfId(fieldId);
-    if (!key) return;
-    setSheet((now) => (now ? { ...now, fields: { ...now.fields, [key]: value } } : now));
-    // The answer to the limits as they were says nothing about the limits as they are.
-    forget();
+  // A question about themes is answered from the shared portfolios on the person's chain.
+  const themesAsked = reading?.questions.some((q) => q.field === 'themes') ?? false;
+  useEffect(() => {
+    if (!themesAsked || !chain) return;
+    let mine = true;
+    void readShelf(apiFetch, chain).then((read) => {
+      if (mine && read.kind === 'read') setShelf(read.value.families);
+    });
+    return () => {
+      mine = false;
+    };
+  }, [themesAsked, chain, apiFetch]);
+
+  /** The box: the goal, the first time; after that the person's own words, added to it. */
+  function submit(typed: string) {
+    if (turn === null) return void send({ text: typed, followUps: [], answers: {} });
+    void send({ ...turn, followUps: [...turn.followUps, typed] }).then(() => setText(''));
   }
 
-  /** Only a sheet the schema parsed gets here: the sheet's own check, and this function's type. */
+  /** Only the sheet the server said back gets here: confirmed, it is sent as it came. */
   async function buildFrom(valid: BasketSheet) {
     wanted.current += 1;
     const mine = wanted.current;
@@ -232,7 +273,6 @@ export function GoalScreen() {
   const chainName = chain ? (network?.name ?? t.chain.names[chain]) : '';
   // Our server has the person's chain switched off: nothing can be built there for now.
   const chainOff = network?.on === false;
-  const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.mockAnnounce };
   const link = buttonClass({ variant: 'link' });
   // Why the API did not say which chain: it did not answer, it no longer knows this sign-in, it was
   // sent no identity token, or it asked for fewer requests. Each is a different thing for the person
@@ -245,47 +285,8 @@ export function GoalScreen() {
         : account.why === 'no_identity'
           ? t.chain.unknown.noIdentity
           : t.shell.slowDown;
-  const chainFact: SheetFact =
-    account.status === 'ready'
-      ? {
-          label: t.goal.chain.label,
-          value: (
-            <ChainName name={chainName} provenance={network?.provenance ?? 'mock'} labels={marks} />
-          ),
-          note: t.goal.chain.note,
-        }
-      : account.status === 'loading'
-        ? { label: t.goal.chain.label, value: t.chain.reading }
-        : account.status === 'unknown'
-          ? {
-              label: t.goal.chain.label,
-              value: (
-                <span className="inline-flex flex-wrap items-center gap-x-3">
-                  <span>{t.goal.chain.unknown}</span>
-                  {/* Asking again does not help a sign-in the server no longer knows. */}
-                  {account.why !== 'signed_out' && (
-                    <Button variant="link" onClick={retry}>
-                      {t.chain.unknown.retry}
-                    </Button>
-                  )}
-                </span>
-              ),
-              note: unknownWhy,
-            }
-          : {
-              label: t.goal.chain.label,
-              value: (
-                <span className="inline-flex flex-wrap items-center gap-x-3">
-                  <span>{t.goal.chain.unset}</span>
-                  <Link href={SIGN_IN} className={link}>
-                    {account.status === 'signed-out' ? t.shell.signIn : t.goal.chain.choose}
-                  </Link>
-                </span>
-              ),
-              note: t.goal.chain.unsetNote,
-            };
 
-  // What stands between valid limits and a plan, besides the fields: who is asking, and on which chain.
+  // What stands between the confirmed sheet and a plan: who is asking, and on which chain.
   const blocked = [
     ...(account.status === 'signed-out' ? [t.goal.blocked.signedOut] : []),
     ...(account.status === 'needs-chain' ? [t.goal.blocked.chainNotChosen] : []),
@@ -303,36 +304,38 @@ export function GoalScreen() {
     ...(build.kind === 'refused' ? [t.goal.blocked.refused] : []),
   ];
 
+  const f = t.goal.intake.failure;
   const readSentence =
-    readFailure === null
+    failure === null
       ? undefined
-      : readFailure === 'busy'
+      : failure === 'busy'
         ? t.shell.slowDown
-        : readFailure === 'too_short'
+        : failure === 'too_short'
           ? t.goal.readFailure.tooShort
-          : readFailure === 'too_long'
+          : failure === 'too_long'
             ? t.goal.readFailure.tooLong
-            : t.goal.readFailure[readFailure];
+            : failure === 'signed-out'
+              ? f.signedOut
+              : failure === 'no-identity'
+                ? t.goal.blocked.noIdentity
+                : failure === 'refused'
+                  ? f.refused
+                  : failure === 'unavailable'
+                    ? f.unavailable
+                    : t.goal.readFailure[failure];
   const buildSentence =
     build.kind === 'busy'
       ? t.shell.slowDown
       : build.kind === 'unreachable' || build.kind === 'unreadable'
         ? t.goal.built[build.kind]
-        : null;
+        : build.kind === 'no-plan'
+          ? t.goal.sheet.noPlan
+          : null;
 
   // A built plan is named by its own chain and labelled by its own figures, not by this page's.
   // The candidates share the goal's limits and chain; any of them not live makes the card say so.
   const plans = build.kind === 'built' ? build.candidates.map((c) => c.proposal) : [];
   const plan = plans[0] ?? null;
-  // The first reader was made for goals in reais: the note names what it left empty, for the person
-  // to fill in.
-  const missed = sheet ? notFound(sheet.fields, sheet.read).map((key) => t.goal.fields[key]) : [];
-  const readerNote =
-    missed.length > 0
-      ? t.goal.readerMissed(
-          new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(missed),
-        )
-      : t.goal.readerNote;
   const labels = plans.map(planProvenance);
   const planLabel = labels.includes('mock')
     ? 'mock'
@@ -344,18 +347,15 @@ export function GoalScreen() {
     ? (port.network(planChain)?.name ?? t.chain.names[planChain])
     : chainName;
 
-  // The sentences of what does not fit are said in the language of the sheet itself.
-  const drawn =
-    sheet && check
-      ? sheetGroups(
-          sheet.fields,
-          sheet.read,
-          check.errors,
-          t,
-          dictionary(sheet.fields.language),
-          lang,
+  const sheet = reading?.sheet ?? null;
+  const sentence = sheet
+    ? sheet.horizonOpen
+      ? t.goal.card.sentenceOpen[sheet.goal](dollars(sheet.amountUsd, lang))
+      : t.goal.card.sentence[sheet.goal](
+          dollars(sheet.amountUsd, lang),
+          t.goal.card.months(sheet.horizonMonths),
         )
-      : null;
+    : t.goal.card.unfinished;
 
   return (
     <div data-ui="goal-screen" className="flex flex-col gap-8">
@@ -364,17 +364,17 @@ export function GoalScreen() {
       <div
         className={cn(
           'flex flex-col gap-8',
-          !sheet && 'lg:grid lg:grid-cols-12 lg:items-start lg:gap-x-12',
+          !reading && 'lg:grid lg:grid-cols-12 lg:items-start lg:gap-x-12',
         )}
       >
-        {sheet ? (
+        {reading ? (
           // Once the goal is read it is the heading of the page, in the person's terms. A draft: the
           // status of a goal comes from the engine, and there is no plan for it to speak of yet.
           <GoalCard
             variant="header"
             state="draft"
-            sentence={goalSentence(sheet.fields, t, lang) ?? t.goal.card.unfinished}
-            note={fits ? t.goal.card.draftSet : t.goal.card.draftOpen}
+            sentence={sentence}
+            note={sheet ? t.goal.card.draftSet : t.goal.card.draftOpen}
             action={{ label: t.goal.card.edit, href: `#${LIMITS}` }}
           />
         ) : (
@@ -391,45 +391,53 @@ export function GoalScreen() {
 
         <div
           ref={composer}
-          className={cn('flex max-w-(--tf-measure-docs) flex-col gap-3', !sheet && 'lg:col-span-7')}
+          className={cn(
+            'flex max-w-(--tf-measure-docs) flex-col gap-3',
+            !reading && 'lg:col-span-7',
+          )}
         >
           <Composer
-            label={t.goal.composer.label}
+            label={reading ? t.goal.intake.followUp.label : t.goal.composer.label}
             // The question above names the box (composer.md): its label is for a screen reader only.
-            labelHidden={!sheet}
+            labelHidden={!reading}
             value={text}
             onChange={setText}
-            onSubmit={read}
-            placeholder={t.goal.composer.placeholder}
+            onSubmit={submit}
+            placeholder={reading ? t.goal.intake.followUp.placeholder : t.goal.composer.placeholder}
             maxLength={GOAL_TEXT.max}
             // The hint is under the chips, in the mono face, as his simulator has it.
             describedBy={hintId}
-            busy={reading}
-            // While a plan is being built the limits stand as they were sent: no other goal is read.
+            busy={sending}
+            // While a plan is being built the reading stands as it was confirmed.
             disabled={solving}
             error={readSentence}
             lang={LOCALE[lang]}
-            labels={{ submit: t.goal.composer.submit, busy: t.goal.composer.busy }}
+            labels={{
+              submit: reading ? t.goal.intake.followUp.submit : t.goal.composer.submit,
+              busy: t.goal.composer.busy,
+            }}
           />
-          <ul aria-label={t.goal.examples.label} className="flex flex-wrap gap-2">
-            {t.goal.examples.list.map((example) => (
-              <li key={example}>
-                <Button
-                  variant="chip"
-                  className="h-auto! min-h-8 py-1"
-                  disabled={reading || solving}
-                  onClick={() => fillWith(example)}
-                >
-                  {example}
-                </Button>
-              </li>
-            ))}
-          </ul>
+          {!reading && (
+            <ul aria-label={t.goal.examples.label} className="flex flex-wrap gap-2">
+              {t.goal.examples.list.map((example) => (
+                <li key={example}>
+                  <Button
+                    variant="chip"
+                    className="h-auto! min-h-8 py-1"
+                    disabled={sending || solving}
+                    onClick={() => fillWith(example)}
+                  >
+                    {example}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
           <p id={hintId} className="font-mono text-source text-muted-foreground">
             {t.goal.composer.hint}
           </p>
           {/* A visitor is told where the plan comes from, as his simulator's last line does. */}
-          {!sheet && account.status === 'signed-out' && (
+          {!reading && account.status === 'signed-out' && (
             <p className="text-body-sm text-muted-foreground">
               {t.goal.visitor.before}{' '}
               <Link href={SIGN_IN} className={link}>
@@ -441,41 +449,23 @@ export function GoalScreen() {
         </div>
       </div>
 
-      {sheet?.firstReader && (
-        <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">{readerNote}</p>
+      {reading && turn && (
+        <IntakeCard
+          // A new reading starts its form from what it read and what was answered.
+          key={JSON.stringify([turn, reading.questions.map((q) => q.field)])}
+          id={LIMITS}
+          goalText={turn.text}
+          followUps={turn.followUps}
+          reading={reading}
+          answers={turn.answers}
+          shelf={shelf}
+          sending={sending}
+          building={solving}
+          blocked={blocked}
+          onAnswer={(answers) => void send({ ...turn, answers })}
+          onConfirm={() => sheet && void buildFrom(sheet)}
+        />
       )}
-
-      {sheet && check && drawn ? (
-        <ConstraintSheet<BasketSheet>
-          id={LIMITS}
-          level={2}
-          className="scroll-mt-6"
-          goalText={sheet.goalText}
-          source={sheet.source}
-          facts={[chainFact]}
-          groups={drawn.groups}
-          capital={drawn.amount}
-          state={
-            build.kind === 'solving' ? 'solving' : build.kind === 'no-plan' ? 'no-plan' : 'idle'
-          }
-          valid={check.sheet}
-          otherIssues={blocked}
-          onChange={change}
-          onBuild={buildFrom}
-          labels={{ ...t.goal.sheet, mockAnnounce: t.shell.mockAnnounce }}
-        />
-      ) : reading ? (
-        <ConstraintSheet<BasketSheet>
-          id={LIMITS}
-          level={2}
-          state="parsing"
-          groups={[]}
-          valid={null}
-          onChange={change}
-          onBuild={buildFrom}
-          labels={{ ...t.goal.sheet, mockAnnounce: t.shell.mockAnnounce }}
-        />
-      ) : null}
 
       <div aria-live="polite" className="flex flex-col gap-4">
         {build.kind === 'unavailable' && (
