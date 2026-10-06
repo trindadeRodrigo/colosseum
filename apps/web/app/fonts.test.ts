@@ -19,6 +19,8 @@ const sha = (file: string) =>
 const FILES: Record<string, string> = {
   'ibm-plex-sans-latin-wght.woff2':
     '056e4e2459f57a0033c8c9c844ff19d6e42ac8602027803d4345823bcc939818',
+  'ibm-plex-sans-greek-wght.woff2':
+    'a29d4e6345cdb7e2b6daabf4961a6dcafcbc7ed1eac26186ca4a004cd32d64d8',
   'ibm-plex-mono-latin-400.woff2':
     'c36f509c0a8f9f85f29cb44bc8701d8a9e0b14c499e77a884f789ead7093a7ac',
   'ibm-plex-mono-latin-500.woff2':
@@ -44,9 +46,9 @@ describe('the faces', () => {
     for (const [file, hash] of Object.entries(FILES)) expect(sha(file), file).toBe(hash);
     for (const licence of ['OFL-IBM-Plex.txt', 'OFL-Newsreader.txt'])
       expect(readFileSync(join(FONTS, licence), 'utf8')).toContain('SIL Open Font License');
-    // only what the app uses: under 200 KB for the four
+    // only what the app uses: under 220 KB for the five
     const bytes = woff2.reduce((sum, f) => sum + statSync(join(FONTS, f)).size, 0);
-    expect(bytes).toBeLessThan(200 * 1024);
+    expect(bytes).toBeLessThan(220 * 1024);
   });
 
   it('are never fetched at build: no file imports next/font/google, or names Google’s font hosts', () => {
@@ -110,5 +112,64 @@ describe('the faces', () => {
     expect(mono).toContain("fallback: ['IBM Plex Mono Fallback']");
     // next/font's own guess at a fallback is switched off, so there is one fallback, the old one
     for (const text of [fonts, mono]) expect(text).toContain('adjustFontFallback: false');
+  });
+
+  /** The code points a `unicode-range` value holds. */
+  const inRange = (range: string) => {
+    const spans = range.split(',').map((part) => {
+      const [from, to = from] = part.trim().replace(/^U\+/, '').split('-');
+      return [Number.parseInt(from as string, 16), Number.parseInt(to as string, 16)] as const;
+    });
+    return (ch: string) => {
+      const cp = ch.codePointAt(0) ?? 0;
+      return spans.some(([a, b]) => cp >= a && cp <= b);
+    };
+  };
+  const ranges = () => {
+    const fonts = readFileSync(join(WEB, 'app', 'fonts.ts'), 'utf8');
+    return [...fonts.matchAll(/prop: 'unicode-range',\s*value:\s*'([^']+)'/g)].map(
+      (m) => m[1] as string,
+    );
+  };
+
+  it('are one family of two files for the sans: Latin, and the Greek letters Bearing writes', () => {
+    const fonts = readFileSync(join(WEB, 'app', 'fonts.ts'), 'utf8');
+    const [latin, greek] = ranges();
+    expect(latin).toContain('U+0000-00FF');
+    expect(greek).toContain('U+0370-0377');
+    // the Greek file joins the sans face's own family, and is fetched only where it is needed
+    expect(fonts).toMatch(
+      /plexSansGreek = localFont\(\{[\s\S]*?preload: false[\s\S]*?prop: 'font-family', value: 'plexSans'/,
+    );
+    expect(fonts).toMatch(/fontVariables = `[^`]*plexSansGreek\.variable/);
+    for (const letter of ['τ', 'Σ', 'Δ', 'σ'])
+      expect(inRange(greek as string)(letter), letter).toBe(true);
+  });
+
+  it('hold every character the dictionaries and Bearing write, but the signs no face ever had', () => {
+    const covered = ranges().map(inRange);
+    /**
+     * Arrows and comparison signs: in none of the files Google serves for these faces either, so the
+     * system's face has always drawn them. A new one is added here by someone who looked.
+     */
+    const SYSTEM_DRAWN = new Set(['→', '↗', '≤', '≥', '≈']);
+    const written = new Map<string, string>();
+    for (const top of ['i18n', join('features', 'bearing')])
+      for (const path of sources(join(WEB, top))) {
+        if (/\.test\.tsx?$/.test(path) || /[\\/]test[\\/]/.test(path)) continue;
+        for (const ch of readFileSync(path, 'utf8'))
+          if (!written.has(ch)) written.set(ch, path.slice(WEB.length + 1));
+      }
+    const loose = [...written]
+      .filter(([ch]) => !covered.some((holds) => holds(ch)) && !SYSTEM_DRAWN.has(ch))
+      .map(
+        ([ch, file]) =>
+          `${ch} (U+${(ch.codePointAt(0) ?? 0).toString(16).toUpperCase()}) in ${file}`,
+      );
+    expect(loose).toEqual([]);
+    // the bite: the Greek letters are there, and it is the Greek file that holds them
+    expect(written.has('τ')).toBe(true);
+    expect(covered[0]?.('τ')).toBe(false);
+    expect(covered[1]?.('τ')).toBe(true);
   });
 });

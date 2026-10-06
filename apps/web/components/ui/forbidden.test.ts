@@ -38,10 +38,13 @@ const LEGACY: Record<string, readonly Kind[]> = {
 
 /**
  * Pictures drawn at build by `next/og`, which reads no stylesheet and so no `var(--font-…)`: each
- * names the brand's face itself, and that finding alone is excused.
+ * names the brand's face itself, and that finding alone is excused. So is the one place the faces are
+ * defined (app/fonts.ts): the Greek file of IBM Plex Sans is told the sans face's name there, so the
+ * two files are one family.
  */
 const DRAWN: Record<string, string> = {
   'app/opengraph-image.tsx': "fontFamily: 'Newsreader'",
+  'app/fonts.ts': 'font-family',
 };
 
 /** The product's own routes and what they are built from: none of it may ever be on the list above. */

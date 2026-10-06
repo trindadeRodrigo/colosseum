@@ -76,6 +76,9 @@ export const FALLBACKS = [
   // (IBM Plex Sans, IBM Plex Mono; Newsreader's is "newsreader", a face already)
   'plexsans',
   'plexmono',
+  // the Greek file of IBM Plex Sans: its face is told the sans face's name, and this is only the name
+  // of the variable its export leaves behind, which no rule uses
+  'plexsansgreek',
 ];
 const ALLOWED_FAMILIES = new Set([...FACES, ...FALLBACKS]);
 
