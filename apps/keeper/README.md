@@ -1,6 +1,6 @@
 # apps/keeper
 
-The keeper on Solana (DESIGN-VAULT 3.5 and section 10): a worker with no HTTP listener that moves vaults with auto-follow on toward their targets, one leg at a time. Robinhood Chain is KEEP-2.
+The keeper (DESIGN-VAULT 3.5 and section 10): a worker with no HTTP listener that moves vaults with auto-follow on toward their targets, one leg at a time, on one chain a process: Solana (KEEP-1) or Robinhood Chain (KEEP-2), by `KEEPER_CHAIN`.
 
 ```sh
 SOLANA_RPC_URL=<devnet node> KEEPER_SOLANA_KEYPAIR=<path to the keeper key> \
@@ -52,7 +52,22 @@ A leg is remembered from the moment it is signed, before it is sent, with its si
 
 What holds: the legs in flight and the reverted set are in the state file, read at start and written (flushed, then renamed into place) before a leg is sent and whenever either changes, so `--once` run twice remembers as `--loop` does. A keeper takes the file with a lock beside it (`<file>.lock`, holding its process id, start time and a nonce, written to a file of its own and hard-linked into place, so it is never seen empty) and refuses to start while a live process holds it. A lock whose process is gone, or that names the keeper's own process id (reused after a restart), is taken over with a line on stderr; one with no process id in it counts as held for 30 s. A takeover runs under a second lock (`<file>.lock.takeover`, taken the same way): the stale lock is moved aside, checked to be the one read, then removed, so two keepers starting at once never both hold the file. So a manual `--once` beside a `--loop` refuses instead of sending the same leg twice. What does not hold: a deleted or lost state file forgets both; the lock is per machine, so two keepers on two machines would not see each other (run one); adoptions and syncs are not remembered, as each is planned again from the chain and the builder refuses one that is no longer due. `keeper_runs` and `keeper_legs` (`packages/db`) are not written yet.
 
-## For KEEP-2
+## Robinhood Chain (KEEP-2)
+
+```sh
+KEEPER_CHAIN=robinhood ROBINHOOD_RPC_URL=<46630 node> KEEPER_ROBINHOOD_KEY=<path to the keeper key> \
+  pnpm --filter @colosseum/keeper start --once [--dry-run]
+```
+
+- `CHAIN_NETWORK_ROBINHOOD`: `testnet` (default, `deployments/robinhood-testnet.json`) or `local` (`deployments/robinhood-local.json`, mainnet's pools). `mainnet` is refused. The node has to answer the record's chain id, never a mainnet's, with code at the record's factory.
+- The key at `KEEPER_ROBINHOOD_KEY` (one 0x private key in hex) has to be the keeper the factory names now (`keeper()`), read at start; neither its path nor its contents are printed. It is loaded and signs through `@colosseum/chain-evm/server`, the only place an EVM key becomes a signer.
+- The round is the same one (`round.ts` over `KeeperAdapter`, `chain.ts`): `getKeeperContext` of the EVM reader is the vault as `keeperSwap` would find it, its checks written again in `packages/chain-evm/src/vault/keeper.ts` (cooldown, multiplier window, issuer's pause, guardian's halt, session; the reference of every held target: feed, switch, range, both ages, the distance from the average). Balances are read, not tracked, so nothing is synced. Adoption is `adoptVersion`, a leg is `keeperSwap` with `minOut` the quote less 100 bps.
+- A leg carries no deadline on EVM. It is remembered with its nonce, the call's hash and its signer; a leg still pending at the next round is asked of `fate`: taken by another call, it can never land (expired); landed, it is read under the id the chain has; otherwise the vault waits, with an alert.
+- The state file is `robinhood-testnet-<chain id>-<factory>.json`, under the same lock.
+- Checked on a copy of the test network (`tests/keeper/evm.test.ts`, `RH_TESTNET_FORK_URL`): the read, a dry run that sends nothing, a leg that lands and stamps its cooldown, a leg that lands and reverts and is not sent again on that version, and a weights-only version adopted, forgetting the reverted legs of the version before.
+- Setting the keeper on 46630 is the deployer's `setKeeper`, and its gas a forward from the price writer: `scripts/testnet/robinhood/ops.ts keeper <address>` prints both as a dry run and sends them only with `--send`.
+
+## For later
 
 - `buildKeeperLeg` makes the keeper pay the rent of any token account a leg creates for the vault: a slow drain on the keeper's SOL to watch with the low-gas alert.
 - The run and leg rows, alerts beyond the log line, and Robinhood Chain.

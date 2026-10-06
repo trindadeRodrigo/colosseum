@@ -1,5 +1,4 @@
 import { rebalancePlan } from '@colosseum/basket';
-import type { KeeperContext, SolanaVaultAdapter } from '@colosseum/chain-solana/vault';
 import {
   type AssetId,
   type BuiltTx,
@@ -8,6 +7,7 @@ import {
   type Trade,
   type TxStatus,
 } from '@colosseum/schemas';
+import type { KeeperAdapter, KeeperView } from './chain';
 import { type KeeperMemory, legKey, newMemory, versionPrefix } from './memory';
 import { legBlocked, nextTrade, REVERTED, syncDecision } from './policy';
 
@@ -35,7 +35,7 @@ export type VaultLine = {
 };
 
 export type KeeperOptions = {
-  adapter: SolanaVaultAdapter;
+  adapter: KeeperAdapter;
   /** Signs a built transaction with the keeper's key: the signed bytes and the transaction's id. */
   sign(tx: BuiltTx): Promise<{ wire: string; txId: string }>;
   /** Sends signed bytes. Default: the adapter's relay, with the node's preflight. */
@@ -62,6 +62,9 @@ const shuffled = <T>(items: T[]): T[] => {
   return out;
 };
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/** When a built transaction stops being able to land, as the chain states it: none for an EVM keeper leg. */
+const validUntilOf = (tx: BuiltTx) =>
+  tx.lastValidBlockHeight === undefined ? undefined : String(tx.lastValidBlockHeight);
 const codeOf = (e: unknown) =>
   e instanceof ChainError ? e.code : e instanceof Error ? e.message : String(e);
 
@@ -83,7 +86,7 @@ export async function runRound(
   const lines: VaultLine[] = [];
 
   /** Polls a sent transaction until the chain settles it or the wait is over. */
-  async function settle(txId: string, validUntil: string): Promise<TxStatus> {
+  async function settle(txId: string, validUntil: string | undefined): Promise<TxStatus> {
     const until = Date.now() + settleMs;
     for (;;) {
       const status = await adapter.track(txId, validUntil);
@@ -98,7 +101,7 @@ export async function runRound(
     await send(signed.wire, tx);
     return {
       txId: signed.txId,
-      status: await settle(signed.txId, String(tx.lastValidBlockHeight)),
+      status: await settle(signed.txId, validUntilOf(tx)),
     };
   }
 
@@ -111,7 +114,24 @@ export async function runRound(
     if (!sent) return { hold: null, note: null };
     let status: TxStatus;
     try {
-      status = await adapter.track(sent.txId, sent.validUntil);
+      status = await adapter.track(sent.txId, sent.validUntil ?? undefined);
+      // EVM: a leg with no deadline is still pending until its nonce says otherwise. Taken by another
+      // call, it can never land; taken by this one, it is read again under the id the chain has.
+      if (
+        status.status === 'pending' &&
+        sent.nonce !== undefined &&
+        sent.messageHash &&
+        sent.signer
+      ) {
+        const fate = await adapter.fate({
+          messageHash: sent.messageHash,
+          signer: sent.signer,
+          validUntil: sent.validUntil,
+          nonce: sent.nonce,
+        });
+        if (fate.state === 'gone') status = { status: 'expired', explorerUrl: status.explorerUrl };
+        else if (fate.state === 'landed') status = await adapter.track(fate.txId);
+      }
     } catch (e) {
       return { hold: `the fate of leg ${sent.txId} could not be read (${codeOf(e)})`, note: null };
     }
@@ -217,7 +237,7 @@ export async function runRound(
         }
         did.push(`adopted version ${pending.version}`);
         adopted = true;
-        ctx = (await adapter.getKeeperContext(vault)) as KeeperContext;
+        ctx = (await adapter.getKeeperContext(vault)) as KeeperView;
         await forgetOtherVersions(ctx.vault.acceptedVersion);
       }
 
@@ -228,6 +248,10 @@ export async function runRound(
         continue;
       }
       if (sync.sync) {
+        if (!adapter.buildSyncBalances) {
+          stop('records differ from the accounts, and this chain has no sync', true);
+          continue;
+        }
         if (o.dryRun) {
           line('would-act', 'would sync its records');
           continue;
@@ -240,7 +264,7 @@ export async function runRound(
         }
         did.push('synced its records');
         synced = true;
-        ctx = (await adapter.getKeeperContext(vault)) as KeeperContext;
+        ctx = (await adapter.getKeeperContext(vault)) as KeeperView;
       }
 
       // 3. One leg toward the targets, if the program would take one now.
@@ -301,13 +325,16 @@ export async function runRound(
       // From here the leg may land whatever the node answers: it is remembered before it is sent,
       // and only its fate on the chain takes it out of memory.
       const signed = await o.sign(leg);
-      const validUntil = String(leg.lastValidBlockHeight);
+      const validUntil = validUntilOf(leg);
       memory.inFlight.set(vault, {
         vault,
         key: key(trade),
         txId: signed.txId,
-        validUntil,
+        validUntil: validUntil ?? null,
         sentAt: new Date().toISOString(),
+        ...(leg.evm?.nonce !== undefined
+          ? { nonce: leg.evm.nonce, messageHash: leg.messageHash, signer: leg.signer }
+          : {}),
       });
       await save();
       txIds.push(signed.txId);

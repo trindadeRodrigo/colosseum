@@ -69,6 +69,9 @@ const hashOfCall = (c: Omit<SignedCall, 'nonce'>) =>
     data: c.data,
   });
 
+/** A transaction's id: the Keccak-256 of its signed bytes. */
+export const txIdOf = (signedTx: string): string => keccak256(signedTx.toLowerCase() as Hex);
+
 export function createEvmProbe(options: { config: ChainConfig; rpc: EvmRpc }): TxProbe {
   const { config, rpc } = options;
   const chainId = config.evmChainId;

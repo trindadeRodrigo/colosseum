@@ -1,5 +1,5 @@
-import type { KeeperContext, KeeperPosition } from '@colosseum/chain-solana/vault';
 import type { AssetId, Trade } from '@colosseum/schemas';
+import type { KeeperPositionView, KeeperView } from './chain';
 
 // What the keeper decides before it spends a fee: whether a vault's records may be synced, whether a
 // leg can be sent at all, and which planned trade goes first. Pure: the vault as the chain has it now
@@ -16,7 +16,7 @@ export type Skip = { skip: string; alert?: boolean };
  * now: priced, switched on, in its range, fresh. Otherwise it leaves the vault and raises an alert:
  * a person looks (the owner can withdraw or sell the dust; the admin can price or range the asset).
  */
-export function syncDecision(ctx: KeeperContext): { sync: boolean } | Skip {
+export function syncDecision(ctx: KeeperView): { sync: boolean } | Skip {
   const changed = ctx.positions.filter((p) => p.needsSync);
   if (changed.length === 0) return { sync: false };
   const unpriced = changed.filter((p) => p.reference !== null);
@@ -31,10 +31,11 @@ export function syncDecision(ctx: KeeperContext): { sync: boolean } | Skip {
 }
 
 /** Why no leg can be sent in this vault now, by what the chain says; null when one may. */
-export function legBlocked(ctx: KeeperContext): Skip | null {
+export function legBlocked(ctx: KeeperView): Skip | null {
   if (ctx.blocked)
     return { skip: `no leg would pass: ${ctx.blocked}`, alert: ctx.blocked !== 'AutoFollowOff' };
-  if (!ctx.priceAccount)
+  // Solana: a leg passes one price account. A chain that prices each asset by its own feed has none.
+  if (ctx.priceAccount === null)
     return { skip: 'its positions are not priced in one account', alert: true };
   // A leg that loses anything is held to the weekly cap; at the cap the program refuses it.
   if (ctx.vault.lossUsedBps >= ctx.rules.lossCapBps)
@@ -58,12 +59,12 @@ const assetOf = (t: Trade, cash: AssetId) => (t.sell === cash ? t.buy : t.sell);
  */
 export function nextTrade(
   trades: Trade[],
-  ctx: KeeperContext,
+  ctx: KeeperView,
   cash: AssetId,
   held: (t: Trade) => boolean,
 ): { trade: Trade | null; skipped: string[] } {
   const skipped: string[] = [];
-  const byAsset = new Map<string, KeeperPosition>(ctx.positions.map((p) => [p.asset, p]));
+  const byAsset = new Map<string, KeeperPositionView>(ctx.positions.map((p) => [p.asset, p]));
   for (const t of trades) {
     const asset = assetOf(t, cash);
     const position = byAsset.get(asset);

@@ -2,6 +2,17 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadEvmKey, signBuilt } from '@colosseum/chain-evm/server';
+import {
+  assertNode as assertEvmNode,
+  createEvmRpc,
+  createEvmVaultAdapter,
+  EvmDeploymentRecord,
+  deploymentAddresses as evmAddresses,
+  deploymentAssets as evmAssets,
+  ROBINHOOD_MAINNET_POOLS,
+  ROBINHOOD_TESTNET_POOLS,
+} from '@colosseum/chain-evm/vault';
 import { loadKeypair, signBase64 } from '@colosseum/chain-solana/server';
 import {
   assertNode,
@@ -11,13 +22,16 @@ import {
   deploymentAssets,
   SolanaDeploymentRecord,
 } from '@colosseum/chain-solana/vault';
-import { parseChainConfigs } from '@colosseum/schemas';
+import { type BuiltTx, parseChainConfigs } from '@colosseum/schemas';
+import type { KeeperAdapter } from './chain';
 import { loadMemory, lockState, saveMemory } from './memory';
 import { runRound, type VaultLine } from './round';
 
-// The keeper on Solana (DESIGN-VAULT 3.5, section 10): a worker with no HTTP listener.
+// The keeper (DESIGN-VAULT 3.5, section 10): a worker with no HTTP listener, on one chain a process,
+// KEEPER_CHAIN=solana (the default) or robinhood.
 //
 //   SOLANA_RPC_URL=<devnet> KEEPER_SOLANA_KEYPAIR=<path> pnpm --filter @colosseum/keeper start --once
+//   KEEPER_CHAIN=robinhood ROBINHOOD_RPC_URL=<46630 node> KEEPER_ROBINHOOD_KEY=<path> ... --once
 //   ... --loop [--interval 60]     a round every interval seconds, until stopped
 //   ... --dry-run                  plans and builds, signs and sends nothing
 //
@@ -45,8 +59,108 @@ function args(argv: string[]) {
   return { loop: has('--loop'), dryRun: has('--dry-run'), interval };
 }
 
+/** What a round runs on, whichever chain: the adapter, who signs, and where the memory is kept. */
+type Wired = {
+  network: string;
+  adapter: KeeperAdapter;
+  sign(tx: BuiltTx): Promise<{ wire: string; txId: string }>;
+  /** The state file's name: the network, and what tells a reset copy apart from the one before. */
+  stateName: string;
+};
+
 async function main() {
   const { loop, dryRun, interval } = args(process.argv.slice(2));
+  const chain = process.env.KEEPER_CHAIN?.trim() || 'solana';
+  const wired =
+    chain === 'robinhood' ? await robinhood() : chain === 'solana' ? await solana() : null;
+  if (!wired) throw new Error(`KEEPER_CHAIN is solana or robinhood, not ${chain}`);
+  const stateFile = join(
+    process.env.KEEPER_STATE_DIR?.trim() || join(homedir(), '.tenonfi', 'keeper'),
+    `${wired.stateName}.json`,
+  );
+  lockState(stateFile, (line) => console.error(line));
+  // Stopped by a signal, the process still exits through its exit handlers, which release the lock.
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => process.exit(1));
+  const memory = loadMemory(stateFile);
+  const log = (line: VaultLine) =>
+    console.log(JSON.stringify({ at: new Date().toISOString(), network: wired.network, ...line }));
+
+  for (;;) {
+    const lines = await runRound(
+      {
+        adapter: wired.adapter,
+        dryRun,
+        log,
+        sign: wired.sign,
+        save: (m) => saveMemory(stateFile, m),
+      },
+      memory,
+    );
+    console.log(
+      JSON.stringify({
+        at: new Date().toISOString(),
+        round: 'done',
+        vaults: lines.length,
+        acted: lines.filter((l) => l.outcome === 'acted').length,
+        alerts: lines.filter((l) => l.alert).length,
+        inFlight: memory.inFlight.size,
+      }),
+    );
+    if (!loop) return;
+    await new Promise((resolve) => setTimeout(resolve, interval * 1000));
+  }
+}
+
+/**
+ * Robinhood Chain: CHAIN_NETWORK_ROBINHOOD (testnet by default; mainnet is refused), its deploy record
+ * (deployments/robinhood-<network>.json), the node behind ROBINHOOD_RPC_URL held to the record's chain
+ * id, and the key at KEEPER_ROBINHOOD_KEY, which has to be the factory's keeper.
+ */
+async function robinhood(): Promise<Wired> {
+  const network = process.env.CHAIN_NETWORK_ROBINHOOD?.trim() || 'testnet';
+  if (network !== 'testnet' && network !== 'local')
+    throw new Error('the keeper runs Robinhood Chain on its test network or a local copy only');
+  const name = `robinhood-${network}`;
+  const file = `${DEPLOYMENTS}${name}.json`;
+  if (!existsSync(file)) throw new Error(`no deploy record for CHAIN_NETWORK_ROBINHOOD=${network}`);
+  const record = EvmDeploymentRecord.parse(JSON.parse(readFileSync(file, 'utf8')));
+  if (record.network !== name) throw new Error(`${file} is the record of ${record.network}`);
+  const url = process.env.ROBINHOOD_RPC_URL?.trim();
+  if (!url) throw new Error('ROBINHOOD_RPC_URL is not set');
+  const rpc = createEvmRpc(url);
+  await assertEvmNode(rpc, record);
+  const keyPath = process.env.KEEPER_ROBINHOOD_KEY?.trim();
+  if (!keyPath) throw new Error('KEEPER_ROBINHOOD_KEY is not set');
+  const key = loadEvmKey(keyPath);
+  const { factory, registry, router } = evmAddresses(record);
+  const config = parseChainConfigs(
+    { CHAIN_NETWORK_ROBINHOOD: network, ...(router ? { CHAIN_ROUTER_ROBINHOOD: router } : {}) },
+    { robinhood: { factory, registry } },
+  ).robinhood;
+  const adapter = createEvmVaultAdapter({
+    config,
+    rpc,
+    assets: evmAssets(record),
+    pools: network === 'local' ? ROBINHOOD_MAINNET_POOLS : ROBINHOOD_TESTNET_POOLS,
+    trade: 'live',
+    autoFollow: true,
+  });
+  // The factory names the keeper; the record's copy is only what the deploy set.
+  const { keeper } = await adapter.getPlatform();
+  if (keeper !== key.address.toLowerCase())
+    throw new Error(
+      `the key at KEEPER_ROBINHOOD_KEY is not the keeper the factory names (${keeper})`,
+    );
+  return {
+    network: record.network,
+    adapter,
+    sign: (tx) => signBuilt(key, tx),
+    stateName: `${record.network}-${record.evmChainId}-${record.contracts.factory}`,
+  };
+}
+
+/** Solana: as KEEP-1 built it. */
+async function solana(): Promise<Wired> {
   const network = process.env.CHAIN_NETWORK_SOLANA?.trim() || 'testnet';
   if (network === 'mainnet') throw new Error('the keeper does not run on mainnet in this slot');
   const name =
@@ -88,48 +202,19 @@ async function main() {
     assets: deploymentAssets(record),
     autoFollow: true,
   });
-  const stateFile = join(
-    process.env.KEEPER_STATE_DIR?.trim() || join(homedir(), '.tenonfi', 'keeper'),
+  return {
+    network: record.network,
+    adapter,
+    sign: async (tx) => {
+      // Only what the keeper itself builds, as the keeper.
+      if (tx.signer !== key.address)
+        throw new Error(`a transaction for ${tx.signer}, not the keeper`);
+      const { wire, signature } = await signBase64(tx.payload, key);
+      return { wire, txId: signature };
+    },
     // The node's genesis, which assertNode held to the record's: a reset local validator starts afresh.
-    `${record.network}-${await rpc.getGenesisHash().send()}.json`,
-  );
-  lockState(stateFile, (line) => console.error(line));
-  // Stopped by a signal, the process still exits through its exit handlers, which release the lock.
-  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => process.exit(1));
-  const memory = loadMemory(stateFile);
-  const log = (line: VaultLine) =>
-    console.log(JSON.stringify({ at: new Date().toISOString(), network: record.network, ...line }));
-
-  for (;;) {
-    const lines = await runRound(
-      {
-        adapter,
-        dryRun,
-        log,
-        sign: async (tx) => {
-          // Only what the keeper itself builds, as the keeper.
-          if (tx.signer !== key.address)
-            throw new Error(`a transaction for ${tx.signer}, not the keeper`);
-          const { wire, signature } = await signBase64(tx.payload, key);
-          return { wire, txId: signature };
-        },
-        save: (m) => saveMemory(stateFile, m),
-      },
-      memory,
-    );
-    console.log(
-      JSON.stringify({
-        at: new Date().toISOString(),
-        round: 'done',
-        vaults: lines.length,
-        acted: lines.filter((l) => l.outcome === 'acted').length,
-        alerts: lines.filter((l) => l.alert).length,
-        inFlight: memory.inFlight.size,
-      }),
-    );
-    if (!loop) return;
-    await new Promise((resolve) => setTimeout(resolve, interval * 1000));
-  }
+    stateName: `${record.network}-${await rpc.getGenesisHash().send()}`,
+  };
 }
 
 main().catch((e) => {
