@@ -111,9 +111,11 @@ const NUMBER = new RegExp(
 const PER_MONTH_AFTER =
   /^\s*(?:(?:a|per|each|every|\/)\s*(?:month|mo)\b|monthly|(?:por|ao|\/|cada)\s*m[eê]s|mensa)/iu;
 const PER_MONTH_BEFORE = /(?:monthly|mensal|por m[eê]s)\s+(?:income|renda)?\s*(?:of|de)?\s*$/iu;
-// What makes a duration a time frame: a word before it ("for", "over", "em", "por") and no age after.
+// What makes a duration a time frame: a word before it ("for", "over", "em", "por"), or one of these
+// and "the next", "the coming", "próximos", "até" ("for the next 15 years", "em até 3 anos"), and no
+// age after.
 const TIME_FRAME_BEFORE =
-  /(?:^|[\s,(])(?:for|over|in|within|during|after|next|em|por|durante|dentro de|daqui a|depois de|pr[oó]ximos?)\s*$/iu;
+  /(?:^|[\s,(])(?:for|over|in|within|during|after|next|coming|em|por|durante|dentro de|daqui a|depois de|pr[oó]ximos?|em at[eé])\s*$/iu;
 const AGE_AFTER = /^\s*(?:old|of age|de idade)\b/iu;
 const inTimeFrame = (text: string, at: number, end: number) =>
   TIME_FRAME_BEFORE.test(text.slice(0, at)) && !AGE_AFTER.test(text.slice(end));
