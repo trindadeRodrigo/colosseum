@@ -8,7 +8,7 @@ import {
   type Material,
   Mesh,
   MeshStandardMaterial,
-  PCFSoftShadowMap,
+  PCFShadowMap,
   PerspectiveCamera,
   RepeatWrapping,
   Scene,
@@ -48,7 +48,7 @@ export function createJointScene(canvas: HTMLCanvasElement): JointScene {
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = PCFSoftShadowMap;
+  renderer.shadowMap.type = PCFShadowMap;
 
   const scene = new Scene();
   const camera = new PerspectiveCamera(30, 1, 0.1, 200);
@@ -72,16 +72,29 @@ export function createJointScene(canvas: HTMLCanvasElement): JointScene {
   const textures: Texture[] = [];
   const materials: Material[] = [];
   const draw = () => renderer.render(scene, camera);
+  // One upload per file: a turned face is a clone of its texture, which shares the image with it.
+  const loaded = new Map<string, Texture>();
+  const turned = new Map<string, Texture[]>();
   const tex = (name: string, color: boolean, rotate: boolean) => {
-    const t = loader.load(`${WOOD}${name}.jpg`, draw);
-    if (color) t.colorSpace = SRGBColorSpace;
-    t.anisotropy = aniso;
-    t.wrapS = RepeatWrapping;
-    t.wrapT = RepeatWrapping;
-    if (rotate) {
-      t.center.set(0.5, 0.5);
-      t.rotation = Math.PI / 2;
+    let base = loaded.get(name);
+    if (!base) {
+      // A clone keeps its own version: it is told when the image it shares has come.
+      base = loader.load(`${WOOD}${name}.jpg`, () => {
+        for (const t of turned.get(name) ?? []) t.needsUpdate = true;
+        draw();
+      });
+      if (color) base.colorSpace = SRGBColorSpace;
+      base.anisotropy = aniso;
+      base.wrapS = RepeatWrapping;
+      base.wrapT = RepeatWrapping;
+      loaded.set(name, base);
+      textures.push(base);
     }
+    if (!rotate) return base;
+    const t = base.clone();
+    t.center.set(0.5, 0.5);
+    t.rotation = Math.PI / 2;
+    turned.set(name, [...(turned.get(name) ?? []), t]);
     textures.push(t);
     return t;
   };

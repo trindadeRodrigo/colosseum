@@ -12,7 +12,14 @@ import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 // from the API (GET /v1/orders/{id}), so a line says where a step stands now. The API has no route
 // that lists a person's orders or the keeper's trades, so this is the history this browser knows.
 
-export function useVaultHistory(): { records: OrderRecord[]; activity: Execution[] } {
+export type VaultHistory = {
+  records: OrderRecord[];
+  activity: Execution[];
+  /** The orders whose deposit is confirmed on chain, as the API last said: only these were put in. */
+  deposited: ReadonlySet<string>;
+};
+
+export function useVaultHistory(): VaultHistory {
   const t = useT();
   const port = useWalletPort();
   const apiFetch = useApiFetch();
@@ -21,6 +28,7 @@ export function useVaultHistory(): { records: OrderRecord[]; activity: Execution
   const userId = port.userId;
   const [records, setRecords] = useState<OrderRecord[]>([]);
   const [activity, setActivity] = useState<Execution[]>([]);
+  const [deposited, setDeposited] = useState<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
     setRecords(chain ? recallOrders(userId).filter((r) => r.chain === chain) : []);
@@ -32,11 +40,26 @@ export function useVaultHistory(): { records: OrderRecord[]; activity: Execution
     let live = true;
     if (!chain || records.length === 0) {
       setActivity([]);
+      setDeposited(new Set());
       return;
     }
     const explorer = `${t.chain.names[chain]} ${t.order.explorer}`;
     Promise.all(records.map((r) => readOrder(apiFetch, r.orderId))).then((read) => {
       if (!live) return;
+      setDeposited(
+        new Set(
+          read.flatMap((answer) =>
+            answer.kind === 'read' &&
+            answer.order.legs.some(
+              (leg) =>
+                (leg.kind === 'create_vault' || leg.kind === 'deposit') &&
+                leg.status === 'confirmed',
+            )
+              ? [answer.order.id]
+              : [],
+          ),
+        ),
+      );
       setActivity(
         read
           .flatMap((answer) =>
@@ -50,5 +73,5 @@ export function useVaultHistory(): { records: OrderRecord[]; activity: Execution
     };
   }, [ids, chain, apiFetch, t]);
 
-  return { records, activity };
+  return { records, activity, deposited };
 }

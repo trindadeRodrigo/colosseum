@@ -62,7 +62,7 @@ export function AppNav() {
       links={ROUTES.filter((route) => !('signedIn' in route) || signedIn).map((route) => ({
         label: t.shell[route.key],
         href: route.href,
-        current: isCurrent(pathname, route),
+        current: isCurrent(pathname, route) && 'page',
       }))}
       action={account.action}
       sheetHead={account.sheetHead}

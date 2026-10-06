@@ -324,7 +324,7 @@ export const pt: Dictionary = {
     signature: 'id da transação',
     noneYet: 'Nada desta ordem chegou à rede ainda.',
     noneVault:
-      'Nada que este navegador fez chegou à rede para este cofre. Operações feitas em outro lugar, ou pelo agente, ainda não aparecem aqui.',
+      'Nada que este navegador fez para os seus cofres chegou à rede. Operações feitas em outro lugar, ou pelo agente, ainda não aparecem aqui.',
   },
   pin: {
     sourceFor: 'Fonte de {value}',
@@ -415,9 +415,9 @@ export const pt: Dictionary = {
       positionMethod: (method: string) => `${method}; vezes a quantidade que o cofre guarda`,
     },
     goalCard: {
-      onTrack: 'No caminho',
-      offTrack: 'Fora do caminho',
-      noStatus: 'Ainda sem situação: o motor só dá uma para objetivos de renda',
+      builtMet: 'No caminho quando o plano foi montado',
+      builtShort: 'Abaixo da renda quando o plano foi montado',
+      noStatus: 'Ainda sem situação: o motor não dá uma para um cofre',
       unknown: (chain: string) => `Seu cofre na ${chain}.`,
       notJoined:
         'Não sei para qual objetivo este cofre foi comprado: a compra foi feita em outro navegador, ou antes de este guardar objetivos. O que ele guarda está abaixo.',
@@ -469,6 +469,7 @@ export const pt: Dictionary = {
       label: (months: number, low: string, high: string) =>
         `O que o rendimento em dólar projeta em ${months} meses: de ${low} a ${high} ao ano.`,
       after: (months: number) => `Depois de ${months} meses`,
+      paid: (months: number) => `Pago ao longo de ${months} meses, ao todo`,
       projected: 'projetado',
       low: 'ponta baixa',
       high: 'ponta alta',

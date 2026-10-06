@@ -34,6 +34,9 @@ const landing = async (lang: Lang = 'en') => {
   return host;
 };
 
+/** The probe's WebGL context, let go once the stage knows WebGL is there. */
+const released = vi.fn();
+
 /** What the browser says about reduced motion and WebGL, for one test. */
 function browser({ reduce = false, webgl = false } = {}) {
   vi.spyOn(window, 'matchMedia').mockImplementation(
@@ -46,7 +49,10 @@ function browser({ reduce = false, webgl = false } = {}) {
       }) as unknown as MediaQueryList,
   );
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
-    () => (webgl ? ({} as RenderingContext) : null) as never,
+    () =>
+      (webgl
+        ? ({ getExtension: () => ({ loseContext: released }) } as unknown as RenderingContext)
+        : null) as never,
   );
 }
 
@@ -80,6 +86,8 @@ describe('the hero', () => {
     const host = await landing();
     expect(scene.create).toHaveBeenCalledTimes(1);
     expect(scene.create).toHaveBeenCalledWith(find(host, 'canvas'));
+    // the context that only asked whether WebGL is there is let go
+    expect(released).toHaveBeenCalled();
     const made = scene.create.mock.results[0]?.value as { setProgress: ReturnType<typeof vi.fn> };
     expect(made.setProgress).toHaveBeenCalled();
     // the drawing that stood in is gone once the scene draws
@@ -118,7 +126,10 @@ describe('the showcase', () => {
       en.landing.show.growth.label,
     ]);
     for (const c of cases) {
-      expect(c.querySelector('[data-ui="mock-plate"]')?.textContent).toContain('MOCK');
+      // the plate in the case's head, not only the pins' own
+      expect(
+        c.querySelector('[data-ui="case-head"] [data-ui="mock-plate"]')?.textContent,
+      ).toContain('MOCK');
       const pins = [...c.querySelectorAll('[data-ui="figure"]')];
       expect(pins.length).toBeGreaterThan(0);
       // nothing in a sample case is drawn as live
@@ -225,4 +236,12 @@ it('says the whole page in Portuguese, and calls its figures MOCK in the foot', 
   expect(host.textContent).toContain(pt.landing.sim.title);
   expect(find(host, 'footer').textContent).toContain(pt.landing.foot);
   expect(host.textContent).not.toContain(en.landing.show.title);
+});
+
+it('keeps “System” as a choice on the landing, so the next visit follows the system too', async () => {
+  browser();
+  const host = await landing();
+  const system = [...find(host, '[data-ui="theme-switch"]').querySelectorAll('button')][0];
+  await click(system as HTMLElement);
+  expect(document.cookie).toContain('tf-theme=auto');
 });

@@ -22,6 +22,19 @@ export function goalOfVault(vault: Vault, records: readonly OrderRecord[]): Vaul
   return null;
 }
 
+/**
+ * What was put into the vault: the amounts of the orders of its plan whose deposit is confirmed on
+ * chain. An order kept before it was signed, or never signed, counts nothing. Null when none is.
+ */
+export function putInto(
+  vault: Vault,
+  records: readonly OrderRecord[],
+  deposited: ReadonlySet<string>,
+): number | null {
+  const counted = ordersOfVault(vault, records).filter((r) => deposited.has(r.orderId));
+  return counted.length === 0 ? null : counted.reduce((sum, r) => sum + r.amountUsd, 0);
+}
+
 /** When the goal is due: the order's day, plus the plan's horizon in months. */
 export function dueOf(goal: PlacedGoal): Date {
   const due = new Date(goal.placedAt);

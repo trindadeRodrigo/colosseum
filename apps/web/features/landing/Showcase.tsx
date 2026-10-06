@@ -157,7 +157,7 @@ function Case({
         </div>
       </div>
       <div className="flex min-w-0 flex-col gap-4 px-6 pt-5.5 pb-4.5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div data-ui="case-head" className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 className="text-[1.125rem]/[1.3] font-medium">{words.title}</h3>
             <p className="mt-0.5 text-[13px] text-muted-foreground">{words.sub}</p>

@@ -79,10 +79,10 @@ describe('the frame', () => {
       [en.analytics, '/risk'],
     ]);
     // the page a person is on is said, not only shown; the plan and the order are under Invest
-    expect(links(host).map((a) => a.getAttribute('aria-current'))).toEqual(['true', null, null]);
+    expect(links(host).map((a) => a.getAttribute('aria-current'))).toEqual(['page', null, null]);
     location.pathname = '/plan/abc';
     expect(links(await shell()).map((a) => a.getAttribute('aria-current'))).toEqual([
-      'true',
+      'page',
       null,
       null,
     ]);
@@ -92,7 +92,7 @@ describe('the frame', () => {
     const signedIn = await shell();
     expect(links(signedIn).map((a) => [a.textContent, a.getAttribute('aria-current')])).toEqual([
       [en.invest, null],
-      [en.portfolio, 'true'],
+      [en.portfolio, 'page'],
       [en.resources, null],
       [en.analytics, null],
     ]);

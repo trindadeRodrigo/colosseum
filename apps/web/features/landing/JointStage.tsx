@@ -195,7 +195,10 @@ export function JointStage() {
 function hasWebGL(): boolean {
   try {
     const probe = document.createElement('canvas');
-    return Boolean(probe.getContext('webgl2') ?? probe.getContext('webgl'));
+    const gl = probe.getContext('webgl2') ?? probe.getContext('webgl');
+    // The probe's context is let go at once: a page has only a few, and the scene needs one.
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    return Boolean(gl);
   } catch {
     return false;
   }

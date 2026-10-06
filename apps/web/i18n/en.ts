@@ -340,7 +340,7 @@ export const en = {
     signature: 'transaction id',
     noneYet: 'Nothing has reached the chain from this order yet.',
     noneVault:
-      'Nothing this browser placed has reached the chain for this vault. Trades made elsewhere, or by the keeper, are not listed here yet.',
+      'Nothing this browser placed for your vaults has reached the chain. Trades made elsewhere, or by the keeper, are not listed here yet.',
   },
   /** The words a provenance pin says, in the language of the view. */
   pin: {
@@ -439,9 +439,9 @@ export const en = {
     },
     /** The goal card of a vault (guidelines.html, "Goal card and plan"), from the goal its plan was built for. */
     goalCard: {
-      onTrack: 'On track',
-      offTrack: 'Off track',
-      noStatus: 'No status yet: the engine gives one for income goals only',
+      builtMet: 'On track when the plan was built',
+      builtShort: 'Short of its income when the plan was built',
+      noStatus: 'No status yet: the engine gives none for a vault',
       unknown: (chain: string) => `Your vault on ${chain}.`,
       notJoined:
         'I can’t tell which goal this vault was bought for: it was bought in another browser, or before this one kept goals. What it holds is below.',
@@ -495,6 +495,8 @@ export const en = {
       label: (months: number, low: string, high: string) =>
         `What the dollar yield projects over ${months} months: from ${low} to ${high} a year.`,
       after: (months: number) => `After ${months} months`,
+      /** An income plan: what its yield pays out over the term, in all. */
+      paid: (months: number) => `Paid out over ${months} months, in all`,
       projected: 'projected',
       low: 'low end',
       high: 'high end',
