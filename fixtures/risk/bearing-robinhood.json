@@ -1,331 +1,329 @@
 {
- "about": "Answers of the risk API for Robinhood Chain and the chains side by side, for the Bearing tests (the e2e stub serves the Robinhood Chain ones). Their shapes are the API\u2019s (apps/api/src/routes/risk.ts); their figures are not measurements: every one is labelled fixture, so a page shows it with the MOCK plate.",
- "files": {
-  "/risk/assets?tau=0.01&chain=robinhood": {
-   "status": 200,
-   "body": {
-    "methodVersion": "evmq-0.1",
-    "tau": 0.01,
-    "chain": "robinhood",
-    "honesty": [
-     "Fixture for the tests: the shape of the answer, not a measurement."
-    ],
-    "disclaimer": "fixture",
-    "assets": [
-     {
-      "id": "robinhood:nvda",
-      "assetMint": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
-      "symbol": "NVDA",
-      "chain": "robinhood",
-      "poolTvlUsd": null,
-      "pools": null,
-      "poolsNullReason": "not collected on Robinhood Chain: its pools are not in the pool registry (PLAN-UNIVERSE RU.14, DU6)",
-      "capacityAtTau": {
-       "us_market_hours": {
-        "status": "ok",
-        "capacityUsd": 250000,
-        "lowerBound": false,
-        "samples": 88,
-        "from": "2026-10-02T14:00:00.000Z",
-        "to": "2026-10-03T14:00:00.000Z",
-        "insufficientFrom": null
-       },
-       "us_offhours_weekday": {
-        "status": "ok",
-        "capacityUsd": 180000,
-        "lowerBound": false,
-        "samples": 120,
-        "from": "2026-10-02T14:00:00.000Z",
-        "to": "2026-10-03T14:00:00.000Z",
-        "insufficientFrom": null
-       },
-       "weekend": {
-        "status": "insufficient_samples",
-        "capacityUsd": null,
-        "lowerBound": false,
-        "samples": 3,
-        "from": "2026-10-03T14:00:00.000Z",
-        "to": "2026-10-03T14:00:00.000Z",
-        "insufficientFrom": 0
-       }
-      },
-      "weekendRatio": null,
-      "provenance": "fixture"
-     },
-     {
-      "id": "robinhood:gld",
-      "assetMint": "0xc9a981FEe1F9DEC688BB123ccdeCC63D0dEBfc4E",
-      "symbol": "GLD",
-      "chain": "robinhood",
-      "poolTvlUsd": null,
-      "pools": null,
-      "poolsNullReason": "not collected on Robinhood Chain: its pools are not in the pool registry (PLAN-UNIVERSE RU.14, DU6)",
-      "capacityAtTau": {
-       "us_market_hours": {
-        "status": "ok",
-        "capacityUsd": 40000,
-        "lowerBound": false,
-        "samples": 88,
-        "from": "2026-10-02T14:00:00.000Z",
-        "to": "2026-10-03T14:00:00.000Z",
-        "insufficientFrom": null
-       },
-       "us_offhours_weekday": {
-        "status": "ok",
-        "capacityUsd": 30000,
-        "lowerBound": false,
-        "samples": 120,
-        "from": "2026-10-02T14:00:00.000Z",
-        "to": "2026-10-03T14:00:00.000Z",
-        "insufficientFrom": null
-       },
-       "weekend": {
-        "status": "insufficient_samples",
-        "capacityUsd": null,
-        "lowerBound": false,
-        "samples": 3,
-        "from": "2026-10-03T14:00:00.000Z",
-        "to": "2026-10-03T14:00:00.000Z",
-        "insufficientFrom": 0
-       }
-      },
-      "weekendRatio": null,
-      "provenance": "fixture"
-     }
-    ]
-   }
-  },
-  "/risk/pools?chain=robinhood": {
-   "status": 200,
-   "body": {
-    "pools": [],
-    "nullReason": "not collected on Robinhood Chain: its pools are not in the pool registry (PLAN-UNIVERSE RU.14, DU6)",
-    "disclaimer": "fixture"
-   }
-  },
-  "/risk/chains?tau=0.01": {
-   "status": 200,
-   "body": {
-    "tau": 0.01,
-    "regime": "us_market_hours",
-    "at": "2026-10-03T14:00:00.000Z",
-    "chains": [
-     {
-      "chain": "solana",
-      "assetsTracked": {
-       "value": 54,
-       "source": "fixture (test only): not a measurement",
-       "method": "fixture",
-       "fetchedAt": "2026-10-03T14:00:00.000Z",
-       "provenance": "fixture"
-      },
-      "poolTvlUsd": {
-       "value": 40600000,
-       "source": "fixture (test only): not a measurement",
-       "method": "fixture",
-       "fetchedAt": "2026-10-03T14:00:00.000Z",
-       "provenance": "fixture"
-      },
-      "exitCapacityUsd": {
-       "value": 2500000,
-       "source": "fixture (test only): not a measurement",
-       "method": "fixture",
-       "fetchedAt": "2026-10-03T14:00:00.000Z",
-       "provenance": "fixture",
-       "regime": "us_market_hours",
-       "measuredAssets": 41,
-       "assets": 54,
-       "methodVersion": "risk-0.3"
-      },
-      "volume24hUsd": {
-       "value": null,
-       "nullReason": "not collected yet on Solana: no swap history imported (risk_pool_flow)"
+  "about": "Answers of the risk API for Robinhood Chain and the chains side by side, for the Bearing tests (the e2e stub serves the Robinhood Chain ones). Their shapes are the API\u2019s (apps/api/src/routes/risk.ts); their figures are not measurements: every one is labelled fixture, so a page shows it with the MOCK plate.",
+  "files": {
+    "/risk/assets?tau=0.01&chain=robinhood": {
+      "status": 200,
+      "body": {
+        "methodVersion": "evmq-0.1",
+        "tau": 0.01,
+        "chain": "robinhood",
+        "honesty": ["Fixture for the tests: the shape of the answer, not a measurement."],
+        "disclaimer": "fixture",
+        "assets": [
+          {
+            "id": "robinhood:nvda",
+            "assetMint": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
+            "symbol": "NVDA",
+            "chain": "robinhood",
+            "poolTvlUsd": null,
+            "pools": null,
+            "poolsNullReason": "not collected on Robinhood Chain: its pools are not in the pool registry (PLAN-UNIVERSE RU.14, DU6)",
+            "capacityAtTau": {
+              "us_market_hours": {
+                "status": "ok",
+                "capacityUsd": 250000,
+                "lowerBound": false,
+                "samples": 88,
+                "from": "2026-10-02T14:00:00.000Z",
+                "to": "2026-10-03T14:00:00.000Z",
+                "insufficientFrom": null
+              },
+              "us_offhours_weekday": {
+                "status": "ok",
+                "capacityUsd": 180000,
+                "lowerBound": false,
+                "samples": 120,
+                "from": "2026-10-02T14:00:00.000Z",
+                "to": "2026-10-03T14:00:00.000Z",
+                "insufficientFrom": null
+              },
+              "weekend": {
+                "status": "insufficient_samples",
+                "capacityUsd": null,
+                "lowerBound": false,
+                "samples": 3,
+                "from": "2026-10-03T14:00:00.000Z",
+                "to": "2026-10-03T14:00:00.000Z",
+                "insufficientFrom": 0
+              }
+            },
+            "weekendRatio": null,
+            "provenance": "fixture"
+          },
+          {
+            "id": "robinhood:gld",
+            "assetMint": "0xc9a981FEe1F9DEC688BB123ccdeCC63D0dEBfc4E",
+            "symbol": "GLD",
+            "chain": "robinhood",
+            "poolTvlUsd": null,
+            "pools": null,
+            "poolsNullReason": "not collected on Robinhood Chain: its pools are not in the pool registry (PLAN-UNIVERSE RU.14, DU6)",
+            "capacityAtTau": {
+              "us_market_hours": {
+                "status": "ok",
+                "capacityUsd": 40000,
+                "lowerBound": false,
+                "samples": 88,
+                "from": "2026-10-02T14:00:00.000Z",
+                "to": "2026-10-03T14:00:00.000Z",
+                "insufficientFrom": null
+              },
+              "us_offhours_weekday": {
+                "status": "ok",
+                "capacityUsd": 30000,
+                "lowerBound": false,
+                "samples": 120,
+                "from": "2026-10-02T14:00:00.000Z",
+                "to": "2026-10-03T14:00:00.000Z",
+                "insufficientFrom": null
+              },
+              "weekend": {
+                "status": "insufficient_samples",
+                "capacityUsd": null,
+                "lowerBound": false,
+                "samples": 3,
+                "from": "2026-10-03T14:00:00.000Z",
+                "to": "2026-10-03T14:00:00.000Z",
+                "insufficientFrom": 0
+              }
+            },
+            "weekendRatio": null,
+            "provenance": "fixture"
+          }
+        ]
       }
-     },
-     {
-      "chain": "robinhood",
-      "assetsTracked": {
-       "value": 2,
-       "source": "fixture (test only): not a measurement",
-       "method": "fixture",
-       "fetchedAt": "2026-10-03T14:00:00.000Z",
-       "provenance": "fixture"
-      },
-      "poolTvlUsd": {
-       "value": null,
-       "nullReason": "not collected on Robinhood Chain: its pools are not in the pool registry (PLAN-UNIVERSE RU.14, DU6)"
-      },
-      "exitCapacityUsd": {
-       "value": 290000,
-       "source": "fixture (test only): not a measurement",
-       "method": "fixture",
-       "fetchedAt": "2026-10-03T14:00:00.000Z",
-       "provenance": "fixture",
-       "regime": "us_market_hours",
-       "measuredAssets": 2,
-       "assets": 2,
-       "methodVersion": "evmq-0.1"
-      },
-      "volume24hUsd": {
-       "value": null,
-       "nullReason": "not collected yet on Robinhood Chain: no swap history imported (risk_pool_flow)"
+    },
+    "/risk/pools?chain=robinhood": {
+      "status": 200,
+      "body": {
+        "pools": [],
+        "nullReason": "not collected on Robinhood Chain: its pools are not in the pool registry (PLAN-UNIVERSE RU.14, DU6)",
+        "disclaimer": "fixture"
       }
-     }
-    ],
-    "disclaimer": "fixture"
-   }
-  },
-  "/risk/assets/0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC/history?days=30&tau=0.01": {
-   "status": 200,
-   "body": {
-    "asset": "NVDA",
-    "assetMint": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
-    "tau": 0.01,
-    "resolution": "hour",
-    "points": [
-     {
-      "t": "2026-10-03T12:00:00.000Z",
-      "regime": "us_market_hours",
-      "sellCapacityUsd": 237500.0,
-      "sellLowerBound": false,
-      "buyCapacityUsd": 213750.0,
-      "buyLowerBound": false,
-      "refMidUsd": null,
-      "pools": 0
-     },
-     {
-      "t": "2026-10-03T13:00:00.000Z",
-      "regime": "us_market_hours",
-      "sellCapacityUsd": 250000.0,
-      "sellLowerBound": false,
-      "buyCapacityUsd": 225000.0,
-      "buyLowerBound": false,
-      "refMidUsd": null,
-      "pools": 0
-     },
-     {
-      "t": "2026-10-03T14:00:00.000Z",
-      "regime": "us_market_hours",
-      "sellCapacityUsd": 255000.0,
-      "sellLowerBound": false,
-      "buyCapacityUsd": 229500.0,
-      "buyLowerBound": false,
-      "refMidUsd": null,
-      "pools": 0
-     }
-    ],
-    "from": "2026-10-03T12:00:00.000Z",
-    "to": "2026-10-03T14:00:00.000Z",
-    "days": 30,
-    "source": "fixture (test only): not a measurement",
-    "method": "fixture",
-    "methodVersion": "evmq-0.1",
-    "provenance": "fixture",
-    "disclaimer": "fixture"
-   }
-  },
-  "/risk/facts/assets/0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC?sizeUsd=100000": {
-   "status": 200,
-   "body": {
-    "assetId": "robinhood:nvda",
-    "symbol": "NVDA",
-    "chain": "evm",
-    "mint": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
-    "costs": [],
-    "flow": {
-     "byWindow": []
     },
-    "liquidityStability": {
-     "lpTop3Share": {
-      "value": null,
-      "reason": "not_collected"
-     }
-    }
-   }
-  },
-  "/risk/pools?asset=0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC&chain=robinhood": {
-   "status": 200,
-   "body": {
-    "pools": [],
-    "nullReason": "not collected on Robinhood Chain: its pools are not in the pool registry (PLAN-UNIVERSE RU.14, DU6)",
-    "disclaimer": "fixture"
-   }
-  },
-  "/risk/assets/0xc9a981FEe1F9DEC688BB123ccdeCC63D0dEBfc4E/history?days=30&tau=0.01": {
-   "status": 200,
-   "body": {
-    "asset": "GLD",
-    "assetMint": "0xc9a981FEe1F9DEC688BB123ccdeCC63D0dEBfc4E",
-    "tau": 0.01,
-    "resolution": "hour",
-    "points": [
-     {
-      "t": "2026-10-03T12:00:00.000Z",
-      "regime": "us_market_hours",
-      "sellCapacityUsd": 38000.0,
-      "sellLowerBound": false,
-      "buyCapacityUsd": 34200.0,
-      "buyLowerBound": false,
-      "refMidUsd": null,
-      "pools": 0
-     },
-     {
-      "t": "2026-10-03T13:00:00.000Z",
-      "regime": "us_market_hours",
-      "sellCapacityUsd": 40000.0,
-      "sellLowerBound": false,
-      "buyCapacityUsd": 36000.0,
-      "buyLowerBound": false,
-      "refMidUsd": null,
-      "pools": 0
-     },
-     {
-      "t": "2026-10-03T14:00:00.000Z",
-      "regime": "us_market_hours",
-      "sellCapacityUsd": 40800.0,
-      "sellLowerBound": false,
-      "buyCapacityUsd": 36720.0,
-      "buyLowerBound": false,
-      "refMidUsd": null,
-      "pools": 0
-     }
-    ],
-    "from": "2026-10-03T12:00:00.000Z",
-    "to": "2026-10-03T14:00:00.000Z",
-    "days": 30,
-    "source": "fixture (test only): not a measurement",
-    "method": "fixture",
-    "methodVersion": "evmq-0.1",
-    "provenance": "fixture",
-    "disclaimer": "fixture"
-   }
-  },
-  "/risk/facts/assets/0xc9a981FEe1F9DEC688BB123ccdeCC63D0dEBfc4E?sizeUsd=100000": {
-   "status": 200,
-   "body": {
-    "assetId": "robinhood:gld",
-    "symbol": "GLD",
-    "chain": "evm",
-    "mint": "0xc9a981FEe1F9DEC688BB123ccdeCC63D0dEBfc4E",
-    "costs": [],
-    "flow": {
-     "byWindow": []
+    "/risk/chains?tau=0.01": {
+      "status": 200,
+      "body": {
+        "tau": 0.01,
+        "regime": "us_market_hours",
+        "at": "2026-10-03T14:00:00.000Z",
+        "chains": [
+          {
+            "chain": "solana",
+            "assetsTracked": {
+              "value": 54,
+              "source": "fixture (test only): not a measurement",
+              "method": "fixture",
+              "fetchedAt": "2026-10-03T14:00:00.000Z",
+              "provenance": "fixture"
+            },
+            "poolTvlUsd": {
+              "value": 40600000,
+              "source": "fixture (test only): not a measurement",
+              "method": "fixture",
+              "fetchedAt": "2026-10-03T14:00:00.000Z",
+              "provenance": "fixture"
+            },
+            "exitCapacityUsd": {
+              "value": 2500000,
+              "source": "fixture (test only): not a measurement",
+              "method": "fixture",
+              "fetchedAt": "2026-10-03T14:00:00.000Z",
+              "provenance": "fixture",
+              "regime": "us_market_hours",
+              "measuredAssets": 41,
+              "assets": 54,
+              "methodVersion": "risk-0.3"
+            },
+            "volume24hUsd": {
+              "value": null,
+              "nullReason": "not collected yet on Solana: no swap history imported (risk_pool_flow)"
+            }
+          },
+          {
+            "chain": "robinhood",
+            "assetsTracked": {
+              "value": 2,
+              "source": "fixture (test only): not a measurement",
+              "method": "fixture",
+              "fetchedAt": "2026-10-03T14:00:00.000Z",
+              "provenance": "fixture"
+            },
+            "poolTvlUsd": {
+              "value": null,
+              "nullReason": "not collected on Robinhood Chain: its pools are not in the pool registry (PLAN-UNIVERSE RU.14, DU6)"
+            },
+            "exitCapacityUsd": {
+              "value": 290000,
+              "source": "fixture (test only): not a measurement",
+              "method": "fixture",
+              "fetchedAt": "2026-10-03T14:00:00.000Z",
+              "provenance": "fixture",
+              "regime": "us_market_hours",
+              "measuredAssets": 2,
+              "assets": 2,
+              "methodVersion": "evmq-0.1"
+            },
+            "volume24hUsd": {
+              "value": null,
+              "nullReason": "not collected yet on Robinhood Chain: no swap history imported (risk_pool_flow)"
+            }
+          }
+        ],
+        "disclaimer": "fixture"
+      }
     },
-    "liquidityStability": {
-     "lpTop3Share": {
-      "value": null,
-      "reason": "not_collected"
-     }
+    "/risk/assets/0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC/history?days=30&tau=0.01": {
+      "status": 200,
+      "body": {
+        "asset": "NVDA",
+        "assetMint": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
+        "tau": 0.01,
+        "resolution": "hour",
+        "points": [
+          {
+            "t": "2026-10-03T12:00:00.000Z",
+            "regime": "us_market_hours",
+            "sellCapacityUsd": 237500.0,
+            "sellLowerBound": false,
+            "buyCapacityUsd": 213750.0,
+            "buyLowerBound": false,
+            "refMidUsd": null,
+            "pools": 0
+          },
+          {
+            "t": "2026-10-03T13:00:00.000Z",
+            "regime": "us_market_hours",
+            "sellCapacityUsd": 250000.0,
+            "sellLowerBound": false,
+            "buyCapacityUsd": 225000.0,
+            "buyLowerBound": false,
+            "refMidUsd": null,
+            "pools": 0
+          },
+          {
+            "t": "2026-10-03T14:00:00.000Z",
+            "regime": "us_market_hours",
+            "sellCapacityUsd": 255000.0,
+            "sellLowerBound": false,
+            "buyCapacityUsd": 229500.0,
+            "buyLowerBound": false,
+            "refMidUsd": null,
+            "pools": 0
+          }
+        ],
+        "from": "2026-10-03T12:00:00.000Z",
+        "to": "2026-10-03T14:00:00.000Z",
+        "days": 30,
+        "source": "fixture (test only): not a measurement",
+        "method": "fixture",
+        "methodVersion": "evmq-0.1",
+        "provenance": "fixture",
+        "disclaimer": "fixture"
+      }
+    },
+    "/risk/facts/assets/0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC?sizeUsd=100000": {
+      "status": 200,
+      "body": {
+        "assetId": "robinhood:nvda",
+        "symbol": "NVDA",
+        "chain": "evm",
+        "mint": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
+        "costs": [],
+        "flow": {
+          "byWindow": []
+        },
+        "liquidityStability": {
+          "lpTop3Share": {
+            "value": null,
+            "reason": "not_collected"
+          }
+        }
+      }
+    },
+    "/risk/pools?asset=0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC&chain=robinhood": {
+      "status": 200,
+      "body": {
+        "pools": [],
+        "nullReason": "not collected on Robinhood Chain: its pools are not in the pool registry (PLAN-UNIVERSE RU.14, DU6)",
+        "disclaimer": "fixture"
+      }
+    },
+    "/risk/assets/0xc9a981FEe1F9DEC688BB123ccdeCC63D0dEBfc4E/history?days=30&tau=0.01": {
+      "status": 200,
+      "body": {
+        "asset": "GLD",
+        "assetMint": "0xc9a981FEe1F9DEC688BB123ccdeCC63D0dEBfc4E",
+        "tau": 0.01,
+        "resolution": "hour",
+        "points": [
+          {
+            "t": "2026-10-03T12:00:00.000Z",
+            "regime": "us_market_hours",
+            "sellCapacityUsd": 38000.0,
+            "sellLowerBound": false,
+            "buyCapacityUsd": 34200.0,
+            "buyLowerBound": false,
+            "refMidUsd": null,
+            "pools": 0
+          },
+          {
+            "t": "2026-10-03T13:00:00.000Z",
+            "regime": "us_market_hours",
+            "sellCapacityUsd": 40000.0,
+            "sellLowerBound": false,
+            "buyCapacityUsd": 36000.0,
+            "buyLowerBound": false,
+            "refMidUsd": null,
+            "pools": 0
+          },
+          {
+            "t": "2026-10-03T14:00:00.000Z",
+            "regime": "us_market_hours",
+            "sellCapacityUsd": 40800.0,
+            "sellLowerBound": false,
+            "buyCapacityUsd": 36720.0,
+            "buyLowerBound": false,
+            "refMidUsd": null,
+            "pools": 0
+          }
+        ],
+        "from": "2026-10-03T12:00:00.000Z",
+        "to": "2026-10-03T14:00:00.000Z",
+        "days": 30,
+        "source": "fixture (test only): not a measurement",
+        "method": "fixture",
+        "methodVersion": "evmq-0.1",
+        "provenance": "fixture",
+        "disclaimer": "fixture"
+      }
+    },
+    "/risk/facts/assets/0xc9a981FEe1F9DEC688BB123ccdeCC63D0dEBfc4E?sizeUsd=100000": {
+      "status": 200,
+      "body": {
+        "assetId": "robinhood:gld",
+        "symbol": "GLD",
+        "chain": "evm",
+        "mint": "0xc9a981FEe1F9DEC688BB123ccdeCC63D0dEBfc4E",
+        "costs": [],
+        "flow": {
+          "byWindow": []
+        },
+        "liquidityStability": {
+          "lpTop3Share": {
+            "value": null,
+            "reason": "not_collected"
+          }
+        }
+      }
+    },
+    "/risk/pools?asset=0xc9a981FEe1F9DEC688BB123ccdeCC63D0dEBfc4E&chain=robinhood": {
+      "status": 200,
+      "body": {
+        "pools": [],
+        "nullReason": "not collected on Robinhood Chain: its pools are not in the pool registry (PLAN-UNIVERSE RU.14, DU6)",
+        "disclaimer": "fixture"
+      }
     }
-   }
-  },
-  "/risk/pools?asset=0xc9a981FEe1F9DEC688BB123ccdeCC63D0dEBfc4E&chain=robinhood": {
-   "status": 200,
-   "body": {
-    "pools": [],
-    "nullReason": "not collected on Robinhood Chain: its pools are not in the pool registry (PLAN-UNIVERSE RU.14, DU6)",
-    "disclaimer": "fixture"
-   }
   }
- }
 }
