@@ -83,11 +83,12 @@ describe('the devnet stand-ins for jlUSDC and syrupUSDC', () => {
     for (const y of yields) {
       expect(y.provenance).toBe('sandbox');
       expect(y.source).toContain('applied to');
-      expect(y.method).toContain('applied to the test token');
       expect(y.fetchedAt).toBe('2026-10-05T12:00:00.000Z');
     }
     const syrup = yields.find((y) => y.assetId === 'solana:syrupusdc');
     const model = MODEL_READINGS.find((r) => r.symbol === 'syrupUSDC')?.reading;
+    // the method is the model's own, so the engine ranks the reading as it would the model's
+    expect(syrup?.method).toBe(model?.method);
     expect([syrup?.quotedYield, syrup?.haircutYield]).toEqual([
       model?.quotedYield,
       model?.haircutYield,
@@ -128,5 +129,11 @@ describe('the devnet stand-ins for jlUSDC and syrupUSDC', () => {
     if (!first) throw new Error('the fixture has readings');
     const own = { ...first.reading, assetId: 'solana:jlusdc', provenance: 'sandbox' as const };
     expect(modelledTokens(assets, [own]).map((a) => a.id)).not.toContain('solana:jlusdc');
+  });
+
+  it('take nothing when they are not on a test network: a live token never takes another’s reading', () => {
+    const live = assets.map((a) => ({ ...a, provenance: 'live' as const }));
+    expect(modelledTokens(live, [])).toEqual([]);
+    expect(modelYields(modelledTokens(live, []), MODEL_READINGS)).toEqual([]);
   });
 });

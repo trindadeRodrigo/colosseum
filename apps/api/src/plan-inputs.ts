@@ -1,5 +1,5 @@
 import { assets as assetsTable, yieldObservations } from '@colosseum/db';
-import type { YieldObservation } from '@colosseum/schemas';
+import { chainFamily, type YieldObservation } from '@colosseum/schemas';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { loadLiquidityProvider, RISK_METHOD_VERSION } from './liquidity';
 import { type ModelReading, modelledTokens, modelYields } from './model-yields';
@@ -48,17 +48,23 @@ export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets }) => {
     const assetId = mint ? idOf.get(mint) : undefined;
     return assetId ? [reading(y, assetId)] : [];
   });
-  // The readings of the mainnet tokens the test-network tokens model, found by the model's symbol on
-  // the same family of chains.
+  // The live readings of the mainnet tokens the test-network tokens model, found by the model's symbol
+  // (each token's `underlying`) on the same family of chains: on EVM that is any EVM chain, since the
+  // assets table names the family and not the chain.
   const modelled = modelledTokens(assets, own);
   const models = [...new Set(modelled.map((a) => a.underlying))];
-  const family = chain === 'solana' ? 'solana' : 'evm';
   const modelRows = models.length
     ? await db
         .select({ y: yieldObservations, symbol: assetsTable.symbol })
         .from(yieldObservations)
         .innerJoin(assetsTable, eq(yieldObservations.assetId, assetsTable.id))
-        .where(and(inArray(assetsTable.symbol, models), eq(assetsTable.chain, family)))
+        .where(
+          and(
+            inArray(assetsTable.symbol, models),
+            eq(assetsTable.chain, chainFamily(chain)),
+            eq(yieldObservations.provenance, 'live'),
+          ),
+        )
         .orderBy(desc(yieldObservations.fetchedAt))
         .limit(200)
     : [];

@@ -1,11 +1,12 @@
 import type { BasketAsset, YieldObservation } from '@colosseum/schemas';
 
 // A token on a test network stands in for a mainnet token it models: tjlUSDC for jlUSDC, tsyrupUSDC
-// for syrupUSDC (the deploy record's `modelOf`, which `deploymentAssets` carries as `underlying`). It
-// earns nothing, and no reading is stored under its mint. So that a plan on the test network is shaped
-// as the mainnet plan would be, it takes the reading of the token it models, relabelled `sandbox`, with
-// its source and method saying whose reading it is and that it is applied to a test token. The time is
-// the reading's own. A rate is never made up: a model with no reading leaves the token without one,
+// for syrupUSDC. The key is the asset's `underlying`: on Solana, `deploymentAssets` sets it from the
+// deploy record's `modelOf` without a trailing x (SPYx models SPY). It earns nothing, and no reading is
+// stored under its mint. So that a plan on the test network is shaped as the mainnet plan would be, it
+// takes the reading of the token it models, relabelled `sandbox`, with its source saying whose reading
+// it is and that it is applied to a test token. The method is the reading's own, so the engine ranks
+// readings as it would the model's (`pickPrimaryYield`), and so is the time. A rate is never made up: a model with no reading leaves the token without one,
 // and the engine leaves it out (NO_YIELD).
 //
 // Only readings: a test token's exit stays its tier's ceiling. Bearing's measured depth is a mainnet
@@ -34,7 +35,6 @@ export function modelYields(tokens: BasketAsset[], readings: ModelReading[]): Yi
         ...reading,
         assetId: token.id,
         source: `${reading.source} (${symbol}'s reading, applied to ${token.symbol} on a test network)`,
-        method: `${reading.method}; the reading of ${symbol}, which ${token.symbol} models, applied to the test token`,
         provenance: 'sandbox' as const,
       })),
   );
