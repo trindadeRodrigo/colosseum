@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody } from '../../components/ui/Card';
+import { PAGE_TITLE } from '../../components/ui/heading';
 import { LatticeStatus } from '../../components/ui/Lattice';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { useT } from '../../i18n/I18nProvider';
@@ -192,11 +193,7 @@ export function SignInScreen({ next = AFTER_SIGN_IN, onDone, titleId }: SignInSc
             {signedIn ? t.signIn.done.title : t.signIn.title}
           </h2>
         ) : (
-          <h1
-            ref={heading}
-            tabIndex={-1}
-            className="max-w-(--tf-measure-display) font-display text-h1 font-normal"
-          >
+          <h1 ref={heading} tabIndex={-1} className={PAGE_TITLE}>
             {signedIn ? t.signIn.done.title : t.signIn.title}
           </h1>
         )}

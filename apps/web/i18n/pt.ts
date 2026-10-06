@@ -194,6 +194,7 @@ export const pt: Dictionary = {
         'Proteger US$ 50.000 por 18 meses, risco baixo',
         'US$ 80.000 para ter US$ 300 por mês de renda',
       ],
+      source: 'os limites do próprio exemplo',
     },
     readFailure: {
       unreachable:
@@ -352,6 +353,12 @@ export const pt: Dictionary = {
     mockSuffix: ', número de exemplo',
     stale: 'desatualizado',
     ageUnknown: 'idade desconhecida',
+    age: {
+      said: 'há {n} {unit}',
+      minute: ['minuto', 'minutos'],
+      hour: ['hora', 'horas'],
+      day: ['dia', 'dias'],
+    },
     missing: 'ainda sem fonte',
     provenance: 'Procedência',
     copy: 'Copiar fonte',

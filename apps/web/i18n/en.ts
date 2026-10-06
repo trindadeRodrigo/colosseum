@@ -224,6 +224,8 @@ export const en = {
         'Protect $50,000 for 18 months, low risk',
         '$80,000 for $300 a month of income',
       ],
+      /** The sheet's source line, for an example sent as it is: its limits are the app's own. */
+      source: 'this example’s own limits',
     },
     readFailure: {
       unreachable:
@@ -384,6 +386,16 @@ export const en = {
     mockSuffix: ', sample figure',
     stale: 'stale',
     ageUnknown: 'age unknown',
+    /**
+     * The age said in full in the pin's accessible name: `{n}` the count, `{unit}` its word. Words, not
+     * a function: a server component hands these to the pin, and a function cannot cross to the client.
+     */
+    age: {
+      said: '{n} {unit} old',
+      minute: ['minute', 'minutes'],
+      hour: ['hour', 'hours'],
+      day: ['day', 'days'],
+    },
     missing: 'no source yet',
     provenance: 'Provenance',
     copy: 'Copy source',
