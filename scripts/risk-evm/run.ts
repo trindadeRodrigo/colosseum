@@ -28,9 +28,11 @@ import {
   type Side,
   sellAmounts,
 } from './curve';
+import { type ListRun, listCandidates, poolRows } from './listed';
 import {
   cacheIsFresh,
   cachePath,
+  confirm,
   discover,
   type PoolCache,
   type PoolRef,
@@ -100,6 +102,12 @@ export type RunOptions = {
   poolsMaxAgeHours: number;
   rediscover: boolean;
   env?: Record<string, string | undefined>;
+  /**
+   * A run on the asset list (PLAN-UNIVERSE RU.6): the chain's tokens are the list's, each token's pools
+   * are the cut's reachable dollar pools confirmed on chain, and every reachable pool gets a row of its
+   * own in pools/<day>.jsonl. Absent = the run is as it always was.
+   */
+  listed?: ListRun;
   /** Measure only these tokens (by symbol): a second attempt within the hour fills in what the first missed. */
   only?: ReadonlySet<string> | null;
   /**
@@ -148,6 +156,17 @@ export type RunSummary = {
   httpRequests: number;
   durationMs: number;
   methodVersion: string;
+  /** A list run only: the files it read, the pools it was given and the pool rows it wrote. */
+  list?: {
+    list: string;
+    cut: string;
+    poolsConfirmed: number;
+    poolRows: number;
+    poolRowsQuoted: number;
+    poolRowsByReason: Record<string, number>;
+    poolsFile: string;
+    handListNotTracked: string[];
+  };
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -365,24 +384,30 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
 
   // 2. the pool list, from the file unless it is missing, old or asked for. The lookup reads the
   // chain as it is now, not at the pinned block: it takes a while and only needs today's pools.
-  const path = cachePath(opts.dir, chain);
+  // A list run keeps its own file: the hand list's pools and the list's never replace each other.
+  const listed = opts.listed;
+  const path = listed ? join(opts.dir, `pools-${chain.id}-list.json`) : cachePath(opts.dir, chain);
   let cache: PoolCache | null = readCache(path);
   let poolsRediscovered = false;
-  const fresh = cacheIsFresh(cache, chain, {
-    maxPools: opts.maxPools,
-    maxAgeHours: opts.poolsMaxAgeHours,
-    now: new Date(now()),
-  });
+  const fresh =
+    cacheIsFresh(cache, chain, {
+      maxPools: opts.maxPools,
+      maxAgeHours: opts.poolsMaxAgeHours,
+      now: new Date(now()),
+    }) &&
+    (!listed || cache.cut === listed.cut);
   if (opts.rediscover || !fresh) {
     try {
-      cache = await discover(chain, rpc, {
-        maxPools: opts.maxPools,
-        minLiquidityUsd: opts.minLiquidityUsd,
-        candidateLimit: opts.maxPools * 4,
-        blockTag: 'latest',
-        previous: cache,
-        log: opts.log,
-      });
+      cache = listed
+        ? await confirmListed(chain, rpc, listed, opts.maxPools, new Date(now()))
+        : await discover(chain, rpc, {
+            maxPools: opts.maxPools,
+            minLiquidityUsd: opts.minLiquidityUsd,
+            candidateLimit: opts.maxPools * 4,
+            blockTag: 'latest',
+            previous: cache,
+            log: opts.log,
+          });
       writeCache(path, cache);
       poolsRediscovered = true;
     } catch (e) {
@@ -401,9 +426,41 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
 
   // 3. per token: the pools' prices and their quotes, both at one block, then the row
   const sourceAt = (p: Pin) =>
-    `eth_call at block ${p.number} on ${chain.name} (chain ${chain.chainId}) through ${label}: Uniswap-v3-style pools by an injected quoter (state override), Uniswap v4 pools by the deployed Quoter; pool list from DexScreener`;
+    `eth_call at block ${p.number} on ${chain.name} (chain ${chain.chainId}) through ${label}: Uniswap-v3-style pools by an injected quoter (state override), Uniswap v4 pools by the deployed Quoter; pool list from ${listed ? `${listed.cut} through ${listed.list}` : 'DexScreener'}`;
   const fileAt = (p: Pin) => join(opts.dir, 'assets', `${p.time.toISOString().slice(0, 10)}.jsonl`);
   mkdirSync(join(opts.dir, 'assets'), { recursive: true });
+  const poolsFileAt = (p: Pin) =>
+    join(opts.dir, 'pools', `${p.time.toISOString().slice(0, 10)}.jsonl`);
+  if (listed) mkdirSync(join(opts.dir, 'pools'), { recursive: true });
+  const poolTally = { rows: 0, quoted: 0, byReason: {} as Record<string, number> };
+  /** A list run: one row per reachable pool of the token, with its own quote or the reason it has none. */
+  const writePoolRows = (
+    token: TokenConfig,
+    confirmed: PoolRef[],
+    at: Pin,
+    priced: LivePool[],
+    quotes: PoolQuotes[],
+  ) => {
+    if (!listed) return;
+    const lines = poolRows({
+      chain,
+      token,
+      listed,
+      blockTime: at.time,
+      blockNumber: at.number,
+      confirmed,
+      priced,
+      quotes,
+      source: sourceAt(at),
+    });
+    if (lines.length === 0) return;
+    appendFileSync(poolsFileAt(at), `${lines.map((l) => JSON.stringify(l)).join('\n')}\n`);
+    for (const l of lines) {
+      poolTally.rows++;
+      if (l.reason === null) poolTally.quoted++;
+      else poolTally.byReason[l.reason] = (poolTally.byReason[l.reason] ?? 0) + 1;
+    }
+  };
   const results: TokenResult[] = [];
   let mids: Mids | null = null;
   /** Set when the block in use must be replaced before the next read: why, for the log. */
@@ -432,6 +489,8 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
     results.push(result);
     if (pools.length === 0) {
       result.error = 'no eligible pool';
+      // its reachable pools are all against another token: each still gets its row, with the reason
+      writePoolRows(token, pools, pin, [], []);
       continue;
     }
     for (let again = 0; ; ) {
@@ -467,14 +526,17 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
           result.error = priced.length
             ? 'the pools disagree on the price'
             : 'no pool returned a price';
+          writePoolRows(token, pools, at, priced, []);
           break;
         }
+        const quotes = await quoteToken(chain, rpc, token, live, at.tag, opts.log);
+        writePoolRows(token, pools, at, priced, quotes);
         const row = buildRow({
           token,
           dollarDecimals: chain.dollar.decimals,
           blockTime: at.time,
           blockNumber: at.number,
-          pools: await quoteToken(chain, rpc, token, live, at.tag, opts.log),
+          pools: quotes,
           source: sourceAt(at),
         });
         if (!row.sell.some((p) => p.outUsd !== null)) {
@@ -535,5 +597,57 @@ export async function collectOnce(chain: ChainConfig, opts: RunOptions): Promise
     httpRequests: stats.httpRequests,
     durationMs: now() - started,
     methodVersion: METHOD_VERSION,
+    ...(listed
+      ? {
+          list: {
+            list: listed.list,
+            cut: listed.cut,
+            poolsConfirmed: todo.reduce((n, t) => n + t.pools.length, 0),
+            poolRows: poolTally.rows,
+            poolRowsQuoted: poolTally.quoted,
+            poolRowsByReason: poolTally.byReason,
+            poolsFile: poolsFileAt(first),
+            handListNotTracked: listed.handListNotTracked,
+          },
+        }
+      : {}),
+  };
+}
+
+/**
+ * The pool list of a list run: the cut's reachable dollar pools of each token, kept only when the chain
+ * confirms them, exactly as a DexScreener candidate is. Two calls; DexScreener is not asked.
+ */
+async function confirmListed(
+  chain: ChainConfig,
+  rpc: Rpc,
+  listed: ListRun,
+  maxPools: number,
+  at: Date,
+): Promise<PoolCache> {
+  const confirmed = await confirm(
+    chain,
+    rpc,
+    chain.tokens.map((token) => ({
+      token,
+      cands: listCandidates(chain, listed.pools[token.symbol] ?? []),
+    })),
+    maxPools,
+    'latest',
+  );
+  return {
+    chain: chain.id,
+    chainId: chain.chainId,
+    discoveredAt: at.toISOString(),
+    source: `${listed.cut} through ${listed.list}, then token0(), token1(), the factory's getPool() and the position manager's poolKeys() on chain`,
+    method: 'cut_candidates_confirmed_onchain',
+    maxPools,
+    cut: listed.cut,
+    tokens: Object.fromEntries(
+      confirmed.map((f) => [
+        f.token.symbol,
+        { address: f.token.address, pools: f.pools, skipped: f.skipped },
+      ]),
+    ),
   };
 }

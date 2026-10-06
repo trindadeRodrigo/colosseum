@@ -216,6 +216,34 @@ Every feed of the directory is read, whatever it is matched to (five reads each:
 
 `pnpm risk:universe robinhood` (PLAN-UNIVERSE RU.4) writes `scripts/risk/universe/robinhood.json` from the newest cut, oracle map and token list: one row per tracked stock, keyed on the token address, with its pools, its oracle or the reason it has none, and `autoRebalance`. It is committed, and it is what RU.6 makes the collector read. It refuses a cut and an oracle map that do not name the same token addresses. See `scripts/risk/universe/README.md`.
 
+## A run on the asset list
+
+`pnpm risk-evm:collect --list` (PLAN-UNIVERSE RU.6) collects the tracked stocks of `scripts/risk/universe/<chain>.json` instead of the hand list of `config.ts`, and keeps every reachable pool of each. `--loop --list` does the same every hour. **Without `--list` a run is exactly what it was**: the hand list, three pools a token, the same `evmq-0.1` rows, the same pool file. The list is committed, so its presence alone must not change a loop that is already running; that is why it is an option and not the default.
+
+```sh
+pnpm risk-evm:collect --list            # one run on the list
+RISK_EVM_MAX_POOLS=5 pnpm risk-evm:collect --list   # at most five pools a token
+```
+
+- **Tokens.** The rows of the list. Their pools come from the cut the list names (`inputs.cut`), which must be in `data/risk-evm/`: the list holds counts, the cut holds the pools. A list written from another cut, or a cut whose pools are not the ones the list counts, stops the run. A chain with no list file is collected from the hand list, and the run says so.
+- **Pools.** The cut's pools of the token that the vault reaches and that pair it with the dollar token go to the same on-chain confirmation a DexScreener candidate gets (the factory's `getPool`, the position manager's `poolKeys`, no hook). DexScreener is not asked. The confirmed list is kept in `pools-<chain>-list.json`, apart from the hand list's `pools-<chain>.json`, and is confirmed again when it is a day old or the cut changes. The per-token limit is a setting (`RISK_EVM_MAX_POOLS`): three on the hand list, every pool on the asset list.
+- **The asset row** is `evmq-0.1`, unchanged: the best single pool per size, now chosen among all the token's dollar pools. Its `source` names the cut and the list instead of DexScreener.
+- **The pool rows.** `pools/<day>.jsonl`, method `evmq-pools-0.1`: one row per reachable pool the list counts for the token, at the block of the asset row, with the pool's own quote at every size (`sell`, `buy`: `outUsd`, `costPct`, `unfilledShare` against the pool's own mid), its `midUsd`, `kind`, `venue`, `fee`, `tickSpacing`, the cut's TVL (`listTvlUsd`, `listTvlAt`: not read in the run) and `source`, `fetchedAt`, `method`, `provenance`. A pool with no quote has `quoted: false`, `sell` and `buy` `null`, and a `reason`, never a zero:
+  - `not_against_the_dollar_token`: the pool pairs the stock with ETH or with another stock. One call cannot price it in dollars; a two-hop quote is not built.
+  - `not_confirmed_on_chain`, `no_price_at_the_block`, `mid_far_from_the_median` (more than 2% from the median of the token's pools, as before), `no_quote_at_any_size`.
+  - A pool the vault cannot reach (DU3) has no row and is never asked.
+- **The address** of a token is written as the cut spells it, in the issuer registry's mixed case. That is the spelling `config.ts` has for the tokens collected before, so their history joins; the list itself holds the lower-case form.
+- **Tokens of the hand list that are not tracked** (TSM on Oct 5) are named at the start of a list run and not read by it. Their rows continue only where a run without `--list` continues.
+- `autoRebalance` and `autoRebalanceOpen` are not read: every tracked stock is collected.
+- What happens to a stock that leaves the list on a later run is not decided; a list run reads the list as it is.
+
+### The run of 2026-10-06 (block 81,202,501, 00:16 UTC, off session, by hand into a temporary folder)
+
+- 30 asset rows, one per tracked stock, none missing. 129 dollar pools sent to the chain, 129 confirmed.
+- **274 pool rows, one per reachable pool: 126 quoted, 3 `mid_far_from_the_median`, 145 `not_against_the_dollar_token`.** Of the reachable pools' $73.6M, $50.3M is in the 129 dollar pools, $12.7M in 99 pools against ETH, $9.9M in 40 pools against another stock and $0.7M in 6 pools whose other token the cut does not name.
+- 271 RPC calls in 48 requests, 29 seconds, with the confirmation of the pools. The hand list's run is 54 pools and about ten seconds.
+- **The asset row barely moves.** Against the three deepest dollar pools of each token at the same block, a pool beyond the three was the best at 4 of 480 points (MSTR and SGOV at $100, by 2.3 and 0.9 basis points). What the wider run adds is the pool rows, for a split across pools later.
+
 ## Files
 
 | File | What it is |
@@ -236,10 +264,12 @@ Every feed of the directory is read, whatever it is matched to (five reads each:
 | `multicall.ts`, `replay.ts` | Many reads in one `eth_call`; recorded answers given back to a test |
 | `record-discovery-fixture.ts` | Re-records `fixtures/risk-evm/robinhood-discovery.json.gz` from the chain |
 | `pareto.ts`, `cut.ts` | The command for the cut; the rule applied to a discovery file and what it reports. `cut.ts` has no I/O |
+| `listed.ts` | A run on the asset list: its tokens and pools from the list and the cut, and the pool rows. No I/O |
+| `record-list-fixture.ts` | Re-records `fixtures/risk-evm/robinhood-list-run.json.gz`: two runs for two stocks at one block |
 | `oracles.ts`, `feeds.ts` | The command for the oracle map; the directory, the match, the confirmation and one pass. `feeds.ts` reads only through the client it is given |
 | `record-oracles-fixture.ts` | Re-records `fixtures/risk-evm/robinhood-oracles.json.gz` from the directory and the chain |
 
-After editing `ClQuoter.sol`, run `pnpm exec tsx scripts/risk-evm/build-quoter.ts`; a test fails while the JSON is stale. The tests are in `tests/risk-evm.test.ts`. They replay `fixtures/risk-evm/robinhood-nvda-quotes.json` and the endpoint errors in `fixtures/risk-evm/rpc-errors.json`; none calls the network. The token list and the discovery are tested in `tests/risk-evm-universe.test.ts`, which replays one recorded pass for two tokens (`fixtures/risk-evm/robinhood-discovery.json.gz`). The cut is tested in `tests/risk-evm-cut.test.ts`, on the discovery of Oct 5 frozen to what the cut reads (`fixtures/risk/universe/robinhood-discovery-20261005T1947.json.gz`, made by `pnpm risk:freeze-universe-fixture <discovery.json> --chain robinhood`). The oracle map is tested in `tests/risk-evm-oracles.test.ts`, which replays one recorded pass (`fixtures/risk-evm/robinhood-oracles.json.gz`: the directory and the chain's answers at block 81,164,613).
+After editing `ClQuoter.sol`, run `pnpm exec tsx scripts/risk-evm/build-quoter.ts`; a test fails while the JSON is stale. The tests are in `tests/risk-evm.test.ts`. They replay `fixtures/risk-evm/robinhood-nvda-quotes.json` and the endpoint errors in `fixtures/risk-evm/rpc-errors.json`; none calls the network. The token list and the discovery are tested in `tests/risk-evm-universe.test.ts`, which replays one recorded pass for two tokens (`fixtures/risk-evm/robinhood-discovery.json.gz`). The cut is tested in `tests/risk-evm-cut.test.ts`, on the discovery of Oct 5 frozen to what the cut reads (`fixtures/risk/universe/robinhood-discovery-20261005T1947.json.gz`, made by `pnpm risk:freeze-universe-fixture <discovery.json> --chain robinhood`). The run on the list is tested in `tests/risk-evm-list.test.ts`, which replays two recorded runs for NVDA and GME at one block (`fixtures/risk-evm/robinhood-list-run.json.gz`): every reachable pool, then the three deepest. The oracle map is tested in `tests/risk-evm-oracles.test.ts`, which replays one recorded pass (`fixtures/risk-evm/robinhood-oracles.json.gz`: the directory and the chain's answers at block 81,164,613).
 
 ## What Rodrigo's side needs before the API can serve these curves (RISK-1)
 
