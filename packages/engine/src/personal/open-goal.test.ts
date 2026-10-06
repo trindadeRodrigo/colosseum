@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ISO_3166_1_ALPHA2 } from './countries';
 import { compose } from './index';
 import { allReasons, editShelf, fixtureContext, launchShelf, sheet, violations } from './testing';
 import { isCountryCode, PersonalInputError, type PersonalSheet } from './types';
@@ -40,7 +41,7 @@ describe('a goal with no date', () => {
 
 describe('the country of a sheet', () => {
   it('is a country a person lives in, not an unknown place, a group or a code no country has', () => {
-    for (const code of ['BR', 'PT', 'US', 'XK']) expect(isCountryCode(code), code).toBe(true);
+    for (const code of ['BR', 'PT', 'US']) expect(isCountryCode(code), code).toBe(true);
     for (const code of ['ZZ', 'AA', 'EU', 'UN', 'XA', 'QZ', 'QQ', 'br', 'BRA', ''])
       expect(isCountryCode(code), code).toBe(false);
   });
@@ -73,5 +74,36 @@ describe('the country of a sheet', () => {
       ctx,
     );
     expect(inPortugal.lines.map((l) => l.assetId)).toContain('solana:spyx');
+  });
+});
+
+// The re-review of Oct 6: aliases and retired codes are no country; "the UK" is GB.
+describe('the list of countries', () => {
+  it('refuses aliases, retired, reserved and user-assigned codes, and takes assigned ones', () => {
+    for (const code of [
+      'SU',
+      'UK',
+      'DD',
+      'YU',
+      'CS',
+      'AN',
+      'FX',
+      'QO',
+      'EA',
+      'IC',
+      'AC',
+      'ZZ',
+      'XX',
+      'XK',
+      'EU',
+    ])
+      expect(isCountryCode(code), code).toBe(false);
+    for (const code of ['GB', 'RU', 'BR', 'US', 'PT']) expect(isCountryCode(code), code).toBe(true);
+    expect(ISO_3166_1_ALPHA2.size).toBe(249);
+  });
+
+  it('a sheet for SU or UK is refused, so it never buys what is blocked for RU or GB', () => {
+    for (const country of ['SU', 'UK'])
+      expect(() => compose(sheet({ country }), shelf, ctx), country).toThrow(/is not a country/);
   });
 });

@@ -117,7 +117,7 @@ const SYSTEM = [
   'sleeves: when the person splits the money into a part kept safe and easy to take out and a part that seeks a return ("70% safe and liquid, 30% to risk"), two items: kind safe_yield for the safe part and kind goal for the rest, each sharePct as written, adding up to 100. When the shares they write do not add up to 100 ("70% here and the other half there"), give null and put sleeves in unclear. No split: null.',
   'risk with a split: the risk of the goal part ("as low as possible for the 70%, go crazy for the rest" is high). The safe part needs none.',
   "The text may hold several messages: the goal, then the person's answers to questions. Read them together; a later message corrects an earlier one.",
-  'currency: the ISO code of the currency the goal is counted in (USD, BRL, EUR), only when written. country: ISO two-letter code of where the person lives, only when written. chain: a blockchain the person names.',
+  'currency: the ISO code of the currency the goal is counted in (USD, BRL, EUR), only when written. country: ISO two-letter code of where the person lives, only when written (the United Kingdom, "the UK" and Britain are GB, never UK). chain: a blockchain the person names.',
   'portfolios: the names of shared portfolios the person names ("starting from The Seven"), as written. noCredit: true only if the person rules out credit or lending. cannotHold: classes the person rules out ("no stocks", "sem ações").',
   'language: the language the text is written in. unclear: every field the text mentions in a way you cannot read with confidence.',
 ].join('\n');

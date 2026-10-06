@@ -14,6 +14,7 @@ import {
   type YieldObservation,
 } from '@colosseum/schemas';
 import { z } from 'zod';
+import { ISO_3166_1_ALPHA2 } from './countries';
 import { LegType } from './leg-types';
 import type { ThemeList } from './theme-list';
 
@@ -56,23 +57,13 @@ export const PersonalLimits = z.object({
 });
 export type PersonalLimits = z.infer<typeof PersonalLimits>;
 
-// The codes ISO 3166 leaves to users (AA, QM to QZ, XA to XZ but Kosovo's XK, ZZ for an unknown
-// place) and the groups that are no country (EU, EZ, UN): never where a person lives.
-const NOT_A_COUNTRY = /^(?:AA|EU|EZ|UN|Q[M-Z]|X[A-JL-Z]|ZZ)$/;
-const REGIONS = new Intl.DisplayNames(['en'], { type: 'region', fallback: 'none' });
 /**
- * Whether `code` names a country a person can live in (Oct 6). The sheet's regex takes any two
- * capitals; an unknown place ("ZZ") or a code no country has would let every asset through the
- * country check, so the engine and the route refuse it.
+ * Whether `code` names a country a person can live in: an ISO 3166-1 alpha-2 code assigned now
+ * (`countries.ts`, data with its source and date). An alias, a retired or a reserved code ("UK", "SU",
+ * "YU", "EU", "ZZ") is no country: it would let assets blocked for the real one through the country
+ * check, so the intake asks again and the engine and the route refuse it.
  */
-export function isCountryCode(code: string): boolean {
-  if (!/^[A-Z]{2}$/.test(code) || NOT_A_COUNTRY.test(code)) return false;
-  try {
-    return REGIONS.of(code) !== undefined;
-  } catch {
-    return false;
-  }
-}
+export const isCountryCode = (code: string): boolean => ISO_3166_1_ALPHA2.has(code);
 
 /**
  * LOCAL TYPE. `BasketSheet` with the person's limits. This is what `compose` validates and runs on.
