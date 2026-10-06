@@ -1,5 +1,20 @@
 'use client';
 import type { BasketCard } from '@colosseum/schemas';
+import { useState } from 'react';
+import {
+  CaseLegend,
+  CasePlot,
+  CaseReadout,
+  type CaseSeries,
+  ReadoutFigure,
+} from '../../components/ui/CaseChart';
+import {
+  nearestIndex,
+  SERIES_FADE,
+  seriesOpacity,
+  useChartCursor,
+  useWidth,
+} from '../../components/ui/chart';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import type { PinSource } from '../../components/ui/provenance';
 import { LOCALE } from '../../i18n';
@@ -12,8 +27,12 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 // no price of a stock or of gold is projected. The two end figures sit under the chart with the pin of
 // the plan's yield observation. With no yield observation, or yields the engine could not read, there
 // is no chart: a range with no source is not drawn.
+//
+// The chart is drawn at its measured width and reads out a month under a crosshair, as the landing's
+// cases do (components/ui/CaseChart.tsx, `useChartCursor`): the month, the high end and the low end,
+// each on the plan's yield pin. Pointing at the legend lights a line and dims the other.
 
-const W = 640;
+const W_DEFAULT = 640;
 const H = 200;
 const TOP = 14;
 const BOTTOM = 24;
@@ -48,9 +67,26 @@ export function PlanChart({
       pct / 100,
     );
 
+  const [box, measured] = useWidth<HTMLDivElement>();
+  const W = measured || W_DEFAULT;
+  const x = (month: number) => LEFT + (month / months) * (W - LEFT - RIGHT);
+  const [focus, setFocus] = useState<string | null>(null);
+  const series: CaseSeries[] = [
+    { id: 'high', label: words.high, color: 'var(--chart-1)', dashed: true },
+    { id: 'low', label: words.low, color: 'var(--chart-3)', dashed: true },
+  ];
+  const at = (pct: number, m: number) => amountUsd + (amountUsd * pct * m) / 1200;
+  const cursor = useChartCursor(months + 1, (px, w) =>
+    nearestIndex(
+      (px / (w || 1)) * W,
+      Array.from({ length: months + 1 }, (_, m) => x(m)),
+    ),
+  );
+  const m = cursor.at?.i ?? null;
+  const [highS, lowS] = series as [CaseSeries, CaseSeries];
+
   const min = amountUsd * 0.98;
   const max = Math.max(high, amountUsd * 1.01) * 1.01;
-  const x = (m: number) => LEFT + (m / months) * (W - LEFT - RIGHT);
   const y = (v: number) =>
     TOP + (H - TOP - BOTTOM) - ((v - min) / (max - min)) * (H - TOP - BOTTOM);
   const grid = [amountUsd, (amountUsd + high) / 2, high];
@@ -75,63 +111,109 @@ export function PlanChart({
 
   return (
     <figure data-ui="plan-chart" className="m-0 flex flex-col gap-2">
-      <section
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: a region that scrolls on a phone must be reachable by keyboard
-        tabIndex={0}
-        aria-label={words.table}
-        className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-      >
-        <svg
-          role="img"
-          aria-label={words.label(months, percent(lowPct), percent(highPct))}
-          viewBox={`0 0 ${W} ${H}`}
-          className="block h-auto w-full min-w-[480px]"
-          style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}
-        >
-          {grid.map((g) => (
-            <g key={g}>
-              <line x1={LEFT} x2={W - RIGHT} y1={y(g)} y2={y(g)} stroke="var(--border)" />
-              <text x={LEFT - 6} y={y(g) + 3} textAnchor="end" fill="var(--muted-foreground)">
-                {money(g)}
+      <div ref={box}>
+        <CasePlot label={words.label(months, percent(lowPct), percent(highPct))} cursor={cursor}>
+          <svg
+            aria-hidden="true"
+            viewBox={`0 0 ${W} ${H}`}
+            className="block h-auto w-full"
+            style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}
+          >
+            {grid.map((g) => (
+              <g key={g}>
+                <line x1={LEFT} x2={W - RIGHT} y1={y(g)} y2={y(g)} stroke="var(--border)" />
+                <text x={LEFT - 6} y={y(g) + 3} textAnchor="end" fill="var(--muted-foreground)">
+                  {money(g)}
+                </text>
+              </g>
+            ))}
+            <path
+              d={`M${x(0)} ${y(amountUsd)} L${x(months)} ${y(high)} L${x(months)} ${y(low)} Z`}
+              fill="var(--chart-3)"
+              fillOpacity={0.28}
+            />
+            <g data-series="high" opacity={seriesOpacity(focus, 'high')} className={SERIES_FADE}>
+              <line
+                x1={x(0)}
+                y1={y(amountUsd)}
+                x2={x(months)}
+                y2={y(high)}
+                stroke="var(--chart-1)"
+                strokeWidth={2}
+                strokeDasharray="5 3"
+              />
+              <text x={x(months) + 6} y={y(high) + 3} fill="var(--foreground)">
+                {words.high}
               </text>
             </g>
-          ))}
-          <path
-            d={`M${x(0)} ${y(amountUsd)} L${x(months)} ${y(high)} L${x(months)} ${y(low)} Z`}
-            fill="var(--chart-3)"
-            fillOpacity={0.28}
-          />
-          <line
-            x1={x(0)}
-            y1={y(amountUsd)}
-            x2={x(months)}
-            y2={y(high)}
-            stroke="var(--chart-1)"
-            strokeWidth={2}
-            strokeDasharray="5 3"
-          />
-          <line
-            x1={x(0)}
-            y1={y(amountUsd)}
-            x2={x(months)}
-            y2={y(low)}
-            stroke="var(--chart-3)"
-            strokeDasharray="3 3"
-          />
-          <text x={x(months) + 6} y={y(high) + 3} fill="var(--foreground)">
-            {words.high}
-          </text>
-          <text x={x(months) + 6} y={y(low) + 12} fill="var(--muted-foreground)">
-            {words.low}
-          </text>
-          <text x={LEFT} y={H - 6} fill="var(--muted-foreground)">
-            0
-          </text>
-          <text x={x(months)} y={H - 6} textAnchor="end" fill="var(--muted-foreground)">
-            {t.goal.card.months(months)}
-          </text>
-        </svg>
-      </section>
+            <g data-series="low" opacity={seriesOpacity(focus, 'low')} className={SERIES_FADE}>
+              <line
+                x1={x(0)}
+                y1={y(amountUsd)}
+                x2={x(months)}
+                y2={y(low)}
+                stroke="var(--chart-3)"
+                strokeDasharray="3 3"
+              />
+              <text x={x(months) + 6} y={y(low) + 12} fill="var(--muted-foreground)">
+                {words.low}
+              </text>
+            </g>
+            <text x={LEFT} y={H - 6} fill="var(--muted-foreground)">
+              0
+            </text>
+            <text x={x(months)} y={H - 6} textAnchor="end" fill="var(--muted-foreground)">
+              {t.goal.card.months(months)}
+            </text>
+            {m !== null && (
+              <g pointerEvents="none">
+                <line
+                  data-ui="chart-cross"
+                  x1={x(m)}
+                  x2={x(m)}
+                  y1={TOP}
+                  y2={H - BOTTOM}
+                  stroke="var(--muted-foreground)"
+                  strokeDasharray="2 3"
+                />
+                {(
+                  [
+                    ['high', highPct, 'var(--chart-1)'],
+                    ['low', lowPct, 'var(--chart-3)'],
+                  ] as const
+                ).map(([key, pct, color]) => (
+                  <rect
+                    key={key}
+                    x={x(m) - 3.5}
+                    y={y(at(pct, m)) - 3.5}
+                    width={7}
+                    height={7}
+                    fill={color}
+                    stroke="var(--card)"
+                    strokeWidth={1.5}
+                  />
+                ))}
+              </g>
+            )}
+          </svg>
+        </CasePlot>
+      </div>
+      <CaseReadout at={cursor.at} hint={words.hint}>
+        {m !== null && (
+          <>
+            <span className="text-foreground">{words.month(m)}</span>
+            <ReadoutFigure
+              series={highS}
+              value={<ProvenancePin value={money(at(highPct, m))} obs={yieldObs} labels={t.pin} />}
+            />
+            <ReadoutFigure
+              series={lowS}
+              value={<ProvenancePin value={money(at(lowPct, m))} obs={yieldObs} labels={t.pin} />}
+            />
+          </>
+        )}
+      </CaseReadout>
+      <CaseLegend series={series} focus={focus} onFocus={setFocus} label={words.series} />
       <figcaption className="flex flex-wrap items-baseline gap-x-2 text-body-sm">
         <span className="text-muted-foreground">{words.after(months)}:</span>
         <ProvenancePin value={`${money(low)} – ${money(high)}`} obs={yieldObs} labels={t.pin} />

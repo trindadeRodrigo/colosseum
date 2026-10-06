@@ -192,7 +192,7 @@ describe('the showcase', () => {
       expect(pins.length).toBeGreaterThan(0);
       // nothing in a sample case is drawn as live
       expect(pins.map((p) => p.getAttribute('data-state'))).toEqual(pins.map(() => 'mock'));
-      expect(c.querySelector('svg[role="img"]')?.getAttribute('aria-label')).toBeTruthy();
+      expect(c.querySelector('[role="img"]')?.getAttribute('aria-label')).toBeTruthy();
       expect(c.querySelector('blockquote')?.textContent).toMatch(/^“.+”$/);
     }
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);

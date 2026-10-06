@@ -1,10 +1,12 @@
 'use client';
-import { type KeyboardEvent, type ReactNode, useId, useState } from 'react';
+import { type ReactNode, useId, useState } from 'react';
 import {
   CHART_LABELS,
   type ChartLabels,
   type ChartSeriesClass,
+  nearestIndex,
   SERIES_VAR,
+  useChartCursor,
   useWidth,
 } from './chart';
 import { fullDate, nice, tagWidth, timeTicks } from './chart-scale';
@@ -17,7 +19,7 @@ import { cn } from './cn';
 // the headline figure (pinned by the caller), a note, range tabs and the caller's tools; then panes
 // stacked on one time axis, the value axis on the right, a crosshair with date and value tags, and a
 // readout line. Inline SVG drawn at the element's real width, so the 11px axis type stays 11px at
-// every width. Hover and the arrow keys both move the crosshair.
+// every width. A mouse, a finger and the arrow keys move the crosshair (`useChartCursor`, chart.ts).
 //
 // Wood only: two series at most (s1, s2), or covered and not covered (cv, un) with their words in the
 // legend and the readout. Solid is measured; a dashed segment is a point with too few samples.
@@ -238,7 +240,6 @@ export function TimeChart(props: TimeChartProps) {
   const [box, W0] = useWidth<HTMLDivElement>();
   const W = Math.max(280, W0);
   const clip = useId().replace(/:/g, '');
-  const [hover, setHover] = useState<{ i: number; py: number | null } | null>(null);
 
   const all = panes.flatMap((p) => p.series.flatMap((s) => s.data.map((d) => d.t)));
   const geo = (() => {
@@ -286,6 +287,10 @@ export function TimeChart(props: TimeChartProps) {
     };
   })();
 
+  const cursor = useChartCursor(geo?.ts.length ?? 0, (x) =>
+    geo ? nearestIndex(x, geo.ts.map(geo.X)) : 0,
+  );
+  const hover = cursor.at;
   const head = <ChartHead {...props} range={range} onRange={onRange} />;
   if (!geo)
     return (
@@ -299,30 +304,6 @@ export function TimeChart(props: TimeChartProps) {
   const { X, plotW, plotH, H, ts, vis } = geo;
   const at = hover ? ts[Math.max(0, Math.min(ts.length - 1, hover.i))] : undefined;
   const readT = at ?? ts[ts.length - 1];
-
-  const move = (clientX: number, clientY: number, rect: DOMRect) => {
-    const x = clientX - rect.left;
-    const yy = clientY - rect.top;
-    let best = 0;
-    let bd = Number.POSITIVE_INFINITY;
-    ts.forEach((t, i) => {
-      const d = Math.abs(X(t) - x);
-      if (d < bd) {
-        bd = d;
-        best = i;
-      }
-    });
-    setHover({ i: best, py: yy });
-  };
-  const onKey = (e: KeyboardEvent) => {
-    const d = ({ ArrowRight: 1, ArrowLeft: -1, Home: -1e9, End: 1e9 } as Record<string, number>)[
-      e.key
-    ];
-    if (d == null) return;
-    e.preventDefault();
-    const i = hover ? hover.i : ts.length - 1;
-    setHover({ i: Math.max(0, Math.min(ts.length - 1, i + d)), py: null });
-  };
 
   return (
     <div data-ui="time-chart" className={props.className}>
@@ -343,8 +324,7 @@ export function TimeChart(props: TimeChartProps) {
         role="img"
         aria-label={aria}
         data-ui="chart-plot"
-        onKeyDown={onKey}
-        onBlur={() => setHover(null)}
+        {...cursor.keys}
         className="relative"
       >
         {W0 > 0 && (
@@ -354,8 +334,7 @@ export function TimeChart(props: TimeChartProps) {
             height={H}
             viewBox={`0 0 ${W} ${H}`}
             className="block overflow-visible"
-            onMouseMove={(e) => move(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect())}
-            onMouseLeave={() => setHover(null)}
+            {...cursor.pointer}
           >
             {geo.panes.map((g, pi) => (
               <PaneDraw
