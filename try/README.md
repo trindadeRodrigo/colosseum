@@ -60,7 +60,6 @@ amount: 50000
 income: 300
 horizon: 5y
 risk: low
-country: BR
 withdrawals: { monthly: 300, from: 2026-11, months: 24 }
 ```
 ````
@@ -83,7 +82,7 @@ add under `answers`, and a block you can copy. Add the answers and run it again.
 | `income` | for an income goal, the dollars a month |
 | `horizon` | the time frame: `10y`, `18m`, `2 anos`, or a number of months |
 | `risk` | `low`, `medium` or `high` |
-| `country` | where the person lives, two letters (`BR`, `PT`) |
+| `country` | accepted and ignored: a plan reads no country (gate `COUNTRY-REMOVED`, Oct 6) |
 | `currency` | the goal's currency when not dollars (`BRL`) |
 | `language` | `en` or `pt`, when the text does not settle it |
 | `themes` | shared portfolios to start from, by slug: `[the-seven]` |
@@ -155,7 +154,7 @@ You can let a model in a chat (Claude Code, with any model you pick, say Sonnet 
 I have $20,000 and want it to grow over 10 years, medium risk. I live in Brazil.
 ```json reply sonnet
 {"goal":"grow","risk":"medium","amountUsd":20000,"incomeTargetUsdMonthly":null,"horizonMonths":120,
- "currency":null,"country":"BR","chain":null,"portfolios":[],"noCredit":false,"cannotHold":[],
+ "currency":null,"chain":null,"portfolios":[],"noCredit":false,"cannotHold":[],
  "language":"en","unclear":[]}
 ```
 ````

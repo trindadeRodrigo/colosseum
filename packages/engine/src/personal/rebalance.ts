@@ -33,7 +33,7 @@ import { BPS, byName, floorCents, split, sum, toCents, toUsd } from './money';
 import { PERSONAL_PARAMS } from './params';
 import { eligibleForGoal } from './registry';
 import { reason } from './templates';
-import { isCountryCode, PersonalInputError, PersonalParameters, PersonalSheet } from './types';
+import { PersonalInputError, PersonalParameters, PersonalSheet } from './types';
 import { monthAfter, tableFor } from './world';
 
 // Rebalancing, sleeve by sleeve (ENG-3 slice 4; docs/vault/PROMPT-BUILD-SOLVER.md). The output is a
@@ -434,13 +434,6 @@ export function proposeSleeveRebalances(
   const refuse = (path: string, message: string): never => {
     throw new PersonalInputError('InvalidContext', [{ path, message }]);
   };
-  // A stored plan whose country is no country ("ZZ") would let every asset through the switch's
-  // country check: it is refused, never treated as allowed (Oct 6).
-  if (!isCountryCode(sheet.country))
-    refuse(
-      'plan.sheet.country',
-      `${sheet.country} is not a country: the plan must be made again with where the person lives`,
-    );
   if (plan.paramsHash !== undefined && paramsHashOf(P) !== plan.paramsHash)
     refuse(
       'context.params',

@@ -14,7 +14,6 @@ import {
 } from './intake';
 import {
   amountInText,
-  countryNamed,
   exitTimesIn,
   goalCuesIn,
   horizonsIn,
@@ -64,7 +63,6 @@ const ANSWER: Required<Pick<IntakeAnswers, 'goal' | 'amountUsd' | 'horizonMonths
   incomeTargetUsdMonthly: 20,
   horizonMonths: 24,
   risk: 'medium',
-  country: 'US',
   currency: 'USD',
   themes: [],
 };
@@ -108,7 +106,7 @@ describe('the checks after the model, on the evaluation set (C14)', () => {
     // The model said it could not read the risk, and the rules parser reads "guardar" as a goal to
     // grow where the model reads one to protect: both are asked, in the person's language.
     expect(result.flags).toContain('disagrees_with_rules:goal');
-    expect(result.questions.map((q) => q.field)).toEqual(['goal', 'amountUsd', 'risk', 'country']);
+    expect(result.questions.map((q) => q.field)).toEqual(['goal', 'amountUsd', 'risk']);
   });
 
   it('two amounts in one sentence: each is held to the text, and one figure for both is doubted', () => {
@@ -150,9 +148,9 @@ describe('the checks after the model, on the evaluation set (C14)', () => {
       ['currency_not_in_text', ['not_in_text:currency'], { currency: null }, ['currency']],
       [
         'invalid_fields',
-        ['model_invalid:goal', 'model_invalid:risk', 'model_invalid:country'],
-        { goal: null, risk: null, country: null },
-        ['goal', 'risk', 'country'],
+        ['model_invalid:goal', 'model_invalid:risk'],
+        { goal: null, risk: null },
+        ['goal', 'risk'],
       ],
     ];
     for (const [name, flags, draft, asked] of cases) {
@@ -186,7 +184,6 @@ describe('the checks after the model, on the evaluation set (C14)', () => {
       'amountUsd',
       'horizonMonths',
       'risk',
-      'country',
     ]);
   });
 
@@ -231,23 +228,19 @@ describe('the checks after the model, on the evaluation set (C14)', () => {
 });
 
 describe('the review of Oct 5: what the model gives that the text does not support is asked', () => {
-  it('a country, a goal or a risk with no word for it in the text is the suggestion, not the reading', () => {
+  it('a goal or a risk with no word for it in the text is the suggestion, not the reading', () => {
     const cases: [string, string, string, unknown][] = [
-      ['country_not_in_text', 'country', 'no_cue:country', 'BR'],
       ['goal_without_cue', 'goal', 'no_cue:goal', 'protect'],
       ['risk_without_cue', 'risk', 'no_cue:risk', 'high'],
     ];
     for (const [name, field, flag, value] of cases) {
       const { goal, reply } = adversarial[name] as { goal: string; reply: unknown };
-      const result = run(goal, { reply, answers: field === 'country' ? {} : { country: 'US' } });
+      const result = run(goal, { reply });
       expect(result.flags, name).toContain(flag);
       const q = result.questions.find((x) => x.field === field);
       expect(q, name).toMatchObject({ read: value });
       expect(result.sheet, name).toBeNull();
     }
-    // Where the text says it, it is taken: "I live in Brazil", "Moro no Brasil".
-    for (const id of ['en-protect-country-no-stocks', 'pt-protect-country-no-stocks'])
-      expect(run(id).flags, id).not.toContain('no_cue:country');
   });
 
   it('an amount in euros, pounds or another currency never passes as dollars', () => {
@@ -304,25 +297,6 @@ describe('the review of Oct 5: what the model gives that the text does not suppo
 });
 
 describe('the re-review of Oct 5', () => {
-  it('a country named only under a negation is no cue for it', () => {
-    expect(countryNamed('Not in Brazil anymore, I moved to Portugal', 'BR')).toBe(false);
-    expect(countryNamed('Not in Brazil anymore, I moved to Portugal', 'PT')).toBe(true);
-    expect(countryNamed('I no longer live in Brazil', 'BR')).toBe(false);
-    expect(countryNamed('Não moro mais no Brasil', 'BR')).toBe(false);
-    expect(countryNamed('Saí do Brasil em 2024', 'BR')).toBe(false);
-    expect(countryNamed('Moro no Brasil', 'BR')).toBe(true);
-    expect(countryNamed('I left Chile and now live in Brazil', 'BR')).toBe(true);
-    const moved = runIntake({
-      text: 'Not in Brazil anymore, I moved to Portugal. Grow $5,000 over 2 years, high risk.',
-      nowMonth: NOW,
-      reply: { goal: 'grow', amountUsd: 5000, horizonMonths: 24, risk: 'high', country: 'BR' },
-      homeChain: 'solana',
-      portfolios,
-    });
-    expect(moved.flags).toContain('no_cue:country');
-    expect(moved.questions.find((q) => q.field === 'country')).toMatchObject({ read: 'BR' });
-  });
-
   it('cues match whole words only: "highly" is not high, "lowest" not low, "keeper" not keep', () => {
     expect(riskCuesIn('I am highly motivated')).toEqual([]);
     expect(riskCuesIn('the lowest fees, a medium-sized sum')).toEqual(['medium']);
@@ -421,15 +395,14 @@ describe('questions', () => {
 
   it('asks for the chain while the person has none, and makes no sheet', () => {
     const result = run('en-grow-10y-high', { homeChain: null });
-    expect(result.questions.map((q) => q.field)).toEqual(['country', 'chains']);
-    const answered = run('en-grow-10y-high', { homeChain: null, answers: { country: 'US' } });
-    expect(answered.questions.map((q) => q.field)).toEqual(['chains']);
-    expect(answered.sheet).toBeNull();
+    // No country is asked (gate COUNTRY-REMOVED, Oct 6): it was ['country', 'chains'].
+    expect(result.questions.map((q) => q.field)).toEqual(['chains']);
+    expect(result.sheet).toBeNull();
   });
 
   it('a portfolio answered off the shelf is refused and asked again', () => {
     const result = run('en-grow-10y-high', {
-      answers: { country: 'US', themes: ['moon-rockets'] },
+      answers: { themes: ['moon-rockets'] },
     });
     expect(result.flags).toContain('answer_not_on_shelf:themes');
     expect(result.questions.map((q) => q.field)).toEqual(['themes']);
@@ -454,7 +427,7 @@ describe('the person confirms a sheet', () => {
 
   it('the answers win over what was read, and the refusals read become limits', () => {
     const result = run('pt-protect-reais-sem-acoes', {
-      answers: { goal: 'protect', amountUsd: 550, risk: 'low', country: 'BR' },
+      answers: { goal: 'protect', amountUsd: 550, risk: 'low' },
     });
     expect(result.sheet).toMatchObject({
       goal: 'protect',
@@ -462,11 +435,10 @@ describe('the person confirms a sheet', () => {
       horizonMonths: 12,
       risk: 'low',
       currency: 'BRL',
-      country: 'BR',
       language: 'pt',
       limits: { cannotHold: { classes: ['stock'] } },
     });
-    const noCredit = run('en-grow-3y-no-credit', { answers: { country: 'US' } });
+    const noCredit = run('en-grow-3y-no-credit');
     expect(noCredit.sheet?.limits).toEqual({ creditTolerance: 'none' });
   });
 
@@ -579,23 +551,14 @@ describe('the first chat of Oct 6, replayed (MOCK replies)', () => {
     );
     // "Highest yield" is read as high risk for the part that seeks it: one risk for the whole plan
     // is not asked.
-    expect(first.questions.map((q) => q.field)).toEqual([
-      'goal',
-      'sleeves',
-      'horizonMonths',
-      'country',
-    ]);
+    expect(first.questions.map((q) => q.field)).toEqual(['goal', 'sleeves', 'horizonMonths']);
     expect(first.flags).toContain('max_yield_asked');
-    // The country is asked with its reason.
-    expect(first.questions.find((q) => q.field === 'country')?.text).toBe(
-      "Some assets aren't offered in every country, and some can't be offered to people in certain countries. Where do you live?",
-    );
   });
 
-  it('turn 2: the answers in words are read; only the country is left, and nothing answered is asked', () => {
+  it('turn 2: the answers in words are read, nothing answered is asked, and nothing is left', () => {
     const first = turn(1);
     const second = turn(2);
-    expect(second.questions.map((q) => q.field)).toEqual(['country']);
+    expect(second.questions).toEqual([]);
     const answered = ['goal', 'sleeves', 'horizonMonths'];
     for (const f of answered) expect(second.questions.map((q) => q.field)).not.toContain(f);
     expect(first.questions.map((q) => q.field)).toEqual(expect.arrayContaining(answered));
@@ -606,8 +569,8 @@ describe('the first chat of Oct 6, replayed (MOCK replies)', () => {
     ).toEqual([]);
   });
 
-  it('turn 3: 70/30, grow, high risk on the part that seeks the goal, no date, no glide, Brazil', () => {
-    const third = turn(3);
+  it('turn 2 makes the sheet: 70/30, grow, high risk on the part that seeks the goal, no date, no glide', () => {
+    const third = turn(2);
     expect(third.questions).toEqual([]);
     const sheet = third.sheet as PersonalSheet;
     expect(PersonalSheet.safeParse(sheet).success).toBe(true);
@@ -619,7 +582,6 @@ describe('the first chat of Oct 6, replayed (MOCK replies)', () => {
       goal: 'grow',
       amountUsd: 2000,
       risk: 'high',
-      country: 'BR',
       horizonOpen: true,
       rules: { useHoldings: true, glide: false },
     });
@@ -648,7 +610,7 @@ describe('the first chat of Oct 6, replayed (MOCK replies)', () => {
     const wrong = turn(2, chat.horizonFromExitTime);
     expect(wrong.flags).toContain('exit_time_not_horizon');
     expect(wrong.draft.horizonMonths).toBeNull();
-    expect(wrong.questions.map((q) => q.field)).toEqual(['country']);
+    expect(wrong.questions).toEqual([]);
   });
 
   it('with the model off, "no hard cap" is still no date, and the split is still asked', () => {
@@ -657,23 +619,22 @@ describe('the first chat of Oct 6, replayed (MOCK replies)', () => {
     expect(off.questions.map((q) => q.field)).toContain('sleeves');
   });
 
-  it('always asks the country when none is given, and never takes ZZ or any default (Oct 6)', () => {
+  // Gate COUNTRY-REMOVED (Rodrigo, Oct 6): the country is never asked, read or said back.
+  it('never asks the country, reads none, and says none back', () => {
     const second = turn(2);
-    expect(second.sheet).toBeNull();
-    expect(second.questions.map((q) => q.field)).toEqual(['country']);
-    // An answer, or a model reading, that is no country is asked again; nothing fills one in.
-    const text = conversationText(chat.messages[0] ?? '', chat.messages.slice(1, 2));
-    const base = { text, nowMonth: NOW, homeChain: 'solana' as const, portfolios };
-    const answered = runIntake({ ...base, reply: chat.replies[1], answers: { country: 'ZZ' } });
-    expect(answered.flags).toContain('not_a_country:answer');
-    expect(answered.questions.map((q) => q.field)).toEqual(['country']);
-    expect(answered.sheet).toBeNull();
-    const read = runIntake({
-      ...base,
-      reply: { ...(chat.replies[1] as object), country: 'ZZ' },
+    expect(second.questions.map((q) => q.field)).not.toContain('country');
+    expect(second.sheet?.country).toBeUndefined();
+    expect((second.readBack ?? []).join(' ')).not.toMatch(/You live|Brazil|country/);
+    const said = runIntake({
+      text: 'I live in Brazil. Grow $5,000 over 5 years, high risk.',
+      nowMonth: NOW,
+      reply: { goal: 'grow', amountUsd: 5000, horizonMonths: 60, risk: 'high', country: 'BR' },
+      homeChain: 'solana',
+      portfolios,
     });
-    expect(read.questions.map((q) => q.field)).toEqual(['country']);
-    expect(runIntake({ ...base, reply: null }).questions.map((q) => q.field)).toContain('country');
+    expect(said.draft.country).toBeNull();
+    expect(said.sheet?.country).toBeUndefined();
+    expect(said.questions).toEqual([]);
   });
 });
 
@@ -686,7 +647,6 @@ describe('the review of Oct 6', () => {
       reply,
       homeChain: 'solana',
       portfolios,
-      answers: { country: 'BR' },
     });
 
   it('a loose risk word under a negation, or a bare "crazy", is no cue for high', () => {
@@ -707,31 +667,6 @@ describe('the review of Oct 6', () => {
     });
     expect(calm.flags).toContain('no_cue:risk');
     expect(calm.questions.map((q) => q.field)).toContain('risk');
-  });
-
-  it('"the UK" or "Britain" is GB; UK is never taken as a code (re-review of Oct 6)', () => {
-    expect(countryNamed('I live in the UK', 'GB')).toBe(true);
-    expect(countryNamed('Moro na Grã-Bretanha', 'GB')).toBe(true);
-    expect(countryNamed('I left the UK for Brazil', 'GB')).toBe(false);
-    expect(countryNamed('I live in Ukraine', 'GB')).toBe(false);
-    const base = { goal: 'grow', amountUsd: 5000, horizonMonths: 60, risk: 'high' };
-    const text = 'I live in the UK. Grow $5,000 over 5 years, high risk.';
-    const run = (reply: Record<string, unknown>, answers = {}) =>
-      runIntake({ text, nowMonth: NOW_MONTH, reply, homeChain: 'solana', portfolios, answers });
-    for (const country of ['UK', 'GB']) {
-      const r = run({ ...base, country });
-      expect(r.sheet?.country, country).toBe('GB');
-      expect(r.questions, country).toEqual([]);
-    }
-    // An answer of SU or UK is no country: it is asked again, and no sheet is made.
-    for (const country of ['SU', 'UK']) {
-      const r = run({ ...base, country: null }, { country });
-      expect(r.sheet, country).toBeNull();
-      expect(
-        r.questions.map((q) => q.field),
-        country,
-      ).toEqual(['country']);
-    }
   });
 
   it('the negation of a loose risk phrase stops at a comma or a sentence break', () => {
@@ -835,10 +770,9 @@ describe('the glide is opt-in (gate GLIDE-OPT-IN, Oct 6)', () => {
     runIntake({
       text,
       nowMonth: NOW,
-      reply: { goal: 'grow', amountUsd: 5000, horizonMonths, risk: 'high', country: 'US' },
+      reply: { goal: 'grow', amountUsd: 5000, horizonMonths, risk: 'high' },
       homeChain: 'solana',
       portfolios,
-      answers: { country: 'US' },
     });
   it('is off for a time frame alone, and offered in one sentence', () => {
     const r = sheetOf('Grow $5,000 for the next 15 years, high risk.', 180);

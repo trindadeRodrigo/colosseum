@@ -1203,14 +1203,12 @@ describe('a plan as compose makes it', () => {
   });
 });
 
-// The review of Oct 6: a stored plan whose country is no country is never treated as allowed.
-describe('a stored plan with no real country', () => {
-  it('is refused, and names the fix', () => {
+// Gate COUNTRY-REMOVED (Oct 6): this test held that a stored plan with country ZZ was refused. The
+// plan reads no country: it is answered like any other.
+describe('a stored plan with any country, or none', () => {
+  it('is answered the same', () => {
     const at = vault({ [SPY]: 5500, [SYRUP]: 3500, [CASH]: 1000 });
     const unknown = { ...ONE, sheet: { ...ONE.sheet, country: 'ZZ' } };
-    expect(() => proposeSleeveRebalances(unknown, context(at))).toThrow(
-      /plan\.sheet\.country: ZZ is not a country/,
-    );
-    expect(proposeSleeveRebalances(ONE, context(at)).proposals).toHaveLength(1);
+    expect(proposeSleeveRebalances(unknown, context(at)).proposals).toHaveLength(1);
   });
 });

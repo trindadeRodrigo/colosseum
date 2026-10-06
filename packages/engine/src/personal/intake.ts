@@ -10,7 +10,6 @@ import { z } from 'zod';
 import { draftFromRules } from './draft';
 import {
   amountInText,
-  countryNamed,
   currenciesIn,
   exitTimesIn,
   glideAskedIn,
@@ -33,7 +32,7 @@ import {
   type QuestionId,
   render,
 } from './templates';
-import { HoldableClass, isCountryCode, PersonalLimits, PersonalSheet } from './types';
+import { HoldableClass, PersonalLimits, PersonalSheet } from './types';
 
 // The guided intake (gate GUIDED-INTAKE; DESIGN-VAULT section 7). A model reads the person's goal into
 // a draft of the sheet and says which fields it could not read. Everything after that is here, in pure
@@ -54,7 +53,6 @@ export const QUESTION_FIELDS = [
   'incomeTargetUsdMonthly',
   'horizonMonths',
   'risk',
-  'country',
   'currency',
   'themes',
   'chains',
@@ -72,7 +70,6 @@ export const IntakeAnswers = z
     incomeTargetUsdMonthly: z.number().positive(),
     horizonMonths: BasketSheet.shape.horizonMonths,
     risk: BasketSheet.shape.risk,
-    country: BasketSheet.shape.country,
     currency: GoalCurrency,
     themes: BasketSheet.shape.themes,
     language: Language,
@@ -172,7 +169,6 @@ const REPLY_FIELDS = {
   horizonMonths: BasketSheet.shape.horizonMonths,
   risk: BasketSheet.shape.risk,
   currency: GoalCurrency,
-  country: BasketSheet.shape.country,
   chain: z.enum(['solana', 'base', 'robinhood']),
   portfolios: BasketSheet.shape.themes,
   language: Language,
@@ -292,8 +288,6 @@ export function runIntake(input: IntakeInput): IntakeResult {
     const r = read.reply;
     draft.goal = r.goal;
     draft.risk = r.risk;
-    // "UK" is the person's word for GB, never a code: it is read as GB, and GB is then held to the text.
-    draft.country = r.country === 'UK' ? 'GB' : r.country;
     draft.language = r.language;
 
     // An amount must be written in the text, in dollars or with no currency beside it.
@@ -425,7 +419,7 @@ export function runIntake(input: IntakeInput): IntakeResult {
       if ((QUESTION_FIELDS as readonly string[]).includes(field))
         unclear.add(field as QuestionField);
 
-    // A goal, a risk or a country the text has no word for is the model's suggestion, not a reading:
+    // A goal or a risk the text has no word for is the model's suggestion, not a reading:
     // it is kept as the form's start and asked.
     if (draft.goal !== null && !goalCuesIn(text).includes(draft.goal)) {
       flags.push('no_cue:goal');
@@ -434,10 +428,6 @@ export function runIntake(input: IntakeInput): IntakeResult {
     if (draft.risk !== null && !riskCuesIn(text).includes(draft.risk)) {
       flags.push('no_cue:risk');
       unclear.add('risk');
-    }
-    if (draft.country !== null && !countryNamed(text, draft.country)) {
-      flags.push('no_cue:country');
-      unclear.add('country');
     }
 
     // Where the two readers both read a field and differ, the field is unclear. Two readings of the risk
@@ -488,14 +478,6 @@ export function runIntake(input: IntakeInput): IntakeResult {
   const language: Language =
     answers.language ?? draft.language ?? input.language ?? rules.language ?? 'en';
   const P = PERSONAL_PARAMS;
-  // A country no person lives in ("ZZ") is never taken, from the text or an answer: it is asked.
-  for (const where of ['draft', 'answer'] as const) {
-    const code = where === 'draft' ? draft.country : answers.country;
-    if (code && !isCountryCode(code)) {
-      flags.push(`not_a_country:${where}`);
-      unclear.add('country');
-    }
-  }
   // No date: the person said so, in words or as an answer. A date given wins.
   const horizonOpen =
     answers.horizonOpen ??
@@ -509,11 +491,9 @@ export function runIntake(input: IntakeInput): IntakeResult {
     horizonMonths:
       answers.horizonMonths ?? (horizonOpen ? P.openEndedHorizonMonths : draft.horizonMonths),
     risk: answers.risk ?? draft.risk,
-    country: answers.country ?? draft.country,
     currency: answers.currency ?? draft.currency,
     themes: answers.themes ?? draft.themes,
   };
-  if (value.country !== null && !isCountryCode(value.country)) value.country = null;
   const sleeves = answers.sleeves ?? draft.sleeves;
   const keptSafe = sleeves?.some((x) => x.kind === 'safe_yield') === true && sleeves.length > 1;
   // An answer naming a portfolio is held to the shelf too.
@@ -526,12 +506,7 @@ export function runIntake(input: IntakeInput): IntakeResult {
   }
 
   const needed = (field: QuestionField): boolean => {
-    if (
-      field in answers &&
-      field !== 'chains' &&
-      !(field === 'themes' && value.themes === null) &&
-      !(field === 'country' && value.country === null)
-    )
+    if (field in answers && field !== 'chains' && !(field === 'themes' && value.themes === null))
       return false;
     switch (field) {
       case 'goal':
@@ -540,9 +515,6 @@ export function runIntake(input: IntakeInput): IntakeResult {
         return value[field] === null || unclear.has(field);
       case 'horizonMonths':
         return !horizonOpen && (value[field] === null || unclear.has(field));
-      // Always asked when not given (Oct 6): some assets aren't offered everywhere, or to everyone.
-      case 'country':
-        return value[field] === null || unclear.has(field);
       case 'sleeves':
         return unclear.has(field);
       case 'incomeTargetUsdMonthly':
@@ -578,7 +550,7 @@ export function runIntake(input: IntakeInput): IntakeResult {
       ...(horizonOpen ? { horizonOpen: true } : {}),
       risk: value.risk,
       themes: value.themes ?? [],
-      country: value.country,
+      // No country (gate COUNTRY-REMOVED, Rodrigo, Oct 6): the plan does not read one.
       chains: [input.homeChain],
       ...(value.goal === 'income' && value.incomeTargetUsdMonthly !== null
         ? { incomeTargetUsdMonthly: value.incomeTargetUsdMonthly }

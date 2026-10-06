@@ -22,7 +22,6 @@ import {
   type CandidateId,
   type ComposeContext,
   HeldPosition,
-  isCountryCode,
   PersonalInputError,
   type PersonalObservation,
   PersonalParameters,
@@ -228,12 +227,6 @@ export function buildWorld(
   const parsedSheet = PersonalSheet.safeParse(sheetIn);
   if (!parsedSheet.success) throw new PersonalInputError('InvalidSheet', issues(parsedSheet.error));
   const sheet = parsedSheet.data;
-  // A country no person lives in ("ZZ", an unknown place) would let every asset through the
-  // country check: it is refused, never treated as allowed (Oct 6).
-  if (!isCountryCode(sheet.country))
-    throw new PersonalInputError('InvalidSheet', [
-      { path: 'country', message: `${sheet.country} is not a country: say where the person lives` },
-    ]);
 
   const parsedParams = PersonalParameters.safeParse(context.params ?? PERSONAL_PARAMS);
   if (!parsedParams.success)

@@ -942,11 +942,6 @@ export const QUESTION_TEMPLATES = {
     en: 'How much income a month, in dollars, do you aim for?',
     pt: 'Quanto de renda por mês, em dólares, você busca?',
   },
-  // Always asked when not given, with its reason (Oct 6).
-  country: {
-    en: "Some assets aren't offered in every country, and some can't be offered to people in certain countries. Where do you live?",
-    pt: 'Alguns ativos não são oferecidos em todos os países, e alguns não podem ser oferecidos a quem mora em certos países. Onde você mora?',
-  },
   themes: {
     en: 'Which shared portfolio, if any, do you want to start from?',
     pt: 'De qual portfólio compartilhado você quer partir, se de algum?',
@@ -987,10 +982,6 @@ export const READBACK_TEMPLATES = {
   THEMES: {
     en: 'The plan starts from {themes|list}.',
     pt: 'O plano parte de {themes|list}.',
-  },
-  COUNTRY: {
-    en: 'You live {country|inCountry}.',
-    pt: 'Você mora {country|inCountry}.',
   },
   CHAIN: {
     en: 'The plan lives on {chain|chain}, the chain of your wallet.',

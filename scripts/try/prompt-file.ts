@@ -57,7 +57,6 @@ const ALIASES: Record<string, keyof IntakeAnswers> = {
   horizonMonths: 'horizonMonths',
   goal: 'goal',
   risk: 'risk',
-  country: 'country',
   currency: 'currency',
   language: 'language',
   themes: 'themes',
@@ -70,7 +69,8 @@ const ALIASES: Record<string, keyof IntakeAnswers> = {
   horizonOpen: 'horizonOpen',
 };
 /** Keys read here and not passed to the intake as they are. */
-const OWN_KEYS = ['chain', 'holdings', 'withdrawals'] as const;
+// `country` is still accepted, so older files run, and read by nothing (gate COUNTRY-REMOVED, Oct 6).
+const OWN_KEYS = ['chain', 'country', 'holdings', 'withdrawals'] as const;
 export const ANSWER_KEYS = [...Object.keys(ALIASES), ...OWN_KEYS].sort();
 
 const Month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'a month is written YYYY-MM');
@@ -308,7 +308,6 @@ export function parsePromptFile(source: string, file = 'prompt file'): PromptGoa
       out[field] = field === 'horizonMonths' ? monthsOf(v) : field === 'sleeves' ? sleevesOf(v) : v;
     }
     if (typeof out.currency === 'string') out.currency = out.currency.toUpperCase();
-    if (typeof out.country === 'string') out.country = out.country.toUpperCase();
     if (raw.withdrawals !== undefined) {
       if (out.obligations !== undefined)
         problems.push(`${where}: write \`withdrawals\` or \`obligations\`, not both`);

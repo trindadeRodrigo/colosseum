@@ -18,7 +18,6 @@ amount: 120000
 income: 600
 horizon: 5y
 risk: low
-country: PT
 withdrawals: { monthly: 600, from: 2026-11, months: 24 }
 ```
 
@@ -32,7 +31,6 @@ goal: protect
 amount: 30000
 horizon: 24
 risk: low
-country: BR
 language: pt
 ```
 
@@ -46,7 +44,6 @@ goal: grow
 amount: 10000
 horizon: 10y
 risk: high
-country: GB
 sleeves: { goal: 50, ai: 50 }
 ```
 
@@ -60,7 +57,6 @@ goal: protect
 amount: 15000
 horizon: 60
 risk: medium
-country: BR
 currency: BRL
 language: pt
 obligations:
@@ -80,7 +76,6 @@ goal: grow
 amount: 25000
 horizon: 8y
 risk: medium
-country: DE
 limits:
   creditTolerance: none
   cannotHold: { classes: [stock, etf] }
@@ -96,7 +91,6 @@ goal: grow
 amount: 8000
 horizon: 5y
 risk: medium
-country: BR
 language: pt
 themes: [the-seven]
 holdings: { NVDA: 2000 }
@@ -114,7 +108,6 @@ goal: protect
 amount: 40000
 horizon: 3y
 risk: low
-country: ES
 limits: { mayNeedInMonths: 12 }
 ```
 

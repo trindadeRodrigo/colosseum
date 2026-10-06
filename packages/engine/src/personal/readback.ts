@@ -35,7 +35,6 @@ export function readBack(sheet: PersonalSheet, portfolios: ShelfPortfolio[]): st
     out.push(say('CURRENCY', { currency: sheet.currency }));
   if (sheet.themes.length > 0)
     out.push(say('THEMES', { themes: sheet.themes.map(nameOf).join(',') }));
-  out.push(say('COUNTRY', { country: sheet.country }));
   for (const chain of sheet.chains) out.push(say('CHAIN', { chain }));
   out.push(say(sheet.rules.useHoldings ? 'HOLDINGS_ON' : 'HOLDINGS_OFF'));
   // The glide is opt-in (gate GLIDE-OPT-IN, Oct 6): said only when it is on.

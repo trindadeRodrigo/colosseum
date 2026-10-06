@@ -14,7 +14,6 @@ import {
   type YieldObservation,
 } from '@colosseum/schemas';
 import { z } from 'zod';
-import { ISO_3166_1_ALPHA2 } from './countries';
 import { LegType } from './leg-types';
 import type { ThemeList } from './theme-list';
 
@@ -56,14 +55,6 @@ export const PersonalLimits = z.object({
     .optional(),
 });
 export type PersonalLimits = z.infer<typeof PersonalLimits>;
-
-/**
- * Whether `code` names a country a person can live in: an ISO 3166-1 alpha-2 code assigned now
- * (`countries.ts`, data with its source and date). An alias, a retired or a reserved code ("UK", "SU",
- * "YU", "EU", "ZZ") is no country: it would let assets blocked for the real one through the country
- * check, so the intake asks again and the engine and the route refuse it.
- */
-export const isCountryCode = (code: string): boolean => ISO_3166_1_ALPHA2.has(code);
 
 /**
  * LOCAL TYPE. `BasketSheet` with the person's limits. This is what `compose` validates and runs on.

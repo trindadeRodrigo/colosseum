@@ -46,7 +46,7 @@ describe('the goal evaluation set', () => {
     }
   });
 
-  it('covers every kind of goal, income targets, negations, and a named portfolio, chain and country', () => {
+  it('covers every kind of goal, income targets, negations, and a named portfolio and chain', () => {
     const said = (key: string) => goals.map((g) => g.expect[key]);
     expect(new Set(said('goal'))).toEqual(new Set(['grow', 'income', 'protect']));
     expect(new Set(said('risk'))).toEqual(new Set(['low', 'medium', 'high', null]));
@@ -71,7 +71,8 @@ describe('the goal evaluation set', () => {
       for (const slug of (themes as string[] | null) ?? []) expect(slugs).toContain(slug);
     expect(said('themes').filter((x) => x !== null)).toHaveLength(2);
     expect(said('chains').filter((x) => x !== null)).toHaveLength(2);
-    expect(said('country').filter((x) => x !== null)).toHaveLength(2);
+    // The country is not read (gate COUNTRY-REMOVED, Oct 6): no goal expects one. It was 2.
+    expect(said('country').filter((x) => x !== null)).toHaveLength(0);
     // The amount and the time frame are in every sentence: a parser must find them in the text. An
     // amount in another currency than dollars is not an amount in dollars: the intake asks for it.
     for (const g of goals) {
@@ -106,7 +107,7 @@ describe('the rules parser on the evaluation set, as it is today', () => {
         'currency',
       ],
       'en-grow-by-2031-theme-chain': ['amountUsd', 'risk', 'themes', 'chains', 'currency'],
-      'en-protect-country-no-stocks': ['goal', 'amountUsd', 'risk', 'country', 'currency'],
+      'en-protect-country-no-stocks': ['goal', 'amountUsd', 'risk', 'currency'],
       'en-grow-6m-conservative': ['amountUsd', 'currency'],
       'pt-grow-10y-high': ['amountUsd', 'risk', 'currency'],
       'pt-protect-18m-low': ['goal', 'amountUsd', 'risk', 'currency'],
@@ -125,7 +126,7 @@ describe('the rules parser on the evaluation set, as it is today', () => {
         'language',
         'currency',
       ],
-      'pt-protect-country-no-stocks': ['goal', 'amountUsd', 'risk', 'country', 'currency'],
+      'pt-protect-country-no-stocks': ['goal', 'amountUsd', 'risk', 'currency'],
       'pt-grow-6m-conservative': ['amountUsd', 'currency'],
       // Added with ENG-3 slice 4.
       'en-grow-3y-no-credit': ['amountUsd', 'currency'],
@@ -157,7 +158,7 @@ describe('the rules parser on the evaluation set, as it is today', () => {
       horizonMonths: 13,
       risk: 8,
       themes: 16,
-      country: 16,
+      country: 18,
       chains: 16,
       incomeTargetUsdMonthly: 14,
       rules: 18,

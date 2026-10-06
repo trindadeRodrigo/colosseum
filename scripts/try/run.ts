@@ -26,7 +26,6 @@ export const ANSWER_KEY: Record<QuestionField, string> = {
   incomeTargetUsdMonthly: 'income',
   horizonMonths: 'horizon',
   risk: 'risk',
-  country: 'country',
   currency: 'currency',
   themes: 'themes',
   chains: 'chain',

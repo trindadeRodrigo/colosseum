@@ -46,7 +46,6 @@ function numbersOf(sheet: PersonalSheet): Set<number> {
 function namesOf(sheet: PersonalSheet, lang: Language): Set<string> {
   const words = [
     ...sheet.chains.map((c) => WORDS[lang].chain[c] ?? c),
-    WORDS[lang].inCountry[sheet.country] ?? sheet.country,
     sheet.currency ?? '',
     ...sheet.themes.map((slug) => portfolios.find((p) => p.slug === slug)?.name ?? slug),
     ...(sheet.limits?.cannotHold?.classes ?? []).map((c) => CLASS_WORDS[lang][c] ?? c),
@@ -226,7 +225,8 @@ describe('the read-back (C18)', () => {
       good.map((s) => s.replace('$80,000', '$85,000')),
       good.map((s) => s.replace('60 months', '61 months')),
       good.map((s) => s.replace('Solana', 'Base')),
-      good.map((s) => s.replace('in Brazil', 'in Chile')),
+      // The country is no longer said (gate COUNTRY-REMOVED, Oct 6): an added one is caught.
+      [...good, 'You live in Chile.'],
       good.map((s) => s.replace('April 2027', 'May 2027')),
       [...good, 'Most people pick NVDA.'],
       good.map((s) => s.replace('50%', '55%')),
@@ -244,7 +244,6 @@ describe('the read-back (C18)', () => {
         'amount',
         'chain',
         'classes',
-        'country',
         'currency',
         'goal',
         'income',
