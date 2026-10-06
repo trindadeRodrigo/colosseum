@@ -46,10 +46,13 @@ test('the embed’s page has a bare root: no bar, no wallet, no face or wood of 
   await expect(page.getByRole('navigation')).toHaveCount(0);
   await expect(page.getByRole('main')).toHaveCount(0);
   await expect(page.getByRole('region', { name: en.embed.label })).toBeVisible();
-  // the product's pages may not be framed by anybody
-  const goal = await page.request.get('/goal');
-  expect(goal.headers()['content-security-policy']).toBe("frame-ancestors 'none'");
-  expect(goal.headers()['x-frame-options']).toBe('DENY');
+  // the product's pages may not be framed by anybody, nor an address under /embed, or spelled like
+  // it, that is not the embed (it falls to a page with a wallet button)
+  for (const path of ['/goal', '/embed/x', '/embed/a/b/c', '/Embed', '/EMBED/solana/abc']) {
+    const answer = await page.request.get(path);
+    expect(answer.headers()['content-security-policy'], path).toBe("frame-ancestors 'none'");
+    expect(answer.headers()['x-frame-options'], path).toBe('DENY');
+  }
 });
 
 for (const [skin, query] of Object.entries(SKINS))

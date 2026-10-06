@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 
 // Next's own path matcher, the one that reads `source` in next.config.ts.
 const { pathToRegexp } = createRequire(import.meta.url)('next/dist/compiled/path-to-regexp') as {
-  pathToRegexp: (source: string) => RegExp;
+  pathToRegexp: (source: string, keys?: unknown[], options?: { sensitive?: boolean }) => RegExp;
 };
 
-import { frameHeaders, partnerOrigins } from './frame-policy';
+import { NextRequest } from 'next/server';
+import { config, proxy } from '../proxy';
+import { frameHeaders, isEmbedPage, partnerOrigins } from './frame-policy';
 
 // Who may frame the app: the embed, by this app and the partners a deployment names; nothing else, by
 // nobody (embed-shell.md, binding rule 7).
@@ -26,7 +28,17 @@ describe('the framing policy', () => {
       expect(csp(path, env)).toEqual([
         "frame-ancestors 'self' https://partner.example https://app.bank.example:8443",
       ]);
-    for (const path of ['/', '/goal', '/orders/1', '/sign-in', '/embedded', '/dev/embed'])
+    for (const path of [
+      '/',
+      '/goal',
+      '/orders/1',
+      '/sign-in',
+      '/embedded',
+      '/dev/embed',
+      '/embed/x',
+      '/embed/a/b/c',
+      '/embed/solana/abc/more',
+    ])
       expect(csp(path, env)).toEqual(["frame-ancestors 'none'"]);
     expect(rulesFor('/goal').flatMap((r) => r.headers)).toContainEqual({
       key: 'X-Frame-Options',
@@ -46,5 +58,29 @@ describe('the framing policy', () => {
       ),
     ).toEqual(['https://ok.example', 'https://ok2.example:443']);
     expect(csp('/embed')).toEqual(["frame-ancestors 'self'"]);
+  });
+
+  it('holds to nobody what Next’s rules give the partners’ policy by case alone, or under /embed and not the embed', () => {
+    // a header's source is matched without regard to case, so `/Embed` takes the embed's rule…
+    expect(csp('/Embed')).toEqual(["frame-ancestors 'self'"]);
+    // …and the proxy, which every spelling of /embed reaches, takes it back
+    const reaches = (path: string) =>
+      config.matcher.some((m) => pathToRegexp(m, [], { sensitive: true }).test(path));
+    for (const path of ['/Embed', '/EMBED/solana/abc', '/eMbEd/x', '/embed/x', '/embed/a/b/c']) {
+      expect(reaches(path), path).toBe(true);
+      expect(isEmbedPage(path), path).toBe(false);
+      const answer = proxy(new NextRequest(new URL(path, 'https://tenonfi.example')));
+      expect(answer.headers.get('content-security-policy'), path).toBe("frame-ancestors 'none'");
+      expect(answer.headers.get('x-frame-options'), path).toBe('DENY');
+    }
+    for (const path of ['/embed', '/embed/solana/abc']) {
+      expect(isEmbedPage(path)).toBe(true);
+      const answer = proxy(new NextRequest(new URL(path, 'https://tenonfi.example')));
+      expect(answer.headers.get('content-security-policy')).toBeNull();
+      expect(answer.headers.get('x-frame-options')).toBeNull();
+    }
+    // and it is reached by nothing else
+    for (const path of ['/goal', '/embedded', '/dev/embed'])
+      expect(reaches(path), path).toBe(false);
   });
 });

@@ -29,13 +29,7 @@ export const PARTNER_BUTTON =
 const call = (path: string, init?: RequestInit) =>
   fetch(apiUrl(API, path), { cache: 'no-store', ...init, redirect: 'error' });
 
-export function EmbedGoal({
-  style,
-  suppressHatch,
-}: {
-  style: CSSProperties;
-  suppressHatch: boolean;
-}) {
+export function EmbedGoal({ style }: { style: CSSProperties }) {
   const t = useT();
   const lang = useLang();
   const words = t.embed;
@@ -95,7 +89,6 @@ export function EmbedGoal({
         lang={LOCALE[lang]}
         title={read ? (sentence ?? words.unread) : words.title}
         lead={read ? undefined : words.lead}
-        suppressHatch={suppressHatch}
         credit={{ name: 'tenonfi', href: '/', symbol: <Mark size={16} /> }}
         labels={{
           loading: words.loading,

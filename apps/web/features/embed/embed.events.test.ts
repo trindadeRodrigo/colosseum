@@ -42,9 +42,7 @@ function api(answer: (url: string) => Response) {
 }
 
 const goal = (lang: Lang = 'en') =>
-  mount(
-    inLanguage(lang, createElement(EmbedGoal, { style: themeStyle(SAMPLE), suppressHatch: false })),
-  );
+  mount(inLanguage(lang, createElement(EmbedGoal, { style: themeStyle(SAMPLE) })));
 const shell = (host: HTMLElement) => find(host, '[data-ui="embed-shell"]');
 
 beforeEach(() => {
@@ -159,7 +157,7 @@ describe('the embed’s vault', () => {
       disclaimer: 'x',
     };
   };
-  const shown = async (respond: (url: string) => Response, suppressHatch = false) => {
+  const shown = async (respond: (url: string) => Response) => {
     api(respond);
     const host = await mount(
       inLanguage(
@@ -168,7 +166,6 @@ describe('the embed’s vault', () => {
           chain: 'solana',
           address: VAULT,
           style: themeStyle(SAMPLE),
-          suppressHatch,
         }),
       ),
     );
@@ -214,12 +211,5 @@ describe('the embed’s vault', () => {
       await unmountAll();
       vi.restoreAllMocks();
     }
-  });
-
-  it('drops the hatch and keeps the word MOCK when the partner’s muted colour is too faint', async () => {
-    const host = await shown(() => json(answer()), true);
-    const section = find(host, '[data-ui="embed-shell"]');
-    expect(section.style.getPropertyValue('--tf-hatch')).toBe('transparent');
-    expect(section.textContent).toContain('MOCK');
   });
 });

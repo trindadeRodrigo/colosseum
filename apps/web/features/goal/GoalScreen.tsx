@@ -79,7 +79,9 @@ export function GoalScreen() {
       }
       // A goal handed over by the landing page (in the tab), or by a partner's embed, whose frame
       // shares no storage with this tab: in the fragment of the address, which no server sees. The
-      // fragment is taken out of the address once read.
+      // fragment is taken out of the address once read. Any site can link here with a goal of its
+      // own: it is only text in the box, read by the public reader (`POST /goals`), and nothing is
+      // built or signed until the person asks.
       const fragment = /^#goal=(.*)$/.exec(window.location.hash)?.[1];
       let typed = window.sessionStorage.getItem(GOAL_HANDOFF);
       window.sessionStorage.removeItem(GOAL_HANDOFF);

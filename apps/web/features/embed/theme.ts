@@ -3,8 +3,15 @@ import type { CSSProperties } from 'react';
 // The partner's skin (embed-shell.md; token-mapping.md section 8): the colours, face and radius the
 // host app hands the embed. The embed is a page in a frame, and a frame does not inherit its host's
 // CSS, so the host names them in the frame's address (`?fg=…&bg=…`). Each value is taken only in a
-// form that can be nothing but what it says: a colour, a length (or `pill`), a list of font names. Anything else
-// is dropped, and the system's own colours stand in (`Canvas`, `CanvasText`, `GrayText`).
+// form that can be nothing but what it says: an opaque `#rrggbb` colour, a length (or `pill`), a list
+// of font names. Anything else is dropped, and the system's own colours stand in.
+//
+// Anyone can write that address, on our origin, so the colours are held to a floor: the disclaimer,
+// the pins and MOCK must stay readable (binding rules 2 and 3). The ground is taken only with a text
+// colour at 4.5:1 or more on it, and neither without the other; the muted colour and the accent (the
+// button's ground, under text in the partner's ground) are each taken only at 4.5:1 on the ground,
+// and the muted colour is the text colour when none is taken. A colour that cannot be measured
+// against a ground the partner named is not taken.
 
 export type PartnerTheme = {
   fg?: string;
@@ -21,8 +28,9 @@ export type PartnerTheme = {
   scheme?: 'light' | 'dark';
 };
 
-const COLOR =
-  /^(#[0-9a-f]{3,4}|#[0-9a-f]{6}|#[0-9a-f]{8}|(rgb|rgba|hsl|hsla|oklch|oklab)\([0-9.,%\s/+-]{1,60}\))$/i;
+const COLOR = /^#[0-9a-f]{6}$/i;
+/** WCAG AA for body text: what the disclaimer, the pins and MOCK are drawn at, at least. */
+export const FLOOR = 4.5;
 const LENGTH = /^(0|\d{1,2}(\.\d{1,2})?(px|rem|em))$/;
 const FONT = /^[A-Za-z0-9 ,"'-]{1,80}$/;
 
@@ -31,9 +39,20 @@ const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)?
 /** The partner's skin from the frame's address, each value checked. */
 export function partnerTheme(params: Record<string, string | string[] | undefined>): PartnerTheme {
   const theme: PartnerTheme = {};
-  for (const key of ['fg', 'bg', 'muted', 'border', 'accent'] as const) {
+  const color = (key: string) => {
     const v = one(params[key]);
-    if (v && COLOR.test(v)) theme[key] = v;
+    return v && COLOR.test(v) ? v : undefined;
+  };
+  const [fg, bg] = [color('fg'), color('bg')];
+  if (fg && bg && (contrast(fg, bg) ?? 0) >= FLOOR) {
+    theme.fg = fg;
+    theme.bg = bg;
+    for (const key of ['muted', 'accent'] as const) {
+      const v = color(key);
+      if (v && (contrast(v, bg) ?? 0) >= FLOOR) theme[key] = v;
+    }
+    theme.border = color('border');
+    if (!theme.border) delete theme.border;
   }
   for (const key of ['font', 'mono'] as const) {
     const v = one(params[key]);
@@ -54,7 +73,7 @@ export function themeStyle(theme: PartnerTheme): CSSProperties {
   const vars: Record<string, string> = {};
   if (theme.fg) vars['--embed-fg'] = theme.fg;
   if (theme.bg) vars['--embed-bg'] = theme.bg;
-  if (theme.muted) vars['--embed-muted'] = theme.muted;
+  if (theme.muted ?? theme.fg) vars['--embed-muted'] = theme.muted ?? (theme.fg as string);
   if (theme.border) vars['--embed-border'] = theme.border;
   if (theme.accent) vars['--embed-accent'] = theme.accent;
   if (theme.font) vars['--embed-font'] = theme.font;
@@ -83,13 +102,3 @@ export function contrast(a: string, b: string): number | null {
   if (la === null || lb === null) return null;
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
-
-/**
- * The partner's muted colour is too faint on their ground for the hatch (under 4.5:1): the hatch is
- * not drawn and the word MOCK stays (embed-shell.md, "Low-contrast partner muted").
- */
-export const hatchTooFaint = (theme: PartnerTheme): boolean => {
-  if (!theme.muted || !theme.bg) return false;
-  const ratio = contrast(theme.muted, theme.bg);
-  return ratio !== null && ratio < 4.5;
-};

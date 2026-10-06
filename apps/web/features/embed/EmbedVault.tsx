@@ -37,12 +37,10 @@ export function EmbedVault({
   chain,
   address,
   style,
-  suppressHatch,
 }: {
   chain: ChainId;
   address: string;
   style: CSSProperties;
-  suppressHatch: boolean;
 }) {
   const t = useT();
   const lang = useLang();
@@ -104,7 +102,6 @@ export function EmbedVault({
         lang={LOCALE[lang]}
         title={words.vault.title(answer.name)}
         lead={words.vault.lead}
-        suppressHatch={suppressHatch}
         credit={{ name: 'tenonfi', href: page, symbol: <Mark size={16} /> }}
         labels={labels}
       >
