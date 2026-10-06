@@ -18,7 +18,7 @@ import { parse } from '../../components/ui/test/html';
 import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
-import { EMBEDDED, json, SOLANA, signedInPort } from '../wallet/test/fake-port';
+import { EMBEDDED, EVM, json, SOLANA, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { BuyScreen } from './BuyScreen';
@@ -333,14 +333,14 @@ describe('the plan screen', () => {
     expect(primaryLink(host)).toBeUndefined();
   });
 
-  it('says plainly that Robinhood Chain is not ready, and offers no buy there', async () => {
+  it('offers the buy on Robinhood Chain, where its deployment is committed', async () => {
     api({ chain: 'robinhood' });
     rememberPlan(planOn('robinhood'));
     const host = await plan();
-    expect(primaryLink(host)).toBeUndefined();
-    const button = find(host, '[data-variant="primary"]');
-    expect(button.getAttribute('aria-disabled')).toBe('true');
-    expect(host.textContent).toContain(en.plan.chainNotReady('Robinhood Chain'));
+    expect(host.textContent).not.toContain(en.plan.chainNotReady('Robinhood Chain'));
+    const next = primaryLink(host);
+    expect(next?.textContent).toBe(en.plan.buy);
+    expect(next?.getAttribute('href')).toBe(`/plan/${PLAN_ID}/buy`);
   });
 });
 
@@ -421,6 +421,65 @@ describe('the buy screen', () => {
     expect(Number.isNaN(Date.parse(kept?.goal?.placedAt ?? ''))).toBe(false);
     expect(kept?.lines).toEqual(planOn().proposal.lines);
     expect(trustAccepted(USER, TRUST_STATUS.textVersion)).toBe(true);
+  });
+
+  it('on Robinhood Chain: reads the funding in tUSDG and ETH, and makes the order for the EVM wallet', async () => {
+    const server = api({
+      chain: 'robinhood',
+      funded: false,
+      say: (a) => ({
+        ...a,
+        chain: 'robinhood',
+        name: 'Robinhood Chain',
+        wallet: EVM,
+        cash: { ...a.cash, asset: 'robinhood:tusdg', symbol: 'tUSDG' },
+        gas: {
+          ...a.gas,
+          symbol: 'ETH',
+          decimals: 18,
+          haveRaw: '0',
+          needRaw: '24000000000000',
+          missingRaw: '24000000000000',
+        },
+      }),
+    });
+    rememberPlan(planOn('robinhood'));
+    const host = await buy();
+    expect(server.to('/v1/funding').at(-1)?.path).toBe(
+      `/v1/funding?amountUsd=40000&proposalId=${PLAN_ID}&wallet=${EVM}`,
+    );
+    expect(host.textContent).toContain(en.buy.funding.short('Robinhood Chain'));
+    expect(host.textContent).toContain('40,000 tUSDG');
+    expect(host.textContent).toContain('ETH');
+    expect(find(host, '[data-variant="primary"]').getAttribute('aria-disabled')).toBe('true');
+
+    await unmountAll();
+    const funded = api({
+      chain: 'robinhood',
+      order: () => json(orderOn('robinhood')),
+      say: (a) => ({
+        ...a,
+        chain: 'robinhood',
+        name: 'Robinhood Chain',
+        wallet: EVM,
+        cash: { ...a.cash, asset: 'robinhood:tusdg', symbol: 'tUSDG' },
+        gas: { ...a.gas, symbol: 'ETH', decimals: 18, needRaw: '24000000000000' },
+      }),
+    });
+    const ready = await buy();
+    await type(find<HTMLInputElement>(ready, 'input[inputmode="decimal"]'), '10');
+    await settle(350);
+    await click(find(ready, '[data-ui="trust-notice"] input[type="checkbox"]'));
+    // the trust notice names Robinhood Chain's admin and its keeper's limits
+    expect(find(ready, '[data-ui="trust-notice"]').textContent).toContain(
+      en.trust.admin(TRUST_STATUS.admin.robinhood as string),
+    );
+    await click(find(ready, '[data-variant="primary"]'));
+    await settle();
+    expect(funded.to('/v1/orders').map((c) => c.body)).toEqual([
+      { type: 'buy', owner: { evm: EVM }, amountUsd: 10, proposalId: PLAN_ID },
+    ]);
+    expect(router.push).toHaveBeenCalledWith(`/orders/${ORDER_ID}`);
   });
 
   it('says what the person can do when the order is refused, and goes nowhere', async () => {

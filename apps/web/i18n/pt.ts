@@ -1061,7 +1061,6 @@ export const pt: Dictionary = {
       eyebrow: 'Dois objetivos, dois cortes',
       title: 'As mesmas peças. Pessoas diferentes. Encaixes diferentes.',
       lead: 'Como fica um plano quando ele parte de uma vida, não de uma lista de produtos. Planos de exemplo: todo número abaixo é ilustrativo.',
-      photoCaption: 'foto provisória · gerada',
       sample: 'taxas de exemplo, não reais',
       estimate: 'estimativa',
       sampleUnit: 'exemplo',
@@ -1085,7 +1084,7 @@ export const pt: Dictionary = {
       exitPlan: 'Plano de saída antes de investir',
       trip: {
         label: 'Exemplo: uma viagem em 2029',
-        alt: 'Uma mulher com uma mochila pequena caminha por uma trilha à beira de um penhasco, no fim da tarde.',
+        alt: 'O plano da Mariana desenhado como um encaixe, suas partes empilhadas num só pilar, cada uma da altura da sua parcela.',
         who: (cash: string) => `Mariana · 31 · recebe em ${cash}`,
         quote:
           'Quero uma reserva que eu possa acessar a qualquer dia e que me pague US$ 1.000 por mês durante uma viagem de três meses em 2029.',
@@ -1123,7 +1122,7 @@ export const pt: Dictionary = {
       },
       growth: {
         label: 'Exemplo: um objetivo de crescimento com mais risco',
-        alt: 'Um escalador com uma corda no ombro está de pé numa crista de granito acima das nuvens, ao nascer do sol.',
+        alt: 'O plano do Diego desenhado como um encaixe, suas partes empilhadas num só pilar, cada uma da altura da sua parcela.',
         who: 'Diego · 38 · nativo de cripto',
         quote:
           'Transformar US$ 20.000 em US$ 35.000 até 2031 para uma temporada nas montanhas. Aguento uma queda de 25% no caminho.',
