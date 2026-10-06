@@ -8,12 +8,14 @@ export { draftFromRules } from './draft';
 export { PERSONAL_PARAMS, PERSONAL_PARAMS_STATUS } from './params';
 export {
   proposeSleeveRebalances,
+  SleeveBook,
   type SleeveProposal,
   type SleeveProposals,
   SleeveRebalanceContext,
   type SleeveRebalanceKind,
   type SleeveRef,
   StoredPlan,
+  settleBook,
 } from './rebalance';
 export { eligibleForGoal, profileOfGoal, registryRowOf, sleeveOfClass } from './registry';
 export {

@@ -155,6 +155,8 @@ export const PersonalParameters = PersonalParams.extend({
   driftBandBps: Bps,
   /** Days another asset must stay ahead by more than the band before the safe-yield sleeve switches (slice 4). */
   switchDays: z.number().int().positive(),
+  /** The oldest an FX reading may be, in days, to count a withdrawal not in dollars when the set-aside is refilled (slice 4). */
+  fxMaxAgeDays: z.number().int().nonnegative(),
   /** The named stresses of the status (slice 3): how far yields fall, how long a credit leg is gated, how far the goal's currency moves and over how many months. */
   stress: z.object({
     /** How far every dollar-yield leg's carry falls. */

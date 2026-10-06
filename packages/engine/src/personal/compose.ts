@@ -43,7 +43,8 @@ import {
 } from './types';
 import { buildWorld, reportsRegimes, type World } from './world';
 
-export const PERSONAL_ENGINE_VERSION = 'personal-0.1';
+// 0.2 (ENG-3 slice 4): the stored plan keeps the person's split (`BasketProposal.split`).
+export const PERSONAL_ENGINE_VERSION = 'personal-0.2';
 
 const MONTHS_IN_A_YEAR = 12;
 

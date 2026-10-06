@@ -1,6 +1,7 @@
 import type {
   BasketAsset,
   LiquidityAssessment,
+  LiquidityProvider,
   PlanSplitSleeve,
   Price,
   Trade,
@@ -11,9 +12,12 @@ import { describe, expect, it } from 'vitest';
 import { compose } from './compose';
 import {
   proposeSleeveRebalances,
+  type SleeveBook,
   type SleeveProposal,
+  type SleeveProposals,
   type SleeveRebalanceContext,
   type StoredPlan,
+  settleBook,
 } from './rebalance';
 import { fixtureContext, launchShelf, sheet } from './testing';
 import type { PersonalSheet } from './types';
@@ -121,17 +125,90 @@ function dollarsIn(v: VaultState): Record<string, number> {
   ]);
 }
 
-/** The vault after the trades land at the fixture prices, at no cost. */
-function applied(v: VaultState, trades: Trade[]): VaultState {
-  const usd = dollarsIn(v);
+/** Raw units of a vault, by token, cash included. */
+function rawIn(v: VaultState): Map<string, bigint> {
+  const m = new Map<string, bigint>([[CASH, BigInt(v.cash.raw)]]);
+  for (const p of v.positions) m.set(p.asset, (m.get(p.asset) ?? 0n) + BigInt(p.raw));
+  return m;
+}
+/** A vault from raw units, by token. */
+function vaultOfRaw(raw: Map<string, bigint>): VaultState {
+  const v = vault({});
+  return {
+    ...v,
+    cash: { ...v.cash, raw: (raw.get(CASH) ?? 0n).toString() },
+    positions: [...raw.keys()]
+      .filter((k) => k !== CASH && (raw.get(k) ?? 0n) > 0n)
+      .sort()
+      .map((asset) => ({
+        asset,
+        raw: (raw.get(asset) ?? 0n).toString(),
+        multiplier: '1',
+        display: '0',
+        targetBps: 0,
+        lastKeeperAt: null,
+      })),
+  };
+}
+const priceInt = (id: string) => BigInt(id === CASH ? 1 : (PRICE[id] ?? 0));
+const unitOf = (id: string) => 10n ** BigInt(decimalsOf(id));
+/**
+ * The vault after the trades land at the fixture prices, exactly in raw units. `costBps` is taken
+ * off what each trade brings in, as a pool would.
+ */
+function applied(v: VaultState, trades: Trade[], costBps = 0n): VaultState {
+  const raw = rawIn(v);
   for (const t of trades) {
-    const inUsd =
-      (Number(t.amountInRaw) / 10 ** decimalsOf(t.sell)) *
-      (t.sell === CASH ? 1 : (PRICE[t.sell] ?? 0));
-    usd[t.sell] = (usd[t.sell] ?? 0) - inUsd;
-    usd[t.buy] = (usd[t.buy] ?? 0) + inUsd;
+    const amount = BigInt(t.amountInRaw);
+    const out =
+      t.buy === CASH
+        ? (amount * priceInt(t.sell) * unitOf(CASH)) / unitOf(t.sell)
+        : (amount * unitOf(t.buy)) / (priceInt(t.buy) * unitOf(CASH));
+    raw.set(t.sell, (raw.get(t.sell) ?? 0n) - amount);
+    raw.set(t.buy, (raw.get(t.buy) ?? 0n) + (out * (10_000n - costBps)) / 10_000n);
   }
-  return vault(usd);
+  return vaultOfRaw(raw);
+}
+const withCash = (v: VaultState, delta: bigint): VaultState => ({
+  ...v,
+  cash: { ...v.cash, raw: (BigInt(v.cash.raw) + delta).toString() },
+});
+
+/** A sleeve book from dollars of each token per sleeve. */
+const bookOf = (rows: Record<string, Record<string, number>>): SleeveBook =>
+  Object.entries(rows).map(([sleeve, usd]) => ({
+    sleeve,
+    holds: Object.entries(usd).map(([asset, v]) => ({ asset, raw: rawOf(asset, v).toString() })),
+  }));
+/** A vault holding what the book holds. */
+const vaultOfBook = (book: SleeveBook): VaultState => {
+  const raw = new Map<string, bigint>();
+  for (const r of book)
+    for (const h of r.holds) raw.set(h.asset, (raw.get(h.asset) ?? 0n) + BigInt(h.raw));
+  return vaultOfRaw(raw);
+};
+/** A sleeve's dollars in a book, at the fixture prices. */
+const sleeveUsd = (book: SleeveBook, sleeve: string) =>
+  (book.find((r) => r.sleeve === sleeve)?.holds ?? []).reduce(
+    (n, h) => n + (Number(h.raw) / 10 ** decimalsOf(h.asset)) * Number(priceInt(h.asset)),
+    0,
+  );
+/** The book a proposal expects, laid over the book: its own sleeve's row, or every row. */
+const expectedAfter = (book: SleeveBook, p: SleeveProposal): SleeveBook => {
+  if (!p.sleeve) return p.bookAfter;
+  const key = p.sleeve.kind === 'theme' ? `theme:${p.sleeve.theme}` : p.sleeve.kind;
+  return book.map((r) => (r.sleeve === key ? (p.bookAfter.find((x) => x.sleeve === key) ?? r) : r));
+};
+/** Every proposal of an answer carried out in turn: the vault traded and the book settled. */
+function carryOut(out: SleeveProposals, v: VaultState, costBps = 0n) {
+  let book = out.book;
+  let now = v;
+  for (const p of out.proposals) {
+    const next = applied(now, p.plan.trades, costBps);
+    book = settleBook(book, expectedAfter(book, p), next).book;
+    now = next;
+  }
+  return { book, vault: now };
 }
 
 const plan = (
@@ -173,6 +250,7 @@ describe('drift inside a sleeve', () => {
     expect(under.proposals).toEqual([]);
     const at = vault({ [SPY]: 5500, [SYRUP]: 3500, [CASH]: 1000 });
     const out = proposeSleeveRebalances(ONE, context(at));
+    expect(out.bookFrom).toBe('one_sleeve');
     expect(out.proposals).toHaveLength(1);
     const [p] = out.proposals as [SleeveProposal];
     expect(p).toMatchObject({ kind: 'drift', sleeve: { kind: 'goal' }, driftBps: 500 });
@@ -205,6 +283,8 @@ describe('deposits and withdrawals come first', () => {
     expect(sold(p)).toEqual([]);
     expect(bought(p)).toEqual([SYRUP]);
     expect(p.reasons.map((r) => r.rule)).toEqual(['REBALANCE_DEPOSIT']);
+    // The book as read has the deposit in the sleeve's cash.
+    expect(sleeveUsd(out.book, 'goal')).toBeCloseTo(10_000, 2);
   });
 
   it('a withdrawal comes from what is over target, and nothing is bought', () => {
@@ -218,6 +298,8 @@ describe('deposits and withdrawals come first', () => {
     const out500 = usdOf(p.plan.trades[0] as Trade);
     expect(out500).toBeGreaterThanOrEqual(500);
     expect(out500).toBeLessThan(502);
+    // After the trades and the withdrawal, the book holds $10,000.
+    expect(sleeveUsd(p.bookAfter, 'goal')).toBeCloseTo(10_000, 0);
   });
 
   it('a deposit too small to close the drift places what it can, then rebalances the rest', () => {
@@ -251,8 +333,13 @@ const SAFE = plan({ [SPY]: 6000, [USDY]: 3000, [CASH]: 1000 }, {}, SAFE_SPLIT);
 const SAFE_VAULT = vault({ [SPY]: 6000, [USDY]: 3000, [CASH]: 1000 });
 
 const DAY = '2026-10-';
-/** A reading on day `d` of October 2026. */
-const reading = (assetId: string, d: number, haircutYield: number): YieldObservation => ({
+/** A reading on day `d` of October 2026, labelled a fixture: it is not live. */
+const reading = (
+  assetId: string,
+  d: number,
+  haircutYield: number,
+  over: Partial<YieldObservation> = {},
+): YieldObservation => ({
   assetId,
   quotedYield: haircutYield,
   haircutYield,
@@ -261,6 +348,7 @@ const reading = (assetId: string, d: number, haircutYield: number): YieldObserva
   method: 'fixed in the test',
   fetchedAt: `${DAY}${String(d).padStart(2, '0')}T12:00:00.000Z`,
   provenance: 'fixture',
+  ...over,
 });
 /** Readings for `days` days ending on the 20th (the day of NOW), skipping `gaps` for `ahead`. */
 function history(
@@ -278,26 +366,65 @@ function history(
   out.push(reading(USDY, 20 - days, 0.06), ...ahead.map((id) => reading(id, 20 - days, 0.05)));
   return out;
 }
+/** The fixture readings are not live: the tests let them count, and the proposal says MOCK. */
+const FIXTURE_READINGS: Partial<SleeveRebalanceContext> = { readingsFrom: ['fixture'] };
+
+/** A liquidity provider with these exit capacities, in dollars, at any cost. */
+const provider = (capacityUsd: Record<string, number>): LiquidityProvider =>
+  ({
+    methodVersion: 'test',
+    provenance: 'fixture',
+    covers: (id: string) => id in capacityUsd,
+    exitCapacity: (id: string) =>
+      id in capacityUsd
+        ? {
+            capacityUsd: capacityUsd[id] ?? 0,
+            lowerBound: false,
+            regime: 'weekend',
+            samples: 10,
+            dataFrom: null,
+            dataTo: null,
+          }
+        : null,
+    exitCost: () => null,
+    entry: () => null,
+    assess: () => {
+      throw new Error('not used');
+    },
+  }) as unknown as LiquidityProvider;
 
 describe('the safe-yield sleeve switches only on the 7-day rule', () => {
   const run = (yields: YieldObservation[], over: Partial<SleeveRebalanceContext> = {}) =>
-    proposeSleeveRebalances(SAFE, context(SAFE_VAULT, { yields, ...over }));
+    proposeSleeveRebalances(SAFE, context(SAFE_VAULT, { yields, ...FIXTURE_READINGS, ...over }));
 
   it('6 days ahead: no switch', () => {
     expect(run(history(6)).proposals).toEqual([]);
   });
 
-  it('7 days ahead: switch, with the readings it was decided on', () => {
+  it('7 days ahead: switch, with the readings it was decided on, said MOCK when they are not live', () => {
     const out = run(history(7));
+    expect(out.bookFrom).toBe('plan');
     const [p] = out.proposals as [SleeveProposal];
-    expect(p).toMatchObject({ kind: 'safe_yield_switch', sleeve: { kind: 'safe_yield' } });
+    expect(p).toMatchObject({
+      kind: 'safe_yield_switch',
+      sleeve: { kind: 'safe_yield' },
+      provenance: 'mock',
+    });
     expect(sold(p)).toEqual([USDY]);
     expect(bought(p)).toEqual([SGOV]);
     expect(p.targets.map((t) => t.asset)).toEqual([SGOV]);
-    expect(p.reasons.map((r) => r.rule)).toEqual(['SAFE_YIELD_SWITCH']);
+    expect(p.reasons.map((r) => r.rule)).toEqual(['SAFE_YIELD_SWITCH', 'SWITCH_MOCK']);
     expect(p.observations).toHaveLength(14);
     for (const o of p.observations ?? [])
       expect(o).toMatchObject({ source: expect.any(String), method: expect.any(String) });
+  });
+
+  it('readings that are not live never trigger it by default', () => {
+    expect(run(history(7), { readingsFrom: undefined }).proposals).toEqual([]);
+    const live = history(7).map((o) => ({ ...o, provenance: 'live' as const }));
+    const [p] = run(live, { readingsFrom: undefined }).proposals as [SleeveProposal];
+    expect(p.provenance).toBeUndefined();
+    expect(p.reasons.map((r) => r.rule)).toEqual(['SAFE_YIELD_SWITCH']);
   });
 
   it('a gap day breaks the run', () => {
@@ -309,6 +436,12 @@ describe('the safe-yield sleeve switches only on the 7-day rule', () => {
     expect(run(history(7), { now: '2026-10-21T01:00:00.000Z' }).proposals).toHaveLength(1);
   });
 
+  it('whether today is read looks only at the two tokens compared', () => {
+    // Another token read on the 21st does not make the 21st count for USDY and SGOV.
+    const other = [...history(7), reading(MYIELD, 21, 0.01)];
+    expect(run(other, { now: '2026-10-21T18:00:00.000Z' }).proposals).toHaveLength(1);
+  });
+
   it('ahead by exactly the band is not ahead', () => {
     expect(run(history(7, [SGOV], [], 0.045)).proposals).toEqual([]);
   });
@@ -318,27 +451,102 @@ describe('the safe-yield sleeve switches only on the 7-day rule', () => {
     expect(bought(p)).toEqual([MYIELD]);
   });
 
+  it('two readings of one time give one answer, in any order', () => {
+    // On the 20th SGOV has two readings at the same time; the higher counts, whatever the order.
+    const twice = [...history(7), reading(SGOV, 20, 0.041, { source: 'a second feed' })];
+    const a = run(twice);
+    const b = run([...twice].reverse());
+    expect(a).toEqual(b);
+    expect(a.proposals).toHaveLength(1);
+  });
+
+  const big: PlanSplitSleeve[] = [
+    { kind: 'goal', shareBps: 4000, amountUsd: 4000, holds: [] },
+    {
+      kind: 'safe_yield',
+      shareBps: 6000,
+      amountUsd: 6000,
+      holds: [{ assetId: USDY, amountUsd: 6000 }],
+    },
+  ];
+  const bigPlan = plan({ [SPY]: 3000, [USDY]: 6000, [CASH]: 1000 }, {}, big);
+  const bigVault = vault({ [SPY]: 3000, [USDY]: 6000, [CASH]: 1000 });
+
   it('stops at the cap per asset of the plan, and says so', () => {
-    const big: PlanSplitSleeve[] = [
-      { kind: 'goal', shareBps: 4000, amountUsd: 4000, holds: [] },
-      {
-        kind: 'safe_yield',
-        shareBps: 6000,
-        amountUsd: 6000,
-        holds: [{ assetId: USDY, amountUsd: 6000 }],
-      },
-    ];
     const out = proposeSleeveRebalances(
-      plan({ [SPY]: 3000, [USDY]: 6000, [CASH]: 1000 }, {}, big),
-      context(vault({ [SPY]: 3000, [USDY]: 6000, [CASH]: 1000 }), { yields: history(7) }),
+      bigPlan,
+      context(bigVault, { yields: history(7), ...FIXTURE_READINGS }),
     );
     const [p] = out.proposals as [SleeveProposal];
-    expect(p.reasons.map((r) => r.rule)).toEqual(['SAFE_YIELD_SWITCH', 'SAFE_YIELD_SWITCH_CAPPED']);
+    expect(p.reasons.map((r) => r.rule)).toEqual([
+      'SAFE_YIELD_SWITCH',
+      'SAFE_YIELD_SWITCH_CAPPED',
+      'SWITCH_MOCK',
+    ]);
     // A rate leg takes at most 40% of the plan: $4,000 of the $6,000 moves.
     expect(p.targets).toEqual([
       { asset: SGOV, weightBps: 6666 },
       { asset: USDY, weightBps: 3333 },
     ]);
+    // Nothing is measured for SGOV: its tier stood in, and the answer says so.
+    expect(out.flags).toContain(`ceiling_from_tier:${SGOV}`);
+  });
+
+  it("stops at the token's measured exit ceiling (EXIT-SOURCE), and says so", () => {
+    // $4,000 of capacity: a quarter of it, $1,000, may go to SGOV.
+    const out = run(history(7), { liquidity: provider({ [SGOV]: 4000 }) });
+    const [p] = out.proposals as [SleeveProposal];
+    expect(p.reasons.map((r) => r.rule)).toEqual([
+      'SAFE_YIELD_SWITCH',
+      'SAFE_YIELD_SWITCH_EXIT',
+      'SWITCH_MOCK',
+    ]);
+    expect(p.targets).toEqual([
+      { asset: SGOV, weightBps: 3333 },
+      { asset: USDY, weightBps: 6666 },
+    ]);
+    expect(out.flags).not.toContain(`ceiling_from_tier:${SGOV}`);
+  });
+
+  it('stops at the room left with its issuer across the plan, and says so', () => {
+    // mYIELD shares SGOV's issuer and holds $3,000 of the goal sleeve: 50% of $10,000 leaves $2,000.
+    const shared: BasketAsset[] = ASSETS.map((a) =>
+      a.id === MYIELD ? { ...a, issuer: 'iShares' } : a,
+    );
+    const out = proposeSleeveRebalances(
+      plan({ [MYIELD]: 3000, [SPY]: 3000, [USDY]: 3000, [CASH]: 1000 }, {}, SAFE_SPLIT),
+      context(vault({ [MYIELD]: 3000, [SPY]: 3000, [USDY]: 3000, [CASH]: 1000 }), {
+        assets: shared,
+        yields: history(7),
+        ...FIXTURE_READINGS,
+      }),
+    );
+    const [p] = out.proposals as [SleeveProposal];
+    expect(p.reasons.map((r) => r.rule)).toEqual([
+      'SAFE_YIELD_SWITCH',
+      'SAFE_YIELD_SWITCH_ISSUER',
+      'SWITCH_MOCK',
+    ]);
+    expect(p.targets).toEqual([
+      { asset: SGOV, weightBps: 6666 },
+      { asset: USDY, weightBps: 3333 },
+    ]);
+  });
+
+  it('after the switch, the next call proposes nothing for the goal sleeve (review, repro B)', () => {
+    const first = run(history(7));
+    const done = carryOut(first, SAFE_VAULT);
+    const again = proposeSleeveRebalances(
+      SAFE,
+      context(done.vault, { book: done.book, yields: history(7), ...FIXTURE_READINGS }),
+    );
+    expect(again.proposals.filter((p) => p.sleeve?.kind === 'goal')).toEqual([]);
+    expect(again.proposals).toEqual([]);
+    // SGOV is the safe-yield sleeve's, and the goal sleeve still holds what it held.
+    expect(done.book.find((r) => r.sleeve === 'safe_yield')?.holds.map((h) => h.asset)).toContain(
+      SGOV,
+    );
+    expect(sleeveUsd(done.book, 'goal')).toBeCloseTo(7000, 0);
   });
 });
 
@@ -372,8 +580,7 @@ describe('the goal sleeve refills its set-aside each month', () => {
     });
     // December: the same again, a month on.
     const next = applied(v, p.plan.trades);
-    const dec = dollarsIn(next);
-    const paid = vault({ [SPY]: dec[SPY] ?? 0, [CASH]: (dec[CASH] ?? 0) - 500 });
+    const paid = withCash(next, -rawOf(CASH, 500));
     const again = proposeSleeveRebalances(
       withdrawing,
       context(paid, { now: '2026-12-02T12:00:00.000Z', paidThrough: '2026-11' }),
@@ -390,19 +597,144 @@ describe('the goal sleeve refills its set-aside each month', () => {
     expect(out.proposals).toEqual([]);
   });
 
+  const inReais = plan(
+    { [SPY]: 7000, [CASH]: 3000 },
+    { obligations: [{ month: '2026-11', amount: 5500, currency: 'BRL' }] },
+  );
+  const usdBrl = (fetchedAt: string) => ({
+    pair: 'USDBRL',
+    value: 5.5,
+    source: 'test fixture',
+    method: 'fixed in the test',
+    fetchedAt,
+    provenance: 'fixture' as const,
+  });
+
   it('a withdrawal in another currency with no FX reading is not counted, and is flagged', () => {
-    const inReais = plan(
-      { [SPY]: 7000, [CASH]: 3000 },
-      {
-        obligations: [{ month: '2026-11', amount: 3000, currency: 'BRL' }],
-      },
-    );
     const out = proposeSleeveRebalances(
       inReais,
       context(vault({ [SPY]: 7000, [CASH]: 100 }), { now: '2026-11-03T12:00:00.000Z' }),
     );
     expect(out.flags).toContain('refill_no_fx:BRL');
     expect(out.proposals.map((p) => p.kind)).not.toContain('set_aside_refill');
+  });
+
+  it('counts it at a recent FX reading, carried in the proposal; a stale one is refused', () => {
+    const v = vault({ [SPY]: 7000, [CASH]: 100 });
+    const fresh = usdBrl('2026-11-02T09:00:00.000Z');
+    const out = proposeSleeveRebalances(
+      inReais,
+      context(v, { now: '2026-11-03T12:00:00.000Z', fx: [fresh] }),
+    );
+    const [p] = out.proposals as [SleeveProposal];
+    expect(p.kind).toBe('set_aside_refill');
+    expect(p.fx).toEqual([fresh]);
+    expect(p.reasons.find((r) => r.rule === 'SET_ASIDE_REFILL')?.params.owedUsd).toBe(1000);
+    const stale = proposeSleeveRebalances(
+      inReais,
+      context(v, { now: '2026-11-03T12:00:00.000Z', fx: [usdBrl('2026-10-28T09:00:00.000Z')] }),
+    );
+    expect(stale.flags).toContain('refill_fx_stale:BRL');
+    expect(stale.proposals.map((x) => x.kind)).not.toContain('set_aside_refill');
+  });
+});
+
+describe('the sleeve book: who owns what', () => {
+  // Goal 70% (SPYx and cash), safe yield 30% (USDY $2,000 and cash $1,000), $500 a month.
+  const obligations = Array.from({ length: 12 }, (_, i) => ({
+    month: `${2026 + Math.floor((9 + i) / 12)}-${String(((9 + i) % 12) + 1).padStart(2, '0')}`,
+    amount: 500,
+    currency: 'USD',
+  }));
+  const split: PlanSplitSleeve[] = [
+    { kind: 'goal', shareBps: 7000, amountUsd: 7000, holds: [] },
+    {
+      kind: 'safe_yield',
+      shareBps: 3000,
+      amountUsd: 3000,
+      holds: [
+        { assetId: USDY, amountUsd: 2000 },
+        { assetId: CASH, amountUsd: 1000 },
+      ],
+    },
+  ];
+  const stored = plan({ [SPY]: 4000, [USDY]: 2000, [CASH]: 4000 }, { obligations }, split);
+  const november = { now: '2026-11-03T12:00:00.000Z', paidThrough: '2026-10' };
+
+  it('settles, and no value crosses sleeves (review, repro A)', () => {
+    const book = bookOf({
+      goal: { [SPY]: 6000, [CASH]: 500 },
+      safe_yield: { [USDY]: 2000, [CASH]: 1000 },
+    });
+    const v = vaultOfBook(book);
+    const first = proposeSleeveRebalances(stored, context(v, { book, ...november }));
+    expect(first.proposals.map((p) => [p.kind, p.sleeve?.kind])).toEqual([
+      ['set_aside_refill', 'goal'],
+    ]);
+    const done = carryOut(first, v);
+    expect(sleeveUsd(done.book, 'goal')).toBeCloseTo(6500, 0);
+    expect(sleeveUsd(done.book, 'safe_yield')).toBeCloseTo(3000, 0);
+    // The set-aside is in the goal sleeve's cash, not the safe-yield sleeve's.
+    const goalCash = done.book
+      .find((r) => r.sleeve === 'goal')
+      ?.holds.find((h) => h.asset === CASH);
+    expect(Number(goalCash?.raw) / 1e6).toBeGreaterThanOrEqual(3000);
+    const second = proposeSleeveRebalances(
+      stored,
+      context(done.vault, { book: done.book, ...november }),
+    );
+    expect(second.proposals).toEqual([]);
+  });
+
+  it('is derived from the plan only for a vault just bought; otherwise it is asked for', () => {
+    const moved = vault({ [SPY]: 6000, [USDY]: 2000, [CASH]: 1500 });
+    expect(() => proposeSleeveRebalances(stored, context(moved, november))).toThrow(
+      /pass the sleeve book/,
+    );
+    const bought = vault({ [SPY]: 4000, [USDY]: 2000, [CASH]: 4000 });
+    const out = proposeSleeveRebalances(stored, context(bought));
+    expect(out.bookFrom).toBe('plan');
+    expect(out.flags).toContain('book_from_plan');
+    expect(sleeveUsd(out.book, 'safe_yield')).toBeCloseTo(3000, 2);
+  });
+
+  it('adds up to the vault: more than it holds is refused, what no sleeve owns is reported', () => {
+    const book = bookOf({
+      goal: { [SPY]: 4000, [CASH]: 3000 },
+      safe_yield: { [USDY]: 2000, [CASH]: 1000 },
+    });
+    const extra = vaultOfBook(
+      bookOf({ x: { [SPY]: 4000, [CASH]: 4000, [USDY]: 2000, [NVDA]: 100 } }),
+    );
+    const out = proposeSleeveRebalances(stored, context(extra, { book }));
+    expect(out.unowned).toEqual([{ asset: NVDA, raw: String(rawOf(NVDA, 100)) }]);
+    expect(out.flags).toContain(`unowned:${NVDA}`);
+    const short = vault({ [SPY]: 3000, [USDY]: 2000, [CASH]: 4000 });
+    expect(() => proposeSleeveRebalances(stored, context(short, { book }))).toThrow(
+      /holds more solana:spyx than the vault/,
+    );
+    expect(() =>
+      proposeSleeveRebalances(
+        stored,
+        context(extra, { book: [...book, { sleeve: 'theme:ai', holds: [] }] }),
+      ),
+    ).toThrow(/not a sleeve of this plan/);
+  });
+
+  it('settleBook puts a trade’s real cost on the sleeve that traded, and adds up exactly', () => {
+    const book = bookOf({
+      goal: { [SPY]: 6000, [CASH]: 500 },
+      safe_yield: { [USDY]: 2000, [CASH]: 1000 },
+    });
+    const v = vaultOfBook(book);
+    const first = proposeSleeveRebalances(stored, context(v, { book, ...november }));
+    const done = carryOut(first, v, 100n);
+    const sums = new Map<string, bigint>();
+    for (const r of done.book)
+      for (const h of r.holds) sums.set(h.asset, (sums.get(h.asset) ?? 0n) + BigInt(h.raw));
+    expect(sums).toEqual(new Map([...rawIn(done.vault)].filter(([, n]) => n > 0n)));
+    expect(sleeveUsd(done.book, 'safe_yield')).toBeCloseTo(3000, 2);
+    expect(sleeveUsd(done.book, 'goal')).toBeLessThan(6500);
   });
 });
 
@@ -421,24 +753,34 @@ const THEME_SPLIT: PlanSplitSleeve[] = [
   },
 ];
 const THEMED = { [SPY]: 4000, [CASH]: 1000, [NVDA]: 4000, [SYRUP]: 1000 };
+const themedBook = (goal: Record<string, number>, theme: Record<string, number>) =>
+  bookOf({ goal, 'theme:ai': theme });
 const tokensOf = (p: SleeveProposal) => new Set([...sold(p), ...bought(p)]);
 
 describe('between sleeves, nothing moves unless the person chose to restore the split', () => {
+  const grownBook = themedBook({ [SPY]: 4000, [CASH]: 1000 }, { [NVDA]: 8000, [SYRUP]: 2000 });
+
   it('with restoreSplit off, a theme that has grown is left grown', () => {
-    // NVDAx doubled: the theme is now 9,000 of 14,000. Inside each sleeve, nothing is off.
-    const grown = vault({ ...THEMED, [NVDA]: 8000, [SYRUP]: 2000 });
-    const out = proposeSleeveRebalances(plan(THEMED, {}, THEME_SPLIT), context(grown));
+    // NVDAx doubled: the theme is now 10,000 of 15,000. Inside each sleeve, nothing is off.
+    const out = proposeSleeveRebalances(
+      plan(THEMED, {}, THEME_SPLIT),
+      context(vaultOfBook(grownBook), { book: grownBook }),
+    );
     expect(out.splitDriftBps).toBeGreaterThan(500);
     expect(out.proposals).toEqual([]);
   });
 
-  it('with restoreSplit off, each sleeve trades only its own tokens and spends only its own cash', () => {
-    const off = vault({ [SPY]: 5000, [CASH]: 500, [NVDA]: 3000, [SYRUP]: 2000 });
-    const out = proposeSleeveRebalances(plan(THEMED, {}, THEME_SPLIT), context(off));
+  it('with restoreSplit off, every sleeve trades only its own tokens and spends only its own cash', () => {
+    const book = themedBook({ [SPY]: 5000, [CASH]: 500 }, { [NVDA]: 3000, [SYRUP]: 2000 });
+    const out = proposeSleeveRebalances(
+      plan(THEMED, {}, THEME_SPLIT),
+      context(vaultOfBook(book), { book }),
+    );
     expect(out.proposals.map((p) => p.sleeve?.kind)).toEqual(['goal', 'theme']);
     const [goal, theme] = out.proposals as [SleeveProposal, SleeveProposal];
     expect([...tokensOf(goal)]).toEqual([SPY]);
     expect([...tokensOf(theme)].sort()).toEqual([NVDA, SYRUP]);
+    const cashOf = { goal: 500, theme: 0 };
     for (const p of out.proposals) {
       const salesUsd = p.plan.trades
         .filter((t) => t.buy === CASH)
@@ -446,16 +788,20 @@ describe('between sleeves, nothing moves unless the person chose to restore the 
       const buysUsd = p.plan.trades
         .filter((t) => t.sell === CASH)
         .reduce((n, t) => n + usdOf(t), 0);
-      // What a sleeve buys is what it sold plus the cash it holds: the theme holds none.
-      if (p.sleeve?.kind === 'theme') expect(buysUsd).toBeLessThanOrEqual(salesUsd + 0.01);
+      // What a sleeve buys is at most what it sold plus the cash it owns.
+      const own = cashOf[p.sleeve?.kind as 'goal' | 'theme'];
+      expect(buysUsd, p.sleeve?.kind).toBeLessThanOrEqual(salesUsd + own + 0.01);
     }
+    const done = carryOut(out, vaultOfBook(book));
+    expect(sleeveUsd(done.book, 'goal')).toBeCloseTo(5500, 0);
+    expect(sleeveUsd(done.book, 'theme:ai')).toBeCloseTo(5000, 0);
   });
 
   it('with restoreSplit on, the split is restored at the band, in one proposal for the plan', () => {
-    const grown = vault({ ...THEMED, [NVDA]: 8000, [SYRUP]: 2000 });
+    const grown = vaultOfBook(grownBook);
     const out = proposeSleeveRebalances(
       plan(THEMED, { restoreSplit: true }, THEME_SPLIT),
-      context(grown),
+      context(grown, { book: grownBook }),
     );
     const [p] = out.proposals as [SleeveProposal];
     expect(out.proposals).toHaveLength(1);
@@ -464,17 +810,117 @@ describe('between sleeves, nothing moves unless the person chose to restore the 
     expect(bought(p)).toEqual([SPY]);
     const usd = dollarsIn(applied(grown, p.plan.trades));
     // Back to half and half, within the margin the purchases keep.
-    expect(((usd[NVDA] ?? 0) + (usd[SYRUP] ?? 0)) / 14_000).toBeCloseTo(0.5, 1);
+    expect(((usd[NVDA] ?? 0) + (usd[SYRUP] ?? 0)) / 15_000).toBeCloseTo(0.5, 1);
+    expect(sleeveUsd(p.bookAfter, 'theme:ai') / 15_000).toBeCloseTo(0.5, 1);
   });
 
   it('with restoreSplit on and the split inside the band, nothing moves between sleeves', () => {
-    const near = vault({ ...THEMED, [NVDA]: 4300 });
+    const book = themedBook({ [SPY]: 4000, [CASH]: 1000 }, { [NVDA]: 4300, [SYRUP]: 1000 });
     const out = proposeSleeveRebalances(
       plan(THEMED, { restoreSplit: true }, THEME_SPLIT),
-      context(near),
+      context(vaultOfBook(book), { book }),
     );
     expect(out.splitDriftBps).toBeLessThan(500);
     expect(out.proposals.map((p) => p.kind)).not.toContain('restore_split');
+  });
+
+  it('with restoreSplit on, a deposit and a withdrawal together never take more than a sleeve holds', () => {
+    const book = themedBook({ [SPY]: 9000, [CASH]: 1000 }, { [NVDA]: 300, [SYRUP]: 200 });
+    const out = proposeSleeveRebalances(
+      plan(THEMED, { restoreSplit: true }, THEME_SPLIT),
+      context(vaultOfBook(book), {
+        book,
+        deposit: String(rawOf(CASH, 2000)),
+        withdrawal: String(rawOf(CASH, 10_000)),
+      }),
+    );
+    const [goal, theme] = out.flows;
+    const usd = (raw: string | undefined) => Number(raw) / 1e6;
+    expect(usd(goal?.depositRaw) + usd(theme?.depositRaw)).toBeCloseTo(2000, 6);
+    expect(usd(goal?.withdrawalRaw) + usd(theme?.withdrawalRaw)).toBeCloseTo(10_000, 6);
+    expect(usd(theme?.withdrawalRaw)).toBeLessThanOrEqual(500 + usd(theme?.depositRaw));
+    expect(usd(goal?.withdrawalRaw)).toBeLessThanOrEqual(10_000 + usd(goal?.depositRaw));
+  });
+});
+
+describe('with restoreSplit off, a sleeve’s value moves only through its own trades and money', () => {
+  // A small generator: the same seed gives the same cases.
+  const rng = (seed: number) => {
+    let state = seed;
+    return () => {
+      state = (state + 0x6d2b79f5) | 0;
+      let t = state;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+  it('holds on 40 random plans, round after round, and settles', () => {
+    const next = rng(20261006);
+    const between = (lo: number, hi: number) => Math.round(lo + next() * (hi - lo));
+    for (let c = 0; c < 40; c++) {
+      // Goal: SPYx, NVDAx, syrupUSDC, cash. Theme: NVDAx and syrupUSDC (shared with the goal).
+      const goalPlan = {
+        [SPY]: between(1000, 4000),
+        [NVDA]: between(0, 2000),
+        [SYRUP]: between(0, 2000),
+        [CASH]: between(100, 1000),
+      };
+      const themePlan = { [NVDA]: between(500, 3000), [SYRUP]: between(0, 1000) };
+      const goalUsd = Object.values(goalPlan).reduce((n, x) => n + x, 0);
+      const themeUsd = Object.values(themePlan).reduce((n, x) => n + x, 0);
+      const total = goalUsd + themeUsd;
+      const goalShare = Math.round((goalUsd * 10_000) / total);
+      const lines: Record<string, number> = { ...goalPlan };
+      for (const [k, x] of Object.entries(themePlan)) lines[k] = (lines[k] ?? 0) + x;
+      const stored = plan(lines, {}, [
+        { kind: 'goal', shareBps: goalShare, amountUsd: goalUsd, holds: [] },
+        {
+          kind: 'theme',
+          theme: 'ai',
+          shareBps: 10_000 - goalShare,
+          amountUsd: themeUsd,
+          holds: Object.entries(themePlan).map(([assetId, amountUsd]) => ({ assetId, amountUsd })),
+        },
+      ]);
+      // Each sleeve has drifted from its plan by a random factor per token.
+      const drift = (row: Record<string, number>) =>
+        Object.fromEntries(
+          Object.entries(row).map(([k, x]) => [k, Math.round(x * (0.6 + next() * 0.8))]),
+        );
+      let book = bookOf({ goal: drift(goalPlan), 'theme:ai': drift(themePlan) });
+      let v = vaultOfBook(book);
+      const deposit = c % 3 === 0 ? rawOf(CASH, between(10, 500)) : 0n;
+      for (let round = 0; round < 3; round++) {
+        const out = proposeSleeveRebalances(
+          stored,
+          context(v, {
+            book,
+            ...(round === 0 && deposit > 0n ? { deposit: String(deposit) } : {}),
+          }),
+        );
+        if (round === 0 && deposit > 0n) v = withCash(v, deposit);
+        const before = {
+          goal: sleeveUsd(out.book, 'goal'),
+          theme: sleeveUsd(out.book, 'theme:ai'),
+        };
+        const done = carryOut(out, v);
+        // Trades at the fixture prices and no cost keep each sleeve's value, to the cent per trade.
+        const trades = out.proposals.reduce((n, p) => n + p.plan.trades.length, 0) + 1;
+        expect(Math.abs(sleeveUsd(done.book, 'goal') - before.goal), `case ${c}`).toBeLessThan(
+          0.01 * trades,
+        );
+        expect(Math.abs(sleeveUsd(done.book, 'theme:ai') - before.theme), `case ${c}`).toBeLessThan(
+          0.01 * trades,
+        );
+        book = done.book;
+        v = done.vault;
+      }
+      // By the third round there is nothing left to propose.
+      expect(proposeSleeveRebalances(stored, context(v, { book })).proposals, `case ${c}`).toEqual(
+        [],
+      );
+    }
   });
 });
 
@@ -491,7 +937,7 @@ describe('a likely liquidity breach comes before everything', () => {
 
   it('its sales come first and alone, and the drift proposal waits', () => {
     const drifted = vault({ [SPY]: 7000, [SYRUP]: 2000, [CASH]: 1000 });
-    const out = proposeSleeveRebalances(ONE, context(drifted, { liquidity: assessment }));
+    const out = proposeSleeveRebalances(ONE, context(drifted, { assessment }));
     expect(out.proposals.map((p) => p.kind)).toEqual(['liquidity_breach']);
     const [p] = out.proposals as [SleeveProposal];
     expect(p.plan.trades).toEqual([
@@ -499,13 +945,14 @@ describe('a likely liquidity breach comes before everything', () => {
     ]);
     expect(p.reasons[0]?.text).toMatch(/January 2027/);
     expect(out.waiting).toEqual([{ kind: 'drift', sleeve: { kind: 'goal' } }]);
+    expect(sleeveUsd(p.bookAfter, 'goal')).toBeCloseTo(10_000, 2);
   });
 
   it('an assessment with no likely breach changes nothing', () => {
     const drifted = vault({ [SPY]: 7000, [SYRUP]: 2000, [CASH]: 1000 });
     const out = proposeSleeveRebalances(
       ONE,
-      context(drifted, { liquidity: { ...assessment, likelyBreach: false } }),
+      context(drifted, { assessment: { ...assessment, likelyBreach: false } }),
     );
     expect(out.proposals.map((p) => p.kind)).toEqual(['drift']);
   });
@@ -514,16 +961,24 @@ describe('a likely liquidity breach comes before everything', () => {
 describe('the same inputs give the same proposals, in any order', () => {
   const shuffle = <T>(xs: T[]) => [...xs].reverse();
   it('is deterministic and does not depend on the order of anything', () => {
-    const v = vault({ [SPY]: 5000, [CASH]: 500, [NVDA]: 3000, [SYRUP]: 2000 });
+    const book = themedBook({ [SPY]: 5000, [CASH]: 500 }, { [NVDA]: 3000, [SYRUP]: 2000 });
+    const v = vaultOfBook(book);
     const stored = plan(THEMED, {}, THEME_SPLIT);
-    const ctx = context(v, { yields: history(7), deposit: String(rawOf(CASH, 300)) });
+    const ctx = context(v, {
+      book,
+      yields: history(7),
+      ...FIXTURE_READINGS,
+      deposit: String(rawOf(CASH, 300)),
+    });
     const once = proposeSleeveRebalances(stored, ctx);
+    expect(once.proposals.length).toBeGreaterThan(0);
     expect(proposeSleeveRebalances(stored, ctx)).toEqual(once);
     const shuffled = proposeSleeveRebalances(
       { ...stored, lines: shuffle(stored.lines), split: shuffle(THEME_SPLIT) },
       {
         ...ctx,
         vault: { ...v, positions: shuffle(v.positions) },
+        book: shuffle(book).map((r) => ({ ...r, holds: shuffle(r.holds) })),
         prices: shuffle(PRICES),
         assets: shuffle(ASSETS),
         yields: shuffle(ctx.yields ?? []),
@@ -536,13 +991,18 @@ describe('the same inputs give the same proposals, in any order', () => {
 describe('every proposal is explained, in English and Portuguese', () => {
   it('writes its reasons in the language of the sheet', () => {
     const pt = plan({ [SPY]: 6000, [USDY]: 3000, [CASH]: 1000 }, { language: 'pt' }, SAFE_SPLIT);
-    const [p] = proposeSleeveRebalances(pt, context(SAFE_VAULT, { yields: history(7) }))
-      .proposals as [SleeveProposal];
+    const [p] = proposeSleeveRebalances(
+      pt,
+      context(SAFE_VAULT, { yields: history(7), ...FIXTURE_READINGS }),
+    ).proposals as [SleeveProposal];
     expect(p.reasons[0]?.text).toBe(
       'Na parte do seu plano em rendimento em dólar só de taxa, USDY passa para SGOV: em cada um dos últimos 7 dias de leituras, SGOV rendeu mais que USDY após o deságio, por mais de 0,5% ao ano.',
     );
-    const [en] = proposeSleeveRebalances(SAFE, context(SAFE_VAULT, { yields: history(7) }))
-      .proposals as [SleeveProposal];
+    expect(p.reasons.at(-1)?.text).toMatch(/^MOCK: /);
+    const [en] = proposeSleeveRebalances(
+      SAFE,
+      context(SAFE_VAULT, { yields: history(7), ...FIXTURE_READINGS }),
+    ).proposals as [SleeveProposal];
     expect(en.reasons[0]?.text).toBe(
       'In the part of your plan in dollar yield from a rate alone, USDY moves to SGOV: on each of the last 7 days of readings, SGOV yielded more than USDY after haircut, by over 0.5% a year.',
     );

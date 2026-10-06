@@ -517,6 +517,31 @@ export const REASON_TEMPLATES = {
     '{usd|usd} stays in {from}: {to} may hold at most {capBps|pct} of the plan.',
     '{usd|usd} ficam em {from}: {to} pode ter no máximo {capBps|pct} do plano.',
   ),
+  SAFE_YIELD_SWITCH_ISSUER: rule(
+    ['sleeves'],
+    '{usd|usd} stays in {from}: {issuer} may hold at most {capBps|pct} of the plan.',
+    '{usd|usd} ficam em {from}: {issuer} pode ter no máximo {capBps|pct} do plano.',
+  ),
+  SAFE_YIELD_SWITCH_EXIT: rule(
+    ['sleeves', 'amount'],
+    '{usd|usd} stays in {from}: past {ceilingUsd|usd} in {to}, selling it would cost more than {tauBps|pct}, as measured.',
+    '{usd|usd} ficam em {from}: acima de {ceilingUsd|usd} em {to}, vender custaria mais de {tauBps|pct}, pelo que foi medido.',
+  ),
+  SAFE_YIELD_SWITCH_TIER: rule(
+    ['sleeves', 'amount'],
+    '{usd|usd} stays in {from}: the cost of selling {to} is not measured, so it takes at most {ceilingUsd|usd}, the limit of its tier on the asset list, a fallback.',
+    '{usd|usd} ficam em {from}: o custo de vender {to} não está medido, então ele recebe no máximo {ceilingUsd|usd}, o limite da faixa dele na lista de ativos, um substituto provisório.',
+  ),
+  SWITCH_MOCK: rule(
+    ['sleeves'],
+    'MOCK: the yield readings this switch is decided on are not live readings.',
+    'MOCK: as leituras de rendimento em que esta troca se baseia não são leituras ao vivo.',
+  ),
+  SWITCH_SANDBOX: rule(
+    ['sleeves'],
+    'Test network: the yield readings this switch is decided on come from a test network, not live readings.',
+    'Rede de teste: as leituras de rendimento em que esta troca se baseia vêm de uma rede de teste, não são leituras ao vivo.',
+  ),
   SET_ASIDE_REFILL: rule(
     ['obligations'],
     'Your withdrawals from {from|month} to {to|month} come to {owedUsd|usd}, and the cash and rate legs of the {part|part} hold {heldUsd|usd}: {shortUsd|usd} is moved to cash to set them aside again.',

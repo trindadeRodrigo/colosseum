@@ -94,6 +94,9 @@ export const PERSONAL_PARAMS: PersonalParameters = {
   driftBandBps: 500,
   // Tuned by C2's perturbation test, on the safe-yield sleeve's switches.
   switchDays: 7,
+  // Rebalancing (slice 4): an FX reading older than this does not count a withdrawal in another
+  // currency for the monthly refill, and the answer says so.
+  fxMaxAgeDays: 3,
   // The named stresses of the status (slice 3, C12): the old engine's STRESS_PARAMS. Stocks, crypto and
   // gold fall by `fallBps`. Tuned by C8 (credit) and by the replay of section 2.2 (yields, FX).
   stress: { carryFallBps: 5000, creditGateMonths: 6, fxMoveBps: 2000, fxMoveMonths: 12 },
@@ -197,6 +200,10 @@ export const PERSONAL_PARAMS_STATUS: Record<Exclude<keyof PersonalParameters, 'v
   candidates: {
     status: 'starting',
     from: 'New in slice 3, gate THREE-PLANS; the moves are section 2.4 of the research note (Cover: 12 months set aside, less credit, tau and shareOfDepth tighter; Spread: equal fill, tighter issuer cap), the sizes are not in any document. Cover holds at most half the credit limit of the person (Rodrigo, Oct 5, in place of the 0 of the note); Cover halves tau (0.5%) and shareOfDepth (0.125); Spread caps one issuer at 30%; distinct from 1,000 bps (the prompt). For Rodrigo: parameters outside the SOLVER-PARAMS table.',
+  },
+  fxMaxAgeDays: {
+    status: 'starting',
+    from: 'New in slice 4 (rebalancing, the refill of the set-aside): a reading from the last three days, so a weekend without one still counts. Not in any document. For Rodrigo: a parameter outside the SOLVER-PARAMS table.',
   },
   setAsideMonths: {
     status: 'set',
