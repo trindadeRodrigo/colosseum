@@ -12,13 +12,15 @@ import {
   SolanaDeploymentRecord,
 } from '@colosseum/chain-solana/vault';
 import { parseChainConfigs } from '@colosseum/schemas';
+import { keepRunning } from './loop';
 import { loadMemory, lockState, saveMemory } from './memory';
 import { runRound, type VaultLine } from './round';
 
 // The keeper on Solana (DESIGN-VAULT 3.5, section 10): a worker with no HTTP listener.
 //
 //   SOLANA_RPC_URL=<devnet> KEEPER_SOLANA_KEYPAIR=<path> pnpm --filter @colosseum/keeper start --once
-//   ... --loop [--interval 60]     a round every interval seconds, until stopped
+//   ... --loop [--interval 60]     a round every interval seconds, until stopped; a failed round is
+//                                  logged as `round-failed` and retried after a back-off (loop.ts)
 //   ... --dry-run                  plans and builds, signs and sends nothing
 //
 // The network is CHAIN_NETWORK_SOLANA (testnet by default; mainnet is refused), and everything it acts
@@ -100,36 +102,49 @@ async function main() {
   const log = (line: VaultLine) =>
     console.log(JSON.stringify({ at: new Date().toISOString(), network: record.network, ...line }));
 
-  for (;;) {
-    const lines = await runRound(
-      {
-        adapter,
-        dryRun,
-        log,
-        sign: async (tx) => {
-          // Only what the keeper itself builds, as the keeper.
-          if (tx.signer !== key.address)
-            throw new Error(`a transaction for ${tx.signer}, not the keeper`);
-          const { wire, signature } = await signBase64(tx.payload, key);
-          return { wire, txId: signature };
+  // A failed round is one line; the node's address never goes in it (a private node's carries a key).
+  const said = (e: string) => e.split(url).join('<SOLANA_RPC_URL>');
+  await keepRunning({
+    loop,
+    intervalMs: interval * 1000,
+    failed: (f) =>
+      console.log(
+        JSON.stringify({
+          at: new Date().toISOString(),
+          network: record.network,
+          ...f,
+          reason: said(f.reason),
+        }),
+      ),
+    round: async () => {
+      const lines = await runRound(
+        {
+          adapter,
+          dryRun,
+          log,
+          sign: async (tx) => {
+            // Only what the keeper itself builds, as the keeper.
+            if (tx.signer !== key.address)
+              throw new Error(`a transaction for ${tx.signer}, not the keeper`);
+            const { wire, signature } = await signBase64(tx.payload, key);
+            return { wire, txId: signature };
+          },
+          save: (m) => saveMemory(stateFile, m),
         },
-        save: (m) => saveMemory(stateFile, m),
-      },
-      memory,
-    );
-    console.log(
-      JSON.stringify({
-        at: new Date().toISOString(),
-        round: 'done',
-        vaults: lines.length,
-        acted: lines.filter((l) => l.outcome === 'acted').length,
-        alerts: lines.filter((l) => l.alert).length,
-        inFlight: memory.inFlight.size,
-      }),
-    );
-    if (!loop) return;
-    await new Promise((resolve) => setTimeout(resolve, interval * 1000));
-  }
+        memory,
+      );
+      console.log(
+        JSON.stringify({
+          at: new Date().toISOString(),
+          round: 'done',
+          vaults: lines.length,
+          acted: lines.filter((l) => l.outcome === 'acted').length,
+          alerts: lines.filter((l) => l.alert).length,
+          inFlight: memory.inFlight.size,
+        }),
+      );
+    },
+  });
 }
 
 main().catch((e) => {

@@ -14,6 +14,7 @@ SOLANA_RPC_URL=<devnet node> KEEPER_SOLANA_KEYPAIR=<path to the keeper key> \
 - It signs with the one key at `KEEPER_SOLANA_KEYPAIR`, only if that key is the record's default keeper, and only transactions whose signer is that key. Neither the path nor anything in the file is ever printed: a file it cannot read is reported in those words only.
 - `KEEPER_STATE_DIR` (default `~/.tenonfi/keeper`) holds what it remembers between runs, one file per network and genesis (`solana-devnet-<genesis>.json`), held by one keeper at a time. See "Legs in flight and reverted legs".
 
+- With `--loop`, a round that fails (the node does not answer, a DNS error, a 429 or a 5xx) is one line with `"outcome":"round-failed"`, its reason and `"alert":true`; the next round comes after 15 s, doubled after each failure in a row up to 5 minutes, and the interval returns once a round goes through. A failed round never ends the loop, and the state file stays held. What is wrong at start (no node, a key that is not the keeper's, the wrong network) stops it before the first round, as before. With `--once` the failed round is said and the keeper exits 1 (`src/loop.ts`).
 ## A round
 
 Every vault with auto-follow on, read from the chain, in random order. For each vault, at most one adoption, one sync and one leg, each built and simulated by the adapter, signed, sent, and tracked until the chain settles it:
