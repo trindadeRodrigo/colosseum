@@ -26,9 +26,9 @@ vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider')
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
 vi.mock('next/link', () => import('../wallet/test/mock-next'));
 
-// Sign-in as a screen, and the one question it asks (gate CHAIN-PICK): a person who made their wallet
-// here chooses the chain their plan lives on, once; a person who connected a wallet is never asked.
-// The API stores the choice. Here it is a double with the shapes of GET /v1/me and PUT /v1/me/chain.
+// Sign-in as a screen. Nobody is asked for a chain (gate CHAIN-SWITCH): a person who connected a wallet
+// starts on its chain; one who made their wallets here starts on the chain they were looking at, which
+// the API stores. Here the API is a double with the shapes of GET /v1/me and PUT /v1/me/chain.
 
 const en = dictionary('en');
 const FOUND = [
@@ -49,10 +49,9 @@ function api(start: Person) {
     if (path === '/v1/me' && method === 'GET') return json(person);
     if (path === '/v1/me/chain' && method === 'PUT') {
       const { chain } = JSON.parse(String(init?.body));
-      if (person.chain && person.chain !== chain) return json({ error: 'picked once' }, 409);
-      if (!person.chain && !person.chainOptions.includes(chain))
-        return json({ error: 'not a chain you can pick' }, 422);
-      person = { ...person, chain, chainSource: person.chainSource ?? 'picked', chainOptions: [] };
+      if (!person.chainOptions.includes(chain))
+        return json({ error: 'no wallet signs there', code: 'NO_WALLET_FOR_CHAIN' }, 409);
+      if (person.chain !== chain) person = { ...person, chain, chainSource: 'picked' };
       return json(person);
     }
     return json({ error: 'not found' }, 404);
@@ -86,7 +85,7 @@ const connected = (wallets = PHANTOM, chain: Person['chain'] = 'solana'): Person
   wallets,
   chain,
   chainSource: 'wallet',
-  chainOptions: [],
+  chainOptions: [...new Set(wallets.map((w) => (w.family === 'solana' ? 'solana' : 'robinhood')))],
 });
 
 const screen = (lang: Lang = 'en', next?: string) =>
@@ -104,7 +103,6 @@ const connectWith = async (host: HTMLElement, name: string) => {
   await click(button(host, en.signIn.wallet.connect));
   await click(button(host, name));
 };
-const asks = (host: HTMLElement) => host.textContent?.includes(en.chain.pick.title) ?? false;
 const state = (host: HTMLElement) =>
   find(host, '[data-ui="sign-in-screen"]').getAttribute('data-account');
 const alert = (host: HTMLElement) => host.querySelector('[role="alert"]')?.textContent ?? null;
@@ -118,79 +116,63 @@ const signsInAs = (accounts: typeof EMBEDDED) =>
 beforeEach(() => {
   portStore.set(fakePort({ found: FOUND }));
   router.replace.mockClear();
+  // the chain this browser was last on: each test starts where nobody has chosen
+  window.localStorage.removeItem('tf-chain');
 });
 afterEach(unmountAll);
 
 describe('a person who creates a wallet in the app', () => {
-  it('is asked once for the chain, told what it means, and lands where they were headed', async () => {
+  it('is not asked for a chain: starts on the one they were looking at, and lands where they were headed', async () => {
     const server = api(made());
     const signIn = signsInAs(EMBEDDED);
     portStore.set(fakePort({ found: FOUND, signIn }));
     const host = await screen('en', '/goal');
-    expect(asks(host)).toBe(false);
 
     await click(button(host, en.signIn.passkey.continue));
     await settle();
     // one button: a passkey this device has, or one made here (SIGN-IN-FLOW)
     expect(signIn).toHaveBeenCalledWith('passkey');
-    expect(asks(host)).toBe(true);
-    // what the choice means, and that it stands
-    expect(host.textContent).toContain(`${en.chain.pick.asked.made} ${en.chain.pick.body}`);
-    expect(host.textContent).toContain(en.chain.pick.warning);
-    // the two chains, as toggle buttons in a named group, each with the wallet the plan would use
-    const group = find(host, '[role="group"]');
-    expect(group.getAttribute('aria-label')).toBe(en.chain.pick.group);
-    expect([...group.querySelectorAll('button')].map((b) => b.textContent)).toEqual([
-      'Solana',
-      'Robinhood Chain',
-    ]);
-    expect(group.textContent).toContain('So11…1112');
-    expect(group.textContent).toContain('0x20…0498');
-    // nothing is stored, and nobody is moved on, before the person chooses
-    expect(server.count('PUT', '/v1/me/chain')).toBe(0);
-    expect(router.replace).not.toHaveBeenCalled();
-
-    await click(button(host, 'Solana'));
-    expect(button(host, 'Solana').getAttribute('aria-pressed')).toBe('true');
-    expect(button(host, 'Robinhood Chain').getAttribute('aria-pressed')).toBe('false');
-    await click(button(host, en.chain.pick.confirm('Solana')));
-    await settle();
-
+    // no question: the chain they were looking at (Solana, where nobody has chosen) is stored
+    expect(host.querySelector('[role="group"]')).toBeNull();
     expect(server.calls.filter((c) => c.method === 'PUT')).toEqual([
       { method: 'PUT', path: '/v1/me/chain', body: { chain: 'solana' } },
     ]);
-    expect(asks(host)).toBe(false);
     expect(state(host)).toBe('ready');
     expect(router.replace).toHaveBeenCalledWith('/goal');
   });
 
-  it('is not asked again: not on a later visit, and not on a second device', async () => {
+  it('starts on Robinhood Chain when that is the chain they were looking at', async () => {
+    window.localStorage.setItem('tf-chain', 'robinhood');
+    try {
+      const server = api(made());
+      portStore.set(signedInPort(EMBEDDED));
+      const host = await screen();
+      await settle();
+      expect(server.stored().chain).toBe('robinhood');
+      expect(host.textContent).toContain(en.chain.is.picked('Robinhood Chain'));
+    } finally {
+      window.localStorage.clear();
+    }
+  });
+
+  it('is stored once: a later visit and a second device read the chain, and store nothing', async () => {
     const server = api(made());
     portStore.set(signedInPort(EMBEDDED));
-    const first = await screen();
+    await screen();
     await settle();
-    expect(asks(first)).toBe(true);
-    await click(button(first, 'Robinhood Chain'));
-    await click(button(first, en.chain.pick.confirm('Robinhood Chain')));
-    await settle();
-    expect(asks(first)).toBe(false);
     await unmountAll();
-
-    // the same person, a new page: the API says where the plan lives
     for (const visit of ['a later visit', 'a second device']) {
       const again = await screen();
       await settle();
-      expect(asks(again), visit).toBe(false);
       expect(state(again), visit).toBe('ready');
-      expect(again.textContent).toContain(en.chain.is.picked('Robinhood Chain'));
+      expect(again.textContent).toContain(en.chain.is.picked('Solana'));
       await unmountAll();
     }
     expect(server.count('PUT', '/v1/me/chain')).toBe(1);
-    expect(server.stored().chain).toBe('robinhood');
   });
 
-  it('shows and uses the wallet of the chosen chain alone', async () => {
-    api(made({ chain: 'solana', chainSource: 'picked', chainOptions: [] }));
+  it('shows and uses the wallet of the current chain alone', async () => {
+    api(made({ chain: 'solana', chainSource: 'picked' }));
     portStore.set(signedInPort(EMBEDDED));
     const host = await screen();
     await settle();
@@ -202,39 +184,26 @@ describe('a person who creates a wallet in the app', () => {
     expect(button(host, en.signIn.done.next).getAttribute('href')).toBe('/goal');
   });
 
-  it('cannot confirm before choosing, and is told why', async () => {
-    const server = api(made());
-    portStore.set(signedInPort(EMBEDDED));
-    const host = await screen();
-    await settle();
-    const confirm = button(host, en.chain.pick.confirmNone);
-    expect(confirm.getAttribute('aria-disabled')).toBe('true');
-    const why = document.getElementById(confirm.getAttribute('aria-describedby') ?? '');
-    expect(why?.textContent).toBe(en.chain.pick.why);
-    await click(confirm);
-    await settle();
-    expect(server.count('PUT', '/v1/me/chain')).toBe(0);
-    expect(asks(host)).toBe(true);
+  it('starts on the one chain a wallet of theirs signs on', async () => {
+    window.localStorage.setItem('tf-chain', 'robinhood');
+    try {
+      const solanaOnly = EMBEDDED.filter((w) => w.family === 'solana');
+      const server = api(made({ wallets: solanaOnly, chainOptions: ['solana'] }));
+      portStore.set(signedInPort(solanaOnly));
+      await screen();
+      await settle();
+      expect(server.stored().chain).toBe('solana');
+    } finally {
+      window.localStorage.clear();
+    }
   });
 
-  it('is asked even when there is one chain to choose: the choice cannot be undone', async () => {
-    const solanaOnly = EMBEDDED.filter((w) => w.family === 'solana');
-    const server = api(made({ wallets: solanaOnly, chainOptions: ['solana'] }));
-    portStore.set(signedInPort(solanaOnly));
-    const host = await screen();
-    await settle();
-    expect([...find(host, '[role="group"]').querySelectorAll('button')]).toHaveLength(1);
-    expect(server.count('PUT', '/v1/me/chain')).toBe(0);
-  });
-
-  it('is told, in Portuguese too, what the choice means', async () => {
+  it('is told, in Portuguese too, where new plans are built', async () => {
     api(made());
     portStore.set(signedInPort(EMBEDDED));
     const host = await screen('pt');
     await settle();
-    const pt = dictionary('pt').chain.pick;
-    for (const sentence of [pt.title, pt.asked.made, pt.body, pt.warning, pt.confirmNone])
-      expect(host.textContent).toContain(sentence);
+    expect(host.textContent).toContain(dictionary('pt').chain.is.picked('Solana'));
   });
 });
 
@@ -248,41 +217,34 @@ describe('a person who connects an outside wallet', () => {
       'robinhood',
       'Robinhood Chain',
     ],
-  ] as const)('is never asked: %s', async (_, name, accounts, chain, chainName) => {
-    const server = api(connected(accounts, chain));
-    const signIn = signsInAs(accounts);
-    portStore.set(fakePort({ found: FOUND, signIn }));
-    const host = await screen('en', '/goal');
-    const seen: boolean[] = [asks(host)];
-    await connectWith(host, name);
-    seen.push(asks(host));
-    await settle();
-    seen.push(asks(host));
-    expect(seen).toEqual([false, false, false]);
-    expect(host.querySelector('[role="group"]')).toBeNull();
-    expect(signIn).toHaveBeenCalledWith('wallet', {
-      wallet: FOUND.find((w) => w.name === name)?.id,
-    });
-    expect(host.textContent).toContain(en.chain.is.wallet(chainName));
-    expect(server.count('PUT', '/v1/me/chain')).toBe(0);
-    expect(router.replace).toHaveBeenCalledWith('/goal');
-  });
+  ] as const)(
+    'starts on its chain, and stores nothing: %s',
+    async (_, name, accounts, chain, chainName) => {
+      const server = api(connected(accounts, chain));
+      const signIn = signsInAs(accounts);
+      portStore.set(fakePort({ found: FOUND, signIn }));
+      const host = await screen('en', '/goal');
+      await connectWith(host, name);
+      await settle();
+      expect(host.querySelector('[role="group"]')).toBeNull();
+      expect(signIn).toHaveBeenCalledWith('wallet', {
+        wallet: FOUND.find((w) => w.name === name)?.id,
+      });
+      expect(host.textContent).toContain(en.chain.is.wallet(chainName));
+      expect(server.count('PUT', '/v1/me/chain')).toBe(0);
+      expect(router.replace).toHaveBeenCalledWith('/goal');
+    },
+  );
 
-  it('is asked with wallets of both families linked, and is not told they made a wallet here', async () => {
+  it('with wallets of both families linked, starts on the chain they were looking at', async () => {
     const both = [...PHANTOM, ...METAMASK];
     const server = api({ ...made({ wallets: both }), chainOptions: ['solana', 'robinhood'] });
     portStore.set(signedInPort(both));
     const host = await screen();
     await settle();
-    expect(asks(host)).toBe(true);
-    expect(host.textContent).toContain(`${en.chain.pick.asked.connected} ${en.chain.pick.body}`);
-    expect(host.textContent).not.toContain(en.chain.pick.asked.made);
-    await click(button(host, 'Robinhood Chain'));
-    await click(button(host, en.chain.pick.confirm('Robinhood Chain')));
-    await settle();
-    expect(server.stored().chain).toBe('robinhood');
-    expect(host.textContent).toContain(en.chain.is.picked('Robinhood Chain'));
-    expect(host.textContent).not.toContain(SOLANA);
+    expect(server.stored().chain).toBe('solana');
+    expect(host.textContent).toContain(en.chain.is.picked('Solana'));
+    expect(host.textContent).not.toContain(EVM);
   });
 });
 
@@ -296,139 +258,59 @@ describe('a chain our server has switched off', () => {
       },
     });
 
-  it('is not offered, and the screen says why it is not there', async () => {
+  it('is not started on: the person starts on a chain that is on', async () => {
     const server = api(made());
-    portStore.set(withOff('robinhood'));
+    portStore.set(withOff('solana'));
     const host = await screen();
     await settle();
-    expect(asks(host)).toBe(true);
-    expect(
-      [...find(host, '[role="group"]').querySelectorAll('button')].map((b) => b.textContent),
-    ).toEqual(['Solana']);
-    expect(find(host, '[data-ui="chain-off"]').textContent).toBe(
-      en.chain.pick.off('Robinhood Chain'),
-    );
-    await click(button(host, 'Solana'));
-    await click(button(host, en.chain.pick.confirm('Solana')));
-    await settle();
-    expect(server.stored().chain).toBe('solana');
+    expect(server.stored().chain).toBe('robinhood');
+    expect(state(host)).toBe('ready');
   });
 
-  it('leaves nothing to choose when every chain is off, and says so', async () => {
+  it('stores nothing when every chain is off, and says so', async () => {
     const server = api(made());
     portStore.set(withOff('solana', 'robinhood'));
     const host = await screen();
     await settle();
-    expect(host.querySelector('[role="group"]')).toBeNull();
-    expect(host.querySelectorAll('[data-ui="chain-off"]')).toHaveLength(2);
-    expect(host.textContent).toContain(en.chain.pick.noneOn);
-    expect(host.textContent).not.toContain(en.chain.pick.confirmNone);
+    expect(state(host)).toBe('unknown');
+    expect(host.textContent).toContain(en.chain.unknown.off);
     expect(server.count('PUT', '/v1/me/chain')).toBe(0);
   });
 });
 
-describe('when the choice cannot be stored', () => {
-  const choosing = async (server: ReturnType<typeof api>) => {
+describe('when the chain they start on cannot be stored', () => {
+  it('says the server did not answer, stores nothing, and stores it when asked again', async () => {
+    const server = api(made());
+    server.force((path) => (path === '/v1/me/chain' ? json({}, 503) : null));
     portStore.set(signedInPort(EMBEDDED));
     const host = await screen();
     await settle();
-    await click(button(host, 'Solana'));
-    return { host, server };
-  };
-
-  it('says the server did not answer, keeps the choice, and stores nothing', async () => {
-    const { host, server } = await choosing(api(made()));
-    server.force((path) => (path === '/v1/me/chain' ? json({}, 503) : null));
-    await click(button(host, en.chain.pick.confirm('Solana')));
-    await settle();
-    expect(alert(host)).toBe(en.chain.failure.unreachable);
-    expect(asks(host)).toBe(true);
-    expect(button(host, 'Solana').getAttribute('aria-pressed')).toBe('true');
+    expect(state(host)).toBe('unknown');
+    expect(host.textContent).toContain(en.chain.unknown.body);
     expect(server.stored().chain).toBeNull();
-    // and it works when the server answers again
     server.force(null);
-    await click(button(host, en.chain.pick.confirm('Solana')));
+    await click(button(host, en.chain.unknown.retry));
     await settle();
-    expect(asks(host)).toBe(false);
+    expect(state(host)).toBe('ready');
     expect(server.stored().chain).toBe('solana');
   });
 
-  it('says the plan already lives elsewhere when another device chose first, and shows where', async () => {
-    const { host, server } = await choosing(api(made()));
-    server.store(made({ chain: 'robinhood', chainSource: 'picked', chainOptions: [] }));
-    await click(button(host, en.chain.pick.confirm('Solana')));
-    await settle();
-    // the API refused (409); the person is read again, and the page says where the plan does live:
-    // the stored chain, not the one just tried
-    expect(server.count('GET', '/v1/me')).toBe(2);
-    expect(asks(host)).toBe(false);
-    expect(alert(host)).toBe(en.chain.failure.taken('Robinhood Chain', 'Solana'));
-    expect(alert(host)).not.toContain('lives on Solana');
-    expect(server.stored().chain).toBe('robinhood');
-    // only the wallet of the chain the plan lives on, and the way on is the person's to take
-    expect(host.textContent).toContain(EVM);
-    expect(host.textContent).not.toContain(SOLANA);
-    expect(button(host, en.signIn.done.next).getAttribute('href')).toBe('/goal');
-  });
-
-  it('does not move that person on by itself: they read why their choice was not kept', async () => {
-    const server = api(made());
-    const signIn = signsInAs(EMBEDDED);
-    portStore.set(fakePort({ found: FOUND, signIn }));
-    const host = await screen('en', '/goal');
-    await click(button(host, en.signIn.passkey.continue));
-    await settle();
-    await click(button(host, 'Solana'));
-    server.store(made({ chain: 'robinhood', chainSource: 'picked', chainOptions: [] }));
-    await click(button(host, en.chain.pick.confirm('Solana')));
-    await settle();
-    expect(state(host)).toBe('ready');
-    expect(alert(host)).toBe(en.chain.failure.taken('Robinhood Chain', 'Solana'));
-    expect(router.replace).not.toHaveBeenCalled();
-  });
-
-  it('says the choice was not kept even when the server cannot say which chain was', async () => {
-    const { host, server } = await choosing(api(made()));
-    server.force((path, init) =>
-      path === '/v1/me/chain'
-        ? json({ error: 'picked once' }, 409)
-        : path === '/v1/me' && (init?.method ?? 'GET') === 'GET'
-          ? json({}, 503)
-          : null,
-    );
-    await click(button(host, en.chain.pick.confirm('Solana')));
-    await settle();
-    expect(state(host)).toBe('unknown');
-    expect(alert(host)).toBe(en.chain.failure.takenUnknown('Solana'));
-    expect(host.textContent).toContain(en.chain.unknown.body);
-  });
-
-  it('has a sentence for a chain that is not offered, a sign-in that ran out and a server that is busy', async () => {
-    for (const [status, sentence] of [
-      [422, en.chain.failure.notOffered],
-      [401, en.chain.failure.signedOut],
-      [429, en.shell.slowDown],
+  it('has a sentence for a sign-in that ran out, a missing identity token and a busy server', async () => {
+    for (const [status, error, sentence] of [
+      [401, 'sign in first', en.chain.unknown.signedOut],
+      [401, 'sign in first: no identity token was sent', en.chain.unknown.noIdentity],
+      [429, 'slow down', en.shell.slowDown],
     ] as const) {
-      const { host, server } = await choosing(api(made()));
-      server.force((path) => (path === '/v1/me/chain' ? json({ error: 'no' }, status) : null));
-      await click(button(host, en.chain.pick.confirm('Solana')));
+      const server = api(made());
+      server.force((path) => (path === '/v1/me/chain' ? json({ error }, status) : null));
+      portStore.set(signedInPort(EMBEDDED));
+      const host = await screen();
       await settle();
-      expect(alert(host), String(status)).toBe(sentence);
+      expect(state(host), error).toBe('unknown');
+      expect(host.textContent, error).toContain(sentence);
       expect(host.textContent).not.toContain('"error"');
       await unmountAll();
     }
-  });
-
-  it('says when the sign-in service gave no identity token, which signing in again does not fix', async () => {
-    const { host, server } = await choosing(api(made()));
-    server.force((path) =>
-      path === '/v1/me/chain'
-        ? json({ error: 'sign in first: no identity token was sent' }, 401)
-        : null,
-    );
-    await click(button(host, en.chain.pick.confirm('Solana')));
-    await settle();
-    expect(alert(host)).toBe(en.chain.failure.noIdentity);
   });
 });
 
@@ -440,13 +322,13 @@ describe('when the API does not say where the plan lives', () => {
     const host = await screen();
     await settle();
     expect(state(host)).toBe('unknown');
-    expect(asks(host)).toBe(false);
+    expect(state(host)).not.toBe('ready');
     expect(host.textContent).toContain(en.chain.unknown.body);
     server.force(null);
     await click(button(host, en.chain.unknown.retry));
     await settle();
     expect(server.count('GET', '/v1/me')).toBe(2);
-    expect(asks(host)).toBe(true);
+    expect(state(host)).toBe('ready');
   });
 
   it('tells a sign-in the server no longer knows to sign out and in again, and does not offer to ask again', async () => {
@@ -478,7 +360,7 @@ describe('when the API does not say where the plan lives', () => {
     server.force(null);
     await click(button(host, en.chain.unknown.retry));
     await settle();
-    expect(asks(host)).toBe(true);
+    expect(state(host)).toBe('ready');
   });
 
   it('tells someone the server asked to slow down to wait, and asks again when told to', async () => {
@@ -492,7 +374,7 @@ describe('when the API does not say where the plan lives', () => {
     server.force(null);
     await click(button(host, en.chain.unknown.retry));
     await settle();
-    expect(asks(host)).toBe(true);
+    expect(state(host)).toBe('ready');
   });
 
   it('says a signed-in person with no wallet has no chain, and makes the wallet when asked', async () => {
@@ -518,7 +400,7 @@ describe('when the API does not say where the plan lives', () => {
     expect(ensureWallets).toHaveBeenCalledTimes(2);
     expect(alert(host)).toBeNull();
     expect(server.count('GET', '/v1/me')).toBe(2);
-    expect(asks(host)).toBe(true);
+    expect(state(host)).toBe('ready');
   });
 });
 
@@ -540,7 +422,7 @@ describe('a passkey sign-in whose wallets are not both there yet', () => {
     await settle();
     expect(find(host, 'h1').textContent).toBe(en.signIn.done.title);
     expect(host.textContent).toContain(en.signIn.passkey.making);
-    expect(asks(host)).toBe(false);
+    expect(state(host)).not.toBe('ready');
     expect(host.querySelector('[data-ui="sign-in"]')).toBeNull();
     // the API is not asked which chains may be picked while it would see one wallet
     expect(server.count('GET', '/v1/me')).toBe(0);
@@ -556,7 +438,7 @@ describe('a passkey sign-in whose wallets are not both there yet', () => {
     expect(state(host)).toBe('no-wallet');
     expect(host.textContent).toContain(en.signIn.failure.walletNotMade);
     // never the pick, and the API is still not asked: one option would be an irreversible question
-    expect(asks(host)).toBe(false);
+    expect(state(host)).not.toBe('ready');
     expect(host.querySelector('[role="group"]')).toBeNull();
     expect(server.count('GET', '/v1/me')).toBe(0);
 
@@ -580,16 +462,18 @@ describe('a passkey sign-in whose wallets are not both there yet', () => {
     expect(alert(host)).toBe(en.signIn.failure.walletNotMade);
   });
 
-  it('asks for the chain once both are there', async () => {
-    api(made());
+  it('starts on a chain once both are there', async () => {
+    const server = api(made());
     portStore.set(owed('making'));
     const host = await screen();
     await settle();
-    expect(asks(host)).toBe(false);
+    expect(state(host)).not.toBe('ready');
     await act(async () => portStore.set(signedInPort(EMBEDDED)));
     await settle();
-    expect(asks(host)).toBe(true);
-    expect([...find(host, '[role="group"]').querySelectorAll('button')]).toHaveLength(2);
+    expect(state(host)).toBe('ready');
+    expect(server.calls.filter((c) => c.method === 'PUT')).toEqual([
+      { method: 'PUT', path: '/v1/me/chain', body: { chain: 'solana' } },
+    ]);
   });
 });
 
@@ -622,29 +506,26 @@ describe('one person after another in the same browser', () => {
     expect(host.textContent).not.toContain(SOLANA);
   });
 
-  it('does not let a late answer about the first person’s choice stand in for the second', async () => {
+  it('does not let a late answer about the first person’s chain stand in for the second', async () => {
     const server = api(made());
-    portStore.set(signedInPort(EMBEDDED, { userId: 'did:privy:first' }));
-    const host = await screen();
-    await settle();
-    // the first person's choice is on its way to the API
+    // the first person's chain is on its way to the API
     let stored: (res: Response) => void = () => {};
     server.force((path) =>
       path === '/v1/me/chain'
         ? (new Promise<Response>((resolve) => (stored = resolve)) as never)
         : null,
     );
-    await click(button(host, 'Solana'));
-    await click(button(host, en.chain.pick.confirm('Solana')));
+    portStore.set(signedInPort(EMBEDDED, { userId: 'did:privy:first' }));
+    const host = await screen();
+    await settle();
+    expect(server.count('PUT', '/v1/me/chain')).toBe(1);
     // a second person signs in before it answers
     server.store(connected(METAMASK, 'robinhood'));
     await act(async () => portStore.set(signedInPort(METAMASK, { userId: 'did:privy:second' })));
     await settle();
     expect(host.textContent).toContain(en.chain.is.wallet('Robinhood Chain'));
     // the first person's answer arrives now: it is not the second person's
-    await act(async () =>
-      stored(json(made({ chain: 'solana', chainSource: 'picked', chainOptions: [] }))),
-    );
+    await act(async () => stored(json(made({ chain: 'solana', chainSource: 'picked' }))));
     await settle();
     expect(state(host)).toBe('ready');
     expect(host.textContent).toContain(en.chain.is.wallet('Robinhood Chain'));
@@ -701,7 +582,7 @@ describe('the screen itself', () => {
     expect(find(host, '[data-ui="lattice-status"]').textContent).toBe(en.signIn.passkey.making);
     portStore.set(signedInPort(EMBEDDED));
     await settle();
-    expect(asks(host)).toBe(true);
+    expect(state(host)).toBe('ready');
   });
 
   it('goes on only to a page of this app', async () => {
@@ -726,20 +607,20 @@ describe('where focus goes, and what a screen reader is told, when the screen ch
     await settle();
   };
 
-  it('goes to the question after a sign-in, and says the person is signed in and is asked', async () => {
+  it('goes to where new plans are built after a sign-in, and says it', async () => {
     api(made());
     portStore.set(fakePort({ found: FOUND, signIn: signsInAs(EMBEDDED) }));
     const host = await screen('en', '/goal');
     await pressing(button(host, en.signIn.passkey.continue));
-    expect(asks(host)).toBe(true);
+    expect(state(host)).toBe('ready');
     // the button that was pressed is gone: focus is on what took its place, not on the page
     expect(document.activeElement).toBe(stage(host));
     expect(document.activeElement).not.toBe(document.body);
-    expect(stage(host).textContent).toContain(en.chain.pick.title);
-    expect(said(host)).toBe(`${en.signIn.done.title} ${en.chain.pick.title}`);
+    expect(stage(host).textContent).toContain(en.chain.is.picked('Solana'));
+    expect(said(host)).toBe(en.chain.is.picked('Solana'));
   });
 
-  it('rests on the heading while the wallet is made, then goes to the question', async () => {
+  it('rests on the heading while the wallet is made, then goes to where new plans are built', async () => {
     api(made());
     const signIn = vi.fn(async () => {
       portStore.set(
@@ -754,21 +635,8 @@ describe('where focus goes, and what a screen reader is told, when the screen ch
     expect(said(host)).toBe(`${en.signIn.done.title} ${en.signIn.passkey.making}`);
     await act(async () => portStore.set(signedInPort(EMBEDDED)));
     await settle();
-    expect(asks(host)).toBe(true);
-    expect(document.activeElement).toBe(stage(host));
-    expect(said(host)).toBe(`${en.signIn.done.title} ${en.chain.pick.title}`);
-  });
-
-  it('goes to where the plan lives after the choice, and says it', async () => {
-    api(made());
-    portStore.set(signedInPort(EMBEDDED));
-    const host = await screen();
-    await settle();
-    await pressing(button(host, 'Solana'));
-    await pressing(button(host, en.chain.pick.confirm('Solana')));
     expect(state(host)).toBe('ready');
     expect(document.activeElement).toBe(stage(host));
-    expect(stage(host).textContent).toContain(en.chain.is.picked('Solana'));
     expect(said(host)).toBe(en.chain.is.picked('Solana'));
   });
 
@@ -780,9 +648,9 @@ describe('where focus goes, and what a screen reader is told, when the screen ch
     await settle();
     server.force(null);
     await pressing(button(host, en.chain.unknown.retry));
-    expect(asks(host)).toBe(true);
+    expect(state(host)).toBe('ready');
     expect(document.activeElement).toBe(stage(host));
-    expect(said(host)).toBe(`${en.signIn.done.title} ${en.chain.pick.title}`);
+    expect(said(host)).toBe(en.chain.is.picked('Solana'));
   });
 
   it('goes to the heading after signing out from the screen, and says the person is out', async () => {
@@ -822,26 +690,20 @@ describe('where focus goes, and what a screen reader is told, when the screen ch
     const host = await screen();
     await act(async () => portStore.set(signedInPort(EMBEDDED)));
     await settle();
-    expect(asks(host)).toBe(true);
+    expect(state(host)).toBe('ready');
     expect(document.activeElement).toBe(document.body);
     expect(said(host)).toBe('');
   });
 });
 
 describe('the throwaway wallet of development', () => {
-  it('keeps its choice in the page, stores nothing on the API, and says MOCK with its hatch', async () => {
+  it('keeps its chain in the page, stores nothing on the API, and says MOCK with its hatch', async () => {
     const server = api(made());
     portStore.set(signedInPort(EMBEDDED, { test: true }, 'mock'));
     const host = await screen();
     await settle();
-    expect(asks(host)).toBe(true);
-    expect(host.textContent).toContain(en.chain.pick.mock);
-    expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
-    expect(host.querySelectorAll('.tf-mock-plate')).toHaveLength(1);
-    await click(button(host, 'Solana'));
-    await click(button(host, en.chain.pick.confirm('Solana')));
-    await settle();
     expect(state(host)).toBe('ready');
+    expect(host.textContent).toContain(en.chain.is.picked('Solana'));
     expect(server.calls).toEqual([]);
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
     expect(host.querySelectorAll('.tf-mock-plate').length).toBeGreaterThan(0);
@@ -853,12 +715,8 @@ describe('the throwaway wallet of development', () => {
     const pt = dictionary('pt');
     const host = await screen('pt');
     await settle();
-    // the pick
-    expect(find(host, '.tf-mock-plate').textContent).toBe(`MOCK${pt.shell.mockAnnounce}`);
-    await click(button(host, 'Solana'));
-    await click(button(host, pt.chain.pick.confirm('Solana')));
-    await settle();
-    // and the card that says where the plan lives
+    // the card that says where new plans are built
+    expect(host.querySelectorAll('.tf-mock-plate').length).toBeGreaterThan(0);
     for (const plate of host.querySelectorAll('.tf-mock-plate'))
       expect(plate.textContent).toBe(`MOCK${pt.shell.mockAnnounce}`);
     expect(host.textContent).not.toContain('sample data');

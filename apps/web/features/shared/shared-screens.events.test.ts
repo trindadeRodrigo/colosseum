@@ -9,7 +9,7 @@ import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
 import { recallOrder } from '../order/order-record';
-import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
+import { EMBEDDED, fakePort, json, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { FamilyBuyScreen } from './FamilyBuyScreen';
@@ -141,6 +141,34 @@ describe('the shelf', () => {
     // a test network's portfolio carries the plate, the hatch and the words
     expect(card.textContent).toContain('MOCK');
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
+  });
+
+  describe('for someone signed out (CHAIN-SWITCH)', () => {
+    beforeEach(() => {
+      portStore.set(fakePort());
+      window.history.replaceState(null, '', '/shelf');
+    });
+    afterEach(() => window.history.replaceState(null, '', '/'));
+
+    it('shows the chain picked in the bar, and names it in the address', async () => {
+      window.localStorage.setItem('tf-chain', 'robinhood');
+      const calls = api({ family: familyOf(FAMILY_ID) });
+      const host = await show(createElement(ShelfScreen));
+      expect(calls.map((c) => c.path).filter((p) => p.startsWith('/v1/shelf'))).toEqual([
+        '/v1/shelf?chain=robinhood',
+      ]);
+      expect(window.location.search).toBe('?chain=robinhood');
+      expect(host.textContent).toContain(en.shared.shelf.lead('Robinhood Chain'));
+    });
+
+    it('opens on the chain a link names, and keeps it in this browser', async () => {
+      window.history.replaceState(null, '', '/shelf?chain=robinhood');
+      const calls = api({ family: familyOf(FAMILY_ID) });
+      await show(createElement(ShelfScreen));
+      expect(calls.at(-1)?.path).toBe('/v1/shelf?chain=robinhood');
+      expect(calls.some((c) => c.path === '/v1/shelf?chain=solana')).toBe(false);
+      expect(window.localStorage.getItem('tf-chain')).toBe('robinhood');
+    });
   });
 });
 

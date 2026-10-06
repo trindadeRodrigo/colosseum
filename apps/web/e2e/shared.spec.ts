@@ -55,8 +55,6 @@ async function signIn(page: Page) {
   await page.locator('header a[href="/sign-in"]').click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
-  await dialog.getByRole('button', { name: 'Solana' }).click();
-  await dialog.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/goal$/);
 }
@@ -72,7 +70,8 @@ async function toShelf(page: Page) {
     .locator('[data-ui="compact-nav-sheet"]')
     .getByRole('link', { name: en.shell.products })
     .click();
-  await expect(page).toHaveURL(/\/shelf$/);
+  // the address names the chain the shelf shows (CHAIN-SWITCH)
+  await expect(page).toHaveURL(/\/shelf\?chain=solana$/);
 }
 
 /** A portfolio's page, from the shelf. */

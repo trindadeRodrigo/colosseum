@@ -127,18 +127,14 @@ describe('the sign-in dialog', () => {
     expect(document.activeElement).toBe(last);
   });
 
-  it('closes once the person is signed in and their chain chosen, and the action carries on', async () => {
+  it('closes once the person is signed in and their chain known, and the action carries on', async () => {
     const host = await shell();
     const action = find<HTMLAnchorElement>(host, '[data-ui="page-action"]');
     await click(action);
     const box = dialog() as HTMLElement;
     await click(button(box, en.signIn.passkey.continue));
     await settle();
-    // a wallet made here: the chain is asked, inside the dialog
-    expect(box.textContent).toContain(en.chain.pick.title);
-    await click(button(box, 'Solana'));
-    await click(button(box, en.chain.pick.confirm('Solana')));
-    await settle();
+    // a wallet made here: nothing is asked, the chain they were looking at is stored (CHAIN-SWITCH)
     expect(dialog()).toBeNull();
     // on to the order the action was for
     expect(router.push.mock.calls).toEqual([['/orders/o1']]);

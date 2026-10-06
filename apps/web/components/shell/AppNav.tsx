@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useAccount } from '../../features/account/AccountProvider';
+import { ChainSwitch } from '../../features/account/ChainSwitch';
 import { useWalletPort } from '../../features/wallet/WalletProvider';
 import { useT } from '../../i18n/I18nProvider';
 import { Button } from '../ui/Button';
@@ -21,7 +22,8 @@ import { Mark } from './Mark';
 //   Portfolio   the person's vaults (/monitor), for someone signed in
 //   Analytics   Bearing's analytics (/analytics/stocks), current on every page under /analytics,
 //               its methodology too, which its side menu links (no Resources item: Thom, Oct 6)
-//   the wallet  "Sign in"; then the short address of the plan's chain and "Sign out"
+//   the chain   the chain switcher: what the shelf shows, and where a new plan is built (CHAIN-SWITCH)
+//   the wallet  "Sign in"; then the short address on the current chain and "Sign out"
 //
 //   Products    the shelf of shared portfolios (/shelf), and a portfolio's page under it
 //
@@ -113,7 +115,7 @@ function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
     }
   }
 
-  // Only the wallet of the chain the plan lives on is shown: the other family's is never used.
+  // Only the wallet of the current chain is shown: the one a new plan is built with.
   const wallet = account.status === 'ready' ? port.active(chainFamily(account.chain)) : null;
   const address = wallet && (
     <span className="font-mono text-source text-muted-foreground" title={wallet.address}>
@@ -127,6 +129,7 @@ function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
       <span role="status" data-ui="account-said" className="sr-only">
         {said}
       </span>
+      <ChainSwitch />
       {/* Before the wallet has loaded there is nothing to say: an empty box of the same height. A
           person who is signed in while it still loads (their wallets are being made, or could not
           be) is known by then, and always has the way out: a wallet that never arrives must not

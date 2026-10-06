@@ -164,8 +164,6 @@ async function toReview(page: Page) {
   await page.locator('header a[href="/sign-in"]').click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
-  await dialog.getByRole('button', { name: 'Solana' }).click();
-  await dialog.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/goal$/);
   await check(page, 'home');

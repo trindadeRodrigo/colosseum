@@ -1,7 +1,7 @@
 'use client';
 import type { SharedFamily, SharedRecipe } from '@colosseum/schemas';
 import Link from 'next/link';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardEmpty, CardHeader, CardLoading } from '../../components/ui/Card';
@@ -9,6 +9,8 @@ import { ChainBadges } from '../../components/ui/ChainBadge';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
+import { useAccount } from '../account/AccountProvider';
+import { chainInAddress } from '../account/chain-choice';
 import { assetTicker, formatBps } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { networkFor } from '../order/readiness';
@@ -19,9 +21,11 @@ import { shortAddress, useSharedPerson } from './use-person';
 
 // The shelf (DESIGN-VAULT section 11): a card per shared portfolio, with its name, its creator's
 // address, the platform badge, the version in effect and its weights, and whether auto-follow is
-// offered on it (gate GOLD-ONE-TAP). A signed-in person sees only the portfolios with a recipe on their
-// own chain (gate ONE-CHAIN). What a card says is the server's store: the portfolio's page reads the
-// chain. A creator's name and description are text, never markup or a link.
+// offered on it (gate GOLD-ONE-TAP). It shows the portfolios with a recipe on one chain: a signed-in
+// person's current chain, or the chain someone signed out picked in the bar (gate CHAIN-SWITCH). The
+// address names it (`?chain=robinhood`), so a link opens the same shelf. What a card says is the
+// server's store: the portfolio's page reads the chain. A creator's name and description are text,
+// never markup or a link.
 
 type Load =
   | { kind: 'loading' }
@@ -35,8 +39,29 @@ export function ShelfScreen() {
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [round, setRound] = useState(0);
   const titleId = useId();
-  const chain = person.kind === 'ready' ? person.chain : null;
+  const { chain: looking, choose } = useAccount();
+  const chain =
+    person.kind === 'ready' ? person.chain : person.kind === 'signed-out' ? looking : null;
   const settled = person.kind !== 'loading';
+
+  // The address names the chain: someone signed out who opens a link to another chain's shelf is
+  // moved to it, once; after that the address follows the chain the bar shows.
+  const adopted = useRef(false);
+  useEffect(() => {
+    if (!settled || !chain) return;
+    if (!adopted.current) {
+      adopted.current = true;
+      const named = chainInAddress(window.location.search);
+      if (person.kind === 'signed-out' && named && named !== chain) {
+        void choose(named);
+        return;
+      }
+    }
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('chain') === chain) return;
+    params.set('chain', chain);
+    window.history.replaceState(null, '', `${window.location.pathname}?${params}`);
+  }, [settled, chain, person.kind, choose]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `round` reads the shelf again
   useEffect(() => {
