@@ -194,4 +194,80 @@ describe.skipIf(!FORK_URL)('the keeper on a copy of Robinhood Chain test network
     expect(memory.inFlight.has(w.vault)).toBe(false);
     expect([...memory.reverted].some((k) => k.endsWith(`->${asset}`))).toBe(false);
   });
+
+  it('pins the next leg to the nonce of a held leg the node never saw: that one lands, the first never can', async () => {
+    const w = await start();
+    await w.later(3_700);
+    // The first leg is signed and remembered, and its bytes never reach the node.
+    let dropped = '';
+    const first = of(
+      await round(w, {
+        send: async (wire) => {
+          dropped = wire;
+        },
+      }),
+      w.vault,
+    );
+    expect(first.reason).toContain('is still pending');
+    const held = memory.inFlight.get(w.vault);
+    if (held?.nonce === undefined || !held.signer) throw new Error('no leg held on a nonce');
+    const count = () =>
+      w.client.getTransactionCount({ address: held.signer as `0x${string}`, blockTag: 'latest' });
+    expect(await count()).toBe(held.nonce);
+    const second = of(await round(w), w.vault);
+    expect(second.reason).toContain(
+      `leg ${held.txId} is not held by the node; the next leg takes its nonce ${held.nonce}`,
+    );
+    expect(second.outcome).toBe('acted');
+    expect(memory.inFlight.has(w.vault)).toBe(false);
+    // The second leg took the nonce: the first one's bytes, sent now, cannot land.
+    expect(await count()).toBe(held.nonce + 1);
+    await expect(w.sendRaw(dropped)).rejects.toThrow();
+    expect(await count()).toBe(held.nonce + 1);
+  });
+
+  it('holds every leg while a dropped asset the vault still holds, at weight zero, cannot be valued', async () => {
+    const w = await start();
+    const { active } = await w.adapter.getRecipe(w.recipeA);
+    const gone = id('tnvda');
+    const freed = active.components.find((c) => c.kind === 'asset' && c.asset === gone)?.weightBps;
+    if (!freed) throw new Error(`${gone} is not in the portfolio`);
+    const half = Math.floor(freed / 2);
+    const kept = active.components
+      .filter((c) => !(c.kind === 'asset' && c.asset === gone))
+      .map((c, i) =>
+        c.kind === 'asset' ? { ...c, weightBps: c.weightBps + (i === 0 ? half : freed - half) } : c,
+      );
+    await w.send(
+      await w.adapter.buildPublishRecipe({
+        creator: ACCOUNTS.owner,
+        recipe: {
+          ...active,
+          version: active.version + 1,
+          components: kept,
+          metaHash: 'ce'.repeat(32),
+        },
+      }),
+    );
+    await w.later(61);
+    const adopted = of(await round(w, {}), w.vault);
+    expect(adopted.reason).toContain(`adopted version ${active.version + 1}`);
+    const ctx = await w.adapter.getKeeperContext(w.vault);
+    const dropped = ctx?.positions.find((p) => p.asset === gone);
+    // still one of the vault's targets(), at weight zero, and held
+    expect([dropped?.target, dropped?.targetBps, dropped?.raw !== '0']).toEqual([true, 0, true]);
+    // Its price jumps past what the average allows: it cannot be valued, so no leg can pass.
+    await w.movePrice(gone, 300);
+    try {
+      const now = await w.adapter.getKeeperContext(w.vault);
+      const reference = now?.positions.find((p) => p.asset === gone)?.reference;
+      expect(reference).toBeTruthy();
+      expect(now?.blocked).toBe(reference);
+      const line = of(await round(w, { dryRun: true }), w.vault);
+      expect(line.reason).toContain(`no leg would pass: ${reference}`);
+      expect(line.txIds).toEqual([]);
+    } finally {
+      await w.movePrice(gone, -291);
+    }
+  });
 });
