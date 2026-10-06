@@ -92,6 +92,7 @@ export function EmbedGoal({ style }: { style: CSSProperties }) {
         credit={{ name: 'tenonfi', href: '/', symbol: <Mark size={16} /> }}
         labels={{
           loading: words.loading,
+          slow: t.shell.wait.slow,
           unavailable: words.unavailable,
           showSchedule: words.showSchedule,
           poweredBy: words.poweredBy,

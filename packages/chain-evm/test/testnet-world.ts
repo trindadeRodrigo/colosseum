@@ -83,6 +83,12 @@ export type TestnetWorld = {
   sign(tx: BuiltTx): Promise<string>;
   send(tx: BuiltTx): Promise<{ txId: string; validUntil?: string }>;
   withPriceMoved(asset: string, bps: number, work: () => Promise<void>): Promise<void>;
+  /** Moves the test price of `asset` by `bps` and the market's pool with it, and leaves them moved. */
+  movePrice(asset: string, bps: number): Promise<void>;
+  /** Moves the copy's clock on by `seconds` and mines a block. */
+  later(seconds: number): Promise<void>;
+  /** Sends signed bytes as they are, with no preflight, and waits for the block: a revert still lands. */
+  sendRaw(wire: string): Promise<string>;
   stop(): void;
 };
 
@@ -246,8 +252,8 @@ export async function buildTestnetWorld(forkUrl: string, port: number): Promise<
       autoFollow: true,
     });
     const owner = ACCOUNTS.owner;
-    const later = async () => {
-      await test.increaseTime({ seconds: 61 });
+    const later = async (seconds = 61) => {
+      await test.increaseTime({ seconds });
       await test.mine({ blocks: 1 });
     };
 
@@ -385,25 +391,37 @@ export async function buildTestnetWorld(forkUrl: string, port: number): Promise<
       await adapter.buildApprove({ owner, basketId: '77', amountRaw: DEPOSIT_RAW.toString() }),
     );
 
-    const withPriceMoved = async (assetId: string, bps: number, work: () => Promise<void>) => {
-      // The test price moves, and the market moves its pool to it; the copy is put back afterwards.
+    const movePrice = async (assetId: string, bps: number) => {
+      // The test price moves, and the market moves its pool to it.
       const a = TESTNET_RECORD.assets.find((x) => x.id === assetId);
       if (!a) throw new Error(`${assetId} has no test price`);
+      const [, answer] = (await client.readContract({
+        address: a.feed as Address,
+        abi: FEED,
+        functionName: 'latestRoundData',
+      })) as readonly [bigint, bigint, bigint, bigint, bigint];
+      const moved = (answer * BigInt(10_000 + bps)) / 10_000n;
+      const now = (await client.getBlock()).timestamp;
+      await as(writer, a.feed as Address, FEED, 'write', [moved, now]);
+      await as(writer, MARKET, MARKET_ABI, 'recentre', [a.address]);
+    };
+    const withPriceMoved = async (assetId: string, bps: number, work: () => Promise<void>) => {
+      // The copy is put back afterwards.
       const snapshot = await test.snapshot();
       try {
-        const [, answer] = (await client.readContract({
-          address: a.feed as Address,
-          abi: FEED,
-          functionName: 'latestRoundData',
-        })) as readonly [bigint, bigint, bigint, bigint, bigint];
-        const moved = (answer * BigInt(10_000 + bps)) / 10_000n;
-        const now = (await client.getBlock()).timestamp;
-        await as(writer, a.feed as Address, FEED, 'write', [moved, now]);
-        await as(writer, MARKET, MARKET_ABI, 'recentre', [a.address]);
+        await movePrice(assetId, bps);
         await work();
       } finally {
         await test.revert({ id: snapshot });
       }
+    };
+    const sendRaw = async (wire: string) => {
+      const hash = await client.request({
+        method: 'eth_sendRawTransaction' as never,
+        params: [wire] as never,
+      });
+      await mined(hash as Hex);
+      return hash as string;
     };
 
     return {
@@ -419,6 +437,9 @@ export async function buildTestnetWorld(forkUrl: string, port: number): Promise<
       sign,
       send,
       withPriceMoved,
+      movePrice,
+      later,
+      sendRaw,
       stop: () => anvil.kill('SIGTERM'),
     };
   } catch (e) {

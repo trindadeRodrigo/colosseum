@@ -3,7 +3,8 @@ import { shorten } from './format';
 import { Icon } from './Icon';
 
 // data-table.md. Every mainnet transaction is shown with its explorer link: "Tx ↗" and the signature
-// cut in the middle, in the mono face, with a name that says where the link goes.
+// cut in the middle, in the mono face, then the explorer's name ("Solscan"), so where the link goes
+// is said before it is followed.
 
 export type ExplorerLinkLabels = {
   /** Before the signature. */
@@ -23,7 +24,7 @@ export type ExplorerLinkProps = {
   signature: string;
   /** Null when no explorer serves this transaction: the signature is shown without a link. */
   href: string | null;
-  /** The explorer's name, for the accessible name: "Solana Explorer". */
+  /** The explorer's name, shown after the signature and in the accessible name: "Solscan". */
   explorer: string;
   labels?: Partial<ExplorerLinkLabels>;
   className?: string;
@@ -55,6 +56,9 @@ export function ExplorerLink({ signature, href, explorer, labels, className }: E
       {text.tx}
       <Icon name="ArrowUpRight" size={16} />
       {short}
+      <span data-ui="explorer-name" className="font-sans text-caption text-muted-foreground">
+        {explorer}
+      </span>
     </a>
   );
 }

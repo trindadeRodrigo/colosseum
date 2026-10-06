@@ -63,6 +63,8 @@ type Ctx = {
   lending: () => Promise<LendRow[]>;
   ui: UiState;
   setUi: (f: (s: UiState) => UiState) => void;
+  /** Reads everything again: a wait that gave up asks once more. */
+  retry: () => void;
 };
 
 const BearingContext = createContext<Ctx | null>(null);
@@ -234,6 +236,7 @@ export function BearingProvider({
       ...api,
       ui,
       setUi: (f) => setUiState(f),
+      retry: () => setGen((g) => g + 1),
     }),
     [reader, mode, now, newest, api, ui],
   );

@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -248,4 +249,42 @@ describe('the node a script talks to', () => {
     }
     await expect(assertTestnetNode(url)).rejects.toThrow('did not answer');
   });
+
+  it('the scripts that sign, ops.ts and fund-wallet.ts, stop on a node that answers a mainnet', async () => {
+    const server = createServer((_, res) => {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x1237' }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    // Keys that do not exist: a script that got past the node would stop on them instead.
+    const env = {
+      ...process.env,
+      ROBINHOOD_RPC_URL: url,
+      ROBINHOOD_DEPLOYER_KEY: '/nonexistent/deployer.key',
+      ROBINHOOD_PRICE_WRITER_KEY: '/nonexistent/writer.key',
+    };
+    const run = (script: string, args: string[]) =>
+      new Promise<{ code: number | null; err: string }>((resolve) => {
+        const child = spawn(process.execPath, ['--import', 'tsx', script, ...args], { env });
+        let err = '';
+        child.stderr.on('data', (d) => {
+          err += String(d);
+        });
+        child.on('close', (code) => resolve({ code, err }));
+      });
+    const someone = '0x00000000000000000000000000000000c0ffee02';
+    try {
+      for (const [script, args] of [
+        ['scripts/testnet/robinhood/ops.ts', ['keeper', someone]],
+        ['scripts/testnet/robinhood/fund-wallet.ts', ['wallet', someone]],
+      ] as const) {
+        const { code, err } = await run(script, [...args]);
+        expect(code, script).not.toBe(0);
+        expect(err, script).toContain("a mainnet's");
+      }
+    } finally {
+      server.close();
+    }
+  }, 60_000);
 });

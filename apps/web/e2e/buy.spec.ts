@@ -157,6 +157,27 @@ test('the plan drawn as a joint answers a mouse and a finger, and lights its par
   await phone.close();
 });
 
+test('signed in, the logo leads to the landing, and its bar leads back into the app', async ({
+  page,
+}) => {
+  await page.request.post(`${STUB}/__stub/reset`);
+  await page.goto('/sign-in');
+  await page.getByRole('button', { name: en.signIn.passkey.create }).click();
+  await page.getByRole('button', { name: 'Solana' }).click();
+  await page.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
+  await expect(page).toHaveURL(/\/goal$/);
+  await page.getByRole('link', { name: en.shell.home }).click();
+  // the landing, not a redirect back to the goal
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.landing.stage.title);
+  await page.keyboard.press('End');
+  const bar = page.locator('[data-ui="compact-nav"]');
+  await expect(bar).toHaveAttribute('data-compact', 'true');
+  await expect(bar.getByRole('link', { name: en.landing.nav.cta })).toHaveCount(0);
+  await bar.getByRole('link', { name: en.landing.nav.openApp }).click();
+  await expect(page).toHaveURL(/\/goal$/);
+});
+
 async function toReview(page: Page) {
   await page.request.post(`${STUB}/__stub/reset`);
   await page.goto('/sign-in');
@@ -189,6 +210,8 @@ async function toReview(page: Page) {
 
   await expect(page).toHaveURL(/\/orders\/[^/]+$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.order.review.title);
+  // the review names the chain over the page and over its steps
+  await expect(page.locator('main [data-ui="chain-badge"]')).toHaveText(['Solana', 'Solana']);
 }
 
 test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', async ({ page }) => {
@@ -221,6 +244,7 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   ).toHaveCount(4);
   await expect(vault.locator('[data-ui="vault-value"] [data-ui="figure"]')).toHaveCount(1);
   await expect(vault.locator('[data-ui="mock-plate"]').first()).toBeVisible();
+  await expect(vault.locator('[data-ui="chain-badge"]')).toHaveText('Solana');
   await check(page, 'monitor');
   // the disclaimer is under the vault, once: the shell's foot does not repeat it
   await expect(page.locator('main [data-ui="disclaimer"]')).toBeVisible();

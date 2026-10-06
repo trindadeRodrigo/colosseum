@@ -535,6 +535,43 @@
   }
 }
 
+/* The loader (STYLE.md, "the lattice assembles"): a 3x3 lattice whose horizontals slide in on x, then
+ * whose verticals drop on y, 240ms each with a 60ms stagger, then a 400ms hold, over and over while a
+ * wait lasts. Under reduced motion it is the still lattice. */
+.tf-lattice-assemble .tf-lattice-h {
+  animation: lattice-h 1240ms var(--tf-ease-seat) calc(var(--i) * 60ms) infinite both;
+}
+.tf-lattice-assemble .tf-lattice-v {
+  animation: lattice-v 1240ms var(--tf-ease-seat) calc(420ms + var(--i) * 60ms) infinite both;
+}
+
+@keyframes lattice-h {
+  0% {
+    transform: translateX(-100%);
+  }
+  19%,
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes lattice-v {
+  0% {
+    transform: translateY(-100%);
+  }
+  19%,
+  100% {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tf-lattice-assemble .tf-lattice-h,
+  .tf-lattice-assemble .tf-lattice-v {
+    animation: none;
+  }
+}
+
 /* ---------------------------------------------------------------------------------------------------
  * Base. The spec puts these on html and body; here they sit under one class, `tf-app`, which the
  * product shell puts on <body>. Tailwind's own base fonts are the tokens' (--font-sans, --font-mono).
