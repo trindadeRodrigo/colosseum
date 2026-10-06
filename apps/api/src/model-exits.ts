@@ -106,6 +106,23 @@ export function asSandbox<P extends LiquidityProvider>(provider: P): P {
   };
 }
 
+/**
+ * Measured as the engine means it (`ceilingOf` in engine/src/personal/world.ts): the provider covers the
+ * token and reads its capacity from samples. A twin whose curves are there but too thin to read (a
+ * collector's first hours) is not measured, and the stand-in takes its model's tier like one with no
+ * curve at all: it would otherwise fall back to the test network's own tier, C.
+ */
+export function isMeasured(
+  provider: LiquidityProvider | undefined,
+  id: string,
+  tau: number,
+  windowDays: number,
+): boolean {
+  if (!provider?.covers(id)) return false;
+  const c = provider.exitCapacity(id, tau, windowDays);
+  return !!c && c.samples > 0;
+}
+
 /** A mainnet token's tier on the launch shelf: what a leg of it may hold where nothing is measured. */
 export type ShelfTier = { chain: string; symbol: string; tier: AssetTier; issuer?: string };
 
