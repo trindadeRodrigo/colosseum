@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { cn } from './cn';
+import { Skeleton } from './Skeleton';
 
 // embed-shell.md. Inside a partner's app the brand recedes: the partner's colours, font, radius and
 // buttons take over. What survives is the proof: the pin and its popover, the hatch with the word
@@ -9,11 +10,12 @@ import { cn } from './cn';
 // host owns the landmarks. The receding is done in CSS (`tf-embed` in globals.css): the primitives
 // placed inside read the partner's variables without knowing they are in an embed.
 //
-// The spec's routing change (a bare root layout for /embed, with no Nav and no wallet) belongs to the
-// screens slot; until then the embed route still inherits both.
+// The bare root it is placed in (no bar, no wallet, no font of ours) is `app/(embed)/layout.tsx`.
 
 export type EmbedShellLabels = {
   loading: string;
+  /** Under the loading line after a few seconds: the data service may be waking. */
+  slow: string;
   unavailable: string;
   /** The summary of the schedule's disclosure, in a narrow container. */
   showSchedule: string;
@@ -21,6 +23,7 @@ export type EmbedShellLabels = {
 };
 export const EMBED_SHELL_LABELS: EmbedShellLabels = {
   loading: 'Loading plan…',
+  slow: 'Waking the data service: this can take up to a minute the first time.',
   unavailable: 'This plan isn’t available.',
   showSchedule: 'Show schedule',
   poweredBy: 'Powered by',
@@ -66,7 +69,11 @@ export type EmbedShellProps = Common &
          */
         suppressHatch?: boolean;
       }
-    | { state: 'loading' }
+    | {
+        state: 'loading';
+        /** The wait has lasted a few seconds: one calm line says the data service may be waking. */
+        slow?: boolean;
+      }
     /** Not found, or revoked: one sentence and nothing else. */
     | { state: 'unavailable' }
   );
@@ -81,10 +88,23 @@ export function EmbedShell(props: EmbedShellProps) {
     className: cn('tf-embed', className),
   };
 
+  // Words and still boxes: in a partner's app the loader does not move (embed-shell.md, "Loading").
   if (props.state === 'loading')
     return (
-      <section {...frame} data-state="loading">
-        <p role="status">{text.loading}</p>
+      <section {...frame} data-state="loading" aria-busy="true">
+        <span aria-hidden="true" className="mb-[0.75em] flex flex-col gap-[0.5em]">
+          <Skeleton className="h-[1.25em] w-3/5" />
+          <Skeleton className="h-[0.875em] w-full" />
+          <Skeleton className="h-[0.875em] w-4/5" />
+        </span>
+        <p role="status">
+          {text.loading}
+          {props.slow && (
+            <span data-ui="embed-slow" className="block text-muted-foreground">
+              {text.slow}
+            </span>
+          )}
+        </p>
       </section>
     );
   if (props.state === 'unavailable')

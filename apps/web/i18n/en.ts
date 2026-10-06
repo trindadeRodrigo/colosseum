@@ -11,7 +11,7 @@ export const en = {
   shell: {
     skip: 'Skip to content',
     nav: 'Main',
-    home: 'tenonfi, your goal',
+    home: 'tenonfi home',
     menu: 'Menu',
     invest: 'Invest',
     portfolio: 'Portfolio',
@@ -35,6 +35,12 @@ export const en = {
     /** When the server answers that it is being asked too often. */
     slowDown: 'Our server asked me to slow down. Wait a minute, then try again.',
     mockAnnounce: ': sample data, not live',
+    /** A wait for data (components/ui/Skeleton.tsx). */
+    wait: {
+      slow: 'Waking the data service: this can take up to a minute the first time.',
+      over: 'Our server didn’t answer in time, so nothing is shown here yet.',
+      retry: 'Try again',
+    },
   },
 
   signIn: {
@@ -130,6 +136,8 @@ export const en = {
 
   chain: {
     names: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
+    /** The explorer each chain's transaction links open, named beside the link. */
+    explorers: { solana: 'Solscan', robinhood: 'Robinhood explorer', base: 'Basescan' },
     pick: {
       title: 'Choose the chain your plan lives on',
       /** Why this person is asked: they made their wallet here, or connected wallets of both kinds. */
@@ -306,6 +314,9 @@ export const en = {
       chainUnknown:
         'I can’t tell yet which chain your plan lives on, so I can’t build for it. Ask again, above.',
       refused: 'Our server didn’t accept these limits. Check each field, then try again.',
+      /** The goal or a withdrawal is in another currency (gate USD-ONLY). */
+      currency:
+        'Plans are in dollars for now: the amount and every withdrawal. Give them in dollars, then build again.',
       /** The server answered 401 or 403 to "Build my plan". */
       signInAgain:
         'Our server doesn’t recognise your sign-in any more, so the plan wasn’t built. Sign out, then sign in again.',
@@ -416,6 +427,19 @@ export const en = {
     empty: (chain: string) =>
       `You have no vault on ${chain} yet. A vault is made when you buy your first plan.`,
     startGoal: 'Start with your goal',
+    /** Vaults on more than one chain: a heading per chain, with what that chain's vaults are worth. */
+    group: {
+      worth: (vaults: number, chain: string) =>
+        vaults > 1
+          ? `Your ${vaults} vaults on ${chain} are worth`
+          : `Your vault on ${chain} is worth`,
+      method: (vaults: number, chain: string) =>
+        `your ${vaults} vaults on ${chain}, each valued as shown, added up`,
+      /** The one total that adds chains up, and says so. */
+      across: (chains: number) =>
+        chains === 2 ? 'Across both chains, together' : `Across all ${chains} chains, together`,
+      acrossMethod: (chains: number) => `the totals of the ${chains} chains above, added up`,
+    },
     vault: {
       title: 'Your vault',
       address: 'Vault address',
@@ -476,6 +500,8 @@ export const en = {
       title: 'Your portfolio',
       worth: (chain: string) => `Your vault on ${chain} is worth`,
       many: (vaults: number, chain: string) => `You have ${vaults} vaults on ${chain}.`,
+      /** Vaults on more than one chain: counted, never added up across them. */
+      manyChains: (vaults: number, chains: string) => `You have ${vaults} vaults, on ${chains}.`,
       see: 'See your portfolio',
     },
   },
@@ -483,6 +509,8 @@ export const en = {
   plan: {
     title: 'Your plan',
     signedOut: 'Sign in to see this plan. A plan is one person’s, on the chain of their wallet.',
+    fromLink:
+      'This plan came from a link: our engine made it from the limits the link carried, which someone else may have set. Check the goal, the amount and the limits above before you buy.',
     missing: {
       title: 'I don’t have this plan in this tab.',
       body: 'A plan is kept in the browser tab that built it, and this one isn’t here. Build it again from your goal: your limits are kept.',
@@ -523,6 +551,10 @@ export const en = {
       high: 'high end',
       note: 'Only what the dollar yield pays is projected. Prices of stocks and gold are not, and can fall.',
       table: 'The projection',
+      /** A month of the term, counted from the start, in the readout under the chart. */
+      month: (m: number) => (m === 1 ? 'month 1' : `month ${m}`),
+      hint: 'Point at the chart, tap it or use the arrow keys to read a month.',
+      series: 'What the chart draws',
     },
     exitPlan: 'Exit plan',
     costPrefix: 'cost',
@@ -676,7 +708,7 @@ export const en = {
         version: (n: number) => `version ${n}`,
         waiting: (n: number) => `version ${n} waits`,
         open: (name: string) => `Open ${name}`,
-        on: (chains: string) => `on ${chains}`,
+        on: 'on',
       },
       failure: {
         unreachable: 'I couldn’t read the shared portfolios: our server didn’t answer. Try again.',
@@ -977,7 +1009,6 @@ export const en = {
       waiting: 'Waiting…',
       settled: 'Settled',
     },
-    explorer: 'explorer',
     signature: 'signature',
     notRetried: '(not retried)',
     link: {
@@ -1027,6 +1058,8 @@ export const en = {
       lookAgain: 'Look again',
       error:
         'Our server refused or didn’t answer, so the order stopped. What was signed is kept. Try again.',
+      planGone:
+        'The plan this order buys isn’t stored any more: a plan from a link that nobody buys is deleted after a few days. The order stopped, and what was signed is kept. Build the plan again from your goal.',
       tryAgain: 'Try again',
       elsewhere:
         'This order is running in another tab of this browser. Follow it there; nothing was done here.',
@@ -1040,7 +1073,7 @@ export const en = {
         'no-lock':
           'This browser can’t keep an order to one tab, so I won’t sign here. Open the page in a current browser.',
         'plan-mismatch':
-          'The plan kept for this order is for another chain, so nothing was signed. Make a new order.',
+          'The plan kept for this order doesn’t match it (another chain, or another vault), so nothing was signed. Make a new order.',
       },
       crashed:
         'Something stopped the order before it finished. What was signed is kept. Try again.',
@@ -1062,6 +1095,8 @@ export const en = {
       resources: 'Resources',
       analytics: 'Analytics',
       cta: 'Sign in',
+      /** In place of "Sign in" for a person signed in on this browser. */
+      openApp: 'Open the app',
     },
     stage: {
       label: 'How tenonfi fits',
@@ -1104,6 +1139,18 @@ export const en = {
       chartTable: 'The chart as a table',
       month: 'Month',
       balance: 'Balance',
+      /** The line under a chart that reads out the month under the crosshair. */
+      readout: {
+        hint: 'Point at the chart, tap it or use the arrow keys to read a month.',
+        series: 'What the chart draws',
+        putIn: 'put in',
+        paidOut: 'paid out',
+        base: 'base case',
+        range: 'weak to strong case',
+        weak: 'weak case',
+        strong: 'strong case',
+        goal: 'goal',
+      },
       exitPlan: 'Exit plan before investing',
       trip: {
         label: 'Example: a trip in 2029',
@@ -1178,9 +1225,8 @@ export const en = {
       eyebrow: 'Follow along',
       title: 'Built piece by piece. Watch it come together.',
       lede: 'Product updates as new pieces are cut, and a short letter on goals, liquidity and what tokenized assets really pay. No hype, no price calls.',
-      photoAlt:
-        'Offset timber beams, stacked and interlocked, frame a view of a forest through tall windows.',
-      photoCaption: 'stacked offset beams · reference photo',
+      drawingAlt:
+        'An ink drawing of the joint coming together: a rail slides its tenon through a post, and a pin drops into the slot to lock it.',
       email: 'Email address',
       subscribe: 'Subscribe',
       subscribing: 'Subscribing…',
@@ -1198,6 +1244,37 @@ export const en = {
       },
     },
     foot: 'The plans, rates and odds on this page are MOCK sample data. None of them is live.',
+  },
+
+  /** The partner embed (embed-shell.md): his words, in the partner's face. */
+  embed: {
+    label: 'Plan by tenonfi',
+    eyebrow: 'Your goal, read by tenonfi',
+    title: 'What does your money need to do?',
+    lead: 'Say it in a sentence. I read it into limits; the plan is built in tenonfi, on a wallet of your own.',
+    box: 'Your goal',
+    placeholder: '$10,000 for five years, medium risk',
+    read: 'Read my goal',
+    reading: 'Reading your goal…',
+    unread: 'Your goal, as read',
+    limits: 'How I read it',
+    notFound: 'not found: you set it in tenonfi',
+    build: 'Build this plan in tenonfi',
+    buildNote:
+      'Opens tenonfi in a new tab, where you sign in with a wallet of your own. Nothing is signed here.',
+    readFailure: 'I couldn’t read that just now. Your text is still here. Try again.',
+    tooShort: 'That’s too short for me to read. Try an amount and a time frame.',
+    poweredBy: 'Powered by',
+    loading: 'Loading plan…',
+    unavailable: 'This plan isn’t available.',
+    showSchedule: 'Show schedule',
+    vault: {
+      title: (chain: string) => `Your vault on ${chain}`,
+      lead: 'What it holds now, read from the chain.',
+      value: 'Value',
+      parts: 'Its parts',
+      see: 'See it in tenonfi',
+    },
   },
 };
 

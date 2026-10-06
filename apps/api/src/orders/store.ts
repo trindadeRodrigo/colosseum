@@ -1,4 +1,5 @@
 import {
+  baskets,
   type Db,
   indexFamilies,
   legAttempts,
@@ -22,7 +23,7 @@ import {
   type Shelf,
   type VaultView,
 } from '@colosseum/schemas';
-import { and, asc, desc, eq, gte, inArray, isNotNull, ne, notInArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, notInArray, sql } from 'drizzle-orm';
 import { Refusal } from './errors';
 
 // The order tables (DESIGN-VAULT section 4), read and written through Drizzle. A leg row mirrors its
@@ -94,6 +95,7 @@ function toOrder(r: OrderRow, legRows: LegRow[]): Order {
     },
     summary: r.summary,
     ...(deposit ? { depositRaw: deposit } : {}),
+    ...(r.basketId ? { basketId: r.basketId } : {}),
     legs: legRows
       .map(toLeg)
       .sort((a, b) => chainOrder(a.chain) - chainOrder(b.chain) || a.seq - b.seq),
@@ -119,6 +121,7 @@ export async function insertOrder(db: Db, order: Order, request: IntentRequest):
       ownerEvm: order.owner.evm ?? null,
       summary: order.summary,
       request,
+      basketId: order.basketId ?? null,
       warnings: order.warnings,
       needsConsent: order.needsConsent,
       fees: order.fees,
@@ -185,6 +188,70 @@ export async function loadProposal(db: Db, id: string): Promise<BasketProposal |
   return parsed.data;
 }
 
+/** How many plans were made from a link since this time: what the daily cap counts. */
+export async function countLinkedSince(db: Db, since: Date): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(proposals)
+    .where(and(sql`${proposals.fromLink}`, gte(proposals.createdAt, since)));
+  return row?.n ?? 0;
+}
+
+/**
+ * Deletes the plans made from a link before this time that nobody bought: no order names them and no
+ * plan of a person keeps them. Answers how many went. A plan somebody bought stays.
+ */
+export async function forgetUnboughtLinked(db: Db, before: Date): Promise<number> {
+  const gone = await db
+    .delete(proposals)
+    .where(
+      and(
+        // Written as the column itself, not `= $1`, so the planner can always use the partial index.
+        sql`${proposals.fromLink}`,
+        lt(proposals.createdAt, before),
+        sql`not exists (select 1 from ${orders} where ${orders.request}->>'proposalId' = ${proposals.id}::text)`,
+        sql`not exists (select 1 from ${baskets} where ${baskets.proposalId} = ${proposals.id})`,
+      ),
+    )
+    .returning({ id: proposals.id });
+  return gone.length;
+}
+
+/** True when a plan with this id is stored, without reading it. */
+export async function proposalExists(db: Db, id: string): Promise<boolean> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return false;
+  const rows = await db.execute(
+    sql`select 1 from ${proposals} where ${proposals.id} = ${id} limit 1`,
+  );
+  return rows.length > 0;
+}
+
+/** True when the plan with this id was made from a link (`from_link`, gate `AGENT-LINK`). */
+export async function isLinkedProposal(db: Db, id: string): Promise<boolean> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return false;
+  const [row] = await db
+    .select({ id: proposals.id })
+    .from(proposals)
+    .where(and(eq(proposals.id, id), eq(proposals.fromLink, true)));
+  return row !== undefined;
+}
+
+/**
+ * A plan made from a link (`POST /v1/baskets/propose`), by its id: one marked `from_link`. A plan a
+ * person made in the app is theirs, and is not answered here, even one stored with no user row.
+ */
+export async function loadLinkedProposal(db: Db, id: string): Promise<BasketProposal | null> {
+  const [row] = await db
+    .select({ proposal: proposals.proposal })
+    .from(proposals)
+    .where(and(eq(proposals.id, id), eq(proposals.fromLink, true)));
+  if (!row) return null;
+  const parsed = BasketProposal.safeParse(row.proposal);
+  if (!parsed.success)
+    throw new Refusal(409, 'the stored plan cannot be read: make the plan again');
+  return parsed.data;
+}
+
 /**
  * Stores a plan made for a person and answers its id, which `POST /v1/orders` buys by. The row names
  * the person where they have a user row. The same plan stored again by the same person answers the id
@@ -195,6 +262,8 @@ export async function insertProposal(
   db: Db,
   proposal: BasketProposal,
   privyId: string | null,
+  /** Made from a link (gate `AGENT-LINK`): stored with no person, and marked so. */
+  fromLink = false,
 ): Promise<string> {
   const [user] = privyId
     ? await db.select({ id: users.id }).from(users).where(eq(users.privyId, privyId))
@@ -205,6 +274,7 @@ export async function insertProposal(
     .values({
       inputsHash: proposal.inputsHash,
       userId,
+      fromLink,
       proposal,
       engineVersion: proposal.engineVersion,
       shelfVersion: proposal.shelfVersion,
@@ -214,10 +284,10 @@ export async function insertProposal(
     .returning({ id: proposals.id });
   if (row) return row.id;
   const [same] = await db
-    .select({ id: proposals.id, userId: proposals.userId })
+    .select({ id: proposals.id, userId: proposals.userId, fromLink: proposals.fromLink })
     .from(proposals)
     .where(eq(proposals.inputsHash, proposal.inputsHash));
-  if (same && same.userId === userId) return same.id;
+  if (same && same.userId === userId && same.fromLink === fromLink) return same.id;
   throw new Refusal(503, 'the plan could not be stored: make it again in a moment', {
     details: { retryable: true },
   });

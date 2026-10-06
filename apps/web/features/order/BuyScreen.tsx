@@ -2,11 +2,14 @@
 import { chainFamily, type FundingFigure, TRUST_STATUS } from '@colosseum/schemas';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
+import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
-import { Card, CardBody, CardFooter, CardHeader, CardLoading } from '../../components/ui/Card';
+import { Card, CardBody, CardFooter, CardHeader } from '../../components/ui/Card';
+import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
 import { utcMinute } from '../../components/ui/ExecutionList';
 import { Field, Input } from '../../components/ui/Field';
+import { SkeletonRows } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -132,6 +135,7 @@ export function BuyScreen({ id }: { id: string }) {
       amountUsd: amount,
       lines: plan.proposal.lines,
       approved: null,
+      ...(plan.fromLink ? { linked: true as const } : {}),
       goal: {
         sheet: plan.proposal.sheet,
         card: plan.proposal.card,
@@ -178,7 +182,8 @@ export function BuyScreen({ id }: { id: string }) {
 
   return (
     <div data-ui="buy-screen" className="flex flex-col gap-8">
-      <header className="flex flex-col gap-3">
+      <header className="flex flex-col items-start gap-3">
+        <ChainBadge chain={chain} />
         <h1 className="max-w-(--tf-measure-display) font-display text-h1 font-normal">
           {t.buy.title}
         </h1>
@@ -350,7 +355,7 @@ export function FundingCard({
     >
       <CardHeader title={t.buy.funding.title} level={2} id={id} />
       {funding.kind === 'reading' || funding.kind === 'idle' ? (
-        <CardLoading label={t.buy.funding.reading} />
+        <CardWait label={t.buy.funding.reading} skeleton={<SkeletonRows rows={2} columns={4} />} />
       ) : (
         <CardBody className="flex flex-col gap-4">
           <div aria-live="polite" className="flex flex-col gap-4">

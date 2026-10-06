@@ -60,6 +60,11 @@ export type OrderRecord = {
   terms?: SharedTerms;
   approved: ApprovedOrder | null;
   goal?: PlacedGoal | null;
+  /**
+   * The plan was made from a link (gate `AGENT-LINK`): its vault's number takes this record's person
+   * too (`basketIdOfLinkedPlan`), so the link alone does not lead to the vault.
+   */
+  linked?: true;
 };
 
 function readGoal(value: unknown): PlacedGoal | null {
@@ -126,6 +131,7 @@ function readRecord(value: unknown): OrderRecord | null {
     ...(terms ? { terms } : {}),
     approved,
     goal: readGoal(r.goal),
+    ...(r.linked === true ? { linked: true as const } : {}),
   };
 }
 

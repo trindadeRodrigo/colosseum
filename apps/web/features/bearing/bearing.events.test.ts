@@ -4,7 +4,7 @@ import { DISCLAIMER } from '@colosseum/schemas';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TimeChart } from '../../components/ui/TimeChart';
-import { click, find, mount, press, unmountAll } from '../../components/ui/test/dom';
+import { click, find, fire, mount, press, unmountAll } from '../../components/ui/test/dom';
 import { BearingProvider, TICK_MS } from './BearingProvider';
 import { Banner } from './BearingShell';
 import { DexPage } from './DexPage';
@@ -40,6 +40,7 @@ async function settle(host: HTMLElement, done: (h: HTMLElement) => boolean) {
   if (!done(host)) throw new Error('the page never finished reading');
 }
 const busy = (h: HTMLElement) =>
+  h.querySelector('[data-ui="waiting"]') != null ||
   [...h.querySelectorAll('p')].some((p) => /^(Reading|Pricing)/.test(p.textContent ?? ''));
 
 describe('the commodities page on the recording', () => {
@@ -91,6 +92,10 @@ describe('the commodities page on the recording', () => {
     const toggle = find<HTMLButtonElement>(host, 'button[aria-controls="bearing-nav"]');
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(toggle.textContent).toBe('Hide menu');
+    // the methodology is reached from here: the bar has no Resources item (Thom, Oct 6)
+    expect(find(host, '#bearing-nav a[href="/analytics/methodology"]').textContent).toBe(
+      'Methodology',
+    );
     await click(toggle);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(toggle.textContent).toBe('Show menu');
@@ -194,6 +199,59 @@ describe('the time chart', () => {
     await click(tabs[1] as HTMLButtonElement);
     expect(tabs.map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
   });
+
+  it('follows a mouse over the plot to the hour under it, and lets go when it leaves', async () => {
+    // a browser measures the chart 640 wide; happy-dom measures nothing
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(640);
+    const t0 = Date.parse('2026-10-03T10:00:00Z');
+    const data = [0, 1, 2].map((i) => ({ t: t0 + i * 3600e3, v: 100 + i }));
+    const host = await mount(
+      createElement(TimeChart, {
+        title: 'Exit capacity',
+        aria: 'Exit capacity over time',
+        hourly: true,
+        panes: [
+          {
+            h: 100,
+            fmt: (v: number) => `$${v}`,
+            series: [{ type: 'area', cls: 's1', label: 'sell (exit)', data }],
+          },
+        ],
+      }),
+    );
+    const readout = () => find(host, '[data-ui="chart-readout"]').textContent;
+    const svg = find(host, '[data-ui="chart-plot"] svg');
+    svg.getBoundingClientRect = () =>
+      ({
+        left: 0,
+        top: 0,
+        width: 640,
+        height: 200,
+        right: 640,
+        bottom: 200,
+        x: 0,
+        y: 0,
+      }) as DOMRect;
+    const move = (type: string, clientX: number) =>
+      fire(
+        svg,
+        new PointerEvent(type, { clientX, clientY: 40, pointerType: 'mouse', bubbles: true }),
+      );
+    // the first hour sits at the plot's left edge
+    await move('pointermove', 10);
+    expect(readout()).toContain('2026-10-03 10:00 UTC');
+    expect(readout()).toContain('$100');
+    expect(host.querySelectorAll('[data-ui="chart-cross"]')).toHaveLength(1);
+    await fire(
+      svg,
+      new PointerEvent('pointerout', {
+        bubbles: true,
+        relatedTarget: document.body,
+        pointerType: 'mouse',
+      }),
+    );
+    expect(host.querySelectorAll('[data-ui="chart-cross"]')).toHaveLength(0);
+  });
 });
 
 describe('the multi-select', () => {
@@ -290,6 +348,40 @@ describe('the banner: live, stale with time, or the API down', () => {
     expect(banner(host).getAttribute('data-mode')).toBe('live');
     expect(banner(host).textContent).toContain('Live from the collectors, as of 15:07 UTC.');
     expect(banner(host).textContent).toContain('now: weekend');
+  });
+
+  it('waits in the page’s own boxes: its figures’ labels, the chart cards and the table, busy', async () => {
+    // a reader that has not answered yet
+    const waiting = { get: () => new Promise<never>(() => {}), probe: async () => true };
+    const host = await mount(
+      createElement(BearingProvider, {
+        reader: waiting,
+        now: Date.parse('2026-10-03T15:17:00Z'),
+        children: [
+          createElement(Banner, { key: 'b' }),
+          createElement(DexPage, { key: 'p', page: 'stocks' }),
+        ],
+      } as never),
+    );
+    const region = find(host, '[data-ui="waiting"]');
+    expect(region.getAttribute('aria-busy')).toBe('true');
+    const kpis = [...region.querySelectorAll('[data-ui="bearing-kpi"]')];
+    expect(kpis.map((k) => k.firstElementChild?.textContent)).toEqual([
+      'Pool TVL',
+      'Pools',
+      'Exit capacity now',
+      'Volume 24 h',
+      'Top-3 LP share',
+    ]);
+    expect(kpis.every((k) => k.querySelectorAll('[data-ui="skeleton"]').length === 2)).toBe(true);
+    expect(
+      region.querySelectorAll('[data-ui="bearing-card"] [data-ui="skeleton-chart"]'),
+    ).toHaveLength(2);
+    expect(region.querySelector('[data-ui="skeleton-rows"]')).not.toBeNull();
+    // the banner keeps its box, still, and says nothing a screen reader would read twice
+    expect(banner(host).getAttribute('aria-hidden')).toBe('true');
+    expect(banner(host).getAttribute('role')).toBeNull();
+    expect(host.querySelectorAll('[data-ui="figure"]')).toHaveLength(0);
   });
 
   it('says the API did not answer, and makes up nothing in its place', async () => {

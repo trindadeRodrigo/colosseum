@@ -1,11 +1,11 @@
 'use client';
-import { useEffect, useId, useState } from 'react';
+import { type ReactNode, useEffect, useId, useState } from 'react';
 import { Composer } from './Composer';
 import { cn } from './cn';
 import { SUBSCRIBE_LABELS, type SubscribeLabels, type SubscribeStatus } from './labels';
 
 // subscribe-block.md. The landing's closing section: a line above, the serif heading, a short lede, a
-// framed photograph, and an email field in the shape of the composer. It is the one composition on
+// framed photograph or drawing, and an email field in the shape of the composer. It is the one composition on
 // marketing that may be centred. It makes no claim about performance and never asks for a wallet.
 //
 // What the visitor gets wrong, and what happened to the request, is the page's to work out: this block
@@ -32,6 +32,13 @@ export type SubscribeBlockProps = {
   lede: string;
   /** An unmodified photograph in a hairline frame, its caption below it and never on it. */
   photo?: { src: string; alt: string; caption: string };
+  /** A drawing in place of the photograph, in the same frame: it names itself, so it has no caption. */
+  art?: ReactNode;
+  /**
+   * A stage for the line, the heading and the lede, in place of the frame: the page draws around them
+   * (the landing's closing sets them over its 3D joint). The field stays below, centred.
+   */
+  stage?: (head: ReactNode) => ReactNode;
   options: readonly SubscribeOption[];
   status?: SubscribeStatus;
   /** Called with what was typed and the ids of the ticked options. */
@@ -50,6 +57,8 @@ export function SubscribeBlock({
   heading,
   lede,
   photo,
+  art,
+  stage,
   options,
   status = 'rest',
   onSubmit,
@@ -90,14 +99,27 @@ export function SubscribeBlock({
       aria-labelledby={headingId}
       className={cn('flex flex-col items-center text-center', className)}
     >
-      <p className="font-mono text-[0.75rem]/4 text-primary">{eyebrow}</p>
-      <h2
-        id={headingId}
-        className="mt-3 max-w-[20ch] font-display text-h2 font-normal text-balance [font-variation-settings:'opsz'_36]"
-      >
-        {heading}
-      </h2>
-      <p className="mt-4 max-w-[52ch] text-body text-muted-foreground">{lede}</p>
+      {(stage ?? ((head: ReactNode) => head))(
+        <>
+          <p className="font-mono text-[0.75rem]/4 text-primary">{eyebrow}</p>
+          <h2
+            id={headingId}
+            className="mt-3 max-w-[20ch] font-display text-h2 font-normal text-balance [font-variation-settings:'opsz'_36]"
+          >
+            {heading}
+          </h2>
+          <p className="mt-4 max-w-[52ch] text-body text-muted-foreground">{lede}</p>
+        </>,
+      )}
+
+      {art && !photo && (
+        <div
+          data-ui="subscribe-art"
+          className="mt-10 w-[min(560px,100%)] rounded-md border border-border bg-background"
+        >
+          {art}
+        </div>
+      )}
 
       {photo && (
         <figure className="mt-10 w-[min(560px,100%)]">

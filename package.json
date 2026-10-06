@@ -48,6 +48,8 @@
     "risk:coverage": "tsx scripts/risk/coverage.ts",
     "risk:retier": "tsx scripts/risk/retier.ts",
     "risk:freeze-universe-fixture": "tsx scripts/risk/freeze-universe-fixture.ts",
+    "risk:universe": "tsx scripts/risk/universe/build.ts",
+    "risk:freeze-list-fixtures": "tsx scripts/risk/universe/freeze-fixtures.ts",
     "risk:import": "tsx scripts/risk/import.ts",
     "risk:compute": "tsx scripts/risk/compute.ts",
     "risk:history": "tsx scripts/risk/history-backfill.ts",
@@ -102,7 +104,10 @@
     "risk-evm:import": "tsx scripts/risk-evm/import.ts",
     "risk-evm:universe": "tsx scripts/risk-evm/universe.ts",
     "risk-evm:discover": "tsx scripts/risk-evm/discover.ts",
-    "risk-evm:pareto": "tsx scripts/risk-evm/pareto.ts"
+    "risk-evm:pareto": "tsx scripts/risk-evm/pareto.ts",
+    "risk-evm:oracles": "tsx scripts/risk-evm/oracles.ts",
+    "risk-evm:history": "tsx scripts/risk-evm/history-run.ts",
+    "risk-evm:flow-import": "NODE_OPTIONS=--max-old-space-size=8192 tsx scripts/risk-evm/flow-import.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",

@@ -150,7 +150,11 @@ export async function registerPlanRoutes(app: FastifyInstance) {
         .values({ goalId, sheet, valid: true, validationErrors: [], origin: 'user_edit' })
         .returning();
       if (!cs) throw new Error('sheet insert');
-      const liquidity = await loadLiquidityProvider(db, assets);
+      // the plan's chain only (ONE-CHAIN): a curve of another chain's asset must not make a provider exist
+      const liquidity = await loadLiquidityProvider(
+        db,
+        assets.filter((a) => a.chain === 'solana'),
+      );
       const solved = solve({ sheet, capitalUsd, assets, yields, fxUsdBrl, liquidity });
       const assetMap = new Map(assets.map((a) => [a.id, a]));
       const sched = buildScheduleWithStresses({

@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { DISCLAIMER } from '@colosseum/schemas';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -29,8 +31,10 @@ vi.mock('next/link', () => import('../wallet/test/mock-next'));
 // product, and an email field that sends nothing and says so.
 
 const en = dictionary('en');
-const landing = async (lang: Lang = 'en') => {
-  const host = await mount(inLanguage(lang, createElement(Landing, { lang, theme: 'auto' })));
+const landing = async (lang: Lang = 'en', signedIn = false) => {
+  const host = await mount(
+    inLanguage(lang, createElement(Landing, { lang, theme: 'auto', signedIn })),
+  );
   await settle(10);
   return host;
 };
@@ -83,7 +87,21 @@ describe('the hero', () => {
     );
     // the stage is named, and what is drawn is not read out
     expect(find(host, '#stage').getAttribute('aria-label')).toBe(en.landing.stage.label);
-    expect(find(host, 'canvas').closest('[aria-hidden="true"]')).not.toBeNull();
+    expect(find(host, '#stage canvas').closest('[aria-hidden="true"]')).not.toBeNull();
+  });
+
+  it('offers Products, Invest and Analytics in its bar, and no Resources (Thom, Oct 6)', async () => {
+    browser();
+    const host = await landing();
+    const bar = find(host, '[data-ui="compact-nav"]');
+    expect([...bar.querySelectorAll('nav a')].map((a) => a.getAttribute('href'))).toEqual([
+      '#showcase',
+      '#simulate',
+      '/analytics/stocks',
+      // and the one action
+      '/sign-in?next=/goal',
+    ]);
+    expect(bar.textContent).not.toContain(en.landing.nav.resources);
   });
 
   it('loads the 3D joint where WebGL runs and motion is allowed, and drives it by scrolling', async () => {
@@ -91,7 +109,7 @@ describe('the hero', () => {
     const host = await landing();
     expect(scene.create).toHaveBeenCalledTimes(1);
     expect(scene.create).toHaveBeenCalledWith(
-      find(host, 'canvas'),
+      find(host, '#stage canvas'),
       expect.objectContaining({ onReady: expect.any(Function), light: expect.any(Boolean) }),
     );
     // the context that only asked whether WebGL is there is let go
@@ -100,9 +118,9 @@ describe('the hero', () => {
     expect(made.setProgress).toHaveBeenCalled();
     // nothing stands in while it loads, and the canvas shows once its first frame is drawn
     expect(host.querySelector('.sticky [data-ui="joint-still"]')).toBeNull();
-    expect(find(host, 'canvas').className).toContain('opacity-0');
+    expect(find(host, '#stage canvas').className).toContain('opacity-0');
     await act(async () => scene.create.mock.calls[0]?.[1]?.onReady?.());
-    expect(find(host, 'canvas').className).toContain('opacity-100');
+    expect(find(host, '#stage canvas').className).toContain('opacity-100');
   });
 
   it('draws no 3D at all with reduced motion: the still, seated, beside the copy', async () => {
@@ -173,6 +191,76 @@ describe('the hero', () => {
       expect(img.getAttribute('loading')).toBe('lazy');
   });
 });
+describe('the hero on a phone (hero-3d.html, its 820px rule)', () => {
+  /** A copy block placed by a test: its middle at `share` of an 844px screen. */
+  const place = (el: Element, share: number) => {
+    const mid = 844 * share;
+    el.getBoundingClientRect = () =>
+      ({
+        top: mid - 100,
+        bottom: mid + 100,
+        height: 200,
+        width: 390,
+        left: 0,
+        right: 390,
+      }) as DOMRect;
+  };
+  const scrollNow = async () => {
+    await act(async () => {
+      window.dispatchEvent(new Event('scroll'));
+      await new Promise((done) => requestAnimationFrame(() => done(null)));
+    });
+  };
+
+  it('keeps the copy at the foot, and fades a line before it can rise into the joint', async () => {
+    browser();
+    const width = Object.getOwnPropertyDescriptor(window, 'innerWidth');
+    const height = Object.getOwnPropertyDescriptor(window, 'innerHeight');
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 844 });
+    try {
+      const host = await landing();
+      const hero = find(host, '#stage [data-low]');
+      // the copy sits at the foot of the screen on a phone, as his prototype has it
+      expect(hero.parentElement?.parentElement?.className).toContain('max-[819px]:items-end');
+      const step = find(host, '#step-1 [data-on]');
+      // low on the screen: shown
+      place(hero, 0.75);
+      place(step, 0.7);
+      await scrollNow();
+      expect(hero.getAttribute('data-low')).toBe('true');
+      expect(hero.className).not.toContain('max-[819px]:opacity-0');
+      expect(step.getAttribute('data-on')).toBe('true');
+      expect(step.className).not.toContain('max-[819px]:opacity-0');
+      // risen toward the joint, which takes the top third: faded before its plate gets there
+      place(hero, 0.3);
+      place(step, 0.3);
+      await scrollNow();
+      expect(hero.getAttribute('data-low')).toBe('false');
+      expect(hero.className).toContain('max-[819px]:opacity-0');
+      expect(step.getAttribute('data-on')).toBe('false');
+      expect(step.className).toContain('max-[819px]:opacity-0');
+      // with reduced motion nothing is pinned, and nothing fades
+      expect(step.className).toContain('motion-reduce:opacity-100');
+      // the copy marks itself for the bar, which takes its ground when copy reaches it
+      expect(hero.hasAttribute('data-under-bar')).toBe(true);
+      expect(step.hasAttribute('data-under-bar')).toBe(true);
+    } finally {
+      if (width) Object.defineProperty(window, 'innerWidth', width);
+      if (height) Object.defineProperty(window, 'innerHeight', height);
+    }
+  });
+
+  it('fades nothing on a wide screen: the copy stands beside the joint there', async () => {
+    browser();
+    const host = await landing();
+    const step = find(host, '#step-1 [data-on]');
+    place(step, 0.3);
+    await scrollNow();
+    // on a wide screen a step is read from 15% of the way down
+    expect(step.getAttribute('data-on')).toBe('true');
+  });
+});
 
 describe('the showcase', () => {
   it('shows his two sample people, each case MOCK in its head and on every pinned figure', async () => {
@@ -192,7 +280,7 @@ describe('the showcase', () => {
       expect(pins.length).toBeGreaterThan(0);
       // nothing in a sample case is drawn as live
       expect(pins.map((p) => p.getAttribute('data-state'))).toEqual(pins.map(() => 'mock'));
-      expect(c.querySelector('svg[role="img"]')?.getAttribute('aria-label')).toBeTruthy();
+      expect(c.querySelector('[role="img"]')?.getAttribute('aria-label')).toBeTruthy();
       expect(c.querySelector('blockquote')?.textContent).toMatch(/^“.+”$/);
     }
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
@@ -217,6 +305,149 @@ describe('the showcase', () => {
       expect(c.querySelector('img, figcaption')).toBeNull();
     }
     expect(host.textContent).not.toContain('placeholder photo');
+  });
+
+  it('puts the person and their words above the drawing of their plan, in every case', async () => {
+    browser();
+    const host = await landing();
+    for (const c of host.querySelectorAll('article[data-ui="showcase-case"]')) {
+      const quote = find(c as HTMLElement, 'blockquote');
+      const drawing = find(c as HTMLElement, 'svg[data-ui="plan-drawing"]');
+      // the quote comes first in the page, so it is read and laid out first at every width
+      expect(
+        quote.compareDocumentPosition(drawing) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(quote.parentElement?.nextElementSibling).toBe(drawing);
+    }
+  });
+
+  it('lights a part on the drawing and in the list together, from either side', async () => {
+    browser();
+    const host = await landing();
+    const growth = [
+      ...host.querySelectorAll<HTMLElement>('article[data-ui="showcase-case"]'),
+    ][1] as HTMLElement;
+    const layer = (n: number) => find(growth, `[data-part="layer"][data-chart="${n}"]`);
+    const row = (n: number) => find(growth, `[data-ui="case-leg"][data-chart="${n}"]`);
+    const mouse = (type: string, el: Element) =>
+      act(async () => {
+        el.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            pointerType: 'mouse',
+            relatedTarget: document.body,
+          }),
+        );
+      });
+    // the stocks layer, 45%: named for a reader, lit, the others dimmed, and its row lit
+    expect(layer(3).getAttribute('aria-label')).toBe('Tokenized stocks (SPYx, QQQx), 45%');
+    await mouse('pointerover', layer(3));
+    expect(layer(3).getAttribute('data-lit')).toBe('true');
+    expect(layer(3).getAttribute('aria-pressed')).toBe('true');
+    expect(layer(1).getAttribute('class')).toContain('opacity-35');
+    expect(row(3).getAttribute('data-lit')).toBe('true');
+    expect(row(1).getAttribute('class')).toContain('opacity-45');
+    await mouse('pointerout', layer(3));
+    expect(row(3).getAttribute('data-lit')).toBe('false');
+    // and back: a row lights its layer
+    await mouse('pointerover', row(2));
+    expect(layer(2).getAttribute('data-lit')).toBe('true');
+    await mouse('pointerout', row(2));
+    expect(layer(2).getAttribute('data-lit')).toBe('false');
+  });
+
+  it('lights the trip’s bars for the part lit on its drawing', async () => {
+    browser();
+    const host = await landing();
+    const trip = host.querySelector('article[data-ui="showcase-case"]') as HTMLElement;
+    await act(async () => {
+      find(trip, '[data-part="layer"][data-chart="2"]').dispatchEvent(
+        new PointerEvent('pointerover', {
+          bubbles: true,
+          pointerType: 'mouse',
+          relatedTarget: document.body,
+        }),
+      );
+    });
+    const opacity = (n: number) =>
+      new Set(
+        [...trip.querySelectorAll(`rect[data-series="part-${n}"]`)].map((r) =>
+          r.getAttribute('opacity'),
+        ),
+      );
+    expect(opacity(2)).toEqual(new Set(['1']));
+    expect(opacity(1)).toEqual(new Set(['0.25']));
+  });
+
+  it('is one tab stop the arrows step through, layer by layer; Escape lets go', async () => {
+    browser();
+    const host = await landing();
+    const growth = [
+      ...host.querySelectorAll<HTMLElement>('article[data-ui="showcase-case"]'),
+    ][1] as HTMLElement;
+    const layers = [...growth.querySelectorAll<HTMLElement>('[data-part="layer"]')];
+    expect(layers.map((l) => l.getAttribute('tabindex'))).toEqual(['0', '-1', '-1', '-1']);
+    await act(async () => layers[0]?.focus());
+    expect(layers[0]?.getAttribute('data-lit')).toBe('true');
+    expect(find(growth, '[data-ui="case-leg"][data-chart="1"]').getAttribute('data-lit')).toBe(
+      'true',
+    );
+    await press(layers[0] as HTMLElement, 'ArrowUp');
+    expect(document.activeElement).toBe(layers[1]);
+    expect(layers[1]?.getAttribute('data-lit')).toBe('true');
+    expect(layers.map((l) => l.getAttribute('tabindex'))).toEqual(['-1', '0', '-1', '-1']);
+    await press(layers[1] as HTMLElement, 'End');
+    expect(document.activeElement).toBe(layers[3]);
+    await press(layers[3] as HTMLElement, 'Escape');
+    expect(layers.map((l) => l.getAttribute('data-lit'))).toEqual([
+      'false',
+      'false',
+      'false',
+      'false',
+    ]);
+  });
+
+  it('picks a part with a tap and lets it go with a tap outside', async () => {
+    browser();
+    const host = await landing();
+    const growth = [
+      ...host.querySelectorAll<HTMLElement>('article[data-ui="showcase-case"]'),
+    ][1] as HTMLElement;
+    const layer = find(growth, '[data-part="layer"][data-chart="4"]');
+    await act(async () => {
+      layer.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch' }));
+    });
+    expect(layer.getAttribute('data-lit')).toBe('true');
+    await act(async () => {
+      document.body.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' }),
+      );
+    });
+    expect(layer.getAttribute('data-lit')).toBe('false');
+  });
+
+  it('lifts a lit layer only where motion is welcome; with reduced motion only its colour changes', async () => {
+    browser({ reduce: true });
+    const host = await landing();
+    const layer = host.querySelector('[data-part="layer"][data-chart="1"]') as HTMLElement;
+    await act(async () => layer.focus());
+    const cls = layer.getAttribute('class') ?? '';
+    expect(cls).toContain('-translate-y-1.5');
+    expect(cls).toContain('motion-reduce:translate-y-0');
+    expect(cls).toContain('motion-safe:transition-[translate,opacity]');
+    for (const svg of host.querySelectorAll('svg[data-ui="plan-drawing"]'))
+      expect(svg.getAttribute('data-state')).toBe('still');
+  });
+
+  it('keeps a figure’s date in one piece: "Dec 2031" never breaks across lines', async () => {
+    browser();
+    const host = await landing();
+    const growth = [
+      ...host.querySelectorAll<HTMLElement>('article[data-ui="showcase-case"]'),
+    ][1] as HTMLElement;
+    const units = [...growth.querySelectorAll('dd small')];
+    const date = units.find((u) => u.textContent === 'Dec 2031');
+    expect(date?.getAttribute('class')).toContain('whitespace-nowrap');
   });
 
   it('settles the joint in from the bottom when the card comes into view, and not with reduced motion', async () => {
@@ -346,6 +577,146 @@ describe('the closing', () => {
     });
     expect(closing.textContent).toContain(en.landing.closing.status['invalid-email']);
   });
+
+  it('sets the joint behind its heading, with no frame, the words on top (CLOSING-INK, Oct 6)', async () => {
+    browser();
+    const host = await landing();
+    const closing = find(host, '#updates');
+    expect(closing.querySelector('img, figure, figcaption, [data-ui="subscribe-art"]')).toBeNull();
+    const track = find(closing, '[data-ui="closing-track"]');
+    const canvas = find(track, 'canvas[data-ui="closing-canvas"]');
+    const words = find(track, '[data-ui="closing-words"]');
+    // the heading is in the words, which come after the drawing and stand above it
+    expect(words.querySelector('h2')?.textContent).toBe(en.landing.closing.title);
+    expect(canvas.className).toContain('z-0');
+    expect(canvas.className).toContain('pointer-events-none');
+    expect(words.className).toContain('z-10');
+    expect(canvas.compareDocumentPosition(words) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // a short hold: two screens of track, one of them sticky
+    expect(track.className).toContain('h-[200svh]');
+    expect(find(track, '.sticky').className).toContain('h-svh');
+    // the field is below the stage, outside it
+    expect(track.querySelector('input[type="email"]')).toBeNull();
+    expect(closing.querySelector('input[type="email"]')).not.toBeNull();
+  });
+
+  it('stands the ink drawing, assembled and still, where there is no WebGL', async () => {
+    const seen: ((entries: { isIntersecting: boolean }[]) => void)[] = [];
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(cb: (entries: { isIntersecting: boolean }[]) => void) {
+          seen.push(cb);
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    browser({ webgl: false });
+    const host = await landing();
+    await act(async () => {
+      for (const cb of seen) cb([{ isIntersecting: true }]);
+    });
+    await settle(10);
+    const track = find(host, '[data-ui="closing-track"]');
+    expect(track.getAttribute('data-mode')).toBe('still');
+    const drawing = find(track, 'svg[data-ui="closing-drawing"]');
+    expect(drawing.getAttribute('data-state')).toBe('still');
+    expect(drawing.getAttribute('aria-label')).toBe(en.landing.closing.drawingAlt);
+    for (const part of ['rail', 'post', 'nose', 'pin'])
+      expect(find(drawing, `[data-part="${part}"]`)).toBeTruthy();
+    // the canvas is not named while it draws nothing
+    expect(find(track, 'canvas').getAttribute('aria-hidden')).toBe('true');
+    const stages = scene.create.mock.calls.filter(([, o]) => (o as { stage?: unknown })?.stage);
+    expect(stages).toHaveLength(0);
+    vi.unstubAllGlobals();
+  });
+
+  it('holds nothing and moves nothing with reduced motion: the drawing, assembled', async () => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    browser({ reduce: true, webgl: true });
+    const host = await landing();
+    await settle(10);
+    const track = find(host, '[data-ui="closing-track"]');
+    expect(track.className).toContain('motion-reduce:h-svh');
+    expect(find(track, 'svg[data-ui="closing-drawing"]').getAttribute('data-state')).toBe('still');
+    const stages = scene.create.mock.calls.filter(([, o]) => (o as { stage?: unknown })?.stage);
+    expect(stages).toHaveLength(0);
+    vi.unstubAllGlobals();
+  });
+
+  it('makes one canvas only when the section comes near, and pauses it while it is away', async () => {
+    const observers: { cb: (e: { isIntersecting: boolean }[]) => void; els: Element[] }[] = [];
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        els: Element[] = [];
+        constructor(cb: (e: { isIntersecting: boolean }[]) => void) {
+          observers.push({ cb, els: this.els });
+        }
+        observe(el: Element) {
+          this.els.push(el);
+        }
+        disconnect() {}
+      },
+    );
+    browser({ webgl: true });
+    const host = await landing();
+    await settle(10);
+    const track = find(host, '[data-ui="closing-track"]');
+    const mine = observers.find((o) => o.els.includes(track));
+    expect(mine).toBeTruthy();
+    const closingScenes = () =>
+      scene.create.mock.calls
+        .map((call, i) => ({ options: call[1] as { stage?: unknown }, i }))
+        .filter(({ options }) => options?.stage);
+    // far away: nothing loaded
+    expect(closingScenes()).toHaveLength(0);
+    await act(async () => mine?.cb([{ isIntersecting: true }]));
+    await settle(10);
+    expect(closingScenes()).toHaveLength(1);
+    const made = scene.create.mock.results[closingScenes()[0]?.i ?? 0]?.value as {
+      setVisible: ReturnType<typeof vi.fn>;
+      setProgress: ReturnType<typeof vi.fn>;
+    };
+    expect(made.setProgress).toHaveBeenCalled();
+    // it is drawn on the closing's own canvas
+    expect(scene.create.mock.calls[closingScenes()[0]?.i ?? 0]?.[0]).toBe(find(track, 'canvas'));
+    // out of sight: paused; back: drawn again, and still only the one canvas
+    await act(async () => mine?.cb([{ isIntersecting: false }]));
+    expect(made.setVisible).toHaveBeenLastCalledWith(false);
+    await act(async () => mine?.cb([{ isIntersecting: true }]));
+    expect(made.setVisible).toHaveBeenLastCalledWith(true);
+    expect(closingScenes()).toHaveLength(1);
+    expect(track.querySelectorAll('canvas')).toHaveLength(1);
+    vi.unstubAllGlobals();
+  });
+});
+
+it('ships no closing photograph: nothing in the app names closing.jpg, and the file is gone', () => {
+  const web = join(import.meta.dirname, '..', '..');
+  const found: string[] = [];
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      if (name === 'node_modules' || name.startsWith('.')) continue;
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) walk(path);
+      else if (
+        /\.(tsx?|mjs|css|json)$/.test(name) &&
+        readFileSync(path, 'utf8').includes('closing.jpg')
+      )
+        found.push(path.slice(web.length + 1));
+    }
+  };
+  for (const top of ['app', 'components', 'features', 'i18n', 'e2e']) walk(join(web, top));
+  expect(found.filter((f) => !f.endsWith('landing.events.test.ts'))).toEqual([]);
+  expect(existsSync(join(web, 'public', 'landing', 'closing.jpg'))).toBe(false);
 });
 
 it('says the whole page in Portuguese, and calls its figures MOCK in the foot', async () => {
@@ -365,4 +736,46 @@ it('keeps “System” as a choice on the landing, so the next visit follows the
   const system = [...find(host, '[data-ui="theme-switch"]').querySelectorAll('button')][0];
   await click(system as HTMLElement);
   expect(document.cookie).toContain('tf-theme=auto');
+});
+
+describe('the bar’s action', () => {
+  const action = (host: HTMLElement) =>
+    [...host.querySelectorAll<HTMLAnchorElement>('[data-ui="compact-nav"] a')].filter((a) =>
+      [
+        en.landing.nav.cta,
+        en.landing.nav.openApp,
+        pt.landing.nav.cta,
+        pt.landing.nav.openApp,
+      ].includes(a.textContent ?? ''),
+    );
+  const pt = dictionary('pt');
+
+  it('is "Sign in" for a visitor, and the visitor line asks them to sign in', async () => {
+    browser();
+    const host = await landing();
+    expect(action(host).map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      [en.landing.nav.cta, '/sign-in?next=/goal'],
+    ]);
+    expect(host.textContent).toContain(en.goal.visitor.link);
+  });
+
+  it.each(['en', 'pt'] as const)(
+    'leads a person signed in back into the app, in the same style, and asks nothing of them (%s)',
+    async (lang) => {
+      browser();
+      const words = dictionary(lang);
+      const host = await landing(lang, true);
+      const [open] = action(host);
+      expect(action(host)).toHaveLength(1);
+      expect(open?.textContent).toBe(words.landing.nav.openApp);
+      expect(open?.getAttribute('href')).toBe('/goal');
+      expect(host.querySelector('a[href^="/sign-in"]')).toBeNull();
+      expect(host.textContent).not.toContain(words.landing.nav.cta);
+      expect(host.textContent).not.toContain(words.goal.visitor.link);
+      // the filled style of "Sign in"
+      await unmountAll();
+      const visitor = await landing(lang);
+      expect(open?.className).toBe(action(visitor)[0]?.className);
+    },
+  );
 });

@@ -27,6 +27,12 @@
 @source not inline("{italic,font-thin,font-extralight,font-light,text-justify}");
 
 @custom-variant dark (&:where(.dark, .dark *));
+/* The landing closing's wide layout, the joint beside its heading (features/landing/closing-pose.ts, isNarrow). */
+@custom-variant closing-wide {
+  @media (min-width: 960px) and (min-aspect-ratio: 23 / 20) {
+    @slot;
+  }
+}
 
 /* ---------------------------------------------------------------------------------------------------
  * A. Semantic variables. OKLCH as in working-brand.theme.json; the comment is the .yml name and hex.
@@ -551,6 +557,43 @@
   }
 }
 
+/* The loader (STYLE.md, "the lattice assembles"): a 3x3 lattice whose horizontals slide in on x, then
+ * whose verticals drop on y, 240ms each with a 60ms stagger, then a 400ms hold, over and over while a
+ * wait lasts. Under reduced motion it is the still lattice. */
+.tf-lattice-assemble .tf-lattice-h {
+  animation: lattice-h 1240ms var(--tf-ease-seat) calc(var(--i) * 60ms) infinite both;
+}
+.tf-lattice-assemble .tf-lattice-v {
+  animation: lattice-v 1240ms var(--tf-ease-seat) calc(420ms + var(--i) * 60ms) infinite both;
+}
+
+@keyframes lattice-h {
+  0% {
+    transform: translateX(-100%);
+  }
+  19%,
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes lattice-v {
+  0% {
+    transform: translateY(-100%);
+  }
+  19%,
+  100% {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tf-lattice-assemble .tf-lattice-h,
+  .tf-lattice-assemble .tf-lattice-v {
+    animation: none;
+  }
+}
+
 /* ---------------------------------------------------------------------------------------------------
  * Base. The spec puts these on html and body; here they sit under one class, `tf-app`, which the
  * product shell puts on <body>. Tailwind's own base fonts are the tokens' (--font-sans, --font-mono).
@@ -670,7 +713,9 @@
   container-type: inline-size;
 
   --tf-embed-fg: var(--embed-fg, CanvasText);
-  --tf-embed-muted: var(--embed-muted, GrayText);
+  /* GrayText on Canvas is under 4.5:1 in light (#808080 on white, 3.9:1): with no partner colour the
+     muted text is the partner's own text colour, mixed toward the ground, which holds AA in both */
+  --tf-embed-muted: var(--embed-muted, color-mix(in oklab, CanvasText 62%, Canvas));
   --tf-embed-bg: var(--embed-bg, Canvas);
   --tf-embed-border: var(--embed-border, color-mix(in oklab, var(--tf-embed-fg) 40%, transparent));
   --tf-embed-accent: var(--embed-accent, var(--tf-embed-fg));
@@ -727,11 +772,18 @@
   --tf-e-credit: max(0.6944em, 11px);
   --tf-e-leading: 1.5;
 
+  /* the partner's buttons may be rounder than their boxes (a pill, in the guide's sample) */
+  --tf-embed-button-radius: var(--embed-button-radius, var(--radius));
+
+  /* the partner's container, as guidelines section 08 draws it: their ground, their hairline,
+     their radius, and room inside */
   background-color: var(--tf-embed-bg);
   color: var(--tf-embed-fg);
   font-family: var(--embed-font, inherit);
   line-height: 1.5;
+  border: 1px solid var(--tf-embed-border);
   border-radius: var(--embed-radius, inherit);
+  padding: 1.25em;
 }
 
 /* Inside the embed, type is the partner's: their face, and sizes in em of their text. */
