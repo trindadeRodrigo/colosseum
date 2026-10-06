@@ -8,7 +8,7 @@ import {
   type VaultPriceLimits,
 } from '@colosseum/risk';
 import type { AssetList } from '@colosseum/schemas';
-import { and, eq, gte, lte, sql } from 'drizzle-orm';
+import { type AnyColumn, and, eq, gte, lte, sql } from 'drizzle-orm';
 
 // The rows behind the `oracle` block of an asset sheet (PLAN-UNIVERSE RU.9). The oracle and what it is comes from
 // the chain's asset list (scripts/risk/universe/<chain>.json, gate UNIVERSE); its readings from
@@ -16,7 +16,12 @@ import { and, eq, gte, lte, sql } from 'drizzle-orm';
 // asset's reference pool. The two are handed over apart (gate ORACLE-VS-DEX). Read-only.
 
 const ROOT = process.env.REPO_ROOT ?? join(import.meta.dirname, '..', '..', '..');
-const json = (path: string) => JSON.parse(readFileSync(join(ROOT, path), 'utf8'));
+const files = new Map<string, unknown>();
+/** A committed file of the repository, read once for the life of the process. */
+function json<T>(path: string): T {
+  if (!files.has(path)) files.set(path, JSON.parse(readFileSync(join(ROOT, path), 'utf8')));
+  return files.get(path) as T;
+}
 
 /** Days of readings behind the oracle figures. */
 export const ORACLE_WINDOW_DAYS = 28;
@@ -27,6 +32,10 @@ const STORED = {
   chainlink: { priceSource: 'chainlink', method: null },
   scope: { priceSource: 'kamino_scope', method: 'scope_feed_read' },
 } as const;
+
+/** A Solana address is matched exactly; an EVM one whatever its case, so a row spelled another way is still found. */
+const sameAddress = (column: AnyColumn, chain: string, address: string) =>
+  chain === 'solana' ? eq(column, address) : sql`lower(${column}) = ${address.toLowerCase()}`;
 
 type ListRow = { list: AssetList; asset: AssetList['assets'][number] };
 let lists: AssetList[] | null = null;
@@ -139,7 +148,7 @@ export async function loadOracleInput(
     .where(
       and(
         eq(riskPriceObservations.chain, list.chain),
-        eq(riskPriceObservations.mint, mint),
+        sameAddress(riskPriceObservations.mint, list.chain, mint),
         eq(riskPriceObservations.priceSource, stored.priceSource),
         eq(riskPriceObservations.quote, 'usd'),
         gte(riskPriceObservations.observedAt, from),
@@ -169,7 +178,7 @@ export async function loadOracleInput(
         .from(riskAssetSnapshots)
         .where(
           and(
-            eq(riskAssetSnapshots.assetMint, mint),
+            sameAddress(riskAssetSnapshots.assetMint, list.chain, mint),
             gte(riskAssetSnapshots.fetchedAt, new Date(from.getTime() - 3_600_000)),
             lte(riskAssetSnapshots.fetchedAt, new Date(now.getTime() + 3_600_000)),
           ),

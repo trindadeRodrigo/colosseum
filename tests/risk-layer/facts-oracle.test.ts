@@ -264,6 +264,9 @@ describe('the oracle block, on real Chainlink readings (NVDA, Robinhood Chain)',
     expect(rows.every((r) => distanceOf(r, rows, 6) === null)).toBe(true);
     expect(reasonOf(night.refusedByDistanceShare)).toBe('not_collected');
     expect((night.refusedShare as { method: string }).method).toContain('not checked here');
+    // and the share by either check is a floor: the range and the average's age are not run at all
+    expect(night.refusedShare).toMatchObject({ value: 0, quality: 'lower_bound' });
+    expect(night.refusedByAgeShare).toMatchObject({ quality: 'measured' });
   });
 
   it('has nothing in the vault session yet: the fixture is one night', () => {

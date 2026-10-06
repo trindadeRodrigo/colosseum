@@ -80,6 +80,16 @@ describe('the asset lists', () => {
   });
 });
 
+describe('the asset lists and the block', () => {
+  it('agree on who may rebalance by itself: every row with an oracle, and no other', () => {
+    for (const mint of [NVDA, NVDAX]) {
+      const list = listedAsset(mint)?.list;
+      expect(list?.assets.length).toBeGreaterThan(0);
+      for (const a of list?.assets ?? []) expect(a.autoRebalance).toBe(a.oracle !== null);
+    }
+  });
+});
+
 describe('loadOracleInput', () => {
   it('is undefined for an address on no list: the sheet gets no oracle block', async () => {
     expect(await loadOracleInput(db, 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', NOW)).toBe(
@@ -124,9 +134,14 @@ describe('loadOracleInput', () => {
         row(at(19), 902),
         row(new Date('2020-01-01T00:00:00Z'), 903),
       ]);
-      await tx
-        .insert(riskAssetSnapshots)
-        .values([snap(NVDA, at(15), 100.5), snap(NVDA, at(16), 101.5)]);
+      await tx.insert(riskAssetSnapshots).values([
+        snap(NVDA, at(15), 100.5),
+        snap(NVDA, at(16), 101.5),
+        // another stock's mid, and mids more than an hour outside the window
+        snap(NVDAX, at(15), 900),
+        snap(NVDA, at(19, 30), 901),
+        snap(NVDA, new Date('2020-01-01T00:00:00Z'), 902),
+      ]);
       return loadOracleInput(tx, NVDA, NOW);
     });
     expect(inp?.readings?.rows).toEqual([
@@ -176,6 +191,26 @@ describe('loadOracleInput', () => {
     expect(inp?.readings?.source).toContain('reserveA');
     expect(inp?.readings?.source).toContain('one of 2 reserves');
     expect(inp?.limits).toMatchObject({ maxAgeSeconds: 120, maxDistancePlaceholder: true });
+  });
+
+  it('finds the rows of an EVM stock whatever the case they were written in', async () => {
+    const inp = await withRows(async (tx) => {
+      await tx.insert(riskPriceObservations).values([
+        obs({
+          chain: 'robinhood',
+          mint: NVDA.toLowerCase(),
+          priceSource: 'chainlink',
+          ref: NVDA_FEED.toUpperCase().replace('0X', '0x'),
+          method: 'chainlink_latest_round_at_the_run_block',
+          observedAt: at(15),
+          price: 101,
+        }),
+      ]);
+      await tx.insert(riskAssetSnapshots).values([snap(NVDA.toLowerCase(), at(15), 100.5)]);
+      return loadOracleInput(tx, NVDA, NOW);
+    });
+    expect(inp?.readings?.rows.map((r) => r.price)).toEqual([101]);
+    expect(inp?.mids?.rows.map((m) => m.midUsd)).toEqual([100.5]);
   });
 
   it('left nothing behind', async () => {

@@ -265,11 +265,12 @@ export function buildOracleFacts(inp: OracleFactsInput): OracleFacts {
       samples: number,
       source: string,
       method: string,
+      quality: MeasuredFact['quality'] = 'measured',
     ): MeasuredFact =>
       fact({
         value,
         unit,
-        quality: 'measured',
+        quality,
         ...ctx,
         source,
         method,
@@ -345,6 +346,7 @@ export function buildOracleFacts(inp: OracleFactsInput): OracleFacts {
       rs: Array<{ t: number; refused: boolean | null }>,
       method: string,
       unchecked: () => Fact,
+      quality: MeasuredFact['quality'] = 'measured',
     ): Fact => {
       const s = refusedShareByHour(rs);
       if (!s) return unchecked();
@@ -356,6 +358,7 @@ export function buildOracleFacts(inp: OracleFactsInput): OracleFacts {
         s.hours,
         ageSource,
         `share of hours refused: ${method}; ${hourly}`,
+        quality,
       );
     };
     const noTimestamp = (): Fact =>
@@ -383,6 +386,9 @@ export function buildOracleFacts(inp: OracleFactsInput): OracleFacts {
           ? `${ageRule}, or ${distanceRule}`
           : `${ageRule}; the distance from its average is not checked here (${maxDistance === null ? 'the vault has no such limit' : 'no average to compare with'})`,
         noTimestamp,
+        // the vault also checks the price range and the age of the average, and a reading whose distance
+        // cannot be rebuilt is not refused here: the true share is at least this
+        'lower_bound',
       ),
       refusedByAgeShare: share(byAge, ageRule, noTimestamp),
       refusedByDistanceShare: share(byDistance, distanceRule ?? '', noAverage),
