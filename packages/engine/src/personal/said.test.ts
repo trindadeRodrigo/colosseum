@@ -24,14 +24,7 @@ const ctx = fixtureContext();
 const line = (plan: PersonalProposal, id: string) => plan.lines.find((l) => l.assetId === id);
 const rulesOn = (plan: PersonalProposal, id: string) => line(plan, id)?.reasons.map((r) => r.rule);
 /** The rules that say something was left out. */
-const LEFT_OUT = [
-  'MAX_LINES',
-  'BELOW_MINIMUM',
-  'EXCLUDED',
-  'NOT_FOR_GOAL',
-  'NOT_IN_COUNTRY',
-  'NOT_ON_CHAIN',
-];
+const LEFT_OUT = ['MAX_LINES', 'BELOW_MINIMUM', 'EXCLUDED', 'NOT_FOR_GOAL', 'NOT_ON_CHAIN'];
 
 describe('a reason names what it is about', () => {
   it('at $20 the dollar-yield share is too small to hold, and the cash line says that, not " is left out"', () => {
@@ -660,19 +653,22 @@ describe('the words', () => {
     ]);
   });
 
-  it('names a country, not its code, and reads as a Brazilian would say it', () => {
+  // Gate COUNTRY-REMOVED (Oct 6): this test held that NVDAx blocked in Brazil was left out of a
+  // Brazilian's plan, said "in Brazil". It is now held, and no sentence names a country.
+  it("holds an asset blocked in the person's country, says no country, and reads as a Brazilian would say it", () => {
     const blocked = {
       ...shelf,
       assets: shelf.assets.map((a) =>
         a.id === 'solana:nvdax' ? { ...a, blockedCountries: ['BR'] } : a,
       ),
     };
-    const said = (language: 'en' | 'pt') =>
-      compose(sheet({ themes: ['the-seven'], language }), blocked, ctx)
-        .removed.find((r) => r.ref === 'NVDA')
-        ?.reasons.map((r) => r.text);
-    expect(said('en')).toEqual(['NVDAx is left out: it is not offered in Brazil.']);
-    expect(said('pt')).toEqual(['NVDAx fica de fora: não é oferecido no Brasil.']);
+    for (const language of ['en', 'pt'] as const) {
+      const plan = compose(sheet({ themes: ['the-seven'], language }), blocked, ctx);
+      expect(plan.removed.find((r) => r.ref === 'NVDA')).toBeUndefined();
+      expect(line(plan, 'solana:nvdax')).toBeDefined();
+      for (const r of allReasons(plan))
+        expect(r.text).not.toMatch(/Brazil|Brasil|not offered|não é oferecido/);
+    }
     const pt = compose(sheet({ language: 'pt' }), shelf, ctx);
     expect(line(pt, 'solana:syrupusdc')?.reasons.map((r) => r.text)).toEqual([
       'Para um objetivo de crescimento, com risco médio, a parcela inicial de rendimento em dólar é 15%.',

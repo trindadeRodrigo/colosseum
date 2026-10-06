@@ -279,8 +279,8 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
       return reason('EXCLUDED', { asset: a.underlying }, lang);
     if (!eligibleForGoal(a, sheet.goal))
       return reason('NOT_FOR_GOAL', { asset: a.underlying, goal: sheet.goal }, lang);
-    if (a.blockedCountries.includes(sheet.country))
-      return reason('NOT_IN_COUNTRY', { asset: a.symbol, country: sheet.country }, lang);
+    // No country rule (gate COUNTRY-REMOVED, Rodrigo, Oct 6): `blockedCountries` is information
+    // only. Who may hold an asset is for sign-up and the terms of service, not the plan.
     return null;
   };
 
