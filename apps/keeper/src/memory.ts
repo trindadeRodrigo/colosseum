@@ -46,6 +46,14 @@ export const InFlight = z.object({
   nonce: z.number().int().nonnegative().optional(),
   messageHash: z.string().optional(),
   signer: z.string().optional(),
+  /**
+   * EVM: the earlier legs of the vault on the same nonce that this one replaced (the node never held
+   * them). One of them may still take the nonce, so when the nonce goes to another call, these are
+   * asked first: a replaced leg that landed and reverted joins the reverted set.
+   */
+  replaced: z
+    .array(z.object({ txId: z.string(), key: z.string(), messageHash: z.string() }))
+    .optional(),
 });
 export type InFlight = z.infer<typeof InFlight>;
 
