@@ -819,11 +819,14 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
     }
     // A candidate's own credit limit is said only by Cover, below the person's, and holds.
     if (r.rule === 'CREDIT_NONE_PLAN' || r.rule === 'CREDIT_BUDGET_PLAN') {
-      const planCap = Math.floor((amount * P.candidates.cover.creditShareBps) / 10_000);
+      const coverBps = Math.floor(
+        ((P.creditShareBps[tolerance] ?? 0) * P.candidates.cover.creditOfLimitBps) / 10_000,
+      );
+      const planCap = Math.floor((amount * coverBps) / 10_000);
       say(plan.candidate === 'cover', `"${r.text}" said of a plan that is not Cover`);
       // Compared in basis points, as the engine does: on a small plan both can be zero cents.
       say(
-        P.candidates.cover.creditShareBps < (P.creditShareBps[tolerance] ?? 0),
+        coverBps < (P.creditShareBps[tolerance] ?? 0),
         `"${r.text}" but the person's own limit is no higher`,
       );
       say(

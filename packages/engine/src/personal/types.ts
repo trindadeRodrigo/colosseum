@@ -162,7 +162,8 @@ export const PersonalParameters = PersonalParams.extend({
   candidates: z.object({
     cover: z.object({
       setAsideMonths: z.number().int().nonnegative(),
-      creditShareBps: Bps,
+      /** Of the person's own credit limit, the share Cover may hold, in basis points of it. */
+      creditOfLimitBps: Bps,
       tau: z.number().positive().max(1),
       shareOfDepth: z.number().positive().max(1),
     }),

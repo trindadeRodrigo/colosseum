@@ -457,7 +457,8 @@ export function buildWorld(
     creditBudget: (() => {
       const tolerance = sheet.limits?.creditTolerance ?? P.defaultCreditTolerance;
       const theirs = P.creditShareBps[tolerance] ?? 0;
-      const plans = candidate === 'cover' ? P.candidates.cover.creditShareBps : theirs;
+      const plans =
+        candidate === 'cover' ? shareOf(theirs, P.candidates.cover.creditOfLimitBps) : theirs;
       const bps = Math.min(theirs, plans);
       return {
         cents: shareOf(amount, bps),

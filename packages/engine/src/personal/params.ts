@@ -102,9 +102,9 @@ export const PERSONAL_PARAMS: PersonalParameters = {
   // The three candidates (gate THREE-PLANS, slice 3). Tuned by C10 and C11: on the grid of goals, no
   // candidate is dominated on the scorecard and each wins at least one line of it.
   candidates: {
-    // Cover: a year of withdrawals set aside, no credit or basis leg, exit read at half the cost and
-    // half the share of depth.
-    cover: { setAsideMonths: 12, creditShareBps: 0, tau: 0.005, shareOfDepth: 0.125 },
+    // Cover: a year of withdrawals set aside, half the person's credit limit in credit and basis legs
+    // (Rodrigo, Oct 5), exit capacity read at half the cost and half the share of depth.
+    cover: { setAsideMonths: 12, creditOfLimitBps: 5000, tau: 0.005, shareOfDepth: 0.125 },
     // Spread: dollar yield filled equally within its caps (every token in one band), one issuer at
     // most 30% of the plan.
     spread: { equalFill: true, issuerCapBps: 3000 },
@@ -196,7 +196,7 @@ export const PERSONAL_PARAMS_STATUS: Record<Exclude<keyof PersonalParameters, 'v
   },
   candidates: {
     status: 'starting',
-    from: 'New in slice 3, gate THREE-PLANS; the moves are section 2.4 of the research note (Cover: 12 months set aside, credit 0, tau and shareOfDepth tighter; Spread: equal fill, tighter issuer cap), the sizes are not in any document. Cover halves tau (0.5%) and shareOfDepth (0.125); Spread caps one issuer at 30%; distinct from 1,000 bps (the prompt). For Rodrigo: parameters outside the SOLVER-PARAMS table.',
+    from: 'New in slice 3, gate THREE-PLANS; the moves are section 2.4 of the research note (Cover: 12 months set aside, less credit, tau and shareOfDepth tighter; Spread: equal fill, tighter issuer cap), the sizes are not in any document. Cover holds at most half the credit limit of the person (Rodrigo, Oct 5, in place of the 0 of the note); Cover halves tau (0.5%) and shareOfDepth (0.125); Spread caps one issuer at 30%; distinct from 1,000 bps (the prompt). For Rodrigo: parameters outside the SOLVER-PARAMS table.',
   },
   setAsideMonths: {
     status: 'set',

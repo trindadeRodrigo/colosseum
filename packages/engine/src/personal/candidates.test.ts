@@ -139,11 +139,15 @@ describe('three candidates from one goal (C10)', () => {
       expect(word.test(words)).toBe(false);
   });
 
-  it('keeps each inside its aim: Cover holds no credit leg, Spread no issuer over its cap, Carry is the plan', () => {
+  it('keeps each inside its aim: Cover at most half the credit limit, Spread no issuer over its cap, Carry is the plan', () => {
     const s = sheet({ goal: 'protect', amountUsd: 50_000, obligations: monthly(500, 24) });
     const answer = run(s);
     const of = (id: string) => answer.shown.find((c) => c.id === id)?.plan as PersonalProposal;
-    expect(of('cover').scorecard?.creditBasisBps).toBe(0);
+    // The person's limit is the default, limited (25%); Cover holds at most half of it.
+    const limit = PERSONAL_PARAMS.creditShareBps[PERSONAL_PARAMS.defaultCreditTolerance] ?? 0;
+    const half = Math.floor((limit * PERSONAL_PARAMS.candidates.cover.creditOfLimitBps) / 10_000);
+    expect(of('cover').scorecard?.creditBasisBps).toBeLessThanOrEqual(half);
+    expect(of('cover').scorecard?.creditBasisBps).toBeGreaterThan(0);
     // Twelve months set aside, said on the plan.
     expect(
       of('cover')
