@@ -8,92 +8,110 @@
     {
       "chain": "solana",
       "symbol": "SPYx",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Backed (xStocks)"
     },
     {
       "chain": "solana",
       "symbol": "QQQx",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Backed (xStocks)"
     },
     {
       "chain": "solana",
       "symbol": "NVDAx",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Backed (xStocks)"
     },
     {
       "chain": "solana",
       "symbol": "TSLAx",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Backed (xStocks)"
     },
     {
       "chain": "solana",
       "symbol": "AAPLx",
-      "tier": "B"
+      "tier": "B",
+      "issuer": "Backed (xStocks)"
     },
     {
       "chain": "solana",
       "symbol": "GOOGLx",
-      "tier": "B"
+      "tier": "B",
+      "issuer": "Backed (xStocks)"
     },
     {
       "chain": "solana",
       "symbol": "METAx",
-      "tier": "B"
+      "tier": "B",
+      "issuer": "Backed (xStocks)"
     },
     {
       "chain": "solana",
       "symbol": "MSFTx",
-      "tier": "B"
+      "tier": "B",
+      "issuer": "Backed (xStocks)"
     },
     {
       "chain": "solana",
       "symbol": "AMZNx",
-      "tier": "B"
+      "tier": "B",
+      "issuer": "Backed (xStocks)"
     },
     {
       "chain": "solana",
       "symbol": "SPCXx",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Backed (xStocks)"
     },
     {
       "chain": "solana",
       "symbol": "MSTRx",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Backed (xStocks)"
     },
     {
       "chain": "solana",
       "symbol": "CRCLx",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Backed (xStocks)"
     },
     {
       "chain": "solana",
       "symbol": "HOODx",
-      "tier": "C"
+      "tier": "C",
+      "issuer": "Backed (xStocks)"
     },
     {
       "chain": "solana",
       "symbol": "COINx",
-      "tier": "C"
+      "tier": "C",
+      "issuer": "Backed (xStocks)"
     },
     {
       "chain": "solana",
       "symbol": "PLTRx",
-      "tier": "C"
+      "tier": "C",
+      "issuer": "Backed (xStocks)"
     },
     {
       "chain": "solana",
       "symbol": "GLDx",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Backed (xStocks)"
     },
     {
       "chain": "solana",
       "symbol": "jlUSDC",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Jupiter Lend"
     },
     {
       "chain": "solana",
       "symbol": "syrupUSDC",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Maple"
     },
     {
       "chain": "solana",
@@ -268,132 +286,162 @@
     {
       "chain": "robinhood",
       "symbol": "SPY",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "NVDA",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "GLD",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "META",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "SPCX",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "MSTR",
-      "tier": "B"
+      "tier": "B",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "CRCL",
-      "tier": "B"
+      "tier": "B",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "SGOV",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "GOOGL",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "USO",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "TSLA",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "AAPL",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "COIN",
-      "tier": "C"
+      "tier": "C",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "MU",
-      "tier": "B"
+      "tier": "B",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "QQQ",
-      "tier": "A"
+      "tier": "A",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "INTC",
-      "tier": "B"
+      "tier": "B",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "GME",
-      "tier": "B"
+      "tier": "B",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "AMZN",
-      "tier": "B"
+      "tier": "B",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "MSFT",
-      "tier": "B"
+      "tier": "B",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "PLTR",
-      "tier": "B"
+      "tier": "B",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "AMD",
-      "tier": "C"
+      "tier": "C",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "SLV",
-      "tier": "B"
+      "tier": "B",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "SNDK",
-      "tier": "C"
+      "tier": "C",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "TSM",
-      "tier": "B"
+      "tier": "B",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "DELL",
-      "tier": "C"
+      "tier": "C",
+      "issuer": "Robinhood"
     },
     {
       "chain": "robinhood",
       "symbol": "BABA",
-      "tier": "C"
+      "tier": "C",
+      "issuer": "Robinhood"
     }
-  ]
+  ],
+  "issuers": {
+    "source": "packages/engine/src/personal/testing.ts (STOCK_ISSUER and YIELD_ISSUER of the launch-shelf fixture): the xStocks issuer for Solana stock tokens, Robinhood for Robinhood Chain tokens, Jupiter Lend and Maple for jlUSDC and syrupUSDC",
+    "note": "A test-network token is counted under the issuer of the token it models (gate ENG-DEVNET-EXIT-TWIN). A row with no issuer names none: the token keeps its own."
+  }
 }

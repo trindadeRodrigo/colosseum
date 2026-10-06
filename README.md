@@ -23,6 +23,7 @@ pnpm install
 pnpm db:up                                # Postgres 16 in Docker, then the migrations
 pnpm db:seed                              # the asset registry rows
 pnpm feeds:refresh                        # yield and FX observations; POST /plans needs them
+pnpm feeds:refresh-models                 # yields of the tokens the test networks' stand-ins model (jlUSDC, SGOV); after db:seed
 pnpm dev                                  # api :3001 (/docs), web :3000
 pnpm verify                               # lint, typechecks, tests, build: what CI runs
 pnpm verify:all                           # reproduces docs/structurer/VERIFICATION.md

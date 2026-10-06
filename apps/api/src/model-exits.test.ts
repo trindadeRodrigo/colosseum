@@ -206,7 +206,7 @@ describe('a plan to grow $20,000 on devnet', () => {
 // with no measured twin take their model's tier on the mainnet launch shelf, the dollar-yield ones
 // their models' yields; SPY and QQQ are index funds (the record's `etf`).
 const READINGS = z
-  .array(z.object({ symbol: z.string(), reading: YieldObservation }))
+  .array(z.object({ symbol: z.string(), chain: z.string(), reading: YieldObservation }))
   .parse(readings);
 
 describe('the plan to grow $20,000 over 63 months at high risk on devnet, as the server makes it', () => {
@@ -232,7 +232,7 @@ describe('the plan to grow $20,000 over 63 months at high risk on devnet, as the
       now: '2026-10-06T12:00:00.000Z',
       liquidity: provider,
       liquiditySource: twinSource('Bearing', twins),
-      yields: modelYields(modelledTokens(assets, []), READINGS),
+      yields: modelYields(modelledTokens(assets, [], 'sandbox'), READINGS),
     },
   );
   const weight = (id: string) => plan.lines.find((l) => l.assetId === id)?.weightBps ?? 0;

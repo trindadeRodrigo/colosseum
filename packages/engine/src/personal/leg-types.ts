@@ -64,6 +64,12 @@ export const LEG_TYPES: Record<string, LegTypeRow> = {
     source:
       'fixtures/testnet: the test-network stand-in of syrupUSDC, typed as syrupUSDC is (sandbox)',
     readAt: '2026-10-05',
+  }, // Robinhood Chain's test network: the stand-in of SGOV, typed as SGOV is (a rate leg).
+  tSGOV: {
+    types: ['rate'],
+    source:
+      'deployments/robinhood-testnet.json: the test-network stand-in of SGOV, typed as SGOV is (sandbox)',
+    readAt: '2026-10-06',
   },
 };
 

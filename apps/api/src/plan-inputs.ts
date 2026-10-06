@@ -7,6 +7,7 @@ import { loadLiquidityProvider, RISK_METHOD_VERSION } from './liquidity';
 import {
   asSandbox,
   exitTwins,
+  issuerTwins,
   type RegistryAsset,
   shelfTiers,
   standIns,
@@ -43,7 +44,7 @@ const readJson = <T>(file: string): T | null => {
 type TierFile = {
   source: string;
   fetchedAt: string;
-  rows: Array<{ chain: string; symbol: string; tier: string }>;
+  rows: Array<{ chain: string; symbol: string; tier: string; issuer?: string }>;
 };
 const TIER_FILE = readJson<TierFile>('fixtures/risk/launch-shelf-tiers.json');
 const SHELF = TIER_FILE ? shelfTiers(TIER_FILE) : [];
@@ -129,6 +130,11 @@ export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets, provena
     fetchedAt: TIER_FILE?.fetchedAt ?? '',
     provenance: 'sandbox' as const,
   }));
+  const issuers = issuerTwins(tokens, SHELF).map((t) => ({
+    assetId: t.id,
+    issuer: t.issuer,
+    of: t.twinSymbol,
+  }));
   const provider = loaded && read.length ? asSandbox(loaded) : loaded;
   const source = read.length ? twinSource(BEARING_SOURCE, read) : BEARING_SOURCE;
   const idOf = new Map(assets.map((a) => [a.address, a.id]));
@@ -159,11 +165,11 @@ export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets, provena
   // The live readings of the mainnet tokens the test-network tokens model, found by the model's symbol
   // (each token's `underlying`) on the same family of chains: on EVM that is any EVM chain, since the
   // assets table names the family and not the chain.
-  const modelled = modelledTokens(assets, own);
+  const modelled = modelledTokens(assets, own, provenance);
   const models = [...new Set(modelled.map((a) => a.underlying))];
   const modelRows = models.length
     ? await db
-        .select({ y: yieldObservations, symbol: assetsTable.symbol })
+        .select({ y: yieldObservations, symbol: assetsTable.symbol, id: assetsTable.id })
         .from(yieldObservations)
         .innerJoin(assetsTable, eq(yieldObservations.assetId, assetsTable.id))
         .where(
@@ -180,12 +186,20 @@ export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets, provena
     ...own,
     ...modelYields(
       modelled,
-      modelRows.map(({ y, symbol }): ModelReading => ({ symbol, reading: reading(y, y.assetId) })),
+      // the table names the family; an EVM row's chain is the prefix of its id (`robinhood:sgov`)
+      modelRows.map(
+        ({ y, symbol, id }): ModelReading => ({
+          symbol,
+          chain: chainFamily(chain) === 'evm' ? (id.split(':')[0] as string) : 'solana',
+          reading: reading(y, y.assetId),
+        }),
+      ),
     ),
   ];
   return {
     ...(provider ? { liquidity: { provider, source } } : {}),
     ...(yields.length ? { yields } : {}),
     ...(tiers.length ? { tiers } : {}),
+    ...(issuers.length ? { issuers } : {}),
   };
 };

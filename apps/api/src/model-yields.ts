@@ -11,11 +11,20 @@ import type { BasketAsset, YieldObservation } from '@colosseum/schemas';
 //
 // Only readings here: a test token's exit depth is carried over by model-exits.ts.
 
-/** A stored reading of a live token, with the symbol of the token it was read for. */
-export type ModelReading = { symbol: string; reading: YieldObservation };
+/** A stored reading of a live token, with the symbol and the chain of the token it was read for. */
+export type ModelReading = { symbol: string; chain: string; reading: YieldObservation };
 
-/** The test-network tokens that take a model's reading: not cash, labelled sandbox, and with no reading of their own. */
-export function modelledTokens(assets: BasketAsset[], own: YieldObservation[]): BasketAsset[] {
+/**
+ * The test-network tokens that take a model's reading: not cash, labelled sandbox, with no reading of
+ * their own, on a chain that itself runs as a test network (its provenance `sandbox`, as for the exit
+ * figures in model-exits.ts): a mock or a live chain's tokens borrow nothing.
+ */
+export function modelledTokens(
+  assets: BasketAsset[],
+  own: YieldObservation[],
+  chainProvenance: string | undefined,
+): BasketAsset[] {
+  if (chainProvenance !== 'sandbox') return [];
   const read = new Set(own.map((y) => y.assetId));
   return assets.filter(
     (a) => a.provenance === 'sandbox' && a.cls !== 'cash' && a.underlying && !read.has(a.id),
@@ -23,13 +32,19 @@ export function modelledTokens(assets: BasketAsset[], own: YieldObservation[]): 
 }
 
 /**
- * Each model's live readings, as readings of the test tokens that model it. A reading that is not
+ * Each model's live readings, as readings of the test tokens that model it on the same chain (Base's
+ * SGOV is not Robinhood Chain's). A reading that is not
  * itself live is not passed on: a mock or a test figure is not a model's reading.
  */
 export function modelYields(tokens: BasketAsset[], readings: ModelReading[]): YieldObservation[] {
   return tokens.flatMap((token) =>
     readings
-      .filter((r) => r.symbol === token.underlying && r.reading.provenance === 'live')
+      .filter(
+        (r) =>
+          r.symbol === token.underlying &&
+          r.chain === token.chain &&
+          r.reading.provenance === 'live',
+      )
       .map(({ symbol, reading }) => ({
         ...reading,
         assetId: token.id,

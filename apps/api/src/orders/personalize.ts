@@ -49,6 +49,11 @@ export type PlanInputs = (q: {
    * model's, model-exits.ts), with where it comes from: the line's fallback says it, labelled sandbox.
    */
   tiers?: Array<{ assetId: string; tier: AssetTier } & Sourced>;
+  /**
+   * The issuer a test-network token is counted under: its model's, in place of the test network's one
+   * name for every token (model-exits.ts). `of` is the model, for the flag that says whose it is.
+   */
+  issuers?: Array<{ assetId: string; issuer: string; of: string }>;
 }>;
 
 export type PersonalizeContext = {
@@ -63,24 +68,37 @@ export type PersonalizeContext = {
 };
 
 type Tiers = Awaited<ReturnType<PlanInputs>>['tiers'];
+type Issuers = Awaited<ReturnType<PlanInputs>>['issuers'];
 
-/** The shelf with each tier the plan inputs stand in for a token's own. */
-export function withTiers(assets: BasketAsset[], tiers: Tiers): BasketAsset[] {
+/** The shelf with each tier and each issuer the plan inputs stand in for a token's own. */
+export function withTiers(assets: BasketAsset[], tiers: Tiers, issuers?: Issuers): BasketAsset[] {
   const tierOf = new Map((tiers ?? []).map((t) => [t.assetId, t.tier]));
+  const issuerOf = new Map((issuers ?? []).map((t) => [t.assetId, t.issuer]));
   return assets.map((a) => {
     const tier = tierOf.get(a.id);
-    return tier ? { ...a, tier } : a;
+    const issuer = issuerOf.get(a.id);
+    return tier || issuer ? { ...a, ...(tier ? { tier } : {}), ...(issuer ? { issuer } : {}) } : a;
   });
 }
 
 /** A line held to a tier that is not its token's own says whose tier it is: a flag and its source. */
-export function tiersSaid(proposal: BasketProposal, tiers: Tiers): BasketProposal {
+export function tiersSaid(
+  proposal: BasketProposal,
+  tiers: Tiers,
+  issuers?: Issuers,
+): BasketProposal {
   const held = new Set(proposal.lines.map((l) => l.assetId));
   const borrowed = (tiers ?? []).filter((t) => held.has(t.assetId));
-  if (!borrowed.length) return proposal;
+  // a line counted under its model's issuer says whose: the flag names the model
+  const counted = (issuers ?? []).filter((t) => held.has(t.assetId));
+  if (!borrowed.length && !counted.length) return proposal;
   return {
     ...proposal,
-    flags: [...proposal.flags, ...borrowed.map((t) => `tier_from_model:${t.assetId}`)],
+    flags: [
+      ...proposal.flags,
+      ...borrowed.map((t) => `tier_from_model:${t.assetId}`),
+      ...counted.map((t) => `issuer_from_model:${t.assetId}:${t.of}`),
+    ],
     observations: [
       ...proposal.observations,
       ...borrowed.map(({ assetId, tier: _tier, ...src }) => ({
@@ -171,7 +189,7 @@ export async function personalize(
   const listed = await refusing(() => entry.adapter.listAssets());
   const families = await ctx.loadFamilies(chain);
   const figures = await ctx.inputs(chain, listed, entry.provenance);
-  const assets = withTiers(listed, figures.tiers);
+  const assets = withTiers(listed, figures.tiers, figures.issuers);
   const shelf: Shelf = { version: shelfVersionOf(chain, assets, families), assets, families };
   let plan: PersonalProposal;
   try {
@@ -200,7 +218,7 @@ export async function personalize(
       });
     throw e;
   }
-  const proposal = tiersSaid(sharedProposal(plan), figures.tiers);
+  const proposal = tiersSaid(sharedProposal(plan), figures.tiers, figures.issuers);
   return {
     proposal,
     rollUp: rollUp(

@@ -38,6 +38,7 @@
     "sign-and-send": "tsx scripts/mainnet/sign-and-send.ts",
     "fixture:plan": "tsx scripts/fixtures/insert-fixture-plan.ts",
     "feeds:refresh": "tsx scripts/feeds/refresh.ts",
+    "feeds:refresh-models": "tsx scripts/feeds/refresh-models.ts",
     "schedule:export": "tsx scripts/schedule-export.ts",
     "acceptance": "tsx scripts/acceptance.ts",
     "risk:discover": "tsx scripts/risk/discover-pools.ts",

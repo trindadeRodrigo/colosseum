@@ -53,7 +53,7 @@ describe('gold on the devnet shelf', () => {
 // server keeps them, they take them, relabelled as a test network's (model-yields.ts), and are placed.
 
 const MODEL_READINGS: ModelReading[] = z
-  .array(z.object({ symbol: z.string(), reading: YieldObservation }))
+  .array(z.object({ symbol: z.string(), chain: z.string(), reading: YieldObservation }))
   .parse(readings);
 
 const sheetFor = (goal: 'protect' | 'income'): PersonalSheet => ({
@@ -76,7 +76,7 @@ const planWith = (goal: 'protect' | 'income', yields: YieldObservation[]) =>
   );
 
 describe('the devnet stand-ins for jlUSDC and syrupUSDC', () => {
-  const yields = modelYields(modelledTokens(assets, []), MODEL_READINGS);
+  const yields = modelYields(modelledTokens(assets, [], 'sandbox'), MODEL_READINGS);
 
   it('take the readings of the tokens they model, labelled sandbox and said to be applied', () => {
     expect(yields.map((y) => y.assetId).sort()).toEqual(['solana:jlusdc', 'solana:syrupusdc']);
@@ -109,12 +109,12 @@ describe('the devnet stand-ins for jlUSDC and syrupUSDC', () => {
   );
 
   it('stay out as NO_YIELD when the models have no reading, or only one that is not live', () => {
-    expect(modelYields(modelledTokens(assets, []), [])).toEqual([]);
+    expect(modelYields(modelledTokens(assets, [], 'sandbox'), [])).toEqual([]);
     const notLive = MODEL_READINGS.map((r) => ({
       ...r,
       reading: { ...r.reading, provenance: 'mock' as const },
     }));
-    const none = modelYields(modelledTokens(assets, []), notLive);
+    const none = modelYields(modelledTokens(assets, [], 'sandbox'), notLive);
     expect(none).toEqual([]);
     expect(
       planWith('protect', none).removed.map((r) => [r.ref, r.reasons.map((x) => x.rule)]),
@@ -128,12 +128,14 @@ describe('the devnet stand-ins for jlUSDC and syrupUSDC', () => {
     const [first] = MODEL_READINGS;
     if (!first) throw new Error('the fixture has readings');
     const own = { ...first.reading, assetId: 'solana:jlusdc', provenance: 'sandbox' as const };
-    expect(modelledTokens(assets, [own]).map((a) => a.id)).not.toContain('solana:jlusdc');
+    expect(modelledTokens(assets, [own], 'sandbox').map((a) => a.id)).not.toContain(
+      'solana:jlusdc',
+    );
   });
 
   it('take nothing when they are not on a test network: a live token never takes another’s reading', () => {
     const live = assets.map((a) => ({ ...a, provenance: 'live' as const }));
-    expect(modelledTokens(live, [])).toEqual([]);
-    expect(modelYields(modelledTokens(live, []), MODEL_READINGS)).toEqual([]);
+    expect(modelledTokens(live, [], 'sandbox')).toEqual([]);
+    expect(modelYields(modelledTokens(live, [], 'sandbox'), MODEL_READINGS)).toEqual([]);
   });
 });
