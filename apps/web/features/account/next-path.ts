@@ -8,6 +8,9 @@
  * next-path.test.ts holds this list to the pages under app/(app).
  */
 export const APP_ROUTES: readonly string[] = [
+  '/analytics',
+  '/analytics/[page]',
+  '/analytics/methodology',
   '/goal',
   '/indexes/[slug]',
   '/indexes/[slug]/buy',
