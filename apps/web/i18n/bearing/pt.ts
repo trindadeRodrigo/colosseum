@@ -155,6 +155,8 @@ export const bearingPt: BearingDictionary = {
       capacityNote: (regime: string) => `venda com custo ≤ 1%, ${regime}`,
       volume: 'Volume 24 h',
       volumeNote: (to: string) => `até ${to}, o histórico de swaps mais recente`,
+      volumeDexNote:
+        'Número da DexScreener: o histórico de swaps do Bearing ainda não é coletado aqui.',
       lp: 'Fatia dos 3 maiores LPs',
       lpNote: 'maior pool, por posição',
     },

@@ -66,6 +66,8 @@ export type Pool = {
   assetSymbol: string;
   quoteSymbol: string | null;
   tvlUsd: number | null;
+  /** DexScreener's 24 h volume of the pair, as reported when the pool was registered. */
+  discoveryVolume24hUsd?: number | null;
   fetchedAt: string;
 };
 export type PoolsBody = { pools: Pool[]; nullReason?: string };

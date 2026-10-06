@@ -155,6 +155,7 @@ export const bearingEn = {
       capacityNote: (regime: string) => `sale at ≤ 1% cost, ${regime}`,
       volume: 'Volume 24 h',
       volumeNote: (to: string) => `to ${to}, the newest swap history`,
+      volumeDexNote: 'DexScreener’s figure: Bearing’s swap history is not collected here yet.',
       lp: 'Top-3 LP share',
       lpNote: 'largest pool, by position',
     },

@@ -12,17 +12,18 @@ import { ChainsSide } from './ChainsSide';
 import { type BearingChain, onChain } from './chain';
 import { R } from './data';
 import {
+  assetVol,
   COMMODITIES,
   capacitySeries,
   capFact,
   DAY,
+  DEXSCREENER_24H,
   type DexAsset,
   dexCounters,
   dexIds,
   poolLabel,
   poolsOf,
   tvlSeries,
-  vol24,
 } from './dex';
 import { type Fact, mk, none } from './fact';
 import { type Fmt, iso } from './format';
@@ -207,7 +208,16 @@ function DexView({
         <Kpi label={t.kpi.capacity} note={t.kpi.capacityNote(rw)}>
           <Fig f={k.cap} fmt={fm.usd1} />
         </Kpi>
-        <Kpi label={t.kpi.volume} note={k.volTo ? t.kpi.volumeNote(fm.minute(k.volTo)) : ''}>
+        <Kpi
+          label={t.kpi.volume}
+          note={
+            k.volTo
+              ? t.kpi.volumeNote(fm.minute(k.volTo))
+              : k.vol.source === DEXSCREENER_24H
+                ? t.kpi.volumeDexNote
+                : ''
+          }
+        >
           <Fig f={k.vol} fmt={fm.usd1} />
         </Kpi>
         <Kpi label={t.kpi.lp} note={t.kpi.lpNote}>
@@ -344,7 +354,7 @@ function assetColumns(
       key: 'vol',
       header: t.volume,
       numeric: true,
-      cell: (id) => <Fig f={dd[id] ? vol24(dd[id].sheet) : none('not_collected')} fmt={fm.usd1} />,
+      cell: (id) => <Fig f={assetVol(dd[id])} fmt={fm.usd1} />,
     },
     {
       key: 'lp',

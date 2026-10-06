@@ -179,3 +179,10 @@ Rodrigo's answers after reading the portfolio-method note (`docs/vault/research/
 | Gate | Status | Decision | Facts |
 |---|---|---|---|
 | **CHAIN-SWITCH** — the chain new plans are made on | DECIDED | A person has a current chain, and can change it at any time. A new plan is made on the current chain; a plan already made stays on its own chain, and is bought, followed and funded there whatever the current chain is (`ONE-CHAIN` holds per plan). `PUT /v1/me/chain` sets it, for a person who made their wallets in the app and for one whose outside wallets sign on both families (Phantom, Backpack). A chain no wallet of theirs signs on answers 409, code `NO_WALLET_FOR_CHAIN`: an EVM wallet alone (MetaMask) stays on Robinhood Chain. The portfolio lists every chain the person holds a wallet for. Signed out, the header's switcher sets the chain the shelf, Analytics and the simulator show. Supersedes `CHAIN-PICK` | Asking once at sign-up kept a person who wanted a plan on each chain from ever making the second. A wallet made in the app is one of each family, so nothing stops a passkey person from holding plans on both; the per-plan rule is what keeps funding and signing in one place |
+
+## Decided on 2026-10-06 (the orchestrator; pending Rodrigo)
+
+| Gate | Status | Decision | Facts |
+|---|---|---|---|
+| **VOLUME-DEXSCREENER** — what Bearing shows as 24 h volume where its swap history is not collected | DECIDED (pending Rodrigo) | Where Bearing's own 24 h volume (the swap history in `risk_pool_flow`) is not collected, the analytics pages show DexScreener's 24 h volume of the pools (`risk_pools.discovery_volume24h_usd`, read when each pool is registered), under its own source, "DexScreener · 24 h", whose method says it is DexScreener's figure and not Bearing's. Bearing's measure wins wherever it exists | Keeping the swap history current needs one `getTransaction` per swap: about 9.0M swaps in 28 days on the 34 value pools, some 320k RPC calls a day, beyond the hosted collector's budget. DexScreener's figure costs no RPC: the pool discovery already reads it |
+
