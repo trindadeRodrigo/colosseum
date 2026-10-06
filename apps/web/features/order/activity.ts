@@ -20,7 +20,7 @@ export function activityOf(
   order: OrderDetail,
   t: Dictionary,
   explorer: string,
-  /** The chain runs on the mock: its transactions have no link. */
+  /** The chain runs on the mock: its transactions link to the mock's own address. */
   mock: boolean,
 ): Execution[] {
   return order.legs

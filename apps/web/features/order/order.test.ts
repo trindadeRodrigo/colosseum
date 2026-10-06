@@ -134,8 +134,8 @@ describe('which chains can be signed on', () => {
     const link = explorerUrlFor('robinhood', '0xab', false);
     expect(link).toBe('https://explorer.testnet.chain.robinhood.com/tx/0xab');
     expect(new URL(link ?? '').origin).not.toBe('https://explorer.chain.robinhood.com');
-    // the mock's transactions are no network's: no link
-    expect(explorerUrlFor('robinhood', '0xab', true)).toBeNull();
+    // the mock's transactions are no network's: the mock's own link
+    expect(explorerUrlFor('robinhood', '0xab', true)).toBe('mock://robinhood/tx/0xab');
     expect(explorerUrlFor('robinhood', null, false)).toBeNull();
   });
 

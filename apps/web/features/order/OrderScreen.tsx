@@ -483,7 +483,7 @@ function Step({
   n: number;
   /** The explorer's name, for the link's accessible name. */
   explorer: string;
-  /** The chain runs on the mock: its transactions are no network's, and have no link. */
+  /** The chain runs on the mock: its transactions are no network's, and link to the mock's own address. */
   mock: boolean;
   /** As the review showed it: what it may do. */
   leg: Leg;

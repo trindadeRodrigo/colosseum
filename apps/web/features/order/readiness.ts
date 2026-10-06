@@ -74,11 +74,12 @@ export const basketOfPlan = (proposalId: string): string => basketIdOfPlan(propo
 /**
  * A transaction's link on the explorer of the network this app signs for, from this app's own chain
  * table, never the API's word: a link the API sent could point anywhere, mainnet's explorer included.
- * Null on the mock, where a transaction is no network's, on a network with no explorer, and where there
- * is no transaction.
+ * On the mock, whose transactions are no network's, the mock's own `mock://` link (packages/chain-mock's
+ * rule). Null on a network with no explorer, and where there is no transaction.
  */
 export function explorerUrlFor(chain: ChainId, txId: string | null, mock: boolean): string | null {
-  if (!txId || mock) return null;
+  if (!txId) return null;
+  if (mock) return `mock://${chain}/tx/${txId}`;
   try {
     return explorerLink(walletChains(publicWalletEnv())[chain].config, txId);
   } catch {
