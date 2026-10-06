@@ -62,6 +62,12 @@ export const BasketSheet = z.object({
   goal: z.enum(['grow', 'income', 'protect']),
   amountUsd: z.number().min(10).max(1_000_000),
   horizonMonths: z.number().int().min(1).max(480),
+  /**
+   * The person gave no date for the goal ("no hard cap", "sem prazo"; gate GLIDE-OPT-IN, Oct 6).
+   * `horizonMonths` then holds a starting parameter, not the person's date: nothing shows it, no
+   * date is made from it, and the glide is off. Left out: the goal has its date.
+   */
+  horizonOpen: z.boolean().optional(),
   risk: z.enum(['low', 'medium', 'high']),
   /** Family slugs. */
   themes: z.array(ThemeSlug).max(3),
@@ -108,6 +114,8 @@ export const BasketSheetDraft = z.object({
   goal: BasketSheet.shape.goal.nullable(),
   amountUsd: BasketSheet.shape.amountUsd.nullable(),
   horizonMonths: BasketSheet.shape.horizonMonths.nullable(),
+  // Added on Oct 6 (gate GLIDE-OPT-IN): left out, the text did not say the goal has no date.
+  horizonOpen: z.boolean().nullable().optional(),
   risk: BasketSheet.shape.risk.nullable(),
   themes: BasketSheet.shape.themes.nullable(),
   country: BasketSheet.shape.country.nullable(),
@@ -172,7 +180,8 @@ export type BasketLine = z.infer<typeof BasketLine>;
 
 export const BasketCard = z.object({
   moneyTodayUsd: z.number().nonnegative(),
-  termMonths: z.number().int().positive(),
+  /** The goal's term; null for a goal with no date (`horizonOpen`), shown as "no date set". */
+  termMonths: z.number().int().positive().nullable(),
   cashFlow: z.enum(['none', 'monthly', 'at_end']),
   expectedReturn: z.object({
     lowPct: z.number(),

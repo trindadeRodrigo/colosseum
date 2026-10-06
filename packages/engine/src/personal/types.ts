@@ -62,7 +62,13 @@ export type PersonalLimits = z.infer<typeof PersonalLimits>;
  * A plan lives on one chain: the chain of the wallet the person signed in with (decided on
  * 2026-10-03). `chains` keeps the list shape of the shared type and must name exactly one.
  */
+// `horizonOpen` (shared, Oct 6): `horizonMonths` then holds `openEndedHorizonMonths` of the parameter
+// table, a starting value and not the person's; no date is shown or made from it, and the glide is off.
 export const PersonalSheet = BasketSheet.extend({ limits: PersonalLimits.optional() })
+  .refine((s) => !(s.horizonOpen && s.rules.glide), {
+    message: 'a goal with no date has no glide: it has no date to near',
+    path: ['rules', 'glide'],
+  })
   .refine((s) => (s.limits?.mustKeepUsd ?? 0) <= s.amountUsd, {
     message: 'what must not be lost cannot be more than the amount',
     path: ['limits', 'mustKeepUsd'],
@@ -99,6 +105,11 @@ export type RiskLevel = z.infer<typeof RiskLevel>;
  * number the engine uses is in here; the table itself is `params.ts`.
  */
 export const PersonalParameters = PersonalParams.extend({
+  /**
+   * The time frame a goal with no date is built with (gate GLIDE-OPT-IN, Oct 6). Never said back as
+   * the person's: the read-back says "no date set". With no glide, it moves only what reads the date.
+   */
+  openEndedHorizonMonths: BasketSheet.shape.horizonMonths,
   /** Cash kept when the money may be needed within `monthsLeft` months. */
   cashFloor: z.array(z.object({ monthsLeft: Months, cashBps: Bps })),
   /** A line smaller than this many dollars is not held. */

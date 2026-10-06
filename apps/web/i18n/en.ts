@@ -303,6 +303,13 @@ export const en = {
         protect: (amount: string, months: string) => `Protect ${amount} for ${months}.`,
       },
       months: (n: number) => (n === 1 ? '1 month' : `${n} months`),
+      /** A goal with no date (gate GLIDE-OPT-IN): the months it is built over are never shown. */
+      sentenceOpen: {
+        grow: (amount: string) => `Grow ${amount}, with no date set.`,
+        income: (amount: string) => `Earn income from ${amount}, with no date set.`,
+        protect: (amount: string) => `Protect ${amount}, with no date set.`,
+      },
+      noDate: 'No date set',
       unfinished: 'Your goal, as read so far.',
       draftOpen: 'Draft: finish the limits',
       draftSet: 'Draft: limits set, no plan yet',

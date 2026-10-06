@@ -26,6 +26,7 @@ import {
 import { inArray, or } from 'drizzle-orm';
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { buildApp } from '../app';
+import type { IntakeModel } from '../llm';
 import { type ChainRegistry, createChainRegistry } from '../orders/chains';
 import type { PlanInputs } from '../orders/personalize';
 import { IDENTITY_TOKEN_HEADER, type TokenIssuer } from '../plugins/auth';
@@ -381,6 +382,8 @@ export async function testApp(a: {
   wrap?: (registry: ChainRegistry) => ChainRegistry;
   /** The figures a plan is made with. Default: the server's reader of the stored ones. */
   planInputs?: PlanInputs;
+  /** The guided intake's model. Default: none (no key in a test's environment). */
+  intakeModel?: IntakeModel | null;
 }) {
   const env = a.env ?? {};
   const registry = createChainRegistry(parseFlags(env), parseChainConfigs(env), {
@@ -397,6 +400,7 @@ export async function testApp(a: {
       limits: a.limits ?? ROOMY,
       ...(a.linkedPlans ? { linkedPlans: a.linkedPlans } : {}),
       ...(a.planInputs ? { planInputs: a.planInputs } : {}),
+      ...(a.intakeModel !== undefined ? { intakeModel: a.intakeModel } : {}),
     },
   });
   return { app, registry };

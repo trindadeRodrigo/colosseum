@@ -499,7 +499,7 @@ function build(
         nowMonth: w.nowMonth,
         months: Math.min(
           BasketSheet.shape.horizonMonths.maxValue ?? toLast,
-          Math.max(sheet.horizonMonths, toLast),
+          sheet.horizonOpen ? toLast : Math.max(sheet.horizonMonths, toLast),
         ),
         liquidity: w.liquidity,
         tau: P.tau,

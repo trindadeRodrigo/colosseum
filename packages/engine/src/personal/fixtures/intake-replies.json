@@ -1,0 +1,498 @@
+{
+  "about": "MOCK. Hand-written replies in the shape the intake asks the model for (apps/api/src/llm.ts, INTAKE_REPLY_SCHEMA), one per goal of goals-eval.json, plus replies that break each check after the model. They were written by hand to match the schema, not recorded from a live model: no call to Anthropic was made. CI replays them; no test reaches the network. When a live model is run over the set, its replies replace these, recorded, and stay labelled with where they came from.",
+  "provenance": "mock",
+  "model": "claude-haiku-4-5",
+  "replies": {
+    "en-grow-10y-high": {
+      "goal": "grow",
+      "amountUsd": 20000,
+      "incomeTargetUsdMonthly": null,
+      "horizonMonths": 120,
+      "risk": "high",
+      "currency": "USD",
+      "chain": null,
+      "portfolios": [],
+      "language": "en",
+      "noCredit": false,
+      "cannotHold": [],
+      "unclear": []
+    },
+    "en-protect-18m-low": {
+      "goal": "protect",
+      "amountUsd": 50000,
+      "incomeTargetUsdMonthly": null,
+      "horizonMonths": 18,
+      "risk": "low",
+      "currency": "USD",
+      "chain": null,
+      "portfolios": [],
+      "language": "en",
+      "noCredit": false,
+      "cannotHold": [],
+      "unclear": []
+    },
+    "en-income-300-month": {
+      "goal": "income",
+      "amountUsd": 80000,
+      "incomeTargetUsdMonthly": 300,
+      "horizonMonths": 60,
+      "risk": "medium",
+      "currency": "USD",
+      "chain": null,
+      "portfolios": [],
+      "language": "en",
+      "noCredit": false,
+      "cannotHold": [],
+      "unclear": []
+    },
+    "en-grow-by-2031-theme-chain": {
+      "goal": "grow",
+      "amountUsd": 5000,
+      "incomeTargetUsdMonthly": null,
+      "horizonMonths": 51,
+      "risk": null,
+      "currency": "USD",
+      "chain": "solana",
+      "portfolios": ["The Seven"],
+      "language": "en",
+      "noCredit": false,
+      "cannotHold": [],
+      "unclear": []
+    },
+    "en-protect-country-no-stocks": {
+      "goal": "protect",
+      "amountUsd": 10000,
+      "incomeTargetUsdMonthly": null,
+      "horizonMonths": 24,
+      "risk": "low",
+      "currency": "USD",
+      "chain": null,
+      "portfolios": [],
+      "language": "en",
+      "noCredit": false,
+      "cannotHold": ["stock"],
+      "unclear": []
+    },
+    "en-grow-6m-conservative": {
+      "goal": "grow",
+      "amountUsd": 1500,
+      "incomeTargetUsdMonthly": null,
+      "horizonMonths": 6,
+      "risk": "low",
+      "currency": "USD",
+      "chain": null,
+      "portfolios": [],
+      "language": "en",
+      "noCredit": false,
+      "cannotHold": [],
+      "unclear": []
+    },
+    "pt-grow-10y-high": {
+      "goal": "grow",
+      "amountUsd": 20000,
+      "incomeTargetUsdMonthly": null,
+      "horizonMonths": 120,
+      "risk": "high",
+      "currency": "USD",
+      "chain": null,
+      "portfolios": [],
+      "language": "pt",
+      "noCredit": false,
+      "cannotHold": [],
+      "unclear": []
+    },
+    "pt-protect-18m-low": {
+      "goal": "protect",
+      "amountUsd": 50000,
+      "incomeTargetUsdMonthly": null,
+      "horizonMonths": 18,
+      "risk": "low",
+      "currency": "USD",
+      "chain": null,
+      "portfolios": [],
+      "language": "pt",
+      "noCredit": false,
+      "cannotHold": [],
+      "unclear": []
+    },
+    "pt-income-300-month": {
+      "goal": "income",
+      "amountUsd": 80000,
+      "incomeTargetUsdMonthly": 300,
+      "horizonMonths": 60,
+      "risk": "medium",
+      "currency": "USD",
+      "chain": null,
+      "portfolios": [],
+      "language": "pt",
+      "noCredit": false,
+      "cannotHold": [],
+      "unclear": []
+    },
+    "pt-grow-by-2031-theme-chain": {
+      "goal": "grow",
+      "amountUsd": 5000,
+      "incomeTargetUsdMonthly": null,
+      "horizonMonths": 51,
+      "risk": null,
+      "currency": "USD",
+      "chain": "solana",
+      "portfolios": ["The Seven"],
+      "language": "pt",
+      "noCredit": false,
+      "cannotHold": [],
+      "unclear": []
+    },
+    "pt-protect-country-no-stocks": {
+      "goal": "protect",
+      "amountUsd": 10000,
+      "incomeTargetUsdMonthly": null,
+      "horizonMonths": 24,
+      "risk": "low",
+      "currency": "USD",
+      "chain": null,
+      "portfolios": [],
+      "language": "pt",
+      "noCredit": false,
+      "cannotHold": ["stock"],
+      "unclear": []
+    },
+    "pt-grow-6m-conservative": {
+      "goal": "grow",
+      "amountUsd": 1500,
+      "incomeTargetUsdMonthly": null,
+      "horizonMonths": 6,
+      "risk": "low",
+      "currency": "USD",
+      "chain": null,
+      "portfolios": [],
+      "language": "pt",
+      "noCredit": false,
+      "cannotHold": [],
+      "unclear": []
+    },
+    "en-grow-3y-no-credit": {
+      "goal": "grow",
+      "amountUsd": 8000,
+      "incomeTargetUsdMonthly": null,
+      "horizonMonths": 36,
+      "risk": "medium",
+      "currency": "USD",
+      "chain": null,
+      "portfolios": [],
+      "language": "en",
+      "noCredit": true,
+      "cannotHold": [],
+      "unclear": []
+    },
+    "en-income-two-amounts": {
+      "goal": "income",
+      "amountUsd": 40000,
+      "incomeTargetUsdMonthly": 250,
+      "horizonMonths": 120,
+      "risk": "low",
+      "currency": "USD",
+      "chain": null,
+      "portfolios": [],
+      "language": "en",
+      "noCredit": false,
+      "cannotHold": [],
+      "unclear": []
+    },
+    "en-grow-3k-no-crypto": {
+      "goal": "grow",
+      "amountUsd": 3000,
+      "incomeTargetUsdMonthly": null,
+      "horizonMonths": 18,
+      "risk": "high",
+      "currency": "USD",
+      "chain": null,
+      "portfolios": [],
+      "language": "en",
+      "noCredit": false,
+      "cannotHold": ["crypto"],
+      "unclear": []
+    },
+    "pt-protect-reais-sem-acoes": {
+      "goal": "protect",
+      "amountUsd": 3000,
+      "incomeTargetUsdMonthly": null,
+      "horizonMonths": 12,
+      "risk": null,
+      "currency": "BRL",
+      "chain": null,
+      "portfolios": [],
+      "language": "pt",
+      "noCredit": false,
+      "cannotHold": ["stock"],
+      "unclear": ["risk"]
+    },
+    "pt-income-two-amounts-mil": {
+      "goal": "income",
+      "amountUsd": 3000,
+      "incomeTargetUsdMonthly": 15,
+      "horizonMonths": 24,
+      "risk": "low",
+      "currency": "USD",
+      "chain": null,
+      "portfolios": [],
+      "language": "pt",
+      "noCredit": false,
+      "cannotHold": [],
+      "unclear": []
+    },
+    "pt-protect-sem-credito": {
+      "goal": "protect",
+      "amountUsd": 12500,
+      "incomeTargetUsdMonthly": null,
+      "horizonMonths": 6,
+      "risk": null,
+      "currency": "USD",
+      "chain": null,
+      "portfolios": [],
+      "language": "pt",
+      "noCredit": true,
+      "cannotHold": [],
+      "unclear": []
+    }
+  },
+  "adversarial": {
+    "amount_not_in_text": {
+      "goal": "en-grow-10y-high",
+      "reply": {
+        "goal": "grow",
+        "amountUsd": 25000,
+        "incomeTargetUsdMonthly": null,
+        "horizonMonths": 120,
+        "risk": "high",
+        "currency": "USD",
+        "chain": null,
+        "portfolios": [],
+        "language": "en",
+        "noCredit": false,
+        "cannotHold": [],
+        "unclear": []
+      }
+    },
+    "horizon_not_in_text": {
+      "goal": "en-protect-18m-low",
+      "reply": {
+        "goal": "protect",
+        "amountUsd": 50000,
+        "incomeTargetUsdMonthly": null,
+        "horizonMonths": 24,
+        "risk": "low",
+        "currency": "USD",
+        "chain": null,
+        "portfolios": [],
+        "language": "en",
+        "noCredit": false,
+        "cannotHold": [],
+        "unclear": []
+      }
+    },
+    "portfolio_not_on_shelf": {
+      "goal": "en-grow-by-2031-theme-chain",
+      "reply": {
+        "goal": "grow",
+        "amountUsd": 5000,
+        "incomeTargetUsdMonthly": null,
+        "horizonMonths": 51,
+        "risk": null,
+        "currency": "USD",
+        "chain": "solana",
+        "portfolios": ["Moon Rockets"],
+        "language": "en",
+        "noCredit": false,
+        "cannotHold": [],
+        "unclear": []
+      }
+    },
+    "refusal_not_in_text": {
+      "goal": "en-grow-10y-high",
+      "reply": {
+        "goal": "grow",
+        "amountUsd": 20000,
+        "incomeTargetUsdMonthly": null,
+        "horizonMonths": 120,
+        "risk": "high",
+        "currency": "USD",
+        "chain": null,
+        "portfolios": [],
+        "language": "en",
+        "noCredit": true,
+        "cannotHold": ["gold"],
+        "unclear": []
+      }
+    },
+    "invalid_fields": {
+      "goal": "en-grow-10y-high",
+      "reply": {
+        "goal": "speculate",
+        "amountUsd": 20000,
+        "incomeTargetUsdMonthly": null,
+        "horizonMonths": 120,
+        "risk": 7,
+        "currency": "USD",
+        "chain": null,
+        "portfolios": [],
+        "language": "en",
+        "noCredit": false,
+        "cannotHold": [],
+        "unclear": []
+      }
+    },
+    "currency_not_in_text": {
+      "goal": "en-grow-10y-high",
+      "reply": {
+        "goal": "grow",
+        "amountUsd": 20000,
+        "incomeTargetUsdMonthly": null,
+        "horizonMonths": 120,
+        "risk": "high",
+        "currency": "EUR",
+        "chain": null,
+        "portfolios": [],
+        "language": "en",
+        "noCredit": false,
+        "cannotHold": [],
+        "unclear": []
+      }
+    },
+    "income_swapped": {
+      "goal": "en-income-two-amounts",
+      "reply": {
+        "goal": "income",
+        "amountUsd": 250,
+        "incomeTargetUsdMonthly": 250,
+        "horizonMonths": 120,
+        "risk": "low",
+        "currency": "USD",
+        "chain": null,
+        "portfolios": [],
+        "language": "en",
+        "noCredit": false,
+        "cannotHold": [],
+        "unclear": []
+      }
+    },
+    "not_an_object": {
+      "goal": "en-grow-10y-high",
+      "reply": "I could not read this goal."
+    },
+    "goal_without_cue": {
+      "goal": "en-grow-10y-high",
+      "reply": {
+        "goal": "protect",
+        "amountUsd": 20000,
+        "incomeTargetUsdMonthly": null,
+        "horizonMonths": 120,
+        "risk": "high",
+        "currency": "USD",
+        "chain": null,
+        "portfolios": [],
+        "language": "en",
+        "noCredit": false,
+        "cannotHold": [],
+        "unclear": []
+      }
+    },
+    "risk_without_cue": {
+      "goal": "en-grow-by-2031-theme-chain",
+      "reply": {
+        "goal": "grow",
+        "amountUsd": 5000,
+        "incomeTargetUsdMonthly": null,
+        "horizonMonths": 51,
+        "risk": "high",
+        "currency": "USD",
+        "chain": "solana",
+        "portfolios": ["The Seven"],
+        "language": "en",
+        "noCredit": false,
+        "cannotHold": [],
+        "unclear": []
+      }
+    }
+  },
+  "conversations": {
+    "first-chat-oct6": {
+      "about": "MOCK. Rodrigo's first /plan-chat of Oct 6, message by message as he wrote them, with a reply written by hand for each turn as the model would read the whole conversation so far. Not recorded from a live model.",
+      "messages": [
+        "I have 2k parked in USDC, I want to have 70% of it in a safe liquid investment , and the other half I want to risk in the highest yield config as possible",
+        "its 70-30, I want to grow it, i dont have a hard cap, just the 70% part I want it to be really liquid and the rest can take up to 3 months to get out. for the 70% as low as possiblem for the rest we can go crazy, why does it matter the country I live?"
+      ],
+      "replies": [
+        {
+          "goal": null,
+          "amountUsd": 2000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": null,
+          "risk": "high",
+          "currency": "USD",
+          "chain": null,
+          "portfolios": [],
+          "language": "en",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": ["goal", "horizonMonths", "sleeves"],
+          "openEnded": false,
+          "mayNeedInMonths": null,
+          "sleeves": null
+        },
+        {
+          "goal": "grow",
+          "amountUsd": 2000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": null,
+          "risk": "high",
+          "currency": "USD",
+          "chain": null,
+          "portfolios": [],
+          "language": "en",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": [],
+          "openEnded": true,
+          "mayNeedInMonths": null,
+          "sleeves": [
+            {
+              "kind": "safe_yield",
+              "sharePct": 70
+            },
+            {
+              "kind": "goal",
+              "sharePct": 30
+            }
+          ]
+        }
+      ],
+      "horizonFromExitTime": {
+        "goal": "grow",
+        "amountUsd": 2000,
+        "incomeTargetUsdMonthly": null,
+        "horizonMonths": 3,
+        "risk": "high",
+        "currency": "USD",
+        "chain": null,
+        "portfolios": [],
+        "language": "en",
+        "noCredit": false,
+        "cannotHold": [],
+        "unclear": [],
+        "openEnded": true,
+        "mayNeedInMonths": null,
+        "sleeves": [
+          {
+            "kind": "safe_yield",
+            "sharePct": 70
+          },
+          {
+            "kind": "goal",
+            "sharePct": 30
+          }
+        ]
+      }
+    }
+  }
+}

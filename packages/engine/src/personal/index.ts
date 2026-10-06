@@ -5,11 +5,39 @@
 export { candidates } from './candidates';
 export { compose, composeAs, PERSONAL_ENGINE_VERSION } from './compose';
 export { draftFromRules } from './draft';
+// The guided intake (gate GUIDED-INTAKE, ENG-3 slice 4): the checks after the model, the questions
+// and the read-back. The model call itself is the API's (apps/api/src/llm.ts).
+export {
+  conversationText,
+  Disagreement,
+  IntakeAnswers,
+  type IntakeInput,
+  IntakeQuestion,
+  type IntakeResult,
+  LimitsDraft,
+  QUESTION_FIELDS,
+  type QuestionField,
+  readReply,
+  runIntake,
+  type ShelfPortfolio,
+} from './intake';
+export {
+  amountInText,
+  exitTimesIn,
+  horizonsIn,
+  mentionsIn,
+  openEndedIn,
+  refusalsIn,
+} from './intake-text';
 export { PERSONAL_PARAMS, PERSONAL_PARAMS_STATUS } from './params';
+export { readBack } from './readback';
 export { eligibleForGoal, profileOfGoal, registryRowOf, sleeveOfClass } from './registry';
 export {
+  ASSUMPTION_TEMPLATES,
   INPUT_NAMES,
   type InputName,
+  QUESTION_TEMPLATES,
+  READBACK_TEMPLATES,
   REASON_TEMPLATES,
   type RuleId,
   TEXT_TEMPLATES,

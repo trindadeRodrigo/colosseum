@@ -39,19 +39,18 @@ const TOP = 14;
 const BOTTOM = 24;
 const RIGHT = 70;
 
-export function PlanChart({
-  amountUsd,
-  card,
-  yieldObs,
-}: {
-  amountUsd: number;
-  card: BasketCard;
-  yieldObs: PinSource | null;
-}) {
+type ChartProps = { amountUsd: number; card: BasketCard; yieldObs: PinSource | null };
+
+export function PlanChart(props: ChartProps) {
+  // A goal with no date has no term to project over: no chart is drawn (gate GLIDE-OPT-IN).
+  if (props.card.termMonths === null) return null;
+  return <TermChart {...props} months={props.card.termMonths} />;
+}
+
+function TermChart({ amountUsd, card, yieldObs, months }: ChartProps & { months: number }) {
   const t = useT();
   const lang = useLang();
   const words = t.plan.chart;
-  const months = card.termMonths;
   const { lowPct, highPct } = card.expectedReturn;
   const end = (pct: number) => amountUsd + (amountUsd * pct * months) / 1200;
   const low = end(lowPct);

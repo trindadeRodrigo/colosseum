@@ -356,6 +356,17 @@ describe('POST /v1/baskets/personalize', () => {
     expect(await plansOf(picked.sub)).toEqual([]);
   });
 
+  // Gate COUNTRY-REMOVED (Rodrigo, Oct 6): this test held that ZZ, QQ, EU, SU and UK were refused
+  // with 422. The plan reads no country: a sheet with none, or any two capitals, is answered.
+  it('answers a sheet with no country, or any two capitals, with a plan', async () => {
+    const who = await someone('solana');
+    const { country: _, ...none } = sheet();
+    for (const body of [none, sheet({ country: 'ZZ' }), sheet({ country: 'UK' })]) {
+      const res = await post(who, PATH, { sheet: body });
+      expect(res.statusCode, res.body).toBe(200);
+    }
+  });
+
   it('answers 409 to a person with no chain yet, and 401 to nobody', async () => {
     const fresh = await someone('passkey');
     const res = await post(fresh, PATH, { sheet: sheet() });

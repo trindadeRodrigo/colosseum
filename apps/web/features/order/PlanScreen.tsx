@@ -81,10 +81,12 @@ export function PlanScreen({ id }: { id: string }) {
   const tableOnly = proposal.lines.length > MAX_LEGS;
   const foot =
     label === 'sandbox' ? t.plan.foot.sandbox : label === 'mock' ? t.plan.foot.mock : null;
+  // A goal with no date shows "no date set", never the months it is built over (gate GLIDE-OPT-IN).
+  const term = sheet.horizonOpen ? t.goal.card.noDate : t.goal.card.months(sheet.horizonMonths);
   const chips: [string, string][] = [
     [t.plan.chips.goal, t.goal.options.goal[sheet.goal].toLowerCase()],
     [t.plan.chips.amount, dollars(sheet.amountUsd, lang)],
-    [t.plan.chips.horizon, t.goal.card.months(sheet.horizonMonths)],
+    [t.plan.chips.horizon, term],
     [t.plan.chips.risk, t.goal.options.risk[sheet.risk].toLowerCase()],
     [t.plan.chips.chain, chainName],
   ];
@@ -96,10 +98,12 @@ export function PlanScreen({ id }: { id: string }) {
           id={headingId}
           className="max-w-(--tf-measure-display) font-display text-h1 font-normal"
         >
-          {t.goal.card.sentence[sheet.goal](
-            dollars(sheet.amountUsd, lang),
-            t.goal.card.months(sheet.horizonMonths),
-          )}
+          {sheet.horizonOpen
+            ? t.goal.card.sentenceOpen[sheet.goal](dollars(sheet.amountUsd, lang))
+            : t.goal.card.sentence[sheet.goal](
+                dollars(sheet.amountUsd, lang),
+                t.goal.card.months(sheet.horizonMonths),
+              )}
         </h1>
         <p className="max-w-(--tf-measure-body) text-body-lg">{t.plan.lead(chainName)}</p>
         {plan.fromLink && (
@@ -146,7 +150,7 @@ export function PlanScreen({ id }: { id: string }) {
           </ul>
           <StatRow>
             <Stat label={t.plan.kpi.amount}>{dollars(sheet.amountUsd, lang)}</Stat>
-            <Stat label={t.plan.kpi.horizon}>{t.goal.card.months(sheet.horizonMonths)}</Stat>
+            <Stat label={t.plan.kpi.horizon}>{term}</Stat>
             <Stat label={t.plan.kpi.loss} className="max-[620px]:col-span-2">
               {dollars(card.expectedReturn.lossInFallUsd, lang)}{' '}
               <span className="font-sans text-caption font-normal text-muted-foreground">

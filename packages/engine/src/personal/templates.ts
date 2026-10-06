@@ -725,3 +725,224 @@ export function reason(id: RuleId, params: Record<string, Value>, lang: Language
 export function text(id: TextId, params: Record<string, Value>, lang: Language): string {
   return render(TEXT_TEMPLATES[id][lang], params, lang);
 }
+
+// ---------------------------------------------------------------------------------------------------
+// The guided intake (gate GUIDED-INTAKE, ENG-3 slice 4). Kept in a block of its own.
+//
+// The questions the intake asks, one per field the text leaves open or unclear, and the read-back the
+// person confirms. A model chooses none of these words: it says which fields it could not read, and
+// code picks the question; the read-back is drawn from the validated sheet. Rodrigo owns the wording.
+
+/** One question per field of the sheet the person may be asked about. */
+export const QUESTION_TEMPLATES = {
+  goal: {
+    en: 'What is this money for: to grow it, to earn an income from it, or to protect it?',
+    pt: 'Para que é este dinheiro: fazer crescer, ter uma renda ou proteger?',
+  },
+  amountUsd: {
+    en: 'How much do you put in, in dollars?',
+    pt: 'Quanto você aplica, em dólares?',
+  },
+  amountOtherCurrency: {
+    en: 'You wrote {amount|amount} {currency}. How much is that in dollars, the currency the plan is funded in?',
+    pt: 'Você escreveu {amount|amount} {currency}. Quanto é isso em dólares, a moeda em que o plano é aplicado?',
+  },
+  // A date, never a number "the tool needs": no date is an answer too (gate GLIDE-OPT-IN, Oct 6).
+  horizonMonths: {
+    en: 'Is there a date by which you need this money? If not, say so and the plan has none.',
+    pt: 'Existe uma data em que você precisa deste dinheiro? Se não, diga e o plano fica sem data.',
+  },
+  risk: {
+    en: 'How much risk can you take: low, medium or high?',
+    pt: 'Quanto risco você aceita: baixo, médio ou alto?',
+  },
+  // With a part kept safe, the risk is the other part's: one risk for the whole plan is never asked.
+  riskGoalPart: {
+    en: 'For the part that seeks a return, how much risk can you take: low, medium or high?',
+    pt: 'Para a parte que busca retorno, quanto risco você aceita: baixo, médio ou alto?',
+  },
+  sleeves: {
+    en: 'How do you want to split the money: how much kept safe and easy to take out, and how much to seek a return?',
+    pt: 'Como você quer dividir o dinheiro: quanto fica seguro e fácil de tirar, e quanto busca retorno?',
+  },
+  sleevesMismatch: {
+    en: 'You wrote {pct}% and the other half, which come to more than the whole. Which split do you mean: {pct}% and {rest}%, or half and half?',
+    pt: 'Você escreveu {pct}% e a outra metade, o que passa do total. Qual divisão você quer: {pct}% e {rest}%, ou metade e metade?',
+  },
+  incomeTargetUsdMonthly: {
+    en: 'How much income a month, in dollars, do you aim for?',
+    pt: 'Quanto de renda por mês, em dólares, você busca?',
+  },
+  themes: {
+    en: 'Which shared portfolio, if any, do you want to start from?',
+    pt: 'De qual portfólio compartilhado você quer partir, se de algum?',
+  },
+  currency: {
+    en: 'In which currency do you count this goal?',
+    pt: 'Em que moeda você conta este objetivo?',
+  },
+  chains: {
+    en: 'Pick the chain your plans live on first: a plan is made on the chain of your wallet.',
+    pt: 'Escolha antes a rede em que seus planos ficam: um plano é feito na rede da sua carteira.',
+  },
+} as const satisfies Record<string, Text>;
+export type QuestionId = keyof typeof QUESTION_TEMPLATES;
+
+/** The sentences of the read-back, each filled from the validated sheet and nothing else. */
+export const READBACK_TEMPLATES = {
+  GOAL: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
+    en: 'You set {goal|goal} with ${amount|amount} over {months|months}, at {risk|risk}.',
+    pt: 'Você definiu {goal|goal} com US$ {amount|amount} em {months|months}, com {risk|risk}.',
+  },
+  // A goal with no date (gate GLIDE-OPT-IN, Oct 6): the months the plan is built over are not said.
+  GOAL_OPEN: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
+    en: 'You set {goal|goal} with ${amount|amount}, with no date set, at {risk|risk}.',
+    pt: 'Você definiu {goal|goal} com US$ {amount|amount}, sem data definida, com {risk|risk}.',
+  },
+  INCOME: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
+    en: 'You aim for ${income|amount} a month of income.',
+    pt: 'Você busca US$ {income|amount} por mês de renda.',
+  },
+  CURRENCY: {
+    en: 'The goal is counted in {currency}.',
+    pt: 'O objetivo é contado em {currency}.',
+  },
+  THEMES: {
+    en: 'The plan starts from {themes|list}.',
+    pt: 'O plano parte de {themes|list}.',
+  },
+  CHAIN: {
+    en: 'The plan lives on {chain|chain}, the chain of your wallet.',
+    pt: 'O plano fica na rede {chain|chain}, a rede da sua carteira.',
+  },
+  HOLDINGS_ON: {
+    en: 'Tokens you already hold count toward the plan.',
+    pt: 'Os tokens que você já tem contam para o plano.',
+  },
+  HOLDINGS_OFF: {
+    en: 'Tokens you already hold are not counted.',
+    pt: 'Os tokens que você já tem não são contados.',
+  },
+  GLIDE_ON: {
+    en: 'As the date nears, more of the plan is kept in dollar yield and cash.',
+    pt: 'Conforme a data se aproxima, mais do plano fica em rendimento em dólar e caixa.',
+  },
+  NO_CREDIT: {
+    en: 'No tokens that lend to borrowers or trade a spread.',
+    pt: 'Nenhum token que empresta a tomadores ou opera um spread.',
+  },
+  CANNOT_HOLD: {
+    en: 'You left out {classes|list}.',
+    pt: 'Você deixou de fora {classes|list}.',
+  },
+  MUST_KEEP: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
+    en: 'At least ${amount|amount} stays out of stocks, crypto and gold.',
+    pt: 'Pelo menos US$ {amount|amount} fica fora de ações, cripto e ouro.',
+  },
+  MAY_NEED: {
+    en: 'You may need the money in {months|months}.',
+    pt: 'Você pode precisar do dinheiro em {months|months}.',
+  },
+  CANNOT_HOLD_NAMES: {
+    en: 'You left out {names|list}.',
+    pt: 'Você deixou de fora {names|list}.',
+  },
+  CREDIT_LIMITED: {
+    en: 'Only a limited share in tokens that lend to borrowers or trade a spread.',
+    pt: 'Só uma parcela limitada em tokens que emprestam a tomadores ou operam um spread.',
+  },
+  CREDIT_ACCEPT: {
+    en: 'You accept tokens that lend to borrowers or trade a spread.',
+    pt: 'Você aceita tokens que emprestam a tomadores ou operam um spread.',
+  },
+  OBLIGATION: {
+    en: 'A withdrawal of {amount|amount} {currency} in {month|month}.',
+    pt: 'Um saque de {amount|amount} {currency} em {month|month}.',
+  },
+  SLEEVE_GOAL: {
+    en: '{share|pct} of the plan for the goal.',
+    pt: '{share|pct} do plano para o objetivo.',
+  },
+  SLEEVE_SAFE_YIELD: {
+    en: '{share|pct} of the plan for dollar yield from a rate alone.',
+    pt: '{share|pct} do plano para rendimento em dólar só de taxa.',
+  },
+  // The plan has one risk, and with a part kept safe it is the risk of the rest (Oct 6).
+  SLEEVE_RISK: {
+    en: 'The {risk|risk} is for the part that seeks the goal. The part kept safe holds dollar yield from a rate alone, or cash, whatever the risk.',
+    pt: 'O {risk|risk} vale para a parte que busca o objetivo. A parte guardada fica em rendimento em dólar só de taxa, ou em caixa, qualquer que seja o risco.',
+  },
+  SLEEVE_THEME: {
+    en: '{share|pct} of the plan for the theme {theme}.',
+    pt: '{share|pct} do plano para o tema {theme}.',
+  },
+  RESTORE_ON: {
+    en: 'A part of the plan that has grown is brought back to its share.',
+    pt: 'Uma parte do plano que cresceu é trazida de volta à sua parcela.',
+  },
+  RESTORE_OFF: {
+    en: 'A part of the plan that has grown is left as it grew.',
+    pt: 'Uma parte do plano que cresceu fica como cresceu.',
+  },
+  CONFIRM: {
+    en: 'If this is right, confirm it and the plan is made from it.',
+    pt: 'Se estiver certo, confirme e o plano é feito a partir disso.',
+  },
+} as const satisfies Record<string, Text>;
+export type ReadBackId = keyof typeof READBACK_TEMPLATES;
+
+/**
+ * What the intake assumed, said with the read-back so the person can correct it (Oct 6). `words` is
+ * the person's own words, as written, from the fixed lists of intake-text.ts.
+ */
+export const ASSUMPTION_TEMPLATES = {
+  RISK_WORDS: {
+    en: 'I took “{words}” as {risk|risk}.',
+    pt: 'Entendi “{words}” como {risk|risk}.',
+  },
+  RISK_WORDS_PART: {
+    en: 'I took “{words}” as {risk|risk} for the {share|pct} that seeks the goal.',
+    pt: 'Entendi “{words}” como {risk|risk} para os {share|pct} que buscam o objetivo.',
+  },
+  OPEN_ENDED: {
+    en: 'I took “{words}” as no date for the goal.',
+    pt: 'Entendi “{words}” como objetivo sem data.',
+  },
+  EXIT_TIME: {
+    en: 'I read “{words}” as how long you can wait to get money out, not as a date for the goal.',
+    pt: 'Li “{words}” como o tempo que você pode esperar para tirar o dinheiro, não como uma data para o objetivo.',
+  },
+  GLIDE_OFFER: {
+    en: 'Nothing moves toward cash as the date nears unless you ask for it.',
+    pt: 'Nada vai para caixa conforme a data se aproxima, a menos que você peça.',
+  },
+  MAX_YIELD_LATER: {
+    en: 'A part that seeks the highest yield is not built yet, so the part that seeks the goal is built as a goal to grow.',
+    pt: 'Uma parte que busca o maior rendimento ainda não existe, então a parte que busca o objetivo é feita como um objetivo de crescimento.',
+  },
+} as const satisfies Record<string, Text>;
+export type AssumptionId = keyof typeof ASSUMPTION_TEMPLATES;
+
+/** The classes a person can leave out, as the read-back writes them. */
+export const CLASS_WORDS: Record<Language, Record<string, string>> = {
+  en: {
+    stock: 'stocks',
+    etf: 'funds',
+    gold: 'gold',
+    commodity: 'commodities',
+    dollar_yield: 'dollar yield',
+    crypto: 'crypto',
+  },
+  pt: {
+    stock: 'ações',
+    etf: 'fundos',
+    gold: 'ouro',
+    commodity: 'commodities',
+    dollar_yield: 'rendimento em dólar',
+    crypto: 'cripto',
+  },
+};

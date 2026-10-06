@@ -80,8 +80,8 @@ export type World = {
     liquiditySource: string | null;
   };
   liquidity: LiquidityProvider | undefined;
-  /** The month of the goal's date, YYYY-MM. */
-  goalMonth: string;
+  /** The month of the goal's date, YYYY-MM; null for a goal with no date (`horizonOpen`). */
+  goalMonth: string | null;
   /** The month the plan is made in, YYYY-MM. */
   nowMonth: string;
   /**
@@ -419,7 +419,7 @@ export function buildWorld(
       liquiditySource: context.liquiditySource?.trim() || null,
     },
     liquidity,
-    goalMonth: monthAfter(context.now, sheet.horizonMonths),
+    goalMonth: sheet.horizonOpen ? null : monthAfter(context.now, sheet.horizonMonths),
     nowMonth,
     withdrawals: [],
     // A vault's target is at least one basis point, so a line is too, whatever the table says.

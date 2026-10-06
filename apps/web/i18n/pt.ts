@@ -288,6 +288,12 @@ export const pt: Dictionary = {
         protect: (amount: string, months: string) => `Proteger ${amount} por ${months}.`,
       },
       months: (n: number) => (n === 1 ? '1 mês' : `${n} meses`),
+      sentenceOpen: {
+        grow: (amount: string) => `Fazer ${amount} crescer, sem data definida.`,
+        income: (amount: string) => `Gerar renda com ${amount}, sem data definida.`,
+        protect: (amount: string) => `Proteger ${amount}, sem data definida.`,
+      },
+      noDate: 'Sem data definida',
       unfinished: 'Seu objetivo, como foi lido até aqui.',
       draftOpen: 'Rascunho: termine os limites',
       draftSet: 'Rascunho: limites definidos, ainda sem plano',

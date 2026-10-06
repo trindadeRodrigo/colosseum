@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@colosseum/basket": "workspace:*",
     "@colosseum/chain-evm": "workspace:*",
     "@colosseum/chain-mock": "workspace:*",

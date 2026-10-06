@@ -120,7 +120,8 @@ describe('the committed OpenAPI document (packages/sdk/openapi.json)', () => {
       'POST /v1/orders',
       'POST /v1/orders/{id}/legs/{legId}/build',
     ]);
-    expect(classes.parse).toBeUndefined();
+    // The guided intake calls a model: its own, tighter budget.
+    expect(classes.parse).toEqual(['POST /v1/baskets/intake']);
   });
 
   it('self-check: a route whose rule changed is another document', () => {

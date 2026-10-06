@@ -59,15 +59,20 @@ export function VaultGoalCard({
 
   const { goal, record } = joined;
   const { sheet, verdict, card } = goal;
-  const due = monthYear(lang, dueOf(goal));
+  const dueDate = dueOf(goal);
+  const due = dueDate ? monthYear(lang, dueDate) : t.goal.card.noDate;
   const plan = recallPlan(record.proposalId, port.userId);
   const builtFor = verdict && putIn === sheet.amountUsd ? verdict : null;
   return (
     <GoalCard
-      sentence={t.goal.card.sentence[sheet.goal](
-        whole(sheet.amountUsd, lang),
-        t.goal.card.months(sheet.horizonMonths),
-      )}
+      sentence={
+        sheet.horizonOpen
+          ? t.goal.card.sentenceOpen[sheet.goal](whole(sheet.amountUsd, lang))
+          : t.goal.card.sentence[sheet.goal](
+              whole(sheet.amountUsd, lang),
+              t.goal.card.months(sheet.horizonMonths),
+            )
+      }
       status={
         // The engine gives no status for a vault. The one word it gave is the income plan's verdict
         // when the plan was built, for the plan's amount: it is said, as that, only when what went in
