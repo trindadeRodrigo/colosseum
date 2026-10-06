@@ -67,4 +67,27 @@ What holds: the legs in flight and the reverted set are in the state file, read 
 
 ## The check on devnet
 
-`scripts/solana/keeper-check.ts setup` makes a test creator and owner (keys in that process only), funds them from the deploy key, publishes a portfolio of three stocks with an oracle (spyx, qqqx, nvdax), opens a vault following it, buys at its weights, switches auto-follow on and publishes the next version. Then `--once` runs the keeper. The run of Oct 5, made before gold was switched off, used gldx in place of nvdax; it is in `docs/vault/STATE-VAULT.md` (KEEP-1).
+`scripts/solana/keeper-check.ts setup [a,b,c]` makes a test creator and owner (keys in that process only), funds them from the deploy key, publishes a portfolio of three assets (spyx, qqqx, nvdax by default), opens a vault following it, buys at its weights, switches auto-follow on and publishes the next version. Then `--once` runs the keeper. Stocks trade only in the session (14:30 to 20:00 UTC, Monday to Friday); `paxg,jlusdc,syrupusdc` trade at any hour. The run of Oct 5 (stocks, with gldx before it was retired) and the run of Oct 6 (paxg, jlusdc, syrupusdc) are in `docs/vault/STATE-VAULT.md` (KEEP-1).
+
+## Running it on devnet
+
+From a checkout of `staging` with `pnpm install` done; the loop runs that checkout's code, so leave it in place while it runs:
+
+```sh
+SOLANA_RPC_URL=https://api.devnet.solana.com \
+KEEPER_SOLANA_KEYPAIR=<testnet-keys>/solana-devnet-keeper.json \
+KEEPER_STATE_DIR=$HOME/.colosseum/keeper-devnet \
+nohup caffeinate -i pnpm --filter @colosseum/keeper start --loop --interval 60 \
+  >> ~/Library/Logs/tenonfi/keeper-devnet.log 2>&1 &
+```
+
+It needs the Solana price loop (`scripts/testnet/solana/prices.ts --loop`) running: a leg wants a price under two minutes old. One JSON line per vault per round goes to the log; `"alert":true` lines are the ones to read. The keeper pays about 5,000 lamports per transaction; `solana balance DeqGurwS6Hpw79sJzgMfARXh2EMvdXpkFADpw7WVg6A2 -u devnet` shows what is left.
+
+To stop it, and only it (the price loop's command line does not match):
+
+```sh
+pgrep -fl 'src/main.ts --loop'      # the keeper's processes
+pkill -TERM -f 'src/main.ts --loop'  # it exits and releases its lock
+```
+
+A second keeper on the same state directory refuses to start while the loop holds it, so run `--once` by hand only with the loop stopped, or with another `KEEPER_STATE_DIR` and `--dry-run`.

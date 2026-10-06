@@ -35,7 +35,10 @@ import {
 // The keeper's check on Solana devnet (KEEP-1): a vault that follows a shared portfolio with auto-follow
 // on, and a new version of that portfolio published, for the keeper to adopt and rebalance.
 //
-//   SOLANA_RPC_URL=<devnet> SOLANA_DEPLOYER_KEYPAIR=<path> pnpm exec tsx scripts/solana/keeper-check.ts setup
+//   SOLANA_RPC_URL=<devnet> SOLANA_DEPLOYER_KEYPAIR=<path> pnpm exec tsx scripts/solana/keeper-check.ts setup [a,b,c]
+//
+// `a,b,c` are the three assets, spyx,qqqx,nvdax by default; paxg,jlusdc,syrupusdc trade at any hour, so
+// the keeper can act on them outside the stock session.
 //
 // It makes a test creator and a test owner (keys in this process only), funds them from the deploy key
 // (0.15 SOL each, 300 test dollars to the owner), publishes a portfolio of three stocks with an oracle
@@ -54,7 +57,10 @@ const explorer = (sig: string) => `https://solscan.io/tx/${sig}?cluster=devnet`;
 const say = (what: string, sig: string) => console.log(`${what}\t${sig}\t${explorer(sig)}`);
 
 async function main() {
-  const [mode] = process.argv.slice(2);
+  const [mode, list] = process.argv.slice(2);
+  const assets = (list ?? 'spyx,qqqx,nvdax').split(',');
+  if (assets.length !== 3) throw new Error('setup takes three assets, as a,b,c');
+  const [a, b, c] = assets as [string, string, string];
   const url = process.env.SOLANA_RPC_URL?.trim();
   const deployerPath = process.env.SOLANA_DEPLOYER_KEYPAIR?.trim();
   if (!url || !deployerPath) throw new Error('set SOLANA_RPC_URL and SOLANA_DEPLOYER_KEYPAIR');
@@ -199,9 +205,9 @@ async function main() {
       'fund the test creator and owner',
     );
     const first = recipe(creator.address, 1, [
-      ['spyx', 4_000],
-      ['qqqx', 3_000],
-      ['nvdax', 3_000],
+      [a, 4_000],
+      [b, 3_000],
+      [c, 3_000],
     ]);
     await must(
       () => adapter.buildPublishRecipe({ creator: creator.address, recipe: first }),
@@ -230,9 +236,9 @@ async function main() {
     const vault = await vaultAddress(program as Address, owner.address, 1n);
     console.log(`vault\t${vault}`);
     for (const [asset, dollars] of [
-      ['spyx', 120],
-      ['qqqx', 90],
-      ['nvdax', 90],
+      [a, 120],
+      [b, 90],
+      [c, 90],
     ] as const)
       await must(
         () =>
@@ -260,9 +266,9 @@ async function main() {
     );
     await new Promise((r) => setTimeout(r, (record.params.publishDelayS + 5) * 1000));
     const second = recipe(creator.address, 2, [
-      ['spyx', 5_000],
-      ['qqqx', 2_000],
-      ['nvdax', 3_000],
+      [a, 5_000],
+      [b, 2_000],
+      [c, 3_000],
     ]);
     await must(
       () => adapter.buildPublishRecipe({ creator: creator.address, recipe: second }),
