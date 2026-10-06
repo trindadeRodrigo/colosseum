@@ -113,15 +113,23 @@ type Exemption = { since: string; why: string; covers: readonly (readonly [strin
 // which moved sign.ts and wallet.ts of chain-solana behind "./server".
 const EXEMPT: readonly Exemption[] = [];
 
-// Rule 5 has one standing allowance, and it is not an exemption: it is held to a condition. The
-// structurer's server-signing route stays in apps/api, switched off, not deleted (section 2, the
-// add-only rule). The file below may import a signing entry because nothing loads it but one dynamic
-// import in `loader`, inside an `if` on the flag: with LEGACY_STRUCTURER off the file is never loaded,
-// so no registered route reaches a signer and no key-reading code is in the process. A static import of
-// the file, a second loader, or the import moved out of the `if` fails the test. When the vault path
-// replaces this route the file goes, and this entry with it.
+// Rule 5 has two standing allowances, and they are not exemptions: each is held to a condition, and
+// they are listed in the order the scan finds them. A file below may import a signing entry because
+// nothing loads it but one dynamic import in `loader`, inside an `if` on the flag: with the flag off
+// the file is never loaded, so no registered route reaches a signer and no key-reading code is in the
+// process. A static import of the file, a second loader, or the import moved out of the `if` fails the
+// test. The structurer's server-signing route stays in apps/api, switched off, not deleted (section 2,
+// the add-only rule); when the vault path replaces it the file goes, and its entry with it.
 type BehindAFlag = { loader: string; flag: string; why: string };
 const BEHIND_A_FLAG: Record<string, BehindAFlag> = {
+  // The test faucet's signer (POST /v1/testnet/fund, decided Oct 6): `faucetKeys` is set only when a
+  // faucet key is configured for a chain on its real adapter on a test network, so with no key, or on
+  // mainnet, the file is never loaded.
+  'apps/api/src/faucet/signer.ts': {
+    loader: 'apps/api/src/routes/v1/index.ts',
+    flag: 'faucetKeys',
+    why: 'The test faucet sends test tokens and gas from a test-network key held by the server; it signs nothing on mainnet.',
+  },
   'apps/api/src/routes/monitor-rebalance.ts': {
     loader: 'apps/api/src/app.ts',
     flag: 'flags.legacyStructurer',

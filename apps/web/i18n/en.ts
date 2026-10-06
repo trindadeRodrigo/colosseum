@@ -525,6 +525,84 @@ export const en = {
     lead: (chain: string) =>
       `Built for ${chain}, from your limits. Nothing is bought until you review every step and sign it.`,
     holds: 'What it holds',
+    /** Cash, named by its token: "Cash (USDC)". */
+    cash: (token: string) => `Cash (${token})`,
+    /** The plan in one sentence, from its lines (features/order/plain.ts). */
+    summary: {
+      head: (amount: string, months: string, risk: string, chain: string) =>
+        `${amount} for ${months}, ${risk}, on ${chain}:`,
+      headOpen: (amount: string, risk: string, chain: string) =>
+        `${amount} with no date set, ${risk}, on ${chain}:`,
+      stays: (amount: string, name: string) => `${amount} stays in ${name}`,
+      goes: (amount: string, name: string) => `${amount} goes to ${name}`,
+      more: (n: number) => (n === 1 ? 'one more part' : `${n} more parts`),
+    },
+    /** What a bad fall could cost, said in a sentence. */
+    badFall: {
+      none: 'In a bad fall: you’d lose about $0, since nothing here is stocks, crypto or gold.',
+      some: (amount: string) => `In a bad fall: you’d lose about ${amount}, an estimate.`,
+    },
+    details: 'Details',
+    kinds: {
+      stock: 'Stocks',
+      etf: 'Funds',
+      gold: 'Gold',
+      commodity: 'Commodities',
+      dollar_yield: 'Dollar yield',
+      crypto: 'Crypto',
+      cash: 'Cash',
+      other: 'Other',
+    },
+    /** The engine's flags, each as a sentence. A flag not here is said by `other`, never as its code. */
+    flagWords: {
+      ceilingFromTier: (asset: string) =>
+        `How much ${asset} may weigh comes from its tier, since its selling cost isn’t measured yet.`,
+      coverageFromTier: (asset: string) =>
+        `${asset} counts toward your withdrawals at its tier’s limit, since its selling cost isn’t measured yet.`,
+      capacityThin: (asset: string) =>
+        `${asset} sells cheaply only in small amounts, so the plan holds less of it.`,
+      regimeNotMeasured: (asset: string) =>
+        `Selling ${asset} at some times of the week isn’t measured yet, and may cost more.`,
+      undated: (asset: string) =>
+        `The selling cost measured for ${asset} has no date, so it isn’t used.`,
+      fxOpen: (currency: string) =>
+        `Some of what you owe in ${currency} isn’t held in ${currency}, so a change in the rate can cost you.`,
+      noMatchingLeg: (currency: string) =>
+        `The plan holds nothing in ${currency} to pay withdrawals in it.`,
+      noFx: (currency: string) =>
+        `There’s no exchange rate for ${currency} yet, so withdrawals in it aren’t counted.`,
+      noQuote: 'There’s no recent price quote for selling all of it yet.',
+      withdrawalsShort: 'Not every withdrawal is paid on time with what is set aside.',
+      notLive: 'Some figures come from a test network or sample data, not from live markets.',
+      other: 'The engine noted one more thing about this plan.',
+      simple: {
+        exit_not_measured: 'No part of this plan has a measured selling cost yet.',
+        exit_partly_measured: 'Only part of this plan has a measured selling cost.',
+        exit_beyond_measured_size:
+          'Part of this plan is larger than the largest sale measured, so selling it may cost more.',
+        exit_capacity_short:
+          'Part of this plan is larger than what can be sold for 1% or less at the worst time measured.',
+        exit_cost_below_zero:
+          'A measured selling cost came out below zero, and is counted as zero.',
+        exit_regimes_not_reported: 'The selling cost isn’t reported for every time of the week.',
+        issuer_concentration: 'More than half of the plan is with one issuer.',
+        asset_not_on_shelf:
+          'A part of the plan isn’t on the list of assets, so it couldn’t be classed.',
+        unplaced: 'Some money couldn’t be placed within your limits, and is kept in cash.',
+        no_dollar_yield: 'There’s no dollar yield you can hold here, so the rest is kept in cash.',
+        safe_yield_no_rate_leg:
+          'There’s no token here that pays a rate alone, so the safe part is kept in cash.',
+        yield_not_read: 'There’s no yield reading yet, so no projection is shown.',
+        liquidity_unsourced: 'A selling cost with no source isn’t used.',
+        coverage_moved: 'Money was moved so that your withdrawals are paid on time.',
+        obligations_past: 'A withdrawal dated in the past is left out.',
+        income_not_estimated: 'The income this plan pays isn’t estimated yet.',
+        income_no_amount_closes: 'No larger amount pays the income you asked for.',
+      },
+    },
+    /** A plan this short, or this flat, is said in a sentence instead of a chart. */
+    short: (months: string) => `In ${months}:`,
+    shortRange: (low: string, high: string) => `about ${low} to ${high}`,
     sub: (risk: string, chain: string) => `${risk} · on ${chain} · nothing bought yet`,
     riskWord: { low: 'Low risk', medium: 'Medium risk', high: 'High risk' },
     chips: {
@@ -566,14 +644,14 @@ export const en = {
     noReason: 'No reason given.',
     projected: 'Projected range a year, not a promise',
     projectedValue: (low: string, high: string) => `${low} to ${high}`,
-    basis: (basis: string) => `How it was worked out: ${basis}.`,
+    basis: (basis: string) => `How it was worked out: ${String(basis).replace(/[.\s]+$/, '')}.`,
     lossInFall: (amount: string) =>
       `In a bad fall, the engine counts a loss of about ${amount} on this plan.`,
     exitUnmeasured: 'Not measured yet, so no cost is shown.',
     exitCost: (cost: string) => `≤ ${cost}`,
     inKind: 'You can also take the tokens themselves out of your vault at any time.',
     risk: {
-      title: 'Risk, as our server rolled it up',
+      title: 'How the plan is spread, and what selling costs',
       byClass: 'By kind of asset',
       byIssuer: 'By issuer',
       share: 'Share',
@@ -620,6 +698,18 @@ export const en = {
     },
     accept: 'I’ve read this and I accept it',
     accepted: 'You’ve accepted this notice in this browser.',
+    /** The four points of the notice in short, with the whole notice one click away. */
+    short: {
+      title: 'What you’re trusting',
+      unaudited: 'The vault code hasn’t been audited outside the team.',
+      keys: 'The team holds keys that can upgrade the vault code.',
+      keeper: (tolerance: string, loss: string) =>
+        `With auto-follow on, our keeper trades within limits: at most ${tolerance} off the reference price, and at most ${loss} of your vault lost in a week.`,
+      keeperUnset:
+        'The keeper’s limits aren’t set on this chain, so auto-follow isn’t offered here.',
+      issuers: 'The issuers of stock tokens can freeze or take back their tokens.',
+      full: 'Read the full list',
+    },
   },
 
   buy: {
@@ -628,10 +718,49 @@ export const en = {
       `The whole amount goes into a vault only you can withdraw from, on ${chain}, then buys each asset of the plan.`,
     amount: {
       label: 'Amount (dollars)',
-      hint: (planned: string) => `From $10 to $1,000,000. Your plan was built for ${planned}.`,
+      hint: (planned: string) => `Your plan was built for ${planned}. From $10 to $1,000,000.`,
+    },
+    /** The four steps of a buy, one open at a time. */
+    steps: {
+      label: 'Steps to buy',
+      names: { amount: 'Amount', funds: 'Funds', trust: 'Trust', review: 'Sign' },
+      /** Read after a step's name by a screen reader. */
+      done: 'done',
+      next: 'Continue',
+      funds: { ready: 'Ready', short: 'Something is missing', reading: 'Reading…' },
+      trust: { accepted: 'Accepted', open: 'Not accepted yet' },
+      reviewLead: (amount: string, chain: string) =>
+        `You’re buying ${amount} of your plan on ${chain}. Next you review every step, then sign each one in your wallet.`,
+      /** The one line over the card when its figures are not live. */
+      note: {
+        testNetwork: (chain: string) => `Test network · ${chain} · not live`,
+      },
     },
     funding: {
       title: 'What your wallet needs',
+      /** The need in one line: the deposit, and the fees. */
+      needs: (cash: string, gas: string) => `You need ${cash} and ${gas} for fees.`,
+      haveNone: 'You have none yet.',
+      lacking: (list: string) => `You’re still short ${list}.`,
+      and: (a: string, b: string) => `${a} and ${b}`,
+      details: 'Show the details',
+      testFunds: 'Get test funds',
+      testFunding: 'Sending test funds…',
+      testNote: 'Test tokens have no value. They exist only on the test network.',
+      testSent: (list: string) => `I sent ${list} to your wallet on the test network.`,
+      testFailure: {
+        busy: 'You’ve had test funds as often as a day allows. Try again tomorrow, or fund the wallet yourself.',
+        tooMuch:
+          'This amount needs more than one send of test funds gives. Choose a smaller amount, then ask again.',
+        enough: 'Your wallet already has what this buy needs.',
+        lowCash:
+          'Our test funds are low. Ask the team to top them up, or fund the wallet yourself.',
+        lowGas: 'Our test gas is low. Ask the team to top it up, or fund the wallet yourself.',
+        refused:
+          'Our server didn’t send test funds for this buy. Read your wallet again, then try again.',
+        unreachable:
+          'The test network didn’t take the transfer, or our server didn’t answer. Read your wallet again: part of it may have arrived.',
+      },
       reading: 'Reading your wallet…',
       cash: (symbol: string) => `Cash to deposit (${symbol})`,
       gas: (symbol: string) => `Network fees (${symbol})`,
@@ -658,8 +787,8 @@ export const en = {
     reviewing: 'Making your order…',
     blocked: {
       amount: 'Enter an amount from $10 to $1,000,000 to continue.',
-      funding: 'Your wallet needs what is missing above before you can continue.',
-      trust: 'Accept the notice above to continue.',
+      funding: 'Your wallet needs what is missing before you can continue.',
+      trust: 'Accept the notice to continue.',
       wallet: 'No wallet of yours is signed in on this chain.',
     },
     failure: {
@@ -1228,7 +1357,13 @@ export const en = {
       title: 'Built piece by piece. Watch it come together.',
       lede: 'Product updates as new pieces are cut, and a short letter on goals, liquidity and what tokenized assets really pay. No hype, no price calls.',
       drawingAlt:
-        'An ink drawing of the joint coming together: a rail slides its tenon through a post, and a pin drops into the slot to lock it.',
+        'Ten coins, each an asset a plan can hold, from stocks and gold to tokenized treasuries, gathering one by one into one plan, each as large as its share.',
+      /** The coins of the closing (gate CLOSING-COINS). */
+      coins: {
+        line: 'One plan, ten pieces, one vault.',
+        sample: 'Sample shares, for illustration.',
+        parts: 'The sample plan’s parts',
+      },
       email: 'Email address',
       subscribe: 'Subscribe',
       subscribing: 'Subscribing…',

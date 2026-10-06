@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { type APIRequestContext, expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
+import { throughBuySteps } from './buy-steps';
 
 // An agent's plan, end to end (AGT-3's check, on the stub): an agent calls the MCP server (apps/mcp,
 // started in front of the stub API by playwright.config.ts), makes a plan from a goal sheet with
@@ -93,9 +94,7 @@ test('an agent makes a plan through the MCP server, and the person buys it from 
 
   await page.getByRole('link', { name: en.plan.buy }).click();
   await expect(page).toHaveURL(/\/plan\/[^/]+\/buy$/);
-  await page.getByRole('button', { name: en.buy.funding.mockFund }).click();
-  await expect(page.getByText(en.buy.funding.ok)).toBeVisible();
-  await page.getByLabel(en.trust.accept).check();
+  await throughBuySteps(page);
   await page.getByRole('button', { name: en.buy.review('$40') }).click();
   await expect(page).toHaveURL(/\/orders\/[^/]+$/);
   await page.getByRole('button', { name: en.order.signAndBuy('$40') }).click();

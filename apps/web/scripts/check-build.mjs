@@ -24,12 +24,13 @@ export const FORBIDDEN = {
 export const REQUIRED = 'wallet-port:shipped';
 
 /**
- * The landing's 3D joint (joint-stage.md: "stage JS (three + scene) ≤ 180 KB gzip"): the browser
- * chunks that carry three.js or the scene, by strings each keeps when minified (three's renderer
- * names itself in its warnings; the scene marks its canvas, joint-scene.ts).
+ * The landing's 3D (joint-stage.md: "stage JS (three + scene) ≤ 180 KB gzip"): the browser chunks
+ * that carry three.js or a scene, by strings each keeps when minified (three's renderer names itself
+ * in its warnings; each scene marks its canvas: the hero's joint-scene.ts, the closing's
+ * coins-scene.ts). The two scenes share three.js, and are held together to the one budget.
  */
 export const STAGE_BUDGET = 180 * 1024;
-export const STAGE_MARKERS = ['WebGLRenderer', 'tf-joint-ink'];
+export const STAGE_MARKERS = ['WebGLRenderer', 'tf-joint-ink', 'tf-coins-ink'];
 
 /** What `next dev` and the build cache write. Neither is served by `next start`. */
 const SKIP = new Set(['dev', 'cache', 'diagnostics', 'types']);

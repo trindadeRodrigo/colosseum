@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
+import { throughBuySteps } from './buy-steps';
 
 // A person's buy on Robinhood Chain, end to end in a browser, on the mock chain: they switch the bar to
 // Robinhood Chain before they sign in, see its shelf, and the plan they build is on it (CHAIN-SWITCH).
@@ -56,9 +57,7 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   await page.getByRole('link', { name: en.plan.buy }).click();
 
   await expect(page).toHaveURL(/\/plan\/[^/]+\/buy$/);
-  await page.getByRole('button', { name: en.buy.funding.mockFund }).click();
-  await expect(page.getByText(en.buy.funding.ok)).toBeVisible();
-  await page.getByLabel(en.trust.accept).check();
+  await throughBuySteps(page);
   await named(page);
   await page.getByRole('button', { name: en.buy.review('$40') }).click();
 

@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
+import { throughBuySteps } from './buy-steps';
 
 // Shared portfolios end to end in a browser, on the mock chain (WEB-4): sign in with the throwaway
 // wallet, publish a portfolio through the form, review it and sign it, find it on the shelf, open its
@@ -150,10 +151,7 @@ test('publish a portfolio, find it on the shelf, buy it and follow it, every ste
 
   await page.getByRole('link', { name: en.shared.family.buy }).click();
   await expect(page).toHaveURL(/\/indexes\/three-of-the-largest\/buy$/);
-  await page.getByLabel(en.buy.amount.label, { exact: true }).fill('40');
-  await page.getByRole('button', { name: en.buy.funding.mockFund }).click();
-  await expect(page.getByText(en.buy.funding.ok)).toBeVisible();
-  await page.getByLabel(en.trust.accept).check();
+  await throughBuySteps(page, { amount: '40' });
   await check(page, 'family-buy');
   await page.getByRole('button', { name: en.shared.buy.review('$40') }).click();
 
