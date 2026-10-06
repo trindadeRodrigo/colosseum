@@ -1,4 +1,4 @@
-import { BasketAsset, chainFamily, YieldObservation } from '@colosseum/schemas';
+import { AssetId, BasketAsset, YieldObservation } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
 import { candidates } from './index';
 import { LEG_TYPES } from './leg-types';
@@ -102,14 +102,18 @@ describe('the extended shelf', () => {
     expect(new Set(rows.map((row) => row.asset.id)).size).toBe(rows.length);
     for (const row of rows) {
       const a = row.asset;
-      expect(a.id, a.id).toBe(assetId(a.chain, a.symbol));
+      // The id is the chain and the symbol, as on the launch shelf; a symbol an id cannot spell
+      // (USD*) still gets an id of its chain.
+      expect(AssetId.safeParse(a.id).success, a.id).toBe(true);
+      expect(a.id.startsWith(`${a.chain}:`), a.id).toBe(true);
+      if (/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(a.symbol))
+        expect(a.id, a.id).toBe(assetId(a.chain, a.symbol));
       expect(['solana', 'robinhood'], a.id).toContain(a.chain);
       expect(a.provenance, a.id).toBe('fixture');
       expect(row.source, a.id).toContain(`${NOTE}${a.chain}.md`);
       // A stand-in address is said to be one: a mint or contract is never passed off as verified.
       if (PLACEHOLDER.includes(a.address))
         expect(row.unverified.join(' '), a.id).toMatch(/address|mint|contract/);
-      expect(() => chainFamily(a.chain), a.id).not.toThrow();
     }
   });
 

@@ -314,7 +314,11 @@ export function fixtureYields(): YieldObservation[] {
  */
 export function extendedYields(): YieldObservation[] {
   const file = z
-    .object({ solana: z.array(YieldObservation), robinhood: z.array(YieldObservation) })
+    .object({
+      solana: z.array(YieldObservation),
+      what: z.string().min(1),
+      robinhood: z.array(YieldObservation),
+    })
     .strict()
     .parse(extendedYieldRows);
   return [...fixtureYields(), ...file.solana, ...file.robinhood];

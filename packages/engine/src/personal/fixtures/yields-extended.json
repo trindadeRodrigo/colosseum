@@ -1,4 +1,5 @@
 {
   "solana": [],
+  "what": "Yield figures claimed on a date in the research notes of docs/vault/research/yield-shelf/, by chain. Not readings of a feed: every row is a fixture and is plated MOCK wherever shown.",
   "robinhood": []
 }
