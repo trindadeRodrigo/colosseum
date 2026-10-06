@@ -26,6 +26,11 @@ export const en = {
     signedOut: 'You’re signed out.',
     signOutFailed: 'I couldn’t sign you out: the sign-in service didn’t answer. Try again.',
     account: 'Your wallet',
+    /** The account menu in the bar: its items under the chains. */
+    address: 'Address',
+    copyAddress: 'Copy address',
+    copied: 'Copied',
+    viewOn: (explorer: string) => `View on ${explorer}`,
     disclaimer: 'Disclaimer',
     appearance: 'Appearance',
     themes: { auto: 'System', light: 'Light', dark: 'Dark' },
@@ -139,6 +144,7 @@ export const en = {
 
   chain: {
     names: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
+    short: { solana: 'Solana', robinhood: 'Robinhood', base: 'Base' },
     /** The explorer each chain's transaction links open, named beside the link. */
     explorers: { solana: 'Solscan', robinhood: 'Robinhood explorer', base: 'Basescan' },
     /** The bar's chain switcher (gate CHAIN-SWITCH). */
