@@ -2,10 +2,12 @@
 import { useState } from 'react';
 import { SubscribeBlock, type SubscribeStatus } from '../../components/ui/SubscribeBlock';
 import { useT } from '../../i18n/I18nProvider';
+import { ClosingDrawing } from './ClosingDrawing';
 
 // "Built piece by piece." (subscribe-block.md): the closing section and its email field. Sign-ups are
 // not open: there is no route that takes an address, so nothing typed here is sent or kept, and the
-// block says so before and after. The checks of the address are the block's own.
+// block says so before and after. The checks of the address are the block's own. Its picture is the
+// hero's joint drawn exploded, coming together (ClosingDrawing, gate CLOSING-INK), not a photograph.
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -23,7 +25,7 @@ export function Closing() {
           eyebrow={t.eyebrow}
           heading={t.title}
           lede={t.lede}
-          photo={{ src: '/landing/closing.jpg', alt: t.photoAlt, caption: t.photoCaption }}
+          art={<ClosingDrawing label={t.drawingAlt} className="aspect-[12/13] w-full" />}
           options={[
             { id: 'updates', label: t.updates },
             { id: 'newsletter', label: t.newsletter },

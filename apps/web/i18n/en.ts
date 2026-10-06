@@ -1177,9 +1177,8 @@ export const en = {
       eyebrow: 'Follow along',
       title: 'Built piece by piece. Watch it come together.',
       lede: 'Product updates as new pieces are cut, and a short letter on goals, liquidity and what tokenized assets really pay. No hype, no price calls.',
-      photoAlt:
-        'Offset timber beams, stacked and interlocked, frame a view of a forest through tall windows.',
-      photoCaption: 'stacked offset beams · reference photo',
+      drawingAlt:
+        'An ink drawing of the joint coming together: a rail slides its tenon through a post, and a pin drops into the slot to lock it.',
       email: 'Email address',
       subscribe: 'Subscribe',
       subscribing: 'Subscribing…',

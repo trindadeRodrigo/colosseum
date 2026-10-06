@@ -1181,9 +1181,8 @@ export const pt: Dictionary = {
       eyebrow: 'Acompanhe',
       title: 'Construído peça por peça. Veja tomar forma.',
       lede: 'Novidades do produto a cada peça cortada, e uma carta curta sobre objetivos, liquidez e o que os ativos tokenizados pagam de verdade. Sem hype, sem palpite de preço.',
-      photoAlt:
-        'Vigas de madeira deslocadas, empilhadas e encaixadas, emolduram a vista de uma floresta por janelas altas.',
-      photoCaption: 'vigas empilhadas e deslocadas · foto de referência',
+      drawingAlt:
+        'Um desenho a tinta do encaixe se fechando: um trilho passa a espiga pelo pilar, e um pino desce na fenda para travá-lo.',
       email: 'E-mail',
       subscribe: 'Inscrever',
       subscribing: 'Inscrevendo…',
