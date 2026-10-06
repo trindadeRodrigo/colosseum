@@ -21,9 +21,10 @@ import { type Dictionary, type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { planProvenance } from '../goal/build-plan';
 import { dollars } from '../goal/sheet';
-import { assetName, formatBps } from './amounts';
+import { formatBps } from './amounts';
 import { PlanChart } from './PlanChart';
 import { PlanGate } from './PlanGate';
+import { bySize, displayName, flagSentences, isCashId, kindLabel } from './plain';
 import { usePlan } from './use-plan';
 
 // The plan a goal built, before anything is bought: the goal first, then what the plan holds and why,
@@ -85,6 +86,33 @@ export function PlanScreen({ id }: { id: string }) {
     [t.plan.chips.chain, chainName],
   ];
 
+  const name = (assetId: string) => displayName(assetId, t.plan);
+  // The plan in one sentence: what goes where, largest first, then the largest holding's own reason.
+  const lines = bySize(proposal.lines.filter((l) => l.amountUsd > 0));
+  const isCash = (l: BasketLine) => isCashId(l.assetId);
+  const parts = lines
+    .slice(0, 3)
+    .map((l) =>
+      (isCash(l) ? t.plan.summary.stays : t.plan.summary.goes)(
+        dollars(l.amountUsd, lang),
+        name(l.assetId),
+      ),
+    );
+  if (lines.length > 3) parts.push(t.plan.summary.more(lines.length - 3));
+  const why = lines.find((l) => !isCash(l))?.reasons[0]?.text;
+  const summary = [
+    `${t.plan.summary.head(
+      dollars(sheet.amountUsd, lang),
+      t.goal.card.months(sheet.horizonMonths),
+      t.plan.riskWord[sheet.risk].toLowerCase(),
+      chainName,
+    )} ${new Intl.ListFormat(locale, { type: 'conjunction' }).format(parts)}.`,
+    why,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const notes = flagSentences([...proposal.flags, ...(plan.rollUp?.flags ?? [])], t.plan, name);
+
   return (
     <div data-ui="plan-screen" className="flex flex-col gap-8">
       <header className="flex flex-col items-start gap-3">
@@ -98,7 +126,10 @@ export function PlanScreen({ id }: { id: string }) {
             t.goal.card.months(sheet.horizonMonths),
           )}
         </h1>
-        <p className="max-w-(--tf-measure-body) text-body-lg">{t.plan.lead(chainName)}</p>
+        <p data-ui="plan-summary" className="max-w-(--tf-measure-body) text-body-lg">
+          {summary}
+        </p>
+        <p className="max-w-(--tf-measure-body) text-body">{t.plan.lead(chainName)}</p>
         {plan.fromLink && (
           <p
             data-ui="plan-from-link"
@@ -144,12 +175,6 @@ export function PlanScreen({ id }: { id: string }) {
           <StatRow>
             <Stat label={t.plan.kpi.amount}>{dollars(sheet.amountUsd, lang)}</Stat>
             <Stat label={t.plan.kpi.horizon}>{t.goal.card.months(sheet.horizonMonths)}</Stat>
-            <Stat label={t.plan.kpi.loss} className="max-[620px]:col-span-2">
-              {dollars(card.expectedReturn.lossInFallUsd, lang)}{' '}
-              <span className="font-sans text-caption font-normal text-muted-foreground">
-                {t.plan.kpi.estimate}
-              </span>
-            </Stat>
             {/* On a phone the last two take a row each: a range with its pin is the widest figure. */}
             <Stat
               label={t.plan.kpi.projected}
@@ -165,6 +190,11 @@ export function PlanScreen({ id }: { id: string }) {
               />
             </Stat>
           </StatRow>
+          <p data-ui="plan-bad-fall" className="text-body">
+            {card.expectedReturn.lossInFallUsd > 0
+              ? t.plan.badFall.some(dollars(card.expectedReturn.lossInFallUsd, lang))
+              : t.plan.badFall.none}
+          </p>
           <p className="text-body-sm text-muted-foreground">
             {t.plan.basis(card.expectedReturn.basis)}
           </p>
@@ -187,7 +217,7 @@ export function PlanScreen({ id }: { id: string }) {
                     key: 'asset',
                     header: t.plan.columns.asset,
                     rowHeader: true,
-                    cell: (l) => assetName(l.assetId),
+                    cell: (l) => name(l.assetId),
                   },
                   {
                     key: 'share',
@@ -213,7 +243,7 @@ export function PlanScreen({ id }: { id: string }) {
                 profile={sheet.goal === 'income' ? 'income' : undefined}
                 legs={proposal.lines.map((line) => ({
                   id: line.assetId,
-                  name: assetName(line.assetId),
+                  name: name(line.assetId),
                   weight: line.weightBps / 10_000,
                   weightLabel: `${share(line.weightBps)} · ${dollars(line.amountUsd, lang)}`,
                   rate: null,
@@ -250,16 +280,6 @@ export function PlanScreen({ id }: { id: string }) {
                 : t.plan.verdict.gap(dollars(proposal.verdict.gapUsdMonthly, lang))}
             </p>
           )}
-          {proposal.flags.length > 0 && (
-            <div className="flex flex-col gap-1">
-              <h3 className="text-caption text-muted-foreground">{t.plan.flags}</h3>
-              <ul className="flex flex-wrap gap-x-4 font-mono text-source">
-                {proposal.flags.map((flag) => (
-                  <li key={flag}>{flag}</li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
         <div className="flex flex-wrap justify-between gap-x-6 gap-y-1 border-t border-border px-6 py-3 font-mono text-source text-muted-foreground">
           <span>{foot}</span>
@@ -267,14 +287,32 @@ export function PlanScreen({ id }: { id: string }) {
         </div>
       </Card>
 
-      {plan.rollUp && (
-        <RiskPanel
-          rollUp={plan.rollUp}
-          t={t}
-          share={share}
-          notLive={notLive}
-          sandbox={label === 'sandbox'}
-        />
+      {/* What the engine noted and how the plan is spread, closed until asked for: every code of the
+          engine said in a sentence (features/order/plain.ts), none shown as it is written. */}
+      {(notes.length > 0 || plan.rollUp) && (
+        <details data-ui="plan-details" className="border border-border px-6 py-4">
+          <summary className="cursor-pointer text-body font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+            {t.plan.details}
+          </summary>
+          <div className="mt-4 flex flex-col gap-6">
+            {notes.length > 0 && (
+              <ul className="flex max-w-(--tf-measure-body) list-disc flex-col gap-1 pl-5 text-body-sm">
+                {notes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            )}
+            {plan.rollUp && (
+              <RiskPanel
+                rollUp={plan.rollUp}
+                t={t}
+                share={share}
+                notLive={notLive}
+                sandbox={label === 'sandbox'}
+              />
+            )}
+          </div>
+        </details>
       )}
 
       <div className="flex flex-col items-start gap-2">
@@ -318,7 +356,12 @@ function RiskPanel({
         rows={rows}
         rowKey={(r) => r.key}
         columns={[
-          { key: 'name', header: t.plan.risk.name, rowHeader: true, cell: (r) => r.key },
+          {
+            key: 'name',
+            header: t.plan.risk.name,
+            rowHeader: true,
+            cell: (r) => (caption === t.plan.risk.byClass ? kindLabel(r.key, t.plan.kinds) : r.key),
+          },
           { key: 'share', header: t.plan.risk.share, numeric: true, cell: (r) => share(r.bps) },
         ]}
       />
@@ -348,13 +391,6 @@ function RiskPanel({
               <dt className="text-muted-foreground">{t.plan.risk.measuredShare}</dt>
               <dd className="tabular-nums">{share(rollUp.exit.measuredShareBps)}</dd>
             </dl>
-            {rollUp.flags.length > 0 && (
-              <ul className="flex flex-wrap gap-x-4 font-mono text-source">
-                {rollUp.flags.map((flag) => (
-                  <li key={flag}>{flag}</li>
-                ))}
-              </ul>
-            )}
           </>
         }
       </CardBody>
