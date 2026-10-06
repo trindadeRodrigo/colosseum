@@ -89,6 +89,7 @@ function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
   // took its place, and a screen reader is told.
   const leaving = useRef(false);
   const signedOut = port.status === 'signed-out';
+  const onSignIn = usePathname() === '/sign-in';
   useEffect(() => {
     if (!signedOut || !leaving.current) return;
     leaving.current = false;
@@ -132,9 +133,23 @@ function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
           be) is known by then, and always has the way out: a wallet that never arrives must not
           hold them here. */}
       {port.status === 'loading' && port.userId === null ? (
-        <span aria-hidden="true" className="h-8 min-w-20" />
+        <span aria-hidden="true" className="h-10 min-w-20" />
+      ) : signedOut && onSignIn ? (
+        // On the sign-in screen the bar's way in is where the person already is: marked as the
+        // current page, as the bar marks a current link, and not a second primary button beside the
+        // screen's own "Create a passkey".
+        <Link
+          ref={signIn}
+          href="/sign-in"
+          aria-current="page"
+          data-ui="sign-in-here"
+          className="rounded-md px-3 py-2 text-[0.875rem]/5 font-medium whitespace-nowrap text-foreground underline decoration-primary decoration-2 underline-offset-[6px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          {t.shell.signIn}
+        </Link>
       ) : signedOut ? (
-        <Link ref={signIn} href="/sign-in" className={buttonClass({ size: 'dense' })}>
+        // The bar's one call to action, as the landing's bar draws it (compact-nav.md: CTA = primary).
+        <Link ref={signIn} href="/sign-in" className={buttonClass({ variant: 'primary' })}>
           {t.shell.signIn}
         </Link>
       ) : (
@@ -143,13 +158,7 @@ function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
             {plate}
             {address}
           </span>
-          <Button
-            size="dense"
-            variant="secondary"
-            busy={busy}
-            busyLabel={t.shell.signingOut}
-            onClick={signOut}
-          >
+          <Button variant="secondary" busy={busy} busyLabel={t.shell.signingOut} onClick={signOut}>
             {t.shell.signOut}
           </Button>
           {stillIn && (

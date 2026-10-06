@@ -2,6 +2,7 @@
 import { useId, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
+import { cn } from '../../components/ui/cn';
 import { LatticeStatus } from '../../components/ui/Lattice';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { useT } from '../../i18n/I18nProvider';
@@ -23,6 +24,12 @@ export type SignInProps = {
   onFailed?: () => void;
   onSignedIn?: () => void;
 };
+
+/**
+ * The buttons of a card, at its foot: one column, or two of equal width where the card is wide enough
+ * for their labels (the passkey's are long; a wallet's are short). Each fills its cell.
+ */
+const BUTTONS = 'mt-auto grid w-full grid-cols-1 gap-3';
 
 export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
   const t = useT();
@@ -76,16 +83,29 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
     );
 
   const resting = (what: Exclude<Busy, null>) => busy !== null && busy !== what;
+  // The two cards are as tall as each other, their buttons at the foot of each on one line. The mock
+  // card of the throwaway wallet keeps its band and body in a row: its body column is the one that
+  // stretches, with the MOCK plate at its top right.
+  const column = port.test
+    ? '[&>div]:flex [&>div]:flex-col [&>div>[data-ui=mock-plate]]:self-end'
+    : 'flex flex-col';
+  const body = '@container flex flex-1 flex-col gap-4';
   // What a screen reader hears after MOCK, in the language of the view.
   const mockLabels = { announce: t.shell.mockAnnounce };
   return (
     <div data-ui="sign-in" data-state="ready" className="flex flex-col gap-4">
       <div className="grid gap-6 min-[820px]:grid-cols-2">
-        <Card as="section" aria-labelledby={passkeyId} mock={port.test} mockLabels={mockLabels}>
+        <Card
+          as="section"
+          aria-labelledby={passkeyId}
+          mock={port.test}
+          mockLabels={mockLabels}
+          className={column}
+        >
           <CardHeader title={t.signIn.passkey.title} level={2} id={passkeyId} />
-          <CardBody className="flex flex-col items-start gap-4">
+          <CardBody className={body}>
             <p className="text-body">{t.signIn.passkey.body}</p>
-            <div className="flex flex-wrap gap-3">
+            <div data-ui="sign-in-buttons" className={cn(BUTTONS, '@md:grid-cols-2')}>
               <Button
                 variant="primary"
                 busy={busy === 'create'}
@@ -94,6 +114,7 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
                 onClick={() =>
                   run('create', 'passkey-create', () => port.signIn('passkey', { create: true }))
                 }
+                className="w-full"
               >
                 {t.signIn.passkey.create}
               </Button>
@@ -102,6 +123,7 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
                 busyLabel={t.signIn.passkey.waiting}
                 disabled={resting('use')}
                 onClick={() => run('use', 'passkey-use', () => port.signIn('passkey'))}
+                className="w-full"
               >
                 {t.signIn.passkey.use}
               </Button>
@@ -109,14 +131,24 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
           </CardBody>
         </Card>
 
-        <Card as="section" aria-labelledby={walletId} mock={port.test} mockLabels={mockLabels}>
+        <Card
+          as="section"
+          aria-labelledby={walletId}
+          mock={port.test}
+          mockLabels={mockLabels}
+          className={column}
+        >
           <CardHeader title={t.signIn.wallet.title} level={2} id={walletId} />
-          <CardBody className="flex flex-col items-start gap-4">
+          <CardBody className={body}>
             <p className="text-body">{t.signIn.wallet.body}</p>
             {port.found.length === 0 ? (
               <p className="text-body-sm text-muted-foreground">{t.signIn.wallet.none}</p>
             ) : (
-              <ul aria-label={t.signIn.wallet.found} className="flex flex-wrap gap-3">
+              <ul
+                aria-label={t.signIn.wallet.found}
+                data-ui="sign-in-buttons"
+                className={cn(BUTTONS, '@xs:grid-cols-2')}
+              >
                 {port.found.map((wallet) => {
                   const what = `wallet:${wallet.id}` as const;
                   return (
@@ -128,6 +160,7 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
                         onClick={() =>
                           run(what, 'wallet', () => port.signIn('wallet', { wallet: wallet.id }))
                         }
+                        className="w-full"
                       >
                         {wallet.name} · {t.signIn.wallet.family[wallet.family]}
                       </Button>

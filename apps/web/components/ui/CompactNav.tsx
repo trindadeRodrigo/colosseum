@@ -77,9 +77,17 @@ export type CompactNavProps = {
 };
 
 const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring';
+/**
+ * A link to where the person is (compact-nav.md, link current): the 2px primary underline at a 6px
+ * offset, for a section in view (`aria-current="true"`) and for the page itself (`"page"`).
+ */
+const NAV_CURRENT = cn(
+  'aria-[current=true]:underline aria-[current=true]:decoration-primary aria-[current=true]:decoration-2 aria-[current=true]:underline-offset-[6px]',
+  'aria-[current=page]:underline aria-[current=page]:decoration-primary aria-[current=page]:decoration-2 aria-[current=page]:underline-offset-[6px]',
+);
 const LINK = cn(
   'rounded-md px-3 py-2 text-[0.875rem]/5 font-medium whitespace-nowrap text-foreground transition-colors hover:bg-accent',
-  'aria-[current=true]:underline aria-[current=true]:decoration-primary aria-[current=true]:decoration-2 aria-[current=true]:underline-offset-[6px]',
+  NAV_CURRENT,
   FOCUS,
 );
 
