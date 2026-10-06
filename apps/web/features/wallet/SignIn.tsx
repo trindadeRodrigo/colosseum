@@ -1,6 +1,6 @@
 'use client';
 import type { ChainId } from '@colosseum/schemas';
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { LatticeStatus } from '../../components/ui/Lattice';
@@ -55,6 +55,11 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
   const [listing, setListing] = useState(false);
   // The wallet that signs on both families, while the person chooses which.
   const [asking, setAsking] = useState<WalletChoice | null>(null);
+  // The question takes the place of the wallet that was pressed: focus goes to it, not to the page.
+  const chains = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (asking) chains.current?.focus();
+  }, [asking]);
   // A passkey could not be used, or made: "Create a new passkey" is offered.
   const [offerCreate, setOfferCreate] = useState(false);
 
@@ -184,11 +189,13 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
               ) : asking ? (
                 // biome-ignore lint/a11y/useSemanticElements: two buttons are the group; a fieldset is for form controls
                 <div
+                  ref={chains}
                   id={listId}
                   role="group"
+                  tabIndex={-1}
                   aria-label={t.signIn.wallet.chains}
                   data-ui="wallet-chains"
-                  className="flex flex-col gap-3"
+                  className="flex flex-col gap-3 outline-none"
                 >
                   <p className="text-body-sm">
                     {t.signIn.wallet.both(asking.name)} {t.signIn.wallet.before}

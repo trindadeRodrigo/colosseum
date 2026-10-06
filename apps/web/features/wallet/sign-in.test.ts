@@ -2,7 +2,7 @@ import { getAddress } from 'viem';
 import { describe, expect, it, vi } from 'vitest';
 import { base64Decode } from './bytes';
 import { toWalletError, type WalletPortError } from './errors';
-import { foundWallets, readAnnouncement, watchEvmWallets } from './found-wallets';
+import { foundWallets, onePerName, readAnnouncement, watchEvmWallets } from './found-wallets';
 import { createWalletPort, idleDriver } from './port';
 import {
   clientType,
@@ -392,6 +392,19 @@ describe('the wallets as the sign-in screen offers them', () => {
       foundWallets([{ name: 'Phantom' }], [{ rdns: 'com.fake', name: 'Phantom', provider }]),
     );
     expect(alone.find((c) => c.ids.solana)?.ids).toEqual({ solana: 'solana:Phantom' });
+  });
+
+  it('lists one Solana wallet per name: a second one called "Phantom" is not listed or used', () => {
+    const real = { name: 'Phantom', icon: ICON };
+    const fake = { name: 'Phantom ', icon: 'data:image/png;base64,ZmFrZQ==' };
+    const kept = onePerName([real, { name: 'Backpack' }, fake, { name: '' }]);
+    expect(kept).toEqual([real, { name: 'Backpack' }]);
+    // the one kept is the first to register, object and all: it is the one a choice signs with
+    expect(kept[0]).toBe(real);
+    expect(foundWallets(kept, []).map((w) => [w.id, w.icon])).toEqual([
+      ['solana:Backpack', undefined],
+      ['solana:Phantom', ICON],
+    ]);
   });
 
   it('never makes a passkey on a failed use, and offers one wherever one can be made', () => {

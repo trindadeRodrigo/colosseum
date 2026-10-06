@@ -41,11 +41,14 @@ export const en = {
     title: 'Sign in with a wallet that is yours.',
     lead: 'Your plan sits in a vault only you can withdraw from, so it needs a wallet you own. Create one with a passkey, or connect one you already use.',
     loading: 'Loading sign-in…',
+    /** The landing's sign-in panel did not load. */
+    notLoaded: 'Sign-in didn’t load here.',
+    openPage: 'Open the sign-in page',
     /** The button that closes the sign-in dialog. */
     close: 'Close sign-in',
     passkey: {
       title: 'Passkey',
-      body: 'No seed phrase to write down. I use the passkey this device keeps for this site, or make one if it has none. A wallet is made for you that only that passkey opens.',
+      body: 'No seed phrase to write down. I use the passkey this device keeps for this site. A wallet is made for you that only that passkey opens.',
       /** One button: signs in with a passkey this device has, or makes one. */
       continue: 'Continue with a passkey',
       /** After the prompt to use one was closed: makes one, and with it a new account. */

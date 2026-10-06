@@ -52,4 +52,7 @@ test('a wallet: one button, its own list, and the chain asked for a wallet that 
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/goal$/);
   await expect(page.locator('header [data-ui="account"]')).toBeVisible();
+  // the chain that stands is the Solana side's: the bar shows that wallet's address, not an EVM one
+  const address = page.locator('header [data-ui="account"] .font-mono[title]');
+  await expect(address).toHaveAttribute('title', /^[1-9A-HJ-NP-Za-km-z]{32,44}$/);
 });

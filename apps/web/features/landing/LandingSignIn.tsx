@@ -1,5 +1,6 @@
 'use client';
 import { type ComponentType, useCallback, useEffect, useState } from 'react';
+import { buttonClass } from '../../components/ui/button-class';
 import { LatticeStatus } from '../../components/ui/Lattice';
 import { useT } from '../../i18n/I18nProvider';
 import { nextOf, SignInFrame, signInLink } from '../account/sign-in-frame';
@@ -13,14 +14,24 @@ import { nextOf, SignInFrame, signInLink } from '../account/sign-in-frame';
 
 type PanelProps = { titleId: string; next: string | null; onClose: () => void };
 
-function Loading({ titleId }: { titleId: string }) {
+function Loading({ titleId, failed }: { titleId: string; failed: boolean }) {
   const t = useT();
   return (
     <div data-ui="sign-in-loading" className="mx-auto flex w-full max-w-[860px] flex-col gap-6">
       <h2 id={titleId} className="max-w-(--tf-measure-display) font-display text-h2 font-normal">
         {t.signIn.title}
       </h2>
-      <LatticeStatus label={t.signIn.loading} />
+      {/* The panel's code did not arrive (offline, or a deploy moved it): the page still works. */}
+      {failed ? (
+        <p role="alert" className="max-w-(--tf-measure-body) text-body">
+          {t.signIn.notLoaded}{' '}
+          <a href="/sign-in" data-sign-in-page="" className={buttonClass({ variant: 'link' })}>
+            {t.signIn.openPage}
+          </a>
+        </p>
+      ) : (
+        <LatticeStatus label={t.signIn.loading} />
+      )}
     </div>
   );
 }
@@ -30,14 +41,21 @@ type Opened = { next: string | null; trigger: HTMLElement | null };
 export function LandingSignIn() {
   const [opened, setOpened] = useState<Opened | null>(null);
   const [Panel, setPanel] = useState<ComponentType<PanelProps> | null>(null);
+  const [failed, setFailed] = useState(false);
   const close = useCallback(() => setOpened(null), []);
   // The wallet, the account and the panel arrive with the first press, and are kept for the next.
   useEffect(() => {
     if (!opened || Panel) return;
     let live = true;
-    void import('./landing-sign-in-panel').then((module) => {
-      if (live) setPanel(() => module.default);
-    });
+    setFailed(false);
+    import('./landing-sign-in-panel').then(
+      (module) => {
+        if (live) setPanel(() => module.default);
+      },
+      () => {
+        if (live) setFailed(true);
+      },
+    );
     return () => {
       live = false;
     };
@@ -59,7 +77,7 @@ export function LandingSignIn() {
         Panel ? (
           <Panel titleId={titleId} next={opened.next} onClose={close} />
         ) : (
-          <Loading titleId={titleId} />
+          <Loading titleId={titleId} failed={failed} />
         )
       }
     </SignInFrame>

@@ -57,14 +57,23 @@ export function SignInScreen({ next = AFTER_SIGN_IN, onDone, titleId }: SignInSc
 
   // A person whose choice was not kept is not moved on by the page: they read why first.
   const settled = account.status === 'ready' && overruled === null;
+  const gone = useRef(false);
   useEffect(() => {
-    if (!arrived || !settled) return;
+    if (!arrived || !settled || gone.current) return;
+    gone.current = true;
     if (onDone) onDone();
     else router.replace(next);
   }, [arrived, settled, next, router, onDone]);
+  // In the dialog, anything the person does here that ends with their chain known closes it: the
+  // sign-in, the chain question, making the wallet, asking again. On the page only a sign-in does;
+  // someone who came to the page signed in asked to see it.
+  const moved = () => {
+    acted.current = true;
+    if (onDone) setArrived(true);
+  };
 
   async function makeWallet() {
-    acted.current = true;
+    moved();
     setMaking(true);
     setNotMade(false);
     try {
@@ -92,7 +101,7 @@ export function SignInScreen({ next = AFTER_SIGN_IN, onDone, titleId }: SignInSc
   }
 
   function askAgain() {
-    acted.current = true;
+    moved();
     retry();
   }
 
@@ -220,9 +229,7 @@ export function SignInScreen({ next = AFTER_SIGN_IN, onDone, titleId }: SignInSc
         {stage === 'pick' && account.status === 'needs-chain' && (
           <ChainPick
             options={account.options}
-            onConfirm={() => {
-              acted.current = true;
-            }}
+            onConfirm={moved}
             onFailed={() => {
               acted.current = false;
             }}
@@ -319,9 +326,16 @@ export function SignInScreen({ next = AFTER_SIGN_IN, onDone, titleId }: SignInSc
                   {port.active(chainFamily(account.chain))?.address ?? t.signIn.done.noWallet}
                 </span>
               </p>
-              <Button variant="link" href={next}>
-                {t.signIn.done.next}
-              </Button>
+              {/* In the dialog the way on is the dialog's: it closes, and the action carries on. */}
+              {onDone ? (
+                <Button variant="link" onClick={onDone}>
+                  {t.signIn.done.next}
+                </Button>
+              ) : (
+                <Button variant="link" href={next}>
+                  {t.signIn.done.next}
+                </Button>
+              )}
             </CardBody>
           </Card>
         )}

@@ -89,6 +89,8 @@ describe('the sign-in dialog', () => {
     expect(find(host, '[data-ui="app-shell"]').closest('[inert]')).not.toBeNull();
     expect(box?.closest('[inert]')).toBeNull();
     expect(document.documentElement.style.overflow).toBe('hidden');
+    // the page keeps its scrollbar's room, so nothing behind shifts sideways
+    expect(document.documentElement.style.scrollbarGutter).toBe('stable');
     // focus is in the dialog
     expect(box?.contains(document.activeElement)).toBe(true);
   });
@@ -153,6 +155,64 @@ describe('the sign-in dialog', () => {
     expect(dialog()).toBeNull();
     expect(router.push).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it('closes with Escape after the chain question replaced the wallet list, focus on the question', async () => {
+    portStore.set(
+      fakePort({
+        found: [
+          { id: 'test:solana', name: 'Throwaway wallet', family: 'solana' },
+          { id: 'test:evm', name: 'Throwaway wallet', family: 'evm' },
+        ],
+      }),
+    );
+    const host = await shell();
+    await click(find(host, 'header a[href="/sign-in"]'));
+    const box = dialog() as HTMLElement;
+    await click(button(box, en.signIn.wallet.connect));
+    await click(button(box, 'Throwaway wallet'));
+    // the wallet pressed is gone: focus is on the question that took its place, not on the page
+    const chains = find(box, '[data-ui="wallet-chains"]');
+    expect(document.activeElement).toBe(chains);
+    // and Escape closes the dialog even from <body>
+    (document.activeElement as HTMLElement).blur();
+    expect(document.activeElement).toBe(document.body);
+    await press(document.body, 'Escape');
+    expect(dialog()).toBeNull();
+  });
+
+  it('opened while signed in, shows where they are, and its link closes it and carries on', async () => {
+    person = { ...person, chain: 'solana', chainSource: 'picked', chainOptions: [] };
+    portStore.set(signedInPort(EMBEDDED));
+    const host = await shell();
+    await settle();
+    await click(find<HTMLAnchorElement>(host, '[data-ui="page-action"]'));
+    await settle();
+    const box = dialog() as HTMLElement;
+    // nothing was done here, so it does not close by itself: the person reads where they are
+    expect(box.textContent).toContain(en.chain.is.picked('Solana'));
+    const on = [...box.querySelectorAll<HTMLElement>('a, button')].find(
+      (el) => el.textContent === en.signIn.done.next,
+    );
+    expect(on?.tagName).toBe('BUTTON');
+    await click(on as HTMLElement);
+    expect(dialog()).toBeNull();
+    expect(router.push.mock.calls).toEqual([['/orders/o1']]);
+  });
+
+  it('opened while signed in with no chain yet, closes once the chain is chosen in it', async () => {
+    portStore.set(signedInPort(EMBEDDED));
+    const host = await shell();
+    await settle();
+    await click(find<HTMLAnchorElement>(host, '[data-ui="page-action"]'));
+    await settle();
+    const box = dialog() as HTMLElement;
+    expect(box.textContent).toContain(en.chain.pick.title);
+    await click(button(box, 'Solana'));
+    await click(button(box, en.chain.pick.confirm('Solana')));
+    await settle();
+    expect(dialog()).toBeNull();
+    expect(router.push.mock.calls).toEqual([['/orders/o1']]);
   });
 
   it('is not opened on the sign-in page itself, which is the panel already', async () => {

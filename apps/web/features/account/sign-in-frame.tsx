@@ -16,12 +16,16 @@ import { useT } from '../../i18n/I18nProvider';
 // and stays there, Escape, the scrim and the close button close it, focus goes back to what opened
 // it, and the rest of the page is inert and does not scroll.
 
-/** A plain click on a link to `/sign-in` of this app, or null for anything else. */
+/**
+ * A plain click on a link to `/sign-in` of this app, or null for anything else. A link marked
+ * `data-sign-in-page` asks for the page itself (the dialog's own way out when it cannot load).
+ */
 export function signInLink(event: MouseEvent): HTMLAnchorElement | null {
   if (event.defaultPrevented || event.button !== 0) return null;
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return null;
   const anchor = (event.target as Element | null)?.closest?.('a[href]');
   if (!(anchor instanceof HTMLAnchorElement)) return null;
+  if (anchor.hasAttribute('data-sign-in-page')) return null;
   if (anchor.target && anchor.target !== '_self') return null;
   const url = new URL(anchor.href, window.location.href);
   return url.origin === window.location.origin && url.pathname === '/sign-in' ? anchor : null;
@@ -51,7 +55,9 @@ export function SignInFrame({
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const html = document.documentElement;
-    const overflow = html.style.overflow;
+    const { overflow, scrollbarGutter } = html.style;
+    // The page under it does not scroll, and does not shift sideways when its scrollbar goes.
+    html.style.scrollbarGutter = 'stable';
     html.style.overflow = 'hidden';
     // Everything beside the dialog, at every level from it up to <body>, is inert while it is open.
     const behind: HTMLElement[] = [];
@@ -68,18 +74,29 @@ export function SignInFrame({
     (first ?? panel.current)?.focus();
     return () => {
       html.style.overflow = overflow;
+      html.style.scrollbarGutter = scrollbarGutter;
       for (const el of behind) el.inert = false;
       if (trigger?.isConnected) trigger.focus();
     };
   }, [trigger]);
 
-  // Escape closes it; Tab goes round inside it.
-  const onKeyDown = (event: React.KeyboardEvent) => {
-    if (event.key === 'Escape') {
+  // Escape closes it wherever focus is, on <body> too when what had it went away (a list the chain
+  // question replaced).
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      event.preventDefault();
       event.stopPropagation();
-      onClose();
-      return;
-    }
+      close.current();
+    };
+    document.addEventListener('keydown', onEscape);
+    return () => document.removeEventListener('keydown', onEscape);
+  }, []);
+
+  // Tab goes round inside it.
+  const onKeyDown = (event: React.KeyboardEvent) => {
     if (event.key !== 'Tab' || !panel.current) return;
     const items = [...panel.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
       (el) => !el.closest('[aria-hidden="true"]'),

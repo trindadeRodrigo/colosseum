@@ -38,10 +38,12 @@ export const pt: Dictionary = {
     title: 'Entre com uma carteira que é sua.',
     lead: 'Seu plano fica em um cofre de onde só você pode sacar, então ele precisa de uma carteira que seja sua. Crie uma com uma chave de acesso ou conecte uma que você já usa.',
     loading: 'Carregando o login…',
+    notLoaded: 'O login não carregou aqui.',
+    openPage: 'Abrir a página de login',
     close: 'Fechar o login',
     passkey: {
       title: 'Chave de acesso',
-      body: 'Você não precisa anotar frase de recuperação. Eu uso a chave de acesso que este aparelho guarda para este site, ou crio uma se não houver. A carteira que criamos para você só abre com essa chave.',
+      body: 'Você não precisa anotar frase de recuperação. Eu uso a chave de acesso que este aparelho guarda para este site. A carteira que criamos para você só abre com essa chave.',
       continue: 'Continuar com uma chave de acesso',
       createNew: 'Criar uma chave de acesso nova',
       waiting: 'Aguardando sua chave de acesso…',

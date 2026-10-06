@@ -76,6 +76,21 @@ export function watchEvmWallets(
   return () => target.removeEventListener('eip6963:announceProvider', heard);
 }
 
+/**
+ * The Solana wallets of the standard's registry, one per name, in the order they registered. The
+ * standard gives a wallet no id but its name, so a second wallet calling itself "Phantom" could stand
+ * in for the first when one is chosen by name: it is not listed, and never signed with.
+ */
+export function onePerName<W extends { name: string }>(wallets: readonly W[]): W[] {
+  const seen = new Set<string>();
+  return wallets.filter((wallet) => {
+    const name = wallet.name.trim();
+    if (!name || seen.has(name)) return false;
+    seen.add(name);
+    return true;
+  });
+}
+
 export const evmWalletId = (rdns: string) => `evm:${rdns}`;
 export const solanaWalletId = (name: string) => `solana:${name}`;
 
