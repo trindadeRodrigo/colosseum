@@ -358,6 +358,9 @@ export const en = {
     mockSuffix: ', sample data',
     stale: 'stale',
     ageUnknown: 'age unknown',
+    /** The age said in full in the pin's accessible name. */
+    age: (count: number, unit: 'minute' | 'hour' | 'day') =>
+      `${count} ${unit}${count === 1 ? '' : 's'} old`,
     missing: 'no source yet',
     provenance: 'Provenance',
     copy: 'Copy source',

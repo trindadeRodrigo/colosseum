@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { dictionary } from '../../i18n';
 import { FIGURE, LIVE_SPECIMEN, MOCK_OBS, SANDBOX_OBS, STALE_SPECIMEN } from './fixtures/mock';
 import {
   kindWords,
@@ -174,6 +175,20 @@ describe('ProvenancePin (provenance-pin.md)', () => {
       expect(label(pin.labelled)).toBe('Source for $12,480');
       expect(pinLabel('1', { ...STALE_SPECIMEN, staleAgeSec: 3600 })).toBe(
         'Source for 1, stale, 1 hour old',
+      );
+    });
+
+    it('says the age in the view’s language in its name: no English inside a Portuguese one', () => {
+      const pt = dictionary('pt').pin;
+      const at = (staleAgeSec: number) => pinLabel('6,40%', { ...STALE_SPECIMEN, staleAgeSec }, pt);
+      expect(at(13 * 3600)).toBe('Fonte de 6,40%, desatualizado, há 13 horas');
+      expect(at(3600)).toBe('Fonte de 6,40%, desatualizado, há 1 hora');
+      expect(at(120)).toBe('Fonte de 6,40%, desatualizado, há 2 minutos');
+      expect(at(3 * 86_400)).toBe('Fonte de 6,40%, desatualizado, há 3 dias');
+      expect(at(13 * 3600)).not.toMatch(/hour|old/);
+      // and English says it as it did
+      expect(pinLabel('1', { ...STALE_SPECIMEN, staleAgeSec: 7200 }, dictionary('en').pin)).toBe(
+        'Source for 1, stale, 2 hours old',
       );
     });
 

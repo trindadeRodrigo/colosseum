@@ -21,7 +21,13 @@ export type Age = {
   short: string;
   /** In the accessible name: `3 hours old`. */
   long: string;
+  /** How many of what: for an accessible name in another language (`AgeWords`). */
+  count: number;
+  unit: 'minute' | 'hour' | 'day';
 };
+
+/** An age said in full, in the view's language: "3 hours old", "há 3 horas". */
+export type AgeWords = (count: number, unit: Age['unit']) => string;
 
 /**
  * An age in seconds as the stale tag shows it: minutes under an hour, hours under two days, then days.
@@ -30,13 +36,18 @@ export type Age = {
  */
 export function formatAge(seconds: number): Age | null {
   if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) return null;
-  const [count, unit, word] =
+  const [count, unit, word]: readonly [number, string, Age['unit']] =
     seconds < 3600
       ? ([Math.max(1, Math.round(seconds / 60)), 'min', 'minute'] as const)
       : seconds < 172_800
         ? ([Math.round(seconds / 3600), 'h', 'hour'] as const)
         : ([Math.round(seconds / 86_400), 'd', 'day'] as const);
-  return { short: `${count} ${unit}`, long: `${count} ${word}${count === 1 ? '' : 's'} old` };
+  return {
+    short: `${count} ${unit}`,
+    long: `${count} ${word}${count === 1 ? '' : 's'} old`,
+    count,
+    unit: word,
+  };
 }
 
 /** A hash or address cut in the middle, never at the end: `4kZ9…mX2p`. */

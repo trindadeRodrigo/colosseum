@@ -713,6 +713,10 @@
   --tf-e-credit: max(0.6944em, 11px);
   --tf-e-leading: 1.5;
 
+  /* the system's own face, for a partner that names none: the embed never inherits our faces */
+  --tf-embed-system-font:
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
   /* the partner's buttons may be rounder than their boxes (a pill, in the guide's sample) */
   --tf-embed-button-radius: var(--embed-button-radius, var(--radius));
 
@@ -720,7 +724,8 @@
      their radius, and room inside */
   background-color: var(--tf-embed-bg);
   color: var(--tf-embed-fg);
-  font-family: var(--embed-font, inherit);
+  /* the partner's face; with none, the system's, never ours (rule 7: the brand recedes) */
+  font-family: var(--embed-font, var(--tf-embed-system-font));
   line-height: 1.5;
   border: 1px solid var(--tf-embed-border);
   border-radius: var(--embed-radius, inherit);
@@ -730,7 +735,7 @@
 /* Inside the embed, type is the partner's: their face, and sizes in em of their text. */
 @layer utilities {
   .tf-embed :is(.font-sans, .font-display, .font-condensed) {
-    font-family: var(--embed-font, inherit);
+    font-family: var(--embed-font, var(--tf-embed-system-font));
   }
 
   .tf-embed :is(.text-body, .text-body-sm, .text-body-lg) {
