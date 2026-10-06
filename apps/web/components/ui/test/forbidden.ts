@@ -246,9 +246,10 @@ export function scanCss(root: Root, vars: Map<string, string>): Finding[] {
       const composer = classes.map((c) => COMPOSER_RADIUS[c]).find(Boolean);
       const resolved = resolve(value, vars);
       const corners = resolved.split(/[\s/]+/).filter(Boolean);
-      // inside the embed a corner is the partner's (`--embed-radius`): our 2px recedes there
+      // inside the embed a corner is the partner's (`--embed-radius`, and their buttons'
+      // `--tf-embed-button-radius`, unset outside the embed): our 2px recedes there
       const ok =
-        /^var\(--embed-radius\b/.test(value) ||
+        /^var\(--(embed-radius|tf-embed-button-radius)\b/.test(value) ||
         corners.every((c) => SQUARE.has(c) || KEYWORDS.has(c) || c === composer);
       if (!ok)
         add(decl, 'radius', `${prop}: ${value}${resolved === value ? '' : ` (${resolved})`}`);

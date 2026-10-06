@@ -1,5 +1,6 @@
-import type { ChainId } from '@colosseum/schemas';
+import { type ChainId, explorerLink } from '@colosseum/schemas';
 import {
+  basketIdOfLinkedPlan,
   basketIdOfPlan,
   type DeploymentNetwork,
   deploymentsOf,
@@ -9,8 +10,8 @@ import { publicWalletEnv, walletChains } from '../wallet/chains';
 
 // Whether a chain can be bought on from this app: it needs a deployment committed for its network in
 // packages/sdk/deployments/, which the guard derives every address from. The test network's file has
-// Solana only until Robinhood Chain is deployed there (ADE-2); when its entry lands, the screens take it
-// with no change here. The order runner reads the deployments it hands the executor from here too.
+// Solana and Robinhood Chain (46630, since WEB-RH-BUY); Base has none, and nothing is signed there. The
+// order runner reads the deployments it hands the executor from here too.
 
 /**
  * The network a chain's deployment is read for. Every real network is this app's own
@@ -67,6 +68,25 @@ export const chainReady = (chain: ChainId, mock: boolean): boolean =>
 
 /**
  * The vault a plan was bought into, by its number on chain: the API's own rule, from the SDK
- * (`basketIdOfPlan`). The portfolio joins a vault to the goal of its plan with it.
+ * (`basketIdOfPlan`), or, for a plan made from a link, the buyer's own (`basketIdOfLinkedPlan`, gate
+ * `AGENT-LINK`). The runner names it to the guard, and the portfolio joins a vault to the goal of its
+ * plan with it.
  */
-export const basketOfPlan = (proposalId: string): string => basketIdOfPlan(proposalId);
+export const basketOfPlan = (proposalId: string, buyer: string | null = null): string =>
+  buyer ? basketIdOfLinkedPlan(proposalId, buyer) : basketIdOfPlan(proposalId);
+
+/**
+ * A transaction's link on the explorer of the network this app signs for, from this app's own chain
+ * table, never the API's word: a link the API sent could point anywhere, mainnet's explorer included.
+ * On the mock, whose transactions are no network's, the mock's own `mock://` link (packages/chain-mock's
+ * rule). Null on a network with no explorer, and where there is no transaction.
+ */
+export function explorerUrlFor(chain: ChainId, txId: string | null, mock: boolean): string | null {
+  if (!txId) return null;
+  if (mock) return `mock://${chain}/tx/${txId}`;
+  try {
+    return explorerLink(walletChains(publicWalletEnv())[chain].config, txId);
+  } catch {
+    return null;
+  }
+}

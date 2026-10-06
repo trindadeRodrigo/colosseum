@@ -21,7 +21,7 @@ import { type CallFailure, readOrder } from './order-api';
 import { checkDeposit, checkFamilyBuy, type DepositCheck, sharedShapeOk } from './order-check';
 import { isBuy, keepOrder, type OrderRecord, recallOrder } from './order-record';
 import { legsInOrder, type NextStep, type OutcomeView, outcomeView, stepOf } from './order-view';
-import { chainReady, onMock } from './readiness';
+import { chainReady, explorerUrlFor, onMock } from './readiness';
 import { type RunOutcome, useOrderRunner } from './run-order';
 import { type ChainUnits, unitsFor } from './units';
 
@@ -121,7 +121,11 @@ export function OrderScreen({ id }: { id: string }) {
       setOutcome(null);
       const answer = await run({
         order: approved.order,
-        plan: { proposalId: record.proposalId, lines: record.lines },
+        plan: {
+          proposalId: record.proposalId,
+          lines: record.lines,
+          buyer: record.linked ? record.userId : null,
+        },
         ...(record.terms ? { terms: record.terms } : {}),
         consents: approved.consents,
         ...(again ? { approvedAgain: again } : {}),
@@ -295,6 +299,7 @@ export function OrderScreen({ id }: { id: string }) {
                   phase={phase?.legId === leg.id ? phase.phase : null}
                   units={units}
                   explorer={`${t.chain.names[chain]} ${t.order.explorer}`}
+                  mock={onMock(port, chain)}
                   t={t}
                   locale={LOCALE[lang]}
                 />
@@ -430,7 +435,12 @@ export function OrderScreen({ id }: { id: string }) {
       {/* His "Disclaimer and activity": what reached the chain, line by line with its link, beside the
           disclaimer. */}
       <ActivityPanel
-        executions={activityOf(now, t, `${t.chain.names[chain]} ${t.order.explorer}`)}
+        executions={activityOf(
+          now,
+          t,
+          `${t.chain.names[chain]} ${t.order.explorer}`,
+          onMock(port, chain),
+        )}
         empty={t.activity.noneYet}
       />
     </div>
@@ -470,12 +480,15 @@ function Step({
   phase,
   units,
   explorer,
+  mock,
   t,
   locale,
 }: {
   n: number;
   /** The explorer's name, for the link's accessible name. */
   explorer: string;
+  /** The chain runs on the mock: its transactions are no network's, and link to the mock's own address. */
+  mock: boolean;
   /** As the review showed it: what it may do. */
   leg: Leg;
   /** As the API last said: where it stands. */
@@ -493,6 +506,8 @@ function Step({
     return u && figure !== null ? `${figure} ${u.symbol}` : null;
   };
   const spend = (raw: string) => (units ? whole(raw, units.cash) : null) ?? raw;
+  /** A token by the symbol this repository committed for it, or its id on the chain where none is. */
+  const symbol = (asset: string) => units?.tokens[asset]?.symbol ?? assetName(asset);
   const status = phase
     ? t.order.phase[phase as keyof Dictionary['order']['phase']]
     : t.order.status[now.status];
@@ -514,7 +529,7 @@ function Step({
           <span className="ml-auto inline-flex items-center gap-2">
             <ExplorerLink
               signature={now.txId}
-              href={now.explorerUrl}
+              href={explorerUrlFor(leg.chain, now.txId, mock)}
               explorer={explorer}
               labels={t.order.link}
             />
@@ -529,7 +544,7 @@ function Step({
             const under = expected ? shortfallBps(expected.outRaw, expected.minOutRaw) : null;
             return (
               <li key={`${trade.sell}>${trade.buy}:${trade.amountInRaw}`} className="tabular-nums">
-                {t.order.review.spend(spend(trade.amountInRaw), assetName(trade.buy))}
+                {t.order.review.spend(spend(trade.amountInRaw), symbol(trade.buy))}
                 {expected && (
                   <>
                     {' · '}

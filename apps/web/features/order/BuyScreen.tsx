@@ -132,6 +132,7 @@ export function BuyScreen({ id }: { id: string }) {
       amountUsd: amount,
       lines: plan.proposal.lines,
       approved: null,
+      ...(plan.fromLink ? { linked: true as const } : {}),
       goal: {
         sheet: plan.proposal.sheet,
         card: plan.proposal.card,

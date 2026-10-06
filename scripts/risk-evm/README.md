@@ -81,7 +81,7 @@ jq -c 'select(.event == "slot" and .rows < .tokens) | {scheduledAt, rows, ended,
 
 - The import is idempotent: the table's key is `(asset_mint, fetched_at)` and existing rows are left alone.
 - Settings are in `.env.example` under "EVM depth collector". Tokens, addresses and chains are in `config.ts`; Base is there, switched off (`--chain base` runs it once).
-- Curves: `pnpm risk:compute` fits every row of `risk_asset_snapshots`, these included, and today stores every curve as `risk-0.3`. The lines that keep `evmq-0.1` on EVM curves are Rodrigo's (RISK-1).
+- Curves: `pnpm risk:compute` fits every row of `risk_asset_snapshots`, these included, and stores an EVM curve under the collector's symbol and `evmq-0.1` (the last section). Nothing scheduled runs the import or that compute for these rows: the API's answer for an EVM stock is as new as the last `pnpm risk-evm:import` and `pnpm risk:compute` run by hand.
 
 ## The token list and every pool
 
@@ -178,6 +178,111 @@ What the file holds, and what it does not decide:
 - 994 rows with no TVL hold $1,000 or more on the stock side, $5.0M of stock tokens in all, 796 of them under tracked stocks ($4.4M); 944 are v4 pools.
 - 96 tokens have no price. DexScreener was at its cap of 30 pairs for 21 tokens, all of them tracked, so pools on other venues may be missing for those.
 
+## The oracle map
+
+`pnpm risk-evm:oracles` (PLAN-UNIVERSE RU.5, method `evm-oracles-0.1`) gives each tracked stock of the newest cut its Chainlink feed, or the reason it has none. Read-only: one public GET (Chainlink's reference directory, `feeds-robinhood-mainnet.json`) and one `eth_call` through Multicall3 at one block.
+
+```sh
+pnpm risk-evm:oracles                    # the newest cut and token list in data/risk-evm/
+pnpm risk-evm:oracles --cut <file>       # another cut file
+pnpm risk-evm:oracles --universe <file>  # another token list
+pnpm risk-evm:oracles --allow-old        # a cut whose discovery is more than a day old
+```
+
+It writes `data/risk-evm/oracles-<chain>-<stamp>.json` (the stamp is the time of the block read) and prints the same in words, ending with the count and the names of the tracked stocks without a confirmed feed. The file is not committed and the hourly collector reads nothing of it. It refuses a cut more than 24 hours old, a token list that does not hold every tracked stock, and a directory in which no feed names a token of the registry (a failed read is not thirty stocks without a feed).
+
+One row per tracked stock, keyed on the token address: `feed` (the address, `description`, `decimals`, the round's `answer`, `price` and `updatedAt`, `ageSeconds`, the session at the block) or `feed: null` with `reason`. Every row carries `source`, `fetchedAt`, `method` and `provenance`. The tokens of `config.ts` that are not tracked are in `collectedNotTracked`, apart. The file states the following in `stated`, so nothing below is chosen silently:
+
+- **How a feed is tied to a token.** By the directory's `name` and the token's symbol. The directory names no token address, so the symbol is the only tie. The name must read as the symbol, `RH` and the symbol, or `Robinhood` and the symbol, then `/ USD` or `-USD` (the forms in use on Oct 5: `GLD / USD`, `RHSPY / USD`, `Robinhood QQQ / USD`, `Robinhood DELL-USD`). The directory's `docs.baseAsset` is not used: three entries lack it and one reads `RHDELL`. Every tie that is not one to one is refused, and nothing picks between candidates: two registry tokens sharing a symbol get no feed (`symbol_shared_by_tokens`), two feeds naming one token are both listed in `candidates` (`two_feeds_name_the_token`), one feed reading as two tokens, by the directory's name or by its own description, is refused (`feed_names_two_tokens`).
+- **How a feed is confirmed.** By its own contract: `description()` must name the token by the same rule, `decimals()` must equal the directory, `latestRoundData()` must give a positive answer with a time not after the block. Otherwise there is no feed and the row says why (`description_does_not_name_the_token`, `no_answer_from_the_feed`, `decimals_differ_from_directory`, `answer_not_positive`, `round_time_not_in_the_past`). `no_feed` means the directory lists none.
+- **Which address is stored.** The directory's `proxyAddress`, the one the vault would read: the aggregator behind a proxy is replaced when a feed is upgraded and the proxy stays. `aggregator()` of the proxy is recorded and compared with the directory's `contractAddress`, and the listed aggregator is called directly once to record whether it answers (GLD's does not). The second proxy the directory lists ("Shared SVR") is recorded and not read.
+- **The price.** Recorded as read (`answer`, an integer in the feed's decimals) and with the point placed (`price`). It is not compared with, corrected by or blended into a pool price (gate `ORACLE-VS-DEX`); RU.7 records it over time and RU.9 measures the gap. No multiplier is applied to anything.
+- **Age.** `ageSeconds` is the block's time less `updatedAt`. An old answer is still a confirmed feed: nothing is refused for age. The file counts the feeds older than the vault's 26 hours and older than their own heartbeat, and says whether the block was in the US session by the calendar of `packages/risk` (`fixtures/risk/us-market-holidays.json`).
+- **Funds and the treasury token** (`funds`: SPY, QQQ, GLD, SLV, USO, SGOV): whether a feed exists and what the directory says it prices. `token_with_multiplier` is the directory's product `primaryTokenizedPrice`, which Chainlink documents as the share's price times the issuer's multiplier (https://docs.chain.link/data-feeds/tokenized-equity-feeds). `token_from_pools` is its attribute `dex_state_price`. Where the directory says neither, the answer is `null` (`not_stated_in_directory`). The registry's multiplier is printed beside and applied to nothing.
+
+Every feed of the directory is read, whatever it is matched to (five reads each: `description()`, `decimals()`, `latestRoundData()` and `aggregator()` of the proxy, `latestRoundData()` of the listed aggregator), so the calls depend on the directory alone. `feedsOfOtherTokens` lists the feeds that name a registry token outside both lists.
+
+### The run of 2026-10-05 (block 81,159,297, 23:03 UTC, off session; on `cut-robinhood-20261005T1947.json`)
+
+- 58 feeds in the directory, none left out. 290 contract reads in one `eth_call`; 2 RPC calls, 0.6 seconds with the GET.
+- **24 of the 30 tracked stocks have a confirmed feed. 6 have none (`no_feed`): AMC, COST, DJT, HIMS, LLY, RDDT.** No feed was refused, no symbol is shared by two tokens, no stock has two feeds.
+- TSM, collected and not tracked, has a confirmed feed.
+- Every confirmed feed has 8 decimals and points at the aggregator the directory lists. The contracts name themselves in four ways: `Robinhood X / USD` (12 of the 24), `RHX / USD` (9), `Robinhood X-USD` (2: DELL, SGOV), `X / USD` (1: GLD).
+- Ages at the block, 3 hours after the close: 3 minutes (SPCX) to 9.1 hours (AAPL), and 23.0 hours for SGOV. None older than 26 hours or than its 24-hour heartbeat.
+- The six funds all have a feed. SPY, QQQ, SLV and USO: `token_with_multiplier`. **GLD: `token_from_pools`**, a reference price from the state of exchanges on chain, market hours "Crypto"; its aggregator does not answer a direct call. **SGOV: not stated**, the directory entry carries no product or asset name.
+- 11 feeds name a registry token outside both lists: ASML, BABA, CLSK, CRWV, EWY, IONQ, NBIS, ORCL, RGTI, RKLB, USAR.
+
+## The asset list
+
+`pnpm risk:universe robinhood` (PLAN-UNIVERSE RU.4) writes `scripts/risk/universe/robinhood.json` from the newest cut, oracle map and token list: one row per tracked stock, keyed on the token address, with its pools, its oracle or the reason it has none, and `autoRebalance`. It is committed, and it is what RU.6 makes the collector read. It refuses a cut and an oracle map that do not name the same token addresses. See `scripts/risk/universe/README.md`.
+
+## A run on the asset list
+
+`pnpm risk-evm:collect --list` (PLAN-UNIVERSE RU.6) collects the tracked stocks of `scripts/risk/universe/<chain>.json` instead of the hand list of `config.ts`, and keeps every reachable pool of each. `--loop --list` does the same every hour. **Without `--list` a run is exactly what it was**: the hand list, three pools a token, the same `evmq-0.1` rows, the same pool file. The list is committed, so its presence alone must not change a loop that is already running; that is why it is an option and not the default.
+
+```sh
+pnpm risk-evm:collect --list            # one run on the list
+RISK_EVM_MAX_POOLS=5 pnpm risk-evm:collect --list   # at most five pools a token
+```
+
+- **Tokens.** The rows of the list. Their pools come from the cut the list names (`inputs.cut`), which must be in `data/risk-evm/`: the list holds counts, the cut holds the pools. A list whose cut is not on the machine, or a cut whose stocks and pools are not the ones the list counts, stops the run. A chain with no list file is collected from the hand list, and the run says so.
+- **Pools.** The cut's pools of the token that the vault reaches and that pair it with the dollar token go to the same on-chain confirmation a DexScreener candidate gets (the factory's `getPool`, the position manager's `poolKeys`, no hook). DexScreener is not asked. The confirmed list is kept in `pools-<chain>-list.json`, apart from the hand list's `pools-<chain>.json`, and is confirmed again when it is a day old or the list names another cut. If that confirmation fails, the run goes on with the file only when it is of the same cut; pools confirmed from another cut are never used. A loop reads the list once, when it starts: a new list takes effect when the loop is started again. The per-token limit is a setting (`RISK_EVM_MAX_POOLS`): three on the hand list, every pool on the asset list.
+- **The asset row** is `evmq-0.1`, unchanged: the best single pool per size, now chosen among all the token's dollar pools. Its `source` names the cut and the list instead of DexScreener.
+- **The pool rows.** `pools/<day>.jsonl`, method `evmq-pools-0.1`: one row per reachable pool the list counts for the token, at the block of the asset row (a token with no dollar pool has no asset row, and its pool rows carry the block the run holds), with the pool's own quote at every size (`sell`, `buy`: `outUsd`, `costPct`, `unfilledShare` against the pool's own mid), its `midUsd`, `kind`, `venue`, `fee`, `tickSpacing`, the cut's TVL (`listTvlUsd`, `listTvlAt`: not read in the run) and `source`, `fetchedAt`, `method`, `provenance`. A pool with no quote has `quoted: false` and a `reason`; `sell` and `buy` are `null` when it was not asked, and a point per size with every figure `null` when it was asked and gave nothing. Never a zero:
+  - `not_against_the_dollar_token`: the pool pairs the stock with ETH or with another stock. One call cannot price it in dollars; a two-hop quote is not built.
+  - `not_confirmed_on_chain`, `beyond_the_pool_limit` (confirmed, and left out by `RISK_EVM_MAX_POOLS`), `no_price_at_the_block`, `mid_far_from_the_median` (more than 2% from the median of the token's pools, as before), `no_quote_at_any_size`.
+  - A pool the vault cannot reach (DU3) has no row and is never asked.
+- **The address** of a token is written as the cut spells it, in the issuer registry's mixed case. That is the spelling `config.ts` has for the tokens collected before, so their history joins; the list itself holds the lower-case form.
+- **Tokens of the hand list that are not tracked** (TSM on Oct 5) are named at the start of a list run and not read by it. Their rows continue only where a run without `--list` continues.
+- `autoRebalance` and `autoRebalanceOpen` are not read: every tracked stock is collected.
+- What happens to a stock that leaves the list on a later run is not decided; a list run reads the list as it is.
+
+### The run of 2026-10-06 (block 81,202,501, 00:16 UTC, off session, by hand into a temporary folder)
+
+- 30 asset rows, one per tracked stock, none missing. 129 dollar pools sent to the chain, 129 confirmed.
+- **274 pool rows, one per reachable pool: 126 quoted, 3 `mid_far_from_the_median`, 145 `not_against_the_dollar_token`.** Of the reachable pools' $73.6M, $50.3M is in the 129 dollar pools, $12.7M in 99 pools against ETH, $9.9M in 40 pools against another stock and $0.7M in 6 pools whose other token the cut does not name.
+- 271 RPC calls in 48 requests, 29 seconds, with the confirmation of the pools. The hand list's run is 54 pools and about ten seconds.
+- **The asset row barely moves.** Against the three deepest dollar pools of each token at the same block, a pool beyond the three was the best at 4 of 480 points (MSTR and SGOV at $100, by 2.3 and 0.9 basis points). What the wider run adds is the pool rows, for a split across pools later.
+
+## The oracle beside the pool price
+
+A list run also reads the Chainlink feed of every tracked stock that has one (PLAN-UNIVERSE RU.7, method `evmo-0.1`): `latestRoundData()` of each proxy the asset list names, in one Multicall3 call at the block the run holds, before the first pool is asked. The rows go to `oracle/<day>.jsonl`. A run without `--list` reads no feed.
+
+- **A row** is one feed at one block: `asset`, `assetMint`, `feed` (the proxy), `fetchedAt` and `slot` (the block's), `roundId`, `answer` (as read, an integer in the feed's decimals), `price` (the same with its point), `decimals`, `updatedAt` (the feed's own time for the answer), `ageSeconds` (the block's time less `updatedAt`), and `source`, `method`, `methodVersion`, `provenance`. A feed that does not answer, or answers zero or less, is a row with `price: null` and a `reason` (`no_answer_from_the_feed`, `answer_not_positive`), never a zero.
+- **Kept apart (gate `ORACLE-VS-DEX`).** The answer is written as read. It is not compared with, corrected by or blended into a pool price, no multiplier is applied, and nothing is refused for age. The asset row and the pool rows do not depend on it: a refused oracle read costs the run only these rows (`oracle_read_failed` in the log, `oracleError` in the run's summary).
+- **The same block.** The feeds are read at the block the run pins first, which is the block of the asset rows. A token the run measures again on a fresh block keeps the oracle row of the first block, and so does every token when the run had to take a fresh block before its first pool (its block grew older than two minutes, or its state was gone); each row carries its own `slot`, so the two can always be told apart.
+- **A stock with no oracle** (`oracle: null` in the list) is not asked and has no row. A retry within the hour reads the feeds of the tokens it retries, at its own block, so a retried token has one oracle row per attempt; all are kept. A refused oracle read is not tried again: that hour has pool rows and no oracle rows.
+- **The import.** `pnpm risk-evm:import` loads the rows that carry a price into `risk_price_observations`: `chain` as the row says (`robinhood`), `price_source` `chainlink`, `mint` the token address as the collector writes it, `ref` the proxy, `observed_at` and `slot` the block's, `source_ts` the feed's `updatedAt`, `quote` `usd`. The table's key leaves an existing row as it is, so a second import inserts nothing. No migration.
+
+### The run of 2026-10-06 (block 81,211,551, 00:31 UTC, off session, by hand into a temporary folder)
+
+- 24 feeds asked in one call, 24 answered; 24 rows. The six stocks with no feed have none.
+- Ages at the block: 1 minute to 10.6 hours, 4.6 hours at the median (the US session had closed 4.5 hours before). GLD's answer was 9.2 hours old.
+- With the feeds the run was 288 RPC calls in 52 requests, 30 seconds. The feeds are one call of those; the rest moves with the pools, run to run.
+
+## Thirty days of trades (PLAN-UNIVERSE RU.14, gate `EVM-HISTORY`)
+
+Quotes cannot be read at a past block on the public RPC, so the exit-cost history of a Robinhood stock starts with the loop. Trades can: the chain serves `Swap` events for its whole life, 100,000 blocks a query. `pnpm risk-evm:history` walks them for every pool of the cut the asset list names (427 on the cut of Oct 5: 195 Uniswap v3 pools, 232 v4 pools, reachable or not), and `pnpm risk-evm:flow-import` turns them into the same `risk_pool_flow` rows Solana's Step 5b history fills, so an EVM stock's fact sheet answers its `flow` block.
+
+```sh
+RISK_EVM_DIR=… pnpm risk-evm:history --days 30     # read-only; 30 days is 256 windows per filter, 15 to 30 minutes
+RISK_EVM_DIR=… pnpm risk-evm:flow-import           # the rows into the database; writes hourly/<pool>.jsonl beside the swaps
+```
+
+- **Two filters, newest window first.** The v3 pools' addresses in one `address` list with the v3 `Swap` topic; the pool manager with the v4 `Swap` topic and the pool ids in the second topic. A window the endpoint refuses for its 10,000-log cap is halved until it answers; any other refusal stops the walk, and the next run resumes from the oldest window it finished (`cursor.json`). A finished walk is not walked again: move the folder aside first.
+- **Time.** A log carries its block, not its time. Headers are read every 10,000 blocks (about 17 minutes of chain) and a swap's time is linear between the two around it; the run reads one exact block in every 25 gaps and records the largest difference (`maxTimeErrorS`, 1 s on Oct 6). The day a swap is filed under follows from that time.
+- **The two sign conventions.** v3 logs the pool's deltas (positive came in); v4 logs the swapper's (negative went in). `swapSides` in `history.ts` is the one place that knows, and the test proves it on the recording: across more than a thousand consecutive swaps of one pool, a swap that sends token 0 in never raises `sqrtPriceX96`.
+- **Files**, under `<RISK_EVM_DIR>/history/<chain>/`: `swaps/<pool>/<day>.jsonl` (block, log index, transaction, both amounts as the event signed them, `sqrtPriceX96`, liquidity, tick, the fee a v4 pool reported, the sender, the interpolated time); `<day>.done` beside each day file once every window of that UTC day is in (a pool with no swap that day has neither), with the source, the method and the time error; `headers.jsonl`; `cursor.json`; `runs.jsonl`; after an import, `hourly/<pool>.jsonl`.
+- **Prices by the hour** (`hourlyRows`): a pool's price is its last swap's in the hour, carried for up to 24 hours when an hour has none. The quote in dollars: the dollar token at par (`usdg_at_par`); another stock at its own deepest dollar pool's price that hour (`implied_from_<pool>`); the native token and its wrapper at the chain's one price for the hour, the swap-weighted median of what every native-quoted pool that swapped implies from its own price and its stock's dollar price (`native_median_of_<n>_pools`), carried up to 24 hours, so a near-empty pool pushed to an extreme is valued at the market's price, not its own. A quote with no dollar price that hour, or a token whose decimals the issuer registry does not give, leaves the swap counted and unvalued (`unpriced_swaps`), with the reason in the import's summary. No depth: the ±2% depth of Solana's replay needs the pool's layout, which is not reconstructed; `median_depth_sell_usd` is null and turnover answers with that reason.
+- **The rows.** `buildFlowRows` (`history-flow.ts`) feeds `@colosseum/risk`'s own `addSwap` and `poolFlow`: one row per pool, regime (and `all`) and window (24 h, 7 d, 28 d ending at the newest swap), `flow-0.1`, `source` and `method` naming the chain's logs and `history-evm-0.1`. A swap seen twice (a walk resumed after a crash) counts once. `asset_mint` is the stock's address as the cut spells it, the collector's spelling. The EVM pools get no `risk_pools` row (that table feeds `/risk/assets`, the plan fact sheet's exits and `/risk/recoverable`, which must not see them: DU6), so each flow row carries its own `venue`, `quote_symbol` and `quote_mint` (migration 0014; the Solana import fills them from `risk_pools`, this one from the cut), and the sheet reads the row's first. The insert leaves a row that is there alone, so rows written before migration 0014 do not gain the columns by a second import: the Solana rows are filled by the migration itself from `risk_pools`; EVM rows are removed and imported again (`delete from risk_pool_flow where pool like '0x%' and venue is null`, then `pnpm risk-evm:flow-import`), as was done on 2026-10-06.
+- **Not compared with anything.** The fee a v4 pool reports is recorded and not applied; no price here is set against the oracle (`ORACLE-VS-DEX`).
+
+### The run of 2026-10-06 (blocks 55,630,803 to 81,290,803, Sep 6 02:45Z to Oct 6 02:46Z)
+
+427 pools, 257 windows, 2,567 headers and 102 exact blocks (interpolation 4 s off at most), 4,000 queries of which 1,747 halvings and 4 waits for rate, 76 minutes: 15,388,150 swaps for 411 pools, 6.3 GB. The import wrote 6,405 rows; 417,876 swaps (2.7%) unpriced: 362,401 in the ten pools whose quote token the registry does not know, 48,155 quoted in a stock with no dollar pool in the cut, 7,306 with nothing on either side (a hook took them), 14 with no dollar price that hour. NVDA's 28 days on the sheet: 2,786,831 swaps, $977.5M, 36 pools. The native token's price is the chain's one price per hour, the swap-weighted median across its pools: implied from each pool's own price, two near-empty pools had valued themselves at 10^38 dollars.
+
+Tests: `pnpm vitest run tests/risk-evm-history.test.ts` on `fixtures/risk-evm/robinhood-history.json.gz`, a recorded quarter-day walk of seven pools (`record-history-fixture.ts`): each decoder read by hand, the sign conventions, the halving, the resume, the interpolation against exact blocks, the hourly prices and the flow rows recomputed by hand, and an insert inside a transaction that is rolled back.
+
 ## Files
 
 | File | What it is |
@@ -198,18 +303,29 @@ What the file holds, and what it does not decide:
 | `multicall.ts`, `replay.ts` | Many reads in one `eth_call`; recorded answers given back to a test |
 | `record-discovery-fixture.ts` | Re-records `fixtures/risk-evm/robinhood-discovery.json.gz` from the chain |
 | `pareto.ts`, `cut.ts` | The command for the cut; the rule applied to a discovery file and what it reports. `cut.ts` has no I/O |
+| `oracle.ts`, `oracle-import.ts` | The oracle rows of a list run, with no I/O; their insert into `risk_price_observations` |
+| `listed.ts` | A run on the asset list: its tokens and pools from the list and the cut, and the pool rows. No I/O |
+| `record-list-fixture.ts` | Re-records `fixtures/risk-evm/robinhood-list-run.json.gz`: two runs for two stocks at one block |
+| `oracles.ts`, `feeds.ts` | The command for the oracle map; the directory, the match, the confirmation and one pass. `feeds.ts` reads only through the client it is given |
+| `record-oracles-fixture.ts` | Re-records `fixtures/risk-evm/robinhood-oracles.json.gz` from the directory and the chain |
+| `history.ts` | The trade history (RU.14): decoders, filters, the window walk, block times, prices by the hour. No I/O |
+| `history-run.ts`, `history-flow.ts`, `flow-import.ts`, `flow-insert.ts` | The walk command; the swaps as `risk_pool_flow` rows (no I/O); the import command; the insert |
+| `record-history-fixture.ts` | Re-records `fixtures/risk-evm/robinhood-history.json.gz`: a quarter-day walk of seven pools |
 
-After editing `ClQuoter.sol`, run `pnpm exec tsx scripts/risk-evm/build-quoter.ts`; a test fails while the JSON is stale. The tests are in `tests/risk-evm.test.ts`. They replay `fixtures/risk-evm/robinhood-nvda-quotes.json` and the endpoint errors in `fixtures/risk-evm/rpc-errors.json`; none calls the network. The token list and the discovery are tested in `tests/risk-evm-universe.test.ts`, which replays one recorded pass for two tokens (`fixtures/risk-evm/robinhood-discovery.json.gz`). The cut is tested in `tests/risk-evm-cut.test.ts`, on the discovery of Oct 5 frozen to what the cut reads (`fixtures/risk/universe/robinhood-discovery-20261005T1947.json.gz`, made by `pnpm risk:freeze-universe-fixture <discovery.json> --chain robinhood`).
+After editing `ClQuoter.sol`, run `pnpm exec tsx scripts/risk-evm/build-quoter.ts`; a test fails while the JSON is stale. The tests are in `tests/risk-evm.test.ts`. They replay `fixtures/risk-evm/robinhood-nvda-quotes.json` and the endpoint errors in `fixtures/risk-evm/rpc-errors.json`; none calls the network. The token list and the discovery are tested in `tests/risk-evm-universe.test.ts`, which replays one recorded pass for two tokens (`fixtures/risk-evm/robinhood-discovery.json.gz`). The cut is tested in `tests/risk-evm-cut.test.ts`, on the discovery of Oct 5 frozen to what the cut reads (`fixtures/risk/universe/robinhood-discovery-20261005T1947.json.gz`, made by `pnpm risk:freeze-universe-fixture <discovery.json> --chain robinhood`). The oracle read is tested in `tests/risk-evm-oracle-run.test.ts`, on the same recording and by hand. The run on the list is tested in `tests/risk-evm-list.test.ts`, which replays two recorded runs for NVDA and GME at one block (`fixtures/risk-evm/robinhood-list-run.json.gz`): every reachable pool, then the three deepest. The oracle map is tested in `tests/risk-evm-oracles.test.ts`, which replays one recorded pass (`fixtures/risk-evm/robinhood-oracles.json.gz`: the directory and the chain's answers at block 81,164,613).
 
-## What Rodrigo's side needs before the API can serve these curves (RISK-1)
+## How these curves reach the API (RISK-1, PLAN-UNIVERSE RU.8)
 
-`scripts/risk/compute.ts` already fits every row; it needs about six lines so EVM curves keep their own symbol and method version. Line numbers are for the file as it is on `staging` on Oct 2.
+Built on 2026-10-06. The six lines this section once listed are in `scripts/risk/curve-rows.ts`, the part of `pnpm risk:compute` that has no I/O.
 
-1. In the select (lines 30 to 35), add `asset: riskAssetSnapshots.asset` and `methodVersion: riskAssetSnapshots.methodVersion`.
-2. After line 41: `const meta = new Map<string, { asset: string; version: string }>();`
-3. Inside the loop that starts at line 42: `meta.set(r.assetMint, { asset: r.asset, version: r.methodVersion });`
-4. Line 70: `assetSymbol: symbol.get(mint) ?? meta.get(mint)?.asset ?? mint.slice(0, 6),` (today an EVM row's symbol would be `0xd060`).
-5. Line 81: keep the snapshot's version when it starts with `evmq-`, otherwise `CURVE_METHOD_VERSION` as today, so Solana rows stay `risk-0.3`.
-6. Line 82, `source`: it says "routed: best split across dollar-exit pools", which is wrong for EVM rows; make it follow the version.
+- **Compute.** A snapshot whose method version starts with `evmq-` is fitted like any other and stored in `risk_depth_curves` under the symbol the collector wrote and under its own version (`evmq-0.1`), with a `source` that says "best single pool per size", not "routed". A Solana row is stored as before, `risk-0.3`, with one exception that does not occur in the local database: a Solana address with no row in `risk_pools` now gets the snapshot's own symbol, not its first six letters. Run on the 61,019 snapshots of the local database, the old and the new code wrote the same 282 rows, byte for byte.
+- **The readers.** `apps/api/src/curve-version.ts` gives the version an address is read under: `evmq-0.1` for an EVM address, `risk-0.3` for a Solana one (no Solana address starts with `0x`). The liquidity provider (`apps/api/src/liquidity.ts`), the fact sheet (`GET /risk/facts/assets/:id`) and the plan fact sheet (`apps/api/src/facts.ts`) use it, and none of them serves a curve stored for an EVM address under `risk-0.3`. An EVM sheet carries no Solana network fee and no xStocks issuer route: both are `null`. Two scripts still read every `risk-0.3` row and would pick such rows up: `pnpm risk:cost-breakdown` and `scripts/risk/lending-report.ts`.
+- **The `assets` rows.** `pnpm db:seed` writes one row per tracked stock of `scripts/risk/universe/robinhood.json`, id `robinhood:<symbol>`. Its `mint` is the address **as the cut the list names spells it** (`inputs.cut`, in `data/risk-evm/`): the place `listRun` takes it from for `asset_mint`. That is the issuer registry's spelling, mixed case for 29 of the 30 and lower case for LLY, so it is copied and never worked out as a checksum. On a machine without that cut the registry rows are seeded, the EVM rows are not, and the run says so. A row offers nothing to a plan (gate `EVM-ROWS`).
+- **The check.** `GET /risk/facts/assets/robinhood:nvda` (or the address in the collector's spelling) answers with the symbol `NVDA` and `evmq-0.1`. The lower-case address finds nothing. The other `/risk/assets/:id/…` routes find an asset through `risk_pools`, which has no EVM row (DU6), and answer 404 for these.
 
-Outside `compute.ts`: `apps/api/src/liquidity.ts:37` filters on one method version with `eq` and needs `inArray`; and each EVM token needs an `assets` row whose `mint` is the token address exactly as written in `config.ts`, because that is what `asset_mint` holds.
+**Two jobs on the founder's machine still run code built before this.** They are not touched before Oct 12, and each will write rows for the EVM addresses once these files are imported:
+
+- `com.colosseum.risk-refresh` (minute 10, bundle of Oct 2) runs the old compute: it writes each EVM curve again under `risk-0.3` with the address cut to six letters as its symbol. The readers above never serve those rows; they stay in `risk_depth_curves` until the bundle is rebuilt and someone removes them. It does not write the `evmq-0.1` rows.
+- `com.colosseum.risk-prices` (minute 14) reads every row of `risk_price_observations` in its window. With the Chainlink rows in the table it files them as a lending oracle and writes a row in `risk_reference_prices` for each EVM address, under `chain: 'solana'`. The source (`scripts/risk/prices/job.ts`) now reads Solana rows only; the installed bundle does not until it is rebuilt. `pnpm risk:prices-import` reads files, not the table, and is not affected.
+
+Known limits of this step: the provider says one method version for every answer (`risk-0.3`), also for an EVM stock; the vault's asset entries hold an EVM address in lower case, so they do not find these curves by address yet.

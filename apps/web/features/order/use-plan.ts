@@ -2,13 +2,14 @@
 import type { ChainId } from '@colosseum/schemas';
 import { useEffect, useState } from 'react';
 import { useAccount } from '../account/AccountProvider';
-import { useWalletPort } from '../wallet/WalletProvider';
-import { recallPlan, type StoredPlan } from './plan-store';
+import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
+import { readLinkedPlan, recallPlan, rememberPlan, type StoredPlan } from './plan-store';
 import { chainReady, onMock } from './readiness';
 
 // What the plan screen and the buy screen stand on: the person, their chain, and the plan with this id
-// as this tab kept it. A plan lives on one chain (gate ONE-CHAIN): one made for another chain than the
-// person's is not offered for buying.
+// as this tab kept it, or, for a plan made from a link (an agent's, AGT-2), as the API reads it back.
+// A plan lives on one chain (gate ONE-CHAIN): one made for another chain than the person's is not
+// offered for buying.
 
 export type PlanState =
   | { kind: 'loading' }
@@ -33,10 +34,25 @@ export function usePlan(id: string): PlanState {
   const port = useWalletPort();
   const { account } = useAccount();
   const [plan, setPlan] = useState<StoredPlan | null | undefined>(undefined);
+  const apiFetch = useApiFetch();
   const userId = port.userId;
   useEffect(() => {
-    setPlan(recallPlan(id, userId));
-  }, [id, userId]);
+    const kept = recallPlan(id, userId);
+    if (kept || !userId) return setPlan(kept);
+    // Not built in this tab: it may be a plan made from a link, which the API reads back by its id.
+    let mine = true;
+    setPlan(undefined);
+    void readLinkedPlan(apiFetch, id).then((proposal) => {
+      if (!mine) return;
+      if (!proposal) return setPlan(null);
+      const linked: StoredPlan = { id, userId, proposal, rollUp: null, fromLink: true };
+      rememberPlan(linked);
+      setPlan(linked);
+    });
+    return () => {
+      mine = false;
+    };
+  }, [id, userId, apiFetch]);
 
   if (port.status === 'loading' || account.status === 'loading' || plan === undefined)
     return { kind: 'loading' };

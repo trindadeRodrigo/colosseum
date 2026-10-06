@@ -58,6 +58,11 @@ export type PrepareContext = {
   chains: ChainRegistry;
   /** A stored plan by its id, or null when there is none. */
   loadProposal(id: string): Promise<BasketProposal | null>;
+  /**
+   * True when the plan was made from a link (stored with no person, gate `AGENT-LINK`): its vault's
+   * number then takes the buyer too (`basketIdOfLinked`). Left out, no plan is.
+   */
+  isLinkedPlan?(id: string): Promise<boolean>;
   /** The chain the person's plans live on (gates ONE-CHAIN, CHAIN-PICK). Refuses when there is none yet. */
   homeChain(): Promise<ChainId>;
   /** The shared portfolios that have a recipe on `chain`, each with that recipe as it is in effect. */
@@ -80,6 +85,31 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function basketIdOf(proposalId: string): string {
   const hex = createHash('sha256').update(`plan:${proposalId.toLowerCase()}`).digest('hex');
   return BigInt(`0x${hex.slice(0, 16)}`).toString();
+}
+
+/**
+ * The number of a vault bought from a plan made from a link (gate `AGENT-LINK`): from the plan's id and
+ * the buyer's user id, the first 8 bytes of the SHA-256 of `linked-plan:<id>:<user id>`. A link is
+ * shared by design, and the number is a seed of the vault's address and is stored in it: from the
+ * plan's id alone, nobody can find the vaults its buyers opened. The same person buying it again
+ * reaches the same vault. `basketIdOfLinkedPlan` in packages/sdk repeats it.
+ */
+export function basketIdOfLinked(proposalId: string, userId: string): string {
+  const hex = createHash('sha256')
+    .update(`linked-plan:${proposalId.toLowerCase()}:${userId}`)
+    .digest('hex');
+  return BigInt(`0x${hex.slice(0, 16)}`).toString();
+}
+
+/** The vault number of a buy of a stored plan: the buyer's own for a plan made from a link. */
+export function basketIdOfBuy(proposalId: string, linked: boolean, userId: string | undefined) {
+  if (!linked) return basketIdOf(proposalId);
+  if (!userId)
+    throw new Refusal(
+      403,
+      'a plan made from a link is bought by a signed-in person, as themselves',
+    );
+  return basketIdOfLinked(proposalId, userId);
 }
 
 export const lessBps = (amount: bigint, bps: number) => (amount * BigInt(10_000 - bps)) / 10_000n;
@@ -280,7 +310,10 @@ export async function planBuy(
         );
     }
 
-    return buySteps(entry, owner, basketIdOf(req.proposalId ?? ''), cents, assets, targets);
+    const id = req.proposalId ?? '';
+    const linked = (await ctx.isLinkedPlan?.(id)) ?? false;
+    const basketId = basketIdOfBuy(id, linked, ctx.principal.userId);
+    return buySteps(entry, owner, basketId, cents, assets, targets);
   });
 }
 

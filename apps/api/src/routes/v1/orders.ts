@@ -19,6 +19,7 @@ import { prepareOrder } from '../../orders/prepare';
 import { recordPublished } from '../../orders/shared';
 import {
   insertOrder,
+  isLinkedProposal,
   loadFamilies,
   loadOrder,
   loadProposal,
@@ -118,6 +119,7 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
         principal: signedIn(req),
         chains: deps.chains,
         loadProposal: (id) => loadProposal(deps.db, id),
+        isLinkedPlan: (id) => isLinkedProposal(deps.db, id),
         homeChain: () => homeChain(deps.db, signedIn(req)),
         loadFamilies: (chain) => loadFamilies(deps.db, chain),
         shared: {
@@ -169,7 +171,13 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
         response: { 200: BuildLegResponse, default: OrderError },
       },
     },
-    async (req) => buildLeg(deps, await ownOrder(deps, req, req.params.id), req.params.legId),
+    async (req) =>
+      buildLeg(
+        deps,
+        await ownOrder(deps, req, req.params.id),
+        req.params.legId,
+        signedIn(req).userId,
+      ),
   );
 
   f.post(

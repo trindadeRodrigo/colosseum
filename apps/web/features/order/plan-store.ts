@@ -13,6 +13,11 @@ export type StoredPlan = {
   proposal: BasketProposal;
   /** The risk roll-up, when the API sent one with the plan. Never worked out here. */
   rollUp: RiskRollUp | null;
+  /**
+   * The plan was made from a link (`POST /v1/baskets/propose`, an agent's), not built in this tab:
+   * read back from the API by its id, and said so on the plan screen.
+   */
+  fromLink?: boolean;
 };
 
 const KEY = (id: string) => `tf-plan:${id}`;
@@ -46,7 +51,29 @@ export function recallPlan(id: string, userId: string | null): StoredPlan | null
       userId,
       proposal: proposal.data,
       rollUp: rollUp?.success ? rollUp.data : null,
+      ...(read.fromLink === true ? { fromLink: true } : {}),
     };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A plan made from a link, read from the API by its id (`GET /v1/baskets/{id}`): what an agent proposed
+ * for a person it could not sign in as. Null when the API has none by that id, does not answer, or
+ * answers something that is not a plan.
+ */
+export async function readLinkedPlan(
+  apiFetch: (path: string) => Promise<Response>,
+  id: string,
+): Promise<BasketProposal | null> {
+  try {
+    const res = await apiFetch(`/v1/baskets/${encodeURIComponent(id)}`);
+    if (!res.ok) return null;
+    const body = (await res.json()) as { id?: unknown; proposal?: unknown };
+    if (body.id !== id) return null;
+    const proposal = BasketProposal.safeParse(body.proposal);
+    return proposal.success ? proposal.data : null;
   } catch {
     return null;
   }
