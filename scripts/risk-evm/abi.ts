@@ -26,6 +26,9 @@ export const SEL = {
   getTickBitmap: '1c7ccb4c', // getTickBitmap(bytes32,int16)  v4 StateView
   getTickLiquidity: 'caedab54', // getTickLiquidity(bytes32,int24)  v4 StateView
   weth9: '4aa4a4fc', // WETH9()  v4 PositionManager: the wrapped native coin it unwraps
+  description: '7284e416', // description()  Chainlink feed
+  latestRoundData: 'feaf968c', // latestRoundData()  Chainlink feed
+  aggregator: '245a7bfc', // aggregator()  Chainlink feed proxy
 } as const;
 
 /** Event topics: the keccak-256 of the signature beside them. Each is checked against a recorded log. */
