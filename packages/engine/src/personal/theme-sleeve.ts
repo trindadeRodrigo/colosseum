@@ -172,6 +172,15 @@ export function placeThemeSleeve(
       } else noLine.push(n);
     }
     const caps = chosen.map((n) => capOf(n.asset));
+    // A new line whose own limit (its exit ceiling, the cap on one stock) is under the least a line
+    // can be is left out for that limit, before an issuer is read, and its line goes to the next.
+    const cannot = chosen.filter(
+      (n, i) => !book.lines.has(n.asset.id) && (caps[i]?.cents ?? 0) < w.minLine,
+    );
+    if (cannot.length > 0) {
+      for (const n of cannot) dropped.set(n.asset.id, caps[chosen.indexOf(n)]?.why as Reason);
+      continue;
+    }
     limits = caps.map((c) => Math.max(0, c.cents));
     whys = caps.map((c) => c.why);
     // Equal parts within each name's own cap; then each issuer within its room, its names scaled
