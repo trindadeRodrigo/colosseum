@@ -172,13 +172,18 @@ export function PlanLegs({
                   <span className="font-medium">{leg.name}</span>
                   <span aria-hidden="true">·</span>
                   <span className="font-mono tabular-nums">{leg.weightLabel}</span>
-                  <span aria-hidden="true">·</span>
-                  {leg.rate === null ? (
-                    <span>—</span>
-                  ) : (
-                    <span className="font-mono">
-                      <ProvenancePin value={leg.rate.afterHaircut} obs={leg.rate.obs} drop={lock} />
-                    </span>
+                  {/* a leg with no rate says nothing about one: no dash in its place */}
+                  {leg.rate !== null && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span className="font-mono">
+                        <ProvenancePin
+                          value={leg.rate.afterHaircut}
+                          obs={leg.rate.obs}
+                          drop={lock}
+                        />
+                      </span>
+                    </>
                   )}
                   {sourced && <span>{text.afterHaircut}</span>}
                   {mock && (leg.rate === null || pinState(leg.rate.obs) !== 'mock') && <MockWord />}
