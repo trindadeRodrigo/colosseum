@@ -18,6 +18,8 @@ import {
   exitTimesIn,
   goalCuesIn,
   horizonsIn,
+  marketShareIn,
+  marketsIn,
   mentionsIn,
   mixIn,
   refusalsIn,
@@ -1028,7 +1030,7 @@ describe('a stated mix and a named market (gate EXPLICIT-MIX)', () => {
     expect(ai.flags).toContain('market_not_on_shelf:ai');
     expect(ai.sheet?.themes).toEqual([]);
     expect(ai.assumptions).toContain(
-      'No shared portfolio on your chain holds “AI” yet, so the plan does not start from one.',
+      'No shared portfolio on your chain holds “AI” yet; the nearest is The Seven, which you can choose.',
     );
     const sp = intake(
       'I want to grow $2,000 in the S&P 500 over 5 years, all of it in stocks',
@@ -1041,6 +1043,96 @@ describe('a stated mix and a named market (gate EXPLICIT-MIX)', () => {
     );
     expect(unnamed.flags).toContain('no_cue:market:big_tech');
     expect(unnamed.questions.map((q) => q.field)).toEqual(['themes']);
+  });
+
+  it('a market with its share of the money written is held, and the risk is never asked', () => {
+    // Turn 1 of the failed chat: "invest in the big tech industry" is the whole 2k.
+    const first = intake(
+      FIRST,
+      reply({
+        goal: 'grow',
+        amountUsd: 2000,
+        horizonMonths: 60,
+        openEnded: true,
+        markets: ['big_tech'],
+      }),
+    );
+    expect(first.questions).toEqual([]);
+    expect(first.flags).toContain('mix_from_market');
+    expect(first.mix).toEqual({ growthBps: 10_000, dollarYieldBps: 0, goldBps: 0, cashBps: 0 });
+    expect(first.sheet).toMatchObject({ themes: ['the-seven'], risk: 'high', horizonMonths: 60 });
+    expect(first.sheet?.rules.glide).toBe(false);
+    expect(first.assumptions.filter((s) => /limits for/.test(s))).toEqual([
+      'To hold “big tech”, the plan uses the limits for high risk.',
+    ]);
+    // A sum: "put $500 in US stocks" of $2,000 is 25% in stocks, the rest in cash, at low risk.
+    const sum = intake(
+      'I want to grow $2,000 over 5 years. Put $500 in US stocks',
+      reply({ goal: 'grow', amountUsd: 2000, horizonMonths: 60, markets: ['us_market'] }),
+    );
+    expect(sum.mix).toEqual({ growthBps: 2500, dollarYieldBps: 0, goldBps: 0, cashBps: 7500 });
+    expect(sum.sheet).toMatchObject({ themes: ['the-500'], risk: 'low' });
+    // "All of it in AI": held in stocks, with the nearest portfolio offered.
+    const ai = intake(
+      'I want to grow $2,000 over 5 years, all of it in AI',
+      reply({ goal: 'grow', amountUsd: 2000, horizonMonths: 60, markets: ['ai'] }),
+    );
+    expect(ai.questions).toEqual([]);
+    expect(ai.sheet).toMatchObject({ risk: 'high', themes: [], mix: { growthBps: 10_000 } });
+    expect(ai.assumptions).toContain(
+      'No shared portfolio on your chain holds “AI” yet; the nearest is The Seven, which you can choose.',
+    );
+    for (const t of [
+      'invest in big tech',
+      'all of it in AI',
+      'put it in US stocks',
+      'investir em big techs',
+    ])
+      expect(marketShareIn(t, marketsIn(t)[0]?.at ?? 0), t).toEqual({ kind: 'whole' });
+    for (const t of ['I like AI', "I'm interested in big tech", 'what about the S&P?'])
+      expect(marketShareIn(t, marketsIn(t)[0]?.at ?? 0), t).toBeNull();
+  });
+
+  it('a market with no share said asks how much of the money, once, and never the risk', () => {
+    const r = reply({ goal: 'grow', amountUsd: 2000, horizonMonths: 60, markets: ['ai'] });
+    const text = 'I want to grow $2,000 over 5 years. I like AI';
+    const asked = intake(text, r);
+    expect(asked.questions.map((q) => q.field)).toEqual(['mix']);
+    expect(asked.questions[0]?.text).toBe('How much of the $2,000 for AI?');
+    expect(asked.flags).toContain('market_share_unclear');
+    expect(asked.sheet).toBeNull();
+    const pt = intake('Quero crescer US$ 2.000 em 5 anos. Gosto de IA', { ...r, language: 'pt' });
+    expect(pt.questions.map((q) => q.text)).toEqual(['Quanto dos US$ 2.000 para IA?']);
+    // The answer, as a mix: held, and the risk follows it.
+    const answered = intake(text, r, {
+      answers: { mix: { growthBps: 5000, dollarYieldBps: 0, goldBps: 0, cashBps: 5000 } },
+    });
+    expect(answered.questions).toEqual([]);
+    expect(answered.sheet).toMatchObject({ risk: 'low', mix: { growthBps: 5000, cashBps: 5000 } });
+  });
+
+  it('a market off the shelf offers the nearest: big tech and AI The Seven, the US market The 500', () => {
+    const r = (markets: string[]) =>
+      reply({ goal: 'grow', amountUsd: 2000, horizonMonths: 60, markets });
+    const noSeven = portfolios.filter((p) => p.slug !== 'the-seven');
+    const big = intake('Invest $2,000 in big tech for 5 years', r(['big_tech']), {
+      portfolios: noSeven,
+    });
+    expect(big.assumptions).toContain(
+      'No shared portfolio on your chain holds “big tech” yet; the nearest is The 500, which you can choose.',
+    );
+    const no500 = portfolios.filter((p) => p.slug !== 'the-500');
+    const us = intake('Invest $2,000 in US stocks for 5 years', r(['us_market']), {
+      portfolios: no500,
+    });
+    expect(us.assumptions).toContain(
+      'No shared portfolio on your chain holds “US stocks” yet; the nearest is The Seven, which you can choose.',
+    );
+    const none = intake('Invest $2,000 in AI for 5 years', r(['ai']), { portfolios: [] });
+    expect(none.assumptions).toContain(
+      'No shared portfolio on your chain holds “AI” yet, so the plan does not start from one.',
+    );
+    expect(big.questions.map((q) => q.field)).not.toContain('risk');
   });
 
   it('the risk a mix needs: the lowest risk whose cap per issuer admits its stocks', () => {

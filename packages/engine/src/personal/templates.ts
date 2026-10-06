@@ -732,6 +732,21 @@ export const QUESTION_TEMPLATES = {
     en: 'You wrote {pct}% and the other half, which come to more than the whole. Which split do you mean: {pct}% and {rest}%, or half and half?',
     pt: 'Você escreveu {pct}% e a outra metade, o que passa do total. Qual divisão você quer: {pct}% e {rest}%, ou metade e metade?',
   },
+  // A market named with no share of the money said ("I like AI"), gate EXPLICIT-MIX: asked once, in
+  // place of the risk.
+  mix: {
+    en: 'How do you want the money held: how much in stocks and crypto, and how much in cash?',
+    pt: 'Como você quer o dinheiro: quanto em ações e cripto, e quanto em caixa?',
+  },
+  marketShare: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
+    en: 'How much of the ${amount|amount} for {market}?',
+    pt: 'Quanto dos US$ {amount|amount} para {market}?',
+  },
+  marketShareNoAmount: {
+    en: 'How much of the money for {market}?',
+    pt: 'Quanto do dinheiro para {market}?',
+  },
   incomeTargetUsdMonthly: {
     en: 'How much income a month, in dollars, do you aim for?',
     pt: 'Quanto de renda por mês, em dólares, você busca?',
@@ -917,6 +932,10 @@ export const ASSUMPTION_TEMPLATES = {
   MARKET_NONE: {
     en: 'No shared portfolio on your chain holds “{words}” yet, so the plan does not start from one.',
     pt: 'Nenhum portfólio compartilhado na sua rede cobre “{words}” ainda, então o plano não parte de um.',
+  },
+  MARKET_NEAREST: {
+    en: 'No shared portfolio on your chain holds “{words}” yet; the nearest is {nearest}, which you can choose.',
+    pt: 'Nenhum portfólio compartilhado na sua rede cobre “{words}” ainda; o mais próximo é {nearest}, que você pode escolher.',
   },
   MAX_YIELD_LATER: {
     en: 'A part that seeks the highest yield is not built yet, so the part that seeks the goal is built as a goal to grow.',

@@ -16,8 +16,10 @@ import {
   goalCuesIn,
   horizonsIn,
   looseRiskWordsIn,
+  MARKET_NEAREST,
   MARKET_SLUG,
   type Market,
+  marketShareIn,
   marketsIn,
   maxYieldAskedIn,
   mentionsIn,
@@ -61,6 +63,7 @@ export const QUESTION_FIELDS = [
   'goal',
   'amountUsd',
   'sleeves',
+  'mix',
   'incomeTargetUsdMonthly',
   'horizonMonths',
   'risk',
@@ -169,6 +172,7 @@ export type IntakeResult = {
 };
 
 const RISKS = ['low', 'medium', 'high'] as const;
+const WHOLE_MIX_BPS = 10_000;
 
 /**
  * The risk a mix needs, as the intake estimates it (gate EXPLICIT-MIX): the lowest risk whose cap per
@@ -566,7 +570,8 @@ export function runIntake(input: IntakeInput): IntakeResult {
       unclear.add('themes');
     }
   // A market with no shared portfolio on the person's shelf is said in one line, never guessed.
-  const marketsMissing: string[] = [];
+  // It offers the nearest portfolio the shelf has (big tech and AI: The Seven; the US market: The 500).
+  const marketsMissing: { words: string; nearest: string | null }[] = [];
   for (const { market, words } of marketWords) {
     const slug = MARKET_SLUG[market];
     if (slug && portfolios.some((p) => p.slug === slug)) {
@@ -574,7 +579,10 @@ export function runIntake(input: IntakeInput): IntakeResult {
       if (!themes.includes(slug)) draft.themes = [...themes, slug];
     } else {
       flags.push(`market_not_on_shelf:${market}`);
-      marketsMissing.push(words);
+      const near = MARKET_NEAREST[market]
+        .map((s) => portfolios.find((p) => p.slug === s))
+        .find((p) => p !== undefined);
+      marketsMissing.push({ words, nearest: near?.name ?? null });
     }
   }
 
@@ -613,8 +621,54 @@ export function runIntake(input: IntakeInput): IntakeResult {
   };
   // The mix (gate EXPLICIT-MIX): the person's answer over what was read. A mix is of the whole plan,
   // so a split read beside it is not kept: the percents are the mix's.
-  let mix: PersonalMix | null = 'mix' in answers ? (answers.mix ?? null) : mixRead;
-  const mixWords = (m: PersonalMix) => written?.words ?? mixPhrase(m, language);
+  // A market is a stated holding too (EXPLICIT-MIX): one whose share of the money is written ("invest
+  // in big tech", "all of it in AI", "put $1,000 in US stocks") is held, that share in stocks and the
+  // rest in cash; one with no share said ("I like AI") asks how much, once, and never the risk. Not
+  // beside a split, which says the shares itself, nor on a goal of income or to protect.
+  let marketMix: { mix: PersonalMix; words: string } | null = null;
+  let marketShareAsk: string | null = null;
+  const splitWritten =
+    split.ofMoney.length > 0 ||
+    split.pairs.length > 0 ||
+    draft.sleeves !== null ||
+    answers.sleeves !== undefined;
+  if (
+    !mixRead &&
+    !('mix' in answers) &&
+    !splitWritten &&
+    marketWords.length > 0 &&
+    value.goal !== 'income' &&
+    value.goal !== 'protect'
+  ) {
+    const shares = marketWords.map((w) => ({ words: w.words, share: marketShareIn(text, w.at) }));
+    const whole = shares.find((x) => x.share?.kind === 'whole');
+    const sums = shares.flatMap((x) => (x.share?.kind === 'amount' ? [x.share.value] : []));
+    const total = sums.reduce((n, x) => n + x, 0);
+    let growthBps: number | null = null;
+    if (whole) growthBps = WHOLE_MIX_BPS;
+    else if (sums.length > 0 && value.amountUsd !== null && total <= value.amountUsd)
+      growthBps = Math.round((total / value.amountUsd) * WHOLE_MIX_BPS);
+    const named = whole ?? shares.find((x) => x.share !== null) ?? shares[0];
+    if (growthBps !== null && growthBps > 0 && named) {
+      const parsed = PersonalMix.safeParse({
+        growthBps,
+        dollarYieldBps: 0,
+        goldBps: 0,
+        cashBps: WHOLE_MIX_BPS - growthBps,
+      });
+      if (parsed.success) {
+        marketMix = { mix: parsed.data, words: named.words };
+        flags.push('mix_from_market');
+      }
+    } else if (named && (sums.length === 0 || value.amountUsd !== null)) {
+      // No share said, or sums that come to more than the money: how much is asked.
+      marketShareAsk = named.words;
+      flags.push('market_share_unclear');
+    }
+  }
+  let mix: PersonalMix | null =
+    'mix' in answers ? (answers.mix ?? null) : (mixRead ?? marketMix?.mix ?? null);
+  const mixWords = (m: PersonalMix) => written?.words ?? marketMix?.words ?? mixPhrase(m, language);
   // A goal of income or to protect holds no stocks (gate PROTECT-NO-STOCKS): a mix with stocks on one
   // is asked once, as whether the goal is to grow or the plan holds no stocks. An answered goal that
   // keeps income or protect keeps the goal, and the mix is not held, and said so.
@@ -633,7 +687,7 @@ export function runIntake(input: IntakeInput): IntakeResult {
   }
   // With a mix, the risk is never asked: the limits follow what is held, and the read-back says so.
   // While the goal is asked against the mix, nothing else about the risk is asked either.
-  if (mix || mixConflict) {
+  if (mix || mixConflict || marketShareAsk !== null) {
     unclear.delete('risk');
     if (mix && !mixConflict) {
       value.risk = answers.risk ?? riskForMixEstimate(mix);
@@ -660,7 +714,11 @@ export function runIntake(input: IntakeInput): IntakeResult {
       case 'amountUsd':
         return value[field] === null || unclear.has(field);
       case 'risk':
-        return !mixConflict && (value[field] === null || unclear.has(field));
+        return (
+          !mixConflict && marketShareAsk === null && (value[field] === null || unclear.has(field))
+        );
+      case 'mix':
+        return marketShareAsk !== null;
       case 'horizonMonths':
         return !horizonOpen && (value[field] === null || unclear.has(field));
       case 'sleeves':
@@ -681,6 +739,10 @@ export function runIntake(input: IntakeInput): IntakeResult {
       return { id: 'amountOtherCurrency', params: { ...otherCurrency } };
     if (field === 'sleeves' && mismatch) return { id: 'sleevesMismatch', params: { ...mismatch } };
     if (field === 'risk' && keptSafe) return { id: 'riskGoalPart', params: {} };
+    if (field === 'mix' && marketShareAsk !== null)
+      return value.amountUsd !== null
+        ? { id: 'marketShare', params: { amount: value.amountUsd, market: marketShareAsk } }
+        : { id: 'marketShareNoAmount', params: { market: marketShareAsk } };
     if (field === 'goal' && mixConflict && mix && value.goal)
       return { id: 'goalMixConflict', params: { words: mixWords(mix), goal: value.goal } };
     return { id: field, params: {} };
@@ -755,7 +817,9 @@ export function runIntake(input: IntakeInput): IntakeResult {
   if (mix && !mixConflict && answers.risk === undefined && value.risk !== null)
     assume('MIX_LIMITS', { words: mixWords(mix), risk: value.risk });
   if (mixDropped) assume('MIX_DROPPED', mixDropped);
-  for (const words of marketsMissing) assume('MARKET_NONE', { words });
+  for (const { words, nearest } of marketsMissing)
+    if (nearest) assume('MARKET_NEAREST', { words, nearest });
+    else assume('MARKET_NONE', { words });
   if (sheet && !sheet.rules.glide && !horizonOpen && answers.rules === undefined)
     assume('GLIDE_OFFER');
 
@@ -800,11 +864,11 @@ function limitsOf(read: LimitsDraft): PersonalLimits | null {
 
 type Value = string | number;
 type Values = Record<
-  Exclude<QuestionField, 'chains' | 'sleeves'>,
+  Exclude<QuestionField, 'chains' | 'sleeves' | 'mix'>,
   string | number | string[] | null | undefined
 >;
 function readOf(field: QuestionField, value: Values): IntakeQuestion['read'] {
-  if (field === 'chains' || field === 'sleeves') return undefined;
+  if (field === 'chains' || field === 'sleeves' || field === 'mix') return undefined;
   const v = value[field];
   return v === null || v === undefined ? undefined : v;
 }

@@ -593,11 +593,54 @@ export const MARKET_SLUG: Record<Market, string | null> = {
   ai: null,
 };
 /** The markets the text names, with the words, in the order of the list. */
-export function marketsIn(text: string): { market: Market; words: string }[] {
+export function marketsIn(text: string): { market: Market; words: string; at: number }[] {
   return MARKETS.flatMap(([market, pattern]) => {
     const m = pattern.exec(text);
-    return m ? [{ market, words: m[0] }] : [];
+    return m ? [{ market, words: m[0], at: m.index }] : [];
   });
+}
+
+/**
+ * The nearest shared portfolios to a market, in order (gate EXPLICIT-MIX): offered when the market
+ * itself has none on the person's shelf, so "no list" is never said without an offer.
+ */
+export const MARKET_NEAREST: Record<Market, readonly string[]> = {
+  big_tech: ['the-seven', 'the-500'],
+  ai: ['the-seven', 'the-500'],
+  us_market: ['the-500', 'the-seven'],
+};
+
+// How much of the money goes to a market, in the words just before it (gate EXPLICIT-MIX): "invest in
+// big tech", "all of it in AI", "put it in US stocks" is the whole; "put $1,000 in AI" is that sum.
+// "I like AI", "I'm interested in big tech" say no share: it is asked.
+const INTO = String.raw`(?:in|into|on|em|no|na|nos|nas)\s+(?:the\s+|a\s+|o\s+|os\s+|as\s+)?`;
+const PUT = String.raw`(?:invest\p{L}*|put|place|allocate|aplicar|investir|colocar|botar)`;
+const WHOLE_BEFORE = new RegExp(
+  String.raw`(?<![\p{L}])(?:${PUT}(?:\s+(?:it|all|all of it|everything|my money|the money|this|that|tudo|isso|o dinheiro|meu dinheiro))?|(?:all|everything)(?:\s+of\s+(?:it|my money|the money))?|tudo)\s+${INTO}$`,
+  'iu',
+);
+const AMOUNT_BEFORE = new RegExp(
+  String.raw`(?<![\p{L}])${PUT}\s+(?:the\s+|my\s+|os\s+|meus\s+)?(?<amt>\S+(?:\s+(?:k|mil|thousand|dollars|d[oó]lares|bucks))?)\s+${INTO}$`,
+  'iu',
+);
+/** The share of the money the text gives a market written at `at`: the whole, a sum, or none said. */
+export function marketShareIn(
+  text: string,
+  at: number,
+): { kind: 'whole' } | { kind: 'amount'; value: number } | null {
+  // The clause the market is written in.
+  const before =
+    text
+      .slice(0, at)
+      .split(/[.;!?\n]/)
+      .at(-1) ?? '';
+  const amount = AMOUNT_BEFORE.exec(before);
+  if (amount) {
+    const m = mentionsIn(amount.groups?.amt ?? '').find((x) => x.kind === 'amount' && !x.perMonth);
+    if (m && (m.currency === null || m.currency === 'USD'))
+      return { kind: 'amount', value: m.value };
+  }
+  return WHOLE_BEFORE.test(before) ? { kind: 'whole' } : null;
 }
 
 // A text in a language other than English and Portuguese (gate EXPLICIT-MIX: any language is read,
