@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ApiError } from './api';
 import {
   Address,
+  AssetId,
   Bps,
   ChainId,
   chainFamily,
@@ -62,6 +63,18 @@ export const TradeExpected = z.object({
 });
 export type TradeExpected = z.infer<typeof TradeExpected>;
 
+/**
+ * One token a `withdraw` step takes out of a vault, in kind, to the vault's owner and nobody else.
+ * `amountRaw` null is all the vault holds of it when the step is built; `heldRaw` is what the vault
+ * held when the order was planned, which is what a review shows beside it.
+ */
+export const LegWithdrawal = z.object({
+  asset: AssetId,
+  amountRaw: RawAmount.nullable(),
+  heldRaw: RawAmount,
+});
+export type LegWithdrawal = z.infer<typeof LegWithdrawal>;
+
 export const LegBase = z.object({
   id: z.string().min(1),
   /** Null for keeper legs. */
@@ -83,6 +96,8 @@ export const LegBase = z.object({
    * moves is `Order.depositRaw`.
    */
   cashRaw: RawAmount.optional(),
+  /** What a `withdraw` step takes out, each token once. Absent on any other step. */
+  withdrawals: z.array(LegWithdrawal).min(1).optional(),
   trades: z.array(Trade),
   /**
    * One entry per trade, in the order of `trades`: entry `i` is trade `i`. Empty for a leg with no
@@ -297,8 +312,18 @@ export const IntentRequest = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('withdraw'),
+    /** One vault per order for now: the first, and a second is refused. */
     vaults: z.array(Address).min(1),
+    /** Not offered yet: `true` is refused. The tokens leave as they are, to the vault's owner. */
     sellToCash: z.boolean(),
+    /**
+     * Which tokens, each once. `amountRaw` left out or null: all the vault holds of that token. The
+     * whole list left out: everything the vault holds.
+     */
+    withdrawals: z
+      .array(z.object({ asset: AssetId, amountRaw: RawAmount.nullable().optional() }))
+      .min(1)
+      .optional(),
   }),
   z.object({ type: z.literal('settings'), vault: Address, autoFollow: z.boolean() }),
 ]);

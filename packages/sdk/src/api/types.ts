@@ -784,6 +784,10 @@ export type PostOrdersBody =
       type: 'withdraw';
       vaults: (string | string)[];
       sellToCash: boolean;
+      withdrawals?: {
+        asset: string;
+        amountRaw?: string | null;
+      }[];
     }
   | {
       type: 'settings';
@@ -822,6 +826,11 @@ export type PostOrdersResponse = {
     signer: 'owner' | 'keeper';
     description: string;
     cashRaw?: string;
+    withdrawals?: {
+      asset: string;
+      amountRaw: string | null;
+      heldRaw: string;
+    }[];
     trades: {
       sell: string;
       buy: string;
@@ -912,6 +921,11 @@ export type GetOrdersByIdResponse = {
     signer: 'owner' | 'keeper';
     description: string;
     cashRaw?: string;
+    withdrawals?: {
+      asset: string;
+      amountRaw: string | null;
+      heldRaw: string;
+    }[];
     trades: {
       sell: string;
       buy: string;
@@ -1077,6 +1091,11 @@ export type PostOrdersByIdLegsByLegIdCancelResponse = {
     signer: 'owner' | 'keeper';
     description: string;
     cashRaw?: string;
+    withdrawals?: {
+      asset: string;
+      amountRaw: string | null;
+      heldRaw: string;
+    }[];
     trades: {
       sell: string;
       buy: string;
@@ -1177,6 +1196,11 @@ export type PostOrdersByIdLegsByLegIdReportResponse = {
     signer: 'owner' | 'keeper';
     description: string;
     cashRaw?: string;
+    withdrawals?: {
+      asset: string;
+      amountRaw: string | null;
+      heldRaw: string;
+    }[];
     trades: {
       sell: string;
       buy: string;

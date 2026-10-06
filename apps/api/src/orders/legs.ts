@@ -44,6 +44,7 @@ import {
   type StoredOrder,
   TakenElsewhere,
 } from './store';
+import { buildWithdraw } from './withdraw';
 
 // Building a leg and settling it (DESIGN-VAULT 3.3). The API builds unsigned transactions and relays
 // signed ones. It holds no key and signs nothing.
@@ -142,6 +143,7 @@ async function buildFor(
   const { request, order } = stored;
   if (request.type === 'publish' || request.type === 'follow')
     return buildShared(deps, stored, leg, entry, owner, nonce);
+  if (request.type === 'withdraw') return buildWithdraw(request, leg, entry, owner, nonce);
   if (request.type !== 'buy' || !(request.proposalId || request.family))
     throw new Refusal(501, `a ${request.type} order cannot be built yet`);
   const { adapter } = entry;

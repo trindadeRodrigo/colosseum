@@ -4937,6 +4937,32 @@
                       },
                       "sellToCash": {
                         "type": "boolean"
+                      },
+                      "withdrawals": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "asset": {
+                              "type": "string",
+                              "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                            },
+                            "amountRaw": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": ["asset"]
+                        }
                       }
                     },
                     "required": ["type", "vaults", "sellToCash"]
@@ -5076,6 +5102,38 @@
                             "type": "string",
                             "maxLength": 78,
                             "pattern": "^(?:0|[1-9]\\d*)$"
+                          },
+                          "withdrawals": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "asset": {
+                                  "type": "string",
+                                  "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                },
+                                "amountRaw": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 78,
+                                      "pattern": "^(?:0|[1-9]\\d*)$"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "heldRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                }
+                              },
+                              "required": ["asset", "amountRaw", "heldRaw"],
+                              "additionalProperties": false
+                            }
                           },
                           "trades": {
                             "type": "array",
@@ -5626,6 +5684,38 @@
                             "type": "string",
                             "maxLength": 78,
                             "pattern": "^(?:0|[1-9]\\d*)$"
+                          },
+                          "withdrawals": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "asset": {
+                                  "type": "string",
+                                  "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                },
+                                "amountRaw": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 78,
+                                      "pattern": "^(?:0|[1-9]\\d*)$"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "heldRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                }
+                              },
+                              "required": ["asset", "amountRaw", "heldRaw"],
+                              "additionalProperties": false
+                            }
                           },
                           "trades": {
                             "type": "array",
@@ -6654,6 +6744,38 @@
                             "maxLength": 78,
                             "pattern": "^(?:0|[1-9]\\d*)$"
                           },
+                          "withdrawals": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "asset": {
+                                  "type": "string",
+                                  "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                },
+                                "amountRaw": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 78,
+                                      "pattern": "^(?:0|[1-9]\\d*)$"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "heldRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                }
+                              },
+                              "required": ["asset", "amountRaw", "heldRaw"],
+                              "additionalProperties": false
+                            }
+                          },
                           "trades": {
                             "type": "array",
                             "items": {
@@ -7246,6 +7368,38 @@
                             "type": "string",
                             "maxLength": 78,
                             "pattern": "^(?:0|[1-9]\\d*)$"
+                          },
+                          "withdrawals": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "asset": {
+                                  "type": "string",
+                                  "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                },
+                                "amountRaw": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 78,
+                                      "pattern": "^(?:0|[1-9]\\d*)$"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "heldRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                }
+                              },
+                              "required": ["asset", "amountRaw", "heldRaw"],
+                              "additionalProperties": false
+                            }
                           },
                           "trades": {
                             "type": "array",
