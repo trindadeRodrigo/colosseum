@@ -42,7 +42,21 @@ import { riskAnswer } from './stub-risk';
 
 const PORT = Number(process.env.STUB_API_PORT ?? 3901);
 const ORIGIN = process.env.WEB_ORIGIN ?? 'http://localhost:3100';
-const CHAIN = 'solana' as const;
+/**
+ * The chain the stub's mock runs: Solana by default, Robinhood Chain with STUB_CHAIN=robinhood, where
+ * a buy is an approval of the deposit and a create that trades (the EVM mock's capabilities).
+ */
+const CHAIN = (process.env.STUB_CHAIN === 'robinhood' ? 'robinhood' : 'solana') as
+  | 'solana'
+  | 'robinhood';
+const CHAIN_NAME = CHAIN === 'robinhood' ? 'Robinhood Chain' : 'Solana';
+const GAS =
+  CHAIN === 'robinhood' ? { symbol: 'ETH', decimals: 18 } : { symbol: 'SOL', decimals: 9 };
+/** What the stub's faucet gives a wallet in gas: a little of the chain's own coin. */
+const GAS_FAUCET = CHAIN === 'robinhood' ? '1000000000000000000' : '1000000000';
+/** The owner a request names on this chain's family. */
+const ownerIn = (o: unknown): string =>
+  ((o ?? {}) as { solana?: string; evm?: string })[CHAIN === 'robinhood' ? 'evm' : 'solana'] ?? '';
 const PLAN_ID = '3c1f9a7e-5b2d-4c8e-9f0a-1b2c3d4e5f60';
 /** The plan's weights on the mock shelf; the rest is cash. */
 const WEIGHTS: Target[] = [
@@ -154,7 +168,7 @@ function doubleFor(owner: string) {
   };
   // A wallet first seen here gets mock gas, as from a faucet: a publish or a follow deposits nothing,
   // and its one step still pays the network fee.
-  adapter.mock.fund(owner, { gasRaw: '1000000000' });
+  adapter.mock.fund(owner, { gasRaw: GAS_FAUCET });
   const made = apiDouble(w, { basketId: basketIdOfPlan(PLAN_ID), targets: WEIGHTS });
   world.double = { owner, api: made.api, buy: made.buy, place: made.place };
   return world.double;
@@ -471,7 +485,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     const owner = world.double?.owner ?? lastWallet;
     for (const who of [owner, lastWallet].filter((x): x is string => Boolean(x)))
       world.adapter.mock.fund(who, {
-        gasRaw: '1000000000',
+        gasRaw: GAS_FAUCET,
         assets: { [world.adapter.mock.cash]: String(Math.round(body.cashUsd * 1_000_000)) },
       });
     return send(res, 200, { chain: CHAIN, provenance: 'mock', wallets: [] });
@@ -491,7 +505,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     };
     return send(res, 200, {
       chain: CHAIN,
-      name: 'Solana',
+      name: CHAIN_NAME,
       mode: 'mock',
       provenance: 'mock',
       wallet,
@@ -508,8 +522,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       gas: {
         ...stamp,
         method: 'MOCK: the wallet’s gas on the mock chain',
-        symbol: 'SOL',
-        decimals: 9,
+        ...GAS,
         haveRaw: f.gasHaveRaw,
         needRaw: f.gasNeedRaw,
         missingRaw: missing(f.gasNeedRaw, f.gasHaveRaw),
@@ -532,15 +545,17 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     const prices = ids.length ? await adapter.getPrices(ids) : [];
     const vaults = states.map((v) => ({ ...view(v, prices, listed), provenance: 'mock' }));
     return send(res, 200, {
-      chains: [{ chain: CHAIN, name: 'Solana', mode: 'mock', provenance: 'mock', vaults, prices }],
+      chains: [
+        { chain: CHAIN, name: CHAIN_NAME, mode: 'mock', provenance: 'mock', vaults, prices },
+      ],
       disclaimer: 'MOCK',
     });
   }
   if (path === '/v1/orders' && method === 'POST') {
-    const body = (await read(req)) as Body & { owner?: { solana?: string }; amountUsd: number };
+    const body = (await read(req)) as Body & { owner?: unknown; amountUsd: number };
     if (body.type !== 'buy' || body.family !== undefined)
       return send(res, 200, await placeShared(body));
-    const owner = body.owner?.solana;
+    const owner = ownerIn(body.owner);
     if (!owner) return send(res, 422, { error: 'a buy names its owner' });
     return send(res, 200, await doubleFor(owner).buy(body.amountUsd));
   }

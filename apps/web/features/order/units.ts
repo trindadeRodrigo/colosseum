@@ -1,4 +1,5 @@
 import type { AssetId, ChainId } from '@colosseum/schemas';
+import robinhoodTestnet from '../../../../deployments/robinhood-testnet.json';
 import devnet from '../../../../deployments/solana-devnet.json';
 import { deploymentsFor } from './readiness';
 
@@ -7,7 +8,7 @@ import { deploymentsFor } from './readiness';
 // `cashDecimals` on the mock), never from what the API answers. A hostile API that said the cash token
 // had 9 decimals would have a deposit of 40,000 dollars read as 40: the order screen shows and checks
 // every amount with these. The symbol is a name only: the test network's deploy record names its tokens
-// (deployments/solana-devnet.json), the mock's dollar is USDC, and any other token goes by its id. A
+// (deployments/solana-devnet.json, deployments/robinhood-testnet.json), the mock's dollar is USDC, and any other token goes by its id. A
 // chain with no deployment has no units here, and nothing is signed for it.
 
 export type TokenUnits = { symbol: string; decimals: number };
@@ -17,7 +18,13 @@ export type ChainUnits = { cash: AssetId; tokens: Partial<Record<AssetId, TokenU
 export const MOCK_CASH_SYMBOL = 'USDC';
 
 const RECORDED: Record<string, string> = Object.fromEntries(
-  [devnet.cash, ...devnet.assets, ...devnet.retired].map((t) => [t.id, t.symbol]),
+  [
+    devnet.cash,
+    ...devnet.assets,
+    ...devnet.retired,
+    robinhoodTestnet.cash,
+    ...robinhoodTestnet.assets,
+  ].flatMap((t) => (t.id && t.symbol ? [[t.id, t.symbol]] : [])),
 );
 const symbolOf = (id: AssetId) => RECORDED[id] ?? id.slice(id.indexOf(':') + 1).toUpperCase();
 
