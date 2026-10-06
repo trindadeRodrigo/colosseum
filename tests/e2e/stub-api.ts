@@ -518,6 +518,45 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       parser: { method: 'rules' },
       disclaimer: 'MOCK',
     });
+  // The guided intake (GUIDED-INTAKE), as the rules parser reads the spec's goal: it asks the amount,
+  // then says back the sheet the person confirms. No model, nothing stored.
+  if (path === '/v1/baskets/intake' && method === 'POST') {
+    const body = (await read(req)) as { answers?: { amountUsd?: number } };
+    const amountUsd = body.answers?.amountUsd;
+    const sheet =
+      amountUsd === undefined
+        ? null
+        : {
+            basketType: 'standard',
+            goal: 'grow',
+            amountUsd,
+            horizonMonths: 36,
+            risk: 'medium',
+            themes: [],
+            chains: [CHAIN],
+            rules: { useHoldings: true, glide: false },
+            language: 'en',
+          };
+    return send(res, 200, {
+      reader: { method: 'rules', model: null, provenance: null, why: 'model_not_configured' },
+      language: 'en',
+      draft: null,
+      limits: { creditTolerance: null, cannotHoldClasses: null },
+      questions: sheet
+        ? []
+        : [{ field: 'amountUsd', template: 'AMOUNT', text: 'How much do you put in, in dollars?' }],
+      flags: [],
+      disagreements: [],
+      sheet,
+      readBack: sheet
+        ? [
+            `You set growing it with $${amountUsd} over 36 months, at medium risk.`,
+            'If this is right, confirm it and the plan is made from it.',
+          ]
+        : null,
+      assumptions: [],
+    });
+  }
   // A plan an agent proposes for a person (AGT-2): no sign-in, the same plan, read back by its id.
   if (path === '/v1/baskets/propose' && method === 'POST') {
     const body = (await read(req)) as { sheet: BasketSheet };

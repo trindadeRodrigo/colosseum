@@ -81,8 +81,11 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
   await box.fill('Grow $2,000 for ten years, high risk');
   await box.press('Enter');
   await expect(page).toHaveURL(/\/goal$/);
-  // the goal screen reads what the landing handed it
-  await expect(page.getByText(en.goal.sheet.title).first()).toBeVisible();
+  // the goal screen holds what the landing handed it, to read once the visitor signs in
+  await expect(
+    page.getByRole('textbox', { name: en.goal.composer.label, exact: true }),
+  ).toHaveValue('Grow $2,000 for ten years, high risk');
+  await expect(page.locator('a[href="/sign-in?next=/goal"]')).toBeVisible();
 });
 
 test('the two sample cases fit their cards on a phone and a tablet, in English and Portuguese', async ({
@@ -132,9 +135,11 @@ async function toReview(page: Page) {
   const goal = page.getByRole('textbox', { name: en.goal.composer.label, exact: true });
   await goal.fill('Grow $40 for three years, medium risk');
   await goal.press('Enter');
-  await page.getByLabel(en.goal.fields.amount, { exact: true }).fill('40');
-  await page.getByLabel(en.goal.fields.country, { exact: true }).selectOption('BR');
-  await page.getByRole('button', { name: en.goal.sheet.build }).click();
+  // The intake asks what the goal leaves open, then says back what it understood (GUIDED-INTAKE).
+  await page.getByLabel('How much do you put in, in dollars?', { exact: true }).fill('40');
+  await page.getByRole('button', { name: en.goal.intake.questions.send }).click();
+  await expect(page.getByText('You set growing it with $40 over 36 months')).toBeVisible();
+  await page.getByRole('button', { name: en.goal.intake.readBack.confirm }).click();
   await page.getByRole('link', { name: en.goal.built.done.see(3) }).click();
 
   // The candidates side by side, none picked: the buy is off until the person chooses one.

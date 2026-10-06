@@ -31,9 +31,11 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   const goal = page.getByRole('textbox', { name: en.goal.composer.label, exact: true });
   await goal.fill('Grow $40 for three years, medium risk');
   await goal.press('Enter');
-  await page.getByLabel(en.goal.fields.amount, { exact: true }).fill('40');
-  await page.getByLabel(en.goal.fields.country, { exact: true }).selectOption('BR');
-  await page.getByRole('button', { name: en.goal.sheet.build }).click();
+  // The intake asks what the goal leaves open, then says back what it understood (GUIDED-INTAKE).
+  await page.getByLabel('How much do you put in, in dollars?', { exact: true }).fill('40');
+  await page.getByRole('button', { name: en.goal.intake.questions.send }).click();
+  await expect(page.getByText('You set growing it with $40 over 36 months')).toBeVisible();
+  await page.getByRole('button', { name: en.goal.intake.readBack.confirm }).click();
   await page.getByRole('link', { name: en.goal.built.done.see(3) }).click();
   await expect(page).toHaveURL(/\/plan\/[^/]+$/);
   await page.getByRole('radio', { name: en.plan.choice.names.carry }).check();
