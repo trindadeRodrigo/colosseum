@@ -183,10 +183,11 @@ export async function loadFlow(db: Db, mint: string | null): Promise<AssetFactsI
   const pools = new Map<string, NonNullable<AssetFactsInput['flow']>['pools'][number]>();
   for (const r of rows) {
     const f = r.flow;
+    // the row's own venue and quote (RU.14: an EVM pool has no risk_pools row), else risk_pools', else unknown
     const p = pools.get(f.pool) ?? {
       pool: f.pool,
-      venue: r.venue ?? 'unknown',
-      quote: r.quoteSymbol ?? r.quoteMint ?? 'unknown',
+      venue: f.venue ?? r.venue ?? 'unknown',
+      quote: f.quoteSymbol ?? f.quoteMint ?? r.quoteSymbol ?? r.quoteMint ?? 'unknown',
       rows: [],
     };
     p.rows.push({

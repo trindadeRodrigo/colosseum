@@ -43,6 +43,9 @@ export type FlowRow = {
   dataFrom: Date;
   dataTo: Date;
   methodVersion: string;
+  venue: string | null;
+  quoteSymbol: string | null;
+  quoteMint: string | null;
   source: string;
   method: string;
   fetchedAt: Date;
@@ -188,6 +191,9 @@ export function buildFlowRows(inp: {
         dataFrom: new Date(g.from),
         dataTo: new Date(g.to),
         methodVersion: FLOW_METHOD_VERSION,
+        venue: p.venue,
+        quoteSymbol: p.otherSymbol,
+        quoteMint: p.other,
         source: flowSource(inp.chain),
         method: FLOW_METHOD,
         fetchedAt: inp.fetchedAt,

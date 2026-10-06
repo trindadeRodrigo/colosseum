@@ -36,6 +36,8 @@ export type HistoryPool = {
   /** The stock the cut files the pool under, in the registry's mixed case (the collector's spelling). */
   asset: string;
   symbol: string;
+  /** The venue as the cut names it (`uniswap-v3`, `uniswap-v4`). */
+  venue: string;
   /** The other side, lower case, and its symbol where the cut knows it. */
   other: string;
   otherSymbol: string | null;
@@ -69,6 +71,7 @@ export function historyPools(
       kind: p.kind,
       asset: p.asset,
       symbol: p.symbol,
+      venue: p.venue,
       other: p.other.toLowerCase(),
       otherSymbol: p.otherSymbol,
       otherIsStock: p.otherIsStock,
