@@ -179,6 +179,27 @@ test('the plan drawn as a joint answers a mouse and a finger, and lights its par
   await phone.close();
 });
 
+test('signed in, the logo leads to the landing, and its bar leads back into the app', async ({
+  page,
+}) => {
+  await page.request.post(`${STUB}/__stub/reset`);
+  await page.goto('/sign-in');
+  await page.getByRole('button', { name: en.signIn.passkey.create }).click();
+  await page.getByRole('button', { name: 'Solana' }).click();
+  await page.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
+  await expect(page).toHaveURL(/\/goal$/);
+  await page.getByRole('link', { name: en.shell.home }).click();
+  // the landing, not a redirect back to the goal
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.landing.stage.title);
+  await page.keyboard.press('End');
+  const bar = page.locator('[data-ui="compact-nav"]');
+  await expect(bar).toHaveAttribute('data-compact', 'true');
+  await expect(bar.getByRole('link', { name: en.landing.nav.cta })).toHaveCount(0);
+  await bar.getByRole('link', { name: en.landing.nav.openApp }).click();
+  await expect(page).toHaveURL(/\/goal$/);
+});
+
 async function toReview(page: Page) {
   await page.request.post(`${STUB}/__stub/reset`);
   await page.goto('/sign-in');

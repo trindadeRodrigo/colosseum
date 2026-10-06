@@ -82,6 +82,18 @@ describe('EmbedShell (embed-shell.md)', () => {
     expect(all(loading, tag('svg'))).toHaveLength(0);
   });
 
+  it('keeps still boxes while it loads, busy, and after a few seconds says the service may be waking', () => {
+    const loading = render(embed.loading);
+    const section = one(loading, (e) => e.attrs['data-ui'] === 'embed-shell');
+    expect(section.attrs['aria-busy']).toBe('true');
+    expect(all(loading, ui('skeleton'))).toHaveLength(3);
+    expect(all(loading, ui('embed-slow'))).toHaveLength(0);
+    const slow = render(embed.slow);
+    expect(text(one(slow, (e) => e.attrs.role === 'status'))).toBe(
+      'Loading plan…Waking the data service: this can take up to a minute the first time.',
+    );
+  });
+
   it('says one sentence and nothing else when the plan is not available', () => {
     const gone = one(render(embed.unavailable), ui('embed-shell'));
     expect(text(gone)).toBe('This plan isn’t available.');

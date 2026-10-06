@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import LandingPage from '../../app/(marketing)/page';
 import { SIGNED_IN_COOKIE } from '../../i18n';
 
-// `/`: his landing page for a visitor, and straight on to the goal for a person signed in on this
-// browser (the product sets the hint while someone is signed in, and clears it when they sign out).
+// `/`: his landing page, for a visitor and for a person signed in on this browser alike (the product
+// sets the hint while someone is signed in, and clears it when they sign out): the hint only changes
+// the bar's action.
 
 const jar = vi.hoisted(() => ({ values: new Map<string, string>() }));
 const sent = vi.hoisted(() => ({ to: vi.fn() }));
@@ -24,13 +25,15 @@ describe('the landing page', () => {
     const page = await LandingPage();
     expect(sent.to).not.toHaveBeenCalled();
     expect((page.props as { lang: string }).lang).toBe('pt');
+    expect((page.props as { signedIn: boolean }).signedIn).toBe(false);
   });
 
-  it('sends a person signed in on this browser to their goal', async () => {
+  it('is the landing for a person signed in on this browser too, never a redirect', async () => {
     jar.values.set(SIGNED_IN_COOKIE, '1');
     sent.to.mockClear();
-    await LandingPage();
-    expect(sent.to).toHaveBeenCalledWith('/goal');
+    const page = await LandingPage();
+    expect(sent.to).not.toHaveBeenCalled();
+    expect((page.props as { signedIn: boolean }).signedIn).toBe(true);
   });
 });
 

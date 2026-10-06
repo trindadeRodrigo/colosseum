@@ -7,6 +7,7 @@ import { Disclaimer } from '../../components/ui/Disclaimer';
 import { EmbedShell } from '../../components/ui/EmbedShell';
 import { MockPlate } from '../../components/ui/MockPlate';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
+import { useWaitPhase } from '../../components/ui/wait';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { API } from '../../lib/api';
@@ -69,8 +70,12 @@ export function EmbedVault({
     };
   }, [chain, address]);
 
+  // The hosted API may be asleep: after a few seconds the wait says so, and after a minute it is the
+  // one sentence the shell has for a plan it cannot show.
+  const phase = useWaitPhase(state.kind === 'loading');
   const labels = {
     loading: words.loading,
+    slow: t.shell.wait.slow,
     unavailable: words.unavailable,
     showSchedule: words.showSchedule,
     poweredBy: words.poweredBy,
@@ -78,7 +83,17 @@ export function EmbedVault({
   if (state.kind !== 'read')
     return (
       <div style={style} data-ui="embed-frame">
-        <EmbedShell label={words.label} lang={LOCALE[lang]} state={state.kind} labels={labels} />
+        {state.kind === 'loading' && phase !== 'over' ? (
+          <EmbedShell
+            label={words.label}
+            lang={LOCALE[lang]}
+            state="loading"
+            slow={phase === 'slow'}
+            labels={labels}
+          />
+        ) : (
+          <EmbedShell label={words.label} lang={LOCALE[lang]} state="unavailable" labels={labels} />
+        )}
       </div>
     );
 

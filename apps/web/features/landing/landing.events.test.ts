@@ -31,8 +31,10 @@ vi.mock('next/link', () => import('../wallet/test/mock-next'));
 // product, and an email field that sends nothing and says so.
 
 const en = dictionary('en');
-const landing = async (lang: Lang = 'en') => {
-  const host = await mount(inLanguage(lang, createElement(Landing, { lang, theme: 'auto' })));
+const landing = async (lang: Lang = 'en', signedIn = false) => {
+  const host = await mount(
+    inLanguage(lang, createElement(Landing, { lang, theme: 'auto', signedIn })),
+  );
   await settle(10);
   return host;
 };
@@ -664,4 +666,46 @@ it('keeps “System” as a choice on the landing, so the next visit follows the
   const system = [...find(host, '[data-ui="theme-switch"]').querySelectorAll('button')][0];
   await click(system as HTMLElement);
   expect(document.cookie).toContain('tf-theme=auto');
+});
+
+describe('the bar’s action', () => {
+  const action = (host: HTMLElement) =>
+    [...host.querySelectorAll<HTMLAnchorElement>('[data-ui="compact-nav"] a')].filter((a) =>
+      [
+        en.landing.nav.cta,
+        en.landing.nav.openApp,
+        pt.landing.nav.cta,
+        pt.landing.nav.openApp,
+      ].includes(a.textContent ?? ''),
+    );
+  const pt = dictionary('pt');
+
+  it('is "Sign in" for a visitor, and the visitor line asks them to sign in', async () => {
+    browser();
+    const host = await landing();
+    expect(action(host).map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      [en.landing.nav.cta, '/sign-in?next=/goal'],
+    ]);
+    expect(host.textContent).toContain(en.goal.visitor.link);
+  });
+
+  it.each(['en', 'pt'] as const)(
+    'leads a person signed in back into the app, in the same style, and asks nothing of them (%s)',
+    async (lang) => {
+      browser();
+      const words = dictionary(lang);
+      const host = await landing(lang, true);
+      const [open] = action(host);
+      expect(action(host)).toHaveLength(1);
+      expect(open?.textContent).toBe(words.landing.nav.openApp);
+      expect(open?.getAttribute('href')).toBe('/goal');
+      expect(host.querySelector('a[href^="/sign-in"]')).toBeNull();
+      expect(host.textContent).not.toContain(words.landing.nav.cta);
+      expect(host.textContent).not.toContain(words.goal.visitor.link);
+      // the filled style of "Sign in"
+      await unmountAll();
+      const visitor = await landing(lang);
+      expect(open?.className).toBe(action(visitor)[0]?.className);
+    },
+  );
 });
