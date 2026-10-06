@@ -23,6 +23,7 @@ import {
   SolanaDeploymentRecord,
 } from '@colosseum/chain-solana/vault';
 import { type BuiltTx, parseChainConfigs } from '@colosseum/schemas';
+import { notifierFromEnv } from './alerts';
 import type { KeeperAdapter } from './chain';
 import { loadMemory, lockState, saveMemory } from './memory';
 import { runRound, type VaultLine } from './round';
@@ -66,6 +67,8 @@ type Wired = {
   sign(tx: BuiltTx): Promise<{ wire: string; txId: string }>;
   /** The state file's name: the network, and what tells a reset copy apart from the one before. */
   stateName: string;
+  /** What the keeper's key holds of the chain's coin, and the least it should, in its smallest units. */
+  gas(): Promise<{ have: bigint; low: bigint; unit: string }>;
 };
 
 async function main() {
@@ -85,17 +88,35 @@ async function main() {
   const log = (line: VaultLine) =>
     console.log(JSON.stringify({ at: new Date().toISOString(), network: wired.network, ...line }));
 
+  const notify = notifierFromEnv(process.env, { label: `keeper ${wired.network}` });
+
   for (;;) {
-    const lines = await runRound(
-      {
-        adapter: wired.adapter,
-        dryRun,
-        log,
-        sign: wired.sign,
-        save: (m) => saveMemory(stateFile, m),
-      },
-      memory,
-    );
+    let lines: VaultLine[];
+    try {
+      lines = await runRound(
+        {
+          adapter: wired.adapter,
+          dryRun,
+          log,
+          sign: wired.sign,
+          save: (m) => saveMemory(stateFile, m),
+        },
+        memory,
+      );
+    } catch (e) {
+      await notify.ping(false);
+      await notify.alert([`the round failed: ${e instanceof Error ? e.message : String(e)}`]);
+      throw e;
+    }
+    const alerts = lines.filter((l) => l.alert).map((l) => `${l.vault}: ${l.reason}`);
+    // Low gas: the keeper cannot pay for its legs much longer.
+    const gas = await wired.gas().catch(() => null);
+    if (gas && gas.have < gas.low)
+      alerts.push(
+        `the keeper's gas is low: ${gas.have} of the ${gas.low} ${gas.unit} it should keep`,
+      );
+    await notify.alert(alerts);
+    await notify.ping(true);
     console.log(
       JSON.stringify({
         at: new Date().toISOString(),
@@ -156,6 +177,11 @@ async function robinhood(): Promise<Wired> {
     adapter,
     sign: (tx) => signBuilt(key, tx),
     stateName: `${record.network}-${record.evmChainId}-${record.contracts.factory}`,
+    gas: async () => ({
+      have: await rpc.getBalance({ address: key.address }),
+      low: BigInt(process.env.KEEPER_LOW_GAS?.trim() || '500000000000000'),
+      unit: 'wei',
+    }),
   };
 }
 
@@ -214,6 +240,11 @@ async function solana(): Promise<Wired> {
     },
     // The node's genesis, which assertNode held to the record's: a reset local validator starts afresh.
     stateName: `${record.network}-${await rpc.getGenesisHash().send()}`,
+    gas: async () => ({
+      have: BigInt((await rpc.getBalance(key.address).send()).value),
+      low: BigInt(process.env.KEEPER_LOW_GAS?.trim() || '50000000'),
+      unit: 'lamports',
+    }),
   };
 }
 

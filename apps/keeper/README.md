@@ -67,6 +67,13 @@ KEEPER_CHAIN=robinhood ROBINHOOD_RPC_URL=<46630 node> KEEPER_ROBINHOOD_KEY=<path
 - Checked on a copy of the test network (`tests/keeper/evm.test.ts`, `RH_TESTNET_FORK_URL`): the read, a dry run that sends nothing, a leg that lands and stamps its cooldown, a leg that lands and reverts and is not sent again on that version, and a weights-only version adopted, forgetting the reverted legs of the version before.
 - Setting the keeper on 46630 is the deployer's `setKeeper`, and its gas a forward from the price writer: `scripts/testnet/robinhood/ops.ts keeper <address>` prints both as a dry run and sends them only with `--send`.
 
+## Alerts and the keeper's machine
+
+- `KEEPER_DISCORD_WEBHOOK`: every round's alert lines go there as one message (a vault past half its loss budget, a reverted leg passed over, a leg that would be refused for a reason that does not pass by waiting, a vault held by an unsettled leg), and so does a round that failed. `KEEPER_LOW_GAS` (wei on Robinhood Chain, default 0.0005 ETH; lamports on Solana, default 0.05 SOL): below it, the keeper's own balance is an alert.
+- `KEEPER_HEALTHCHECK_URL`: pinged after every round, and its `/fail` after a round that failed, so a keeper that stopped or hangs is noticed by the check's own schedule.
+- Neither URL is ever printed; a post that fails is said on stderr in words of its own (`apps/keeper/src/alerts.ts`, `tests/keeper/alerts.test.ts`).
+- `scripts/keeper/run.sh <solana|robinhood>` runs the keeper in a loop and starts it again 30 s after it stops; `scripts/keeper/tenonfi-keeper@.service` is the systemd unit for a Linux machine, its environment in `/etc/tenonfi/keeper-<chain>.env`.
+
 ## For later
 
 - `buildKeeperLeg` makes the keeper pay the rent of any token account a leg creates for the vault: a slow drain on the keeper's SOL to watch with the low-gas alert.
