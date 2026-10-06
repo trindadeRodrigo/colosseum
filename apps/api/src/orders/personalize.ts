@@ -8,6 +8,7 @@ import {
   PersonalInputError,
   type PersonalProposal,
   type PersonalSheet,
+  type StockAttributesFile,
   type ThemeList,
 } from '@colosseum/engine/personal';
 import {
@@ -38,11 +39,16 @@ import { Refusal, refusing } from './errors';
  * chain (gate THEMES), which a theme sleeve is made from. Any may be missing; a theme sleeve with no
  * list holds no name and says so. Without a measured exit a line's ceiling is its tier's and the
  * plan says so (`ceiling_from_tier:<asset>`); without a yield the card counts none for that token.
+ *
+ * `stocks` are the sourced attributes of the chain's tracked stocks (gate THEME-MATCHED): a theme
+ * sleeve whose slug names a filter holds the stocks that carry its value, picked by the engine's
+ * code, never by a model. Without them such a sleeve holds no stock and says so.
  */
 export type PlanInputs = (q: { db: Db; chain: ChainId; assets: BasketAsset[] }) => Promise<{
   liquidity?: { provider: LiquidityProvider; source: string };
   yields?: YieldObservation[];
   themes?: ThemeList[];
+  stocks?: StockAttributesFile;
 }>;
 
 export type PersonalizeContext = {
@@ -145,6 +151,7 @@ export async function personalize(
     now: ctx.now,
     ...(figures.yields ? { yields: figures.yields } : {}),
     ...(figures.themes ? { themes: figures.themes } : {}),
+    ...(figures.stocks ? { stocks: figures.stocks } : {}),
     ...(figures.liquidity
       ? { liquidity: figures.liquidity.provider, liquiditySource: figures.liquidity.source }
       : {}),
