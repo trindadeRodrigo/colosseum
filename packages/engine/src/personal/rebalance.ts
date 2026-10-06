@@ -297,9 +297,9 @@ export type Execution = {
  *   are its proceeds.
  * - The split restored: the trades are applied to the whole, then each token is shared by the
  *   proposal's `bookAfter`, which is what restoring the split means.
- * - What is then left between the book and `vaultAfter` (what no execution explains) is reported in
- *   `unowned` when the vault holds more, and taken from the holders of the token, in proportion,
- *   when it holds less. A fill that takes more than its sleeve owns is refused.
+ * - What is then left between the book and `vaultAfter` (what no execution explains: an accrual, a
+ *   rebase, a loss) is shared by the token's holders, a gain by what each held of it before, a loss
+ *   by what each holds; only a token no sleeve holds or held is reported in `unowned`. A fill that takes more than its sleeve owns is refused.
  */
 export function settleBook(
   before: SleeveBook,
@@ -370,8 +370,10 @@ export function settleBook(
     for (const [k, r] of next) rows.set(k, r);
   }
   for (const f of flows) take(rows.get(f.sleeve) ?? new Map(), cashId, BigInt(f.withdrawalRaw));
-  // What no execution explains.
+  // What no execution explains. A gain (accrual, a rebase) is shared like a loss: by what each sleeve
+  // held of the token before. Only a token no sleeve held, before or now, is unowned.
   const keys = order();
+  const was = rowsOf(SleeveBook.parse(before));
   const actual = vaultRaw(vault);
   const tokens = [
     ...new Set([...actual.keys(), ...[...rows.values()].flatMap((r) => [...r.keys()])]),
@@ -380,8 +382,20 @@ export function settleBook(
   for (const k of tokens) {
     const held = keys.map((s) => rows.get(s)?.get(k) ?? 0n);
     const diff = (actual.get(k) ?? 0n) - held.reduce((n, x) => n + x, 0n);
-    if (diff > 0n) unowned.push({ asset: k, raw: diff.toString() });
-    if (diff >= 0n) continue;
+    if (diff === 0n) continue;
+    if (diff > 0n) {
+      const before = keys.map((s) => was.get(s)?.get(k) ?? 0n);
+      const weights = before.some((x) => x > 0n) ? before : held;
+      if (weights.every((x) => x === 0n)) {
+        unowned.push({ asset: k, raw: diff.toString() });
+        continue;
+      }
+      const more = apportion(weights, diff);
+      keys.forEach((s, j) => {
+        rows.get(s)?.set(k, (held[j] ?? 0n) + (more[j] ?? 0n));
+      });
+      continue;
+    }
     const less = apportion(held, -diff);
     keys.forEach((s, j) => {
       rows.get(s)?.set(k, (held[j] ?? 0n) - (less[j] ?? 0n));
@@ -519,6 +533,19 @@ export function proposeSleeveRebalances(
       refuse(
         'context.book',
         'which sleeve owns what is not known: pass the sleeve book, or boughtAsPlanned when the vault has not traded since it was bought as this plan',
+      );
+    // A cheap check of the word against what the vault shows: a keeper trade on any position, or a
+    // version of a shared portfolio accepted by a vault that follows none. It cannot see a trade the
+    // owner signed, a deposit or withdrawal, or a transfer: those leave no mark on `VaultState`.
+    if (vault.positions.some((p) => p.lastKeeperAt !== null))
+      refuse(
+        'context.boughtAsPlanned',
+        'the vault shows a keeper trade since it was bought: pass the sleeve book',
+      );
+    if (vault.recipeOnchainId === null && vault.acceptedVersion > 0)
+      refuse(
+        'context.boughtAsPlanned',
+        'the vault shows an accepted version since it was bought: pass the sleeve book',
       );
     const heldCents: Cents = new Map(
       sortedKeys(held).map((k) => [k, centsOf(k, held.get(k) ?? 0n)]),

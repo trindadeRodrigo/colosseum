@@ -767,6 +767,44 @@ describe('the sleeve book: who owns what', () => {
     expect(sleeveUsd(done.book, 'goal')).toBeLessThan(6500);
   });
 
+  it('shares a gain no trade explains (10 USDY accrued) by what each sleeve held of it', () => {
+    const book = bookOf({
+      goal: { [USDY]: 3000, [CASH]: 500 },
+      safe_yield: { [USDY]: 1000, [CASH]: 500 },
+    });
+    const v = vaultOfBook(book);
+    const accrued = vaultOfRaw(
+      new Map([...rawIn(v)].map(([k, n]) => [k, k === USDY ? n + rawOf(USDY, 10) : n])),
+    );
+    const settled = settleBook(book, [], accrued);
+    expect(settled.unowned).toEqual([]);
+    const usdy = (key: string) =>
+      settled.book.find((r) => r.sleeve === key)?.holds.find((h) => h.asset === USDY)?.raw;
+    expect(usdy('goal')).toBe(String(rawOf(USDY, 3007.5)));
+    expect(usdy('safe_yield')).toBe(String(rawOf(USDY, 1002.5)));
+    // A token no sleeve held is still unowned.
+    const airdrop = vaultOfRaw(new Map([...rawIn(v), [NVDA, rawOf(NVDA, 100)]]));
+    expect(settleBook(book, [], airdrop).unowned).toEqual([
+      { asset: NVDA, raw: String(rawOf(NVDA, 100)) },
+    ]);
+  });
+
+  it('refuses boughtAsPlanned when the vault shows it has traded since', () => {
+    const bought = vault({ [SPY]: 4000, [USDY]: 2000, [CASH]: 4000 });
+    const traded = {
+      ...bought,
+      positions: bought.positions.map((p, i) =>
+        i === 0 ? { ...p, lastKeeperAt: 1_790_000_000 } : p,
+      ),
+    };
+    expect(() => proposeSleeveRebalances(stored, context(traded, JUST_BOUGHT))).toThrow(
+      /keeper trade/,
+    );
+    expect(() =>
+      proposeSleeveRebalances(stored, context({ ...bought, acceptedVersion: 2 }, JUST_BOUGHT)),
+    ).toThrow(/accepted version/);
+  });
+
   it('settles a batch trade by trade: two sleeves sharing the cash, each keeps its own cost', () => {
     // The goal refills its set-aside (sells SPYx) and the safe-yield sleeve is 10 points off (buys
     // USDY with its own cash), carried out together at a 1% cost and settled once.
