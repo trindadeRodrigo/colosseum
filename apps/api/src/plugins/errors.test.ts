@@ -118,7 +118,12 @@ describe('the structurer’s writes outside /v1', () => {
     made.post('/risk/positions/assess', async () => 'assessed');
     const send = (method: 'GET' | 'POST', url: string, remoteAddress = '10.0.0.1') =>
       made.inject({ method, url, remoteAddress });
-    return { send, tick: (ms: number) => void (clock += ms) };
+    return {
+      send,
+      tick: (ms: number) => {
+        clock += ms;
+      },
+    };
   };
 
   it('are the six that store a row or sign, and no read', () => {
