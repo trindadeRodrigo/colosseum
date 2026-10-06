@@ -33,6 +33,7 @@ export const INPUT_NAMES = [
   'sleeves',
   'currency',
   'obligations',
+  'mix',
 ] as const;
 export type InputName = (typeof INPUT_NAMES)[number];
 
@@ -45,6 +46,22 @@ export const REASON_TEMPLATES = {
     ['goal', 'risk'],
     'For {goal|goal} at {risk|risk}, the starting share of {sleeve|sleeve} is {sleeveBps|pct}.',
     'Para {goal|goal}, com {risk|risk}, a parcela inicial de {sleeve|sleeve} é {sleeveBps|pct}.',
+  ),
+  // What the person said they want held (gate EXPLICIT-MIX): it replaces the row of the table.
+  MIX: rule(
+    ['mix'],
+    'You asked for {sleeveBps|pct} of the plan in {sleeve|sleeve}.',
+    'Você pediu {sleeveBps|pct} do plano em {sleeve|sleeve}.',
+  ),
+  MIX_ALL: rule(
+    ['mix'],
+    'You asked for all of it in {sleeve|sleeve}.',
+    'Você pediu tudo em {sleeve|sleeve}.',
+  ),
+  MIX_LIMITS: rule(
+    ['mix'],
+    'To hold {sleeveBps|pct} of the plan in stocks and crypto, the plan uses the limits for {risk|risk}: at most {stockCapBps|pct} in one stock or crypto asset, and {issuerCapBps|pct} with one issuer.',
+    'Para ter {sleeveBps|pct} do plano em ações e cripto, o plano usa os limites de {risk|risk}: no máximo {stockCapBps|pct} em uma só ação ou cripto, e {issuerCapBps|pct} com um só emissor.',
   ),
   // The person's split of the plan (gate SLEEVES).
   SPLIT_GOAL: rule(
@@ -351,6 +368,16 @@ export const REASON_TEMPLATES = {
     'No more than {capBps|pct} of the plan in tokens that lend to borrowers or trade a spread, at the credit risk you accept: those tokens together are at that limit.',
     'No máximo {capBps|pct} do plano em tokens que emprestam a tomadores ou operam uma diferença de taxas, com o risco de crédito que você aceita: esses tokens juntos estão nesse limite.',
   ),
+  CREDIT_BUDGET_MIX: rule(
+    ['mix'],
+    'You asked for up to {capBps|pct} of the plan in tokens that lend to borrowers or trade a spread: those tokens together are at that limit.',
+    'Você pediu até {capBps|pct} do plano em tokens que emprestam a tomadores ou operam uma diferença de taxas: esses tokens juntos estão nesse limite.',
+  ),
+  CREDIT_NONE_MIX: rule(
+    ['mix'],
+    '{asset} is left out: it lends to borrowers or trades a spread, and the mix you asked for holds none of those.',
+    '{asset} fica de fora: ele empresta a tomadores ou opera uma diferença de taxas, e a composição que você pediu não tem nenhum desses.',
+  ),
   CREDIT_NONE: rule(
     ['credit'],
     '{asset} is left out: it lends to borrowers or trades a spread, and you accept no credit risk.',
@@ -554,6 +581,10 @@ export const TEXT_TEMPLATES = {
   CANDIDATE_IDENTICAL: {
     en: '{plan|candidate} is not shown: it holds the same as {other|candidate}.',
     pt: '{plan|candidate} não aparece: ele guarda o mesmo que {other|candidate}.',
+  },
+  CANDIDATE_BREAKS_MIX: {
+    en: '{plan|candidate} is not shown: it would hold {heldBps|pct} of the plan in {sleeve|sleeve}, which is not the mix you asked for.',
+    pt: '{plan|candidate} não aparece: ele teria {heldBps|pct} do plano em {sleeve|sleeve}, o que não é a composição que você pediu.',
   },
   CANDIDATE_DOMINATED: {
     en: '{plan|candidate} is not shown: {other|candidate} is as good on every line of the comparison, and better on one.',
