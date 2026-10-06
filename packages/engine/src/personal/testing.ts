@@ -1226,7 +1226,8 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
         (total((a) => a.issuer).get(String(r.params.issuer)) ?? 0) +
         movedFromIssuer(String(r.params.issuer));
       say(
-        with_ >= share(r.params.capBps) - Math.max(leastLine, share(3)),
+        // The cap is whole cents, rounded down, as the engine holds it.
+        with_ >= Math.floor(share(r.params.capBps)) - Math.max(leastLine, share(3)),
         `"${r.text}", and it holds ${with_ / 100}`,
       );
     }
@@ -1234,7 +1235,8 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
     if (r.rule === 'ISSUER_CAP_PLAN' || r.rule === 'OVERFLOW_ISSUER_PLAN') {
       const with_ = nonGrowthOf(String(r.params.issuer)) + movedFromIssuer(String(r.params.issuer));
       say(
-        with_ >= share(r.params.capBps) - Math.max(leastLine, share(3)),
+        // The cap is whole cents, rounded down, as the engine holds it.
+        with_ >= Math.floor(share(r.params.capBps)) - Math.max(leastLine, share(3)),
         `"${r.text}", and it holds ${with_ / 100}`,
       );
     }

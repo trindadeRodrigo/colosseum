@@ -277,7 +277,7 @@ export class Book {
         const shared =
           inBand.length > 1
             ? [
-                w.candidate === 'spread'
+                w.candidate === 'spread' && w.P.candidates.spread.equalFill
                   ? reason('SHARED_EVENLY', { assets }, w.lang)
                   : reason(
                       'SHARED_IN_BAND',
@@ -289,7 +289,10 @@ export class Book {
         for (const a of inBand) {
           const bound = whyBound(a);
           // Shared evenly, a token is not there by its yield: that reason is left off.
-          const ranks = w.candidate === 'spread' && shared.length > 0 ? [] : [byYield];
+          const ranks =
+            w.candidate === 'spread' && w.P.candidates.spread.equalFill && shared.length > 0
+              ? []
+              : [byYield];
           const reasons = [...unit.reasons, ...ranks, ...shared, ...(bound ? [bound] : [])];
           this.put(a.asset, result.take.get(a.id) ?? 0, reasons);
         }

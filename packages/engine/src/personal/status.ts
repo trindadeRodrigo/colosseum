@@ -20,7 +20,7 @@ export function stressesFor(input: ScheduleInputs, P: PersonalParameters): Stres
   const s = P.stress;
   const out: Stress[] = [];
   if (assets.some((a) => sleeveOfClass(a.cls) === 'dollarYield'))
-    out.push({ id: 'yields_fall', fallBps: s.yieldsFallBps });
+    out.push({ id: 'yields_fall', fallBps: s.carryFallBps });
   if (assets.some((a) => input.isCredit?.(a) ?? false))
     out.push({ id: 'credit_gate', months: s.creditGateMonths });
   if (assets.some((a) => ['growth', 'gold'].includes(sleeveOfClass(a.cls))))

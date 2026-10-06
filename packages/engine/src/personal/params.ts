@@ -96,7 +96,7 @@ export const PERSONAL_PARAMS: PersonalParameters = {
   switchDays: 7,
   // The named stresses of the status (slice 3, C12): the old engine's STRESS_PARAMS. Stocks, crypto and
   // gold fall by `fallBps`. Tuned by C8 (credit) and by the replay of section 2.2 (yields, FX).
-  stress: { yieldsFallBps: 5000, creditGateMonths: 6, fxMoveBps: 2000, fxMoveMonths: 12 },
+  stress: { carryFallBps: 5000, creditGateMonths: 6, fxMoveBps: 2000, fxMoveMonths: 12 },
   // A way to close a gap by withdrawing less is tried in whole percents of each amount.
   wayScaleStepBps: 100,
   // The three candidates (gate THREE-PLANS, slice 3). Tuned by C10 and C11: on the grid of goals, no
@@ -105,9 +105,9 @@ export const PERSONAL_PARAMS: PersonalParameters = {
     // Cover: a year of withdrawals set aside, no credit or basis leg, exit read at half the cost and
     // half the share of depth.
     cover: { setAsideMonths: 12, creditShareBps: 0, tau: 0.005, shareOfDepth: 0.125 },
-    // Spread: every dollar-yield token in one band (filled equally within its caps), one issuer at
+    // Spread: dollar yield filled equally within its caps (every token in one band), one issuer at
     // most 30% of the plan.
-    spread: { yieldBand: 1, issuerCapBps: 3000 },
+    spread: { equalFill: true, issuerCapBps: 3000 },
     // The prompt's 10 points: closer than this, two candidates are one choice.
     distinctBps: 1000,
   },

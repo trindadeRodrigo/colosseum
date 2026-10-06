@@ -145,7 +145,8 @@ export const PersonalParameters = PersonalParams.extend({
   switchDays: z.number().int().positive(),
   /** The named stresses of the status (slice 3): how far yields fall, how long a credit leg is gated, how far the goal's currency moves and over how many months. */
   stress: z.object({
-    yieldsFallBps: Bps,
+    /** How far every dollar-yield leg's carry falls. */
+    carryFallBps: Bps,
     creditGateMonths: z.number().int().nonnegative(),
     fxMoveBps: Bps,
     fxMoveMonths: z.number().int().positive(),
@@ -165,7 +166,7 @@ export const PersonalParameters = PersonalParams.extend({
       tau: z.number().positive().max(1),
       shareOfDepth: z.number().positive().max(1),
     }),
-    spread: z.object({ yieldBand: z.number().nonnegative().max(1), issuerCapBps: Bps }),
+    spread: z.object({ equalFill: z.boolean(), issuerCapBps: Bps }),
     distinctBps: Bps,
   }),
 });

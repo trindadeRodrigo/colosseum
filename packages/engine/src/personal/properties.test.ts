@@ -294,7 +294,8 @@ describe.each(CHAINS)('for any valid sheet, on %s alone', (chain) => {
           expect(order).toEqual(
             ['cover', 'spread', 'carry'].filter((id) => order.some((o) => o === id)),
           );
-          for (const { plan } of answer.shown) expect(violations(plan, shelf, context)).toEqual([]);
+          for (const { id, plan } of answer.shown)
+            expect(violations(plan, shelf, context), id).toEqual([]);
         }),
         { numRuns: RUNS },
       );

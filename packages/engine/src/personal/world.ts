@@ -197,7 +197,8 @@ export function tableFor(P: PersonalParameters, candidate: CandidateId | null): 
     const c = P.candidates.spread;
     return {
       ...P,
-      yieldBand: Math.max(P.yieldBand, c.yieldBand),
+      // One band holds every token, whatever their yields: they share equally.
+      yieldBand: c.equalFill ? 1 : P.yieldBand,
       issuerCapBps: Math.min(P.issuerCapBps, c.issuerCapBps),
     };
   }
