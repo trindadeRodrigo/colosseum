@@ -9,7 +9,7 @@ import { withAccount } from '../account/test/screen';
 import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
 import { PlanScreen } from './PlanScreen';
-import { displayName, flagSentence, kindLabel } from './plain';
+import { displayName, flagSentence, flagSentences, kindLabel } from './plain';
 import { rememberPlan, type StoredPlan } from './plan-store';
 import { PLAN_ID, planOn, USER } from './test/fixtures';
 
@@ -161,17 +161,25 @@ describe('the plan in plain words', () => {
     expect(displayName('solana:usdc', pt.plan)).toBe('Dinheiro (USDC)');
   });
 
-  it('says every flag the engine writes as a sentence, and one it does not know as a note, never as its code', () => {
+  it('says every flag the engine writes as a sentence, and one it does not know not at all, never as its code', () => {
     for (const d of [en, pt])
       for (const flag of FLAGS) {
         const said = flagSentence(flag, d.plan, (id) => displayName(id, d.plan));
+        if (flag.startsWith('a_code_nobody_wrote_yet')) {
+          expect(said).toBeNull();
+          continue;
+        }
         expect(said, flag).not.toMatch(/[a-z]+_[a-z_]+|solana:|:/);
         expect(said, flag).toMatch(/\.$/);
       }
     expect(
       flagSentence('ceiling_from_tier:solana:syrupusdc', en.plan, (id) => displayName(id, en.plan)),
     ).toBe(en.plan.flagWords.ceilingFromTier('syrupUSDC (Maple)'));
-    expect(flagSentence('a_code_nobody_wrote_yet', en.plan, String)).toBe(en.plan.flagWords.other);
+    // a note that says only "the engine noted one more thing" tells nobody anything: it is dropped
+    expect(flagSentence('a_code_nobody_wrote_yet', en.plan, String)).toBeNull();
+    expect(flagSentences(['a_code_nobody_wrote_yet', 'unplaced'], en.plan, String)).toEqual([
+      en.plan.flagWords.simple.unplaced,
+    ]);
     expect(kindLabel('dollar_yield', en.plan.kinds)).toBe('Dollar yield');
     expect(kindLabel('dollar-yield', en.plan.kinds)).toBe('Dollar yield');
     expect(kindLabel('something_else', en.plan.kinds)).toBe(en.plan.kinds.other);

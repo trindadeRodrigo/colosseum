@@ -188,7 +188,7 @@ describe('a shared portfolio read from the chain by this app', () => {
     // the chain's version 3 at 50/25/25, not the server's version 2 at 40/30/30
     expect(host.textContent).toContain(en.shared.family.versionN(3));
     const legs = find(host, '[data-ui="plan-legs"]').textContent ?? '';
-    for (const part of ['SPYX', '50%', 'NVDAX', '25%', 'TSLAX']) expect(legs).toContain(part);
+    for (const part of ['SPYx', '50%', 'NVDAx', '25%', 'TSLAx']) expect(legs).toContain(part);
     expect(legs).not.toContain('40%');
   });
 

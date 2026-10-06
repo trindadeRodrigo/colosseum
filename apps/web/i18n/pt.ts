@@ -34,6 +34,7 @@ export const pt: Dictionary = {
     themes: { auto: 'Sistema', light: 'Claro', dark: 'Escuro' },
     language: 'Idioma',
     testNetwork: 'rede de teste',
+    testNetworkLine: 'Rede de teste',
     slowDown: 'Nosso servidor pediu para eu ir mais devagar. Espere um minuto e tente de novo.',
     mockAnnounce: 'Números de exemplo',
     sampleFigure: 'número de exemplo',
@@ -483,8 +484,9 @@ export const pt: Dictionary = {
     fromLink:
       'Este plano veio de um link: nosso motor o montou com os limites que o link trazia, que outra pessoa pode ter definido. Confira o objetivo, o valor e os limites acima antes de comprar.',
     missing: {
-      title: 'Não tenho este plano nesta aba.',
-      body: 'Um plano fica guardado na aba do navegador que o montou, e este não está aqui. Monte de novo a partir do seu objetivo: seus limites continuam guardados.',
+      title: 'Não encontrei este plano neste navegador.',
+      body: 'Um plano fica guardado no navegador que o montou, e este não está aqui. Monte de novo a partir do seu objetivo: leva um instante.',
+      again: 'Montar de novo',
     },
     backToGoal: 'Voltar ao seu objetivo',
     unsignable: (plan: string) =>
@@ -542,7 +544,6 @@ export const pt: Dictionary = {
       withdrawalsShort: 'Nem todo saque é pago em dia com o que está separado.',
       notLive:
         'Alguns números vêm de uma rede de teste ou de dados de exemplo, não de mercados ao vivo.',
-      other: 'O motor anotou mais uma coisa sobre este plano.',
       simple: {
         exit_not_measured: 'Nenhuma parte deste plano tem custo de venda medido ainda.',
         exit_partly_measured: 'Só parte deste plano tem custo de venda medido.',
@@ -573,15 +574,6 @@ export const pt: Dictionary = {
     shortRange: (low: string, high: string) => `cerca de ${low} a ${high}`,
     sub: (risk: string, chain: string) => `${risk} · em ${chain} · nada comprado ainda`,
     riskWord: { low: 'Risco baixo', medium: 'Risco médio', high: 'Risco alto' },
-    chips: {
-      label: 'Seus limites',
-      goal: 'objetivo',
-      amount: 'valor',
-      horizon: 'prazo',
-      risk: 'risco',
-      riskValue: { low: 'baixo', medium: 'médio', high: 'alto' },
-      chain: 'rede',
-    },
     kpi: {
       amount: 'você coloca',
       horizon: 'por',
@@ -631,7 +623,13 @@ export const pt: Dictionary = {
     verdict: {
       met: 'A renda que você pediu é atendida por este plano, nos números do motor.',
       gap: (gap: string) => `Este plano fica ${gap} por mês abaixo da renda que você pediu.`,
+      ways: 'Para fechar a diferença:',
+      change: 'Mudar meus limites',
     },
+    monthly: (low: string, high: string) =>
+      low === high
+        ? `Paga cerca de ${low} por mês, na faixa projetada.`
+        : `Paga cerca de ${low} a ${high} por mês, na faixa projetada.`,
     buy: 'Comprar este plano',
     chainNotReady: (chain: string) =>
       `${chain} ainda não está pronta para compras: os cofres dela não estão implantados nesta rede. Seu plano fica guardado e pode ser comprado quando estiverem.`,

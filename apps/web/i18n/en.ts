@@ -37,6 +37,8 @@ export const en = {
     language: 'Language',
     /** Beside a figure or a name that comes from a test network, after the MOCK plate. */
     testNetwork: 'test network',
+    /** A card whose figures are read from a test network says only that: they are not samples. */
+    testNetworkLine: 'Test network',
     /** When the server answers that it is being asked too often. */
     slowDown: 'Our server asked me to slow down. Wait a minute, then try again.',
     /** A sample card's one quiet line (MOCK-QUIET). */
@@ -545,8 +547,9 @@ export const en = {
     fromLink:
       'This plan came from a link: our engine made it from the limits the link carried, which someone else may have set. Check the goal, the amount and the limits above before you buy.',
     missing: {
-      title: 'I don’t have this plan in this tab.',
-      body: 'A plan is kept in the browser tab that built it, and this one isn’t here. Build it again from your goal: your limits are kept.',
+      title: 'I can’t find this plan in this browser.',
+      body: 'A plan is kept in the browser that built it, and this one isn’t here. Build it again from your goal: it takes a moment.',
+      again: 'Build it again',
     },
     backToGoal: 'Back to your goal',
     /** A plan on a chain no wallet of the person's signs on. */
@@ -609,7 +612,6 @@ export const en = {
       noQuote: 'There’s no recent price quote for selling all of it yet.',
       withdrawalsShort: 'Not every withdrawal is paid on time with what is set aside.',
       notLive: 'Some figures come from a test network or sample data, not from live markets.',
-      other: 'The engine noted one more thing about this plan.',
       simple: {
         exit_not_measured: 'No part of this plan has a measured selling cost yet.',
         exit_partly_measured: 'Only part of this plan has a measured selling cost.',
@@ -640,16 +642,6 @@ export const en = {
     shortRange: (low: string, high: string) => `about ${low} to ${high}`,
     sub: (risk: string, chain: string) => `${risk} · on ${chain} · nothing bought yet`,
     riskWord: { low: 'Low risk', medium: 'Medium risk', high: 'High risk' },
-    chips: {
-      label: 'Your limits',
-      goal: 'goal',
-      amount: 'amount',
-      horizon: 'horizon',
-      risk: 'risk',
-      /** The risk as the chip says it after "risk:", which in Portuguese agrees with "risco". */
-      riskValue: { low: 'low', medium: 'medium', high: 'high' },
-      chain: 'chain',
-    },
     kpi: {
       amount: 'you put in',
       horizon: 'for',
@@ -702,7 +694,15 @@ export const en = {
     verdict: {
       met: 'The income you asked for is met by this plan, on the engine’s numbers.',
       gap: (gap: string) => `This plan falls short of the income you asked for by ${gap} a month.`,
+      /** Above the ways the engine found to close the gap, each its own sentence. */
+      ways: 'To close the gap:',
+      change: 'Change my limits',
     },
+    /** What an income plan pays a month, from its projected range a year. */
+    monthly: (low: string, high: string) =>
+      low === high
+        ? `Pays about ${low} a month, on the projected range.`
+        : `Pays about ${low} to ${high} a month, on the projected range.`,
     buy: 'Buy this plan',
     chainNotReady: (chain: string) =>
       `${chain} isn’t ready for buying yet: its vaults aren’t deployed on this network. Your plan is kept, and can be bought once they are.`,

@@ -1,9 +1,10 @@
 import { BasketProposal, RiskRollUp } from '@colosseum/schemas';
 
 // The plan a goal built, kept for the plan screen and the buy screen. The API has no route that reads
-// a stored plan back by its id, so the plan is what "Build my plan" answered, kept in the tab under its
-// id. It is one person's: it is read back only for the person who built it, and a plan that does not
-// parse is not shown.
+// a stored plan back by its id, so the plan is what "Build my plan" answered, kept in the browser under
+// its id: another tab, and the portfolio's "See your plan", find it there (the flow audit, finding 14).
+// The few newest are kept. It is one person's: it is read back only for the person who built it, and a
+// plan that does not parse is not shown.
 
 export type StoredPlan = {
   /** The stored plan's id, which a buy names (`proposalId`). */
@@ -20,22 +21,40 @@ export type StoredPlan = {
   fromLink?: boolean;
 };
 
-const KEY = (id: string) => `tf-plan:${id}`;
+const PREFIX = 'tf-plan:';
+const KEY = (id: string) => `${PREFIX}${id}`;
+/** The ids of the plans kept, oldest first. */
+const INDEX = 'tf-plans';
+/** How many plans the browser keeps: a plan is a few kilobytes, and an old one is built again. */
+export const PLANS_KEPT = 8;
 
 export function rememberPlan(plan: StoredPlan): void {
   try {
-    window.sessionStorage.setItem(KEY(plan.id), JSON.stringify(plan));
+    const store = window.localStorage;
+    let ids: string[] = [];
+    try {
+      const read: unknown = JSON.parse(store.getItem(INDEX) ?? '[]');
+      if (Array.isArray(read)) ids = read.filter((id): id is string => typeof id === 'string');
+    } catch {
+      // An index that does not parse is started again.
+    }
+    ids = [...ids.filter((id) => id !== plan.id), plan.id];
+    for (const old of ids.splice(0, Math.max(0, ids.length - PLANS_KEPT)))
+      store.removeItem(KEY(old));
+    store.setItem(KEY(plan.id), JSON.stringify(plan));
+    store.setItem(INDEX, JSON.stringify(ids));
   } catch {
     // No storage in this browser: the plan screen then asks for the plan to be built again.
   }
 }
 
-/** The plan with this id, if this person built it in this tab and it still parses. */
+/** The plan with this id, if this person built it in this browser and it still parses. */
 export function recallPlan(id: string, userId: string | null): StoredPlan | null {
   if (!userId) return null;
   let raw: string | null = null;
   try {
-    raw = window.sessionStorage.getItem(KEY(id));
+    // the tab's own copy first: a plan built before plans were kept in the browser
+    raw = window.sessionStorage.getItem(KEY(id)) ?? window.localStorage.getItem(KEY(id));
   } catch {
     return null;
   }

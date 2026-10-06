@@ -7,7 +7,6 @@ import {
 } from '@colosseum/schemas';
 import type { PinSource } from '../../components/ui/provenance';
 import { type ApiFetch, signInRefusal } from '../account/person';
-import { assetTicker } from '../order/amounts';
 
 // What the monitor and the home page read of a person's vaults: GET /v1/portfolio, the one route the
 // API has for it (DESIGN-VAULT 3.3). It answers an entry per chain, the person's own chain among them,
@@ -219,6 +218,3 @@ export function chainTotal(
 /** How many holdings the value leaves out, because the API had no price for them. */
 export const unpriced = (vault: Vault): number =>
   vault.positions.filter((position) => position.valueUsd === null).length;
-
-/** How an asset is named in a row: the part of its id after the chain, as a ticker (amounts.ts). */
-export const assetName = assetTicker;

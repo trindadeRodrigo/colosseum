@@ -9,10 +9,10 @@ import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { pinSourceOfPrice } from '../../components/ui/price-source';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
+import { tokenName } from '../order/amounts';
 import { displayName } from '../order/plain';
 import { dollars, drift, share, tokens, utc } from './figures';
 import {
-  assetName,
   type PortfolioChain,
   type Position,
   positionValueSource,
@@ -118,8 +118,7 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
       density="dense"
       mock={!live}
       mockLabels={{
-        announce: t.shell.mockAnnounce,
-        note: vault.provenance === 'sandbox' ? t.shell.testNetwork : undefined,
+        announce: vault.provenance === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
       }}
     >
       <CardHeader
@@ -170,7 +169,7 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
           <Stat label={words.cash}>
             {tokens(lang, vault.cash.display)}{' '}
             <span className="text-caption text-muted-foreground">
-              {assetName(vault.cash.asset)}
+              {tokenName(vault.cash.asset)}
             </span>
           </Stat>
           <Stat label={words.autoFollow}>
@@ -255,8 +254,7 @@ export function PlanParts({ vault }: { vault: Vault }) {
       density="dense"
       mock={vault.provenance !== 'live'}
       mockLabels={{
-        announce: t.shell.mockAnnounce,
-        note: vault.provenance === 'sandbox' ? t.shell.testNetwork : undefined,
+        announce: vault.provenance === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
       }}
     >
       <CardHeader title={words.planTitle(parts.length)} level={3} id={heading} density="dense" />

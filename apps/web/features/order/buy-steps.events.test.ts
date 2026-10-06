@@ -264,7 +264,7 @@ describe('the funds', () => {
     const host = await buy();
     const line = find(host, '[data-ui="funding-line"]');
     expect(line.textContent).toBe(
-      `${en.buy.funding.needs('40,000 tUSDC', '0.0101 SOL')} ${en.buy.funding.haveNone}`,
+      `${en.buy.funding.needs('40,000 USDC', '0.0101 SOL')} ${en.buy.funding.haveNone}`,
     );
     const details = find<HTMLDetailsElement>(host, 'details[data-ui="funding-details"]');
     expect(details.open).toBe(false);
@@ -292,7 +292,7 @@ describe('the funds', () => {
     await settle();
     expect(server.to('/v1/funding').length).toBeGreaterThan(reads);
     expect(find(host, '[data-ui="test-funds-sent"]').textContent).toBe(
-      en.buy.funding.testSent('40,400 tUSDC and 0.012625 SOL'),
+      en.buy.funding.testSent('40,400 USDC and 0.012625 SOL'),
     );
     expect(find(host, '[data-ui="funding-line"]').textContent).toContain(en.buy.funding.ok);
     expect(next(host, 'funds').getAttribute('aria-disabled')).toBeNull();

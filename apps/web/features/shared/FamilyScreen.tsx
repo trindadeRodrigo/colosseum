@@ -25,7 +25,7 @@ import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { switchFailure } from '../account/ChainSwitch';
-import { assetTicker, formatBps } from '../order/amounts';
+import { formatBps, tokenName } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { keepOrder } from '../order/order-record';
 import { networkFor } from '../order/readiness';
@@ -263,8 +263,8 @@ function RecipeSection({
         aria-label={f.recipe(chainName)}
         mock={recipe.provenance !== 'live'}
         mockLabels={{
-          announce: t.shell.mockAnnounce,
-          note: recipe.provenance === 'sandbox' ? t.shell.testNetwork : undefined,
+          announce:
+            recipe.provenance === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
         }}
       >
         <CardHeader title={f.recipe(chainName)} level={2} meta={f.versionN(active.version)} />
@@ -280,7 +280,7 @@ function RecipeSection({
             <PlanLegs
               legs={active.components.map((c) => ({
                 id: c.asset,
-                name: assetTicker(c.asset),
+                name: tokenName(c.asset),
                 weight: c.weightBps / 10_000,
                 weightLabel: formatBps(c.weightBps, locale),
                 rate: null,
@@ -462,7 +462,7 @@ function WeightsTable({
                 </span>
               </span>
             ) : (
-              assetTicker(r.asset)
+              tokenName(r.asset)
             ),
         },
         {
@@ -718,7 +718,7 @@ export function FollowPrompt({
       </p>
       {added.length > 0 && (
         <p className="max-w-(--tf-measure-body) text-body-sm">
-          {p.newAssets(added.map((a) => assetTicker(a)).join(', '))}
+          {p.newAssets(added.map((a) => tokenName(a)).join(', '))}
         </p>
       )}
       {behind && (

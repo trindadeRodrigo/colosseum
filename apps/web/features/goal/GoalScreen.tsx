@@ -560,8 +560,7 @@ export function GoalScreen() {
               // and for a test network the words too.
               mock={planLabel !== 'live'}
               mockLabels={{
-                announce: t.shell.mockAnnounce,
-                note: planLabel === 'sandbox' ? t.shell.testNetwork : undefined,
+                announce: planLabel === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
               }}
             >
               <CardHeader

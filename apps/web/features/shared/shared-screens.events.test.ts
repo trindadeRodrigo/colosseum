@@ -141,12 +141,12 @@ describe('the shelf', () => {
     ]);
     // words that match no version the creator published are said to be unverified
     expect(card.textContent).toContain(en.shared.text.unverified);
-    expect(card.textContent).toContain('SPYX 40%');
+    expect(card.textContent).toContain('SPYx 40%');
     expect(card.textContent).not.toContain(en.shared.shelf.card.platform);
     // a test network's portfolio carries the hatch and one quiet line, never the word MOCK
     expect(card.textContent).not.toContain('MOCK');
     expect(card.querySelector('[data-ui="sample-note"]')?.textContent).toBe(
-      `${en.shell.mockAnnounce} · ${en.shell.testNetwork}`,
+      en.shell.testNetworkLine,
     );
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
@@ -203,7 +203,7 @@ describe('a portfolio’s page (gate GOLD-ONE-TAP)', () => {
     const host = await show(createElement(FamilyScreen, { slug: SLUG }));
     const offer = find(host, '[data-ui="auto-follow-offer"]');
     expect(offer.getAttribute('data-offered')).toBe('false');
-    expect(offer.textContent).toContain(en.shared.offer.noOracle('GLDX', 'Solana'));
+    expect(offer.textContent).toContain(en.shared.offer.noOracle('GLDx', 'Solana'));
     expect(button(host, en.shared.vaults.autoOn)).toBeUndefined();
     expect(host.textContent).toContain(en.shared.vaults.oneTap);
   });

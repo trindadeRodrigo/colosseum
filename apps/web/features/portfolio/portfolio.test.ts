@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { pinState } from '../../components/ui/provenance';
+import { dictionary } from '../../i18n';
+import { tokenName } from '../order/amounts';
+import { displayName, plainNames } from '../order/plain';
 import { json } from '../wallet/test/fake-port';
 import { dollars, drift, share, tokens, utc } from './figures';
 import {
   addDecimals,
-  assetName,
   chainTotal,
   PORTFOLIO_PATH,
   positionValueSource,
@@ -32,6 +34,8 @@ const answering = (res: Response | Error) =>
     if (res instanceof Error) throw res;
     return res;
   });
+
+const en = dictionary('en');
 
 describe('reading the portfolio', () => {
   it('asks the one route, and hands back the chain it answered for', async () => {
@@ -284,12 +288,28 @@ describe('how the figures are written', () => {
     expect(utc('en', Date.parse(READ_AT) / 1000)).toBe('Oct 5, 2026, 14:00 UTC');
   });
 
-  it('names an asset by the part of its id after the chain', () => {
-    expect(assetName('solana:usdy')).toBe('USDY');
-    expect(assetName('robinhood:tsla-x')).toBe('TSLA-X');
+  it('names a token one way on every screen, and a test token by the token it stands in for', () => {
+    expect(tokenName('solana:usdy')).toBe('USDY');
+    expect(tokenName('robinhood:tsla-x')).toBe('TSLA-X');
     // Robinhood Chain's dollar is tUSDG, on the mock too, where its id says usdc
-    expect(assetName('robinhood:usdc')).toBe('tUSDG');
-    expect(assetName('robinhood:tusdg')).toBe('tUSDG');
-    expect(assetName('solana:usdc')).toBe('USDC');
+    expect(tokenName('robinhood:usdc')).toBe('tUSDG');
+    expect(tokenName('robinhood:tusdg')).toBe('tUSDG');
+    expect(tokenName('solana:usdc')).toBe('USDC');
+    // the flow audit, finding 13: syrupUSDC / tsyrupUSDC / SYRUPUSDC, USDC / tUSDC, SPY / TSPY
+    for (const id of ['solana:syrupusdc', 'solana:tsyrupusdc', 'solana:SYRUPUSDC'])
+      expect(tokenName(id)).toBe('syrupUSDC');
+    expect(tokenName('solana:tusdc')).toBe('USDC');
+    expect(tokenName('robinhood:tspy')).toBe('SPY');
+    expect(tokenName('robinhood:tgld')).toBe('GLD');
+    expect(tokenName('solana:tsla')).toBe('TSLA');
+    expect(tokenName('solana:tslax')).toBe('TSLAx');
+    // the label of a row is the same name, with who issues it, and cash as cash
+    expect(displayName('solana:tsyrupusdc', en.plan)).toBe('syrupUSDC (Maple)');
+    expect(displayName('solana:tusdc', en.plan)).toBe('Cash (USDC)');
+    expect(displayName('robinhood:usdc', en.plan)).toBe('Cash (tUSDG)');
+    // and a sentence of the engine names them the same way, changing no other word
+    expect(plainNames('tsyrupUSDC is left out: tUSDC stays. A meta de tUSDG fica.')).toBe(
+      'syrupUSDC is left out: USDC stays. A meta de tUSDG fica.',
+    );
   });
 });

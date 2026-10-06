@@ -54,6 +54,58 @@ export function shortfallBps(outRaw: string, minOutRaw: string): number | null {
   return Number(gap / out + (gap % out === 0n ? 0n : 1n));
 }
 
+/** Names a person reads, by the token's symbol written in lower case: the shelf's symbols. */
+export const SYMBOLS: Record<string, string> = Object.fromEntries(
+  [
+    'USDC',
+    'USDG',
+    'USDY',
+    'jlUSDC',
+    'syrupUSDC',
+    'SGOV',
+    'SPYx',
+    'QQQx',
+    'NVDAx',
+    'TSLAx',
+    'AAPLx',
+    'GOOGLx',
+    'METAx',
+    'MSFTx',
+    'AMZNx',
+    'SPCXx',
+    'MSTRx',
+    'CRCLx',
+    'HOODx',
+    'COINx',
+    'PLTRx',
+    'GLDx',
+    'SOL',
+    'JitoSOL',
+    'cbBTC',
+    'cbETH',
+    'SPY',
+    'QQQ',
+    'NVDA',
+    'TSLA',
+    'AAPL',
+    'META',
+    'GLD',
+    'SPCX',
+    'MSTR',
+    'CRCL',
+    'GOOGL',
+    'MSFT',
+    'AMZN',
+    'PAXG',
+  ].map((s) => [s.toLowerCase(), s]),
+);
+
+/** The cash tokens: shown as cash, with the token named after it. */
+export const CASH = new Set(['usdc', 'usdg', 'tusdc', 'tusdg']);
+
+/** An asset's id without the chain it is on, in lower case. */
+export const tail = (id: string) => id.slice(id.indexOf(':') + 1).toLowerCase();
+
 /**
  * A chain's dollar goes by that chain's name for it, whatever its id: Robinhood Chain's is tUSDG,
  * also where the mock stands in for it (`robinhood:usdc`). A Robinhood vault never says USDC.
@@ -63,8 +115,17 @@ const NAMED: Readonly<Record<string, string>> = {
   'robinhood:tusdg': 'tUSDG',
 };
 
-/** An asset as a plan on one chain names it: its id without the chain it is on. */
-export const assetName = (id: string) => NAMED[id] ?? id.slice(id.indexOf(':') + 1);
-
-/** The same name as a ticker: upper case, except a name the chain gives in its own case (tUSDG). */
-export const assetTicker = (id: string) => NAMED[id] ?? assetName(id).toUpperCase();
+/**
+ * A token's name, the one every screen writes beside an amount: "USDC", "syrupUSDC", "SPYx", "tUSDG".
+ * One convention for a test network (the flow audit, finding 13): a test token goes by the token it
+ * stands in for ("tSPYx" is SPYx, "tUSDC" is USDC), on the plan, the order, the portfolio and the vault
+ * alike, and the card says it is a test network. A token this app does not know goes by its id's own
+ * name in capitals, never by the id.
+ */
+export function tokenName(id: string): string {
+  const named = NAMED[id];
+  if (named) return named;
+  const name = tail(id);
+  const bare = name.replace(/^t(?=[a-z])/, '');
+  return SYMBOLS[name] ?? SYMBOLS[bare] ?? (name === 'gold' ? 'Gold' : name.toUpperCase());
+}

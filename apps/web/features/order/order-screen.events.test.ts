@@ -132,15 +132,15 @@ describe('the review', () => {
     expect(steps).toHaveLength(2);
     expect(steps[0]).toContain(en.order.kind.create_vault);
     // in whole units, with the symbols the test network's deploy recorded
-    expect(steps[0]).toContain('10 tUSDC');
-    expect(steps[1]).toContain(en.order.review.spend('6 tUSDC', 'tSPYx'));
-    expect(steps[1]).toContain(en.order.review.atLeastWhole('0.0099 tSPYx'));
+    expect(steps[0]).toContain('10 USDC');
+    expect(steps[1]).toContain(en.order.review.spend('6 USDC', 'SPYx'));
+    expect(steps[1]).toContain(en.order.review.atLeastWhole('0.0099 SPYx'));
     expect(steps[1]).toContain(en.order.review.under('1%'));
     expect(label(primary(host))).toBe(en.order.signAndBuy('$10'));
     // on a test network: the hatch and one quiet line that says so, never the word MOCK
     expect(host.textContent).not.toContain('MOCK');
     expect(host.querySelector('[data-ui="sample-note"]')?.textContent).toBe(
-      `${en.shell.mockAnnounce} · ${en.shell.testNetwork}`,
+      en.shell.testNetworkLine,
     );
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
     expect(run.calls).toHaveLength(0);
@@ -274,7 +274,7 @@ describe('an order that does not move what the person asked for', () => {
     api(hostile());
     seed(recordOf('solana', { amountUsd: 40 }));
     const host = await screen();
-    expect(host.querySelector('[data-ui="stat"]')?.textContent).toContain('40,000 tUSDC');
+    expect(host.querySelector('[data-ui="stat"]')?.textContent).toContain('40,000 USDC');
     expect(host.querySelector('[data-variant="primary"]')).toBeNull();
     expect(host.textContent).not.toContain(en.order.signAndBuy('$40'));
     expect(find(host, '[role="alert"]').textContent).toBe(en.order.mismatch.deposit);
@@ -282,7 +282,7 @@ describe('an order that does not move what the person asked for', () => {
   });
 
   it('reads every amount with the deployment file’s decimals, whatever decimals the answer states', async () => {
-    // an answer that says its tokens have 9 decimals: 10,000,000 raw tUSDC would read as 0.01 with them
+    // an answer that says its tokens have 9 decimals: 10,000,000 raw USDC would read as 0.01 with them
     const order = orderOn();
     const says9 = {
       ...order,
@@ -300,10 +300,10 @@ describe('an order that does not move what the person asked for', () => {
     seed();
     const host = await screen();
     const steps = [...host.querySelectorAll('[data-ui="order-step"]')].map((s) => s.textContent);
-    expect(steps[0]).toContain('10 tUSDC');
-    expect(steps[1]).toContain(en.order.review.spend('6 tUSDC', 'tSPYx'));
-    expect(steps[1]).toContain(en.order.review.atLeastWhole('0.0099 tSPYx'));
-    expect(host.querySelector('[data-ui="stat"]')?.textContent).toContain('10 tUSDC');
+    expect(steps[0]).toContain('10 USDC');
+    expect(steps[1]).toContain(en.order.review.spend('6 USDC', 'SPYx'));
+    expect(steps[1]).toContain(en.order.review.atLeastWhole('0.0099 SPYx'));
+    expect(host.querySelector('[data-ui="stat"]')?.textContent).toContain('10 USDC');
     expect(label(primary(host))).toBe(en.order.signAndBuy('$10'));
   });
 
@@ -498,9 +498,9 @@ describe('a buy on Robinhood Chain', () => {
     expect(steps[0]).toContain('10 tUSDG');
     expect(steps[1]).toContain(en.order.kind.create_vault);
     expect(steps[1]).toContain('10 tUSDG');
-    expect(steps[1]).toContain(en.order.review.spend('6 tUSDG', 'tSPY'));
+    expect(steps[1]).toContain(en.order.review.spend('6 tUSDG', 'SPY'));
     expect(label(primary(host))).toBe(en.order.signAndBuy('$10'));
-    expect(host.textContent).toContain(en.shell.testNetwork);
+    expect(host.textContent).toContain(en.shell.testNetworkLine);
     expect(host.querySelector('[role="alert"]')).toBeNull();
     expect(run.calls).toHaveLength(0);
   });

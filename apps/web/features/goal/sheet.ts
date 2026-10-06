@@ -163,7 +163,8 @@ export function dollars(amount: number, lang: Lang): string {
   return new Intl.NumberFormat(LOCALE[lang], {
     style: 'currency',
     currency: 'USD',
-    minimumFractionDigits: 0,
+    // whole dollars as they are, and cents in full: "$152.80", never "$152.8"
+    minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
     maximumFractionDigits: 2,
   }).format(amount);
 }
@@ -377,6 +378,34 @@ function isFields(value: unknown): value is SheetFields {
     oneOf(f.glide, 'yes', 'no') &&
     oneOf(f.language, 'en', 'pt')
   );
+}
+
+/**
+ * A plan's own limits as the goal screen keeps them, so "Change my limits" on a plan opens the sheet
+ * the plan was built from, in any tab.
+ */
+export function goalFromSheet(sheet: BasketSheet, goalText: string, now = new Date()): StoredGoal {
+  const fields: SheetFields = {
+    goal: sheet.goal,
+    amount: String(sheet.amountUsd),
+    income: sheet.incomeTargetUsdMonthly === undefined ? '' : String(sheet.incomeTargetUsdMonthly),
+    horizon: String(sheet.horizonMonths),
+    risk: sheet.risk,
+    country: sheet.country,
+    holdings: sheet.rules.useHoldings ? 'yes' : 'no',
+    glide: sheet.rules.glide ? 'yes' : 'no',
+    language: sheet.language,
+  };
+  return {
+    text: goalText,
+    sheet: {
+      goalText,
+      source: { method: 'plan', fetchedAt: now.toISOString(), provenance: 'live' },
+      firstReader: false,
+      read: fields,
+      fields,
+    },
+  };
 }
 
 /**

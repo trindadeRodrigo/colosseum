@@ -15,7 +15,7 @@ import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars } from '../goal/sheet';
-import { assetTicker, formatBps } from '../order/amounts';
+import { formatBps, tokenName } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { vaultValueSource } from '../portfolio/portfolio';
 import { useApiFetch } from '../wallet/WalletProvider';
@@ -101,8 +101,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
         aria-labelledby={`${titleId}-pane`}
         mock={read.provenance !== 'live'}
         mockLabels={{
-          announce: t.shell.mockAnnounce,
-          note: read.provenance === 'sandbox' ? t.shell.testNetwork : undefined,
+          announce: read.provenance === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
         }}
       >
         <CardHeader title={read.name} level={2} id={`${titleId}-pane`} />
@@ -140,7 +139,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
             <dd className="tabular-nums">
               {vault.cash.display}{' '}
               <span className="text-caption text-muted-foreground">
-                {assetTicker(vault.cash.asset)}
+                {tokenName(vault.cash.asset)}
               </span>
             </dd>
           </dl>
@@ -154,7 +153,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                 key: 'asset',
                 header: v.columns.asset,
                 rowHeader: true,
-                cell: (r) => assetTicker(r.asset),
+                cell: (r) => tokenName(r.asset),
               },
               { key: 'held', header: v.columns.held, numeric: true, cell: (r) => r.display },
               {

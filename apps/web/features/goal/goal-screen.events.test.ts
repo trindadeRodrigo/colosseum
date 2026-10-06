@@ -892,9 +892,7 @@ describe('what comes back from “Build my plan”', () => {
         json({ id: 'plan-1', proposal: proposalFor((body as { sheet: never }).sheet, 'sandbox') }),
       'live',
     );
-    expect(find(host, '[data-ui="sample-note"]').textContent).toBe(
-      `${en.shell.mockAnnounce} · ${en.shell.testNetwork}`,
-    );
+    expect(find(host, '[data-ui="sample-note"]').textContent).toBe(en.shell.testNetworkLine);
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
 

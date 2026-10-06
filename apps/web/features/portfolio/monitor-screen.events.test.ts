@@ -163,9 +163,7 @@ describe('the monitor, for a person with a vault on their chain', () => {
     const card = panel(host);
     expect(card.querySelector('.tf-hatch')).not.toBeNull();
     expect(card.textContent).not.toContain('MOCK');
-    expect(find(card, '[data-ui="sample-note"]').textContent).toBe(
-      `${en.shell.mockAnnounce} · ${en.shell.testNetwork}`,
-    );
+    expect(find(card, '[data-ui="sample-note"]').textContent).toBe(en.shell.testNetworkLine);
     // the chain line says it too
     expect(find(host, 'header [data-ui="chain-name"]').textContent).toContain(en.shell.testNetwork);
     // no figure is drawn live
@@ -642,9 +640,7 @@ describe('the monitor in Portuguese', () => {
       expect(text(host)).toContain(label);
     expect(text(host).replace(/\s/g, ' ')).toContain('US$ 1.040,00');
     expect(text(host)).toContain('−2,50%');
-    expect(find(panel(host), '[data-ui="sample-note"]').textContent).toBe(
-      `${pt.shell.mockAnnounce} · ${pt.shell.testNetwork}`,
-    );
+    expect(find(panel(host), '[data-ui="sample-note"]').textContent).toBe(pt.shell.testNetworkLine);
     for (const pin of pins(host))
       expect(pin.querySelector('button')?.getAttribute('aria-label')).toMatch(/^Fonte de /);
     expect(text(host)).not.toContain(en.portfolio.vault.title);

@@ -20,7 +20,7 @@ import { SharedReview } from '../shared/SharedReview';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { ActivityPanel } from './ActivityPanel';
 import { activityOf } from './activity';
-import { assetTicker, formatBps, formatRaw, shortfallBps } from './amounts';
+import { formatBps, formatRaw, shortfallBps, tokenName } from './amounts';
 import { type CallFailure, readOrder } from './order-api';
 import { checkDeposit, checkFamilyBuy, type DepositCheck, sharedShapeOk } from './order-check';
 import { isBuy, keepOrder, type OrderRecord, recallOrder } from './order-record';
@@ -273,8 +273,7 @@ export function OrderScreen({ id }: { id: string }) {
         aria-label={t.order.stepsTitle}
         mock={shown.legs[0]?.provenance !== 'live'}
         mockLabels={{
-          announce: t.shell.mockAnnounce,
-          note: testNetwork ? t.shell.testNetwork : undefined,
+          announce: testNetwork ? t.shell.testNetworkLine : t.shell.mockAnnounce,
         }}
       >
         <CardHeader title={t.order.stepsTitle} level={2} meta={<ChainBadge chain={chain} />} />
@@ -508,7 +507,7 @@ function Step({
   };
   const spend = (raw: string) => (units ? whole(raw, units.cash) : null) ?? raw;
   /** A token by the symbol this repository committed for it, or its id on the chain where none is. */
-  const symbol = (asset: string) => units?.tokens[asset]?.symbol ?? assetTicker(asset);
+  const symbol = (asset: string) => units?.tokens[asset]?.symbol ?? tokenName(asset);
   const status = phase
     ? t.order.phase[phase as keyof Dictionary['order']['phase']]
     : t.order.status[now.status];
@@ -553,7 +552,7 @@ function Step({
                       ? t.order.review.atLeastWhole(whole(expected.minOutRaw, trade.buy) as string)
                       : t.order.review.atLeast(
                           formatRaw(expected.minOutRaw, 0, locale) ?? expected.minOutRaw,
-                          assetTicker(trade.buy),
+                          tokenName(trade.buy),
                         )}
                     {under !== null && ` · ${t.order.review.under(formatBps(under, locale))}`}
                   </>

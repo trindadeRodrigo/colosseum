@@ -526,7 +526,7 @@ describe('the goal as one sentence', () => {
     expect(goalSentence({ ...FIELDS, amount: '40.000' }, pt, 'pt')).toMatch(
       /^Fazer US\$\s40\.000 crescer em 36 meses\.$/,
     );
-    expect(dollars(1500.5, 'en')).toBe('$1,500.5');
+    expect(dollars(1500.5, 'en')).toBe('$1,500.50');
   });
 
   it('is not made while any of the three cannot be read', () => {
