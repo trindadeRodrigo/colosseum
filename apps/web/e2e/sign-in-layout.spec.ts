@@ -105,3 +105,20 @@ test('a direct link to /sign-in still gets the panel, as a page', async ({ page 
   );
   await expect(page.locator('[data-variant="primary"], a.bg-primary')).toHaveCount(1);
 });
+
+test('the bar keeps its height: signed out, on /sign-in, and signed in', async ({ page }) => {
+  const height = async () =>
+    Math.round((await page.locator('[data-ui="compact-nav-bar"]').boundingBox())?.height ?? 0);
+  await page.goto('/goal');
+  await expect(page.locator('header a[href="/sign-in"]')).toBeVisible({ timeout: 60_000 });
+  const out = await height();
+  expect(out).toBe(58);
+  await page.goto('/sign-in');
+  await expect(page.locator('header [data-ui="sign-in-here"]')).toBeVisible();
+  expect(await height()).toBe(out);
+  await page.getByRole('button', { name: /Continue with a passkey/ }).click();
+  await page.getByRole('button', { name: 'Solana' }).click();
+  await page.getByRole('button', { name: /My plan lives on Solana/ }).click();
+  await expect(page.locator('header [data-ui="account"]')).toBeVisible();
+  expect(await height()).toBe(out);
+});

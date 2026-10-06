@@ -65,6 +65,11 @@ export const en = {
       /** A wallet that signs on both families: the chain is asked before it signs. */
       both: (wallet: string) =>
         `${wallet} works on Solana and on Robinhood Chain. Choose the chain your plan lives on: it can’t be changed later.`,
+      /** After `both`: someone who signed in before chooses again what they chose then. */
+      before: 'Signed in before? Choose the chain you chose then.',
+      /** A wallet every chain of which is switched off on our server. */
+      off: (wallet: string) =>
+        `${wallet} works only on chains switched off on our server for now, so it can’t be used to sign in. Use another wallet, or a passkey.`,
       /** The name of the group of the two chains to choose from. */
       chains: 'The chain of your plan',
     },
@@ -82,7 +87,7 @@ export const en = {
         'The passkey wasn’t created: the prompt was closed or ran out of time. Nothing was saved. Try again when you’re ready.',
       /** The prompt to use a passkey was closed: nothing is made unless the person asks (SIGN-IN-FLOW). */
       passkeyNotUsed:
-        'No passkey was used: the prompt was closed or ran out of time. If you made a passkey on another device, sign in on that device. A new passkey starts a new account, with a wallet of its own.',
+        'No passkey was used. If you made one on another device, use that device or choose “use a phone” in the prompt. New here? Create a passkey: it opens a new account with a new, empty wallet.',
       passkeyUnknown: 'I don’t know that passkey. Create a new one, or connect a wallet.',
       /** Privy's `passkey_not_registered`: the passkey picked was made for another site or app. */
       passkeyNotRegistered: 'That passkey isn’t registered here. Pick another, or create one.',

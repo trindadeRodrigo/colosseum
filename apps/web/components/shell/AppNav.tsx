@@ -135,15 +135,16 @@ function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
       {port.status === 'loading' && port.userId === null ? (
         <span aria-hidden="true" className="h-10 min-w-20" />
       ) : signedOut && onSignIn ? (
-        // On the sign-in screen the bar's way in is where the person already is: marked as the
-        // current page, as the bar marks a current link, and not a second primary button beside the
-        // screen's own "Create a passkey".
+        // On the sign-in page (a direct link; elsewhere "Sign in" opens the sign-in dialog) the bar's
+        // way in is where the person already is: marked as the current page, as the bar marks a
+        // current link, and not a second primary button beside the page's "Continue with a passkey".
+        // As tall as the button it stands for, so the bar keeps its height.
         <Link
           ref={signIn}
           href="/sign-in"
           aria-current="page"
           data-ui="sign-in-here"
-          className="rounded-md px-3 py-2 text-[0.875rem]/5 font-medium whitespace-nowrap text-foreground underline decoration-primary decoration-2 underline-offset-[6px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="inline-flex h-10 items-center rounded-md px-3 text-[0.875rem]/5 font-medium whitespace-nowrap text-foreground underline decoration-primary decoration-2 underline-offset-[6px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
           {t.shell.signIn}
         </Link>

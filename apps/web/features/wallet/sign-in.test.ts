@@ -12,7 +12,7 @@ import {
   signInWithSolanaWallet,
   walletAlreadyThere,
 } from './sign-in-flows';
-import { makeOneInstead, type SignInAttempt, signInFailure, walletChoices } from './sign-in-view';
+import { offersNewPasskey, type SignInAttempt, signInFailure, walletChoices } from './sign-in-view';
 import { buildConfigForTest } from './test/api-config';
 import { chains, failure } from './test/fixtures';
 import { createTestDriver, TEST_WALLETS } from './test/test-driver';
@@ -365,20 +365,46 @@ describe('the wallets as the sign-in screen offers them', () => {
     expect(choices.find((c) => c.name === 'Phantom')?.icon).toBe(ICON);
   });
 
-  it('makes a passkey only when the one offered is unknown or not registered here', () => {
-    const privyError = (code: string) =>
-      toWalletError(Object.assign(new Error(code), { privyErrorCode: code }));
-    for (const code of ['user_does_not_exist', 'passkey_not_registered'])
-      expect(makeOneInstead(privyError(code)), code).toBe(true);
-    // a closed prompt asks the person first (SIGN-IN-FLOW)
-    for (const code of [
-      'passkey_not_allowed',
-      'disallowed_login_method',
-      'too_many_requests',
-      'client_request_timeout',
-    ])
-      expect(makeOneInstead(privyError(code)), code).toBe(false);
-    expect(makeOneInstead(new Error('anything'))).toBe(false);
+  it('joins only the wallets known to sign on both, by id, and never by a name an announcer chose', () => {
+    const FAKE = 'data:image/png;base64,ZmFrZQ==';
+    const choices = walletChoices(
+      foundWallets(
+        [{ name: 'Phantom', icon: ICON }],
+        [
+          // an EVM wallet that calls itself "Phantom", announcing before the real one
+          { rdns: 'com.fake', name: 'Phantom', provider, icon: FAKE },
+          { rdns: 'app.phantom', name: 'Phantom', provider },
+          { rdns: 'io.other', name: 'Phantom', provider },
+        ],
+      ),
+    );
+    expect(choices.map((c) => [c.name, c.ids])).toEqual([
+      ['Phantom', { evm: 'evm:com.fake' }],
+      ['Phantom', { evm: 'evm:io.other' }],
+      ['Phantom', { solana: 'solana:Phantom', evm: 'evm:app.phantom' }],
+    ]);
+    // the real one keeps its own icon; the fake keeps its own, and lends it to nobody
+    expect(choices.find((c) => c.ids.solana)?.icon).toBe(ICON);
+    expect(choices.find((c) => c.ids.evm === 'evm:com.fake')?.icon).toBe(FAKE);
+    expect(choices.find((c) => c.ids.evm === 'evm:io.other')?.icon).toBeUndefined();
+    // with the real EVM side absent, the fake does not take its slot
+    const alone = walletChoices(
+      foundWallets([{ name: 'Phantom' }], [{ rdns: 'com.fake', name: 'Phantom', provider }]),
+    );
+    expect(alone.find((c) => c.ids.solana)?.ids).toEqual({ solana: 'solana:Phantom' });
+  });
+
+  it('never makes a passkey on a failed use, and offers one wherever one can be made', () => {
+    for (const key of [
+      'passkeyNotUsed',
+      'passkeyUnknown',
+      'passkeyNotRegistered',
+      'tooMany',
+      'other',
+    ] as const)
+      expect(offersNewPasskey(key), key).toBe(true);
+    for (const key of ['passkeyOff', 'passkeyUnsupported'] as const)
+      expect(offersNewPasskey(key), key).toBe(false);
   });
 });
 

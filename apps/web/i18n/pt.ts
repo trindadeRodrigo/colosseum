@@ -56,6 +56,9 @@ export const pt: Dictionary = {
       none: 'Nenhuma carteira foi encontrada neste navegador. Instale uma ou abra esta página no navegador da própria carteira. Ou continue com uma chave de acesso: não precisa instalar nada.',
       both: (wallet: string) =>
         `${wallet} funciona na Solana e na Robinhood Chain. Escolha a rede onde seu plano fica: isso não pode ser mudado depois.`,
+      before: 'Já entrou antes? Escolha a rede que você escolheu naquela vez.',
+      off: (wallet: string) =>
+        `${wallet} só funciona em redes indisponíveis no nosso servidor por enquanto, então não pode ser usada para entrar. Use outra carteira ou uma chave de acesso.`,
       chains: 'A rede do seu plano',
     },
     off: {
@@ -70,7 +73,7 @@ export const pt: Dictionary = {
       passkeyNotCreated:
         'A chave de acesso não foi criada: a janela foi fechada ou o tempo acabou. Nada foi salvo. Tente de novo quando quiser.',
       passkeyNotUsed:
-        'Nenhuma chave de acesso foi usada: a janela foi fechada ou o tempo acabou. Se você criou uma chave de acesso em outro aparelho, entre por esse aparelho. Uma chave nova abre uma conta nova, com uma carteira própria.',
+        'Nenhuma chave de acesso foi usada. Se você criou uma em outro aparelho, use esse aparelho ou escolha “usar um celular” na janela. É novo aqui? Crie uma chave de acesso: ela abre uma conta nova, com uma carteira nova e vazia.',
       passkeyUnknown: 'Não reconheço essa chave de acesso. Crie uma nova ou conecte uma carteira.',
       passkeyNotRegistered:
         'Essa chave de acesso não está registrada aqui. Escolha outra ou crie uma.',

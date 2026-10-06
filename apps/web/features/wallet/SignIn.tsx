@@ -7,7 +7,7 @@ import { LatticeStatus } from '../../components/ui/Lattice';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { useT } from '../../i18n/I18nProvider';
 import {
-  makeOneInstead,
+  offersNewPasskey,
   type SignInAttempt,
   type SignInFailure,
   signInFailure,
@@ -17,9 +17,9 @@ import {
 import { useWalletPort } from './WalletProvider';
 
 // The two ways in, on the primitives (GATES, SIGN-IN, SIGN-IN-FLOW): one button for a passkey and one
-// for a wallet. "Continue with a passkey" uses the passkey this device has for the site, and makes one
-// when the one it offers is unknown here. A closed prompt makes nothing: the sentence says a new
-// passkey starts a new account and offers "Create a new passkey", for the person to ask. "Connect a wallet" opens
+// for a wallet. "Continue with a passkey" uses the passkey this device has for the site. It never makes
+// one: when using one fails, the sentence says why and that a new passkey starts a new account, and
+// "Create a new passkey" (a button of its own, so the browser has a gesture for it) makes one. "Connect a wallet" opens
 // our own list of the wallets found in this browser, one entry per wallet with its own name and icon;
 // a wallet that signs on both families asks first which chain the plan lives on, since that is the
 // family it signs in with, and a wallet of one family is that family's. Nothing of the wallet
@@ -55,6 +55,8 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
   const [listing, setListing] = useState(false);
   // The wallet that signs on both families, while the person chooses which.
   const [asking, setAsking] = useState<WalletChoice | null>(null);
+  // A passkey could not be used, or made: "Create a new passkey" is offered.
+  const [offerCreate, setOfferCreate] = useState(false);
 
   async function run(
     what: Exclude<Busy, null>,
@@ -64,18 +66,16 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
     if (busy) return;
     setBusy(what);
     setFailure(null);
+    setOfferCreate(false);
     onAttempt?.();
-    // The attempt a failure is said for: making a passkey, once using one has turned out to mean that.
-    let said = attempt;
     try {
-      await action().catch(async (e: unknown) => {
-        if (what !== 'passkey' || !makeOneInstead(e)) throw e;
-        said = 'passkey-create';
-        await port.signIn('passkey', { create: true });
-      });
+      await action();
       onSignedIn?.();
     } catch (e) {
-      setFailure(signInFailure(e, said));
+      const said = signInFailure(e, attempt);
+      setFailure(said);
+      // Nothing is made because using a passkey failed: the person is offered the button, and asks.
+      if (!what.startsWith('wallet:') && offersNewPasskey(said)) setOfferCreate(true);
       onFailed?.();
     } finally {
       setBusy(null);
@@ -190,7 +190,9 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
                   data-ui="wallet-chains"
                   className="flex flex-col gap-3"
                 >
-                  <p className="text-body-sm">{t.signIn.wallet.both(asking.name)}</p>
+                  <p className="text-body-sm">
+                    {t.signIn.wallet.both(asking.name)} {t.signIn.wallet.before}
+                  </p>
                   <div className="grid w-full grid-cols-1 gap-3">
                     {families(asking).map((family) => {
                       const id = asking.ids[family] as string;
@@ -219,8 +221,10 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
                   {choices.map((choice) => {
                     const only = families(choice);
                     const id = only.length === 1 && only[0] ? choice.ids[only[0]] : undefined;
+                    // Every chain it signs on is switched off on our server: it is shown, with why.
+                    const off = only.length === 0;
                     return (
-                      <li key={choice.key}>
+                      <li key={choice.key} className="flex flex-col gap-1">
                         <Button
                           busy={id !== undefined && busy === `wallet:${id}`}
                           busyLabel={t.signIn.wallet.waiting}
@@ -233,6 +237,11 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
                             {choice.name}
                           </span>
                         </Button>
+                        {off && (
+                          <p data-ui="wallet-off" className="text-caption text-muted-foreground">
+                            {t.signIn.wallet.off(choice.name)}
+                          </p>
+                        )}
                       </li>
                     );
                   })}
@@ -265,10 +274,9 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
           <span>{t.signIn.failure[failure]}</span>
         </p>
       )}
-      {failure === 'passkeyNotUsed' && (
+      {offerCreate && (
         <div data-ui="create-new-passkey">
           <Button
-            variant="link"
             busy={busy === 'create'}
             busyLabel={t.signIn.passkey.waiting}
             disabled={busy !== null && busy !== 'create'}

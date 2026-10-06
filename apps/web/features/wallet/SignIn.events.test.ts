@@ -89,52 +89,52 @@ describe('the sign-in panel: two ways in, one button each', () => {
   });
 
   it.each([
-    ['the one it has is unknown here', 'unknownPasskey'],
-    ['Privy has not registered it', 'notRegistered'],
-  ] as const)('makes one when %s', async (_, what) => {
-    const thrown = {
-      unknownPasskey: THROWN.unknownPasskey,
-      notRegistered: privy('passkey_not_registered', 'Passkey not registered'),
-    }[what];
-    const signIn = vi.fn(async (_m: string, choice?: { create?: boolean }) => {
-      if (!choice?.create) throw thrown;
-    });
-    const onSignedIn = vi.fn();
-    portStore.set(fakePort({ found: FOUND, signIn }));
-    const host = await screen('en', onSignedIn);
-    await click(button(host, en.passkey.continue));
-    expect(signIn.mock.calls).toEqual([['passkey'], ['passkey', { create: true }]]);
-    expect(onSignedIn).toHaveBeenCalledTimes(1);
-    expect(alert(host)).toBeNull();
+    ['the prompt is closed (or timed out, or the device has none)', 'closed', 'passkeyNotUsed'],
+    ['the one it has is unknown here', 'unknownPasskey', 'passkeyUnknown'],
+    ['Privy has not registered it', 'notRegistered', 'passkeyNotRegistered'],
+  ] as const)(
+    'makes none when %s: it says why, and offers a button that makes one',
+    async (_, what, key) => {
+      const thrown = {
+        closed: THROWN.closed,
+        unknownPasskey: THROWN.unknownPasskey,
+        notRegistered: privy('passkey_not_registered', 'Passkey not registered'),
+      }[what];
+      const signIn = vi.fn(async (_m: string, choice?: { create?: boolean }) => {
+        if (!choice?.create) throw thrown;
+      });
+      const onSignedIn = vi.fn();
+      portStore.set(fakePort({ found: FOUND, signIn }));
+      const host = await screen('en', onSignedIn);
+      await click(button(host, en.passkey.continue));
+      // one call, and nothing made
+      expect(signIn.mock.calls).toEqual([['passkey']]);
+      expect(onSignedIn).not.toHaveBeenCalled();
+      expect(alert(host)).toBe(en.failure[key]);
+      // the one way to make one: a secondary button of its own (its own gesture, as Safari wants), not
+      // a second primary
+      const create = find(find(host, '[data-ui="create-new-passkey"]'), 'button');
+      expect(create.getAttribute('data-variant')).toBe('secondary');
+      expect(create.textContent).toContain(en.passkey.createNew);
+      expect(host.querySelectorAll('[data-variant="primary"]')).toHaveLength(1);
+      await click(create);
+      expect(signIn.mock.calls).toEqual([['passkey'], ['passkey', { create: true }]]);
+      expect(onSignedIn).toHaveBeenCalledTimes(1);
+      expect(alert(host)).toBeNull();
+      expect(host.querySelector('[data-ui="create-new-passkey"]')).toBeNull();
+    },
+  );
+
+  it('says a closed prompt in words that point to another device, a phone, and a new account', () => {
+    for (const lang of ['en', 'pt'] as const) {
+      const sentence = dictionary(lang).signIn.failure.passkeyNotUsed;
+      expect(sentence).toMatch(lang === 'en' ? /another device/ : /outro aparelho/);
+      expect(sentence).toMatch(lang === 'en' ? /use a phone/ : /usar um celular/);
+      expect(sentence).toMatch(lang === 'en' ? /new account/ : /conta nova/);
+    }
   });
 
-  it('makes none when the prompt is closed: it says a new passkey is a new account, and offers one', async () => {
-    const signIn = vi.fn(async (_m: string, choice?: { create?: boolean }) => {
-      if (!choice?.create) throw THROWN.closed;
-    });
-    const onSignedIn = vi.fn();
-    portStore.set(fakePort({ found: FOUND, signIn }));
-    const host = await screen('en', onSignedIn);
-    await click(button(host, en.passkey.continue));
-    // one call, and nothing made
-    expect(signIn.mock.calls).toEqual([['passkey']]);
-    expect(onSignedIn).not.toHaveBeenCalled();
-    expect(alert(host)).toBe(en.failure.passkeyNotUsed);
-    expect(en.failure.passkeyNotUsed).toContain('new account');
-    expect(en.failure.passkeyNotUsed).toContain('another device');
-    // the one way to make one: asked for, as a link and not a second primary
-    const create = find(find(host, '[data-ui="create-new-passkey"]'), 'button');
-    expect(create.getAttribute('data-variant')).toBe('link');
-    expect(create.textContent).toContain(en.passkey.createNew);
-    expect(host.querySelectorAll('[data-variant="primary"]')).toHaveLength(1);
-    await click(create);
-    expect(signIn.mock.calls).toEqual([['passkey'], ['passkey', { create: true }]]);
-    expect(onSignedIn).toHaveBeenCalledTimes(1);
-    expect(alert(host)).toBeNull();
-    expect(host.querySelector('[data-ui="create-new-passkey"]')).toBeNull();
-  });
-
-  it('says so when the prompt to make one is closed too, and makes nothing', async () => {
+  it('says so when the prompt to make one is closed too, makes nothing, and offers it again', async () => {
     const signIn = vi.fn(async () => {
       throw THROWN.closed;
     });
@@ -143,11 +143,11 @@ describe('the sign-in panel: two ways in, one button each', () => {
     await click(button(host, en.passkey.continue));
     await click(find(find(host, '[data-ui="create-new-passkey"]'), 'button'));
     expect(alert(host)).toBe(en.failure.passkeyNotCreated);
-    expect(host.querySelector('[data-ui="create-new-passkey"]')).toBeNull();
+    expect(host.querySelector('[data-ui="create-new-passkey"]')).not.toBeNull();
   });
 
-  it('offers no new passkey after any other failure', async () => {
-    for (const thrown of [THROWN.off, THROWN.tooMany, THROWN.offline]) {
+  it('offers no new passkey where none can be made, nor after a wallet failed', async () => {
+    for (const thrown of [THROWN.off, THROWN.noWebAuthn]) {
       portStore.set(
         fakePort({
           found: FOUND,
@@ -161,6 +161,18 @@ describe('the sign-in panel: two ways in, one button each', () => {
       expect(host.querySelector('[data-ui="create-new-passkey"]')).toBeNull();
       await unmountAll();
     }
+    portStore.set(
+      fakePort({
+        found: FOUND,
+        signIn: vi.fn(async () => {
+          throw THROWN.refused;
+        }),
+      }),
+    );
+    const host = await screen();
+    await openList(host);
+    await click(button(host, 'MetaMask'));
+    expect(host.querySelector('[data-ui="create-new-passkey"]')).toBeNull();
   });
 
   it('makes none when using one failed for another reason, and says that reason', async () => {
@@ -229,6 +241,8 @@ describe('the sign-in panel: two ways in, one button each', () => {
     const chains = find(host, '[data-ui="wallet-chains"]');
     expect(chains.getAttribute('role')).toBe('group');
     expect(chains.textContent).toContain(en.wallet.both('Phantom'));
+    // someone signed in before is told to choose what they chose then
+    expect(chains.textContent).toContain(en.wallet.before);
     expect([...chains.querySelectorAll('button')].map((b) => b.textContent)).toEqual([
       `Solana${en.wallet.waiting}`,
       `Robinhood Chain${en.wallet.waiting}`,
@@ -258,6 +272,28 @@ describe('the sign-in panel: two ways in, one button each', () => {
     await click(button(host, 'Phantom'));
     expect(host.querySelector('[data-ui="wallet-chains"]')).toBeNull();
     expect(signIn.mock.calls).toEqual([['wallet', { wallet: 'solana:Phantom' }]]);
+  });
+
+  it('shows a wallet whose every chain is off as unusable, and says why', async () => {
+    const signIn = vi.fn(async () => {});
+    const base = fakePort();
+    portStore.set(
+      fakePort({
+        found: [{ id: 'evm:io.metamask', name: 'MetaMask', family: 'evm' }],
+        signIn,
+        network: (chain) => {
+          const n = base.network(chain);
+          return n && chain === 'robinhood' ? { ...n, on: false } : n;
+        },
+      }),
+    );
+    const host = await screen();
+    await openList(host);
+    const metamask = button(host, 'MetaMask');
+    expect(metamask.getAttribute('aria-disabled')).toBe('true');
+    expect(find(host, '[data-ui="wallet-off"]').textContent).toBe(en.wallet.off('MetaMask'));
+    await click(metamask);
+    expect(signIn).not.toHaveBeenCalled();
   });
 
   it('says so when no wallet is in the browser, and points to the passkey', async () => {
