@@ -26,7 +26,7 @@ import { packageUp } from './packaging';
 import { Book, once, type Removed, type Sized, type Unit } from './placement';
 import { type ScheduleInputs, scheduleOf } from './schedule';
 import { scorecardOf } from './scorecard';
-import { checkCoverage, placeSetAside, setAsideOf } from './set-aside';
+import { asideInYieldBps, checkCoverage, placeSetAside, setAsideOf } from './set-aside';
 import { statusOf } from './status';
 import { type RuleId, reason, text } from './templates';
 import {
@@ -310,7 +310,20 @@ function build(
 
   // ---- Exposure: how big each sleeve is. What the next withdrawals need comes off the goal first.
   const sa = setAsideOf(w);
-  const sleeves = sizeSleeves(w, sa?.bps ?? 0);
+  // With a mix, what is set aside counts as the class of the mix it is held as (gate EXPLICIT-MIX).
+  const asideOfMix =
+    sa && sheet.mix
+      ? {
+          from: sa.from,
+          to: sa.to,
+          inYieldBps: asideInYieldBps(
+            w,
+            sa,
+            yieldTokens(w).filter((a) => w.isRateOnly(a)),
+          ),
+        }
+      : undefined;
+  const sleeves = sizeSleeves(w, sa?.bps ?? 0, asideOfMix);
   const [growth = 0, dollarYield = 0, gold = 0, cash = 0, safeYield = 0, setAside = 0] = split(
     w.amount,
     [...SLEEVES.map((sleeve) => sleeves.sized[sleeve]), sleeves.safeYieldBps, sleeves.setAsideBps],
@@ -433,6 +446,7 @@ function build(
       sa,
       yielders.filter((a) => w.isRateOnly(a)),
       ranked,
+      sleeves.asideSays,
     );
   if (sa && setAside < sa.owed) {
     w.flags.add('set_aside_short');

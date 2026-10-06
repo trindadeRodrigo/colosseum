@@ -63,6 +63,13 @@ export const REASON_TEMPLATES = {
     'To hold {sleeveBps|pct} of the plan in stocks and crypto, the plan uses the limits for {risk|risk}: at most {stockCapBps|pct} in one stock or crypto asset, and {issuerCapBps|pct} with one issuer.',
     'Para ter {sleeveBps|pct} do plano em ações e cripto, o plano usa os limites de {risk|risk}: no máximo {stockCapBps|pct} em uma só ação ou cripto, e {issuerCapBps|pct} com um só emissor.',
   ),
+  // Withdrawals come before the mix: what the next months owe is set aside first. Said on the lines
+  // of each class of the mix that holds less for it, and on the lines that hold what is set aside.
+  MIX_SET_ASIDE: rule(
+    ['obligations', 'mix'],
+    '{usd|usd} of the {askedBps|pct} you asked for in {sleeve|sleeve} is set aside for your withdrawals from {from|month} to {to|month} instead, which leaves {leftBps|pct} of the plan for {sleeve|sleeve}: what your withdrawals need in those months is set aside before the mix is held.',
+    '{usd|usd} dos {askedBps|pct} que você pediu em {sleeve|sleeve} ficam separados para os seus saques de {from|month} a {to|month}, o que deixa {leftBps|pct} do plano para {sleeve|sleeve}: o que os seus saques precisam nesses meses fica separado antes de a composição ser montada.',
+  ),
   // The person's split of the plan (gate SLEEVES).
   SPLIT_GOAL: rule(
     ['sleeves', 'goal'],

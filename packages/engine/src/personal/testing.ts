@@ -974,7 +974,14 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
   // says which. Each class of the mix is held, or a line of that class says what kept it from it.
   const saidRules = new Set(allReasons(plan).map((r) => r.rule));
   if (!s.mix) {
-    for (const rule of ['MIX', 'MIX_ALL', 'MIX_LIMITS', 'CREDIT_BUDGET_MIX', 'CREDIT_NONE_MIX'])
+    for (const rule of [
+      'MIX',
+      'MIX_ALL',
+      'MIX_LIMITS',
+      'MIX_SET_ASIDE',
+      'CREDIT_BUDGET_MIX',
+      'CREDIT_NONE_MIX',
+    ])
       say(!saidRules.has(rule), `${rule} said of a plan with no mix`);
     say(
       !plan.flags.some((f) => f.startsWith('limits_from_mix:')),
@@ -1289,8 +1296,61 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
       'withdrawals with no goal sleeve, and no short flag',
     );
   } else {
-    for (const rule of ['SET_ASIDE', 'SET_ASIDE_SHORT', 'SET_ASIDE_CASH', 'NO_MATCHING_LEG'])
+    for (const rule of [
+      'SET_ASIDE',
+      'SET_ASIDE_SHORT',
+      'SET_ASIDE_CASH',
+      'NO_MATCHING_LEG',
+      'MIX_SET_ASIDE',
+    ])
       say(reasonsOf(rule).length === 0, `${rule} said with nothing to set aside`);
+  }
+  // With a mix (gate EXPLICIT-MIX) withdrawals keep their rule: what the next months owe is set aside
+  // in full, as held above. It counts first as the dollar yield and the cash the person asked for.
+  // Stocks, crypto and gold give only what those two together cannot, stocks and crypto before gold,
+  // and each class that gave says how much, and what that leaves it.
+  const asideSaid = [
+    ...new Map(reasonsOf('MIX_SET_ASIDE').map((r) => [JSON.stringify(r.params), r])).values(),
+  ];
+  if (s.mix) {
+    const asked: Record<string, number> = {
+      growth: s.mix.growthBps,
+      dollarYield: s.mix.dollarYieldBps,
+      gold: s.mix.goldBps,
+      cash: s.mix.cashBps,
+    };
+    const asideBps = Math.min(10_000, Math.ceil((owed * 10_000) / amount));
+    const gave: Record<string, number> = { growth: 0, dollarYield: 0, gold: 0, cash: 0 };
+    for (const r of asideSaid) {
+      const sleeve = String(r.params.sleeve);
+      const [was, left] = [Number(r.params.askedBps), Number(r.params.leftBps)];
+      say(was === asked[sleeve], `"${r.text}" but the mix asks ${asked[sleeve]} bps of ${sleeve}`);
+      say(left >= 0 && left < was, `"${r.text}" leaves ${left} bps of ${was}`);
+      say(
+        Math.abs(cents(Number(r.params.usd)) - Math.floor((amount * (was - left)) / 10_000)) <= 1,
+        `"${r.text}" but ${was - left} bps of the plan is not that many dollars`,
+      );
+      say(
+        r.params.from === nowMonth && r.params.to === monthAfter(ctx.now, P.setAsideMonths - 1),
+        `"${r.text}" names other months than the ones set aside for`,
+      );
+      say(gave[sleeve] === 0, `two sentences say what ${sleeve} gave to what is set aside`);
+      gave[sleeve] = (gave[sleeve] ?? 0) + was - left;
+    }
+    const liquid = s.mix.dollarYieldBps + s.mix.cashBps;
+    const fromPriced = Math.max(0, asideBps - liquid);
+    say(
+      (gave.growth ?? 0) + (gave.gold ?? 0) === fromPriced,
+      `stocks, crypto and gold give ${(gave.growth ?? 0) + (gave.gold ?? 0)} bps to what is set aside; the mix's dollar yield and cash leave ${fromPriced} to find`,
+    );
+    say(
+      (gave.gold ?? 0) === 0 || gave.growth === s.mix.growthBps,
+      'gold gives to what is set aside before stocks and crypto have given all of theirs',
+    );
+    say(
+      (gave.dollarYield ?? 0) + (gave.cash ?? 0) <= Math.min(asideBps, liquid),
+      'dollar yield and cash give more to what is set aside than is set aside',
+    );
   }
   // A withdrawal named on the plan is one of the sheet's, in the window.
   for (const r of reasonsOf('WITHDRAWAL'))

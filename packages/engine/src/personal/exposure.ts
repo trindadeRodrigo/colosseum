@@ -1,10 +1,10 @@
 import { apportion } from '@colosseum/basket';
 import { type BasketAsset, type Reason, sleevesOf } from '@colosseum/schemas';
-import { BPS, bpsOf, byName, split, sum, toCents, toUsd } from './money';
+import { BPS, bpsOf, byName, shareOf, split, sum, toCents, toUsd } from './money';
 import { once, type Removed, type Sized, type Unit } from './placement';
 import { eligibleForGoal } from './registry';
 import { type RuleId, reason } from './templates';
-import { SLEEVES, type Sleeve } from './types';
+import { type PersonalMix, SLEEVES, type Sleeve } from './types';
 import type { Family, World } from './world';
 
 // Exposure: how big each sleeve is (stocks and crypto, dollar yield, gold, cash) and what is inside
@@ -34,7 +34,58 @@ export type SleevePlan = {
   setAsideBps: number;
   /** Why each sleeve is the size it is. Every line of a sleeve carries these. */
   reasons: Record<Sleeve, Reason[]>;
+  /**
+   * With a mix, what each class of it gave to what is set aside (gate EXPLICIT-MIX): said on the
+   * lines that hold what is set aside, as on the lines of the class that gave.
+   */
+  asideSays: Reason[];
 };
+
+/**
+ * What is set aside for withdrawals, as a plan with a mix sizes its sleeves by it: the first and last
+ * month it pays for, and how much of it is held as dollar yield (in rate legs), in basis points of the
+ * plan. The rest of it is held as cash.
+ */
+export type AsideOfMix = { from: string; to: string; inYieldBps: number };
+
+/**
+ * A mix once what is set aside for withdrawals is taken out of it (gate EXPLICIT-MIX). Withdrawals
+ * keep their rule with a mix as without: what the next months owe is set aside first, in full. It is
+ * held in rate legs, which are dollar yield, and in cash, so each part counts first as the dollar
+ * yield or the cash the person asked for. Where that class of the mix is smaller than the part held
+ * as it, the other of the two gives; only then stocks and crypto, and then gold, the order the
+ * date's floors take them in.
+ *
+ * `table` is what is left of each class to place. `gave` is what each class gave to money held as
+ * another class: what the plan then holds less of than the mix, and says so.
+ */
+function mixLessAside(
+  mix: PersonalMix,
+  setAsideBps: number,
+  inYieldBps: number,
+): { asked: SleeveSizes; table: SleeveSizes; gave: SleeveSizes } {
+  const asked: SleeveSizes = {
+    growth: mix.growthBps,
+    dollarYield: mix.dollarYieldBps,
+    gold: mix.goldBps,
+    cash: mix.cashBps,
+  };
+  const table = { ...asked };
+  const gave: SleeveSizes = { growth: 0, dollarYield: 0, gold: 0, cash: 0 };
+  let left = setAsideBps;
+  const take = (sleeve: Sleeve, most: number, itsOwn: boolean) => {
+    const bps = Math.min(table[sleeve], most, left);
+    table[sleeve] -= bps;
+    left -= bps;
+    if (!itsOwn) gave[sleeve] += bps;
+  };
+  const asYield = Math.min(setAsideBps, Math.max(0, inYieldBps));
+  take('dollarYield', asYield, true);
+  take('cash', setAsideBps - asYield, true);
+  for (const sleeve of ['cash', 'dollarYield', 'growth', 'gold'] as const)
+    take(sleeve, left, false);
+  return { asked, table, gave };
+}
 
 /** The largest floor among the steps whose month count has not passed. Never rises as months grow. */
 function floorAt<T extends { monthsLeft: number }>(
@@ -57,31 +108,23 @@ function floorAt<T extends { monthsLeft: number }>(
  * gold. Within a split, the table's shares and the floors of the date are the goal sleeve's, scaled
  * to its share; what must not be lost is a sum of money, and the safe-yield sleeve counts toward it.
  */
-export function sizeSleeves(w: World, setAside = 0): SleevePlan {
+export function sizeSleeves(w: World, setAside = 0, aside?: AsideOfMix): SleevePlan {
   const { sheet, P, lang } = w;
   const split = sleevesOf(sheet);
   const goalBps = sum(split.filter((x) => x.kind === 'goal').map((x) => x.shareBps));
   const safeYieldBps = sum(split.filter((x) => x.kind === 'safe_yield').map((x) => x.shareBps));
-  // What is set aside for withdrawals comes off the goal sleeve first; the table shares the rest.
-  // With a mix (gate EXPLICIT-MIX), it comes out of the mix's dollar yield and cash, never out of
-  // the shares the person stated for stocks, crypto and gold.
+  // What is set aside for withdrawals comes off the goal sleeve first, with a mix as without; the
+  // table shares the rest, and a mix is held on the rest as `mixLessAside` says.
   const mix = sheet.mix;
-  const setAsideBps = mix
-    ? Math.min(mix.dollarYieldBps + mix.cashBps, Math.max(0, setAside))
-    : Math.min(goalBps, Math.max(0, setAside));
+  const setAsideBps = Math.min(goalBps, Math.max(0, setAside));
   const restBps = goalBps - setAsideBps;
   /** A share of the goal sleeve, as basis points of the whole plan: rounded down, or up for a floor. */
   const ofGoal = (bps: number, up = false) =>
     up ? Math.ceil((bps * restBps) / BPS) : Math.floor((bps * restBps) / BPS);
+  const less = mix ? mixLessAside(mix, setAsideBps, aside?.inYieldBps ?? 0) : null;
   let table: SleeveSizes;
-  if (mix) {
-    const fromYield = Math.min(mix.dollarYieldBps, setAsideBps);
-    table = {
-      growth: mix.growthBps,
-      dollarYield: mix.dollarYieldBps - fromYield,
-      gold: mix.goldBps,
-      cash: mix.cashBps - (setAsideBps - fromYield),
-    };
+  if (less) {
+    table = less.table;
   } else {
     const row = P.sleeves[`${sheet.goal}:${sheet.risk}`] ?? {
       growthBps: 0,
@@ -97,14 +140,7 @@ export function sizeSleeves(w: World, setAside = 0): SleevePlan {
   const reasons: SleevePlan['reasons'] = { growth: [], dollarYield: [], gold: [], cash: [] };
   const goalPart =
     goalBps < BPS ? [reason('SPLIT_GOAL', { shareBps: goalBps, goal: sheet.goal }, lang)] : [];
-  const asked: Record<Sleeve, number> = mix
-    ? {
-        growth: mix.growthBps,
-        dollarYield: mix.dollarYieldBps,
-        gold: mix.goldBps,
-        cash: mix.cashBps,
-      }
-    : table;
+  const asked: Record<Sleeve, number> = less ? less.asked : table;
   for (const sleeve of SLEEVES)
     if (table[sleeve] > 0)
       reasons[sleeve].push(
@@ -119,6 +155,27 @@ export function sizeSleeves(w: World, setAside = 0): SleevePlan {
               lang,
             ),
       );
+  // Where what is set aside keeps the plan from the mix, the class that gave says how much, and
+  // what that leaves it: a cap says the same where it is the cap that does.
+  const asideSays: Reason[] = [];
+  if (less && aside)
+    for (const sleeve of SLEEVES) {
+      if (less.gave[sleeve] <= 0) continue;
+      const says = reason(
+        'MIX_SET_ASIDE',
+        {
+          usd: toUsd(shareOf(w.amount, less.gave[sleeve])),
+          sleeve,
+          askedBps: less.asked[sleeve],
+          leftBps: less.asked[sleeve] - less.gave[sleeve],
+          from: aside.from,
+          to: aside.to,
+        },
+        lang,
+      );
+      reasons[sleeve].push(says);
+      asideSays.push(says);
+    }
   // The limits that let the plan hold the mix's stocks and crypto, said once on that sleeve.
   if (mix && table.growth > 0)
     reasons.growth.push(
@@ -198,7 +255,7 @@ export function sizeSleeves(w: World, setAside = 0): SleevePlan {
       if (gave.length > 0) say(why, ['dollarYield', 'cash', ...gave]);
     }
   }
-  return { table, sized, goalBps, safeYieldBps, setAsideBps, reasons };
+  return { table, sized, goalBps, safeYieldBps, setAsideBps, reasons, asideSays };
 }
 
 export type Part = { asset: BasketAsset; bps: number };

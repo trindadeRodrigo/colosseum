@@ -1,7 +1,7 @@
 import { EXIT_WINDOW_DAYS } from '@colosseum/basket';
 import { type BasketAsset, type Reason, sleevesOf } from '@colosseum/schemas';
-import { bpsOf, byName, largestFirst, split, sum, toCents, toUsd } from './money';
-import type { Book, Sized } from './placement';
+import { bpsOf, byName, largestFirst, shareOf, split, sum, toCents, toUsd } from './money';
+import { Book, type Sized } from './placement';
 import { reason } from './templates';
 import { reportsPools } from './types';
 import { monthAfter, type Withdrawal, type World } from './world';
@@ -65,6 +65,7 @@ export function byLiquidity(w: World, assets: BasketAsset[]): BasketAsset[] {
 /**
  * Places what is set aside, `cents` of the plan, before anything else. `rateLegs` are the chain's
  * rate-only dollar-yield tokens; `readYields` puts their yields on the plan before any is ranked.
+ * `also` is said on every line that holds some of it: with a mix, which classes of it gave.
  */
 export function placeSetAside(
   w: World,
@@ -73,6 +74,7 @@ export function placeSetAside(
   sa: SetAside,
   rateLegs: BasketAsset[],
   readYields: () => void,
+  also: Reason[] = [],
 ): void {
   const { lang } = w;
   const said: Reason[] = [
@@ -84,6 +86,7 @@ export function placeSetAside(
     ...sa.window.map((x) =>
       reason('WITHDRAWAL', { amount: x.amount, currency: x.currency, month: x.month }, lang),
     ),
+    ...also,
   ];
   // By currency, each its part of what is set aside (all of it, unless the goal sleeve is short).
   const currencies = [...new Set(sa.window.map((x) => x.currency))].sort();
@@ -124,6 +127,27 @@ export function placeSetAside(
     if (left > 0)
       toCash(left, [...why, reason('SET_ASIDE_CASH', { usd: toUsd(left), chain: w.chain }, lang)]);
   });
+}
+
+/**
+ * Of what is set aside, how much is held as dollar yield, in basis points of the plan: what the rate
+ * legs take of it when it is placed before anything else. The rest is held as cash: the cash token,
+ * or the matching leg of a withdrawal in another currency. A plan with a mix reads this before it
+ * sizes its sleeves (gate EXPLICIT-MIX): what is set aside counts first as the class of the mix it is
+ * held as. Tried on a book of its own, so nothing is placed here.
+ */
+export function asideInYieldBps(w: World, sa: SetAside, rateLegs: BasketAsset[]): number {
+  const cents = shareOf(w.amount, sa.bps);
+  if (cents <= 0) return 0;
+  const tried = new Book(w);
+  placeSetAside(w, tried, cents, sa, rateLegs, () => {});
+  const inYield = sum(
+    [...tried.lines.values()]
+      .filter((line) => w.sleeveOf(line.asset) === 'dollarYield')
+      .map((line) => line.cents),
+  );
+  const [inYieldBps = 0] = split(sa.bps, [inYield, cents - inYield]);
+  return inYieldBps;
 }
 
 /** A token's part in the check: what it holds, what it may sell in one window, and its cost. */

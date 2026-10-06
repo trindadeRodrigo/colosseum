@@ -275,6 +275,29 @@ describe('the limits admit the mix as placement places it (review of Oct 6, find
     expect(heldIn(robinhood).growth).toBe(4000);
   });
 
+  it('goes one risk up where what is set aside sits with the issuer of the stocks', () => {
+    // Robinhood Chain: half in stocks fits one issuer at low risk. With withdrawals, the $1,800 set
+    // aside is held in SGOV, a rate leg of the same issuer: that leaves the stocks 32% at low risk
+    // and all of their 50% at medium. The mix alone does not show it; the plan as built does.
+    const s = sheet({
+      chains: ['robinhood'],
+      rules: noGlide,
+      mix: mix({ growthBps: 5000, cashBps: 5000 }),
+    });
+    expect(run(s).sheet.risk).toBe('low');
+    const withdrawing = { ...s, obligations: monthly(300, 8) };
+    const plan = run(withdrawing);
+    expect(plan.sheet.risk).toBe('medium');
+    expect(riskForMix(withdrawing, shelf, ctx)).toBe('medium');
+    expect(heldIn(plan)).toEqual({ growth: 5000, dollarYield: 1800, gold: 0, cash: 3200 });
+    expect(plan.flags).toContain('limits_from_mix:medium');
+    expect(said(plan, 'robinhood:spy').find((r) => r.rule === 'MIX_LIMITS')?.params).toMatchObject({
+      risk: 'medium',
+      issuerCapBps: 7000,
+    });
+    expect(rules(plan)).not.toContain('OVERFLOW_ISSUER');
+  });
+
   it('the three candidates take the limits of the plan, and Carry is the plan', () => {
     const s = sheet({
       chains: ['robinhood'],
@@ -337,6 +360,141 @@ describe('the limits admit the mix as placement places it (review of Oct 6, find
         expect(riskForMix(s, shelf, ctx), `${themes} at ${amountUsd}`).toBe(risk);
         expect(compose(s, shelf, ctx).sheet.risk, `${themes} at ${amountUsd}`).toBe(risk);
       }
+  });
+});
+
+describe('a mix with withdrawals (review of Oct 6, finding 2)', () => {
+  /** $300 a month for eight months: $1,800 in the six months that are set aside. */
+  const withdrawing = (m: PersonalMix, over: Partial<PersonalSheet> = {}) =>
+    sheet({ rules: noGlide, obligations: monthly(300, 8), mix: m, ...over });
+  const aside = (plan: PersonalProposal) =>
+    allReasons(plan)
+      .filter((r) => r.rule === 'MIX_SET_ASIDE')
+      .map((r) => r.params);
+
+  it('all in stocks: the six months are set aside first, in full, and the stocks say what that leaves', () => {
+    const plan = run(withdrawing(mix({ growthBps: 10_000 })));
+    expect(heldIn(plan)).toEqual({ growth: 8200, dollarYield: 0, gold: 0, cash: 1800 });
+    // Set aside from the start: nothing falls short, and the coverage check has nothing to move.
+    for (const flag of ['set_aside_short', 'coverage_moved', 'coverage_short'])
+      expect(plan.flags).not.toContain(flag);
+    expect(
+      said(plan, 'solana:spyx')
+        .slice(0, 3)
+        .map((r) => r.text),
+    ).toEqual([
+      'You asked for all of it in stocks and crypto.',
+      '$1,800 of the 100% you asked for in stocks and crypto is set aside for your withdrawals from October 2026 to March 2027 instead, which leaves 82% of the plan for stocks and crypto: what your withdrawals need in those months is set aside before the mix is held.',
+      'To hold 100% of the plan in stocks and crypto, the plan uses the limits for high risk: at most 35% in one stock or crypto asset, and 100% with one issuer.',
+    ]);
+    const cash = said(plan, 'solana:usdc');
+    expect(cash.map((r) => r.rule)).toEqual([
+      'SET_ASIDE',
+      ...Array.from({ length: 6 }, () => 'WITHDRAWAL'),
+      'MIX_SET_ASIDE',
+      'SET_ASIDE_CASH',
+    ]);
+    expect(cash[0]?.text).toBe(
+      '$1,800 of the plan is set aside for your withdrawals from October 2026 to March 2027, the next 6 months of them; this line holds some or all of it.',
+    );
+    // No sentence states a figure that is not so: nothing is "kept for your goal" at $0.
+    for (const r of allReasons(plan)) expect(r.text).not.toMatch(/\$0 of the plan/);
+    expect(rules(plan)).not.toContain('SET_ASIDE_SHORT');
+    expect(rules(plan)).not.toContain('COVERAGE_MOVED_UNCOUNTED');
+  });
+
+  it('says it in Portuguese', () => {
+    const plan = run(withdrawing(mix({ growthBps: 10_000 }), { language: 'pt' }));
+    expect(said(plan, 'solana:spyx')[1]?.text).toBe(
+      'US$ 1.800 dos 100% que você pediu em ações e cripto ficam separados para os seus saques de outubro de 2026 a março de 2027, o que deixa 82% do plano para ações e cripto: o que os seus saques precisam nesses meses fica separado antes de a composição ser montada.',
+    );
+  });
+
+  it('all in gold: the same six months are set aside, out of the gold', () => {
+    const plan = run(withdrawing(mix({ goldBps: 10_000 })));
+    // 82% is left for gold; one issuer holds half the plan at most, and the rest is in dollar yield.
+    expect(heldIn(plan)).toEqual({ growth: 0, dollarYield: 3200, gold: 5000, cash: 1800 });
+    expect(aside(plan)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sleeve: 'gold', usd: 1800, askedBps: 10_000, leftBps: 8200 }),
+      ]),
+    );
+    expect(said(plan, 'solana:gldx').map((r) => r.rule)).toEqual(
+      expect.arrayContaining(['MIX_ALL', 'MIX_SET_ASIDE', 'ISSUER_CAP_PLAN']),
+    );
+    expect(said(plan, 'solana:usdc').map((r) => r.rule)).toContain('SET_ASIDE');
+  });
+
+  it('where the mix has the cash for it, the plan is the mix: 70% stocks and 30% cash', () => {
+    const plan = run(withdrawing(mix({ growthBps: 7000, cashBps: 3000 })));
+    expect(heldIn(plan)).toEqual({ growth: 7000, dollarYield: 0, gold: 0, cash: 3000 });
+    expect(aside(plan)).toEqual([]);
+    expect(said(plan, 'solana:usdc').map((r) => r.rule)).toEqual(
+      expect.arrayContaining(['MIX', 'SET_ASIDE']),
+    );
+  });
+
+  it('what is set aside counts as the class of the mix it is held as: cash on Solana, a rate leg on Robinhood Chain', () => {
+    const m = mix({ growthBps: 5000, dollarYieldBps: 2000, cashBps: 3000 });
+    const solana = run(withdrawing(m));
+    expect(heldIn(solana)).toEqual({ growth: 5000, dollarYield: 2000, gold: 0, cash: 3000 });
+    expect(aside(solana)).toEqual([]);
+    expect(said(solana, 'solana:usdc').map((r) => r.rule)).toContain('SET_ASIDE');
+    const robinhood = run(withdrawing(m, { chains: ['robinhood'] }));
+    expect(heldIn(robinhood)).toEqual({ growth: 5000, dollarYield: 2000, gold: 0, cash: 3000 });
+    expect(aside(robinhood)).toEqual([]);
+    expect(said(robinhood, 'robinhood:sgov').map((r) => r.rule)).toContain('SET_ASIDE');
+  });
+
+  it('a class gives where its own is not what holds it: dollar yield to cash on Solana, cash to a rate leg on Robinhood Chain', () => {
+    const solana = run(withdrawing(mix({ growthBps: 5000, dollarYieldBps: 5000 })));
+    expect(heldIn(solana)).toEqual({ growth: 5000, dollarYield: 3200, gold: 0, cash: 1800 });
+    expect(aside(solana)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sleeve: 'dollarYield', askedBps: 5000, leftBps: 3200 }),
+      ]),
+    );
+    expect(said(solana, 'solana:jlusdc').map((r) => r.rule)).toContain('MIX_SET_ASIDE');
+    const robinhood = run(
+      withdrawing(mix({ growthBps: 5000, cashBps: 5000 }), { chains: ['robinhood'] }),
+    );
+    expect(heldIn(robinhood)).toEqual({ growth: 5000, dollarYield: 1800, gold: 0, cash: 3200 });
+    expect(said(robinhood, 'robinhood:usdg').find((r) => r.rule === 'MIX_SET_ASIDE')?.text).toBe(
+      '$1,800 of the 50% you asked for in cash is set aside for your withdrawals from October 2026 to March 2027 instead, which leaves 32% of the plan for cash: what your withdrawals need in those months is set aside before the mix is held.',
+    );
+  });
+
+  it('stocks and crypto give before gold, and only what dollar yield and cash cannot', () => {
+    const halves = run(withdrawing(mix({ growthBps: 5000, goldBps: 5000 })));
+    expect(heldIn(halves)).toEqual({ growth: 3200, dollarYield: 0, gold: 5000, cash: 1800 });
+    expect(aside(halves).map((x) => x.sleeve)).toEqual(['growth', 'growth']);
+    // 10% in cash covers $1,000 of the $1,800: the stocks give the other $800, and no more.
+    const tenth = run(withdrawing(mix({ growthBps: 9000, cashBps: 1000 })));
+    expect(heldIn(tenth)).toEqual({ growth: 8200, dollarYield: 0, gold: 0, cash: 1800 });
+    expect(aside(tenth)[0]).toMatchObject({
+      sleeve: 'growth',
+      usd: 800,
+      askedBps: 9000,
+      leftBps: 8200,
+    });
+  });
+
+  it('withdrawals larger than the plan set all of it aside, and the sentence names the plan, not $0', () => {
+    const plan = run(
+      sheet({
+        rules: noGlide,
+        obligations: [{ month: monthAfter(NOW, 0), amount: 12_000, currency: 'USD' }],
+        mix: mix({ growthBps: 10_000 }),
+      }),
+    );
+    expect(heldIn(plan)).toEqual({ growth: 0, dollarYield: 0, gold: 0, cash: 10_000 });
+    expect(plan.flags).toContain('set_aside_short');
+    const short = allReasons(plan).find((r) => r.rule === 'SET_ASIDE_SHORT');
+    expect(short?.params).toMatchObject({ owedUsd: 12_000, goalUsd: 10_000, shortUsd: 2000 });
+    expect(short?.text).toBe(
+      'Your withdrawals from October 2026 to March 2027 come to $12,000, more than the $10,000 of the plan kept for your goal: all of it is set aside, and $2,000 of them is not covered.',
+    );
+    expect(aside(plan)[0]).toMatchObject({ sleeve: 'growth', usd: 10_000, leftBps: 0 });
   });
 });
 
@@ -405,6 +563,30 @@ describe('self-check: the measure sees what it measures (review of Oct 6, findin
       ]),
     );
   });
+
+  it('what is set aside from stocks is held to what the withdrawals need', () => {
+    const plan = run(
+      sheet({ rules: noGlide, obligations: monthly(300, 8), mix: mix({ growthBps: 10_000 }) }),
+    );
+    // A sentence that says stocks gave 30% where the withdrawals need 18%.
+    const more = tampered(plan, (copy) => {
+      for (const r of copy.lines.flatMap((l) => l.reasons))
+        if (r.rule === 'MIX_SET_ASIDE') Object.assign(r.params, { usd: 3000, leftBps: 7000 });
+    });
+    expect(more).toContain(
+      "stocks, crypto and gold give 3000 bps to what is set aside; the mix's dollar yield and cash leave 1800 to find",
+    );
+    // No sentence at all: the old engine's plan, which moved the money and never said it was set aside.
+    const silent = tampered(plan, (copy) => {
+      for (const l of copy.lines) l.reasons = l.reasons.filter((r) => r.rule !== 'MIX_SET_ASIDE');
+    });
+    expect(silent).toEqual(
+      expect.arrayContaining([
+        'growth holds 8200 bps of the 10000 asked, and no line of it says why',
+        "stocks, crypto and gold give 0 bps to what is set aside; the mix's dollar yield and cash leave 1800 to find",
+      ]),
+    );
+  });
 });
 
 describe('properties: any mix', () => {
@@ -432,21 +614,54 @@ describe('properties: any mix', () => {
       };
     });
 
+  /** The portfolios a plan may start from, by chain: one, two, or the goal's own. */
+  const starts: [ChainId, string[]][] = [
+    ['solana', []],
+    ['solana', ['the-seven']],
+    ['solana', ['the-500', 'home-team']],
+    ['solana', ['the-seven', 'home-team']],
+    ['solana', ['crypto-in-a-suit']],
+    ['solana', ['storm-cellar']],
+    ['base', []],
+    ['base', ['chips-and-agents']],
+    ['base', ['the-seven']],
+    ['base', ['home-team', 'chips-and-agents']],
+    ['robinhood', []],
+    ['robinhood', ['sand-to-server']],
+    ['robinhood', ['crypto-in-a-suit', 'the-500']],
+    ['robinhood', ['storm-cellar']],
+  ];
+  /** Up to three withdrawals in dollars, each a share of the amount, from this month to nine on. */
+  const withdrawals = fc.array(
+    fc.record({
+      inMonths: fc.integer({ min: 0, max: 9 }),
+      percent: fc.integer({ min: 1, max: 45 }),
+    }),
+    { maxLength: 3 },
+  );
+  const owed = (amountUsd: number, list: { inMonths: number; percent: number }[]) =>
+    list.map((x) => ({
+      month: monthAfter(NOW, x.inMonths),
+      amount: Math.round(amountUsd * x.percent) / 100,
+      currency: 'USD',
+    }));
+
   it('keeps every rule of a plan, holds no more stocks or gold than asked, and the table never shows', () => {
     fc.assert(
       fc.property(
         mixes,
-        fc.constantFrom<ChainId>('solana', 'robinhood', 'base'),
-        fc.constantFrom<string[]>([], ['the-seven'], ['the-500'], ['storm-cellar']),
+        fc.constantFrom(...starts),
         fc.constantFrom(2000, 10_000, 250_000),
         fc.boolean(),
-        (m, chain, themes, amountUsd, glide) => {
+        withdrawals,
+        (m, [chain, themes], amountUsd, glide, list) => {
           const s = sheet({
             chains: [chain],
             themes,
             amountUsd,
             mix: m,
             rules: { useHoldings: true, glide },
+            ...(list.length > 0 ? { obligations: owed(amountUsd, list) } : {}),
           });
           const plan = compose(s, shelf, ctx);
           expect(violations(plan, shelf, ctx)).toEqual([]);
@@ -454,13 +669,19 @@ describe('properties: any mix', () => {
           expect(sleeveBps(plan, shelf, 'growth')).toBeLessThanOrEqual(
             asked.growth + plan.lines.length,
           );
+          expect(sleeveBps(plan, shelf, 'gold')).toBeLessThanOrEqual(
+            asked.gold + plan.lines.length,
+          );
+          // Withdrawals keep their rule with a mix: no plan says it kept $0 for the goal.
+          for (const r of allReasons(plan)) expect(r.text).not.toMatch(/\$0 of the plan kept/);
           expect(compose(s, shelf, ctx)).toEqual(plan);
         },
       ),
-      { numRuns: 60 },
+      { numRuns: 120 },
     );
-  }, 120_000);
+  }, 240_000);
 });
+
 describe('properties: the risk a mix takes', () => {
   const RISKS: RiskLevel[] = ['low', 'medium', 'high'];
   // A table with nothing in the way of a mix but the caps by risk: no ceiling at these amounts, a
