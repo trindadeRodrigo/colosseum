@@ -5,9 +5,8 @@
 // It holds the landing's 3D joint to its budget (STAGE_BUDGET).
 // It also looks for one string every build ships and one file every route is built from, so a change
 // in where Next writes its output makes this check fail instead of pass on nothing.
-// Last, it runs the design system's test of the built stylesheet and fonts, and the weight of the
-// landing's 3D chunk, which a plain test run skips for want of a build
-// (components/ui/forbidden.test.ts, features/landing/joint-budget.test.ts).
+// Last, it runs the design system's test of the built stylesheet and fonts, which a plain test run
+// skips for want of a build (components/ui/forbidden.test.ts).
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -25,10 +24,11 @@ export const REQUIRED = 'wallet-port:shipped';
 
 /**
  * The landing's 3D joint (joint-stage.md: "stage JS (three + scene) ≤ 180 KB gzip"): the browser
- * chunks that carry three.js or the scene, by strings each keeps when minified.
+ * chunks that carry three.js or the scene, by strings each keeps when minified (three's renderer
+ * names itself in its warnings; the scene's wood shader names its program, joint-wood.ts).
  */
 export const STAGE_BUDGET = 180 * 1024;
-export const STAGE_MARKERS = ['WebGLRenderer', '/landing/wood/'];
+export const STAGE_MARKERS = ['WebGLRenderer', 'tf-wood'];
 
 /** What `next dev` and the build cache write. Neither is served by `next start`. */
 const SKIP = new Set(['dev', 'cache', 'diagnostics', 'types']);
@@ -164,19 +164,16 @@ export function checkBuild(out) {
 
 /** The test file that reads the built stylesheet and fonts, as a path from the repository root. */
 export const BUILT_CSS_TEST = 'apps/web/components/ui/forbidden.test.ts';
-/** The test file that weighs the landing's 3D chunk (joint-stage.md: at most 180 KB gzipped). */
-export const JOINT_BUDGET_TEST = 'apps/web/features/landing/joint-budget.test.ts';
 
 /**
- * Runs those tests once more, now that there is a build to read. REQUIRE_WEB_BUILD makes their build
+ * Runs that test once more, now that there is a build to read. REQUIRE_WEB_BUILD makes its two build
  * checks fail on a missing or stale build instead of being skipped. Returns the exit code.
  */
 function builtStylesheetCheck() {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
   const require = createRequire(join(root, 'package.json'));
   const vitest = join(dirname(require.resolve('vitest/package.json')), 'vitest.mjs');
-  const tests = [BUILT_CSS_TEST, JOINT_BUDGET_TEST];
-  const run = spawnSync(process.execPath, [vitest, 'run', '--root', root, ...tests], {
+  const run = spawnSync(process.execPath, [vitest, 'run', '--root', root, BUILT_CSS_TEST], {
     stdio: 'inherit',
     env: { ...process.env, REQUIRE_WEB_BUILD: '1' },
   });

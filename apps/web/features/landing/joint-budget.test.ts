@@ -1,24 +1,21 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 
-// What the landing's 3D joint may weigh (joint-stage.md: the stage's JS, three and the scene, at most
-// 180 KB gzipped, loaded after the first paint), and what it may fetch: nothing but its own module.
-// The wood and the room are computed; the only files are the stills of the fallbacks, under 1.5 MB
-// together. The chunk is measured in the output of `next build`: a plain test run skips that part
-// when there is no fresh build, and scripts/check-build.mjs runs this file again with
-// REQUIRE_WEB_BUILD=1 after every build, so CI measures the real chunk.
+// What the landing's 3D joint may fetch: nothing but its own module, since the wood and the room are
+// computed; and the only files it has, the stills of the fallbacks, small and credited. The chunk's
+// own weight (at most 180 KB gzipped, joint-stage.md) is held after every build by
+// scripts/check-build.mjs (STAGE_BUDGET, STAGE_MARKERS).
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = join(HERE, '..', '..');
 const KB = 1024;
-export const BUDGET = { js: 180 * KB, assets: 1.5 * 1024 * KB, still: 100 * KB };
+const BUDGET = { assets: 1.5 * 1024 * KB, still: 100 * KB };
 
 const SCENE = ['joint-scene.ts', 'joint-wood.ts', 'joint-geometry.ts', 'joint-pose.ts'];
 
-describe('the 3D joint’s budget', () => {
+describe('what the 3D joint fetches', () => {
   it('imports three’s core and its own files, and nothing that could fetch', () => {
     for (const file of SCENE) {
       const text = readFileSync(join(HERE, file), 'utf8');
@@ -45,38 +42,5 @@ describe('the 3D joint’s budget', () => {
     const provenance = JSON.parse(readFileSync(join(dir, 'provenance.json'), 'utf8'));
     expect(provenance.kind).toBe('render');
     expect([...provenance.files].sort()).toEqual(sizes.map(([name]) => name).sort());
-  });
-
-  describe('in the output of `next build`, when there is a fresh one', () => {
-    const required = process.env.REQUIRE_WEB_BUILD === '1';
-    const chunks = join(WEB, '.next', 'static', 'chunks');
-    const id = join(WEB, '.next', 'BUILD_ID');
-    const built = existsSync(id) ? statSync(id).mtimeMs : 0;
-    const newest = Math.max(...SCENE.map((f) => statSync(join(HERE, f)).mtimeMs));
-    const fresh = built > newest && existsSync(chunks);
-
-    it.skipIf(!fresh && !required)('ships three and the scene in at most 180 KB gzipped', () => {
-      expect(fresh, 'there is no build in apps/web/.next newer than the scene').toBe(true);
-      const all: string[] = [];
-      const walk = (dir: string) => {
-        for (const name of readdirSync(dir)) {
-          const path = join(dir, name);
-          if (statSync(path).isDirectory()) walk(path);
-          else if (name.endsWith('.js')) all.push(path);
-        }
-      };
-      walk(chunks);
-      // the scene's chunk names its shader program; three's names its renderer in its warnings
-      const stage = all.filter((path) => {
-        const text = readFileSync(path, 'latin1');
-        return text.includes('tf-wood') || text.includes('THREE.WebGLRenderer');
-      });
-      expect(stage.length).toBeGreaterThan(0);
-      const gzipped = stage.reduce((sum, path) => sum + gzipSync(readFileSync(path)).length, 0);
-      console.log(
-        `the 3D joint: ${stage.length} chunk(s), ${(gzipped / KB).toFixed(1)} KB gzipped`,
-      );
-      expect(gzipped).toBeLessThanOrEqual(BUDGET.js);
-    });
   });
 });
