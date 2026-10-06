@@ -37,7 +37,11 @@ const evalSet = fixture('goals-eval.json') as {
 const recorded = fixture('intake-replies.json') as {
   replies: Record<string, unknown>;
   conversations: Record<string, { messages: string[]; replies: unknown[] }>;
+  narratives: { cases: Record<string, { text: string; reply: unknown }> };
 };
+// A goal that names a market the fixed lists have no word for, with the filter the model names for it
+// (gate THEME-MATCHED). MOCK, like every reply here.
+const obesityDrugs = recorded.narratives.cases['obesity-drugs'] as { text: string; reply: unknown };
 const chat = recorded.conversations['first-chat-oct6'] as {
   messages: string[];
   replies: unknown[];
@@ -50,6 +54,7 @@ const bigTech = recorded.conversations['big-tech-chat-oct6'] as {
 // The conversation's replies, by the text each turn reads: the messages so far, joined as the route joins them.
 const replyByText = new Map<string, unknown>([
   ...evalSet.goals.map((g): [string, unknown] => [g.text, recorded.replies[g.id]]),
+  [obesityDrugs.text, obesityDrugs.reply],
   ...[chat, bigTech].flatMap((c) =>
     c.replies.map((r, i): [string, unknown] => [c.messages.slice(0, i + 1).join('\n\n'), r]),
   ),
@@ -62,17 +67,23 @@ const callOf = (): ReadCall => async (text) => {
   return reply === undefined ? { reply: null, why: 'model_error' } : { reply };
 };
 
-/** A replay of the recorded replies, by text; `calls` counts what reached it. */
-function replay(): { model: IntakeModel; calls: () => number } {
+/**
+ * A replay of the recorded replies, by text; `calls` counts what reached it, and `vocabularies` keeps
+ * the attribute values each call was handed.
+ */
+function replay(): { model: IntakeModel; calls: () => number; vocabularies: () => unknown[] } {
   let calls = 0;
-  const call: ReadCall = async (text) => {
+  const vocabularies: unknown[] = [];
+  const call: ReadCall = async (text, _month, _language, vocabulary) => {
     calls += 1;
+    vocabularies.push(vocabulary);
     const reply = replyByText.get(text);
     return reply === undefined ? { reply: null, why: 'model_error' } : { reply };
   };
   return {
     model: budgetedModel(call, { id: 'claude-haiku-4-5', provenance: 'mock' }),
     calls: () => calls,
+    vocabularies: () => vocabularies,
   };
 }
 
@@ -377,6 +388,70 @@ describe('POST /v1/baskets/intake', () => {
       'To hold “all of it in stocks”, the plan uses the limits for high risk.',
     ]);
     expect(second.readBack).toContain('The plan starts from The Seven.');
+  });
+
+  it('says what each market the text names reads to on the person chain (THEMES, THEME-MATCHED)', async () => {
+    const who = await someone('solana');
+    // Big tech with The Seven on the person's shelf (put there as in the test above where the
+    // database has none, and deleted at the end): a shared portfolio.
+    if (!(await loadFamilies(data.db, 'solana')).some((f) => f.meta.slug === 'the-seven'))
+      await data.storeFamily(
+        'solana',
+        [
+          { kind: 'asset', asset: 'solana:nvda', weightBps: 5000 },
+          { kind: 'asset', asset: 'solana:spy', weightBps: 5000 },
+        ],
+        { slug: 'the-seven', name: 'The Seven' },
+      );
+    const big = IntakeResponse.parse((await post(who, PATH, { text: bigTech.messages[0] })).json());
+    expect(big.narratives).toEqual([
+      {
+        id: 'big_tech',
+        words: 'big tech',
+        kind: 'portfolio',
+        slug: 'the-seven',
+        filter: null,
+        name: 'The Seven',
+      },
+    ]);
+    // A market only the model names, by a filter. This server hands the intake no labels and no
+    // attributes yet, so nothing matches: the one sentence is said, on the person's chain, and the
+    // model's value is said nowhere.
+    const res = await post(who, PATH, { text: obesityDrugs.text });
+    expect(res.statusCode, res.body).toBe(200);
+    const none = IntakeResponse.parse(res.json());
+    expect(none.reader.provenance).toBe('mock');
+    expect(none.narratives).toEqual([
+      { id: null, words: 'obesity drugs', kind: 'none', slug: null, filter: null, name: null },
+    ]);
+    expect(none.flags).toEqual(
+      expect.arrayContaining(['filter_no_match:marketFilter', 'market_not_on_shelf:marketFilter']),
+    );
+    expect(none.assumptions).toContain(
+      'There is no stock for “obesity drugs” on Solana at the moment. We will be adding more soon.',
+    );
+    expect(none.readBack).toContain(
+      'There is no stock for “obesity drugs” on Solana at the moment. We will be adding more soon.',
+    );
+    expect(res.body).not.toMatch(/GLP-1/);
+    // No theme sleeve is made for it, and the risk is not asked.
+    expect(none.questions).toEqual([]);
+    expect(none.sheet?.sleeves).toBeUndefined();
+    // The route has no attribute values to hand the model: no call was given any.
+    expect(replayed.vocabularies().length).toBeGreaterThan(0);
+    expect(replayed.vocabularies().filter((v) => v !== undefined)).toEqual([]);
+  });
+
+  it('with no chain yet, a market the text names is not resolved, and nothing is said of it', async () => {
+    const who = await someone('passkey');
+    const res = await post(who, PATH, { text: obesityDrugs.text });
+    expect(res.statusCode, res.body).toBe(200);
+    const body = IntakeResponse.parse(res.json());
+    expect(body.narratives).toEqual([]);
+    expect(body.flags).toContain('market_unresolved:marketFilter');
+    expect(body.questions.map((q) => q.field)).toEqual(['chains']);
+    expect(body.assumptions.join(' ')).not.toMatch(/no stock/);
+    expect(body.sheet).toBeNull();
   });
 
   it('a person with no chain yet is asked to pick one, and no sheet is made', async () => {
