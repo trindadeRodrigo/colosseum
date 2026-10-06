@@ -1029,7 +1029,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -2047,7 +2048,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -2741,7 +2743,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -3082,7 +3085,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -3462,7 +3466,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -3903,7 +3908,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -4178,7 +4184,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -4403,7 +4410,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -4646,7 +4654,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -5455,7 +5464,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -6002,7 +6012,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -6466,7 +6477,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -7023,7 +7035,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -7613,7 +7626,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -8130,7 +8144,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -8565,7 +8580,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {
@@ -9093,7 +9109,8 @@
                         "ORDER_EXPIRED",
                         "US_PERSON",
                         "RATE_LIMITED",
-                        "CHAIN_UNAVAILABLE"
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE"
                       ]
                     },
                     "fix": {

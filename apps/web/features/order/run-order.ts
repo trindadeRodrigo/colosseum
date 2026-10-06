@@ -151,7 +151,11 @@ export function planNumberOf(
   stated: string | undefined,
   plan: { proposalId: string; userId: string; linked?: boolean },
 ): string | null {
-  const own = [basketOfPlan(plan.proposalId), basketOfPlan(plan.proposalId, plan.userId)];
+  // A plan this browser kept as one made from a link has the person's own number and no other: an
+  // API that states the plan's shared number for it would lead the link to this vault.
+  const own = plan.linked
+    ? [basketOfPlan(plan.proposalId, plan.userId)]
+    : [basketOfPlan(plan.proposalId), basketOfPlan(plan.proposalId, plan.userId)];
   if (stated !== undefined) return own.includes(stated) ? stated : null;
   return basketOfPlan(plan.proposalId, plan.linked ? plan.userId : null);
 }

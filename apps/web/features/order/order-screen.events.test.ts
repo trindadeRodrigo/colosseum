@@ -204,10 +204,15 @@ describe('the review', () => {
     await unmountAll();
     window.localStorage.clear();
     run.calls.length = 0;
-    // a number that is neither the plan's nor this person's own is not signed for
-    for (const basketId of [basketIdOfLinkedPlan(PLAN_ID, 'did:privy:someone-else'), '42']) {
+    // a number that is neither the plan's nor this person's own is not signed for, and for a plan this
+    // browser kept as one from a link, the plan's shared number is not either
+    for (const [basketId, record] of [
+      [basketIdOfLinkedPlan(PLAN_ID, 'did:privy:someone-else'), recordOf()],
+      ['42', recordOf()],
+      [basketIdOfPlan(PLAN_ID), { ...recordOf(), linked: true as const }],
+    ] as const) {
       api({ ...orderOn(), basketId });
-      seed();
+      seed(record);
       host = await screen();
       await click(primary(host));
       await settle();

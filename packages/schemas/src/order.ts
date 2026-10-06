@@ -329,6 +329,8 @@ export const OrderErrorCode = z.enum([
   'US_PERSON',
   'RATE_LIMITED',
   'CHAIN_UNAVAILABLE',
+  /** The plan an order buys is no longer stored: one made from a link nobody bought goes after days. */
+  'PLAN_GONE',
 ]);
 export type OrderErrorCode = z.infer<typeof OrderErrorCode>;
 
@@ -338,7 +340,7 @@ export type OrderErrorCode = z.infer<typeof OrderErrorCode>;
  * a client can tell "try again" from "change something first".
  */
 export const OrderError = ApiError.extend({
-  /** One of the ten order codes, where one fits. Absent for a refusal that is none of them. */
+  /** One of the order codes, where one fits. Absent for a refusal that is none of them. */
   code: OrderErrorCode.optional(),
   /** What the person can do about it, in a sentence. */
   fix: z.string().optional(),

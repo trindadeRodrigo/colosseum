@@ -36,6 +36,7 @@ import {
   loadProposal,
   type Outcome,
   pairElsewhere,
+  proposalExists,
   recordBuild,
   recordOrderState,
   recordOutcome,
@@ -150,9 +151,9 @@ async function buildFor(
     throw new Refusal(409, 'the shared portfolio this order buys is gone');
   // A plan's order is built only while its plan is there: a plan made from a link that nobody bought is
   // deleted after a few days, and an order that raced that is refused here, not signed half way.
-  if (!family && request.proposalId && !(await loadProposal(deps.db, request.proposalId)))
+  if (!family && request.proposalId && !(await proposalExists(deps.db, request.proposalId)))
     throw new Refusal(409, 'the plan this order buys is gone', {
-      code: 'VERSION_CHANGED',
+      code: 'PLAN_GONE',
       fix: 'Make the plan again, then the order.',
     });
   // The vault the order was made for, as it was stored with it. An order made before the number was

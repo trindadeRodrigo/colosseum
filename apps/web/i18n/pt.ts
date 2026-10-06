@@ -996,6 +996,8 @@ export const pt: Dictionary = {
       lookAgain: 'Olhar de novo',
       error:
         'Nosso servidor recusou ou não respondeu, então a ordem parou. O que foi assinado fica guardado. Tente de novo.',
+      planGone:
+        'O plano desta ordem não está mais guardado: um plano vindo de um link que ninguém compra é apagado depois de alguns dias. A ordem parou, e o que foi assinado fica guardado. Monte o plano de novo a partir do seu objetivo.',
       tryAgain: 'Tentar de novo',
       elsewhere:
         'Esta ordem está rodando em outra aba deste navegador. Acompanhe por lá; nada foi feito aqui.',

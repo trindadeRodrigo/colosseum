@@ -203,10 +203,10 @@ describe('a plan proposed from a link', () => {
       }),
     });
     expect(sleeve.statusCode).toBe(422);
-    // a body over 16 KB is not read
+    // a body over 32 KB is not read
     const big = await post(null, '/v1/baskets/propose', {
       sheet: sheet({ amountUsd: 9_871 }),
-      padding: 'x'.repeat(17 * 1024),
+      padding: 'x'.repeat(33 * 1024),
     });
     expect(big.statusCode).toBe(413);
     expect(await linkedFor(9_871)).toBe(0);
@@ -328,7 +328,7 @@ describe('a plan proposed from a link', () => {
     expect(build.statusCode).toBe(409);
     expect(OrderError.parse(build.json())).toMatchObject({
       error: 'the plan this order buys is gone',
-      code: 'VERSION_CHANGED',
+      code: 'PLAN_GONE',
     });
   });
 

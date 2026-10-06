@@ -1014,6 +1014,8 @@ export const en = {
       lookAgain: 'Look again',
       error:
         'Our server refused or didn’t answer, so the order stopped. What was signed is kept. Try again.',
+      planGone:
+        'The plan this order buys isn’t stored any more: a plan from a link that nobody buys is deleted after a few days. The order stopped, and what was signed is kept. Build the plan again from your goal.',
       tryAgain: 'Try again',
       elsewhere:
         'This order is running in another tab of this browser. Follow it there; nothing was done here.',
