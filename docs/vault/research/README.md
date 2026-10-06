@@ -10,6 +10,7 @@ They use earlier words. Read "personal basket" as plan, "community index" or "in
 - `solana-liquidity.md`: what the main Solana tokens cost to buy and sell at four sizes.
 - `test-networks.md` (Oct 2): what exists on Solana devnet, Robinhood Chain's test network and Base Sepolia, and what we bring so the same vault code runs there.
 - `portfolio-method.md` (Oct 3): what the literature and practice say about building a plan from a goal, held against the solver as it is in the code, with a table of proposed changes. It feeds the SOLVER gate and ENG-2 and changes no other document. `PROMPT-RESEARCH-METHOD.md` is the brief it was written from.
+- `yield-shelf/` (Oct 6): the screening of dollar fixed-income tokens for a test shelf on Solana and Robinhood Chain, from `../PROMPT-YIELD-SHELF.md`. `inputs/` holds the two lists Rodrigo mapped, each as a spreadsheet and as CSV; their yields are claims read on a date, not readings. `TEMPLATE.md` is the format of the note per chain (`solana.md`, `robinhood.md`), which is the source of the extended shelf's fixture rows (`packages/engine/src/personal/fixtures/shelves/`). It changes no plan on the launch shelf and lists nothing live.
 
 Eleven earlier notes were left out of the repo because the design overtook them (vault feasibility per chain, precedents, the keeper, the price reference, the test-rig write-ups). The notes here still cite some of them by file name; Thom has them.
 
