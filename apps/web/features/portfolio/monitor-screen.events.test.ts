@@ -826,3 +826,20 @@ describe('the chain of each vault', () => {
     expect(host.querySelectorAll('[data-ui="chain-group"]')).toHaveLength(2);
   });
 });
+
+describe('the way from a vault to its own page (flow audit, 34)', () => {
+  it.each(['en', 'pt'] as const)(
+    'links each vault’s address to its page, named (%s)',
+    async (lang) => {
+      api({ person: onSolana });
+      signIn();
+      const host = await screen(lang);
+      const link = find<HTMLAnchorElement>(host, '[data-ui="vault-page-link"]');
+      expect(link.getAttribute('href')).toBe(`/vaults/solana/${VAULT}`);
+      expect(link.getAttribute('aria-label')).toBe(
+        dictionary(lang).portfolio.vault.page(link.textContent ?? ''),
+      );
+      expect(link.getAttribute('title')).toBe(VAULT);
+    },
+  );
+});
