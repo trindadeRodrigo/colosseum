@@ -78,3 +78,9 @@ export async function vaultMetadata() {
   const t = dictionary(lang);
   return { title: t.shared.meta.vault, description: t.shared.vault.title };
 }
+
+export async function withdrawMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.withdraw.meta, description: t.withdraw.title };
+}

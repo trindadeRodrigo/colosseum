@@ -92,7 +92,8 @@ export function chainReadFor(chain: ChainId, mock: boolean): ChainRead | undefin
 /**
  * The guard's terms for an order about a shared portfolio, from what its screen showed: a buy follows
  * the portfolio's version from a vault numbered by the family's id, with auto-follow off; a follow
- * names the vault the person picked; a publish names the form's family id, text and weights.
+ * names the vault the person picked; a publish names the form's family id, text and weights; a
+ * withdrawal names the vault and what its review showed leaving it.
  */
 export function planTermsOf(terms: SharedTerms): PlanTerms {
   switch (terms.kind) {
@@ -103,6 +104,17 @@ export function planTermsOf(terms: SharedTerms): PlanTerms {
         basketId: terms.basketId,
         ...(terms.follow ? { follow: terms.follow } : {}),
         autoFollow: terms.autoFollow,
+      };
+    case 'withdraw':
+      // Everything: any token the vault holds, each once, to its owner. Otherwise the tokens and the
+      // amounts reviewed, and nothing else.
+      return {
+        basketId: terms.basketId,
+        ...(terms.everything
+          ? {}
+          : {
+              withdrawals: terms.items.map(({ asset, amountRaw }) => ({ asset, amountRaw })),
+            }),
       };
     case 'publish':
       return {

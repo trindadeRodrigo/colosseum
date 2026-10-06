@@ -4,11 +4,12 @@ import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { DataTable } from '../../components/ui/DataTable';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { assetTicker, formatBps } from '../order/amounts';
+import { assetTicker, formatBps, formatRaw } from '../order/amounts';
 import { onMock } from '../order/readiness';
+import { unitsFor } from '../order/units';
 import { useWalletPort } from '../wallet/WalletProvider';
 import { SourceMark } from './SourceMark';
-import type { SharedTerms } from './terms';
+import type { SharedTerms, WithdrawItem } from './terms';
 
 // What an order about a shared portfolio is held to, on the review, as its screen showed it: the
 // form's text and weights for a publish, the portfolio and version read for a follow. Never the order
@@ -68,6 +69,60 @@ export function SharedReview({ terms, chain }: { terms: SharedTerms; chain: Chai
         </CardBody>
       </Card>
     );
+  if (terms.kind === 'withdraw') {
+    // What leaves and where it goes, as the withdraw screen showed it: the amounts in the units this
+    // repository committed, and the one address a vault pays, its owner's.
+    const units = unitsFor(chain, mock);
+    const whole = (raw: string, asset: string) => {
+      const u = units?.tokens[asset];
+      const figure = u ? formatRaw(raw, u.decimals, LOCALE[lang]) : null;
+      return u && figure !== null ? `${figure} ${u.symbol}` : `${raw} ${assetTicker(asset)}`;
+    };
+    const w = t.withdraw.check;
+    return (
+      <Card as="section" aria-label={s.withdrawTitle}>
+        <CardHeader title={s.withdrawTitle} level={2} meta={t.chain.names[chain]} />
+        <CardBody className="flex flex-col gap-4">
+          <DataTable<WithdrawItem>
+            caption={w.leaves}
+            rows={terms.items}
+            rowKey={(r) => r.asset}
+            columns={[
+              {
+                key: 'asset',
+                header: w.token,
+                rowHeader: true,
+                cell: (r) => units?.tokens[r.asset]?.symbol ?? assetTicker(r.asset),
+              },
+              {
+                key: 'amount',
+                header: w.amount,
+                numeric: true,
+                cell: (r) =>
+                  r.amountRaw === null
+                    ? w.all(whole(r.heldRaw, r.asset))
+                    : whole(r.amountRaw, r.asset),
+              },
+            ]}
+          />
+          <dl className="grid gap-x-6 gap-y-1 text-body-sm sm:grid-cols-[auto_1fr]">
+            <dt className="text-muted-foreground">{w.to}</dt>
+            <dd>
+              {w.own}{' '}
+              <span data-ui="withdraw-to" className="break-all font-mono text-source">
+                {terms.owner}
+              </span>
+            </dd>
+            <dt className="text-muted-foreground">{w.from}</dt>
+            <dd className="break-all font-mono text-source">{terms.vault}</dd>
+          </dl>
+          <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
+            {w.onlyOwner}
+          </p>
+        </CardBody>
+      </Card>
+    );
+  }
   const follow = terms.follow;
   return (
     <Card as="section" aria-label={s.followTitle}>

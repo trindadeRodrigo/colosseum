@@ -294,8 +294,65 @@ function tradesFor(targets: Target[], cashRaw: bigint) {
 
 type Body = Record<string, unknown> & { type: string };
 
+/**
+ * POST /v1/orders for a withdrawal, as apps/api plans one (orders/withdraw.ts): the vault's tokens, all
+ * of them or the ones named, each in full or by amount, a step per token on Solana and one for all on
+ * an EVM chain. Built for the vault's owner, from the vault as it is when the step is built.
+ */
+async function placeWithdraw(body: Body): Promise<OrderDetail> {
+  const { adapter } = world;
+  const [address] = body.vaults as string[];
+  const state = await adapter.getVault(String(address));
+  if (!state || body.sellToCash)
+    throw new ApiRefusal(state ? 422 : 404, {
+      error: state
+        ? 'Selling to cash before withdrawing isn’t offered yet; you can withdraw the tokens themselves'
+        : 'no vault of yours at that address',
+    });
+  const held = new Map(
+    [state.cash, ...state.positions]
+      .filter((h) => BigInt(h.raw) > 0n)
+      .map((h) => [h.asset, h.raw] as const),
+  );
+  const asked = body.withdrawals as { asset: string; amountRaw?: string | null }[] | undefined;
+  const all = (asked ?? [...held.keys()].map((asset) => ({ asset, amountRaw: null }))).map((x) => {
+    const heldRaw = held.get(x.asset);
+    if (heldRaw === undefined || (x.amountRaw != null && BigInt(x.amountRaw) > BigInt(heldRaw)))
+      throw new ApiRefusal(409, { error: `the vault holds less ${x.asset} than asked for` });
+    return { asset: x.asset, amountRaw: x.amountRaw ?? null, heldRaw };
+  });
+  if (!all.length) throw new ApiRefusal(409, { error: 'the vault holds nothing to withdraw' });
+  const groups = CHAIN === 'solana' ? all.map((x) => [x]) : [all];
+  return doubleFor(state.owner).place({
+    type: 'withdraw',
+    summary: `Withdraw from your vault on ${CHAIN_NAME} to your own wallet`,
+    needsConsent: [],
+    steps: groups.map((withdrawals) => ({
+      kind: 'withdraw' as const,
+      description: 'Withdraw to your own wallet',
+      trades: [],
+      withdrawals,
+    })),
+    build: async (leg, nonce) => {
+      const named = leg.withdrawals ?? [];
+      const amounts = named.flatMap((x) =>
+        x.amountRaw === null ? [] : [[x.asset, x.amountRaw] as const],
+      );
+      const [tx] = await adapter.buildWithdrawInKind({
+        vault: state.address,
+        ...(asked || CHAIN === 'solana' ? { assets: named.map((x) => x.asset) } : {}),
+        ...(amounts.length ? { amounts: Object.fromEntries(amounts) } : {}),
+        ...(nonce === undefined ? {} : { nonce }),
+      });
+      if (!tx) throw new ApiRefusal(409, { error: 'the vault holds none of it any more' });
+      return tx;
+    },
+  });
+}
+
 /** POST /v1/orders for a publish, a buy of a shared portfolio, or a follow. */
 async function placeShared(body: Body): Promise<OrderDetail> {
+  if (body.type === 'withdraw') return placeWithdraw(body);
   const { adapter } = world;
   if (body.type === 'publish') {
     const creator = (body.creator as { solana?: string }).solana ?? '';

@@ -1,9 +1,7 @@
 'use client';
 import type { ChainId } from '@colosseum/schemas';
-import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
+import { type ReactNode, useId, useState } from 'react';
 import { Button } from '../../components/ui/Button';
-import { Card } from '../../components/ui/Card';
-import { cn } from '../../components/ui/cn';
 import { Field, Input } from '../../components/ui/Field';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -12,6 +10,7 @@ import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { type Funding, FundingStep } from './FundingStep';
 import { fundMock, requestTestFunds, type TestFundsOutcome } from './order-api';
 import { gasUnitsFor } from './readiness';
+import { StepCard } from './StepCard';
 import { TrustNotice } from './TrustNotice';
 import { unitsFor } from './units';
 
@@ -76,15 +75,12 @@ export function BuySteps({
   const lang = useLang();
   const port = useWalletPort();
   const apiFetch = useApiFetch();
-  const ids = useId();
   const reasonId = useId();
   const [open, setOpen] = useState<StepId>('amount');
   const [confirmed, setConfirmed] = useState(false);
   const [mockBusy, setMockBusy] = useState(false);
   const [testBusy, setTestBusy] = useState(false);
   const [testOutcome, setTestOutcome] = useState<TestFundsOutcome | null>(null);
-  const heads = useRef<Partial<Record<StepId, HTMLButtonElement | null>>>({});
-  const moved = useRef(false);
 
   const read = funding.kind === 'read' ? funding.funding : null;
   const done: Record<StepId, boolean> = {
@@ -96,14 +92,8 @@ export function BuySteps({
   // The label of the whole card: the chain's as it runs now, and what the funding read said.
   const provenance = read?.provenance ?? (mock ? 'mock' : port.network(chain)?.provenance);
 
-  // Opening a step moves the focus to its heading, once a person has moved at all.
-  useEffect(() => {
-    if (moved.current) heads.current[open]?.focus();
-  }, [open]);
-
   function go(step: StepId) {
     if (open === 'amount' && amount.value !== null) setConfirmed(true);
-    moved.current = true;
     setOpen(step);
   }
   const next = (step: StepId) => STEPS[STEPS.indexOf(step) + 1] ?? step;
@@ -248,114 +238,24 @@ export function BuySteps({
   };
 
   return (
-    <Card
-      as="section"
-      aria-label={t.buy.steps.label}
-      // On the mock: the hatch band and its one quiet line at the card's foot (MOCK-QUIET).
+    <StepCard
+      ui="buy"
+      label={t.buy.steps.label}
+      doneWord={t.buy.steps.done}
+      steps={STEPS.map((id) => ({
+        id,
+        name: t.buy.steps.names[id],
+        done: done[id],
+        summary: summary[id],
+        panel: panels[id],
+      }))}
+      open={open}
+      onOpen={go}
+      // On the mock: the hatch band and its one quiet line at the card's foot (MOCK-QUIET). A test
+      // network's figures are real reads, not samples: one quiet line says where they are from.
       mock={provenance === 'mock'}
-      mockLabels={{ announce: t.shell.mockAnnounce }}
-      className="max-w-3xl"
-    >
-      <div data-ui="buy-steps">
-        {provenance === 'sandbox' && (
-          // A test network's figures are real reads, not samples: one quiet line says where they
-          // are from, never a plate on a figure (gate BUY-STEPS).
-          <p
-            data-ui="data-note"
-            className="px-6 pt-5 text-caption text-muted-foreground [overflow-wrap:anywhere]"
-          >
-            {t.buy.steps.note.testNetwork(chainName)}
-          </p>
-        )}
-        <ol
-          data-ui="buy-progress"
-          aria-label={t.buy.steps.label}
-          className="flex flex-wrap items-center gap-x-3 gap-y-2 p-6 text-body-sm sm:gap-x-5"
-        >
-          {STEPS.map((step, i) => (
-            <li
-              key={step}
-              data-step={step}
-              data-done={done[step]}
-              aria-current={open === step ? 'step' : undefined}
-              className={cn(
-                'inline-flex items-center gap-2',
-                open === step ? 'font-semibold text-foreground' : 'text-muted-foreground',
-              )}
-            >
-              <StepNumber n={i + 1} done={done[step]} current={open === step} />
-              {/* On a phone the open step alone is named; the others keep their name for a reader. */}
-              <span className={cn(open !== step && 'max-sm:sr-only')}>
-                {t.buy.steps.names[step]}
-              </span>
-              {done[step] && <span className="sr-only">, {t.buy.steps.done}</span>}
-            </li>
-          ))}
-        </ol>
-        {STEPS.map((step, i) => {
-          const head = `${ids}-${step}-head`;
-          const panel = `${ids}-${step}-panel`;
-          const isOpen = open === step;
-          return (
-            <section
-              key={step}
-              data-ui="buy-step"
-              data-step={step}
-              data-open={isOpen}
-              data-done={done[step]}
-              aria-labelledby={head}
-              className="border-t border-border"
-            >
-              <h2 className="text-h4 font-semibold">
-                <button
-                  ref={(el) => {
-                    heads.current[step] = el;
-                  }}
-                  id={head}
-                  type="button"
-                  aria-expanded={isOpen}
-                  aria-controls={panel}
-                  onClick={() => go(step)}
-                  className="flex w-full items-center gap-3 px-6 py-4 text-left outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
-                >
-                  <StepNumber n={i + 1} done={done[step]} current={isOpen} />
-                  <span className="min-w-0 flex-1">
-                    {t.buy.steps.names[step]}
-                    {done[step] && <span className="sr-only">, {t.buy.steps.done}</span>}
-                  </span>
-                  {!isOpen && summary[step] && (
-                    <span className="min-w-0 text-right text-body-sm font-normal text-muted-foreground [overflow-wrap:anywhere]">
-                      {summary[step]}
-                    </span>
-                  )}
-                </button>
-              </h2>
-              <div id={panel} hidden={!isOpen} className="px-6 pb-6">
-                {panels[step]}
-              </div>
-            </section>
-          );
-        })}
-      </div>
-    </Card>
-  );
-}
-
-/** A step's number in a square: outlined until it is done, filled in the wood once it is. */
-function StepNumber({ n, done, current }: { n: number; done: boolean; current: boolean }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        'inline-grid size-6 shrink-0 place-items-center rounded-sm border font-mono text-caption font-medium',
-        done
-          ? 'border-primary bg-primary text-primary-foreground'
-          : current
-            ? 'border-foreground text-foreground'
-            : 'border-input text-muted-foreground',
-      )}
-    >
-      {n}
-    </span>
+      mockAnnounce={t.shell.mockAnnounce}
+      note={provenance === 'sandbox' ? t.buy.steps.note.testNetwork(chainName) : null}
+    />
   );
 }

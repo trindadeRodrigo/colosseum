@@ -39,7 +39,7 @@ import { type ChainUnits, unitsFor } from './units';
 type Load = { kind: 'loading' } | { kind: 'read'; order: OrderDetail } | { kind: CallFailure };
 
 /** Why an order is not offered for signing, or that it may be, with what it deposits. */
-type Check = DepositCheck | { ok: false; why: 'trades' | 'shape' };
+type Check = DepositCheck | { ok: false; why: 'trades' | 'shape' | 'withdraw' };
 
 /**
  * Before an order is offered for signing (order-check.ts): a buy of a plan deposits what was typed; a
@@ -52,7 +52,7 @@ function checkOf(order: OrderDetail, record: OrderRecord, units: ChainUnits | nu
   if (terms.kind === 'family') return checkFamilyBuy(order, record.amountUsd, units, terms.targets);
   return sharedShapeOk(order, terms)
     ? { ok: true, depositRaw: 0n, decimals: 0 }
-    : { ok: false, why: 'shape' };
+    : { ok: false, why: terms.kind === 'withdraw' ? 'withdraw' : 'shape' };
 }
 type Phase = { legId: string; phase: string } | null;
 
@@ -231,7 +231,9 @@ export function OrderScreen({ id }: { id: string }) {
       ? `/indexes/${encodeURIComponent(terms.slug)}/buy`
       : terms.kind === 'follow'
         ? `/indexes/${encodeURIComponent(terms.slug)}`
-        : '/publish';
+        : terms.kind === 'withdraw'
+          ? `/vaults/${encodeURIComponent(chain)}/${encodeURIComponent(terms.vault)}/withdraw`
+          : '/publish';
   const testNetwork = shown.legs[0]?.provenance === 'sandbox';
 
   // The one primary button of the view: sign, carry on, approve a step again, or nothing.
@@ -252,9 +254,13 @@ export function OrderScreen({ id }: { id: string }) {
               ? record.approved
                 ? t.order.shared.resume
                 : t.order.shared.signFollow
-              : record.approved
-                ? t.order.resume(amount)
-                : t.order.signAndBuy(amount);
+              : terms?.kind === 'withdraw'
+                ? record.approved
+                  ? t.order.shared.resume
+                  : t.order.shared.signWithdraw
+                : record.approved
+                  ? t.order.resume(amount)
+                  : t.order.signAndBuy(amount);
 
   return (
     <div data-ui="order-screen" className="flex flex-col gap-8">
@@ -395,6 +401,15 @@ export function OrderScreen({ id }: { id: string }) {
                 : t.order.mismatch[check.why]}
             </span>
           </p>
+        )}
+        {done && terms?.kind === 'withdraw' && (
+          // The portfolio reads the vault again from its chain: what stayed, or that it is empty.
+          <div data-ui="withdraw-done" className="flex flex-col items-start gap-3">
+            <p className="max-w-(--tf-measure-body) text-body">{t.order.shared.withdrawDone}</p>
+            <Link href="/monitor" className={buttonClass({ variant: 'secondary' })}>
+              {t.withdraw.back}
+            </Link>
+          </div>
         )}
         {check.ok &&
           !done &&
@@ -538,6 +553,22 @@ function Step({
           </span>
         )}
       </p>
+      {leg.withdrawals && (
+        // What this step takes out, for the owner's own wallet: the amount, or all of the token.
+        <ul className="flex flex-col gap-0.5 text-body-sm text-muted-foreground">
+          {leg.withdrawals.map((w) => (
+            <li key={w.asset} data-ui="order-withdrawal" className="tabular-nums">
+              {w.amountRaw === null
+                ? t.order.shared.withdrawsAll(
+                    whole(w.heldRaw, w.asset) ?? `${w.heldRaw} ${assetTicker(w.asset)}`,
+                  )
+                : t.order.shared.withdraws(
+                    whole(w.amountRaw, w.asset) ?? `${w.amountRaw} ${assetTicker(w.asset)}`,
+                  )}
+            </li>
+          ))}
+        </ul>
+      )}
       {leg.trades.length === 0 ? null : (
         <ul className="flex flex-col gap-0.5 text-body-sm text-muted-foreground">
           {leg.trades.map((trade, i) => {

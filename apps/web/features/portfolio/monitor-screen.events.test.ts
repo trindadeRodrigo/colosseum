@@ -281,13 +281,19 @@ describe('the monitor, for a person with a vault on their chain', () => {
     expect(text(host)).toContain(en.portfolio.vault.onlyCash);
   });
 
-  it('signs nothing: no primary button, no signing word, and the vault’s switches are not offered', async () => {
+  it('signs nothing: no primary button, no signing word; the one way out is a link to the vault’s withdrawal', async () => {
     api({ person: onSolana });
     signIn();
     const host = await screen();
     expect(primary(host)).toBeNull();
     expect(host.querySelectorAll('button:not([aria-label^="Source for"])')).toHaveLength(0);
-    expect(text(host)).not.toMatch(/\bsign\b|withdraw|rebalance now/i);
+    expect(text(host)).not.toMatch(/\bsign\b|rebalance now/i);
+    // Withdraw is said once, on a link that leads to the vault's own withdrawal page (WITHDRAW).
+    const out = find(host, 'a[data-ui="vault-withdraw"]');
+    expect(out.textContent).toBe(en.withdraw.action);
+    expect(out.getAttribute('href')).toMatch(/^\/vaults\/solana\/[^/]+\/withdraw$/);
+    expect(text(host).match(/withdraw/gi)).toHaveLength(1);
+    expect(host.querySelector('[data-ui="vault-empty"]')).toBeNull();
   });
 });
 

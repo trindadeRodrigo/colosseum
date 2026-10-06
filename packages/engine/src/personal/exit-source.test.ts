@@ -164,7 +164,7 @@ describe('the card, when a sale was measured above the reference price', () => {
     const made = plan({ risk: 'high' }, { liquidity: above });
     expect(made.card.exit.costBps).toBe(0);
     expect(made.card.exit.text).toBe(
-      'You can withdraw the tokens to your own wallet at any time. In the worst hours measured, selling everything cost nothing: the sale price was at or above the reference price. That is measured for 95% of the plan.',
+      'You can withdraw the tokens themselves to your own wallet at any time. Selling them to cash for you isn’t offered yet. In the worst hours measured, selling everything cost nothing: the sale price was at or above the reference price. That is measured for 95% of the plan.',
     );
     expect(made.flags).toContain('exit_cost_below_zero');
     // A cost above zero is shown as before, and not flagged.

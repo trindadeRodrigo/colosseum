@@ -187,3 +187,23 @@ export const FUNDED = {
   newVault: true,
   ok: true,
 };
+
+/**
+ * A withdrawal, as POST /v1/orders answers it: one `withdraw` step per list, each naming what it takes
+ * out (`amountRaw` null: all the vault holds of the token).
+ */
+export const withdrawOrder = (
+  steps: { asset: string; amountRaw: string | null; heldRaw: string }[][],
+  over: Record<string, unknown> = {},
+) =>
+  order({
+    type: 'withdraw',
+    legs: steps.map((withdrawals, seq) => ({
+      ...leg,
+      id: [LEG_A, LEG_B, LEG_C][seq],
+      seq,
+      kind: 'withdraw',
+      withdrawals,
+    })),
+    ...over,
+  });

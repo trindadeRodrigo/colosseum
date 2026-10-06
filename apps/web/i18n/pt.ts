@@ -1010,6 +1010,74 @@ export const pt: Dictionary = {
     },
   },
 
+  withdraw: {
+    meta: 'Sacar',
+    title: 'Sacar do seu cofre',
+    lead: (chain: string) =>
+      `Os tokens saem do seu cofre como estão e vão para a sua própria carteira em ${chain}. Nada é vendido.`,
+    loading: 'Lendo seu cofre…',
+    failed: 'Não consegui ler seus cofres: nosso servidor não respondeu. Tente de novo.',
+    notYours: 'Este cofre não é seu, então não há nada para sacar aqui.',
+    empty: 'Este cofre está vazio: não há nada nele agora.',
+    back: 'Voltar ao seu portfólio',
+    action: 'Sacar',
+    steps: {
+      label: 'Passos para sacar',
+      names: { what: 'O quê', check: 'Revisar', confirm: 'Assinar' },
+      done: 'feito',
+      next: 'Continuar',
+    },
+    what: {
+      legend: 'O que você quer tirar?',
+      everything: 'Tudo o que o cofre tem',
+      some: 'Escolher tokens e valores',
+      take: (name: string) => `Sacar ${name}`,
+      holds: (amount: string) => `O cofre tem ${amount}.`,
+      amount: (symbol: string) => `Quantidade de ${symbol}`,
+      amountHint: 'Deixe vazio para tirar tudo.',
+      wholeOnly: 'Tudo ou nada: este app não conhece as unidades deste token.',
+      errors: {
+        amount: 'Digite uma quantidade deste token, ou deixe vazio para tirar tudo.',
+        over: (held: string) => `O cofre tem ${held}. Digite isso ou menos.`,
+        none: 'Escolha pelo menos um token para continuar.',
+      },
+      summaryAll: 'Tudo',
+      summarySome: (n: number) => (n === 1 ? '1 token' : `${n} tokens`),
+    },
+    check: {
+      leaves: 'O que sai do cofre',
+      token: 'Token',
+      amount: 'Quantidade',
+      all: (held: string) => `Tudo: ${held} agora`,
+      to: 'Vai para',
+      own: 'Sua própria carteira',
+      from: 'Do seu cofre',
+      onlyOwner:
+        'Um cofre só paga ao seu dono. Sua carteira só é chamada a assinar um saque exatamente destes tokens para este endereço.',
+      stays: 'Todo o resto fica no cofre.',
+      emptied: 'O cofre ficará vazio depois.',
+      autoFollow:
+        'O seguir automático está ativado neste cofre. Depois deste saque nosso operador pode negociar o que ficou de volta aos pesos do seu plano: ele pode comprar de novo um token que você tirou. Desative o seguir automático antes se não quiser isso.',
+      noSale:
+        'Vender por dinheiro antes de sacar ainda não é oferecido; você pode sacar os próprios tokens.',
+      seen: 'Revisado',
+      confirm: 'É isto que quero sacar',
+    },
+    confirm: {
+      lead: 'Em seguida você revisa cada passo da ordem e assina na sua carteira. A taxa da rede é paga pela sua carteira.',
+      button: 'Revisar os passos para sacar',
+      busy: 'Criando sua ordem…',
+      blocked: {
+        what: 'Escolha primeiro o que sacar.',
+        check: 'Confirme primeiro o que sai.',
+        owner: 'Nenhuma carteira sua está conectada nesta rede.',
+        chain: (chain: string) => `${chain} ainda não está pronta para assinar aqui.`,
+        vault:
+          'Não consegui confirmar que este cofre é da sua carteira, então não ofereço o saque. Nada foi assinado.',
+      },
+    },
+  },
+
   order: {
     title: 'Sua ordem',
     loading: 'Lendo sua ordem…',
@@ -1057,6 +1125,8 @@ export const pt: Dictionary = {
         'Esta ordem gasta seu depósito com outros pesos que não os do portfólio que você revisou, então não vou oferecer a assinatura. Nada foi assinado. Crie uma nova ordem.',
       shape:
         'Esta ordem tem passos que o portfólio que você revisou não pede, então não vou oferecer a assinatura. Nada foi assinado. Crie uma nova ordem.',
+      withdraw:
+        'Esta ordem tira outros tokens ou quantidades do que os que você revisou, então não ofereço para assinar. Nada foi assinado. Faça um novo saque.',
     },
     shared: {
       publishTitle: 'O que você publica',
@@ -1080,6 +1150,11 @@ export const pt: Dictionary = {
         'Sua carteira só é chamada para assinar uma transação que publique exatamente este nome, esta descrição e estes pesos, com este identificador.',
       signPublish: 'Assinar e publicar',
       signFollow: 'Assinar e seguir',
+      withdrawTitle: 'O que você saca',
+      signWithdraw: 'Assinar e sacar',
+      withdraws: (amount: string) => `${amount} para a sua própria carteira`,
+      withdrawsAll: (held: string) => `Tudo, ${held} na revisão, para a sua própria carteira`,
+      withdrawDone: 'O que você sacou está na sua carteira agora.',
       resume: 'Continuar',
     },
     signAndBuy: (amount: string) => `Assinar e comprar ${amount}`,

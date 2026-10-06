@@ -68,3 +68,19 @@ export const assetName = (id: string) => NAMED[id] ?? id.slice(id.indexOf(':') +
 
 /** The same name as a ticker: upper case, except a name the chain gives in its own case (tUSDG). */
 export const assetTicker = (id: string) => NAMED[id] ?? assetName(id).toUpperCase();
+
+/**
+ * An amount a person typed, in whole units, as raw units of a token with `decimals` places: digits
+ * with at most one separator, a point or a comma, and no more places than the token has. Never through
+ * a float. Null when it is not that, or is nothing.
+ */
+export function parseRaw(text: string, decimals: number): bigint | null {
+  const t = text.trim();
+  const m = /^(\d+)(?:[.,](\d+))?$/.exec(t);
+  if (!m) return null;
+  const fraction = m[2] ?? '';
+  if (fraction.length > decimals) return null;
+  const raw =
+    BigInt(m[1] ?? '0') * 10n ** BigInt(decimals) + BigInt(fraction.padEnd(decimals, '0') || '0');
+  return raw > 0n ? raw : null;
+}

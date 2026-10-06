@@ -732,7 +732,7 @@ describe('the card', () => {
     const { exit } = compose(grow, shelf, ctx).card;
     expect(exit.costBps).toBe(3.3);
     expect(exit.text).toBe(
-      'You can withdraw the tokens to your own wallet at any time. Selling everything in the worst hours measured would cost about 0.04%; that is measured for 50% of the plan.',
+      'You can withdraw the tokens themselves to your own wallet at any time. Selling them to cash for you isn’t offered yet. Selling everything in the worst hours measured would cost about 0.04%; that is measured for 50% of the plan.',
     );
   });
 });

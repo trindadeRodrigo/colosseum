@@ -1,6 +1,8 @@
 'use client';
 import { DISCLAIMER_SHORT } from '@colosseum/schemas';
+import Link from 'next/link';
 import { useId } from 'react';
+import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardFooter, CardHeader, Stat, StatRow } from '../../components/ui/Card';
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { type Column, DataTable } from '../../components/ui/DataTable';
@@ -27,8 +29,9 @@ import {
 // whether it follows its portfolio, what the keeper has lost of it this week, a version of the followed
 // portfolio still to come, and each holding with its price, value, weight, target and drift. Every
 // price and value carries its pin; a vault that is not on a live chain is a mocked card, with the
-// words "test network" under the plate when it is on one. Read only: nothing here signs, and the
-// switches of a vault (auto-follow, withdraw) are not offered on this page.
+// words "test network" under the plate when it is on one. Nothing here signs. A vault that holds
+// something links to its withdrawal (features/shared/WithdrawScreen.tsx); one that holds nothing says
+// so. The auto-follow switch is not offered on this page.
 
 export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vault }) {
   const t = useT();
@@ -37,6 +40,8 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
   const heading = useId();
   const live = vault.provenance === 'live';
   const missing = unpriced(vault);
+  // Nothing held, of cash or of any token: a vault a withdrawal emptied, or one never funded.
+  const empty = [vault.cash, ...vault.positions].every((h) => /^0+$/.test(h.raw));
 
   const columns: Column<Position>[] = [
     {
@@ -204,6 +209,21 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
           />
         ) : (
           <p className="text-body-sm">{words.onlyCash}</p>
+        )}
+      </CardBody>
+      <CardBody density="dense" className="flex flex-col items-start gap-2">
+        {empty ? (
+          <p data-ui="vault-empty" className="text-body-sm">
+            {t.withdraw.empty}
+          </p>
+        ) : (
+          <Link
+            data-ui="vault-withdraw"
+            href={`/vaults/${encodeURIComponent(vault.chain)}/${encodeURIComponent(vault.address)}/withdraw`}
+            className={buttonClass({ variant: 'secondary', size: 'dense' })}
+          >
+            {t.withdraw.action}
+          </Link>
         )}
       </CardBody>
       <CardFooter

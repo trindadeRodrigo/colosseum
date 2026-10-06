@@ -1,5 +1,5 @@
 'use client';
-import { ChainId, type Price, type VaultResponse } from '@colosseum/schemas';
+import { ChainId, chainFamily, type Price, type VaultResponse } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useEffect, useId, useState } from 'react';
 import { CardWait } from '../../components/shell/Wait';
@@ -18,10 +18,10 @@ import { dollars } from '../goal/sheet';
 import { assetTicker, formatBps } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { vaultValueSource } from '../portfolio/portfolio';
-import { useApiFetch } from '../wallet/WalletProvider';
+import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { readVault } from './shared-api';
 
-// A vault, read-only, for anybody (DESIGN-VAULT section 11, the public vault page): its owner, what it
+// A vault, for anybody (DESIGN-VAULT section 11, the public vault page): its owner, what it
 // follows, its value, and each position with its weight, target, drift and price, as its chain holds
 // it now (GET /v1/vaults/{chain}/{address}). Every price carries its pin (STYLE.md rule 1); a vault on
 // the mock or a test network carries the plate.
@@ -34,6 +34,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
   const lang = useLang();
   const v = t.shared.vault;
   const apiFetch = useApiFetch();
+  const port = useWalletPort();
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [round, setRound] = useState(0);
   const titleId = useId();
@@ -85,6 +86,8 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
   const locale = LOCALE[lang];
   const priceOf = (asset: string): Price | undefined => read.prices.find((p) => p.asset === asset);
   const follows = vault.recipeOnchainId;
+  const mine = port.active(chainFamily(read.chain))?.address === vault.owner;
+  const empty = [vault.cash, ...vault.positions].every((h) => /^0+$/.test(h.raw));
   return (
     <div data-ui="vault-screen" className="flex flex-col gap-8">
       <header className="flex flex-col items-start gap-3">
@@ -94,6 +97,21 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
         </h1>
         <p className="max-w-(--tf-measure-body) text-body-lg">{v.lead(read.name)}</p>
         <p className="break-all font-mono text-source text-muted-foreground">{vault.address}</p>
+        {/* The owner's way out, shown to the owner alone: a vault pays nobody else. */}
+        {mine &&
+          (empty ? (
+            <p data-ui="vault-empty" className="text-body">
+              {t.withdraw.empty}
+            </p>
+          ) : (
+            <Link
+              data-ui="vault-withdraw"
+              href={`/vaults/${encodeURIComponent(read.chain)}/${encodeURIComponent(vault.address)}/withdraw`}
+              className={buttonClass({ variant: 'secondary' })}
+            >
+              {t.withdraw.action}
+            </Link>
+          ))}
       </header>
 
       <Card
