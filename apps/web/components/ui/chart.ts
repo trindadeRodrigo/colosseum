@@ -31,3 +31,33 @@ export function useWidth<T extends HTMLElement>() {
   }, []);
   return [ref, width] as const;
 }
+
+/** The words of the Bearing charts, in English unless the caller hands its own. */
+export type ChartLabels = {
+  range: string;
+  noData: string;
+  noValue: string;
+  fewSamples: string;
+  zoom: string;
+  zoomIn: string;
+  zoomOut: string;
+  poolPrice: string;
+  below: (quote: string) => string;
+  above: (asset: string) => string;
+  noUsd: string;
+  held: (token: string) => string;
+};
+export const CHART_LABELS: ChartLabels = {
+  range: 'Range',
+  noData: 'No data',
+  noValue: 'no value',
+  fewSamples: 'too few samples',
+  zoom: 'Zoom',
+  zoomIn: 'Zoom in',
+  zoomOut: 'Zoom out',
+  poolPrice: 'Pool price',
+  below: (quote) => `${quote} (below the price)`,
+  above: (asset) => `${asset} (above the price)`,
+  noUsd: 'no USD price',
+  held: (token) => `in ${token}`,
+};

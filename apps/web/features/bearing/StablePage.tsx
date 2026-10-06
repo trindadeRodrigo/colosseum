@@ -1,4 +1,5 @@
 'use client';
+import type { ReactNode } from 'react';
 import { type Column, DataTable } from '../../components/ui/DataTable';
 import { Sparkline, sparkable } from '../../components/ui/Sparkline';
 import { Segmented, TimeChart } from '../../components/ui/TimeChart';
@@ -20,7 +21,18 @@ import {
   shareLentOut,
   summed,
 } from './lending';
-import { Count, Fig, Kpi, Kpis, Loading, MultiSelect, Pie, Reason, SrcLine } from './parts';
+import {
+  Count,
+  Fig,
+  Kpi,
+  Kpis,
+  Loading,
+  MultiSelect,
+  Pie,
+  Reason,
+  SrcLine,
+  useWords,
+} from './parts';
 
 // The stablecoins page (analytics2.js, stablePage): the Kamino reserves that lend a dollar token. A
 // lender exits by withdrawing, so "available now" takes the place of exit capacity. Stablecoins the
@@ -30,7 +42,8 @@ export function StablePage() {
   const { base, lending } = useBearing();
   const b = useAnswer(() => base(), [base]);
   const all = useAnswer(() => lending(), [lending]);
-  if (!b || !all) return <Loading>Reading the stablecoin reserves…</Loading>;
+  const reading = useWords().stable.reading;
+  if (!b || !all) return <Loading>{reading}</Loading>;
   if (!b.lendList.ok)
     return (
       <p className="mt-6">
@@ -48,12 +61,17 @@ type Token = { t: string; rs: LendRow[] } | { t: string; rs: null };
 
 function StableView({ rows }: { rows: LendRow[] }) {
   const { clock } = useBearing();
+  const wds = useWords();
+  const w = wds.stable;
   const { sel, setSel, metric: m, setMetric, range, setRange } = usePageState('stablecoins');
   const now = clock.now || Date.now();
   const tokens: string[] = [];
   for (const row of rows) if (!tokens.includes(row.meta.symbol)) tokens.push(row.meta.symbol);
   const r1 = rows.filter((row) => picked(sel.assets, row.meta.symbol));
-  const poolOpts = r1.map((row) => ({ id: row.meta.account, label: poolName(row.meta) }));
+  const poolOpts = r1.map((row) => ({
+    id: row.meta.account,
+    label: poolName(row.meta, wds.lending.market),
+  }));
   const selRows = r1.filter((row) => picked(sel.pools, row.meta.account));
   const supF = sumFact(
     selRows.map((row) => histFact(row, 'suppliedUsd', 'supplied')),
@@ -72,26 +90,27 @@ function StableView({ rows }: { rows: LendRow[] }) {
   const metric = m === 'liquidity' ? 'liquidity' : 'tvl';
   const tools = (
     <Segmented
-      label="Metric"
+      label={wds.chart.metric}
       options={[
-        { id: 'tvl', label: 'TVL over time' },
-        { id: 'liquidity', label: 'Liquidity' },
+        { id: 'tvl', label: w.metrics.tvl },
+        { id: 'liquidity', label: w.metrics.liquidity },
       ]}
       value={metric}
       onChange={setMetric}
     />
   );
   const src = selRows.map(lendSrc).find(Boolean) ?? null;
-  let chart: React.ReactNode;
+  let chart: ReactNode;
   if (metric === 'tvl') {
-    const sup = markPartial(summed(selRows, 'suppliedUsd', now));
+    const sup = markPartial(summed(selRows, 'suppliedUsd', now), wds.lending.supplied.partial);
     const tf = seriesFact(sup, src, 'supplied summed over the selected reserves');
     chart = (
       <TimeChart
-        title="Supplied and borrowed"
+        title={w.supplied.title}
+        labels={wds.chart}
         tools={tools}
         value={<Fig f={tf} fmt={usd1} />}
-        note="hourly for the last 7 days, the day’s last reading before that"
+        note={w.supplied.note}
         ranges={RANGES}
         range={range}
         onRange={setRange}
@@ -101,22 +120,25 @@ function StableView({ rows }: { rows: LendRow[] }) {
             h: 260,
             fmt: usd1,
             series: [
-              { type: 'area', cls: 's1', label: 'supplied', data: sup },
+              { type: 'area', cls: 's1', label: wds.lending.supplied.supplied, data: sup },
               {
                 type: 'line',
                 cls: 's2',
-                label: 'borrowed',
-                data: markPartial(summed(selRows, 'borrowedUsd', now)),
+                label: wds.lending.supplied.borrowed,
+                data: markPartial(
+                  summed(selRows, 'borrowedUsd', now),
+                  wds.lending.supplied.partial,
+                ),
               },
             ],
           },
         ]}
         legend={[
-          { cls: 's1', label: 'supplied' },
-          { cls: 's2', label: 'borrowed' },
+          { cls: 's1', label: wds.lending.supplied.supplied },
+          { cls: 's2', label: wds.lending.supplied.borrowed },
         ]}
-        aria="Stablecoin supplied and borrowed over time"
-        src={<SrcLine f={tf} what="the supplied chart" />}
+        aria={w.supplied.aria}
+        src={<SrcLine f={tf} what={wds.lending.supplied.src} />}
         empty={<Reason code="not_collected" />}
       />
     );
@@ -125,7 +147,7 @@ function StableView({ rows }: { rows: LendRow[] }) {
       <AvailChart
         rows={selRows}
         tools={tools}
-        note="summed over the selected reserves"
+        note={w.availNote}
         range={range}
         setRange={setRange}
       />
@@ -146,25 +168,25 @@ function StableView({ rows }: { rows: LendRow[] }) {
       )[0] as LendRow;
   const note = (rs: LendRow[]) =>
     rs.length > 1 ? (
-      <span className="block font-mono text-b-meta text-muted-foreground">largest reserve</span>
+      <span className="block font-mono text-b-meta text-muted-foreground">{w.table.largest}</span>
     ) : null;
   const missing = <Reason code="not_collected" />;
   const columns: Column<Token>[] = [
     {
       key: 'asset',
-      header: 'Asset',
+      header: w.table.asset,
       rowHeader: true,
       cell: (x) => <span className={x.rs ? undefined : 'text-muted-foreground'}>{x.t}</span>,
     },
     {
       key: 'n',
-      header: 'Reserves',
+      header: w.table.reserves,
       numeric: true,
       cell: (x) => (x.rs ? <Count>{num(x.rs.length)}</Count> : missing),
     },
     {
       key: 'sup',
-      header: 'Supplied',
+      header: w.table.supplied,
       numeric: true,
       cell: (x) =>
         x.rs ? (
@@ -181,7 +203,7 @@ function StableView({ rows }: { rows: LendRow[] }) {
     },
     {
       key: 'av',
-      header: 'Available now',
+      header: w.table.available,
       numeric: true,
       cell: (x) =>
         x.rs ? (
@@ -195,7 +217,7 @@ function StableView({ rows }: { rows: LendRow[] }) {
     },
     {
       key: 'lent',
-      header: 'Share lent out',
+      header: w.table.lent,
       numeric: true,
       cell: (x) => {
         if (!x.rs) return missing;
@@ -210,10 +232,10 @@ function StableView({ rows }: { rows: LendRow[] }) {
         );
       },
     },
-    { key: 'vol', header: 'Volume 24 h', numeric: true, cell: () => missing },
+    { key: 'vol', header: w.table.volume, numeric: true, cell: () => missing },
     {
       key: 'top1',
-      header: 'Top-1 lender share',
+      header: w.table.top1,
       numeric: true,
       cell: (x) => {
         if (!x.rs) return missing;
@@ -230,7 +252,7 @@ function StableView({ rows }: { rows: LendRow[] }) {
     },
     {
       key: 'spark',
-      header: 'Available, 30 d',
+      header: w.table.spark,
       cell: (x) => {
         if (!x.rs) return missing;
         const values = lendSeries(biggest(x.rs)).map((q) => q.availableUsd);
@@ -247,44 +269,44 @@ function StableView({ rows }: { rows: LendRow[] }) {
     <>
       <div className="mt-6 mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         <MultiSelect
-          label="Stablecoins"
+          label={w.coins}
           options={tokens.map((t) => ({ id: t, label: t }))}
           value={sel.assets}
           onChange={(v) => setSel({ assets: v, pools: null })}
         />
         <MultiSelect
-          label="Reserves"
+          label={w.reserves}
           options={poolOpts}
           value={sel.pools}
           onChange={(v) => setSel({ pools: v })}
         />
         <span className="font-mono text-b-meta text-muted-foreground">
-          {selRows.length} reserve{selRows.length === 1 ? '' : 's'}
+          {w.summary(selRows.length)}
         </span>
       </div>
       <Kpis>
-        <Kpi label="Supplied">
+        <Kpi label={w.kpi.supplied}>
           <Fig f={supF} fmt={usd1} />
         </Kpi>
-        <Kpi label="Borrowed">
+        <Kpi label={w.kpi.borrowed}>
           <Fig f={borF} fmt={usd1} />
         </Kpi>
-        <Kpi label="Available now" note="what lenders could withdraw">
+        <Kpi label={w.kpi.available} note={w.kpi.availableNote}>
           <Fig f={avF} fmt={usd1} />
         </Kpi>
-        <Kpi label="Share lent out">
+        <Kpi label={w.kpi.lent}>
           <Fig f={shF} fmt={pct} />
         </Kpi>
-        <Kpi label="Reserves" note="Kamino lending reserves">
+        <Kpi label={w.kpi.reserves} note={w.kpi.reservesNote}>
           <Count>{num(selRows.length)}</Count>
         </Kpi>
       </Kpis>
       <ChartGrid
         pie={
           <Pie
-            title="Supplied by reserve"
+            title={w.pie}
             slices={selRows.map((row) => ({
-              label: poolName(row.meta),
+              label: poolName(row.meta, wds.lending.market),
               value: histFact(row, 'suppliedUsd', 'supplied').value || 0,
             }))}
             total={supF.value || 0}
@@ -295,17 +317,12 @@ function StableView({ rows }: { rows: LendRow[] }) {
       />
       <section aria-labelledby="bearing-table" className="mt-8">
         <h2 id="bearing-table" className="mb-2 text-b-section font-semibold">
-          Stablecoins
+          {w.table.title}
         </h2>
-        <p className="mb-3 max-w-[88ch] text-muted-foreground">
-          Measured where the collectors read them today: the Kamino lending reserves that lend them.
-          A lender exits by withdrawing, so “available now” takes the place of exit capacity. Swap
-          pools for stablecoins and the yield-bearing ones (USDY, syrupUSDC) are measured once item
-          17 lands.
-        </p>
+        <p className="mb-3 max-w-[88ch] text-muted-foreground">{w.table.note}</p>
         <DataTable
           dense
-          caption="Stablecoins by lending reserve"
+          caption={w.table.caption}
           captionHidden
           rows={list}
           rowKey={(x) => x.t}

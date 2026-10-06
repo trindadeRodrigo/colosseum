@@ -1,6 +1,12 @@
 'use client';
 import { type KeyboardEvent, type ReactNode, useId, useState } from 'react';
-import { type ChartSeriesClass, SERIES_VAR, useWidth } from './chart';
+import {
+  CHART_LABELS,
+  type ChartLabels,
+  type ChartSeriesClass,
+  SERIES_VAR,
+  useWidth,
+} from './chart';
 import { fullDate, nice, tagWidth, timeTicks } from './chart-scale';
 
 export type { ChartSeriesClass } from './chart';
@@ -61,6 +67,8 @@ export type TimeChartProps = {
   src?: ReactNode;
   /** In place of the plot when there are no points. */
   empty?: ReactNode;
+  /** The chart's own words: the range tabs, the readout. */
+  labels?: Partial<ChartLabels>;
   className?: string;
 };
 
@@ -131,9 +139,10 @@ export function ChartHead({
   ranges,
   range = 0,
   onRange,
+  labels,
 }: Pick<
   TimeChartProps,
-  'title' | 'value' | 'note' | 'tools' | 'rangeTools' | 'ranges' | 'range' | 'onRange'
+  'title' | 'value' | 'note' | 'tools' | 'rangeTools' | 'ranges' | 'range' | 'onRange' | 'labels'
 >) {
   return (
     <div
@@ -151,7 +160,7 @@ export function ChartHead({
         <div className="inline-flex flex-wrap items-center gap-x-3 gap-y-2">
           {ranges && ranges.length > 1 && (
             <Segmented
-              label="Range"
+              label={labels?.range ?? CHART_LABELS.range}
               options={ranges.map((r, i) => ({ id: String(i), label: r.label }))}
               value={String(range)}
               onChange={(id) => onRange?.(Number(id))}
@@ -217,6 +226,7 @@ type Geo = {
 
 export function TimeChart(props: TimeChartProps) {
   const { panes, ranges, hourly = false, legend, aria, src, empty } = props;
+  const text = { ...CHART_LABELS, ...props.labels };
   const [own, setOwn] = useState(props.range ?? 0);
   const range = props.onRange ? (props.range ?? 0) : own;
   const onRange = (i: number) => {
@@ -279,7 +289,7 @@ export function TimeChart(props: TimeChartProps) {
     return (
       <div data-ui="time-chart" className={props.className}>
         {head}
-        <div className="py-6 text-muted-foreground">{empty ?? 'No data'}</div>
+        <div className="py-6 text-muted-foreground">{empty ?? text.noData}</div>
         {src}
       </div>
     );
@@ -320,7 +330,7 @@ export function TimeChart(props: TimeChartProps) {
         data-ui="chart-readout"
         className="flex min-h-5 flex-wrap gap-x-4 gap-y-0.5 font-mono text-b-meta/5 text-muted-foreground"
       >
-        {readT != null && <Readout t={readT} panes={panes} hourly={hourly} />}
+        {readT != null && <Readout t={readT} panes={panes} hourly={hourly} text={text} />}
       </div>
       <div
         ref={box}
@@ -581,7 +591,17 @@ function Cross({
   );
 }
 
-function Readout({ t, panes, hourly }: { t: number; panes: readonly TimePane[]; hourly: boolean }) {
+function Readout({
+  t,
+  panes,
+  hourly,
+  text,
+}: {
+  t: number;
+  panes: readonly TimePane[];
+  hourly: boolean;
+  text: ChartLabels;
+}) {
   return (
     <>
       <span className="text-foreground">{fullDate(t, hourly)}</span>
@@ -598,9 +618,9 @@ function Readout({ t, panes, hourly }: { t: number; panes: readonly TimePane[]; 
               />
               {s.label}{' '}
               <b className="font-medium text-foreground">
-                {q.v == null ? 'no value' : (q.show ?? p.fmt(q.v))}
+                {q.v == null ? text.noValue : (q.show ?? p.fmt(q.v))}
               </b>
-              {q.dashed ? ' too few samples' : ''}
+              {q.dashed ? ` ${text.fewSamples}` : ''}
             </span>
           );
         }),

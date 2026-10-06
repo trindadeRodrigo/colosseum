@@ -11,6 +11,30 @@ export type HeatCell = {
 };
 
 export const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+
+/** The words of the tile, in English unless the caller hands its own. */
+export type HeatLabels = {
+  table: string;
+  deepFirst: string;
+  least: string;
+  most: string;
+  legend: (hours: number) => string;
+  move: string;
+  noSample: string;
+  day: string;
+  days: readonly string[];
+};
+export const HEAT_LABELS: HeatLabels = {
+  table: 'View as table',
+  deepFirst: 'Deepest day first',
+  least: 'least depth',
+  most: 'most depth',
+  legend: (hours) => `– no sample · bins are quintiles of these ${hours} hours`,
+  move: 'Move through the hours with the arrow keys.',
+  noSample: 'no sample',
+  day: 'Day',
+  days: DAYS,
+};
 export const HOURS = Array.from({ length: 24 }, (_, h) => h);
 export const hh = (h: number) => String(h).padStart(2, '0');
 
@@ -39,11 +63,14 @@ export function heatName(
   cell: HeatCell | undefined,
   fmt: (v: number) => string,
   what: string,
+  labels: HeatLabels = HEAT_LABELS,
 ): string {
-  const when = `${DAYS[day]} ${hh(hour)}:00 ${zone}`;
-  return cell ? `${when} · ${fmt(cell.value)} ${what} · n=${cell.samples}` : `${when} · no sample`;
+  const when = `${labels.days[day]} ${hh(hour)}:00 ${zone}`;
+  return cell
+    ? `${when} · ${fmt(cell.value)} ${what} · n=${cell.samples}`
+    : `${when} · ${labels.noSample}`;
 }
 
 /** The hour alone, as the readout starts it: "Sun 03:00 UTC". */
-export const heatWhen = (how: number, zone: string) =>
-  `${DAYS[Math.floor(how / 24)]} ${hh(how % 24)}:00 ${zone}`;
+export const heatWhen = (how: number, zone: string, labels: HeatLabels = HEAT_LABELS) =>
+  `${labels.days[Math.floor(how / 24)]} ${hh(how % 24)}:00 ${zone}`;

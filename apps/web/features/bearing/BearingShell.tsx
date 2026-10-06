@@ -6,11 +6,13 @@ import { cn } from '../../components/ui/cn';
 import { Disclaimer } from '../../components/ui/Disclaimer';
 import { formatAge } from '../../components/ui/format';
 import { Icon } from '../../components/ui/Icon';
+import { useLang } from '../../i18n/I18nProvider';
 import { useBearing } from './BearingProvider';
 import { RISK_API } from './data';
-import { hhmm, iso, RW } from './format';
+import { hhmm, iso } from './format';
 import { href, METHODOLOGY, PAGES } from './pages';
-import { etParts, regimeAt } from './time';
+import { useWords } from './parts';
+import { etLabel, regimeAt } from './time';
 
 // The frame of Bearing's analytics (Rodrigo's Analytics 2.0): a retractable side menu beside the page,
 // 220px open and a 56px rail closed, a bar with a drawer under 900px; the head with the page's one
@@ -23,9 +25,13 @@ const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visi
 
 export function BearingShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const t = useWords();
+  const lang = useLang();
   const current = pathname.split('/')[2] ?? 'stocks';
   const page =
-    PAGES.find((p) => p.id === current) ?? (current === METHODOLOGY.id ? METHODOLOGY : PAGES[0]);
+    current === METHODOLOGY
+      ? t.pages.methodology
+      : t.pages[PAGES.find((p) => p.id === current)?.id ?? 'stocks'];
   const [collapsed, setCollapsed] = useState(false);
 
   // On a phone the menu starts closed, as a drawer; elsewhere it opens as it was left.
@@ -56,7 +62,6 @@ export function BearingShell({ children }: { children: ReactNode }) {
     <div
       data-ui="bearing"
       data-collapsed={collapsed || undefined}
-      lang="en"
       className={cn(
         'grid grid-cols-[minmax(0,1fr)] text-[0.8125rem]/5',
         collapsed
@@ -65,7 +70,7 @@ export function BearingShell({ children }: { children: ReactNode }) {
       )}
     >
       <aside
-        aria-label="Analytics pages"
+        aria-label={t.menu.region}
         className="z-20 border-b border-border bg-card px-4 py-2 min-[900px]:sticky min-[900px]:top-4 min-[900px]:max-h-[calc(100dvh-32px)] min-[900px]:self-start min-[900px]:overflow-auto min-[900px]:border-r min-[900px]:border-b-0 min-[900px]:px-2 min-[900px]:py-3"
       >
         <button
@@ -81,12 +86,12 @@ export function BearingShell({ children }: { children: ReactNode }) {
         >
           <Icon name="Menu" size={16} />
           <span className={cn(collapsed && 'min-[900px]:sr-only')}>
-            {collapsed ? 'Show menu' : 'Hide menu'}
+            {collapsed ? t.menu.show : t.menu.hide}
           </span>
         </button>
         <nav
           id="bearing-nav"
-          aria-label="Analytics"
+          aria-label={t.menu.nav}
           className={cn(collapsed && 'max-[899px]:hidden')}
         >
           <ul className="mt-2 grid list-none gap-0.5 p-0 min-[900px]:mt-4">
@@ -94,7 +99,7 @@ export function BearingShell({ children }: { children: ReactNode }) {
               <li key={p.id}>
                 <Link
                   href={href(p.id)}
-                  title={p.label}
+                  title={t.pages[p.id].label}
                   onClick={followed}
                   aria-current={p.id === current ? 'page' : undefined}
                   className={cn(
@@ -112,22 +117,24 @@ export function BearingShell({ children }: { children: ReactNode }) {
                   >
                     {p.mark}
                   </span>
-                  <span className={cn(collapsed && 'min-[900px]:sr-only')}>{p.label}</span>
+                  <span className={cn(collapsed && 'min-[900px]:sr-only')}>
+                    {t.pages[p.id].label}
+                  </span>
                 </Link>
               </li>
             ))}
           </ul>
           <p className={cn('mt-6 px-2.5 text-caption', collapsed && 'min-[900px]:hidden')}>
             <Link
-              href={href(METHODOLOGY.id)}
-              aria-current={current === METHODOLOGY.id ? 'page' : undefined}
+              href={href(METHODOLOGY)}
+              aria-current={current === METHODOLOGY ? 'page' : undefined}
               onClick={followed}
               className={cn(
                 'underline decoration-1 underline-offset-[3px] hover:decoration-2',
                 FOCUS,
               )}
             >
-              {METHODOLOGY.label}
+              {t.pages.methodology.label}
             </Link>
           </p>
         </nav>
@@ -135,7 +142,7 @@ export function BearingShell({ children }: { children: ReactNode }) {
       <div className="min-w-0 px-0 pt-2 min-[900px]:px-[clamp(16px,3vw,40px)] min-[900px]:pt-4">
         <div>
           <div className="font-condensed text-b-head font-medium text-muted-foreground">
-            Bearing · analytics
+            {t.head}
           </div>
           <h1 className="mt-2 mb-4 max-w-[34ch] font-display text-[clamp(1.75rem,1.3rem+1.4vw,2.5rem)]/[1.15] font-normal tracking-[-0.015em]">
             {page.lede}
@@ -143,7 +150,7 @@ export function BearingShell({ children }: { children: ReactNode }) {
           <Banner />
         </div>
         {children}
-        <Disclaimer lang="en" heading="Not advice" className="mt-8" />
+        <Disclaimer lang={lang} heading={t.notAdvice} className="mt-8" />
       </div>
     </div>
   );
@@ -152,12 +159,14 @@ export function BearingShell({ children }: { children: ReactNode }) {
 /** Live or stale, said once for the whole page; or that the API did not answer. */
 export function Banner() {
   const { mode, newest, clock } = useBearing();
+  const t = useWords();
+  const w = t.banner;
   const box =
     'mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 border border-l-2 border-border border-l-primary px-3 py-2';
   if (mode === 'loading')
     return (
       <div role="status" data-ui="bearing-banner" data-mode={mode} className={box}>
-        <span className="text-muted-foreground">Reading the risk API…</span>
+        <span className="text-muted-foreground">{w.loading}</span>
       </div>
     );
   const now = new Date(clock.now);
@@ -165,11 +174,9 @@ export function Banner() {
     <div role="status" data-ui="bearing-banner" data-mode={mode} className={box}>
       {mode === 'live' && (
         <>
-          <b className="font-semibold">
-            Live from the collectors, as of {newest ? hhmm(newest) : 'an unknown time'}.
-          </b>
+          <b className="font-semibold">{w.live(newest ? hhmm(newest) : w.unknownTime)}</b>
           <span className="font-mono text-b-meta text-muted-foreground">
-            now: {RW[regimeAt(now)]} ({etParts(now).label})
+            {w.now(t.regimes[regimeAt(now)], etLabel(now, t.heat.days))}
           </span>
         </>
       )}
@@ -177,18 +184,19 @@ export function Banner() {
         <>
           <b className="font-semibold">
             {newest
-              ? `The collectors’ newest reading is from ${iso(newest).replace('T', ' ').replace('Z', ' UTC')}, ${
-                  formatAge((clock.now - Date.parse(newest)) / 1000)?.long ?? 'of an unknown age'
-                }.`
-              : 'The collectors have no reading yet.'}
+              ? w.stale(
+                  iso(newest).replace('T', ' ').replace('Z', ' UTC'),
+                  formatAge((clock.now - Date.parse(newest)) / 1000)?.short ?? w.unknownAge,
+                )
+              : w.noReading}
           </b>
-          <span>Every figure is stale: measured, only old. Its age is beside it.</span>
+          <span>{w.staleAll}</span>
         </>
       )}
       {mode === 'none' && (
         <>
-          <b className="font-semibold">The risk API at {RISK_API} did not answer.</b>
-          <span>Every figure on this page waits for it; none is made up in its place.</span>
+          <b className="font-semibold">{w.down(RISK_API)}</b>
+          <span>{w.downAll}</span>
         </>
       )}
     </div>

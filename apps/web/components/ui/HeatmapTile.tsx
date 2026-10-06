@@ -1,7 +1,16 @@
 'use client';
 import { type KeyboardEvent, type ReactNode, useId, useRef, useState } from 'react';
 import { cn } from './cn';
-import { DAYS, type HeatCell, HOURS, heatLevels, heatName, heatWhen, hh } from './heatmap';
+import {
+  HEAT_LABELS,
+  type HeatCell,
+  type HeatLabels,
+  HOURS,
+  heatLevels,
+  heatName,
+  heatWhen,
+  hh,
+} from './heatmap';
 import { MockPlate, StalePlate } from './MockPlate';
 
 export type { HeatCell } from './heatmap';
@@ -47,6 +56,8 @@ export type HeatmapTileProps = {
   state?: HeatmapState;
   /** The grid's accessible name. */
   aria: string;
+  /** The tile's own words: the toggles, the scale, the days. */
+  labels?: Partial<HeatLabels>;
   className?: string;
 };
 
@@ -68,8 +79,10 @@ export function HeatmapTile({
   cellFigure,
   state = { kind: 'live' },
   aria,
+  labels,
   className,
 }: HeatmapTileProps) {
+  const text = { ...HEAT_LABELS, ...labels };
   const by = new Map(cells.map((c) => [c.day * 24 + c.hour, c]));
   const level = heatLevels(
     cells.map((c) => c.value),
@@ -136,7 +149,7 @@ export function HeatmapTile({
           onClick={() => setTable(!table)}
           className="min-h-7 cursor-pointer rounded-md border border-input px-2.5 py-1 text-caption font-medium hover:border-primary hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
-          View as table
+          {text.table}
         </button>
         {table && (
           <button
@@ -145,7 +158,7 @@ export function HeatmapTile({
             onClick={() => setDeepFirst(!deepFirst)}
             className="min-h-7 cursor-pointer rounded-md border border-input px-2.5 py-1 text-caption font-medium hover:border-primary hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
-            Deepest day first
+            {text.deepFirst}
           </button>
         )}
       </div>
@@ -159,6 +172,7 @@ export function HeatmapTile({
           deepFirst={deepFirst}
           caption={aria}
           cellFigure={cellFigure}
+          text={text}
         />
       ) : (
         // the grid scrolls sideways on a phone; its cells take focus, so the keyboard reaches every hour.
@@ -190,7 +204,7 @@ export function HeatmapTile({
               </tr>
             </thead>
             <tbody className="contents">
-              {DAYS.map((name, d) => (
+              {text.days.map((name, d) => (
                 <tr key={name} className="contents">
                   <th
                     scope="row"
@@ -208,7 +222,7 @@ export function HeatmapTile({
                         data-how={how}
                         data-level={c ? level(c.value) : undefined}
                         tabIndex={how === at ? 0 : -1}
-                        aria-label={heatName(d, h, zone, c, fmt, what)}
+                        aria-label={heatName(d, h, zone, c, fmt, what, text)}
                         aria-selected={how === read}
                         onFocus={() => {
                           setAt(how);
@@ -232,16 +246,18 @@ export function HeatmapTile({
       )}
 
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-caption">
-        <span className="whitespace-nowrap">least depth {least}</span>
+        <span className="whitespace-nowrap">
+          {text.least} {least}
+        </span>
         <span aria-hidden="true" className="inline-flex gap-px border border-border bg-border">
           {[1, 2, 3, 4, 5].map((i) => (
             <i key={i} className={cn('block h-3 w-5', HEAT[i])} />
           ))}
         </span>
-        <span className="whitespace-nowrap">most depth {most}</span>
-        <span className="text-muted-foreground">
-          – no sample · bins are quintiles of these {cells.length} hours
+        <span className="whitespace-nowrap">
+          {text.most} {most}
         </span>
+        <span className="text-muted-foreground">{text.legend(cells.length)}</span>
       </div>
       <p
         id={readId}
@@ -249,13 +265,13 @@ export function HeatmapTile({
         className="mt-2 min-h-5 font-mono text-b-meta text-muted-foreground"
       >
         {read == null ? (
-          'Move through the hours with the arrow keys.'
+          text.move
         ) : readCell && cellFigure ? (
           <>
-            {heatWhen(read, zone)} · {cellFigure(readCell)} {what} · n={readCell.samples}
+            {heatWhen(read, zone, text)} · {cellFigure(readCell)} {what} · n={readCell.samples}
           </>
         ) : (
-          heatName(Math.floor(read / 24), read % 24, zone, readCell, fmt, what)
+          heatName(Math.floor(read / 24), read % 24, zone, readCell, fmt, what, text)
         )}
       </p>
       <p className="font-mono text-b-meta text-muted-foreground">{meta}</p>
@@ -271,6 +287,7 @@ function HeatTable({
   deepFirst,
   caption,
   cellFigure,
+  text,
 }: {
   by: Map<number, HeatCell>;
   fmt: (v: number) => string;
@@ -279,8 +296,9 @@ function HeatTable({
   deepFirst: boolean;
   caption: string;
   cellFigure?: (cell: HeatCell) => ReactNode;
+  text: HeatLabels;
 }) {
-  const days = DAYS.map((name, d) => {
+  const days = text.days.map((name, d) => {
     const vals = HOURS.map((h) => by.get(d * 24 + h)?.value).filter((v): v is number => v != null);
     const mean = vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : null;
     return { name, d, mean };
@@ -299,7 +317,7 @@ function HeatTable({
               scope="col"
               className="px-1.5 py-1 text-left font-sans font-medium text-muted-foreground"
             >
-              Day
+              {text.day}
             </th>
             {HOURS.map((h) => (
               <th

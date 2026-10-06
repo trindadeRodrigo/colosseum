@@ -8,10 +8,10 @@ import { R, type Res } from './data';
 import { capFact } from './dex';
 import { FlowChart } from './Flow';
 import type { Fact } from './fact';
-import { pct, REGIMES, RW, regimeW, usd, usd1 } from './format';
-import { Card, Count, Fig, Kpi, Kpis, Loading, Reason } from './parts';
+import { pct, REGIMES, usd, usd1 } from './format';
+import { Card, Count, Fig, Kpi, Kpis, Loading, Reason, useWords } from './parts';
 import { chunksFor, parseAmount, type SimPath, simPaths } from './sim';
-import { etParts, regimeAt } from './time';
+import { etLabel, regimeAt } from './time';
 import type { RecovBody, SheetBody, SplitBody } from './types';
 
 // The simulation page (analytics2.js, simPage): sell a position now, and see what each way out would
@@ -21,7 +21,8 @@ import type { RecovBody, SheetBody, SplitBody } from './types';
 export function SimPage() {
   const { base } = useBearing();
   const b = useAnswer(() => base(), [base]);
-  if (!b) return <Loading>Reading the assets…</Loading>;
+  const reading = useWords().sim.reading;
+  if (!b) return <Loading>{reading}</Loading>;
   if (!b.assets.ok)
     return (
       <p className="mt-6">
@@ -33,6 +34,7 @@ export function SimPage() {
 
 function SimForm({ b }: { b: Base }) {
   const { ui, setUi } = useBearing();
+  const t = useWords().sim;
   const body = b.assets.ok ? b.assets.body : null;
   const ids = (body?.assets ?? []).map((a) => a.symbol).sort();
   const [asked] = useState(() =>
@@ -51,7 +53,7 @@ function SimForm({ b }: { b: Base }) {
     e?.preventDefault();
     const v = parseAmount(size);
     if (v == null) {
-      setErr('Enter an amount between $100 and $1,000,000,000, for example 250000 or 250k.');
+      setErr(t.amountError);
       sizeRef.current?.focus();
       return;
     }
@@ -70,7 +72,7 @@ function SimForm({ b }: { b: Base }) {
           className="flex flex-wrap items-end gap-x-4 gap-y-3"
         >
           <label className={field}>
-            <span className="text-caption font-medium text-muted-foreground">Asset to sell</span>
+            <span className="text-caption font-medium text-muted-foreground">{t.asset}</span>
             <select
               name="asset"
               value={run.asset}
@@ -83,7 +85,7 @@ function SimForm({ b }: { b: Base }) {
             </select>
           </label>
           <label className={field}>
-            <span className="text-caption font-medium text-muted-foreground">Amount, USD</span>
+            <span className="text-caption font-medium text-muted-foreground">{t.amount}</span>
             <input
               ref={sizeRef}
               name="size"
@@ -97,7 +99,7 @@ function SimForm({ b }: { b: Base }) {
             />
           </label>
           <Button type="submit" variant="primary" size="dense">
-            Simulate
+            {t.simulate}
           </Button>
           <p
             id={errId}
@@ -119,6 +121,8 @@ function SimForm({ b }: { b: Base }) {
 
 function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
   const { reader, clock } = useBearing();
+  const words = useWords();
+  const t = words.sim;
   const body = b.assets.ok ? b.assets.body : null;
   const at = new Date(clock.now || Date.now());
   const r = regimeAt(at);
@@ -136,7 +140,7 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
       ]),
     [id, n, chunks, reader],
   );
-  if (!rs || !body || !cap) return <Loading>{`Pricing ${usd(n)} of ${id}…`}</Loading>;
+  if (!rs || !body || !cap) return <Loading>{t.pricing(usd(n), id)}</Loading>;
   const [s, recov, sc, fNow, fSplit] = rs as [
     Res<SheetBody>,
     Res<RecovBody>,
@@ -159,45 +163,50 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
     chunks,
     chunkSheet: sc,
     recov,
+    words,
   });
   const ex = best?.ex ?? null;
   const parts: Array<[string, Fact | undefined]> = ex
     ? [
-        ['pool fee', ex.poolFee],
-        ['transfer fee', ex.transferFee],
-        ['price impact', ex.impact],
-        ['basis against the reference', ex.basis],
-        ['platform fee', ex.platformFee],
+        [t.parts.poolFee, ex.poolFee],
+        [t.parts.transferFee, ex.transferFee],
+        [t.parts.impact, ex.impact],
+        [t.parts.basis, ex.basis],
+        [t.parts.platformFee, ex.platformFee],
       ]
     : [];
   const pathCols: Column<SimPath>[] = [
     {
       key: 'path',
-      header: 'Path',
+      header: t.head.path,
       rowHeader: true,
       cell: (p) => (
         <span className="inline-flex items-center gap-1.5">
-          {p === best && <Status status="on-track">best</Status>}
+          {p === best && <Status status="on-track">{t.best}</Status>}
           <b className="font-semibold whitespace-nowrap">{p.name}</b>
         </span>
       ),
     },
-    { key: 'how', header: 'How', cell: (p) => <span className="whitespace-normal">{p.how}</span> },
+    {
+      key: 'how',
+      header: t.head.how,
+      cell: (p) => <span className="whitespace-normal">{p.how}</span>,
+    },
     {
       key: 'when',
-      header: 'When',
+      header: t.head.when,
       cell: (p) => <span className="whitespace-normal">{p.when}</span>,
     },
     {
       key: 'cost',
-      header: 'Cost',
+      header: t.head.cost,
       numeric: true,
       cell: (p) =>
         p.assumption ? (
           <>
             <Fig f={p.capF} fmt={usd1} />
             <span className="block font-mono text-b-meta text-muted-foreground">
-              capacity, not a cost
+              {t.capacityNotCost}
             </span>
           </>
         ) : (
@@ -206,11 +215,11 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
     },
     {
       key: 'loss',
-      header: 'Loss',
+      header: t.head.loss,
       numeric: true,
       cell: (p) =>
         p.assumption ? (
-          <span className="text-muted-foreground">never chosen over a measured route</span>
+          <span className="text-muted-foreground">{t.neverChosen}</span>
         ) : (
           <Fig f={p.loss} fmt={usd} />
         ),
@@ -220,14 +229,14 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
   const regimeCols: Column<string>[] = [
     {
       key: 'r',
-      header: 'Time of week',
+      header: t.regime,
       rowHeader: true,
       cell: (g) => (
         <>
-          {regimeW(g)}
+          {words.regimes[g as keyof typeof words.regimes] ?? g}
           {g === r && (
             <span className="block font-mono text-b-meta font-normal text-muted-foreground">
-              now
+              {t.now}
             </span>
           )}
         </>
@@ -235,7 +244,7 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
     },
     {
       key: 'cost',
-      header: 'Cost',
+      header: t.head.cost,
       numeric: true,
       cell: (g) => {
         const e = costIn(g);
@@ -244,7 +253,7 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
     },
     {
       key: 'loss',
-      header: 'Loss',
+      header: t.head.loss,
       numeric: true,
       cell: (g) => {
         const e = costIn(g);
@@ -256,18 +265,18 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
     <div data-ui="bearing-sim">
       <div className="mt-4">
         <Kpis>
-          <Kpi label="Sale" note={`${id}, your input`}>
+          <Kpi label={t.kpi.sale} note={t.kpi.saleNote(id)}>
             <Count>{usd(n)}</Count>
           </Kpi>
-          <Kpi label="Time of week now" note={etParts(at).label}>
-            <span className="font-sans text-[1.0625rem]">{RW[r]}</span>
+          <Kpi label={t.kpi.now} note={etLabel(at, words.heat.days)}>
+            <span className="font-sans text-[1.0625rem]">{words.regimes[r]}</span>
           </Kpi>
-          <Kpi label="Exit capacity now" note="sale at ≤ 1% cost">
+          <Kpi label={t.kpi.capacity} note={t.kpi.capacityNote}>
             <Fig f={cap} fmt={usd1} />
           </Kpi>
           <Kpi
-            label="Loss on the best path"
-            note={best?.loss.value != null ? `${pct(best.loss.value / n)} of the sale` : ''}
+            label={t.kpi.loss}
+            note={best?.loss.value != null ? t.kpi.lossNote(pct(best.loss.value / n)) : ''}
           >
             {best ? <Fig f={best.loss} fmt={usd} /> : <Reason code="no_samples_in_regime" />}
           </Kpi>
@@ -277,7 +286,7 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
         {verdict}
       </p>
       <section className="mt-8">
-        <h2 className="mb-2 text-b-section font-semibold">Paths, as a flow</h2>
+        <h2 className="mb-2 text-b-section font-semibold">{t.flowTitle}</h2>
         <FlowChart
           id={id}
           n={n}
@@ -290,24 +299,20 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
         />
       </section>
       <section className="mt-8">
-        <h2 className="mb-2 text-b-section font-semibold">Paths</h2>
+        <h2 className="mb-2 text-b-section font-semibold">{t.pathsTitle}</h2>
         <DataTable
           dense
-          caption="Ways to sell, with cost and loss"
+          caption={t.pathsCaption}
           captionHidden
           rows={paths}
           rowKey={(p) => p.key}
           columns={pathCols}
         />
-        <p className="mt-2 max-w-[88ch] text-muted-foreground">
-          The best path is the measured one with the smallest loss; on a tie, the one that does not
-          wait. Issuer redemption rests on the issuer’s published terms, a scenario input, so it is
-          shown but never chosen over a measured route.
-        </p>
+        <p className="mt-2 max-w-[88ch] text-muted-foreground">{t.pathsNote}</p>
       </section>
       {ex && (
         <section className="mt-8">
-          <h2 className="mb-2 text-b-section font-semibold">What the best path pays</h2>
+          <h2 className="mb-2 text-b-section font-semibold">{t.paysTitle}</h2>
           <dl className="m-0 grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-x-4 gap-y-2">
             {parts.map(([label, f]) =>
               f ? (
@@ -321,7 +326,7 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
             )}
             {ex.networkFeeUsd && (
               <div className="border-t border-border pt-1.5">
-                <dt className="text-caption text-muted-foreground">network fee</dt>
+                <dt className="text-caption text-muted-foreground">{t.parts.networkFee}</dt>
                 <dd className="m-0 mt-0.5 font-mono text-[0.875rem]/5 font-medium">
                   <Fig f={ex.networkFeeUsd} fmt={usd} />
                 </dd>
@@ -331,10 +336,10 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
         </section>
       )}
       <section className="mt-8">
-        <h2 className="mb-2 text-b-section font-semibold">The same sale by time of week</h2>
+        <h2 className="mb-2 text-b-section font-semibold">{t.byRegimeTitle}</h2>
         <DataTable
           dense
-          caption="Cost by time of week"
+          caption={t.byRegimeCaption}
           captionHidden
           rows={[...REGIMES]}
           rowKey={(g) => g}

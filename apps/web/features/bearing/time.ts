@@ -93,9 +93,22 @@ export function nextOpen(from: Date): Date | null {
 }
 
 /** A wait in words: minutes under an hour, hours under two days, then days. */
-export function wait(ms: number): string {
+export type WaitWords = {
+  min: (n: string) => string;
+  h: (n: string) => string;
+  days: (n: string) => string;
+};
+const WAIT_EN: WaitWords = { min: (n) => `${n} min`, h: (n) => `${n} h`, days: (n) => `${n} days` };
+
+export function wait(ms: number, w: WaitWords = WAIT_EN): string {
   const h = ms / HOUR;
-  if (h < 1) return `${Math.round(h * 60)} min`;
-  if (h < 48) return `${nf({ maximumFractionDigits: 1 }).format(h)} h`;
-  return `${nf({ maximumFractionDigits: 1 }).format(h / 24)} days`;
+  if (h < 1) return w.min(String(Math.round(h * 60)));
+  if (h < 48) return w.h(nf({ maximumFractionDigits: 1 }).format(h));
+  return w.days(nf({ maximumFractionDigits: 1 }).format(h / 24));
+}
+
+/** "Sat 14:58 ET", with the day in the person's language. */
+export function etLabel(at: Date, days: readonly string[]): string {
+  const e = etParts(at);
+  return `${days[e.dow]} ${String(e.hour).padStart(2, '0')}:${String(e.minute).padStart(2, '0')} ET`;
 }

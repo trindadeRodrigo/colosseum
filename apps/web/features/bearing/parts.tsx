@@ -2,6 +2,7 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { cn } from '../../components/ui/cn';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
+import { useT } from '../../i18n/I18nProvider';
 import { useBearing } from './BearingProvider';
 import { cleanSource, type Fact, factDetail, pinSource } from './fact';
 import { iso, pct, reasonW, usd1 } from './format';
@@ -12,14 +13,27 @@ import { iso, pct, reasonW, usd1 } from './format';
 // are not yields, prices or FX figures (class a2-count in the prototype).
 
 /** Why a figure is missing, in words. */
+/** The page's words, in the person's language. */
+export function useWords() {
+  return useT().bearing;
+}
+
+/** A reason code in the person's language; one the dictionary does not know, as the API wrote it. */
+export function useReason() {
+  const t = useWords();
+  return (code?: string | null) =>
+    t.reasons[(code ?? 'not_served') as keyof typeof t.reasons] ?? reasonW(code);
+}
+
 export function Reason({ code, detail }: { code?: string | null; detail?: string }) {
+  const say = useReason();
   return (
     <span
       data-ui="bearing-reason"
       title={detail}
       className="font-sans text-caption font-normal whitespace-nowrap text-muted-foreground"
     >
-      {reasonW(code)}
+      {say(code)}
     </span>
   );
 }
@@ -35,6 +49,7 @@ export function Fig({
   className?: string;
 }) {
   const { clock } = useBearing();
+  const all = useT();
   if (!f) return <Reason code="not_served" />;
   if (f.value == null) return <Reason code={f.reason} detail={f.detail} />;
   if (!f.source && !f.method) return <Reason code="not_served" />;
@@ -45,11 +60,12 @@ export function Fig({
         value={shown}
         obs={pinSource(f, clock)}
         detail={factDetail(f)}
+        labels={all.pin}
         className="font-mono font-medium"
       />
       {f.quality === 'assumption' && (
         <span className="ml-1 font-sans text-caption font-normal text-muted-foreground">
-          assumption
+          {all.bearing.flow.assumption}
         </span>
       )}
     </span>
@@ -121,15 +137,16 @@ export function MultiSelect({
   const root = useRef<HTMLDivElement>(null);
   const summary = useRef<HTMLButtonElement>(null);
   const pop = useId();
+  const t = useWords().filter;
   const n = value ? value.length : options.length;
   const said =
     value == null
-      ? `All (${options.length})`
+      ? t.all(options.length)
       : n === 0
-        ? 'None'
+        ? t.none
         : n === 1
           ? (options.find((o) => o.id === value[0])?.label ?? value[0])
-          : `${n} of ${options.length}`;
+          : t.some(n, options.length);
   const picked = (id: string) => !value || value.includes(id);
   const apply = (ids: string[]) => onChange(ids.length === options.length ? null : ids);
 
@@ -185,10 +202,10 @@ export function MultiSelect({
               onClick={() => apply(options.map((o) => o.id))}
               className={SMALL_BTN}
             >
-              All
+              {t.selectAll}
             </button>
             <button type="button" onClick={() => apply([])} className={SMALL_BTN}>
-              None
+              {t.selectNone}
             </button>
           </div>
           {options.map((o) => (
@@ -226,6 +243,7 @@ export const SMALL_BTN =
 /** The line under a chart: where its headline figure came from, when, with the pin. */
 export function SrcLine({ f, what }: { f: Fact | null | undefined; what: string }) {
   const { clock } = useBearing();
+  const all = useT();
   if (!f || f.value == null) return null;
   return (
     <p
@@ -234,9 +252,10 @@ export function SrcLine({ f, what }: { f: Fact | null | undefined; what: string 
     >
       {cleanSource(f.source ?? '')} · {iso(f.fetchedAt)}{' '}
       <ProvenancePin
-        value={what}
+        value={all.bearing.chart.sourceOf(what)}
         obs={pinSource(f, clock)}
         detail={factDetail(f)}
+        labels={all.pin}
         className="font-sans [&_.tf-figure]:sr-only"
       />
     </p>
@@ -311,12 +330,13 @@ export function Pie({
   note?: string;
 }) {
   const [on, setOn] = useState<number | null>(null);
+  const t = useWords().pie;
   const slices = given.filter((s) => s.value > 0).sort((a, b) => b.value - a.value);
   const top: Array<{ label: string; value: number; other?: boolean }> = slices.slice(0, 4);
   const rest = slices.slice(4);
   if (rest.length)
     top.push({
-      label: `${rest.length} other pool${rest.length > 1 ? 's' : ''}`,
+      label: t.others(rest.length),
       value: rest.reduce((s, x) => s + x.value, 0),
       other: true,
     });
@@ -429,7 +449,7 @@ export function Pie({
             ))}
           </ul>
           <p className="font-mono text-b-meta text-muted-foreground max-[1100px]:col-span-full">
-            Point at a slice or a row for its value.
+            {t.point}
           </p>
         </div>
       ) : (

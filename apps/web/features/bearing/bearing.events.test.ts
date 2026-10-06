@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+
+import { DISCLAIMER } from '@colosseum/schemas';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TimeChart } from '../../components/ui/TimeChart';
@@ -8,7 +10,7 @@ import { DexPage } from './DexPage';
 import { mk, none } from './fact';
 import { LendingPage } from './LendingPage';
 import { Fig, MultiSelect } from './parts';
-import { onSnapshot } from './test/cases';
+import { inPortuguese, onSnapshot } from './test/cases';
 import { snapshotReader } from './test/snapshot';
 
 // Bearing's pages as a person uses them, in happy-dom, on Rodrigo's recording of the risk API.
@@ -212,5 +214,58 @@ describe('the multi-select', () => {
     expect(boxes.map((b) => b.checked)).toEqual([true, false]);
     await click(boxes[1] as HTMLInputElement);
     expect(seen.at(-1)).toBeNull();
+  });
+});
+
+describe('the language of the person', () => {
+  const english = [
+    'Every figure is stale',
+    'Exit capacity now',
+    'Hide menu',
+    'Volume 24 h,',
+    'View as table',
+    'Lighter cells',
+    'not collected yet',
+    'Point at a slice',
+  ];
+
+  it('says the page in Portuguese for a Portuguese reader, with the same figures', async () => {
+    const host = await mount(
+      inPortuguese(onSnapshot(createElement(DexPage, { page: 'commodities' }))),
+    );
+    await settle(
+      host,
+      (h) => h.querySelector('[data-ui="heatmap-tile"] table') != null && !busy(h),
+    );
+    const text = host.textContent ?? '';
+    expect(find(host, '[data-ui="bearing-banner"]').textContent).toContain(
+      'Todo número está defasado',
+    );
+    expect(find(host, 'h1').textContent).toBe(
+      'Quanto custa sair do ouro, e quanto os pools conseguem absorver.',
+    );
+    expect(find(host, 'a[aria-current="page"]').textContent).toContain('Commodities');
+    expect(text).toContain('Esconder menu');
+    expect(text).toContain('Capacidade de saída agora');
+    expect(text).toContain('Ver como tabela');
+    expect(text).toContain(DISCLAIMER.pt);
+    // the figures do not change with the language
+    expect(find(host, '[data-ui="bearing-kpis"]').textContent).toContain('$184.1K');
+    for (const phrase of english) expect(text, phrase).not.toContain(phrase);
+  });
+
+  it('keeps Rodrigo’s words, as he wrote them, for an English reader', async () => {
+    const host = await mount(onSnapshot(createElement(DexPage, { page: 'commodities' })));
+    await settle(
+      host,
+      (h) => h.querySelector('[data-ui="heatmap-tile"] table') != null && !busy(h),
+    );
+    expect(find(host, 'h1').textContent).toBe(
+      'What it costs to leave gold, and how much the pools can take.',
+    );
+    expect(host.textContent).toContain(
+      'Capacity is the largest sale that costs at most 1%, by time of week. Exit capacity is that figure hour by hour.',
+    );
+    expect(host.textContent).toContain(DISCLAIMER.en);
   });
 });

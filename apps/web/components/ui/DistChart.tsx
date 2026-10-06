@@ -1,6 +1,6 @@
 'use client';
 import { type KeyboardEvent, type ReactNode, useState } from 'react';
-import { SERIES_VAR, useWidth } from './chart';
+import { CHART_LABELS, type ChartLabels, SERIES_VAR, useWidth } from './chart';
 import { nice } from './chart-scale';
 import { cn } from './cn';
 import { ChartHead, ChartLegend } from './TimeChart';
@@ -25,12 +25,14 @@ export type DistChartProps = {
   quote: string;
   aria: string;
   src?: ReactNode;
+  labels?: Partial<ChartLabels>;
 };
 
 const AX = 64;
 const XA = 22;
 
 export function DistChart(c: DistChartProps) {
+  const text = { ...CHART_LABELS, ...c.labels };
   const [zoom, setZoom] = useState(1);
   const [idx, setIdx] = useState(-1);
   const [box, W0] = useWidth<HTMLDivElement>();
@@ -62,10 +64,10 @@ export function DistChart(c: DistChartProps) {
     'w-7 cursor-pointer rounded-md border border-input font-mono text-base/6 font-medium hover:border-primary hover:text-primary disabled:cursor-default disabled:opacity-40';
   const tools = (
     // biome-ignore lint/a11y/useSemanticElements: a pair of zoom buttons
-    <div role="group" aria-label="Zoom" className="inline-flex gap-1">
+    <div role="group" aria-label={text.zoom} className="inline-flex gap-1">
       <button
         type="button"
-        aria-label="Zoom in"
+        aria-label={text.zoomIn}
         disabled={zoom >= 3}
         onClick={() => setZoom(zoom + 1)}
         className={zoomBtn}
@@ -74,7 +76,7 @@ export function DistChart(c: DistChartProps) {
       </button>
       <button
         type="button"
-        aria-label="Zoom out"
+        aria-label={text.zoomOut}
         disabled={zoom <= 0}
         onClick={() => setZoom(zoom - 1)}
         className={zoomBtn}
@@ -85,7 +87,7 @@ export function DistChart(c: DistChartProps) {
   );
   return (
     <div data-ui="dist-chart">
-      <ChartHead title={c.title} value={c.value} note={c.note} tools={tools} />
+      <ChartHead title={c.title} value={c.value} note={c.note} tools={tools} labels={c.labels} />
       <div
         ref={box}
         // biome-ignore lint/a11y/noNoninteractiveTabindex: the arrow keys read the bands out, as the mouse does
@@ -102,7 +104,7 @@ export function DistChart(c: DistChartProps) {
               style={{ left: X(c.mid) }}
             >
               <span className="block font-condensed text-[11.5px]/[14px] font-medium text-muted-foreground">
-                Pool price
+                {text.poolPrice}
               </span>
               <b className="block font-mono text-caption font-medium">
                 {c.fmtP(c.mid)} {c.unit}
@@ -175,8 +177,8 @@ export function DistChart(c: DistChartProps) {
       </div>
       <ChartLegend
         items={[
-          { cls: 's2', label: `${c.quote} (below the price)` },
-          { cls: 's1', label: `${c.asset} (above the price)` },
+          { cls: 's2', label: text.below(c.quote) },
+          { cls: 's1', label: text.above(c.asset) },
         ]}
       />
       <div
@@ -192,9 +194,9 @@ export function DistChart(c: DistChartProps) {
             />
             {c.fmtP(band.lo)}–{c.fmtP(band.hi)} {c.unit} ·{' '}
             <b className="font-medium text-foreground">
-              {band.usd == null ? 'no USD price' : c.fmtY(band.usd)}
+              {band.usd == null ? text.noUsd : c.fmtY(band.usd)}
             </b>{' '}
-            in {band.side === 'asset' ? c.asset : c.quote}
+            {text.held(band.side === 'asset' ? c.asset : c.quote)}
           </span>
         )}
       </div>

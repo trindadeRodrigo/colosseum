@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { I18nProvider } from '../../../i18n/I18nProvider';
 import { BearingProvider } from '../BearingProvider';
 import { BearingShell } from '../BearingShell';
 import { CAPTURED, snapshotReader } from './snapshot';
@@ -14,4 +15,9 @@ export function onSnapshot(children: ReactNode, reader = snapshotReader()) {
       <BearingShell>{children}</BearingShell>
     </BearingProvider>
   );
+}
+
+/** The same, for a reader whose language is Portuguese. */
+export function inPortuguese(node: ReactNode) {
+  return <I18nProvider lang="pt">{node}</I18nProvider>;
 }

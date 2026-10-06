@@ -5,7 +5,7 @@ import { useAnswer, useBearing } from './BearingProvider';
 import { R } from './data';
 import { type Fact, maxT, mk } from './fact';
 import { iso, num, pct, REGIMES, usd } from './format';
-import { Fig, Reason } from './parts';
+import { Fig, Reason, useWords } from './parts';
 import type { AssetRow, HeatmapBody } from './types';
 
 // One asset's sell cost by hour of week (bearing-heatmap-tile.md; Rodrigo's first view drew it in an
@@ -20,12 +20,13 @@ export const HEAT_SIZE = 50_000;
 
 export function HeatTile({ asset }: { asset: AssetRow }) {
   const { reader, clock } = useBearing();
+  const t = useWords().heat;
   const res = useAnswer(
     () => reader.get<HeatmapBody>(R.heatmap(asset.symbol, HEAT_SIZE)),
     [asset.symbol, reader],
   );
-  const title = `${asset.symbol} · sell cost at ${usd(HEAT_SIZE)}, by hour of week`;
-  if (!res) return <p className="text-caption text-muted-foreground">Reading the hours…</p>;
+  const title = t.head(asset.symbol, usd(HEAT_SIZE));
+  if (!res) return <p className="text-caption text-muted-foreground">{t.reading}</p>;
   if (!res.ok || !res.body.cells.length)
     return (
       <div className="border border-border bg-card p-4">
@@ -53,26 +54,32 @@ export function HeatTile({ asset }: { asset: AssetRow }) {
   const worst = h.cells.reduce((a, b) => (b.medianCost > a.medianCost ? b : a));
   const best = h.cells.reduce((a, b) => (b.medianCost < a.medianCost ? b : a));
   const when = (how: number) =>
-    `${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][Math.floor(how / 24)]} ${String(how % 24).padStart(2, '0')}:00 ET`;
+    `${t.days[Math.floor(how / 24)]} ${String(how % 24).padStart(2, '0')}:00 ET`;
   const samples = h.cells.reduce((a, c) => a + c.samples, 0);
   const age = at ? Math.max(0, (clock.now - Date.parse(at)) / 1000) : 0;
   return (
     <HeatmapTile
       head={title}
       kpi={<Fig f={fact(worst.medianCost, worst.samples)} fmt={pct} />}
-      emph={`thinnest: ${when(worst.hourOfWeekEt)}`}
-      note="Lighter cells cost less to leave on warm black; on paper, darker cells cost less."
+      emph={t.thinnest(when(worst.hourOfWeekEt))}
+      note={t.note}
       cells={cells}
       deeper="low"
       fmt={pct}
-      what={`to sell ${usd(n)}`}
+      what={t.what(usd(n))}
       zone="ET"
       least={<Fig f={fact(worst.medianCost, worst.samples)} fmt={pct} />}
       most={<Fig f={fact(best.medianCost, best.samples)} fmt={pct} />}
       cellFigure={(c) => <Fig f={fact(c.value, c.samples)} fmt={pct} />}
-      meta={`USD · n=${num(samples)} · ${h.cells.length} of 168 hours sampled · ${h.timezone ?? 'America/New_York'}, ${h.hourOfWeek ?? 'Mon 00:00 = 0'} · method risk-0.3 · as of ${iso(at)}`}
+      meta={t.meta(
+        num(samples),
+        h.cells.length,
+        `${h.timezone ?? 'America/New_York'}, ${h.hourOfWeek ?? 'Mon 00:00 = 0'}`,
+        iso(at),
+      )}
       state={clock.stale ? { kind: 'stale', ageSec: age } : { kind: 'live' }}
-      aria={`Median sell cost of ${asset.symbol} at ${usd(n)} by hour of week, Eastern time`}
+      aria={t.aria(asset.symbol, usd(n))}
+      labels={t}
     />
   );
 }

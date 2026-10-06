@@ -89,9 +89,11 @@ export function summed(
 }
 
 /** A summed point that is short of a pool says so in the readout. */
-export function markPartial(pts: SumPoint[]): SumPoint[] {
-  for (const p of pts)
-    if (p.v != null && p.partial) p.show = `${usd1(p.v)} (${p.k} of ${p.of} pools)`;
+export function markPartial(
+  pts: SumPoint[],
+  partial: (k: number, n: number) => string = (k, n) => `(${k} of ${n} pools)`,
+): SumPoint[] {
+  for (const p of pts) if (p.v != null && p.partial) p.show = `${usd1(p.v)} ${partial(p.k, p.of)}`;
   return pts;
 }
 
@@ -142,9 +144,9 @@ export function histFact(
   });
 }
 
-export function poolName(m: LendMeta): string {
+export function poolName(m: LendMeta, marketW = (id: string) => `market ${id}`): string {
   const market = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(m.market)
-    ? `market ${short(m.market)}`
+    ? marketW(short(m.market))
     : m.market;
   return `${venueW(m.venue)} · ${m.venue === 'jupiter_lend' ? m.symbol : `${market} · ${m.symbol}`}`;
 }
@@ -390,8 +392,12 @@ export function shareLentOut(rows: readonly LendRow[], supF: Fact): Fact {
 }
 
 /** Available to withdraw (summed) and the share lent out, for the liquidity chart. */
-export function availability(rows: readonly LendRow[], now: number) {
-  const av = markPartial(summed(rows, 'availableUsd', now));
+export function availability(
+  rows: readonly LendRow[],
+  now: number,
+  partial?: (k: number, n: number) => string,
+) {
+  const av = markPartial(summed(rows, 'availableUsd', now), partial);
   const s2 = summed(rows, 'suppliedUsd', now);
   const b2 = summed(rows, 'borrowedUsd', now);
   const src = rows.map(lendSrc).find(Boolean) ?? null;

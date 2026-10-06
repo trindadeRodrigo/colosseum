@@ -1,7 +1,8 @@
+import { type Dictionary, dictionary } from '../../i18n';
 import type { Res } from './data';
 import { type Fact, mk, none } from './fact';
-import { num, pct, type Regime, RW, reasonW, usd } from './format';
-import { etParts, nextOpen, wait } from './time';
+import { num, pct, type Regime, usd } from './format';
+import { etLabel, nextOpen, wait } from './time';
 import type { Exit, RecovBody, SheetBody } from './types';
 
 // The simulation page (analytics2.js, simRun): the ways to sell a position now, each priced from the
@@ -41,16 +42,21 @@ export function simPaths(o: {
   chunks: number;
   chunkSheet: Res<SheetBody> | null;
   recov: Res<RecovBody>;
+  /** The page's words, in the person's language. English when not given. */
+  words?: Dictionary['bearing'];
 }) {
   const { id, n, at, r, sheet, chunks } = o;
+  const b = o.words ?? dictionary('en').bearing;
+  const w = b.sim.paths;
+  const rw = b.regimes[r];
   const miss = none('no_samples_in_regime');
   const paths: SimPath[] = [];
   const now = costIn(sheet, r);
   paths.push({
     key: 'now',
-    name: 'Sell now across the pools',
-    how: 'one routed sale, split across the asset’s dollar pools',
-    when: `now · ${RW[r]}`,
+    name: w.now.name,
+    how: w.now.how,
+    when: w.now.when(rw),
     total: now ? now.total : miss,
     loss: now ? now.lossUsd : miss,
     ex: now,
@@ -60,11 +66,11 @@ export function simPaths(o: {
     const op = nextOpen(at);
     paths.push({
       key: 'open',
-      name: 'Wait for market hours',
-      how: 'the same routed sale at the next US open; the price can move while you wait',
+      name: w.open.name,
+      how: w.open.how,
       when: op
-        ? `in ${wait(op.getTime() - at.getTime())} · ${etParts(op).label}`
-        : 'next open not found',
+        ? w.open.when(wait(op.getTime() - at.getTime(), b.sim.wait), etLabel(op, b.heat.days))
+        : w.open.notFound,
       total: mh ? mh.total : miss,
       loss: mh ? mh.lossUsd : miss,
       ex: mh,
@@ -91,13 +97,9 @@ export function simPaths(o: {
         : miss;
     paths.push({
       key: 'split',
-      name: `Split into ${chunks} hourly sales`,
-      how: `${chunks} sales of ${usd(per)}, each within the 1% capacity, one an hour; it assumes the pools refill between sales${
-        h90 != null
-          ? ` (after large trades they recovered 90% of depth in a median ${num(h90 * 60, 0)} min)`
-          : ''
-      }`,
-      when: `over ${chunks} h · ${RW[r]}`,
+      name: w.split.name(chunks),
+      how: w.split.how(chunks, usd(per), h90 != null ? num(h90 * 60, 0) : null),
+      when: w.split.when(chunks, rw),
       total: ce ? ce.total : miss,
       loss: lossS,
       ex: ce,
@@ -108,15 +110,15 @@ export function simPaths(o: {
   if (pr && o.recov.ok)
     paths.push({
       key: 'issuer',
-      name: 'Redeem with the issuer',
-      how: `${pr.issuer || 'the issuer'}: ${String(pr.status || 'status not given').replace(/_/g, ' ')}; ${
+      name: w.issuer.name,
+      how: w.issuer.how(
+        pr.issuer || w.issuer.theIssuer,
+        pr.status ? String(pr.status).replace(/_/g, ' ') : w.issuer.noStatus,
         pr.settlementHours != null
-          ? `settles in ${num(pr.settlementHours / 24, 0)} days`
-          : 'settlement time not given'
-      }; needs KYC with the issuer`,
-      when: pr.openHoursInHorizon
-        ? `${pr.openHoursInHorizon} open hours in the next 7 days`
-        : 'no open window in the next 7 days',
+          ? w.issuer.settles(num(pr.settlementHours / 24, 0))
+          : w.issuer.noSettle,
+      ),
+      when: pr.openHoursInHorizon ? w.issuer.when(pr.openHoursInHorizon) : w.issuer.never,
       total: none('not_applicable'),
       loss: none('not_applicable'),
       ex: null,
@@ -140,17 +142,24 @@ export function simPaths(o: {
           (x.waits ? 1 : 0) - (y.waits ? 1 : 0),
       )[0] ?? null;
   const first = paths[0] as SimPath;
+  const v = b.sim.verdict;
   const verdict = !best
-    ? `No measured route prices ${usd(n)} of ${id} right now: ${reasonW(first.total.reason)}. The simulation never extends a curve past what was measured.`
-    : `Best path for ${usd(n)} of ${id} now: ${best.name.toLowerCase()}. It loses ${
-        best.loss.quality === 'lower_bound' ? 'at least ' : ''
-      }${usd(best.loss.value as number)} (${pct((best.loss.value as number) / n)})${
-        best.key === 'now'
-          ? '.'
-          : first.loss.value != null
-            ? `, against ${usd(first.loss.value)} selling all of it now.`
-            : '.'
-      }${best.waits ? ' Waiting carries price risk this loss does not count.' : ''}`;
+    ? v.none(
+        usd(n),
+        id,
+        b.reasons[(first.total.reason ?? 'not_served') as keyof typeof b.reasons] ??
+          String(first.total.reason),
+      )
+    : `${v.best(
+        usd(n),
+        id,
+        best.name.toLowerCase(),
+        best.loss.quality === 'lower_bound',
+        usd(best.loss.value as number),
+        pct((best.loss.value as number) / n),
+      )}${best.key === 'now' || first.loss.value == null ? v.end : v.against(usd(first.loss.value))}${
+        best.waits ? v.waits : ''
+      }`;
   return { paths, best, verdict };
 }
 

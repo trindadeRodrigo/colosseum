@@ -6,6 +6,7 @@ import { type Column, DataTable } from '../../components/ui/DataTable';
 import { DistChart } from '../../components/ui/DistChart';
 import { Sparkline, sparkable } from '../../components/ui/Sparkline';
 import { type ChartRange, Segmented, TimeChart } from '../../components/ui/TimeChart';
+import type { Dictionary } from '../../i18n';
 import { type Base, useAnswer, useBearing } from './BearingProvider';
 import { R } from './data';
 import {
@@ -22,7 +23,7 @@ import {
   vol24,
 } from './dex';
 import { type Fact, mk, none } from './fact';
-import { capW, iso, num, pct, RW, reasonW, usd1 } from './format';
+import { capW, iso, num, pct, usd1 } from './format';
 import { HeatTile } from './HeatTile';
 import {
   Card,
@@ -36,6 +37,8 @@ import {
   Pie,
   Reason,
   SrcLine,
+  useReason,
+  useWords,
 } from './parts';
 import { regimeAt } from './time';
 import type { AssetsBody, LiqHistBody, LiquidityBody, Pool } from './types';
@@ -74,6 +77,7 @@ export function DexPage({ page }: { page: 'stocks' | 'commodities' }) {
   const dd = useAnswer(() => (ids ? dex(ids) : null), [key, dex]);
   const router = useRouter();
   const state = usePageState(page);
+  const t = useWords();
 
   // /analytics/stocks?asset=TSLAx (where /risk/tslax now leads): that asset alone, on its page.
   const [asked, setAsked] = useState<string | null>(null);
@@ -92,7 +96,7 @@ export function DexPage({ page }: { page: 'stocks' | 'commodities' }) {
     else state.setSel({ assets: [symbol], pools: null });
   }, [asked, b, page, router, state]);
 
-  if (!b || (b.assets.ok && !dd)) return <Loading>Reading the pools…</Loading>;
+  if (!b || (b.assets.ok && !dd)) return <Loading>{t.dex.reading}</Loading>;
   if (!b.assets.ok)
     return (
       <p className="mt-6">
@@ -116,13 +120,16 @@ function DexView({
   dd: Record<string, DexAsset>;
 }) {
   const { clock } = useBearing();
+  const all = useWords();
+  const t = all.dex;
   const { sel, setSel, metric: m, setMetric, range, setRange } = usePageState(page);
   const r = regimeAt(new Date(clock.now || Date.now()));
+  const rw = all.regimes[r];
   const byId = new Map(body.assets.map((a) => [a.symbol, a]));
   const assetOpts = ids.map((id) => ({
     id,
     label: id,
-    sub: `${num(poolsOf(dd[id]).length)} pools`,
+    sub: t.poolsSub(num(poolsOf(dd[id]).length)),
   }));
   const selIds = ids.filter((id) => picked(sel.assets, id));
   const many = selIds.length > 1;
@@ -131,7 +138,7 @@ function DexView({
     .sort((x, y) => (y.tvlUsd || 0) - (x.tvlUsd || 0));
   const poolOpts = allPools.map((p) => ({
     id: p.address,
-    label: poolLabel(p, many),
+    label: poolLabel(p, many, t.liquidity.quoteNotNamed),
     sub: usd1(p.tvlUsd || 0),
   }));
   const pools = allPools.filter((p) => picked(sel.pools, p.address));
@@ -139,11 +146,11 @@ function DexView({
   const metric = m ?? 'capacity';
   const tools = (
     <Segmented
-      label="Metric"
+      label={all.chart.metric}
       options={[
-        { id: 'capacity', label: 'Exit capacity' },
-        { id: 'tvl', label: 'TVL over time' },
-        { id: 'liquidity', label: 'Liquidity' },
+        { id: 'capacity', label: t.metrics.capacity },
+        { id: 'tvl', label: t.metrics.tvl },
+        { id: 'liquidity', label: t.metrics.liquidity },
       ]}
       value={metric}
       onChange={setMetric}
@@ -154,54 +161,52 @@ function DexView({
     <>
       <div className="mt-6 mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         <MultiSelect
-          label="Assets"
+          label={t.assets}
           options={assetOpts}
           value={sel.assets}
           onChange={(v) => setSel({ assets: v, pools: null })}
         />
         <MultiSelect
-          label="Pools"
+          label={t.pools}
           options={poolOpts}
           value={sel.pools}
           onChange={(v) => setSel({ pools: v })}
         />
         <span className="font-mono text-b-meta text-muted-foreground">
-          {selIds.length} asset{selIds.length === 1 ? '' : 's'} · {pools.length} pool
-          {pools.length === 1 ? '' : 's'} · now {RW[r]}
+          {t.summary(selIds.length, pools.length, rw)}
         </span>
       </div>
       <Kpis>
-        <Kpi label="Pool TVL" note="selected pools, read at registration">
+        <Kpi label={t.kpi.tvl} note={t.kpi.tvlNote}>
           <Fig f={k.tvl} fmt={usd1} />
         </Kpi>
-        <Kpi label="Pools" note={`of ${num(allPools.length)} on the selected assets`}>
+        <Kpi label={t.kpi.pools} note={t.kpi.poolsNote(num(allPools.length))}>
           <Count>{num(pools.length)}</Count>
         </Kpi>
-        <Kpi label="Exit capacity now" note={`sale at ≤ 1% cost, ${RW[r]}`}>
+        <Kpi label={t.kpi.capacity} note={t.kpi.capacityNote(rw)}>
           <Fig f={k.cap} fmt={usd1} />
         </Kpi>
         <Kpi
-          label="Volume 24 h"
-          note={
-            k.volTo
-              ? `to ${iso(k.volTo).slice(0, 16).replace('T', ' ')} UTC, the newest swap history`
-              : ''
-          }
+          label={t.kpi.volume}
+          note={k.volTo ? t.kpi.volumeNote(iso(k.volTo).slice(0, 16).replace('T', ' ')) : ''}
         >
           <Fig f={k.vol} fmt={usd1} />
         </Kpi>
-        <Kpi label="Top-3 LP share" note="largest pool, by position">
+        <Kpi label={t.kpi.lp} note={t.kpi.lpNote}>
           <Fig f={k.lp} fmt={pct} />
         </Kpi>
       </Kpis>
       <ChartGrid
         pie={
           <Pie
-            title="TVL by pool"
-            slices={pools.map((p) => ({ label: poolLabel(p, many), value: p.tvlUsd || 0 }))}
+            title={t.pie.title}
+            slices={pools.map((p) => ({
+              label: poolLabel(p, many, t.liquidity.quoteNotNamed),
+              value: p.tvlUsd || 0,
+            }))}
             total={k.tvl.value || 0}
             totalHtml={<Fig f={k.tvl} fmt={usd1} />}
-            note="read when each pool was registered"
+            note={t.pie.note}
           />
         }
         chart={
@@ -235,22 +240,17 @@ function DexView({
       )}
       <section aria-labelledby="bearing-table" className="mt-8">
         <h2 id="bearing-table" className="mb-2 text-b-section font-semibold">
-          Assets
+          {t.table.title}
         </h2>
-        <p className="mb-3 max-w-[88ch] text-muted-foreground">
-          Capacity is the largest sale that costs at most 1%, by time of week. Exit capacity is that
-          figure hour by hour. The pool filter narrows TVL, the pie, the pool count and the
-          liquidity chart; capacity is routed across all of an asset’s pools, so it does not change
-          with it. Open an asset to simulate selling it.
-        </p>
+        <p className="mb-3 max-w-[88ch] text-muted-foreground">{t.table.note}</p>
         {selIds.length ? (
           <DataTable
             dense
-            caption="Assets with pools, capacity, volume and LP share"
+            caption={t.table.caption}
             captionHidden
             rows={selIds}
             rowKey={(id) => id}
-            columns={assetColumns(body, byId, dd, pools, sel.pools != null)}
+            columns={assetColumns(body, byId, dd, pools, sel.pools != null, t.table)}
           />
         ) : (
           <p>
@@ -271,17 +271,18 @@ function assetColumns(
   dd: Record<string, DexAsset>,
   pools: readonly Pool[],
   poolsChosen: boolean,
+  t: Dictionary['bearing']['dex']['table'],
 ): Column<string>[] {
-  const cap = (r: string, header: string): Column<string> => ({
+  const cap = (r: keyof typeof t.capacity): Column<string> => ({
     key: r,
-    header,
+    header: t.capacity[r],
     numeric: true,
     cell: (id) => <Fig f={capFact(byId.get(id), r, body)} fmt={capW} />,
   });
   return [
     {
       key: 'asset',
-      header: 'Asset',
+      header: t.asset,
       rowHeader: true,
       cell: (id) => (
         <Link
@@ -294,7 +295,7 @@ function assetColumns(
     },
     {
       key: 'pools',
-      header: 'Pools',
+      header: t.pools,
       numeric: true,
       cell: (id) => {
         const d = dd[id];
@@ -304,26 +305,26 @@ function assetColumns(
             <Count>{num(pools.filter((p) => p.assetSymbol === id).length)}</Count>
             {poolsChosen && (
               <span className="block font-mono text-b-meta text-muted-foreground">
-                of {num(poolsOf(d).length)}
+                {t.poolsOf(num(poolsOf(d).length))}
               </span>
             )}
           </>
         );
       },
     },
-    cap('us_market_hours', 'Capacity, market hours'),
-    cap('us_offhours_weekday', 'Capacity, off-hours'),
-    cap('weekend', 'Capacity, weekend'),
-    cap('us_holiday', 'Capacity, holiday'),
+    cap('us_market_hours'),
+    cap('us_offhours_weekday'),
+    cap('weekend'),
+    cap('us_holiday'),
     {
       key: 'vol',
-      header: 'Volume 24 h',
+      header: t.volume,
       numeric: true,
       cell: (id) => <Fig f={dd[id] ? vol24(dd[id].sheet) : none('not_collected')} fmt={usd1} />,
     },
     {
       key: 'lp',
-      header: 'Top-3 LP share',
+      header: t.lp,
       numeric: true,
       cell: (id) => {
         const s = dd[id]?.sheet;
@@ -336,7 +337,7 @@ function assetColumns(
     },
     {
       key: 'spark',
-      header: 'Exit capacity, 30 d',
+      header: t.spark,
       cell: (id) => {
         const h = dd[id]?.hist;
         const values = h?.ok ? (h.body.points ?? []).map((p) => p.sellCapacityUsd) : [];
@@ -373,15 +374,16 @@ function CapacityChart({
   range: number;
   setRange: (r: number) => void;
 }) {
-  const s = capacitySeries(selIds, dd);
+  const all = useWords();
+  const t = all.dex.capacity;
+  const s = capacitySeries(selIds, dd, t.partial);
   return (
     <TimeChart
-      title="Exit capacity at ≤ 1% cost"
+      title={t.title}
+      labels={all.chart}
       tools={tools}
       value={<Fig f={s.fact} fmt={usd1} />}
-      note={`sell and buy side, summed over the selected assets, one point per UTC hour since ${
-        s.from ? iso(s.from).slice(0, 10) : 'the first routed curve'
-      }, when the routed curves began`}
+      note={t.note(s.from ? iso(s.from).slice(0, 10) : t.firstCurve)}
       ranges={RANGES}
       range={range}
       onRange={setRange}
@@ -391,17 +393,17 @@ function CapacityChart({
           h: 260,
           fmt: usd1,
           series: [
-            { type: 'area', cls: 's1', label: 'sell (exit)', data: s.sell },
-            { type: 'line', cls: 's2', label: 'buy (entry)', data: s.buy },
+            { type: 'area', cls: 's1', label: t.sell, data: s.sell },
+            { type: 'line', cls: 's2', label: t.buy, data: s.buy },
           ],
         },
       ]}
       legend={[
-        { cls: 's1', label: 'sell (exit)' },
-        { cls: 's2', label: 'buy (entry)' },
+        { cls: 's1', label: t.sell },
+        { cls: 's2', label: t.buy },
       ]}
-      aria="Exit and entry capacity over time for the selected assets"
-      src={<SrcLine f={s.fact} what="the capacity chart" />}
+      aria={t.aria}
+      src={<SrcLine f={s.fact} what={t.src} />}
       empty={<Reason code="not_collected" />}
     />
   );
@@ -423,6 +425,9 @@ function TvlChart({
   setRange: (r: number) => void;
 }) {
   const { reader } = useBearing();
+  const all = useWords();
+  const say = useReason();
+  const t = all.dex.tvl;
   const rec = pools.filter((p) => b.recorded.has(p.address));
   const key = rec.map((p) => p.address).join(',');
   const hs = useAnswer(
@@ -434,31 +439,22 @@ function TvlChart({
   );
   if (!rec.length)
     return (
-      <EmptyChart title="TVL over time" tools={tools}>
-        {reasonW('not_collected')}: the collector records the pool value hour by hour only for the
-        concentrated-liquidity pools that make up the top 80% of registry TVL, and none of the
-        selected pools is one of them. Today’s TVL of the selection is in the counters; exit
-        capacity over time is measured for every asset.
+      <EmptyChart title={t.title} tools={tools}>
+        {say('not_collected')}: {t.none}
       </EmptyChart>
     );
-  if (!hs)
-    return (
-      <Loading>
-        Reading {rec.length} recorded pool{rec.length > 1 ? 's' : ''}…
-      </Loading>
-    );
+  if (!hs) return <Loading>{t.reading(rec.length)}</Loading>;
   const n = rec.length;
-  const s = tvlSeries(hs, n);
+  const s = tvlSeries(hs, n, t.partial);
   const recTvl = rec.reduce((a, p) => a + (p.tvlUsd || 0), 0);
   const share = tvl ? recTvl / tvl : null;
   return (
     <TimeChart
-      title="TVL over time, recorded pools"
+      title={t.recorded}
+      labels={all.chart}
       tools={tools}
       value={<Fig f={s.fact} fmt={usd1} />}
-      note={`${n} of ${pools.length} selected pools are recorded hourly${
-        share != null ? `, holding ${pct(share)} of the selection’s TVL` : ''
-      }; the value of the tokens their liquidity holds, uncollected fees not counted. A pool not recorded in an hour keeps its last value for up to 6 h. Recordings began 2026-10-01.`}
+      note={t.note(n, pools.length, share != null ? pct(share) : null)}
       ranges={RANGES}
       range={range}
       onRange={setRange}
@@ -468,17 +464,17 @@ function TvlChart({
           h: 260,
           fmt: usd1,
           series: [
-            { type: 'area', cls: 's1', label: 'pool value', data: s.value },
-            { type: 'line', cls: 's2', label: 'of which in the asset', data: s.held },
+            { type: 'area', cls: 's1', label: t.value, data: s.value },
+            { type: 'line', cls: 's2', label: t.held, data: s.held },
           ],
         },
       ]}
       legend={[
-        { cls: 's1', label: 'pool value (TVL)' },
-        { cls: 's2', label: 'of which held in the asset' },
+        { cls: 's1', label: t.valueLegend },
+        { cls: 's2', label: t.heldLegend },
       ]}
-      aria="Value held by the recorded pools over time"
-      src={<SrcLine f={s.fact} what="the TVL chart" />}
+      aria={t.aria}
+      src={<SrcLine f={s.fact} what={t.src} />}
       empty={<Reason code="not_collected" />}
     />
   );
@@ -496,6 +492,9 @@ function LiquidityChart({
   tools: ReactNode;
 }) {
   const { reader } = useBearing();
+  const all = useWords();
+  const say = useReason();
+  const t = all.dex.liquidity;
   const clmm = pools
     .filter((p) => /clmm|whirlpool|dlmm/.test(p.venue))
     .sort(
@@ -512,24 +511,21 @@ function LiquidityChart({
   );
   if (!clmm.length)
     return (
-      <EmptyChart title="Liquidity by price band" tools={tools}>
-        {reasonW('not_applicable')}: none of the selected pools is a concentrated-liquidity pool; a
-        constant-product pool spreads its liquidity over every price.
+      <EmptyChart title={t.title} tools={tools}>
+        {say('not_applicable')}: {t.none}
       </EmptyChart>
     );
   let body: ReactNode;
-  if (!res) body = <Loading>Reading the pool…</Loading>;
+  if (!res) body = <Loading>{t.reading}</Loading>;
   else if (!res.ok)
     body = (
-      <EmptyChart title="Liquidity by price band, both sides">
-        {reasonW(res.reason)}: {res.body?.error ?? reasonW(res.reason)}. The collector records only
-        the pools that make up the top 80% of registry TVL; pick one without “not recorded”, or wait
-        for the live read.
+      <EmptyChart title={t.both}>
+        {say(res.reason)}: {t.failed(res.body?.error ?? say(res.reason))}
       </EmptyChart>
     );
   else if (!res.body.bands?.length)
     body = (
-      <EmptyChart title="Liquidity by price band">
+      <EmptyChart title={t.title}>
         <Reason code={res.body.reason ?? 'not_collected'} />
       </EmptyChart>
     );
@@ -545,13 +541,14 @@ function LiquidityChart({
     const total: Fact = mk((d.totalAssetUsd || 0) + (d.totalQuoteUsd || 0), meta);
     const when =
       d.basis === 'recorded'
-        ? `the collector’s newest hourly recording, ${iso(d.fetchedAt).slice(0, 16).replace('T', ' ')} UTC`
-        : `read live ${iso(d.fetchedAt).slice(11, 16)} UTC`;
+        ? t.recordedAt(iso(d.fetchedAt).slice(0, 16).replace('T', ' '))
+        : t.liveAt(iso(d.fetchedAt).slice(11, 16));
     body = (
       <DistChart
-        title="Liquidity by price band, both sides"
+        title={t.both}
+        labels={all.chart}
         value={<Fig f={total} fmt={usd1} />}
-        note={`held within ±30% of the price, from ${when}; the asset waits above the price (sold into as it rises), the quote below (bought with as it falls); + and − zoom`}
+        note={t.note(when)}
         bands={d.bands.map((x) => ({
           lo: x.priceLow,
           hi: x.priceHigh,
@@ -562,10 +559,10 @@ function LiquidityChart({
         unit={`${d.quote ?? ''}/${d.asset ?? ''}`}
         fmtP={(v) => num(v, v < 10 ? 4 : 2)}
         fmtY={usd1}
-        asset={d.asset || 'asset'}
-        quote={d.quote || 'quote'}
-        aria={`Liquidity of pool ${d.pool} by price band around the pool price`}
-        src={<SrcLine f={total} what="the distribution chart" />}
+        asset={d.asset || t.asset}
+        quote={d.quote || t.quote}
+        aria={t.aria(d.pool)}
+        src={<SrcLine f={total} what={t.src} />}
       />
     );
   }
@@ -574,7 +571,7 @@ function LiquidityChart({
       <div className="mb-3 flex flex-wrap items-end gap-x-4 gap-y-2">
         {tools}
         <label className="flex max-w-[440px] min-w-0 flex-col gap-1">
-          <span className="text-caption font-medium text-muted-foreground">Pool</span>
+          <span className="text-caption font-medium text-muted-foreground">{t.pool}</span>
           <select
             value={addr ?? ''}
             onChange={(e) => setChosen(e.target.value)}
@@ -582,7 +579,11 @@ function LiquidityChart({
           >
             {clmm.slice(0, 40).map((p) => (
               <option key={p.address} value={p.address}>
-                {`${poolLabel(p, many)} · TVL ${usd1(p.tvlUsd || 0)}${b.recorded.has(p.address) ? '' : ' · not recorded'}`}
+                {t.option(
+                  poolLabel(p, many, t.quoteNotNamed),
+                  usd1(p.tvlUsd || 0),
+                  b.recorded.has(p.address),
+                )}
               </option>
             ))}
           </select>

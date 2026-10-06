@@ -45,6 +45,21 @@ const BANNED: Record<string, RegExp> = {
   pt: /garantid|sem risco|renda passiva|piloto automático|inteligente|mágic|desbloque(?!ie a carteira)|revolucion|recomend|adequad|ideal para você|ops\b|desculp/i,
 };
 
+/**
+ * The names Bearing's analytics write in capitals: tokens and units, zones, venues, the exchange's
+ * calendar and the API it reads. Nothing else on those pages is.
+ */
+const BEARING_NAMES = new Set(
+  'API USD USDC USDT USDY SOL TVL LP UTC US EUA KYC DEX CLMM DLMM CPMM NYSE'.split(' '),
+);
+/**
+ * Bearing's labels that are not sentences: a chart's note under its title, an accessible name, the
+ * "how" of a path, a tooltip, and the start of the verdict that the page completes. They are
+ * Rodrigo's fragments, kept as he wrote them.
+ */
+const BEARING_FRAGMENTS =
+  /^bearing\.(.*\.(aria|note|how|toleranceTitle|jupiter|jupiterAvailable)$|sim\.verdict\.best$|flow\.tips\.)/;
+
 describe.each(LANGS)('the dictionary in %s', (lang) => {
   const all = sentences(dictionary(lang));
 
@@ -63,9 +78,11 @@ describe.each(LANGS)('the dictionary in %s', (lang) => {
 
   it('writes no word in capitals but MOCK', () => {
     for (const { path, text } of all) {
-      // "US$" is how Portuguese writes a dollar amount, and a sentence may start with one capital
+      // "US$" is how Portuguese writes a dollar amount, and a sentence may start with one capital.
+      // Bearing's pages name tokens, units, zones and venues as they are written (Rodrigo's words).
+      const named = path.startsWith('bearing.') ? BEARING_NAMES : new Set<string>();
       const shouting = (text.replace(/US\$/g, '').match(/\p{Lu}{2,}/gu) ?? []).filter(
-        (word) => word !== 'MOCK',
+        (word) => word !== 'MOCK' && !named.has(word),
       );
       expect(shouting, `${path}: ${text}`).toEqual([]);
     }
@@ -90,6 +107,7 @@ describe.each(LANGS)('the dictionary in %s', (lang) => {
         (text.split(' ').length > 12 || /\. \p{L}/u.test(text)) &&
         !/[·…]/.test(text) &&
         !text.startsWith(':') &&
+        !BEARING_FRAGMENTS.test(path) &&
         !/^goal\.(examples|composer\.placeholder)/.test(path),
     );
     expect(full.length).toBeGreaterThan(50);

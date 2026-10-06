@@ -54,8 +54,11 @@ export const dexIds = (body: AssetsBody, page: 'stocks' | 'commodities') =>
     .map((a) => a.symbol)
     .filter((s) => COMMODITIES.includes(s) === (page === 'commodities'));
 
-export const poolLabel = (p: Pool, withAsset: boolean) =>
-  `${withAsset ? `${p.assetSymbol} · ` : ''}${venueW(p.venue)} · ${p.quoteSymbol || 'quote not named'} · ${short(p.address)}`;
+export const poolLabel = (p: Pool, withAsset: boolean, unnamed = 'quote not named') =>
+  `${withAsset ? `${p.assetSymbol} · ` : ''}${venueW(p.venue)} · ${p.quoteSymbol || unnamed} · ${short(p.address)}`;
+
+/** "(2 of 3 assets)": a sum an asset short. */
+export type PartialW = (k: number, n: number) => string;
 
 export type DexAsset = { sheet: Res<SheetBody>; hist: Res<HistBody>; pools: Res<PoolsBody> };
 
@@ -140,7 +143,11 @@ export function dexCounters(
 }
 
 /** Exit capacity hour by hour, summed over the selected assets; an hour short of an asset says so. */
-export function capacitySeries(selIds: readonly string[], dd: Record<string, DexAsset>) {
+export function capacitySeries(
+  selIds: readonly string[],
+  dd: Record<string, DexAsset>,
+  partial: PartialW = (k, n) => `(${k} of ${n} assets)`,
+) {
   type B = { t: number; s: number; b: number; ns: number; nb: number; lb?: boolean };
   const bucket = new Map<number, B>();
   const n = selIds.length;
@@ -170,7 +177,7 @@ export function capacitySeries(selIds: readonly string[], dd: Record<string, Dex
     }
   }
   const pts = [...bucket.values()].sort((x, y) => x.t - y.t);
-  const part = (v: number, k: number) => (k < n ? `${usd1(v)} (${k} of ${n} assets)` : usd1(v));
+  const part = (v: number, k: number) => (k < n ? `${usd1(v)} ${partial(k, n)}` : usd1(v));
   const lastP = pts.filter((q) => q.ns).pop();
   const fact: Fact =
     src && lastP
@@ -200,7 +207,11 @@ export function capacitySeries(selIds: readonly string[], dd: Record<string, Dex
  * value for up to 6 h, so the sum does not jump with the set recorded that hour; an hour still short
  * of a pool is a lower bound.
  */
-export function tvlSeries(hs: ReadonlyArray<Res<LiqHistBody>>, n: number) {
+export function tvlSeries(
+  hs: ReadonlyArray<Res<LiqHistBody>>,
+  n: number,
+  partial: PartialW = (k, of) => `(${k} of ${of} pools)`,
+) {
   const CARRY = 6 * HOUR;
   let src: LiqHistBody | null = null;
   let last: string | null | undefined = null;
@@ -252,7 +263,7 @@ export function tvlSeries(hs: ReadonlyArray<Res<LiqHistBody>>, n: number) {
   const value: TPoint[] = pts.map((q) => ({
     t: q.t,
     v: q.k ? q.v : null,
-    show: q.k ? `${usd1(q.v)}${q.k < n ? ` (${q.k} of ${n} pools)` : ''}` : null,
+    show: q.k ? `${usd1(q.v)}${q.k < n ? ` ${partial(q.k, n)}` : ''}` : null,
   }));
   const held: TPoint[] = pts.map((q) => ({ t: q.t, v: q.k ? q.a : null }));
   return { fact, value, held };

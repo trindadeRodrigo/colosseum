@@ -2,21 +2,8 @@
 import { useState } from 'react';
 import type { Res } from './data';
 import { mk } from './fact';
-import {
-  iso,
-  num,
-  pct,
-  pct0,
-  type Regime,
-  RW,
-  reasonW,
-  regimeW,
-  short,
-  usd,
-  usd1,
-  venueW,
-} from './format';
-import { SrcLine } from './parts';
+import { iso, num, pct, pct0, type Regime, short, usd, usd1, venueW } from './format';
+import { SrcLine, useReason, useWords } from './parts';
 import type { SimPath } from './sim';
 import type { SplitBody } from './types';
 
@@ -83,44 +70,46 @@ export function FlowChart(o: {
   const edge = (a: Node, b: Node, path: string, label: string, w: number, tip?: string) => {
     edges.push({ a, b, path, label, w, tip: tip || label, n: ++seq, y0: 0, y1: 0, lx: 0, ly: 0 });
   };
-  const start = node('start', 0, `${o.id} · ${usd(o.n)}`, `your position, ${RW[o.r]}`, 'pos');
-  const recv = node('recv', 4, 'Dollars received', 'USDC or USD', 'recv');
+  const w = useWords();
+  const say = useReason();
+  const t = w.flow;
+  const start = node('start', 0, `${o.id} · ${usd(o.n)}`, t.position(w.regimes[o.r]), 'pos');
+  const recv = node('recv', 4, t.received, t.receivedSub, 'recv');
   const notes: string[] = [];
   let rank = 1;
   for (const p of o.paths) {
     const f = p === o.best ? 1 : ++rank;
     const cls = `f${f}${p === o.best ? ' best' : ''}${p.assumption ? ' assume' : ''}`;
     const pn = node(`path:${p.key}`, 1, p.name, p.when, `path ${cls}`);
-    edge(start, pn, cls, '', 2.5, `${usd(o.n)} of ${o.id} into: ${p.name}`);
+    edge(start, pn, cls, '', 2.5, t.tips.into(usd(o.n), o.id, p.name));
     const sp = p.key === 'now' ? o.splitNow : p.key === 'split' ? o.splitChunk : null;
     const lossTxt =
-      p.loss.value != null
-        ? usd1(o.n - p.loss.value)
-        : p.assumption
-          ? 'assumption'
-          : 'not measured';
+      p.loss.value != null ? usd1(o.n - p.loss.value) : p.assumption ? t.assumption : t.notMeasured;
     const lossTip =
       p.loss.value != null
-        ? `${p.name}: you receive ${usd(o.n - p.loss.value)}, a loss of ${usd(p.loss.value)} (${pct(p.loss.value / o.n)})`
+        ? t.tips.receive(
+            p.name,
+            usd(o.n - p.loss.value),
+            usd(p.loss.value),
+            pct(p.loss.value / o.n),
+          )
         : `${p.name}: ${lossTxt}`;
     if (sp?.ok && sp.body.legs.length) {
       const sb = sp.body;
       const per = p.key === 'split' ? o.n / o.chunks : o.n;
       const quotes: Record<string, number> = {};
-      const when = `${iso(sb.fetchedAt).slice(0, 16).replace('T', ' ')} UTC, ${regimeW(sb.regime)}`;
+      const when = `${iso(sb.fetchedAt).slice(0, 16).replace('T', ' ')} UTC, ${w.regimes[sb.regime as keyof typeof w.regimes] ?? sb.regime}`;
       notes.push(
-        `${p.name}: ${
-          sb.notionalUsd !== Math.round(per)
-            ? `shares from the ${usd(sb.notionalUsd)} simulation, the nearest simulated size, `
-            : 'split simulated at this size, '
-        }${when}.`,
+        sb.notionalUsd !== Math.round(per)
+          ? t.nearest(p.name, usd(sb.notionalUsd), when)
+          : t.exact(p.name, when),
       );
       for (const l of sb.legs) {
         const pool = node(
           `pool:${l.pool}`,
           2,
-          `${venueW(l.venue)} · ${l.quote || 'quote not named'}`,
-          `${short(l.pool)}${l.feeRate != null ? ` · fee ${pct(l.feeRate)}` : ''}`,
+          `${venueW(l.venue)} · ${l.quote || w.dex.liquidity.quoteNotNamed}`,
+          `${short(l.pool)}${l.feeRate != null ? t.fee(pct(l.feeRate)) : ''}`,
           'pool',
           l.pool,
         );
@@ -133,24 +122,32 @@ export function FlowChart(o: {
           cls,
           `${pct0(l.share)} · ${usd1(amt)}${k > 1 ? ` ×${k}` : ''}`,
           1 + 5 * l.share,
-          `${p.name}: ${pct(l.share)} of each sale, ${usd(amt)}${k > 1 ? ` in each of ${k} sales` : ''}${
-            tok != null ? `, ${num(tok, tok < 10 ? 2 : 1)} ${o.id} in all` : ''
-          }, into ${venueW(l.venue)} ${short(l.pool)}`,
+          t.tips.leg(
+            p.name,
+            pct(l.share),
+            usd(amt),
+            k,
+            tok != null ? `${num(tok, tok < 10 ? 2 : 1)} ${o.id}` : null,
+            `${venueW(l.venue)} ${short(l.pool)}`,
+          ),
         );
         const qk = l.exitPath === 'via_sol' || l.quote === 'SOL' ? 'sol' : 'usd';
         const qn =
           qk === 'sol'
-            ? node('q:sol', 3, 'SOL, swapped to USDC', 'a second hop', 'quote')
-            : node('q:usd', 3, 'USDC / USDT', 'paid out by the pool', 'quote');
+            ? node('q:sol', 3, t.solHop, t.solHopSub, 'quote')
+            : node('q:usd', 3, t.usdOut, t.usdOutSub, 'quote');
         edge(
           pool,
           qn,
           cls,
-          l.costPct != null ? `cost ${pct(l.costPct)}` : 'cost not given',
+          l.costPct != null ? t.cost(pct(l.costPct)) : t.noCost,
           1 + 5 * l.share,
-          `${p.name}: this leg costs ${l.costPct != null ? pct(l.costPct) : 'an amount not given'} (pool fee ${
-            l.feeRate != null ? pct(l.feeRate) : 'not given'
-          }, the rest price impact and basis), paid out in ${l.quote || 'the quote token'}`,
+          t.tips.legCost(
+            p.name,
+            l.costPct != null ? pct(l.costPct) : null,
+            l.feeRate != null ? pct(l.feeRate) : null,
+            l.quote || null,
+          ),
         );
         quotes[qk] = (quotes[qk] || 0) + l.share;
       }
@@ -160,33 +157,24 @@ export function FlowChart(o: {
           byId.get(`q:${qk}`) as Node,
           recv,
           cls,
-          qk === 'usd' ? lossTxt : `${pct0(share)} of it`,
+          qk === 'usd' ? lossTxt : t.ofIt(pct0(share)),
           1 + 5 * share,
-          qk === 'usd'
-            ? lossTip
-            : `${p.name}: ${pct(share)} of the sale is paid in SOL and swapped to USDC`,
+          qk === 'usd' ? lossTip : t.tips.sol(p.name, pct(share)),
         );
       }
     } else if (p.assumption) {
-      const iss = node('issuer', 3, 'Issuer redemption', 'settles T+5, KYC', 'quote assume');
-      edge(pn, iss, cls, usd1(o.n), 2, `redeem ${usd(o.n)} with the issuer`);
-      edge(
-        iss,
-        recv,
-        cls,
-        'assumption',
-        2,
-        'what the issuer pays rests on its published terms, a scenario input',
-      );
+      const iss = node('issuer', 3, t.issuer, t.issuerSub, 'quote assume');
+      edge(pn, iss, cls, usd1(o.n), 2, t.tips.redeem(usd(o.n)));
+      edge(iss, recv, cls, t.assumption, 2, t.tips.issuerPays);
     } else {
       const why =
         sp?.ok && sp.body.reason
-          ? reasonW(sp.body.reason)
+          ? say(sp.body.reason)
           : p.key === 'open'
-            ? 'no split simulated in market hours yet'
-            : 'no split for this path';
-      const same = node('samepools', 2, 'The same pools', why, 'pool muted');
-      edge(pn, same, cls, 'routed', 2, `${p.name}: the same routed sale; ${why}`);
+            ? t.noOpenSplit
+            : t.noSplit;
+      const same = node('samepools', 2, t.samePools, why, 'pool muted');
+      edge(pn, same, cls, t.routed, 2, t.tips.same(p.name, why));
       edge(same, recv, cls, lossTxt, 2, lossTip);
     }
   }
@@ -267,7 +255,7 @@ export function FlowChart(o: {
       <section
         // biome-ignore lint/a11y/noNoninteractiveTabindex: a region that scrolls sideways must be reachable by keyboard
         tabIndex={0}
-        aria-label="The paths as a flow, scrolls sideways"
+        aria-label={t.region}
         data-ui="bearing-flow"
         className="overflow-x-auto border border-border bg-card py-2"
         onMouseLeave={() => setFocus(null)}
@@ -276,7 +264,7 @@ export function FlowChart(o: {
           viewBox={`0 0 ${W} ${H}`}
           width="100%"
           role="img"
-          aria-label={`Flow of a ${usd(o.n)} sale of ${o.id} through each path, its pools and payout token, to the dollars received`}
+          aria-label={t.aria(usd(o.n), o.id)}
           className="mx-auto block h-auto min-w-[880px]"
           style={{ maxWidth: W }}
         >
@@ -386,7 +374,7 @@ export function FlowChart(o: {
                   y={nd.y + 35}
                   className="fill-muted-foreground font-mono text-[11px]"
                 >
-                  {trunc(nd.sub, 38)}
+                  {trunc(nd.sub, nd.cls.includes('best') ? 28 : 38)}
                 </text>
                 {nd.cls.includes('best') && (
                   <text
@@ -396,34 +384,27 @@ export function FlowChart(o: {
                     fill="var(--tf-bearing-cv)"
                     className="text-[11px] font-semibold"
                   >
-                    best
+                    {t.best}
                   </text>
                 )}
                 <title>{`${nd.label} · ${nd.sub}${nd.title ? ` · ${nd.title}` : ''}`}</title>
               </g>
             );
           })}
-          {['Position', 'Path', 'Pools the sale is split across', 'Paid out in', 'You receive'].map(
-            (t, c) => (
-              <text
-                key={t}
-                x={X[c]}
-                y={16}
-                className="fill-muted-foreground font-condensed text-[11.5px] font-medium"
-              >
-                {t}
-              </text>
-            ),
-          )}
+          {t.columns.map((t, c) => (
+            <text
+              key={t}
+              x={X[c]}
+              y={16}
+              className="fill-muted-foreground font-condensed text-[11.5px] font-medium"
+            >
+              {t}
+            </text>
+          ))}
         </svg>
       </section>
-      <p className="mt-2 max-w-[88ch] text-muted-foreground">
-        Each colour is one path; they are alternatives, not one sale. The best path is drawn
-        strongest; issuer redemption is dashed because it rests on the issuer’s terms. Line width
-        follows each pool’s share of the sale. {notes.join(' ')} Received amounts and losses are the
-        table’s, the fitted cost at the exact size; the split shows where the sale goes.
-      </p>
-      <SrcLine f={srcF} what="the flow chart" />
+      <p className="mt-2 max-w-[88ch] text-muted-foreground">{t.note(notes.join(' '))}</p>
+      <SrcLine f={srcF} what={t.src} />
     </>
   );
 }
