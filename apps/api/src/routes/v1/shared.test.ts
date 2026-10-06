@@ -551,6 +551,19 @@ describe('a person buys a shared portfolio, following it on their own chain', ()
       ]),
     );
 
+    // The funding read plans the same buy of the portfolio: a deposit into the vault that is there.
+    const funding = await get(buyer, `/v1/funding?amountUsd=10&family=${text.slug}`);
+    expect(funding.statusCode, funding.body).toBe(200);
+    expect([funding.json().cash.needRaw, funding.json().steps, funding.json().newVault]).toEqual([
+      '10000000',
+      4,
+      false,
+    ]);
+    expect(
+      (await get(buyer, `/v1/funding?amountUsd=10&family=${text.slug}&proposalId=${plans.solana}`))
+        .statusCode,
+    ).toBe(400);
+
     // A second buy adds to the same vault.
     const again = OrderDetail.parse(
       (

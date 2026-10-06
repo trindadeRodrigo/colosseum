@@ -15,10 +15,14 @@ import {
   type DeploymentFile,
   deploymentsOf,
   familyIdOf,
+  familyTextHash,
   type GuardDeployment,
   GuardRefusal,
   guardTransaction,
   type PlanTerms,
+  type RpcCall,
+  readSolanaRecipe,
+  type SolanaDeployment,
 } from '@colosseum/sdk';
 import {
   type Address,
@@ -372,6 +376,22 @@ describe.skipIf(!PROGRAMS_BUILT)('shared portfolios through the API on Solana, i
     });
     expect(recipe?.active.version).toBe(1);
     expect(recipe?.active.components).toEqual(screen.publish?.components);
+
+    // The same account as a screen reads it from its own node (WEB-4, packages/sdk's
+    // `readSolanaRecipe`), on bytes the program wrote: the account, the version and the weights.
+    const rpc: RpcCall = (method, params) =>
+      (node.rpc as unknown as Record<string, (...a: unknown[]) => { send(): Promise<unknown> }>)
+        [method]?.(...params)
+        .send() ?? Promise.reject(new Error(`${method}: not a method of the node`));
+    const read = await readSolanaRecipe(rpc, deployment as SolanaDeployment, {
+      creator: creator.key.address,
+      familyId,
+    });
+    expect([read?.address, read?.active.version, read?.pending]).toEqual([onchainId, 1, null]);
+    expect(
+      read?.active.components.map((c) => ({ asset: c.asset, weightBps: c.weightBps })),
+    ).toEqual(screen.publish?.components);
+    expect(read?.active.metaHash).toBe(familyTextHash({ familyId, ...text }));
 
     // A person buys it on Solana, following the version the screen read.
     const buyer = await someone();

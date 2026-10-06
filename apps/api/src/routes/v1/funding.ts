@@ -10,6 +10,7 @@ import {
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { Refusal, refusing } from '../../orders/errors';
+import { familyByNameKey, familyBySlug } from '../../orders/families';
 import type { OrderDeps } from '../../orders/legs';
 import { homeChain, personChain } from '../../orders/person';
 import { planBuy } from '../../orders/prepare';
@@ -62,13 +63,22 @@ export function registerFundingRoute(scope: FastifyInstance, deps: OrderDeps) {
   scope.withTypeProvider<ZodTypeProvider>().get(
     '/v1/funding',
     {
-      config: { auth: 'user', limit: 'standard' },
+      config: {
+        auth: 'user',
+        limit: 'standard',
+        // Asked about a shared portfolio's buy, it plans the order as a builder does: its quotes are
+        // asked of the chain, so it counts as one.
+        limitOf: (req) =>
+          (req.query as { family?: unknown } | undefined)?.family !== undefined
+            ? 'build'
+            : 'standard',
+      },
       schema: {
         tags: ['funding'],
         summary:
           'What the signed-in wallet is missing on its chain: the dollar token and native gas',
         description:
-          'For the one chain the person’s plans live on. With `proposalId` and `amountUsd`, the need is that of a buy of that amount: the whole deposit in the chain’s dollar token, and the network fee of every step the order would have. With neither, the need is nothing and the answer is what the wallet holds. `missingRaw` is what to add. It reads one wallet, named in the answer: `wallet` when the query names one of the person’s on that chain, and otherwise the wallet their plans are held by (the outside wallet when that names the chain, the wallet made in the app when the chain was picked). An order may name any of the person’s wallets of that family as its owner: ask about the one the order will name. Every figure carries its source, its time and its method, and `provenance`: `mock` on the mock chain, `sandbox` on a test network.',
+          'For the one chain the person’s plans live on. With `amountUsd` and `proposalId` (a plan) or `family` (a shared portfolio’s slug), the need is that of a buy of that amount: the whole deposit in the chain’s dollar token, and the network fee of every step the order would have. With neither, the need is nothing and the answer is what the wallet holds. `missingRaw` is what to add. It reads one wallet, named in the answer: `wallet` when the query names one of the person’s on that chain, and otherwise the wallet their plans are held by (the outside wallet when that names the chain, the wallet made in the app when the chain was picked). An order may name any of the person’s wallets of that family as its owner: ask about the one the order will name. Every figure carries its source, its time and its method, and `provenance`: `mock` on the mock chain, `sandbox` on a test network.',
         querystring: FundingQuery,
         response: { 200: FundingResponse, default: OrderError },
       },
@@ -82,18 +92,28 @@ export function registerFundingRoute(scope: FastifyInstance, deps: OrderDeps) {
       const wallet = walletOf(principal, family, outside, req.query.wallet);
 
       let need: FundingNeed = { cashRaw: '0', legs: 0, newVault: false, newAccounts: 0 };
-      const { amountUsd, proposalId } = req.query;
-      if (amountUsd !== undefined && proposalId !== undefined)
+      const { amountUsd, proposalId, family: slug } = req.query;
+      if (amountUsd !== undefined && (proposalId !== undefined || slug !== undefined))
         // Planned by the function an order is planned with, so the steps counted are the order's.
         need = (
           await planBuy(
-            { type: 'buy', owner: { [family]: wallet }, amountUsd, proposalId },
+            {
+              type: 'buy',
+              owner: { [family]: wallet },
+              amountUsd,
+              ...(slug !== undefined ? { family: slug } : { proposalId }),
+            },
             {
               principal,
               chains: deps.chains,
               loadProposal: (id) => loadProposal(deps.db, id),
               homeChain: async () => chain,
               loadFamilies: (on) => loadFamilies(deps.db, on),
+              shared: {
+                db: deps.db,
+                bySlug: (s) => familyBySlug(deps.db, s),
+                byNameKey: (k) => familyByNameKey(deps.db, k),
+              },
             },
           )
         ).need;

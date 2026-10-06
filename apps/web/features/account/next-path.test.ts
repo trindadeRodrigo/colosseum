@@ -83,11 +83,16 @@ describe('the routes sign-in knows', () => {
     expect(pages).toEqual([
       '/',
       '/goal',
+      '/indexes/[slug]',
+      '/indexes/[slug]/buy',
       '/monitor',
       '/orders/[id]',
       '/plan/[id]',
       '/plan/[id]/buy',
+      '/publish',
+      '/shelf',
       '/sign-in',
+      '/vaults/[chain]/[address]',
     ]);
     expect([...APP_ROUTES].sort()).toEqual(pages);
   });

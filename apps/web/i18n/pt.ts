@@ -13,6 +13,7 @@ export const pt: Dictionary = {
     home: 'tenonfi, seu objetivo',
     goal: 'Objetivo',
     portfolio: 'Portfólio',
+    shelf: 'Prateleira',
     signIn: 'Entrar',
     signOut: 'Sair',
     signingOut: 'Saindo…',
@@ -559,6 +560,229 @@ export const pt: Dictionary = {
     },
   },
 
+  shared: {
+    meta: {
+      shelf: 'Portfólios compartilhados',
+      family: 'Portfólio compartilhado',
+      familyDescription: 'Uma lista de ativos e pesos que quem a criou publicou numa rede.',
+      publish: 'Publicar um portfólio',
+      publishDescription: 'Publique sua lista de ativos e pesos para outras pessoas seguirem.',
+      vault: 'Cofre',
+    },
+    shelf: {
+      title: 'Portfólios que as pessoas compartilharam.',
+      lead: (chain: string) =>
+        `Cada um é uma lista de ativos e pesos que quem o criou publicou numa rede. Estes são os da ${chain}, onde ficam seus planos.`,
+      leadAll:
+        'Cada um é uma lista de ativos e pesos que quem o criou publicou numa rede. Entre para ver os da sua rede.',
+      loading: 'Lendo os portfólios compartilhados…',
+      empty: (chain: string) => `Nenhum portfólio foi compartilhado na ${chain} ainda.`,
+      emptyAll: 'Nenhum portfólio foi compartilhado ainda.',
+      publish: 'Publicar um portfólio',
+      card: {
+        by: (creator: string) => `por ${creator}`,
+        platform: 'Da tenonfi',
+        version: (n: number) => `versão ${n}`,
+        waiting: (n: number) => `versão ${n} aguarda`,
+        open: (name: string) => `Abrir ${name}`,
+        on: (chains: string) => `na ${chains}`,
+      },
+      failure: {
+        unreachable:
+          'Não consegui ler os portfólios compartilhados: nosso servidor não respondeu. Tente de novo.',
+        unreadable:
+          'Nosso servidor respondeu com algo que não consegui ler, então não vou mostrar.',
+        retry: 'Ler de novo',
+      },
+    },
+    text: {
+      unverified:
+        'O nome e a descrição não batem com o que quem criou publicou na rede, então não posso garantir que sejam dele.',
+      pending:
+        'O nome e a descrição são os da versão que aguarda. A versão em vigor foi publicada com outras palavras.',
+      creator: 'Criado por',
+      notChecked:
+        'O nome e a descrição não foram conferidos com o que quem criou publicou na rede.',
+    },
+    family: {
+      loading: 'Lendo este portfólio…',
+      missing: 'Não encontro um portfólio compartilhado com esse nome.',
+      backToShelf: 'Voltar aos portfólios compartilhados',
+      lead: (chain: string) =>
+        `Uma lista de ativos e pesos que quem a criou publicou na ${chain}. Segui-la quer dizer que um cofre seu assume esses pesos; uma versão nova entra em vigor depois de um prazo, e você a vê antes disso.`,
+      notHere: (chain: string) =>
+        `Este portfólio não está publicado na ${chain}, onde ficam seus planos, então não dá para segui-lo com a sua carteira.`,
+      recipe: (chain: string) => `Na ${chain}`,
+      inEffect: 'Em vigor',
+      since: (when: string) => `desde ${when}`,
+      waits: (n: number, when: string) => `A versão ${n} entra em vigor em ${when}`,
+      waitsLead:
+        'Ela foi publicada e ainda não está em vigor. Um cofre que segue este portfólio só passa para ela quando estiver.',
+      versionN: (n: number) => `Versão ${n}`,
+      versions: 'Todas as versões',
+      columns: { version: 'Versão', status: 'Situação', effective: 'Em vigor a partir de' },
+      status: {
+        active: 'Em vigor',
+        pending: 'Aguardando',
+        superseded: 'Substituída',
+        cancelled: 'Retirada',
+      },
+      buy: 'Comprar e seguir este portfólio',
+      signIn: 'Entre para seguir',
+      chainNotReady: (chain: string) =>
+        `A ${chain} ainda não está pronta para seguir portfólios: os cofres dela não estão implantados nesta rede.`,
+      tampered: (chain: string) =>
+        `Não consegui verificar este portfólio na ${chain}, então não vou oferecer comprá-lo nem segui-lo: ele pode ter sido adulterado. Tente mais tarde.`,
+      missingOnChain: (chain: string) =>
+        `A ${chain} não tem esse portfólio: li a rede, e o registro não o tem. Não dá para segui-lo.`,
+      unlisted:
+        'A versão na rede tem um token que este app não lista, então não vou oferecer seguir.',
+      notListed: 'um token que este app não lista',
+      foreign:
+        'Este portfólio não foi publicado por este app, então não consigo conferir o identificador dele pelo nome, e seguir ainda não é oferecido aqui.',
+    },
+    check: {
+      reading: 'Lendo da rede…',
+      read: (chain: string) =>
+        `Lido da ${chain} por este app, não do nosso servidor: a versão e os pesos mostrados são os da rede.`,
+      differs: (chain: string) =>
+        `A resposta do nosso servidor difere do que a ${chain} tem. Mostro a versão e os pesos da rede, e seguir fica preso a eles.`,
+      unverified: {
+        mock: 'Rede MOCK: não há rede para ler, então estas são palavras do nosso servidor, não conferidas.',
+        'no-node': (chain: string) =>
+          `Não conferido na ${chain}: este app não tem um nó próprio para ler. Estas são palavras do nosso servidor.`,
+        'no-deployment': (chain: string) =>
+          `Não conferido na ${chain}: este app não tem registro dos tokens nesta rede. Estas são palavras do nosso servidor.`,
+        'family-id':
+          'Não conferido na rede: este portfólio não foi publicado por este app, então o identificador dele vem do nosso servidor. Estas são palavras do nosso servidor.',
+      },
+      failed: (chain: string) =>
+        `Não consegui verificar este portfólio na ${chain}: o nó de onde este app lê não respondeu, ou o que nosso servidor indicou não é o portfólio que a rede tem. Ele pode ter sido adulterado, então não vou oferecer segui-lo.`,
+      missing: (chain: string) =>
+        `Li a ${chain}, e ela não tem este portfólio: o que aparece é só a palavra do nosso servidor.`,
+      verified: 'Lido da rede',
+      notChecked: 'Não conferido na rede',
+    },
+    offer: {
+      title: 'Seguir automático',
+      offered:
+        'Oferecido: com o seguir automático ativado, nosso operador rebalanceia um cofre que segue este portfólio quando uma versão nova entra em vigor, dentro dos limites do cofre.',
+      noOracle: (assets: string, chain: string) =>
+        `Não oferecido: este portfólio tem ${assets}, que não tem oráculo de preço na ${chain}, então nosso operador não consegue rebalanceá-lo. Se você segui-lo, peço que rebalanceie, com um toque, quando ele mudar.`,
+      switchedOff: (chain: string) =>
+        `Ainda não oferecido na ${chain}: nosso operador não roda lá. Se você segui-lo, peço que rebalanceie, com um toque, quando ele mudar.`,
+    },
+    buy: {
+      title: 'Comprar e seguir',
+      lead: (chain: string) =>
+        `Um cofre seu na ${chain} segue este portfólio, na versão mostrada, com o seguir automático desativado. Nada é comprado até você revisar cada passo e assinar.`,
+      amountHint: 'Em dólares, a partir de US$ 10.',
+      review: (amount: string) => `Revisar a compra de ${amount}`,
+      blocked: {
+        terms: 'Não consegui ler este portfólio, então ainda não há o que seguir.',
+        missing: 'A rede não tem este portfólio, então não dá para segui-lo.',
+        unlisted: 'Este portfólio tem um token que este app não lista.',
+      },
+    },
+    vaults: {
+      title: 'Seus cofres',
+      none: 'Você ainda não tem um cofre nesta rede. Compre este portfólio para abrir um que o segue.',
+      following: 'Segue este portfólio',
+      notFollowing: 'Segue outra coisa',
+      followWith: 'Seguir com este cofre',
+      followNote:
+        'Seu cofre assume os pesos deste portfólio. Nada é negociado nesse passo: você rebalanceia depois, ou o operador faz isso com o seguir automático ativado.',
+      autoOn: 'Ativar o seguir automático',
+      autoOff: 'Desativar o seguir automático',
+      autoIs: (on: boolean): string =>
+        on ? 'O seguir automático está ativado.' : 'O seguir automático está desativado.',
+      oneTap:
+        'Este portfólio não é rebalanceado automaticamente. Quando ele mudar, peço aqui que você aceite a versão nova e rebalanceie.',
+      address: (address: string) => `Cofre ${address}`,
+      open: 'Abrir o cofre',
+      failure: 'Não consegui ler seus cofres: nosso servidor não respondeu. Tente de novo.',
+    },
+    prompt: {
+      title: 'Este portfólio mudou',
+      waits: (n: number, when: string) =>
+        `A versão ${n} entra em vigor em ${when}. Você pode aceitá-la então; até lá, seu cofre fica com a versão que tem.`,
+      inEffect: (n: number) =>
+        `A versão ${n} está em vigor, e seu cofre ainda tem uma anterior. Aceite-a para assumir os pesos dela e depois rebalanceie.`,
+      newAssets: (assets: string) => `Ela inclui ${assets}, que seu cofre ainda não tem.`,
+      accept: (n: number) => `Aceitar a versão ${n}`,
+    },
+    publish: {
+      title: 'Publicar um portfólio.',
+      lead: (chain: string) =>
+        `Sua lista de ativos e pesos, com um nome, na ${chain}. Qualquer pessoa pode vê-la e segui-la. Você assina com a sua carteira: confiro a transação com este formulário antes de pedir à carteira.`,
+      signIn: 'Entre para publicar um portfólio.',
+      about: 'Nome e descrição',
+      name: 'Nome',
+      nameHint: 'Letras, números e pontuação simples, até 280 caracteres.',
+      slug: 'Endereço na prateleira',
+      slugHint: 'Letras minúsculas, números e hífens. Não muda depois de publicado.',
+      copy: 'Descrição',
+      copyHint: 'Até 280 caracteres, sem link.',
+      familyId: 'O identificador dele, calculado a partir do endereço',
+      assets: 'Ativos e pesos',
+      assetsHint: 'De 3 a 12 ativos, cada um de 2% a 50%, em passos de 0,5%, somando 100%.',
+      asset: 'Ativo',
+      weight: 'Peso, em %',
+      add: 'Incluir um ativo',
+      remove: (asset: string) => `Tirar ${asset}`,
+      total: (sum: string) => `Total: ${sum}`,
+      update: (n: number) =>
+        `Você já publicou este portfólio. Esta é a versão ${n}: ela entra em vigor depois do prazo de publicação, e uma versão muda no máximo 20% do portfólio.`,
+      first: 'Esta é a versão 1: ela entra em vigor assim que chegar à rede.',
+      theirs: 'Este endereço é de um portfólio de outra pessoa. Escolha outro.',
+      review: 'Revisar a publicação',
+      reviewing: 'Criando a ordem…',
+      problems: {
+        name: 'Um nome precisa de letras, números e pontuação simples, sem espaço nas pontas e sem link ou endereço web.',
+        slug: 'Um endereço precisa de letras minúsculas, números e hífens.',
+        copy: 'Uma descrição tem no máximo 280 caracteres, sem link ou endereço web e sem caracteres ocultos.',
+        count: 'Um portfólio tem de 3 a 12 ativos.',
+        weight: 'Cada peso vai de 2% a 50%, em passos de 0,5%.',
+        sum: 'Os pesos somam 100%.',
+        twice: 'Um ativo aparece uma vez só.',
+        chain: 'Por enquanto, publicar só funciona na Solana.',
+      },
+      failure: {
+        said: (error: string) => `Nosso servidor recusou: ${error}.`,
+        unreachable: 'Não consegui criar a ordem: nosso servidor não respondeu. Tente de novo.',
+        unreadable:
+          'Nosso servidor respondeu com uma ordem que não consegui ler, então não vou mostrar.',
+        signedOut: 'Sua sessão expirou. Entre de novo, e o formulário fica guardado.',
+        noStore:
+          'Este navegador não guarda nada entre as páginas, então não vou criar a ordem: um passo poderia ser assinado duas vezes.',
+      },
+    },
+    vault: {
+      title: 'Um cofre, como a rede o tem',
+      lead: (chain: string) =>
+        `Lido da ${chain} para esta página. Qualquer pessoa pode ver um cofre: o que ele tem é público na rede.`,
+      loading: 'Lendo o cofre…',
+      missing: 'Não há cofre neste endereço.',
+      owner: 'Dono',
+      follows: 'Segue',
+      followsNothing: 'Nada: quem é dono define os pesos',
+      version: (n: number) => `versão ${n}`,
+      autoFollow: 'Seguir automático',
+      value: 'Valor',
+      cash: 'Dinheiro',
+      columns: {
+        asset: 'Ativo',
+        held: 'Quantidade',
+        price: 'Preço',
+        weight: 'Peso',
+        target: 'Alvo',
+        drift: 'Desvio',
+      },
+      on: 'Ativado',
+      off: 'Desativado',
+    },
+  },
+
   order: {
     title: 'Sua ordem',
     loading: 'Lendo sua ordem…',
@@ -602,6 +826,34 @@ export const pt: Dictionary = {
         'Esta ordem não deposita o valor que você pediu, então não vou oferecer a assinatura. Nada foi assinado. Crie uma nova ordem e avise a gente se acontecer de novo.',
       steps:
         'Um passo desta ordem move outro valor em dinheiro que não o do depósito, então não vou oferecer a assinatura. Nada foi assinado. Crie uma nova ordem e avise a gente se acontecer de novo.',
+      trades:
+        'Esta ordem gasta seu depósito com outros pesos que não os do portfólio que você revisou, então não vou oferecer a assinatura. Nada foi assinado. Crie uma nova ordem.',
+      shape:
+        'Esta ordem tem passos que o portfólio que você revisou não pede, então não vou oferecer a assinatura. Nada foi assinado. Crie uma nova ordem.',
+    },
+    shared: {
+      publishTitle: 'O que você publica',
+      followTitle: 'O que você segue',
+      name: 'Nome',
+      slug: 'Endereço na prateleira',
+      copy: 'Descrição',
+      noCopy: 'Sem descrição.',
+      version: 'Versão',
+      first: 'Versão 1, em vigor assim que chegar à rede',
+      next: (n: number) => `Versão ${n}, em vigor depois do prazo de publicação`,
+      versionN: (n: number) => `Versão ${n}`,
+      familyId: 'Identificador',
+      onchain: 'Na rede',
+      vault: 'Seu cofre',
+      autoFollow: 'Seguir automático',
+      on: 'Ativado',
+      off: 'Desativado',
+      weights: 'Ativos e pesos',
+      publishNote:
+        'Sua carteira só é chamada para assinar uma transação que publique exatamente este nome, esta descrição e estes pesos, com este identificador.',
+      signPublish: 'Assinar e publicar',
+      signFollow: 'Assinar e seguir',
+      resume: 'Continuar',
     },
     signAndBuy: (amount: string) => `Assinar e comprar ${amount}`,
     resume: (amount: string) => `Continuar a compra de ${amount}`,

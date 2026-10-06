@@ -15,7 +15,7 @@ import { Mark } from './Mark';
 
 // The product's top bar (STYLE.md, Navigation): a plain bar on the ground with a hairline under it,
 // the mark and the wordmark at the left. No glass and no blur. The goal comes first: home is the goal,
-// then the portfolio (the monitor). The landing's compact bar is another component
+// then the portfolio (the monitor), then the shelf of shared portfolios. The landing's compact bar is another component
 // (components/ui/CompactNav.tsx).
 //
 // Nothing here is the wallet adapter's button, which renders one thing on the server and another in
@@ -33,6 +33,7 @@ const LINK = cn(
 const ROUTES = [
   { href: '/', key: 'goal' },
   { href: '/monitor', key: 'portfolio' },
+  { href: '/shelf', key: 'shelf' },
 ] as const;
 
 export function AppNav() {

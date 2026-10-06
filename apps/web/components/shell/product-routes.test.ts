@@ -88,13 +88,18 @@ describe('the routes of the app', () => {
   it('are the product’s, under one layout, and the pages not yet rebuilt, under theirs', () => {
     expect(product.sort()).toEqual([
       'app/(app)/goal/page.tsx',
+      'app/(app)/indexes/[slug]/buy/page.tsx',
+      'app/(app)/indexes/[slug]/page.tsx',
       'app/(app)/layout.tsx',
       'app/(app)/monitor/page.tsx',
       'app/(app)/orders/[id]/page.tsx',
       'app/(app)/page.tsx',
       'app/(app)/plan/[id]/buy/page.tsx',
       'app/(app)/plan/[id]/page.tsx',
+      'app/(app)/publish/page.tsx',
+      'app/(app)/shelf/page.tsx',
       'app/(app)/sign-in/page.tsx',
+      'app/(app)/vaults/[chain]/[address]/page.tsx',
     ]);
     expect(older.sort()).toEqual([
       // an address no route answers: 404 inside this group's layout, as before there were two
@@ -300,7 +305,14 @@ describe('rule 3: no screen can reach a key', () => {
    * The files that import packages/sdk: the runner, which calls `execute`; readiness.ts, which reads
    * the committed deployments. (order-view.ts takes the runner's answer types from run-order.ts.)
    */
-  const SDK_FILES = [RUNNER, 'features/order/readiness.ts'];
+  const SDK_FILES = [
+    RUNNER,
+    'features/order/readiness.ts',
+    // this app's own node per chain, for the reads it makes itself (WEB-4)
+    'features/order/chain-node.ts',
+    // a shared portfolio read from that node, and a family's id worked out from its slug (WEB-4)
+    'features/shared/chain-recipe.ts',
+  ];
   const SDK = '@colosseum/sdk';
 
   /**
@@ -539,7 +551,9 @@ describe('rule 3: no screen can reach a key', () => {
     for (const dep of [
       'api: createOrderApi(apiFetch)',
       'deployments,',
-      'plan: { basketId: basketIdOfPlan(',
+      // a plan's terms, or a shared portfolio's (planTermsOf, WEB-4)
+      'plan: plan ?? {',
+      'basketId: basketIdOfPlan(input.plan.proposalId)',
       'consents: input.consents',
       'signed: localSigned',
       'chainRead: chainReadFor(',
