@@ -67,8 +67,9 @@ export function nearestIndex(x: number, xs: readonly number[]): number {
  * - The keyboard: the plot is one tab stop; the arrow keys step one point, Home and End go to the ends,
  *   Escape takes it away, and leaving the plot does too.
  * `indexAt` turns a position in the plot (CSS pixels from its top left corner, and the plot's width)
- * into the point it is over. The plot gets `touch-action: pan-y`, so a drag across it moves the
- * crosshair and a drag up or down still scrolls the page.
+ * into the point it is over. The plot gets `touch-action: pan-y pinch-zoom`, so a drag across it
+ * moves the crosshair, a drag up or down still scrolls the page, and two fingers still zoom it. When
+ * the browser takes a touch over for itself (a scroll that began on the plot), the crosshair goes.
  */
 export function useChartCursor(
   count: number,
@@ -82,7 +83,7 @@ export function useChartCursor(
     onPointerLeave: (e: PointerEvent<Element>) => void;
     onPointerUp: () => void;
     onPointerCancel: () => void;
-    style: { touchAction: 'pan-y' };
+    style: { touchAction: 'pan-y pinch-zoom' };
   };
   keys: { onKeyDown: (e: KeyboardEvent<Element>) => void; onBlur: () => void };
 } {
@@ -137,6 +138,11 @@ export function useChartCursor(
     },
     [count, last],
   );
+  // The browser took the touch over (it is scrolling the page): nothing is pointed at any more.
+  const onPointerCancel = useCallback(() => {
+    dragging.current = false;
+    set(null);
+  }, []);
   const onBlur = useCallback(() => set(null), []);
   return {
     at,
@@ -146,12 +152,19 @@ export function useChartCursor(
       onPointerMove,
       onPointerLeave,
       onPointerUp,
-      onPointerCancel: onPointerUp,
-      style: { touchAction: 'pan-y' },
+      onPointerCancel,
+      style: { touchAction: 'pan-y pinch-zoom' },
     },
     keys: { onKeyDown, onBlur },
   };
 }
+
+/**
+ * The left margin a value axis needs for its widest label: the labels are set in mono at `size` px,
+ * 0.6 em a character, ending 6 px before the plot, with 2 px to spare. Never less than `least`.
+ */
+export const axisLeft = (labels: readonly string[], least: number, size = 10) =>
+  Math.max(least, Math.ceil(Math.max(0, ...labels.map((l) => l.length)) * 0.6 * size) + 8);
 
 /** How strongly a series is drawn while another may be lit: dimmed, unless it is the one. */
 export const seriesOpacity = (focus: string | null, id: string) =>

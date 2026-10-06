@@ -8,6 +8,7 @@ import {
   ReadoutFigure,
 } from '../../components/ui/CaseChart';
 import {
+  axisLeft,
   nearestIndex,
   SERIES_FADE,
   seriesOpacity,
@@ -135,15 +136,19 @@ export function TripChart({
   const words = dictionary(lang).landing.show.readout;
   const [box, measured] = useWidth<HTMLDivElement>();
   const W = measured || W_DEFAULT;
-  const left = 44;
+  const max = Math.ceil(Math.max(...TRIP.balances) / 500) * 500;
+  const grid = Array.from({ length: Math.floor(max / 1000) + 1 }, (_, i) => i * 1000);
+  // as wide as its widest label in the reader's language ("US$ 3 mil" is wider than "$3k")
+  const left = axisLeft(
+    grid.map((g) => thousands(lang, g)),
+    44,
+  );
   const right = 10;
   const width = W - left - right;
   const height = H - TOP - BOTTOM;
-  const max = Math.ceil(Math.max(...TRIP.balances) / 500) * 500;
   const bar = width / TRIP.balances.length;
   const centre = (i: number) => left + i * bar + bar / 2;
   const payoutX = left + TRIP.months * bar;
-  const grid = Array.from({ length: Math.floor(max / 1000) + 1 }, (_, i) => i * 1000);
   const series: CaseSeries[] = TRIP.legs.map((leg, i) => ({
     id: `part-${leg.chart}`,
     label: parts[i] ?? '',
@@ -276,12 +281,16 @@ export function GrowthChart({
   const words = dictionary(lang).landing.show.readout;
   const [box, measured] = useWidth<HTMLDivElement>();
   const W = measured || W_DEFAULT;
-  const left = 48;
+  const min = 10_000;
+  const max = Math.ceil(Math.max(...GROWTH.strong) / 5000) * 5000;
+  const grid = Array.from({ length: (max - min) / 5000 + 1 }, (_, i) => min + i * 5000);
+  const left = axisLeft(
+    grid.map((g) => thousands(lang, g)),
+    48,
+  );
   const right = 10;
   const width = W - left - right;
   const height = H - TOP - BOTTOM;
-  const min = 10_000;
-  const max = Math.ceil(Math.max(...GROWTH.strong) / 5000) * 5000;
   const last = GROWTH.base.length - 1;
   const x = (i: number) => left + (i / last) * width;
   const y = (v: number) => TOP + height - ((v - min) / (max - min)) * height;
@@ -292,7 +301,6 @@ export function GrowthChart({
     .reverse()
     .map(([i, v]) => `L${x(i).toFixed(1)} ${y(v).toFixed(1)}`)
     .join(' ')} Z`;
-  const grid = Array.from({ length: (max - min) / 5000 + 1 }, (_, i) => min + i * 5000);
   const series: CaseSeries[] = [
     { id: 'base', label: words.base, color: 'var(--chart-1)' },
     { id: 'range', label: words.range, color: 'var(--chart-3)' },
