@@ -17,7 +17,7 @@ import { DRAW, poseAt } from './joint-pose';
 // with the ground and outlined, with every hidden edge dashed, so the tenon shows inside the mortise
 // and the pin inside the tenon. Cream ink on black, dark ink on paper. His camera, his placing and his
 // three steps; the pose is a function of the reader's progress and nothing else, and a frame is drawn
-// only while it moves. Loaded only when the stage is near, motion is allowed and WebGL is there
+// only while it moves. Loaded after the first paint, where motion is allowed and WebGL runs on a GPU
 // (JointStage.tsx). Nothing is fetched but this module.
 
 export type JointScene = {
@@ -125,10 +125,13 @@ export function createJointScene(
 
   let dark = isDark();
   const size = new Vector2();
+  /** How far the dashes are stretched: the same length on screen however small the joint is placed. */
+  let dashScale = 1;
   const ink = () => {
     const set = INKS[dark ? 'dark' : 'light'];
     renderer.getDrawingBufferSize(size);
-    for (const piece of pieces) piece.setInk(piece === rail ? set.rail : set.member, ratio(), size);
+    for (const piece of pieces)
+      piece.setInk(piece === rail ? set.rail : set.member, ratio(), size, dashScale);
   };
 
   // --- the frame ----------------------------------------------------------------------------------
@@ -137,7 +140,10 @@ export function createJointScene(
     const h = canvas.clientHeight;
     if (w === 0 || h === 0) return;
     const at = options.still ? PLACE.still : w < 820 ? PLACE.narrow : PLACE.wide;
+    // the pixel ratio again: a zoom or another monitor changes it, and the line weights with it
+    renderer.setPixelRatio(ratio());
     renderer.setSize(w, h, false);
+    dashScale = PLACE.wide.scale / at.scale;
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     assembly.position.set(at.x, at.y, at.z);
@@ -198,7 +204,10 @@ export function createJointScene(
   resize();
   return {
     setProgress(p) {
-      target = clamp(p, 0, 1);
+      const next = clamp(p, 0, 1);
+      // a scroll that does not move the joint draws nothing
+      if (next === target && current === target) return;
+      target = next;
       wake();
     },
     resize,
@@ -229,6 +238,7 @@ export function createJointScene(
       system.removeEventListener('change', relight);
       for (const piece of pieces) piece.dispose();
       renderer.dispose();
+      renderer.forceContextLoss();
     },
   };
 }

@@ -26,7 +26,7 @@ describe('the drawing of a piece', () => {
     expect(count(piece.segments.outline)).toBe(4);
   });
 
-  it('gives a round pin its two sides from wherever it is seen, though they are no edge', () => {
+  it('gives a round piece its two sides from wherever it is seen, though they are no edge', () => {
     const pin = new InkPiece(new CylinderGeometry(5, 5, 20, 48).toNonIndexed());
     pin.update(new Vector3(50, 0, 0));
     const sides = [];

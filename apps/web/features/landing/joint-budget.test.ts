@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = join(HERE, '..', '..');
 const KB = 1024;
-const BUDGET = { assets: 1.5 * 1024 * KB, still: 40 * KB };
+const BUDGET = { assets: 40 * KB, still: 10 * KB };
 
 const SCENE = ['joint-scene.ts', 'joint-ink.ts', 'joint-geometry.ts', 'joint-pose.ts'];
 
@@ -29,7 +29,7 @@ describe('what the 3D joint fetches', () => {
     }
   });
 
-  it('serves its stills small, with their provenance: each SVG under 40 KB', () => {
+  it('serves its stills small, with their provenance: each SVG under 10 KB, all under 40 KB', () => {
     const dir = join(WEB, 'public', 'landing', 'joint');
     const sizes = readdirSync(dir)
       .filter((name) => name.endsWith('.svg'))
@@ -43,5 +43,28 @@ describe('what the 3D joint fetches', () => {
     const provenance = JSON.parse(readFileSync(join(dir, 'provenance.json'), 'utf8'));
     expect(provenance.kind).toBe('render');
     expect([...provenance.files].sort()).toEqual(sizes.map(([name]) => name).sort());
+  });
+
+  it('is fetched only by the stage, and only on demand: no file imports the scene as a value', () => {
+    const root = join(WEB);
+    const found: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        if (name === 'node_modules' || name.startsWith('.')) continue;
+        const path = join(dir, name);
+        if (statSync(path).isDirectory()) walk(path);
+        else if (/\.(tsx?|mjs)$/.test(name) && !/\.test\.tsx?$/.test(name)) {
+          const text = readFileSync(path, 'utf8');
+          // a static import of the scene (not `import type`), from anywhere in the app
+          if (/^import\s+(?!type\b)[^;]*from\s+'[^']*joint-scene'/m.test(text)) found.push(path);
+        }
+      }
+    };
+    for (const top of ['app', 'features', 'components']) walk(join(root, top));
+    // the dev page that makes the stills is a route under `next dev` only
+    expect(found.map((f) => f.slice(root.length + 1))).toEqual([
+      'app/(marketing)/dev/joint/page.dev.tsx',
+    ]);
+    expect(readFileSync(join(HERE, 'JointStage.tsx'), 'utf8')).toContain("import('./joint-scene')");
   });
 });

@@ -18,11 +18,12 @@ import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeome
 // edges in a lighter one; and every edge it hides, its own and the other pieces', dashed. The lines
 // are found from the solid itself: an edge is drawn where its two faces meet at an angle (a crease),
 // and is the outline where one of its faces turns toward the eye and the other away. The outline is
-// worked out again only when a piece has moved, from where the eye is, so a round pin keeps its sides.
+// worked out again only when a piece has moved, from where the eye is, so a round piece would keep its
+// sides.
 
 /** Line weights in CSS pixels: the outline, the edges inside it, and the hidden edges. */
 export const WEIGHT = { outline: 1.5, edge: 0.85, hidden: 0.75 } as const;
-/** The dash of a hidden edge, in millimetres of the piece. */
+/** The dash of a hidden edge, in millimetres of the piece at its widest placing (see `dashScale`). */
 const DASH = { size: 3.2, gap: 2.4 } as const;
 const CREASE = Math.cos((20 * Math.PI) / 180);
 
@@ -124,8 +125,10 @@ export class InkPiece {
     return this.group;
   }
 
-  setInk(ink: Ink, pixelRatio: number, size: Vector2) {
+  /** The ink, the pixel ratio and the canvas size; `dashScale` stretches the dashes on a small placing. */
+  setInk(ink: Ink, pixelRatio: number, size: Vector2, dashScale = 1) {
     this.fill.color.copy(ink.fill);
+    (this.hidden.material as LineMaterial).dashScale = 1 / dashScale;
     for (const [l, w] of [
       [this.outline, WEIGHT.outline],
       [this.inner, WEIGHT.edge],

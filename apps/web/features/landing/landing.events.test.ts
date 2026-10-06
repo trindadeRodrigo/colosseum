@@ -9,6 +9,7 @@ import { dictionary, type Lang } from '../../i18n';
 import { inLanguage } from '../account/test/screen';
 import { GOAL_HANDOFF } from '../goal/draft';
 import { router } from '../wallet/test/mock-next';
+import { sceneModule } from './JointStage';
 import { Landing } from './Landing';
 
 const scene = vi.hoisted(() => ({
@@ -139,6 +140,15 @@ describe('the hero', () => {
       gpu: 'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device), SwiftShader driver)',
     });
     const host = await landing();
+    expect(scene.create).not.toHaveBeenCalled();
+    expect(host.querySelectorAll('.sticky [data-ui="joint-still"]')).toHaveLength(2);
+  });
+
+  it('falls back to the stills when the scene’s module does not come (an old page after a deploy)', async () => {
+    browser({ webgl: true });
+    const load = vi.spyOn(sceneModule, 'load').mockRejectedValueOnce(new Error('chunk failed'));
+    const host = await landing();
+    expect(load).toHaveBeenCalled();
     expect(scene.create).not.toHaveBeenCalled();
     expect(host.querySelectorAll('.sticky [data-ui="joint-still"]')).toHaveLength(2);
   });

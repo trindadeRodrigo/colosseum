@@ -36,7 +36,7 @@ section.stage
 
 - **No ambient loops**: the prototype's infinite `scroll-cue` animation becomes a static 1px line + "Scroll to see it fit" (or plays once on load and stops).
 - **No gradient behind copy on mobile**: the prototype's `linear-gradient` plate under hero/step copy becomes a solid `--background` plate (opaque) with 24px padding, anchored to the bottom of the viewport.
-- Wood textures belong to the 3D object only, never to the UI background. Scene background = `--background` (black `#0D0B09`; paper in light mode with the joint lit as on paper).
+- The drawing's ink belongs to the joint only, never to the UI background. Scene background = `--background` (black `#0D0B09`, the joint in cream ink; paper in light mode, the joint in dark ink).
 - No parallax on other elements; only the joint moves, on its own axes.
 - No figures in the stage, so no pins; the stage makes no performance claims.
 

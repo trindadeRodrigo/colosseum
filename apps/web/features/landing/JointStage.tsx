@@ -22,6 +22,11 @@ import type { JointScene } from './joint-scene';
 export const STEP_IDS = ['step-1', 'step-2', 'step-3'] as const;
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+/** The scene's module, fetched only when it is wanted and never with the page (a seam for its test). */
+export const sceneModule = { load: () => import('./joint-scene') };
+
+/** The progress past which the stills show the joint seated: the pin goes in from here. */
+const SEATED = 0.86;
 
 /** Where a still stands in the pinned layer: beside the copy, or above it on a phone. */
 const STILL_FRAME =
@@ -33,7 +38,8 @@ export function JointStage() {
   const stage = useRef<HTMLElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const scene = useRef<JointScene | null>(null);
-  const [progress, setProgress] = useState(0);
+  /** Whether the reader has reached step 03: the stills cross over to the seated one there. */
+  const [seated, setSeated] = useState(false);
   const [on, setOn] = useState<number | null>(null);
   /** What the pinned layer shows: nothing yet, the 3D scene, or the stills of its drawing. */
   const [mode, setMode] = useState<'pending' | '3d' | 'still'>('pending');
@@ -48,7 +54,7 @@ export function JointStage() {
       if (step3) {
         const end = step3.offsetTop + step3.offsetHeight / 2 - vh / 2;
         const p = clamp(window.scrollY / Math.max(end, 1), 0, 1);
-        setProgress(p);
+        setSeated(p >= SEATED);
         scene.current?.setProgress(p);
       }
       const middle = STEP_IDS.findIndex((id) => {
@@ -72,7 +78,7 @@ export function JointStage() {
     };
   }, []);
 
-  // The 3D scene: only where it can run and is wanted, and only once the stage is near.
+  // The 3D scene: only where it can run and is wanted, loaded after the first paint.
   useEffect(() => {
     const el = canvas.current;
     const host = stage.current;
@@ -91,28 +97,34 @@ export function JointStage() {
     const onResize = () => scene.current?.resize();
     const onHidden = () => scene.current?.setVisible(document.visibilityState === 'visible');
     const start = () =>
-      import('./joint-scene').then(({ createJointScene }) => {
-        if (!alive) return;
-        try {
-          scene.current = createJointScene(el, {
-            onReady: () => alive && setMode('3d'),
-            light: window.innerWidth < 820 || (navigator.hardwareConcurrency ?? 8) <= 4,
-          });
-        } catch {
-          setMode('still');
-          return;
-        }
-        const step3 = document.getElementById(STEP_IDS[2]);
-        const vh = window.innerHeight;
-        const end = step3 ? step3.offsetTop + step3.offsetHeight / 2 - vh / 2 : 1;
-        scene.current.setProgress(clamp(window.scrollY / Math.max(end, 1), 0, 1));
-        window.addEventListener('resize', onResize);
-        document.addEventListener('visibilitychange', onHidden);
-        observer = new IntersectionObserver(([entry]) =>
-          scene.current?.setVisible(entry?.isIntersecting ?? false),
-        );
-        observer.observe(host);
-      });
+      sceneModule
+        .load()
+        .then(({ createJointScene }) => {
+          if (!alive) return;
+          try {
+            scene.current = createJointScene(el, {
+              onReady: () => alive && setMode('3d'),
+              light: window.innerWidth < 820 || (navigator.hardwareConcurrency ?? 8) <= 4,
+            });
+          } catch {
+            setMode('still');
+            return;
+          }
+          const step3 = document.getElementById(STEP_IDS[2]);
+          const vh = window.innerHeight;
+          const end = step3 ? step3.offsetTop + step3.offsetHeight / 2 - vh / 2 : 1;
+          scene.current.setProgress(clamp(window.scrollY / Math.max(end, 1), 0, 1));
+          window.addEventListener('resize', onResize);
+          document.addEventListener('visibilitychange', onHidden);
+          observer = new IntersectionObserver(([entry]) =>
+            scene.current?.setVisible(entry?.isIntersecting ?? false),
+          );
+          observer.observe(host);
+        })
+        // The chunk did not come (an old page after a deploy, a dropped connection): the stills.
+        .catch(() => {
+          if (alive) setMode('still');
+        });
     // After the first paint: the heading is what a person reads first, not the canvas.
     const idle = window.setTimeout(start, 0);
     return () => {
@@ -126,7 +138,6 @@ export function JointStage() {
     };
   }, []);
 
-  const seated = progress >= 0.86;
   return (
     <section ref={stage} id="stage" aria-label={t.label} data-ui="joint-stage" className="relative">
       {/* The pinned layer: one screen tall, under the copy. Not drawn at all with reduced motion. */}
@@ -235,7 +246,7 @@ export function JointStage() {
 }
 
 /**
- * Whether WebGL is there on a real GPU. A software rasteriser (SwiftShader, llvmpipe) draws the wood
+ * Whether WebGL is there on a real GPU. A software rasteriser (SwiftShader, llvmpipe) draws the joint
  * on the processor, a frame in seconds, and holds up every page of the browser while it does: there
  * the stills stand in, as they do with no WebGL at all.
  */
