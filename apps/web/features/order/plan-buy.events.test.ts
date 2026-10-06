@@ -187,6 +187,25 @@ describe('the plan screen', () => {
     expect(next?.getAttribute('href')).toBe(`/plan/${PLAN_ID}/buy`);
   });
 
+  it('names every pin in the view’s language, the exit cost’s as well', async () => {
+    api();
+    rememberPlan(planOn());
+    const host = await mount(withAccount('pt', createElement(PlanScreen, { id: PLAN_ID })));
+    await settle();
+    await settle();
+    const pt = dictionary('pt').pin;
+    const names = [...host.querySelectorAll('[data-ui="pin"]')].map(
+      (pin) => pin.getAttribute('aria-label') ?? '',
+    );
+    expect(names.length).toBeGreaterThanOrEqual(2);
+    for (const name of names) expect(name.startsWith(pt.sourceFor.split('{value}')[0])).toBe(true);
+    // and the risk chip agrees with its word: "risco: médio", not the field's "média"
+    const chips = find(host, `ul[aria-label="${dictionary('pt').plan.chips.label}"]`).textContent;
+    expect(chips).toMatch(/risco: (baixo|médio|alto)/);
+    const exit = find(host, '[data-ui="exit-plan-line"] [data-ui="pin"]');
+    expect(exit.getAttribute('aria-label')).not.toContain(en.pin.sourceFor.split('{value}')[0]);
+  });
+
   it('reads a month of the chart out under a crosshair: the keyboard, a mouse, a finger, and its legend', async () => {
     api();
     rememberPlan(planOn());

@@ -628,6 +628,8 @@ export const en = {
       amount: 'amount',
       horizon: 'horizon',
       risk: 'risk',
+      /** The risk as the chip says it after "risk:", which in Portuguese agrees with "risco". */
+      riskValue: { low: 'low', medium: 'medium', high: 'high' },
       chain: 'chain',
     },
     kpi: {

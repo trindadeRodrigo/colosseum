@@ -262,6 +262,8 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   // a vault opened with the deposit, then one swap per asset: the mock trades separately
   await expect(steps).toHaveCount(4);
   await expect(steps.nth(1)).toContainText('receive at least');
+  // a token by its ticker, and an amount in its smallest units grouped as any figure is
+  await expect(steps.nth(1)).toContainText(/on SPY · receive at least \d{1,3}(,\d{3})+ of SPY/);
   await check(page, 'review');
 
   await page.getByRole('button', { name: en.order.signAndBuy('$40') }).click();

@@ -573,6 +573,7 @@ export const pt: Dictionary = {
       amount: 'valor',
       horizon: 'prazo',
       risk: 'risco',
+      riskValue: { low: 'baixo', medium: 'médio', high: 'alto' },
       chain: 'rede',
     },
     kpi: {
