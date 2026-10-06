@@ -1,4 +1,5 @@
 import type { BasketAsset, Reason } from '@colosseum/schemas';
+import { type GoalHeld, heldReason } from './exposure';
 import { byName, split, sum, toUsd } from './money';
 import type { Book, Removed } from './placement';
 import { reason } from './templates';
@@ -124,21 +125,24 @@ export function namesOf(w: World, list: ThemeList): { found: Found[]; outs: Out[
 /**
  * A holding counts once in the plan (DESIGN-VAULT section 7), theme first (gate THEME-FIRST): each
  * theme sleeve, in the order of the slugs, counts of what is held of each of its names up to the level
- * its equal parts reach, and the goal sleeve counts what is left. Takes it off `w.held` and
- * `w.heldTotal`, and returns what each theme counts, by slug and underlying.
+ * its equal parts reach, and the goal sleeve counts what is left. Returns what each theme counts, by
+ * slug and underlying, and what the goal counts; `w.held` is left as it is, the person's whole
+ * holdings, for what the plan says.
  */
 export function claimHoldings(
   w: World,
   themes: { slug: string; cents: number }[],
-): Map<string, Map<string, number>> {
+): { claimed: Map<string, Map<string, number>>; goal: GoalHeld } {
   const claimed = new Map<string, Map<string, number>>();
+  const left = new Map(w.held);
+  let total = w.heldTotal;
   for (const t of byName(themes, (x) => x.slug)) {
     const list = w.themeListOf(t.slug);
     const mine = new Map<string, number>();
     claimed.set(t.slug, mine);
-    if (!list || list.status !== 'confirmed' || t.cents <= 0 || w.held.size === 0) continue;
+    if (!list || list.status !== 'confirmed' || t.cents <= 0 || left.size === 0) continue;
     const { found } = namesOf(w, list);
-    const offsets = found.map((n) => w.held.get(n.asset.underlying) ?? 0);
+    const offsets = found.map((n) => left.get(n.asset.underlying) ?? 0);
     const { level } = fillToLevel(
       t.cents,
       found.map(() => t.cents),
@@ -149,13 +153,13 @@ export function claimHoldings(
       if (take <= 0) return;
       const u = n.asset.underlying;
       mine.set(u, (mine.get(u) ?? 0) + take);
-      const left = (w.held.get(u) ?? 0) - take;
-      if (left > 0) w.held.set(u, left);
-      else w.held.delete(u);
-      w.heldTotal -= take;
+      const rest = (left.get(u) ?? 0) - take;
+      if (rest > 0) left.set(u, rest);
+      else left.delete(u);
+      total -= take;
     });
   }
-  return claimed;
+  return { claimed, goal: { byName: left, total } };
 }
 
 const capped = (a: BasketAsset) => a.cls === 'stock' || a.cls === 'crypto';
@@ -225,8 +229,9 @@ export function placeThemeSleeve(
   const cut = new Map<string, Reason>();
   for (const n of named.found) {
     const h = claimed.get(n.asset.underlying) ?? 0;
-    const values = { asset: n.asset.underlying, heldUsd: toUsd(h) };
-    if (h > 0) heldSaid.push(reason('MORE_BECAUSE_HELD', values, lang));
+    const u = n.asset.underlying;
+    const values = { asset: u, totalUsd: toUsd(w.held.get(u) ?? h), heldUsd: toUsd(h) };
+    if (h > 0) heldSaid.push(heldReason(w, 'MORE_BECAUSE_HELD', u, h));
     if (h > 0 && h >= level) {
       const why = reason('THEME_HELD_NONE', { ...values, theme }, lang);
       leave(n.member.symbol, [why], why);

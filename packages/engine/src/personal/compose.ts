@@ -20,7 +20,7 @@ import {
   tokensOf,
   unitsOf,
 } from './exposure';
-import { BPS, byName, ceilCents, shareOf, split, sum, toCents, toUsd } from './money';
+import { BPS, byName, ceilCents, shareOf, shareOfUp, split, sum, toCents, toUsd } from './money';
 import { packageUp } from './packaging';
 import { Book, once, type Removed, type Sized, type Unit } from './placement';
 import { type ScheduleInputs, scheduleOf } from './schedule';
@@ -210,6 +210,8 @@ function follow(
   cents: number,
   base: Reason[],
   followed: Map<string, number>,
+  /** What the goal counts of the person's holdings, by underlying. */
+  goalHeld: Map<string, number> = w.held,
 ): Reason[] | null {
   const { lang } = w;
   if (theme.family.meta.kind !== 'index') return [];
@@ -223,7 +225,7 @@ function follow(
   );
   const parts = theme.parts.map((p, i) => ({ asset: p.asset, cents: shares[i] ?? 0 }));
   // What the person already holds, or a part over the single-stock cap, is cut on its own line.
-  const held = parts.some((p) => w.held.has(p.asset.underlying));
+  const held = parts.some((p) => goalHeld.has(p.asset.underlying));
   const overCap = parts.some(
     (p) => capped(p.asset) && (followed.get(p.asset.underlying) ?? 0) + p.cents > w.stockCap,
   );
@@ -270,14 +272,17 @@ function build(
     sleeves.safeYieldBps,
     ...sleeves.themes.map((t) => t.shareBps),
   ]);
-  const [growth = 0, dollarYield = 0, gold = 0, cash = 0, setAside = 0] = split(goalPart, [
-    ...SLEEVES.map((sleeve) => sleeves.sized[sleeve]),
-    sleeves.setAsideBps,
-  ]);
+  // What is set aside for withdrawals is its share of the whole amount, rounded up, so the split of
+  // the goal sleeve never leaves it a cent short; the rest of the goal sleeve is shared by the table.
+  const setAside = Math.min(goalPart, shareOfUp(w.amount, sleeves.setAsideBps));
+  const [growth = 0, dollarYield = 0, gold = 0, cash = 0] = split(
+    goalPart - setAside,
+    SLEEVES.map((sleeve) => sleeves.sized[sleeve]),
+  );
   /** Each theme sleeve's cents, by slug. */
   const themeCents = new Map(sleeves.themes.map((t, i) => [t.slug, themeSplit[i] ?? 0]));
   // A holding counts once: the themes first, the goal what is left (gate THEME-FIRST).
-  const claimed = claimHoldings(
+  const { claimed, goal: goalHeld } = claimHoldings(
     w,
     sleeves.themes.map((t) => ({ slug: t.slug, cents: themeCents.get(t.slug) ?? 0 })),
   );
@@ -318,7 +323,7 @@ function build(
     growers.forEach((g, i) => {
       const cents = shares[i] ?? 0;
       const base = [...sleeves.reasons.growth, ...fromTheme(w, g.theme, 'growth')];
-      const inTheWay = follow(w, book, g.theme, cents, base, followed);
+      const inTheWay = follow(w, book, g.theme, cents, base, followed, goalHeld.byName);
       if (inTheWay === null) return;
       const opened =
         g.theme.family.meta.kind === 'index'
@@ -369,7 +374,13 @@ function build(
   // What neither leaves a unit to take is held in dollar yield, with the holding or the cap that
   // kept it out.
   for (const { names, cents, cause } of [
-    ...adjustForHoldings(w, [...growthUnits, ...goldUnits], [yieldUnit, cashUnit], book.removed),
+    ...adjustForHoldings(
+      w,
+      [...growthUnits, ...goldUnits],
+      [yieldUnit, cashUnit],
+      book.removed,
+      goalHeld,
+    ),
     ...capSingleStocks(w, growthUnits, isCapped, followed, book.removed),
   ])
     book.spill(names, cents, cause);
