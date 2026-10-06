@@ -1193,3 +1193,15 @@ describe('a plan as compose makes it', () => {
     expect(out.splitDriftBps).toBeLessThan(10);
   });
 });
+
+// The review of Oct 6: a stored plan whose country is no country is never treated as allowed.
+describe('a stored plan with no real country', () => {
+  it('is refused, and names the fix', () => {
+    const at = vault({ [SPY]: 5500, [SYRUP]: 3500, [CASH]: 1000 });
+    const unknown = { ...ONE, sheet: { ...ONE.sheet, country: 'ZZ' } };
+    expect(() => proposeSleeveRebalances(unknown, context(at))).toThrow(
+      /plan\.sheet\.country: ZZ is not a country/,
+    );
+    expect(proposeSleeveRebalances(ONE, context(at)).proposals).toHaveLength(1);
+  });
+});

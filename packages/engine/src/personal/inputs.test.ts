@@ -127,18 +127,18 @@ describe('each input alone moves the plan and says so', () => {
   });
 
   it('country', () => {
-    // A fixture rule, not a legal claim: the Solana stock tokens are not offered in XX.
+    // A fixture rule, not a legal claim: the Solana stock tokens are not offered in the US.
     const blocked = editShelf(shelf, (a) =>
-      a.chain === 'solana' && a.cls === 'stock' ? { ...a, blockedCountries: ['XX'] } : a,
+      a.chain === 'solana' && a.cls === 'stock' ? { ...a, blockedCountries: ['US'] } : a,
     );
     const here = compose(BASE, blocked, roomy());
     expect(distanceBps(base, here)).toBe(0);
-    const plan = changed({ country: 'XX' }, {}, blocked);
+    const plan = changed({ country: 'US' }, {}, blocked);
     expect(movedBecauseOf('country', plan)).toEqual(['NOT_IN_COUNTRY']);
     expect(plan.lines.some((l) => l.assetId === 'solana:nvdax')).toBe(false);
     // No part of The Seven can be held there, so it is left out as one, and says why.
     expect(plan.removed.find((r) => r.ref === 'the-seven')?.reasons.map((r) => r.text)).toEqual([
-      'The Seven is left out: it is not offered in XX.',
+      'The Seven is left out: it is not offered in the United States.',
     ]);
     expect(plan.lines.some((l) => l.assetId === 'solana:spyx')).toBe(true);
   });

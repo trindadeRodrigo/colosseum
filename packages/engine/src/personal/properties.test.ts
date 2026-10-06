@@ -73,7 +73,7 @@ const personOn = (chain: ChainId): fc.Arbitrary<PersonalSheet> =>
       ),
       risk: fc.constantFrom(...RISKS),
       themes: fc.uniqueArray(fc.constantFrom(...SLUGS, 'no-such-portfolio'), { maxLength: 3 }),
-      country: fc.constantFrom('BR', 'XX', 'DE'),
+      country: fc.constantFrom('BR', 'US', 'DE'),
       chains: fc.constant([chain]),
       incomeTargetUsdMonthly: maybe(fc.integer({ min: 1, max: 5000 })),
       rules: fc.record({ useHoldings: fc.boolean(), glide: fc.boolean() }),
@@ -262,7 +262,7 @@ type World = typeof world extends fc.Arbitrary<infer T> ? T : never;
 function made(raw: World): { shelf: Shelf; context: ComposeContext } {
   return {
     shelf: editShelf(launch, (a) =>
-      raw.blocked.includes(a.id) ? { ...a, blockedCountries: ['XX'] } : a,
+      raw.blocked.includes(a.id) ? { ...a, blockedCountries: ['US'] } : a,
     ),
     context: {
       now: NOW,

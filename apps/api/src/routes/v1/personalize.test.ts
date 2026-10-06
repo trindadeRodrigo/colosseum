@@ -399,6 +399,19 @@ describe('POST /v1/baskets/personalize', () => {
     expect(await plansOf(picked.sub)).toEqual([]);
   });
 
+  it('refuses a country that is no country ("ZZ"), with the fix, and stores nothing (Oct 6)', async () => {
+    const who = await someone('solana');
+    for (const country of ['ZZ', 'QQ', 'EU']) {
+      // Each passes the shared schema's two capitals: the refusal is the route's own check.
+      const res = await post(who, PATH, { sheet: sheet({ country }) });
+      expect(res.statusCode, res.body).toBe(422);
+      const body = OrderError.parse(res.json());
+      expect(body.error).toBe(`no plan can be made from this sheet: ${country} is not a country`);
+      expect(body.fix).toMatch(/two-letter ISO code of the country the person lives in/);
+    }
+    expect(await plansOf(who.sub)).toEqual([]);
+  });
+
   it('answers 409 to a person with no chain yet, and 401 to nobody', async () => {
     const fresh = await someone('passkey');
     const res = await post(fresh, PATH, { sheet: sheet() });

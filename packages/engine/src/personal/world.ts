@@ -22,6 +22,7 @@ import {
   type CandidateId,
   type ComposeContext,
   HeldPosition,
+  isCountryCode,
   PersonalInputError,
   type PersonalObservation,
   PersonalParameters,
@@ -81,8 +82,8 @@ export type World = {
     liquiditySource: string | null;
   };
   liquidity: LiquidityProvider | undefined;
-  /** The month of the goal's date, YYYY-MM. */
-  goalMonth: string;
+  /** The month of the goal's date, YYYY-MM; null for a goal with no date (`horizonOpen`). */
+  goalMonth: string | null;
   /** The month the plan is made in, YYYY-MM. */
   nowMonth: string;
   /**
@@ -227,6 +228,12 @@ export function buildWorld(
   const parsedSheet = PersonalSheet.safeParse(sheetIn);
   if (!parsedSheet.success) throw new PersonalInputError('InvalidSheet', issues(parsedSheet.error));
   const sheet = parsedSheet.data;
+  // A country no person lives in ("ZZ", an unknown place) would let every asset through the
+  // country check: it is refused, never treated as allowed (Oct 6).
+  if (!isCountryCode(sheet.country))
+    throw new PersonalInputError('InvalidSheet', [
+      { path: 'country', message: `${sheet.country} is not a country: say where the person lives` },
+    ]);
 
   const parsedParams = PersonalParameters.safeParse(context.params ?? PERSONAL_PARAMS);
   if (!parsedParams.success)
@@ -435,7 +442,7 @@ export function buildWorld(
       liquiditySource: context.liquiditySource?.trim() || null,
     },
     liquidity,
-    goalMonth: monthAfter(context.now, sheet.horizonMonths),
+    goalMonth: sheet.horizonOpen ? null : monthAfter(context.now, sheet.horizonMonths),
     nowMonth,
     withdrawals: [],
     // A vault's target is at least one basis point, so a line is too, whatever the table says.

@@ -35,8 +35,12 @@ export function putInto(
   return counted.length === 0 ? null : counted.reduce((sum, r) => sum + r.amountUsd, 0);
 }
 
-/** When the goal is due: the order's day, plus the plan's horizon in months. */
-export function dueOf(goal: PlacedGoal): Date {
+/**
+ * When the goal is due: the order's day, plus the plan's horizon in months. Null for a goal with no
+ * date (gate GLIDE-OPT-IN): its months are a starting parameter, and no due date is made from them.
+ */
+export function dueOf(goal: PlacedGoal): Date | null {
+  if (goal.sheet.horizonOpen) return null;
   const due = new Date(goal.placedAt);
   due.setUTCMonth(due.getUTCMonth() + goal.sheet.horizonMonths);
   return due;

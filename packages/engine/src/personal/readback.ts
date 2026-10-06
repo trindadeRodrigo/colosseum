@@ -1,6 +1,6 @@
 import type { ShelfPortfolio } from './intake';
 import { CLASS_WORDS, READBACK_TEMPLATES, type ReadBackId, render } from './templates';
-import { COUNTRY_NOT_ASKED, type PersonalSheet } from './types';
+import type { PersonalSheet } from './types';
 
 // The read-back (gate GUIDED-INTAKE): what the intake understood, said back to the person before the
 // engine runs. It is drawn from the validated sheet by templates, in the sheet's language, and never
@@ -35,8 +35,7 @@ export function readBack(sheet: PersonalSheet, portfolios: ShelfPortfolio[]): st
     out.push(say('CURRENCY', { currency: sheet.currency }));
   if (sheet.themes.length > 0)
     out.push(say('THEMES', { themes: sheet.themes.map(nameOf).join(',') }));
-  // A country nobody was asked for (no asset on the shelf is blocked anywhere) is not said.
-  if (sheet.country !== COUNTRY_NOT_ASKED) out.push(say('COUNTRY', { country: sheet.country }));
+  out.push(say('COUNTRY', { country: sheet.country }));
   for (const chain of sheet.chains) out.push(say('CHAIN', { chain }));
   out.push(say(sheet.rules.useHoldings ? 'HOLDINGS_ON' : 'HOLDINGS_OFF'));
   // The glide is opt-in (gate GLIDE-OPT-IN, Oct 6): said only when it is on.

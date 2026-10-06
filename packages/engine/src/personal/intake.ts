@@ -33,7 +33,7 @@ import {
   type QuestionId,
   render,
 } from './templates';
-import { COUNTRY_NOT_ASKED, HoldableClass, PersonalLimits, PersonalSheet } from './types';
+import { HoldableClass, isCountryCode, PersonalLimits, PersonalSheet } from './types';
 
 // The guided intake (gate GUIDED-INTAKE; DESIGN-VAULT section 7). A model reads the person's goal into
 // a draft of the sheet and says which fields it could not read. Everything after that is here, in pure
@@ -130,11 +130,6 @@ export type IntakeInput = {
   /** The chain of the person's wallet (gate ONE-CHAIN); null while they have not picked one. */
   homeChain: ChainId | null;
   portfolios: ShelfPortfolio[];
-  /**
-   * Whether an asset on the chain's shelf is not offered somewhere: only then is the country asked
-   * (Oct 6). Left out: it is asked.
-   */
-  countryMatters?: boolean;
 };
 
 export type IntakeResult = {
@@ -274,6 +269,8 @@ export function runIntake(input: IntakeInput): IntakeResult {
   const split = splitIn(text);
   const exits = exitTimesIn(text);
   const openWords = openEndedIn(text);
+  // A date or a time frame written in the text wins over "no rush" ("no rush, but I need it by 2030").
+  const dated = horizonsIn(text, nowMonth).length > 0;
   let openEnded = false;
 
   if (input.reply === null) {
@@ -286,7 +283,7 @@ export function runIntake(input: IntakeInput): IntakeResult {
         unclear.add(field);
       }
     // "No hard cap", "sem prazo": no date, read by code, the same with or without a model.
-    if (openWords !== null && rules.horizonMonths === null) openEnded = true;
+    if (openWords !== null && rules.horizonMonths === null && !dated) openEnded = true;
     // A split the rules parser cannot read ("70-30", "70%") is asked.
     if (split.pairs.length > 0 || split.percents.length > 0) unclear.add('sleeves');
   } else {
@@ -350,8 +347,11 @@ export function runIntake(input: IntakeInput): IntakeResult {
     }
     // No date: taken only where the text says so ("no hard cap", "open-ended", "sem prazo").
     if (r.openEnded === true) {
-      if (openWords !== null) openEnded = draft.horizonMonths === null;
-      else flags.push('no_cue:openEnded');
+      if (openWords === null) flags.push('no_cue:openEnded');
+      else if (dated) {
+        flags.push('date_in_text:openEnded');
+        if (draft.horizonMonths === null) unclear.add('horizonMonths');
+      } else openEnded = draft.horizonMonths === null;
     }
     // How soon the whole plan may be needed: written as a time to get out, or as a time frame.
     if (r.mayNeedInMonths !== null) {
@@ -368,9 +368,16 @@ export function runIntake(input: IntakeInput): IntakeResult {
       const each = r.sleeves.every(
         (x) => written.has(x.sharePct) || (split.half && x.sharePct * 2 === 100),
       );
-      if (whole && kinds && each)
+      // Every share the text writes as a percent of the money is part of the split, or it is asked:
+      // "70/30 but 50% in AI" is never read as 70/30 with the 50% dropped.
+      const shares = new Set(r.sleeves.map((x) => x.sharePct));
+      const unplaced = split.ofMoney.filter((p) => !shares.has(p));
+      if (whole && kinds && each && unplaced.length === 0)
         draft.sleeves = r.sleeves.map((x) => ({ kind: x.kind, shareBps: x.sharePct * 100 }));
-      else {
+      else if (whole && kinds && each) {
+        flags.push('split_percent_unplaced');
+        unclear.add('sleeves');
+      } else {
         flags.push('not_in_text:sleeves');
         unclear.add('sleeves');
       }
@@ -442,7 +449,10 @@ export function runIntake(input: IntakeInput): IntakeResult {
       const other = rules[field];
       if (
         field === 'risk' &&
-        (perPart || (other === 'medium' && !riskCuesIn(text).includes('medium')))
+        // With a part kept safe, the rules parser's one reading is compared with the risky part's,
+        // unless it read low: that word is the safe part's ("as low as possible for the 70%").
+        ((perPart && other === 'low') ||
+          (other === 'medium' && !riskCuesIn(text).includes('medium')))
       )
         continue;
       // The rules parser counts "for 10 years" as 121 months: one month apart is the same time frame
@@ -477,7 +487,14 @@ export function runIntake(input: IntakeInput): IntakeResult {
   const language: Language =
     answers.language ?? draft.language ?? input.language ?? rules.language ?? 'en';
   const P = PERSONAL_PARAMS;
-  const countryMatters = input.countryMatters ?? true;
+  // A country no person lives in ("ZZ") is never taken, from the text or an answer: it is asked.
+  for (const where of ['draft', 'answer'] as const) {
+    const code = where === 'draft' ? draft.country : answers.country;
+    if (code && !isCountryCode(code)) {
+      flags.push(`not_a_country:${where}`);
+      unclear.add('country');
+    }
+  }
   // No date: the person said so, in words or as an answer. A date given wins.
   const horizonOpen =
     answers.horizonOpen ??
@@ -495,6 +512,7 @@ export function runIntake(input: IntakeInput): IntakeResult {
     currency: answers.currency ?? draft.currency,
     themes: answers.themes ?? draft.themes,
   };
+  if (value.country !== null && !isCountryCode(value.country)) value.country = null;
   const sleeves = answers.sleeves ?? draft.sleeves;
   const keptSafe = sleeves?.some((x) => x.kind === 'safe_yield') === true && sleeves.length > 1;
   // An answer naming a portfolio is held to the shelf too.
@@ -507,7 +525,12 @@ export function runIntake(input: IntakeInput): IntakeResult {
   }
 
   const needed = (field: QuestionField): boolean => {
-    if (field in answers && field !== 'chains' && !(field === 'themes' && value.themes === null))
+    if (
+      field in answers &&
+      field !== 'chains' &&
+      !(field === 'themes' && value.themes === null) &&
+      !(field === 'country' && value.country === null)
+    )
       return false;
     switch (field) {
       case 'goal':
@@ -516,9 +539,9 @@ export function runIntake(input: IntakeInput): IntakeResult {
         return value[field] === null || unclear.has(field);
       case 'horizonMonths':
         return !horizonOpen && (value[field] === null || unclear.has(field));
-      // Asked only where an asset is not offered somewhere: otherwise it changes nothing.
+      // Always asked when not given (Oct 6): some assets aren't offered everywhere, or to everyone.
       case 'country':
-        return countryMatters && (value[field] === null || unclear.has(field));
+        return value[field] === null || unclear.has(field);
       case 'sleeves':
         return unclear.has(field);
       case 'incomeTargetUsdMonthly':
@@ -554,7 +577,7 @@ export function runIntake(input: IntakeInput): IntakeResult {
       ...(horizonOpen ? { horizonOpen: true } : {}),
       risk: value.risk,
       themes: value.themes ?? [],
-      country: value.country ?? (countryMatters ? null : COUNTRY_NOT_ASKED),
+      country: value.country,
       chains: [input.homeChain],
       ...(value.goal === 'income' && value.incomeTargetUsdMonthly !== null
         ? { incomeTargetUsdMonthly: value.incomeTargetUsdMonthly }

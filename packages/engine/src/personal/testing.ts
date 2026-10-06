@@ -1396,7 +1396,10 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
     lines.filter((l) => sleeveOfClass(l.a.cls) !== 'dollarYield').map((l) => l.cents),
   );
   say(plan.card.moneyTodayUsd === s.amountUsd, 'the card: money today is not the amount');
-  say(plan.card.termMonths === s.horizonMonths, 'the card: the term is not the sheet');
+  say(
+    plan.card.termMonths === (s.horizonOpen ? null : s.horizonMonths),
+    'the card: the term is not the sheet',
+  );
   say(
     Math.abs(cents(plan.card.expectedReturn.lossInFallUsd) - (risky * P.fallBps) / 10_000) <= 1,
     'the card: the loss in a fall is not the fall on stocks, crypto and gold',

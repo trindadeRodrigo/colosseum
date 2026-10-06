@@ -32,6 +32,8 @@ export function PlanChart({
   const t = useT();
   const lang = useLang();
   const words = t.plan.chart;
+  // A goal with no date has no term to project over: no chart is drawn (gate GLIDE-OPT-IN).
+  if (card.termMonths === null) return null;
   const months = card.termMonths;
   const { lowPct, highPct } = card.expectedReturn;
   const end = (pct: number) => amountUsd + (amountUsd * pct * months) / 1200;

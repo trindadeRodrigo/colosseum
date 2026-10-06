@@ -130,8 +130,7 @@ describe('POST /v1/baskets/intake', () => {
     const first = IntakeResponse.parse((await post(who, PATH, { text })).json());
     expect(first.sheet).toBeNull();
     expect(first.readBack).toBeNull();
-    // No asset on the mock chain's shelf is blocked anywhere, so the country is not asked (Oct 6).
-    expect(first.questions.map((q) => q.field)).toEqual(['goal', 'amountUsd', 'risk']);
+    expect(first.questions.map((q) => q.field)).toEqual(['goal', 'amountUsd', 'risk', 'country']);
     expect(first.questions[1]?.text).toBe(
       'Você escreveu 3.000 BRL. Quanto é isso em dólares, a moeda em que o plano é aplicado?',
     );
@@ -211,6 +210,7 @@ describe('POST /v1/baskets/intake', () => {
       'amountUsd',
       'horizonMonths',
       'risk',
+      'country',
     ]);
     expect(body.questions.find((q) => q.field === 'risk')?.read).toBe('high');
     const done = await post(
@@ -296,17 +296,23 @@ describe('POST /v1/baskets/intake', () => {
     };
     const first = await turn(1);
     expect(first.reader.provenance).toBe('mock');
-    expect(first.questions.map((q) => q.field)).toEqual(['goal', 'sleeves', 'horizonMonths']);
+    expect(first.questions.map((q) => q.field)).toEqual([
+      'goal',
+      'sleeves',
+      'horizonMonths',
+      'country',
+    ]);
     expect(first.flags).toContain('split_mismatch');
-    // The second message answers all three in words; the mock shelf blocks no country, so none is asked.
-    const second = await turn(2);
+    // The second message answers the first three in words; only the country is left.
+    expect((await turn(2)).questions.map((q) => q.field)).toEqual(['country']);
+    const second = await turn(3);
     expect(second.questions).toEqual([]);
     expect(second.sheet).toMatchObject({
       goal: 'grow',
       amountUsd: 2000,
       risk: 'high',
       horizonOpen: true,
-      country: 'ZZ',
+      country: 'BR',
       rules: { useHoldings: true, glide: false },
       sleeves: [
         { kind: 'safe_yield', shareBps: 7000 },
