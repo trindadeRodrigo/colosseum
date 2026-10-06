@@ -622,7 +622,7 @@ export const en = {
     noReason: 'No reason given.',
     projected: 'Projected range a year, not a promise',
     projectedValue: (low: string, high: string) => `${low} to ${high}`,
-    basis: (basis: string) => `How it was worked out: ${basis.replace(/[.\s]+$/, '')}.`,
+    basis: (basis: string) => `How it was worked out: ${String(basis).replace(/[.\s]+$/, '')}.`,
     lossInFall: (amount: string) =>
       `In a bad fall, the engine counts a loss of about ${amount} on this plan.`,
     exitUnmeasured: 'Not measured yet, so no cost is shown.',

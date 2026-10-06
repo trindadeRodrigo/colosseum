@@ -584,7 +584,7 @@ export const pt: Dictionary = {
     noReason: 'Nenhum motivo informado.',
     projected: 'Faixa projetada por ano, não é uma promessa',
     projectedValue: (low: string, high: string) => `${low} a ${high}`,
-    basis: (basis: string) => `Como foi calculada: ${basis.replace(/[.\s]+$/, '')}.`,
+    basis: (basis: string) => `Como foi calculada: ${String(basis).replace(/[.\s]+$/, '')}.`,
     lossInFall: (amount: string) =>
       `Numa queda forte, o motor conta uma perda de cerca de ${amount} neste plano.`,
     exitUnmeasured: 'Ainda não foi medido, então nenhum custo é mostrado.',
