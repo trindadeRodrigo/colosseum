@@ -159,7 +159,7 @@ function proposal(sheet: BasketSheet) {
       moneyTodayUsd: sheet.amountUsd,
       termMonths: sheet.horizonMonths,
       cashFlow: 'none',
-      expectedReturn: { lowPct: 0, highPct: 0, basis: 'MOCK', lossInFallUsd: 0 },
+      expectedReturn: { lowPct: 0, highPct: 0, basis: 'sample', lossInFallUsd: 0 },
       exit: { text: 'Sample: up to the whole amount within a day', costBps: 25 },
     },
     flags: [],
