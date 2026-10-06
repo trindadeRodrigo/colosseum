@@ -23,8 +23,9 @@ import { Mark } from './Mark';
 //   Analytics   Bearing (/risk)
 //   the wallet  "Sign in"; then the short address of the plan's chain and "Sign out"
 //
-// His "Products" is the shelf of shared portfolios, which no route serves yet (WEB-4): it comes back
-// with the shelf. On a phone the links are in the sheet under the menu button, and the address goes at
+//   Products    the shelf of shared portfolios (/shelf), and a portfolio's page under it
+//
+// On a phone the links are in the sheet under the menu button, and the address goes at
 // the top of the sheet: the bar keeps room for the one action.
 //
 // Nothing here is the wallet adapter's button, which renders one thing on the server and another in
@@ -33,6 +34,7 @@ import { Mark } from './Mark';
 
 /** The product's routes in the bar, his order; `signedIn` marks the one a visitor does not get. */
 const ROUTES = [
+  { href: '/shelf', key: 'products', also: ['/indexes', '/publish'] },
   { href: '/goal', key: 'invest', also: ['/plan', '/orders'] },
   { href: '/monitor', key: 'portfolio', signedIn: true },
   { href: '/risk/methodology', key: 'resources' },
