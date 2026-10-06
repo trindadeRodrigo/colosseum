@@ -8877,7 +8877,8 @@
                         "US_PERSON",
                         "RATE_LIMITED",
                         "CHAIN_UNAVAILABLE",
-                        "PLAN_GONE"
+                        "PLAN_GONE",
+                        "CURRENCY_UNSUPPORTED"
                       ]
                     },
                     "fix": {
