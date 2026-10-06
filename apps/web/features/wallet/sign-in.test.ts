@@ -12,7 +12,7 @@ import {
   signInWithSolanaWallet,
   walletAlreadyThere,
 } from './sign-in-flows';
-import { type SignInAttempt, signInFailure } from './sign-in-view';
+import { makeOneInstead, type SignInAttempt, signInFailure, walletChoices } from './sign-in-view';
 import { buildConfigForTest } from './test/api-config';
 import { chains, failure } from './test/fixtures';
 import { createTestDriver, TEST_WALLETS } from './test/test-driver';
@@ -330,6 +330,49 @@ describe('the wallets a passkey sign-in owes a person', () => {
     expect(walletAlreadyThere({ privyErrorCode: 'embedded_wallet_already_exists' })).toBe(true);
     for (const other of [new Error('Failed to connect to wallet proxy'), null, 'already', {}])
       expect(walletAlreadyThere(other)).toBe(false);
+  });
+});
+
+describe('the wallets as the sign-in screen offers them', () => {
+  const ICON = 'data:image/png;base64,iVBORw0KGgo=';
+  const provider = { request: async () => null };
+
+  it('keeps a wallet’s own icon when it is an image inline, and nothing else', () => {
+    const read = (icon: unknown) =>
+      readAnnouncement({ info: { rdns: 'app.phantom', name: 'Phantom', icon }, provider })?.icon;
+    expect(read(ICON)).toBe(ICON);
+    expect(read('data:image/svg+xml;base64,PHN2Zy8+')).toBe('data:image/svg+xml;base64,PHN2Zy8+');
+    for (const bad of ['https://evil.example/i.png', 'javascript:alert(1)', 'data:text/html,x', 7])
+      expect(read(bad)).toBeUndefined();
+    expect(foundWallets([{ name: 'Backpack', icon: ICON }], [])[0]?.icon).toBe(ICON);
+  });
+
+  it('offers one entry per wallet, with the family of each way in, and no chain in its name', () => {
+    const choices = walletChoices(
+      foundWallets(
+        [{ name: 'Phantom', icon: ICON }, { name: 'Solflare' }],
+        [
+          { rdns: 'app.phantom', name: 'Phantom', provider },
+          { rdns: 'io.metamask', name: 'MetaMask', provider },
+        ],
+      ),
+    );
+    expect(choices.map((c) => [c.name, c.ids])).toEqual([
+      ['MetaMask', { evm: 'evm:io.metamask' }],
+      ['Phantom', { solana: 'solana:Phantom', evm: 'evm:app.phantom' }],
+      ['Solflare', { solana: 'solana:Solflare' }],
+    ]);
+    expect(choices.find((c) => c.name === 'Phantom')?.icon).toBe(ICON);
+  });
+
+  it('makes a passkey after using one failed for want of one, and after nothing else', () => {
+    const privyError = (code: string) =>
+      toWalletError(Object.assign(new Error(code), { privyErrorCode: code }));
+    for (const code of ['passkey_not_allowed', 'user_does_not_exist', 'passkey_not_registered'])
+      expect(makeOneInstead(privyError(code)), code).toBe(true);
+    for (const code of ['disallowed_login_method', 'too_many_requests', 'client_request_timeout'])
+      expect(makeOneInstead(privyError(code)), code).toBe(false);
+    expect(makeOneInstead(new Error('anything'))).toBe(false);
   });
 });
 

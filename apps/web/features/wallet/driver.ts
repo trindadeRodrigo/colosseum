@@ -17,6 +17,8 @@ export type EvmRequest = {
 
 /** A wallet found in this browser that a person can sign in with: an extension, or the wallet's own browser. */
 export type FoundWallet = {
+  /** Its icon as the wallet itself gives it (EIP-6963, the wallet standard): a `data:image/` URL. */
+  icon?: string;
   /** Names it to `signIn('wallet', { wallet })`. Stable while the page is open. */
   id: string;
   /** Its own name, as the wallet announces it: "Phantom". */

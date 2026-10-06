@@ -51,7 +51,7 @@ async function check(page: Page, name: string) {
 async function signIn(page: Page) {
   await page.request.post(`${STUB}/__stub/reset`);
   await page.goto('/sign-in');
-  await page.getByRole('button', { name: en.signIn.passkey.create }).click();
+  await page.getByRole('button', { name: en.signIn.passkey.continue }).click();
   await page.getByRole('button', { name: 'Solana' }).click();
   await page.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
   // sign-in leads to the goal (WEB-2b)

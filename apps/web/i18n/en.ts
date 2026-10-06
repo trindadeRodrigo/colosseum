@@ -43,20 +43,26 @@ export const en = {
     loading: 'Loading sign-in…',
     passkey: {
       title: 'Passkey',
-      body: 'No seed phrase to write down. Your device keeps the passkey, and a wallet is made for you that only it opens.',
-      create: 'Create a passkey',
-      use: 'Use a passkey I already have',
+      body: 'No seed phrase to write down. I use the passkey this device keeps for this site, or make one if it has none. A wallet is made for you that only that passkey opens.',
+      /** One button: signs in with a passkey this device has, or makes one. */
+      continue: 'Continue with a passkey',
       waiting: 'Waiting for your passkey…',
       making: 'Making your wallet…',
     },
     wallet: {
       title: 'Wallet',
       body: 'Connect a wallet you already use. Your plan lives on its chain: Solana for a Solana wallet, Robinhood Chain for an Ethereum wallet.',
+      /** Opens the list of wallets found in this browser. */
+      connect: 'Connect a wallet',
       /** The name of the list of wallets found in this browser. */
       found: 'Wallets found in this browser',
-      family: { solana: 'Solana', evm: 'Ethereum' },
       waiting: 'Waiting for your wallet…',
-      none: 'No wallet was found in this browser. Install one, open this page inside your wallet’s own browser, or use a passkey.',
+      none: 'No wallet was found in this browser. Install one, or open this page inside your wallet’s own browser. Or continue with a passkey: it needs nothing installed.',
+      /** A wallet that signs on both families: the chain is asked before it signs. */
+      both: (wallet: string) =>
+        `${wallet} works on Solana and on Robinhood Chain. Choose the chain your plan lives on: it can’t be changed later.`,
+      /** The name of the group of the two chains to choose from. */
+      chains: 'The chain of your plan',
     },
     off: {
       api: 'Sign-in is off for the moment: our server isn’t answering. I ask again every few seconds, and this page updates by itself.',

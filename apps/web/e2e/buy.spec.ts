@@ -88,7 +88,7 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
 async function toReview(page: Page) {
   await page.request.post(`${STUB}/__stub/reset`);
   await page.goto('/sign-in');
-  await page.getByRole('button', { name: en.signIn.passkey.create }).click();
+  await page.getByRole('button', { name: en.signIn.passkey.continue }).click();
   await page.getByRole('button', { name: 'Solana' }).click();
   await page.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
   // sign-in leads to the goal; `/` is his landing page for a visitor (WEB-2b)

@@ -40,19 +40,21 @@ export const pt: Dictionary = {
     loading: 'Carregando o login…',
     passkey: {
       title: 'Chave de acesso',
-      body: 'Você não precisa anotar frase de recuperação. A chave de acesso fica no seu aparelho, e só ela abre a carteira que criamos para você.',
-      create: 'Criar uma chave de acesso',
-      use: 'Usar uma chave de acesso que já tenho',
+      body: 'Você não precisa anotar frase de recuperação. Eu uso a chave de acesso que este aparelho guarda para este site, ou crio uma se não houver. A carteira que criamos para você só abre com essa chave.',
+      continue: 'Continuar com uma chave de acesso',
       waiting: 'Aguardando sua chave de acesso…',
       making: 'Criando sua carteira…',
     },
     wallet: {
       title: 'Carteira',
       body: 'Conecte uma carteira que você já usa. Seu plano fica na rede dela: Solana para uma carteira Solana, Robinhood Chain para uma carteira Ethereum.',
+      connect: 'Conectar uma carteira',
       found: 'Carteiras encontradas neste navegador',
-      family: { solana: 'Solana', evm: 'Ethereum' },
       waiting: 'Aguardando sua carteira…',
-      none: 'Nenhuma carteira foi encontrada neste navegador. Instale uma, abra esta página no navegador da própria carteira ou use uma chave de acesso.',
+      none: 'Nenhuma carteira foi encontrada neste navegador. Instale uma ou abra esta página no navegador da própria carteira. Ou continue com uma chave de acesso: não precisa instalar nada.',
+      both: (wallet: string) =>
+        `${wallet} funciona na Solana e na Robinhood Chain. Escolha a rede onde seu plano fica: isso não pode ser mudado depois.`,
+      chains: 'A rede do seu plano',
     },
     off: {
       api: 'O login está indisponível no momento: nosso servidor não está respondendo. Eu tento de novo a cada poucos segundos, e esta página se atualiza sozinha.',

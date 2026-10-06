@@ -99,6 +99,11 @@ const button = (host: HTMLElement, label: string) => {
   if (found.length !== 1) throw new Error(`expected one "${label}", found ${found.length}`);
   return found[0] as HTMLElement;
 };
+/** Connects a wallet as a person does: "Connect a wallet", then the wallet in the list. */
+const connectWith = async (host: HTMLElement, name: string) => {
+  await click(button(host, en.signIn.wallet.connect));
+  await click(button(host, name));
+};
 const asks = (host: HTMLElement) => host.textContent?.includes(en.chain.pick.title) ?? false;
 const state = (host: HTMLElement) =>
   find(host, '[data-ui="sign-in-screen"]').getAttribute('data-account');
@@ -124,9 +129,10 @@ describe('a person who creates a wallet in the app', () => {
     const host = await screen('en', '/goal');
     expect(asks(host)).toBe(false);
 
-    await click(button(host, en.signIn.passkey.create));
+    await click(button(host, en.signIn.passkey.continue));
     await settle();
-    expect(signIn).toHaveBeenCalledWith('passkey', { create: true });
+    // one button: a passkey this device has, or one made here (SIGN-IN-FLOW)
+    expect(signIn).toHaveBeenCalledWith('passkey');
     expect(asks(host)).toBe(true);
     // what the choice means, and that it stands
     expect(host.textContent).toContain(`${en.chain.pick.asked.made} ${en.chain.pick.body}`);
@@ -248,7 +254,7 @@ describe('a person who connects an outside wallet', () => {
     portStore.set(fakePort({ found: FOUND, signIn }));
     const host = await screen('en', '/goal');
     const seen: boolean[] = [asks(host)];
-    await click(button(host, name));
+    await connectWith(host, name);
     seen.push(asks(host));
     await settle();
     seen.push(asks(host));
@@ -370,7 +376,7 @@ describe('when the choice cannot be stored', () => {
     const signIn = signsInAs(EMBEDDED);
     portStore.set(fakePort({ found: FOUND, signIn }));
     const host = await screen('en', '/goal');
-    await click(button(host, en.signIn.passkey.create));
+    await click(button(host, en.signIn.passkey.continue));
     await settle();
     await click(button(host, 'Solana'));
     server.store(made({ chain: 'robinhood', chainSource: 'picked', chainOptions: [] }));
@@ -666,7 +672,7 @@ describe('the goal a person typed, kept in the tab', () => {
     api(connected());
     portStore.set(fakePort({ found: FOUND, signIn: signsInAs(PHANTOM) }));
     const host = await screen('en', '/goal');
-    await click(button(host, 'Phantom'));
+    await connectWith(host, 'Phantom');
     await settle();
     expect(state(host)).toBe('ready');
     expect(window.sessionStorage.getItem('tf-goal')).toBe(DRAFT);
@@ -690,7 +696,7 @@ describe('the screen itself', () => {
     });
     portStore.set(fakePort({ found: FOUND, signIn }));
     const host = await screen();
-    await click(button(host, en.signIn.passkey.create));
+    await click(button(host, en.signIn.passkey.continue));
     await settle();
     expect(find(host, '[data-ui="lattice-status"]').textContent).toBe(en.signIn.passkey.making);
     portStore.set(signedInPort(EMBEDDED));
@@ -703,7 +709,7 @@ describe('the screen itself', () => {
     const signIn = signsInAs(PHANTOM);
     portStore.set(fakePort({ found: FOUND, signIn }));
     const host = await screen('en', '/goal');
-    await click(button(host, 'Phantom'));
+    await connectWith(host, 'Phantom');
     await settle();
     expect(router.replace.mock.calls).toEqual([['/goal']]);
   });
@@ -724,7 +730,7 @@ describe('where focus goes, and what a screen reader is told, when the screen ch
     api(made());
     portStore.set(fakePort({ found: FOUND, signIn: signsInAs(EMBEDDED) }));
     const host = await screen('en', '/goal');
-    await pressing(button(host, en.signIn.passkey.create));
+    await pressing(button(host, en.signIn.passkey.continue));
     expect(asks(host)).toBe(true);
     // the button that was pressed is gone: focus is on what took its place, not on the page
     expect(document.activeElement).toBe(stage(host));
@@ -742,7 +748,7 @@ describe('where focus goes, and what a screen reader is told, when the screen ch
     });
     portStore.set(fakePort({ found: FOUND, signIn }));
     const host = await screen();
-    await pressing(button(host, en.signIn.passkey.create));
+    await pressing(button(host, en.signIn.passkey.continue));
     expect(document.activeElement).toBe(heading(host));
     expect(heading(host).textContent).toBe(en.signIn.done.title);
     expect(said(host)).toBe(`${en.signIn.done.title} ${en.signIn.passkey.making}`);
