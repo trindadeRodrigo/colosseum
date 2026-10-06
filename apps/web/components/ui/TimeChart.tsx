@@ -104,7 +104,7 @@ export function Tag({
   return (
     <g data-ui="chart-tag">
       <rect x={x0} y={y - 9} width={w} height={18} fill={fill} stroke={stroke} strokeWidth={1} />
-      <text x={x0 + 5} y={y + 4} fill={ink} className="font-mono text-[11px] font-medium">
+      <text x={x0 + 5} y={y + 4} fill={ink} className="font-mono text-[12px] font-medium">
         {text}
       </text>
     </g>
@@ -365,7 +365,7 @@ export function TimeChart(props: TimeChartProps) {
                       x={px}
                       y={plotH + 16}
                       textAnchor="middle"
-                      className="fill-foreground/80 font-mono text-[11px]"
+                      className="fill-foreground/80 font-mono text-[12px]"
                     >
                       {tt.fmt(t)}
                     </text>
@@ -420,7 +420,7 @@ function PaneDraw({
             <text
               x={W - AX + 6}
               y={g.Y(t) + 4}
-              className="fill-foreground/80 font-mono text-[11px]"
+              className="fill-foreground/80 font-mono text-[12px]"
             >
               {p.fmt(t)}
             </text>
@@ -501,7 +501,7 @@ function PaneDraw({
       )}
       {index > 0 && <line x1={0} x2={W} y1={g.top - 4} y2={g.top - 4} stroke="var(--border)" />}
       {p.title && (
-        <text x={12} y={g.top + 13} className="fill-muted-foreground font-condensed text-[11.5px]">
+        <text x={12} y={g.top + 13} className="fill-muted-foreground font-condensed text-[12px]">
           {p.title}
         </text>
       )}

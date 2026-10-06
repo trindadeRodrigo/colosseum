@@ -68,7 +68,7 @@ export function CaseReadout({
     <div
       aria-live="polite"
       data-ui="chart-readout"
-      className="flex min-h-5 flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px]/5 text-muted-foreground"
+      className="flex min-h-5 flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[12px]/5 text-muted-foreground"
     >
       {at === null ? <span>{hint}</span> : children}
     </div>
@@ -120,7 +120,7 @@ export function CaseLegend({
     <ul
       aria-label={label}
       data-ui="case-legend"
-      className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-foreground"
+      className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[12px] text-muted-foreground"
     >
       {series.map((s) => (
         <li

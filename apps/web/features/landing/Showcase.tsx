@@ -47,7 +47,7 @@ function Kpis({ items }: { items: Kpi[] }) {
             i < 2 ? 'max-[619px]:border-b max-[619px]:border-border' : '',
           ].join(' ')}
         >
-          <dt className="font-mono text-[11px]/4 text-muted-foreground">{kpi.label}</dt>
+          <dt className="font-mono text-[12px]/4 text-muted-foreground">{kpi.label}</dt>
           {/* A figure with its pin and MOCK plate is one unbreakable line (ProvenancePin). In a cell
               narrower than 12rem (all four, at every width this page has today) the plate goes
               under the figure; the figure and its pin stay together. */}
@@ -55,7 +55,7 @@ function Kpis({ items }: { items: Kpi[] }) {
             {kpi.value}
             {kpi.unit && (
               // a unit such as "Dec 2031" is never broken across lines
-              <small className="ml-1 font-mono text-[11px] font-normal whitespace-nowrap text-muted-foreground">
+              <small className="ml-1 font-mono text-[12px] font-normal whitespace-nowrap text-muted-foreground">
                 {kpi.unit}
               </small>
             )}
@@ -137,7 +137,7 @@ function Case({
           <p className="border-l-2 border-primary py-0.5 pl-2.5 text-[13px]/5">
             {t.exitPlan}: {exit} <span className="text-muted-foreground">{exitNote}</span>
           </p>
-          <div className="flex flex-wrap justify-between gap-3 border-t border-border pt-2.5 font-mono text-[11px] text-muted-foreground">
+          <div className="flex flex-wrap justify-between gap-3 border-t border-border pt-2.5 font-mono text-[12px] text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               {t.sample} <PinGlyph state="mock" />
             </span>

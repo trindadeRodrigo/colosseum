@@ -119,7 +119,7 @@ export function PlanChart({
             aria-hidden="true"
             viewBox={`0 0 ${W} ${H}`}
             className="block h-auto w-full"
-            style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}
+            style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}
           >
             {grid.map((g) => (
               <g key={g}>

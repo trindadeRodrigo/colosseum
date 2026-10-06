@@ -103,7 +103,7 @@ export function DistChart(c: DistChartProps) {
               className="absolute top-0 z-[1] -translate-x-1/2 rounded-md border border-input bg-muted px-2.5 py-0.5 whitespace-nowrap"
               style={{ left: X(c.mid) }}
             >
-              <span className="block font-condensed text-[11.5px]/[14px] font-medium text-muted-foreground">
+              <span className="block font-condensed text-[12px]/[16px] font-medium text-muted-foreground">
                 {text.poolPrice}
               </span>
               <b className="block font-mono text-caption font-medium">
@@ -129,7 +129,7 @@ export function DistChart(c: DistChartProps) {
                   <text
                     x={W - AX + 6}
                     y={Y(t) + 4}
-                    className="fill-foreground/80 font-mono text-[11px]"
+                    className="fill-foreground/80 font-mono text-[12px]"
                   >
                     {c.fmtY(t)}
                   </text>
@@ -165,7 +165,7 @@ export function DistChart(c: DistChartProps) {
                   x={X(t)}
                   y={plotH + 16}
                   textAnchor="middle"
-                  className="fill-foreground/80 font-mono text-[11px]"
+                  className="fill-foreground/80 font-mono text-[12px]"
                 >
                   {c.fmtP(t)}
                 </text>
