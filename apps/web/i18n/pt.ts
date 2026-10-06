@@ -473,6 +473,82 @@ export const pt: Dictionary = {
     lead: (chain: string) =>
       `Montado para ${chain}, a partir dos seus limites. Nada é comprado antes de você revisar cada passo e assinar.`,
     holds: 'O que ele tem',
+    cash: (token: string) => `Dinheiro (${token})`,
+    summary: {
+      head: (amount: string, months: string, risk: string, chain: string) =>
+        `${amount} por ${months}, ${risk}, na ${chain}:`,
+      headOpen: (amount: string, risk: string, chain: string) =>
+        `${amount} sem data, ${risk}, na ${chain}:`,
+      stays: (amount: string, name: string) => `${amount} fica em ${name}`,
+      goes: (amount: string, name: string) => `${amount} vai para ${name}`,
+      more: (n: number) => (n === 1 ? 'mais uma parte' : `mais ${n} partes`),
+    },
+    badFall: {
+      none: 'Numa queda forte: você perderia cerca de US$ 0, pois nada aqui é ação, cripto ou ouro.',
+      some: (amount: string) =>
+        `Numa queda forte: você perderia cerca de ${amount}, uma estimativa.`,
+    },
+    details: 'Detalhes',
+    kinds: {
+      stock: 'Ações',
+      etf: 'Fundos',
+      gold: 'Ouro',
+      commodity: 'Commodities',
+      dollar_yield: 'Rendimento em dólar',
+      crypto: 'Cripto',
+      cash: 'Dinheiro',
+      other: 'Outros',
+    },
+    flagWords: {
+      ceilingFromTier: (asset: string) =>
+        `Quanto ${asset} pode pesar vem da faixa dele, pois o custo de venda ainda não foi medido.`,
+      coverageFromTier: (asset: string) =>
+        `${asset} conta para os seus saques pelo limite da faixa dele, pois o custo de venda ainda não foi medido.`,
+      capacityThin: (asset: string) =>
+        `${asset} só vende barato em valores pequenos, então o plano tem menos dele.`,
+      regimeNotMeasured: (asset: string) =>
+        `A venda de ${asset} em alguns horários da semana ainda não foi medida, e pode custar mais.`,
+      undated: (asset: string) =>
+        `O custo de venda medido para ${asset} não tem data, então não é usado.`,
+      fxOpen: (currency: string) =>
+        `Parte do que você deve em ${currency} não está em ${currency}, então uma mudança no câmbio pode custar a você.`,
+      noMatchingLeg: (currency: string) =>
+        `O plano não tem nada em ${currency} para pagar os saques nessa moeda.`,
+      noFx: (currency: string) =>
+        `Ainda não há câmbio para ${currency}, então os saques nessa moeda não são contados.`,
+      noQuote: 'Ainda não há cotação recente para vender tudo.',
+      withdrawalsShort: 'Nem todo saque é pago em dia com o que está separado.',
+      notLive:
+        'Alguns números vêm de uma rede de teste ou de dados de exemplo, não de mercados ao vivo.',
+      other: 'O motor anotou mais uma coisa sobre este plano.',
+      simple: {
+        exit_not_measured: 'Nenhuma parte deste plano tem custo de venda medido ainda.',
+        exit_partly_measured: 'Só parte deste plano tem custo de venda medido.',
+        exit_beyond_measured_size:
+          'Parte deste plano é maior que a maior venda medida, então vendê-la pode custar mais.',
+        exit_capacity_short:
+          'Parte deste plano é maior do que se vende por 1% ou menos no pior horário medido.',
+        exit_cost_below_zero: 'Um custo de venda medido saiu abaixo de zero, e conta como zero.',
+        exit_regimes_not_reported:
+          'O custo de venda não é informado para todos os horários da semana.',
+        issuer_concentration: 'Mais da metade do plano está com um só emissor.',
+        asset_not_on_shelf:
+          'Uma parte do plano não está na lista de ativos, então não pôde ser classificada.',
+        unplaced: 'Parte do dinheiro não coube nos seus limites, e fica em dinheiro.',
+        no_dollar_yield:
+          'Não há rendimento em dólar que você possa ter aqui, então o resto fica em dinheiro.',
+        safe_yield_no_rate_leg:
+          'Não há aqui um token que pague só uma taxa, então a parte segura fica em dinheiro.',
+        yield_not_read: 'Ainda não há leitura de rendimento, então nenhuma projeção é mostrada.',
+        liquidity_unsourced: 'Um custo de venda sem fonte não é usado.',
+        coverage_moved: 'Dinheiro foi movido para que os seus saques sejam pagos em dia.',
+        obligations_past: 'Um saque com data no passado ficou de fora.',
+        income_not_estimated: 'A renda que este plano paga ainda não foi estimada.',
+        income_no_amount_closes: 'Nenhum valor maior paga a renda que você pediu.',
+      },
+    },
+    short: (months: string) => `Em ${months}:`,
+    shortRange: (low: string, high: string) => `cerca de ${low} a ${high}`,
     sub: (risk: string, chain: string) => `${risk} · em ${chain} · nada comprado ainda`,
     riskWord: { low: 'Risco baixo', medium: 'Risco médio', high: 'Risco alto' },
     chips: {
@@ -511,14 +587,14 @@ export const pt: Dictionary = {
     noReason: 'Nenhum motivo informado.',
     projected: 'Faixa projetada por ano, não é uma promessa',
     projectedValue: (low: string, high: string) => `${low} a ${high}`,
-    basis: (basis: string) => `Como foi calculada: ${basis}.`,
+    basis: (basis: string) => `Como foi calculada: ${String(basis).replace(/[.\s]+$/, '')}.`,
     lossInFall: (amount: string) =>
       `Numa queda forte, o motor conta uma perda de cerca de ${amount} neste plano.`,
     exitUnmeasured: 'Ainda não foi medido, então nenhum custo é mostrado.',
     exitCost: (cost: string) => `≤ ${cost}`,
     inKind: 'Você também pode tirar os próprios tokens do seu cofre a qualquer momento.',
     risk: {
-      title: 'Risco, como nosso servidor resumiu',
+      title: 'Como o plano se divide, e quanto custa vender',
       byClass: 'Por tipo de ativo',
       byIssuer: 'Por emissor',
       share: 'Parte',
@@ -1251,7 +1327,12 @@ export const pt: Dictionary = {
       title: 'Construído peça por peça. Veja tomar forma.',
       lede: 'Novidades do produto a cada peça cortada, e uma carta curta sobre objetivos, liquidez e o que os ativos tokenizados pagam de verdade. Sem hype, sem palpite de preço.',
       drawingAlt:
-        'Um desenho a tinta do encaixe se fechando: um trilho passa a espiga pelo pilar, e um pino desce na fenda para travá-lo.',
+        'Dez moedas, cada uma um ativo que um plano pode ter, de ações e ouro a títulos do Tesouro tokenizados, se juntando uma a uma num só plano, cada uma do tamanho da sua parte.',
+      coins: {
+        line: 'Um plano, dez peças, um cofre.',
+        sample: 'Partes de exemplo, só para ilustrar.',
+        parts: 'As partes do plano de exemplo',
+      },
       email: 'E-mail',
       subscribe: 'Inscrever',
       subscribing: 'Inscrevendo…',
