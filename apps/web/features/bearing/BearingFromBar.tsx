@@ -11,6 +11,14 @@ import { BearingProvider } from './BearingProvider';
 export function BearingFromBar({ children }: { children: ReactNode }) {
   const value = useAccount();
   const looking = (value as { chain?: ChainId | null }).chain ?? null;
-  const barChain = looking ?? (value.account.status === 'ready' ? value.account.chain : null);
-  return <BearingProvider barChain={barChain}>{children}</BearingProvider>;
+  // undefined while the account loads: the provider waits for it before it picks a chain
+  const barChain =
+    value.account.status === 'loading'
+      ? undefined
+      : (looking ?? (value.account.status === 'ready' ? value.account.chain : null));
+  return (
+    <BearingProvider barChain={barChain} followsBar>
+      {children}
+    </BearingProvider>
+  );
 }

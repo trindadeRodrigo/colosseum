@@ -107,6 +107,9 @@ describe('GET /risk/assets with a chain', () => {
     expect(status).toBe(200);
     expect(body.chain).toBe('robinhood');
     expect(body.methodVersion).toBe('evmq-0.1');
+    // listed by symbol
+    const symbols = (body.assets as Row[]).map((a) => a.symbol);
+    expect(symbols).toEqual([...symbols].sort());
     const row = (body.assets as Row[]).find((a) => a.id === ID);
     expect(row?.symbol).toBe(SYMBOL);
     expect(row?.assetMint).toBe(MINT);
@@ -142,6 +145,17 @@ describe('a Robinhood Chain stock’s own routes', () => {
     );
     expect(status).toBe(200);
     expect(body.methodVersion).toBe('evmq-0.1');
+  });
+});
+
+describe('a chain Bearing does not measure', () => {
+  it('is refused with 400 on every route that takes a chain', async () => {
+    for (const url of [
+      '/risk/assets?chain=base',
+      '/risk/pools?chain=base',
+      '/risk/assets?chain=nope',
+    ])
+      expect((await get(url)).status, url).toBe(400);
   });
 });
 

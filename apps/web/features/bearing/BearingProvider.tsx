@@ -120,14 +120,20 @@ export function BearingProvider({
   reader: given,
   now: fixedNow,
   barChain,
+  followsBar = false,
 }: {
   children: ReactNode;
   /** A reader of a stub, in tests. */
   reader?: Reader;
   /** A fixed clock, in tests. */
   now?: number;
-  /** The chain the app's bar is on, when it says one: Bearing follows it when it changes. */
+  /**
+   * The chain the app's bar is on: null when it says none, undefined while it is still finding out
+   * (the account loading). Bearing follows it when it changes.
+   */
   barChain?: ChainId | null;
+  /** Mounted under the bar: the first pick waits for the bar to settle (BearingFromBar). */
+  followsBar?: boolean;
 }) {
   const reader = useMemo(() => given ?? makeReader(), [given]);
   const router = useRouter();
@@ -135,16 +141,6 @@ export function BearingProvider({
   const [chain, setChainState] = useState<BearingChain>(FIRST);
   // Nothing is read before the chain is known: a page would otherwise read Solana's routes first.
   const [known, setKnown] = useState(false);
-  // On arrival: the address's chain, else the bar's, else this browser's, else Solana, then named in
-  // the address so the page can be shared as it is.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: once, on arrival; later changes come below
-  useEffect(() => {
-    const picked = pickChain(window.location.search, barChain, recallChain());
-    setChainState(picked);
-    setKnown(true);
-    if (new URLSearchParams(window.location.search).get('chain') !== picked)
-      router.replace(withChain(window.location.pathname, window.location.search, picked));
-  }, []);
   const setChain = useCallback(
     (next: BearingChain) => {
       setChainState(next);
@@ -153,13 +149,29 @@ export function BearingProvider({
     },
     [router, pathname],
   );
-  // The bar's switcher moved: Bearing follows it.
-  const lastBar = useRef(barChain);
+  // The bar has said what it says: at once outside the app, when the account has loaded inside it.
+  const settled = !followsBar || barChain !== undefined;
+  // The bar's chain at the first pick: a later change from it is a move of the bar's switcher.
+  const lastBar = useRef<ChainId | null | undefined>(undefined);
+  // On arrival, once the bar has settled: the address's chain, else the bar's, else this browser's,
+  // else Solana, then named in the address so the page can be shared as it is. The account settling
+  // is not a move of the bar: a link that names a chain keeps it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once, when the bar has settled
   useEffect(() => {
-    if (barChain === lastBar.current) return;
+    if (!settled || known) return;
+    lastBar.current = barChain ?? null;
+    const picked = pickChain(window.location.search, barChain, recallChain());
+    setChainState(picked);
+    setKnown(true);
+    if (new URLSearchParams(window.location.search).get('chain') !== picked)
+      router.replace(withChain(window.location.pathname, window.location.search, picked));
+  }, [settled]);
+  // The bar's switcher moved after the first pick: Bearing follows it.
+  useEffect(() => {
+    if (!known || barChain === undefined || barChain === lastBar.current) return;
     lastBar.current = barChain;
     if (barChain === 'solana' || barChain === 'robinhood') setChain(barChain);
-  }, [barChain, setChain]);
+  }, [barChain, known, setChain]);
   const [mode, setMode] = useState<Mode>('loading');
   const [newest, setNewest] = useState<string | null>(null);
   const [now, setNow] = useState(() => fixedNow ?? 0);

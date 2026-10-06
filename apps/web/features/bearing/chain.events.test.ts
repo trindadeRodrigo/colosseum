@@ -126,6 +126,63 @@ describe('the chain toggle', () => {
   });
 });
 
+describe('the account settling under the bar', () => {
+  // The bar says nothing while the account loads (undefined), then the person's chain.
+  function Settling({
+    search,
+    reader,
+  }: {
+    search: string;
+    reader: ReturnType<typeof snapshotReader>;
+  }) {
+    const [bar, setBar] = useState<ChainId | null | undefined>(undefined);
+    settle = setBar;
+    window.history.replaceState(null, '', `/analytics/stocks${search}`);
+    return createElement(
+      BearingProvider,
+      { reader, now: NOW, barChain: bar, followsBar: true } as never,
+      createElement(BearingShell, null, createElement(DexPage, { page: 'stocks' })),
+    );
+  }
+  let settle: (c: ChainId | null) => void = () => {};
+
+  it('keeps the chain a shared link names when a Robinhood person’s account lands', async () => {
+    const reader = snapshotReader();
+    const host = await mount(createElement(Settling, { search: '?chain=solana', reader }));
+    await act(async () => settle('robinhood'));
+    await until(host, (h) => badges(h).length === 5);
+    expect(badges(host)[0]).toBe('Solana');
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(reader.read.some((p) => p.includes('chain=robinhood'))).toBe(false);
+  });
+
+  it('reads nothing until the account lands, then opens on its chain, with no Solana first', async () => {
+    const reader = snapshotReader();
+    const host = await mount(createElement(Settling, { search: '', reader }));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(reader.read.filter((p) => p.startsWith('/risk/assets'))).toEqual([]);
+    await act(async () => settle('robinhood'));
+    await until(host, (h) => badges(h)[0] === 'Robinhood Chain');
+    expect(reader.read.filter((p) => p.startsWith('/risk/assets?'))).toEqual([
+      '/risk/assets?tau=0.01&chain=robinhood',
+    ]);
+    expect(router.replace).toHaveBeenCalledWith('/analytics/stocks?chain=robinhood');
+  });
+
+  it('still follows the bar when the person switches it after that', async () => {
+    const host = await mount(
+      createElement(Settling, { search: '?chain=solana', reader: snapshotReader() }),
+    );
+    await act(async () => settle('solana'));
+    await until(host, (h) => badges(h)[0] === 'Solana');
+    await act(async () => settle('robinhood'));
+    await until(host, (h) => badges(h)[0] === 'Robinhood Chain');
+    expect(router.replace).toHaveBeenLastCalledWith('/analytics/stocks?chain=robinhood');
+  });
+});
+
 describe('a page Robinhood Chain has nothing collected for', () => {
   it('says so, and reads no lending route', async () => {
     window.history.replaceState(null, '', '/analytics/lending?chain=robinhood');

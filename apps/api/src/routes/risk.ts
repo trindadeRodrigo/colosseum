@@ -112,7 +112,8 @@ export async function registerRiskRoutes(app: FastifyInstance) {
     const rows = await db
       .select({ id: assetsTable.id, symbol: assetsTable.symbol, mint: assetsTable.mint })
       .from(assetsTable)
-      .where(and(eq(assetsTable.chain, 'evm'), like(assetsTable.id, 'robinhood:%')));
+      .where(and(eq(assetsTable.chain, 'evm'), like(assetsTable.id, 'robinhood:%')))
+      .orderBy(assetsTable.symbol);
     return rows.flatMap((r) => (r.mint ? [{ id: r.id, symbol: r.symbol, mint: r.mint }] : []));
   }
   async function curvesFor(mint: string, side: 'sell' | 'buy' = 'sell'): Promise<AssetCurves> {
