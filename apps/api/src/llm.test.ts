@@ -1,8 +1,9 @@
-import { MARKET_FILTER_BY, MARKET_IDS, readReply } from '@colosseum/engine/personal';
+import { INTAKE_LIMITS, MARKET_FILTER_BY, MARKET_IDS, readReply } from '@colosseum/engine/personal';
 import { describe, expect, it } from 'vitest';
 import {
   budgetedModel,
   INTAKE_REPLY_SCHEMA,
+  INTAKE_SYSTEM,
   type IntakeVocabulary,
   intakeUserMessage,
   type ReadCall,
@@ -40,6 +41,40 @@ describe('what the model is asked for', () => {
     // Every field is asked for, each nullable or a list: none is left to the model to add or leave out.
     expect([...required].sort()).toEqual(Object.keys(properties).sort());
     expect(INTAKE_REPLY_SCHEMA.additionalProperties).toBe(false);
+  });
+
+  it('may name health care and social media (Oct 6), and is told what every id of the list is', () => {
+    const ids: readonly string[] = INTAKE_REPLY_SCHEMA.properties.markets.items.enum;
+    expect(ids).toEqual(expect.arrayContaining(['health_care', 'social_media']));
+    // An id the instructions do not describe would be one the model can send and cannot know.
+    for (const id of MARKET_IDS) expect(INTAKE_SYSTEM, id).toMatch(new RegExp(`\\b${id} \\(`));
+    // What the fixed lists read is no longer an example of a filter.
+    const filterLine = INTAKE_SYSTEM.split('\n').find((line) => line.startsWith('marketFilter:'));
+    expect(filterLine).toBeDefined();
+    expect(filterLine).not.toMatch(/pharma|health care/i);
+    // The reader is told what the checks hold it to: what is ruled out, asked or held elsewhere is
+    // no mix and no market, and a portfolio is only one the text writes.
+    expect(INTAKE_SYSTEM).toMatch(/rules out, only asks about/);
+    expect(INTAKE_SYSTEM).toMatch(/already holds elsewhere/);
+    expect(INTAKE_SYSTEM).toMatch(/never one the text does not write/);
+  });
+
+  it('a filter value or words longer than the engine reads are dropped where the reply is read', () => {
+    const filter = (value: string, words: string) => ({ by: 'keyword', value, words });
+    expect(INTAKE_LIMITS).toMatchObject({ filterValueChars: 80, filterWordsChars: 100 });
+    const ok = filter(
+      'x'.repeat(INTAKE_LIMITS.filterValueChars),
+      'y'.repeat(INTAKE_LIMITS.filterWordsChars),
+    );
+    expect(readReply({ marketFilter: ok }).flags).toEqual([]);
+    for (const marketFilter of [
+      filter('x'.repeat(INTAKE_LIMITS.filterValueChars + 1), 'obesity drugs'),
+      filter('GLP-1', 'y'.repeat(INTAKE_LIMITS.filterWordsChars + 1)),
+    ]) {
+      const read = readReply({ marketFilter });
+      expect(read.flags).toEqual(['model_invalid:marketFilter']);
+      expect(read.reply.marketFilter).toBeNull();
+    }
   });
 
   it('a reply in that shape is what the engine reads, and a filter that names a stock is not', () => {
