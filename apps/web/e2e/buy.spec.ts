@@ -84,16 +84,18 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
     return {
       heading: family(document.querySelector('h1')),
       body: family(document.body),
-      loaded: ['400 16px newsreader', '500 16px plexSans'].map((f) => document.fonts.check(f)),
+      loaded: ['400 16px Newsreader', '500 16px "IBM Plex Sans"'].map((f) =>
+        document.fonts.check(f),
+      ),
       fromGoogle: performance
         .getEntriesByType('resource')
         .filter((r) => /fonts\.(googleapis|gstatic)\.com/.test(r.name)).length,
-      serif: width('400 100px newsreader'),
+      serif: width('400 100px Newsreader'),
       fallback: width('400 100px "Times New Roman"'),
     };
   });
-  expect(faces.heading).toMatch(/^"?newsreader"?, "?Newsreader Fallback"?/);
-  expect(faces.body).toMatch(/^"?plexSans"?, "?IBM Plex Sans Fallback"?/);
+  expect(faces.heading).toMatch(/^"?newsreader"?, "?Newsreader"?, "?Newsreader Fallback"?/);
+  expect(faces.body).toMatch(/^"?plexSans"?, "?IBM Plex Sans"?, "?IBM Plex Sans Fallback"?/);
   expect(faces.loaded).toEqual([true, true]);
   expect(faces.fromGoogle).toBe(0);
   // set in Newsreader itself, not its fallback: the two measure differently

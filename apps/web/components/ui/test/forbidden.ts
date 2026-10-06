@@ -72,12 +72,10 @@ export const FALLBACKS = [
   // moved to committed files)
   'ibm plex sans fallback',
   'ibm plex mono fallback',
-  // the names next/font/local gives the committed faces: the names of their exports in app/fonts.ts
-  // (IBM Plex Sans, IBM Plex Mono; Newsreader's is "newsreader", a face already)
+  // the first name in the variable next/font/local writes for each face: the name of its export in
+  // app/fonts.ts, which is no face (each face keeps its own name, and follows it in the variable)
   'plexsans',
   'plexmono',
-  // the Greek file of IBM Plex Sans: its face is told the sans face's name, and this is only the name
-  // of the variable its export leaves behind, which no rule uses
   'plexsansgreek',
 ];
 const ALLOWED_FAMILIES = new Set([...FACES, ...FALLBACKS]);

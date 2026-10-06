@@ -107,9 +107,9 @@ describe('the faces', () => {
     ]);
     const fonts = readFileSync(join(WEB, 'app', 'fonts.ts'), 'utf8');
     const mono = readFileSync(join(WEB, 'app', 'fonts-mono.ts'), 'utf8');
-    expect(fonts).toContain("fallback: ['IBM Plex Sans Fallback']");
-    expect(fonts).toContain("fallback: ['Newsreader Fallback']");
-    expect(mono).toContain("fallback: ['IBM Plex Mono Fallback']");
+    expect(fonts).toContain("fallback: ['IBM Plex Sans', 'IBM Plex Sans Fallback']");
+    expect(fonts).toContain("fallback: ['Newsreader', 'Newsreader Fallback']");
+    expect(mono).toContain("fallback: ['IBM Plex Mono', 'IBM Plex Mono Fallback']");
     // next/font's own guess at a fallback is switched off, so there is one fallback, the old one
     for (const text of [fonts, mono]) expect(text).toContain('adjustFontFallback: false');
   });
@@ -139,7 +139,13 @@ describe('the faces', () => {
     expect(greek).toContain('U+0370-0377');
     // the Greek file joins the sans face's own family, and is fetched only where it is needed
     expect(fonts).toMatch(
-      /plexSansGreek = localFont\(\{[\s\S]*?preload: false[\s\S]*?prop: 'font-family', value: 'plexSans'/,
+      /plexSansGreek = localFont\(\{[\s\S]*?preload: false[\s\S]*?IBM Plex Sans/,
+    );
+    // each face keeps its own name in the stylesheet, as it had from Google
+    for (const name of ['IBM Plex Sans', 'Newsreader'])
+      expect(fonts).toContain(`{ prop: 'font-family', value: "'${name}'" }`);
+    expect(readFileSync(join(WEB, 'app', 'fonts-mono.ts'), 'utf8')).toContain(
+      `{ prop: 'font-family', value: "'IBM Plex Mono'" }`,
     );
     expect(fonts).toMatch(/fontVariables = `[^`]*plexSansGreek\.variable/);
     for (const letter of ['τ', 'Σ', 'Δ', 'σ'])

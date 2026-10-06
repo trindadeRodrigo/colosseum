@@ -19,6 +19,11 @@ import { plexMono } from './fonts-mono';
 
 // The loader takes its options as written values only, so each file's range of characters is written
 // where it is used: the ranges are the ones Google's stylesheet lists for the two files.
+//
+// `next/font/local` would name each face after its export (`plexSans`). Each is told its own name
+// instead (`declarations`, `font-family`), so the stylesheet says IBM Plex Sans, IBM Plex Mono and
+// Newsreader as it always did; the variable the loader writes still starts with its own name, which
+// is no face, so the real name and the fallback follow it (`fallback`).
 
 /** Explains: body, labels, buttons. 400 body, 500 labels, 600 UI headings; nothing lighter. */
 export const plexSans = localFont({
@@ -29,6 +34,7 @@ export const plexSans = localFont({
   display: 'swap',
   preload: true,
   declarations: [
+    { prop: 'font-family', value: "'IBM Plex Sans'" },
     {
       prop: 'unicode-range',
       value:
@@ -37,14 +43,14 @@ export const plexSans = localFont({
   ],
   // the fallback is the one Google's build made, kept as it was (globals.css, "the fallbacks")
   adjustFontFallback: false,
-  fallback: ['IBM Plex Sans Fallback'],
+  fallback: ['IBM Plex Sans', 'IBM Plex Sans Fallback'],
 });
 
 /**
  * The Greek letters of the same face (Bearing writes "τ" and "Σ" in its methods): a second file of the
  * one family, as Google's own stylesheet has it, fetched by the browser only where a Greek letter is
- * set. `next/font/local` names a face after its export, so this one is told the sans face's name: the
- * two files are then one family, each with the range of characters it holds.
+ * set: it carries the sans face's name, so the two files are one family, each with the range of
+ * characters it holds.
  */
 export const plexSansGreek = localFont({
   src: '../assets/fonts/ibm-plex-sans-greek-wght.woff2',
@@ -55,7 +61,7 @@ export const plexSansGreek = localFont({
   preload: false,
   adjustFontFallback: false,
   declarations: [
-    { prop: 'font-family', value: 'plexSans' },
+    { prop: 'font-family', value: "'IBM Plex Sans'" },
     {
       prop: 'unicode-range',
       value: 'U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF',
@@ -74,7 +80,8 @@ export const newsreader = localFont({
   display: 'swap',
   preload: true,
   adjustFontFallback: false,
-  fallback: ['Newsreader Fallback'],
+  fallback: ['Newsreader', 'Newsreader Fallback'],
+  declarations: [{ prop: 'font-family', value: "'Newsreader'" }],
 });
 
 /** The class names that define the three `--font-*` variables. They go on `<html>`. */

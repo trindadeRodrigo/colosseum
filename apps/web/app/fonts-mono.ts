@@ -15,5 +15,7 @@ export const plexMono = localFont({
   display: 'swap',
   preload: false,
   adjustFontFallback: false,
-  fallback: ['IBM Plex Mono Fallback'],
+  fallback: ['IBM Plex Mono', 'IBM Plex Mono Fallback'],
+  // the face keeps its own name in the stylesheet (see fonts.ts)
+  declarations: [{ prop: 'font-family', value: "'IBM Plex Mono'" }],
 });
