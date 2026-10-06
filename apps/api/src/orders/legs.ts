@@ -106,7 +106,7 @@ function legOf(stored: StoredOrder, legId: string): Leg {
 }
 
 /** The owner's vault for the plan this order buys, or null before it is opened. */
-async function planVault(entry: ChainEntry, owner: Address, basketId: string) {
+export async function planVault(entry: ChainEntry, owner: Address, basketId: string) {
   return (await entry.adapter.getVaults(owner)).find((v) => v.basketId === basketId) ?? null;
 }
 

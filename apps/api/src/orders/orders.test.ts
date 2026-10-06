@@ -901,6 +901,7 @@ describe('no /v1 route can make the server sign', () => {
       'orders/legs.ts',
       'orders/person.ts',
       'orders/personalize.ts',
+      'orders/plan-join.ts',
       'orders/prepare.ts',
       'orders/shared.ts',
       'orders/store.ts',

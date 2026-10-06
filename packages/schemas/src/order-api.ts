@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { BasketCard, BasketSheet, Verdict } from './basket-sheet';
 import { BasketTx } from './basket-tx';
 import { ChainId } from './chain';
 import { Provenance } from './enums';
@@ -62,6 +63,26 @@ export const ConsentRequest = z.object({
 export type ConsentRequest = z.infer<typeof ConsentRequest>;
 
 /**
+ * The plan a vault was opened for, as the server joined the two when the order's step that opens the
+ * vault was confirmed: what the browser kept with the order as its `PlacedGoal`, now the server's.
+ * `personal` is a plan made to measure, with the stored plan's id; `follow` is a vault opened to follow
+ * a shared portfolio, with the family's id and no sheet. The sheet, the card and the verdict are the
+ * stored plan's own, as the engine made them: left out where the plan has none stored, or one that no
+ * longer reads. `verdict` is null for a plan whose goal is not an income.
+ */
+export const VaultPlan = z.object({
+  kind: z.enum(['personal', 'follow']),
+  /** When the order that opened the vault was made, as an ISO instant: the goal's date counts from it. */
+  placedAt: z.string().datetime(),
+  proposalId: z.uuid().optional(),
+  familyId: z.string().optional(),
+  sheet: BasketSheet.optional(),
+  card: BasketCard.optional(),
+  verdict: Verdict.nullable().optional(),
+});
+export type VaultPlan = z.infer<typeof VaultPlan>;
+
+/**
  * GET /v1/portfolio: the signed-in person's vaults, one entry per chain that is not switched off.
  * `provenance` is the label on every figure under it: `mock` when the chain runs on the mock,
  * `sandbox` on a test network, `live` on mainnet only.
@@ -73,8 +94,19 @@ export const PortfolioResponse = z.object({
       name: z.string(),
       mode: ChainMode,
       provenance: Provenance,
-      /** The caller's vaults, each with its value, and the weight and drift of every position. */
-      vaults: z.array(VaultView.extend({ provenance: Provenance })),
+      /**
+       * The caller's vaults, each with its value, and the weight and drift of every position.
+       * `basketId` is the plan's number on the chain. `planId` is the id of the person's own plan the
+       * vault is joined to, and `plan` what that plan is: both are left out for a vault no order of
+       * this person opened, and by a server older than these fields.
+       */
+      vaults: z.array(
+        VaultView.extend({
+          provenance: Provenance,
+          planId: z.uuid().optional(),
+          plan: VaultPlan.optional(),
+        }),
+      ),
       /** The reference prices the values were worked out with, each with its source and time. */
       prices: z.array(Price),
     }),

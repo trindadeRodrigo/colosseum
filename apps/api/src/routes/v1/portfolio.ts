@@ -5,7 +5,7 @@ import {
   DISCLAIMER,
   OrderError,
   PortfolioResponse,
-  type WalletAccount,
+  type Principal,
 } from '@colosseum/schemas';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -13,11 +13,19 @@ import type { ChainEntry } from '../../orders/chains';
 import { Refusal, refusalFromChainError } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { chainsHeld } from '../../orders/person';
+import { type JoinLog, plansOf } from '../../orders/plan-join';
 import { cacheVault } from '../../orders/store';
 import { signedIn } from './orders';
 
-async function chainPortfolio(deps: OrderDeps, entry: ChainEntry, wallets: WalletAccount[]) {
-  const owners = wallets.filter((w) => w.family === entry.config.family).map((w) => w.address);
+async function chainPortfolio(
+  deps: OrderDeps,
+  entry: ChainEntry,
+  principal: Principal,
+  log: JoinLog,
+) {
+  const owners = principal.wallets
+    .filter((w) => w.family === entry.config.family)
+    .map((w) => w.address);
   const states = (await Promise.all(owners.map((o) => entry.adapter.getVaults(o)))).flat();
   // Value, weight and drift come from the one place that computes them (packages/basket). It takes the
   // chain's asset list for each token's decimals.
@@ -36,12 +44,15 @@ async function chainPortfolio(deps: OrderDeps, entry: ChainEntry, wallets: Walle
   }));
   // The cache follows what was just read from the chain.
   for (const v of vaults) await cacheVault(deps.db, v, entry.provenance);
+  // The plan each vault was opened for, where it is the person's own (orders/plan-join.ts). A vault
+  // whose join was missed when its order confirmed is joined here, now that it is in the cache.
+  const plans = await plansOf(deps.db, entry.chain, vaults, principal, log);
   return {
     chain: entry.chain,
     name: entry.config.name,
     mode: entry.mode,
     provenance: entry.provenance,
-    vaults,
+    vaults: vaults.map((v) => ({ ...v, ...plans.get(v.address) })),
     prices,
   };
 }
@@ -55,7 +66,7 @@ export function registerPortfolioRoute(scope: FastifyInstance, deps: OrderDeps) 
         tags: ['portfolio'],
         summary: "The signed-in person's vaults on every chain, with holdings, prices and drift",
         description:
-          'Read from every chain this server runs that the person holds a wallet for, whatever their current chain is: each plan lives on its own chain, and `chains` has an entry for each that could be read, in the server’s order. A chain that could not be read is in `unavailable` with its code, why, and whether asking again may help: one switched off here (`CHAIN_UNAVAILABLE`, not retryable) or one whose read failed; the others are answered all the same. Only when none of the person’s chains could be read is the answer 503 `CHAIN_UNAVAILABLE`. The wallets are those of the identity token. `driftBps` is the weight of a position minus its target. The entry and every price carry `provenance`; anything that is not `live` is a test network or MOCK.',
+          'Read from every chain this server runs that the person holds a wallet for, whatever their current chain is: each plan lives on its own chain, and `chains` has an entry for each that could be read, in the server’s order. A chain that could not be read is in `unavailable` with its code, why, and whether asking again may help: one switched off here (`CHAIN_UNAVAILABLE`, not retryable) or one whose read failed; the others are answered all the same. Only when none of the person’s chains could be read is the answer 503 `CHAIN_UNAVAILABLE`. The wallets are those of the identity token. `driftBps` is the weight of a position minus its target. The entry and every price carry `provenance`; anything that is not `live` is a test network or MOCK. A vault’s `basketId` is its plan’s number on the chain. A vault that an order of this person opened also carries `planId`, the id of the person’s plan, and `plan`: whether it was made to measure (`personal`, with `proposalId`) or follows a shared portfolio (`follow`, with `familyId`), when the order that opened the vault was made (`placedAt`, which the goal’s date counts from), and for a stored plan its `sheet`, its `card` and, for an income goal, its `verdict`, as they were stored. The server joins the two when the order’s step that opens the vault is confirmed, and on this read for a vault it missed then. A vault opened outside the app, or joined to another person’s plan, carries neither field.',
         response: { 200: PortfolioResponse, default: OrderError },
       },
     },
@@ -77,7 +88,7 @@ export function registerPortfolioRoute(scope: FastifyInstance, deps: OrderDeps) 
           retryable: false,
         }));
       const settled = await Promise.allSettled(
-        entries.map((entry) => chainPortfolio(deps, entry, principal.wallets)),
+        entries.map((entry) => chainPortfolio(deps, entry, principal, req.log)),
       );
       const chains = [];
       for (const [i, result] of settled.entries()) {

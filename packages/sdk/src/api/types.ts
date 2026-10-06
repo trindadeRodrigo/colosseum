@@ -1281,6 +1281,74 @@ export type GetPortfolioResponse = {
       } | null;
       valueUsd: string;
       provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+      planId?: string;
+      plan?: {
+        kind: 'personal' | 'follow';
+        placedAt: string;
+        proposalId?: string;
+        familyId?: string;
+        sheet?: {
+          basketType: 'standard';
+          goal: 'grow' | 'income' | 'protect';
+          amountUsd: number;
+          horizonMonths: number;
+          risk: 'low' | 'medium' | 'high';
+          themes: string[];
+          country: string;
+          chains: ('solana' | 'base' | 'robinhood')[];
+          incomeTargetUsdMonthly?: number;
+          rules: {
+            useHoldings: boolean;
+            glide: boolean;
+          };
+          language: 'pt' | 'en';
+          currency?: string;
+          obligations?: {
+            month: string;
+            amount: number;
+            currency: string;
+          }[];
+          sleeves?: (
+            | {
+                kind: 'goal';
+                shareBps: number;
+              }
+            | {
+                kind: 'theme';
+                shareBps: number;
+                theme: string;
+              }
+            | {
+                kind: 'safe_yield';
+                shareBps: number;
+              }
+          )[];
+          restoreSplit?: boolean;
+        };
+        card?: {
+          moneyTodayUsd: number;
+          termMonths: number;
+          cashFlow: 'none' | 'monthly' | 'at_end';
+          expectedReturn: {
+            lowPct: number;
+            highPct: number;
+            basis: string;
+            lossInFallUsd: number;
+          };
+          exit: {
+            text: string;
+            costBps: number | null;
+          };
+        };
+        verdict?: {
+          met: boolean;
+          gapUsdMonthly: number;
+          ways: {
+            change: string;
+            closesGap: boolean;
+          }[];
+        } | null;
+      };
     }[];
     prices: {
       source: string;

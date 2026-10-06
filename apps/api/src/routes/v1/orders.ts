@@ -15,6 +15,7 @@ import { Refusal } from '../../orders/errors';
 import { familyByNameKey, familyBySlug } from '../../orders/families';
 import { buildLeg, cancelLeg, type OrderDeps, refreshOrder, reportLeg } from '../../orders/legs';
 import { homeChain } from '../../orders/person';
+import { joinConfirmed } from '../../orders/plan-join';
 import { prepareOrder } from '../../orders/prepare';
 import { recordPublished } from '../../orders/shared';
 import {
@@ -90,6 +91,23 @@ async function published(
   return stored;
 }
 
+/**
+ * A buy whose step that opens the vault has confirmed: the vault is written to the cache and joined to
+ * the plan it was opened for (orders/plan-join.ts). Done on every route that answers an order after a
+ * step may have settled: the read, the report, the cancel, and the build, which tracks the steps sent
+ * before it. Once joined it is one look in the database. It never fails the answer: what goes wrong is
+ * logged, and the portfolio's read makes the join later.
+ */
+async function joined(
+  deps: OrderDeps,
+  req: FastifyRequest,
+  stored: StoredOrder,
+  readBefore = false,
+): Promise<StoredOrder> {
+  await joinConfirmed(deps, stored, signedIn(req), req.log, readBefore);
+  return stored;
+}
+
 // The Order schema's own checks (every leg is the order's, on a chain its owner has an address for)
 // run here, since the response schema is the plain object.
 const detail = (stored: StoredOrder): OrderDetail => ({
@@ -150,10 +168,14 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
     },
     async (req) =>
       detail(
-        await published(
+        await joined(
           deps,
           req,
-          await refreshOrder(deps, await ownOrder(deps, req, req.params.id)),
+          await published(
+            deps,
+            req,
+            await refreshOrder(deps, await ownOrder(deps, req, req.params.id)),
+          ),
         ),
       ),
   );
@@ -171,13 +193,14 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
         response: { 200: BuildLegResponse, default: OrderError },
       },
     },
-    async (req) =>
-      buildLeg(
-        deps,
-        await ownOrder(deps, req, req.params.id),
-        req.params.legId,
-        signedIn(req).userId,
-      ),
+    async (req) => {
+      const read = await ownOrder(deps, req, req.params.id);
+      const built = await buildLeg(deps, read, req.params.legId, signedIn(req).userId);
+      // The build tracked the steps sent before it, so the step that opens the vault may have settled
+      // since the order was read.
+      await joined(deps, req, read, true);
+      return built;
+    },
   );
 
   f.post(
@@ -196,14 +219,18 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
     },
     async (req) =>
       detail(
-        await published(
+        await joined(
           deps,
           req,
-          await reportLeg(
+          await published(
             deps,
-            await ownOrder(deps, req, req.params.id),
-            req.params.legId,
-            req.body,
+            req,
+            await reportLeg(
+              deps,
+              await ownOrder(deps, req, req.params.id),
+              req.params.legId,
+              req.body,
+            ),
           ),
         ),
       ),
@@ -223,6 +250,12 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
       },
     },
     async (req) =>
-      detail(await cancelLeg(deps, await ownOrder(deps, req, req.params.id), req.params.legId)),
+      detail(
+        await joined(
+          deps,
+          req,
+          await cancelLeg(deps, await ownOrder(deps, req, req.params.id), req.params.legId),
+        ),
+      ),
   );
 }
