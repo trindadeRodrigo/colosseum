@@ -57,6 +57,8 @@ const CHAIN = (process.env.STUB_CHAIN === 'robinhood' ? 'robinhood' : 'solana') 
   | 'solana'
   | 'robinhood';
 const CHAIN_NAME = CHAIN === 'robinhood' ? 'Robinhood Chain' : 'Solana';
+/** The mock's dollar, by the name of the chain it stands in for (packages/chain-mock, shelf.ts). */
+const CASH_SYMBOL = CHAIN === 'robinhood' ? 'tUSDG' : 'USDC';
 const GAS =
   CHAIN === 'robinhood' ? { symbol: 'ETH', decimals: 18 } : { symbol: 'SOL', decimals: 9 };
 /** What the stub's faucet gives a wallet in gas: a little of the chain's own coin. */
@@ -619,7 +621,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
         ...stamp,
         method: 'MOCK: the wallet’s balance on the mock chain',
         asset: world.adapter.mock.cash,
-        symbol: 'USDC',
+        symbol: CASH_SYMBOL,
         decimals: 6,
         haveRaw: f.cashHaveRaw,
         needRaw: f.cashNeedRaw,

@@ -54,6 +54,7 @@ export function VaultGoalCard({
         pinLabels={t.pin}
         action={{ label: words.startGoal, href: '/goal' }}
         mock={mock}
+        chain={chain.chain}
       />
     );
 
@@ -102,6 +103,7 @@ export function VaultGoalCard({
           : { label: words.seeOrder, href: `/orders/${encodeURIComponent(record.orderId)}` }
       }
       mock={mock}
+      chain={chain.chain}
     />
   );
 }

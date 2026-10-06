@@ -77,6 +77,28 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
   ).toBeVisible();
   await page.keyboard.press('Home');
   await check(page, 'landing');
+  // the closing: its heading over the joint's canvas, readable (CLOSING-INK, Oct 6)
+  const words = page.locator('#updates [data-ui="closing-words"]');
+  await words.scrollIntoViewIfNeeded();
+  await expect(page.locator('#updates canvas[data-ui="closing-canvas"]')).toHaveCount(1);
+  await expect(words.getByRole('heading', { level: 2 })).toHaveText(en.landing.closing.title);
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate((t) => {
+      const html = document.documentElement;
+      html.classList.remove('light', 'dark', 'tf-auto');
+      html.classList.add(t);
+    }, theme);
+    await page.waitForTimeout(100);
+    const read = await new AxeBuilder({ page })
+      .include('#updates [data-ui="closing-words"]')
+      .withRules(['color-contrast'])
+      .analyze();
+    expect(
+      read.violations.map((v) => v.id),
+      theme,
+    ).toEqual([]);
+  }
+  await page.keyboard.press('Home');
   const box = page.locator('#simulate textarea');
   await box.fill('Grow $2,000 for ten years, high risk');
   await box.press('Enter');
@@ -120,6 +142,65 @@ test('the two sample cases fit their cards on a phone and a tablet, in English a
       expect(out, `${lang} at ${width}px`).toEqual([]);
     }
   }
+});
+
+test('the plan drawn as a joint answers a mouse and a finger, and lights its part in the list', async ({
+  page,
+  browser,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  const growth = page.locator('article[data-ui="showcase-case"]').nth(1);
+  await growth.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  // a mouse resting in the middle of the stocks layer's face, not on any of its lines
+  const stocks = growth.locator('[data-part="layer"][data-chart="3"]');
+  const face = await stocks.locator('path[data-part="hit"]').boundingBox();
+  if (!face) throw new Error('the stocks layer has no face to rest on');
+  await page.mouse.move(face.x + face.width * 0.3, face.y + face.height / 2);
+  await expect(stocks).toHaveAttribute('data-lit', 'true');
+  await expect(growth.locator('[data-ui="case-leg"][data-chart="3"]')).toHaveAttribute(
+    'data-lit',
+    'true',
+  );
+  // and a row lights its layer
+  await growth.locator('[data-ui="case-leg"][data-chart="1"]').hover();
+  await expect(growth.locator('[data-part="layer"][data-chart="1"]')).toHaveAttribute(
+    'data-lit',
+    'true',
+  );
+  // a phone: a tap picks the part, a tap elsewhere lets it go
+  const phone = await browser.newContext({ viewport: { width: 375, height: 812 }, hasTouch: true });
+  const tap = await phone.newPage();
+  await tap.goto(page.url());
+  const card = tap.locator('article[data-ui="showcase-case"]').nth(1);
+  await card.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  const gold = card.locator('[data-part="layer"][data-chart="4"]');
+  await gold.tap();
+  await expect(gold).toHaveAttribute('data-lit', 'true');
+  await card.locator('blockquote').tap();
+  await expect(gold).toHaveAttribute('data-lit', 'false');
+  await phone.close();
+});
+
+test('signed in, the logo leads to the landing, and its bar leads back into the app', async ({
+  page,
+}) => {
+  await page.request.post(`${STUB}/__stub/reset`);
+  await page.goto('/sign-in');
+  await page.getByRole('button', { name: en.signIn.passkey.create }).click();
+  await page.getByRole('button', { name: 'Solana' }).click();
+  await page.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
+  await expect(page).toHaveURL(/\/goal$/);
+  await page.getByRole('link', { name: en.shell.home }).click();
+  // the landing, not a redirect back to the goal
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.landing.stage.title);
+  await page.keyboard.press('End');
+  const bar = page.locator('[data-ui="compact-nav"]');
+  await expect(bar).toHaveAttribute('data-compact', 'true');
+  await expect(bar.getByRole('link', { name: en.landing.nav.cta })).toHaveCount(0);
+  await bar.getByRole('link', { name: en.landing.nav.openApp }).click();
+  await expect(page).toHaveURL(/\/goal$/);
 });
 
 async function toReview(page: Page) {
@@ -167,6 +248,8 @@ async function toReview(page: Page) {
 
   await expect(page).toHaveURL(/\/orders\/[^/]+$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.order.review.title);
+  // the review names the chain over the page and over its steps
+  await expect(page.locator('main [data-ui="chain-badge"]')).toHaveText(['Solana', 'Solana']);
 }
 
 test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', async ({ page }) => {
@@ -199,6 +282,7 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   ).toHaveCount(4);
   await expect(vault.locator('[data-ui="vault-value"] [data-ui="figure"]')).toHaveCount(1);
   await expect(vault.locator('[data-ui="mock-plate"]').first()).toBeVisible();
+  await expect(vault.locator('[data-ui="chain-badge"]')).toHaveText('Solana');
   await check(page, 'monitor');
   // the disclaimer is under the vault, once: the shell's foot does not repeat it
   await expect(page.locator('main [data-ui="disclaimer"]')).toBeVisible();

@@ -15,6 +15,6 @@ describe('the web’s units for the mock’s cash token', () => {
       symbol: cash?.symbol,
       decimals: cash?.decimals,
     });
-    expect(cash?.symbol).toBe(MOCK_CASH_SYMBOL);
+    expect(cash?.symbol).toBe(MOCK_CASH_SYMBOL[chain]);
   });
 });

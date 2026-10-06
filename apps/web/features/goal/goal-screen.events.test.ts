@@ -2,6 +2,7 @@
 import type { BasketSheet } from '@colosseum/schemas';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CHAIN_NAMES } from '../../components/ui/ChainBadge';
 import {
   click,
   find,
@@ -23,7 +24,7 @@ import { PERSONALIZE_PATH } from './build-plan';
 import { GOAL_HANDOFF } from './draft';
 import { GoalScreen } from './GoalScreen';
 import { INTAKE_PATH } from './intake';
-import { builtFor, CANDIDATE_IDS, intakeAsking, intakeSaid } from './test/plan';
+import { builtFor, CANDIDATE_IDS, intakeAsking, intakeSaid, SHEET } from './test/plan';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -556,6 +557,8 @@ describe('the confirm: “Build my plan”', () => {
       [401, { error: 'sign in first' }, en.goal.blocked.signInAgain],
       [401, { error: 'sign in first: no identity token was sent' }, en.goal.blocked.noIdentity],
       [409, { error: 'pick the chain first' }, en.goal.blocked.chainNotChosen],
+      // plans are in dollars for now (gate USD-ONLY): said plainly, not as a refusal of the limits
+      [422, { error: 'x', code: 'CURRENCY_UNSUPPORTED' }, en.goal.blocked.currency],
     ];
     for (const [status, body, sentence] of cases) {
       const { host } = await saidBack({ plan: () => json(body, status) });
@@ -728,5 +731,41 @@ describe('the goal screen and the rest of the product', () => {
     await click(confirm(host));
     await settle();
     check();
+  });
+});
+
+describe.each(['solana', 'robinhood'] as const)('the chain of a goal on %s', (chain) => {
+  const person: Person = {
+    ...onSolana,
+    wallets: chain === 'solana' ? PHANTOM : EMBEDDED,
+    chain,
+    chainSource: chain === 'solana' ? 'wallet' : 'picked',
+  };
+  const badged = (el: Element | null) =>
+    [...(el?.querySelectorAll('[data-ui="chain-badge"]') ?? [])].map((b) => [
+      b.getAttribute('data-chain'),
+      b.textContent,
+    ]);
+
+  it('is badged on the goal’s card and on the plans it built, and Robinhood’s never says USDC', async () => {
+    const sheet = { ...SHEET, chains: [chain], rules: { useHoldings: true, glide: false } };
+    api({
+      person,
+      intake: (body) => json(body.answers?.amountUsd ? intakeSaid(sheet) : intakeAsking()),
+      plan: (body) => json(builtFor((body as { sheet: never }).sheet, 'mock')),
+    });
+    portStore.set(signedInPort(person.wallets));
+    const host = await screen();
+    await read(host);
+    await answer(host);
+    const named = [[chain, CHAIN_NAMES[chain]]];
+    expect(badged(host.querySelector('[data-ui="goal-card"]'))).toEqual(named);
+    await click(confirm(host));
+    await settle();
+    const done = [...host.querySelectorAll('[data-ui="card"]')].find((card) =>
+      card.textContent?.includes(en.goal.built.done.title),
+    );
+    expect(badged(done ?? null)).toEqual(named);
+    if (chain === 'robinhood') expect(host.textContent).not.toMatch(/usdc/i);
   });
 });

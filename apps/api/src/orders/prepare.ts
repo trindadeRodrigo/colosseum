@@ -655,6 +655,8 @@ async function prepareBuy(
       : `Buy ${usd(cents)} of your plan on ${entry.config.name}`,
     // Once, whatever the steps repeat: the approval and the deposit both carry it.
     depositRaw: plan.need.cashRaw,
+    // The vault it is for, kept with it: a step is built for this number whatever becomes of the plan.
+    basketId: plan.basketId,
     legs,
     warnings: closed
       ? [

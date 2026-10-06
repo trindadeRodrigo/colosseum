@@ -12,6 +12,7 @@ export {
   VAULT_BEACON_ABI,
   VAULT_FACTORY_ABI,
 } from './generated/abi';
+export * from './keeper';
 export { dayOf, marketAt } from './market';
 export * from './reader';
 export * from './routes';

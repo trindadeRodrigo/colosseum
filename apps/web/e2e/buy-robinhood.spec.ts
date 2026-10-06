@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
 
 // A person's buy on Robinhood Chain, end to end in a browser, on the mock chain: the stub runs its
@@ -38,15 +38,16 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   await page.getByRole('button', { name: en.goal.intake.readBack.confirm }).click();
   await page.getByRole('link', { name: en.goal.built.done.see(3) }).click();
   await expect(page).toHaveURL(/\/plan\/[^/]+$/);
-  await page.getByRole('radio', { name: en.plan.choice.names.carry }).check();
-  await page
-    .getByRole('link', { name: en.plan.choice.picker.buy(en.plan.choice.names.carry) })
-    .click();
+  // the plan in full, from Carry's card, says its dollar as Robinhood Chain names it; then the buy
+  await page.getByRole('link', { name: en.plan.choice.see(en.plan.choice.names.carry) }).click();
+  await named(page);
+  await page.getByRole('link', { name: en.plan.buy }).click();
 
   await expect(page).toHaveURL(/\/plan\/[^/]+\/buy$/);
   await page.getByRole('button', { name: en.buy.funding.mockFund }).click();
   await expect(page.getByText(en.buy.funding.ok)).toBeVisible();
   await page.getByLabel(en.trust.accept).check();
+  await named(page);
   await page.getByRole('button', { name: en.buy.review('$40') }).click();
 
   await expect(page).toHaveURL(/\/orders\/[^/]+$/);
@@ -55,6 +56,7 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   await expect(steps.nth(0)).toContainText(en.order.kind.approve);
   await expect(steps.nth(1)).toContainText(en.order.kind.create_vault);
   await expect(steps.nth(1)).toContainText('receive at least');
+  await named(page);
 
   await page.getByRole('button', { name: en.order.signAndBuy('$40') }).click();
   await expect(page.locator('[data-ui="order-status"]')).toHaveText(en.order.outcome.done(NAME), {
@@ -62,4 +64,38 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   });
   for (let i = 0; i < 2; i += 1)
     await expect(steps.nth(i)).toHaveAttribute('data-status', 'confirmed');
+  // each step's link names the explorer it opens, and each line of the activity its chain
+  await expect(steps.locator('[data-ui="explorer-name"]')).toHaveText([
+    en.chain.explorers.robinhood,
+    en.chain.explorers.robinhood,
+  ]);
+  await expect(page.locator('[data-ui="execution-list"] li [data-ui="chain-badge"]')).toHaveText([
+    NAME,
+    NAME,
+  ]);
+  await named(page);
+
+  // the monitor: the vault the buy opened, badged with its chain, its cash in tUSDG
+  await page.getByRole('button', { name: en.shell.menu }).click();
+  await page
+    .locator('[data-ui="compact-nav-sheet"]')
+    .getByRole('link', { name: en.shell.portfolio })
+    .click();
+  await expect(page).toHaveURL(/\/monitor$/);
+  const vault = page.locator('[data-ui="vault"]');
+  await expect(vault).toHaveCount(1);
+  await expect(vault.locator('[data-ui="chain-badge"]').first()).toHaveText(NAME);
+  await expect(vault).toContainText('tUSDG');
+  await named(page);
 });
+
+/** The screen names Robinhood Chain with its badge, and nowhere says USDC: its dollar is tUSDG. */
+async function named(page: Page) {
+  const badges = page.locator('main [data-ui="chain-badge"]');
+  await expect(badges.first()).toHaveText(NAME);
+  for (const chain of await badges.evaluateAll((els) =>
+    els.map((e) => e.getAttribute('data-chain')),
+  ))
+    expect(chain).toBe('robinhood');
+  await expect(page.locator('main')).not.toContainText(/usdc/i);
+}

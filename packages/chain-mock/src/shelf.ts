@@ -83,7 +83,8 @@ export function mockAssets(chain: ChainId): BasketAsset[] {
     ...common,
     id: mockCashId(chain),
     address: mockAddress(chain, 'asset:usdc'),
-    symbol: 'USDC',
+    // The dollar of the chain it stands in for: Robinhood Chain's is tUSDG.
+    symbol: chain === 'robinhood' ? 'tUSDG' : 'USDC',
     decimals: 6,
     cls: 'cash',
     underlying: 'USD',

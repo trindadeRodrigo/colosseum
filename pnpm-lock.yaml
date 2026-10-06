@@ -153,6 +153,9 @@ importers:
       '@colosseum/basket':
         specifier: workspace:*
         version: link:../../packages/basket
+      '@colosseum/chain-evm':
+        specifier: workspace:*
+        version: link:../../packages/chain-evm
       '@colosseum/chain-solana':
         specifier: workspace:*
         version: link:../../packages/chain-solana
