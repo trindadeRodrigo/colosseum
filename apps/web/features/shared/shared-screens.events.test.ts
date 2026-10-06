@@ -434,3 +434,64 @@ describe('a vault’s public page', () => {
     for (const part of ['Solana', en.portfolio.vault.valueMethod]) expect(line).toContain(part);
   });
 });
+
+describe('the chain, on the shelf and on a vault’s page', () => {
+  const badges = (el: Element) =>
+    [...el.querySelectorAll('[data-ui="chain-badge"]')].map((b) => b.getAttribute('data-chain'));
+
+  it('badges a shared portfolio with every chain it has a recipe on', async () => {
+    api({ family: familyOf(FAMILY_ID, { chains: ['solana', 'robinhood'] }) });
+    const host = await show(createElement(ShelfScreen));
+    const card = find(host, '[data-ui="shelf-card"]');
+    expect(badges(card)).toEqual(['solana', 'robinhood']);
+    expect(card.textContent).toContain('Robinhood Chain');
+  });
+
+  it('badges one that is on one chain with that chain alone', async () => {
+    api({ family: familyOf(FAMILY_ID) });
+    const host = await show(createElement(ShelfScreen));
+    expect(badges(find(host, '[data-ui="shelf-card"]'))).toEqual(['solana']);
+  });
+
+  const RH = '0x5fbdb2315678afecb367f032d93f642f64180aa3';
+  it.each([
+    ['solana', VAULT, 'solana:usdc', 'USDC'],
+    ['robinhood', RH, 'robinhood:usdc', 'tUSDG'],
+  ] as const)(
+    'badges a vault on %s, and names its cash as that chain does',
+    async (chain, address, cash, name) => {
+      portStore.setApi(async (path) => {
+        if (path === '/v1/me') return json({ ...person, chain });
+        if (path === `/v1/vaults/${chain}/${address}`)
+          return json({
+            chain,
+            name: chain === 'solana' ? 'Solana' : 'Robinhood Chain',
+            mode: 'mock',
+            provenance: 'mock',
+            vault: {
+              ...vaultOf({
+                chain,
+                address,
+                ...(chain === 'robinhood'
+                  ? {
+                      owner: '0x204faca1764b154221e35c0d20abb3c525710498',
+                      keeper: '0x2222222222222222222222222222222222222222',
+                      recipeOnchainId: null,
+                    }
+                  : {}),
+                cash: { asset: cash, raw: '5000000', multiplier: '1', display: '5' },
+              }),
+              provenance: 'mock',
+            },
+            prices: [],
+            disclaimer: 'd',
+          });
+        return json({ error: 'not found' }, 404);
+      });
+      const host = await show(createElement(VaultScreen, { chain, address }));
+      expect(badges(host)).toEqual([chain]);
+      expect(host.textContent).toContain(`5 ${name}`);
+      if (chain === 'robinhood') expect(host.textContent).not.toMatch(/usdc/i);
+    },
+  );
+});

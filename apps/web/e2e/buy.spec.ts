@@ -189,6 +189,8 @@ async function toReview(page: Page) {
 
   await expect(page).toHaveURL(/\/orders\/[^/]+$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.order.review.title);
+  // the review names the chain over the page and over its steps
+  await expect(page.locator('main [data-ui="chain-badge"]')).toHaveText(['Solana', 'Solana']);
 }
 
 test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', async ({ page }) => {
@@ -221,6 +223,7 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   ).toHaveCount(4);
   await expect(vault.locator('[data-ui="vault-value"] [data-ui="figure"]')).toHaveCount(1);
   await expect(vault.locator('[data-ui="mock-plate"]').first()).toBeVisible();
+  await expect(vault.locator('[data-ui="chain-badge"]')).toHaveText('Solana');
   await check(page, 'monitor');
   // the disclaimer is under the vault, once: the shell's foot does not repeat it
   await expect(page.locator('main [data-ui="disclaimer"]')).toBeVisible();

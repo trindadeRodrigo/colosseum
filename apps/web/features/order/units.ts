@@ -8,14 +8,19 @@ import { deploymentsFor } from './readiness';
 // `cashDecimals` on the mock), never from what the API answers. A hostile API that said the cash token
 // had 9 decimals would have a deposit of 40,000 dollars read as 40: the order screen shows and checks
 // every amount with these. The symbol is a name only: the test network's deploy record names its tokens
-// (deployments/solana-devnet.json, deployments/robinhood-testnet.json), the mock's dollar is USDC, and any other token goes by its id. A
+// (deployments/solana-devnet.json, deployments/robinhood-testnet.json), the mock's dollar goes by the
+// name of the chain it stands in for (USDC, tUSDG on Robinhood Chain), and any other token by its id. A
 // chain with no deployment has no units here, and nothing is signed for it.
 
 export type TokenUnits = { symbol: string; decimals: number };
 export type ChainUnits = { cash: AssetId; tokens: Partial<Record<AssetId, TokenUnits>> };
 
 /** The mock's dollar, as packages/chain-mock names it. Its decimals are the deployment's `cashDecimals`. */
-export const MOCK_CASH_SYMBOL = 'USDC';
+export const MOCK_CASH_SYMBOL: Record<ChainId, string> = {
+  solana: 'USDC',
+  robinhood: 'tUSDG',
+  base: 'USDC',
+};
 
 const RECORDED: Record<string, string> = Object.fromEntries(
   [
@@ -36,7 +41,7 @@ export function unitsFor(chain: ChainId, mock: boolean): ChainUnits | null {
     return {
       cash: deployment.cash,
       tokens: {
-        [deployment.cash]: { symbol: MOCK_CASH_SYMBOL, decimals: deployment.cashDecimals },
+        [deployment.cash]: { symbol: MOCK_CASH_SYMBOL[chain], decimals: deployment.cashDecimals },
       },
     };
   return {
