@@ -2,7 +2,14 @@ import { assets as assetsTable, riskPools, yieldObservations } from '@colosseum/
 import { chainFamily, type YieldObservation } from '@colosseum/schemas';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { loadLiquidityProvider, RISK_METHOD_VERSION } from './liquidity';
-import { asSandbox, exitTwins, standIns, twinSource, twinSymbols } from './model-exits';
+import {
+  asSandbox,
+  exitTwins,
+  type RegistryAsset,
+  standIns,
+  twinSource,
+  twinSymbols,
+} from './model-exits';
 import { type ModelReading, modelledTokens, modelYields } from './model-yields';
 import type { PlanInputs } from './orders/personalize';
 
@@ -25,20 +32,30 @@ export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets }) => {
   // token reads its own.
   const tokens = standIns(assets);
   const names = [...new Set(tokens.flatMap(twinSymbols))];
-  const registry = names.length
-    ? await db
-        .select({
-          assetSymbol: riskPools.assetSymbol,
-          assetMint: riskPools.assetMint,
-          tvlUsd: riskPools.tvlUsd,
-        })
-        .from(riskPools)
-        .where(
-          inArray(
-            sql`lower(${riskPools.assetSymbol})`,
-            names.map((n) => n.toLowerCase()),
-          ),
-        )
+  const lower = names.map((n) => n.toLowerCase());
+  // Solana's stocks are in Bearing's pool registry; the EVM stocks have no pool rows there (PLAN-UNIVERSE
+  // RU.14, DU6) and are found by their seeded `assets` rows, under the collector's spelling.
+  const registry: RegistryAsset[] = lower.length
+    ? [
+        ...(await db
+          .select({
+            assetSymbol: riskPools.assetSymbol,
+            assetMint: riskPools.assetMint,
+            tvlUsd: riskPools.tvlUsd,
+          })
+          .from(riskPools)
+          .where(inArray(sql`lower(${riskPools.assetSymbol})`, lower))),
+        ...(
+          await db
+            .select({ assetSymbol: assetsTable.symbol, assetMint: assetsTable.mint })
+            .from(assetsTable)
+            .where(
+              and(eq(assetsTable.chain, 'evm'), inArray(sql`lower(${assetsTable.symbol})`, lower)),
+            )
+        ).flatMap((r) =>
+          r.assetMint ? [{ assetSymbol: r.assetSymbol, assetMint: r.assetMint, tvlUsd: null }] : [],
+        ),
+      ]
     : [];
   const twins = exitTwins(tokens, registry);
   const twinOf = new Map(twins.map((t) => [t.id, t.twinMint]));
