@@ -22,6 +22,7 @@ import type { PromptGoal } from './prompt-file';
 export const ANSWER_KEY: Record<QuestionField, string> = {
   goal: 'goal',
   amountUsd: 'amount',
+  sleeves: 'sleeves',
   incomeTargetUsdMonthly: 'income',
   horizonMonths: 'horizon',
   risk: 'risk',

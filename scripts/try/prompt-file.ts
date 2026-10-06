@@ -67,6 +67,7 @@ const ALIASES: Record<string, keyof IntakeAnswers> = {
   sleeves: 'sleeves',
   restoreSplit: 'restoreSplit',
   limits: 'limits',
+  horizonOpen: 'horizonOpen',
 };
 /** Keys read here and not passed to the intake as they are. */
 const OWN_KEYS = ['chain', 'holdings', 'withdrawals'] as const;

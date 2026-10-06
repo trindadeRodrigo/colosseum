@@ -32,8 +32,11 @@ claude --model sonnet
 > /plan-chat
 ```
 
-Each chat writes its own file, `try/mine/chat-<time>.md`, with the model's reading pasted as a
-`json reply` block and your answers under `yaml answers`, so earlier chats stay and can be rerun. Ask
+Each chat writes its own file, `try/mine/chat-<time>.md`: your messages about a goal are its text, one
+paragraph each, read again together on every turn as the API reads `followUps`, with the session's
+reading pasted as a `json reply` block, so earlier chats stay and can be rerun. The chat speaks to you,
+not in the engine's words: rule ids, flags and the reasons as written stay in the HTML report, and the
+session gives its path when you ask for detail. Ask
 for changes as you go ("make it 20 years", "add 50% AI", "I already hold $3k of NVDA"): the session
 writes them as answers, runs again and says what changed. The skill is
 `.claude/skills/plan-chat/SKILL.md`.
@@ -90,7 +93,8 @@ add under `answers`, and a block you can copy. Add the answers and run it again.
 | `sleeves` | the split of the plan in percent: `{ goal: 50, ai: 50 }`. `goal` and `safe_yield` are sleeves; any other name is a theme list in `content/themes/<chain>/` |
 | `restoreSplit` | `true` to bring the sleeves back to their split when they drift |
 | `limits` | the person's limits: `mustKeepUsd`, `mayNeedInMonths`, `creditTolerance` (`none`, `limited`, `accept`), `cannotHold: { classes: [stock, etf], underlyings: [TSLA] }` |
-| `rules` | `{ useHoldings: true, glide: true }` (both on unless said) |
+| `rules` | `{ useHoldings: true, glide: true }`. Holdings count unless said; the glide is off unless the text asks for it or names a date the money is needed by (gate `GLIDE-OPT-IN`) |
+| `horizonOpen` | `true` for a goal with no date (the text's "no hard cap" or "sem prazo" does the same) |
 | `holdings` | what the person already holds, in dollars: `{ NVDA: 2000, "solana:spyx": 500 }` |
 
 A mistake in the file (an unknown key, a value the sheet does not accept, YAML that does not parse) stops

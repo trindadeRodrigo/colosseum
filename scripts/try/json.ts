@@ -75,6 +75,7 @@ function goalJson(run: GoalRun, mode: DataMode) {
       read: q.read ?? null,
     })),
     readBack: i.readBack,
+    assumptions: i.assumptions,
     sheetWhole: i.sheet !== null,
     error: run.error,
     candidates: (run.made?.shown ?? []).map((c) => ({
