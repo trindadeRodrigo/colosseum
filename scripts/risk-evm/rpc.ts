@@ -20,7 +20,7 @@ export class RpcUnreachable extends Error {}
  * worth asking again after a short wait. The wordings are the ones the two Robinhood Chain endpoints
  * use (fixtures/risk-evm/rpc-errors.json).
  */
-const isTransient = (r: RpcReply) =>
+export const isTransient = (r: RpcReply) =>
   r.error?.code === 429 ||
   /rate limit|too many requests|header not found|block not found|unknown block|unsupported block number/i.test(
     r.error?.message ?? '',

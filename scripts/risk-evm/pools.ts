@@ -41,6 +41,8 @@ export type PoolCache = {
   source: string;
   method: string;
   maxPools: number;
+  /** Set when the candidates came from a cut file through the asset list (a list run): its name. */
+  cut?: string;
   tokens: Record<string, { address: string; pools: PoolRef[]; skipped: Record<string, number> }>;
 };
 
@@ -228,6 +230,47 @@ export type DiscoverOptions = {
   log: (event: Record<string, unknown>) => void;
 };
 
+/**
+ * The on-chain word on each token's candidates, in two calls at `blockTag`: what each pool says of
+ * itself, then which v3-style pools a factory vouches for. Wherever the candidates come from
+ * (DexScreener, or a cut file), a pool is kept only by this.
+ */
+export async function confirm(
+  chain: ChainConfig,
+  rpc: Rpc,
+  perToken: Array<{ token: TokenConfig; cands: Candidate[] | null }>,
+  maxPools: number,
+  blockTag: string,
+): Promise<
+  Array<{ token: TokenConfig; cands: Candidate[] | null; pools: PoolRef[]; skipped: Skipped }>
+> {
+  const multicall = async (calls: Call[]): Promise<Reply[]> =>
+    calls.length
+      ? decodeAggregate3(
+          await rpc.call<string>('eth_call', [
+            { to: chain.multicall3, data: encodeAggregate3(calls) },
+            blockTag,
+          ]),
+        )
+      : [];
+  const first = await multicall(perToken.flatMap((t) => verifyCalls(chain, t.cands ?? [])));
+  let at = 0;
+  const found = perToken.map(({ token, cands }) => {
+    const n = verifyCalls(chain, cands ?? []).length;
+    const mine = first.slice(at, at + n);
+    at += n;
+    return { token, cands, ...eligible(chain, token, cands ?? [], mine) };
+  });
+  const second = await multicall(found.flatMap((f) => factoryCalls(chain, f.token, f.pools)));
+  at = 0;
+  return found.map((f) => {
+    const n = factoryCalls(chain, f.token, f.pools).length;
+    const kept = attested(chain, f, second.slice(at, at + n), maxPools);
+    at += n;
+    return { token: f.token, cands: f.cands, ...kept };
+  });
+}
+
 const DEXSCREENER = 'https://api.dexscreener.com/token-pairs/v1';
 
 export async function discover(
@@ -235,15 +278,6 @@ export async function discover(
   rpc: Rpc,
   opts: DiscoverOptions,
 ): Promise<PoolCache> {
-  const multicall = async (calls: Call[]): Promise<Reply[]> =>
-    calls.length
-      ? decodeAggregate3(
-          await rpc.call<string>('eth_call', [
-            { to: chain.multicall3, data: encodeAggregate3(calls) },
-            opts.blockTag,
-          ]),
-        )
-      : [];
   const perToken: Array<{ token: TokenConfig; cands: Candidate[] | null }> = [];
   for (const token of chain.tokens) {
     try {
@@ -268,21 +302,10 @@ export async function discover(
     await sleep(250);
   }
 
-  const first = await multicall(perToken.flatMap((t) => verifyCalls(chain, t.cands ?? [])));
-  let at = 0;
-  const found = perToken.map(({ token, cands }) => {
-    const n = verifyCalls(chain, cands ?? []).length;
-    const mine = first.slice(at, at + n);
-    at += n;
-    return { token, cands, ...eligible(chain, token, cands ?? [], mine) };
-  });
-  const second = await multicall(found.flatMap((f) => factoryCalls(chain, f.token, f.pools)));
-  at = 0;
+  const confirmed = await confirm(chain, rpc, perToken, opts.maxPools, opts.blockTag);
   const tokens: PoolCache['tokens'] = {};
-  for (const f of found) {
-    const n = factoryCalls(chain, f.token, f.pools).length;
-    const kept = attested(chain, f, second.slice(at, at + n), opts.maxPools);
-    at += n;
+  for (const f of confirmed) {
+    const kept = { pools: f.pools, skipped: f.skipped };
     const before = opts.previous?.tokens[f.token.symbol];
     const usable = before && same(before.address, f.token.address) && before.pools.length > 0;
     if (kept.pools.length === 0 && usable) {

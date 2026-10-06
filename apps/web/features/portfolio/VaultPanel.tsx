@@ -2,6 +2,7 @@
 import { DISCLAIMER_SHORT } from '@colosseum/schemas';
 import { useId } from 'react';
 import { Card, CardBody, CardFooter, CardHeader, Stat, StatRow } from '../../components/ui/Card';
+import { ChainBadge } from '../../components/ui/ChainBadge';
 import { type Column, DataTable } from '../../components/ui/DataTable';
 import { shorten } from '../../components/ui/format';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
@@ -127,9 +128,12 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
         id={heading}
         density="dense"
         meta={
-          <span className="font-mono" title={vault.address}>
-            <span className="sr-only">{words.address}: </span>
-            {shorten(vault.address)}
+          <span className="inline-flex flex-wrap items-center justify-end gap-2">
+            <ChainBadge chain={vault.chain} />
+            <span className="font-mono" title={vault.address}>
+              <span className="sr-only">{words.address}: </span>
+              {shorten(vault.address)}
+            </span>
           </span>
         }
       />

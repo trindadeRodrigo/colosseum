@@ -111,20 +111,25 @@ describe('POST /v1/baskets/personalize', () => {
       sheet: { ...asked, sleeves: [{ kind: 'safe_yield', shareBps: 4000 }] },
     });
     expect(bad.statusCode).toBe(400);
-    // A goal in reais and a split into goal and safe yield are built (ENG-3 slice 2): the plan says
-    // its value in reais moves with the rate.
-    const reais = await post(who, PATH, {
+    // A split into goal and safe yield is built (ENG-3 slice 2).
+    const split = await post(who, PATH, {
       sheet: {
         ...asked,
-        currency: 'BRL',
         sleeves: [
           { kind: 'goal', shareBps: 6000 },
           { kind: 'safe_yield', shareBps: 4000 },
         ],
       },
     });
-    expect(reais.statusCode, reais.body).toBe(200);
-    expect(PersonalizeResponse.parse(reais.json()).proposal.flags).toContain('fx_open:BRL');
+    expect(split.statusCode, split.body).toBe(200);
+    // Plans are in US dollars for now (gate USD-ONLY): a goal in reais is refused with its own code,
+    // and nothing is stored.
+    const reais = await post(who, PATH, { sheet: { ...asked, currency: 'BRL' } });
+    expect(reais.statusCode).toBe(422);
+    expect(OrderError.parse(reais.json())).toMatchObject({
+      error: 'Plans are in US dollars for now',
+      code: 'CURRENCY_UNSUPPORTED',
+    });
     // Dated withdrawals are applied: the plan is made, and its sheet says them back.
     const obligations = [{ month: '2027-06', amount: 3000, currency: 'USD' }];
     const withdrawing = await post(who, PATH, { sheet: { ...asked, obligations } });
@@ -132,12 +137,12 @@ describe('POST /v1/baskets/personalize', () => {
     expect(PersonalizeResponse.parse(withdrawing.json()).proposal.sheet.obligations).toEqual(
       obligations,
     );
-    // A withdrawal in reais needs an exchange rate the server does not read yet: refused, with the fix.
+    // A withdrawal in reais is refused the same way (gate USD-ONLY).
     const inReais = await post(who, PATH, {
       sheet: { ...asked, obligations: [{ month: '2027-06', amount: 3000, currency: 'BRL' }] },
     });
     expect(inReais.statusCode, inReais.body).toBe(422);
-    expect(inReais.body).toContain('USDBRL');
+    expect(OrderError.parse(inReais.json()).code).toBe('CURRENCY_UNSUPPORTED');
     // A theme sleeve is refused until the engine applies it, never ignored.
     const theme = {
       sleeves: [
@@ -225,12 +230,12 @@ describe('POST /v1/baskets/personalize', () => {
   it('holds PAXG for gold on Solana and GLD on Robinhood Chain when nothing chosen fills it (gate GOLD-PAXG)', async () => {
     for (const [kind, chain, gold, bps] of [
       ['solana', 'solana', 'PAXG', 1000],
-      ['robinhood', 'robinhood', 'GLD', 2500],
+      ['robinhood', 'robinhood', 'GLD', 1000],
     ] as const) {
       const who = await someone(kind);
       // The mock's one issuer holds at most 50% of dollar yield, gold and cash at any risk (gate
-      // SOLVER-CAPS). On Solana the yield token has a reading and takes its 40%, so gold takes the
-      // 10% left; on Robinhood Chain it has none and is left out, so gold keeps its 25%.
+      // SOLVER-CAPS). On both chains the yield token has a MOCK reading and takes its 40%, so gold
+      // takes the 10% left.
       const res = await post(who, PATH, { sheet: sheet({ chains: [chain], risk: 'high' }) });
       expect(res.statusCode, res.body).toBe(200);
       const { proposal } = PersonalizeResponse.parse(res.json());
@@ -239,11 +244,25 @@ describe('POST /v1/baskets/personalize', () => {
       expect(line?.reasons.map((r) => r.text)).toContain(
         `${gold}: where a goal to protect starts when you choose no shared portfolio.`,
       );
-      // What is left out is said: on Robinhood Chain, the yield token with no reading.
-      expect(proposal.removed.map((r) => [r.ref, r.reasons.map((x) => x.rule)])).toEqual(
-        chain === 'robinhood' ? [['mYIELD', ['NO_YIELD']]] : [],
-      );
+      // Nothing is left out: the yield token has its reading on both chains.
+      expect(proposal.removed.map((r) => [r.ref, r.reasons.map((x) => x.rule)])).toEqual([]);
     }
+  });
+
+  it('holds dollar yield in a plan on Robinhood Chain on the mock, from its MOCK reading', async () => {
+    const who = await someone('robinhood');
+    const res = await post(who, PATH, { sheet: sheet({ chains: ['robinhood'] }) });
+    expect(res.statusCode, res.body).toBe(200);
+    const { proposal } = PersonalizeResponse.parse(res.json());
+    expect(proposal.lines.map((l) => [l.assetId, l.weightBps])).toEqual([
+      ['robinhood:yield', 4000],
+      ['robinhood:gold', 1000],
+      ['robinhood:usdc', 5000],
+    ]);
+    // the reading the line stands on is labelled MOCK, as the Solana one is
+    const readings = proposal.observations.filter((o) => o.kind === 'yield');
+    expect(readings.length).toBeGreaterThan(0);
+    expect(readings.every((o) => o.provenance === 'mock')).toBe(true);
   });
 
   it('makes an income plan with no stock token either, even from a shared portfolio of stocks', async () => {

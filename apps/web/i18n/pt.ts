@@ -104,6 +104,7 @@ export const pt: Dictionary = {
 
   chain: {
     names: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
+    explorers: { solana: 'Solscan', robinhood: 'explorador da Robinhood', base: 'Basescan' },
     pick: {
       title: 'Escolha a rede onde seu plano vai ficar',
       asked: {
@@ -274,6 +275,8 @@ export const pt: Dictionary = {
       chainUnknown:
         'Ainda não sei em qual rede seu plano fica, então não consigo montar para ela. Pergunte de novo, acima.',
       refused: 'Nosso servidor não aceitou esses limites. Confira cada campo e tente de novo.',
+      currency:
+        'Os planos são em dólares por enquanto: o valor e cada saque. Informe-os em dólares e monte de novo.',
       signInAgain:
         'Nosso servidor não reconhece mais o seu login, então o plano não foi montado. Saia e entre de novo.',
       noIdentity:
@@ -378,6 +381,15 @@ export const pt: Dictionary = {
     empty: (chain: string) =>
       `Você ainda não tem cofre na ${chain}. Um cofre é criado quando você compra seu primeiro plano.`,
     startGoal: 'Comece pelo seu objetivo',
+    group: {
+      worth: (vaults: number, chain: string) =>
+        vaults > 1 ? `Seus ${vaults} cofres na ${chain} valem` : `Seu cofre na ${chain} vale`,
+      method: (vaults: number, chain: string) =>
+        `seus ${vaults} cofres na ${chain}, cada um avaliado como mostrado, somados`,
+      across: (chains: number) =>
+        chains === 2 ? 'Nas duas redes, juntas' : `Nas ${chains} redes, juntas`,
+      acrossMethod: (chains: number) => `os totais das ${chains} redes acima, somados`,
+    },
     vault: {
       title: 'Seu cofre',
       address: 'Endereço do cofre',
@@ -432,6 +444,7 @@ export const pt: Dictionary = {
       title: 'Seu portfólio',
       worth: (chain: string) => `Seu cofre na ${chain} vale`,
       many: (vaults: number, chain: string) => `Você tem ${vaults} cofres na ${chain}.`,
+      manyChains: (vaults: number, chains: string) => `Você tem ${vaults} cofres, na ${chains}.`,
       see: 'Ver seu portfólio',
     },
   },
@@ -439,6 +452,8 @@ export const pt: Dictionary = {
   plan: {
     title: 'Seu plano',
     signedOut: 'Entre para ver este plano. Um plano é de uma pessoa, na rede da carteira dela.',
+    fromLink:
+      'Este plano veio de um link: nosso motor o montou com os limites que o link trazia, que outra pessoa pode ter definido. Confira o objetivo, o valor e os limites acima antes de comprar.',
     missing: {
       title: 'Não tenho este plano nesta aba.',
       body: 'Um plano fica guardado na aba do navegador que o montou, e este não está aqui. Monte de novo a partir do seu objetivo: seus limites continuam guardados.',
@@ -477,6 +492,9 @@ export const pt: Dictionary = {
       high: 'ponta alta',
       note: 'Só o que o rendimento em dólar paga é projetado. Os preços de ações e ouro não são, e podem cair.',
       table: 'A projeção',
+      month: (m: number) => `mês ${m}`,
+      hint: 'Aponte para o gráfico, toque nele ou use as setas para ler um mês.',
+      series: 'O que o gráfico mostra',
     },
     exitPlan: 'Plano de saída',
     costPrefix: 'custo',
@@ -635,7 +653,7 @@ export const pt: Dictionary = {
         version: (n: number) => `versão ${n}`,
         waiting: (n: number) => `versão ${n} aguarda`,
         open: (name: string) => `Abrir ${name}`,
-        on: (chains: string) => `na ${chains}`,
+        on: 'na',
       },
       failure: {
         unreachable:
@@ -941,7 +959,6 @@ export const pt: Dictionary = {
       waiting: 'Aguardando…',
       settled: 'Concluído',
     },
-    explorer: 'explorador',
     signature: 'assinatura',
     notRetried: '(sem nova tentativa)',
     link: {
@@ -991,6 +1008,8 @@ export const pt: Dictionary = {
       lookAgain: 'Olhar de novo',
       error:
         'Nosso servidor recusou ou não respondeu, então a ordem parou. O que foi assinado fica guardado. Tente de novo.',
+      planGone:
+        'O plano desta ordem não está mais guardado: um plano vindo de um link que ninguém compra é apagado depois de alguns dias. A ordem parou, e o que foi assinado fica guardado. Monte o plano de novo a partir do seu objetivo.',
       tryAgain: 'Tentar de novo',
       elsewhere:
         'Esta ordem está rodando em outra aba deste navegador. Acompanhe por lá; nada foi feito aqui.',
@@ -1004,7 +1023,7 @@ export const pt: Dictionary = {
         'no-lock':
           'Este navegador não consegue manter uma ordem em uma só aba, então não vou assinar aqui. Abra a página num navegador atual.',
         'plan-mismatch':
-          'O plano guardado para esta ordem é de outra rede, então nada foi assinado. Crie uma nova ordem.',
+          'O plano guardado para esta ordem não confere com ela (outra rede ou outro cofre), então nada foi assinado. Crie uma nova ordem.',
       },
       crashed: 'Algo parou a ordem antes do fim. O que foi assinado fica guardado. Tente de novo.',
       newOrder: 'Criar uma nova ordem',
@@ -1065,6 +1084,17 @@ export const pt: Dictionary = {
       chips: 'Os limites',
       legs: 'Como as peças se encaixam',
       chartTable: 'O gráfico em tabela',
+      readout: {
+        hint: 'Aponte para o gráfico, toque nele ou use as setas para ler um mês.',
+        series: 'O que o gráfico mostra',
+        putIn: 'aportado',
+        paidOut: 'pago',
+        base: 'cenário base',
+        range: 'do cenário fraco ao forte',
+        weak: 'cenário fraco',
+        strong: 'cenário forte',
+        goal: 'alvo',
+      },
       month: 'Mês',
       balance: 'Saldo',
       exitPlan: 'Plano de saída antes de investir',
@@ -1165,9 +1195,8 @@ export const pt: Dictionary = {
       eyebrow: 'Acompanhe',
       title: 'Construído peça por peça. Veja tomar forma.',
       lede: 'Novidades do produto a cada peça cortada, e uma carta curta sobre objetivos, liquidez e o que os ativos tokenizados pagam de verdade. Sem hype, sem palpite de preço.',
-      photoAlt:
-        'Vigas de madeira deslocadas, empilhadas e encaixadas, emolduram a vista de uma floresta por janelas altas.',
-      photoCaption: 'vigas empilhadas e deslocadas · foto de referência',
+      drawingAlt:
+        'Um desenho a tinta do encaixe se fechando: um trilho passa a espiga pelo pilar, e um pino desce na fenda para travá-lo.',
       email: 'E-mail',
       subscribe: 'Inscrever',
       subscribing: 'Inscrevendo…',
@@ -1186,5 +1215,35 @@ export const pt: Dictionary = {
       },
     },
     foot: 'Os planos, taxas e chances desta página são dados de exemplo MOCK. Nenhum deles é real.',
+  },
+
+  embed: {
+    label: 'Plano pela tenonfi',
+    eyebrow: 'Seu objetivo, lido pela tenonfi',
+    title: 'O que o seu dinheiro precisa fazer?',
+    lead: 'Diga em uma frase. Eu transformo em limites; o plano é montado na tenonfi, numa carteira sua.',
+    box: 'Seu objetivo',
+    placeholder: 'US$ 10.000 por cinco anos, risco médio',
+    read: 'Ler meu objetivo',
+    reading: 'Lendo seu objetivo…',
+    unread: 'Seu objetivo, como foi lido',
+    limits: 'Como eu li',
+    notFound: 'não encontrado: você define na tenonfi',
+    build: 'Montar este plano na tenonfi',
+    buildNote:
+      'Abre a tenonfi em uma nova aba, onde você entra com uma carteira sua. Nada é assinado aqui.',
+    readFailure: 'Não consegui ler isso agora. Seu texto continua aqui. Tente de novo.',
+    tooShort: 'Isso é curto demais para eu ler. Tente um valor e um prazo.',
+    poweredBy: 'Feito com',
+    loading: 'Carregando o plano…',
+    unavailable: 'Este plano não está disponível.',
+    showSchedule: 'Mostrar o cronograma',
+    vault: {
+      title: (chain: string) => `Seu cofre na ${chain}`,
+      lead: 'O que ele guarda agora, lido da rede.',
+      value: 'Valor',
+      parts: 'As partes',
+      see: 'Ver na tenonfi',
+    },
   },
 };

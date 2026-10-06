@@ -19,8 +19,8 @@ import { Mark } from './Mark';
 //
 //   Invest      the goal and its plan (/goal)
 //   Portfolio   the person's vaults (/monitor), for someone signed in
-//   Resources   how Bearing measures (/analytics/methodology), the one methodology page the app has
-//   Analytics   Bearing's analytics (/analytics/stocks), current on every page under /analytics
+//   Analytics   Bearing's analytics (/analytics/stocks), current on every page under /analytics,
+//               its methodology too, which its side menu links (no Resources item: Thom, Oct 6)
 //   the wallet  "Sign in"; then the short address of the plan's chain and "Sign out"
 //
 //   Products    the shelf of shared portfolios (/shelf), and a portfolio's page under it
@@ -37,7 +37,6 @@ const ROUTES = [
   { href: '/shelf', key: 'products', also: ['/indexes', '/publish'] },
   { href: '/goal', key: 'invest', also: ['/plan', '/orders'] },
   { href: '/monitor', key: 'portfolio', signedIn: true },
-  { href: '/analytics/methodology', key: 'resources' },
   // Bearing's analytics: every page of the section is under it
   { href: '/analytics/stocks', key: 'analytics', also: ['/analytics'] },
 ] as const;
@@ -66,7 +65,7 @@ export function AppNav() {
       links={ROUTES.filter((route) => !('signedIn' in route) || signedIn).map((route) => ({
         label: t.shell[route.key],
         href: route.href,
-        // the link whose own page this is wins: Resources on the methodology, not Analytics too
+        // the link whose own page this is wins over one it is under
         current: (exact ? pathname === route.href : isCurrent(pathname, route)) && 'page',
       }))}
       action={account.action}

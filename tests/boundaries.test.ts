@@ -12,7 +12,7 @@ import {
 } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
 // The import rules of docs/vault/DESIGN-VAULT.md section 2, read from the import statements of every source
 // file under packages/ and apps/. scripts/ and the root tests/ may import anything and are not read.
@@ -725,21 +725,38 @@ function sweep(): void {
 const nameOf = (dir: string) =>
   (JSON.parse(readFileSync(join(ROOT, dir, 'package.json'), 'utf8')) as { name: string }).name;
 
+/** The planted files not yet removed: `afterEach` removes any a test left, however it ended. */
+const planted = new Set<string>();
+
+/**
+ * A self-check that plants a file runs the checker over the whole checkout, which can take longer than
+ * vitest's default 5 s on a loaded machine (it timed out in CI on #81). Its own limit, so a slow run is
+ * not a failure; what it asserts is unchanged.
+ */
+const PLANT_TIMEOUT_MS = 30_000;
+
 /** Plants `source` (after the marker line), runs the checker, removes the file. */
 function withPlant(source: string): { file: string; caught: Violation[] } {
   const file = `${PLANT_DIR}/boundary-plant-${randomBytes(6).toString('hex')}.ts`;
   const full = inside(file);
   removeLater(full);
+  planted.add(full);
   writeFileSync(full, PLANT_MARK + source, { flag: 'wx' });
   try {
     return { file, caught: check(ROOT, file).filter((v) => v.file === file) };
   } finally {
     rmSync(full, { force: true });
+    planted.delete(full);
   }
 }
 
 describe('import boundaries (DESIGN-VAULT.md section 2)', () => {
   sweep();
+  // A test that timed out or threw before its `finally` ran still leaves no planted file behind.
+  afterEach(() => {
+    for (const full of planted) rmSync(full, { force: true });
+    planted.clear();
+  });
   const scanned = scan(ROOT);
   const found = scanned.violations;
 
@@ -812,32 +829,44 @@ describe('import boundaries (DESIGN-VAULT.md section 2)', () => {
       for (const banned of [DB, ENGINE, ...CHAINS]) expect(LAYOUT[dir]?.may).not.toContain(banned);
   });
 
-  it('self-check: catches an import planted in a watched folder, then removes it', () => {
-    const { file, caught } = withPlant(
-      `import { REGISTRY } from '${nameOf(ENGINE)}';\nexport const n = REGISTRY.length;\n`,
-    );
-    expect(caught).toEqual([{ file, line: 2, kind: 'import', target: ENGINE, rule: 3 }]);
-    expect(existsSync(inside(file))).toBe(false);
-  });
+  it(
+    'self-check: catches an import planted in a watched folder, then removes it',
+    () => {
+      const { file, caught } = withPlant(
+        `import { REGISTRY } from '${nameOf(ENGINE)}';\nexport const n = REGISTRY.length;\n`,
+      );
+      expect(caught).toEqual([{ file, line: 2, kind: 'import', target: ENGINE, rule: 3 }]);
+      expect(existsSync(inside(file))).toBe(false);
+    },
+    PLANT_TIMEOUT_MS,
+  );
 
-  it('self-check: catches a planted `import type` too', () => {
-    const { file, caught } = withPlant(
-      `// a comment first\nimport type { Asset } from '${nameOf(ENGINE)}';\nexport type A = Asset;\n`,
-    );
-    expect(caught).toEqual([{ file, line: 3, kind: 'import', target: ENGINE, rule: 3 }]);
-    expect(existsSync(inside(file))).toBe(false);
-  });
+  it(
+    'self-check: catches a planted `import type` too',
+    () => {
+      const { file, caught } = withPlant(
+        `// a comment first\nimport type { Asset } from '${nameOf(ENGINE)}';\nexport type A = Asset;\n`,
+      );
+      expect(caught).toEqual([{ file, line: 3, kind: 'import', target: ENGINE, rule: 3 }]);
+      expect(existsSync(inside(file))).toBe(false);
+    },
+    PLANT_TIMEOUT_MS,
+  );
 
-  it('self-check: catches a signing entry planted outside the keeper', () => {
-    const { file, caught } = withPlant(
-      `import { loadKeypair } from '${nameOf(SOLANA)}/server';\nexport const k = loadKeypair;\n`,
-    );
-    expect(caught).toEqual([
-      { file, line: 2, kind: 'import', target: SOLANA, rule: 3 },
-      { file, line: 2, kind: 'signing', target: SOLANA, rule: 5 },
-    ]);
-    expect(existsSync(inside(file))).toBe(false);
-  });
+  it(
+    'self-check: catches a signing entry planted outside the keeper',
+    () => {
+      const { file, caught } = withPlant(
+        `import { loadKeypair } from '${nameOf(SOLANA)}/server';\nexport const k = loadKeypair;\n`,
+      );
+      expect(caught).toEqual([
+        { file, line: 2, kind: 'import', target: SOLANA, rule: 3 },
+        { file, line: 2, kind: 'signing', target: SOLANA, rule: 5 },
+      ]);
+      expect(existsSync(inside(file))).toBe(false);
+    },
+    PLANT_TIMEOUT_MS,
+  );
 
   it('self-check: a flagged file loaded any other way is a problem', () => {
     const file = 'apps/api/src/routes/monitor-rebalance.ts';

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardFooter, CardHeader, CardLoading } from '../../components/ui/Card';
+import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
 import { utcMinute } from '../../components/ui/ExecutionList';
 import { Field, Input } from '../../components/ui/Field';
@@ -132,6 +133,7 @@ export function BuyScreen({ id }: { id: string }) {
       amountUsd: amount,
       lines: plan.proposal.lines,
       approved: null,
+      ...(plan.fromLink ? { linked: true as const } : {}),
       goal: {
         sheet: plan.proposal.sheet,
         card: plan.proposal.card,
@@ -178,7 +180,8 @@ export function BuyScreen({ id }: { id: string }) {
 
   return (
     <div data-ui="buy-screen" className="flex flex-col gap-8">
-      <header className="flex flex-col gap-3">
+      <header className="flex flex-col items-start gap-3">
+        <ChainBadge chain={chain} />
         <h1 className="max-w-(--tf-measure-display) font-display text-h1 font-normal">
           {t.buy.title}
         </h1>

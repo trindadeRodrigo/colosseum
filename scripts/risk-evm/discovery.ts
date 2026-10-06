@@ -118,9 +118,12 @@ export function allowedSpan(message: string | undefined): number | null {
   return m ? Number(m[1]) : null;
 }
 
-/** True when an endpoint refuses a log query for the number of logs it matched, not for its span. */
+/**
+ * True when an endpoint refuses a log query for what it matched (the number of logs, or the size of
+ * the reply: "response too large" on a busy window of the Swap walk, 2026-10-06), not for its span.
+ */
 export const tooManyLogs = (message: string | undefined) =>
-  /exceeds limit|too many (?:logs|results)|response size/i.test(message ?? '');
+  /exceeds limit|too many (?:logs|results)|response (?:size|too large)/i.test(message ?? '');
 
 // ---------------------------------------------------------------------------------------------
 // Candidates: one entry per pool, whatever named it

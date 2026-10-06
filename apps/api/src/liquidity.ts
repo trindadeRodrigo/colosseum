@@ -10,13 +10,17 @@ import {
 } from '@colosseum/risk';
 import type { Asset, RegimeLiquidityProvider } from '@colosseum/schemas';
 import { and, desc, eq, inArray } from 'drizzle-orm';
+import { CURVE_METHOD_VERSIONS, curveVersionOf, RISK_METHOD_VERSION } from './curve-version';
 
 const ROOT = process.env.REPO_ROOT ?? join(import.meta.dirname, '..', '..', '..');
-export const RISK_METHOD_VERSION = 'risk-0.3';
+
+export { RISK_METHOD_VERSION };
 
 /**
- * Builds the structurer's LiquidityProvider from the risk layer's stored curves (current method version),
- * keyed by registry asset id through the asset's mint. Sell curves answer every exit question; buy curves
+ * Builds the structurer's LiquidityProvider from the risk layer's stored curves, keyed by registry asset
+ * id through the asset's mint. Each address is read under its own method version (`curveVersionOf`): the
+ * routed risk-0.3 on Solana, the EVM collector's evmq-0.1 for an EVM address. The provider's own
+ * `methodVersion` is still the one name, risk-0.3. Sell curves answer every exit question; buy curves
  * answer `entryCostIn` only. Returns undefined when disabled
  * (RISK_LIQUIDITY=off) or when no curve exists for any registry asset: the engine then behaves exactly as
  * before the risk layer.
@@ -35,9 +39,10 @@ export async function loadLiquidityProvider(
       and(
         inArray(riskDepthCurves.assetMint, [...byMint.keys()]),
         inArray(riskDepthCurves.side, ['sell', 'buy']),
-        eq(riskDepthCurves.methodVersion, RISK_METHOD_VERSION),
+        inArray(riskDepthCurves.methodVersion, CURVE_METHOD_VERSIONS),
       ),
-    );
+    )
+    .then((all) => all.filter((r) => r.methodVersion === curveVersionOf(r.assetMint)));
   if (!rows.some((r) => r.side === 'sell')) return undefined;
   const curves = new Map<string, AssetCurves>();
   const buyCurves = new Map<string, AssetCurves>();

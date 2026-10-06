@@ -26,6 +26,9 @@ export const SEL = {
   getTickBitmap: '1c7ccb4c', // getTickBitmap(bytes32,int16)  v4 StateView
   getTickLiquidity: 'caedab54', // getTickLiquidity(bytes32,int24)  v4 StateView
   weth9: '4aa4a4fc', // WETH9()  v4 PositionManager: the wrapped native coin it unwraps
+  description: '7284e416', // description()  Chainlink feed
+  latestRoundData: 'feaf968c', // latestRoundData()  Chainlink feed
+  aggregator: '245a7bfc', // aggregator()  Chainlink feed proxy
 } as const;
 
 /** Event topics: the keccak-256 of the signature beside them. Each is checked against a recorded log. */
@@ -36,6 +39,15 @@ export const TOPIC = {
   // PoolCreated(address indexed token0, address indexed token1, uint24 indexed fee, int24 tickSpacing,
   // address pool)  Uniswap v3 factory
   v3PoolCreated: '0x783cca1c0412dd0d695e784568c96da2e9c22ff989357a2e8b1d9b2b4e6b7118',
+  // Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1,
+  // uint160 sqrtPriceX96, uint128 liquidity, int24 tick)  Uniswap v3 pool. Amounts are the pool's
+  // deltas: positive came in.
+  v3Swap: '0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67',
+  // Swap(bytes32 indexed id, address indexed sender, int128 amount0, int128 amount1,
+  // uint160 sqrtPriceX96, uint128 liquidity, int24 tick, uint24 fee)  v4 PoolManager (tick before
+  // fee: the other order hashes to a topic the chain never emits). Amounts are the swapper's deltas:
+  // negative went into the pool.
+  v4Swap: '0x40e9cecb9f5f1f1c5b9c97dec2917b7ee92e57ba5563708daca94dd84ad7112f',
 } as const;
 
 export type PoolKey = {

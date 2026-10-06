@@ -335,15 +335,22 @@ export type ChainErrorInfo = z.infer<typeof ChainErrorInfo>;
 export class ChainError extends Error {
   readonly code: ChainErrorCode;
   readonly retryable: boolean;
+  /**
+   * The transaction was refused before it left this process (a relay's preflight): it can never land,
+   * so a caller that remembered it as sent may forget it.
+   */
+  readonly unsent: boolean;
   constructor(
     code: ChainErrorCode,
     message: string,
     retryable: boolean = CHAIN_ERROR_RETRYABLE[code],
+    options: { unsent?: boolean } = {},
   ) {
     super(message);
     this.name = 'ChainError';
     this.code = code;
     this.retryable = retryable;
+    this.unsent = options.unsent ?? false;
   }
   toJSON(): ChainErrorInfo {
     return { code: this.code, message: this.message, retryable: this.retryable };

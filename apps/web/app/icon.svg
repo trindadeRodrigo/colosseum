@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <title>tenonfi</title>
+  <style>path, rect { fill: #1C1712; } @media (prefers-color-scheme: dark) { path, rect { fill: #E6D3B7; } }</style>
+  <rect x="1" y="1" width="4" height="14"/><path fill-rule="evenodd" d="M6 4h9v8H6z M11 6a2 2 0 1 0 0.001 0z"/>
+</svg>
