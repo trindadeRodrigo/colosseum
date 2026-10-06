@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { isEligible, isExecutable, REGISTRY, REGISTRY_BY_ID, solve } from '@colosseum/engine';
+import { createLiquidityProvider, defaultRegimeParams } from '@colosseum/risk';
 import {
   Asset,
   AssetList,
@@ -151,6 +152,53 @@ describe('a seeded row does not widen what the structurer offers', () => {
       expect(plan([...rows, ...REGISTRY], p)).toEqual(alone);
     }
     expect(plan(REGISTRY, 'high_risk').legs.some((l) => l.assetId === 'spyx')).toBe(true);
+  });
+
+  it('leaves a plan with measured liquidity as it is too', () => {
+    // a provider that measures the Robinhood rows and nothing on Solana: the worst case for SPYx
+    const liquidity = createLiquidityProvider({
+      curves: new Map(
+        rows.map((r) => [
+          r.id,
+          {
+            assetId: r.id,
+            byRegime: {
+              us_market_hours: {
+                points: [{ notionalUsd: 100_000, cost: 0.001, samples: 40 }],
+                insufficientFrom: null,
+                quantile: 0.5,
+                minSamples: 8,
+                from: '2026-10-05T14:00:00.000Z',
+                to: '2026-10-05T19:00:00.000Z',
+                samples: 40,
+              },
+            },
+          },
+        ]),
+      ),
+      regimeParams: defaultRegimeParams(
+        JSON.parse(readFileSync('fixtures/risk/us-market-holidays.json', 'utf8')),
+      ),
+      methodVersion: 'risk-0.3',
+      provenance: 'fixture',
+    });
+    const withIt = (assets: Asset[]) =>
+      solve({
+        sheet: sheet('high_risk'),
+        capitalUsd: 100_000,
+        assets,
+        yields,
+        fxUsdBrl: 5.2,
+        nowMonth: '2026-10',
+        liquidity,
+      });
+    const edited = rows.map((r) => ({
+      ...r,
+      eligibleProfiles: [...Profile.options],
+      capWeight: 0.3,
+    }));
+    expect(withIt([...REGISTRY, ...rows])).toEqual(withIt(REGISTRY));
+    expect(withIt([...REGISTRY, ...edited])).toEqual(withIt(REGISTRY));
   });
 
   it('holds even if a row is edited to name a profile: another chain is never in the plan (ONE-CHAIN)', () => {

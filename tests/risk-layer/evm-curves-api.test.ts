@@ -7,7 +7,7 @@ import {
   EVM_METHOD_VERSION,
   RISK_METHOD_VERSION,
 } from '../../apps/api/src/curve-version';
-import { loadAssetFacts } from '../../apps/api/src/facts';
+import { loadAssetFacts, loadPlanFacts } from '../../apps/api/src/facts';
 import { loadLiquidityProvider } from '../../apps/api/src/liquidity';
 
 // PLAN-UNIVERSE RU.8, the item's check on fixture rows: an EVM stock answers under its own symbol and
@@ -118,6 +118,27 @@ describe('the fact sheet of an EVM stock (GET /risk/facts/assets/:id)', () => {
       expect(exit?.source).toBe('fixture (evmq-0.1)');
       expect(exit?.value).toBeCloseTo(OWN * 2, 12);
     }
+  });
+
+  it('carries no fact of another chain or issuer: no xStocks route, no Solana network fee', async () => {
+    const sheet = await loadAssetFacts(db, ID, { sizeUsd: 1_000 });
+    for (const f of Object.values(sheet?.issuerRoute ?? {})) expect(f.value).toBeNull();
+    for (const c of sheet?.costs ?? []) expect(c.exit.networkFeeUsd.value).toBeNull();
+    expect(JSON.stringify(sheet)).not.toMatch(/xstocks/i);
+  });
+
+  it('a plan holding it is assessed on its evmq-0.1 curve, not on the stray one', async () => {
+    const withdrawals = [{ at: '2026-10-07T15:00:00.000Z', usd: 500 }];
+    const now = new Date('2026-10-06T15:00:00.000Z');
+    const plan = await loadPlanFacts(db, [{ assetId: ID, valueUsd: 1_000 }], { withdrawals, now });
+    const text = JSON.stringify(plan);
+    expect(text).toContain('risk_depth_curves (evmq-0.1) of 1 legs');
+    expect(text).not.toContain('risk_depth_curves (risk-0.3)');
+    const sol = await loadPlanFacts(db, [{ assetId: SOLANA_ID, valueUsd: 1_000 }], {
+      withdrawals,
+      now,
+    });
+    expect(JSON.stringify(sol)).toContain('risk_depth_curves (risk-0.3) of 1 legs');
   });
 
   it('does not find it under the lower-case address: the spelling is the collector’s', async () => {

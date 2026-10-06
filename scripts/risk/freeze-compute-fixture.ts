@@ -8,8 +8,10 @@ import { curveRows } from './curve-rows';
 
 // Freezes what `pnpm risk:compute` reads for two Solana stocks, and the rows it writes from them, into
 // fixtures/risk/compute/solana-snapshots.json.gz (PLAN-UNIVERSE RU.8). Read-only on the database.
-// The expected rows in the committed file were written by compute as it was before RU.8, so the test
-// that reads it holds a Solana curve to what it was. Run it again only to move that line on purpose.
+// The committed file was written while curve-rows.ts still held compute's old lines unchanged, so its
+// expected rows are what compute wrote before RU.8, and the test that reads it holds a Solana curve to
+// that. Running this again writes the expected rows with the code as it is now: the pin then holds
+// today's code to itself, so do it only to move the line on purpose, and say so.
 //   pnpm exec tsx scripts/risk/freeze-compute-fixture.ts [every-nth-snapshot]
 const SYMBOLS = ['SPYx', 'QQQx'];
 const nth = Number(process.argv[2] ?? 12);

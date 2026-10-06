@@ -109,13 +109,14 @@ describe('an EVM row through compute keeps its symbol and its method version', (
 
   it('takes nothing from a curve stored for the address under the Solana name', () => {
     const [first] = rows as [CurveRow, ...CurveRow[]];
-    const stray = first.points.map((p) => ({ ...p, split: { poolFee: 1 } }));
-    const previous = new Map([
-      [previousKey(NVDA, first.side, first.regime, CURVE_METHOD_VERSION), stray],
-    ]);
-    const again = run(evm, previous).find(
-      (r) => r.side === first.side && r.regime === first.regime,
-    ) as CurveRow;
-    expect(asStored([again])[0].points).toEqual(asStored([first])[0].points);
+    // points that carry a cost split: carrySplit keeps one only where `splitSamples` is set
+    const stray = first.points.map((p) => ({ ...p, splitSamples: 3, poolFee: 1 }));
+    const refit = (version: string) =>
+      run(evm, new Map([[previousKey(NVDA, first.side, first.regime, version), stray]])).find(
+        (r) => r.side === first.side && r.regime === first.regime,
+      ) as CurveRow;
+    expect(asStored([refit(CURVE_METHOD_VERSION)])[0].points).toEqual(asStored([first])[0].points);
+    // and the split stored under its own version is kept, as a Solana refit keeps its own
+    expect(JSON.stringify(refit('evmq-0.1').points)).toContain('"splitSamples":3');
   });
 });
