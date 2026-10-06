@@ -726,6 +726,9 @@ export type TokenSummary = {
  * DexScreener lists (at most 30 a token) and those the factory names for the pairs seen. Other venues
  * are only ever known from DexScreener.
  */
+export const DEXSCREENER_FAILED = 'dexscreener_failed_other_venues_not_listed';
+export const DEXSCREENER_AT_CAP = 'dexscreener_at_its_cap_other_venues_may_be_missing';
+
 export function gapsFor(o: {
   eventsUsed: boolean;
   dexFailed: boolean;
@@ -734,8 +737,8 @@ export function gapsFor(o: {
   const g: string[] = [];
   if (!o.eventsUsed)
     g.push('v4_pools_from_dexscreener_only', 'v3_pools_from_dexscreener_and_getpool_only');
-  if (o.dexFailed) g.push('dexscreener_failed_other_venues_not_listed');
-  else if (o.dexAtCap) g.push('dexscreener_at_its_cap_other_venues_may_be_missing');
+  if (o.dexFailed) g.push(DEXSCREENER_FAILED);
+  else if (o.dexAtCap) g.push(DEXSCREENER_AT_CAP);
   return g;
 }
 
