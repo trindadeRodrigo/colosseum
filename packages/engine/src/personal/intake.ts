@@ -249,9 +249,10 @@ export type IntakeInput = {
   /**
    * The risk whose limits a sheet held in themes takes, for the read-back (the review of Oct 7). A
    * caller with the shelf passes the engine's exact rule for the sleeves and the shared portfolios
-   * read; left out, the estimate on the issuer caps, the themes' share counted as stocks.
+   * read; left out, the estimate on the issuer caps, the themes' share counted as stocks. As for a
+   * mix, the intake hands in the sheet's own amount where it knows it.
    */
-  riskOfSleeves?: (sleeves: PlanSleeve[], themes: string[]) => RiskLevel;
+  riskOfSleeves?: (sleeves: PlanSleeve[], themes: string[], amountUsd?: number) => RiskLevel;
   /**
    * False when the caller could not read what the person's chain lists (the chain is off, its adapter
    * failed). A narrative is then left unresolved, as with no chain (flags `market_unresolved:`):
@@ -1910,7 +1911,7 @@ function intakeOf(
     if (heldInThemes) {
       // A caller with the shelf passes the engine's exact rule; left out, the estimate on the caps.
       value.risk =
-        input.riskOfSleeves?.(sleeves ?? [], value.themes ?? []) ??
+        input.riskOfSleeves?.(sleeves ?? [], value.themes ?? [], value.amountUsd ?? undefined) ??
         riskForMixEstimate({ growthBps: themeBps });
       flags.push('risk_from_themes');
       limitsFor = { words: null, risk: value.risk };

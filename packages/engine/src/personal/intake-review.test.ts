@@ -3973,7 +3973,7 @@ describe('the second review (Oct 7): every sentence of its scripts, with a model
     expect(earlier.questions.find((q) => q.field === 'horizonMonths')?.read).toBe(36);
   });
 
-  it('riskOfMix: the risk a mix takes is the caller rule, handed the mix, the portfolios and the amount of the sheet', () => {
+  it('riskOfMix and riskOfSleeves: the risk a holding takes is the caller rule, handed what is held, the portfolios and the amount of the sheet', () => {
     const seen: unknown[] = [];
     const riskOfMix: NonNullable<IntakeInput['riskOfMix']> = (mix, themes, amountUsd) => {
       seen.push([mix, themes, amountUsd]);
@@ -3999,6 +3999,18 @@ describe('the second review (Oct 7): every sentence of its scripts, with a model
     expect(intake(text, goal({ markets: ['big_tech'] })).sheet?.risk).toBe(
       riskForMixEstimate(STOCKS),
     );
+    // The same for a sheet held in themes: the caller's rule is handed the sleeves, the shared
+    // portfolios and the amount of the sheet.
+    const sleeved: unknown[] = [];
+    const themed = intake(`${GOAL}Put 30% in AI.`, goal({ markets: ['ai'] }), {
+      riskOfSleeves: (sleeves, themes, amountUsd) => {
+        sleeved.push([sleeves, themes, amountUsd]);
+        return 'medium';
+      },
+    });
+    expect(sleeved).toEqual([[[theme('ai', 3000), safe(7000)], [], 5000]]);
+    expect(themed.sheet).toMatchObject({ amountUsd: 5000, risk: 'medium' });
+    expect(themed.assumptions).toContain('To hold “AI”, the plan uses the limits for medium risk.');
     // A caller that takes two arguments still fits.
     const two: IntakeInput['riskOfMix'] = (_mix, _themes) => 'low';
     expect(intake(text, goal({ markets: ['big_tech'] }), { riskOfMix: two }).sheet?.risk).toBe(
