@@ -13,7 +13,7 @@ What already exists and is reused, not rebuilt:
 - Solana: the pool registry and collectors (`scripts/risk/build-registry.ts`, `retier.ts`, `pool-pareto.ts`, `scripts/risk/collector/`), the router (`routeTrade` in `packages/risk`), the split snapshot (`scripts/risk/split-snapshot.ts`), the price tables (`risk_price_observations`, `risk_reference_prices`) and the fact sheets (`packages/risk/src/facts/`).
 - Robinhood Chain: Thom's hourly depth collector (`scripts/risk-evm/`, slot REVM-1), with its tests in `tests/risk-evm.test.ts`.
 
-Decided: the Robinhood loop and its database run locally on the founder's machine (DU5); a dedicated machine or cloud infrastructure may come later. Waiting on a person: the database runs and the loop of RU.8, rebuilding the refresh and price bundles, and installing RU.12's job (with or without the collector's 32 pools).
+Decided: the Robinhood loop and its database run locally on the founder's machine (DU5); a dedicated machine or cloud infrastructure may come later. Waiting on a person: installing RU.12's job (with or without the collector's 32 pools). The database runs and the loop of RU.8 were done on 2026-10-06, and the refresh and price bundles were rebuilt and reloaded the same day (gate `JOBS-RELOAD-OCT6`).
 
 ## U-B — Item execution (run once per item; replace `{N}` with 1–14)
 
