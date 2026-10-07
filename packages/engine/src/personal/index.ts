@@ -88,6 +88,7 @@ export {
 } from './market-filter';
 export {
   attributeVocabularyOf,
+  companyNamesOf,
   type FilterRead,
   filterMatchOf,
   type MatchedList,

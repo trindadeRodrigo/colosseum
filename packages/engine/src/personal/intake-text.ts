@@ -2099,14 +2099,37 @@ const NAME_AFTER = new RegExp(
   'giu',
 );
 const CAPITAL = /^\p{Lu}[\p{L}\d]+$/u;
+/** A name as it is compared: no accents, no case, its words one space apart. */
+const nameKey = (name: string): string =>
+  name
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 
 /**
  * The names the text rules out that a plan cannot leave out: written with a capital after a refusal,
- * and no class a person can rule out, no part of a mix and no narrative. The words as written ("no
- * Tesla", "do not want Tesla or Meta").
+ * no class a person can rule out, no part of a mix and no narrative, and a name the person's shelf
+ * knows. The words as written ("no Tesla", "do not want Tesla or Meta").
+ *
+ * `known` is what makes a capitalised word a name (the third review, Oct 7: "No IRA", "not in
+ * January" and "sem Deus" were said back as a company left out): the companies the caller knows on
+ * the person's chain, each by its name, its ticker or its token's symbol. A written word is one of
+ * them where it is the name or the words the name starts with ("Tesla" for "Tesla, Inc."). A word
+ * nobody knows says nothing; with no names handed in, nothing is a name.
  */
-export function namesRuledOutIn(text: string): { words: string; at: number }[] {
-  const known = [
+export function namesRuledOutIn(
+  text: string,
+  known: readonly string[],
+): { words: string; at: number }[] {
+  const keys = known.map(nameKey).filter(Boolean);
+  if (keys.length === 0) return [];
+  const isKnown = (word: string): boolean => {
+    const key = nameKey(word);
+    return key !== '' && keys.some((k) => k === key || k.startsWith(`${key} `));
+  };
+  const read = [
     ...narrativeSpansIn(text),
     ...classMentionsIn(text),
     ...[...text.matchAll(CLASS_WORD)].map((m) => ({ at: m.index, end: m.index + m[0].length })),
@@ -2116,9 +2139,10 @@ export function namesRuledOutIn(text: string): { words: string; at: number }[] {
     const { lead = '', name = '' } = m.groups ?? {};
     const nameAt = m.index + m[0].length - name.length;
     const names = name.split(/\s+(?:or|and|nor|ou|e|nem)\s+/iu);
-    // Every item a name of its own: a capital, and no word the intake reads as something else.
-    if (!names.every((word) => CAPITAL.test(word))) continue;
-    if (known.some((k) => k.at < m.index + m[0].length && nameAt < k.end)) continue;
+    // Every item a name of its own: a capital, a name the shelf knows, and no word the intake reads
+    // as something else.
+    if (!names.every((word) => CAPITAL.test(word) && isKnown(word))) continue;
+    if (read.some((k) => k.at < m.index + m[0].length && nameAt < k.end)) continue;
     // "Never" and "no" that open a sentence before a capitalised word rule nothing out by name.
     if (/^(?:never|neither|nor|nunca|nem)$/iu.test(lead.trim())) continue;
     out.push({ words: m[0].replace(/\s+/g, ' '), at: m.index });

@@ -265,6 +265,14 @@ export type IntakeInput = {
    * from a goal that names one. Left out: true.
    */
   shelfKnown?: boolean;
+  /**
+   * The companies the person's chain lists, each by its name, its ticker and its token's symbol
+   * (`companyNamesOf` over the sourced attributes). A name the person rules out of a list the plan
+   * holds ("invest in AI but no Tesla") is said back as not applied only where it is one of these
+   * (the third review, Oct 7: "No IRA" and "not in January" were said back as a company). Left out:
+   * none is known, and no such line is said. The model never sees this list.
+   */
+  names?: readonly string[];
 };
 
 export type IntakeResult = {
@@ -2493,7 +2501,7 @@ function intakeOf(
     assume('REFUSAL_OF_A_PART', { words: part });
   }
   if (holdable.length > 0 || (value.themes ?? []).length > 0)
-    for (const { words } of namesRuledOutIn(text)) {
+    for (const { words } of namesRuledOutIn(text, input.names ?? [])) {
       flags.push('cannot_leave_out');
       assume('CANNOT_LEAVE_OUT', { words });
     }

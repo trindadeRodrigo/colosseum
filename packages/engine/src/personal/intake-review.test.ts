@@ -16,6 +16,7 @@ import {
   marketsIn,
   mixIn,
   mixSaidIn,
+  namesRuledOutIn,
   refusalsIn,
   refusalsSaidIn,
   riskCuesIn,
@@ -71,6 +72,19 @@ const ATTRIBUTES: Record<string, FilterMatch> = {
 };
 const matchOf = (filter: MarketFilter): FilterMatch | null =>
   ATTRIBUTES[`${filter.by}:${attributeKey(filter.value)}`] ?? null;
+// MOCK: the companies the chain's attributes know, as `companyNamesOf` hands them (name, ticker and
+// token symbol). A name the person rules out is one only where it is among them.
+const NAMES = [
+  'Tesla, Inc.',
+  'TSLA',
+  'TSLAx',
+  'Meta Platforms, Inc.',
+  'META',
+  'METAx',
+  'NVIDIA Corporation',
+  'NVDA',
+  'NVDAx',
+];
 
 const reply = (over: Record<string, unknown> = {}) => ({
   goal: 'grow',
@@ -102,6 +116,7 @@ const intake = (text: string, r: unknown = reply(), over: Partial<IntakeInput> =
     portfolios,
     labels: LABELS,
     matchOf,
+    names: NAMES,
     ...over,
   });
 const fields = (r: { questions: { field: string }[] }) => r.questions.map((q) => q.field);
@@ -4804,5 +4819,110 @@ describe('the third review (Oct 7), B4, B7 and B3: the last word wins over an an
       expect(result.limits.cannotHoldClasses, messages[2]).toEqual(classes);
       expect(holdsWhatItRefuses(result), messages[2]).toBe(false);
     }
+  });
+});
+
+describe('the third review (Oct 7), B11: only a name the shelf knows is a name ruled out', () => {
+  const FORM: IntakeAnswers = { goal: 'grow', amountUsd: 5000, horizonMonths: 60, risk: 'medium' };
+  const reads = (over: Record<string, unknown> = {}) =>
+    reply({ goal: null, amountUsd: null, horizonMonths: null, risk: null, ...over });
+  const line = (words: string, pt = false) =>
+    pt
+      ? `Um plano não deixa uma empresa de fora de uma lista que mantém, então “${words}” não foi aplicado.`
+      : `A plan cannot leave one company out of a list it holds, so “${words}” was not applied.`;
+  const LINE = /cannot leave one company out|não deixa uma empresa de fora/;
+  const saidOfAName = (r: { assumptions: string[] }) => r.assumptions.filter((x) => LINE.test(x));
+  // A capitalised word after a negation that no shelf knows as a company: nothing is said of it.
+  const NO_NAME: string[] = [
+    // The review's own (`repro.ts` B11, `p2.ts`).
+    'Invest in AI, not in January though.',
+    'Invest in AI. No IRA involved.',
+    'Invest in AI without Sarah knowing.',
+    'Invest in AI. No Roth, no 401k.',
+    'Invest in AI, no Monday deadlines.',
+    'Invista em IA sem Deus me livre de pressa.',
+    'Invest in AI. I never liked Mondays.',
+    'Invest in AI, avoid Chinese names.',
+    'Invest in AI — no Elon please.',
+    'Invista em IA, sem Petrobras.',
+    // In other words.
+    'Invest in AI, without Maria finding out.',
+    'Quero investir em IA, não em Dezembro.',
+    'Invest in AI. No Fridays off for me, so I answer late.',
+    'Invista em IA. Sem Carnaval este ano.',
+    'Put it all in AI, and no Zoom calls about it please.',
+    'Coloque tudo em IA, sem Pedro saber.',
+    'Invest in AI. No Easter trip this year.',
+  ];
+  // Where the share of AI is asked and not taken, for a reason that is not this rule's: another
+  // figure in the message (B6), or an ask the plain forms do not read ("Invista em").
+  const ASKS_THE_SHARE: Record<string, string> = {
+    'Invest in AI. No Roth, no 401k.': 'sleeves',
+    'Invista em IA sem Deus me livre de pressa.': 'mix',
+    'Invista em IA, sem Petrobras.': 'mix',
+    'Invista em IA. Sem Carnaval este ano.': 'mix',
+  };
+  // A name the shelf knows, by its company, the words its name starts with, or its ticker.
+  const NAME: [string, string, true?][] = [
+    ['Invest in AI but no Nvidia.', 'no Nvidia'],
+    ['Invest in AI but no Tesla', 'no Tesla'],
+    ['Invest in AI, but I do not want Tesla or Meta in it', 'do not want Tesla or Meta'],
+    ['Invest in AI, without NVDA.', 'without NVDA'],
+    ['Quero investir em IA, sem Tesla.', 'sem Tesla', true],
+    ['Quero investir em IA, sem Meta nem Nvidia.', 'sem Meta nem Nvidia', true],
+  ];
+  const AI = { markets: ['ai'] };
+
+  it('a word no shelf knows says nothing: with a reply that names the market, with one that reads a refusal into it, and with none', () => {
+    for (const text of NO_NAME) {
+      const pt = /Invista|Quero|Coloque/.test(text);
+      const faithful = intake(text, reads({ ...AI, ...(pt ? { language: 'pt' } : {}) }), {
+        answers: FORM,
+      });
+      expect(faithful.flags, text).not.toContain('cannot_leave_out');
+      expect(saidOfAName(faithful), text).toEqual([]);
+      // AI is held as asked, but where the message writes another figure (B6: the share is asked).
+      const how = ASKS_THE_SHARE[text];
+      if (how === undefined) expect(faithful.sheet?.sleeves, text).toEqual([theme('ai')]);
+      else expect(fields(faithful), text).toEqual([how]);
+      // A reply that takes the words for a refusal of stocks: asked (B1), and still no such line.
+      const hostile = intake(text, reads({ ...AI, cannotHold: ['stock'] }), { answers: FORM });
+      expect(saidOfAName(hostile), text).toEqual([]);
+      expect(hostile.sheet, text).toBeNull();
+      expect(fields(hostile), text).toContain('limits');
+      // With no model the holding is asked once, and the line is not said either.
+      const rules = intake(text, null, { answers: FORM });
+      expect(saidOfAName(rules), text).toEqual([]);
+      expect(rules.flags, text).not.toContain('cannot_leave_out');
+      expect(rules.sheet, text).toBeNull();
+    }
+  });
+
+  it('a name the shelf knows is said back as not applied, by its company, its first words or its ticker', () => {
+    for (const [text, words, pt] of NAME) {
+      const faithful = intake(text, reads({ ...AI, ...(pt ? { language: 'pt' } : {}) }), {
+        answers: FORM,
+      });
+      expect(saidOfAName(faithful), text).toEqual([line(words, pt)]);
+      expect(faithful.flags, text).toContain('cannot_leave_out');
+      expect(faithful.sheet?.sleeves, text).toEqual([theme('ai')]);
+      const rules = intake(text, null, { answers: FORM, ...(pt ? { language: 'pt' } : {}) });
+      expect(saidOfAName(rules), text).toEqual([line(words, pt)]);
+    }
+  });
+
+  it('with no names handed in nothing is a name, and a list with one unknown item is not said', () => {
+    for (const [text] of NAME) {
+      const none = intake(text, reads(AI), { answers: FORM, names: undefined });
+      expect(saidOfAName(none), text).toEqual([]);
+      expect(none.sheet?.sleeves, text).toEqual([theme('ai')]);
+    }
+    expect(namesRuledOutIn('Invest in AI, no Tesla or Sarah.', NAMES)).toEqual([]);
+    expect(namesRuledOutIn('Invest in AI, no Tesla or Meta.', NAMES)).toEqual([
+      { words: 'no Tesla or Meta', at: 14 },
+    ]);
+    expect(namesRuledOutIn('Invest in AI, no Tesla.', [])).toEqual([]);
+    // A class, a part of a mix or a narrative is never a name, whatever the shelf knows.
+    expect(namesRuledOutIn('No Stocks. No Gold. No AI.', ['Stocks', 'Gold', 'AI'])).toEqual([]);
   });
 });

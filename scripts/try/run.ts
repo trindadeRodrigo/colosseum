@@ -2,6 +2,7 @@ import {
   attributeVocabularyOf,
   type ComposeContext,
   candidates,
+  companyNamesOf,
   compose,
   filterMatchOf,
   type IntakeResult,
@@ -141,6 +142,8 @@ export async function runGoal(goal: PromptGoal, opts: RunOptions): Promise<GoalR
     // pure code over the lists and the sourced attributes, as the API's route hands them.
     labels: data.labels,
     matchOf: (filter) => filterMatchOf(filter, data.stocks, data.shelf.assets),
+    // The companies the chain's attributes know: what a name the person rules out is held to.
+    names: companyNamesOf(data.stocks),
     // What the chain lists could not be read: nothing is resolved on it (never so with the two
     // sources here; see `ChainData.shelfKnown`).
     ...(data.shelfKnown === false ? { shelfKnown: false } : {}),

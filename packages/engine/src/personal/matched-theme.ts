@@ -191,6 +191,16 @@ export function filterMatchOf(
 }
 
 /**
+ * The companies the attributes know on their chain, each by its name, its ticker and its token's
+ * symbol, in the order of the symbols: what the intake holds a name a person rules out to
+ * (`IntakeInput.names`). Never shown to a model.
+ */
+export function companyNamesOf(file: StockAttributesFile | null | undefined): string[] {
+  const rows = file ? byName(file.stocks, (row) => row.symbol) : [];
+  return [...new Set(rows.flatMap((row) => [row.company, row.underlying, row.symbol]))];
+}
+
+/**
  * Every value the attributes carry, by what a filter reads: what a model is shown so that it can name
  * a filter. Only these four fields are read, so no symbol and no company's name is in it. Each value
  * once however it is written, as the first stock by symbol writes it, in the order of its key.
