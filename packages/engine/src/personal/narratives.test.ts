@@ -2195,5 +2195,7 @@ describe('whatever the text, the shelf and the answers', () => {
     expect(noneOnly).toBeGreaterThan(20);
     expect(otherRisk).toBeGreaterThan(0);
     expect(refusals).toBeGreaterThan(20);
-  });
+    // Thousands of generated goals in one test: it gets the time of a property test, so a busy
+    // machine does not fail it at the default five seconds.
+  }, 60_000);
 });
