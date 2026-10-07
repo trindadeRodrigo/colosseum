@@ -3,7 +3,6 @@ import {
   chainFamily,
   FundingResponse,
   OrderDetail,
-  OrderError,
   type OrderErrorCode,
   TEST_FUNDS_LOW,
   TestFundsResponse,
@@ -196,14 +195,14 @@ export async function continuesOrders(apiFetch: ApiFetch): Promise<boolean> {
 }
 
 /**
- * Why the server would not make the order that finishes another. The route's refusals carry no code,
- * so each is known by its sentence (apps/api/src/orders/continue.ts, store.ts, legs.ts), and one this
- * app does not know is `said`, shown in the server's words.
- * - `other-order`: an order already finishes this one; `orderId` is that order, where the answer names it.
- * - `working`: another request holds this order (the lock's wait ran out), or a step of it was built a
- *   moment ago.
- * - `in-flight`: a transaction built before for a step left can still land.
+ * Why the server would not make the order that finishes another, by the code its refusal carries
+ * (`OrderErrorCode`, API-CONTINUE-CODES). A refusal with no code, or one this app does not know, is
+ * `said`, shown in the server's own sentence.
+ * - `other-order`: an order already finishes this one; `orderId` is that order (`details.continuedBy`).
+ * - `working`: another request holds this order, and the wait for it ran out.
+ * - `in-flight`: a transaction built for a step left can still land.
  * - `nothing-left`, `cash-short`, `not-deposited`: there is nothing to finish, or nothing to finish it with.
+ * - `unsupported`: not an order this route finishes.
  * `PRICE_MOVED` is not among them: this route quotes anew and builds nothing, so it never answers it.
  */
 export type FinishRefusal =
@@ -213,24 +212,31 @@ export type FinishRefusal =
   | 'nothing-left'
   | 'cash-short'
   | 'not-deposited'
+  | 'unsupported'
   | 'said';
 
-const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const REFUSALS: Partial<Record<string, FinishRefusal>> = {
+  ORDER_CONTINUED: 'other-order',
+  ORDER_BUSY: 'working',
+  STEP_IN_FLIGHT: 'in-flight',
+  NOTHING_LEFT: 'nothing-left',
+  VAULT_CASH_SHORT: 'cash-short',
+  DEPOSIT_NOT_LANDED: 'not-deposited',
+  CONTINUE_NOT_SUPPORTED: 'unsupported',
+};
 
-export function refusalOf(
-  sentence: string,
-  fix: string | undefined,
-): { why: FinishRefusal; orderId?: string } {
-  if (/another order finishes this one/i.test(sentence)) {
-    const named = UUID.exec(fix ?? '')?.[0] ?? UUID.exec(sentence)?.[0];
-    return { why: 'other-order', ...(named ? { orderId: named } : {}) };
-  }
-  if (/worked on by another request|was built just now/i.test(sentence)) return { why: 'working' };
-  if (/can still land/i.test(sentence)) return { why: 'in-flight' };
-  if (/nothing left to buy/i.test(sentence)) return { why: 'nothing-left' };
-  if (/in cash, less than/i.test(sentence)) return { why: 'cash-short' };
-  if (/not put its cash in the vault/i.test(sentence)) return { why: 'not-deposited' };
-  return { why: 'said' };
+/** The refusal's reason from its code, and for `ORDER_CONTINUED` the order that finishes this one. */
+export function refusalOf(body: Record<string, unknown>): { why: FinishRefusal; orderId?: string } {
+  const why = (typeof body.code === 'string' ? REFUSALS[body.code] : undefined) ?? 'said';
+  const details =
+    typeof body.details === 'object' && body.details !== null
+      ? (body.details as Record<string, unknown>)
+      : {};
+  const by = details.continuedBy;
+  return {
+    why,
+    ...(why === 'other-order' && typeof by === 'string' && by ? { orderId: by } : {}),
+  };
 }
 
 export type ContinueOutcome =
@@ -257,11 +263,9 @@ export async function continueOrder(
   }
   const body = await bodyOf(res);
   if (res.status === 409) {
-    // The refusal as the shared schema has it (`OrderError`): its sentence, its code, its details.
-    const refusal = OrderError.safeParse(body);
-    const said = refusal.success ? refusal.data : null;
-    const sentence = said?.error ?? (typeof body.error === 'string' ? body.error : '');
-    return { kind: 'refused', sentence, ...refusalOf(sentence, said?.fix) };
+    // Its sentence is kept for a reason this app has no words for.
+    const sentence = typeof body.error === 'string' ? body.error : '';
+    return { kind: 'refused', sentence, ...refusalOf(body) };
   }
   if (res.status === 404 || res.status === 405 || res.status === 501)
     return { kind: 'unavailable' };
