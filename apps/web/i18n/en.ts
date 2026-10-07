@@ -553,6 +553,70 @@ export const en = {
       seeOrder: 'See the order',
       startGoal: 'Start with your goal',
     },
+    /** What a person can do with a vault of theirs, on its card and on its page. */
+    actions: {
+      label: 'This vault',
+      /** A vault with no name and no goal to name it by. */
+      unnamed: (chain: string) => `Your vault on ${chain}`,
+      addMoney: 'Add money',
+      rename: 'Rename',
+      newPlan: 'New plan',
+      nameLabel: 'Name of this vault',
+      nameHint: 'Up to 60 characters. Only you see it.',
+      save: 'Save the name',
+      saving: 'Saving…',
+      cancel: 'Cancel',
+      /** Takes the name off: the vault is called by its plan's goal again. */
+      clear: 'Remove the name',
+      failure: {
+        invalid:
+          'A name is 1 to 60 characters of plain text. Shorten it, or take out what isn’t text, then save again.',
+        signedOut:
+          'Our server doesn’t recognise your sign-in any more, so the name wasn’t saved. Sign in again.',
+        notYours:
+          'Our server doesn’t list this vault as yours, so the name wasn’t saved. Read your portfolio again.',
+        unreachable: 'I couldn’t save the name: our server didn’t answer. Try again.',
+      },
+    },
+    /** More money into a vault the person has (/vaults/{chain}/{address}/add). */
+    add: {
+      title: 'Add money to your vault',
+      lead: (chain: string) =>
+        `The whole amount goes into this vault on ${chain}, then buys each part at the vault’s targets. Nothing is signed here.`,
+      amountHint: 'From $10 to $1,000,000.',
+      review: (amount: string) => `Review the steps to add ${amount}`,
+      reviewLead: (amount: string, chain: string) =>
+        `You’re adding ${amount} to your vault on ${chain}. Next you review every step, then sign each one in your wallet.`,
+      missing:
+        'I can’t find this vault among yours. Open your portfolio, then choose the vault there.',
+      back: 'Back to your portfolio',
+      otherWallet: (address: string) =>
+        `This vault belongs to another wallet of yours (${address}). Sign in with that wallet to add money to it.`,
+      noVault:
+        'Our server doesn’t list this vault as yours any more. Read your portfolio again, then try again.',
+      /** Auto-follow is on: the add is the deposit alone. */
+      keeper:
+        'Auto-follow is on for this vault, so this add only deposits the cash. Our keeper buys the vault’s assets with it when it next rebalances this vault.',
+      /** The portfolio the vault follows has a version the owner has not accepted. */
+      newerVersion: (version: number) =>
+        `The portfolio this vault follows has a newer version, version ${version}. This add buys the vault’s current targets; accepting the new version is a separate step.`,
+      /** Where the targets an add is held to come from. */
+      source: {
+        read: (chain: string) =>
+          `Read from ${chain} by this app, not from our server: the targets this add buys are the chain’s.`,
+        mock: 'Sample chain: there is no chain to read, so the targets are our server’s words, not checked.',
+        notRead: (chain: string) =>
+          `Not checked against ${chain}: this app has no node of its own to read it from. The targets are our server’s words.`,
+        failed: (chain: string) =>
+          `I couldn’t read this vault on ${chain}: the node this app reads from didn’t answer, or what our server named isn’t the vault the chain holds. I won’t offer to add money until I can.`,
+        missing: (chain: string) =>
+          `I read ${chain}, and it holds no such vault for your wallet, so I won’t offer to add money to it.`,
+        differs: (chain: string) =>
+          `Our server’s answer differs from the targets ${chain} holds for this vault, so I won’t offer to add money now. Read your portfolio again in a moment.`,
+        unlisted:
+          'This vault has a target on a token this app doesn’t list, so I can’t hold an add to it and won’t offer one.',
+      },
+    },
     /** On the home page, under the goal. */
     summary: {
       title: 'Your portfolio',
@@ -1191,6 +1255,10 @@ export const en = {
       on: 'On',
       off: 'Off',
       weights: 'Assets and weights',
+      addTitle: 'What you add to',
+      addNote:
+        'The amount buys these assets at these weights, the targets your vault showed when you chose it. What they leave stays in the vault as cash.',
+      addCashNote: 'This vault has no targets, so the whole amount stays in it as cash.',
       publishNote:
         'Your wallet is asked to sign only a transaction that publishes exactly this name, description and these weights, under this id.',
       signPublish: 'Sign and publish',

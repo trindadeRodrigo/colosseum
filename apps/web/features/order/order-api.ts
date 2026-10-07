@@ -13,7 +13,7 @@ import type { ApiFetch } from '../account/person';
 //
 //   GET  /v1/funding?amountUsd=&proposalId=&wallet=   what the wallet is missing for this buy, cash and gas
 //   POST /v1/orders { type: 'buy', owner, amountUsd, proposalId }   the order, its steps planned, nothing built
-//   POST /v1/testnet/fund { amountUsd, proposalId | family, wallet }   test network only: what is missing, sent
+//   POST /v1/testnet/fund { amountUsd, proposalId | family | vault, wallet }   test network only: what is missing, sent
 //
 // Every answer is read with the shared schema. What the server says in a refusal is written for a
 // developer: the screen has a sentence of its own for each thing the person can do about it.
@@ -58,16 +58,33 @@ const bodyOf = async (res: Response): Promise<Record<string, unknown>> => {
 };
 
 /**
- * What the wallet is missing for a buy of this plan, or of this shared portfolio (by its slug), and
+ * What a buy is of: a plan, a shared portfolio (by its slug), or a vault the person has, which the buy
+ * adds to (its address and its chain, as GET /v1/funding and POST /v1/testnet/fund name it).
+ */
+export type BuyOf =
+  | { proposalId: string }
+  | { family: string }
+  | { vault: string; vaultChain: ChainId };
+
+/** Where the screen that adds money to a vault lives. */
+export const addMoneyPath = (chain: ChainId, address: string) =>
+  `/vaults/${chain}/${encodeURIComponent(address)}/add`;
+
+/**
+ * What the wallet is missing for a buy of this plan, of this shared portfolio or into this vault, and
  * amount, read from the wallet on its chain.
  */
 export async function readFunding(
   apiFetch: ApiFetch,
-  ask: ({ proposalId: string } | { family: string }) & { amountUsd: number; wallet: string },
+  ask: BuyOf & { amountUsd: number; wallet: string },
 ): Promise<FundingOutcome> {
   const query = new URLSearchParams({
     amountUsd: String(ask.amountUsd),
-    ...('family' in ask ? { family: ask.family } : { proposalId: ask.proposalId }),
+    ...('vault' in ask
+      ? { vault: ask.vault, vaultChain: ask.vaultChain }
+      : 'family' in ask
+        ? { family: ask.family }
+        : { proposalId: ask.proposalId }),
     wallet: ask.wallet,
   });
   let res: Response;
@@ -93,13 +110,18 @@ const CODES: readonly OrderErrorCode[] = [
 ];
 
 /**
- * POST /v1/orders: a buy of this plan for this amount, owned by the wallet of the plan's chain. The
- * order that comes back is the one the review screen shows; it is checked here only for being an order
- * of this plan's chain and this owner. What it may sign is the guard's, later, from that same object.
+ * POST /v1/orders: a buy of this plan for this amount, owned by the wallet of the plan's chain, or, with
+ * `vault`, that amount added to a vault of that wallet's on the chain. The order that comes back is the
+ * one the review screen shows; it is checked here only for being an order of this chain and this owner.
+ * What it may sign is the guard's, later, from that same object.
  */
 export async function placeOrder(
   apiFetch: ApiFetch,
-  ask: { proposalId: string; amountUsd: number; chain: ChainId; owner: string },
+  ask: ({ proposalId: string } | { vault: string }) & {
+    amountUsd: number;
+    chain: ChainId;
+    owner: string;
+  },
 ): Promise<OrderOutcome> {
   const family = chainFamily(ask.chain);
   let res: Response;
@@ -111,7 +133,9 @@ export async function placeOrder(
         type: 'buy',
         owner: { [family]: ask.owner },
         amountUsd: ask.amountUsd,
-        proposalId: ask.proposalId,
+        ...('vault' in ask
+          ? { vault: { chain: ask.chain, address: ask.vault } }
+          : { proposalId: ask.proposalId }),
       }),
     });
   } catch {
@@ -285,7 +309,7 @@ export type TestFundsOutcome =
  */
 export async function requestTestFunds(
   apiFetch: ApiFetch,
-  ask: ({ proposalId: string } | { family: string }) & { amountUsd: number; wallet: string },
+  ask: BuyOf & { amountUsd: number; wallet: string },
 ): Promise<TestFundsOutcome> {
   let res: Response;
   try {

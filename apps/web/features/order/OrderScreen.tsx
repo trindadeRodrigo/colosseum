@@ -21,11 +21,18 @@ import { utc } from '../portfolio/figures';
 import { SharedReview } from '../shared/SharedReview';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { formatBps, formatRaw, shortfallBps, tokenName } from './amounts';
-import { type CallFailure, continueOrder, continuesOrders, readOrder } from './order-api';
+import {
+  addMoneyPath,
+  type CallFailure,
+  continueOrder,
+  continuesOrders,
+  readOrder,
+} from './order-api';
 import {
   checkContinuation,
   checkDeposit,
   checkFamilyBuy,
+  checkVaultAdd,
   type DepositCheck,
   sharedShapeOk,
 } from './order-check';
@@ -49,8 +56,8 @@ type Check = DepositCheck | { ok: false; why: 'trades' | 'shape' };
 
 /**
  * Before an order is offered for signing (order-check.ts): a buy of a plan deposits what was typed; a
- * buy of a shared portfolio does too, and spends it on the weights its screen read; a follow and a
- * publish move nothing and have only the steps their terms call for.
+ * buy of a shared portfolio does too, and spends it on the weights its screen read; an add to a vault
+ * deposits it into that vault and spends it on the vault's targets; a follow and a publish move nothing and have only the steps their terms call for.
  */
 function checkOf(order: OrderDetail, record: OrderRecord, units: ChainUnits | null): Check {
   const terms = record.terms;
@@ -59,6 +66,7 @@ function checkOf(order: OrderDetail, record: OrderRecord, units: ChainUnits | nu
     return checkContinuation(order, record.continues, units, order !== record.approved?.order);
   if (!terms) return checkDeposit(order, record.amountUsd, units);
   if (terms.kind === 'family') return checkFamilyBuy(order, record.amountUsd, units, terms.targets);
+  if (terms.kind === 'vault') return checkVaultAdd(order, record.amountUsd, units, terms);
   return sharedShapeOk(order, terms)
     ? { ok: true, depositRaw: 0n, decimals: 0 }
     : { ok: false, why: 'shape' };
@@ -261,7 +269,9 @@ export function OrderScreen({ id }: { id: string }) {
       ? `/indexes/${encodeURIComponent(terms.slug)}/buy`
       : terms.kind === 'follow'
         ? `/indexes/${encodeURIComponent(terms.slug)}`
-        : '/publish';
+        : terms.kind === 'vault'
+          ? addMoneyPath(chain, terms.vault)
+          : '/publish';
   const testNetwork = shown.legs[0]?.provenance === 'sandbox';
   // The swaps the order left undone: what an order that finishes it would make, and is held to.
   // The trades are the approved order's own, step by step: of the API's later answer only where each
@@ -507,6 +517,22 @@ export function OrderScreen({ id }: { id: string }) {
               {check.why === 'units' && !chainReady(chain, onMock(port, chain))
                 ? t.order.outcome.notRunnable['no-deployment'](t.chain.names[chain])
                 : t.order.mismatch[check.why]}
+            </span>
+          </p>
+        )}
+        {/* An add held to our server's targets, which this app could not read from the chain: said on
+            its own line over the button, where it cannot be missed. */}
+        {check.ok && !done && terms?.kind === 'vault' && terms.source === 'api' && (
+          <p
+            data-ui="not-checked"
+            className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body font-medium"
+          >
+            <StatusMark status="watch" size={12} className="mt-1.5" />
+            <span>
+              {t.shared.check.notChecked}.{' '}
+              {onMock(port, chain)
+                ? t.portfolio.add.source.mock
+                : t.portfolio.add.source.notRead(t.chain.names[chain])}
             </span>
           </p>
         )}
