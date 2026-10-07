@@ -60,7 +60,14 @@ export type InvestPlaced =
       /** The number of the vault it deposits into, where the order states it. */
       basketId?: string;
     }
-  | { failure: string };
+  | {
+      failure: string;
+      /**
+       * What is bought changed on our server (a shared portfolio has a newer version): the host is
+       * told, and no other order is made until the person asks for the prices again.
+       */
+      versionChanged?: boolean;
+    };
 
 export type InvestCardProps = {
   chain: ChainId;
@@ -91,12 +98,18 @@ export type InvestCardProps = {
   onDone?: (done: { orderId: string; vault: string | null }) => void;
   /** The sequence stopped short of done: the order's own page has the rest. */
   onStopped?: (stopped: { orderId: string }) => void;
+  /**
+   * Our server refused the order because what is bought changed (a shared portfolio's version). The
+   * card makes no other order by itself: the host reads the new version and says so, and the person
+   * asks for the prices again.
+   */
+  onVersionChanged?: () => void;
 };
 
 /** What a host that mounts a buy inside its own screen passes: the amount, and what it is told. */
 export type InvestEmbedded = Pick<
   InvestCardProps,
-  'amount' | 'onProgress' | 'onDone' | 'onStopped'
+  'amount' | 'onProgress' | 'onDone' | 'onStopped' | 'onVersionChanged'
 >;
 
 /** The amount of a buy, typed in dollars: the one field over the card on a screen of its own. */
@@ -160,6 +173,7 @@ export function InvestCard({
   onProgress,
   onDone,
   onStopped,
+  onVersionChanged,
 }: InvestCardProps) {
   const t = useT();
   const lang = useLang();
@@ -184,6 +198,10 @@ export function InvestCard({
   const orders = useRef(0);
   const asked = useRef<string | null>(null);
   const [paused, setPaused] = useState(false);
+  // What is bought changed under the card: no order is made again until the person asks.
+  const mustAsk = useRef(false);
+  const changed = useRef(onVersionChanged);
+  changed.current = onVersionChanged;
   // The order on the card ran out before anybody pressed: its prices are old, and no other is made
   // until the person asks.
   const [old, setOld] = useState(false);
@@ -279,7 +297,7 @@ export function InvestCard({
     // Making an order asks the chain for quotes and counts against the person's budget for
     // building steps (the API's `build` class), which the run itself needs. So a card makes few
     // by itself: after that the person asks for the prices.
-    if ((old || orders.current >= AUTO_ORDERS) && asked.current !== key) {
+    if ((old || mustAsk.current || orders.current >= AUTO_ORDERS) && asked.current !== key) {
       setPlacing(false);
       setPaused(true);
       return;
@@ -302,7 +320,14 @@ export function InvestCard({
         return;
       }
       setPlacing(false);
-      if ('failure' in answer) return setFailure(answer.failure);
+      if ('failure' in answer) {
+        if (answer.versionChanged) {
+          // Nothing is made again by itself: the host reads what changed, and the person asks.
+          mustAsk.current = true;
+          changed.current?.();
+        }
+        return setFailure(answer.failure);
+      }
       open.current = answer.orderId;
       shown.current += 1;
       setMade({ key, again: shown.current > 1, ...answer });
@@ -597,6 +622,7 @@ export function InvestCard({
                   onClick={() => {
                     asked.current = want ? `${want}|${orderRound + 1}` : null;
                     setOld(false);
+                    mustAsk.current = false;
                     setOrderRound((n) => n + 1);
                   }}
                 >
@@ -617,6 +643,8 @@ export function InvestCard({
                     onClick={() => {
                       asked.current = want ? `${want}|${orderRound + 1}` : null;
                       setOld(false);
+                      mustAsk.current = false;
+                      mustAsk.current = false;
                       setOrderRound((n) => n + 1);
                     }}
                   >

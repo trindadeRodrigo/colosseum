@@ -116,7 +116,11 @@ function api(o: {
         ],
         disclaimer: 'd',
       });
-    if (path === '/v1/orders' && method === 'POST') return json(o.order ? o.order() : {});
+    if (path === '/v1/orders' && method === 'POST') {
+      const made = o.order ? o.order() : {};
+      // an answer the test wrote whole (a refusal), or an order
+      return made instanceof Response ? made : json(made);
+    }
     if (path.startsWith('/v1/funding?') && o.funded) return json(FUNDED);
     return json({ error: 'not found' }, 404);
   });
@@ -414,6 +418,40 @@ describe('buying a portfolio, which follows it', () => {
       targets: WEIGHTS,
       source: 'api',
     });
+  });
+});
+
+describe('a shared portfolio that changed under the buy', () => {
+  it('tells the host, reads the portfolio again, and makes no other order until the person asks', async () => {
+    const calls = api({
+      family: familyOf(FAMILY_ID),
+      order: () => json({ error: 'x', code: 'VERSION_CHANGED' }, 409),
+      funded: true,
+    });
+    const changed = vi.fn();
+    const host = await show(
+      createElement(FamilyBuyScreen, {
+        slug: SLUG,
+        embedded: { amount: 10, onVersionChanged: changed },
+      }),
+    );
+    await settle(400);
+    await settle(1050);
+    await settle(50);
+    const posted = () => calls.filter((c) => c.path === '/v1/orders' && c.method === 'POST');
+    const reads = () => calls.filter((c) => c.path.startsWith(`/v1/indexes/${SLUG}`));
+    expect(posted()).toHaveLength(1);
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(find(host, '[role="alert"]').textContent).toBe(en.buy.failure.VERSION_CHANGED);
+    // the portfolio is read again, and nothing is ordered by itself however long the card is left
+    expect(reads().length).toBeGreaterThan(1);
+    await settle(1500);
+    expect(posted()).toHaveLength(1);
+    // the person asks for the prices: one order, for the version read now
+    await click(button(host, en.invest.again) as HTMLElement);
+    await settle(1050);
+    await settle(50);
+    expect(posted()).toHaveLength(2);
   });
 });
 

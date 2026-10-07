@@ -42,9 +42,11 @@ export function FamilyBuyScreen({ slug, embedded }: { slug: string; embedded?: I
   const [family, setFamily] = useState<SharedFamily | null | 'failed'>(null);
   const [text, setText] = useState('100');
   const [locked, setLocked] = useState(false);
+  const [round, setRound] = useState(0);
   const chain = person.kind === 'ready' ? person.chain : null;
   const owner = person.kind === 'ready' ? person.owner : null;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `round` reads the portfolio again
   useEffect(() => {
     if (!chain) return;
     let mine = true;
@@ -54,7 +56,7 @@ export function FamilyBuyScreen({ slug, embedded }: { slug: string; embedded?: I
     return () => {
       mine = false;
     };
-  }, [apiFetch, slug, chain]);
+  }, [apiFetch, slug, chain, round]);
 
   const recipe =
     family && family !== 'failed' && chain
@@ -143,10 +145,17 @@ export function FamilyBuyScreen({ slug, embedded }: { slug: string; embedded?: I
       },
       { chain, owner, type: 'buy' },
     );
-    if (placed.kind !== 'placed')
+    if (placed.kind !== 'placed') {
+      const versionChanged =
+        (placed.kind === 'code' || placed.kind === 'said') && placed.code === 'VERSION_CHANGED';
+      // The portfolio has another version than the page showed: it is read again here, so what the
+      // next order is held to is the new one, and the host is told.
+      if (versionChanged) setRound((n) => n + 1);
       return {
-        failure:
-          placed.kind === 'said'
+        ...(versionChanged ? { versionChanged: true } : {}),
+        failure: versionChanged
+          ? t.buy.failure.VERSION_CHANGED
+          : placed.kind === 'said'
             ? t.shared.publish.failure.said(placed.error)
             : placed.kind === 'code'
               ? (t.buy.failure[placed.code as keyof typeof t.buy.failure] ?? t.buy.failure.refused)
@@ -158,6 +167,7 @@ export function FamilyBuyScreen({ slug, embedded }: { slug: string; embedded?: I
                     ? t.buy.failure.unreadable
                     : t.buy.failure.unreachable,
       };
+    }
     const kept = keepOrder({
       orderId: placed.order.id,
       userId: person.userId,
@@ -194,6 +204,7 @@ export function FamilyBuyScreen({ slug, embedded }: { slug: string; embedded?: I
       }}
       onDone={embedded?.onDone}
       onStopped={embedded?.onStopped}
+      onVersionChanged={embedded?.onVersionChanged}
     />
   );
   if (embedded)
