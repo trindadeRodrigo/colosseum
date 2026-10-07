@@ -161,11 +161,6 @@ describe('the three pages that are not built yet', () => {
   const pages = [
     ['rebalancing', () => createElement(RebalancingPage), 'portfolio-rebalancing'],
     ['exposure', () => createElement(ExposurePage), 'portfolio-exposure'],
-    [
-      'plan',
-      () => createElement(PlanPage, { chain: 'solana', address: SOL_GROW }),
-      'portfolio-plan',
-    ],
   ] as const;
 
   it.each(['en', 'pt'] as const)(
