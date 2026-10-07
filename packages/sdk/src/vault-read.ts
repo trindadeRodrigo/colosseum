@@ -4,7 +4,7 @@ import type { RpcCall } from './executor/chain-read';
 import { type AbiValue, decodeArgs, parseType } from './guard/evm/abi';
 import { evmVaultAddress, planIdOf } from './guard/evm/addresses';
 import { BASKET_PROGRAM } from './guard/generated/basket-program';
-import { vaultAddress } from './guard/solana/addresses';
+import { TOKEN_PROGRAMS, tokenAccountAddress, vaultAddress } from './guard/solana/addresses';
 import type { EvmDeployment, SolanaDeployment } from './guard/types';
 import { keccak256, sha256 } from './hash';
 
@@ -105,6 +105,46 @@ export async function readSolanaVault(
     });
   }
   return { address, autoFollow: flag === 1, targets };
+}
+
+/**
+ * The cash a Solana vault holds, in raw units of the cash token: the balance of the vault's own token
+ * account for the deployment's cash mint, which is the one the program spends from. Zero when that
+ * account does not exist yet. Throws when the node gives no answer that reads as a balance.
+ */
+export async function readSolanaVaultCash(
+  rpc: RpcCall,
+  deployment: Pick<SolanaDeployment, 'assets' | 'cash'>,
+  at: { owner: string; basketId: string },
+): Promise<bigint> {
+  const cash = deployment.assets[deployment.cash];
+  if (!cash) throw new Error('the deployment lists no cash token');
+  const vault = vaultAddress(BASKET_PROGRAM.address, at.owner, at.basketId);
+  const account = tokenAccountAddress(vault, cash.mint, TOKEN_PROGRAMS[cash.tokenProgram]);
+  const info = (await rpc('getAccountInfo', [
+    account,
+    { encoding: 'jsonParsed', commitment: 'confirmed' },
+  ])) as { value?: unknown } | null;
+  if (!info || !('value' in info))
+    throw new Error('the node gave no answer about the vault’s cash');
+  if (info.value === null || info.value === undefined) return 0n;
+  const parsed = info.value as {
+    owner?: unknown;
+    data?: {
+      parsed?: { info?: { mint?: unknown; owner?: unknown; tokenAmount?: { amount?: unknown } } };
+    };
+  };
+  const held = parsed.data?.parsed?.info;
+  const amount = held?.tokenAmount?.amount;
+  if (
+    parsed.owner !== TOKEN_PROGRAMS[cash.tokenProgram] ||
+    held?.mint !== cash.mint ||
+    held?.owner !== vault ||
+    typeof amount !== 'string' ||
+    !/^\d+$/.test(amount)
+  )
+    throw new Error(`the account at ${account} does not read as the vault’s cash`);
+  return BigInt(amount);
 }
 
 /**
