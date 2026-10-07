@@ -794,12 +794,16 @@ describe('a refusal the text writes is never lost: it is taken from the text, wi
     expect(more.readBack).toContain('You left out stocks, stock funds, gold and crypto.');
   });
 
+  // The class is named by its own words. Bare "funds" and "fundos" were read as it until Oct 7: they
+  // are money ("no funds needed before then"), and name no class (the case after this one).
   it('a refusal of funds alone leaves out the stock funds, and single stocks may still be held', () => {
     for (const [sentence, language, said] of [
       ['No ETFs.', 'en', 'You left out stock funds.'],
-      ['No funds please.', 'en', 'You left out stock funds.'],
+      ['No index funds please.', 'en', 'You left out stock funds.'],
+      ['No stock funds.', 'en', 'You left out stock funds.'],
       ["I don't want any ETFs.", 'en', 'You left out stock funds.'],
-      ['Sem fundos.', 'pt', 'Você deixou de fora fundos de ações.'],
+      ['Sem fundos de índice.', 'pt', 'Você deixou de fora fundos de ações.'],
+      ['Sem fundos de ações.', 'pt', 'Você deixou de fora fundos de ações.'],
       ['Sem ETFs.', 'pt', 'Você deixou de fora fundos de ações.'],
     ] as const) {
       for (const r of [null, model({ language, cannotHold: ['etf'] })]) {
@@ -823,6 +827,99 @@ describe('a refusal the text writes is never lost: it is taken from the text, wi
     const both = intake(`${GOAL}No stocks and no ETFs.`, null, { answers: ANSWERS });
     expect(both.sheet?.limits).toEqual({ cannotHold: { classes: ['etf', 'stock'] } });
     expect(both.readBack).toContain('You left out stocks and stock funds.');
+  });
+
+  // The second review (Oct 7): "no funds needed before then" left out the stock funds, and the plan
+  // then held no index fund. Bare "funds" is money.
+  it('bare "funds" and "fundos" are money, not the class of stock funds: they leave out nothing', () => {
+    for (const [sentence, language] of [
+      ['No funds please.', 'en'],
+      ['No funds needed before then, so I can take risk.', 'en'],
+      ['I need no funds from this until 2031.', 'en'],
+      ['I have no funds elsewhere.', 'en'],
+      ['Sem fundos.', 'pt'],
+      ['Sem fundos de emergência ainda.', 'pt'],
+      ['Não tenho fundos guardados.', 'pt'],
+    ] as const) {
+      expect(refusalsSaidIn(sentence), sentence).toEqual([]);
+      expect(refusalsIn(sentence), sentence).toEqual({ classes: [], noCredit: false });
+      for (const r of [null, model({ language })]) {
+        const result = intake(GOAL + sentence, r, { answers: ANSWERS, language });
+        expect(result.limits, sentence).toEqual(NONE);
+        expect(result.sheet, sentence).not.toBeNull();
+        expect(result.sheet?.limits, sentence).toBeUndefined();
+        expect((result.readBack ?? []).join(' '), sentence).not.toMatch(/left out|deixou de fora/);
+        expect(
+          result.flags.filter((f) => /cannotHold|refusal_/.test(f)),
+          sentence,
+        ).toEqual([]);
+      }
+    }
+    // A model that reads the class from them is not followed: the text does not write it.
+    const erring = intake(`${GOAL}No funds needed before then.`, model({ cannotHold: ['etf'] }), {
+      answers: ANSWERS,
+    });
+    expect(erring.limits).toEqual(NONE);
+    expect(erring.flags).toContain('not_in_text:cannotHold:etf');
+    // "No stock funds" names the funds, not the stocks.
+    expect(refusalsSaidIn('No stock funds.').map((r) => [r.what, r.stance])).toEqual([
+      ['etf', 'stated'],
+    ]);
+    expect(intake(`${GOAL}No stock funds.`, null, { answers: ANSWERS }).sheet?.limits).toEqual({
+      cannotHold: { classes: ['etf'] },
+    });
+  });
+
+  // The second review (Oct 7): "No stocks, crypto or gold" read the stocks alone, and dropped the
+  // crypto and the gold a model read as not written.
+  it('a refusal leads its list: what is said of the first is said of each', () => {
+    for (const [sentence, classes, noCredit] of [
+      ['No stocks, crypto or gold.', ['crypto', 'etf', 'gold', 'stock'], false],
+      ['No stocks, no crypto, no gold.', ['crypto', 'etf', 'gold', 'stock'], false],
+      ['Without crypto, gold or credit.', ['crypto', 'gold'], true],
+      ["I don't want stocks, ETFs or crypto.", ['crypto', 'etf', 'stock'], false],
+      ['Sem ações, cripto ou ouro.', ['crypto', 'etf', 'gold', 'stock'], false],
+      ['Sem ações nem cripto.', ['crypto', 'etf', 'stock'], false],
+    ] as const) {
+      for (const r of [null, model()]) {
+        const result = intake(GOAL + sentence, r, { answers: ANSWERS });
+        expect(result.limits, sentence).toEqual({
+          creditTolerance: noCredit ? 'none' : null,
+          cannotHoldClasses: [...classes],
+        });
+      }
+    }
+    // Where the list ends and another clause starts, the next thing is no item of it.
+    for (const [sentence, classes] of [
+      ['No stocks, gold is fine.', ['etf', 'stock']],
+      ['No stocks, gold only.', ['etf', 'stock']],
+      ['No crypto, stocks are what I want.', ['crypto']],
+    ] as const)
+      expect(
+        intake(GOAL + sentence, null, { answers: ANSWERS }).limits.cannotHoldClasses,
+        sentence,
+      ).toEqual([...classes]);
+    // A model that reads the three agrees with the text: nothing is flagged.
+    const agreed = intake(
+      `${GOAL}No stocks, crypto or gold.`,
+      model({ cannotHold: ['stock', 'crypto', 'gold'] }),
+      { answers: ANSWERS },
+    );
+    expect(agreed.flags.filter((f) => /cannotHold/.test(f))).toEqual([]);
+    expect(agreed.readBack).toContain('You left out stocks, stock funds, gold and crypto.');
+  });
+
+  it('"leave out", the words the intake itself uses, is a refusal', () => {
+    for (const [sentence, what] of [
+      ['Leave out stocks.', 'stock'],
+      ['Please leave out crypto.', 'crypto'],
+      ['Deixe de fora ações.', 'stock'],
+      ['Pode deixar fora cripto.', 'crypto'],
+    ] as const)
+      expect(
+        refusalsSaidIn(sentence).map((r) => [r.what, r.stance]),
+        sentence,
+      ).toEqual([[what, 'stated']]);
   });
 
   it('stocks the person is not sure of, or does not refuse, leave out no fund either', () => {

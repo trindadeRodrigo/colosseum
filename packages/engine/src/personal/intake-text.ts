@@ -384,13 +384,16 @@ export const maxYieldAskedIn = (text: string): boolean => MAX_YIELD.test(text);
 // into it, then at most two words ("no US stocks", "sem nenhuma ação"), then what is refused. The
 // leads are the ways a person says it: a bare negation ("no", "without", "sem", "nem", "never"), not
 // wanting it ("I don't want any stocks", "não quero"), not being able to hold it ("I can't hold
-// stocks", "não posso ter"), and keeping out of it ("stay away from crypto", "longe de"). Where two
+// stocks", "não posso ter"), keeping out of it ("stay away from crypto", "longe de"), and leaving it
+// out, the words the intake's own lines use ("leave out stocks", "deixe de fora ações"). Where two
 // start at the same word the longer is tried first.
 const NEG = `(?:${[
   String.raw`\b(?:do\s+not|don['’]?t|does\s+not|doesn['’]?t|will\s+not|won['’]?t|would\s+not|wouldn['’]?t|never)\s+want(?:\s+to\s+(?:hold|own|buy|have|touch|invest|be|put\s+(?:money|anything)))?\b`,
   String.raw`\b(?:cannot|can['’]?t|must\s+not|mustn['’]?t|may\s+not|not\s+allowed\s+to|not\s+permitted\s+to)\s+(?:hold|own|buy|have|touch|trade|invest)\b`,
   String.raw`\b(?:will\s+not|won['’]?t|do\s+not|don['’]?t|never)\s+touch\b`,
   String.raw`\b(?:keep|keeping|stay|staying|steer|steering)\s+(?:(?:me|us|it|my\s+money|the\s+money)\s+)?(?:out\s+of|away\s+from|clear\s+of)\b`,
+  String.raw`\b(?:leave|leaving)\s+out\b`,
+  String.raw`\bdeix(?:e|a|o|ar|ando)\s+(?:de\s+)?fora\b`,
   String.raw`\bnothing\s+in\b`,
   String.raw`\bnever\b`,
   String.raw`\bneither\b`,
@@ -412,11 +415,17 @@ const NEG = `(?:${[
 ].join('|')})`;
 /** What a person can rule out: a class the plan may hold, or credit (tokens that lend or trade a spread). */
 export type Refused = HoldableClass | 'credit';
+// The class of stock funds is named by its own words only ("ETFs", "index funds", "stock funds",
+// "fundos de índice", "fundos de ações"). Bare "funds" and "fundos" are money ("no funds needed
+// before then", "sem fundos de emergência"): they name no class (the review of Oct 7).
 const REFUSED: [Refused, string][] = [
   ['stock', '(?:stocks?|shares|equit(?:y|ies)|a[cç][oõ]es|a[cç][aã]o)'],
   ['crypto', String.raw`(?:crypto\w*|cripto\w*|bitcoin|btc)`],
   ['gold', '(?:gold|ouro)'],
-  ['etf', '(?:etfs?|funds|fundos)'],
+  [
+    'etf',
+    String.raw`(?:etfs?|index\s+funds?|(?:stock|equity)\s+funds?|fundos?\s+de\s+[ií]ndice|fundos?\s+de\s+a[cç][oõ]es)`,
+  ],
   ['commodity', '(?:commodit(?:y|ies))'],
   ['credit', '(?:credit|lending|loans?|borrowers|cr[eé]dito|empr[eé]stimos?|tomadores)'],
 ];
@@ -424,6 +433,15 @@ const REFUSALS: [Refused, RegExp][] = REFUSED.map(([what, things]) => [
   what,
   new RegExp(`(?<lead>${NEG})\\s+(?<between>(?:\\p{L}+\\s+){0,2}?)(?<cls>${things})\\b`, 'giu'),
 ]);
+// What is refused, any class: the next items of a list one refusal leads ("no stocks, crypto or
+// gold", "sem ações nem cripto"). An item ends where the list goes on or its clause ends: in "no
+// stocks, gold is fine" the gold is no item.
+const REFUSED_NEXT = new RegExp(
+  String.raw`^(?:\s*,\s*(?:(?:or|and|nor|ou|e|nem)\s+)?|\s+(?:or|and|nor|ou|e|nem)\s+)(?:(?:any|the|no|sem|de|d[oa]s?|as|os)\s+)?(?<cls>${REFUSED.map(([, things]) => things).join('|')})(?=\s*(?:$|[,.;!?\n]|(?:or|and|nor|ou|e|nem|please|either|at\s+all|por\s+favor)(?![\p{L}])))`,
+  'iu',
+);
+const refusedBy = (word: string): Refused | null =>
+  REFUSED.find(([, things]) => new RegExp(`^${things}$`, 'iu').test(word))?.[0] ?? null;
 
 // Words that say a goal or a risk. The model's reading of either is taken only where the text holds
 // one of its words; otherwise it is a suggestion the person confirms.
@@ -958,8 +976,9 @@ const OF_A_KIND_AFTER =
   /^\s+(?:from\s+(?!now|today|here|this)|except|excluding|other\s+than|like(?![\p{L}])|such\s+as|that(?![\p{L}])|which|whose|of\s+(?!any|all|every)|in\s+(?!my|our|the\s+(?:plan|portfolio|mix)|this|it(?![\p{L}])|there|here|any)|de\s+(?!nenhum|qualquer|forma|jeito|modo|maneira)|d[ao]s?\s|que(?![\p{L}])|como(?![\p{L}])|exceto|menos(?![\p{L}])|tirando)/iu;
 // What follows makes it another thing: "no stock market crash", "no gold standard", "no credit card".
 const ANOTHER_THING: Partial<Record<Refused, RegExp>> = {
+  // "No stock funds" names the funds, the other class.
   stock:
-    /^\s+market\s+(?:crash|crashes|fall|falls|drop|drops|dip|dips|downturn|correction|bubble|news|timing|hours)(?![\p{L}])/iu,
+    /^\s+(?:market\s+(?:crash|crashes|fall|falls|drop|drops|dip|dips|downturn|correction|bubble|news|timing|hours)|funds?)(?![\p{L}])/iu,
   gold: /^\s+(?:standard|medals?|cards?|rush)(?![\p{L}])/iu,
   credit: /^\s+(?:cards?|scores?|history|checks?|ratings?|limits?|reports?|sharks?)(?![\p{L}])/iu,
 };
@@ -1032,21 +1051,46 @@ function refusalStance(
  * they are not sure of.
  */
 export function refusalsSaidIn(text: string): RefusalSaid[] {
-  const out: RefusalSaid[] = [];
+  // Each with the length of the word that names what is refused, which ends where the refusal ends.
+  const found: (RefusalSaid & { named: number })[] = [];
   const narratives = narrativeSpansIn(text);
+  const add = (r: RefusalSaid, named: number) => {
+    if (!found.some((x) => x.what === r.what && x.end === r.end)) found.push({ ...r, named });
+  };
   for (const [what, pattern] of REFUSALS)
     for (const m of text.matchAll(pattern)) {
-      const end = m.index + m[0].length;
+      const at = m.index;
       const { lead = '', between = '', cls = '' } = m.groups ?? {};
-      out.push({
-        what,
-        words: m[0].replace(/\s+/g, ' '),
-        at: m.index,
-        end,
-        stance: refusalStance(text, what, lead, between, cls, m.index, end, narratives),
-      });
+      let end = at + m[0].length;
+      const stance = refusalStance(text, what, lead, between, cls, at, end, narratives);
+      add({ what, words: m[0].replace(/\s+/g, ' '), at, end, stance }, cls.length);
+      // The list the refusal leads: what is said of the first is said of each ("no stocks, crypto
+      // or gold" rules out the three).
+      for (;;) {
+        const next = REFUSED_NEXT.exec(text.slice(end));
+        const word = next?.groups?.cls ?? '';
+        const other = next ? refusedBy(word) : null;
+        if (!next || !other) break;
+        end += next[0].length;
+        add(
+          {
+            what: other,
+            words: text.slice(at, end).replace(/\s+/g, ' '),
+            at,
+            end,
+            stance: refusalStance(text, other, lead, '', word, at, end, narratives),
+          },
+          word.length,
+        );
+      }
     }
-  return out.sort((a, b) => a.at - b.at || a.end - b.end);
+  // A word inside the longer name of another class names that class: "stock" in "no stock funds".
+  const inside = (r: (typeof found)[number]) =>
+    found.some((x) => x.named > r.named && x.end - x.named <= r.end - r.named && r.end <= x.end);
+  return found
+    .filter((r) => !inside(r))
+    .map(({ named: _named, ...r }) => r)
+    .sort((a, b) => a.at - b.at || a.end - b.end);
 }
 
 /**
