@@ -1,4 +1,5 @@
 'use client';
+import { chainFamily } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useId } from 'react';
 import { buttonClass } from '../../components/ui/button-class';
@@ -209,6 +210,16 @@ export function VaultPanel({
             <dd className="font-mono tabular-nums">
               {taken.usd !== null && (
                 <ProvenancePin value={dollars(lang, taken.usd)} obs={taken.obs} labels={t.pin} />
+              )}
+              {/* An EVM vault's withdraw-all passes over a token it cannot move and the order cannot
+                  tell, so there the sum is what was ordered, and says so. */}
+              {chainFamily(vault.chain) === 'evm' && (
+                <span
+                  data-ui="vault-taken-ordered"
+                  className="block font-sans text-body-sm text-muted-foreground"
+                >
+                  {words.takenOrdered}
+                </span>
               )}
               {taken.unvalued > 0 && (
                 <span className="block font-sans text-body-sm text-muted-foreground">

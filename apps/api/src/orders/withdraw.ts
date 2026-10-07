@@ -50,13 +50,14 @@ export class SkippedStep extends Refusal {
   }
 }
 
-/** What a builder says when the request itself is wrong, or the chain cannot be asked: never a skip. */
-const NOT_A_SKIP: ReadonlySet<string> = new Set([
-  'BadInput',
-  'Unavailable',
-  'VaultNotFound',
-  'NotOwner',
-]);
+/**
+ * The only refusals that are a skip: the ones that say the token itself cannot move. Its account is
+ * frozen or cannot be read (`BalanceUnreadable`), or it carries a transfer hook this builder does not
+ * resolve (`NotSupported`, the one thing a withdrawal's builder says it for). Anything else (a wallet
+ * short of the fee, a node that did not answer, an error with no name) is the step's own refusal,
+ * with its sentence, and the step can be built again: a skip is final, so it is never guessed.
+ */
+const A_SKIP: ReadonlySet<string> = new Set(['BalanceUnreadable', 'NotSupported']);
 
 type Context = {
   principal: Principal;
@@ -328,9 +329,9 @@ export async function buildWithdraw(
       ...(nonce === undefined ? {} : { nonce }),
     });
   } catch (e) {
-    // A step of one token that the chain will not move now is skipped, and says why: the vault holds
-    // it (checked above), so the refusal is the token's own. A step of several is refused as a whole.
-    if (e instanceof ChainError && leg.withdrawals.length === 1 && !NOT_A_SKIP.has(e.code))
+    // A step of one token that cannot move is skipped, and says why. A step of several is refused as a
+    // whole, and any other refusal is the step's own, to be built again.
+    if (e instanceof ChainError && leg.withdrawals.length === 1 && A_SKIP.has(e.code))
       throw new SkippedStep(e.code, e.message);
     throw e;
   }

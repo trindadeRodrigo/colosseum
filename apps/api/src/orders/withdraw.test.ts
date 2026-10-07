@@ -407,13 +407,14 @@ describe.each(CHAINS)('a withdrawal on %s', (chain) => {
     }
   });
 
-  it('a request that is wrong, or a chain that does not answer, is never a skip', async () => {
-    const down: ChainEntry = {
+  /** What building the one-token step answers when the chain's builder refuses it with `code`. */
+  const refusedWith = async (code: ChainError['code'], message: string) => {
+    const refusing: ChainEntry = {
       ...w.entry,
       adapter: {
         ...w.entry.adapter,
         buildWithdrawInKind: async () => {
-          throw new ChainError('Unavailable', 'the node did not answer');
+          throw new ChainError(code, message);
         },
       },
     };
@@ -421,12 +422,41 @@ describe.each(CHAINS)('a withdrawal on %s', (chain) => {
     const plan = await planWithdraw(request, { principal: w.me, chains: w.chains });
     const step = plan.steps[0];
     if (!step) throw new Error('no step');
-    const e = await buildWithdraw(request, legOf(step), down, w.owner, undefined).catch(
+    return buildWithdraw(request, legOf(step), refusing, w.owner, undefined).catch(
       (x: unknown) => x,
     );
-    expect(e).not.toBeInstanceOf(SkippedStep);
-    expect((e as ChainError).code).toBe('Unavailable');
-  });
+  };
+
+  it.each([
+    ['NoGas', 'the wallet cannot pay the network fee'],
+    ['Unknown', 'the simulation failed'],
+    ['Unavailable', 'the node did not answer'],
+    ['BadInput', 'a malformed amount'],
+    ['VaultNotFound', 'no vault'],
+    ['NotOwner', 'not the owner'],
+    ['Expired', 'built too long ago'],
+    ['GasTooLow', 'too little gas'],
+  ] as const)(
+    '%s is never a skip: the step is refused as it is, to be built again',
+    async (code, message) => {
+      const e = await refusedWith(code, message);
+      expect(e).not.toBeInstanceOf(SkippedStep);
+      expect(e).toBeInstanceOf(ChainError);
+      expect((e as ChainError).code).toBe(code);
+    },
+  );
+
+  it.each([
+    ['BalanceUnreadable', "the vault's account of it is frozen by its issuer"],
+    ['NotSupported', 'its issuer added a transfer hook program'],
+  ] as const)(
+    '%s is a skip, with its reason: the token itself cannot move',
+    async (code, message) => {
+      const e = await refusedWith(code, message);
+      expect(e).toBeInstanceOf(SkippedStep);
+      expect([(e as SkippedStep).code, (e as SkippedStep).reason]).toEqual([code, message]);
+    },
+  );
 
   it('takes no part of a token the app does not list: all of it or none, with the screen’s sentence', async () => {
     // The stock token as one the app's list does not have: its units are not known here.

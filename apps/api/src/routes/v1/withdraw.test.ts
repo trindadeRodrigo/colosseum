@@ -303,4 +303,60 @@ describe('a withdrawal with a token that cannot move', () => {
       vault.positions.find((p) => p.asset === stuck)?.raw,
     );
   });
+
+  it('a wallet short of the network fee is refused with its sentence, and the step is built once it is paid', async () => {
+    const a = await someone('solana');
+    let short = true;
+    const { app: dry, registry: chain } = await testApp({
+      issuer: issuer.issuer,
+      db: data.db,
+      wrap: (inner) => ({
+        ...inner,
+        get: (c) => {
+          const entry = inner.get(c);
+          const buildWithdrawInKind: typeof entry.adapter.buildWithdrawInKind = async (args) => {
+            if (short) throw new ChainError('NoGas', 'the wallet cannot pay the network fee');
+            return entry.adapter.buildWithdrawInKind(args);
+          };
+          return { ...entry, adapter: { ...entry.adapter, buildWithdrawInKind } };
+        },
+      }),
+    });
+    undo.push(() => dry.close());
+    await openVault(a, dry);
+    const [vault] = await chain.get('solana').adapter.getVaults(walletOf(a));
+    if (!vault) throw new Error('no vault');
+    const res = await post(
+      a,
+      '/v1/orders',
+      {
+        type: 'withdraw',
+        vaults: [vault.address],
+        sellToCash: false,
+        withdrawals: [{ asset: vault.positions.find((p) => BigInt(p.raw) > 0n)?.asset }],
+      },
+      dry,
+    );
+    expect(res.statusCode, res.body).toBe(200);
+    const order = OrderDetail.parse(res.json());
+    const leg = order.legs.find((l) => l.kind === 'withdraw');
+    if (!leg) throw new Error('no step');
+    for (const before of order.legs) {
+      if (before.id === leg.id) break;
+      await build(a, order, before.id, dry);
+      await report(a, order, before.id, { txId: await land(a, order, before.id, dry) }, dry);
+    }
+    const refused = await post(a, `/v1/orders/${order.id}/legs/${leg.id}/build`, undefined, dry);
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toMatchObject({ code: 'NOT_FUNDED' });
+    expect(refused.json().fix).toMatch(/network fee/);
+    // not a skip: the step stands as it was, and the order is not done
+    const now = await read(a, order, dry);
+    expect(now.legs.find((l) => l.id === leg.id)?.status).toBe('planned');
+    expect(now.status).not.toBe('done');
+    short = false;
+    await build(a, order, leg.id, dry);
+    const done = await report(a, order, leg.id, { txId: await land(a, order, leg.id, dry) }, dry);
+    expect(done.legs.find((l) => l.id === leg.id)?.status).toBe('confirmed');
+  });
 });

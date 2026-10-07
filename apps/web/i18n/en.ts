@@ -530,7 +530,10 @@ export const en = {
       observed: (when: string) => `Read from the chain on ${when}.`,
       /** The method line in the pin of a vault's whole value. */
       valueMethod: 'holdings read from the vault, times their prices; cash at one dollar',
-      takenOut: 'Taken out',
+      takenOut: 'Taken out, as ordered',
+      /** On an EVM chain a step that takes everything can pass over a token: the sum is what was ordered. */
+      takenOrdered:
+        'This counts what your withdrawals ordered. A token one of them couldn’t move is still in the holdings below.',
       takenOutMethod: (n: number) =>
         `${n === 1 ? '1 token' : `${n} tokens`} withdrawn, each at the reference price when ordered`,
       takenUnvalued: (n: number) =>

@@ -698,6 +698,8 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     const out = find(host, '[data-ui="vault-taken-out"]');
     expect(out.textContent).toContain(en.portfolio.vault.takenOut);
     expect(out.textContent).toContain('$1,250.50');
+    // on Solana a confirmed step moved its token: no word that the sum is only what was ordered
+    expect(out.querySelector('[data-ui="vault-taken-ordered"]')).toBeNull();
     // the figure carries its pin (rule 1)
     const pin = find(out, '[data-ui="figure"]');
     expect(pin.querySelector('button')?.getAttribute('aria-label')).toMatch(/^Source for /);
@@ -952,6 +954,63 @@ describe('the chain of each vault', () => {
       expect(host.textContent).not.toMatch(/usdc/i);
       await unmountAll();
     }
+  });
+
+  it('says on an EVM chain that what was taken out is what was ordered, since a withdraw-all can pass over a token', async () => {
+    const held = robinhoodChain();
+    const address = held.vaults[0]?.address ?? '';
+    api({
+      person: onRobinhood,
+      portfolio: () => json(portfolioOf(held)),
+      more: (path) =>
+        path === '/v1/me/withdrawals'
+          ? json({
+              next: null,
+              withdrawals: [
+                {
+                  orderId: '00000000-0000-4000-8000-0000000000c1',
+                  createdAt: '2026-10-06T10:00:00.000Z',
+                  chain: 'robinhood',
+                  vault: address,
+                  status: 'done',
+                  steps: [
+                    {
+                      legId: '00000000-0000-4000-8000-0000000000c2',
+                      status: 'confirmed',
+                      txId: `0x${'5'.repeat(64)}`,
+                      explorerUrl: null,
+                      at: '2026-10-06T10:05:00.000Z',
+                      provenance: 'mock',
+                      withdrawals: [
+                        {
+                          asset: 'robinhood:tspy',
+                          amountRaw: null,
+                          heldRaw: '1000000',
+                          valued: {
+                            usd: '650.00',
+                            source: 'MOCK price',
+                            method: 'the amount at the reference price when ordered',
+                            fetchedAt: '2026-10-06T10:00:00.000Z',
+                            provenance: 'mock',
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            })
+          : null,
+    });
+    signIn(EMBEDDED, 'mock');
+    const host = await screen();
+    await settle();
+    await settle();
+    const out = find(host, '[data-ui="vault-taken-out"]');
+    expect(out.textContent).toContain(en.portfolio.vault.takenOut);
+    expect(find(out, '[data-ui="vault-taken-ordered"]').textContent).toBe(
+      en.portfolio.vault.takenOrdered,
+    );
   });
 
   it('groups vaults on two chains under a heading each, with a total each, and adds them only where it says so', async () => {

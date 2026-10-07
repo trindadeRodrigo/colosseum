@@ -467,9 +467,11 @@ export const pt: Dictionary = {
       pendingAssets: (assets: string) => `Ela inclui ${assets}, que você ainda não aceitou.`,
       observed: (when: string) => `Lido da rede em ${when}.`,
       valueMethod: 'posições lidas do cofre, vezes seus preços; caixa a um dólar',
-      takenOut: 'Sacado',
+      takenOut: 'Sacado, conforme pedido',
+      takenOrdered:
+        'Isto conta o que seus saques pediram. Um token que algum deles não conseguiu mover continua nas posições abaixo.',
       takenOutMethod: (n: number) =>
-        `${n === 1 ? '1 token sacado' : `${n} tokens sacados`}, cada um ao preço de referência do pedido`,
+        `${n === 1 ? '1 token sacado' : `${n} tokens sacados`}, cada um ao preço de referência quando pedido`,
       takenUnvalued: (n: number) =>
         `${n === 1 ? 'Um token sacado não tinha' : `${n} tokens sacados não tinham`} preço na hora, e não ${n === 1 ? 'entra' : 'entram'} em soma.`,
       positionMethod: (method: string) => `${method}; vezes a quantidade que o cofre guarda`,
