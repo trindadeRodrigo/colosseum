@@ -152,7 +152,7 @@ export type ByrealInCapture = {
 
 export type AccountReader = (
   keys: string[],
-) => Promise<{ slot: number; accounts: Map<string, { data: Uint8Array } | null> }>;
+) => Promise<{ slot: number; accounts: Map<string, { data: Uint8Array; owner?: string } | null> }>;
 
 /**
  * Reads one run's accounts: every selected pool, then the Raydium fee configs and the tick or bin arrays the
@@ -189,7 +189,9 @@ export async function readSplitCapture(
     .map((p) => {
       const h = heads.accounts.get(p.address)?.data;
       if (!h) return null;
-      if (!stockPairs.has(p.address)) return decodeClmmPool(h).ammConfig;
+      // a Byreal pool whose account does not decode is named when the pools are built, like a stock-to-stock one
+      if (!stockPairs.has(p.address) && p.venue !== BYREAL_VENUE)
+        return decodeClmmPool(h).ammConfig;
       try {
         return decodeClmmPool(h).ammConfig;
       } catch {

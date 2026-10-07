@@ -348,6 +348,12 @@ export async function byrealForCapture(
       out('not_returned_as_a_pool');
       continue;
     }
+    // the table is a file: a pool it names has to be Byreal's own account, when the reader says who owns it
+    const owner = heads.accounts.get(r.pool)?.owner;
+    if (owner !== undefined && owner !== table.program) {
+      out('not_owned_by_the_program');
+      continue;
+    }
     const stock0 = stocks.has(h.mint0);
     const stock1 = stocks.has(h.mint1);
     if (stock0 && stock1) {

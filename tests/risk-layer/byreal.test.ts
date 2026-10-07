@@ -684,6 +684,18 @@ describe('the pools a capture takes', () => {
       'not_returned_as_a_pool',
       'vaults_not_returned',
     ]);
+
+    // a table that names an account of another program: left out, whatever its bytes decode as
+    const foreign = new Map<string, { data: Uint8Array; owner?: string } | null>(
+      accountsOf(spyx, 16_172_000_000n, 192_775_000_000n),
+    );
+    foreign.set(spyx.pool, {
+      data: headOf(spyx),
+      owner: 'CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK',
+    });
+    const notOurs = await byrealForCapture(table([s]), { only: null }, deps(foreign));
+    expect(notOurs.pools).toEqual([]);
+    expect(notOurs.meta.leftOut[0]?.reason).toBe('not_owned_by_the_program');
   });
 });
 

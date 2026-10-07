@@ -28,7 +28,7 @@ import solanaList from './universe/solana.json';
 // pools, and the capture's `byreal` key names them and the pools left out, each with its reason. It costs two batch
 // reads, one read of the mints and one getProgramAccounts a pool taken, before the capture's own read; no oracle
 // account is read. Nothing routes those pools unless asked (`pnpm risk:routing-gap --router --byreal`,
-// RISK_SPLIT_BYREAL=1 in `pnpm risk:split-snapshot`). It cannot be combined with `--raw-arrays`. Without the option
+// RISK_SPLIT_BYREAL=<table.json> in `pnpm risk:split-snapshot`). It cannot be combined with `--raw-arrays`. Without the option
 // the requests sent and the file written are what they were.
 const USAGE =
   'usage: split-capture.ts <out.json.gz> [--two-hop | --raw-arrays] [--only SYMBOL,…] (RISK_SPLIT_TWO_HOP=1 in place of --two-hop)\n       [--byreal <table.json>] adds Byreal’s pools from a table of `pnpm risk:byreal-pools` (not with --raw-arrays)';
