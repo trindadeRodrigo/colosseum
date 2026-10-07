@@ -1,5 +1,4 @@
 import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -264,16 +263,33 @@ const text = (rs: readonly object[]) => rs.map((r) => `${JSON.stringify(r)}\n`);
 const parse = <T>(lines: readonly string[]) => lines.map((l) => JSON.parse(l) as T);
 const at = (ms: number) => new Date(Date.parse(cap.fetchedAt) + ms).toISOString();
 const sum = (xs: number[]) => xs.reduce((s, x) => s + x, 0);
-// sha256 of the lines of a file of rows, joined by a newline (no newline after the last)
-const sha = (lines: readonly string[]) =>
-  createHash('sha256')
-    .update(lines.map((l) => l.replace(/\n$/, '')).join('\n'))
-    .digest('hex');
-// The 48 `split-0.1` rows of the fixture, as the script before RU.11 wrote them. The copy of that script in this file
-// calls the router of the working tree, so a change to the direct path would move the copy and the new rows together:
-// this constant does not move. When it was taken, the copy gave the same lines with the router of commit d58086c3
-// (before two hops) in the working tree's place. It changes only with the fixture.
-const SPLIT_01_ROWS_SHA256 = '2a2c06759a8efd3f2eff214a7af977b4be080db4b38f27ac695439dd93e01c4a';
+// The 48 `split-0.1` rows of the fixture, as the script before RU.11 wrote them, frozen in a file. The copy of that
+// script in this file calls the router of the working tree, so a change to the direct path would move the copy and
+// the new rows together: the frozen rows do not move. When they were taken, the copy gave the same lines with the
+// router of commit d58086c3 (before two hops) in the working tree's place. They change only with the fixture.
+// They are compared figure by figure, not by a hash of the bytes: a platform's own `pow` decides the last digit of a
+// price, so the lines written on macOS and on Linux differ in that digit (the first run on the Linux runner showed
+// it). Within one run the old copy and the new rows are still compared byte for byte, in the tests around this one.
+const FROZEN_ROWS = (
+  JSON.parse(readFileSync('fixtures/risk/route/split-0.1-rows-20261006T2121.json', 'utf8')) as {
+    rows: unknown[];
+  }
+).rows;
+// the same keys in the same order, the same strings, whole numbers and nulls, and every other number to nine digits
+const sameFigures = (got: unknown, want: unknown, path: string): void => {
+  if (typeof want === 'number' && typeof got === 'number' && !Number.isInteger(want)) {
+    const tol = Math.max(1e-12, 1e-9 * Math.abs(want));
+    expect(Math.abs(got - want), path).toBeLessThanOrEqual(tol);
+  } else if (Array.isArray(want)) {
+    expect(Array.isArray(got), path).toBe(true);
+    expect((got as unknown[]).length, path).toBe(want.length);
+    for (const [i, w] of want.entries()) sameFigures((got as unknown[])[i], w, `${path}[${i}]`);
+  } else if (want !== null && typeof want === 'object') {
+    expect(Object.keys(got as object), path).toEqual(Object.keys(want));
+    for (const [k, w] of Object.entries(want))
+      sameFigures((got as Record<string, unknown>)[k], w, `${path}.${k}`);
+  } else expect(got, path).toBe(want);
+};
 // two sums of the same numbers taken in a different order: equal to the last few bits, not bit for bit
 const sameSum = (a: number, b: number) =>
   expect(Math.abs(a - b)).toBeLessThanOrEqual(1e-12 * Math.max(1, Math.abs(a), Math.abs(b)));
@@ -348,15 +364,25 @@ describe('the split-0.1 rows', () => {
     }
   });
 
-  it('hash to the constant pinned from the script before two hops: the copy, the new rows, and with two hops on', () => {
-    expect(sha(old.lines)).toBe(SPLIT_01_ROWS_SHA256);
-    expect(sha(text(off.rows))).toBe(SPLIT_01_ROWS_SHA256);
-    expect(sha(text(on.rows))).toBe(SPLIT_01_ROWS_SHA256);
-    expect(sha(text(onWhole.rows))).toBe(SPLIT_01_ROWS_SHA256);
-    // the hash is of the file's lines: the same bytes without the last newline
-    expect(sha(old.lines)).toBe(
-      createHash('sha256').update(old.lines.join('').slice(0, -1)).digest('hex'),
-    );
+  it('are the rows frozen from the script before two hops: the copy, the new rows, and with two hops on', () => {
+    expect(FROZEN_ROWS.length).toBe(48);
+    for (const [name, lines] of [
+      ['the copy of the old script', old.lines],
+      ['two hops off', text(off.rows)],
+      ['two hops on', text(on.rows)],
+      ['two hops on, the capture seen whole', text(onWhole.rows)],
+    ] as const) {
+      const rows = parse<unknown>(lines);
+      expect(rows.length, name).toBe(48);
+      for (const [i, r] of rows.entries()) sameFigures(r, FROZEN_ROWS[i], `${name}, row ${i}`);
+    }
+    // the comparison is not blind: a figure moved in the ninth digit is caught, and so is a key out of place
+    const first = FROZEN_ROWS[0] as { outUsd: number; costPct: number };
+    expect(() =>
+      sameFigures({ ...first, outUsd: first.outUsd * (1 + 1e-8) }, first, 'moved'),
+    ).toThrow();
+    const { costPct: _c, ...rest } = first;
+    expect(() => sameFigures({ ...rest, costPct: first.costPct }, first, 'reordered')).toThrow();
   });
 
   it('and with the collector beside them: the same lines and the same drift', () => {
