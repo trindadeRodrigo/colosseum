@@ -10,6 +10,7 @@ import {
   DISCLAIMER,
   type FundingNeed,
   type IntentRequest,
+  isAddressOf,
   type Leg,
   ORDER_LIMITS,
   type Order,
@@ -267,8 +268,17 @@ export async function planBuy(
   // The owner in the body is a claim. It stands only where the verified tokens say the same.
   if (!holds(ctx.principal, req.owner))
     throw new Refusal(403, 'the owner in the request is not a wallet of the signed-in person');
-  if (req.family !== undefined && req.proposalId !== undefined)
-    throw new Refusal(400, 'a buy names a plan or a shared portfolio, not both');
+  const named = [req.proposalId, req.family, req.vault].filter((x) => x !== undefined).length;
+  if (named > 1)
+    throw new Refusal(400, 'a buy names one thing: a plan, a shared portfolio or a vault of yours');
+  if (req.vault !== undefined) {
+    if (req.version !== undefined)
+      throw new Refusal(
+        400,
+        '`version` is the version of a shared portfolio: send it with `family`',
+      );
+    return planVaultBuy(req, req.vault, ctx);
+  }
   if (req.family !== undefined) return planFamilyBuy(req, req.family, ctx);
   if (req.version !== undefined)
     throw new Refusal(400, '`version` is the version of a shared portfolio: send it with `family`');
@@ -400,6 +410,48 @@ async function planFamilyBuy(
       );
     const plan = await buySteps(entry, owner, basketId, cents, assets, targets);
     return { ...plan, version: onchain.active.version };
+  });
+}
+
+/** One answer for a vault that is not there, one on another chain and one that is another person's. */
+export const NO_SUCH_VAULT = 'no vault with that address that you can add to';
+
+/** Two addresses of one chain are the same vault: an EVM address in any case. */
+export const sameVaultAddress = (chain: ChainId, a: string, b: string) =>
+  chainFamily(chain) === 'evm' ? a.toLowerCase() === b.toLowerCase() : a === b;
+
+/**
+ * More money into a vault the person already has (add money): the amount is deposited into THAT vault
+ * and buys to the targets the vault has on chain now, so a vault that follows a shared portfolio buys
+ * the version it follows and a plan's vault its plan's lines; the cash share the targets leave stays
+ * as cash. The vault is found among the vaults of the signing wallet, read from the chain: one that
+ * is not there is answered like one that does not exist, whoever it belongs to. The order is the
+ * vault's number and no plan's: its steps are the deposit, then the swaps, as for any buy into an open
+ * vault.
+ */
+async function planVaultBuy(
+  req: Extract<IntentRequest, { type: 'buy' }>,
+  named: { chain: ChainId; address: string },
+  ctx: Omit<PrepareContext, 'now'>,
+): Promise<BuyPlan> {
+  const family = chainFamily(named.chain);
+  if (!isAddressOf(family, named.address)) throw new Refusal(404, NO_SUCH_VAULT);
+  // Refuses a chain that is off before anything is read.
+  const entry = ctx.chains.get(named.chain);
+  assertBuilds(entry);
+  const owner = req.owner[family];
+  if (!owner) throw new Refusal(404, NO_SUCH_VAULT);
+  const cents = amountOf(req);
+  return refusing(async () => {
+    const vault = (await entry.adapter.getVaults(owner)).find((v) =>
+      sameVaultAddress(named.chain, v.address, named.address),
+    );
+    if (!vault) throw new Refusal(404, NO_SUCH_VAULT);
+    const assets = await entry.adapter.listAssets();
+    const targets: Target[] = vault.positions
+      .filter((p) => p.targetBps > 0)
+      .map((p) => ({ asset: p.asset, weightBps: p.targetBps }));
+    return buySteps(entry, owner, vault.basketId, cents, assets, targets);
   });
 }
 

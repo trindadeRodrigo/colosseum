@@ -4,7 +4,7 @@ import { ChainId } from './chain';
 import { Provenance } from './enums';
 import { ChainMode } from './flags';
 import { Attempt, ConsentKind, OrderBase } from './order';
-import { Price, VaultView } from './vault';
+import { Price, VaultName, VaultView } from './vault';
 
 // The bodies of the order routes (DESIGN-VAULT 3.3), named once so the API, the SDK and the web share
 // them. POST /v1/orders takes an IntentRequest. Every order route but the build answers with an
@@ -74,7 +74,15 @@ export const PortfolioResponse = z.object({
       mode: ChainMode,
       provenance: Provenance,
       /** The caller's vaults, each with its value, and the weight and drift of every position. */
-      vaults: z.array(VaultView.extend({ provenance: Provenance })),
+      vaults: z.array(
+        VaultView.extend({
+          provenance: Provenance,
+          /** The name its owner gave it; null when they gave none. Left out by a server older than names. */
+          name: VaultName.nullable().optional(),
+          /** The caller's plan this vault was opened from; null when it follows a shared portfolio or the plan is not theirs to read. */
+          planId: z.string().uuid().nullable().optional(),
+        }),
+      ),
       /** The reference prices the values were worked out with, each with its source and time. */
       prices: z.array(Price),
     }),
@@ -98,6 +106,19 @@ export const PortfolioResponse = z.object({
   disclaimer: z.string(),
 });
 export type PortfolioResponse = z.infer<typeof PortfolioResponse>;
+
+/**
+ * PUT /v1/vaults/{chain}/{address}/name: the name a person gives a vault of theirs, or null to give it
+ * none again. Plain text, shown as text.
+ */
+export const VaultNameRequest = z.object({ name: VaultName.nullable() });
+export type VaultNameRequest = z.infer<typeof VaultNameRequest>;
+export const VaultNameResponse = z.object({
+  chain: ChainId,
+  address: z.string(),
+  name: VaultName.nullable(),
+});
+export type VaultNameResponse = z.infer<typeof VaultNameResponse>;
 
 /** The path of GET /v1/vaults/{chain}/{address}: any vault, read from its chain. */
 export const VaultRouteParams = z.object({ chain: ChainId, address: z.string().min(1).max(64) });

@@ -562,6 +562,8 @@ export type GetFundingQuery = {
   amountUsd?: number;
   proposalId?: string;
   family?: string;
+  vault?: string | string;
+  vaultChain?: 'solana' | 'base' | 'robinhood';
 };
 
 /** GET /v1/funding: response. What the signed-in wallet is missing on its chain: the dollar token and native gas */
@@ -824,6 +826,10 @@ export type PostOrdersBody =
       proposalId?: string;
       family?: string;
       version?: number;
+      vault?: {
+        chain: 'solana' | 'base' | 'robinhood';
+        address: string | string;
+      };
       chains?: unknown;
     }
   | {
@@ -1365,6 +1371,8 @@ export type GetPortfolioResponse = {
       } | null;
       valueUsd: string;
       provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+      name?: string | null;
+      planId?: string | null;
     }[];
     prices: {
       source: string;
@@ -1544,6 +1552,24 @@ export type GetVaultsByChainByAddressResponse = {
   disclaimer: string;
 };
 
+/** PUT /v1/vaults/{chain}/{address}/name: params. Name a vault of yours, or clear its name */
+export type PutVaultsByChainByAddressNameParams = {
+  chain: 'solana' | 'base' | 'robinhood';
+  address: string;
+};
+
+/** PUT /v1/vaults/{chain}/{address}/name: body. Name a vault of yours, or clear its name */
+export type PutVaultsByChainByAddressNameBody = {
+  name: string | null;
+};
+
+/** PUT /v1/vaults/{chain}/{address}/name: response. Name a vault of yours, or clear its name */
+export type PutVaultsByChainByAddressNameResponse = {
+  chain: 'solana' | 'base' | 'robinhood';
+  address: string;
+  name: string | null;
+};
+
 /** Every route of the document, by its method and path: what each takes and answers. */
 export interface ApiRoutes {
   'POST /v1/baskets/personalize': {
@@ -1591,5 +1617,10 @@ export interface ApiRoutes {
   'GET /v1/vaults/{chain}/{address}': {
     params: GetVaultsByChainByAddressParams;
     response: GetVaultsByChainByAddressResponse;
+  };
+  'PUT /v1/vaults/{chain}/{address}/name': {
+    params: PutVaultsByChainByAddressNameParams;
+    body: PutVaultsByChainByAddressNameBody;
+    response: PutVaultsByChainByAddressNameResponse;
   };
 }

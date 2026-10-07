@@ -384,7 +384,20 @@ export async function listPersonPlans(db: Db, principal: Principal): Promise<Per
     .flatMap((row) => {
       const parsed = BasketProposal.safeParse(row.proposal);
       if (!parsed.success) return [];
-      const of = mine.filter((o) => planOf(o) === row.id);
+      const named = mine.filter((o) => planOf(o) === row.id);
+      // The vault the plan's buys opened, and with them the buys that added to that vault by its
+      // address (add money): they name no plan, and are the plan's by its vault's number and chain.
+      const basketId = named.find((o) => o.basketId !== null)?.basketId ?? null;
+      const chain = parsed.data.sheet.chains[0] ?? parsed.data.recipes[0]?.chain;
+      const of = mine.filter(
+        (o) =>
+          planOf(o) === row.id ||
+          (basketId !== null &&
+            o.request.type === 'buy' &&
+            o.request.vault !== undefined &&
+            o.request.vault.chain === chain &&
+            o.basketId === basketId),
+      );
       return [
         {
           id: row.id,
@@ -398,7 +411,7 @@ export async function listPersonPlans(db: Db, principal: Principal): Promise<Per
             status: o.status,
             deposited: deposited.has(o.id),
           })),
-          basketId: of.find((o) => o.basketId !== null)?.basketId ?? null,
+          basketId,
         },
       ];
     });
@@ -789,6 +802,36 @@ export async function recordOrderState(
 export function cutToCents(value: string): string {
   const [whole = '0', frac = ''] = value.split('.');
   return `${whole}.${frac.padEnd(2, '0').slice(0, 2)}`;
+}
+
+/** The names the owners of these vaults of one chain gave them, by address. A vault with none is left out. */
+export async function vaultNames(
+  db: Db,
+  chain: ChainId,
+  addresses: readonly string[],
+): Promise<Map<string, string>> {
+  if (!addresses.length) return new Map();
+  const rows = await db
+    .select({ address: vaults.address, name: vaults.name })
+    .from(vaults)
+    .where(and(eq(vaults.chainId, chain), inArray(vaults.address, [...addresses])));
+  return new Map(rows.flatMap((r) => (r.name === null ? [] : [[r.address, r.name]])));
+}
+
+/**
+ * Sets the name of a vault whose row is in the cache (the caller has just read it from its chain and
+ * written it there), or clears it with null. Nothing else of the row changes.
+ */
+export async function nameVault(
+  db: Db,
+  chain: ChainId,
+  address: string,
+  name: string | null,
+): Promise<void> {
+  await db
+    .update(vaults)
+    .set({ name })
+    .where(and(eq(vaults.chainId, chain), eq(vaults.address, address)));
 }
 
 /** Writes the last state read from a vault into the cache. The chain stays the truth. */

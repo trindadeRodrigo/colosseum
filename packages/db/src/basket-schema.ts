@@ -239,6 +239,8 @@ export const vaults = pgTable(
     chainId: chainId(),
     address: text('address').notNull(),
     owner: text('owner').notNull(),
+    /** The name its owner gave it (`VaultName`, plain text); null when they gave none. */
+    name: text('name'),
     basketId: uuid('basket_id').references(() => baskets.id),
     /** The plan's number onchain: the Solana seed and the EVM salt. */
     onchainBasketId: numeric('onchain_basket_id', { precision: 20, scale: 0 }).notNull(),

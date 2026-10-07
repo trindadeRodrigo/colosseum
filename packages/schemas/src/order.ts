@@ -256,6 +256,12 @@ export const IntentRequest = z.discriminatedUnion('type', [
      */
     version: z.number().int().min(1).optional(),
     /**
+     * A vault of the person's, in place of `proposalId` and `family`: the buy adds the amount to that
+     * vault and buys to the targets the vault has on chain now, the cash share they leave kept as cash.
+     * A vault that is not the caller's is answered as one that does not exist.
+     */
+    vault: z.object({ chain: ChainId, address: Address }).optional(),
+    /**
      * Never sent. A buy names no chain: it is on the chain of the person's wallet, where the plan
      * lives (gate ONE-CHAIN). The field a buy once took is refused with a sentence, not ignored, so a
      * caller that still asks for a split across chains is told instead of getting another order.

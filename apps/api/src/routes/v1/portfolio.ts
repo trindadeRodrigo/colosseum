@@ -13,7 +13,7 @@ import type { ChainEntry } from '../../orders/chains';
 import { Refusal, refusalFromChainError } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { chainsHeld } from '../../orders/person';
-import { cacheVault } from '../../orders/store';
+import { cacheVault, listPersonPlans, vaultNames } from '../../orders/store';
 import { signedIn } from './orders';
 
 async function chainPortfolio(deps: OrderDeps, entry: ChainEntry, wallets: WalletAccount[]) {
@@ -102,7 +102,34 @@ export function registerPortfolioRoute(scope: FastifyInstance, deps: OrderDeps) 
             details: { retryable: unavailable.some((u) => u.retryable) },
           },
         );
-      return { chains, unavailable, disclaimer: DISCLAIMER.en };
+      // Each vault with the name its owner gave it, and the plan of theirs it was opened from: a plan's
+      // buys kept its vault's number (`listPersonPlans`), so the join is by chain and number.
+      const anyVault = chains.some((c) => c.vaults.length > 0);
+      const plans = anyVault ? await listPersonPlans(deps.db, principal) : [];
+      const planOf = new Map(
+        plans.flatMap((p) => {
+          const chain = p.proposal.sheet.chains[0] ?? p.proposal.recipes[0]?.chain;
+          return p.basketId !== null && chain ? [[`${chain}:${p.basketId}`, p.id] as const] : [];
+        }),
+      );
+      const named = await Promise.all(
+        chains.map(async (c) => {
+          const names = await vaultNames(
+            deps.db,
+            c.chain,
+            c.vaults.map((v) => v.address),
+          );
+          return {
+            ...c,
+            vaults: c.vaults.map((v) => ({
+              ...v,
+              name: names.get(v.address) ?? null,
+              planId: planOf.get(`${c.chain}:${v.basketId}`) ?? null,
+            })),
+          };
+        }),
+      );
+      return { chains: named, unavailable, disclaimer: DISCLAIMER.en };
     },
   );
 }
