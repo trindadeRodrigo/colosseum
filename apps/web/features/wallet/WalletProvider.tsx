@@ -7,6 +7,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { API } from '../../lib/api';
@@ -18,7 +19,14 @@ import { type ScreenPort, screenPort, type WebWalletPort } from './port';
 // the wallet provider all arrive with the bridge, when something first asks for the wallet.
 
 /** What a bridge is: it mounts a wallet provider, and reports a new port whenever its state changes. */
-export type BridgeProps = { onPort: (port: WebWalletPort) => void };
+export type BridgeProps = {
+  onPort: (port: WebWalletPort) => void;
+  /**
+   * What outlives a bridge when it is mounted again (`restart`): the calls that make wallets, so the
+   * next bridge waits for one still open and never asks for the same wallet beside it.
+   */
+  carry?: { making: Promise<void> };
+};
 
 // Client only, and only once something asks for the wallet: a page that never calls useWalletPort()
 // loads none of the provider's code.
@@ -37,7 +45,13 @@ const testWalletOn =
  * `port` is the whole wallet, signing included: only signing.ts reads it. `screen` is the same wallet
  * with no signing member, which is what every screen gets.
  */
-type Value = { port: WebWalletPort; screen: ScreenPort; activate: () => void };
+type Value = {
+  port: WebWalletPort;
+  screen: ScreenPort;
+  activate: () => void;
+  restart: () => boolean;
+  hold: () => () => void;
+};
 export const WalletContext = createContext<Value | null>(null);
 WalletContext.displayName = WALLET_MARKER;
 
@@ -77,12 +91,37 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [port, setPort] = useState<WebWalletPort>(LOADING);
   const [active, setActive] = useState(false);
   const activate = useCallback(() => setActive(true), []);
-  const value = useMemo(() => ({ port, screen: screenPort(port), activate }), [port, activate]);
+  // The wallet provider mounted again, for a sign-in that never finished loading: it reads the
+  // session and the wallets from the start. The page is not loaded again, so what was typed stays.
+  // The port of the provider that is gone goes with it: until the new one reports, the wallet is
+  // loading for the same person, and nothing can be signed with hooks that are no longer mounted.
+  // Refused (false) while an order is being run: its step is signed with the port it started on.
+  const [turn, setTurn] = useState(0);
+  const [carry] = useState(() => ({ making: Promise.resolve() }));
+  const held = useRef(0);
+  const hold = useCallback(() => {
+    held.current += 1;
+    let open = true;
+    return () => {
+      if (open) held.current -= 1;
+      open = false;
+    };
+  }, []);
+  const restart = useCallback(() => {
+    if (held.current > 0) return false;
+    setPort((last) => ({ ...LOADING, userId: last.userId }));
+    setTurn((n) => n + 1);
+    return true;
+  }, []);
+  const value = useMemo(
+    () => ({ port, screen: screenPort(port), activate, restart, hold }),
+    [port, activate, restart, hold],
+  );
   const Bridge = testWalletOn && TestBridge ? TestBridge : PrivyBridge;
   return (
     <WalletContext.Provider value={value}>
       {children}
-      {active ? <Bridge onPort={setPort} /> : null}
+      {active ? <Bridge key={turn} onPort={setPort} carry={carry} /> : null}
     </WalletContext.Provider>
   );
 }
@@ -98,6 +137,16 @@ export function useWalletPort(): ScreenPort {
   const { activate } = value;
   useEffect(activate, [activate]);
   return value.screen;
+}
+
+/**
+ * Mounts the wallet provider again (`restart` above). Only the account's "Try again" calls it. False
+ * when it was not done: an order is being run.
+ */
+export function useWalletRestart(): () => boolean {
+  const value = useContext(WalletContext);
+  if (!value) throw new Error('useWalletRestart() needs <WalletProvider> above it');
+  return value.restart;
 }
 
 /**

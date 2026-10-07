@@ -177,6 +177,38 @@ describe('the monitor, for a person with a vault on their chain', () => {
     expect(rows[1]?.[2]).toContain('$2,600.00');
   });
 
+  it('works each difference from the two shares as written, so a row never reads 33.4% beside 33.3% and 0%', async () => {
+    const [usdy, paxg] = vault().positions;
+    if (!usdy || !paxg) throw new Error('fixture');
+    api({
+      person: onSolana,
+      portfolio: () =>
+        json(
+          portfolioBody(
+            chainOf([
+              vault({
+                positions: [
+                  { ...usdy, weightBps: 3335, targetBps: 3330, driftBps: 5 },
+                  { ...paxg, weightBps: 3335, targetBps: 3330, driftBps: 5 },
+                ],
+              }),
+            ]),
+          ),
+        ),
+    });
+    signIn();
+    const host = await screen();
+    const rows = [...find(host, 'table').querySelectorAll('tbody tr')].map((tr) =>
+      [...tr.children].map((cell) => cell.textContent?.replace(/\s+/g, ' ').trim()),
+    );
+    // rounded together to 100.0 each way; each difference is the one between the two figures shown
+    expect(rows.map((r) => [r[4], r[5], r[6]])).toEqual([
+      ['33.4%', '33.3%', '+0.1%'],
+      ['33.3%', '33.3%', '0%'],
+      ['33.3%', '33.4%', '−0.1%'],
+    ]);
+  });
+
   it('puts a pin on every price and value, and none on a count, a share or an amount (rule 1)', async () => {
     api({ person: onSolana });
     signIn();
@@ -857,6 +889,25 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     expect(find(card, 'a').getAttribute('href')).toBe('/goal');
   });
 
+  it('tags every activity line when one of them is on a chain the page’s head does not name', async () => {
+    // a Solana vault only, so the head says Solana; the order this browser placed ran on Robinhood Chain
+    api({
+      person: onSolana,
+      portfolio: () => bought(),
+      more: (path) => (path === `/v1/orders/${ORDER_ID}` ? json(doneOrder('robinhood')) : null),
+    });
+    signIn();
+    const host = await screen();
+    await settle();
+    expect(find(host, 'header [data-ui="chain-badge"]').textContent).toBe('Solana');
+    const lines = [
+      ...host.querySelectorAll('[data-ui="activity-panel"] [data-ui="execution-list"] li'),
+    ];
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines)
+      expect(line.querySelector('[data-ui="chain-badge"]')?.textContent).toBe('Robinhood Chain');
+  });
+
   it('lists what reached the chain from the orders this browser placed, each line with its link, beside the disclaimer', async () => {
     api({
       person: onSolana,
@@ -869,6 +920,9 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     const activity = find(host, '[data-ui="activity-panel"]');
     const lines = [...activity.querySelectorAll('[data-ui="execution-list"] li')];
     expect(lines.length).toBe(doneOrder().legs.length);
+    // the page's head names the one chain: no line says it again
+    expect(find(host, 'header [data-ui="chain-badge"]').textContent).toBe('Solana');
+    expect(activity.querySelector('[data-ui="chain-badge"]')).toBeNull();
     // under the order they were steps of, and each time in the one format, with its zone
     const orders = [...activity.querySelectorAll('[data-ui="activity-order"] h3')];
     expect(orders.map((h) => h.textContent)).toEqual([

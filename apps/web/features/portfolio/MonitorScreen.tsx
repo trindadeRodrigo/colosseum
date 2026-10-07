@@ -341,7 +341,19 @@ export function MonitorScreen() {
       </div>
       {/* His "Disclaimer and activity": the disclaimer under the plans, beside what reached the chain. */}
       {vaults.length > 0 && (
-        <ActivityPanel groups={history.activity} empty={t.activity.noneVault} />
+        <ActivityPanel
+          groups={history.activity}
+          empty={t.activity.noneVault}
+          // one chain, named in the page's head: the lines do not repeat it. The list holds every
+          // chain's orders, though: with a line on another chain, every line says its own.
+          chainTags={
+            grouped ||
+            !shownChain ||
+            history.activity.some((group) =>
+              group.executions.some((e) => e.chain != null && e.chain !== shownChain),
+            )
+          }
+        />
       )}
     </div>
   );

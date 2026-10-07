@@ -16,6 +16,7 @@ import {
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary, type Lang } from '../../i18n';
+import { AccountMenu } from '../account/AccountMenu';
 import { ChainSwitch } from '../account/ChainSwitch';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
@@ -762,6 +763,42 @@ describe('a chain our server has switched off', () => {
 });
 
 describe('the chain on the sheet', () => {
+  it('is known at once for someone who comes back: a stored chain, a wallet of each family, nothing stored again', async () => {
+    // as the hosted API answers for a person whose chain was picked before the switcher (Oct 6)
+    const server = api({
+      person: {
+        userId: 'did:privy:test',
+        wallets: EMBEDDED,
+        chain: 'solana',
+        chainSource: 'picked',
+        chainOptions: ['solana', 'robinhood'],
+      },
+    });
+    portStore.set(signedInPort(EMBEDDED));
+    const host = await mount(
+      withAccount('en', [
+        createElement(AccountMenu, {
+          key: 'bar',
+          out: { signOut: () => {}, busy: false, failed: false },
+        }),
+        createElement(GoalScreen, { key: 'goal' }),
+      ]),
+    );
+    await settle();
+    // the bar's control has the chain and the address, never the bare "Your wallet"
+    const control = find(host, '[data-ui="account-menu-button"]');
+    expect(control.getAttribute('data-chain')).toBe('solana');
+    expect(control.textContent).toContain('Solana');
+    expect(control.textContent).toContain('So11…1112');
+    await read(host);
+    const facts = find(host, '[data-ui="sheet-facts"]');
+    expect(facts.textContent).toContain('Solana');
+    expect(facts.textContent).not.toContain(en.chain.reading);
+    // asked once, and nothing is stored: the chain was there
+    expect(server.to('/v1/me')).toHaveLength(1);
+    expect(server.to('/v1/me/chain')).toEqual([]);
+  });
+
   it('is the current chain: switched in the bar, the next plan is built on the new one', async () => {
     const server = api({
       person: { ...onSolana, wallets: EMBEDDED, chainSource: 'picked' },
@@ -1111,7 +1148,7 @@ describe.each(['solana', 'robinhood'] as const)('the chain of a goal on %s', (ch
       b.textContent,
     ]);
 
-  it('is badged on the sheet, on the goal’s card, and on the plan it built', async () => {
+  it('is named in the sheet, where it is changed, and once on the plan it built: not on the goal’s card', async () => {
     api({
       person,
       plan: (body) =>
@@ -1123,7 +1160,8 @@ describe.each(['solana', 'robinhood'] as const)('the chain of a goal on %s', (ch
     await fill(host);
     const named = [[chain, CHAIN_NAMES[chain]]];
     expect(badged(host.querySelector('[data-ui="sheet-facts"]'))).toEqual(named);
-    expect(badged(host.querySelector('[data-ui="goal-card"]'))).toEqual(named);
+    expect(find(host, '[data-ui="goal-card"]')).toBeTruthy();
+    expect(badged(host.querySelector('[data-ui="goal-card"]'))).toEqual([]);
     await click(buildButton(host));
     await settle();
     const done = [...host.querySelectorAll('[data-ui="card"]')].find((card) =>

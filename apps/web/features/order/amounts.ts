@@ -41,10 +41,12 @@ export function formatBps(bps: number, locale: string): string {
 }
 
 /**
- * How far under the quote a minimum is, in basis points, to the nearest one: what the trade may give
- * up. A minimum is the quote less a whole percentage, rounded down to a raw unit, so the gap is a
- * hair over that percentage: rounded up it read "1.01%" where the buy screen said 1%. Null when
- * either is not an amount or the quote is zero.
+ * How far under the quote a minimum is, in basis points, rounded up: what the trade may give up, never
+ * said smaller than it is. One case is not a gap of its own: a minimum is the quote less a tolerance in
+ * whole basis points, cut down to a raw unit of the token, so 1% of a quote that does not divide reads
+ * a hair over 1%. Where the minimum is exactly what the next basis point down gives once cut to a raw
+ * unit, that is the tolerance the order states, and it is the one said ("1%", not "1.01%"): the
+ * difference is under one raw unit. Null when either is not an amount or the quote is zero.
  */
 export function shortfallBps(outRaw: string, minOutRaw: string): number | null {
   if (!DIGITS.test(outRaw) || !DIGITS.test(minOutRaw)) return null;
@@ -53,7 +55,10 @@ export function shortfallBps(outRaw: string, minOutRaw: string): number | null {
   if (out === 0n) return null;
   if (min >= out) return 0;
   const gap = (out - min) * 10_000n;
-  return Number((gap + out / 2n) / out);
+  const up = gap / out + (gap % out === 0n ? 0n : 1n);
+  // the minimum's own rounding: quote × (1 − tolerance), cut down to a raw unit
+  const stated = up - 1n;
+  return Number(up > 0n && (out * (10_000n - stated)) / 10_000n === min ? stated : up);
 }
 
 /** Names a person reads, by the token's symbol written in lower case: the shelf's symbols. */

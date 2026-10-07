@@ -18,6 +18,7 @@ import { dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { ChainBadgeMarked } from '../account/ChainName';
+import { SlowSignIn } from '../account/SlowSignIn';
 import { rememberPlan } from '../order/plan-store';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { type BuildOutcome, buildPlan, planProvenance } from './build-plan';
@@ -59,7 +60,7 @@ export function GoalScreen() {
   const lang = useLang();
   const port = useWalletPort();
   const apiFetch = useApiFetch();
-  const { account, retry } = useAccount();
+  const { account, slow, retry } = useAccount();
   const [text, setText] = useState('');
   const [reading, setReading] = useState(false);
   const [readFailure, setReadFailure] = useState<ReadFailure | null>(null);
@@ -135,12 +136,14 @@ export function GoalScreen() {
 
   // A plan is one person's, on their chain: an answer for someone else, or for another chain, is not
   // shown to whoever is here now. While the chain is being read again it is not known to have
-  // changed, so nothing is forgotten until it is read.
-  const who = port.userId ?? '';
+  // changed, so nothing is forgotten until it is read. The same while the wallet loads again and
+  // names nobody: nobody is known to have left.
+  const who = port.status === 'loading' && port.userId === null ? null : (port.userId ?? '');
   const where = account.status === 'loading' ? null : (chain ?? '');
-  const whose = useRef({ who, where: where ?? '' });
+  const whose = useRef({ who: who ?? '', where: where ?? '' });
   useEffect(() => {
     const last = whose.current;
+    if (who === null) return;
     if (last.who === who && (where === null || last.where === where)) return;
     whose.current = { who, where: where ?? last.where };
     wanted.current += 1;
@@ -304,7 +307,18 @@ export function GoalScreen() {
           note: t.goal.chain.note,
         }
       : account.status === 'loading'
-        ? { label: t.goal.chain.label, value: t.chain.reading }
+        ? {
+            label: t.goal.chain.label,
+            // Still reading after a while: said, with the two things the person can do.
+            value: slow ? (
+              <SlowSignIn
+                className="flex flex-col gap-1"
+                onSignOut={() => void port.signOut().catch(() => {})}
+              />
+            ) : (
+              t.chain.reading
+            ),
+          }
         : account.status === 'unknown'
           ? {
               label: t.goal.chain.label,
@@ -415,7 +429,6 @@ export function GoalScreen() {
             sentence={goalSentence(sheet.fields, t, lang) ?? t.goal.card.unfinished}
             note={fits ? t.goal.card.draftSet : t.goal.card.draftOpen}
             action={{ label: t.goal.card.edit, href: `#${LIMITS}` }}
-            chain={chain ?? undefined}
           />
         ) : (
           <header className="flex flex-col gap-3 lg:col-span-5">

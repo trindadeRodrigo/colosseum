@@ -43,7 +43,11 @@ export const shareExact = (lang: Lang, bps: number): string =>
  * cut to a tenth of a percent, and the tenths left over go to the largest remainders (63.46, 12.50
  * and 24.04 are 63.5%, 12.5% and 24.0%: 100.0, where rounding each alone can give 100.1).
  */
-export function sharesOf(lang: Lang, bps: readonly number[]): string[] {
+export const sharesOf = (lang: Lang, bps: readonly number[]): string[] =>
+  shareTenths(bps).map((t) => share(lang, t * 10));
+
+/** The same shares in tenths of a percent: what a row's difference is worked from. */
+export function shareTenths(bps: readonly number[]): number[] {
   const tenths = bps.map((b) => Math.floor(b / 10));
   const whole = Math.round(bps.reduce((sum, b) => sum + b, 0) / 10);
   const order = bps
@@ -57,7 +61,7 @@ export function sharesOf(lang: Lang, bps: readonly number[]): string[] {
     const at = order[k % order.length]?.i;
     if (at !== undefined) tenths[at] = (tenths[at] ?? 0) + 1;
   }
-  return tenths.map((t) => share(lang, t * 10));
+  return tenths;
 }
 
 /** A difference in basis points, signed: `+1.2%`, `−0.4%`, `0%`. */

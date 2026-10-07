@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { AccountBlock, AccountMenu } from '../../features/account/AccountMenu';
+import { useAccount } from '../../features/account/AccountProvider';
 import { ChainSwitch } from '../../features/account/ChainSwitch';
 import { useWalletPort } from '../../features/wallet/WalletProvider';
 import { useT } from '../../i18n/I18nProvider';
@@ -78,6 +79,7 @@ export function AppNav() {
 function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
   const t = useT();
   const port = useWalletPort();
+  const { slow } = useAccount();
   const [busy, setBusy] = useState(false);
   const [stillIn, setStillIn] = useState(false);
   const [said, setSaid] = useState('');
@@ -114,14 +116,16 @@ function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
   const out = { signOut, busy, failed: stillIn };
   // Signed in, even while the wallet still loads (their wallets are being made, or could not be):
   // known by then, and always with the way out, which is in the menu.
-  const signedIn = !signedOut && !(port.status === 'loading' && port.userId === null);
+  // Someone told their sign-in is slow keeps the control while the wallet is read again.
+  const unknown = port.status === 'loading' && port.userId === null && !slow;
+  const signedIn = !signedOut && !unknown;
   const action = (
     <div data-ui="account-control" className="relative ml-2 flex items-center gap-2">
       <span role="status" data-ui="account-said" className="sr-only">
         {said}
       </span>
       {/* Before the wallet has loaded there is nothing to say: an empty box of the same height. */}
-      {port.status === 'loading' && port.userId === null ? (
+      {unknown ? (
         <span aria-hidden="true" className="h-10 min-w-20" />
       ) : signedOut ? (
         <>

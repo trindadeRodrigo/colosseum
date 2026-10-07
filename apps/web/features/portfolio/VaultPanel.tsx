@@ -12,7 +12,7 @@ import { pinSourceOfPrice } from '../../components/ui/price-source';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { displayName } from '../order/plain';
-import { dollars, drift, shareExact, sharesOf, tokens, utc } from './figures';
+import { dollars, drift, share, shareExact, sharesOf, shareTenths, tokens, utc } from './figures';
 import {
   type HoldingRow,
   holdingsOf,
@@ -58,24 +58,14 @@ export function VaultPanel({
   const page = `/vaults/${vault.chain}/${encodeURIComponent(vault.address)}`;
   // The rows' shares, rounded together so they add up to the whole (figures.ts, `sharesOf`).
   const rows = holdingsOf(vault);
-  const now = new Map(
-    rows.map((row, i) => [
-      row.asset,
-      sharesOf(
-        lang,
-        rows.map((r) => r.weightBps),
-      )[i],
-    ]),
-  );
-  const planned = new Map(
-    rows.map((row, i) => [
-      row.asset,
-      sharesOf(
-        lang,
-        rows.map((r) => r.targetBps),
-      )[i],
-    ]),
-  );
+  const nowTenths = shareTenths(rows.map((r) => r.weightBps));
+  const plannedTenths = shareTenths(rows.map((r) => r.targetBps));
+  const at = (asset: string) => rows.findIndex((r) => r.asset === asset);
+  const now = (asset: string) => share(lang, (nowTenths[at(asset)] ?? 0) * 10);
+  const planned = (asset: string) => share(lang, (plannedTenths[at(asset)] ?? 0) * 10);
+  // The difference is the one between the two shares as written, so 33.4% beside 33.3% is +0.1%.
+  const difference = (asset: string) =>
+    drift(lang, ((nowTenths[at(asset)] ?? 0) - (plannedTenths[at(asset)] ?? 0)) * 10);
   const columns: Column<HoldingRow>[] = [
     {
       key: 'asset',
@@ -143,19 +133,19 @@ export function VaultPanel({
       key: 'weight',
       header: words.columns.weight,
       numeric: true,
-      cell: (row) => now.get(row.asset) ?? '',
+      cell: (row) => now(row.asset),
     },
     {
       key: 'target',
       header: words.columns.target,
       numeric: true,
-      cell: (row) => planned.get(row.asset) ?? '',
+      cell: (row) => planned(row.asset),
     },
     {
       key: 'drift',
       header: words.columns.drift,
       numeric: true,
-      cell: (row) => drift(lang, row.driftBps),
+      cell: (row) => difference(row.asset),
     },
   ];
 
