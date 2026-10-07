@@ -58,6 +58,8 @@ const serviceRoleJwt = (text) =>
       }
     },
   );
+const BYTE = '(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)';
+const BYTES_64 = new RegExp(`\\[\\s*(?:${BYTE}\\s*,\\s*){63}${BYTE}\\s*\\]`, 'g');
 export const SECRET_SHAPES = {
   'a URL with an api key in its query': keyed(/[?&]api[-_]?key=([A-Za-z0-9_-]{8,})/gi),
   'a keyed node URL': keyed(
@@ -74,9 +76,12 @@ export const SECRET_SHAPES = {
   // 32 bytes of hex beside a name that says what they are: a hash or a topic has no such name
   'a private key in hex': (text) =>
     /(?:private|secret)[_-]?key["'`]?\s*[:=]\s*["'`]?(?:0x)?[0-9a-fA-F]{64}\b/i.test(text),
-  // a Solana keypair file: 64 bytes, as an array of numbers
+  // a Solana keypair: 64 bytes as an array of numbers, beside a name that says it is one. A bare
+  // table of 64 bytes is a library's constant (the first real build had one), and is not flagged.
   'a Solana secret key': (text) =>
-    /\[\s*(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\s*,\s*){63}(?:25[0-5]|2[0-4]\d|1?\d?\d)\s*\]/.test(text),
+    [...text.matchAll(BYTES_64)].some((m) =>
+      /secret|keypair|private/i.test(text.slice(Math.max(0, (m.index ?? 0) - 80), m.index)),
+    ),
   'a Discord webhook': (text) =>
     /discord(?:app)?\.com\/api\/webhooks\/\d{6,}\/[A-Za-z0-9_-]{20,}/i.test(text),
 };

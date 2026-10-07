@@ -93,6 +93,8 @@ describe('what a browser is sent', () => {
         `anon:"${jwt({ iss: 'supabase', role: 'anon' })}",h:"-----BEGIN PRIVATE KEY-----"`,
         // a hash and a topic are 32 bytes of hex with no name that says "key"; a table is not 64 bytes
         `topic:"0x${'cd'.repeat(32)}",table:[${Array.from({ length: 256 }, (_, i) => i).join(',')}]`,
+        // 64 bytes with no name that says what they are: a library's constant, as a real build ships
+        `perm:${keypair},next:1`,
       ].join(';'),
     });
     expect(checkBuild(out)).toEqual([]);
