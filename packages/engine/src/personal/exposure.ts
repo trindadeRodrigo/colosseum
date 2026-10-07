@@ -181,20 +181,10 @@ export function sizeSleeves(w: World, setAside = 0, aside?: AsideOfMix): SleeveP
       reasons[sleeve].push(says);
       asideSays.push(says);
     }
-  // The limits that let the plan hold the mix's stocks and crypto, said once on that sleeve.
-  if (mix && table.growth > 0)
-    reasons.growth.push(
-      reason(
-        'MIX_LIMITS',
-        {
-          sleeveBps: mix.growthBps,
-          risk: sheet.risk,
-          stockCapBps: P.capPerStockBps[sheet.risk] ?? 0,
-          issuerCapBps: P.capPerIssuerBps[sheet.risk] ?? 0,
-        },
-        lang,
-      ),
-    );
+  // The limits the plan takes for the mix's stocks and crypto are said once on that sleeve, here in
+  // the order of its reasons. The share they are taken for is the one the plan sets out to hold, known
+  // once what is set aside and the floors below have had theirs: the sentence is written then.
+  const limitsAt = mix && table.growth > 0 ? reasons.growth.length : null;
 
   /** Moves up to `need` into one sleeve from the others, in turn. Returns the sleeves that gave. */
   const raise = (to: Sleeve, need: number, from: Sleeve[]): Sleeve[] => {
@@ -260,6 +250,21 @@ export function sizeSleeves(w: World, setAside = 0, aside?: AsideOfMix): SleeveP
       if (gave.length > 0) say(why, ['dollarYield', 'cash', ...gave]);
     }
   }
+  if (limitsAt !== null)
+    reasons.growth.splice(
+      limitsAt,
+      0,
+      reason(
+        'MIX_LIMITS',
+        {
+          sleeveBps: sized.growth,
+          risk: sheet.risk,
+          stockCapBps: P.capPerStockBps[sheet.risk] ?? 0,
+          issuerCapBps: P.capPerIssuerBps[sheet.risk] ?? 0,
+        },
+        lang,
+      ),
+    );
   return { table, sized, goalBps, safeYieldBps, themes, setAsideBps, reasons, asideSays };
 }
 
