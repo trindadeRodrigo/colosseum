@@ -153,15 +153,18 @@ const NO_ORDER = 'not-an-order';
 const continuePath = (id: string) => `/v1/orders/${encodeURIComponent(id)}/continue`;
 
 /**
- * Whether this server finishes buys, by the status alone. The route takes an order's id, a uuid
- * (`OrderRouteParams`): asked with something that is not one, a server with the route refuses the
- * request as badly formed (400), and one without it has no such route (404). Anything else, a
- * sign-in it does not know included, is read as no: the button stays hidden.
+ * Whether this server finishes buys. The route takes an order's id, a uuid (`OrderRouteParams`):
+ * asked with something that is not one, a server with the route refuses the request as badly formed
+ * (400) and says why in `error`, as every refusal of its routes does; one without it has no such
+ * route (404). The status and that field together, and nothing of a 404's body: anything else, a
+ * sign-in it does not know included, is read as no, and the button stays hidden.
  */
 export async function continuesOrders(apiFetch: ApiFetch): Promise<boolean> {
   try {
     const res = await apiFetch(continuePath(NO_ORDER), { method: 'POST' });
-    return res.status === 400;
+    if (res.status !== 400) return false;
+    const said = (await bodyOf(res)).error;
+    return typeof said === 'string' && said.length > 0;
   } catch {
     return false;
   }

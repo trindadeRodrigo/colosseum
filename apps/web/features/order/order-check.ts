@@ -1,4 +1,4 @@
-import type { OrderDetail, Target } from '@colosseum/schemas';
+import type { OrderDetail, Target, Trade } from '@colosseum/schemas';
 import { type SharedTerms, tradesOf } from '../shared/terms';
 import type { ChainUnits } from './units';
 
@@ -46,6 +46,66 @@ export function checkDeposit(
   }
   if (spent > deposit) return { ok: false, why: 'steps' };
   return { ok: true, depositRaw: deposit, decimals: cash.decimals };
+}
+
+type Standing = Pick<OrderDetail, 'status' | 'legs'>;
+
+/** The order's deposit is confirmed on its chain: the cash is in the vault whatever came after. */
+export const depositLanded = (order: Pick<OrderDetail, 'legs'>): boolean =>
+  order.legs.some(
+    (leg) => (leg.kind === 'create_vault' || leg.kind === 'deposit') && leg.status === 'confirmed',
+  );
+
+/** The order goes no further, with a step not done: it failed or ran out of time, or a step did. */
+export const stoppedShort = (order: Standing): boolean =>
+  order.status !== 'done' &&
+  (order.status === 'failed' ||
+    order.status === 'expired' ||
+    order.legs.some((leg) => leg.status === 'failed' || leg.status === 'expired'));
+
+const undone = (status: string | undefined) => status !== 'confirmed' && status !== 'skipped';
+
+/**
+ * The swaps an order left undone, for the order that finishes it to be held to. The trades are the
+ * approved order's own, step by step, by step id: of the API's later answer only where each step
+ * stands is read, so an answer that changed a trade cannot widen what the next order may buy.
+ */
+export function leftOfApproved(approved: Pick<OrderDetail, 'legs'>, now: Standing): Trade[] {
+  const standing = new Map(now.legs.map((leg) => [leg.id, leg.status]));
+  return approved.legs
+    .slice()
+    .sort((a, b) => a.seq - b.seq)
+    .filter((leg) => leg.kind === 'swap' && undone(standing.get(leg.id) ?? leg.status))
+    .flatMap((leg) => leg.trades);
+}
+
+/**
+ * The same for an order this browser never reviewed: there is no approved copy, so the swaps left are
+ * the server's, and each is held to the plan's lines as the server stores them. Every one sells cash
+ * for a token the plan holds, no token twice, and together they spend no more than the order
+ * deposited. Null when one does not: nothing is offered then.
+ */
+export function leftOfPlan(
+  order: Pick<OrderDetail, 'depositRaw' | 'legs'> & Standing,
+  targets: readonly Target[],
+  cash: string,
+): Trade[] | null {
+  if (order.depositRaw === undefined || !RAW.test(order.depositRaw)) return null;
+  const trades = order.legs
+    .slice()
+    .sort((a, b) => a.seq - b.seq)
+    .filter((leg) => leg.kind === 'swap' && undone(leg.status))
+    .flatMap((leg) => leg.trades);
+  const held = new Set(targets.filter((t) => t.weightBps > 0).map((t) => t.asset));
+  const bought = new Set<string>();
+  let spent = 0n;
+  for (const trade of trades) {
+    if (trade.sell !== cash || !held.has(trade.buy) || bought.has(trade.buy)) return null;
+    if (!RAW.test(trade.amountInRaw)) return null;
+    bought.add(trade.buy);
+    spent += BigInt(trade.amountInRaw);
+  }
+  return spent > BigInt(order.depositRaw) ? null : trades;
 }
 
 /**

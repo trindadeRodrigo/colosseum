@@ -487,6 +487,9 @@ export const en = {
     },
     vault: {
       title: 'Your vault',
+      /** Over a vault left with cash by a buy that stopped after its deposit. */
+      unfinished:
+        'A buy stopped after its deposit, so more of this vault is cash than its plan holds. The cash is safe here.',
       address: 'Vault address',
       /** The link from a vault's panel to its own page. */
       page: (address: string) => `Open the page of vault ${address}`,
@@ -1139,6 +1142,13 @@ export const en = {
     review: {
       title: 'Review every step',
       lead: 'Each step is built fresh when its turn comes, checked against what you see here, and only then signed by your wallet. A step that doesn’t match is not signed.',
+      /** An order that finishes another with the cash in its vault. */
+      continuesLead:
+        'This order finishes a buy that stopped: it buys what was left with the cash already in your vault, and deposits nothing. Each step is built fresh, checked against what you see here, and only then signed by your wallet.',
+      fromVault: 'From your vault’s cash',
+      /** The first order was reviewed in another browser. */
+      unseen:
+        'This device didn’t see the first order’s review. What is left to buy is as our server lists it, and I hold it to the assets of your plan.',
       deposit: 'Deposit',
       steps: 'Steps',
       expires: 'Sign before',
@@ -1251,6 +1261,9 @@ export const en = {
       /** After a step failed or was refused once the deposit had landed. */
       depositKept:
         'What you deposited is in your vault, as cash: nothing is lost. A new order would deposit again.',
+      /** A buy that stopped with its cash in the vault and swaps left, where it can be finished. */
+      stopped: (amount: string) =>
+        `Your ${amount} is safe in your vault as cash. The buying step didn’t go through.`,
       /** The fold over the check that failed and the guard's own words, to quote to the team. */
       forSupport: 'Details for support',
       /** Finishing a buy that stopped after its deposit, where the server can (finding 24). */

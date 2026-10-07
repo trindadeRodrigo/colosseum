@@ -72,7 +72,15 @@ export type OrderRecord = {
    * /v1/orders/{id}/continue`): that order's id, and the trades it left undone, as this browser's
    * record of it had them. The order is held to these, and deposits nothing (order-check.ts).
    */
-  continues?: { orderId: string; trades: Trade[] };
+  continues?: {
+    orderId: string;
+    trades: Trade[];
+    /**
+     * This browser never reviewed the first order: the trades are the ones the server lists as left,
+     * held to the plan's lines read from the server, and the review says so.
+     */
+    unseen?: true;
+  };
   /**
    * The vault's number on chain as the server's list of plans gave it (`GET /v1/me/plans`), for a
    * record made from that list and not kept in this browser (features/portfolio/server-plans.ts).
@@ -132,7 +140,11 @@ function readRecord(value: unknown): OrderRecord | null {
     const trades = TradeSchema.array().min(1).safeParse(c?.trades);
     // A record that says it finishes an order and does not say which, or with what, is not read.
     if (!c || !text(c.orderId) || !trades.success) return null;
-    continues = { orderId: c.orderId, trades: trades.data };
+    continues = {
+      orderId: c.orderId,
+      trades: trades.data,
+      ...(c.unseen === true ? { unseen: true as const } : {}),
+    };
   }
   let approved: ApprovedOrder | null = null;
   if (r.approved !== null) {

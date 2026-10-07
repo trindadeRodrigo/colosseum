@@ -15,16 +15,27 @@ import { CHAIN_NAMES } from '../../components/ui/ChainBadge';
 import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
-import { dictionary } from '../../i18n';
+import { dictionary, type Lang } from '../../i18n';
 import type { Person } from '../account/person';
 import { inShell, withAccount } from '../account/test/screen';
+import { dollars } from '../goal/sheet';
 import { utc } from '../portfolio/figures';
 import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { OrderScreen } from './OrderScreen';
 import { recallOrder } from './order-record';
-import { doneOrder, LEG_SWAP, ORDER_ID, orderOn, PLAN_ID, recordOf, USER } from './test/fixtures';
+import {
+  doneOrder,
+  LEG_CREATE,
+  LEG_SWAP,
+  ORDER_ID,
+  orderOn,
+  PLAN_ID,
+  planOn,
+  recordOf,
+  USER,
+} from './test/fixtures';
 
 // The order screen with real events, on the real runner (run-order.ts) and the real deployments of
 // packages/sdk. Only `execute` is a double: it answers what each test needs and records what it was
@@ -99,8 +110,8 @@ function seed(record = recordOf()) {
   window.localStorage.setItem(`tf-order:${ORDER_ID}`, JSON.stringify(record));
 }
 
-const screen = async () => {
-  const host = await mount(withAccount('en', createElement(OrderScreen, { id: ORDER_ID })));
+const screen = async (lang: Lang = 'en', id = ORDER_ID) => {
+  const host = await mount(withAccount(lang, createElement(OrderScreen, { id })));
   await settle();
   await settle();
   return host;
@@ -440,7 +451,7 @@ describe('what the executor answers', () => {
     await click(primary(host));
     await settle();
     expect(find(host, '[data-ui="order-deposit-kept"]').textContent).toBe(
-      en.order.outcome.depositKept,
+      en.order.outcome.stopped('$10'),
     );
     const links = [...host.querySelectorAll('a')].map((a) => [
       a.textContent,
@@ -694,6 +705,305 @@ describe('what the executor answers', () => {
         expect(run.calls).toHaveLength(0);
         await unmountAll();
         window.localStorage.clear();
+      }
+    });
+
+    it.each(['en', 'pt'] as const)(
+      'says the money is safe as cash and that the buying did not go through, in %s',
+      async (lang) => {
+        const t = dictionary(lang);
+        server({ route: true });
+        seed();
+        run.answer = async () => ({
+          status: 'failed',
+          order: stoppedOrder(),
+          legId: LEG_SWAP,
+          error: null,
+        });
+        const host = await screen(lang);
+        await click(primary(host));
+        await settle();
+        await settle();
+        const amount = dollars(10, lang);
+        expect(find(host, '[data-ui="order-deposit-kept"]').textContent).toBe(
+          t.order.outcome.stopped(amount),
+        );
+        const button = find(host, '[data-ui="order-stopped"] button');
+        expect(label(button)).toBe(t.order.outcome.finish);
+        expect(button.getAttribute('data-variant')).toBe('primary');
+        expect(host.querySelectorAll('[data-variant="primary"]')).toHaveLength(1);
+      },
+    );
+
+    it('is not offered on a status alone: a 400 that says nothing is not the route', async () => {
+      portStore.setApi(async (path, init) => {
+        if (path === '/v1/me') return json(person('solana'));
+        if (path === `/v1/orders/${ORDER_ID}`) return json(orderOn());
+        if (init?.method === 'POST') return json({}, 400);
+        return json({ error: 'not found' }, 404);
+      });
+      const host = await stop();
+      expect(finishButton(host)).toBeUndefined();
+    });
+
+    /** The record of an order approved here, as a reload finds it. */
+    const approvedRecord = () =>
+      recordOf('solana', {
+        approved: { order: orderOn(), consents: [], at: '2026-10-05T12:00:00Z' },
+      });
+    it('is offered on the page opened again, from what the order itself says, with nothing of the old order left to sign', async () => {
+      seed(approvedRecord());
+      const calls: string[] = [];
+      const routes = (path: string, init?: RequestInit): Response => {
+        const method = init?.method ?? 'GET';
+        calls.push(`${method} ${path}`);
+        if (path === '/v1/me') return json(person('solana'));
+        if (path === `/v1/orders/${ORDER_ID}`) return json(stoppedOrder());
+        if (path === `/v1/orders/${ORDER_ID}/continue`) return json(continuation());
+        if (method === 'POST') return json({ error: 'params/id must be a uuid' }, 400);
+        return json({ error: 'not found' }, 404);
+      };
+      portStore.setApi(async (path, init) => routes(path, init));
+      router.push.mockClear();
+      const host = await screen();
+      await settle();
+      expect(find(host, '[data-ui="order-deposit-kept"]').textContent).toBe(
+        en.order.outcome.stopped('$10'),
+      );
+      // one primary, and it is not "Continue this order": the order goes no further
+      const primaries = [...host.querySelectorAll<HTMLElement>('[data-variant="primary"]')];
+      expect(primaries.map(label)).toEqual([en.order.outcome.finish]);
+      expect(host.textContent).not.toContain(en.order.resume('$10'));
+      expect(run.calls).toHaveLength(0);
+      await click(primaries[0] as HTMLElement);
+      await settle();
+      expect(router.push).toHaveBeenCalledWith(`/orders/${NEXT_ID}`);
+      // held to the approved order's own trades, by step
+      expect(recallOrder(NEXT_ID, USER)?.continues).toEqual({
+        orderId: ORDER_ID,
+        trades: orderOn().legs.flatMap((leg) => leg.trades),
+      });
+    });
+
+    it('still offers the old order’s own button on a page opened again while the order can go on', async () => {
+      server({ route: true });
+      seed(approvedRecord());
+      const host = await screen();
+      expect(label(primary(host))).toBe(en.order.resume('$10'));
+      expect(finishButton(host)).toBeUndefined();
+    });
+
+    it('is not offered on an EVM chain, where the route refuses', async () => {
+      const whole = orderOn('robinhood');
+      // a Robinhood order shaped like Solana's, with a swap of its own that failed
+      const split: OrderDetail = {
+        ...whole,
+        legs: [
+          ...whole.legs.map((leg) => ({
+            ...leg,
+            status: 'confirmed' as const,
+            ...(leg.id === LEG_CREATE ? { trades: [], expected: [] } : {}),
+          })),
+          ...whole.legs
+            .filter((leg) => leg.id === LEG_CREATE)
+            .map(({ cashRaw: _, ...leg }) => ({
+              ...leg,
+              id: LEG_SWAP,
+              kind: 'swap' as const,
+              seq: 2,
+              status: 'failed' as const,
+            })),
+        ],
+      };
+      portStore.setApi(async (path, init) => {
+        if (path === '/v1/me') return json(person('robinhood'));
+        if (path === `/v1/orders/${ORDER_ID}`) return json(split);
+        if (init?.method === 'POST') return json({ error: 'params/id must be a uuid' }, 400);
+        return json({ error: 'not found' }, 404);
+      });
+      seed(
+        recordOf('robinhood', {
+          approved: { order: split, consents: [], at: '2026-10-05T12:00:00Z' },
+        }),
+      );
+      const host = await screen();
+      await settle();
+      expect(host.querySelector('[role="alert"]')).toBeNull();
+      expect(finishButton(host)).toBeUndefined();
+      expect(host.textContent).not.toContain(en.order.outcome.stopped('$10'));
+    });
+
+    describe('from a browser that did not make the order', () => {
+      const plan = planOn().proposal;
+      const listed = (over: object = {}) => ({
+        id: PLAN_ID,
+        createdAt: '2026-09-30T00:00:00.000Z',
+        fromLink: false,
+        chain: 'solana',
+        sheet: plan.sheet,
+        card: plan.card,
+        verdict: null,
+        bought: true,
+        orders: [
+          {
+            id: ORDER_ID,
+            createdAt: '2026-10-01T00:00:00.000Z',
+            amountUsd: 10,
+            status: 'open',
+            deposited: true,
+          },
+        ],
+        vault: { chain: 'solana', basketId: '77' },
+        ...over,
+      });
+      /** The server alone knows the order: its state, the person's plans, the plan's lines. */
+      function elsewhere(o: { order?: OrderDetail; plans?: unknown[]; route?: boolean } = {}) {
+        const calls: string[] = [];
+        portStore.setApi(async (path, init) => {
+          const method = init?.method ?? 'GET';
+          calls.push(`${method} ${path}`);
+          if (path === '/v1/me') return json(person('solana'));
+          if (path === `/v1/orders/${ORDER_ID}`) return json(o.order ?? stoppedOrder());
+          if (path === `/v1/orders/${NEXT_ID}`) return json(continuation());
+          if (path === '/v1/me/plans') return json({ plans: o.plans ?? [listed()] });
+          if (path === `/v1/baskets/${PLAN_ID}`)
+            return json({ id: PLAN_ID, proposal: plan, fromLink: false });
+          if (method === 'POST' && path.endsWith('/continue')) {
+            if (o.route === false) return json({ error: 'no order with that id' }, 404);
+            if (path === `/v1/orders/${ORDER_ID}/continue`) return json(continuation());
+            return json({ error: 'params/id must be a uuid' }, 400);
+          }
+          return json({ error: 'not found' }, 404);
+        });
+        return calls;
+      }
+
+      it.each(['en', 'pt'] as const)(
+        'says the money is safe and finishes the buy from here, saying this device did not see the first review, in %s',
+        async (lang) => {
+          const t = dictionary(lang);
+          elsewhere();
+          router.push.mockClear();
+          const host = await screen(lang);
+          await settle();
+          await settle();
+          // no dead end: not "made in another browser"
+          expect(host.textContent).not.toContain(t.order.elsewhere);
+          expect(find(host, '[data-ui="order-deposit-kept"]').textContent).toBe(
+            t.order.outcome.stopped(dollars(10, lang)),
+          );
+          expect(find(host, '[data-ui="order-unseen"]').textContent).toContain(
+            t.order.review.unseen,
+          );
+          const primaries = [...host.querySelectorAll<HTMLElement>('[data-variant="primary"]')];
+          expect(primaries.map(label)).toEqual([t.order.outcome.finish]);
+          // nothing of the first order can be signed from here
+          expect(host.querySelector('[data-ui="order-step"]')).toBeNull();
+          await click(primaries[0] as HTMLElement);
+          await settle();
+          expect(router.push).toHaveBeenCalledWith(`/orders/${NEXT_ID}`);
+          const kept = recallOrder(NEXT_ID, USER);
+          expect(kept?.continues).toEqual({
+            orderId: ORDER_ID,
+            trades: stoppedOrder()
+              .legs.filter((leg) => leg.kind === 'swap')
+              .flatMap((leg) => leg.trades),
+            unseen: true,
+          });
+          expect(kept?.lines).toEqual(plan.lines);
+          expect(run.calls).toHaveLength(0);
+
+          // and the new order's review says so too, and can be signed
+          await unmountAll();
+          const review = await screen(lang, NEXT_ID);
+          expect(find(review, '[data-ui="order-unseen"]').textContent).toBe(t.order.review.unseen);
+          expect(find(review, '[data-ui="order-continues"]').textContent).toBe(
+            t.order.review.continuesLead,
+          );
+          expect(review.querySelector('[role="alert"]')).toBeNull();
+          expect(review.querySelector('button[data-variant="primary"]')).not.toBeNull();
+        },
+      );
+
+      it('offers no finish when what the server lists as left is not the plan’s: another token, a token twice, or more than was deposited', async () => {
+        const first = stoppedOrder();
+        const swap = first.legs.find((leg) => leg.kind === 'swap');
+        if (!swap) throw new Error('the fixture has a swap');
+        const withTrades = (trades: typeof swap.trades): OrderDetail => ({
+          ...first,
+          legs: first.legs.map((leg) =>
+            leg.id === swap.id
+              ? {
+                  ...leg,
+                  trades,
+                  expected: trades.map(() => swap.expected[0] as (typeof swap.expected)[number]),
+                }
+              : leg,
+          ),
+        });
+        const [trade] = swap.trades;
+        if (!trade) throw new Error('the fixture has a trade');
+        for (const order of [
+          withTrades([{ ...trade, buy: 'solana:nvdax' }]),
+          withTrades([
+            { ...trade, amountInRaw: '3000000' },
+            { ...trade, amountInRaw: '3000000' },
+          ]),
+          withTrades([{ ...trade, amountInRaw: '10000001' }]),
+          withTrades([{ ...trade, sell: 'solana:gldx' }]),
+        ]) {
+          elsewhere({ order });
+          const host = await screen();
+          await settle();
+          await settle();
+          expect(finishButton(host)).toBeUndefined();
+          expect(host.querySelector('[data-ui="order-unseen"]')).toBeNull();
+          // the money is still said to be safe, and the portfolio leads
+          expect(label(primary(host))).toBe(en.order.outcome.seePortfolio);
+          await unmountAll();
+        }
+      });
+
+      it('leads to the portfolio when the server lists no such plan, or cannot finish buys', async () => {
+        for (const o of [{ plans: [] }, { route: false }]) {
+          elsewhere(o);
+          const host = await screen();
+          await settle();
+          await settle();
+          expect(find(host, '[data-ui="order-deposit-kept"]').textContent).toBe(
+            'plans' in o ? en.order.outcome.depositKept : en.order.outcome.stopped('$10'),
+          );
+          expect(finishButton(host)).toBeUndefined();
+          expect(primary(host).getAttribute('href')).toBe('/monitor');
+          await unmountAll();
+        }
+      });
+
+      it('is still "made elsewhere" for an order that has not stopped after its deposit', async () => {
+        const calls = elsewhere({ order: orderOn() });
+        const host = await screen();
+        expect(host.textContent).toContain(en.order.elsewhere);
+        expect(calls).not.toContain('GET /v1/me/plans');
+      });
+    });
+
+    it('says on its review that it finishes a buy and what it takes from the vault’s cash, in both languages', async () => {
+      for (const lang of ['en', 'pt'] as const) {
+        const t = dictionary(lang);
+        const record = {
+          ...recordOf(),
+          orderId: NEXT_ID,
+          continues: { orderId: ORDER_ID, trades: orderOn().legs.flatMap((leg) => leg.trades) },
+        };
+        window.localStorage.setItem(`tf-order:${NEXT_ID}`, JSON.stringify(record));
+        server({ route: true });
+        const host = await screen(lang, NEXT_ID);
+        expect(find(host, '[data-ui="order-continues"]').textContent).toBe(
+          t.order.review.continuesLead,
+        );
+        expect(host.textContent).toContain(t.order.review.fromVault);
+        expect(host.querySelector('[data-ui="order-unseen"]')).toBeNull();
+        await unmountAll();
       }
     });
   });
