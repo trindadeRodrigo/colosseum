@@ -122,7 +122,8 @@ describe('the monitor, for a person with a vault on their chain', () => {
       [words.address, VAULT],
       [words.version, '1'],
       [words.autoFollow, words.on],
-      [words.lossUsed, '0.1%'],
+      // the keeper's losses keep their second decimal: 0.12% is not 0.1%
+      [words.lossUsed, '0.12%'],
     ]);
     // and the address in the head leads to the vault's own page
     const page = `/vaults/solana/${VAULT}`;

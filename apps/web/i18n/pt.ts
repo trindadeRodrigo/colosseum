@@ -617,6 +617,7 @@ export const pt: Dictionary = {
       withdrawalsShort: 'Nem todo saque é pago em dia com o que está separado.',
       notLive:
         'Alguns números vêm de uma rede de teste ou de dados de exemplo, não de mercados ao vivo.',
+      other: 'O plano traz mais uma observação que ainda não sabemos descrever.',
       simple: {
         exit_not_measured: 'Nenhuma parte deste plano tem custo de venda medido ainda.',
         exit_partly_measured: 'Só parte deste plano tem custo de venda medido.',
@@ -701,10 +702,11 @@ export const pt: Dictionary = {
       ways: 'Para fechar a diferença:',
       change: 'Mudar meus limites',
     },
-    monthly: (low: string, high: string) =>
-      low === high
-        ? `Paga cerca de ${low} por mês, na faixa projetada.`
-        : `Paga cerca de ${low} a ${high} por mês, na faixa projetada.`,
+    monthly: {
+      figure: (low: string, high: string) =>
+        low === high ? `Cerca de ${low} por mês` : `Cerca de ${low} a ${high} por mês`,
+      after: 'se a faixa projetada se mantiver. Uma estimativa, não uma promessa.',
+    },
     buy: 'Comprar este plano',
     chainNotReady: (chain: string) =>
       `${chain} ainda não está pronta para compras: os cofres dela não estão implantados nesta rede. Seu plano fica guardado e pode ser comprado quando estiverem.`,

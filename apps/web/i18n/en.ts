@@ -699,6 +699,8 @@ export const en = {
       noQuote: 'There’s no recent price quote for selling all of it yet.',
       withdrawalsShort: 'Not every withdrawal is paid on time with what is set aside.',
       notLive: 'Some figures come from a test network or sample data, not from live markets.',
+      /** A flag this app has no sentence for yet: said plainly, once, never as its code. */
+      other: 'The plan carries one more note we can’t describe yet.',
       simple: {
         exit_not_measured: 'No part of this plan has a measured selling cost yet.',
         exit_partly_measured: 'Only part of this plan has a measured selling cost.',
@@ -789,10 +791,13 @@ export const en = {
       change: 'Change my limits',
     },
     /** What an income plan pays a month, from its projected range a year. */
-    monthly: (low: string, high: string) =>
-      low === high
-        ? `Pays about ${low} a month, on the projected range.`
-        : `Pays about ${low} to ${high} a month, on the projected range.`,
+    monthly: {
+      /** The figure itself, which carries the pin of the plan's yield reading. */
+      figure: (low: string, high: string) =>
+        low === high ? `About ${low} a month` : `About ${low} to ${high} a month`,
+      /** After it: an estimate, not a promise. */
+      after: 'if the projected range holds. An estimate, not a promise.',
+    },
     buy: 'Buy this plan',
     chainNotReady: (chain: string) =>
       `${chain} isn’t ready for buying yet: its vaults aren’t deployed on this network. Your plan is kept, and can be bought once they are.`,

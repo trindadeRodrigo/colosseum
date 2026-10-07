@@ -17,7 +17,7 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 import type { CallFailure } from '../order/order-api';
 import { displayName } from '../order/plain';
 import { explorerAddressUrlFor } from '../order/readiness';
-import { dollars, drift, share, tokens } from '../portfolio/figures';
+import { dollars, drift, sharesOf, tokens } from '../portfolio/figures';
 import { type HoldingRow, holdingsOf, vaultValueSource } from '../portfolio/portfolio';
 import { OwnVaultActions } from '../portfolio/VaultActions';
 import { useApiFetch } from '../wallet/WalletProvider';
@@ -94,6 +94,17 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
   const { vault } = read;
   const priceOf = (asset: string): Price | undefined => read.prices.find((p) => p.asset === asset);
   const follows = vault.recipeOnchainId;
+  // The rows' shares, rounded together so they add up to the whole, as the portfolio writes them.
+  const rows = holdingsOf(vault);
+  const at = (asset: string) => rows.findIndex((r) => r.asset === asset);
+  const now = sharesOf(
+    lang,
+    rows.map((r) => r.weightBps),
+  );
+  const planned = sharesOf(
+    lang,
+    rows.map((r) => r.targetBps),
+  );
   const explorer = explorerAddressUrlFor(read.chain, vault.address, read.provenance === 'mock');
   return (
     <div data-ui="vault-screen" className="flex flex-col gap-8">
@@ -170,7 +181,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
           <DataTable<HoldingRow>
             caption={read.name}
             captionHidden
-            rows={holdingsOf(vault)}
+            rows={rows}
             rowKey={(r) => r.asset}
             columns={[
               {
@@ -206,13 +217,13 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                 key: 'weight',
                 header: v.columns.weight,
                 numeric: true,
-                cell: (r) => share(lang, r.weightBps),
+                cell: (r) => now[at(r.asset)] ?? '',
               },
               {
                 key: 'target',
                 header: v.columns.target,
                 numeric: true,
-                cell: (r) => share(lang, r.targetBps),
+                cell: (r) => planned[at(r.asset)] ?? '',
               },
               {
                 key: 'drift',

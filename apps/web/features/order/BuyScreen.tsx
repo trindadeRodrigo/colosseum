@@ -82,7 +82,8 @@ export function BuyScreen({ id }: { id: string }) {
   }
 
   const chainName = t.chain.names[chain];
-  const accepted = trustAccepted(port.userId, TRUST_STATUS.textVersion);
+  // A plan's own vault follows nothing, so the keeper's limits are not among its short points.
+  const accepted = trustAccepted(port.userId, TRUST_STATUS.textVersion, false);
   const read = funding.kind === 'read' ? funding.funding : null;
   const blocked = [
     ...(!ready.buyable ? [t.plan.chainNotReady(chainName)] : []),
@@ -110,7 +111,7 @@ export function BuyScreen({ id }: { id: string }) {
       if (outcome.kind === 'code') setFailureCode(outcome.code);
       return;
     }
-    if (!accepted && port.userId) acceptTrust(port.userId, TRUST_STATUS.textVersion);
+    if (!accepted && port.userId) acceptTrust(port.userId, TRUST_STATUS.textVersion, false);
     const kept = keepOrder({
       orderId: outcome.order.id,
       userId: port.userId ?? '',

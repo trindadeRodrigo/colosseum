@@ -531,7 +531,10 @@ describe('the buy screen', () => {
     expect(Number.isNaN(Date.parse(kept?.goal?.placedAt ?? ''))).toBe(false);
     expect(kept?.lines).toEqual(planOn().proposal.lines);
     expect(kept?.linked).toBeUndefined();
-    expect(trustAccepted(USER, TRUST_STATUS.textVersion)).toBe(true);
+    // accepted for a plan's own vault, whose short points leave the keeper's limits out: a buy the
+    // keeper may trade asks again
+    expect(trustAccepted(USER, TRUST_STATUS.textVersion, false)).toBe(true);
+    expect(trustAccepted(USER, TRUST_STATUS.textVersion)).toBe(false);
   });
 
   it('says once on each card that its figures are from a test network, and never MOCK', async () => {
