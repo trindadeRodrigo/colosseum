@@ -40,6 +40,7 @@ import {
   watchEvmWallets,
 } from './found-wallets';
 import { identityTokens, walletKey } from './identity-token';
+import { asksOriginRefused, originKnownAllowed, rememberOriginAllowed } from './origin-check';
 import { createWalletPort, idleDriver, type ProblemKind } from './port';
 import {
   canSignIn,
@@ -146,7 +147,13 @@ export default function PrivyBridge({ onPort, carry }: BridgeProps) {
     );
   return (
     <PrivyProvider appId={appId} config={setup.config}>
-      <PrivyDriver onPort={onPort} carry={carry} chains={setup.chains} api={check.chains} />
+      <PrivyDriver
+        onPort={onPort}
+        carry={carry}
+        appId={appId}
+        chains={setup.chains}
+        api={check.chains}
+      />
     </PrivyProvider>
   );
 }
@@ -179,9 +186,10 @@ export const OPEN_CALL_WAIT_MS = 90_000;
 function PrivyDriver({
   onPort,
   carry,
+  appId,
   chains,
   api,
-}: BridgeProps & { chains: WalletChains; api: readonly ChainStatus[] }) {
+}: BridgeProps & { appId: string; chains: WalletChains; api: readonly ChainStatus[] }) {
   // Mounted with no provider above to keep it (a test of the bridge alone): this driver's own.
   const [own] = useState(() => ({ making: Promise.resolve() }));
   const line = carry ?? own;
@@ -388,7 +396,23 @@ function PrivyDriver({
     }
   }, [walletsOwed, ended]);
 
-  const shape = JSON.stringify({ status, userId, accounts, found, walletsOwed });
+  // Is this page's address one the sign-in service takes sign-ins from? Asked once as the driver
+  // mounts, beside the provider's own start, and not again in this tab once the answer was yes.
+  const [refused, setRefused] = useState(false);
+  useEffect(() => {
+    const origin = window.location.origin;
+    if (originKnownAllowed(appId, origin)) return;
+    void asksOriginRefused(appId, origin).then((answer) => {
+      if (answer === false) rememberOriginAllowed(appId, origin);
+      // `gone` drops the answer once this driver is unmounted.
+      else if (answer === true && !gone.current) setRefused(true);
+    });
+  }, [appId]);
+  // Refused: nobody can sign in from here, and the screen says why, whether or not the provider
+  // loads (it does, for a visitor): every call it would make is refused the same.
+  const off = refused;
+
+  const shape = JSON.stringify({ status, userId, accounts, found, walletsOwed, off });
   // biome-ignore lint/correctness/useExhaustiveDependencies: `shape` stands for status, userId and accounts
   const port = useMemo(() => {
     const evmWallet = (address: string) => {
@@ -542,6 +566,13 @@ function PrivyDriver({
         return { access, identity: token };
       },
     };
+    if (off)
+      return createWalletPort(
+        idleDriver(),
+        chains,
+        `the sign-in service takes no sign-in from ${window.location.origin}`,
+        { problemKind: 'origin', api },
+      );
     return createWalletPort(driver, chains, null, { api });
   }, [shape, chains, api]);
 

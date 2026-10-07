@@ -30,8 +30,9 @@ import { fail, toWalletError, WalletPortError } from './errors';
 /**
  * Why sign-in is off. `api`: the API did not answer, and is asked again. `setup`: this copy of the app
  * is not set up (a missing variable, networks that differ from the API's), which only the team can fix.
+ * `origin`: the sign-in service takes no sign-in from this page's address (origin-check.ts).
  */
-export type ProblemKind = 'api' | 'setup';
+export type ProblemKind = 'api' | 'setup' | 'origin';
 
 /** A chain as this app and the API run it: for the name a screen shows, and the label beside it. */
 export type ChainNetwork = {

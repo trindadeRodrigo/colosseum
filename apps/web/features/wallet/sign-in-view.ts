@@ -39,6 +39,8 @@ export function signInFailure(error: unknown, attempt: SignInAttempt): SignInFai
       return 'tooMany';
     case 'offline':
       return 'offline';
+    case 'origin_refused':
+      return 'originRefused';
     case 'wallet_not_made':
       return 'walletNotMade';
     default:
@@ -103,5 +105,7 @@ export function walletChoices(found: readonly FoundWallet[]): WalletChoice[] {
  * off for the app, or the browser has none.
  */
 export function offersNewPasskey(failure: SignInFailure): boolean {
-  return failure !== 'passkeyOff' && failure !== 'passkeyUnsupported';
+  return (
+    failure !== 'passkeyOff' && failure !== 'passkeyUnsupported' && failure !== 'originRefused'
+  );
 }

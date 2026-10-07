@@ -124,6 +124,9 @@ export const en = {
       api: 'Sign-in is off for the moment: our server isn’t answering. I ask again every few seconds, and this page updates by itself.',
       setup:
         'Sign-in is off here: this copy of the app isn’t set up correctly. There is nothing for you to fix. Please tell us.',
+      /** The sign-in service refuses this page's address (its allowed origins do not list it). */
+      origin:
+        'Sign-in isn’t set up for this address: the sign-in service takes no sign-in from it. There is nothing for you to fix. Use the site at its own address, or tell us.',
       /** Before the detail the team needs, shown under `next dev` only. */
       detail: 'For the team',
     },
@@ -163,6 +166,8 @@ export const en = {
         'That wallet is no longer in this browser. Pick one from the list, or use a passkey.',
       tooMany: 'Too many tries in a short time. Wait a minute, then try again.',
       offline: 'I couldn’t reach the sign-in service. Check your connection, then try again.',
+      originRefused:
+        'Sign-in isn’t set up for this address: the sign-in service takes no sign-in from it. There is nothing for you to fix. Use the site at its own address, or tell us.',
       expired: 'That took too long and ran out of time. Try again.',
       walletNotMade:
         'You’re signed in, but your wallet couldn’t be made. Nothing is lost. Try again.',

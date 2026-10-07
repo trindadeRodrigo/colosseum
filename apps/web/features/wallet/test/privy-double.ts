@@ -112,6 +112,10 @@ export const privyDouble = {
       identityToken: user ? identityTokenOf(user) : null,
     });
   },
+  /** Privy has not loaded: its hooks say `ready: false`, and nobody. */
+  notLoaded() {
+    show({ ready: false, authenticated: false, user: null, identityToken: null });
+  },
   /** Privy now holds this identity token, as after a refresh of the session. */
   holdIdentity(token: string | null) {
     show({ ...snapshot, identityToken: token });

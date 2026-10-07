@@ -98,6 +98,8 @@ export const pt: Dictionary = {
       api: 'O login está indisponível no momento: nosso servidor não está respondendo. Eu tento de novo a cada poucos segundos, e esta página se atualiza sozinha.',
       setup:
         'O login está indisponível aqui: esta cópia do app não foi configurada corretamente. Não há nada para você corrigir. Por favor, avise a gente.',
+      origin:
+        'O login não está configurado para este endereço: o serviço de login não aceita logins a partir dele. Não há nada para você corrigir. Use o site no endereço dele, ou nos avise.',
       detail: 'Para a equipe',
     },
     failure: {
@@ -131,6 +133,8 @@ export const pt: Dictionary = {
         'Essa carteira não está mais neste navegador. Escolha uma da lista ou use uma chave de acesso.',
       tooMany: 'Muitas tentativas em pouco tempo. Espere um minuto e tente de novo.',
       offline: 'Não consegui falar com o serviço de login. Verifique sua conexão e tente de novo.',
+      originRefused:
+        'O login não está configurado para este endereço: o serviço de login não aceita logins a partir dele. Não há nada para você corrigir. Use o site no endereço dele, ou nos avise.',
       expired: 'Isso demorou demais e o tempo acabou. Tente de novo.',
       walletNotMade:
         'Você entrou, mas sua carteira não pôde ser criada. Nada foi perdido. Tente de novo.',

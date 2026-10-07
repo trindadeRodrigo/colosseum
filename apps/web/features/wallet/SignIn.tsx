@@ -119,7 +119,11 @@ export function SignIn({ onAttempt, onFailed, onSignedIn, silent }: SignInProps)
     return (
       <div data-ui="sign-in" data-state="off" role="status" className="flex flex-col gap-2">
         <p className="max-w-(--tf-measure-body) text-body">
-          {port.problemKind === 'api' ? t.signIn.off.api : t.signIn.off.setup}
+          {port.problemKind === 'api'
+            ? t.signIn.off.api
+            : port.problemKind === 'origin'
+              ? t.signIn.off.origin
+              : t.signIn.off.setup}
         </p>
         {process.env.NODE_ENV !== 'production' && (
           <p className="font-mono text-source text-muted-foreground">

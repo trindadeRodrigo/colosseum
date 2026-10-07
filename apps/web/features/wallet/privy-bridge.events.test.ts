@@ -7,6 +7,15 @@ import { type PendingWallet, privyDouble } from './test/privy-double';
 
 vi.mock('@privy-io/react-auth', async () => (await import('./test/privy-double')).reactAuth);
 vi.mock('@privy-io/react-auth/solana', async () => (await import('./test/privy-double')).solana);
+/** What the app's public settings say of this page's address, and how often they were asked. */
+const origin = vi.hoisted(() => ({ refused: false as boolean | null, asked: 0 }));
+vi.mock('./origin-check', async (original) => ({
+  ...(await original<typeof import('./origin-check')>()),
+  asksOriginRefused: async () => {
+    origin.asked += 1;
+    return origin.refused;
+  },
+}));
 vi.mock('./use-api-check', () => {
   const ok = { ok: true, chains: [] };
   return { useApiCheck: () => ok };
@@ -337,5 +346,83 @@ describe('the provider mounted again ("Try again" for a slow sign-in)', () => {
     // and the new port signs in as before
     privyDouble.passkey = async () => ({});
     await expect(port().signIn('passkey')).resolves.toBeUndefined();
+  });
+});
+
+describe('an address the sign-in service refuses', () => {
+  const later = (ms: number) =>
+    act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  const mounted = async () => {
+    const { default: PrivyBridge } = await import('./privy-bridge');
+    const ports: WebWalletPort[] = [];
+    await mount(
+      createElement(PrivyBridge, {
+        onPort: (port: WebWalletPort) => {
+          ports.push(port);
+        },
+      }),
+    );
+    await later(0);
+    return () => ports.at(-1) as WebWalletPort;
+  };
+  const start = (answer: boolean | null) => {
+    vi.useFakeTimers();
+    window.sessionStorage.clear();
+    origin.refused = answer;
+    origin.asked = 0;
+    privyDouble.reset();
+  };
+
+  it('is said at once, with nobody signed in, whether the provider has loaded or never does', async () => {
+    for (const loaded of [false, true]) {
+      start(true);
+      if (!loaded) privyDouble.notLoaded();
+      const port = await mounted();
+      expect(origin.asked).toBe(1);
+      expect(port().status).toBe('signed-out');
+      expect(port().problemKind).toBe('origin');
+      expect(port().problem).toContain(window.location.origin);
+      // and it goes on being said if the provider loads late, or someone turns out to be signed in:
+      // every call from this address is refused the same
+      await act(async () => privyDouble.reset(privyDouble.walletPerson('solana')));
+      await later(60_000);
+      expect(port().problemKind).toBe('origin');
+      expect(origin.asked).toBe(1);
+      await unmountAll();
+    }
+  });
+
+  it('is not said when the settings take the address, or cannot be read: the provider’s own port stands', async () => {
+    for (const answer of [false, null]) {
+      start(answer);
+      privyDouble.notLoaded();
+      const port = await mounted();
+      await later(60_000);
+      expect(port().status).toBe('loading');
+      expect(port().problem).toBeNull();
+      await act(async () => privyDouble.reset());
+      await later(0);
+      expect(port().status).toBe('signed-out');
+      expect(port().problem).toBeNull();
+      await unmountAll();
+    }
+  });
+
+  it('is asked once per tab: an address found allowed is not asked about on the next mount, one not read is', async () => {
+    start(false);
+    await mounted();
+    expect(origin.asked).toBe(1);
+    await unmountAll();
+    await mounted();
+    expect(origin.asked).toBe(1);
+    await unmountAll();
+    // settings that could not be read are no answer: asked again
+    start(null);
+    await mounted();
+    await unmountAll();
+    await mounted();
+    expect(origin.asked).toBe(2);
   });
 });
