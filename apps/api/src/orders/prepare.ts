@@ -243,7 +243,7 @@ export type BuyPlan = {
 /** An add to a vault with auto-follow on only deposits: said on the order's review. */
 export const KEEPER_INVESTS = {
   code: 'KEEPER_INVESTS',
-  text: 'This vault has auto-follow on, so this order only deposits the cash. The keeper buys the vault’s assets with it at its next rebalance.',
+  text: 'This vault has auto-follow on, so this order only deposits the cash. The keeper buys the vault’s assets with it when it next rebalances this vault.',
 } as const;
 
 /**
