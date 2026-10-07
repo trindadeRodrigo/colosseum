@@ -5723,6 +5723,10 @@
                           },
                           "required": ["orderId", "legId"],
                           "additionalProperties": false
+                        },
+                        "continuedBy": {
+                          "type": "string",
+                          "minLength": 1
                         }
                       },
                       "additionalProperties": false
@@ -5743,7 +5747,15 @@
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
                         "NO_WALLET_FOR_CHAIN",
-                        "PRICE_MOVED"
+                        "PRICE_MOVED",
+                        "ORDER_CONTINUED",
+                        "STEP_IN_FLIGHT",
+                        "STEP_LANDED",
+                        "NOTHING_LEFT",
+                        "VAULT_CASH_SHORT",
+                        "DEPOSIT_NOT_LANDED",
+                        "ORDER_BUSY",
+                        "CONTINUE_NOT_SUPPORTED"
                       ]
                     },
                     "fix": {
