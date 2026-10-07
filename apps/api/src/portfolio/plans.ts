@@ -8,13 +8,14 @@ import {
   type PlanPutIn,
 } from '@colosseum/schemas';
 import { and, asc, eq, inArray, isNotNull } from 'drizzle-orm';
-import { boughtOf, numberWorkedOut } from '../orders/plan-join';
+import { boughtOf, type JoinedPlan, numberWorkedOut } from '../orders/plan-join';
 import type { ScopedChain } from './scope';
 import type { SnapshotRow } from './snapshots';
 
 // What GET /v1/portfolio/plans answers of a vault beside its plan and its status (PORT-2): what the
-// person put in, from the order tables; the newest snapshot, as the answer carries it; and the shared
-// portfolio the vault follows. Read from the database alone, and only the person's own rows.
+// person put in, from the order tables; the newest snapshot, as the answer carries it; the shared
+// portfolio the vault follows; and the one it was opened to follow. Read from the database alone, and
+// only the person's own rows.
 
 /**
  * How old a snapshot may be before it is stale: the hour of the status rule's `stale` line
@@ -233,4 +234,43 @@ export function followsOf(
     autoFollow: newest.autoFollow,
     ...families.get(newest.recipeOnchainId),
   };
+}
+
+/**
+ * The shared portfolio each of these vaults was opened to follow, by vault address, as the goal join
+ * holds it: the family of a plan that follows one, named from the server's own row, in one query.
+ *
+ * It is read off the plans as they were answered to the person (`plansOf`) and off nothing else, so it
+ * says no more than `plan` does, and to nobody `plan` is not answered to. Only a plan that follows a
+ * shared portfolio has one: a vault with a plan made to measure, a vault with no plan, and one whose
+ * family the server holds no row for are left out. A name is never guessed.
+ *
+ * It says what a vault was opened as. What the chain shows a vault following now is its snapshot's to
+ * say (`followsOf`), and the two can differ: a follow order makes a vault follow a portfolio it was
+ * not opened for, and the snapshot worker's mock makes its vaults with no portfolio at all
+ * (apps/snapshot/src/mock-world.ts).
+ */
+export async function openedForOf(
+  db: Db,
+  plans: ReadonlyMap<string, JoinedPlan>,
+): Promise<Map<string, FamilyNamed>> {
+  const followed = [...plans].flatMap(([address, { plan }]) =>
+    plan.kind === 'follow' && plan.familyId ? [{ address, familyId: plan.familyId }] : [],
+  );
+  if (followed.length === 0) return new Map();
+  const rows = await db
+    .select({
+      familyId: indexFamilies.familyId,
+      slug: indexFamilies.slug,
+      name: indexFamilies.name,
+    })
+    .from(indexFamilies)
+    .where(inArray(indexFamilies.familyId, [...new Set(followed.map((f) => f.familyId))]));
+  const named = new Map(rows.map((row) => [row.familyId, row]));
+  return new Map(
+    followed.flatMap(({ address, familyId }) => {
+      const family = named.get(familyId);
+      return family ? [[address, family]] : [];
+    }),
+  );
 }
