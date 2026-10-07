@@ -298,9 +298,10 @@ describe('a product’s page, on the plan view', () => {
     );
     for (const tier of tiers) {
       expect(tier.textContent).toContain(en.shared.product.exit.cost('1%'));
-      // the meter is the cost against 1%, and says what a full bar stands for
-      expect(find(tier, '[data-ui="meter"]').getAttribute('data-empty')).toBeNull();
-      expect(tier.textContent).toContain(en.plan.exitScale);
+      // figures, not a bar: the size is the one measured at that cost, so a meter of the cost
+      // against its limit would always be full
+      expect(tier.querySelector('[data-ui="meter"]')).toBeNull();
+      expect(tier.textContent).not.toContain(en.plan.exitScale);
     }
     // what nobody measured has no tier and no meter: it is named once, under them
     expect(find(exit, '[data-ui="exit-caveat"]').textContent).toBe(
@@ -396,7 +397,7 @@ describe('a product’s page, on the plan view', () => {
       expect(yieldOf(i)).toBeNull();
       expect(rows[i]?.textContent).not.toContain('0.00%');
     }
-    // the exit plan: a meter a measured holding, the rest named once
+    // the exit plan: a line a measured holding with its pinned cost, the rest named once
     const exit = find(pane, '[data-ui="exit-plan-line"]');
     expect(exit.querySelectorAll('[data-ui="exit-tier"]')).toHaveLength(2);
     expect(exit.querySelectorAll('[data-ui="pin"]')).toHaveLength(2);

@@ -339,10 +339,8 @@ function RecipeSection({
                       figure: p.exit.cost(formatBps(h.exit.maxCostBps, locale)),
                       obs: h.exit.obs,
                     },
-                    // The meter is the cost against 1%, as on a plan: this capacity is the one
-                    // measured at that cost, so the server's own bound fills it.
-                    meter: h.exit.maxCostBps / 100,
-                    scale: t.plan.exitScale,
+                    // No meter: this size is the one measured at exactly the cost bound, so a
+                    // bar of the cost against it would always be full and say nothing.
                   },
                 ]
               : [],
