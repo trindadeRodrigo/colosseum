@@ -227,20 +227,25 @@ test.describe('Bearing on each chain', () => {
   const pressed = (page: Page) =>
     page.locator('[data-ui="bearing-chain"] button[aria-pressed="true"]');
 
-  test('Robinhood Chain: its stocks, each figure and row named by chain, fixture never live', async ({
+  test('Robinhood Chain: its stocks, the chain said once by the switch, fixture never live', async ({
     page,
   }) => {
     await openOn(page, '/analytics/stocks?chain=robinhood');
     await expect(pressed(page)).toHaveText('Robinhood Chain');
     const kpis = page.locator('main [data-ui="bearing-kpi"]');
     await expect(kpis).toHaveCount(5);
-    for (const badge of await kpis.locator('[data-ui="chain-badge"]').all())
-      await expect(badge).toHaveText('Robinhood Chain');
-    // its pools are not in Bearing's registry yet: said, by the chain's name, with no figure
-    await expect(kpis.first()).toContainText('not collected yet on Robinhood Chain');
+    // no counter, card or row repeats the chain: only the chains side by side tags its rows
+    await expect(kpis.locator('[data-ui="chain-badge"]')).toHaveCount(0);
+    await expect(page.locator('main [data-ui="bearing-card"] [data-ui="chain-badge"]')).toHaveCount(
+      await page.locator('main [data-ui="bearing-chains"] [data-ui="chain-badge"]').count(),
+    );
+    // its pools are not in Bearing's registry yet: said quietly, with no figure and no chain's name
+    await expect(kpis.first().locator('[data-ui="bearing-reason"]')).toHaveText(
+      'not collected yet',
+    );
     const row = page.locator('section[aria-labelledby="bearing-table"] tbody tr');
     await expect(row.first().locator('th')).toContainText('NVDA');
-    await expect(row.first().locator('[data-ui="chain-badge"]')).toHaveText('Robinhood Chain');
+    await expect(row.first().locator('[data-ui="chain-badge"]')).toHaveCount(0);
     // every figure is the fixture's, so every one has the MOCK plate: none is shown as live
     const figures = page.locator('main [data-ui="figure"]:not([data-state="missing"])');
     expect(await figures.count()).toBeGreaterThan(0);
@@ -263,8 +268,8 @@ test.describe('Bearing on each chain', () => {
       .click();
     await expect(page).toHaveURL(/\/analytics\/stocks\?chain=robinhood$/);
     await expect(
-      page.locator('main [data-ui="bearing-kpi"] [data-ui="chain-badge"]').first(),
-    ).toHaveText('Robinhood Chain');
+      page.locator('main [data-ui="bearing-kpi"] [data-ui="bearing-fig"]').first(),
+    ).toHaveAttribute('data-chain', 'robinhood');
     await expect(page.locator('#bearing-nav a', { hasText: 'Lending' })).toHaveAttribute(
       'href',
       '/analytics/lending?chain=robinhood',
@@ -272,8 +277,8 @@ test.describe('Bearing on each chain', () => {
     await page.locator('[data-ui="bearing-chain"]').getByRole('button', { name: 'Solana' }).click();
     await expect(page).toHaveURL(/\/analytics\/stocks\?chain=solana$/);
     await expect(
-      page.locator('main [data-ui="bearing-kpi"] [data-ui="chain-badge"]').first(),
-    ).toHaveText('Solana');
+      page.locator('main [data-ui="bearing-kpi"] [data-ui="bearing-fig"]').first(),
+    ).toHaveAttribute('data-chain', 'solana');
   });
 
   test('a page Robinhood Chain has nothing collected for says so, axe clean', async ({ page }) => {
