@@ -1,5 +1,5 @@
 'use client';
-import { type ReactNode, useEffect, useId, useRef } from 'react';
+import { type ReactNode, useId, useLayoutEffect, useRef } from 'react';
 import { Card } from '../../components/ui/Card';
 import { cn } from '../../components/ui/cn';
 
@@ -36,7 +36,10 @@ export function StepCard<Id extends string>({
   steps: readonly StepDef<Id>[];
   open: Id;
   onOpen: (step: Id) => void;
-  /** On the mock: the card's hatch band and its one quiet line at the foot (MOCK-QUIET). */
+  /** On the mock: the card's hatch band and its one quiet line at the foot (MOCK-QUIET). A card labelled
+   * so draws its steps inside another element, so a caller keeps this steady while it reads: a label
+   * that came and went would make every step again and drop the focus.
+   */
   mock?: boolean;
   mockAnnounce?: string;
   /** One quiet line at the top, for figures of a test network: real reads, not samples. */
@@ -47,7 +50,8 @@ export function StepCard<Id extends string>({
   const mounted = useRef(false);
 
   // Opening a step moves the focus to its heading; nothing is focused when the card first shows.
-  useEffect(() => {
+  // Before the browser paints the step, so no frame shows it open with the focus on what was hidden.
+  useLayoutEffect(() => {
     if (mounted.current) heads.current.get(open)?.focus();
     mounted.current = true;
   }, [open]);
