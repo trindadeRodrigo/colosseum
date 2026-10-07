@@ -76,6 +76,22 @@ function goalJson(run: GoalRun, mode: DataMode) {
     })),
     readBack: i.readBack,
     assumptions: i.assumptions,
+    // Each market or trend the person named, and what it was read to: a shared portfolio, a curated
+    // label, a filter over the stock attributes, or nothing the chain holds yet.
+    narratives: i.narratives,
+    // What this chain's shelf can hold for a narrative, for "what can I invest in?": the shared
+    // portfolios, the labels (usable when confirmed with a name listed), and the filter's keywords.
+    offers: {
+      portfolios: run.offers.portfolios,
+      labels: run.offers.labels.map((l) => ({
+        slug: l.slug,
+        name: l.name,
+        status: l.status,
+        listed: l.listed,
+        usable: l.status === 'confirmed' && l.listed > 0,
+      })),
+      keywords: run.offers.keywords,
+    },
     sheetWhole: i.sheet !== null,
     error: run.error,
     candidates: (run.made?.shown ?? []).map((c) => ({

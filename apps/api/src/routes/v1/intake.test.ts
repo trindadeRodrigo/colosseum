@@ -1,9 +1,11 @@
 import { readFileSync } from 'node:fs';
+import { attributeVocabularyOf } from '@colosseum/engine/personal';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { budgetedModel, type IntakeModel, type ReadCall } from '../../llm';
 import type { ChainRegistry } from '../../orders/chains';
 import { loadFamilies } from '../../orders/store';
+import { loadStockAttributes } from '../../stock-attributes';
 import { orderFlow } from '../../testing/flow';
 import {
   type PersonKind,
@@ -421,9 +423,9 @@ describe('POST /v1/baskets/intake', () => {
         name: 'The Seven',
       },
     ]);
-    // A market only the model names, by a filter. This server hands the intake no labels and no
-    // attributes yet, so nothing matches: the one sentence is said, on the person's chain, and the
-    // model's value is said nowhere.
+    // A market only the model names, by a filter. No tracked stock of the person's chain carries the
+    // value, so nothing matches: the one sentence is said, on the person's chain, and the model's
+    // value is said nowhere.
     const res = await post(who, PATH, { text: obesityDrugs.text });
     expect(res.statusCode, res.body).toBe(200);
     const none = IntakeResponse.parse(res.json());
@@ -458,9 +460,72 @@ describe('POST /v1/baskets/intake', () => {
       'Nothing moves toward cash as the date nears unless you ask for it.',
       'If this is right, confirm it and the plan is made from it.',
     ]);
-    // The route has no attribute values to hand the model: no call was given any.
-    expect(replayed.vocabularies().length).toBeGreaterThan(0);
-    expect(replayed.vocabularies().filter((v) => v !== undefined)).toEqual([]);
+    // The model is handed our own keywords for the person's chain, the ones a filter can select by,
+    // and nothing else: no name of the stock classification (DESIGN-VAULT section 17, item 30), no
+    // symbol and no company's name.
+    const stocks = loadStockAttributes('solana');
+    if (!stocks) throw new Error('no stock attributes for solana');
+    const keywords = attributeVocabularyOf(stocks).keywords;
+    expect(keywords.length).toBeGreaterThan(0);
+    const given = replayed.vocabularies();
+    expect(given.length).toBeGreaterThan(0);
+    for (const vocabulary of given)
+      expect(vocabulary).toEqual({ sectors: [], industries: [], subIndustries: [], keywords });
+    const names = stocks.stocks.flatMap((row) => [row.symbol, row.underlying, row.company]);
+    for (const name of names) expect(keywords, name).not.toContain(name.toLowerCase());
+  });
+
+  // Where the intake meets the labels and the attributes (the wiring, on this branch only): the
+  // route hands the intake the chain's curated lists, what a filter matches there and the engine's
+  // own rule for a mix's limits, as `POST /v1/baskets/personalize` is handed its inputs.
+  it('reads a market to a confirmed label, to a filter over the stock attributes, or to nothing, on the chain’s own shelf', async () => {
+    const who = await someone('solana');
+    const answers = { goal: 'grow', amountUsd: 2000, horizonMonths: 60 };
+    const ask = async (text: string) =>
+      IntakeResponse.parse((await post(who, PATH, { text, answers })).json());
+    // AI: the Solana list is confirmed (gate THEME-AI-SOLANA) and the chain lists names of it.
+    const ai = await ask('I want to invest $2,000 in AI for 5 years');
+    expect(ai.narratives).toEqual([
+      { id: 'ai', words: 'AI', kind: 'label', slug: 'ai', filter: null, name: 'AI' },
+    ]);
+    expect(ai.questions).toEqual([]);
+    expect(ai.sheet?.sleeves).toEqual([{ kind: 'theme', theme: 'ai', shareBps: 10_000 }]);
+    expect(ai.readBack?.join(' ')).toContain('100% of the plan for the theme AI.');
+    // Semiconductors: its label is proposed, not confirmed, so the filter of the word list is read,
+    // and the chain lists a stock that carries it. Said as matched, not curated.
+    const semis = await ask('I want to invest $2,000 in semiconductors for 5 years');
+    const slug = 'matched-industry-semiconductors-semiconductor-equipment';
+    expect(semis.narratives).toMatchObject([
+      {
+        id: 'semiconductors',
+        kind: 'matched',
+        slug,
+        filter: { by: 'industry', value: 'Semiconductors & Semiconductor Equipment' },
+      },
+    ]);
+    expect(semis.flags).toContain('label_proposed:semiconductors');
+    expect(semis.sheet?.sleeves).toEqual([{ kind: 'theme', theme: slug, shareBps: 10_000 }]);
+    expect(semis.assumptions.join(' ')).toContain(
+      'the plan holds the names matched by industry: Semiconductors & Semiconductor Equipment. Matched from the sourced attributes of each, not a curated theme.',
+    );
+    // And the sheet it gives is one the plan route builds: the sleeve holds the matched stock.
+    const built = await post(who, '/v1/baskets/personalize', { sheet: semis.sheet });
+    expect(built.statusCode, built.body).toBe(200);
+    const { proposal } = PersonalizeResponse.parse(built.json());
+    expect(
+      proposal.lines.some((l) => l.reasons.some((r) => r.rule === 'THEME_MATCHED_MEMBER')),
+    ).toBe(true);
+    // Quantum computing: no label on Solana and no stock that carries it. The founder's sentence,
+    // with the nearest list the chain can hold, nothing held for it, and the risk asked as for any
+    // goal (gate THEME-NONE-YET).
+    const none = await ask('I want to invest $2,000 in quantum computing for 5 years');
+    expect(none.narratives).toMatchObject([{ id: 'quantum', kind: 'none', slug: null }]);
+    expect(none.assumptions).toEqual([
+      'There is no stock for “quantum computing” on Solana at the moment, and we will be adding more soon. The nearest today is AI, which you can choose.',
+    ]);
+    expect(none.questions.map((q) => q.field)).toEqual(['risk']);
+    expect(none.draft.sleeves).toBeNull();
+    expect(none.mix).toBeNull();
   });
 
   it('reads a share or a mix said in words on a later turn as the answer to "how much" (EXPLICIT-MIX, the review of Oct 6)', async () => {

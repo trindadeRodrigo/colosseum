@@ -569,7 +569,9 @@ describe('the two shelves side by side, with pnpm plan:compare', () => {
       expect(text).toBe(compareMarkdown(b, chain, NOW.toISOString()));
       expect(text).toContain('Every figure is MOCK');
       // The count at the foot is over the goals that have a plan: the vague goal has none on either
-      // shelf and is counted neither as changed nor as unchanged.
+      // shelf and is counted neither as changed nor as unchanged. Nor has "half in AI" on Robinhood
+      // Chain: its AI list is proposed, not confirmed, so a split that names it is asked again (gate
+      // THEMES), where Solana's confirmed list is held.
       const weights = (r: GoalRun) =>
         JSON.stringify([
           r.plain?.lines.map((l) => [l.assetId, l.weightBps]),
@@ -577,7 +579,11 @@ describe('the two shelves side by side, with pnpm plan:compare', () => {
         ]);
       const planned = a.filter((g) => g.launch.run.made || g.extended.run.made);
       const unchanged = planned.filter((g) => weights(g.launch.run) === weights(g.extended.run));
-      expect(planned.length).toBe(a.length - 1);
+      const unplanned = a.filter((g) => !g.launch.run.made && !g.extended.run.made);
+      expect(unplanned.map((g) => g.title)).toEqual(
+        chain === 'robinhood' ? ['Grow, half in AI', 'Something vague'] : ['Something vague'],
+      );
+      expect(planned.length).toBe(a.length - unplanned.length);
       expect(text).toContain(
         `Goals with a plan on either shelf: ${planned.length} of ${a.length}. Of those, no line changed in ${unchanged.length}.`,
       );

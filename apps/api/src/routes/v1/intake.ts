@@ -1,21 +1,33 @@
 import {
+  attributeVocabularyOf,
   conversationText,
   Disagreement,
+  filterMatchOf,
   IntakeAnswers,
   IntakeNarrative,
   IntakeQuestion,
   LimitsDraft,
   PersonalMix,
   PersonalSheet,
+  riskForMix,
   runIntake,
+  shelfLabelsOf,
 } from '@colosseum/engine/personal';
-import { BasketSheetDraft, Language, OrderError } from '@colosseum/schemas';
+import {
+  type BasketAsset,
+  BasketSheetDraft,
+  Language,
+  OrderError,
+  type Shelf,
+} from '@colosseum/schemas';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import type { IntakeModel } from '../../llm';
+import { Refusal, refusing } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { personChain } from '../../orders/person';
+import { type PlanInputs, shelfVersionOf } from '../../orders/personalize';
 import { loadFamilies } from '../../orders/store';
 import { signedIn } from './orders';
 
@@ -109,10 +121,35 @@ const INTAKE_DESCRIPTION = [
 
 const monthOf = (date: Date) => date.toISOString().slice(0, 7);
 
+/**
+ * What the person's chain can hold for a narrative, read the way `POST /v1/baskets/personalize` reads
+ * it: the tokens the chain's adapter lists, the shared portfolios in effect, and what the server hands
+ * in as a plan's inputs (the curated lists and the stock attributes among them, which are files, and
+ * no file a /v1 route reaches may read one). Null where the chain is off: the goal is still read, with
+ * nothing known of what the chain holds.
+ */
+async function shelfOf(
+  deps: OrderDeps,
+  inputs: PlanInputs,
+  chain: NonNullable<Awaited<ReturnType<typeof personChain>>['chain']>,
+  families: Shelf['families'],
+) {
+  let assets: BasketAsset[];
+  try {
+    assets = await refusing(() => deps.chains.get(chain).adapter.listAssets());
+  } catch (err) {
+    if (err instanceof Refusal) return null;
+    throw err;
+  }
+  const shelf: Shelf = { version: shelfVersionOf(chain, assets, families), assets, families };
+  return { shelf, figures: await inputs({ db: deps.db, chain, assets }) };
+}
+
 export function registerIntakeRoute(
   scope: FastifyInstance,
   deps: OrderDeps,
   model: IntakeModel | null,
+  inputs: PlanInputs = async () => ({}),
 ) {
   const f = scope.withTypeProvider<ZodTypeProvider>();
 
@@ -135,15 +172,24 @@ export function registerIntakeRoute(
       const text = conversationText(req.body.text, req.body.followUps);
       const nowMonth = monthOf(deps.now());
       const { chain } = await personChain(deps.db, principal);
-      const portfolios = chain
-        ? (await loadFamilies(deps.db, chain)).map((f) => ({
-            slug: f.meta.slug,
-            name: f.meta.name,
-          }))
-        : [];
+      const families = chain ? await loadFamilies(deps.db, chain) : [];
+      const portfolios = families.map((f) => ({ slug: f.meta.slug, name: f.meta.name }));
+      const held = chain ? await shelfOf(deps, inputs, chain, families) : null;
+      const stocks = held?.figures.stocks ?? null;
+      // The model is shown our own keywords, never a symbol or a company's name, and no name of the
+      // stock classification (DESIGN-VAULT section 17, item 30): it knows those names by itself.
+      const vocabulary = stocks
+        ? {
+            sectors: [],
+            industries: [],
+            subIndustries: [],
+            keywords: attributeVocabularyOf(stocks).keywords,
+          }
+        : undefined;
       const read: { reply: unknown; why?: string } = model
-        ? await model.read(text, nowMonth, language, principal.userId ?? principal.ip)
+        ? await model.read(text, nowMonth, language, principal.userId ?? principal.ip, vocabulary)
         : { reply: null, why: 'model_not_configured' };
+      const now = deps.now().toISOString();
       const result = runIntake({
         text,
         nowMonth,
@@ -152,6 +198,44 @@ export function registerIntakeRoute(
         answers,
         homeChain: chain,
         portfolios,
+        ...(held && chain
+          ? {
+              // The curated labels of the chain and what a filter matches there (gates THEMES,
+              // THEME-MATCHED): pure code over the lists and the sourced attributes.
+              labels: shelfLabelsOf(held.figures.themes ?? [], held.shelf.assets),
+              matchOf: (filter) => filterMatchOf(filter, stocks, held.shelf.assets),
+              // The limits a stated mix takes, by the engine's own rule on this chain's shelf and
+              // figures, so the read-back names the risk the plan will take (gate EXPLICIT-MIX).
+              riskOfMix: (mix, themes) =>
+                riskForMix(
+                  {
+                    basketType: 'standard',
+                    goal: 'grow',
+                    amountUsd: 10_000,
+                    horizonMonths: 120,
+                    risk: 'low',
+                    themes,
+                    chains: [chain],
+                    rules: { useHoldings: false, glide: false },
+                    language: 'en',
+                    mix,
+                  },
+                  held.shelf,
+                  {
+                    now,
+                    ...(held.figures.yields ? { yields: held.figures.yields } : {}),
+                    ...(held.figures.themes ? { themes: held.figures.themes } : {}),
+                    ...(stocks ? { stocks } : {}),
+                    ...(held.figures.liquidity
+                      ? {
+                          liquidity: held.figures.liquidity.provider,
+                          liquiditySource: held.figures.liquidity.source,
+                        }
+                      : {}),
+                  },
+                ),
+            }
+          : {}),
       });
       const byModel = read.reply !== null && model !== null;
       return {

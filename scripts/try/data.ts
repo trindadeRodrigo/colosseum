@@ -1,10 +1,17 @@
 import { mockAssets } from '@colosseum/chain-mock';
 import { createDb } from '@colosseum/db';
-import type { ComposeContext, ShelfPortfolio } from '@colosseum/engine/personal';
+import {
+  type ComposeContext,
+  type ShelfLabel,
+  type ShelfPortfolio,
+  type StockAttributesFile,
+  shelfLabelsOf,
+} from '@colosseum/engine/personal';
 import type { ChainId, FxObservation, Shelf } from '@colosseum/schemas';
 import { shelfVersionOf } from '../../apps/api/src/orders/personalize';
 import { loadFamilies } from '../../apps/api/src/orders/store';
 import { BEARING_SOURCE, bearingPlanInputs } from '../../apps/api/src/plan-inputs';
+import { loadStockAttributes } from '../../apps/api/src/stock-attributes';
 import { loadThemeLists } from '../../apps/api/src/theme-lists';
 import {
   extendedHeldOut,
@@ -25,7 +32,9 @@ import {
 //   lists when a chain runs on the mock), the shared portfolios in effect (`loadFamilies`), and
 //   Bearing's measured exit and the stored yields (`bearingPlanInputs`). Each figure keeps its own
 //   provenance; the API reads no exchange rate yet, and neither does this mode.
-// Theme lists come from `content/themes/<chain>/` through the API's loader in both modes.
+// Theme lists come from `content/themes/<chain>/` and the stock attributes from
+// `content/stocks/<chain>.json`, through the API's loaders in both modes. The attributes are sourced
+// facts about listed securities, not figures: each row names where it was read.
 //
 // In `fixtures` mode the shelf is one of two: `launch`, the launch shelf, or `extended`, the launch
 // shelf plus the fixed-income tokens screened in docs/vault/research/yield-shelf/ with their dated
@@ -40,6 +49,10 @@ export type LeftOffPlans = { symbol: string; reason: string };
 export type ChainData = {
   shelf: Shelf;
   portfolios: ShelfPortfolio[];
+  /** The curated stock labels of the chain, each with how many of its names the shelf lists (gate THEMES). */
+  labels: ShelfLabel[];
+  /** The sourced attributes of the chain's tracked stocks (gate THEME-MATCHED); null where it has none. */
+  stocks: StockAttributesFile | null;
   context: Omit<ComposeContext, 'now' | 'holdings' | 'fx'>;
   /** Exchange rates, handed in only to a goal that needs one. */
   fx: FxObservation[];
@@ -67,6 +80,12 @@ function shelfOn(shelf: Shelf, chain: ChainId): Shelf {
   };
 }
 
+/** Where the stock attributes of a chain come from, in words. */
+const stocksSource = (chain: ChainId, stocks: StockAttributesFile | null): string =>
+  stocks
+    ? `Stock attributes: content/stocks/${chain}.json (version ${stocks.version}, read ${stocks.readOn}, ${stocks.stocks.length} rows, each with its sources)`
+    : `Stock attributes: none for ${chain}, so no theme can be matched by a filter there`;
+
 const portfoliosOf = (shelf: Shelf): ShelfPortfolio[] =>
   shelf.families.map((f) => ({ slug: f.meta.slug, name: f.meta.name }));
 
@@ -77,6 +96,7 @@ export function fixturesSource(shelfName: ShelfName = 'launch'): DataSource {
     async forChain(chain) {
       const shelf = shelfOn(extended ? extendedShelf() : launchShelf(), chain);
       const themes = loadThemeLists(chain);
+      const stocks = loadStockAttributes(chain);
       const heldOut = extended
         ? extendedHeldOut(chain).map((row) => ({
             symbol: row.asset.symbol,
@@ -86,11 +106,14 @@ export function fixturesSource(shelfName: ShelfName = 'launch'): DataSource {
       return {
         shelf,
         portfolios: portfoliosOf(shelf),
+        labels: shelfLabelsOf(themes, shelf.assets),
+        stocks,
         context: {
           yields: extended ? extendedYields() : fixtureYields(),
           liquidity: fixtureLiquidity(),
           liquiditySource: LIQUIDITY_SOURCE,
           ...(themes.length ? { themes } : {}),
+          ...(stocks ? { stocks } : {}),
         },
         fx: [usdBrl()],
         heldOut,
@@ -108,6 +131,7 @@ export function fixturesSource(shelfName: ShelfName = 'launch'): DataSource {
           `Exit: ${LIQUIDITY_SOURCE} (MOCK)`,
           'FX: one fixture rate of dollars into reais (MOCK)',
           `Theme lists: content/themes/${chain}/ (${themes.map((t) => `${t.slug} ${t.status}`).join(', ') || 'none'})`,
+          stocksSource(chain, stocks),
         ],
       };
     },
@@ -128,9 +152,12 @@ export function dbSource(): DataSource {
       return {
         shelf,
         portfolios: portfoliosOf(shelf),
+        labels: shelfLabelsOf(figures.themes ?? [], shelf.assets),
+        stocks: figures.stocks ?? null,
         context: {
           ...(figures.yields ? { yields: figures.yields } : {}),
           ...(figures.themes ? { themes: figures.themes } : {}),
+          ...(figures.stocks ? { stocks: figures.stocks } : {}),
           ...(figures.liquidity
             ? { liquidity: figures.liquidity.provider, liquiditySource: figures.liquidity.source }
             : {}),
@@ -145,6 +172,7 @@ export function dbSource(): DataSource {
             : 'Exit: nothing measured for these tokens; each line takes its tier ceiling, labelled a fallback',
           'FX: none (the API reads no exchange rate yet)',
           `Theme lists: content/themes/${chain}/ (${figures.themes?.map((t) => `${t.slug} ${t.status}`).join(', ') || 'none'})`,
+          stocksSource(chain, figures.stocks ?? null),
         ],
       };
     },

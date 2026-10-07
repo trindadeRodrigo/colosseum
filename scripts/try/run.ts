@@ -1,7 +1,9 @@
 import {
+  attributeVocabularyOf,
   type ComposeContext,
   candidates,
   compose,
+  filterMatchOf,
   type IntakeResult,
   type PersonalCandidates,
   PersonalInputError,
@@ -9,6 +11,8 @@ import {
   type QuestionField,
   riskForMix,
   runIntake,
+  type ShelfLabel,
+  type ShelfPortfolio,
 } from '@colosseum/engine/personal';
 import { currencyOf, type Language } from '@colosseum/schemas';
 import type { IntakeModel } from '../../apps/api/src/llm';
@@ -57,6 +61,11 @@ export type GoalRun = {
   heldOut: LeftOffPlans[];
   /** The symbol of each token on the chain's shelf, by asset id. */
   symbols: Record<string, string>;
+  /**
+   * What the chain's shelf can hold for a narrative: its shared portfolios, its curated labels (each
+   * with its status and how many of its names the shelf lists), and the keywords a filter can match by.
+   */
+  offers: { portfolios: ShelfPortfolio[]; labels: ShelfLabel[]; keywords: string[] };
 };
 
 export type RunOptions = {
@@ -73,12 +82,24 @@ export async function runGoal(goal: PromptGoal, opts: RunOptions): Promise<GoalR
   const nowMonth = nowIso.slice(0, 7);
   const data = await opts.data.forChain(goal.chain);
   const language: Language | undefined = goal.answers.language;
+  // What a model is shown to name a filter by: our own keywords, never a symbol or a company's name,
+  // and no name of the stock classification (DESIGN-VAULT section 17, item 30).
+  const keywords = attributeVocabularyOf(data.stocks).keywords;
+  const vocabulary = data.stocks
+    ? { sectors: [], industries: [], subIndustries: [], keywords }
+    : undefined;
   // A reply pasted in the file (a model run outside this tool) is read as the model's, and checked
   // the same way; it is never live, so it is labelled mock.
   const read = goal.reply
     ? { reply: goal.reply.value }
     : opts.model
-      ? await opts.model.read(goal.text, nowMonth, language, opts.who ?? 'plan-playground')
+      ? await opts.model.read(
+          goal.text,
+          nowMonth,
+          language,
+          opts.who ?? 'plan-playground',
+          vocabulary,
+        )
       : { reply: null, why: 'model_not_configured' };
   const intake = runIntake({
     text: goal.text,
@@ -88,6 +109,10 @@ export async function runGoal(goal: PromptGoal, opts: RunOptions): Promise<GoalR
     answers: goal.answers,
     homeChain: goal.chain,
     portfolios: data.portfolios,
+    // The curated labels of the chain and what a filter matches there (gates THEMES, THEME-MATCHED):
+    // pure code over the lists and the sourced attributes, as the API's route hands them.
+    labels: data.labels,
+    matchOf: (filter) => filterMatchOf(filter, data.stocks, data.shelf.assets),
     // The read-back names the limits the engine will take for a stated mix: its own rule, on this
     // chain's shelf and the portfolios read (gate EXPLICIT-MIX).
     riskOfMix: (mix, themes) =>
@@ -162,5 +187,6 @@ export async function runGoal(goal: PromptGoal, opts: RunOptions): Promise<GoalR
     sources: data.sources,
     heldOut: data.heldOut,
     symbols,
+    offers: { portfolios: data.portfolios, labels: data.labels, keywords },
   };
 }

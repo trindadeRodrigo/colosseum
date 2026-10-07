@@ -142,6 +142,7 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
       scope,
       orderDeps,
       deps.intakeModel === undefined ? intakeModelFromEnv(env, deps.now) : deps.intakeModel,
+      deps.planInputs,
     );
     registerPortfolioRoute(scope, orderDeps);
     registerSharedRoutes(scope, orderDeps);
