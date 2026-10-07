@@ -2476,12 +2476,17 @@ describe('whatever the text, the shelf and the answers', () => {
             ),
             where,
           ).toBe(leftOut);
-          // Never a sheet with both: stocks left out, and a theme of stocks held.
-          if (leftOut)
+          // Never a sheet with both: stocks left out, and anything that would hold them. A theme
+          // of stocks, a shared portfolio the plan starts from, a mix with stocks in it (the third
+          // review, Oct 7: this looked at theme sleeves only).
+          if (leftOut) {
             expect(
               (result.sheet.sleeves ?? []).filter((s) => s.kind === 'theme'),
               where,
             ).toEqual([]);
+            expect(result.sheet.themes, where).toEqual([]);
+            expect(result.sheet.mix?.growthBps ?? 0, where).toBe(0);
+          }
         }
         // With a model a holding needs both readers: a narrative of the fixed words is read only
         // where the reply names it too, and a mix is held with no answer only where the reply reads
@@ -2623,4 +2628,111 @@ describe('whatever the text, the shelf and the answers', () => {
     // Thousands of generated goals in one test: it gets the time of a property test, so a busy
     // machine does not fail it at the default five seconds.
   }, 60_000);
+
+  // The third review (Oct 7): the test above let a refusal be gone wherever it was flagged as taken
+  // back, without looking at which came last. Here the conversations are generated in order, an
+  // ask, an answer in words and a last message, and the last word is held to the rule: it wins over
+  // the answer, and no sheet holds what its last word refuses.
+  it('the last word wins over an answer given in words, and no sheet holds what its last word refuses', () => {
+    let state = 20_261_007;
+    const next = () => {
+      state = (state * 1_103_515_245 + 12_345) % 2_147_483_648;
+      return state / 2_147_483_648;
+    };
+    const pick = <T>(from: readonly T[]): T => from[Math.floor(next() * from.length)] as T;
+    const asks = [
+      'I like AI.',
+      'Invest in big tech.',
+      'Put 30% in AI.',
+      'Gosto de IA.',
+      'Put it all in stocks.',
+      'I want 70% stocks and 30% cash.',
+    ];
+    const answersInWords = ['half', 'all of it', 'none', 'yes', '25%', 'metade', 'tudo', 'no'];
+    const lasts = [
+      ['refusal', 'No stocks please.'],
+      ['refusal', 'Also, no stocks.'],
+      ['share', 'Put 20% in AI.'],
+      ['nothing', 'thanks'],
+      ['nothing', 'My time frame is 5 years.'],
+    ] as const;
+    const form = { goal: 'grow', amountUsd: 5000, horizonMonths: 60, risk: 'medium' } as const;
+    const seen = { refusal: 0, share: 0, nothing: 0, sheets: 0, asked: 0 };
+    for (let run = 0; run < 300; run += 1) {
+      const [kind, last] = pick(lasts);
+      const messages = [pick(asks), pick(answersInWords), last];
+      const text = conversationText(messages[0] ?? '', messages.slice(1));
+      // A reply that reads the conversation: the markets it asks for, the mix it states, and the
+      // refusal where there is one. Sometimes none.
+      const stated = mixIn(text)?.mix;
+      const r =
+        next() < 0.6
+          ? reply({
+              goal: null,
+              amountUsd: null,
+              horizonMonths: null,
+              risk: null,
+              markets: marketsIn(text).map((m) => m.market),
+              mix: stated
+                ? {
+                    growthPct: stated.growthBps / 100,
+                    dollarYieldPct: stated.dollarYieldBps / 100,
+                    goldPct: stated.goldBps / 100,
+                    cashPct: stated.cashBps / 100,
+                  }
+                : null,
+              cannotHold: kind === 'refusal' ? ['stock'] : [],
+            })
+          : null;
+      const where = JSON.stringify({ messages, model: r !== null });
+      const result = intake(text, r, { answers: form });
+      seen[kind] += 1;
+      if (result.sheet) seen.sheets += 1;
+      if (result.questions.length > 0) seen.asked += 1;
+      // Never both in one sheet: stocks left out, and anything that would hold them.
+      const out = result.sheet?.limits?.cannotHold?.classes ?? [];
+      if (out.includes('stock')) {
+        expect(
+          (result.sheet?.sleeves ?? []).filter((x) => x.kind === 'theme'),
+          where,
+        ).toEqual([]);
+        expect(result.sheet?.themes, where).toEqual([]);
+        expect(result.sheet?.mix?.growthBps ?? 0, where).toBe(0);
+      }
+      // The last word is a refusal: no earlier answer takes it back, and it stands, in the limits
+      // or in the one question that asks it against the holding.
+      if (kind === 'refusal') {
+        expect(result.flags, where).not.toContain('refusal_withdrawn:stock');
+        expect(
+          (result.limits.cannotHoldClasses ?? []).includes('stock') ||
+            result.questions.some((q) => q.template === 'holdOrLeaveOut'),
+          where,
+        ).toBe(true);
+      }
+      // A last message that says nothing of a holding changes nothing of what is held or asked.
+      if (kind === 'nothing') {
+        const held = (x: typeof result) => ({
+          mix: x.sheet?.mix ?? null,
+          sleeves: x.sheet?.sleeves ?? null,
+          themes: x.sheet?.themes ?? null,
+          limits: x.sheet?.limits ?? null,
+          asked: x.questions
+            .filter((q) => ['mix', 'sleeves', 'limits'].includes(q.field))
+            .map((q) => [q.field, q.template, q.read]),
+        });
+        const before = intake(conversationText(messages[0] ?? '', messages.slice(1, -1)), r, {
+          answers: form,
+        });
+        expect(held(result), where).toEqual(held(before));
+      }
+      // A last message that says a share for AI is never passed over: where the conversation
+      // holds AI at all, it holds the last share, or asks.
+      if (kind === 'share') {
+        const ai = (result.sheet?.sleeves ?? []).find((x) => x.kind === 'theme');
+        if (ai) expect(ai.shareBps, where).toBe(2000);
+      }
+    }
+    // The generator reaches every kind of last message, sheets and questions.
+    for (const count of Object.values(seen)) expect(count).toBeGreaterThan(20);
+  });
 });

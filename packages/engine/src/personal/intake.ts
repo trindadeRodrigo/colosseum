@@ -1705,6 +1705,14 @@ function intakeOf(
   } else {
     // An answered split that holds a theme is the person's later word on stocks.
     if (heldClass && stockRefusal && answeredTheme) withdraw(heldClass);
+    // And an answered mix that holds what the text refuses is their word on it too, whatever the
+    // text names beside it: never a sheet with both (found by the property test, once it looked at
+    // every holding and not at theme sleeves only).
+    const answeredMix = answers.mix;
+    if (answeredMix)
+      for (const what of ['stock', 'gold', 'credit'] as const)
+        if (refused.has(what) && statedOf(what).length > 0 && partOf(answeredMix, what) > 0)
+          withdraw(what);
     if ('mix' in answers && answers.mix === null && holdable.length > 0) noneHeld = true;
   }
   // The portfolio the model named is not where the plan starts while the question is open, nor
