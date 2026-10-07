@@ -4421,6 +4421,8 @@ describe('the third review (Oct 7), B6: a share is taken only where its message 
     ['Everything in AI. Well, 80% of it.', AI],
     ['Invest in AI and keep the other 70% for bonds.', AI],
     ['Go all in on AI, with a little crypto on the side.', AI],
+    ['Put 30% in AI and the rest in ETFs.', AI],
+    ['Put half in AI... or was it a third? Let me think.', AI],
     ['Coloque 30% em IA e o que sobrar em ouro.', AI_PT],
     ['Invista em IA, mas só US$ 500.', AI_PT],
     ['Tudo em IA, tirando 20% para ações.', AI_PT],

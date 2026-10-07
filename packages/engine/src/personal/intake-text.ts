@@ -2059,13 +2059,30 @@ export function saysMoreIn(
     if (m.kind === 'percent') return true;
     if (m.kind === 'amount' && m.money && !m.perMonth && m.value !== amountUsd) return true;
   }
+  // One part of the whole said in words is a share too: "half in AI... or was it a third?".
+  for (const m of text.slice(from, to).matchAll(PART_SAID)) {
+    const [at, end] = [m.index + from, m.index + from + m[0].length];
+    if (!inside(at, end) && !leadsIn(end)) return true;
+  }
   // A word for a class written right after what an ask names is part of its name ("AI stocks").
   const namesIt = (at: number) =>
     accounted.some((s) => s.end <= at && text.slice(s.end, at).trim() === '');
-  for (const m of text.slice(from, to).matchAll(CLASS_WORD)) {
-    const [at, end] = [m.index + from, m.index + from + m[0].length];
+  // A part of a mix ("stocks", "gold", "cash") or a class a person can rule out ("ETFs").
+  const words = [
+    ...[...text.slice(from, to).matchAll(CLASS_WORD)].map((m) => ({
+      at: m.index + from,
+      end: m.index + from + m[0].length,
+      word: m[0],
+    })),
+    ...classMentionsIn(text.slice(from, to)).map((m) => ({
+      at: m.at + from,
+      end: m.end + from,
+      word: text.slice(m.at + from, m.end + from),
+    })),
+  ];
+  for (const { at, end, word } of words) {
     if (inside(at, end) || namesIt(at)) continue;
-    if (restSafe && SAFE_PARTS.includes(partOf(m[0]) ?? 'growth')) continue;
+    if (restSafe && SAFE_PARTS.includes(partOf(word) ?? 'growth')) continue;
     // Something to hold, or that the person wonders about holding: one its clause rules out, or
     // says of someone else, is no other holding ("I don't want bonds, invest in big tech").
     const stance = stanceOf(text, at, end);
@@ -2197,6 +2214,11 @@ const PERCENT_SAID = saidAlone(String.raw`(?<pct>\d{1,3})\s*(?:%|percent|por cen
 const HALF_SAID = saidAlone(String.raw`half(?:\s+and\s+half)?|metade(?:\s+e\s+metade)?`);
 // "A third", "a quarter", "um terço": one part of that many, in the order of this list from three up.
 const PART_WORDS = ['third|ter[cç]o', 'quarter|fourth|quarto'];
+/** One part of the whole in words, wherever a text writes it: "half", "a third", "um quarto". */
+const PART_SAID = new RegExp(
+  String.raw`(?<![\p{L}])(?:half|metade|(?:a|one|um|uma)\s+(?:${PART_WORDS.join('|')}))(?![\p{L}])`,
+  'giu',
+);
 const ONE_PART_OF = PART_WORDS.map((words) =>
   saidAlone(String.raw`(?:a|one|um|uma)\s+(?:${words})`),
 );
@@ -2271,13 +2293,13 @@ export type ShareSaid =
  * quarter.". The same words an answer is read by, found anywhere in the message. Null where it
  * writes none of them, or more than one.
  */
-export function partSaidIn(message: string): number | null {
-  const found: number[] = [];
-  const count = (source: string, percent: number) => {
-    for (const _ of message.matchAll(
+export function partSaidIn(message: string): { value: number; at: number; end: number } | null {
+  const found: { value: number; at: number; end: number }[] = [];
+  const count = (source: string, value: number) => {
+    for (const m of message.matchAll(
       new RegExp(String.raw`(?<![\p{L}])(?:${source})(?![\p{L}])`, 'giu'),
     ))
-      found.push(percent);
+      found.push({ value, at: m.index, end: m.index + m[0].length });
   };
   count('half|metade', HALF_PCT);
   for (const [n, words] of PART_WORDS.entries())

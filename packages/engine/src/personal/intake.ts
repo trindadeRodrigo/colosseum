@@ -579,9 +579,10 @@ function loneShareIn(message: string, amountUsd: number | null): PersonalMix | n
     !(figure.kind === 'amount' && figure.money && !figure.perMonth)
   )
     return null;
-  if (saysMoreIn(message, 0, message.length, figure ? [figure] : [], null, false)) return null;
+  const own = figure ?? part;
+  if (saysMoreIn(message, 0, message.length, own ? [own] : [], null, false)) return null;
   const growthBps = !figure
-    ? Math.round((part ?? 0) * BPS_PER_PCT)
+    ? Math.round((part?.value ?? 0) * BPS_PER_PCT)
     : figure.kind === 'percent'
       ? Math.round(figure.value * BPS_PER_PCT)
       : bpsOf({ kind: 'amount', value: figure.value }, amountUsd);
