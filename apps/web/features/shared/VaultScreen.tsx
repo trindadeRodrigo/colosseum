@@ -1,5 +1,5 @@
 'use client';
-import { ChainId, type Price, type VaultResponse } from '@colosseum/schemas';
+import { ChainId, chainFamily, type Price, type VaultResponse } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState } from 'react';
 import { CardWait } from '../../components/shell/Wait';
@@ -20,10 +20,10 @@ import { explorerAddressUrlFor } from '../order/readiness';
 import { dollars, drift, share, shareTenths, tokens } from '../portfolio/figures';
 import { type HoldingRow, holdingsOf, vaultValueSource } from '../portfolio/portfolio';
 import { OwnVaultActions } from '../portfolio/VaultActions';
-import { useApiFetch } from '../wallet/WalletProvider';
+import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { readVault } from './shared-api';
 
-// A vault, read-only, for anybody (DESIGN-VAULT section 11, the public vault page): its owner, what it
+// A vault, for anybody (DESIGN-VAULT section 11, the public vault page): its owner, what it
 // follows, its value, and what it holds, cash included, each with its share now, planned share, the
 // difference and its price, as its chain holds it now (GET /v1/vaults/{chain}/{address}). Its figures
 // are written as the portfolio writes them (features/portfolio/figures.ts), so the two pages agree to
@@ -37,6 +37,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
   const lang = useLang();
   const v = t.shared.vault;
   const apiFetch = useApiFetch();
+  const port = useWalletPort();
   // The vault is read once for an address, and again only when asked: the reader is kept in a ref,
   // so a change of the sign-in around it does not ask the server again (the flow audit, 35).
   const fetcher = useRef(apiFetch);
@@ -102,6 +103,8 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
   const now = nowTenths.map((t) => share(lang, t * 10));
   const planned = plannedTenths.map((t) => share(lang, t * 10));
   const explorer = explorerAddressUrlFor(read.chain, vault.address, read.provenance === 'mock');
+  const mine = port.active(chainFamily(read.chain))?.address === vault.owner;
+  const empty = [vault.cash, ...vault.positions].every((h) => /^0+$/.test(h.raw));
   return (
     <div data-ui="vault-screen" className="flex flex-col gap-8">
       <header className="flex flex-col items-start gap-3">
@@ -129,6 +132,31 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
             </a>
           )}
         </p>
+        {/* The owner's way out, shown to the owner alone: a vault pays nobody else. */}
+        {mine &&
+          (empty ? (
+            <p data-ui="vault-empty" className="text-body">
+              {t.withdraw.empty}
+            </p>
+          ) : (
+            <Link
+              data-ui="vault-withdraw"
+              href={`/vaults/${encodeURIComponent(read.chain)}/${encodeURIComponent(vault.address)}/withdraw`}
+              className={buttonClass({ variant: 'secondary' })}
+            >
+              {t.withdraw.action}
+            </Link>
+          ))}
+        {/* Auto-follow is switched on where the vault's portfolio is: its page offers the switch. A
+            withdrawal switches it off, and this is the way back. */}
+        {mine && follows && !vault.autoFollow && (
+          <p data-ui="vault-auto-follow-off" className="max-w-(--tf-measure-body) text-body-sm">
+            {v.autoFollowOff}{' '}
+            <Link href="/shelf" className={buttonClass({ variant: 'link' })}>
+              {v.autoFollowWhere}
+            </Link>
+          </p>
+        )}
       </header>
 
       {/* For the vault's owner alone: add money, and its name. */}

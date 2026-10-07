@@ -121,6 +121,7 @@ describe('the routes of the app', () => {
       'app/(app)/vaults/[chain]/[address]/add/page.tsx',
       'app/(app)/vaults/[chain]/[address]/loading.tsx',
       'app/(app)/vaults/[chain]/[address]/page.tsx',
+      'app/(app)/vaults/[chain]/[address]/withdraw/page.tsx',
       'app/(embed)/embed/[chain]/[address]/page.tsx',
       'app/(embed)/embed/page.tsx',
       'app/(embed)/layout.tsx',

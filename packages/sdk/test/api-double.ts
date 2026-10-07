@@ -50,7 +50,7 @@ export type Placed = {
   summary: string;
   depositRaw?: string;
   needsConsent: OrderDetail['needsConsent'];
-  steps: Pick<Leg, 'kind' | 'description' | 'trades' | 'cashRaw'>[];
+  steps: Pick<Leg, 'kind' | 'description' | 'trades' | 'cashRaw' | 'withdrawals'>[];
   /** Builds a step of this order: one transaction, as the adapter builds it. */
   build(leg: Leg, nonce: number | undefined): Promise<BuiltTx>;
 };

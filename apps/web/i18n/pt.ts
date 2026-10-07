@@ -363,6 +363,7 @@ export const pt: Dictionary = {
     buy: (amount: string, when: string) => `Compra de ${amount} · ${when}`,
     order: (when: string) => `Ordem · ${when}`,
     follow: (when: string) => `Seguir um portfólio compartilhado · ${when}`,
+    withdraw: (when: string) => `Saque · ${when}`,
     publish: (when: string) => `Publicar um portfólio · ${when}`,
     noneVault:
       'Nada das suas compras chegou à rede ainda. As operações do agente, e as ordens sobre um portfólio compartilhado feitas em outro navegador, ainda não aparecem aqui.',
@@ -478,6 +479,13 @@ export const pt: Dictionary = {
       pendingAssets: (assets: string) => `Ela inclui ${assets}, que você ainda não aceitou.`,
       observed: (when: string) => `Lido da rede em ${when}.`,
       valueMethod: 'posições lidas do cofre, vezes seus preços; caixa a um dólar',
+      takenOut: 'Sacado, conforme pedido',
+      takenOrdered:
+        'Isto conta o que seus saques pediram. Um token que algum deles não conseguiu mover continua nas posições abaixo.',
+      takenOutMethod: (n: number) =>
+        `${n === 1 ? '1 token sacado' : `${n} tokens sacados`}, cada um ao preço de referência quando pedido`,
+      takenUnvalued: (n: number) =>
+        `${n === 1 ? 'Um token sacado não tinha' : `${n} tokens sacados não tinham`} preço na hora, e não ${n === 1 ? 'entra' : 'entram'} em soma.`,
       positionMethod: (method: string) => `${method}; vezes a quantidade que o cofre guarda`,
     },
     goalCard: {
@@ -493,6 +501,7 @@ export const pt: Dictionary = {
       followsShared: 'Ele segue um portfólio compartilhado. O que ele guarda está abaixo.',
       seeShared: 'Ver esse portfólio',
       putIn: (amount: string) => `você colocou ${amount}`,
+      tookOut: 'você sacou parte depois',
       seePlan: 'Ver seu plano',
       seeOrder: 'Ver a ordem',
       startGoal: 'Comece pelo seu objetivo',
@@ -693,7 +702,8 @@ export const pt: Dictionary = {
       `Numa queda forte, o motor conta uma perda de cerca de ${amount} neste plano.`,
     exitUnmeasured: 'Ainda não foi medido, então nenhum custo é mostrado.',
     exitCost: (cost: string) => `≤ ${cost}`,
-    inKind: 'Você também pode tirar os próprios tokens do seu cofre a qualquer momento.',
+    inKind:
+      'Você pode tirar os próprios tokens do seu cofre a qualquer momento. Vendê-los por dinheiro para você ainda não é oferecido.',
     risk: {
       notKept:
         'Como este plano se divide, e quanto custa vendê-lo, é calculado quando um plano é montado e não fica guardado com ele. Monte o plano de novo a partir do seu objetivo para ver.',
@@ -1090,6 +1100,9 @@ export const pt: Dictionary = {
       owner: 'Dono',
       follows: 'Segue',
       followsNothing: 'Nada: quem é dono define os pesos',
+      autoFollowOff:
+        'O seguir automático está desativado neste cofre. Para ativar, abra o portfólio compartilhado que ele segue e escolha o seguir automático lá.',
+      autoFollowWhere: 'Portfólios compartilhados',
       version: (n: number) => `versão ${n}`,
       autoFollow: 'Seguir automático',
       value: 'Valor',
@@ -1104,6 +1117,74 @@ export const pt: Dictionary = {
       },
       on: 'Ativado',
       off: 'Desativado',
+    },
+  },
+
+  withdraw: {
+    meta: 'Sacar',
+    title: 'Sacar do seu cofre',
+    lead: (chain: string) =>
+      `Os tokens saem do seu cofre como estão e vão para a sua própria carteira em ${chain}. Nada é vendido.`,
+    loading: 'Lendo seu cofre…',
+    failed: 'Não consegui ler seus cofres: nosso servidor não respondeu. Tente de novo.',
+    notYours: 'Este cofre não é seu, então não há nada para sacar aqui.',
+    empty: 'Este cofre está vazio: não há nada nele agora.',
+    back: 'Voltar ao seu portfólio',
+    action: 'Sacar',
+    steps: {
+      label: 'Passos para sacar',
+      names: { what: 'O quê', check: 'Revisar', confirm: 'Assinar' },
+      done: 'feito',
+      next: 'Continuar',
+    },
+    what: {
+      legend: 'O que você quer tirar?',
+      everything: 'Tudo o que o cofre tem',
+      some: 'Escolher tokens e valores',
+      take: (name: string) => `Sacar ${name}`,
+      holds: (amount: string) => `O cofre tem ${amount}.`,
+      amount: (symbol: string) => `Quantidade de ${symbol}`,
+      amountHint: 'Deixe vazio para tirar tudo.',
+      wholeOnly: 'Tudo ou nada: este app não conhece as unidades deste token.',
+      errors: {
+        amount: 'Digite uma quantidade deste token, ou deixe vazio para tirar tudo.',
+        over: (held: string) => `O cofre tem ${held}. Digite isso ou menos.`,
+        none: 'Escolha pelo menos um token para continuar.',
+      },
+      summaryAll: 'Tudo',
+      summarySome: (n: number) => (n === 1 ? '1 token' : `${n} tokens`),
+    },
+    check: {
+      leaves: 'O que sai do cofre',
+      token: 'Token',
+      amount: 'Quantidade',
+      all: (held: string) => `Tudo: ${held} agora`,
+      to: 'Vai para',
+      own: 'Sua própria carteira',
+      from: 'Do seu cofre',
+      onlyOwner:
+        'Um cofre só paga ao seu dono. Sua carteira só é chamada a assinar um saque exatamente destes tokens para este endereço.',
+      stays: 'Todo o resto fica no cofre.',
+      emptied: 'O cofre ficará vazio depois.',
+      autoFollow:
+        'O seguir automático para neste cofre. Ele está ativado, e o primeiro passo o desativa, para que nosso operador não negocie o cofre enquanto você saca nem depois. Para ativar de novo, abra o portfólio compartilhado que este cofre segue; a página do cofre leva até lá.',
+      noSale:
+        'Vender por dinheiro antes de sacar ainda não é oferecido; você pode sacar os próprios tokens.',
+      seen: 'Revisado',
+      confirm: 'É isto que quero sacar',
+    },
+    confirm: {
+      lead: 'Em seguida você revisa cada passo da ordem e assina na sua carteira. A taxa da rede é paga pela sua carteira.',
+      button: 'Revisar os passos para sacar',
+      busy: 'Criando sua ordem…',
+      blocked: {
+        what: 'Escolha primeiro o que sacar.',
+        check: 'Confirme primeiro o que sai.',
+        owner: 'Nenhuma carteira sua está conectada nesta rede.',
+        chain: (chain: string) => `${chain} ainda não está pronta para assinar aqui.`,
+        vault:
+          'Não consegui confirmar que este cofre é da sua carteira, então não ofereço o saque. Nada foi assinado.',
+      },
     },
   },
 
@@ -1159,6 +1240,8 @@ export const pt: Dictionary = {
         'Esta ordem gasta seu depósito com outros pesos que não os do portfólio que você revisou, então não vou oferecer a assinatura. Nada foi assinado. Crie uma nova ordem.',
       shape:
         'Esta ordem tem passos que o portfólio que você revisou não pede, então não vou oferecer a assinatura. Nada foi assinado. Crie uma nova ordem.',
+      withdraw:
+        'Esta ordem tira outros tokens ou quantidades do que os que você revisou, então não ofereço para assinar. Nada foi assinado. Faça um novo saque.',
     },
     shared: {
       publishTitle: 'O que você publica',
@@ -1186,6 +1269,24 @@ export const pt: Dictionary = {
         'Sua carteira só é chamada para assinar uma transação que publique exatamente este nome, esta descrição e estes pesos, com este identificador.',
       signPublish: 'Assinar e publicar',
       signFollow: 'Assinar e seguir',
+      withdrawTitle: 'O que você saca',
+      signWithdraw: 'Assinar e sacar',
+      withdraws: (amount: string) => `${amount} para a sua própria carteira`,
+      withdrawsAll: (held: string) => `Tudo, ${held} na revisão, para a sua própria carteira`,
+      withdrawDone: 'O que você sacou está na sua carteira agora.',
+      autoFollowStops: 'O seguir automático para neste cofre: o primeiro passo o desativa.',
+      skipped: (what: string) =>
+        `${what} ficou no cofre: não pode ser movido agora. O emissor pode tê-lo congelado, ou ele precisa de uma carteira que trate suas regras de transferência.`,
+      doneStayed: (chain: string, what: string) =>
+        `Feito em ${chain}, exceto ${what}: o cofre ainda guarda. Não foi movido, e nenhum passo avisou.`,
+      doneUnread: (chain: string) =>
+        `Feito em ${chain}. Não consegui ler seu cofre de novo; veja no portfólio se algo ficou.`,
+      stayed: (what: string) =>
+        `${what} ficou no cofre: o contrato do cofre não conseguiu mover agora. Você pode tentar sacar de novo depois.`,
+      doneExcept: (chain: string, n: number) =>
+        n === 1
+          ? `Feito em ${chain}, exceto um passo que foi pulado: o que ele moveria ficou no cofre.`
+          : `Feito em ${chain}, exceto ${n} passos que foram pulados: o que eles moveriam ficou no cofre.`,
       resume: 'Continuar',
     },
     signAndBuy: (amount: string) => `Assinar e comprar ${amount}`,

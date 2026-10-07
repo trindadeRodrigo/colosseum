@@ -187,3 +187,30 @@ export const FUNDED = {
   newVault: true,
   ok: true,
 };
+
+/**
+ * A withdrawal, as POST /v1/orders answers it: one `withdraw` step per list, each naming what it takes
+ * out (`amountRaw` null: all the vault holds of the token).
+ */
+export const withdrawOrder = (
+  steps: { asset: string; amountRaw: string | null; heldRaw: string }[][],
+  over: Record<string, unknown> = {},
+  /** The vault had auto-follow on: the first step switches it off. */
+  autoFollowOff = false,
+) => {
+  const first = autoFollowOff ? [{ ...leg, id: LEG_C, seq: 0, kind: 'set_auto_follow' }] : [];
+  return order({
+    type: 'withdraw',
+    legs: [
+      ...first,
+      ...steps.map((withdrawals, i) => ({
+        ...leg,
+        id: [LEG_A, LEG_B, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'][i],
+        seq: i + first.length,
+        kind: 'withdraw',
+        withdrawals,
+      })),
+    ],
+    ...over,
+  });
+};
