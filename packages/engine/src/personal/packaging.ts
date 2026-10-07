@@ -1,6 +1,7 @@
 import { FlattenError, flattenReport } from '@colosseum/basket';
 import type { BasketAsset, BasketLine, Component, Reason, Recipe } from '@colosseum/schemas';
 import { BPS, byName, largestFirst, shareOf, shareOfUp, split, sum, toUsd } from './money';
+import { linesInAll } from './params';
 import { type Book, once } from './placement';
 import { reason } from './templates';
 import { type PersonalProposal, SLEEVES, type Sleeve } from './types';
@@ -84,7 +85,7 @@ function componentsOf(
   try {
     const report = flattenReport(asRecipe(w, components), w.shelf, {
       minLineBps: w.P.minLineBps,
-      maxLines: w.P.maxLinesPerChain,
+      maxLines: linesInAll(w.sheet, w.P),
     });
     if (report.dropped.length > 0) return null;
     for (const t of report.targets) targets.set(t.asset, t.weightBps);

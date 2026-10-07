@@ -299,8 +299,8 @@ export const REASON_TEMPLATES = {
   ),
   NOT_WHOLE_PARTS: rule(
     ['themes'],
-    '{theme} cannot be held whole: a plan holds at most {max} parts, and it would make {would}.',
-    '{theme} não cabe inteiro: um plano tem no máximo {max} partes, e ele faria {would}.',
+    '{theme} cannot be held whole: {scope|lines} at most {max} parts, and it would make {would}.',
+    '{theme} não cabe inteiro: {scope|lines} no máximo {max} partes, e ele faria {would}.',
   ),
   NOT_WHOLE_CEILING: rule(
     ['amount'],
@@ -469,8 +469,8 @@ export const REASON_TEMPLATES = {
   ),
   MAX_LINES: rule(
     ['themes'],
-    '{asset} is left out: a plan holds at most {max} parts.',
-    '{asset} fica de fora: um plano tem no máximo {max} partes.',
+    '{asset} is left out: {scope|lines} at most {max} parts.',
+    '{asset} fica de fora: {scope|lines} no máximo {max} partes.',
   ),
   BELOW_MINIMUM: rule(
     ['amount'],
@@ -503,8 +503,8 @@ export const REASON_TEMPLATES = {
   ),
   OVERFLOW_MAX_LINES: rule(
     ['themes'],
-    '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: a plan holds at most {max} parts.',
-    '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: um plano tem no máximo {max} partes.',
+    '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: {scope|lines} at most {max} parts.',
+    '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: {scope|lines} no máximo {max} partes.',
   ),
   OVERFLOW_TOO_SMALL: rule(
     ['amount'],
@@ -729,7 +729,16 @@ export const TEXT_TEMPLATES = {
 export type TextId = keyof typeof TEXT_TEMPLATES;
 
 type Words = Record<
-  'goal' | 'risk' | 'sleeve' | 'chain' | 'regime' | 'candidate' | 'part' | 'raiser' | 'steps',
+  | 'goal'
+  | 'risk'
+  | 'sleeve'
+  | 'chain'
+  | 'regime'
+  | 'candidate'
+  | 'part'
+  | 'raiser'
+  | 'steps'
+  | 'lines',
   Record<string, string>
 > & {
   /** What a market filter reads (gate THEME-MATCHED), by its name. */
@@ -790,6 +799,11 @@ export const WORDS: Record<Language, Words> = {
       date: 'your date',
     },
     steps: { 1: 'one step up', 2: 'two steps up' },
+    // What the limit on lines counts (gate LINES-PER-SET): the plan, or each of its two sets.
+    lines: {
+      plan: 'a plan holds',
+      set: 'stocks and crypto, and the rest of the plan, each hold',
+    },
     and: 'and',
   },
   pt: {
@@ -841,6 +855,10 @@ export const WORDS: Record<Language, Words> = {
       date: 'a sua data',
     },
     steps: { 1: 'um nível acima', 2: 'dois níveis acima' },
+    lines: {
+      plan: 'um plano tem',
+      set: 'as ações e cripto, e o resto do plano, têm cada um',
+    },
     and: 'e',
   },
 };
@@ -950,6 +968,12 @@ const FORMATS: Record<string, (value: Value, lang: Language, key: string) => str
       known.map((code) => WORDS[lang].raiser[code] ?? code),
       lang,
     );
+  },
+  // What the limit on lines counts: `plan` or `set`, and no other.
+  lines: (value, lang, key) => {
+    const words = WORDS[lang].lines[String(value)];
+    if (!words) throw new Error(`template value ${key} must be plan or set`);
+    return words;
   },
   // How many risks above: a count the table of words has, and no other.
   steps: (value, lang, key) => {

@@ -90,6 +90,7 @@ const SAMPLE: Record<string, string | number> = {
   regimes: 'weekend,us_holiday',
   raisers: 'withdrawals,holdings',
   steps: 1,
+  lines: 'set',
   list: 'AAPL,NVDA',
   '': 'NVDA',
 };

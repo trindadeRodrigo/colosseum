@@ -237,6 +237,21 @@ export const PERSONAL_PARAMS_STATUS: Record<Exclude<keyof PersonalParameters, 'v
  * another word, and naming it would be picking the stock. Written here because the logic of this
  * folder holds no number of its own (`params.test.ts`).
  */
+/**
+ * Whether the limit on lines counts each set of this plan by itself (gate LINES-PER-SET, Rodrigo, Oct
+ * 7): where the person's plan is two sets, a stated mix or a split of the money, stocks and crypto
+ * have the limit to themselves and so has the rest of the plan. A plan from the table by goal and
+ * risk keeps the one limit.
+ */
+export const linesPerSet = (sheet: { mix?: unknown; sleeves?: unknown }): boolean =>
+  sheet.mix !== undefined || sheet.sleeves !== undefined;
+
+/** The most lines such a plan can hold in all: what its vault targets are held to. */
+export const linesInAll = (
+  sheet: { mix?: unknown; sleeves?: unknown },
+  table: { maxLinesPerChain: number },
+): number => table.maxLinesPerChain * (linesPerSet(sheet) ? 2 : 1);
+
 export const STOCK_KEYWORDS = { least: 3, most: 8, carriers: 2 } as const;
 
 /**

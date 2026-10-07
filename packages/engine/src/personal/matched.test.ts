@@ -274,7 +274,9 @@ describe('a matched theme sleeve holds the stocks its filter matches, as a curat
   });
 
   it('in the lines the plan has left, the easiest to sell first', () => {
-    const c = ctxWith({ params: { ...PERSONAL_PARAMS, maxLinesPerChain: 4 } });
+    // A split is two sets, each with the limit to itself (gate LINES-PER-SET): of the three lines
+    // of stocks, one is the goal's and two are left for the theme's three names.
+    const c = ctxWith({ params: { ...PERSONAL_PARAMS, maxLinesPerChain: 3 } });
     const plan = run(themed(TECH), c);
     // NVDAx is measured; AAPLx and MSFTx are on one tier, and AAPLx comes first by id.
     expect(namesHeld(plan, TECH)).toEqual(['AAPLx', 'NVDAx']);

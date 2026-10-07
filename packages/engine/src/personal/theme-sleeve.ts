@@ -300,7 +300,7 @@ export function placeThemeSleeve(
   let limits: number[] = [];
   let whys: Reason[] = [];
   for (;;) {
-    let free = P.maxLinesPerChain - book.lines.size - reserve;
+    let free = book.linesFree(ranked[0]?.asset) - reserve;
     chosen = [];
     noLine = [];
     for (const n of ranked) {
@@ -392,7 +392,11 @@ export function placeThemeSleeve(
     return less ? [less] : [];
   };
   for (const n of noLine) {
-    const why = reason('MAX_LINES', { asset: n.asset.symbol, max: P.maxLinesPerChain }, lang);
+    const why = reason(
+      'MAX_LINES',
+      { asset: n.asset.symbol, max: P.maxLinesPerChain, scope: w.linesScope },
+      lang,
+    );
     out.push({ ref: n.asset.symbol, reasons: [why, ...heldToo(n)] });
   }
   for (const n of ranked) {
@@ -457,7 +461,11 @@ export function placeThemeSleeve(
     const cause =
       bound ??
       (noLine[0]
-        ? reason('MAX_LINES', { asset: noLine[0].asset.symbol, max: P.maxLinesPerChain }, lang)
+        ? reason(
+            'MAX_LINES',
+            { asset: noLine[0].asset.symbol, max: P.maxLinesPerChain, scope: w.linesScope },
+            lang,
+          )
         : (ranked.map((n) => dropped.get(n.asset.id)).find((r) => r !== undefined) ??
           causes[0] ??
           null));

@@ -15,7 +15,7 @@ import { pickPrimaryYield } from '../risk/index';
 import { CREDIT_LEG_TYPES, legTypesOf } from './leg-types';
 import { type MatchedList, matchedListOf, type SleeveList } from './matched-theme';
 import { BPS, byName, ceilCents, floorCents, shareOf, toCents, toUsd } from './money';
-import { PERSONAL_PARAMS } from './params';
+import { linesPerSet, PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
 import { StockAttributesFile } from './stock-attributes';
 import { reason } from './templates';
@@ -119,6 +119,10 @@ export type World = {
   isCredit(asset: BasketAsset): boolean;
   /** Whether a dollar-yield token is a rate leg and nothing else: what a safe-yield sleeve holds. */
   isRateOnly(asset: BasketAsset): boolean;
+  /** Whether the limit on lines counts each set of the plan by itself (`linesPerSet` in ./params.ts). */
+  linesPerSet: boolean;
+  /** The same for a sentence: `set` or `plan` (the `lines` words of ./templates.ts). */
+  linesScope: 'set' | 'plan';
   /**
    * The most cents in credit and basis legs, by the person's credit tolerance, and its share. `byPlan`
    * when a candidate holds less than the person allows: the limit is the plan's, not theirs.
@@ -516,6 +520,8 @@ export function buildWorld(
       const types = legTypesOf(a.symbol)?.types ?? [];
       return types.length > 0 && types.every((t) => t === 'rate');
     },
+    linesPerSet: linesPerSet(sheet),
+    linesScope: linesPerSet(sheet) ? 'set' : 'plan',
     creditBudget: (() => {
       const tolerance = sheet.limits?.creditTolerance ?? P.defaultCreditTolerance;
       // A credit share the person stated in their mix is their budget (gate EXPLICIT-MIX).

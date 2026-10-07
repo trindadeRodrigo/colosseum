@@ -4,6 +4,7 @@ import type { PlanSleeve, Shelf } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
 import { candidates, compose } from './index';
 import { PERSONAL_PARAMS } from './params';
+import { sleeveOfClass } from './registry';
 import { parseStockAttributes } from './stock-attributes';
 import {
   aiList,
@@ -199,8 +200,9 @@ describe('a split goal 50% / theme 50%', () => {
     const theme = themeOf(plan);
     expect(theme?.amountUsd).toBe(5000);
     const held = [...namesHeld(plan).values()];
-    // The goal holds SPYx and one dollar-yield token at high risk: six lines are left for seven names.
-    expect(held.length).toBe(6);
+    // A split is two sets, each with the limit on lines to itself (gate LINES-PER-SET): the goal's
+    // SPYx is one line of stocks, and seven are left for the seven names.
+    expect(held.length).toBe(7);
     expect(Math.max(...held) - Math.min(...held)).toBeLessThanOrEqual(0.01);
     expect(every(held.reduce((n, x) => n + x, 0))).toBe(every(5000));
     // Every line of a name says the theme, the share and why the name is on the list.
@@ -329,8 +331,12 @@ describe('C17: at most the lines left, each within its cap, the same under shuff
       const c = { ...measured, params: table({ maxLinesPerChain: max }) };
       const plan = run(themed({ risk: 'high' }), c);
       const held = namesHeld(plan);
+      // The lines of stocks the goal holds: a split is two sets, and the theme's names share the
+      // limit with the goal's stocks only, not with its dollar yield and gold (gate LINES-PER-SET).
       const goalLines = plan.lines.filter(
-        (l) => !SYMBOLS.has(symbolOf(l.assetId)) && !l.assetId.endsWith(':usdc'),
+        (l) =>
+          !SYMBOLS.has(symbolOf(l.assetId)) &&
+          sleeveOfClass(shelf.assets.find((a) => a.id === l.assetId)?.cls ?? 'cash') === 'growth',
       ).length;
       const left = Math.max(0, max - goalLines);
       expect(held.size).toBeLessThanOrEqual(left);
@@ -560,14 +566,21 @@ describe('what the person already holds counts in the theme sleeve, as in the go
   });
 
   it('a name the theme counts a holding of and that gets no line says so where it is left out', () => {
-    // At high risk six lines are left for the seven names, and MSFTx is the one with none. $300 of
-    // MSFT held: the theme counts it, and MSFTx would be bought that much less. Its line would say
-    // so, and it has no line: the sentence is said with why it is out (as the goal's names do).
+    // With seven lines of stocks, six are left for the seven names at high risk, and MSFTx is the
+    // one with none. $300 of MSFT held: the theme counts it, and MSFTx would be bought that much
+    // less. Its line would say so, and it has no line: the sentence is said with why it is out (as
+    // the goal's names do).
     const s = themed({ risk: 'high', rules: { useHoldings: true, glide: true } });
-    const plan = run(s, ctxWith({ holdings: [{ underlying: 'MSFT', valueUsd: 300 }] }));
+    const plan = run(
+      s,
+      ctxWith({
+        holdings: [{ underlying: 'MSFT', valueUsd: 300 }],
+        params: { ...PERSONAL_PARAMS, maxLinesPerChain: 7 },
+      }),
+    );
     expect(namesHeld(plan).has('MSFTx')).toBe(false);
     expect(plan.removed.find((r) => r.ref === 'MSFTx')?.reasons.map((r) => r.text)).toEqual([
-      'MSFTx is left out: a plan holds at most 8 parts.',
+      'MSFTx is left out: stocks and crypto, and the rest of the plan, each hold at most 7 parts.',
       'Less MSFT in AI: of the $300 of it you hold, $300 counts here, so the theme buys it only up to the total of each of its other names.',
     ]);
     // The same where what is left of a name is under the least a line can be: with a line for every
@@ -578,7 +591,8 @@ describe('what the person already holds counts in the theme sleeve, as in the go
     });
     expect(removedWhy(small, 'NVDAx')).toEqual(['BELOW_MINIMUM', 'THEME_HELD']);
     // Not held, the name with no line says that alone.
-    expect(removedWhy(run(s), 'MSFTx')).toEqual(['MAX_LINES']);
+    const seven = ctxWith({ params: { ...PERSONAL_PARAMS, maxLinesPerChain: 7 } });
+    expect(removedWhy(run(s, seven), 'MSFTx')).toEqual(['MAX_LINES']);
   });
 
   it('with holdings switched off, a holding changes nothing', () => {
@@ -659,11 +673,8 @@ describe('the review of #72, second round', () => {
     const plan = run(themed({ risk: 'low' }));
     expect(plan.lines.some((l) => l.assetId === 'solana:spyx')).toBe(false);
     expect(removedWhy(plan, 'SPY')).toEqual(['ISSUER_CAP_THEME']);
-    // Eight lines: syrupUSDC, GLDx and six names, none kept idle.
-    expect(namesHeld(plan).size).toBe(6);
-    expect(plan.lines.filter((l) => !l.assetId.endsWith(':usdc')).length).toBe(
-      PERSONAL_PARAMS.maxLinesPerChain,
-    );
+    // The line kept for SPY goes to the seventh name: all seven are held, none kept idle.
+    expect(namesHeld(plan).size).toBe(7);
   });
 
   it('issuer room is kept only for names that can be held and sold, so a followed portfolio is not opened for room the theme never uses', () => {

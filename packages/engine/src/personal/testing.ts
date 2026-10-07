@@ -30,7 +30,7 @@ import yieldRows from './fixtures/yields.json';
 import extendedYieldRows from './fixtures/yields-extended.json';
 import { LEG_TYPES } from './leg-types';
 import { attributeKey, filterOfSlug, type MarketFilterBy } from './market-filter';
-import { PERSONAL_PARAMS } from './params';
+import { linesInAll, PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
 import {
   parseStockAttributes,
@@ -2287,7 +2287,7 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
       };
       const report = flattenReport(asRecipe, shelf, {
         minLineBps: P.minLineBps,
-        maxLines: P.maxLinesPerChain,
+        maxLines: linesInAll(plan.sheet, P),
       });
       say(
         report.dropped.length === 0,
@@ -2300,7 +2300,7 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
     if (targets.length > 0)
       say(Targets.safeParse(targets).success, `${r.chain}: not the shared Targets`);
     say(
-      targets.length <= Math.min(16, P.maxLinesPerChain),
+      targets.length <= Math.min(16, linesInAll(plan.sheet, P)),
       `${r.chain}: ${targets.length} targets`,
     );
     say(sum(targets.map((t) => t.weightBps)) <= 10_000, `${r.chain}: targets over 10,000`);

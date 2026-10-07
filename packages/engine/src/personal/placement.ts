@@ -1,6 +1,7 @@
 import type { BasketAsset, Reason } from '@colosseum/schemas';
 import { bandedFill, rank } from './fill';
 import { largestFirst, split, sum, toUsd } from './money';
+import { sleeveOfClass } from './registry';
 import { asListed, type RuleId, reason } from './templates';
 import type { World } from './world';
 
@@ -204,11 +205,32 @@ export class Book {
     return { cents: Math.max(0, underCeiling), why: w.ceilingWhy(asset) };
   }
 
+  /**
+   * The lines still free for a token of this kind. The limit on lines counts the whole plan, but
+   * where the person's plan is two sets, a stated mix or a split, each set has the limit to itself
+   * (gate LINES-PER-SET, Rodrigo, Oct 7): stocks and crypto are one, and the rest of the plan (dollar
+   * yield, gold, a leg in another currency) the other. A shared portfolio of seven stocks then leaves
+   * the part kept safe its own lines, where it left it one.
+   */
+  linesFree(asset: BasketAsset | undefined): number {
+    const { w } = this;
+    const growth = (a: BasketAsset) => sleeveOfClass(a.cls) === 'growth';
+    const used =
+      asset && w.linesPerSet
+        ? [...this.lines.values()].filter((l) => growth(l.asset) === growth(asset)).length
+        : this.lines.size;
+    return w.P.maxLinesPerChain - used;
+  }
+
   /** The reason a token gets no line of its own when the plan is full, or null when it may. */
   private noLineLeft(asset: BasketAsset): Reason | null {
     const { w } = this;
-    if (this.lines.has(asset.id) || this.lines.size < w.P.maxLinesPerChain) return null;
-    return reason('MAX_LINES', { asset: asset.symbol, max: w.P.maxLinesPerChain }, w.lang);
+    if (this.lines.has(asset.id) || this.linesFree(asset) > 0) return null;
+    return reason(
+      'MAX_LINES',
+      { asset: asset.symbol, max: w.P.maxLinesPerChain, scope: w.linesScope },
+      w.lang,
+    );
   }
 
   put(asset: BasketAsset, cents: number, reasons: Reason[], via?: string): void {
@@ -323,7 +345,7 @@ export class Book {
     const droppedSmall = new Set<string>();
     for (;;) {
       // Lines: a token already in the plan keeps its line; new ones take the lines left, in rank order.
-      let free = w.P.maxLinesPerChain - this.lines.size;
+      let free = this.linesFree(open[0]?.asset);
       const noLine: Reason[] = [];
       const live = open.filter((a) => {
         if (dropped.has(a.id)) return false;
@@ -333,7 +355,11 @@ export class Book {
           return true;
         }
         noLine.push(
-          reason('MAX_LINES', { asset: a.asset.symbol, max: w.P.maxLinesPerChain }, w.lang),
+          reason(
+            'MAX_LINES',
+            { asset: a.asset.symbol, max: w.P.maxLinesPerChain, scope: w.linesScope },
+            w.lang,
+          ),
         );
         return false;
       });
@@ -503,8 +529,12 @@ export class Book {
   wholeFits(theme: string, parts: { asset: BasketAsset; cents: number }[]): Reason | null {
     const { w } = this;
     const max = w.P.maxLinesPerChain;
-    const would = this.lines.size + parts.filter((p) => !this.lines.has(p.asset.id)).length;
-    if (would > max) return reason('NOT_WHOLE_PARTS', { theme, max, would }, w.lang);
+    const would =
+      max -
+      this.linesFree(parts[0]?.asset) +
+      parts.filter((p) => !this.lines.has(p.asset.id)).length;
+    if (would > max)
+      return reason('NOT_WHOLE_PARTS', { theme, max, would, scope: w.linesScope }, w.lang);
     const asked = new Map<string, number>();
     for (const p of parts) {
       const asset = p.asset.symbol;
@@ -647,7 +677,8 @@ export class Book {
     for (;;) {
       // 1. Lines.
       noLine = new Set();
-      let free = w.P.maxLinesPerChain - this.lines.size;
+      const [firstAble] = able;
+      let free = this.linesFree(firstAble ? tokenOf(firstAble) : undefined);
       const live = able.filter((u) => {
         if (tooSmall.has(u)) return false;
         if (hasLine(u)) return true;
