@@ -99,7 +99,10 @@ export type LiqHistBody = Series<{
   assetUsd: number | null;
   /** Why a recording has no dollar value (`no_quote_price`: its quote token has no measured price). */
   usdNullReason?: string | null;
-}>;
+}> & {
+  /** What the API says its recordings are: `live`, or `mock` or `sandbox`, never shown as live. */
+  provenance?: string;
+};
 
 export type LiquidityBody = {
   pool: string;

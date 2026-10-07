@@ -279,7 +279,7 @@ describe('the recorded pools on the commodities page', () => {
     await settle(host, (h) => h.querySelector('[data-ui="time-chart"]') != null && !busy(h));
     const head = find(chartCard(host), '[data-ui="chart-head"]');
     expect(head.textContent).toContain(
-      '1 of 63 selected pools are recorded and in the sum, holding 41.44% of the selection’s TVL; the value of the tokens their liquidity holds, uncollected fees not counted. 1 more is recorded and has no USD price for the quote token, so it is not in the sum. A pool not recorded in an hour keeps its last value for up to 6 h. No recording is older than 2026-10-01.',
+      '1 of 63 selected pools is recorded and in the sum, holding 41.44% of the selection’s TVL; the value of the tokens its liquidity holds, uncollected fees not counted. 1 more is recorded and has no USD price for the quote token, so it is not in the sum. A pool not recorded in an hour keeps its last value for up to 6 h. No recording is older than 2026-10-01.',
     );
     expect(head.textContent).not.toContain('58.97%');
     expect(find(head, '[data-ui="figure"] .tf-figure').textContent).toBe('≥ $915.8K');
@@ -297,7 +297,7 @@ describe('the recorded pools on the commodities page', () => {
     await click(metric(host, 'TVL no tempo', 'Métrica'));
     await settle(host, (h) => h.querySelector('[data-ui="time-chart"]') != null && !busy(h));
     expect(find(chartCard(host), '[data-ui="chart-head"]').textContent).toContain(
-      '1 de 63 pools selecionados são registrados e entram na soma, com 41,44% do TVL da seleção; o valor dos tokens que a liquidez deles guarda, sem contar taxas não coletadas. Mais 1 é registrado e não tem preço em dólar para a moeda de cotação, por isso não entra na soma. Um pool sem registro',
+      '1 de 63 pools selecionados é registrado e entra na soma, com 41,44% do TVL da seleção; o valor dos tokens que a liquidez dele guarda, sem contar taxas não coletadas. Mais 1 é registrado e não tem preço em dólar para a moeda de cotação, por isso não entra na soma. Um pool sem registro',
     );
   });
 
@@ -337,9 +337,10 @@ describe('the recorded pools on the commodities page', () => {
     expect(
       [...card.querySelectorAll('[data-ui="bearing-reason"]')].map((r) => r.textContent),
     ).toEqual(['the API returned no answer', 'the API returned no answer']);
-    // the pool that did not load is in neither count: nothing is known of it
+    // the pool that did not load is in neither of those counts: nothing is known of it, and the
+    // note says so apart, with why
     expect(card.textContent).toContain(
-      '0 of 63 selected pools are recorded and in the sum; the value of the tokens their liquidity holds, uncollected fees not counted. 1 is recorded and has no USD price for the quote token, so it is not in the sum. A pool not recorded',
+      '0 of 63 selected pools are recorded and in the sum; the value of the tokens their liquidity holds, uncollected fees not counted. 1 is recorded and has no USD price for the quote token, so it is not in the sum. 1 more did not load (the API returned no answer), so it is not in the sum. A pool not recorded',
     );
     expect(card.querySelectorAll('[data-ui="figure"]')).toHaveLength(0);
   });
@@ -388,6 +389,203 @@ describe('the recorded pools on the stocks page: thirty of them, one with no way
       '29 of 929 selected pools are recorded and in the sum, holding 75.10% of the selection’s TVL; the value of the tokens their liquidity holds, uncollected fees not counted. 1 more is recorded and has no USD price for the quote token, so it is not in the sum. A pool not recorded',
     );
     // the whole stocks page is mounted, 46 assets and 929 pools: slower than the tests of one asset
+  }, 20_000);
+
+  // Tesla's two recorded pools, and Apple's two, which are far down the queue of the 29.
+  const TSLA = '8aDaBQkTrS6HVMjyc6EZebgdiaXhLYGriDWKWWp1NpFF';
+  const TSLA_SMALL = 'HHQUnUbmWLrYzkscDY1C3deEFbGtiGBGoHjpANogmvum';
+  const APPLE = [
+    'CKwJZwm7oj3nu4653N1EpDrqXbXAYXoPFiPeEnLouF8y',
+    'ApniVWuZbZoruTAJdyJcLBA4AVw4DKGdV5fHxo6qrAZT',
+  ];
+  const HAS_NO_USD =
+    ' uncollected fees not counted. 1 more is recorded and has no USD price for the quote token, so it is not in the sum.';
+
+  /** The stocks page on a reader, its chart on TVL over time; the reads are left as they stand. */
+  async function onTvl(reader = snapshotReader()) {
+    const host = await mount(onSnapshot(createElement(DexPage, { page: 'stocks' }), reader));
+    await settle(host, ready);
+    await click(metric(host, 'TVL over time'));
+    return host;
+  }
+  const drawn = (h: HTMLElement) => h.querySelector('[data-ui="time-chart"]') != null && !busy(h);
+  const head = (h: HTMLElement) => find(chartCard(h), '[data-ui="chart-head"]');
+  const figure = (h: HTMLElement) => find(head(h), '[data-ui="figure"] .tf-figure').textContent;
+  const readout = (h: HTMLElement) => find(chartCard(h), '[data-ui="chart-readout"]').textContent;
+  /** The line that says how many histories are still being read; none once all have come. */
+  const reading = (h: HTMLElement) =>
+    chartCard(h).querySelector('[data-ui="bearing-reading"]')?.textContent;
+
+  /** His recording, each history held back until the test lets it come. */
+  function held() {
+    const recording = snapshotReader();
+    const seen = { asked: [] as string[], open: 0, most: 0 };
+    const waiting: Array<() => void> = [];
+    return {
+      seen,
+      /** Lets the next `n` histories asked for come, one by one, the page taking each in. */
+      come: async (n: number) => {
+        for (let i = 0; i < n; i++)
+          await act(async () => {
+            waiting.shift()?.();
+            await new Promise((r) => setTimeout(r, 0));
+          });
+      },
+      reader: {
+        ...recording,
+        get: async <T>(path: string) => {
+          if (!isHistory(path)) return recording.get<T>(path);
+          seen.asked.push(path);
+          seen.most = Math.max(seen.most, ++seen.open);
+          await new Promise<void>((come) => waiting.push(come));
+          seen.open--;
+          return recording.get<T>(path);
+        },
+      },
+    };
+  }
+
+  it('the note counts the pools of the figure’s own hour: one whose newest recording is 7 h behind is not one', async () => {
+    // Tesla's smaller pool, each of its recordings set 7 hours back: the newest is of 08:42, and the
+    // figure is taken from the hour of 15:00
+    const recording = snapshotReader();
+    const reader = {
+      ...recording,
+      get: async <T>(path: string) => {
+        const r = await recording.get<T>(path);
+        if (path !== R.liqHist(TSLA_SMALL) || !r.ok) return r;
+        const h = r.body as LiqHistBody;
+        const back = (t: string) => new Date(Date.parse(t) - 7 * 3600e3).toISOString();
+        const body: LiqHistBody = { ...h, points: h.points.map((p) => ({ ...p, t: back(p.t) })) };
+        return { ...r, body: body as T };
+      },
+    };
+    const host = await onTvl(reader);
+    await settle(host, drawn);
+    // 28 pools in the figure, and 28 in the note: 75.10% less that pool's $431K of $39.08M
+    expect(readout(host)).toContain('(28 of 30 pools)');
+    expect(head(host).textContent).toContain(
+      // 28 in the sum, 1 with no USD price, 1 too old for this hour: the 30 recorded pools, each said once
+      `28 of 929 selected pools are recorded and in the sum, holding 74.00% of the selection’s TVL; the value of the tokens their liquidity holds,${HAS_NO_USD} 1 more has no recording within 6 h of the newest hour, so it is not in the sum. A pool not recorded`,
+    );
+    expect(figure(host)).toMatch(/^≥ \$/);
+  }, 20_000);
+
+  it('asks once more for a history that did not come, and says the one that still did not, with why', async () => {
+    // Tesla's smaller pool never comes; its larger one fails the first time and comes the second
+    const recording = snapshotReader();
+    const asked: string[] = [];
+    const reader = {
+      ...recording,
+      get: async <T>(path: string) => {
+        if (!isHistory(path)) return recording.get<T>(path);
+        asked.push(path);
+        const first = asked.filter((x) => x === path).length === 1;
+        return path === R.liqHist(TSLA_SMALL) || (path === R.liqHist(TSLA) && first)
+          ? { ok: false as const, status: 503, body: { error: 'busy' }, reason: 'api_error' }
+          : recording.get<T>(path);
+      },
+    };
+    const host = await onTvl(reader);
+    await settle(host, drawn);
+    // each of the two was asked for twice, and no other more than once
+    expect(asked).toHaveLength(31);
+    expect(new Set(asked).size).toBe(29);
+    expect(asked.filter((x) => x === R.liqHist(TSLA))).toHaveLength(2);
+    expect(asked.filter((x) => x === R.liqHist(TSLA_SMALL))).toHaveLength(2);
+    // the one that came the second time is in the sum; the other is said apart, and is not “no price”
+    expect(readout(host)).toContain('(28 of 30 pools)');
+    expect(head(host).textContent).toContain(
+      `28 of 929 selected pools are recorded and in the sum, holding 74.00% of the selection’s TVL; the value of the tokens their liquidity holds,${HAS_NO_USD} 1 more did not load (the API returned no answer), so it is not in the sum. A pool not recorded`,
+    );
+    expect(figure(host)).toMatch(/^≥ \$/);
+  }, 20_000);
+
+  it('draws with the histories that have come, keeps the selector, and ends as a read all at once does', async () => {
+    const { reader, seen, come } = held();
+    const host = await onTvl(reader);
+    const pressed = () =>
+      metric(chartCard(host), 'TVL over time')?.getAttribute('aria-pressed') ?? 'no selector';
+    // none has come: the frame of the chart and what it waits for, under the selector
+    expect(seen.asked).toHaveLength(HISTORIES_AT_ONCE);
+    expect(chartCard(host).querySelector('[data-ui="time-chart"]')).toBeNull();
+    expect(chartCard(host).querySelector('[data-ui="waiting"]')).not.toBeNull();
+    expect(pressed()).toBe('true');
+    // the first four have come: the chart is drawn with them, a lower bound that says how many
+    // pools it holds, and the card says how many are still being read
+    await come(HISTORIES_AT_ONCE);
+    expect(reading(host)).toBe('Reading 25 recorded pools…');
+    expect(figure(host)).toMatch(/^≥ \$/);
+    expect(readout(host)).toContain('(4 of 30 pools)');
+    // the four largest recorded pools: $11.60M of the selection's $39.08M
+    expect(head(host).textContent).toContain(
+      '4 of 929 selected pools are recorded and in the sum, holding 29.68% of the selection’s TVL;',
+    );
+    expect(pressed()).toBe('true');
+    // the chart says it is busy, and its readout does not announce each figure that changes under it
+    const chart = find(chartCard(host), '[data-ui="time-chart"]');
+    expect(chart.getAttribute('aria-busy')).toBe('true');
+    expect(find(chart, '[data-ui="chart-readout"]').getAttribute('aria-live')).toBe('off');
+    // three more, one by one: the count of pools read grows
+    await come(3);
+    expect(reading(host)).toBe('Reading 22 recorded pools…');
+    expect(readout(host)).toContain('(7 of 30 pools)');
+    expect(head(host).textContent).toContain(
+      '7 of 929 selected pools are recorded and in the sum,',
+    );
+    // the rest: nothing is still being read, and never more than the bound was
+    await come(22);
+    await settle(host, drawn);
+    expect(reading(host)).toBeUndefined();
+    // the same chart all along, not one drawn afresh for each history
+    expect(find(chartCard(host), '[data-ui="time-chart"]')).toBe(chart);
+    expect(chart.hasAttribute('aria-busy')).toBe(false);
+    expect(seen.asked).toHaveLength(29);
+    expect(seen.most).toBe(HISTORIES_AT_ONCE);
+    // and the card is the one a read all at once ends in, to the letter
+    const whole = await onTvl();
+    await settle(whole, drawn);
+    expect(chartCard(whole).textContent).toContain(
+      '29 of 929 selected pools are recorded and in the sum, holding 75.10% of the selection’s TVL;',
+    );
+    expect(chartCard(host).innerHTML).toBe(chartCard(whole).innerHTML);
+  }, 20_000);
+
+  it('stops reading a selection that was left, and the next one waits its turn behind the reads still out', async () => {
+    const { reader, seen, come } = held();
+    const host = await onTvl(reader);
+    await come(2);
+    // every stock is selected: six of its 29 histories have been asked for, and four are out
+    expect(seen.asked).toHaveLength(6);
+    expect(seen.open).toBe(HISTORIES_AT_ONCE);
+    const before = [...seen.asked];
+    const apple = APPLE.map((pool) => R.liqHist(pool));
+    expect(before.filter((path) => apple.includes(path))).toEqual([]);
+    // the selection changes to Apple alone
+    await click(
+      [...host.querySelectorAll('[data-ui="bearing-multi"] > button')][0] as HTMLButtonElement,
+    );
+    await click(
+      [...host.querySelectorAll('button')].find((b) => b.textContent === 'None') as HTMLElement,
+    );
+    await click(find(host, 'input[type="checkbox"][value="AAPLx"]'));
+    // the four reads out are let finish, and Apple's wait behind them: nothing new is asked for
+    expect(seen.asked).toEqual(before);
+    expect(seen.open).toBe(HISTORIES_AT_ONCE);
+    // they come, and Apple's two after them
+    await come(HISTORIES_AT_ONCE + apple.length);
+    await settle(host, drawn);
+    // of the selection that was left, not one more history was asked for after the change
+    const after = seen.asked.slice(before.length);
+    expect(after.filter((path) => !apple.includes(path))).toEqual([]);
+    expect(after).toEqual(apple);
+    // and the bound held throughout, the reads of both selections counted together
+    expect(seen.most).toBe(HISTORIES_AT_ONCE);
+    expect(seen.open).toBe(0);
+    // Apple's chart: its two recorded pools, of its 35
+    expect(head(host).textContent).toContain(
+      '2 of 35 selected pools are recorded and in the sum, holding 75.98% of the selection’s TVL;',
+    );
   }, 20_000);
 });
 

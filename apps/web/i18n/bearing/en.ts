@@ -177,11 +177,29 @@ export const bearingEn = {
       none: 'the pool value over time is recorded only for some of the concentrated-liquidity pools, and none of the selected pools is one of them. Today’s TVL of the selection is in the counters; exit capacity over time is measured for every asset.',
       reading: (n: number) => `Reading ${n} recorded pool${n === 1 ? '' : 's'}…`,
       recorded: 'TVL over time, recorded pools',
-      // n and share count the pools in the sum; noUsd, the recorded ones left out for want of a price
-      note: (n: number, of: number, share: string | null, noUsd: number) =>
-        `${n} of ${of} selected pools are recorded and in the sum${share ? `, holding ${share} of the selection’s TVL` : ''}; the value of the tokens their liquidity holds, uncollected fees not counted.${
+      // n and share count the pools in the sum; noUsd, the recorded ones left out for want of a price;
+      // failed, the ones whose history did not load, with why in the reader's words; behind, the ones
+      // whose newest recording is too old to count in the hour the figure is taken from
+      note: (
+        n: number,
+        of: number,
+        share: string | null,
+        noUsd: number,
+        failed = 0,
+        why = '',
+        behind = 0,
+      ) =>
+        `${n} of ${of} selected pools ${n === 1 ? 'is' : 'are'} recorded and in the sum${share ? `, holding ${share} of the selection’s TVL` : ''}; the value of the tokens ${n === 1 ? 'its' : 'their'} liquidity holds, uncollected fees not counted.${
           noUsd
             ? ` ${noUsd}${n ? ' more' : ''} ${noUsd === 1 ? 'is recorded and has' : 'are recorded and have'} no USD price for the quote token, so ${noUsd === 1 ? 'it is' : 'they are'} not in the sum.`
+            : ''
+        }${
+          failed
+            ? ` ${failed}${n || noUsd ? ' more' : ''} did not load (${why}), so ${failed === 1 ? 'it is' : 'they are'} not in the sum.`
+            : ''
+        }${
+          behind
+            ? ` ${behind}${n || noUsd || failed ? ' more' : ''} ${behind === 1 ? 'has' : 'have'} no recording within 6 h of the newest hour, so ${behind === 1 ? 'it is' : 'they are'} not in the sum.`
             : ''
         } A pool not recorded in an hour keeps its last value for up to 6 h. No recording is older than 2026-10-01.`,
       value: 'pool value',

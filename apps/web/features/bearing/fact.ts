@@ -57,8 +57,8 @@ export function maxT<T extends string | null | undefined>(a: T, b: T): T {
   return a > b ? a : b;
 }
 
-/** The provenance of a figure made of parts: live only when every part is. */
-export function provenanceOf(parts: readonly Fact[]): string {
+/** The provenance of a figure made of parts, facts or the API's answers: live only when every part is. */
+export function provenanceOf(parts: ReadonlyArray<{ provenance?: string }>): string {
   return parts.find((f) => (f.provenance ?? 'live') !== 'live')?.provenance ?? 'live';
 }
 

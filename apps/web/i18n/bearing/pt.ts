@@ -177,10 +177,26 @@ export const bearingPt: BearingDictionary = {
       none: 'o valor do pool no tempo é registrado só para alguns dos pools de liquidez concentrada, e nenhum dos pools selecionados é um deles. O TVL de hoje da seleção está nos contadores; a capacidade de saída no tempo é medida para todo ativo.',
       reading: (n: number) => `Lendo ${n} ${n === 1 ? 'pool registrado' : 'pools registrados'}…`,
       recorded: 'TVL no tempo, pools registrados',
-      note: (n: number, of: number, share: string | null, noUsd: number) =>
-        `${n} de ${of} pools selecionados são registrados e entram na soma${share ? `, com ${share} do TVL da seleção` : ''}; o valor dos tokens que a liquidez deles guarda, sem contar taxas não coletadas.${
+      note: (
+        n: number,
+        of: number,
+        share: string | null,
+        noUsd: number,
+        failed = 0,
+        why = '',
+        behind = 0,
+      ) =>
+        `${n} de ${of} pools selecionados ${n === 1 ? 'é registrado e entra' : 'são registrados e entram'} na soma${share ? `, com ${share} do TVL da seleção` : ''}; o valor dos tokens que a liquidez ${n === 1 ? 'dele' : 'deles'} guarda, sem contar taxas não coletadas.${
           noUsd
             ? ` ${n ? 'Mais ' : ''}${noUsd} ${noUsd === 1 ? 'é registrado e não tem' : 'são registrados e não têm'} preço em dólar para a moeda de cotação, por isso não ${noUsd === 1 ? 'entra' : 'entram'} na soma.`
+            : ''
+        }${
+          failed
+            ? ` ${n || noUsd ? 'Mais ' : ''}${failed} não ${failed === 1 ? 'carregou' : 'carregaram'} (${why}), por isso não ${failed === 1 ? 'entra' : 'entram'} na soma.`
+            : ''
+        }${
+          behind
+            ? ` ${n || noUsd || failed ? 'Mais ' : ''}${behind} não ${behind === 1 ? 'tem' : 'têm'} registro nas 6 h antes da hora mais recente, por isso não ${behind === 1 ? 'entra' : 'entram'} na soma.`
             : ''
         } Um pool sem registro numa hora mantém seu último valor por até 6 h. Nenhum registro é anterior a 2026-10-01.`,
       value: 'valor do pool',

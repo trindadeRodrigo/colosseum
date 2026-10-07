@@ -21,6 +21,12 @@ export type Res<T = unknown> =
 const notServed = (status: number, body: unknown) =>
   status === 404 && /^Route /.test(String((body as { message?: string } | null)?.message ?? ''));
 
+/**
+ * A failure the reader does not keep: no answer, or the server's own error. Reading the same route
+ * again asks the API again, so a caller may ask once more before it says the read failed.
+ */
+export const notKept = (r: Res) => !r.ok && (r.status === 0 || r.status >= 500);
+
 /** How long one probe of the API waits, and how many it makes before saying the API did not answer. */
 const PROBE_MS = 3000;
 const PROBE_TRIES = 3;
@@ -52,7 +58,7 @@ export function makeReader(base: string = RISK_API, fetcher: typeof fetch = fetc
         .then((r) => {
           // An answer is kept; a failure (no answer, or the server's own error) is not, so the next
           // read asks again.
-          if (!r.ok && (r.status === 0 || r.status >= 500)) cache.delete(path);
+          if (notKept(r)) cache.delete(path);
           return r;
         });
       cache.set(path, p);
@@ -75,17 +81,47 @@ export function makeReader(base: string = RISK_API, fetcher: typeof fetch = fetc
   return { get, probe };
 }
 
-/** Run `fn` over `items`, `n` at a time. */
-export async function inPool<I, O>(items: readonly I[], n: number, fn: (item: I) => Promise<O>) {
+/**
+ * Run `fn` over `items`, `n` at a time. Once `stop` says so no further item is started: the ones
+ * already started are let finish, and the rest of the queue is dropped.
+ */
+export async function inPool<I, O>(
+  items: readonly I[],
+  n: number,
+  fn: (item: I) => Promise<O>,
+  stop?: () => boolean,
+) {
   const queue = items.slice();
   const out: O[] = [];
   await Promise.all(
     Array.from({ length: n }, async () => {
-      for (let item = queue.shift(); item !== undefined; item = queue.shift())
+      for (let item = queue.shift(); item !== undefined && !stop?.(); item = queue.shift())
         out.push(await fn(item));
     }),
   );
   return out;
+}
+
+/**
+ * A gate `n` wide: of the tasks handed to it, whoever hands them, `n` run at a time and the rest wait
+ * their turn, in order. `inPool` bounds one queue; a gate bounds every queue that shares it, so a
+ * queue that replaces another does not read beside the reads the first still has out.
+ */
+export function gate(n: number) {
+  let free = n;
+  const waiting: Array<() => void> = [];
+  return async <T>(task: () => Promise<T>): Promise<T> => {
+    if (free > 0) free--;
+    else await new Promise<void>((turn) => waiting.push(turn));
+    try {
+      return await task();
+    } finally {
+      // the place goes to the next in line, or back to the gate
+      const next = waiting.shift();
+      if (next) next();
+      else free++;
+    }
+  };
 }
 
 const enc = encodeURIComponent;

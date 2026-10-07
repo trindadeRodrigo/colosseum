@@ -10,6 +10,7 @@ import {
   type DexAsset,
   dexCounters,
   dexIds,
+  HOUR,
   liquidityTotal,
   poolsOf,
   sourcesOf,
@@ -264,6 +265,16 @@ describe('the recorded pools: no price in dollars, and recordings of more than o
   /** The sum where `unpriced` of the `n` recorded pools were left unread, their quote having no price. */
   const leaving = (unpriced: number, hs: Array<Res<LiqHistBody>>, n: number) =>
     tvlSeries(hs, n, undefined, undefined, unpriced);
+  /** A history as it would be had each of its recordings been made `hours` earlier. */
+  const earlier = (h: Res<LiqHistBody>, hours: number) => {
+    const back = (t: string) => new Date(Date.parse(t) - hours * HOUR).toISOString();
+    const body = ok(h);
+    return res<LiqHistBody>({
+      ...body,
+      to: body.to && back(body.to),
+      points: body.points.map((p) => ({ ...p, t: back(p.t) })),
+    });
+  };
 
   it('the dollars a pool holds are its answer’s two sides; an answer with none is its reason, never $0', () => {
     const d = liq(USDC_POOL);
@@ -374,6 +385,86 @@ describe('the recorded pools: no price in dollars, and recordings of more than o
     expect(alone.fact.value).toBe(tvlSeries([hist(USDC_POOL)], 1).fact.value);
   });
 
+  it('counts in the figure the pools of its own hour: one whose newest recording is 7 h behind is drawn, not counted', () => {
+    // both pools' newest recordings are of the same hour in his recording; the second is set back
+    const s = tvlSeries([hist(USDC_POOL), earlier(hist(OTHER_POOL), 7)], 2);
+    expect(s.inSum).toEqual([true, false]);
+    // the figure is the first pool's alone, and says it is a pool short
+    expect(s.fact.value).toBe(tvlSeries([hist(USDC_POOL)], 1).fact.value);
+    expect(s.fact.quality).toBe('lower_bound');
+    expect(s.fact.method).toContain('summed over 1 of 2 recorded pools in the selection');
+    expect(s.value.at(-1)?.show).toMatch(/\(1 of 2 pools\)$/);
+    // the note counts the histories in the sum: its count is the figure's
+    const k = s.inSum.filter(Boolean).length;
+    expect(bearingDictionary('en').dex.tvl.note(k, 2, null, 0)).toMatch(
+      /^1 of 2 selected pools is recorded and in the sum; /,
+    );
+    // the pool behind is counted as that, so the note's counts are every recorded pool: 1 in the sum, 1 behind
+    expect([s.behind, s.noUsd, s.failed]).toEqual([1, 0, 0]);
+    expect(
+      bearingDictionary('en').dex.tvl.note(k, 2, null, s.noUsd, s.failed, '', s.behind),
+    ).toContain('1 more has no recording within 6 h of the newest hour, so it is not in the sum.');
+    // it is still drawn where it has recordings: hours that hold both are whole
+    expect(s.value.some((p) => p.v != null && !p.show?.includes(' of '))).toBe(true);
+    // six hours behind is within what a pool's last value is kept for: counted
+    const six = tvlSeries([hist(USDC_POOL), earlier(hist(OTHER_POOL), 6)], 2);
+    expect(six.inSum).toEqual([true, true]);
+    expect(six.behind).toBe(0);
+    expect(six.fact.quality).toBe('measured');
+    // nothing with a value, nothing in the sum, and nothing behind: one has no price, one did not load
+    const none = tvlSeries([noUsd(hist(OTHER_POOL)), failed], 2);
+    expect(none.inSum).toEqual([false, false]);
+    expect([none.behind, none.noUsd, none.failed]).toEqual([0, 1, 1]);
+  });
+
+  it('counts the histories that did not load, and gives the first one’s reason', () => {
+    expect(tvlSeries([hist(USDC_POOL), hist(OTHER_POOL)], 2)).toMatchObject({
+      failed: 0,
+      failedWhy: null,
+    });
+    /** A history the API does not serve. */
+    const gone: Res<LiqHistBody> = {
+      ok: false,
+      status: 404,
+      body: { message: 'Route GET:/risk/pools/x/liquidity/history not found' },
+      reason: 'not_served',
+    };
+    // the series stay in the histories' places: the one that loaded is the third, and in the sum
+    const s = tvlSeries([failed, gone, hist(USDC_POOL)], 3);
+    expect(s).toMatchObject({
+      inSum: [false, false, true],
+      noUsd: 0,
+      failed: 2,
+      failedWhy: 'api_error',
+    });
+    expect(s.fact.quality).toBe('lower_bound');
+    expect(s.fact.value).toBe(tvlSeries([hist(USDC_POOL)], 1).fact.value);
+    expect(tvlSeries([gone, failed], 2).failedWhy).toBe('not_served');
+    // a pool with no price is not one that did not load, nor the other way round
+    expect(leaving(1, [hist(USDC_POOL), noUsd(hist(OTHER_POOL)), failed], 4)).toMatchObject({
+      noUsd: 2,
+      failed: 1,
+      failedWhy: 'api_error',
+    });
+  });
+
+  it('the TVL sum is live only when every history summed is', () => {
+    const a = hist(USDC_POOL);
+    const b = ok(hist(OTHER_POOL));
+    // the API says what its recordings are, and his are live
+    expect([ok(a).provenance, b.provenance]).toEqual(['live', 'live']);
+    expect(tvlSeries([a, res(b)], 2).fact.provenance).toBe('live');
+    // one history from a test network: the sum is not live, whichever comes first
+    const sandbox = res<LiqHistBody>({ ...b, provenance: 'sandbox' });
+    expect(tvlSeries([a, sandbox], 2).fact.provenance).toBe('sandbox');
+    expect(tvlSeries([sandbox, a], 2).fact.provenance).toBe('sandbox');
+    expect(pinSource(tvlSeries([a, sandbox], 2).fact, { now: 0, stale: false }).provenance).toBe(
+      'sandbox',
+    );
+    // a history with no dollar value is not summed, so what it is does not mark the sum
+    expect(tvlSeries([a, noUsd(sandbox)], 2).fact.provenance).toBe('live');
+  });
+
   it('the part held in the asset is no value, not $0, where a recording does not give it', () => {
     const h = ok(hist(USDC_POOL));
     const lastPoint = h.points[h.points.length - 1];
@@ -477,10 +568,24 @@ describe('what the page says of recordings, whichever job wrote them', () => {
     );
     // one more is recorded with no price: gold's two recorded pools
     expect(en.note(1, 63, '41.44%', 1)).toBe(
-      '1 of 63 selected pools are recorded and in the sum, holding 41.44% of the selection’s TVL; the value of the tokens their liquidity holds, uncollected fees not counted. 1 more is recorded and has no USD price for the quote token, so it is not in the sum. A pool not recorded in an hour keeps its last value for up to 6 h. No recording is older than 2026-10-01.',
+      '1 of 63 selected pools is recorded and in the sum, holding 41.44% of the selection’s TVL; the value of the tokens its liquidity holds, uncollected fees not counted. 1 more is recorded and has no USD price for the quote token, so it is not in the sum. A pool not recorded in an hour keeps its last value for up to 6 h. No recording is older than 2026-10-01.',
     );
     expect(pt.note(1, 63, '41,44%', 1)).toBe(
-      '1 de 63 pools selecionados são registrados e entram na soma, com 41,44% do TVL da seleção; o valor dos tokens que a liquidez deles guarda, sem contar taxas não coletadas. Mais 1 é registrado e não tem preço em dólar para a moeda de cotação, por isso não entra na soma. Um pool sem registro numa hora mantém seu último valor por até 6 h. Nenhum registro é anterior a 2026-10-01.',
+      '1 de 63 pools selecionados é registrado e entra na soma, com 41,44% do TVL da seleção; o valor dos tokens que a liquidez dele guarda, sem contar taxas não coletadas. Mais 1 é registrado e não tem preço em dólar para a moeda de cotação, por isso não entra na soma. Um pool sem registro numa hora mantém seu último valor por até 6 h. Nenhum registro é anterior a 2026-10-01.',
+    );
+    // recorded, priced and read, and too old for the hour the figure is taken from: said in a clause of its own, so
+    // the four counts are every recorded pool of the selection
+    expect(en.note(26, 929, '58.92%', 1, 0, '', 3)).toContain(
+      ' so it is not in the sum. 3 more have no recording within 6 h of the newest hour, so they are not in the sum. A pool not recorded in an hour keeps',
+    );
+    expect(pt.note(26, 929, '58,92%', 1, 0, '', 3)).toContain(
+      ' por isso não entra na soma. Mais 3 não têm registro nas 6 h antes da hora mais recente, por isso não entram na soma. Um pool sem registro numa hora mantém',
+    );
+    expect(en.note(0, 1, null, 0, 0, '', 1)).toContain(
+      'not counted. 1 has no recording within 6 h of the newest hour, so it is not in the sum. A pool',
+    );
+    expect(pt.note(0, 1, null, 0, 0, '', 1)).toContain(
+      'não coletadas. 1 não tem registro nas 6 h antes da hora mais recente, por isso não entra na soma. Um pool',
     );
     // several
     expect(en.note(3, 12, '82%', 2)).toContain(
@@ -495,6 +600,61 @@ describe('what the page says of recordings, whichever job wrote them', () => {
     );
     expect(pt.note(0, 1, null, 1)).toBe(
       '0 de 1 pools selecionados são registrados e entram na soma; o valor dos tokens que a liquidez deles guarda, sem contar taxas não coletadas. 1 é registrado e não tem preço em dólar para a moeda de cotação, por isso não entra na soma. Um pool sem registro numa hora mantém seu último valor por até 6 h. Nenhum registro é anterior a 2026-10-01.',
+    );
+  });
+
+  it('the TVL note says the histories that did not load, apart and with why, only when there are any', () => {
+    const [en, pt] = [bearingDictionary('en').dex.tvl, bearingDictionary('pt').dex.tvl];
+    const [enWhy, ptWhy] = [
+      bearingDictionary('en').reasons.api_error,
+      bearingDictionary('pt').reasons.api_error,
+    ];
+    // none failed: the note is the one it was
+    expect(en.note(3, 12, '82%', 2, 0)).toBe(en.note(3, 12, '82%', 2));
+    expect(pt.note(3, 12, '82%', 2, 0)).toBe(pt.note(3, 12, '82%', 2));
+    expect(en.note(3, 12, '82%', 2)).not.toContain('did not load');
+    expect(pt.note(3, 12, '82%', 2)).not.toMatch(/carreg/);
+    // one, after the pools with no price
+    expect(en.note(28, 929, '74.00%', 1, 1, enWhy)).toBe(
+      '28 of 929 selected pools are recorded and in the sum, holding 74.00% of the selection’s TVL; the value of the tokens their liquidity holds, uncollected fees not counted. 1 more is recorded and has no USD price for the quote token, so it is not in the sum. 1 more did not load (the API returned no answer), so it is not in the sum. A pool not recorded in an hour keeps its last value for up to 6 h. No recording is older than 2026-10-01.',
+    );
+    expect(pt.note(28, 929, '74,00%', 1, 1, ptWhy)).toBe(
+      '28 de 929 pools selecionados são registrados e entram na soma, com 74,00% do TVL da seleção; o valor dos tokens que a liquidez deles guarda, sem contar taxas não coletadas. Mais 1 é registrado e não tem preço em dólar para a moeda de cotação, por isso não entra na soma. Mais 1 não carregou (a API não respondeu), por isso não entra na soma. Um pool sem registro numa hora mantém seu último valor por até 6 h. Nenhum registro é anterior a 2026-10-01.',
+    );
+    // several, and no pool without a price before them
+    expect(en.note(3, 12, '82%', 0, 2, enWhy)).toContain(
+      ' uncollected fees not counted. 2 more did not load (the API returned no answer), so they are not in the sum. A pool ',
+    );
+    expect(pt.note(3, 12, '82%', 0, 2, ptWhy)).toContain(
+      ' sem contar taxas não coletadas. Mais 2 não carregaram (a API não respondeu), por isso não entram na soma. Um pool ',
+    );
+    // nothing counted before them: they are not “more”
+    expect(en.note(0, 1, null, 0, 1, enWhy)).toBe(
+      '0 of 1 selected pools are recorded and in the sum; the value of the tokens their liquidity holds, uncollected fees not counted. 1 did not load (the API returned no answer), so it is not in the sum. A pool not recorded in an hour keeps its last value for up to 6 h. No recording is older than 2026-10-01.',
+    );
+    expect(pt.note(0, 1, null, 0, 1, ptWhy)).toBe(
+      '0 de 1 pools selecionados são registrados e entram na soma; o valor dos tokens que a liquidez deles guarda, sem contar taxas não coletadas. 1 não carregou (a API não respondeu), por isso não entra na soma. Um pool sem registro numa hora mantém seu último valor por até 6 h. Nenhum registro é anterior a 2026-10-01.',
+    );
+    // none in the sum, one with no price: the one that did not load is one more
+    expect(en.note(0, 63, null, 1, 1, enWhy)).toContain(
+      ' 1 is recorded and has no USD price for the quote token, so it is not in the sum. 1 more did not load (the API returned no answer), so it is not in the sum. A pool ',
+    );
+    expect(pt.note(0, 63, null, 1, 1, ptWhy)).toContain(
+      ' 1 é registrado e não tem preço em dólar para a moeda de cotação, por isso não entra na soma. Mais 1 não carregou (a API não respondeu), por isso não entra na soma. Um pool ',
+    );
+  });
+
+  it('the TVL note’s verb follows its count, in both', () => {
+    const [en, pt] = [bearingDictionary('en').dex.tvl, bearingDictionary('pt').dex.tvl];
+    expect(en.note(1, 63, null, 0)).toMatch(/^1 of 63 selected pools is recorded and in the sum; /);
+    expect(en.note(2, 63, null, 0)).toMatch(
+      /^2 of 63 selected pools are recorded and in the sum; /,
+    );
+    expect(pt.note(1, 63, null, 0)).toMatch(
+      /^1 de 63 pools selecionados é registrado e entra na soma; /,
+    );
+    expect(pt.note(2, 63, null, 0)).toMatch(
+      /^2 de 63 pools selecionados são registrados e entram na soma; /,
     );
   });
 

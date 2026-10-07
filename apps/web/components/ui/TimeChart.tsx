@@ -78,6 +78,11 @@ export type TimeChartProps = {
   pinLabels?: PinLabels;
   /** In place of the plot when there are no points. */
   empty?: ReactNode;
+  /**
+   * More of the data is still to come and the figures change under the reader as it does: the chart
+   * says it is busy, and its readout announces nothing until it is not.
+   */
+  busy?: boolean;
   /** The chart's own words: the range tabs, the readout. */
   labels?: Partial<ChartLabels>;
   /** The locale of the dates on the axis and in the readout. */
@@ -315,10 +320,10 @@ export function TimeChart(props: TimeChartProps) {
   const readT = at ?? ts[ts.length - 1];
 
   return (
-    <div data-ui="time-chart" className={props.className}>
+    <div data-ui="time-chart" aria-busy={props.busy || undefined} className={props.className}>
       {head}
       <div
-        aria-live="polite"
+        aria-live={props.busy ? 'off' : 'polite'}
         data-ui="chart-readout"
         className="flex min-h-5 flex-wrap gap-x-4 gap-y-0.5 font-mono text-b-meta/5 text-muted-foreground"
       >

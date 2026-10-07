@@ -1,5 +1,5 @@
 import type { Res } from './data';
-import { type Fact, has, maxT, mk, none, sumFact } from './fact';
+import { type Fact, has, maxT, mk, none, provenanceOf, sumFact } from './fact';
 import { num, pct, type Regime, RW, short, usd1, venueW } from './format';
 import type {
   AssetRow,
@@ -239,12 +239,21 @@ const NO_QUOTE_PRICE = 'no_quote_price';
  * value for up to 6 h, so the sum does not jump with the set recorded that hour; an hour still short
  * of a pool is a lower bound. A recording with no dollar value (its quote token has no price) adds
  * nothing and counts as a pool short, never as $0. The sum's source and method are those of every
- * history summed, each distinct one named: the pools need not have been recorded by the same job.
+ * history that adds to it in any hour, each distinct one named: the pools need not have been
+ * recorded by the same job. Its provenance is theirs too: live only when every one of them is.
  *
  * `n` is every recorded pool of the selection. `unpriced` of them have no history here: the registry
  * says their quote token has no way to dollars, so no recording of theirs can add a dollar and none
- * was read. `inSum` says, history by history, which are in the sum; `noUsd` counts the recorded pools
- * with no price in dollars, those left unread and those whose every recording read says so.
+ * was read. While the others are still being read `hs` holds those that have come: the sum is then
+ * theirs alone, a lower bound like any sum a pool short.
+ *
+ * `inSum` says, history by history, which are counted in the hour the figure is taken from, the
+ * newest with a value: a history whose newest recording is more than 6 h behind that hour is drawn
+ * where it has recordings and is not in the figure. `noUsd` counts the recorded pools with no price
+ * in dollars, those left unread and those whose every recording read says so. `failed` counts the
+ * histories that did not load, and `failedWhy` is the first one's reason. `behind` counts the histories
+ * with a dollar value that are not in the figure, their newest recording being more than 6 h before
+ * its hour: with `inSum`, `noUsd` and `failed` every recorded pool of the selection is in one count.
  */
 export function tvlSeries(
   hs: ReadonlyArray<Res<LiqHistBody>>,
@@ -256,18 +265,20 @@ export function tvlSeries(
   const CARRY = 6 * HOUR;
   type P = { t: number; v: number; a: number | null };
   const summed: LiqHistBody[] = [];
-  const inSum: boolean[] = [];
   // why a history read adds nothing: its newest recording's reason, null where it gives none
   const whys: Array<string | null> = [];
-  let failed: string | null = null;
+  let failed = 0;
+  let failedWhy: string | null = null;
   let last: string | null | undefined = null;
   let t0 = Number.POSITIVE_INFINITY;
   let t1 = Number.NEGATIVE_INFINITY;
+  // one series for each history, in their order: a read that failed is an empty one
   const series: P[][] = [];
   for (const h of hs) {
     if (!h.ok) {
-      failed ??= h.reason;
-      inSum.push(false);
+      failed++;
+      failedWhy ??= h.reason;
+      series.push([]);
       continue;
     }
     const all = h.body.points ?? [];
@@ -282,7 +293,6 @@ export function tvlSeries(
       last = maxT(last, h.body.to);
       summed.push(h.body);
     } else whys.push(all[all.length - 1]?.usdNullReason ?? null);
-    inSum.push(ps.length > 0);
     series.push(ps);
   }
   // With nothing in the sum, why. A read that failed is its own reason: what that pool holds is not
@@ -290,17 +300,20 @@ export function tvlSeries(
   // when every history read gives the same one, and the pools left unread have that one too.
   const reasons = new Set(whys);
   if (unpriced) reasons.add(NO_QUOTE_PRICE);
-  const why = failed ?? (reasons.size === 1 ? [...reasons][0] : null) ?? 'not_collected';
+  const why = failedWhy ?? (reasons.size === 1 ? [...reasons][0] : null) ?? 'not_collected';
   const pts: Array<{ t: number; v: number; a: number; k: number; ka: number }> = [];
+  // Each series is walked once, forward, as the hours go by (a history's points come oldest first):
+  // `at` is its newest point at or before the hour, `counted` the last hour it was counted in.
+  const at = series.map(() => -1);
+  const counted = series.map(() => Number.NaN);
   for (let t = t0; t <= t1; t += HOUR) {
     const o = { t, v: 0, a: 0, k: 0, ka: 0 };
-    for (const ps of series) {
-      let q: P | null = null;
-      for (let i = ps.length - 1; i >= 0; i--)
-        if ((ps[i] as P).t <= t) {
-          q = ps[i] as P;
-          break;
-        }
+    for (let s = 0; s < series.length; s++) {
+      const ps = series[s] as P[];
+      let i = at[s] as number;
+      while ((ps[i + 1]?.t ?? Number.POSITIVE_INFINITY) <= t) i++;
+      at[s] = i;
+      const q = ps[i];
       if (q && t - q.t <= CARRY) {
         o.v += q.v;
         o.k++;
@@ -308,6 +321,7 @@ export function tvlSeries(
           o.a += q.a;
           o.ka++;
         }
+        counted[s] = t;
       }
     }
     pts.push(o);
@@ -326,6 +340,7 @@ export function tvlSeries(
               : (methods[0] ?? '')
           }`,
           methodVersion: each(summed.map((s) => s.methodVersion)).join(', '),
+          provenance: provenanceOf(summed),
         })
       : none(why);
   const value: TPoint[] = pts.map((q) => ({
@@ -335,8 +350,13 @@ export function tvlSeries(
   }));
   // the asset's part of an hour is known only when every pool counted in it gives one
   const held: TPoint[] = pts.map((q) => ({ t: q.t, v: q.k && q.ka === q.k ? q.a : null }));
+  // in the figure: counted in the hour it is taken from
+  const inSum = counted.map((t) => t === lp?.t);
   const noUsd = unpriced + whys.filter((w) => w === NO_QUOTE_PRICE).length;
-  return { fact, value, held, inSum, noUsd };
+  // recorded, priced and read, and still not in the figure: its newest recording is more than 6 h
+  // before the hour the figure is taken from
+  const behind = series.filter((ps, i) => ps.length > 0 && !inSum[i]).length;
+  return { fact, value, held, inSum, noUsd, failed, failedWhy, behind };
 }
 
 export const countW = (n: number, one: string) => `${num(n)} ${one}${n === 1 ? '' : 's'}`;
