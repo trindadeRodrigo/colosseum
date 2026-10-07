@@ -324,16 +324,19 @@ async function joinFromOrders(db: Db, vault: Named, privyId: string): Promise<vo
  * `baskets` row is the signed-in person's own: a vault joined to another person's plan, a vault made
  * outside the app and one whose order nobody finds are answered with no plan.
  *
- * A buy does not check whose stored plan it names (README, "Before a real chain", item 8), so a person
- * can hold a plan another person made in the app, by its id alone. The goal that plan was made for is
- * its maker's: this person is answered that they hold it (`kind`, `placedAt`, `proposalId`) and none of
- * what it says. The stored plan's goal is answered when the plan was made from a link (it is anybody's
- * who holds its id, as `GET /v1/baskets/{id}` already answers it), when it names the same user as the
- * `baskets` row, or when it names no user.
+ * Whose goal is answered (the stored plan's sheet, card, verdict and observations) follows the rule a
+ * stored plan is read back by, `loadReadablePlan` in store.ts: the plan was made from a link (it is
+ * anybody's who holds its id, as `GET /v1/baskets/{id}` answers it), or its row names the same user as
+ * the `baskets` row. Any other vault is answered that the person holds the plan (`kind`, `placedAt`,
+ * `proposalId`) and none of what it says: the goal it was made for is its maker's, whoever that is.
+ * So the portfolio answers a plan's goal to nobody `loadReadablePlan` would refuse the plan to.
  *
- * That last case stays open: a plan stored with no user and not from a link is answered to any buyer.
- * Every plan the app makes is stored after its person's user row is written, so those name their user;
- * a row with none is one stored another way (a test's fixture, a row written by hand).
+ * A person can hold such a plan in two ways. A buy refuses a plan that names another person
+ * (`loadBuyablePlan`), but a buy made before it did may have opened a vault for one. And a plan that
+ * names no person and is not from a link is still bought by anybody holding its id: buying is the
+ * looser of the two rules there, and holding the id does not read the plan back. Every plan the app
+ * makes is stored after its person's user row is written, so those name their user; a row with none is
+ * one stored another way (before plans named their person, a test's fixture, a row written by hand).
  */
 export async function plansOf(
   db: Db,
@@ -397,8 +400,10 @@ export async function plansOf(
           placedAt: row.placedAt.toISOString(),
           ...(row.proposalId ? { proposalId: row.proposalId } : {}),
           ...(row.familyId ? { familyId: row.familyId } : {}),
-          // A plan another person made in the app is held, and what it says is not this person's.
-          ...(row.fromLink || row.madeBy === null || row.madeBy === row.heldBy
+          // The rule of `loadReadablePlan` (store.ts): what a stored plan says is answered to the
+          // person its row names, and to anybody for a plan made from a link. A plan that names
+          // another person, or nobody, is held, and what it says is not this person's to read.
+          ...(row.fromLink || (row.madeBy !== null && row.madeBy === row.heldBy)
             ? goalOf(row.proposal)
             : {}),
         },

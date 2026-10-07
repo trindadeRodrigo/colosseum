@@ -23,7 +23,7 @@ import { basketIdOf, basketIdOfLinked } from '../../orders/prepare';
 import { loadProposal } from '../../orders/store';
 import { bearingPlanInputs } from '../../plan-inputs';
 import mockYields from '../../testing/fixtures/mock-yields.json';
-import { orderFlow, walletOf } from '../../testing/flow';
+import { chainOf, orderFlow, walletOf } from '../../testing/flow';
 import {
   type HomeChain,
   type Person,
@@ -51,19 +51,21 @@ let issuer: TestIssuer;
 let data: Awaited<ReturnType<typeof testDb>>;
 let app: FastifyInstance;
 let registry: ChainRegistry;
-/** A stored plan per chain, and what was stored: the sheet and the card the portfolio answers. */
+/**
+ * A stored plan per chain that names no person and is not from a link: anybody holding its id buys it
+ * (`loadBuyablePlan`), and nobody is answered what it says (`loadReadablePlan`). The tests share these
+ * two, so neither is ever made a person's: a plan that names a person is bought by that person alone.
+ */
 let plans: Record<HomeChain, string>;
-let fixtures: Record<HomeChain, BasketProposal>;
 const undo: (() => Promise<unknown>)[] = [];
 
 beforeAll(async () => {
   issuer = await testIssuer('test');
   data = await testDb();
   undo.push(() => data.cleanUp());
-  fixtures = { solana: planFixture('solana'), robinhood: planFixture('robinhood') };
   plans = {
-    solana: await data.storePlan(fixtures.solana),
-    robinhood: await data.storePlan(fixtures.robinhood),
+    solana: await data.storePlan(planFixture('solana')),
+    robinhood: await data.storePlan(planFixture('robinhood')),
   };
   ({ app, registry } = await testApp({ issuer: issuer.issuer, db: data.db }));
   undo.push(() => app.close());
@@ -106,6 +108,41 @@ const held = async (who: Pick<Person, 'sub'>) =>
       .where(eq(users.privyId, who.sub))
   ).map((r) => r.basket);
 
+/** Makes a stored plan's row name this person, whose user row is made where there is none. */
+async function nameMaker(planId: string, who: Pick<Person, 'sub'>) {
+  await data.db
+    .insert(users)
+    .values({ privyId: who.sub })
+    .onConflictDoNothing({ target: users.privyId });
+  const [user] = await data.db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.privyId, who.sub));
+  if (!user) throw new Error('the person has no user row');
+  await data.db.update(proposals).set({ userId: user.id }).where(eq(proposals.id, planId));
+}
+
+/**
+ * A stored plan that is this person's own, as `POST /v1/baskets/personalize` stores one: its row names
+ * their user row. What a plan says (its sheet, card, verdict and observations) is answered to the
+ * person who made it and to nobody else, so a test that expects a goal in the portfolio buys one of
+ * these. Each call stores a plan of its own: the shared `plans` stay nobody's.
+ */
+async function ownPlan(who: Person, fixture: BasketProposal = planFixture(chainOf(who))) {
+  const id = await data.storePlan(fixture);
+  await nameMaker(id, who);
+  return { id, fixture };
+}
+
+/** Whom a stored plan's row names, and whether it was made from a link. */
+const namedBy = async (planId: string) =>
+  (
+    await data.db
+      .select({ userId: proposals.userId, fromLink: proposals.fromLink })
+      .from(proposals)
+      .where(eq(proposals.id, planId))
+  )[0];
+
 /** Takes the join away again, as if it had been missed: the vault stays in the cache, with no plan. */
 async function unjoin(who: Person) {
   const ids = (await cached(who)).flatMap((v) => (v.basketId ? [v.basketId] : []));
@@ -123,6 +160,24 @@ async function portfolio(who: Person, on: FastifyInstance = app) {
     body: res.body,
     vaults: PortfolioResponse.parse(res.json()).chains.flatMap((c) => c.vaults),
   };
+}
+
+/**
+ * The person is answered that they hold the plan and none of what it says: by the join the confirm
+ * made, and by the one the portfolio's read makes once that is taken away.
+ */
+async function heldWithNoGoal(
+  who: Person,
+  only: Pick<VaultPlan, 'kind' | 'placedAt' | 'proposalId'>,
+  on?: FastifyInstance,
+) {
+  for (const missed of [false, true]) {
+    if (missed) await unjoin(who);
+    const seen = await portfolio(who, on);
+    expect(seen.vaults.map((v) => v.plan)).toEqual([only]);
+    for (const key of ['sheet', 'card', 'verdict', 'observations'])
+      expect([key, seen.body.includes(`"${key}"`)]).toEqual([key, false]);
+  }
 }
 
 const opening = (o: OrderDetail) => {
@@ -166,8 +221,10 @@ describe('a vault is joined to its plan when the step that opens it is confirmed
   it('on each chain: the vault is in the cache with its plan before any portfolio read, and the portfolio answers the plan', async () => {
     for (const chain of CHAINS) {
       const a = await someone(chain);
+      // A plan of the person's own: what it says is answered to the person who made it.
+      const own = await ownPlan(a);
       await fund(a);
-      const placed = await order(a, { amountUsd: 100 });
+      const placed = await order(a, { amountUsd: 100, proposalId: own.id });
       expect((await settleAll(a, placed)).status).toBe('done');
 
       // Nobody has read the portfolio: the join is the order routes' doing.
@@ -177,7 +234,7 @@ describe('a vault is joined to its plan when the step that opens it is confirmed
       expect(row).toMatchObject({
         chainId: chain,
         owner: walletOf(a),
-        onchainBasketId: basketIdOf(plans[chain]),
+        onchainBasketId: basketIdOf(own.id),
         // Nobody has valued it yet.
         valueUsd: null,
         provenance: 'mock',
@@ -193,7 +250,7 @@ describe('a vault is joined to its plan when the step that opens it is confirmed
       expect(plan).toMatchObject({
         id: row?.basketId,
         kind: 'personal',
-        proposalId: plans[chain],
+        proposalId: own.id,
         familyId: null,
       });
       // The plan's time is the order's: the goal's date counts from it.
@@ -203,13 +260,13 @@ describe('a vault is joined to its plan when the step that opens it is confirmed
       expect(mine.vaults).toHaveLength(1);
       const [vault] = mine.vaults;
       // `basketId` stays the plan's number on the chain; the person's plan is `planId`.
-      expect([vault?.basketId, vault?.planId]).toEqual([basketIdOf(plans[chain]), plan?.id]);
+      expect([vault?.basketId, vault?.planId]).toEqual([basketIdOf(own.id), plan?.id]);
       expect(vault?.plan).toEqual({
         kind: 'personal',
         placedAt: placed.createdAt,
-        proposalId: plans[chain],
-        sheet: fixtures[chain].sheet,
-        card: fixtures[chain].card,
+        proposalId: own.id,
+        sheet: own.fixture.sheet,
+        card: own.fixture.card,
         verdict: null,
         // The fixture was made from no reading, and says so: the list is there, with nothing in it.
         observations: [],
@@ -274,8 +331,9 @@ describe('a vault is joined to its plan when the step that opens it is confirmed
       const sick = await flaky();
       try {
         const a = await someone('robinhood');
+        const own = await ownPlan(a);
         await fund(a, sick.app);
-        const placed = await order(a, { amountUsd: 100 }, sick.app);
+        const placed = await order(a, { amountUsd: 100, proposalId: own.id }, sick.app);
         const create = opening(placed);
         await settleAll(a, placed, sick.app, (leg) => leg.id === create.id);
         await build(a, placed, create.id, sick.app);
@@ -289,10 +347,10 @@ describe('a vault is joined to its plan when the step that opens it is confirmed
 
         const mine = await portfolio(a, sick.app);
         const [plan] = await held(a);
-        expect(plan).toMatchObject({ kind: 'personal', proposalId: plans.robinhood });
+        expect(plan).toMatchObject({ kind: 'personal', proposalId: own.id });
         expect(plan?.createdAt.toISOString()).toBe(placed.createdAt);
         expect(mine.vaults.map((v) => [v.planId, v.plan?.sheet])).toEqual([
-          [plan?.id, fixtures.robinhood.sheet],
+          [plan?.id, own.fixture.sheet],
         ]);
         expect((await cached(a)).map((v) => v.basketId)).toEqual([plan?.id]);
       } finally {
@@ -427,11 +485,12 @@ describe('a vault is joined to its plan when the step that opens it is confirmed
 describe('the portfolio read joins what the confirm missed', () => {
   it('joins the vault to the order that opened it, not to a later one, and once', async () => {
     const a = await someone();
+    const own = await ownPlan(a);
     await fund(a);
-    const placed = await order(a, { amountUsd: 100 });
+    const placed = await order(a, { amountUsd: 100, proposalId: own.id });
     await settleAll(a, placed);
     // A later buy into the same vault: newer, and it opened nothing.
-    await settleAll(a, await order(a, { amountUsd: 50 }));
+    await settleAll(a, await order(a, { amountUsd: 50, proposalId: own.id }));
     await unjoin(a);
     expect(await held(a)).toEqual([]);
 
@@ -439,7 +498,7 @@ describe('the portfolio read joins what the confirm missed', () => {
     const [plan] = await held(a);
     expect(plan?.createdAt.toISOString()).toBe(placed.createdAt);
     expect(mine.vaults.map((v) => [v.planId, v.plan?.placedAt, v.plan?.card])).toEqual([
-      [plan?.id, placed.createdAt, fixtures.solana.card],
+      [plan?.id, placed.createdAt, own.fixture.card],
     ]);
     // Read again: the same plan, and no other row.
     expect((await portfolio(a)).vaults.map((v) => v.planId)).toEqual([plan?.id]);
@@ -566,8 +625,11 @@ describe('the portfolio read joins what the confirm missed', () => {
   it('joins each vault to the order of its own number, where the person holds two plans', async () => {
     const a = await someone();
     await fund(a);
-    const other = planFixture('solana', { spy: 6000, gold: 4000 });
-    const second = await data.storePlan(other);
+    // The second plan is the person's own, so its vault is answered with what the plan says.
+    const { id: second, fixture: other } = await ownPlan(
+      a,
+      planFixture('solana', { spy: 6000, gold: 4000 }),
+    );
     const one = await order(a, { amountUsd: 100 });
     await settleAll(a, one);
     const two = await order(a, { amountUsd: 100, proposalId: second });
@@ -608,9 +670,12 @@ describe('the portfolio read joins what the confirm missed', () => {
       fetchedAt: '2026-10-05T00:00:00.000Z',
       provenance: 'mock',
     };
-    const income = { ...planFixture('solana'), verdict, observations: [reading] };
-    const id = await data.storePlan(income);
     const a = await someone();
+    const { id, fixture: income } = await ownPlan(a, {
+      ...planFixture('solana'),
+      verdict,
+      observations: [reading],
+    });
     await fund(a);
     const placed = await order(a, { amountUsd: 100, proposalId: id });
     await settleAll(a, placed);
@@ -836,7 +901,25 @@ describe('a plan is answered to its own person only', () => {
     });
   });
 
-  it('a plan another person made in the app, bought by its id alone, is held with none of what it says', async () => {
+  it('a plan that names no person, bought by its id alone, is held with none of what it says', async () => {
+    // Stored with no person and not from a link, as a plan stored before plans named their person.
+    // Its id still buys it for anybody (`loadBuyablePlan`) and reads it back to nobody
+    // (`loadReadablePlan`), and the portfolio follows the second.
+    const id = await data.storePlan(planFixture('solana'));
+    expect(await namedBy(id)).toEqual({ userId: null, fromLink: false });
+    const b = await someone();
+    await fund(b);
+    const theirs = await order(b, { proposalId: id, amountUsd: 100 });
+    expect((await settleAll(b, theirs)).status).toBe('done');
+    const [holding] = await held(b);
+    expect(holding).toMatchObject({ kind: 'personal', proposalId: id });
+
+    // B is answered that they hold it, and none of what the plan says: not at the confirm's join,
+    // and not at the read's.
+    await heldWithNoGoal(b, { kind: 'personal', placedAt: theirs.createdAt, proposalId: id });
+  });
+
+  it('a plan another person made in the app is not bought by its id, and a vault opened for one before that is answered none of what it says', async () => {
     const made = await testApp({ issuer: issuer.issuer, db: data.db, planInputs: withMockYield });
     try {
       // A makes a plan in the app: stored as the route stores it, naming A's user row.
@@ -861,30 +944,37 @@ describe('a plan is answered to its own person only', () => {
       if (!stored) throw new Error('the plan was not stored');
       expect(stored.observations.length).toBeGreaterThan(0);
       const [maker] = await data.db.select().from(users).where(eq(users.privyId, a.sub));
-      const [row] = await data.db
-        .select({ userId: proposals.userId, fromLink: proposals.fromLink })
-        .from(proposals)
-        .where(eq(proposals.id, id));
-      expect(row).toEqual({ userId: maker?.id, fromLink: false });
+      expect(await namedBy(id)).toEqual({ userId: maker?.id, fromLink: false });
 
-      // B has the id and nothing else, and buys the plan: no route refuses that yet.
+      // B has the id and nothing else. Today it buys nothing: the order is refused, as an id that
+      // names no plan is (`loadBuyablePlan`).
       const b = await someone();
       await fund(b, made.app);
+      const refused = await post(
+        b,
+        '/v1/orders',
+        { type: 'buy', owner: b.owner, amountUsd: 100, proposalId: id },
+        made.app,
+      );
+      expect(refused.statusCode, refused.body).toBe(404);
+
+      // A buy made before plans could not be bought by their id may have opened a vault for such a
+      // plan, and that vault is still its buyer's. No route makes one now, so it is made in the
+      // database: the plan's row names nobody while B buys it, and A again once the vault is open.
+      // The clean-up finds a person's plans by their row, so this one is remembered by its id first.
+      data.trackPlan(id);
+      await data.db.update(proposals).set({ userId: null }).where(eq(proposals.id, id));
       const theirs = await order(b, { proposalId: id, amountUsd: 100 }, made.app);
       expect((await settleAll(b, theirs, made.app)).status).toBe('done');
+      await nameMaker(id, a);
+      expect(await namedBy(id)).toEqual({ userId: maker?.id, fromLink: false });
       const [holding] = await held(b);
       expect(holding).toMatchObject({ kind: 'personal', proposalId: id });
 
       // B is answered that they hold it, and none of what A's plan says: not at the confirm's join,
       // and not at the read's.
-      const only = { kind: 'personal', placedAt: theirs.createdAt, proposalId: id };
-      for (const missed of [false, true]) {
-        if (missed) await unjoin(b);
-        const seen = await portfolio(b, made.app);
-        expect(seen.vaults.map((v) => v.plan)).toEqual([only]);
-        for (const key of ['sheet', 'card', 'verdict', 'observations'])
-          expect([key, seen.body.includes(`"${key}"`)]).toEqual([key, false]);
-      }
+      const only = { kind: 'personal' as const, placedAt: theirs.createdAt, proposalId: id };
+      await heldWithNoGoal(b, only, made.app);
 
       // A's own vault of that plan carries all four, as they were stored.
       await fund(a, made.app);

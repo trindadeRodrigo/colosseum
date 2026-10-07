@@ -119,7 +119,8 @@ export type ConsentRequest = z.infer<typeof ConsentRequest>;
  *
  * The sheet, the card, the verdict and the observations are the stored plan's own, as the engine made
  * them, and come all four together or not at all: left out where the plan has none stored, where one
- * of them no longer reads, and for a plan another person made in the app, which is theirs. `verdict`
+ * of them no longer reads, and for a plan that is not this person's to read back: one another person
+ * made in the app, which is theirs, or one stored with no person and not made from a link. `verdict`
  * is null for a plan whose goal is not an income.
  */
 export const VaultPlan = z.object({
