@@ -35,9 +35,11 @@ import { keepOrder, type OrderRecord, recallOrders } from '../order/order-record
 import { PlanView } from '../order/PlanView';
 import { goalLine } from '../order/plain';
 import { networkFor } from '../order/readiness';
+import { unpriced, holdingsOf as vaultHoldingsOf } from '../portfolio/portfolio';
 import { goalOfVault } from '../portfolio/vault-goal';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { type ChainCheck, familyIdFor, isVaultOf, useChainRecipe } from './chain-recipe';
+import { HoldingsBar } from './HoldingsBar';
 import { isPlatformCreator } from './platform';
 import { holdingsOf, kindShares } from './product-figures';
 import { sharedRefusal } from './refusal';
@@ -789,6 +791,11 @@ function VaultsPanel({
         const follows = vault.recipeOnchainId === followed.follow.recipeOnchainId;
         const behind = follows && vault.acceptedVersion < followed.follow.version;
         const heading = `${titleId}-${vault.address}`;
+        const holdings = vaultHoldingsOf(vault).filter((holding) => !/^0+$/.test(holding.raw));
+        const shares = holdings.filter(
+          (holding) => holding.weightBps > 0 && holding.valueUsd !== null,
+        );
+        const unpricedCount = unpriced(vault);
         return (
           <li key={vault.address} data-ui="my-vault" className="min-w-0">
             <Card
@@ -813,6 +820,32 @@ function VaultsPanel({
                 <h3 id={heading} className="w-full break-words font-display text-h4">
                   {nameOf(vault)}
                 </h3>
+                <div data-ui="vault-holdings" className="flex w-full min-w-0 flex-col gap-2">
+                  <p className="text-caption text-muted-foreground">{t.portfolio.vault.holdings}</p>
+                  {shares.length > 0 && (
+                    <HoldingsBar
+                      shares={shares.map((holding) => ({
+                        key: holding.asset,
+                        shareBps: holding.weightBps,
+                      }))}
+                    />
+                  )}
+                  <p className="font-mono text-source [overflow-wrap:anywhere]">
+                    {holdings.length > 0
+                      ? holdings
+                          .map(
+                            (holding) =>
+                              `${tokenName(holding.asset)} ${holding.valueUsd === null ? '—' : formatBps(holding.weightBps, LOCALE[lang])}`,
+                          )
+                          .join(' · ')
+                      : v.noHoldings}
+                  </p>
+                  {unpricedCount > 0 && (
+                    <p className="text-caption text-muted-foreground">
+                      {t.portfolio.vault.unpriced(unpricedCount)}
+                    </p>
+                  )}
+                </div>
                 <p className="text-body-sm text-muted-foreground">
                   {follows
                     ? v.following

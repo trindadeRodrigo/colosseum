@@ -1314,6 +1314,7 @@ export const pt: Dictionary = {
       ownPlan: 'Guarda o seu próprio plano',
       followWith: 'Seguir com este cofre',
       noFollowers: 'Nenhum dos seus cofres nesta rede segue este portfólio ainda.',
+      noHoldings: 'Ainda não há ativos neste cofre.',
       useExisting: 'Usar um cofre existente',
       closeChooser: 'Fechar seleção de cofres',
       choose: 'Escolher este cofre',

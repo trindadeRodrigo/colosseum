@@ -246,6 +246,99 @@ describe('a portfolio’s page (gate GOLD-ONE-TAP)', () => {
   });
 
   it.each(['en', 'pt'] as const)(
+    'draws each vault’s actual holdings, including cash, without copying product targets (%s)',
+    async (lang) => {
+      const t = dictionary(lang);
+      const cashVault = solanaVaultAddress(
+        '529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW',
+        SOLANA,
+        '43',
+      );
+      const emptyVault = solanaVaultAddress(
+        '529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW',
+        SOLANA,
+        '44',
+      );
+      const unknownVault = solanaVaultAddress(
+        '529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW',
+        SOLANA,
+        '45',
+      );
+      const calls = api({
+        family: familyOf(FAMILY_ID),
+        vaults: [
+          vaultOf({
+            address: MY_VAULT,
+            valueUsd: '100',
+            cash: { asset: 'solana:usdc', raw: '35000000', multiplier: '1', display: '35' },
+            positions: [
+              {
+                asset: 'solana:spyx',
+                raw: '1',
+                multiplier: '1',
+                display: '1',
+                targetBps: 9000,
+                weightBps: 6500,
+                driftBps: -2500,
+                valueUsd: '65',
+                lastKeeperAt: null,
+              },
+            ],
+          }),
+          vaultOf({
+            address: cashVault,
+            valueUsd: '50',
+            cash: { asset: 'solana:usdc', raw: '50000000', multiplier: '1', display: '50' },
+          }),
+          vaultOf({ address: emptyVault }),
+          vaultOf({
+            address: unknownVault,
+            valueUsd: '0',
+            positions: [
+              {
+                asset: 'solana:paxg',
+                raw: '1',
+                multiplier: '1',
+                display: '1',
+                targetBps: 10000,
+                weightBps: 0,
+                driftBps: -10000,
+                valueUsd: null,
+                lastKeeperAt: null,
+              },
+            ],
+          }),
+        ],
+      });
+      const host = await mount(withAccount(lang, createElement(FamilyScreen, { slug: SLUG })));
+      for (let i = 0; i < 4; i += 1) await settle(50);
+      const cards = [...host.querySelectorAll<HTMLElement>('[data-ui="my-vault"]')];
+      expect(cards).toHaveLength(4);
+      const allocations = cards.map((card) => find(card, '[data-ui="vault-holdings"]'));
+      expect(
+        [...find(allocations[0], '[data-ui="holdings-bar"]').children].map(
+          (segment) => (segment as HTMLElement).style.width,
+        ),
+      ).toEqual(['65%', '35%']);
+      expect(allocations[0].textContent).toContain('SPYx 65%');
+      expect(allocations[0].textContent).toContain('USDC 35%');
+      expect(allocations[0].textContent).not.toContain('90%');
+      expect(find(allocations[1], '[data-ui="holdings-bar"] span').getAttribute('style')).toContain(
+        '100%',
+      );
+      expect(allocations[1].textContent).toContain('USDC 100%');
+      expect(allocations[2].querySelector('[data-ui="holdings-bar"]')).toBeNull();
+      expect(allocations[2].textContent).toContain(t.shared.vaults.noHoldings);
+      expect(allocations[3].querySelector('[data-ui="holdings-bar"]')).toBeNull();
+      expect(allocations[3].textContent).toContain('PAXG —');
+      expect(allocations[3].textContent).toContain(t.portfolio.vault.unpriced(1));
+      // Existing page reads: other-chain vaults and owned-vault cards; bars add no per-vault requests.
+      expect(calls.filter((call) => call.path === '/v1/portfolio')).toHaveLength(2);
+      expect(calls.some((call) => call.path === '/v1/orders')).toBe(false);
+    },
+  );
+
+  it.each(['en', 'pt'] as const)(
     'keeps followers visible and reviews just the locally selected vault (%s)',
     async (lang) => {
       const t = dictionary(lang);

@@ -1466,6 +1466,7 @@ export const en = {
       ownPlan: 'Holds your own plan',
       followWith: 'Follow with this vault',
       noFollowers: 'None of your vaults on this chain follows this portfolio yet.',
+      noHoldings: 'No holdings yet.',
       useExisting: 'Use an existing vault',
       closeChooser: 'Close vault chooser',
       choose: 'Choose this vault',
