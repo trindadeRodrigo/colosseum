@@ -4,16 +4,7 @@ import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buttonClass } from '../../components/ui/button-class';
 import { CHAIN_NAMES } from '../../components/ui/ChainBadge';
-import {
-  click,
-  find,
-  fire,
-  mount,
-  press,
-  settle,
-  type,
-  unmountAll,
-} from '../../components/ui/test/dom';
+import { click, find, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary } from '../../i18n';

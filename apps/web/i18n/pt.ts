@@ -669,7 +669,14 @@ export const pt: Dictionary = {
       summaryFacts: (known: number, of: number) => `Seu objetivo: ${known} de ${of} definidos`,
       ownPage: 'Abrir este plano na página dele',
       investTitle: 'Investir',
+      makeYours: 'Tornar este plano seu',
+      stale: 'Este plano é de antes da sua mudança. Responda à pergunta e eu monto de novo.',
       backToPlan: 'Voltar ao plano',
+    },
+    ways: {
+      amount: (amount: string) => `Mude para ${amount}`,
+      income: (income: string) => `Mire em ${income}`,
+      other: 'Mude desse jeito',
     },
     failure: {
       unavailable:

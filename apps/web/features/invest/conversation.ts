@@ -19,6 +19,7 @@ import { checkSheet, fieldsOfDraft, parseNumber, type SheetFields } from '../goa
 /** The facts of a goal the conversation settles, in the order it asks for them. */
 export const FACTS = ['goal', 'amount', 'income', 'horizon', 'risk'] as const;
 export type Fact = (typeof FACTS)[number];
+export const isFact = (v: unknown): v is Fact => FACTS.includes(v as Fact);
 
 /** What is known so far: the sheet's fields, and the optional facts the person chose to leave out. */
 export type Sheet = {
@@ -81,10 +82,11 @@ export interface Conversation {
 
 /**
  * "Yes", "ok", "go", "build", "sim": the person's go-ahead once every fact is known. Only these few
- * words, alone; anything longer is read as words about the goal.
+ * words and their Portuguese forms, alone. A filler ("so", "and", "then", "please") is not one, and
+ * anything longer is read as words about the goal.
  */
 export function isGoAhead(text: string): boolean {
-  return /^(y|yes|yep|yeah|ok|okay|k|go|go ahead|so|and|then|next|sure|do it|please|build|build it|build my plan|build the plan|s|sim|pode|pode sim|vai|bora|claro|isso|monta|montar|monte|e ai|e aí|então)[\s.!?…]*$/i.test(
+  return /^(y|yes|yep|yeah|ok|okay|go|go ahead|do it|build|build it|build my plan|build the plan|s|sim|pode|pode sim|vai|bora|monta|montar|monte|pode montar)[\s.!?…]*$/i.test(
     text.trim(),
   );
 }
@@ -101,15 +103,40 @@ export const PICKS = {
   microsoft: { name: 'Microsoft', kind: 'stock', said: /\b(microsoft|msft)\b/i },
   amazon: { name: 'Amazon', kind: 'stock', said: /\b(amazon|amzn)\b/i },
   google: { name: 'Google', kind: 'stock', said: /\b(google|alphabet|googl)\b/i },
-  meta: { name: 'Meta', kind: 'stock', said: /\b(meta|facebook)\b/i },
+  // "meta" alone is Portuguese for a goal ("minha meta é…"): it names the company only in English
+  meta: { name: 'Meta', kind: 'stock', said: /\b(meta platforms|facebook)\b/i, en: /\bmeta\b/i },
   bitcoin: { name: 'Bitcoin', kind: 'coin', said: /\b(bitcoin|btc)\b/i },
   ether: { name: 'Ethereum', kind: 'coin', said: /\b(ethereum|ether|eth)\b/i },
 } as const;
 export type Pick = keyof typeof PICKS;
 
 /** The first single name the words ask for, if any. */
-export function pickOf(text: string): Pick | null {
-  return (Object.keys(PICKS) as Pick[]).find((pick) => PICKS[pick].said.test(text)) ?? null;
+export function pickOf(text: string, lang: Lang): Pick | null {
+  return (
+    (Object.keys(PICKS) as Pick[]).find((pick) => {
+      const p: { said: RegExp; en?: RegExp } = PICKS[pick];
+      return p.said.test(text) || (lang === 'en' && p.en?.test(text) === true);
+    }) ?? null
+  );
+}
+
+/**
+ * The words without what they refuse: "I don't want more risk", "not $5,000, make it $8,000", "não
+ * quero dez anos". A clause with a negation in it states nothing to take, so it is left out before
+ * the words are read; what is left is read as usual. A clause ends at a full stop, a semicolon, a
+ * comma followed by a space, or "but"/"mas".
+ */
+export function affirmed(text: string, lang: Lang): string {
+  // "no" is English only: in Portuguese it is "in the" ("no longo prazo")
+  const negation = new RegExp(
+    `(^|[^\\p{L}])(${lang === 'en' ? 'no|' : ''}not|don'?t|do not|doesn'?t|won'?t|never|without|neither|nor|n[ãa]o|sem|nunca|nem|jamais)([^\\p{L}]|$)|n['’]t\\b`,
+    'iu',
+  );
+  // a mark inside a figure ("$40.5", "R$ 40.000", "$5,000") ends nothing
+  const clauses = text.split(/[.;!?]+(?:\s+|$)|\n+|,\s+|\s+(?:but|mas|porém)\s+/i);
+  const kept = clauses.filter((clause) => !negation.test(clause));
+  // words that refuse nothing are read exactly as typed
+  return kept.length === clauses.length ? text : kept.join('. ');
 }
 
 const RISKS = ['low', 'medium', 'high'] as const;
@@ -276,7 +303,11 @@ export function readerConversation(
       }
     }
     const read = fieldsOfDraft({ ...draft, country }, lang);
-    const words = fieldsOfWords(preRead(text));
+    const words = fieldsOfWords(preRead(affirmed(text, lang)));
+    // what the words name only to refuse ("not high risk") is not taken from the reader either
+    const refused = new Set(
+      Object.keys(fieldsOfWords(preRead(text))).filter((fact) => !(fact in words)),
+    );
     const fields: SheetFields = {
       ...EMPTY(lang, country),
       // what the reader read, less what it only assumed
@@ -288,11 +319,13 @@ export function readerConversation(
       // and what the words themselves say, over both
       ...words,
     };
-    // a monthly figure is an income's
-    if (fields.goal !== 'income') fields.income = '';
+    for (const fact of refused) if (isFact(fact)) fields[fact] = '';
+    // A monthly figure is an income's. With no goal said yet it is kept: it is asked what the money
+    // is for, and the figure stands if the answer is income.
+    if (fields.goal !== '' && fields.goal !== 'income') fields.income = '';
     const sheet = { fields, skipped: [] };
     const found = FACTS.some((fact) => fields[fact] !== '');
-    const pick = pickOf(text);
+    const pick = pickOf(text, lang);
     return reply(
       sheet,
       [
@@ -330,7 +363,7 @@ export function readerConversation(
         if (fit === null)
           return reply(sheet, [{ key: 'unfit', fact: input.fact }], chain, input.fact);
         const fields = { ...sheet.fields, [input.fact]: fit };
-        if (fields.goal !== 'income') fields.income = '';
+        if (fields.goal !== '' && fields.goal !== 'income') fields.income = '';
         return reply({ ...sheet, fields }, [{ key: 'set', fact: input.fact }], chain);
       }
       const text = input.text.trim();
@@ -341,13 +374,15 @@ export function readerConversation(
       // The question the words answer: the one the person reopened, else the first still open.
       const reopened = input.asked ?? undefined;
       const open = reopened ?? openFacts(known)[0];
-      const words = fieldsOfWords(preRead(text));
-      const answered = open ? typedAnswer(open, text, lang) : null;
+      // what the words refuse is not read as what they ask for
+      const meant = affirmed(text, lang);
+      const words = fieldsOfWords(preRead(meant));
+      const answered = open && meant.trim() !== '' ? typedAnswer(open, meant, lang) : null;
       // What the words ask for that the sheet cannot take is said, never passed over in silence: a
       // single stock to buy, or more risk than the highest.
-      const pick = pickOf(text);
+      const pick = pickOf(text, lang);
       const aside: Say[] = pick ? [{ key: 'cantPick', pick }] : [];
-      const step = words.risk === undefined && open !== 'risk' ? riskStep(text) : null;
+      const step = words.risk === undefined && open !== 'risk' ? riskStep(meant) : null;
       const at = RISKS.indexOf(known.fields.risk as (typeof RISKS)[number]);
       const stepped = step !== null && at >= 0 ? RISKS[at + step] : undefined;
       if (step !== null && at >= 0 && stepped === undefined)
@@ -367,7 +402,7 @@ export function readerConversation(
           reopened,
         );
       const fields = { ...known.fields, ...said };
-      if (fields.goal !== 'income') fields.income = '';
+      if (fields.goal !== '' && fields.goal !== 'income') fields.income = '';
       // words that say only what is already held change nothing
       const same = FACTS.every((fact) => fields[fact] === known.fields[fact]);
       if (same && !reopened) return reply(known, [...aside, { key: 'held' }], chain);

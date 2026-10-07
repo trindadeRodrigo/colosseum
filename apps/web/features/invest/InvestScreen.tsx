@@ -27,6 +27,7 @@ import {
   type Conversation,
   FACTS,
   type Fact,
+  isFact,
   isGoAhead,
   PICKS,
   QUICK,
@@ -82,8 +83,10 @@ const known = (fields: SheetFields | null, fact: Fact) => (fields?.[fact] ?? '')
 
 /** A fact's value as a person reads it. */
 function factValue(fact: Fact, value: string, t: Dictionary, lang: Lang): string {
-  if (fact === 'goal') return t.goal.options.goal[value as 'grow' | 'income' | 'protect'] ?? value;
-  if (fact === 'risk') return t.goal.options.risk[value as 'low' | 'medium' | 'high'] ?? value;
+  // A value that is not one the fact takes is never said as it is: only our own words are.
+  if (fact === 'goal') return t.goal.options.goal[value as 'grow' | 'income' | 'protect'] ?? '';
+  if (fact === 'risk') return t.goal.options.risk[value as 'low' | 'medium' | 'high'] ?? '';
+  if (!/^\d+(\.\d+)?$/.test(value)) return '';
   if (fact === 'horizon') {
     const months = Number(value);
     return months % 12 === 0 ? t.talk.replies.years(months / 12) : t.goal.card.months(months);
@@ -173,6 +176,19 @@ export function InvestScreen() {
   async function buildFrom(sheetToBuild: BasketSheet, own: boolean, quiet = false) {
     wanted.current += 1;
     const mine = wanted.current;
+    // A chain our server has switched off: nothing is built there, and it is said.
+    const on = sheetToBuild.chains[0];
+    if (on && port.network(on)?.on === false) {
+      setBuild({ kind: 'idle' });
+      setPlan(null);
+      say({
+        say: [{ key: 'failure', text: t.plan.chainOff(t.chain.names[on]) }],
+        fields: null,
+        ask: null,
+        retry: false,
+      });
+      return;
+    }
     setBuild({ kind: 'building' });
     const outcome = await buildPlan(apiFetch, sheetToBuild, own ? PERSONALIZE_PATH : PROPOSE_PATH);
     if (wanted.current !== mine) return;
@@ -193,7 +209,7 @@ export function InvestScreen() {
       // The person asked to invest before they were signed in: the card is on the pane now.
       if (own && wantsInvest.current) {
         wantsInvest.current = false;
-        setPaneOpen(true);
+        if (onPhone()) setPaneOpen(true);
       }
       return;
     }
@@ -202,23 +218,26 @@ export function InvestScreen() {
     const sentence =
       outcome.kind === 'no-plan'
         ? w.failure.noPlan
-        : outcome.kind === 'refused' || outcome.kind === 'currency'
+        : outcome.kind === 'refused'
           ? w.failure.refused
-          : outcome.kind === 'busy'
-            ? t.shell.slowDown
-            : outcome.kind === 'signed-out'
-              ? t.goal.blocked.signInAgain
-              : outcome.kind === 'no-identity'
-                ? t.goal.blocked.noIdentity
-                : outcome.kind === 'no-chain'
-                  ? t.goal.blocked.chainNotChosen
-                  : w.failure.unavailable;
+          : outcome.kind === 'currency'
+            ? t.goal.blocked.currency
+            : outcome.kind === 'busy'
+              ? t.shell.slowDown
+              : outcome.kind === 'signed-out'
+                ? t.goal.blocked.signInAgain
+                : outcome.kind === 'no-identity'
+                  ? t.goal.blocked.noIdentity
+                  : outcome.kind === 'no-chain'
+                    ? t.goal.blocked.chainNotChosen
+                    : w.failure.unavailable;
     say({
       say: [{ key: 'failure', text: sentence }],
       fields: null,
       ask: null,
       // a sheet no plan fits is changed, not sent again as it is
-      retry: outcome.kind !== 'no-plan' && outcome.kind !== 'refused',
+      retry:
+        outcome.kind !== 'no-plan' && outcome.kind !== 'refused' && outcome.kind !== 'currency',
     });
   }
 
@@ -420,6 +439,9 @@ export function InvestScreen() {
     lastLine.current = progress.line;
     say({ say: [{ key: 'progress', text: progress.line }], fields: null, ask: null, retry: false });
   }
+  /** Whether the pane is the phone's overlay: under the width the two panes sit side by side at. */
+  const onPhone = () =>
+    typeof window.matchMedia !== 'function' || window.matchMedia('(max-width: 1023.98px)').matches;
   const onDone = () => say({ say: [{ key: 'done' }], fields: null, ask: null, retry: false });
   const onStopped = (stopped: { orderId: string }) =>
     say({
@@ -428,6 +450,17 @@ export function InvestScreen() {
       ask: null,
       retry: false,
     });
+
+  // On a phone the pane opens over the conversation as a dialog: focus goes into it, Escape and its
+  // one button close it, and focus goes back to the line that opened it.
+  const closePane = useRef<HTMLDivElement>(null);
+  const openPane = useRef<HTMLDivElement>(null);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (paneOpen) closePane.current?.querySelector('button')?.focus();
+    else if (wasOpen.current) openPane.current?.querySelector('button')?.focus();
+    wasOpen.current = paneOpen;
+  }, [paneOpen]);
 
   const lastTurn = turns[turns.length - 1];
   const open = lastTurn?.who === 'app' ? lastTurn : null;
@@ -448,7 +481,10 @@ export function InvestScreen() {
       : null;
   // The plan is the person's own, on a chain that can be invested in: the invest card is on the
   // pane under it, and the pane's last state is the plan and its one press.
-  const canInvest = plan !== null && plan.own && signedIn && blocked === null;
+  // The plan on the page is from before a change: a fact is asked about again, or the plan is being
+  // built again. It is not invested in, by the card or by a button that names its old amount.
+  const stale = plan !== null && (build.kind === 'building' || asking !== null);
+  const canInvest = plan?.own === true && signedIn && blocked === null && !stale;
   const state = canInvest ? 'invest' : plan ? 'plan' : fields ? 'facts' : 'empty';
   const knownCount = FACTS.filter((fact) => known(fields, fact)).length;
 
@@ -516,6 +552,7 @@ export function InvestScreen() {
       <section
         data-ui="invest-chat"
         aria-label={w.chat}
+        inert={paneOpen}
         className="flex min-h-0 flex-col gap-4 lg:col-span-5"
       >
         <h1 className={PAGE_TITLE}>{t.goal.title}</h1>
@@ -694,7 +731,11 @@ export function InvestScreen() {
       </section>
 
       {/* On a phone the plan is one line at the foot that opens. */}
-      <div className="sticky bottom-0 z-10 -mx-1 border-t border-border bg-background px-1 py-3 lg:hidden">
+      <div
+        ref={openPane}
+        inert={paneOpen}
+        className="sticky bottom-0 z-10 -mx-1 border-t border-border bg-background px-1 py-3 lg:hidden"
+      >
         <Button
           variant="secondary"
           className="w-full justify-between"
@@ -718,6 +759,11 @@ export function InvestScreen() {
         data-ui="invest-pane"
         data-state={state}
         aria-label={w.pane.label}
+        // open over the conversation on a phone, it is a dialog; beside it, the page's aside
+        {...(paneOpen ? { role: 'dialog', 'aria-modal': true } : {})}
+        onKeyDown={(e) => {
+          if (paneOpen && e.key === 'Escape') setPaneOpen(false);
+        }}
         className={cn(
           'min-h-0 flex-col gap-6 lg:col-span-7 lg:flex lg:overflow-y-auto lg:border-l lg:border-border lg:pl-10',
           paneOpen
@@ -725,7 +771,7 @@ export function InvestScreen() {
             : 'hidden',
         )}
       >
-        <div className="lg:hidden">
+        <div ref={closePane} className="lg:hidden">
           <Button variant="secondary" onClick={() => setPaneOpen(false)}>
             {w.pane.close}
           </Button>
@@ -742,6 +788,11 @@ export function InvestScreen() {
           />
         )}
         {build.kind === 'building' && <LatticeStatus label={w.pane.building} />}
+        {stale && build.kind !== 'building' && (
+          <p data-ui="pane-stale" className="text-body-sm text-muted-foreground">
+            {w.pane.stale}
+          </p>
+        )}
         {plan && planChain && (
           <div className="motion-safe:animate-seat flex flex-col gap-4">
             <PlanPane
@@ -750,20 +801,36 @@ export function InvestScreen() {
               blocked={blocked}
               level={2}
               onWay={(way) => {
+                // The way is said as the person's own turn, in their words: what changes and to
+                // what, from the sheet's figure. Never the engine's sentence as if they typed it.
                 const change = wayChange(way, plan.proposal.sheet);
                 void post(
                   change ? { kind: 'answer', ...change } : { kind: 'text', text: way },
-                  way,
+                  change?.fact === 'amount'
+                    ? w.ways.amount(factValue('amount', change.value, t, lang))
+                    : change?.fact === 'income'
+                      ? w.ways.income(factValue('income', change.value, t, lang))
+                      : w.ways.other,
                 );
               }}
-              // Its own button only while the card cannot be here: signed out it leads to the
-              // sign-in dialog, and on a chain that is not ready it is off and says why.
+              // Its own button only while the card cannot be here. Signed out it leads to the
+              // sign-in dialog. Signed in with a plan that is still a visitor's, it makes the plan
+              // theirs. On a chain that is not ready it is off and says why. None while the plan
+              // is from before a change.
               invest={
-                canInvest
+                canInvest || stale
                   ? undefined
                   : signedIn && plan.own
                     ? { onPress: invest }
-                    : { href: SIGN_IN, onFollow: invest }
+                    : !signedIn
+                      ? { href: SIGN_IN, onFollow: invest }
+                      : valid
+                        ? {
+                            onPress: () => void buildFrom(valid, true, true),
+                            label: w.pane.makeYours,
+                          }
+                        : // signed in, and their chain is still being read: nothing to press yet
+                          undefined
               }
             />
             {plan.own && (
@@ -926,18 +993,26 @@ const SAY_KEYS = new Set([
   'riskTop',
   'riskBottom',
 ]);
-const isFact = (v: unknown): v is Fact => FACTS.includes(v as Fact);
-const FIELD_KEYS = [
-  'goal',
-  'amount',
-  'income',
-  'horizon',
-  'risk',
-  'country',
-  'holdings',
-  'glide',
-  'language',
-];
+/** What each field of the sheet may hold when read back: a value the sheet takes, or nothing. */
+const FIELD_FORMS: Record<keyof SheetFields, RegExp> = {
+  goal: /^(grow|income|protect)?$/,
+  amount: /^(\d{1,9}(\.\d{1,2})?)?$/,
+  income: /^(\d{1,9}(\.\d{1,2})?)?$/,
+  horizon: /^\d{0,3}$/,
+  risk: /^(low|medium|high)?$/,
+  country: /^[A-Z]{0,2}$/,
+  holdings: /^(yes|no)$/,
+  glide: /^(yes|no)$/,
+  language: /^(en|pt)$/,
+};
+
+/** Fields read back from the tab, held to the sheet's own values. Anything else: null, whole. */
+function fieldsOf(raw: Record<string, unknown>): SheetFields | null {
+  const keys = Object.keys(FIELD_FORMS) as (keyof SheetFields)[];
+  if (!keys.every((key) => typeof raw[key] === 'string' && FIELD_FORMS[key].test(raw[key])))
+    return null;
+  return Object.fromEntries(keys.map((key) => [key, raw[key]])) as SheetFields;
+}
 
 /**
  * Reads back what the screen kept. The tab's storage is text anybody can have written: a turn of the
@@ -957,9 +1032,8 @@ export function restoreDraft(raw: string | null): { turns: Turn[]; sheet: Sheet 
   const { fields, skipped } = sheet as Record<string, unknown>;
   if (typeof fields !== 'object' || fields === null || !Array.isArray(skipped)) return null;
   const f = fields as Record<string, unknown>;
-  if (!FIELD_KEYS.every((key) => typeof f[key] === 'string' && (f[key] as string).length <= 40))
-    return null;
-  const cleanFields = Object.fromEntries(FIELD_KEYS.map((key) => [key, f[key]])) as SheetFields;
+  const cleanFields = fieldsOf(f);
+  if (!cleanFields) return null;
   const read: Turn[] = [];
   for (const turn of turns.slice(-200)) {
     if (typeof turn !== 'object' || turn === null) return null;
@@ -986,10 +1060,7 @@ export function restoreDraft(raw: string | null): { turns: Turn[]; sheet: Sheet 
         id: read.length,
         who: 'app',
         say: said,
-        fields:
-          at && FIELD_KEYS.every((key) => typeof at[key] === 'string')
-            ? (Object.fromEntries(FIELD_KEYS.map((key) => [key, at[key]])) as SheetFields)
-            : null,
+        fields: at ? fieldsOf(at) : null,
         ask: isFact(t.ask) ? t.ask : null,
         retry: false,
       });

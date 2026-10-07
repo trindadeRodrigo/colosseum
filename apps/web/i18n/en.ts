@@ -772,7 +772,17 @@ export const en = {
       summaryFacts: (known: number, of: number) => `Your goal: ${known} of ${of} set`,
       ownPage: 'Open this plan on its own page',
       investTitle: 'Invest',
+      /** Signed in, with a plan that was built for a visitor: it is built again as theirs. */
+      makeYours: 'Make this plan yours',
+      /** The plan shown is from before a change that is still being asked about. */
+      stale: 'This plan is from before your change. Answer the question and I build it again.',
       backToPlan: 'Back to the plan',
+    },
+    /** A way to close a gap, pressed: said as the person's own turn. */
+    ways: {
+      amount: (amount: string) => `Make it ${amount}`,
+      income: (income: string) => `Aim for ${income}`,
+      other: 'Change it that way',
     },
     failure: {
       unavailable:

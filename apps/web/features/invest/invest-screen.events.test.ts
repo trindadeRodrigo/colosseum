@@ -261,7 +261,7 @@ describe('once the goal is whole: the next step is said, and is right there (Tho
     expect(pane(host).querySelector('[data-ui="pane-build"]')).toBeNull();
   });
 
-  it.each(['yes', 'ok', 'go', 'so?', 'build', 'sim', 'Yes.'])(
+  it.each(['yes', 'ok', 'go', 'build', 'sim', 'Yes.'])(
     'builds when the person types "%s"',
     async (word) => {
       const server = api();
@@ -274,6 +274,20 @@ describe('once the goal is whole: the next step is said, and is right there (Tho
         turns(host).some(([who, text]) => who === 'person' && text === `${en.talk.you}: ${word}`),
       ).toBe(true);
       expect(pane(host).getAttribute('data-state')).toBe('plan');
+    },
+  );
+
+  it.each(['so?', 'and', 'then', 'please'])(
+    'does not take the filler "%s" for a go-ahead: it builds nothing and offers the build again',
+    async (word) => {
+      const server = api();
+      const host = await screen();
+      await say(host, INCOME);
+      await say(host, word);
+      await settle();
+      expect(server.to(PROPOSE_PATH)).toEqual([]);
+      expect(turns(host).at(-1)?.[1]).toContain(en.talk.say.heldReady);
+      expect(replies(host)).toEqual([en.talk.replies.build]);
     },
   );
 
@@ -575,7 +589,12 @@ describe('the plan, built beside the conversation', () => {
     await click(way);
     await settle();
     await settle();
-    expect(turns(host).some(([who, text]) => who === 'person' && text?.includes(WAY))).toBe(true);
+    // the turn is in the person's words, with the sheet's figure: never the engine's sentence
+    const mine = turns(host)
+      .filter(([who]) => who === 'person')
+      .map(([, text]) => text);
+    expect(mine.at(-1)).toBe(`${en.talk.you}: ${en.talk.ways.amount('$163,100')}`);
+    expect(mine.some((text) => text?.includes(WAY))).toBe(false);
     expect(
       server.to(PROPOSE_PATH).map((c) => (c.body as { sheet: BasketSheet }).sheet.amountUsd),
     ).toEqual([80000, 163100]);
