@@ -121,19 +121,80 @@ describe('the figures of a shared portfolio’s holdings', () => {
     expect(Object.keys(figures)).toEqual(['holdings']);
   });
 
+  it('uses the engine’s observation choice, independent of the order a feed returns', () => {
+    const aggregate = reading('solana:jlusdc', 0.08, 0.06, {
+      method: 'aggregator_quote',
+      fetchedAt: NOW,
+    });
+    const realised = reading('solana:jlusdc', 0.05, 0.04, {
+      method: 'realised_30d',
+      fetchedAt: '2026-10-06T00:00:00.000Z',
+    });
+    for (const yields of [
+      [aggregate, realised],
+      [realised, aggregate],
+    ]) {
+      const got = figuresOf(components, assets, { yields }, NOW).holdings[1]?.yield;
+      expect(got).toMatchObject({
+        quoted: realised.quotedYield,
+        afterHaircut: realised.haircutYield,
+        method: realised.method,
+        fetchedAt: realised.fetchedAt,
+      });
+    }
+  });
+
+  it('chooses the newest observation within the same preferred method rank', () => {
+    const older = reading('solana:jlusdc', 0.05, 0.04, {
+      method: 'protocol_api',
+      fetchedAt: '2026-10-06T00:00:00.000Z',
+    });
+    const newer = reading('solana:jlusdc', 0.08, 0.06, {
+      method: 'by_construction',
+      fetchedAt: NOW,
+    });
+    for (const yields of [
+      [older, newer],
+      [newer, older],
+    ])
+      expect(figuresOf(components, assets, { yields }, NOW).holdings[1]?.yield).toMatchObject({
+        afterHaircut: newer.haircutYield,
+        method: newer.method,
+        fetchedAt: NOW,
+      });
+  });
+
+  it('counts the plan’s lower yield when method and date tie, in either feed order', () => {
+    const higher = reading('solana:jlusdc', 0.1, 0.08, { method: 'protocol_api' });
+    const lower = reading('solana:jlusdc', 0.05, 0.04, { method: 'protocol_api' });
+    for (const yields of [
+      [higher, lower],
+      [lower, higher],
+    ])
+      expect(figuresOf(components, assets, { yields }, NOW).holdings[1]?.yield).toMatchObject({
+        quoted: lower.quotedYield,
+        afterHaircut: lower.haircutYield,
+        fetchedAt: lower.fetchedAt,
+        source: lower.source,
+      });
+  });
+
   it('labels a fixture’s exit as not live, and has no figure at all where nothing was read', () => {
     const figures = figuresOf(
       [{ asset: 'solana:spyx', weightBps: 10_000 }],
       assets,
       {
         liquidity: {
-          provider: provider({ 'solana:spyx': capacity(1_000, { dataTo: null }) }, 'fixture'),
+          provider: provider({ 'solana:spyx': capacity(1_000) }, 'fixture'),
           source: 'a fixture',
         },
       },
       NOW,
     );
-    expect(figures.holdings[0]?.exit).toMatchObject({ provenance: 'mock', fetchedAt: NOW });
+    expect(figures.holdings[0]?.exit).toMatchObject({
+      provenance: 'mock',
+      fetchedAt: '2026-10-07T09:00:00.000Z',
+    });
     // nothing read at all: every figure is absent
     expect(figuresOf(components, assets, {}, NOW)).toEqual({
       holdings: components.map((c, i) => ({
@@ -142,6 +203,44 @@ describe('the figures of a shared portfolio’s holdings', () => {
         yield: null,
         exit: null,
       })),
+    });
+  });
+
+  it('does not turn an unsampled or undated capacity into a fresh measurement', () => {
+    for (const provenance of ['live', 'sandbox', 'fixture'] as const)
+      for (const measured of [
+        capacity(0, { samples: 0 }),
+        capacity(1_000, { dataTo: null }),
+        capacity(1_000, { dataTo: 'not a date' }),
+      ]) {
+        const got = figuresOf(
+          components,
+          assets,
+          {
+            liquidity: {
+              provider: provider({ 'solana:spyx': measured }, provenance),
+              source: 'Bearing',
+            },
+          },
+          NOW,
+        );
+        expect(got.holdings[0]?.exit).toBeNull();
+      }
+  });
+
+  it('keeps a dated, sampled zero capacity as measured zero', () => {
+    const got = figuresOf(
+      components,
+      assets,
+      {
+        liquidity: { provider: provider({ 'solana:spyx': capacity(0) }), source: 'Bearing' },
+      },
+      NOW,
+    );
+    expect(got.holdings[0]?.exit).toMatchObject({
+      capacityUsd: 0,
+      fetchedAt: '2026-10-07T09:00:00.000Z',
+      provenance: 'live',
     });
   });
 

@@ -1,6 +1,7 @@
 import { EXIT_WINDOW_DAYS } from '@colosseum/basket';
-import { PERSONAL_PARAMS } from '@colosseum/engine/personal';
+import { PERSONAL_PARAMS, primaryYieldsOf } from '@colosseum/engine/personal';
 import type { BasketAsset, HoldingFigures, RecipeFigures, Target } from '@colosseum/schemas';
+import { z } from 'zod';
 import type { PlanInputs } from './personalize';
 
 // What the server has measured about the holdings of a shared portfolio, for its card and its page:
@@ -12,22 +13,25 @@ import type { PlanInputs } from './personalize';
 // and readings, no range of the whole is served.
 
 type Inputs = Awaited<ReturnType<PlanInputs>>;
+const IsoTime = z.string().datetime();
 
-/** The figures of these components from the plan inputs of their chain, read at `now`. */
+/** The figures of these components, retaining each measurement's own time. */
 export function figuresOf(
   components: readonly Target[],
   assets: readonly BasketAsset[],
   inputs: Inputs,
-  now: string,
+  _now: string,
 ): RecipeFigures {
   const listed = new Map(assets.map((a) => [a.id, a]));
+  const yields = primaryYieldsOf(inputs.yields ?? []);
   const tau = PERSONAL_PARAMS.tau;
   const holdings = components.map((c): HoldingFigures => {
-    const y = inputs.yields?.find((o) => o.assetId === c.asset);
+    const y = yields.get(c.asset);
     const provider = listed.has(c.asset) ? inputs.liquidity?.provider : undefined;
     const capacity = provider?.covers(c.asset)
       ? provider.exitCapacity(c.asset, tau, EXIT_WINDOW_DAYS)
       : null;
+    const measuredAt = IsoTime.safeParse(capacity?.dataTo);
     return {
       asset: c.asset,
       cls: listed.get(c.asset)?.cls ?? null,
@@ -43,7 +47,7 @@ export function figuresOf(
           }
         : null,
       exit:
-        capacity && provider && inputs.liquidity
+        capacity && capacity.samples > 0 && measuredAt.success && provider && inputs.liquidity
           ? {
               capacityUsd: capacity.capacityUsd,
               lowerBound: capacity.lowerBound,
@@ -51,7 +55,7 @@ export function figuresOf(
               maxCostBps: Math.round(tau * 10_000),
               source: inputs.liquidity.source,
               method: `the most sold within ${EXIT_WINDOW_DAYS} days at a cost of at most ${tau * 100}%, in the worst conditions measured (${capacity.regime}, ${capacity.samples} samples)`,
-              fetchedAt: capacity.dataTo ?? now,
+              fetchedAt: measuredAt.data,
               // A fixture's figures are not a reading of any chain.
               provenance: provider.provenance === 'fixture' ? 'mock' : provider.provenance,
             }

@@ -14,3 +14,4 @@ export {
   TEXT_TEMPLATES,
 } from './templates';
 export * from './types';
+export { primaryYieldsOf } from './world';
