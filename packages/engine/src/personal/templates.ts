@@ -1028,11 +1028,15 @@ export const MATCHED_NAME = {
   pt: 'nomes filtrados por {by}: {value}',
 } as const satisfies Text;
 
-/** The classes a person can leave out, as the read-back writes them. */
+/**
+ * The classes a person can leave out, as the read-back writes them, in the order it says them:
+ * stocks, then the funds of them. `etf` is said "stock funds": every fund of that class is a fund of
+ * stocks, and the shelf also has funds that pay a dollar yield, which that class is not.
+ */
 export const CLASS_WORDS: Record<Language, Record<string, string>> = {
   en: {
     stock: 'stocks',
-    etf: 'funds',
+    etf: 'stock funds',
     gold: 'gold',
     commodity: 'commodities',
     dollar_yield: 'dollar yield',
@@ -1040,7 +1044,7 @@ export const CLASS_WORDS: Record<Language, Record<string, string>> = {
   },
   pt: {
     stock: 'ações',
-    etf: 'fundos',
+    etf: 'fundos de ações',
     gold: 'ouro',
     commodity: 'commodities',
     dollar_yield: 'rendimento em dólar',

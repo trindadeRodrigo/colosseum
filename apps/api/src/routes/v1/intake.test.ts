@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { mockAssets } from '@colosseum/chain-mock';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { budgetedModel, type IntakeModel, type ReadCall } from '../../llm';
@@ -177,8 +178,10 @@ describe('POST /v1/baskets/intake', () => {
       currency: 'BRL',
       chains: ['solana'],
       language: 'pt',
-      limits: { cannotHold: { classes: ['stock'] } },
+      // "Sem ações": no stocks, and none through a fund of stocks either.
+      limits: { cannotHold: { classes: ['etf', 'stock'] } },
     });
+    expect(second.readBack).toContain('Você deixou de fora ações e fundos de ações.');
     // The time frame is said back as the person wrote it: a year, not 12 months.
     expect(second.readBack?.[0]).toBe(
       'Você definiu um objetivo de proteção com US$ 550 em 1 ano, com risco baixo.',
@@ -594,14 +597,15 @@ describe('POST /v1/baskets/intake', () => {
 
   it('a refusal the text writes is carried to the sheet and said back, with no model and where the model misses it', async () => {
     const who = await someone('solana');
-    const limits = { cannotHold: { classes: ['stock'] } };
+    // "No stocks" is no stocks through a fund either: both classes are left out.
+    const limits = { cannotHold: { classes: ['etf', 'stock'] } };
     // No model configured: the rules reader reads the goal, and code reads the refusal.
     const first = await post(who, PATH, { text: noStocks.text }, off);
     expect(first.statusCode, first.body).toBe(200);
     const asked = IntakeResponse.parse(first.json());
     expect(asked.reader).toMatchObject({ method: 'rules', why: 'model_not_configured' });
     // Read at once, and not asked: the refusal is no question.
-    expect(asked.limits).toEqual({ creditTolerance: null, cannotHoldClasses: ['stock'] });
+    expect(asked.limits).toEqual({ creditTolerance: null, cannotHoldClasses: ['etf', 'stock'] });
     expect(asked.questions.map((q) => q.field)).toEqual([
       'goal',
       'amountUsd',
@@ -620,7 +624,7 @@ describe('POST /v1/baskets/intake', () => {
       'You set a goal to grow with $20,000 over 3 years, at low risk.',
       'The plan lives on Solana, the chain of your wallet.',
       'Tokens you already hold count toward the plan.',
-      'You left out stocks.',
+      'You left out stocks and stock funds.',
       'Nothing moves toward cash as the date nears unless you ask for it.',
       'If this is right, confirm it and the plan is made from it.',
     ]);
@@ -631,7 +635,9 @@ describe('POST /v1/baskets/intake', () => {
     expect(byModel.reader).toMatchObject({ method: 'model', provenance: 'mock' });
     expect(byModel.flags).toContain('disagrees_with_rules:cannotHold:stock');
     expect(byModel.sheet).toMatchObject({ limits });
-    expect(byModel.readBack).toContain('You left out stocks.');
+    expect(byModel.readBack).toContain('You left out stocks and stock funds.');
+    // The class that goes with stocks is no disagreement with the model.
+    expect(byModel.flags.filter((f) => /cannotHold:etf/.test(f))).toEqual([]);
     expect(byModel.sheet).toEqual(byRules.sheet);
     // "Sem crédito", with no model.
     const pt = IntakeResponse.parse(
@@ -667,9 +673,53 @@ describe('POST /v1/baskets/intake', () => {
     expect(unsure.readBack).toContain(
       'I did not read “No stocks” as something to leave out. Say so if you want it left out.',
     );
-    // The confirm takes the sheet with its limits as it is.
-    const plan = await post(who, '/v1/baskets/personalize', { sheet: byRules.sheet });
-    expect(plan.statusCode, plan.body).toBe(200);
+    // "No ETFs" leaves out the stock funds alone: single stocks may still be held.
+    const funds = IntakeResponse.parse(
+      (
+        await post(
+          who,
+          PATH,
+          { text: 'I want to grow $20,000 for 3 years at low risk. No ETFs.', answers },
+          off,
+        )
+      ).json(),
+    );
+    expect(funds.sheet).toMatchObject({ limits: { cannotHold: { classes: ['etf'] } } });
+    expect(funds.readBack).toContain('You left out stock funds.');
+
+    // The confirm takes the sheet with its limits as it is, and the plan made from it holds no stock
+    // token and no fund of stocks. At medium risk: there the same goal with nothing refused holds a
+    // fund of stocks on this shelf (at low, gold and dollar yield take all the mock's one issuer may
+    // hold).
+    const medium = IntakeResponse.parse(
+      (
+        await post(who, PATH, { text: noStocks.text, answers: { ...answers, risk: 'medium' } }, off)
+      ).json(),
+    );
+    expect(medium.sheet).toMatchObject({ goal: 'grow', risk: 'medium', limits });
+    expect(medium.readBack).toContain('You left out stocks and stock funds.');
+    const cls = new Map(mockAssets('solana').map((a) => [a.id, a.cls]));
+    const classesHeld = async (sheet: unknown) => {
+      const plan = await post(who, '/v1/baskets/personalize', { sheet });
+      expect(plan.statusCode, plan.body).toBe(200);
+      const { proposal } = PersonalizeResponse.parse(plan.json());
+      expect(proposal.lines.length).toBeGreaterThan(0);
+      return proposal.lines.map((line) => cls.get(line.assetId));
+    };
+    const held = await classesHeld(medium.sheet);
+    expect(held).not.toContain('stock');
+    expect(held).not.toContain('etf');
+    expect(held).not.toContain(undefined);
+    // Not idle. With nothing refused the same sheet holds a fund of stocks on this shelf, and with
+    // stocks alone left out, which is what the intake read before, the plan still held that fund.
+    const { limits: _refused, ...open } = medium.sheet as NonNullable<typeof medium.sheet>;
+    expect(await classesHeld(open)).toContain('etf');
+    const stocksOnly = await classesHeld({
+      ...open,
+      limits: { cannotHold: { classes: ['stock'] } },
+    });
+    expect(stocksOnly).toContain('etf');
+    expect(stocksOnly).not.toContain('stock');
   });
 
   it('with no chain yet, a market the text names is not resolved, and nothing is said of it', async () => {
