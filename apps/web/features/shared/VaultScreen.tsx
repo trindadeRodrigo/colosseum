@@ -8,18 +8,18 @@ import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/Card';
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
-import { ExplorerLink } from '../../components/ui/ExplorerLink';
 import { PAGE_TITLE } from '../../components/ui/heading';
+import { Icon } from '../../components/ui/Icon';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { pinSourceOfPrice } from '../../components/ui/price-source';
 import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import type { CallFailure } from '../order/order-api';
 import { displayName } from '../order/plain';
-import { explorerAddressUrlFor, onMock } from '../order/readiness';
+import { explorerAddressUrlFor } from '../order/readiness';
 import { dollars, drift, share, tokens } from '../portfolio/figures';
 import { type HoldingRow, holdingsOf, vaultValueSource } from '../portfolio/portfolio';
-import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
+import { useApiFetch } from '../wallet/WalletProvider';
 import { readVault } from './shared-api';
 
 // A vault, read-only, for anybody (DESIGN-VAULT section 11, the public vault page): its owner, what it
@@ -36,7 +36,6 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
   const lang = useLang();
   const v = t.shared.vault;
   const apiFetch = useApiFetch();
-  const port = useWalletPort();
   // The vault is read once for an address, and again only when asked: the reader is kept in a ref,
   // so a change of the sign-in around it does not ask the server again (the flow audit, 35).
   const fetcher = useRef(apiFetch);
@@ -81,7 +80,10 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
             </Button>
           </>
         )}
-        <Link href="/monitor" className={buttonClass({ variant: 'secondary' })}>
+        <Link href="/shelf" className={buttonClass({ variant: 'secondary' })}>
+          {t.shared.family.backToShelf}
+        </Link>
+        <Link href="/monitor" className={buttonClass({ variant: 'link' })}>
           {v.back}
         </Link>
       </section>
@@ -89,9 +91,9 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
 
   const { read } = load;
   const { vault } = read;
-  const explorer = explorerAddressUrlFor(read.chain, vault.address, onMock(port, read.chain));
   const priceOf = (asset: string): Price | undefined => read.prices.find((p) => p.asset === asset);
   const follows = vault.recipeOnchainId;
+  const explorer = explorerAddressUrlFor(read.chain, vault.address, read.provenance === 'mock');
   return (
     <div data-ui="vault-screen" className="flex flex-col gap-8">
       <header className="flex flex-col items-start gap-3">
@@ -100,20 +102,25 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
           {v.title}
         </h1>
         <p className="max-w-(--tf-measure-body) text-body-lg">{v.lead(read.name)}</p>
-        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 break-all font-mono text-source text-muted-foreground">
-          <span>{vault.address}</span>
+        <p className="break-all font-mono text-source text-muted-foreground">{vault.address}</p>
+        {/* the way back, and the vault on its chain's own explorer */}
+        <p className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <Link href="/monitor" className={buttonClass({ variant: 'link' })}>
+            {v.back}
+          </Link>
           {explorer && (
-            <ExplorerLink
-              signature={vault.address}
+            <a
+              data-ui="vault-explorer"
               href={explorer}
-              explorer={t.chain.explorers[read.chain]}
-              labels={{ tx: t.shell.address, view: t.shell.viewOn(t.chain.explorers[read.chain]) }}
-            />
+              target="_blank"
+              rel="noopener"
+              className={buttonClass({ variant: 'link' })}
+            >
+              {v.explorer(t.chain.explorers[read.chain])}
+              <Icon name="ArrowUpRight" size={16} />
+            </a>
           )}
         </p>
-        <Link href="/monitor" className={buttonClass({ variant: 'link' })}>
-          {v.back}
-        </Link>
       </header>
 
       <Card

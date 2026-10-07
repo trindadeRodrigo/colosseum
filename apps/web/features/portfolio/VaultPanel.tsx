@@ -143,13 +143,14 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
         meta={
           <span className="inline-flex flex-wrap items-center justify-end gap-2">
             <ChainBadge chain={vault.chain} />
-            {/* The address leads to the vault's own page, which anyone can read. */}
+            {/* the vault's own page: the same read, for anybody, with its explorer link */}
             <Link
-              href={page}
+              data-ui="vault-page-link"
+              href={`/vaults/${vault.chain}/${encodeURIComponent(vault.address)}`}
               title={vault.address}
-              className={`${buttonClass({ variant: 'link' })} font-mono`}
+              aria-label={words.page(shorten(vault.address))}
+              className="font-mono text-primary underline decoration-1 underline-offset-4 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
-              <span className="sr-only">{words.address}: </span>
               {shorten(vault.address)}
             </Link>
           </span>

@@ -81,6 +81,15 @@ export function ShelfScreen() {
   }, [apiFetch, chain, settled, round]);
 
   const chainName = chain ? t.chain.names[chain] : null;
+  // Signed in when the page was read, signed out now: the person left while looking at it.
+  const wasIn = useRef(false);
+  const [left, setLeft] = useState(false);
+  useEffect(() => {
+    if (person.kind === 'ready') {
+      wasIn.current = true;
+      setLeft(false);
+    } else if (person.kind === 'signed-out' && wasIn.current) setLeft(true);
+  }, [person.kind]);
   return (
     <div data-ui="shelf-screen" className="flex flex-col gap-8">
       <header className="flex flex-col gap-3">
@@ -95,13 +104,19 @@ export function ShelfScreen() {
             {t.shared.shelf.publish}
           </Link>
         )}
-        {/* Where publishing is not built, the shelf says so: a missing link explains nothing. */}
+        {/* where a portfolio cannot be published yet, the shelf says so: no silent gap */}
         {person.kind === 'ready' && !person.publishable && chainName && (
           <p
-            data-ui="no-publish"
+            data-ui="shelf-publish-soon"
             className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground"
           >
-            {t.shared.shelf.noPublish(chainName)}
+            {t.shared.shelf.publishSoon(chainName)}
+          </p>
+        )}
+        {/* the bar says "signed out" to a screen reader; the page says it to the eye, with what it still shows */}
+        {left && person.kind === 'signed-out' && chainName && (
+          <p data-ui="shelf-signed-out" className="max-w-(--tf-measure-body) text-body-sm">
+            {t.shared.shelf.signedOut(chainName)}
           </p>
         )}
       </header>

@@ -426,6 +426,7 @@ export const pt: Dictionary = {
     vault: {
       title: 'Seu cofre',
       address: 'Endereço do cofre',
+      page: (address: string) => `Abrir a página do cofre ${address}`,
       value: 'Valor',
       cash: 'Caixa',
       autoFollow: 'Seguir automaticamente',
@@ -813,8 +814,10 @@ export const pt: Dictionary = {
       empty: (chain: string) => `Nenhum portfólio foi compartilhado na ${chain} ainda.`,
       emptyAll: 'Nenhum portfólio foi compartilhado ainda.',
       publish: 'Publicar um portfólio',
-      noPublish: (chain: string) =>
-        `Publicar um portfólio só existe na Solana por enquanto, então não é oferecido na ${chain}.`,
+      publishSoon: (chain: string) =>
+        `Publicar um portfólio na ${chain} está a caminho. Por enquanto dá para publicar na Solana.`,
+      signedOut: (chain: string) =>
+        `Você saiu da conta. Esta ainda é a prateleira da ${chain}; entre para seguir um portfólio.`,
       card: {
         by: (creator: string) => `por ${creator}`,
         platform: 'Da tenonfi',
@@ -967,6 +970,7 @@ export const pt: Dictionary = {
       assetsHint: 'De 3 a 12 ativos, cada um de 2% a 50%, em passos de 0,5%, somando 100%.',
       asset: 'Ativo',
       weight: 'Peso, em %',
+      assetOf: (n: number) => `Ativo ${n}`,
       weightOf: (n: number) => `Peso do ativo ${n} (%)`,
       add: 'Incluir um ativo',
       remove: (asset: string) => `Tirar ${asset}`,
@@ -1003,6 +1007,8 @@ export const pt: Dictionary = {
         `Lido da ${chain} para esta página. Qualquer pessoa pode ver um cofre: o que ele tem é público na rede.`,
       loading: 'Lendo o cofre…',
       missing: 'Não há cofre neste endereço.',
+      back: 'Voltar ao seu portfólio',
+      explorer: (explorer: string) => `Ver no ${explorer}`,
       owner: 'Dono',
       follows: 'Segue',
       followsNothing: 'Nada: quem é dono define os pesos',
@@ -1020,7 +1026,6 @@ export const pt: Dictionary = {
       },
       on: 'Ativado',
       off: 'Desativado',
-      back: 'Voltar ao seu portfólio',
     },
   },
 

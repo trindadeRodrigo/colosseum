@@ -1,12 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { EXIT_WINDOW_DAYS } from '@colosseum/basket';
 import { assets as assetsTable, riskPools, yieldObservations } from '@colosseum/db';
+import { PERSONAL_PARAMS } from '@colosseum/engine/personal';
 import { chainFamily, type YieldObservation } from '@colosseum/schemas';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { loadLiquidityProvider, RISK_METHOD_VERSION } from './liquidity';
 import {
   asSandbox,
   exitTwins,
+  isMeasured,
   issuerTwins,
   type RegistryAsset,
   shelfTiers,
@@ -119,8 +122,9 @@ export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets, provena
     assets.map((a) => ({ id: a.id, mint: twinOf.get(a.id) ?? a.address })),
   );
   const read = twins.filter((t) => loaded?.covers(t.id));
+  const measured = (id: string) => isMeasured(loaded, id, PERSONAL_PARAMS.tau, EXIT_WINDOW_DAYS);
   const tiers = tierTwins(
-    tokens.filter((t) => !loaded?.covers(t.id)),
+    tokens.filter((t) => !measured(t.id)),
     SHELF,
   ).map((t) => ({
     assetId: t.id,

@@ -483,6 +483,8 @@ export const en = {
     vault: {
       title: 'Your vault',
       address: 'Vault address',
+      /** The link from a vault's panel to its own page. */
+      page: (address: string) => `Open the page of vault ${address}`,
       value: 'Value',
       cash: 'Cash',
       autoFollow: 'Auto-follow',
@@ -890,9 +892,12 @@ export const en = {
       empty: (chain: string) => `No portfolio is shared on ${chain} yet.`,
       emptyAll: 'No portfolio is shared yet.',
       publish: 'Publish a portfolio',
-      /** Why the shelf offers no publishing on a chain where it is not built. */
-      noPublish: (chain: string) =>
-        `Publishing a portfolio is built on Solana only for now, so it isn’t offered on ${chain}.`,
+      /** Where publishing is not offered yet: said, in place of the link. */
+      publishSoon: (chain: string) =>
+        `Publishing a portfolio on ${chain} is coming. For now it can be done on Solana.`,
+      /** After signing out on this page: the shelf stays, and says whose it is now. */
+      signedOut: (chain: string) =>
+        `You’re signed out. This is still the shelf of ${chain}; sign in to follow a portfolio.`,
       card: {
         by: (creator: string) => `by ${creator}`,
         platform: 'From tenonfi',
@@ -1044,7 +1049,8 @@ export const en = {
       assetsHint: '3 to 12 assets, each from 2% to 50%, in steps of 0.5%, adding up to 100%.',
       asset: 'Asset',
       weight: 'Weight, in %',
-      /** The label of one row's weight: "Weight of asset 1 (%)". */
+      /** The labels of a row's two fields. */
+      assetOf: (n: number) => `Asset ${n}`,
       weightOf: (n: number) => `Weight of asset ${n} (%)`,
       add: 'Add an asset',
       remove: (asset: string) => `Remove ${asset}`,
@@ -1080,6 +1086,9 @@ export const en = {
         `Read from ${chain} for this page. Anyone can see a vault: what it holds is public on its chain.`,
       loading: 'Reading the vault…',
       missing: 'There is no vault at this address.',
+      back: 'Back to your portfolio',
+      /** The link to the vault's address on its chain's explorer. */
+      explorer: (explorer: string) => `See it on ${explorer}`,
       owner: 'Owner',
       follows: 'Follows',
       followsNothing: 'Nothing: the owner sets its weights',
@@ -1097,7 +1106,6 @@ export const en = {
       },
       on: 'On',
       off: 'Off',
-      back: 'Back to your portfolio',
     },
   },
 

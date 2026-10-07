@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { solanaVaultAddress } from '@colosseum/sdk';
-import { createElement } from 'react';
+import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
@@ -9,7 +9,7 @@ import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
 import { keepOrder, recallOrder } from '../order/order-record';
-import { basketOfPlan } from '../order/readiness';
+import { basketOfPlan, explorerAddressUrlFor } from '../order/readiness';
 import { PLAN_ID, planOn, recordOf } from '../order/test/fixtures';
 import { EMBEDDED, fakePort, json, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
@@ -120,22 +120,6 @@ beforeEach(() => {
   portStore.set(signedInPort(EMBEDDED, { userId: USER }));
 });
 afterEach(unmountAll);
-
-describe('the shelf, where publishing is not built', () => {
-  it('says why it offers no publishing on Robinhood Chain, and offers it on Solana', async () => {
-    api({ family: null, chain: 'robinhood' });
-    const host = await show(createElement(ShelfScreen));
-    expect(find(host, '[data-ui="no-publish"]').textContent).toBe(
-      en.shared.shelf.noPublish('Robinhood Chain'),
-    );
-    expect(host.querySelector('a[href="/publish"]')).toBeNull();
-    await unmountAll();
-    api({ family: null });
-    const solana = await show(createElement(ShelfScreen));
-    expect(solana.querySelector('[data-ui="no-publish"]')).toBeNull();
-    expect(solana.querySelector('a[href="/publish"]')).not.toBeNull();
-  });
-});
 
 describe('the shelf', () => {
   it('asks for the person’s chain only, and shows a creator’s words as text, never markup', async () => {
@@ -580,7 +564,8 @@ describe('a vault’s public page', () => {
     });
     for (let i = 0; i < 3; i += 1) await settle(50);
     expect(asked).toBe(1);
-    expect(find(host, 'a').getAttribute('href')).toBe('/monitor');
+    const ways = [...host.querySelectorAll('a')].map((link) => link.getAttribute('href'));
+    expect(ways).toEqual(['/shelf', '/monitor']);
   });
 });
 
@@ -650,6 +635,134 @@ describe('the chain, on the shelf and on a vault’s page', () => {
       );
       expect(back?.getAttribute('href')).toBe('/monitor');
       if (chain === 'robinhood') expect(host.textContent).not.toMatch(/usdc/i);
+    },
+  );
+});
+
+describe('the flow audit’s findings on these screens (34, 38, 42)', () => {
+  const pt = dictionary('pt');
+
+  it('the vault page leads back, links its explorer, and writes figures as the portfolio does', async () => {
+    portStore.setApi(async (path) => {
+      if (path === '/v1/me') return json(person);
+      if (path === `/v1/vaults/solana/${VAULT}`)
+        return json({
+          chain: 'solana',
+          name: 'Solana',
+          mode: 'live',
+          provenance: 'sandbox',
+          vault: {
+            ...vaultOf({
+              valueUsd: '377.4',
+              cash: { asset: 'solana:usdc', raw: '10000000', multiplier: '1', display: '10' },
+              positions: [
+                {
+                  asset: 'solana:spyx',
+                  raw: '837024',
+                  multiplier: '1',
+                  display: '0.00837024899664214',
+                  targetBps: 6500,
+                  lastKeeperAt: null,
+                  valueUsd: '367.4',
+                  weightBps: 6500,
+                  driftBps: 0,
+                },
+              ],
+            }),
+            provenance: 'sandbox',
+          },
+          prices: [],
+          disclaimer: 'd',
+        });
+      return json({ error: 'not found' }, 404);
+    });
+    const host = await show(createElement(VaultScreen, { chain: 'solana', address: VAULT }));
+    const back = [...host.querySelectorAll('a')].find(
+      (a) => a.textContent === en.shared.vault.back,
+    );
+    expect(back?.getAttribute('href')).toBe('/monitor');
+    const explorer = find<HTMLAnchorElement>(host, '[data-ui="vault-explorer"]');
+    expect(explorer.textContent).toBe(en.shared.vault.explorer('Solscan'));
+    expect(explorer.getAttribute('href')).toBe(explorerAddressUrlFor('solana', VAULT, false));
+    expect(explorer.getAttribute('href')).toContain(`/account/${VAULT}`);
+    expect(explorer.getAttribute('target')).toBe('_blank');
+    expect(find(host, 'header [data-ui="chain-badge"]').textContent).toBe('Solana');
+    // the portfolio's formats: cents in full, shares to one decimal at most, six places on a token
+    const text = host.textContent ?? '';
+    expect(text).toContain('$377.40');
+    expect(text).toContain('0.00837');
+    expect(text).not.toContain('0.00837024899664214');
+    expect(text).toContain('65%');
+    expect(text).not.toContain('65.00%');
+    // and cash is a holding of its own, so the shares add up to the whole
+    expect(text).toContain('Cash (USDC)');
+    expect(text).not.toMatch(/\$377\.4(?!0)/);
+  });
+
+  it.each(['en', 'pt'] as const)(
+    'the shelf on Robinhood Chain says publishing is coming, where Solana offers the link (%s)',
+    async (lang) => {
+      const words = lang === 'en' ? en : pt;
+      api({ family: familyOf(FAMILY_ID), chain: 'robinhood' });
+      const rh = await mount(withAccount(lang, createElement(ShelfScreen)));
+      for (let i = 0; i < 4; i += 1) await settle(50);
+      expect(find(rh, '[data-ui="shelf-publish-soon"]').textContent).toBe(
+        words.shared.shelf.publishSoon('Robinhood Chain'),
+      );
+      expect(rh.querySelector('a[href="/publish"]')).toBeNull();
+      await unmountAll();
+      api({ family: familyOf(FAMILY_ID) });
+      const sol = await mount(withAccount(lang, createElement(ShelfScreen)));
+      for (let i = 0; i < 4; i += 1) await settle(50);
+      expect(sol.querySelector('a[href="/publish"]')?.textContent).toBe(words.shared.shelf.publish);
+      expect(sol.querySelector('[data-ui="shelf-publish-soon"]')).toBeNull();
+    },
+  );
+
+  it('the shelf says so when the person signs out on it, and not to someone who came signed out', async () => {
+    api({ family: familyOf(FAMILY_ID) });
+    const host = await show(createElement(ShelfScreen));
+    expect(host.querySelector('[data-ui="shelf-signed-out"]')).toBeNull();
+    await act(async () => portStore.set(fakePort()));
+    for (let i = 0; i < 4; i += 1) await settle(50);
+    expect(find(host, '[data-ui="shelf-signed-out"]').textContent).toBe(
+      en.shared.shelf.signedOut('Solana'),
+    );
+    await unmountAll();
+    // a visitor who was never signed in is told nothing of the kind
+    portStore.set(fakePort());
+    api({ family: familyOf(FAMILY_ID) });
+    const visitor = await show(createElement(ShelfScreen));
+    expect(visitor.querySelector('[data-ui="shelf-signed-out"]')).toBeNull();
+  });
+
+  it.each(['en', 'pt'] as const)(
+    'the publish form says no rule before anything is typed, and labels each weight by its asset (%s)',
+    async (lang) => {
+      const words = (lang === 'en' ? en : pt).shared.publish;
+      api({ family: null, order: () => publishOrder() });
+      const host = await mount(withAccount(lang, createElement(PublishScreen)));
+      for (let i = 0; i < 4; i += 1) await settle(50);
+      const rules = Object.values(words.problems);
+      // an empty form: nothing is wrong with it yet
+      for (const rule of rules) expect(host.textContent, rule).not.toContain(rule);
+      const labels = [...host.querySelectorAll('label')].map((l) => l.textContent);
+      expect(labels).toContain(words.weightOf(1));
+      expect(labels).toContain(words.assetOf(1));
+      expect(labels.some((l) => /% \d$/.test(l ?? ''))).toBe(false);
+      // a weight typed: the rules of the weights are said, the name's is not yet
+      const weight = find<HTMLInputElement>(
+        host,
+        `#${CSS.escape([...host.querySelectorAll('label')].find((l) => l.textContent === words.weightOf(1))?.htmlFor ?? '')}`,
+      );
+      await type(weight, '50');
+      await settle(50);
+      expect(host.textContent).toContain(words.problems.sum);
+      expect(host.textContent).not.toContain(words.problems.slug);
+      // asked for the review: every rule the form breaks is said
+      await click(button(host, words.review) as HTMLElement);
+      await settle(50);
+      expect(host.textContent).toContain(words.problems.slug);
     },
   );
 });
