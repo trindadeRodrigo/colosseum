@@ -1,6 +1,13 @@
 'use client';
 import type { ChainId, Target } from '@colosseum/schemas';
-import { type ChainVault, readEvmVault, readSolanaVault } from '@colosseum/sdk';
+import {
+  type ChainVault,
+  evmVaultAddress,
+  type GuardDeployment,
+  readEvmVault,
+  readSolanaVault,
+  vaultOf,
+} from '@colosseum/sdk';
 import { useEffect, useState } from 'react';
 import { chainNode } from '../order/chain-node';
 import { deploymentsFor } from '../order/readiness';
@@ -17,6 +24,10 @@ import { sameAddress } from './vault-name';
 //   mock           the chain runs on the mock: there is no chain to read
 //   no-node        no node of this chain is set for this app (NEXT_PUBLIC_CHAIN_READ_RPC_<CHAIN>)
 //   no-deployment  no deployment is committed for the chain's network
+//
+// Even then the address is not our server's word: it is derived here from the deployment, the wallet
+// and the plan's number (`derivedVault`), with no node asked, and an address or a number our server
+// named that is not that vault's has `failed`.
 //
 // Where it has a node and a deployment and still cannot read, or reads another vault than the one
 // named, the read has `failed`, and no add is offered: a server that lies can cause it.
@@ -36,6 +47,24 @@ export type VaultCheck =
   | { state: 'missing' }
   | { state: 'failed' }
   | { state: 'unverified'; why: 'mock' | 'no-node' | 'no-deployment' };
+
+/**
+ * The vault of `owner` for the plan number `basketId`, as this app derives it from the committed
+ * deployment: what the guard holds every step of an add to. No node is asked.
+ */
+export function derivedVault(
+  deployment: GuardDeployment,
+  owner: string,
+  basketId: string,
+): string | null {
+  try {
+    return deployment.family === 'evm'
+      ? evmVaultAddress(deployment, owner, basketId)
+      : vaultOf(deployment, owner, basketId);
+  } catch {
+    return null;
+  }
+}
 
 /** The targets above zero as an add buys them, or null when one is a token the app does not list. */
 export function buyableTargets(vault: ChainVault): Target[] | null {
@@ -65,12 +94,15 @@ export function useChainVault(
       if (mine) setCheck(next);
     };
     if (!chain || !owner || !basketId || !address) say({ state: 'reading' });
-    else if (mock) say({ state: 'unverified', why: 'mock' });
     else {
-      const deployment = deploymentsFor(chain, false)?.[chain];
-      const node = chainNode(chain);
-      if (!deployment || deployment.family === 'mock')
-        say({ state: 'unverified', why: 'no-deployment' });
+      const deployment = deploymentsFor(chain, mock)?.[chain];
+      const node = mock ? undefined : chainNode(chain);
+      const derived = deployment ? derivedVault(deployment, owner, basketId) : null;
+      if (!deployment) say({ state: 'unverified', why: 'no-deployment' });
+      // The address and the number our server named are not the vault of this wallet for that
+      // number: nothing is offered, whether or not there is a node to read.
+      else if (!derived || !sameAddress(chain, derived, address)) say({ state: 'failed' });
+      else if (deployment.family === 'mock') say({ state: 'unverified', why: 'mock' });
       else if (!node) say({ state: 'unverified', why: 'no-node' });
       else {
         say({ state: 'reading' });

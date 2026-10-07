@@ -1,12 +1,13 @@
 // @vitest-environment happy-dom
-import type { OrderDetail } from '@colosseum/schemas';
+import { DISCLAIMER, type OrderDetail } from '@colosseum/schemas';
+import { solanaVaultAddress } from '@colosseum/sdk';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
-import { withAccount } from '../account/test/screen';
-import { checkVaultAdd } from '../order/order-check';
+import { inShell, withAccount } from '../account/test/screen';
+import { checkDeposit, checkVaultAdd } from '../order/order-check';
 import { isBuy, recallOrder } from '../order/order-record';
 import { basketOfPlan } from '../order/readiness';
 import { planTermsOf } from '../order/run-order';
@@ -28,7 +29,7 @@ import { portStore } from '../wallet/test/mock-provider';
 import { AddMoneyScreen, targetsOfVault } from './AddMoneyScreen';
 import { MonitorScreen } from './MonitorScreen';
 import { PORTFOLIO_PATH } from './portfolio';
-import { chainOf, portfolioBody, SECOND_VAULT, VAULT, vault } from './test/portfolio';
+import { chainOf, portfolioBody, vault as vaultFixture } from './test/portfolio';
 import { VaultActions } from './VaultActions';
 import { dueOf, goalOfVault, putInto } from './vault-goal';
 import { ownVault, readName, sameAddress } from './vault-name';
@@ -42,6 +43,13 @@ vi.mock('next/link', () => import('../wallet/test/mock-next'));
 // GET /v1/portfolio, GET /v1/funding, POST /v1/orders and PUT /v1/vaults/{chain}/{address}/name.
 
 const en = dictionary('en');
+// The vaults of the tests' wallet for plans 7 and 8, as this app derives them: an add is offered only
+// for an address that is the vault of the signing wallet for the number our server names.
+const PROGRAM = '529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW';
+const VAULT = solanaVaultAddress(PROGRAM, SOLANA, '7');
+const SECOND_VAULT = solanaVaultAddress(PROGRAM, SOLANA, '8');
+const vault = (over: Parameters<typeof vaultFixture>[0] = {}) =>
+  vaultFixture({ address: VAULT, ...over });
 const units = unitsFor('solana', false);
 const { spy } = assetsOn('solana');
 
@@ -85,6 +93,60 @@ describe('an order that adds money to a vault, before it is offered for signing'
     expect(checkVaultAdd(twice, 10, units, terms)).toEqual({ ok: false, why: 'shape' });
     const none = { ...add, legs: add.legs.filter((l) => l.kind !== 'deposit') };
     expect(checkVaultAdd(none, 10, units, terms)).toEqual({ ok: false, why: 'shape' });
+  });
+
+  it('refuses a new vault opened beside the one deposit', () => {
+    const add = addOrder();
+    const [deposit] = add.legs;
+    if (!deposit) throw new Error('a deposit');
+    // everything else about it is right: one deposit of the amount, the trades at the targets
+    const opened = {
+      ...add,
+      legs: [
+        { ...deposit, id: 'open', seq: 9, kind: 'create_vault', cashRaw: undefined },
+        ...add.legs,
+      ],
+    } as OrderDetail;
+    expect(checkDeposit(opened, 10, units).ok).toBe(true);
+    expect(checkVaultAdd(opened, 10, units, terms)).toEqual({ ok: false, why: 'shape' });
+  });
+
+  it.each([
+    'withdraw',
+    'set_targets',
+    'set_auto_follow',
+    'accept_version',
+    'publish',
+    'adopt_version',
+    'keeper_leg',
+    'create_vault',
+  ] as const)('refuses a %s step beside the deposit and the swaps', (kind) => {
+    const add = addOrder();
+    const [deposit] = add.legs;
+    if (!deposit) throw new Error('a deposit');
+    const extra = { ...deposit, id: 'extra', seq: 9, kind, cashRaw: undefined, trades: [] };
+    for (const legs of [
+      [...add.legs, extra],
+      [extra, ...add.legs],
+    ])
+      expect(checkVaultAdd({ ...add, legs } as OrderDetail, 10, units, terms), kind).toEqual({
+        ok: false,
+        why: 'shape',
+      });
+  });
+
+  it('takes one approval before the deposit, as an EVM chain needs, and no second one', () => {
+    const add = addOrder();
+    const [deposit] = add.legs;
+    if (!deposit) throw new Error('a deposit');
+    const approve = { ...deposit, id: 'approve', seq: -1, kind: 'approve', trades: [] };
+    const approved = { ...add, legs: [approve, ...add.legs] } as OrderDetail;
+    expect(checkVaultAdd(approved, 10, units, terms).ok).toBe(true);
+    const twice = { ...add, legs: [approve, { ...approve, id: 'again' }, ...add.legs] };
+    expect(checkVaultAdd(twice as OrderDetail, 10, units, terms)).toEqual({
+      ok: false,
+      why: 'shape',
+    });
   });
 
   it('refuses one that states another vault’s number', () => {
@@ -157,10 +219,15 @@ describe('an order that adds money to a vault, before it is offered for signing'
       { sell: cash, buy: 'solana:nvdax', amountInRaw: '4000000' },
     ]);
     expect(checkVaultAdd(swapped, 10, units, two)).toEqual({ ok: false, why: 'trades' });
-    // an add to a vault with auto-follow on is the deposit alone: any trade is refused
+    // an add to a vault with auto-follow on is the deposit alone: a swap step is refused, with a
+    // trade or with none
     const keeper = { ...terms, targets: [], keeper: true };
-    expect(checkVaultAdd(add, 10, units, keeper)).toEqual({ ok: false, why: 'trades' });
-    expect(checkVaultAdd(withTrades([]), 10, units, keeper).ok).toBe(true);
+    expect(checkVaultAdd(add, 10, units, keeper)).toEqual({ ok: false, why: 'shape' });
+    expect(checkVaultAdd(withTrades([]), 10, units, keeper)).toEqual({ ok: false, why: 'shape' });
+    const depositOnly = { ...add, legs: add.legs.filter((l) => l.kind !== 'swap') };
+    expect(checkVaultAdd(depositOnly, 10, units, keeper).ok).toBe(true);
+    // and with auto-follow off and targets, the deposit alone leaves the targets unbought
+    expect(checkVaultAdd(depositOnly, 10, units, terms)).toEqual({ ok: false, why: 'trades' });
   });
 
   it('is a buy, kept and read back with its terms, and the guard is handed the vault’s number alone', () => {
@@ -399,6 +466,80 @@ describe('the add-money screen', () => {
       en.portfolio.add.newerVersion(4),
     );
     expect(host.querySelector('[data-ui="add-keeper"]')).toBeNull();
+  });
+
+  it('reads the amount in the page’s language: "10.555" is no amount in English, and 10,555 in Portuguese', async () => {
+    const server = api();
+    const host = await add(SECOND_VAULT);
+    const input = find<HTMLInputElement>(host, 'input[inputmode="decimal"]');
+    await type(input, '10.555');
+    await settle(350);
+    expect(host.textContent).toContain(en.buy.blocked.amount);
+    expect(server.to('/v1/funding?')).toEqual([]);
+    await type(input, '10,555');
+    await settle(350);
+    expect(server.to('/v1/funding?').at(-1)?.path).toContain('amountUsd=10555');
+    await unmountAll();
+
+    const pt = dictionary('pt');
+    const inPortuguese = api();
+    const page = await mount(
+      withAccount('pt', createElement(AddMoneyScreen, { chain: 'solana', address: SECOND_VAULT })),
+    );
+    await settle();
+    await settle();
+    const field = find<HTMLInputElement>(page, 'input[inputmode="decimal"]');
+    await type(field, '10,555');
+    await settle(350);
+    expect(page.textContent).toContain(pt.buy.blocked.amount);
+    expect(inPortuguese.to('/v1/funding?')).toEqual([]);
+    await type(field, '10.555');
+    await settle(350);
+    expect(inPortuguese.to('/v1/funding?').at(-1)?.path).toContain('amountUsd=10555');
+  });
+
+  it('with no node to read: still refuses an address or a plan number that is not the wallet’s vault', async () => {
+    // our server files the vault of plan 8 under number 9, and another address under number 8
+    for (const lie of [
+      vault({ address: SECOND_VAULT, basketId: '9', autoFollow: false }),
+      vault({
+        address: solanaVaultAddress(PROGRAM, SOLANA, '99'),
+        basketId: '8',
+        autoFollow: false,
+      }),
+    ]) {
+      const server = api({ vaults: [lie] });
+      const host = await add(lie.address);
+      await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
+      await settle(350);
+      await click(find(host, '[data-ui="trust-notice"] input[type="checkbox"]'));
+      const mark = find(host, '[data-ui="source-mark"]');
+      expect(mark.textContent).toContain(en.portfolio.add.source.failed('Solana'));
+      expect(mark.className).toContain('text-destructive');
+      const button = find(host, SIGN);
+      expect(button.getAttribute('aria-disabled')).toBe('true');
+      await click(button);
+      await settle();
+      expect(server.to('/v1/orders')).toEqual([]);
+      await unmountAll();
+    }
+  });
+
+  it('carries the disclaimer once, in the shell’s foot, in both languages', async () => {
+    for (const lang of ['en', 'pt'] as const) {
+      api();
+      const host = await mount(
+        inShell(lang, 'auto', createElement(AddMoneyScreen, { chain: 'solana', address: VAULT })),
+      );
+      await settle();
+      await settle();
+      expect(find(host, 'h1').textContent).toBe(dictionary(lang).portfolio.add.title);
+      expect(host.querySelector('main [data-ui="disclaimer"]')).toBeNull();
+      const all = [...host.querySelectorAll('[data-ui="disclaimer"]')];
+      expect(all).toHaveLength(1);
+      expect(all[0]?.textContent).toContain(DISCLAIMER[lang]);
+      await unmountAll();
+    }
   });
 
   it('offers nothing for a vault that is not among the person’s own, and asks the server nothing about it', async () => {

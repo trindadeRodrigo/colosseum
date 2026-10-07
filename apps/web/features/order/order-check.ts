@@ -119,6 +119,9 @@ export function checkFamilyBuy(
   return same ? deposit : { ok: false, why: 'trades' };
 }
 
+/** The steps an add of money to a vault is made of. */
+const ADD_KINDS: readonly string[] = ['approve', 'deposit', 'swap'];
+
 /**
  * More money into a vault the person has (add money): the deposit as for a plan, into the vault they
  * chose and no new one, once, and each trade the share its targets give: every trade buys a target with
@@ -134,8 +137,13 @@ export function checkVaultAdd(
   units: ChainUnits | null,
   terms: Extract<SharedTerms, { kind: 'vault' }>,
 ): DepositCheck | { ok: false; why: 'trades' | 'shape' } {
+  // An add is an approval where the chain needs one, the deposit, and the swaps; with auto-follow on,
+  // no swap. Any other step beside them (a new vault, a withdrawal, a change of targets or of a
+  // setting) is not an add, whatever else the order does right.
   const kinds = order.legs.map((l) => l.kind);
-  if (kinds.includes('create_vault') || kinds.filter((k) => k === 'deposit').length !== 1)
+  const allowed: readonly string[] = terms.keeper ? ['approve', 'deposit'] : ADD_KINDS;
+  const count = (kind: string) => kinds.filter((k) => k === kind).length;
+  if (kinds.some((k) => !allowed.includes(k)) || count('deposit') !== 1 || count('approve') > 1)
     return { ok: false, why: 'shape' };
   // An order that states the vault's number states the one of the vault chosen.
   if (order.basketId !== undefined && order.basketId !== terms.basketId)

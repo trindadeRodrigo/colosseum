@@ -68,7 +68,7 @@ export function AddMoneyScreen({ chain: chainParam, address }: { chain: string; 
   const active = chain ? (port.active(chainFamily(chain))?.address ?? null) : null;
   // The wallet that signs is the vault's owner, or nothing is asked of it.
   const owner = chain && vault && active && sameAddress(chain, vault.owner, active) ? active : null;
-  const parsed = parseNumber(text);
+  const parsed = parseNumber(text, lang);
   const amount =
     parsed !== null && !Number.isNaN(parsed) && parsed >= MIN_USD && parsed <= MAX_USD
       ? parsed

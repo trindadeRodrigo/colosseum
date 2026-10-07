@@ -328,7 +328,11 @@ describe('the monitor, for a person with a vault on their chain', () => {
     signIn();
     const host = await screen();
     expect(primary(host)).toBeNull();
-    // the one button is the vault's "Rename", which signs nothing (VaultActions)
+    // the one button is the vault's "Rename", which signs nothing (VaultActions): one a vault
+    expect(host.querySelectorAll('button[data-action="rename"]')).toHaveLength(
+      host.querySelectorAll('[data-ui="vault"]').length,
+    );
+    expect(host.querySelectorAll('[data-ui="vault"]')).toHaveLength(1);
     expect(
       host.querySelectorAll('button:not([aria-label^="Source for"]):not([data-action="rename"])'),
     ).toHaveLength(0);
