@@ -4011,9 +4011,12 @@ describe('the second review (Oct 7): every sentence of its scripts, with a model
     expect(held.assumptions).toContain(
       'To hold “big tech”, the plan uses the limits for medium risk.',
     );
-    // An amount answered on the form is the sheet's too.
+    // An amount answered on the form is the sheet's too. The text writes no sum here: one it wrote
+    // that is not the form's would be a sum beside the share, and the share would be asked (the
+    // third review, B6).
     seen.length = 0;
-    const answered = intake(text, goal({ markets: ['big_tech'], amountUsd: null }), {
+    const noSum = 'I want to grow my savings over 5 years. Invest in big tech.';
+    const answered = intake(noSum, goal({ markets: ['big_tech'], amountUsd: null }), {
       riskOfMix,
       answers: { amountUsd: 1200 },
     });
@@ -4395,5 +4398,97 @@ describe('the third review (Oct 7), B5: where the two readers read different mix
     const same = said(['Put 60% in stocks and 40% in cash.'], reads({ mix: pct(60, 40) }));
     expect(same.questions).toEqual([]);
     expect(same.sheet?.mix).toEqual(bps(6000, 4000));
+  });
+});
+
+describe('the third review (Oct 7), B6: a share is taken only where its message says nothing else about money or holdings', () => {
+  const FORM: IntakeAnswers = { goal: 'grow', amountUsd: 5000, horizonMonths: 60, risk: 'medium' };
+  const reads = (over: Record<string, unknown> = {}) =>
+    reply({ goal: null, amountUsd: null, horizonMonths: null, risk: null, ...over });
+  const said = (text: string, r: unknown) => intake(text, r, { answers: FORM });
+  const AI = { markets: ['ai'] };
+  const AI_PT = { markets: ['ai'], language: 'pt' };
+  // What the plain form did not account for: a sum, a percent, or another holding.
+  const MORE: [string, Record<string, unknown>][] = [
+    // The review's own.
+    ['All of it in AI except for a $1,000 cushion.', AI],
+    ['Put 30% in AI and the balance in stocks.', AI],
+    ['Invest in AI, but only 10%.', AI],
+    ['Invest in AI, and some gold too.', AI],
+    ['All of it in AI except $1,000 that I need in cash', AI],
+    // In other words.
+    ['Put half in AI, apart from $500 I owe my sister.', AI],
+    ['Everything in AI. Well, 80% of it.', AI],
+    ['Invest in AI and keep the other 70% for bonds.', AI],
+    ['Go all in on AI, with a little crypto on the side.', AI],
+    ['Coloque 30% em IA e o que sobrar em ouro.', AI_PT],
+    ['Invista em IA, mas só US$ 500.', AI_PT],
+    ['Tudo em IA, tirando 20% para ações.', AI_PT],
+  ];
+  const holds = (r: ReturnType<typeof said>) => ({
+    mix: r.sheet?.mix ?? null,
+    sleeves: r.sheet?.sleeves ?? null,
+  });
+
+  it('with a reply that names the narrative as written: the share is asked, never taken', () => {
+    for (const [text, r] of MORE) {
+      const result = said(text, reads(r));
+      expect(result.sheet, text).toBeNull();
+      expect(result.flags, text).toContain('share_not_alone');
+      expect(
+        result.questions.filter((q) => q.field === 'mix' || q.field === 'sleeves'),
+        text,
+      ).toHaveLength(1);
+    }
+  });
+
+  it('with no model it is asked too, and with a reply that reads nothing of it nothing is held', () => {
+    for (const [text, r] of MORE) {
+      const alone = said(text, null);
+      expect(alone.sheet, text).toBeNull();
+      expect(
+        alone.questions.filter((q) => q.field === 'mix' || q.field === 'sleeves'),
+        text,
+      ).toHaveLength(1);
+      // Words the reply did not read are never taken.
+      const unread = said(text, reads('language' in r ? { language: 'pt' } : {}));
+      expect(holds(unread), text).toEqual({ mix: null, sleeves: null });
+    }
+  });
+
+  it('a message that says nothing else is still taken: the goal’s own sum, a time frame, the rest kept safe and a holding ruled out say nothing of a share', () => {
+    const thirty = [theme('ai', 3000), safe(7000)];
+    for (const [text, r, sleeves] of [
+      ['Put 30% in AI.', AI, thirty],
+      ['I want to grow $5,000 over 5 years. Put 30% in AI.', AI, thirty],
+      ['Put $1,500 in AI, I have $5,000 in total.', AI, thirty],
+      ['Put 30% in AI and the rest in cash.', AI, thirty],
+      ["I don't want bonds, put 30% in AI.", AI, thirty],
+      ['Invest in AI stocks.', AI, [theme('ai')]],
+      ['Coloque 30% em IA.', AI_PT, thirty],
+    ] as const) {
+      const result = said(text, reads(r));
+      expect(result.questions, text).toEqual([]);
+      expect(result.sheet?.sleeves, text).toEqual(sleeves);
+      expect(result.flags, text).not.toContain('share_not_alone');
+    }
+  });
+
+  it('a percent written with a decimal mark is a share too: taken where a line of the plan can be that small, asked where it cannot', () => {
+    const tech = said('Put 0.5% in big tech.', reads({ markets: ['big_tech'] }));
+    expect(tech.questions).toEqual([]);
+    expect(tech.sheet).toMatchObject({ themes: ['the-seven'], mix: bps(50, 9950) });
+    expect(said('Put 2.5% in AI.', reads(AI)).sheet?.sleeves).toEqual([
+      theme('ai', 250),
+      safe(9750),
+    ]);
+    expect(said('Coloque 0,5% em IA.', reads(AI_PT)).sheet?.sleeves).toEqual([
+      theme('ai', 50),
+      safe(9950),
+    ]);
+    const tiny = said('Put 0.05% in big tech.', reads({ markets: ['big_tech'] }));
+    expect(tiny.flags).toContain('share_too_small');
+    expect(tiny.questions.map((q) => q.text)).toEqual(['How much of the $5,000 for big tech?']);
+    expect(tiny.sheet).toBeNull();
   });
 });

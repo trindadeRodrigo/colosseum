@@ -272,4 +272,6 @@ export const INTAKE_LIMITS = {
    * a clause that runs further back is read from further back.
    */
   clauseReachChars: 240,
+  /** How far before an ask its own figure may stand, in characters: "30% of my money in". */
+  shareLeadChars: 24,
 } as const;

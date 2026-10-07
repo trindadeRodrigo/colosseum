@@ -1829,7 +1829,7 @@ const AMOUNT_BEFORE = new RegExp(
 const OF_THE_MONEY = String.raw`(?:\s+(?:of\s+(?:it|the\s+money|my\s+money)|d[oe]\s+(?:dinheiro|valor|total)))?`;
 // "30% in AI", and "60% AI" as a person writes a list of shares.
 const PERCENT_BEFORE = new RegExp(
-  String.raw`(?<![\d.,])(?<pct>\d{1,3})\s*(?:%|percent|por cento)${OF_THE_MONEY}\s+(?:${INTO})?$`,
+  String.raw`(?<![\d.,])(?<pct>\d{1,3}(?:[.,]\d{1,2})?)\s*(?:%|percent|por cento)${OF_THE_MONEY}\s+(?:${INTO})?$`,
   'iu',
 );
 const HALF_BEFORE = new RegExp(
@@ -1956,7 +1956,9 @@ function shareBefore(before: string): MarketShare {
       return { kind: 'amount', value: m.value };
   }
   const percent = PERCENT_BEFORE.exec(before);
-  if (percent) return { kind: 'percent', value: Number(percent.groups?.pct) };
+  // A percent may be written with a decimal mark, a point or a comma: "0.5%", "2,5%".
+  if (percent)
+    return { kind: 'percent', value: Number((percent.groups?.pct ?? '').replace(',', '.')) };
   if (HALF_BEFORE.test(before)) return { kind: 'percent', value: HALF_PCT };
   return WHOLE_BEFORE.test(before) ? { kind: 'whole' } : null;
 }
@@ -2008,6 +2010,56 @@ const CARVED_OUT =
 /** Whether the text carves a sum or a share out of what it gives the narrative that ends at `end`. */
 export const carvedOutAfter = (text: string, end: number): boolean =>
   CARVED_OUT.test(text.slice(end));
+
+/**
+ * Whether the words written from `from` up to `to` (one message) say something else about money
+ * or holdings than what is `accounted` for: the asks the message is read for, each from its figure
+ * to the end of what it names, the refusals, and a mix the text states (read by its own rule beside
+ * a narrative). What is left over is a sum written as
+ * money that is not the goal's own (`amountUsd`), a percent, or a word for something to hold. The
+ * third review (Oct 7): a share was taken beside "except for a $1,000 cushion", "and the balance in
+ * stocks", "but only 10%" and "and some gold too". No such phrase is listed here: whatever the
+ * plain form did not account for is found by what it is, a sum, a percent or a holding.
+ *
+ * A time frame, a rate a month and the goal's own sum say nothing of a share. With `restSafe`, the
+ * words for what is kept safe do not either ("30% in AI and the rest in cash" is the plain form).
+ */
+export function saysMoreIn(
+  text: string,
+  from: number,
+  to: number,
+  accounted: readonly Span[],
+  amountUsd: number | null,
+  restSafe: boolean,
+): boolean {
+  const inside = (at: number, end: number) => accounted.some((s) => s.at <= at && end <= s.end);
+  // A figure belongs to the ask it leads into: nothing but small words between it and the ask.
+  const leadsIn = (end: number) =>
+    accounted.some(
+      (s) =>
+        end <= s.at &&
+        s.at - end <= INTAKE_LIMITS.shareLeadChars &&
+        !/[,;.!?\n]/u.test(text.slice(end, s.at)),
+    );
+  for (const m of mentionsIn(text)) {
+    if (m.at < from || m.end > to || inside(m.at, m.end) || leadsIn(m.end)) continue;
+    if (m.kind === 'percent') return true;
+    if (m.kind === 'amount' && m.money && !m.perMonth && m.value !== amountUsd) return true;
+  }
+  // A word for a class written right after what an ask names is part of its name ("AI stocks").
+  const namesIt = (at: number) =>
+    accounted.some((s) => s.end <= at && text.slice(s.end, at).trim() === '');
+  for (const m of text.matchAll(CLASS_WORD)) {
+    const [at, end] = [m.index, m.index + m[0].length];
+    if (at < from || end > to || inside(at, end) || namesIt(at)) continue;
+    if (restSafe && SAFE_PARTS.includes(partOf(m[0]) ?? 'growth')) continue;
+    // Something to hold, or that the person wonders about holding: one its clause rules out, or
+    // says of someone else, is no other holding ("I don't want bonds, invest in big tech").
+    const stance = stanceOf(text, at, end);
+    if (stance === 'stated' || stance === 'wondered') return true;
+  }
+  return false;
+}
 
 // A name the person rules out that is no class and no narrative: "no Tesla", "without Tesla", "I do
 // not want Tesla or Meta". A plan leaves out a class, never one name of a list it holds, so this is

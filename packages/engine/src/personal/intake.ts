@@ -44,6 +44,7 @@ import {
   restOfMoneyIn,
   riskCuesIn,
   risksRuledOutIn,
+  saysMoreIn,
   shareSaidIn,
   splitIn,
   stanceOf,
@@ -1673,8 +1674,29 @@ function intakeOf(
   // rest is not put in the safe part by guessing: the split is asked once (`rest_said`).
   const restSaid = restOfMoneyIn(text);
   const carved = named.some((m) => carvedOutAfter(text, m.end));
+  // And only where its message says nothing else about money or holdings (the third review, Oct
+  // 7): whatever the plain form did not account for, a sum, a percent or another holding, means
+  // the share is asked ("All of it in AI except for a $1,000 cushion", "30% in AI and the balance
+  // in stocks", "Invest in AI, but only 10%", "Invest in AI, and some gold too").
+  const accounted = [...named, ...refusals, ...(mixSaid ? [mixSaid] : [])].map(({ at, end }) => ({
+    at,
+    end,
+  }));
+  const saysMore = named.some((m) => {
+    const turn = turnOf(m.at);
+    const from = starts[turn] ?? 0;
+    return saysMoreIn(
+      text,
+      from,
+      from + (turns[turn]?.length ?? 0),
+      accounted,
+      value.amountUsd,
+      restSaid === 'safe',
+    );
+  });
+  if (saysMore) flags.push('share_not_alone');
   const restNotPlain = (partial: boolean) =>
-    (partial && (restSaid === 'other' || rest.half)) || carved;
+    (partial && (restSaid === 'other' || rest.half)) || carved || saysMore;
   // Not where a theme sleeve is in play: the two are not combined (below).
   if (
     themes.length === 0 &&
