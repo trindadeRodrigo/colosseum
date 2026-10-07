@@ -396,12 +396,12 @@ export type PostBasketsProposeResponse = {
   };
 };
 
-/** GET /v1/baskets/{id}: params. A plan made from a link (`POST /v1/baskets/propose`), by its id */
+/** GET /v1/baskets/{id}: params. A stored plan by its id: one made from a link, or the caller’s own */
 export type GetBasketsByIdParams = {
   id: string;
 };
 
-/** GET /v1/baskets/{id}: response. A plan made from a link (`POST /v1/baskets/propose`), by its id */
+/** GET /v1/baskets/{id}: response. A stored plan by its id: one made from a link, or the caller’s own */
 export type GetBasketsByIdResponse = {
   id: string;
   proposal: {
@@ -523,6 +523,7 @@ export type GetBasketsByIdResponse = {
     }[];
     disclaimer: string;
   };
+  fromLink: boolean;
 };
 
 /** GET /v1/config: response. Feature flags and the chains this deployment runs on */
@@ -725,6 +726,89 @@ export type PutMeChainResponse = {
   chain: ('solana' | 'base' | 'robinhood') | null;
   chainSource: ('picked' | 'wallet') | null;
   chainOptions: ('solana' | 'base' | 'robinhood')[];
+};
+
+/** GET /v1/me/plans: response. The signed-in person’s plans, with the goal each was built for and its buys */
+export type GetMePlansResponse = {
+  plans: {
+    id: string;
+    createdAt: string;
+    fromLink: boolean;
+    chain: 'solana' | 'base' | 'robinhood';
+    sheet: {
+      basketType: 'standard';
+      goal: 'grow' | 'income' | 'protect';
+      amountUsd: number;
+      horizonMonths: number;
+      risk: 'low' | 'medium' | 'high';
+      themes: string[];
+      country: string;
+      chains: ('solana' | 'base' | 'robinhood')[];
+      incomeTargetUsdMonthly?: number;
+      rules: {
+        useHoldings: boolean;
+        glide: boolean;
+      };
+      language: 'pt' | 'en';
+      currency?: string;
+      obligations?: {
+        month: string;
+        amount: number;
+        currency: string;
+      }[];
+      sleeves?: (
+        | {
+            kind: 'goal';
+            shareBps: number;
+          }
+        | {
+            kind: 'theme';
+            shareBps: number;
+            theme: string;
+          }
+        | {
+            kind: 'safe_yield';
+            shareBps: number;
+          }
+      )[];
+      restoreSplit?: boolean;
+    };
+    card: {
+      moneyTodayUsd: number;
+      termMonths: number;
+      cashFlow: 'none' | 'monthly' | 'at_end';
+      expectedReturn: {
+        lowPct: number;
+        highPct: number;
+        basis: string;
+        lossInFallUsd: number;
+      };
+      exit: {
+        text: string;
+        costBps: number | null;
+      };
+    };
+    verdict: {
+      met: boolean;
+      gapUsdMonthly: number;
+      ways: {
+        change: string;
+        closesGap: boolean;
+      }[];
+    } | null;
+    bought: boolean;
+    orders: {
+      id: string;
+      createdAt: string;
+      amountUsd: number;
+      status: 'open' | 'partial' | 'done' | 'failed' | 'expired';
+      deposited: boolean;
+    }[];
+    vault: {
+      chain: 'solana' | 'base' | 'robinhood';
+      basketId: string;
+    } | null;
+  }[];
 };
 
 /** POST /v1/orders: body. Plan an order from an intent. Nothing is built or signed */
@@ -1580,6 +1664,7 @@ export interface ApiRoutes {
   };
   'GET /v1/me': { response: GetMeResponse };
   'PUT /v1/me/chain': { body: PutMeChainBody; response: PutMeChainResponse };
+  'GET /v1/me/plans': { response: GetMePlansResponse };
   'POST /v1/orders': { body: PostOrdersBody; response: PostOrdersResponse };
   'GET /v1/orders/{id}': { params: GetOrdersByIdParams; response: GetOrdersByIdResponse };
   'POST /v1/orders/{id}/continue': {

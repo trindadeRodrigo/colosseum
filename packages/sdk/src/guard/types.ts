@@ -156,6 +156,8 @@ export type EvmDeployment = {
   proxyCreationCode?: string;
   /** The exchanges a vault may trade through. */
   routers: Address[];
+  /** The shared portfolios' `IndexRegistry`. Left out, nothing is published on the chain. */
+  registry?: Address;
   cash: AssetId;
   /** Each asset's token contract and its decimals. */
   assets: Record<AssetId, { token: Address; decimals: number }>;

@@ -385,7 +385,7 @@ export const en = {
     signature: 'transaction id',
     noneYet: 'Nothing has reached the chain from this order yet.',
     noneVault:
-      'Nothing this browser placed for your vaults has reached the chain. Trades made elsewhere, or by the keeper, are not listed here yet.',
+      'Nothing from your buys has reached the chain yet. The keeper’s trades, and orders about a shared portfolio placed in another browser, are not listed here yet.',
   },
   /** The words a provenance pin says, in the language of the view. */
   pin: {
@@ -472,6 +472,8 @@ export const en = {
     vault: {
       title: 'Your vault',
       address: 'Vault address',
+      /** The link from a vault's panel to its own page. */
+      page: (address: string) => `Open the page of vault ${address}`,
       value: 'Value',
       cash: 'Cash',
       autoFollow: 'Auto-follow',
@@ -521,7 +523,7 @@ export const en = {
       noStatus: 'No status yet: the engine gives none for a vault',
       unknown: (chain: string) => `Your vault on ${chain}.`,
       notJoined:
-        'I can’t tell which goal this vault was bought for: it was bought in another browser, or before this one kept goals. What it holds is below.',
+        'This vault has no goal I can read: it was bought from a shared portfolio, which has none, or before plans kept their goal. What it holds is below.',
       putIn: (amount: string) => `you put in ${amount}`,
       seePlan: 'See your plan',
       seeOrder: 'See the order',
@@ -544,8 +546,8 @@ export const en = {
     fromLink:
       'This plan came from a link: our engine made it from the limits the link carried, which someone else may have set. Check the goal, the amount and the limits above before you buy.',
     missing: {
-      title: 'I don’t have this plan in this tab.',
-      body: 'A plan is kept in the browser tab that built it, and this one isn’t here. Build it again from your goal: your limits are kept.',
+      title: 'I can’t find this plan for you.',
+      body: 'It isn’t a plan made with this sign-in, or it is no longer kept. Build one from your goal: your limits are kept.',
     },
     backToGoal: 'Back to your goal',
     /** A plan on a chain no wallet of the person's signs on. */
@@ -687,6 +689,9 @@ export const en = {
     exitCost: (cost: string) => `≤ ${cost}`,
     inKind: 'You can also take the tokens themselves out of your vault at any time.',
     risk: {
+      /** On a plan read back from the server, which keeps the plan and not this summary. */
+      notKept:
+        'How this plan is spread, and what selling it costs, is worked out when a plan is built and isn’t kept with it. Build the plan again from your goal to see it.',
       title: 'How the plan is spread, and what selling costs',
       byClass: 'By kind of asset',
       byIssuer: 'By issuer',
@@ -870,6 +875,12 @@ export const en = {
       empty: (chain: string) => `No portfolio is shared on ${chain} yet.`,
       emptyAll: 'No portfolio is shared yet.',
       publish: 'Publish a portfolio',
+      /** Where publishing is not offered yet: said, in place of the link. */
+      publishSoon: (chain: string) =>
+        `Publishing a portfolio on ${chain} is coming. For now it can be done on Solana.`,
+      /** After signing out on this page: the shelf stays, and says whose it is now. */
+      signedOut: (chain: string) =>
+        `You’re signed out. This is still the shelf of ${chain}; sign in to follow a portfolio.`,
       card: {
         by: (creator: string) => `by ${creator}`,
         platform: 'From tenonfi',
@@ -944,6 +955,8 @@ export const en = {
         mock: 'Sample chain: there is no chain to read, so these are our server’s words, not checked.',
         'no-node': (chain: string) =>
           `Not checked against ${chain}: this app has no node of its own to read it from. These are our server’s words.`,
+        'no-reader': (chain: string) =>
+          `Not checked against ${chain}: this app doesn’t read ${chain}’s registry yet. These are our server’s words.`,
         'no-deployment': (chain: string) =>
           `Not checked against ${chain}: this app has no record of the tokens on this network. These are our server’s words.`,
         'family-id':
@@ -1020,6 +1033,9 @@ export const en = {
       assetsHint: '3 to 12 assets, each from 2% to 50%, in steps of 0.5%, adding up to 100%.',
       asset: 'Asset',
       weight: 'Weight, in %',
+      /** The labels of a row's two fields. */
+      assetOf: (n: number) => `Asset ${n}`,
+      weightOf: (n: number) => `Weight of asset ${n} (%)`,
       add: 'Add an asset',
       remove: (asset: string) => `Remove ${asset}`,
       total: (sum: string) => `Total: ${sum}`,
@@ -1037,7 +1053,7 @@ export const en = {
         weight: 'Each weight is from 2% to 50%, in steps of 0.5%.',
         sum: 'The weights add up to 100%.',
         twice: 'An asset appears once.',
-        chain: 'Publishing is built on Solana only for now.',
+        chain: 'Publishing isn’t open on this chain yet.',
       },
       failure: {
         said: (error: string) => `Our server said no: ${error}.`,
@@ -1054,6 +1070,9 @@ export const en = {
         `Read from ${chain} for this page. Anyone can see a vault: what it holds is public on its chain.`,
       loading: 'Reading the vault…',
       missing: 'There is no vault at this address.',
+      back: 'Back to your portfolio',
+      /** The link to the vault's address on its chain's explorer. */
+      explorer: (explorer: string) => `See it on ${explorer}`,
       owner: 'Owner',
       follows: 'Follows',
       followsNothing: 'Nothing: the owner sets its weights',

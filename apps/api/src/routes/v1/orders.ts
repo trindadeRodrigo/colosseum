@@ -29,9 +29,9 @@ import {
   continuationsOf,
   insertOrder,
   isLinkedProposal,
+  loadBuyablePlan,
   loadFamilies,
   loadOrder,
-  loadProposal,
   type StoredOrder,
   withOrderLock,
 } from '../../orders/store';
@@ -128,7 +128,8 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
       const { order, request } = await prepareOrder(req.body, {
         principal: signedIn(req),
         chains: deps.chains,
-        loadProposal: (id) => loadProposal(deps.db, id),
+        // The caller's own plan, or one from a link: another person's id buys nothing (store.ts).
+        loadProposal: (id) => loadBuyablePlan(deps.db, id, signedIn(req).userId ?? null),
         isLinkedPlan: (id) => isLinkedProposal(deps.db, id),
         homeChain: () => homeChain(deps.db, signedIn(req)),
         loadFamilies: (chain) => loadFamilies(deps.db, chain),

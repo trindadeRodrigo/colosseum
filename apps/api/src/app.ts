@@ -13,7 +13,9 @@ import { DEPLOYMENTS_DIR, evmDeployment, solanaDeployment } from './deployments'
 import { V1_SECURITY_SCHEMES, v1Transform } from './openapi';
 import { bearingPlanInputs } from './plan-inputs';
 import { corsAllowlist, corsByPath } from './plugins/cors';
-import { requireDeclared } from './plugins/limits';
+import { hideServerErrors } from './plugins/errors';
+import { registerOpenWriteLimit, requireDeclared } from './plugins/limits';
+import { logForwardedHopsOnce, proxyTrust } from './plugins/proxy';
 import { loggerOptions } from './redact';
 import { registerMonitorRoutes } from './routes/monitor';
 import { registerPlanRoutes } from './routes/plans';
@@ -57,14 +59,22 @@ export async function buildApp(
   const app = Fastify({
     // No node's URL in a log line (redact.ts): the configured ones, and any a library's error names.
     logger: process.env.NODE_ENV !== 'test' ? loggerOptions({ ...process.env, ...env }) : false,
+    // Whose address a request is counted against, behind a host's proxy (plugins/proxy.ts).
+    trustProxy: proxyTrust(env),
   }).withTypeProvider<ZodTypeProvider>();
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
+  // Before any route: one that throws outside /v1 answers the request id, not the error's message.
+  hideServerErrors(app);
   // Before any route: a path under /v1 is held to default deny wherever it is registered.
   const inScope = requireDeclared(app);
   // /v1 answers a browser only from the allowlist (CORS_ORIGINS). Every other route, the risk layer's
   // /risk/* included, reflects any origin as it always has.
   await app.register(cors, { delegator: corsByPath(corsAllowlist(env)) });
+  // After CORS, so a refusal still carries its headers and a browser can read it. The structurer's
+  // open writes share the anonymous budget, by address (plugins/limits.ts).
+  registerOpenWriteLimit(app, { limits: deps.v1?.limits, now: deps.v1?.now });
+  logForwardedHopsOnce(app);
   await app.register(swagger, {
     openapi: {
       openapi: '3.1.0',

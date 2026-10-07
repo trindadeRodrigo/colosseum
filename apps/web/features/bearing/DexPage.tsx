@@ -37,7 +37,6 @@ import {
   Kpis,
   Loading,
   MultiSelect,
-  OnChain,
   PageWait,
   Pie,
   Reason,
@@ -323,7 +322,6 @@ function assetColumns(
           >
             {id}
           </Link>
-          <OnChain />
         </span>
       ),
     },
