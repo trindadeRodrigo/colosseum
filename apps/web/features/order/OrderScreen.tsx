@@ -23,11 +23,12 @@ import { type Dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { dollars } from '../goal/sheet';
+import { useVaultNow, type VaultNow } from '../portfolio/chain-vault';
 import { utc } from '../portfolio/figures';
 import { readPersonPlans, recordsOfPlans } from '../portfolio/server-plans';
 import { SharedReview } from '../shared/SharedReview';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
-import { formatBps, formatRaw, shortfallBps, tokenName } from './amounts';
+import { formatBps, formatRaw, shortfallBps, shownRaw, tokenName } from './amounts';
 import {
   addMoneyPath,
   type CallFailure,
@@ -52,8 +53,9 @@ import { legsInOrder, type NextStep, type OutcomeView, outcomeView, stepOf } fro
 import { readStoredPlan } from './plan-store';
 import { targetsOfPlan } from './plan-terms';
 import { chainReady, explorerUrlFor, onMock } from './readiness';
-import { type RunOutcome, useOrderRunner } from './run-order';
+import { planNumberOf, type RunOutcome, useOrderRunner } from './run-order';
 import { type ChainUnits, unitsFor } from './units';
+import { useStayed } from './withdraw-stayed';
 
 // The order: the review of every step, then signing it, then each step's status as it lands. The
 // review shows the order as the API made it; when the person presses the button that order, exactly as
@@ -65,7 +67,7 @@ import { type ChainUnits, unitsFor } from './units';
 type Load = { kind: 'loading' } | { kind: 'read'; order: OrderDetail } | { kind: CallFailure };
 
 /** Why an order is not offered for signing, or that it may be, with what it deposits. */
-type Check = DepositCheck | { ok: false; why: 'trades' | 'shape' };
+type Check = DepositCheck | { ok: false; why: 'trades' | 'shape' | 'withdraw' };
 
 /**
  * The order's cash is in the vault: its deposit landed, or it finishes another order and deposits
@@ -88,7 +90,7 @@ function checkOf(order: OrderDetail, record: OrderRecord, units: ChainUnits | nu
   if (terms.kind === 'vault') return checkVaultAdd(order, record.amountUsd, units, terms);
   return sharedShapeOk(order, terms)
     ? { ok: true, depositRaw: 0n, decimals: 0 }
-    : { ok: false, why: 'shape' };
+    : { ok: false, why: terms.kind === 'withdraw' ? 'withdraw' : 'shape' };
 }
 type Phase = { legId: string; phase: string } | null;
 
@@ -119,6 +121,13 @@ export function OrderScreen({ id }: { id: string }) {
   const titleId = useId();
   const reasonId = useId();
   const userId = port.userId;
+  // A withdrawal that is done is held to the vault: what a confirmed step left behind is said.
+  const stayed = useStayed(
+    apiFetch,
+    live ?? (load.kind === 'read' ? load.order : null),
+    record?.terms,
+    record?.chain,
+  );
 
   useEffect(() => {
     setRecord(recallOrder(id, userId));
@@ -144,8 +153,10 @@ export function OrderScreen({ id }: { id: string }) {
     outcome?.status === 'refused' || outcome?.status === 'failed' || outcome?.status === 'expired';
   const seen = live ?? (load.kind === 'read' ? load.order : null);
   const short = seen !== null && stoppedShort(seen);
+  // Only a buy or an add can be finished: a withdrawal, a follow or a publish never asks.
+  const finishable = !record?.terms || record.terms.kind === 'vault';
   useEffect(() => {
-    if (!stopped && !short) return;
+    if ((!stopped && !short) || !finishable) return;
     let mine = true;
     void continuesOrders(apiFetch).then((yes) => {
       if (mine) setCanFinish(yes);
@@ -153,7 +164,7 @@ export function OrderScreen({ id }: { id: string }) {
     return () => {
       mine = false;
     };
-  }, [stopped, short, apiFetch]);
+  }, [stopped, short, finishable, apiFetch]);
 
   // An order this browser did not make, stopped after its deposit: its plan as the server stores it
   // (the list of the person's plans, then the plan's lines), to finish the buy from here too. Nothing
@@ -178,6 +189,28 @@ export function OrderScreen({ id }: { id: string }) {
       mine = false;
     };
   }, [record, load, userId, id, apiFetch]);
+
+  // The vault as it stands on its chain, read from this app's own node, for the two offers our server's
+  // word is not enough for: an order that finishes another from a browser that never reviewed the
+  // first (not offered for more cash than the vault holds), and an add of money (not offered once the
+  // vault's auto-follow is on: the keeper buys with the cash). Asked only for those, once the order
+  // is known to have stopped; `unknown` where there is no node, and then nothing changes.
+  const stood = record ?? served ?? null;
+  const signer = stood ? port.active(chainFamily(stood.chain)) : null;
+  const numbered =
+    !stood || !seen
+      ? null
+      : stood.terms
+        ? stood.terms.kind === 'vault'
+          ? stood.terms.basketId
+          : null
+        : planNumberOf(seen.basketId, stood);
+  const asked =
+    short && signer && numbered !== null && (record === null || record?.terms?.kind === 'vault')
+      ? { owner: signer.address, basketId: numbered }
+      : null;
+  const read = useVaultNow(stood?.chain ?? null, stood ? onMock(port, stood.chain) : false, asked);
+  const vaultNow: VaultNow = asked ? read : { state: 'unknown' };
 
   /**
    * Makes the order that finishes `first` (the order of `from`) with the cash in its vault, held to
@@ -205,6 +238,8 @@ export function OrderScreen({ id }: { id: string }) {
     if (made.kind !== 'placed') {
       setFinishing(false);
       if (made.kind === 'unavailable') return setCanFinish(false);
+      // A step had landed and the server has settled it: the order as it now stands is the answer.
+      if (made.kind === 'refused' && made.why === 'landed') return setRound((n) => n + 1);
       if (made.kind === 'refused') {
         // Each refusal this app knows in its own words, in the language of the page; one it does
         // not, in the server's. An order that already finishes this one is linked.
@@ -215,6 +250,8 @@ export function OrderScreen({ id }: { id: string }) {
           'nothing-left': o.finishNothing,
           'cash-short': o.finishShort,
           'not-deposited': o.finishNotDeposited,
+          unsupported: o.finishUnsupported,
+          landed: '',
           said: o.finishRefused(made.sentence),
         }[made.why];
         return setFinishFailure({ text: said, ...(made.orderId ? { orderId: made.orderId } : {}) });
@@ -369,12 +406,17 @@ export function OrderScreen({ id }: { id: string }) {
         served && units ? targetsOfPlan(served.lines, served.chain, units.cash) : null;
       // What is left, as the server lists it, held to the plan's lines read from the server.
       const trades = units && targets ? leftOfPlan(first, targets, units.cash) : null;
+      // Not for more cash than the vault holds, as this app reads it from the chain where it can.
+      const spend = (trades ?? []).reduce((sum, trade) => sum + BigInt(trade.amountInRaw), 0n);
+      const cashShort = vaultNow.state === 'read' && spend > vaultNow.cashRaw;
       const offer =
         canFinish &&
         served &&
         trades !== null &&
         trades.length > 0 &&
-        chainFamily(served.chain) !== 'evm';
+        chainFamily(served.chain) !== 'evm' &&
+        vaultNow.state !== 'reading' &&
+        !cashShort;
       const put =
         cash && first.depositRaw !== undefined
           ? dollars(Number(first.depositRaw) / 10 ** cash.decimals, lang)
@@ -391,6 +433,11 @@ export function OrderScreen({ id }: { id: string }) {
           <p data-ui="order-deposit-kept" className="max-w-(--tf-measure-body) text-body">
             {put ? t.order.outcome.stopped(put) : t.order.outcome.depositKept}
           </p>
+          {cashShort && trades !== null && trades.length > 0 && (
+            <p data-ui="order-cash-short" className="max-w-(--tf-measure-body) text-body-sm">
+              {t.order.outcome.finishShort}
+            </p>
+          )}
           {offer && (
             <p data-ui="order-unseen" className="max-w-(--tf-measure-body) text-body-sm">
               {t.order.outcome.finishNote} {t.order.review.unseen}
@@ -470,6 +517,29 @@ export function OrderScreen({ id }: { id: string }) {
         : shown.depositRaw;
   const legs = legsInOrder(shown);
   const done = now.status === 'done';
+  // Done with a step skipped (a token that could not move) says so: never plainly done.
+  const skippedSteps = now.legs.filter((l) => l.status === 'skipped').length;
+  // A token a confirmed step was to take whole and the vault still holds (withdraw-stayed.ts).
+  const stayedNames =
+    stayed.kind === 'read'
+      ? stayed.assets.map((asset) => units?.tokens[asset]?.symbol ?? tokenName(asset))
+      : [];
+  const plainlyDone =
+    skippedSteps === 0 &&
+    (stayed.kind === 'none' || (stayed.kind === 'read' && stayed.assets.length === 0));
+  const doneSentence =
+    skippedSteps > 0
+      ? t.order.shared.doneExcept(t.chain.names[chain], skippedSteps)
+      : stayedNames.length > 0
+        ? t.order.shared.doneStayed(
+            t.chain.names[chain],
+            new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(stayedNames),
+          )
+        : stayed.kind === 'reading'
+          ? t.withdraw.loading
+          : stayed.kind === 'unread'
+            ? t.order.shared.doneUnread(t.chain.names[chain])
+            : t.order.outcome.done(t.chain.names[chain]);
   const view: OutcomeView | null = outcome ? outcomeView(outcome, t, chain) : null;
   const needed = shown.needsConsent;
   const consentMissing = !record.approved && needed.some((kind) => !consents.includes(kind));
@@ -483,7 +553,9 @@ export function OrderScreen({ id }: { id: string }) {
         ? `/indexes/${encodeURIComponent(terms.slug)}`
         : terms.kind === 'vault'
           ? addMoneyPath(chain, terms.vault)
-          : '/publish';
+          : terms.kind === 'withdraw'
+            ? `/vaults/${encodeURIComponent(chain)}/${encodeURIComponent(terms.vault)}/withdraw`
+            : '/publish';
   const testNetwork = shown.legs[0]?.provenance === 'sandbox';
   // The swaps the order left undone: what an order that finishes it would make, and is held to.
   // The trades are the approved order's own, step by step: of the API's later answer only where each
@@ -512,7 +584,11 @@ export function OrderScreen({ id }: { id: string }) {
     (view?.next.kind === 'new-order' || halted);
   // Opened again on an order that goes no further: there is nothing of it left to sign.
   const over = stranded && halted;
-  const offerFinish = stranded && canFinish;
+  // An add into a vault whose auto-follow is on now, as the chain says: the keeper buys the vault's
+  // assets with that cash, so no order is made for it.
+  const keeperBuys =
+    stranded && terms?.kind === 'vault' && vaultNow.state === 'read' && vaultNow.autoFollow;
+  const offerFinish = stranded && canFinish && vaultNow.state !== 'reading' && !keeperBuys;
 
   // The one primary button of the view: sign, carry on, approve a step again, or nothing.
   const next: NextStep | { kind: 'first' } =
@@ -532,9 +608,13 @@ export function OrderScreen({ id }: { id: string }) {
               ? record.approved
                 ? t.order.shared.resume
                 : t.order.shared.signFollow
-              : record.approved
-                ? t.order.resume(amount)
-                : t.order.signAndBuy(amount);
+              : terms?.kind === 'withdraw'
+                ? record.approved
+                  ? t.order.shared.resume
+                  : t.order.shared.signWithdraw
+                : record.approved
+                  ? t.order.resume(amount)
+                  : t.order.signAndBuy(amount);
 
   return (
     <div data-ui="order-screen" className="flex flex-col gap-8">
@@ -595,6 +675,11 @@ export function OrderScreen({ id }: { id: string }) {
                   now={standing}
                   phase={phase?.legId === leg.id ? phase.phase : null}
                   units={units}
+                  multipliers={
+                    terms?.kind === 'withdraw'
+                      ? Object.fromEntries(terms.items.map((i) => [i.asset, i.multiplier]))
+                      : undefined
+                  }
                   explorer={t.chain.explorers[chain]}
                   mock={onMock(port, chain)}
                   money={(value) => dollars(value, lang)}
@@ -649,9 +734,7 @@ export function OrderScreen({ id }: { id: string }) {
             {t.order.phase[phase.phase as keyof Dictionary['order']['phase']]}
           </p>
         )}
-        {!running && done && !view && (
-          <p className="text-body">{t.order.outcome.done(t.chain.names[chain])}</p>
-        )}
+        {!running && done && !view && <p className="text-body">{doneSentence}</p>}
         {over && (
           <p data-ui="order-deposit-kept" className="max-w-(--tf-measure-body) text-body">
             {t.order.outcome.stopped(amount)}
@@ -665,7 +748,10 @@ export function OrderScreen({ id }: { id: string }) {
               }
             >
               {view.alarm && <StatusMark status="off-track" size={12} className="mt-1.5" />}
-              <span>{view.sentence}</span>
+              {/* An order with a skipped step, or a token left behind, is never said to be plainly done. */}
+              <span data-ui={done ? 'order-done' : undefined}>
+                {done && !plainlyDone ? doneSentence : view.sentence}
+              </span>
             </p>
             {!done && deposited && view.next.kind === 'new-order' && (
               <p data-ui="order-deposit-kept" className="text-body">
@@ -705,6 +791,24 @@ export function OrderScreen({ id }: { id: string }) {
                 : t.order.mismatch[check.why]}
             </span>
           </p>
+        )}
+        {done && terms?.kind === 'withdraw' && (
+          // The portfolio reads the vault again from its chain: what stayed, or that it is empty.
+          <div data-ui="withdraw-done" className="flex flex-col items-start gap-3">
+            {skippedSteps < now.legs.length && (
+              <p className="max-w-(--tf-measure-body) text-body">{t.order.shared.withdrawDone}</p>
+            )}
+            {stayedNames.length > 0 && (
+              <p data-ui="withdraw-stayed" className="max-w-(--tf-measure-body) text-body">
+                {t.order.shared.stayed(
+                  new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(stayedNames),
+                )}
+              </p>
+            )}
+            <Link href="/monitor" className={buttonClass({ variant: 'secondary' })}>
+              {t.withdraw.back}
+            </Link>
+          </div>
         )}
         {/* An add held to our server's targets, which this app could not read from the chain: said on
             its own line over the button, where it cannot be missed. */}
@@ -788,6 +892,11 @@ export function OrderScreen({ id }: { id: string }) {
               {t.order.outcome.newOrder}
             </Link>
           </div>
+        )}
+        {keeperBuys && (
+          <p data-ui="order-keeper-buys" className="max-w-(--tf-measure-body) text-body-sm">
+            {t.order.outcome.keeperBuys}
+          </p>
         )}
         {offerFinish && (
           <p data-ui="order-finish-note" className="max-w-(--tf-measure-body) text-body-sm">
@@ -875,6 +984,7 @@ function Step({
   now,
   phase,
   units,
+  multipliers,
   explorer,
   mock,
   money,
@@ -895,16 +1005,21 @@ function Step({
   phase: string | null;
   /** What each token's raw amount means, from what this repository committed. */
   units: ChainUnits | null;
+  /** For a withdrawal: each token's multiplier at the review, which its amounts are shown with. */
+  multipliers?: Record<string, string>;
   t: Dictionary;
   locale: string;
 }) {
   /** A raw amount of a token in whole units with its symbol, or null when its units are not known. */
-  const whole = (raw: string, asset: string) => {
+  const whole = (raw: string, asset: string, places?: number) => {
     const u = units?.tokens[asset];
-    const figure = u ? formatRaw(raw, u.decimals, locale) : null;
+    const figure = u ? formatRaw(raw, u.decimals, locale, places ?? Math.min(u.decimals, 6)) : null;
     return u && figure !== null ? `${figure} ${u.symbol}` : null;
   };
   const spend = (raw: string) => (units ? whole(raw, units.cash) : null) ?? raw;
+  /** A withdrawal's raw amount as its review showed it: with the token's multiplier then. */
+  const shown = (raw: string, asset: string) =>
+    shownRaw(BigInt(raw), multipliers?.[asset] ?? '1').toString();
   /** A token by the symbol this repository committed for it, or its id on the chain where none is. */
   const symbol = (asset: string) => units?.tokens[asset]?.symbol ?? tokenName(asset);
   /** The most one token costs when the least is received: what is spent over that minimum. */
@@ -951,6 +1066,29 @@ function Step({
           </span>
         )}
       </p>
+      {now.status === 'skipped' && leg.withdrawals && (
+        <p data-ui="order-skipped" className="max-w-(--tf-measure-body) text-body-sm">
+          {t.order.shared.skipped(leg.withdrawals.map((w) => symbol(w.asset)).join(', '))}
+        </p>
+      )}
+      {leg.withdrawals && (
+        // What this step takes out, for the owner's own wallet: the amount, or all of the token.
+        <ul className="flex flex-col gap-0.5 text-body-sm text-muted-foreground">
+          {leg.withdrawals.map((w) => (
+            <li key={w.asset} data-ui="order-withdrawal" className="tabular-nums">
+              {w.amountRaw === null
+                ? t.order.shared.withdrawsAll(
+                    whole(shown(w.heldRaw, w.asset), w.asset, 18) ??
+                      `${w.heldRaw} ${tokenName(w.asset)}`,
+                  )
+                : t.order.shared.withdraws(
+                    whole(shown(w.amountRaw, w.asset), w.asset, 18) ??
+                      `${w.amountRaw} ${tokenName(w.asset)}`,
+                  )}
+            </li>
+          ))}
+        </ul>
+      )}
       {leg.trades.length === 0 ? null : (
         <ul className="flex flex-col gap-0.5 text-body-sm text-muted-foreground">
           {leg.trades.map((trade, i) => {

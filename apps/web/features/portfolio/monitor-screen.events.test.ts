@@ -363,7 +363,7 @@ describe('the monitor, for a person with a vault on their chain', () => {
     expect(text(host)).toContain(en.portfolio.vault.onlyCash);
   });
 
-  it('signs nothing: no primary button, no signing word, and the vault’s switches are not offered', async () => {
+  it('signs nothing: no primary button, no signing word; the one way out is a link to the vault’s withdrawal', async () => {
     api({ person: onSolana });
     signIn();
     const host = await screen();
@@ -376,7 +376,13 @@ describe('the monitor, for a person with a vault on their chain', () => {
     expect(
       host.querySelectorAll('button:not([aria-label^="Source for"]):not([data-action="rename"])'),
     ).toHaveLength(0);
-    expect(text(host)).not.toMatch(/\bsign\b|withdraw|rebalance now/i);
+    expect(text(host)).not.toMatch(/\bsign\b|rebalance now/i);
+    // Withdraw is said once, on a link that leads to the vault's own withdrawal page (WITHDRAW).
+    const out = find(host, 'a[data-ui="vault-withdraw"]');
+    expect(out.textContent).toBe(en.withdraw.action);
+    expect(out.getAttribute('href')).toMatch(/^\/vaults\/solana\/[^/]+\/withdraw$/);
+    expect(text(host).match(/withdraw/gi)).toHaveLength(1);
+    expect(host.querySelector('[data-ui="vault-empty"]')).toBeNull();
   });
 });
 
@@ -820,6 +826,96 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     ).toBeGreaterThan(0);
   });
 
+  it('shows what was taken out, with its source, and the withdrawal in the activity, from the server alone', async () => {
+    const tx = '5'.repeat(64);
+    const taken = (status: string, vaultAddress: string, n: number) => ({
+      orderId: `00000000-0000-4000-8000-0000000000a${n}`,
+      createdAt: '2026-10-06T10:00:00.000Z',
+      chain: 'solana',
+      vault: vaultAddress,
+      status: 'done',
+      steps: [
+        {
+          legId: `00000000-0000-4000-8000-0000000000b${n}`,
+          status,
+          txId: status === 'confirmed' ? tx : null,
+          explorerUrl: null,
+          at: '2026-10-06T10:05:00.000Z',
+          provenance: 'sandbox',
+          withdrawals: [
+            {
+              asset: 'solana:usdc',
+              amountRaw: '1250500000',
+              heldRaw: '2000000000',
+              valued: {
+                usd: '1250.50',
+                source: 'Solana devnet',
+                method: 'the amount of the dollar token, counted at one dollar',
+                fetchedAt: '2026-10-06T10:00:00.000Z',
+                provenance: 'sandbox',
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const server = api({
+      person: onSolana,
+      portfolio: () => json(portfolioBody(chainOf([vault({ basketId: basketOfPlan(PLAN_ID) })]))),
+      more: (path) =>
+        path === '/v1/me/plans'
+          ? listed()
+          : path === '/v1/me/withdrawals'
+            ? json({
+                withdrawals: [
+                  taken('confirmed', VAULT, 1),
+                  // one that never landed, and one out of another vault: neither is counted
+                  taken('built', VAULT, 2),
+                  taken('confirmed', SECOND_VAULT, 3),
+                ],
+              })
+            : orders(true)(path),
+    });
+    signIn();
+    const host = await screen();
+    await settle();
+    await settle();
+    expect(server.to('/v1/me/withdrawals')).toHaveLength(1);
+    const out = find(host, '[data-ui="vault-taken-out"]');
+    expect(out.textContent).toContain(en.portfolio.vault.takenOut);
+    expect(out.textContent).toContain('$1,250.50');
+    // on Solana a confirmed step moved its token: no word that the sum is only what was ordered
+    expect(out.querySelector('[data-ui="vault-taken-ordered"]')).toBeNull();
+    // the figure carries its pin (rule 1)
+    const pin = find(out, '[data-ui="figure"]');
+    expect(pin.querySelector('button')?.getAttribute('aria-label')).toMatch(/^Source for /);
+    // the goal card says it in words beside what went in, and repeats no figure
+    const card = find(host, '[data-ui="goal-card"]');
+    expect(card.textContent).toContain(
+      `${en.portfolio.goalCard.putIn('$40,000')} · ${en.portfolio.goalCard.tookOut}`,
+    );
+    expect(card.textContent).not.toContain('1,250');
+    // and each withdrawal that reached the chain is a line of the person's activity, though this
+    // browser never placed it; the one with no transaction is not
+    const lines = [
+      ...host.querySelectorAll('[data-ui="activity-panel"] [data-ui="execution-list"] li'),
+    ].filter((li) => li.textContent?.includes(en.order.kind.withdraw));
+    expect(lines).toHaveLength(2);
+    expect(lines[0]?.textContent).toContain('USDC');
+    expect(lines[0]?.getAttribute('data-status')).toBe('confirmed');
+  });
+
+  it('says nothing was taken out of a vault with no confirmed withdrawal', async () => {
+    api({ person: onSolana, portfolio: () => bought(), more: orders(true) });
+    signIn();
+    const host = await screen();
+    await settle();
+    expect(host.querySelector('[data-ui="vault-taken-out"]')).toBeNull();
+    expect(find(host, '[data-ui="goal-card"]').textContent).not.toContain(
+      en.portfolio.goalCard.tookOut,
+    );
+  });
+
   it('joins by the vault’s number the server gives, so a plan from a link finds the buyer’s own vault', async () => {
     const own = '424242';
     api({
@@ -1066,6 +1162,63 @@ describe('the chain of each vault', () => {
       expect(host.textContent).not.toMatch(/usdc/i);
       await unmountAll();
     }
+  });
+
+  it('says on an EVM chain that what was taken out is what was ordered, since a withdraw-all can pass over a token', async () => {
+    const held = robinhoodChain();
+    const address = held.vaults[0]?.address ?? '';
+    api({
+      person: onRobinhood,
+      portfolio: () => json(portfolioOf(held)),
+      more: (path) =>
+        path === '/v1/me/withdrawals'
+          ? json({
+              next: null,
+              withdrawals: [
+                {
+                  orderId: '00000000-0000-4000-8000-0000000000c1',
+                  createdAt: '2026-10-06T10:00:00.000Z',
+                  chain: 'robinhood',
+                  vault: address,
+                  status: 'done',
+                  steps: [
+                    {
+                      legId: '00000000-0000-4000-8000-0000000000c2',
+                      status: 'confirmed',
+                      txId: `0x${'5'.repeat(64)}`,
+                      explorerUrl: null,
+                      at: '2026-10-06T10:05:00.000Z',
+                      provenance: 'mock',
+                      withdrawals: [
+                        {
+                          asset: 'robinhood:tspy',
+                          amountRaw: null,
+                          heldRaw: '1000000',
+                          valued: {
+                            usd: '650.00',
+                            source: 'MOCK price',
+                            method: 'the amount at the reference price when ordered',
+                            fetchedAt: '2026-10-06T10:00:00.000Z',
+                            provenance: 'mock',
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            })
+          : null,
+    });
+    signIn(EMBEDDED, 'mock');
+    const host = await screen();
+    await settle();
+    await settle();
+    const out = find(host, '[data-ui="vault-taken-out"]');
+    expect(out.textContent).toContain(en.portfolio.vault.takenOut);
+    expect(find(out, '[data-ui="vault-taken-ordered"]').textContent).toBe(
+      en.portfolio.vault.takenOrdered,
+    );
   });
 
   it('groups vaults on two chains under a heading each, with a total each, and adds them only where it says so', async () => {

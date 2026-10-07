@@ -669,16 +669,28 @@ export function createEvmVaultAdapter(options: EvmVaultAdapterOptions): EvmVault
             }),
           ];
         }
-        // The tokens named, each in full, in one transaction.
-        const named = [...new Set(a.assets)].map(tokenOf);
+        // The tokens named, in one transaction: each in full, or the amount named for it, which is
+        // never more than the vault holds.
+        const ids = [...new Set(a.assets)];
+        const named = ids.map(tokenOf);
         const held = await Promise.all(named.map((t) => balanceOf(t, vault)));
+        const amounts = ids.map((id, i) => {
+          const asked = a.amounts?.[id];
+          const has = held[i] ?? 0n;
+          if (asked !== undefined && BigInt(asked) > has)
+            throw new ChainError(
+              'BadInput',
+              `the vault holds ${has} raw ${id}, less than the ${asked} to withdraw`,
+            );
+          return asked === undefined ? has : BigInt(asked);
+        });
         const calls = named.flatMap((t, i) =>
-          (held[i] ?? 0n) > 0n
+          (amounts[i] ?? 0n) > 0n
             ? [
                 encodeFunctionData({
                   abi: BASKET_VAULT_ABI,
                   functionName: 'withdraw',
-                  args: [t, held[i] ?? 0n],
+                  args: [t, amounts[i] ?? 0n],
                 }),
               ]
             : [],

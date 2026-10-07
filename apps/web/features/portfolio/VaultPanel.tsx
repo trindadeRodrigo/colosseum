@@ -1,4 +1,5 @@
 'use client';
+import { chainFamily } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useId } from 'react';
 import { buttonClass } from '../../components/ui/button-class';
@@ -23,6 +24,7 @@ import {
   vaultValueSource,
   worst,
 } from './portfolio';
+import type { TakenOut } from './vault-goal';
 
 // One vault, as the monitor shows it (DESIGN-VAULT section 11, "Monitor"): what it is worth, a version
 // of the followed portfolio still to come, and what it holds, cash included, each with its price, value,
@@ -30,16 +32,28 @@ import {
 // address, the version it follows, auto-follow, what the keeper has lost of it this week) are behind
 // "Details": they are not what a person opens the page for (the flow audit, finding 31). Every price
 // and value carries its pin; a vault that is not on a live chain is a mocked card, and one on a test
-// network says "Test network". Read only: nothing here signs, and the switches of a vault
-// (auto-follow, withdraw) are not offered on this page.
+// network says "Test network". Nothing here signs: a vault that holds something links to its withdrawal
+// (features/shared/WithdrawScreen.tsx), one that holds nothing says so, and what confirmed withdrawals
+// took out is said with its pin. The auto-follow switch is not offered on this page.
 
-export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vault }) {
+export function VaultPanel({
+  chain,
+  vault,
+  taken = null,
+}: {
+  chain: PortfolioChain;
+  vault: Vault;
+  /** What confirmed withdrawals took out of this vault (vault-goal.ts, `takenOut`), or null. */
+  taken?: TakenOut | null;
+}) {
   const t = useT();
   const lang = useLang();
   const words = t.portfolio.vault;
   const heading = useId();
   const live = vault.provenance === 'live';
   const missing = unpriced(vault);
+  // Nothing held, of cash or of any token: a vault a withdrawal emptied, or one never funded.
+  const empty = [vault.cash, ...vault.positions].every((h) => /^0+$/.test(h.raw));
 
   const page = `/vaults/${vault.chain}/${encodeURIComponent(vault.address)}`;
   // The rows' shares, rounded together so they add up to the whole (figures.ts, `sharesOf`).
@@ -180,6 +194,31 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
             />
           </dd>
         </dl>
+        {taken && (
+          <dl data-ui="vault-taken-out">
+            <dt className="text-caption text-muted-foreground">{words.takenOut}</dt>
+            <dd className="font-mono tabular-nums">
+              {taken.usd !== null && (
+                <ProvenancePin value={dollars(lang, taken.usd)} obs={taken.obs} labels={t.pin} />
+              )}
+              {/* An EVM vault's withdraw-all passes over a token it cannot move and the order cannot
+                  tell, so there the sum is what was ordered, and says so. */}
+              {chainFamily(vault.chain) === 'evm' && (
+                <span
+                  data-ui="vault-taken-ordered"
+                  className="block font-sans text-body-sm text-muted-foreground"
+                >
+                  {words.takenOrdered}
+                </span>
+              )}
+              {taken.unvalued > 0 && (
+                <span className="block font-sans text-body-sm text-muted-foreground">
+                  {words.takenUnvalued(taken.unvalued)}
+                </span>
+              )}
+            </dd>
+          </dl>
+        )}
         {missing > 0 && (
           <p className="text-body-sm text-muted-foreground">{words.unpriced(missing)}</p>
         )}
@@ -238,6 +277,21 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
             </Link>
           </p>
         </details>
+      </CardBody>
+      <CardBody density="dense" className="flex flex-col items-start gap-2">
+        {empty ? (
+          <p data-ui="vault-empty" className="text-body-sm">
+            {t.withdraw.empty}
+          </p>
+        ) : (
+          <Link
+            data-ui="vault-withdraw"
+            href={`/vaults/${encodeURIComponent(vault.chain)}/${encodeURIComponent(vault.address)}/withdraw`}
+            className={buttonClass({ variant: 'secondary', size: 'dense' })}
+          >
+            {t.withdraw.action}
+          </Link>
+        )}
       </CardBody>
       <CardFooter
         density="dense"

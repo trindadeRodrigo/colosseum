@@ -4,7 +4,7 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { dollars } from '../goal/sheet';
 import type { ActivityGroup } from '../order/ActivityPanel';
-import { activityOf } from '../order/activity';
+import { activityOf, activityOfWithdrawals } from '../order/activity';
 import { readOrder } from '../order/order-api';
 import { depositLanded, stoppedShort } from '../order/order-check';
 import { isBuy, type OrderRecord, recallOrders } from '../order/order-record';
@@ -12,12 +12,14 @@ import { onMock } from '../order/readiness';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { utc } from './figures';
 import { mergeRecords, readPersonPlans, recordsOfPlans } from './server-plans';
+import { readPersonWithdrawals, type ServerWithdrawal } from './server-withdrawals';
 
 // The person's buys and what of them reached the chain. The buys are the server's list of their plans
 // (GET /v1/me/plans, server-plans.ts) together with what this browser kept (order-record.ts), so the
 // history is the same on a new device; each is read again from the API (GET /v1/orders/{id}), so a
 // line says where a step stands now. An order about a shared portfolio (a follow, a publish) and the
-// keeper's trades are in no list the API has: of those, this is what this browser placed.
+// keeper's trades are in no list the API has: of those, this is what this browser placed. Withdrawals
+// are the server's list too (GET /v1/me/withdrawals, server-withdrawals.ts).
 
 export type VaultHistory = {
   records: OrderRecord[];
@@ -31,6 +33,8 @@ export type VaultHistory = {
    * order was made to finish: what it left is that order's. Its page offers to finish the buy.
    */
   stopped: ReadonlySet<string>;
+  /** The person's withdrawals, as the server lists them: what was taken out is counted from these. */
+  withdrawals: readonly ServerWithdrawal[];
 };
 
 export function useVaultHistory(): VaultHistory {
@@ -43,18 +47,24 @@ export function useVaultHistory(): VaultHistory {
   const known = account.status === 'ready';
   const userId = port.userId;
   const [records, setRecords] = useState<OrderRecord[]>([]);
-  const [activity, setActivity] = useState<ActivityGroup[]>([]);
+  // Each group with when its order was made: the server's withdrawals are sorted in among them.
+  const [activity, setActivity] = useState<(ActivityGroup & { at: string })[]>([]);
   const [deposited, setDeposited] = useState<ReadonlySet<string>>(new Set());
   const [stopped, setStopped] = useState<ReadonlySet<string>>(new Set());
+  const [withdrawals, setWithdrawals] = useState<readonly ServerWithdrawal[]>([]);
 
   useEffect(() => {
     const kept = known ? recallOrders(userId) : [];
     setRecords(kept);
+    setWithdrawals([]);
     if (!known || !userId) return;
     let live = true;
     // What this browser kept is shown at once; the server's list joins it when it answers.
     void readPersonPlans(apiFetch).then((plans) => {
       if (live && plans.length > 0) setRecords(mergeRecords(kept, recordsOfPlans(plans, userId)));
+    });
+    void readPersonWithdrawals(apiFetch).then((listed) => {
+      if (live) setWithdrawals(listed);
     });
     return () => {
       live = false;
@@ -115,11 +125,13 @@ export function useVaultHistory(): VaultHistory {
                     at: answer.order.createdAt,
                     title: isBuy(record)
                       ? t.activity.buy(dollars(record.amountUsd, lang), when)
-                      : record.terms?.kind === 'follow'
-                        ? t.activity.follow(when)
-                        : record.terms?.kind === 'publish'
-                          ? t.activity.publish(when)
-                          : t.activity.order(when),
+                      : record.terms?.kind === 'withdraw'
+                        ? t.activity.withdraw(when)
+                        : record.terms?.kind === 'follow'
+                          ? t.activity.follow(when)
+                          : record.terms?.kind === 'publish'
+                            ? t.activity.publish(when)
+                            : t.activity.order(when),
                     executions,
                   },
                 ];
@@ -132,5 +144,21 @@ export function useVaultHistory(): VaultHistory {
     };
   }, [ids, apiFetch, t, lang]);
 
-  return { records, activity, deposited, stopped };
+  // A withdrawal is a group of lines too, from the server's list: one this browser never placed is
+  // there as well. An order this browser's own record already gave a group keeps that one.
+  const groups = useMemo(() => {
+    const own = new Set(activity.map((group) => group.id));
+    const taken = withdrawals
+      .filter((w) => !own.has(w.orderId))
+      .map((w) => ({
+        id: w.orderId,
+        at: w.createdAt,
+        title: t.activity.withdraw(utc(lang, w.createdAt)),
+        executions: activityOfWithdrawals([w], t, (chain) => onMock(port, chain)),
+      }))
+      .filter((group) => group.executions.length > 0);
+    return [...activity, ...taken].sort((a, b) => b.at.localeCompare(a.at));
+  }, [activity, withdrawals, t, lang, port]);
+
+  return { records, activity: groups, deposited, stopped, withdrawals };
 }

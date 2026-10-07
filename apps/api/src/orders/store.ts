@@ -19,6 +19,7 @@ import {
   type IntentRequest,
   type Leg,
   type Order,
+  type PersonWithdrawal,
   type Principal,
   type Provenance,
   type Shelf,
@@ -68,6 +69,7 @@ const toLeg = (r: LegRow): Leg => ({
   signer: r.signer,
   description: r.description,
   ...(r.cashRaw === null ? {} : { cashRaw: r.cashRaw }),
+  ...(r.withdrawals ? { withdrawals: r.withdrawals } : {}),
   trades: r.trades,
   expected: expectedOfRow(r.expected),
   status: r.status,
@@ -174,6 +176,7 @@ async function insertOrderRows(tx: Tx, order: Order, request: IntentRequest): Pr
       signer: l.signer,
       description: l.description,
       cashRaw: l.cashRaw ?? null,
+      withdrawals: l.withdrawals ?? null,
       trades: l.trades,
       expected: l.expected,
       status: l.status,
@@ -433,6 +436,93 @@ export type PersonPlan = {
 
 /** The most plans one answer lists. */
 export const PERSON_PLANS = { plans: 50 } as const;
+
+/** The most withdrawals one page of `listPersonWithdrawals` holds. */
+const PERSON_WITHDRAWALS = 50;
+
+/**
+ * The person's withdrawals, newest first, a page of at most `limit`, ordered before `before` when that
+ * is given; `next` is the time to ask the following page with, or null when this is the last. Each
+ * has the vault it took from and its steps that take tokens out, where each stands and its transaction. An order is theirs by the
+ * wallets of the verified token, every address it names, as on its own route. The portfolio counts
+ * what was taken out from these, on any device: nothing of it is kept in a browser alone.
+ */
+export async function listPersonWithdrawals(
+  db: Db,
+  principal: Principal,
+  page: { limit?: number; before?: Date } = {},
+): Promise<{ withdrawals: PersonWithdrawal[]; next: string | null }> {
+  const limit = Math.min(Math.max(1, page.limit ?? PERSON_WITHDRAWALS), PERSON_WITHDRAWALS);
+  const addresses = (family: 'solana' | 'evm') =>
+    principal.wallets.filter((w) => w.family === family).map((w) => w.address);
+  const [solana, evm] = [addresses('solana'), addresses('evm')];
+  const owned = [
+    ...(solana.length ? [inArray(orders.ownerSolana, solana)] : []),
+    ...(evm.length ? [inArray(orders.ownerEvm, evm)] : []),
+  ];
+  if (!owned.length) return { withdrawals: [], next: null };
+  // One more than the page, to know whether another follows.
+  const found = await db
+    .select()
+    .from(orders)
+    .where(
+      and(
+        eq(orders.type, 'withdraw'),
+        or(...owned),
+        ...(page.before ? [lt(orders.createdAt, page.before)] : []),
+      ),
+    )
+    .orderBy(desc(orders.createdAt), desc(orders.id))
+    .limit(limit + 1);
+  const paged = found.slice(0, limit);
+  const next =
+    found.length > limit ? (paged[paged.length - 1]?.createdAt.toISOString() ?? null) : null;
+  // An order is the caller's only when every address it names is theirs, as on its own route.
+  const rows = paged.filter(
+    (o) =>
+      (o.ownerSolana === null || solana.includes(o.ownerSolana)) &&
+      (o.ownerEvm === null || evm.includes(o.ownerEvm)),
+  );
+  if (!rows.length) return { withdrawals: [], next };
+  const legRows = await db
+    .select()
+    .from(legs)
+    .where(
+      and(
+        eq(legs.kind, 'withdraw'),
+        inArray(
+          legs.orderId,
+          rows.map((o) => o.id),
+        ),
+      ),
+    )
+    .orderBy(asc(legs.seq));
+  const withdrawals = rows.flatMap((o): PersonWithdrawal[] => {
+    const steps = legRows.filter((l) => l.orderId === o.id);
+    const vault = o.request.type === 'withdraw' ? o.request.vaults[0] : undefined;
+    const chain = steps[0]?.chainId;
+    if (!vault || !chain) return [];
+    return [
+      {
+        orderId: o.id,
+        createdAt: o.createdAt.toISOString(),
+        chain,
+        vault,
+        status: o.status,
+        steps: steps.map((l) => ({
+          legId: l.id,
+          status: l.status,
+          txId: l.txId,
+          explorerUrl: l.explorerUrl,
+          at: l.updatedAt.toISOString(),
+          provenance: l.provenance,
+          withdrawals: l.withdrawals ?? [],
+        })),
+      },
+    ];
+  });
+  return { withdrawals, next };
+}
 
 /**
  * Every plan of a person's, page after page (`listPersonPlans`): what joins each of their vaults to
@@ -908,6 +998,32 @@ export async function recordBuild(
 /** Stores a refused build on the leg. The leg keeps its status: nothing was built and nothing failed onchain. */
 export async function recordRefusal(db: Db, legId: string, error: Leg['error']): Promise<void> {
   await db.update(legs).set({ error, updatedAt: new Date() }).where(eq(legs.id, legId));
+}
+
+/**
+ * A step that cannot be built is skipped, with the reason: the order's later steps no longer wait for
+ * it, and the order is done once the others are. Only a step nothing was sent for. Written under the
+ * order's lock, as a build is: a build of the same step recorded first stands, and this writes nothing.
+ */
+export async function recordSkipped(
+  db: Db,
+  leg: Pick<Leg, 'id' | 'orderId' | 'attempt' | 'status'>,
+  error: Leg['error'],
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    if (leg.orderId) await lockOrder(tx, leg.orderId);
+    await tx
+      .update(legs)
+      .set({ status: 'skipped', error, updatedAt: new Date() })
+      .where(
+        and(
+          eq(legs.id, leg.id),
+          eq(legs.attempt, leg.attempt),
+          eq(legs.status, leg.status),
+          inArray(legs.status, ['planned', 'built', 'expired']),
+        ),
+      );
+  });
 }
 
 export type Outcome = {

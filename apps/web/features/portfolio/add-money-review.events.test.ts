@@ -15,6 +15,25 @@ import { EMBEDDED, json, SOLANA, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 
+/** The vault as this app's own node says it stands. */
+const chain = vi.hoisted(() => ({
+  now: { state: 'unknown' } as
+    | { state: 'reading' }
+    | { state: 'unknown' }
+    | { state: 'read'; autoFollow: boolean; cashRaw: bigint },
+  asked: [] as ({ owner: string; basketId: string } | null)[],
+}));
+vi.mock('./chain-vault', async (original) => ({
+  ...(await original<typeof import('./chain-vault')>()),
+  useVaultNow: (
+    _chain: unknown,
+    _mock: unknown,
+    at: { owner: string; basketId: string } | null,
+  ) => {
+    chain.asked.push(at);
+    return chain.now;
+  },
+}));
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('../wallet/signing', () => import('../wallet/test/mock-signing'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -70,6 +89,8 @@ const primary = (host: HTMLElement) => host.querySelector('[data-variant="primar
 beforeEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();
+  chain.now = { state: 'unknown' };
+  chain.asked.length = 0;
   portStore.set(signedInPort(EMBEDDED, { userId: USER }));
 });
 afterEach(unmountAll);
@@ -132,7 +153,8 @@ describe('the review of an add of money to a vault', () => {
     expect(find(other, '[role="alert"]').textContent).toContain(en.order.mismatch.trades);
   });
 
-  it('offers to finish an add that stopped after its deposit, and holds the next order to the same vault', async () => {
+  /** An add approved here whose deposit landed and whose swap failed; the server can finish it. */
+  function stoppedAdd() {
     const NEXT_ID = '99999999-9999-4999-8999-999999999999';
     const add = addOrder();
     const stopped = {
@@ -176,6 +198,52 @@ describe('the review of an add of money to a vault', () => {
         approved: { order: add, consents: [], at: '2026-10-05T12:00:00Z' },
       }),
     );
+    return { NEXT_ID, add };
+  }
+
+  it('offers no finish for a stopped add once the vault’s auto-follow is on, as the chain says: the keeper buys', async () => {
+    for (const lang of ['en', 'pt'] as const) {
+      const t = dictionary(lang);
+      stoppedAdd();
+      chain.now = { state: 'read', autoFollow: true, cashRaw: 6_000_000n };
+      const host = await mount(withAccount(lang, createElement(OrderScreen, { id: ORDER_ID })));
+      await settle();
+      await settle();
+      expect(find(host, '[data-ui="order-keeper-buys"]').textContent).toBe(
+        t.order.outcome.keeperBuys,
+      );
+      expect(host.querySelector('[data-ui="order-stopped"] button')).toBeNull();
+      expect(host.querySelector('[data-ui="order-finish-note"]')).toBeNull();
+      // the vault asked about is this wallet's own for the add's number
+      expect(chain.asked.filter((at) => at !== null).at(-1)).toEqual({
+        owner: SOLANA,
+        basketId: '7',
+      });
+      await unmountAll();
+      window.localStorage.clear();
+    }
+  });
+
+  it('still offers it with auto-follow off, and not before the vault is read', async () => {
+    stoppedAdd();
+    chain.now = { state: 'reading' };
+    const reading = await mount(withAccount('en', createElement(OrderScreen, { id: ORDER_ID })));
+    await settle();
+    await settle();
+    expect(reading.querySelector('[data-ui="order-stopped"] button')).toBeNull();
+    await unmountAll();
+    chain.now = { state: 'read', autoFollow: false, cashRaw: 0n };
+    const off = await mount(withAccount('en', createElement(OrderScreen, { id: ORDER_ID })));
+    await settle();
+    await settle();
+    expect(find(off, '[data-ui="order-stopped"] button').textContent).toContain(
+      en.order.outcome.finish,
+    );
+    expect(off.querySelector('[data-ui="order-keeper-buys"]')).toBeNull();
+  });
+
+  it('offers to finish an add that stopped after its deposit, and holds the next order to the same vault', async () => {
+    const { NEXT_ID, add } = stoppedAdd();
     router.push.mockClear();
     const host = await mount(withAccount('en', createElement(OrderScreen, { id: ORDER_ID })));
     await settle();

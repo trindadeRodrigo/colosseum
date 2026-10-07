@@ -1104,6 +1104,14 @@ export function createSolanaVaultAdapter(options: SolanaVaultAdapterOptions): So
         continue;
       }
       const t = refs.get(mint) as TokenRef;
+      // Some of it where an amount is named, never more than the vault holds; all of it otherwise.
+      const named = a.amounts?.[id];
+      const amount = named === undefined ? held.amount : BigInt(named);
+      if (amount > held.amount)
+        throw new ChainError(
+          'BadInput',
+          `the vault holds ${held.amount} raw ${id}, less than the ${amount} to withdraw`,
+        );
       try {
         txs.push(
           await built({
@@ -1126,14 +1134,14 @@ export function createSolanaVaultAdapter(options: SolanaVaultAdapterOptions): So
                 token: t,
                 vaultAccount: held.address,
                 destination: wallet.address,
-                amount: held.amount,
+                amount,
               }),
             ],
             watch: [
               { holder: 'vault', asset: id, account: held.address },
               { holder: 'wallet', asset: id, account: wallet.address },
             ],
-            summary: `Withdraw ${held.amount} raw ${id} from vault ${vault} to the owner`,
+            summary: `Withdraw ${amount} raw ${id} from vault ${vault} to the owner`,
             minimums: [],
           }),
         );

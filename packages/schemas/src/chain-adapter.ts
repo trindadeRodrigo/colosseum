@@ -164,11 +164,26 @@ export const SetAutoFollowArgs = z.object({
 });
 export type SetAutoFollowArgs = z.infer<typeof SetAutoFollowArgs>;
 
-export const WithdrawInKindArgs = z.object({
-  vault: Address,
-  assets: z.array(AssetId).optional(),
-  nonce: RebuildNonce,
-});
+export const WithdrawInKindArgs = z
+  .object({
+    vault: Address,
+    /** Left out: everything the vault holds. */
+    assets: z.array(AssetId).optional(),
+    /**
+     * How much of a named asset, in raw units: some of what the vault holds of it. An asset named with
+     * no amount leaves in full. More than the vault holds is refused, and nothing is built.
+     */
+    amounts: z.record(AssetId, RawAmount).optional(),
+    nonce: RebuildNonce,
+  })
+  .refine((a) => Object.keys(a.amounts ?? {}).every((id) => a.assets?.includes(id)), {
+    message: 'an amount is for an asset the withdrawal names',
+    path: ['amounts'],
+  })
+  .refine((a) => Object.values(a.amounts ?? {}).every((raw) => BigInt(raw) > 0n), {
+    message: 'an amount is more than nothing',
+    path: ['amounts'],
+  });
 export type WithdrawInKindArgs = z.infer<typeof WithdrawInKindArgs>;
 
 export const PublishRecipeArgs = z.object({
