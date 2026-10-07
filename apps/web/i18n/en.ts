@@ -952,6 +952,8 @@ export const en = {
         mock: 'Sample chain: there is no chain to read, so these are our server’s words, not checked.',
         'no-node': (chain: string) =>
           `Not checked against ${chain}: this app has no node of its own to read it from. These are our server’s words.`,
+        'no-reader': (chain: string) =>
+          `Not checked against ${chain}: this app doesn’t read ${chain}’s registry yet. These are our server’s words.`,
         'no-deployment': (chain: string) =>
           `Not checked against ${chain}: this app has no record of the tokens on this network. These are our server’s words.`,
         'family-id':
@@ -1048,7 +1050,7 @@ export const en = {
         weight: 'Each weight is from 2% to 50%, in steps of 0.5%.',
         sum: 'The weights add up to 100%.',
         twice: 'An asset appears once.',
-        chain: 'Publishing is built on Solana only for now.',
+        chain: 'Publishing isn’t open on this chain yet.',
       },
       failure: {
         said: (error: string) => `Our server said no: ${error}.`,
