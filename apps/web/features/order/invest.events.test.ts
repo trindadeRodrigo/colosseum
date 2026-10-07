@@ -364,6 +364,39 @@ describe('investing with one press, with the passkey wallet', () => {
   });
 });
 
+describe('the card while the wallet is read', () => {
+  it('keeps what is on it in place: the notice ticked before the read is still ticked after it, and after a second read', async () => {
+    // A card labelled as a sample draws its contents inside another element: a label that waited
+    // for the funding read would make everything on the card again, and drop what was ticked (#150).
+    api({ funded: false });
+    const host = await mount(withAccount('en', createElement(BuyScreen, { id: PLAN_ID })));
+    await settle();
+    await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
+    const box = () =>
+      find<HTMLInputElement>(host, '[data-ui="trust-notice"] input[type="checkbox"]');
+    const before = box();
+    await click(before);
+    expect(before.checked).toBe(true);
+    // the first read of the wallet arrives, and says it is a test network
+    await settle(350);
+    await settle();
+    expect(find(host, '[data-ui="data-note"]').textContent).toBe(
+      en.buy.steps.note.testNetwork('Solana'),
+    );
+    expect(box()).toBe(before);
+    expect(box().checked).toBe(true);
+    // and it is read again, as "Get test funds" does
+    const ask = [...host.querySelectorAll('button')].find(
+      (b) => label(b) === en.buy.funding.testFunds,
+    );
+    await click(ask as HTMLElement);
+    await settle(350);
+    await settle();
+    expect(box()).toBe(before);
+    expect(box().checked).toBe(true);
+  });
+});
+
 describe('investing with a wallet of the person’s own', () => {
   it('says before the press that the wallet confirms each step in its own window, and runs the same order', async () => {
     portStore.set(signedInPort(PHANTOM, { userId: USER }));
