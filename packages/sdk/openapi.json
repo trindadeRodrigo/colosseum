@@ -9652,6 +9652,2748 @@
         }
       }
     },
+    "/v1/portfolio/exposure": {
+      "get": {
+        "summary": "What the signed-in person holds across their vaults, by underlying and by issuer",
+        "tags": ["portfolio"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["solana", "base", "robinhood"]
+            },
+            "in": "query",
+            "name": "chain",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "standard",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "valueUsd": {
+                              "type": "string",
+                              "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                            },
+                            "provenance": {
+                              "type": "string",
+                              "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                            },
+                            "byUnderlying": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "key": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "usd": {
+                                    "type": "string",
+                                    "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                  },
+                                  "bps": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  }
+                                },
+                                "required": ["key", "usd", "bps"],
+                                "additionalProperties": false
+                              }
+                            },
+                            "byIssuer": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "key": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "usd": {
+                                    "type": "string",
+                                    "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                  },
+                                  "bps": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  }
+                                },
+                                "required": ["key", "usd", "bps"],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": ["valueUsd", "provenance", "byUnderlying", "byIssuer"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "chains": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "chain": {
+                            "type": "string",
+                            "enum": ["solana", "base", "robinhood"]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string",
+                            "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                          },
+                          "vaults": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "valueUsd": {
+                            "type": "string",
+                            "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                          },
+                          "observedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "byUnderlying": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "key": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "usd": {
+                                  "type": "string",
+                                  "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                },
+                                "bps": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 10000
+                                }
+                              },
+                              "required": ["key", "usd", "bps"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "byIssuer": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "key": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "usd": {
+                                  "type": "string",
+                                  "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                },
+                                "bps": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 10000
+                                }
+                              },
+                              "required": ["key", "usd", "bps"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "rollUp": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "byIssuer": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "key": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "bps": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 10000
+                                        }
+                                      },
+                                      "required": ["key", "bps"],
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "byChain": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "key": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "bps": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 10000
+                                        }
+                                      },
+                                      "required": ["key", "bps"],
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "byClass": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "key": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "bps": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 10000
+                                        }
+                                      },
+                                      "required": ["key", "bps"],
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "flags": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "exit": {
+                                    "type": "object",
+                                    "properties": {
+                                      "quotedBps": {
+                                        "type": ["number", "null"]
+                                      },
+                                      "quotedAt": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "measuredWorstBps": {
+                                        "type": ["number", "null"]
+                                      },
+                                      "measuredShareBps": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 10000
+                                      }
+                                    },
+                                    "required": [
+                                      "quotedBps",
+                                      "quotedAt",
+                                      "measuredWorstBps",
+                                      "measuredShareBps"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "required": ["byIssuer", "byChain", "byClass", "flags", "exit"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "exit": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "asset": {
+                                  "type": "string",
+                                  "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                },
+                                "usd": {
+                                  "type": "string",
+                                  "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                },
+                                "measured": {
+                                  "type": "boolean"
+                                },
+                                "costBps": {
+                                  "type": ["number", "null"]
+                                },
+                                "fallbackTier": {
+                                  "type": "string",
+                                  "enum": ["A", "B", "C"]
+                                },
+                                "source": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "method": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "fetchedAt": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                },
+                                "provenance": {
+                                  "type": "string",
+                                  "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                                }
+                              },
+                              "required": ["asset", "usd", "measured", "costBps"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "unvalued": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "asset": {
+                                  "type": "string",
+                                  "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                },
+                                "vault": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                                    },
+                                    {
+                                      "type": "string",
+                                      "pattern": "^0x[0-9a-f]{40}$"
+                                    }
+                                  ]
+                                },
+                                "display": {
+                                  "type": "string",
+                                  "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                }
+                              },
+                              "required": ["asset", "vault", "display"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "source": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "method": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "chain",
+                          "name",
+                          "provenance",
+                          "vaults",
+                          "valueUsd",
+                          "observedAt",
+                          "byUnderlying",
+                          "byIssuer",
+                          "rollUp",
+                          "exit",
+                          "unvalued",
+                          "source",
+                          "method"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "unavailable": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "chain": {
+                            "type": "string",
+                            "enum": ["solana", "base", "robinhood"]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "error": {
+                            "type": "string"
+                          },
+                          "retryable": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": ["chain", "name", "code", "error", "retryable"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "disclaimer": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["total", "chains", "unavailable", "disclaimer"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotCashLeg",
+                            "KeeperAssetOff",
+                            "PriceOutOfRange",
+                            "NothingTraded",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "PriceMoved",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        },
+                        "continuedBy": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE",
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED",
+                        "ORDER_CONTINUED",
+                        "STEP_IN_FLIGHT",
+                        "STEP_LANDED",
+                        "NOTHING_LEFT",
+                        "VAULT_CASH_SHORT",
+                        "DEPOSIT_NOT_LANDED",
+                        "ORDER_BUSY",
+                        "CONTINUE_NOT_SUPPORTED"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/portfolio/history": {
+      "get": {
+        "summary": "The signed-in person's vaults over time, from the snapshots kept of them",
+        "tags": ["portfolio"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            },
+            "in": "query",
+            "name": "from",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            },
+            "in": "query",
+            "name": "to",
+            "required": false
+          },
+          {
+            "schema": {
+              "default": "1h",
+              "type": "string",
+              "enum": ["10m", "1h", "1d"]
+            },
+            "in": "query",
+            "name": "step",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["solana", "base", "robinhood"]
+            },
+            "in": "query",
+            "name": "chain",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "query",
+            "name": "address",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "standard",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                    },
+                    "to": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                    },
+                    "step": {
+                      "type": "string",
+                      "enum": ["10m", "1h", "1d"]
+                    },
+                    "chains": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "chain": {
+                            "type": "string",
+                            "enum": ["solana", "base", "robinhood"]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string",
+                            "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                          },
+                          "vaults": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "address": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                                    },
+                                    {
+                                      "type": "string",
+                                      "pattern": "^0x[0-9a-f]{40}$"
+                                    }
+                                  ]
+                                },
+                                "name": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 60
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "source": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "method": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "points": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "observedAt": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                      },
+                                      "valueUsd": {
+                                        "type": "string",
+                                        "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                      },
+                                      "cashUsd": {
+                                        "type": "string",
+                                        "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                      },
+                                      "positions": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "asset": {
+                                              "type": "string",
+                                              "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                            },
+                                            "valueUsd": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string",
+                                                  "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "weightBps": {
+                                              "type": "integer",
+                                              "minimum": 0,
+                                              "maximum": 10000
+                                            },
+                                            "targetBps": {
+                                              "type": "integer",
+                                              "minimum": 0,
+                                              "maximum": 10000
+                                            },
+                                            "driftBps": {
+                                              "type": "integer",
+                                              "minimum": -10000,
+                                              "maximum": 10000
+                                            }
+                                          },
+                                          "required": [
+                                            "asset",
+                                            "valueUsd",
+                                            "weightBps",
+                                            "targetBps",
+                                            "driftBps"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "lossUsedBps": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 10000
+                                      },
+                                      "source": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      },
+                                      "method": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      }
+                                    },
+                                    "required": [
+                                      "observedAt",
+                                      "valueUsd",
+                                      "cashUsd",
+                                      "positions",
+                                      "lossUsedBps"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                }
+                              },
+                              "required": ["address", "name", "source", "method", "points"],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": ["chain", "name", "provenance", "vaults"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "unavailable": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "chain": {
+                            "type": "string",
+                            "enum": ["solana", "base", "robinhood"]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "error": {
+                            "type": "string"
+                          },
+                          "retryable": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": ["chain", "name", "code", "error", "retryable"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "disclaimer": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["from", "to", "step", "chains", "unavailable", "disclaimer"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotCashLeg",
+                            "KeeperAssetOff",
+                            "PriceOutOfRange",
+                            "NothingTraded",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "PriceMoved",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        },
+                        "continuedBy": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE",
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED",
+                        "ORDER_CONTINUED",
+                        "STEP_IN_FLIGHT",
+                        "STEP_LANDED",
+                        "NOTHING_LEFT",
+                        "VAULT_CASH_SHORT",
+                        "DEPOSIT_NOT_LANDED",
+                        "ORDER_BUSY",
+                        "CONTINUE_NOT_SUPPORTED"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/portfolio/plans": {
+      "get": {
+        "summary": "The signed-in person's plans, each with what was put in, its value and its status",
+        "tags": ["portfolio"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["solana", "base", "robinhood"]
+            },
+            "in": "query",
+            "name": "chain",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "query",
+            "name": "address",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "standard",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "chains": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "chain": {
+                            "type": "string",
+                            "enum": ["solana", "base", "robinhood"]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string",
+                            "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                          },
+                          "answeredAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "plans": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "chain": {
+                                  "type": "string",
+                                  "enum": ["solana", "base", "robinhood"]
+                                },
+                                "address": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                                    },
+                                    {
+                                      "type": "string",
+                                      "pattern": "^0x[0-9a-f]{40}$"
+                                    }
+                                  ]
+                                },
+                                "owner": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                                    },
+                                    {
+                                      "type": "string",
+                                      "pattern": "^0x[0-9a-f]{40}$"
+                                    }
+                                  ]
+                                },
+                                "name": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 60
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "basketId": {
+                                  "type": "string",
+                                  "pattern": "^(?:0|[1-9]\\d{0,19})$"
+                                },
+                                "plan": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "kind": {
+                                          "type": "string",
+                                          "enum": ["personal", "follow"]
+                                        },
+                                        "placedAt": {
+                                          "type": "string",
+                                          "format": "date-time",
+                                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                        },
+                                        "proposalId": {
+                                          "type": "string",
+                                          "format": "uuid",
+                                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                        },
+                                        "familyId": {
+                                          "type": "string"
+                                        },
+                                        "sheet": {
+                                          "type": "object",
+                                          "properties": {
+                                            "basketType": {
+                                              "type": "string",
+                                              "enum": ["standard"]
+                                            },
+                                            "goal": {
+                                              "type": "string",
+                                              "enum": ["grow", "income", "protect"]
+                                            },
+                                            "amountUsd": {
+                                              "type": "number",
+                                              "minimum": 10,
+                                              "maximum": 1000000
+                                            },
+                                            "horizonMonths": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 480
+                                            },
+                                            "risk": {
+                                              "type": "string",
+                                              "enum": ["low", "medium", "high"]
+                                            },
+                                            "themes": {
+                                              "maxItems": 3,
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 64
+                                              }
+                                            },
+                                            "country": {
+                                              "type": "string",
+                                              "pattern": "^[A-Z]{2}$"
+                                            },
+                                            "chains": {
+                                              "minItems": 1,
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "enum": ["solana", "base", "robinhood"]
+                                              }
+                                            },
+                                            "incomeTargetUsdMonthly": {
+                                              "type": "number",
+                                              "exclusiveMinimum": 0
+                                            },
+                                            "rules": {
+                                              "type": "object",
+                                              "properties": {
+                                                "useHoldings": {
+                                                  "type": "boolean"
+                                                },
+                                                "glide": {
+                                                  "type": "boolean"
+                                                }
+                                              },
+                                              "required": ["useHoldings", "glide"],
+                                              "additionalProperties": false
+                                            },
+                                            "language": {
+                                              "type": "string",
+                                              "enum": ["pt", "en"]
+                                            },
+                                            "currency": {
+                                              "type": "string",
+                                              "pattern": "^[A-Z]{3}$"
+                                            },
+                                            "obligations": {
+                                              "maxItems": 480,
+                                              "type": "array",
+                                              "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                  "month": {
+                                                    "type": "string",
+                                                    "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+                                                  },
+                                                  "amount": {
+                                                    "type": "number",
+                                                    "exclusiveMinimum": 0
+                                                  },
+                                                  "currency": {
+                                                    "type": "string",
+                                                    "pattern": "^[A-Z]{3}$"
+                                                  }
+                                                },
+                                                "required": ["month", "amount", "currency"],
+                                                "additionalProperties": false
+                                              }
+                                            },
+                                            "sleeves": {
+                                              "minItems": 1,
+                                              "type": "array",
+                                              "items": {
+                                                "oneOf": [
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "kind": {
+                                                        "type": "string",
+                                                        "enum": ["goal"]
+                                                      },
+                                                      "shareBps": {
+                                                        "type": "integer",
+                                                        "minimum": 1,
+                                                        "maximum": 10000
+                                                      }
+                                                    },
+                                                    "required": ["kind", "shareBps"],
+                                                    "additionalProperties": false
+                                                  },
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "kind": {
+                                                        "type": "string",
+                                                        "enum": ["theme"]
+                                                      },
+                                                      "shareBps": {
+                                                        "type": "integer",
+                                                        "minimum": 1,
+                                                        "maximum": 10000
+                                                      },
+                                                      "theme": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "maxLength": 64
+                                                      }
+                                                    },
+                                                    "required": ["kind", "shareBps", "theme"],
+                                                    "additionalProperties": false
+                                                  },
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "kind": {
+                                                        "type": "string",
+                                                        "enum": ["safe_yield"]
+                                                      },
+                                                      "shareBps": {
+                                                        "type": "integer",
+                                                        "minimum": 1,
+                                                        "maximum": 10000
+                                                      }
+                                                    },
+                                                    "required": ["kind", "shareBps"],
+                                                    "additionalProperties": false
+                                                  }
+                                                ]
+                                              }
+                                            },
+                                            "restoreSplit": {
+                                              "type": "boolean"
+                                            }
+                                          },
+                                          "required": [
+                                            "basketType",
+                                            "goal",
+                                            "amountUsd",
+                                            "horizonMonths",
+                                            "risk",
+                                            "themes",
+                                            "country",
+                                            "chains",
+                                            "rules",
+                                            "language"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        "card": {
+                                          "type": "object",
+                                          "properties": {
+                                            "moneyTodayUsd": {
+                                              "type": "number",
+                                              "minimum": 0
+                                            },
+                                            "termMonths": {
+                                              "type": "integer",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 9007199254740991
+                                            },
+                                            "cashFlow": {
+                                              "type": "string",
+                                              "enum": ["none", "monthly", "at_end"]
+                                            },
+                                            "expectedReturn": {
+                                              "type": "object",
+                                              "properties": {
+                                                "lowPct": {
+                                                  "type": "number"
+                                                },
+                                                "highPct": {
+                                                  "type": "number"
+                                                },
+                                                "basis": {
+                                                  "type": "string"
+                                                },
+                                                "lossInFallUsd": {
+                                                  "type": "number",
+                                                  "minimum": 0
+                                                }
+                                              },
+                                              "required": [
+                                                "lowPct",
+                                                "highPct",
+                                                "basis",
+                                                "lossInFallUsd"
+                                              ],
+                                              "additionalProperties": false
+                                            },
+                                            "exit": {
+                                              "type": "object",
+                                              "properties": {
+                                                "text": {
+                                                  "type": "string"
+                                                },
+                                                "costBps": {
+                                                  "type": ["number", "null"]
+                                                }
+                                              },
+                                              "required": ["text", "costBps"],
+                                              "additionalProperties": false
+                                            }
+                                          },
+                                          "required": [
+                                            "moneyTodayUsd",
+                                            "termMonths",
+                                            "cashFlow",
+                                            "expectedReturn",
+                                            "exit"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        "verdict": {
+                                          "anyOf": [
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "met": {
+                                                  "type": "boolean"
+                                                },
+                                                "gapUsdMonthly": {
+                                                  "type": "number"
+                                                },
+                                                "ways": {
+                                                  "type": "array",
+                                                  "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "change": {
+                                                        "type": "string"
+                                                      },
+                                                      "closesGap": {
+                                                        "type": "boolean"
+                                                      }
+                                                    },
+                                                    "required": ["change", "closesGap"],
+                                                    "additionalProperties": false
+                                                  }
+                                                }
+                                              },
+                                              "required": ["met", "gapUsdMonthly", "ways"],
+                                              "additionalProperties": false
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "observations": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "properties": {
+                                              "source": {
+                                                "type": "string",
+                                                "minLength": 1
+                                              },
+                                              "method": {
+                                                "type": "string",
+                                                "minLength": 1
+                                              },
+                                              "fetchedAt": {
+                                                "type": "string",
+                                                "format": "date-time",
+                                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                              },
+                                              "provenance": {
+                                                "type": "string",
+                                                "enum": [
+                                                  "live",
+                                                  "mock",
+                                                  "sandbox",
+                                                  "fixture",
+                                                  "prior_dataset"
+                                                ]
+                                              },
+                                              "id": {
+                                                "type": "string",
+                                                "minLength": 1
+                                              },
+                                              "kind": {
+                                                "type": "string",
+                                                "enum": ["yield", "price", "liquidity", "fx"]
+                                              }
+                                            },
+                                            "required": [
+                                              "source",
+                                              "method",
+                                              "fetchedAt",
+                                              "provenance",
+                                              "id",
+                                              "kind"
+                                            ],
+                                            "additionalProperties": false
+                                          }
+                                        }
+                                      },
+                                      "required": ["kind", "placedAt"],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "putIn": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "source": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "method": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "fetchedAt": {
+                                          "type": "string",
+                                          "format": "date-time",
+                                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                        },
+                                        "provenance": {
+                                          "type": "string",
+                                          "enum": [
+                                            "live",
+                                            "mock",
+                                            "sandbox",
+                                            "fixture",
+                                            "prior_dataset"
+                                          ]
+                                        },
+                                        "usd": {
+                                          "type": "string",
+                                          "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                        },
+                                        "orders": {
+                                          "type": "integer",
+                                          "exclusiveMinimum": 0,
+                                          "maximum": 9007199254740991
+                                        }
+                                      },
+                                      "required": [
+                                        "source",
+                                        "method",
+                                        "fetchedAt",
+                                        "provenance",
+                                        "usd",
+                                        "orders"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "newest": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "observedAt": {
+                                          "type": "string",
+                                          "format": "date-time",
+                                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                        },
+                                        "ageSeconds": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        },
+                                        "stale": {
+                                          "type": "boolean"
+                                        },
+                                        "blockOrSlot": {
+                                          "type": ["string", "null"]
+                                        },
+                                        "valueUsd": {
+                                          "type": "string",
+                                          "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                        },
+                                        "cash": {
+                                          "type": "object",
+                                          "properties": {
+                                            "asset": {
+                                              "type": "string",
+                                              "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                            },
+                                            "raw": {
+                                              "type": "string",
+                                              "maxLength": 78,
+                                              "pattern": "^(?:0|[1-9]\\d*)$"
+                                            },
+                                            "multiplier": {
+                                              "type": "string",
+                                              "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                            },
+                                            "display": {
+                                              "type": "string",
+                                              "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                            },
+                                            "scheduled": {
+                                              "type": "object",
+                                              "properties": {
+                                                "multiplier": {
+                                                  "type": "string",
+                                                  "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                                },
+                                                "effectiveAt": {
+                                                  "type": "integer",
+                                                  "minimum": 0,
+                                                  "maximum": 9007199254740991
+                                                }
+                                              },
+                                              "required": ["multiplier", "effectiveAt"],
+                                              "additionalProperties": false
+                                            }
+                                          },
+                                          "required": ["asset", "raw", "multiplier", "display"],
+                                          "additionalProperties": false
+                                        },
+                                        "positions": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "properties": {
+                                              "asset": {
+                                                "type": "string",
+                                                "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                              },
+                                              "raw": {
+                                                "type": "string",
+                                                "maxLength": 78,
+                                                "pattern": "^(?:0|[1-9]\\d*)$"
+                                              },
+                                              "multiplier": {
+                                                "type": "string",
+                                                "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                              },
+                                              "display": {
+                                                "type": "string",
+                                                "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                              },
+                                              "scheduled": {
+                                                "type": "object",
+                                                "properties": {
+                                                  "multiplier": {
+                                                    "type": "string",
+                                                    "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                                  },
+                                                  "effectiveAt": {
+                                                    "type": "integer",
+                                                    "minimum": 0,
+                                                    "maximum": 9007199254740991
+                                                  }
+                                                },
+                                                "required": ["multiplier", "effectiveAt"],
+                                                "additionalProperties": false
+                                              },
+                                              "targetBps": {
+                                                "type": "integer",
+                                                "minimum": 0,
+                                                "maximum": 10000
+                                              },
+                                              "lastKeeperAt": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "integer",
+                                                    "minimum": 0,
+                                                    "maximum": 9007199254740991
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "valueUsd": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string",
+                                                    "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "weightBps": {
+                                                "type": "integer",
+                                                "minimum": 0,
+                                                "maximum": 10000
+                                              },
+                                              "driftBps": {
+                                                "type": "integer",
+                                                "minimum": -10000,
+                                                "maximum": 10000
+                                              }
+                                            },
+                                            "required": [
+                                              "asset",
+                                              "raw",
+                                              "multiplier",
+                                              "display",
+                                              "targetBps",
+                                              "lastKeeperAt",
+                                              "valueUsd",
+                                              "weightBps",
+                                              "driftBps"
+                                            ],
+                                            "additionalProperties": false
+                                          }
+                                        },
+                                        "lossUsedBps": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 10000
+                                        },
+                                        "bandBps": {
+                                          "anyOf": [
+                                            {
+                                              "type": "integer",
+                                              "minimum": 0,
+                                              "maximum": 10000
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "lossCapBps": {
+                                          "anyOf": [
+                                            {
+                                              "type": "integer",
+                                              "minimum": 0,
+                                              "maximum": 10000
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "paused": {
+                                          "type": ["boolean", "null"]
+                                        },
+                                        "prices": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "properties": {
+                                              "source": {
+                                                "type": "string",
+                                                "minLength": 1
+                                              },
+                                              "method": {
+                                                "type": "string",
+                                                "minLength": 1
+                                              },
+                                              "fetchedAt": {
+                                                "type": "string",
+                                                "format": "date-time",
+                                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                              },
+                                              "provenance": {
+                                                "type": "string",
+                                                "enum": [
+                                                  "live",
+                                                  "mock",
+                                                  "sandbox",
+                                                  "fixture",
+                                                  "prior_dataset"
+                                                ]
+                                              },
+                                              "asset": {
+                                                "type": "string",
+                                                "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                              },
+                                              "usdPerToken": {
+                                                "type": "string",
+                                                "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                              },
+                                              "ageSeconds": {
+                                                "type": "number",
+                                                "minimum": 0
+                                              },
+                                              "maxAgeSeconds": {
+                                                "type": "integer",
+                                                "minimum": 0,
+                                                "maximum": 9007199254740991
+                                              },
+                                              "market": {
+                                                "type": "string",
+                                                "enum": ["open", "closed", "unknown"]
+                                              }
+                                            },
+                                            "required": [
+                                              "source",
+                                              "method",
+                                              "fetchedAt",
+                                              "provenance",
+                                              "asset",
+                                              "usdPerToken",
+                                              "ageSeconds",
+                                              "maxAgeSeconds",
+                                              "market"
+                                            ],
+                                            "additionalProperties": false
+                                          }
+                                        },
+                                        "source": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "method": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "provenance": {
+                                          "type": "string",
+                                          "enum": [
+                                            "live",
+                                            "mock",
+                                            "sandbox",
+                                            "fixture",
+                                            "prior_dataset"
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "observedAt",
+                                        "ageSeconds",
+                                        "stale",
+                                        "blockOrSlot",
+                                        "valueUsd",
+                                        "cash",
+                                        "positions",
+                                        "lossUsedBps",
+                                        "bandBps",
+                                        "lossCapBps",
+                                        "paused",
+                                        "prices",
+                                        "source",
+                                        "method",
+                                        "provenance"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "status": {
+                                  "type": "object",
+                                  "properties": {
+                                    "status": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "enum": ["on_track", "watch", "off_track"]
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "rule": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "line": {
+                                      "type": "string",
+                                      "enum": [
+                                        "verdict",
+                                        "never_read",
+                                        "empty",
+                                        "chain_silent",
+                                        "loss_half",
+                                        "unpriced",
+                                        "no_band",
+                                        "outside_band",
+                                        "cash_over",
+                                        "loss_quarter",
+                                        "stale",
+                                        "inside",
+                                        "inside_no_budget"
+                                      ]
+                                    },
+                                    "params": {
+                                      "type": "object",
+                                      "propertyNames": {
+                                        "type": "string"
+                                      },
+                                      "additionalProperties": {
+                                        "type": ["number", "string"]
+                                      }
+                                    },
+                                    "text": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "observedAt": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "format": "date-time",
+                                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "status",
+                                    "rule",
+                                    "line",
+                                    "params",
+                                    "text",
+                                    "observedAt"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "follows": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "recipeOnchainId": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "acceptedVersion": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        },
+                                        "autoFollow": {
+                                          "type": "boolean"
+                                        },
+                                        "familyId": {
+                                          "type": "string"
+                                        },
+                                        "slug": {
+                                          "type": "string"
+                                        },
+                                        "name": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "recipeOnchainId",
+                                        "acceptedVersion",
+                                        "autoFollow"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "provenance": {
+                                  "type": "string",
+                                  "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                                }
+                              },
+                              "required": [
+                                "chain",
+                                "address",
+                                "owner",
+                                "name",
+                                "basketId",
+                                "plan",
+                                "putIn",
+                                "newest",
+                                "status",
+                                "follows",
+                                "provenance"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": ["chain", "name", "provenance", "answeredAt", "plans"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "unavailable": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "chain": {
+                            "type": "string",
+                            "enum": ["solana", "base", "robinhood"]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "error": {
+                            "type": "string"
+                          },
+                          "retryable": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": ["chain", "name", "code", "error", "retryable"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "disclaimer": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["chains", "unavailable", "disclaimer"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotCashLeg",
+                            "KeeperAssetOff",
+                            "PriceOutOfRange",
+                            "NothingTraded",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "PriceMoved",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        },
+                        "continuedBy": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE",
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED",
+                        "ORDER_CONTINUED",
+                        "STEP_IN_FLIGHT",
+                        "STEP_LANDED",
+                        "NOTHING_LEFT",
+                        "VAULT_CASH_SHORT",
+                        "DEPOSIT_NOT_LANDED",
+                        "ORDER_BUSY",
+                        "CONTINUE_NOT_SUPPORTED"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/portfolio/rebalances": {
+      "get": {
+        "summary": "The steps that traded in the signed-in person's vaults, newest first",
+        "tags": ["portfolio"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["solana", "base", "robinhood"]
+            },
+            "in": "query",
+            "name": "chain",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "query",
+            "name": "address",
+            "required": false
+          },
+          {
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "standard",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "chains": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "chain": {
+                            "type": "string",
+                            "enum": ["solana", "base", "robinhood"]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string",
+                            "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                          },
+                          "entries": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "source": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "method": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "fetchedAt": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                },
+                                "provenance": {
+                                  "type": "string",
+                                  "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                                },
+                                "chain": {
+                                  "type": "string",
+                                  "enum": ["solana", "base", "robinhood"]
+                                },
+                                "vault": {
+                                  "anyOf": [
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                                        },
+                                        {
+                                          "type": "string",
+                                          "pattern": "^0x[0-9a-f]{40}$"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "at": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                },
+                                "by": {
+                                  "type": "string",
+                                  "enum": ["owner", "keeper"]
+                                },
+                                "derived": {
+                                  "type": "boolean"
+                                },
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "approve",
+                                        "create_vault",
+                                        "deposit",
+                                        "swap",
+                                        "set_targets",
+                                        "accept_version",
+                                        "set_auto_follow",
+                                        "withdraw",
+                                        "publish",
+                                        "adopt_version",
+                                        "keeper_leg"
+                                      ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "why": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "manual",
+                                        "index_update",
+                                        "drift",
+                                        "liquidity_breach"
+                                      ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "outcome": {
+                                  "type": "string",
+                                  "enum": ["confirmed", "failed"]
+                                },
+                                "trades": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "sell": {
+                                        "type": "string",
+                                        "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                      },
+                                      "buy": {
+                                        "type": "string",
+                                        "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                      },
+                                      "asset": {
+                                        "type": "string",
+                                        "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                      },
+                                      "amountInRaw": {
+                                        "type": "string",
+                                        "maxLength": 78,
+                                        "pattern": "^(?:0|[1-9]\\d*)$"
+                                      },
+                                      "expected": {
+                                        "type": "object",
+                                        "properties": {
+                                          "inRaw": {
+                                            "type": "string",
+                                            "maxLength": 78,
+                                            "pattern": "^(?:0|[1-9]\\d*)$"
+                                          },
+                                          "outRaw": {
+                                            "type": "string",
+                                            "maxLength": 78,
+                                            "pattern": "^(?:0|[1-9]\\d*)$"
+                                          },
+                                          "minOutRaw": {
+                                            "type": "string",
+                                            "maxLength": 78,
+                                            "pattern": "^(?:0|[1-9]\\d*)$"
+                                          },
+                                          "costBps": {
+                                            "type": "number"
+                                          }
+                                        },
+                                        "required": ["inRaw", "outRaw", "minOutRaw", "costBps"],
+                                        "additionalProperties": false
+                                      },
+                                      "rawBefore": {
+                                        "type": "string",
+                                        "maxLength": 78,
+                                        "pattern": "^(?:0|[1-9]\\d*)$"
+                                      },
+                                      "rawAfter": {
+                                        "type": "string",
+                                        "maxLength": 78,
+                                        "pattern": "^(?:0|[1-9]\\d*)$"
+                                      },
+                                      "reference": {
+                                        "type": "object",
+                                        "properties": {
+                                          "source": {
+                                            "type": "string",
+                                            "minLength": 1
+                                          },
+                                          "method": {
+                                            "type": "string",
+                                            "minLength": 1
+                                          },
+                                          "fetchedAt": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                          },
+                                          "provenance": {
+                                            "type": "string",
+                                            "enum": [
+                                              "live",
+                                              "mock",
+                                              "sandbox",
+                                              "fixture",
+                                              "prior_dataset"
+                                            ]
+                                          },
+                                          "asset": {
+                                            "type": "string",
+                                            "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                          },
+                                          "usdPerToken": {
+                                            "type": "string",
+                                            "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                          },
+                                          "ageSeconds": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          },
+                                          "maxAgeSeconds": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 9007199254740991
+                                          },
+                                          "market": {
+                                            "type": "string",
+                                            "enum": ["open", "closed", "unknown"]
+                                          }
+                                        },
+                                        "required": [
+                                          "source",
+                                          "method",
+                                          "fetchedAt",
+                                          "provenance",
+                                          "asset",
+                                          "usdPerToken",
+                                          "ageSeconds",
+                                          "maxAgeSeconds",
+                                          "market"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "before": {
+                                        "type": "object",
+                                        "properties": {
+                                          "observedAt": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                          },
+                                          "weightBps": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 10000
+                                          },
+                                          "targetBps": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 10000
+                                          },
+                                          "driftBps": {
+                                            "type": "integer",
+                                            "minimum": -10000,
+                                            "maximum": 10000
+                                          }
+                                        },
+                                        "required": [
+                                          "observedAt",
+                                          "weightBps",
+                                          "targetBps",
+                                          "driftBps"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "after": {
+                                        "type": "object",
+                                        "properties": {
+                                          "observedAt": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                          },
+                                          "weightBps": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 10000
+                                          },
+                                          "targetBps": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 10000
+                                          },
+                                          "driftBps": {
+                                            "type": "integer",
+                                            "minimum": -10000,
+                                            "maximum": 10000
+                                          }
+                                        },
+                                        "required": [
+                                          "observedAt",
+                                          "weightBps",
+                                          "targetBps",
+                                          "driftBps"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "required": ["sell", "buy", "asset"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "orderId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "txId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "explorerUrl": {
+                                  "type": ["string", "null"]
+                                }
+                              },
+                              "required": [
+                                "source",
+                                "method",
+                                "fetchedAt",
+                                "provenance",
+                                "chain",
+                                "vault",
+                                "at",
+                                "by",
+                                "derived",
+                                "kind",
+                                "why",
+                                "outcome",
+                                "trades",
+                                "orderId",
+                                "txId",
+                                "explorerUrl"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": ["chain", "name", "provenance", "entries"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "unavailable": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "chain": {
+                            "type": "string",
+                            "enum": ["solana", "base", "robinhood"]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "error": {
+                            "type": "string"
+                          },
+                          "retryable": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": ["chain", "name", "code", "error", "retryable"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "disclaimer": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["chains", "unavailable", "disclaimer"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotCashLeg",
+                            "KeeperAssetOff",
+                            "PriceOutOfRange",
+                            "NothingTraded",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "PriceMoved",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        },
+                        "continuedBy": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE",
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED",
+                        "ORDER_CONTINUED",
+                        "STEP_IN_FLIGHT",
+                        "STEP_LANDED",
+                        "NOTHING_LEFT",
+                        "VAULT_CASH_SHORT",
+                        "DEPOSIT_NOT_LANDED",
+                        "ORDER_BUSY",
+                        "CONTINUE_NOT_SUPPORTED"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/shelf": {
       "get": {
         "summary": "Every shared portfolio, or those with a recipe on one chain",

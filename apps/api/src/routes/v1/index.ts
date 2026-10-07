@@ -47,6 +47,10 @@ import { registerMeRoutes } from './me';
 import { registerMockRoutes } from './mock';
 import { registerOrderRoutes } from './orders';
 import { registerPortfolioRoute } from './portfolio';
+import { registerPortfolioExposureRoute } from './portfolio-exposure';
+import { registerPortfolioHistoryRoute } from './portfolio-history';
+import { registerPortfolioPlansRoute } from './portfolio-plans';
+import { registerPortfolioRebalancesRoute } from './portfolio-rebalances';
 import { registerSharedRoutes } from './shared';
 import { registerTestnetRoute } from './testnet';
 import { registerVaultRoute } from './vault';
@@ -193,14 +197,21 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
     registerFundingRoute(scope, orderDeps, testFunds ?? undefined);
     registerTestnetRoute(scope, orderDeps, testFunds);
     registerOrderRoutes(scope, orderDeps);
+    // Bearing's measured exits and the yields a plan is made with. Default: none.
+    const planInputs = deps.planInputs ?? (async () => ({}));
     registerBasketRoutes(
       scope,
       orderDeps,
-      deps.planInputs ?? (async () => ({})),
+      planInputs,
       { agentSurface: flags.agentSurface },
       deps.linkedPlans,
     );
     registerPortfolioRoute(scope, orderDeps);
+    // The portfolio section (PORT-2): read from the database alone, the person's own rows only.
+    registerPortfolioHistoryRoute(scope, orderDeps);
+    registerPortfolioPlansRoute(scope, orderDeps);
+    registerPortfolioRebalancesRoute(scope, orderDeps);
+    registerPortfolioExposureRoute(scope, orderDeps, planInputs);
     registerSharedRoutes(scope, orderDeps);
     registerVaultRoute(scope, orderDeps);
     // Out of the route table altogether unless a chain runs on the mock.

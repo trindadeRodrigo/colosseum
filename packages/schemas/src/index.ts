@@ -22,6 +22,7 @@ export * from './order';
 export * from './order-api';
 export * from './plan';
 export * from './policy';
+export * from './portfolio-api';
 export * from './recipe';
 export * from './shared-api';
 export * from './trust';

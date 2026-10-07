@@ -1498,6 +1498,432 @@ export type GetPortfolioResponse = {
   disclaimer: string;
 };
 
+/** GET /v1/portfolio/exposure: query. What the signed-in person holds across their vaults, by underlying and by issuer */
+export type GetPortfolioExposureQuery = {
+  chain?: 'solana' | 'base' | 'robinhood';
+};
+
+/** GET /v1/portfolio/exposure: response. What the signed-in person holds across their vaults, by underlying and by issuer */
+export type GetPortfolioExposureResponse = {
+  total: {
+    valueUsd: string;
+    provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+    byUnderlying: {
+      key: string;
+      usd: string;
+      bps: number;
+    }[];
+    byIssuer: {
+      key: string;
+      usd: string;
+      bps: number;
+    }[];
+  } | null;
+  chains: {
+    chain: 'solana' | 'base' | 'robinhood';
+    name: string;
+    provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+    vaults: number;
+    valueUsd: string;
+    observedAt: string | null;
+    byUnderlying: {
+      key: string;
+      usd: string;
+      bps: number;
+    }[];
+    byIssuer: {
+      key: string;
+      usd: string;
+      bps: number;
+    }[];
+    rollUp: {
+      byIssuer: {
+        key: string;
+        bps: number;
+      }[];
+      byChain: {
+        key: string;
+        bps: number;
+      }[];
+      byClass: {
+        key: string;
+        bps: number;
+      }[];
+      flags: string[];
+      exit: {
+        quotedBps: number | null;
+        quotedAt: string | null;
+        measuredWorstBps: number | null;
+        measuredShareBps: number;
+      };
+    } | null;
+    exit: {
+      asset: string;
+      usd: string;
+      measured: boolean;
+      costBps: number | null;
+      fallbackTier?: 'A' | 'B' | 'C';
+      source?: string;
+      method?: string;
+      fetchedAt?: string;
+      provenance?: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+    }[];
+    unvalued: {
+      asset: string;
+      vault: string | string;
+      display: string;
+    }[];
+    source: string;
+    method: string;
+  }[];
+  unavailable: {
+    chain: 'solana' | 'base' | 'robinhood';
+    name: string;
+    code: string;
+    error: string;
+    retryable: boolean;
+  }[];
+  disclaimer: string;
+};
+
+/** GET /v1/portfolio/history: query. The signed-in person's vaults over time, from the snapshots kept of them */
+export type GetPortfolioHistoryQuery = {
+  from?: string;
+  to?: string;
+  step?: '10m' | '1h' | '1d';
+  chain?: 'solana' | 'base' | 'robinhood';
+  address?: string;
+};
+
+/** GET /v1/portfolio/history: response. The signed-in person's vaults over time, from the snapshots kept of them */
+export type GetPortfolioHistoryResponse = {
+  from: string;
+  to: string;
+  step: '10m' | '1h' | '1d';
+  chains: {
+    chain: 'solana' | 'base' | 'robinhood';
+    name: string;
+    provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+    vaults: {
+      address: string | string;
+      name: string | null;
+      source: string;
+      method: string;
+      points: {
+        observedAt: string;
+        valueUsd: string;
+        cashUsd: string;
+        positions: {
+          asset: string;
+          valueUsd: string | null;
+          weightBps: number;
+          targetBps: number;
+          driftBps: number;
+        }[];
+        lossUsedBps: number;
+        source?: string;
+        method?: string;
+      }[];
+    }[];
+  }[];
+  unavailable: {
+    chain: 'solana' | 'base' | 'robinhood';
+    name: string;
+    code: string;
+    error: string;
+    retryable: boolean;
+  }[];
+  disclaimer: string;
+};
+
+/** GET /v1/portfolio/plans: query. The signed-in person's plans, each with what was put in, its value and its status */
+export type GetPortfolioPlansQuery = {
+  chain?: 'solana' | 'base' | 'robinhood';
+  address?: string;
+};
+
+/** GET /v1/portfolio/plans: response. The signed-in person's plans, each with what was put in, its value and its status */
+export type GetPortfolioPlansResponse = {
+  chains: {
+    chain: 'solana' | 'base' | 'robinhood';
+    name: string;
+    provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+    answeredAt: string | null;
+    plans: {
+      chain: 'solana' | 'base' | 'robinhood';
+      address: string | string;
+      owner: string | string;
+      name: string | null;
+      basketId: string;
+      plan: {
+        kind: 'personal' | 'follow';
+        placedAt: string;
+        proposalId?: string;
+        familyId?: string;
+        sheet?: {
+          basketType: 'standard';
+          goal: 'grow' | 'income' | 'protect';
+          amountUsd: number;
+          horizonMonths: number;
+          risk: 'low' | 'medium' | 'high';
+          themes: string[];
+          country: string;
+          chains: ('solana' | 'base' | 'robinhood')[];
+          incomeTargetUsdMonthly?: number;
+          rules: {
+            useHoldings: boolean;
+            glide: boolean;
+          };
+          language: 'pt' | 'en';
+          currency?: string;
+          obligations?: {
+            month: string;
+            amount: number;
+            currency: string;
+          }[];
+          sleeves?: (
+            | {
+                kind: 'goal';
+                shareBps: number;
+              }
+            | {
+                kind: 'theme';
+                shareBps: number;
+                theme: string;
+              }
+            | {
+                kind: 'safe_yield';
+                shareBps: number;
+              }
+          )[];
+          restoreSplit?: boolean;
+        };
+        card?: {
+          moneyTodayUsd: number;
+          termMonths: number;
+          cashFlow: 'none' | 'monthly' | 'at_end';
+          expectedReturn: {
+            lowPct: number;
+            highPct: number;
+            basis: string;
+            lossInFallUsd: number;
+          };
+          exit: {
+            text: string;
+            costBps: number | null;
+          };
+        };
+        verdict?: {
+          met: boolean;
+          gapUsdMonthly: number;
+          ways: {
+            change: string;
+            closesGap: boolean;
+          }[];
+        } | null;
+        observations?: {
+          source: string;
+          method: string;
+          fetchedAt: string;
+          provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+          id: string;
+          kind: 'yield' | 'price' | 'liquidity' | 'fx';
+        }[];
+      } | null;
+      putIn: {
+        source: string;
+        method: string;
+        fetchedAt: string;
+        provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+        usd: string;
+        orders: number;
+      } | null;
+      newest: {
+        observedAt: string;
+        ageSeconds: number;
+        stale: boolean;
+        blockOrSlot: string | null;
+        valueUsd: string;
+        cash: {
+          asset: string;
+          raw: string;
+          multiplier: string;
+          display: string;
+          scheduled?: {
+            multiplier: string;
+            effectiveAt: number;
+          };
+        };
+        positions: {
+          asset: string;
+          raw: string;
+          multiplier: string;
+          display: string;
+          scheduled?: {
+            multiplier: string;
+            effectiveAt: number;
+          };
+          targetBps: number;
+          lastKeeperAt: number | null;
+          valueUsd: string | null;
+          weightBps: number;
+          driftBps: number;
+        }[];
+        lossUsedBps: number;
+        bandBps: number | null;
+        lossCapBps: number | null;
+        paused: boolean | null;
+        prices: {
+          source: string;
+          method: string;
+          fetchedAt: string;
+          provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+          asset: string;
+          usdPerToken: string;
+          ageSeconds: number;
+          maxAgeSeconds: number;
+          market: 'open' | 'closed' | 'unknown';
+        }[];
+        source: string;
+        method: string;
+        provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+      } | null;
+      status: {
+        status: ('on_track' | 'watch' | 'off_track') | null;
+        rule: string;
+        line:
+          | 'verdict'
+          | 'never_read'
+          | 'empty'
+          | 'chain_silent'
+          | 'loss_half'
+          | 'unpriced'
+          | 'no_band'
+          | 'outside_band'
+          | 'cash_over'
+          | 'loss_quarter'
+          | 'stale'
+          | 'inside'
+          | 'inside_no_budget';
+        params: {
+          [key: string]: number | string;
+        };
+        text: string;
+        observedAt: string | null;
+      };
+      follows: {
+        recipeOnchainId: string;
+        acceptedVersion: number;
+        autoFollow: boolean;
+        familyId?: string;
+        slug?: string;
+        name?: string;
+      } | null;
+      provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+    }[];
+  }[];
+  unavailable: {
+    chain: 'solana' | 'base' | 'robinhood';
+    name: string;
+    code: string;
+    error: string;
+    retryable: boolean;
+  }[];
+  disclaimer: string;
+};
+
+/** GET /v1/portfolio/rebalances: query. The steps that traded in the signed-in person's vaults, newest first */
+export type GetPortfolioRebalancesQuery = {
+  chain?: 'solana' | 'base' | 'robinhood';
+  address?: string;
+  limit?: number;
+};
+
+/** GET /v1/portfolio/rebalances: response. The steps that traded in the signed-in person's vaults, newest first */
+export type GetPortfolioRebalancesResponse = {
+  chains: {
+    chain: 'solana' | 'base' | 'robinhood';
+    name: string;
+    provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+    entries: {
+      source: string;
+      method: string;
+      fetchedAt: string;
+      provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+      chain: 'solana' | 'base' | 'robinhood';
+      vault: (string | string) | null;
+      at: string;
+      by: 'owner' | 'keeper';
+      derived: boolean;
+      kind:
+        | (
+            | 'approve'
+            | 'create_vault'
+            | 'deposit'
+            | 'swap'
+            | 'set_targets'
+            | 'accept_version'
+            | 'set_auto_follow'
+            | 'withdraw'
+            | 'publish'
+            | 'adopt_version'
+            | 'keeper_leg'
+          )
+        | null;
+      why: ('manual' | 'index_update' | 'drift' | 'liquidity_breach') | null;
+      outcome: 'confirmed' | 'failed';
+      trades: {
+        sell: string;
+        buy: string;
+        asset: string;
+        amountInRaw?: string;
+        expected?: {
+          inRaw: string;
+          outRaw: string;
+          minOutRaw: string;
+          costBps: number;
+        };
+        rawBefore?: string;
+        rawAfter?: string;
+        reference?: {
+          source: string;
+          method: string;
+          fetchedAt: string;
+          provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+          asset: string;
+          usdPerToken: string;
+          ageSeconds: number;
+          maxAgeSeconds: number;
+          market: 'open' | 'closed' | 'unknown';
+        };
+        before?: {
+          observedAt: string;
+          weightBps: number;
+          targetBps: number;
+          driftBps: number;
+        };
+        after?: {
+          observedAt: string;
+          weightBps: number;
+          targetBps: number;
+          driftBps: number;
+        };
+      }[];
+      orderId: string | null;
+      txId: string | null;
+      explorerUrl: string | null;
+    }[];
+  }[];
+  unavailable: {
+    chain: 'solana' | 'base' | 'robinhood';
+    name: string;
+    code: string;
+    error: string;
+    retryable: boolean;
+  }[];
+  disclaimer: string;
+};
+
 /** GET /v1/shelf: query. Every shared portfolio, or those with a recipe on one chain */
 export type GetShelfQuery = {
   chain?: 'solana' | 'base' | 'robinhood';
@@ -1720,6 +2146,19 @@ export interface ApiRoutes {
     response: PostOrdersByIdLegsByLegIdReportResponse;
   };
   'GET /v1/portfolio': { response: GetPortfolioResponse };
+  'GET /v1/portfolio/exposure': {
+    query: GetPortfolioExposureQuery;
+    response: GetPortfolioExposureResponse;
+  };
+  'GET /v1/portfolio/history': {
+    query: GetPortfolioHistoryQuery;
+    response: GetPortfolioHistoryResponse;
+  };
+  'GET /v1/portfolio/plans': { query: GetPortfolioPlansQuery; response: GetPortfolioPlansResponse };
+  'GET /v1/portfolio/rebalances': {
+    query: GetPortfolioRebalancesQuery;
+    response: GetPortfolioRebalancesResponse;
+  };
   'GET /v1/shelf': { query: GetShelfQuery; response: GetShelfResponse };
   'POST /v1/testnet/fund': { body: PostTestnetFundBody; response: PostTestnetFundResponse };
   'GET /v1/vaults/{chain}/{address}': {
