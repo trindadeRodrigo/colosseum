@@ -49,6 +49,7 @@ export type PlanViewExitTier = {
   /**
    * How full the tier's meter is, 0 to 1: a figure the caller was given (the share of the plan whose
    * way out is measured, the cost against the limit a plan may cost). Null draws an empty meter.
+   * Left out, no meter is drawn: the tier is its figures.
    */
   meter?: number | null;
   /** What a full meter stands for, in a sentence, under it. */
@@ -90,11 +91,8 @@ export type PlanViewProps = {
 
 /** The wood ramp, in the order the holdings come. A fifth holding takes the first again. */
 const FILL = ['bg-leg-1', 'bg-leg-2', 'bg-leg-3', 'bg-leg-4'] as const;
-/**
- * The smallest share whose part of the bar is a button: 12% of the narrowest bar (a 320px phone) is
- * wider than the 24px a target needs. A smaller part is drawn only.
- */
-const PRESSABLE_BPS = 1200;
+/** The smallest share whose part of the bar has room for its mark (24px on a phone's bar). */
+const MARKED_BPS = 1200;
 const fillOf = (i: number) => FILL[i % FILL.length] as string;
 
 const percent = (value: number, lang: Lang) =>
@@ -207,37 +205,45 @@ export function PlanView({
           {under}
 
           {/* The allocation is the picture: one thick bar, a part per holding by its share, each
-              with its mark; under it the same parts by name. Pointing at a part, or tapping it,
-              lights its row. */}
+              with its mark; under it a label per holding, which is what is pressed and focused and
+              lights its part and its row. */}
           <div data-ui="plan-legs" className="flex flex-col gap-4">
             <h3 className="text-[0.8125rem]/5 font-medium">{t.plan.holds}</h3>
             {shown.length > 0 && (
               <div data-ui="plan-bar" className="flex flex-col gap-1.5">
-                <div className="grid h-11 gap-0.5" style={{ gridTemplateColumns: columns }}>
-                  {shown.map((h, i) => {
-                    const className = cn(
-                      'motion-safe:animate-seat flex min-w-0 items-center justify-center overflow-hidden outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
-                      fillOf(i),
-                      lit !== null && lit !== keyOf(h) && 'opacity-40',
-                    );
-                    // A part too narrow to press (under 24px on a phone) is drawn and not a
-                    // button: its row says the same, and lights it.
-                    if (h.shareBps < PRESSABLE_BPS)
-                      return (
-                        <span
-                          key={keyOf(h)}
-                          aria-hidden="true"
-                          data-part={keyOf(h)}
-                          data-lit={lit === keyOf(h) || undefined}
-                          className={className}
-                        />
-                      );
-                    return (
+                {/* The bar is a picture, said once in words; pointing at a part lights it. What is
+                    pressed and focused is the label under it, never a sliver. */}
+                <div
+                  role="img"
+                  aria-label={shown.map((h) => `${name(h.asset)}, ${share(h.shareBps)}`).join('; ')}
+                  className="grid h-11 gap-0.5"
+                  style={{ gridTemplateColumns: columns }}
+                >
+                  {shown.map((h, i) => (
+                    // biome-ignore lint/a11y/noStaticElementInteractions: pointer-only highlight; the label below is the control
+                    <span
+                      key={keyOf(h)}
+                      data-part={keyOf(h)}
+                      data-lit={lit === keyOf(h) || undefined}
+                      onMouseEnter={() => setLit(keyOf(h))}
+                      onMouseLeave={() => setLit(null)}
+                      className={cn(
+                        'motion-safe:animate-seat flex min-w-0 items-center justify-center overflow-hidden',
+                        fillOf(i),
+                        lit !== null && lit !== keyOf(h) && 'opacity-40',
+                      )}
+                    >
+                      {/* a part too thin for its mark is plain: the label below carries it */}
+                      {h.shareBps >= MARKED_BPS && <AssetMark asset={h.asset} />}
+                    </span>
+                  ))}
+                </div>
+                <ul data-ui="plan-labels" className="flex flex-wrap gap-x-3 gap-y-1">
+                  {shown.map((h, i) => (
+                    <li key={keyOf(h)}>
                       <button
-                        key={keyOf(h)}
                         type="button"
-                        data-part={keyOf(h)}
-                        data-lit={lit === keyOf(h) || undefined}
+                        data-label={keyOf(h)}
                         aria-label={`${name(h.asset)}, ${share(h.shareBps)}`}
                         aria-pressed={lit === keyOf(h)}
                         onMouseEnter={() => setLit(keyOf(h))}
@@ -245,31 +251,21 @@ export function PlanView({
                         onFocus={() => setLit(keyOf(h))}
                         onBlur={() => setLit(null)}
                         onClick={() => setLit((now) => (now === keyOf(h) ? null : keyOf(h)))}
-                        className={className}
+                        className={cn(
+                          'flex min-h-8 min-w-8 items-center gap-1.5 text-caption outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                          lit === keyOf(h) && 'underline decoration-2 underline-offset-4',
+                        )}
                       >
+                        <span aria-hidden="true" className={cn('size-3 shrink-0', fillOf(i))} />
                         <AssetMark asset={h.asset} />
+                        <span className="font-medium">{tokenName(h.asset)}</span>
+                        <span className="tabular-nums text-muted-foreground">
+                          {share(h.shareBps)}
+                        </span>
                       </button>
-                    );
-                  })}
-                </div>
-                <div
-                  aria-hidden="true"
-                  className="grid gap-0.5 text-caption"
-                  style={{ gridTemplateColumns: columns }}
-                >
-                  {shown.map((h) => (
-                    <span key={keyOf(h)} className="min-w-0 truncate">
-                      {h.shareBps >= 1500 && (
-                        <>
-                          <span className="font-medium">{tokenName(h.asset)}</span>{' '}
-                          <span className="tabular-nums text-muted-foreground">
-                            {share(h.shareBps)}
-                          </span>
-                        </>
-                      )}
-                    </span>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             )}
             <ul
@@ -363,8 +359,8 @@ export function PlanView({
                       </>
                     ) : null}
                   </span>
-                  <Meter value={tier.meter ?? null} className="col-span-2" />
-                  {tier.cost && tier.scale && (
+                  {tier.meter !== undefined && <Meter value={tier.meter} className="col-span-2" />}
+                  {tier.meter !== undefined && tier.cost && tier.scale && (
                     <span className="col-span-2 text-caption text-muted-foreground">
                       {tier.scale}
                     </span>

@@ -170,53 +170,72 @@ describe('a plan for income', () => {
 });
 
 describe('the allocation, as the picture', () => {
-  it('draws one bar with a part per holding by its share, each with its mark, name and share', async () => {
+  it('draws one bar as a picture, a part per holding by its share, with a label to press under each', async () => {
     const host = await pane(of('grow'));
     const bar = find(host, '[data-ui="plan-bar"]');
-    const parts = [...bar.querySelectorAll('[data-part]')];
-    expect(parts.map((p) => p.getAttribute('aria-label'))).toEqual([
-      'SPYx, 60%',
-      'GLDx, 35%',
-      null,
-    ]);
-    // a part too narrow to press is drawn and is no button: 5% of a phone's bar is under 24px
-    expect(parts.map((p) => p.tagName)).toEqual(['BUTTON', 'BUTTON', 'SPAN']);
-    expect(parts[2]?.getAttribute('aria-hidden')).toBe('true');
-    expect((bar.firstElementChild as HTMLElement).style.gridTemplateColumns).toBe(
-      '6000fr 3500fr 500fr',
-    );
+    const picture = find(bar, '[role="img"]');
+    // the picture is said once in words, and nothing in it can be pressed or focused
+    expect(picture.getAttribute('aria-label')).toBe('SPYx, 60%; GLDx, 35%; Cash (USDC), 5%');
+    expect(picture.querySelector('button, a, [tabindex]')).toBeNull();
+    expect(picture.style.gridTemplateColumns).toBe('6000fr 3500fr 500fr');
+    const parts = [...picture.querySelectorAll('[data-part]')];
     // the warm ramp, in order; nothing blue or violet
     expect(parts.map((p) => p.className.match(/bg-leg-\d/)?.[0])).toEqual([
       'bg-leg-1',
       'bg-leg-2',
       'bg-leg-3',
     ]);
-    expect(parts[0]?.querySelector('[data-ui="asset-mark"]')?.textContent).toBe('SPY');
+    // a part too thin for its mark is plain: 5% of a phone's bar is under 24px
+    expect(
+      parts.map((p) => p.querySelector('[data-ui="asset-mark"]')?.textContent ?? null),
+    ).toEqual(['SPY', 'GLD', null]);
+    // every holding has a label under the bar, a real target with its mark, name and share
+    const labels = [...bar.querySelectorAll('[data-ui="plan-labels"] button')];
+    expect(labels.map((l) => l.getAttribute('aria-label'))).toEqual([
+      'SPYx, 60%',
+      'GLDx, 35%',
+      'Cash (USDC), 5%',
+    ]);
+    for (const label of labels) {
+      expect(label.className).toMatch(/min-h-8 min-w-8/);
+      expect(label.className).toContain('focus-visible:outline-2');
+      expect(label.querySelector('[data-ui="asset-mark"]')).not.toBeNull();
+    }
+    expect(labels[2]?.textContent).toContain('5%');
     // it settles in as the plan arrives, only where motion is wanted
     for (const part of parts) expect(part.className).toContain('motion-safe:animate-seat');
     expect(bar.innerHTML).not.toMatch(/(?<!motion-safe:)animate-/);
   });
 
-  it('lights the row of the part that is pointed at, focused or tapped', async () => {
+  it('lights the part and the row of the label that is focused, pointed at or pressed, the thin one too', async () => {
     const host = await pane(of('grow'));
-    const part = find(host, '[data-ui="plan-bar"] button[data-part^="solana:gldx"]');
-    const row = () => find(host, '[data-ui="plan-rows"] [data-row^="solana:gldx"]');
-    expect(row().getAttribute('data-lit')).toBeNull();
-    await click(part);
-    expect(row().getAttribute('data-lit')).toBe('true');
-    expect(part.getAttribute('aria-pressed')).toBe('true');
-    expect(host.querySelectorAll('[data-row][data-lit]')).toHaveLength(1);
-    await click(part);
-    expect(row().getAttribute('data-lit')).toBeNull();
-    await fire(part, new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));
-    expect(row().getAttribute('data-lit')).toBe('true');
-    await fire(part, new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
-    // and a row lights its part, which is how a part too small to press is found
-    const cash = find(host, '[data-ui="plan-rows"] [data-row^="solana:usdc"]');
-    await fire(cash, new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));
-    expect(
-      find(host, '[data-ui="plan-bar"] [data-part^="solana:usdc"]').getAttribute('data-lit'),
-    ).toBe('true');
+    for (const asset of ['solana:gldx', 'solana:usdc']) {
+      const label = find(host, `[data-ui="plan-labels"] button[data-label^="${asset}"]`);
+      const row = () => find(host, `[data-ui="plan-rows"] [data-row^="${asset}"]`);
+      const part = () => find(host, `[data-ui="plan-bar"] [data-part^="${asset}"]`);
+      const lit = () => [row().getAttribute('data-lit'), part().getAttribute('data-lit')];
+      expect(lit()).toEqual([null, null]);
+      await click(label);
+      expect(lit()).toEqual(['true', 'true']);
+      expect(label.getAttribute('aria-pressed')).toBe('true');
+      expect(host.querySelectorAll('[data-row][data-lit]')).toHaveLength(1);
+      await click(label);
+      expect(lit()).toEqual([null, null]);
+      // the keyboard does what the pointer does
+      await fire(label, new FocusEvent('focusin', { bubbles: true }));
+      expect(lit()).toEqual(['true', 'true']);
+      await fire(label, new FocusEvent('focusout', { bubbles: true }));
+      expect(lit()).toEqual([null, null]);
+      const over = () =>
+        new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body });
+      const out = () => new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body });
+      for (const el of [label, part(), row()]) {
+        await fire(el, over());
+        expect(lit()).toEqual(['true', 'true']);
+        await fire(el, out());
+        expect(lit()).toEqual([null, null]);
+      }
+    }
   });
 
   it('has one line a holding, with the reason closed under "Why this share"', async () => {

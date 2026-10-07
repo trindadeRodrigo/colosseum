@@ -2,13 +2,11 @@
 import { createElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { find, mount, unmountAll } from '../../components/ui/test/dom';
-import { dictionary } from '../../i18n';
 import { inLanguage } from '../account/test/screen';
-import { PlanView, type PlanViewHolding } from './PlanView';
+import { PlanView, type PlanViewExitTier, type PlanViewHolding } from './PlanView';
 
 // PlanView with more holdings than the wood ramp has colours, and a yield on some of them.
 
-const en = dictionary('en');
 const OBS = {
   source: 'a test',
   fetchedAt: '2026-10-04T12:00:00.000Z',
@@ -76,10 +74,37 @@ describe('a plan with more than four holdings', () => {
     expect(host.querySelector('table')).toBeNull();
   });
 
-  it('draws an empty meter, with the caveat once, for a way out with no cost', async () => {
-    const host = await view([row('spyx')]);
+  it('draws a meter only for a tier that passes one: none left out, empty for null, filled for a figure', async () => {
+    const tiers = (exit: PlanViewExitTier[]) =>
+      mount(
+        inLanguage(
+          'en',
+          createElement(PlanView, {
+            title: 'On Solana',
+            answer: 'Stocks',
+            chain: 'solana',
+            provenance: 'sandbox',
+            holdings: [row('spyx')],
+            exit: { tiers: exit },
+          }),
+        ),
+      );
+    const cost = { figure: '≤ 1%', obs: OBS };
+    // a tier that is its figures: no meter and no scale line
+    let host = await tiers([{ text: 'within a day', cost, scale: 'A full bar is 1%.' }]);
+    expect(host.querySelector('[data-ui="exit-tier"] [data-ui="meter"]')).toBeNull();
+    expect(host.textContent).not.toContain('A full bar is 1%.');
+    expect(find(host, '[data-ui="exit-tier"] [data-ui="pin"]')).not.toBeNull();
+    await unmountAll();
+    host = await tiers([{ text: 'within a day', meter: null }]);
     expect(find(host, '[data-ui="exit-tier"] [data-ui="meter"]').getAttribute('data-empty')).toBe(
       'true',
     );
+    await unmountAll();
+    host = await tiers([{ text: 'within a day', cost, meter: 0.3, scale: 'A full bar is 1%.' }]);
+    const meter = find(host, '[data-ui="exit-tier"] [data-ui="meter"]');
+    expect(meter.getAttribute('data-empty')).toBeNull();
+    expect((meter.firstElementChild as HTMLElement).style.width).toBe('30%');
+    expect(host.textContent).toContain('A full bar is 1%.');
   });
 });
