@@ -359,6 +359,9 @@ test('the buy’s steps by keyboard, in Portuguese, at 375 and 1440 px', async (
     .locator('[data-ui="language-switch"]')
     .getByRole('button', { name: 'Português' })
     .click();
+  // The page has arrived in Portuguese, all of it: its language, and its title, which comes last.
+  await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR');
+  await expect(page).toHaveTitle(new RegExp(`^${pt.buy.title}`));
   const amount = page.getByLabel(pt.buy.amount.label, { exact: true });
   await expect(amount).toHaveValue('40');
   // Enter in the amount continues, and the focus moves to the step it opens

@@ -1,6 +1,6 @@
 'use client';
-import type { ChainId } from '@colosseum/schemas';
-import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
+import type { ChainId, Provenance } from '@colosseum/schemas';
+import { type ReactNode, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { cn } from '../../components/ui/cn';
@@ -105,11 +105,21 @@ export function BuySteps({
     trust: trust.accepted || trust.checked,
     review: false,
   };
-  // The label of the whole card: the chain's as it runs now, and what the funding read said.
-  const provenance = read?.provenance ?? (mock ? 'mock' : port.network(chain)?.provenance);
+  // What the figures are, as the funding read says, and as the wallet's chain runs until one has; kept
+  // while the wallet is read again.
+  const [said, setSaid] = useState<Provenance | null>(null);
+  if (read && read.provenance !== said) setSaid(read.provenance);
+  const provenance = read?.provenance ?? said ?? (mock ? 'mock' : port.network(chain)?.provenance);
+  // The card's shape is the wallet's own chain's, known before anything is read: a card labelled as a
+  // sample draws its contents inside another element than one that is not, so a label that waited
+  // for the first read, or came and went with each one, would make every step again under the
+  // person, and drop the focus and what they had typed or opened. A read that says the mock where
+  // the wallet's chain does not is still labelled.
+  const sample = mock || said === 'mock';
 
-  // Opening a step moves the focus to its heading, once a person has moved at all.
-  useEffect(() => {
+  // Opening a step moves the focus to its heading, once a person has moved at all: before the browser
+  // paints the step, so no frame shows it open with the focus still on what was hidden.
+  useLayoutEffect(() => {
     if (moved.current) heads.current[open]?.focus();
   }, [open]);
 
@@ -283,7 +293,7 @@ export function BuySteps({
       as="section"
       aria-label={t.buy.steps.label}
       // On the mock: the hatch band and its one quiet line at the card's foot (MOCK-QUIET).
-      mock={provenance === 'mock'}
+      mock={sample}
       mockLabels={{ announce: t.shell.mockAnnounce }}
       className="max-w-3xl"
     >

@@ -243,7 +243,7 @@ export type BuyPlan = {
 /** An add to a vault with auto-follow on only deposits: said on the order's review. */
 export const KEEPER_INVESTS = {
   code: 'KEEPER_INVESTS',
-  text: 'This vault has auto-follow on, so this order only deposits the cash. The keeper buys the vault’s assets with it at its next rebalance.',
+  text: 'This vault has auto-follow on, so this order only deposits the cash. The keeper buys the vault’s assets with it when it next rebalances this vault.',
 } as const;
 
 /**
@@ -562,6 +562,14 @@ export async function expectedOf(
     const quote = await entry.adapter.quote({ ...trade, amountInRaw: total.toString() }, taker);
     const out = BigInt(quote.outRaw) - prior.out;
     before.set(pair, { in: total, out: BigInt(quote.outRaw) });
+    // A trade that quotes nothing, or whose minimum rounds to nothing, would state a minimum that
+    // accepts any price: the order is not made.
+    if (out <= 0n || lessBps(out, slippageBps) <= 0n)
+      throw new Refusal(
+        422,
+        `${trade.amountInRaw} raw ${trade.sell} buys no ${trade.buy} that can be held to a minimum: the amount is too small`,
+        { fix: 'Buy a larger amount.' },
+      );
     expected.push({
       inRaw: trade.amountInRaw,
       outRaw: (out > 0n ? out : 0n).toString(),

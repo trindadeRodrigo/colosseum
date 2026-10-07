@@ -73,7 +73,7 @@ afterAll(async () => {
   for (const step of undo.reverse()) await step();
 });
 
-const { post, get, put, fund, order, settleAll } = orderFlow({
+const { post, get, put, fund, order, settleAll, build, land, report } = orderFlow({
   app: () => app,
   registry: () => registry,
   plans: () => ({ solana: '', robinhood: '' }),
@@ -194,6 +194,50 @@ describe.each(['solana', 'robinhood'] as const)('several vaults on %s', (chain) 
     // newest first, and under no other plan: the other vault's plan lists its one buy
     expect(plan?.orders.map((o) => o.amountUsd)).toEqual([500, 1_000]);
     expect(plans.find((p) => p.id === protect.id)?.orders.map((o) => o.amountUsd)).toEqual([2_000]);
+  });
+
+  it('builds every trading step of an add with the minimum the order stated, though the price ticks first', async () => {
+    const { who, growVault } = await withTwoVaults(chain);
+    const placed = OrderDetail.parse((await addTo(who, growVault, 900)).json());
+    const trading = placed.legs.filter((l) => l.trades.length > 0);
+    expect(trading.length).toBeGreaterThan(0);
+    for (const leg of trading) expect(leg.expected).toHaveLength(leg.trades.length);
+    const mock = registry.get(chain).mock;
+    if (!mock) throw new Error('not on the mock');
+    const put: [string, string][] = [];
+    try {
+      for (const [i, leg] of placed.legs.entries()) {
+        if (leg.trades.length > 0) {
+          // thirty seconds on, and each token a little cheaper or a little dearer than at the order
+          mock.advance(30);
+          for (const { buy } of leg.trades) {
+            const [price] = await registry.get(chain).adapter.getPrices([buy]);
+            if (!price) throw new Error(`no price for ${buy}`);
+            put.push([buy, price.usdPerToken]);
+            const by = i % 2 === 0 ? 0.9995 : 1.0005;
+            mock.setPrice(buy, (Number(price.usdPerToken) * by).toFixed(6));
+          }
+        }
+        const { tx } = await build(who, placed, leg.id);
+        // to the unit: what the bytes state is what the order stated, not today's quote less slippage
+        if (leg.trades.length > 0)
+          expect(tx.preview.minimums.map((m) => m.minOutRaw)).toEqual(
+            leg.expected.map((e) => e.minOutRaw),
+          );
+        const after = await report(who, placed, leg.id, {
+          txId: await land(who, placed, leg.id),
+        });
+        const settled = after.legs.find((l) => l.id === leg.id);
+        expect(settled?.status).toBe('confirmed');
+        expect(settled?.expected.map((e) => e.minOutRaw)).toEqual(
+          leg.expected.map((e) => e.minOutRaw),
+        );
+      }
+    } finally {
+      for (const [asset, was] of put.reverse()) mock.setPrice(asset, was);
+    }
+    const done = OrderDetail.parse((await get(who, `/v1/orders/${placed.id}`)).json());
+    expect(done.status).toBe('done');
   });
 
   it('says what the wallet is missing for an add, with no new vault to pay for', async () => {

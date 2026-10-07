@@ -49,6 +49,12 @@ const CHAIN_TO_ORDER: Partial<Record<ChainErrorCode, Mapped>> = {
   VersionNotEffective: { code: 'VERSION_CHANGED', status: 409 },
   CreatorLimit: { code: 'CREATOR_LIMIT', status: 422 },
   Unavailable: { code: 'CHAIN_UNAVAILABLE', status: 503, fix: 'Try again in a moment.' },
+  // The order's terms are never changed after it is made (legs.ts): it is made again.
+  PriceMoved: {
+    code: 'PRICE_MOVED',
+    status: 409,
+    fix: 'Make the order again: it is made at the price now, and nothing was signed for this step.',
+  },
   BadInput: { status: 422 },
   // An adapter throws Unknown for its own bugs: not something the caller can fix.
   Unknown: { status: 500 },
