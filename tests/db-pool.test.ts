@@ -5,20 +5,24 @@ import { describe, expect, it } from 'vitest';
 // are prepared, set from the environment so a hosted pooler's mode needs no change of code.
 
 describe('the database pool, from the environment', () => {
-  it('is ten connections with prepared statements when nothing is set, as it always was', () => {
-    expect(poolOptions({})).toEqual({ max: 10, prepare: true });
-    expect(poolOptions({ DB_POOL_MAX: ' ', DB_PGBOUNCER: '' })).toEqual({ max: 10, prepare: true });
+  it('passes the driver nothing when neither is set, so the address and the driver decide as before', () => {
+    expect(poolOptions({})).toEqual({});
+    expect(poolOptions({ DB_POOL_MAX: ' ', DB_PGBOUNCER: '' })).toEqual({});
+    // no key at all: `{ max: undefined }` would still override `?max=` in the address
+    expect(Object.keys(poolOptions({}))).toEqual([]);
   });
 
-  it('takes the size a deployment names', () => {
-    expect(poolOptions({ DB_POOL_MAX: '4' }).max).toBe(4);
-    expect(poolOptions({ DB_POOL_MAX: String(POOL_MAX_LIMIT) }).max).toBe(POOL_MAX_LIMIT);
-  });
-
-  it('prepares no statement behind a pooler in transaction mode, and only there', () => {
-    expect(poolOptions({ DB_PGBOUNCER: 'transaction' })).toEqual({ max: 10, prepare: false });
-    expect(poolOptions({ DB_PGBOUNCER: 'Transaction ' }).prepare).toBe(false);
-    expect(poolOptions({ DB_PGBOUNCER: 'session' }).prepare).toBe(true);
+  it('passes only what is set', () => {
+    expect(poolOptions({ DB_POOL_MAX: '4' })).toEqual({ max: 4 });
+    expect(poolOptions({ DB_POOL_MAX: String(POOL_MAX_LIMIT) })).toEqual({ max: POOL_MAX_LIMIT });
+    expect(poolOptions({ DB_PGBOUNCER: 'transaction' })).toEqual({ prepare: false });
+    expect(poolOptions({ DB_PGBOUNCER: 'Transaction ' })).toEqual({ prepare: false });
+    // said outright, session mode is passed too: it is what the person asked for
+    expect(poolOptions({ DB_PGBOUNCER: 'session' })).toEqual({ prepare: true });
+    expect(poolOptions({ DB_POOL_MAX: '3', DB_PGBOUNCER: 'transaction' })).toEqual({
+      max: 3,
+      prepare: false,
+    });
   });
 
   it('stops on a value it cannot read, naming the variable and never guessing', () => {
