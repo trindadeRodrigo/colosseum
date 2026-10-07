@@ -219,8 +219,8 @@ describe('a vault that is not the caller’s to add to', () => {
       expect(theirs.statusCode).toBe(404);
       expect(theirs.json().error).toBe(NO_SUCH_VAULT);
       // the same answer as for an address nobody has a vault at
-      const [wallet] = Object.values(thief.owner);
-      const nobody = await addTo(thief, { chain, address: wallet as string }, 100);
+      const wallet = thief.owner[chain === 'solana' ? 'solana' : 'evm'] as string;
+      const nobody = await addTo(thief, { chain, address: wallet }, 100);
       expect(nobody.statusCode).toBe(404);
       expect(nobody.json().error).toBe(theirs.json().error);
       // naming the victim as the owner is refused before anything is read: the owner is the caller's
@@ -256,7 +256,7 @@ describe('a vault that is not the caller’s to add to', () => {
           (
             await get(
               who,
-              `/v1/funding?amountUsd=300&vault=${growVault.address}&vaultChain=${chain}`,
+              `/v1/funding?amountUsd=300&vault=${growVault.address}&vaultChain=${chain}&wallet=${growVault.owner}`,
             )
           ).json(),
         );
