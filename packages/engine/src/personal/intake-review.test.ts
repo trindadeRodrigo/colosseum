@@ -4272,3 +4272,128 @@ describe('the third review (Oct 7): no reader decides alone, and the last word w
     });
   });
 });
+
+describe('the third review (Oct 7), B5: where the two readers read different mixes, neither is taken', () => {
+  const FORM: IntakeAnswers = { goal: 'grow', amountUsd: 5000, horizonMonths: 60, risk: 'medium' };
+  const reads = (over: Record<string, unknown> = {}) =>
+    reply({ goal: null, amountUsd: null, horizonMonths: null, risk: null, ...over });
+  const said = (messages: string[], r: unknown) =>
+    intake(conversationText(messages[0] ?? '', messages.slice(1)), r, { answers: FORM });
+  const MIX_EN =
+    'How do you want the money held: how much in stocks and crypto, and how much in cash?';
+  const MIX_PT = 'Como você quer o dinheiro: quanto em ações e cripto, e quanto em caixa?';
+  // The messages, the mix a faithful reply reads, and the words that then say it.
+  const CASES: [string[], ReturnType<typeof pct>, string, ReturnType<typeof bps>, 'pt'?][] = [
+    // The review's own.
+    [
+      ['My advisor wants 60/40 stocks and bonds, but I want all in stocks.'],
+      pct(100, 0),
+      'all of it in stocks',
+      bps(10_000, 0),
+    ],
+    [
+      ['The bank proposed everything in bonds. I say everything in stocks.'],
+      pct(100, 0),
+      'all of it in stocks',
+      bps(10_000, 0),
+    ],
+    [
+      ['Put 60% in stocks and 40% in cash.', 'Make the cash 50%.'],
+      pct(50, 50),
+      '50% stocks and 50% cash',
+      bps(5000, 5000),
+    ],
+    // In other words.
+    [
+      ['Put 70% in stocks and 30% in cash.', 'Actually make the stocks half.'],
+      pct(50, 50),
+      'half in stocks and half in cash',
+      bps(5000, 5000),
+    ],
+    [
+      ['The robo-adviser suggests everything in cash. I would rather have everything in stocks.'],
+      pct(100, 0),
+      'everything in stocks',
+      bps(10_000, 0),
+    ],
+    [
+      ['Meu gerente sugeriu 60% em ações e 40% em renda fixa, mas eu quero tudo em ações.'],
+      pct(100, 0),
+      'tudo em ações',
+      bps(10_000, 0),
+      'pt',
+    ],
+    [
+      ['Quero 80% em ações e 20% em caixa.', 'Pensando bem, deixa o caixa em 40%.'],
+      pct(60, 40),
+      '60% em ações e 40% em caixa',
+      bps(6000, 4000),
+      'pt',
+    ],
+  ];
+
+  it('with a reply that reads the person’s mix: asked once with no start, never the text check’s reading taken', () => {
+    for (const [messages, mix, , , pt] of CASES) {
+      const where = messages.join(' / ');
+      const result = said(messages, reads({ mix, ...(pt ? { language: 'pt' } : {}) }));
+      expect(result.flags, where).toEqual(
+        expect.arrayContaining(['disagrees_with_rules:mix', 'mix_asked:differs']),
+      );
+      expect(result.questions, where).toEqual([
+        { field: 'mix', template: 'mix', text: pt ? MIX_PT : MIX_EN },
+      ]);
+      expect(result.sheet, where).toBeNull();
+      expect(result.mix, where).toBeNull();
+    }
+  });
+
+  it('the person then says it: taken as said; a yes has no start to take, and a no leaves no mix', () => {
+    for (const [messages, mix, words, held, pt] of CASES) {
+      const where = messages.join(' / ');
+      const r = reads({ mix, ...(pt ? { language: 'pt' } : {}) });
+      const answered = said([...messages, words], r);
+      expect(answered.questions, where).toEqual([]);
+      expect(answered.sheet?.mix, where).toEqual(held);
+      expect(answered.flags, where).toContain('mix_from_words');
+      // A plain yes confirms nothing: there was no start. The question stays.
+      expect(said([...messages, pt ? 'sim' : 'yes'], r).questions, where).toHaveLength(1);
+      const none = said([...messages, pt ? 'nenhum' : 'none'], r);
+      expect(none.questions, where).toEqual([]);
+      expect(none.sheet, where).not.toBeNull();
+      expect(none.sheet?.mix, where).toBeUndefined();
+    }
+  });
+
+  it('with a reply that errs: a mix against what the text states is asked, never taken, and never the form’s start', () => {
+    for (const [text, hostile] of [
+      ['Put all of it in stocks.', pct(0, 100)],
+      ['I want 70% stocks and 30% cash.', pct(100, 0)],
+      ['Quero tudo em ações.', pct(0, 0, 0, 100)],
+    ] as const) {
+      const result = said([text], reads({ mix: hostile }));
+      expect(result.sheet, text).toBeNull();
+      expect(
+        result.questions.map((q) => [q.field, q.read]),
+        text,
+      ).toEqual([['mix', undefined]]);
+    }
+  });
+
+  it('with no model: the mix the text check reads is asked once with it as the start, as before', () => {
+    for (const [messages] of CASES) {
+      const result = said([messages[0] ?? ''], null);
+      expect(result.sheet, messages[0]).toBeNull();
+      expect(
+        result.questions.map((q) => q.field),
+        messages[0],
+      ).toEqual(['mix']);
+      expect(result.flags, messages[0]).toContain('mix_asked:rules');
+    }
+  });
+
+  it('where both read the same mix it is taken with no question, as before', () => {
+    const same = said(['Put 60% in stocks and 40% in cash.'], reads({ mix: pct(60, 40) }));
+    expect(same.questions).toEqual([]);
+    expect(same.sheet?.mix).toEqual(bps(6000, 4000));
+  });
+});

@@ -1213,7 +1213,8 @@ function intakeOf(
   // message rules out is no mix ("all of it in stocks", then "no stocks").
   //
   // With a model a mix needs both readers (the review of Oct 7): it is taken where the model's reply
-  // reads one and the text states one, the text's where they differ, and the difference flagged. One
+  // reads one and the text states the same one. Where the two differ neither is taken and the mix
+  // is asked once with no start (the third review, Oct 7; the text's was taken). One
   // the text states that the model did not read is not taken, not asked and not said
   // (`text_only:mix`): "I have all my money in stocks and want to diversify" is no plan in stocks.
   // With no model the mix the text states is asked once, with it as the form's start, never taken.
@@ -1230,14 +1231,21 @@ function intakeOf(
   // The mix both readers read, which may be taken; and the one the text states with no model, asked.
   let mixRead: PersonalMix | null = null;
   let mixOfRules: PersonalMix | null = null;
+  // No reader decides alone (the third review, Oct 7): where both read a mix and the two differ,
+  // neither is taken, and the mix is asked once. The text check's was taken: "My advisor wants
+  // 60/40 stocks and bonds, but I want all in stocks" held the advisor's, and a correction it cannot
+  // read ("Make the cash 50%.") was lost.
+  let mixDiffers = false;
   if (written) {
     const parsed = PersonalMix.safeParse(written.mix);
     if (parsed.success && method === 'model') {
-      mixRead = parsed.data;
-      if (replyMix && !sameMix(replyMix, parsed.data)) flags.push('disagrees_with_rules:mix');
+      if (replyMix && !sameMix(replyMix, parsed.data)) {
+        flags.push('disagrees_with_rules:mix');
+        mixDiffers = true;
+      } else mixRead = parsed.data;
     } else if (parsed.success) mixOfRules = parsed.data;
   }
-  if (replyMix && !mixRead) flags.push('no_cue:mix');
+  if (replyMix && !mixRead && !mixDiffers) flags.push('no_cue:mix');
   // Markets, industries and trends ("big tech", "the S&P", "semiconductors", "defense stocks"): the
   // narrative's words must be in the text, as an ask. One the model names that the text has no word
   // for is dropped and asked; one the text names only to rule it out, or in passing, is dropped. Words
@@ -1874,7 +1882,7 @@ function intakeOf(
       ((replyMix.creditBps ?? 0) > 0 && refused.has('credit')));
   let mixAsk: {
     read: PersonalMix | null;
-    why: 'wondered' | 'part' | 'model' | 'rules';
+    why: 'wondered' | 'part' | 'model' | 'rules' | 'differs';
   } | null = null;
   const nothingStated =
     !mixRead &&
@@ -1887,6 +1895,10 @@ function intakeOf(
     sleevesAnswered === undefined &&
     conflictAsk === null;
   if (nothingStated && mixOfRules) mixAsk = { read: mixOfRules, why: 'rules' };
+  // The two readers read different mixes: asked, with no start. Either reading may be the wrong
+  // one (the advisor's mix the text check read, or a mix the model made up), and a start is what a
+  // plain yes would take.
+  else if (nothingStated && mixDiffers) mixAsk = { read: null, why: 'differs' };
   else if (
     nothingStated &&
     mixSaid &&
