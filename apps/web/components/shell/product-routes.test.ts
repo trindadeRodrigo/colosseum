@@ -346,7 +346,8 @@ describe('rule 3: no screen can reach a key', () => {
   };
   /** More that one file may take, and no other: the runner the whole port, and both the network table. */
   const OPEN_TO: Record<string, Record<string, readonly string[]>> = {
-    [RUNNER]: { [SIGNING]: ['useSigningPort'] },
+    // the hold says a run is open, so the wallet provider is not mounted again under it
+    [RUNNER]: { [SIGNING]: ['useSigningPort', 'useSigningHold'] },
     'features/order/readiness.ts': {
       'features/wallet/chains.ts': ['publicWalletEnv', 'walletChains'],
     },
@@ -610,7 +611,7 @@ describe('rule 3: no screen can reach a key', () => {
       .replace('signer: port,', '')
       .replace('onMock(port, chain)', '')
       .replace('port.active(chainFamily(chain))', '')
-      .replace('[port, apiFetch]', '');
+      .replace('[port, apiFetch, hold]', '');
     expect(rest.match(/\bport\b/g) ?? []).toEqual([]);
     // what the executor is handed beside it is the README's list (features/wallet/README.md, item 3)
     for (const dep of [

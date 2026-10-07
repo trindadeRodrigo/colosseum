@@ -33,6 +33,7 @@ export const pt: Dictionary = {
         'Você entrou, mas nosso servidor ainda não disse em qual rede fica o seu plano. Nada foi perdido.',
       again: 'Tentar de novo',
       trying: 'Tentando de novo…',
+      held: 'Um passo da sua ordem está sendo assinado. Conclua ou cancele esse passo primeiro e tente de novo.',
     },
     address: 'Endereço',
     copyAddress: 'Copiar endereço',

@@ -9,6 +9,16 @@ import { WalletContext } from './WalletProvider';
 // components/shell/product-routes.test.ts holds that; the wallet check under /dev imports it too, and
 // is in no production build.
 
+/**
+ * Says a run of an order is open, until the function it returns is called: the wallet provider is not
+ * mounted again meanwhile (WalletProvider's `restart`), so a step is signed by the port it began on.
+ */
+export function useSigningHold(): () => () => void {
+  const value = useContext(WalletContext);
+  if (!value) throw new Error('useSigningHold() needs <WalletProvider> above it');
+  return value.hold;
+}
+
 export function useSigningPort(): WebWalletPort {
   const value = useContext(WalletContext);
   if (!value) throw new Error('useSigningPort() needs <WalletProvider> above it');

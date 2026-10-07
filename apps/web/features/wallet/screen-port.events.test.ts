@@ -3,7 +3,7 @@ import { act, createElement, useEffect } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { type ScreenPort, SIGNING_MEMBERS, type WebWalletPort } from './port';
-import { useSigningPort } from './signing';
+import { useSigningHold, useSigningPort } from './signing';
 import { fakePort } from './test/fake-port';
 import { useWalletPort, useWalletRestart, WalletProvider } from './WalletProvider';
 
@@ -72,27 +72,71 @@ describe('what the provider hands a screen', () => {
     expect(signing(seen.whole)).toEqual([...SIGNING_MEMBERS]);
   });
 
-  it('mounts the wallet provider again on restart, with no reload, and takes its next port', async () => {
-    let restart = () => {};
-    const seen: { screen?: ScreenPort } = {};
+  it('mounts the wallet provider again on restart, with no reload: the old port goes, the person stays known', async () => {
+    let restart = (): boolean => false;
+    const seen: { screen?: ScreenPort; whole?: WebWalletPort } = {};
     const Screen = () => {
       seen.screen = useWalletPort();
+      seen.whole = useSigningPort();
       restart = useWalletRestart();
       return null;
     };
     await mount(createElement(WalletProvider, null, createElement(Screen)));
     await settle();
     const before = bridge.mounts;
-    // signed in as the provider says, with the wallets not there yet
-    await act(async () =>
-      bridge.onPort?.(fakePort({ status: 'loading', userId: 'did:privy:test' })),
-    );
-    await act(async () => restart());
+    // ready, as far as the provider that is about to go said
+    const old = fakePort({ status: 'ready', userId: 'did:privy:test' });
+    await act(async () => bridge.onPort?.(old));
+    let done = false;
+    await act(async () => {
+      done = restart();
+    });
     await settle();
+    expect(done).toBe(true);
     expect(bridge.mounts).toBe(before + 1);
-    // the port stays what it was until the new provider reports
+    // nothing is left of the port whose hooks are unmounted: loading, for the same person, and no
+    // signer that could be handed to a run
+    expect(seen.screen?.status).toBe('loading');
     expect(seen.screen?.userId).toBe('did:privy:test');
+    expect(seen.whole).not.toBe(old);
+    expect(seen.whole?.status).toBe('loading');
+    await expect(seen.whole?.sign('solana', [])).rejects.toThrow(/still loading/);
     await act(async () => bridge.onPort?.(fakePort({ status: 'ready', userId: 'did:privy:test' })));
     expect(seen.screen?.status).toBe('ready');
+  });
+
+  it('is not mounted again while a run of an order is open, and is once the run is over', async () => {
+    let restart = (): boolean => false;
+    let hold = (): (() => void) => () => {};
+    const seen: { whole?: WebWalletPort } = {};
+    const Screen = () => {
+      seen.whole = useSigningPort();
+      restart = useWalletRestart();
+      hold = useSigningHold();
+      return null;
+    };
+    await mount(createElement(WalletProvider, null, createElement(Screen)));
+    await settle();
+    const ready = fakePort({ status: 'ready', userId: 'did:privy:test' });
+    await act(async () => bridge.onPort?.(ready));
+    const before = bridge.mounts;
+    const release = hold();
+    let done = true;
+    await act(async () => {
+      done = restart();
+    });
+    expect(done).toBe(false);
+    expect(bridge.mounts).toBe(before);
+    // the run keeps the port it started on
+    expect(seen.whole).toBe(ready);
+    release();
+    // released twice by mistake, it still counts once
+    release();
+    await act(async () => {
+      done = restart();
+    });
+    await settle();
+    expect(done).toBe(true);
+    expect(bridge.mounts).toBe(before + 1);
   });
 });

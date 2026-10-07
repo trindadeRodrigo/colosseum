@@ -38,6 +38,8 @@ export const en = {
         'You’re signed in, but our server hasn’t said yet which chain your plan lives on. Nothing is lost.',
       again: 'Try again',
       trying: 'Trying again…',
+      /** "Try again" pressed while a step of an order is being signed. */
+      held: 'A step of your order is being signed. Finish or cancel that step first, then try again.',
     },
     /** The account menu in the bar: its items under the chains. */
     address: 'Address',

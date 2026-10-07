@@ -79,6 +79,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   window.localStorage.removeItem('tf-chain');
   restarts.count = 0;
+  restarts.refuse = false;
   portStore.set(fakePort());
 });
 afterEach(async () => {
@@ -150,6 +151,25 @@ describe.each(['en', 'pt'] as const)('a sign-in that is slow, in %s', (lang) => 
     expect(facts(host).textContent).not.toContain(t.chain.reading);
   });
 
+  it('does not start the wallets again while a step of an order is being signed, and says what to do', async () => {
+    server();
+    portStore.set(walletsLoading());
+    const host = await page(lang);
+    await later(SLOW_MS);
+    restarts.refuse = true;
+    await click(find(host, AGAIN));
+    expect(restarts.count).toBe(0);
+    expect(find(host, `${SAID} [data-ui="sign-in-held"]`).textContent).toBe(t.shell.slow.held);
+    expect(find(host, `${SAID} [data-ui="sign-in-held"]`).getAttribute('role')).toBe('alert');
+    // the button is still there, with no longer wait counted for a press that did nothing
+    expect(host.querySelector(TRYING)).toBeNull();
+    restarts.refuse = false;
+    await click(find(host, AGAIN));
+    expect(restarts.count).toBe(1);
+    expect(host.querySelector('[data-ui="sign-in-held"]')).toBeNull();
+    expect(find(host, TRYING).textContent).toBe(t.shell.slow.trying);
+  });
+
   it('says our server is the slow side when the wallets are there, asks it again, and recovers', async () => {
     const api = server();
     portStore.set(signedInPort(EMBEDDED));
@@ -167,8 +187,12 @@ describe.each(['en', 'pt'] as const)('a sign-in that is slow, in %s', (lang) => 
     // the second, after its longer wait, starts the wallet provider again too: the token comes from it
     await later(2 * SLOW_MS);
     await click(find(host, AGAIN));
-    expect(api.asked).toHaveLength(3);
     expect(restarts.count).toBe(1);
+    // and our server is not asked with the old provider's tokens: only once the new one is ready
+    expect(api.asked).toHaveLength(2);
+    expect(find(host, TRYING).textContent).toBe(t.shell.slow.trying);
+    await act(async () => portStore.set(signedInPort(EMBEDDED)));
+    expect(api.asked).toHaveLength(3);
 
     await api.answer();
     expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
@@ -189,6 +213,27 @@ describe('a sign-in that is slow', () => {
     expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
     expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
   });
+
+  it.each([
+    ['nobody: the person signed out meanwhile', () => fakePort()],
+    ['another person', () => signedInPort(EMBEDDED, { userId: 'did:privy:other' })],
+  ])(
+    'forgets the goal on the page and its draft when the wallets come back with %s',
+    async (_, port) => {
+      server();
+      portStore.set(walletsLoading());
+      const host = await page('en');
+      await later(SLOW_MS);
+      await click(find(host, AGAIN));
+      // kept while nobody is known to have left
+      expect(find<HTMLTextAreaElement>(host, 'textarea').value).toContain('forty thousand');
+      await act(async () => portStore.set(port()));
+      await later(0);
+      expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe('');
+      expect(host.querySelector('[data-ui="sheet-facts"]')).toBeNull();
+      expect(window.sessionStorage.getItem(GOAL_DRAFT) ?? '').not.toContain('forty thousand');
+    },
+  );
 
   it('is not said to someone who is not known to be signed in, however long the wallet loads', async () => {
     server();

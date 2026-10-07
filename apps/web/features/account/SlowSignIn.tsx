@@ -38,6 +38,11 @@ export function SlowSignIn({
           </Button>
         )}
       </p>
+      {slow.held && (
+        <p role="alert" data-ui="sign-in-held" className="text-body-sm text-foreground">
+          {t.shell.slow.held}
+        </p>
+      )}
     </div>
   );
 }

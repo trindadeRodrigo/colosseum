@@ -70,7 +70,12 @@ const SLOWEST_MS = 120_000;
  * Which side has not answered: `wallets`, the sign-in service has not handed over the session's
  * wallets; `server`, ours has not said who this is (GET /v1/me, or the chain being stored).
  */
-export type Slow = { side: 'wallets' | 'server'; trying: boolean };
+export type Slow = {
+  side: 'wallets' | 'server';
+  trying: boolean;
+  /** "Try again" was not done: a step of an order is being signed, and is finished or cancelled first. */
+  held: boolean;
+};
 
 export type AccountValue = {
   account: Account;
@@ -257,23 +262,31 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const side = port.status === 'ready' ? 'server' : 'wallets';
   const [tries, setTries] = useState(0);
   const [late, setLate] = useState(false);
+  const [held, setHeld] = useState(false);
   useEffect(() => {
     if (!waiting) {
       setTries(0);
       setLate(false);
+      setHeld(false);
       return;
     }
     const timer = setTimeout(() => setLate(true), Math.min(SLOW_MS * 2 ** tries, SLOWEST_MS));
     return () => clearTimeout(timer);
   }, [waiting, tries]);
   const slow = useMemo(
-    (): Slow | null => (waiting && (late || tries > 0) ? { side, trying: !late } : null),
-    [waiting, late, tries, side],
+    (): Slow | null => (waiting && (late || tries > 0) ? { side, trying: !late, held } : null),
+    [waiting, late, tries, side, held],
   );
   // The wallets are read again by mounting their provider again; the person, by asking our server
-  // again. A second press does both: the token our server is waiting for comes from that provider.
+  // again. A second press does both: the token our server is waiting for comes from that provider,
+  // and our server is asked only once the new one has its wallets and tokens (there is no person to
+  // ask about while it loads). Not while an order is being run: the press is refused, and says so.
   const again = useCallback(() => {
-    if (side === 'wallets' || tries > 0) restart();
+    if ((side === 'wallets' || tries > 0) && !restart()) {
+      setHeld(true);
+      return;
+    }
+    setHeld(false);
     if (side === 'server') retry();
     setLate(false);
     setTries((n) => n + 1);
