@@ -52,6 +52,26 @@ export type PostBasketsPersonalizeBody = {
       };
     };
   };
+  thread?: {
+    text: string;
+    reply: {
+      say: {
+        key: string;
+        fact?: string;
+        why?: string;
+      }[];
+      ask: string | null;
+      open: string[];
+      facts: {
+        goal?: 'grow' | 'income' | 'protect';
+        amountUsd?: number;
+        incomeTargetUsdMonthly?: number;
+        horizonMonths?: number;
+        risk?: 'low' | 'medium' | 'high';
+        chain?: 'solana' | 'base' | 'robinhood';
+      };
+    };
+  }[];
 };
 
 /** POST /v1/baskets/personalize: response. Make a plan from a goal and its limits, and store it. Nothing is bought */
@@ -524,6 +544,179 @@ export type GetBasketsByIdResponse = {
     disclaimer: string;
   };
   fromLink: boolean;
+};
+
+/** GET /v1/baskets/{id}/thread: params. A plan’s thread: what was asked, what was understood, and what happened since */
+export type GetBasketsByIdThreadParams = {
+  id: string;
+};
+
+/** GET /v1/baskets/{id}/thread: query. A plan’s thread: what was asked, what was understood, and what happened since */
+export type GetBasketsByIdThreadQuery = {
+  limit?: number;
+  before?: string;
+};
+
+/** GET /v1/baskets/{id}/thread: response. A plan’s thread: what was asked, what was understood, and what happened since */
+export type GetBasketsByIdThreadResponse = {
+  planId: string;
+  turns: (
+    | {
+        id: string;
+        at: string;
+        who: 'person';
+        text: string;
+      }
+    | {
+        id: string;
+        at: string;
+        who: 'app';
+        reply: {
+          say: {
+            key: string;
+            fact?: string;
+            why?: string;
+          }[];
+          ask: string | null;
+          open: string[];
+          facts: {
+            goal?: 'grow' | 'income' | 'protect';
+            amountUsd?: number;
+            incomeTargetUsdMonthly?: number;
+            horizonMonths?: number;
+            risk?: 'low' | 'medium' | 'high';
+            chain?: 'solana' | 'base' | 'robinhood';
+          };
+        };
+      }
+    | {
+        id: string;
+        at: string;
+        who: 'event';
+        event:
+          | {
+              type: 'plan_built';
+              planId: string;
+            }
+          | {
+              type: 'order_made';
+              orderId: string;
+              kind: 'buy' | 'add' | 'finish' | 'withdraw';
+              amountUsd: number | null;
+            }
+          | {
+              type: 'deposit_landed';
+              orderId: string;
+            }
+          | {
+              type: 'buy_done';
+              orderId: string;
+            }
+          | {
+              type: 'buy_stopped';
+              orderId: string;
+            }
+          | {
+              type: 'withdrawal_done';
+              orderId: string;
+            };
+      }
+  )[];
+  before: string | null;
+};
+
+/** POST /v1/baskets/{id}/thread: params. Add a turn to a plan’s thread: the person’s words and what the app said back */
+export type PostBasketsByIdThreadParams = {
+  id: string;
+};
+
+/** POST /v1/baskets/{id}/thread: body. Add a turn to a plan’s thread: the person’s words and what the app said back */
+export type PostBasketsByIdThreadBody = {
+  text: string;
+  reply: {
+    say: {
+      key: string;
+      fact?: string;
+      why?: string;
+    }[];
+    ask: string | null;
+    open: string[];
+    facts: {
+      goal?: 'grow' | 'income' | 'protect';
+      amountUsd?: number;
+      incomeTargetUsdMonthly?: number;
+      horizonMonths?: number;
+      risk?: 'low' | 'medium' | 'high';
+      chain?: 'solana' | 'base' | 'robinhood';
+    };
+  };
+};
+
+/** POST /v1/baskets/{id}/thread: response. Add a turn to a plan’s thread: the person’s words and what the app said back */
+export type PostBasketsByIdThreadResponse = {
+  planId: string;
+  turns: (
+    | {
+        id: string;
+        at: string;
+        who: 'person';
+        text: string;
+      }
+    | {
+        id: string;
+        at: string;
+        who: 'app';
+        reply: {
+          say: {
+            key: string;
+            fact?: string;
+            why?: string;
+          }[];
+          ask: string | null;
+          open: string[];
+          facts: {
+            goal?: 'grow' | 'income' | 'protect';
+            amountUsd?: number;
+            incomeTargetUsdMonthly?: number;
+            horizonMonths?: number;
+            risk?: 'low' | 'medium' | 'high';
+            chain?: 'solana' | 'base' | 'robinhood';
+          };
+        };
+      }
+    | {
+        id: string;
+        at: string;
+        who: 'event';
+        event:
+          | {
+              type: 'plan_built';
+              planId: string;
+            }
+          | {
+              type: 'order_made';
+              orderId: string;
+              kind: 'buy' | 'add' | 'finish' | 'withdraw';
+              amountUsd: number | null;
+            }
+          | {
+              type: 'deposit_landed';
+              orderId: string;
+            }
+          | {
+              type: 'buy_done';
+              orderId: string;
+            }
+          | {
+              type: 'buy_stopped';
+              orderId: string;
+            }
+          | {
+              type: 'withdrawal_done';
+              orderId: string;
+            };
+      }
+  )[];
 };
 
 /** GET /v1/config: response. Feature flags and the chains this deployment runs on */
@@ -1787,6 +1980,16 @@ export interface ApiRoutes {
     response: PostBasketsProposeResponse;
   };
   'GET /v1/baskets/{id}': { params: GetBasketsByIdParams; response: GetBasketsByIdResponse };
+  'GET /v1/baskets/{id}/thread': {
+    params: GetBasketsByIdThreadParams;
+    query: GetBasketsByIdThreadQuery;
+    response: GetBasketsByIdThreadResponse;
+  };
+  'POST /v1/baskets/{id}/thread': {
+    params: PostBasketsByIdThreadParams;
+    body: PostBasketsByIdThreadBody;
+    response: PostBasketsByIdThreadResponse;
+  };
   'GET /v1/config': { response: GetConfigResponse };
   'GET /v1/funding': { query: GetFundingQuery; response: GetFundingResponse };
   'GET /v1/indexes/{slug}': {
