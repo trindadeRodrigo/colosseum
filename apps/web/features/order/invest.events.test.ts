@@ -92,16 +92,31 @@ const funding = (ok: boolean) => ({
   ok,
 });
 
-/** The fixtures' order under another id: the n-th order a card made. */
-const orderNo = (n: number): OrderDetail => {
+/**
+ * The fixtures' $10 order under another id, the n-th order a card made, and for another amount: every
+ * raw figure of it scaled, as our server plans the same plan for more money.
+ */
+const orderNo = (n: number, amountUsd = 10): OrderDetail => {
   const order = orderOn();
-  if (n === 0) return order;
-  const id = `00000000-0000-4000-8000-00000000000${n}`;
+  const id = n === 0 ? order.id : `00000000-0000-4000-8000-00000000000${n}`;
+  const scaled = (raw: string) => ((BigInt(raw) * BigInt(amountUsd)) / 10n).toString();
   return {
     ...order,
     id,
     approvalUrl: `/orders/${id}`,
-    legs: order.legs.map((leg) => ({ ...leg, orderId: id })),
+    ...(order.depositRaw ? { depositRaw: scaled(order.depositRaw) } : {}),
+    legs: order.legs.map((leg) => ({
+      ...leg,
+      orderId: id,
+      ...(leg.cashRaw ? { cashRaw: scaled(leg.cashRaw) } : {}),
+      trades: leg.trades.map((t) => ({ ...t, amountInRaw: scaled(t.amountInRaw) })),
+      expected: leg.expected.map((e) => ({
+        ...e,
+        inRaw: scaled(e.inRaw),
+        outRaw: scaled(e.outRaw),
+        minOutRaw: scaled(e.minOutRaw),
+      })),
+    })),
   };
 };
 
@@ -112,6 +127,8 @@ function api(
     finishes?: boolean;
     /** Each POST makes another order, as the server does. Default: the same one every time. */
     distinct?: boolean;
+    /** How long the first order is open for, from when it is made. Default: the fixtures' time, long past. */
+    openFor?: number;
   } = {},
 ) {
   const calls: Call[] = [];
@@ -136,7 +153,12 @@ function api(
         return json({ error: 'nothing is missing' }, 409);
       }
       if (path === '/v1/orders' && method === 'POST') {
-        const order = o.order?.() ?? orderNo(o.distinct ? made : 0);
+        const asked = (JSON.parse(String(init?.body)) as { amountUsd: number }).amountUsd;
+        const base = o.order?.() ?? orderNo(o.distinct ? made : 0, o.distinct ? asked : 10);
+        const order =
+          o.openFor === undefined || made > 0
+            ? base
+            : { ...base, expiresAt: Math.floor((Date.now() + o.openFor) / 1000) };
         made += 1;
         kept.set(order.id, order);
         return json(order);
@@ -563,6 +585,11 @@ describe('a sequence that stops', () => {
     expect(server.placed()).toHaveLength(2);
     expect(run.calls).toHaveLength(1);
     expect(label(find(host, PRESS))).toBe(en.invest.press('$10'));
+    // said to be new, and held for a moment so its figures can be read before they are approved
+    expect(find(host, '[data-ui="invest-updated"]').textContent).toBe(en.invest.updated);
+    expect(pressable(host)).toBe(false);
+    expect(host.textContent).toContain(en.invest.updatedHold);
+    await settle(1550);
     expect(pressable(host)).toBe(true);
   });
 });
@@ -646,6 +673,98 @@ describe('the orders a card makes before the press', () => {
     expect(bodies(server)).toEqual([10, 11, 12, 13, 14]);
     expect(host.querySelectorAll('[data-ui="order-step"]')).toHaveLength(2);
   }, 20_000);
+});
+
+describe('an order that takes another’s place before the press', () => {
+  const amountOf = (host: HTMLElement) =>
+    find<HTMLInputElement>(host, 'input[inputmode="decimal"]');
+  const still = async () => {
+    await settle(350);
+    await settle(1050);
+    await settle();
+  };
+
+  it('the amount changed: the press is for the new order alone, said to be new and held until it can be read', async () => {
+    const server = api({ distinct: true });
+    const host = await buy();
+    await tick(host);
+    expect(pressable(host)).toBe(true);
+    await type(amountOf(host), '20');
+    // nothing of the $10 order is left to press while the $20 one is made
+    expect(host.querySelector('[data-ui="order-step"]')).toBeNull();
+    expect(pressable(host)).toBe(false);
+    await still();
+    expect(server.placed()).toHaveLength(2);
+    expect(find(host, '[data-ui="invest-updated"]').textContent).toBe(en.invest.updated);
+    // a press in the moment it appears does nothing
+    expect(pressable(host)).toBe(false);
+    await click(find(host, PRESS));
+    await settle();
+    expect(run.calls).toEqual([]);
+    await settle(1550);
+    expect(pressable(host)).toBe(true);
+    await click(find(host, PRESS));
+    await settle();
+    expect(run.calls).toHaveLength(1);
+    // the order for $20 as it was shown, and nothing of the one for $10
+    expect(run.calls[0]?.order).toEqual(orderNo(1, 20));
+    expect(recallOrder(orderNo(1).id, USER)?.amountUsd).toBe(20);
+    expect(recallOrder(ORDER_ID, USER)).toBeNull();
+  });
+
+  it('the order ran out: it leaves the card, no other is made by itself, and one the person asks for is held until it can be read', async () => {
+    const server = api({ distinct: true, openFor: 2_500 });
+    const host = await buy();
+    await tick(host);
+    expect(host.querySelectorAll('[data-ui="order-step"]')).toHaveLength(2);
+    // its time passes with nobody pressing
+    await settle(2_600);
+    expect(host.querySelector('[data-ui="order-step"]')).toBeNull();
+    expect(find(host, '[data-ui="invest-old"]').textContent).toBe(en.invest.old);
+    expect(pressable(host)).toBe(false);
+    expect(recallOrder(ORDER_ID, USER)).toBeNull();
+    // and none is made again, however long the card is left
+    await settle(1_600);
+    expect(server.placed()).toHaveLength(1);
+    const ask = [...host.querySelectorAll('button')].find((b) => label(b) === en.invest.again);
+    await click(ask as HTMLElement);
+    await settle(1050);
+    await settle();
+    expect(server.placed()).toHaveLength(2);
+    expect(host.querySelector('[data-ui="invest-old"]')).toBeNull();
+    expect(find(host, '[data-ui="invest-updated"]').textContent).toBe(en.invest.updated);
+    expect(pressable(host)).toBe(false);
+    // the press is the new order's, once it can have been read
+    await settle(1550);
+    await click(find(host, PRESS));
+    await settle();
+    expect(run.calls).toHaveLength(1);
+    expect(run.calls[0]?.order.id).toBe(orderNo(1).id);
+  }, 20_000);
+
+  it('makes no order in a tab nobody is looking at: it is made when the tab is seen', async () => {
+    const server = api({ distinct: true });
+    const visible = (state: 'hidden' | 'visible') => {
+      Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    visible('hidden');
+    try {
+      const host = await buy();
+      await settle(500);
+      expect(server.placed()).toEqual([]);
+      expect(host.querySelector('[data-ui="order-step"]')).toBeNull();
+      visible('visible');
+      // the tab is seen: the card takes that in, then waits its moment as for any amount
+      await settle();
+      await settle(1050);
+      await settle();
+      expect(server.placed()).toHaveLength(1);
+      expect(host.querySelectorAll('[data-ui="order-step"]')).toHaveLength(2);
+    } finally {
+      visible('visible');
+    }
+  });
 });
 
 describe('what the press approves', () => {

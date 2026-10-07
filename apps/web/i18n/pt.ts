@@ -1184,6 +1184,9 @@ export const pt: Dictionary = {
     checkingFunds: 'Conferindo sua carteira…',
     preparing: 'Lendo os preços da sua ordem…',
     again: 'Ler os preços de novo',
+    old: 'Estes preços estão velhos: a ordem venceu antes de ser confirmada. Leia de novo para investir.',
+    updated: 'Preços atualizados. Leia os passos de novo antes de confirmar.',
+    updatedHold: 'Os preços acabaram de mudar: leia primeiro.',
     fee: {
       none: 'Não cobramos taxa nesta ordem. A taxa da rede sai da sua carteira.',
       some: (list: string) => `Taxas desta ordem: ${list}. A taxa da rede sai da sua carteira.`,

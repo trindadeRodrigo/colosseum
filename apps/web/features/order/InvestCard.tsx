@@ -45,6 +45,8 @@ import { unitsFor } from './units';
 export const STILL_MS = 1_000;
 /** How many orders a card makes by itself; after that the person asks for the prices. */
 export const AUTO_ORDERS = 4;
+/** How long the press is held after an order takes another's place on the card. */
+export const READ_MS = 1_500;
 
 export const MIN_USD = 10;
 export const MAX_USD = 1_000_000;
@@ -134,7 +136,14 @@ export function AmountField({
   );
 }
 
-type Made = { key: string; orderId: string; expiresAt: number; basketId?: string };
+type Made = {
+  key: string;
+  orderId: string;
+  expiresAt: number;
+  basketId?: string;
+  /** It took the place of another order on this card. */
+  again: boolean;
+};
 
 export function InvestCard({
   chain,
@@ -175,6 +184,16 @@ export function InvestCard({
   const orders = useRef(0);
   const asked = useRef<string | null>(null);
   const [paused, setPaused] = useState(false);
+  // The order on the card ran out before anybody pressed: its prices are old, and no other is made
+  // until the person asks.
+  const [old, setOld] = useState(false);
+  // The tab came back into view: an order that waited for that is made now.
+  const [seen, setSeen] = useState(0);
+  const unseen = useRef(false);
+  // An order took the place of another on this card: said, and the press held for a moment, so
+  // nobody approves figures they could not have read.
+  const shown = useRef(0);
+  const [fresh, setFresh] = useState(false);
   // The host's way of making the order, as it is now: read when an order is made, never a reason
   // to make one.
   const placer = useRef(place);
@@ -213,6 +232,12 @@ export function InvestCard({
   const [okFor, setOkFor] = useState<string | null>(null);
   if (read && want && (read.ok ? okFor !== want : okFor === want)) setOkFor(read.ok ? want : null);
   const funded = want !== null && okFor === want;
+  // The last answer about the wallet for this buy, shown while it is read again: what was said
+  // (what is missing, why test funds were not sent) does not blink away with each read.
+  const [last, setLast] = useState<{ of: string; funding: Funding } | null>(null);
+  if (want && funding.kind !== 'idle' && funding.kind !== 'reading' && last?.funding !== funding)
+    setLast({ of: want, funding });
+  const heard: Funding = funding.kind === 'reading' && last?.of === want ? last.funding : funding;
   const clear = blocked.length === 0;
   // The order is made once nothing stands in its way but the person: the wallet holds what it
   // needs and the host has no reason against it. One order for an amount, a wallet and a round.
@@ -230,6 +255,7 @@ export function InvestCard({
     [],
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `seen` makes the order that waited for the tab to be looked at
   useEffect(() => {
     if (started) return;
     const drop = () => {
@@ -253,7 +279,7 @@ export function InvestCard({
     // Making an order asks the chain for quotes and counts against the person's budget for
     // building steps (the API's `build` class), which the run itself needs. So a card makes few
     // by itself: after that the person asks for the prices.
-    if (orders.current >= AUTO_ORDERS && asked.current !== key) {
+    if ((old || orders.current >= AUTO_ORDERS) && asked.current !== key) {
       setPlacing(false);
       setPaused(true);
       return;
@@ -262,6 +288,12 @@ export function InvestCard({
     setPlacing(true);
     // Only once the amount has been still for a moment: never an order for each key pressed.
     const timer = setTimeout(async () => {
+      // Never in a tab nobody is looking at: it is made when the tab is seen again.
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        unseen.current = true;
+        setPlacing(false);
+        return;
+      }
       orders.current += 1;
       const answer = await placer.current(amount);
       if (orderAsked.current !== mine) {
@@ -272,19 +304,44 @@ export function InvestCard({
       setPlacing(false);
       if ('failure' in answer) return setFailure(answer.failure);
       open.current = answer.orderId;
-      setMade({ key, ...answer });
+      shown.current += 1;
+      setMade({ key, again: shown.current > 1, ...answer });
     }, STILL_MS);
     return () => clearTimeout(timer);
-  }, [key, made, amount, started]);
+  }, [key, made, amount, started, old, seen]);
 
-  // An order nobody approved in time is made again: its prices are no longer the ones to review.
+  useEffect(() => {
+    const onSeen = () => {
+      if (document.visibilityState !== 'visible' || !unseen.current) return;
+      unseen.current = false;
+      setSeen((n) => n + 1);
+    };
+    document.addEventListener('visibilitychange', onSeen);
+    return () => document.removeEventListener('visibilitychange', onSeen);
+  }, []);
+
+  // The press is held for a moment after an order takes another's place: each one from when it shows.
+  const replaced = made?.again ? made.orderId : null;
+  useEffect(() => {
+    if (!replaced) return setFresh(false);
+    setFresh(true);
+    const timer = setTimeout(() => setFresh(false), READ_MS);
+    return () => clearTimeout(timer);
+  }, [replaced]);
+
+  // An order nobody approved in time is taken off the card: its prices are old. No other is made
+  // by itself, in this tab or a hidden one: the person asks for the prices again.
   useEffect(() => {
     if (!made || started) return;
     const left = made.expiresAt * 1000 - Date.now();
-    // One that is already past its time as it arrives is a clock that disagrees, not an order to
-    // make again and again: the press says it ran out, and offers a new one.
+    // One that is already past its time as it arrives is a clock that disagrees: the press says it
+    // ran out, and offers a new one.
     if (left <= 0) return;
-    const timer = setTimeout(() => setOrderRound((n) => n + 1), left);
+    const timer = setTimeout(() => {
+      asked.current = null;
+      setOld(true);
+      setMade(null);
+    }, left);
     return () => clearTimeout(timer);
   }, [made, started]);
 
@@ -418,27 +475,31 @@ export function InvestCard({
             />
           )}
 
-          {!started && owner && amount !== null && funding.kind === 'reading' && !read && (
+          {!started && owner && amount !== null && heard.kind === 'reading' && (
             <p data-ui="invest-funds-reading" className="text-body-sm text-muted-foreground">
               {t.invest.checkingFunds}
             </p>
           )}
-          {!started && funding.kind !== 'idle' && funding.kind !== 'reading' && !funded && (
-            // Shown only when the wallet is short, or could not be read: what is missing and the
-            // way to fill it.
-            <FundingStep
-              funding={funding}
-              chainName={chainName}
-              owner={owner}
-              mock={mock}
-              units={unitsFor(chain, mock)}
-              gasUnits={gasUnitsFor(chain)}
-              mockBusy={mockBusy}
-              onReadAgain={() => setFundsRound((n) => n + 1)}
-              onMock={addMock}
-              testFunds={{ busy: testBusy, outcome: testOutcome, onAsk: askTestFunds }}
-            />
-          )}
+          {!started &&
+            heard.kind !== 'idle' &&
+            heard.kind !== 'reading' &&
+            // still said once test funds were sent: what arrived, and that the wallet holds it now
+            (!funded || testOutcome?.kind === 'sent') && (
+              // Shown only when the wallet is short, or could not be read: what is missing and the
+              // way to fill it.
+              <FundingStep
+                funding={heard}
+                chainName={chainName}
+                owner={owner}
+                mock={mock}
+                units={unitsFor(chain, mock)}
+                gasUnits={gasUnitsFor(chain)}
+                mockBusy={mockBusy}
+                onReadAgain={() => setFundsRound((n) => n + 1)}
+                onMock={addMock}
+                testFunds={{ busy: testBusy, outcome: testOutcome, onAsk: askTestFunds }}
+              />
+            )}
 
           {!accepted && !started ? (
             // Before the first deposit: the notice with its box, in the card. The press is held
@@ -468,12 +529,20 @@ export function InvestCard({
             </details>
           )}
 
+          {made?.again && !started && (
+            <p data-ui="invest-updated" aria-live="polite" className="text-body-sm font-medium">
+              {t.invest.updated}
+            </p>
+          )}
           {made ? (
             <OrderScreen
               key={made.orderId}
               id={made.orderId}
               embed={{
-                blocked: trustHeld ? [t.buy.blocked.trust] : [],
+                blocked: [
+                  ...(trustHeld ? [t.buy.blocked.trust] : []),
+                  ...(fresh ? [t.invest.updatedHold] : []),
+                ],
                 onApprove: () => {
                   // The order is the person's now: it is kept, whatever becomes of the card.
                   open.current = null;
@@ -517,11 +586,17 @@ export function InvestCard({
                   ))}
                 </ul>
               )}
+              {paused && old && !failure && (
+                <p data-ui="invest-old" className="max-w-(--tf-measure-body) text-body-sm">
+                  {t.invest.old}
+                </p>
+              )}
               {paused && !failure && (
                 <Button
                   variant="secondary"
                   onClick={() => {
                     asked.current = want ? `${want}|${orderRound + 1}` : null;
+                    setOld(false);
                     setOrderRound((n) => n + 1);
                   }}
                 >
@@ -541,6 +616,7 @@ export function InvestCard({
                     variant="secondary"
                     onClick={() => {
                       asked.current = want ? `${want}|${orderRound + 1}` : null;
+                      setOld(false);
                       setOrderRound((n) => n + 1);
                     }}
                   >

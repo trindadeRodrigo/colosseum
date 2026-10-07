@@ -28,7 +28,9 @@ export async function readyToInvest(
     .click();
   // the wallet holds it now: the funds leave the card, and the order is there with its steps
   await expect(card.locator('[data-ui="order-step"]').first()).toBeVisible({ timeout: 30_000 });
-  await expect(card.locator('[data-ui="funding-step"]')).toHaveCount(0);
+  // test funds that were sent are still said; sample cash on the mock leaves nothing to say
+  if (o.fund === 'test') await expect(card.locator('[data-ui="test-funds-sent"]')).toBeVisible();
+  else await expect(card.locator('[data-ui="funding-step"]')).toHaveCount(0);
   // a first buy in this browser: the notice is on the card, and holds the press until it is ticked
   await expect(press).toHaveAttribute('aria-disabled', 'true');
   await page.getByLabel(en.trust.accept).check();
