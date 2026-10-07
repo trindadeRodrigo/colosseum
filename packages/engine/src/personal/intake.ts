@@ -49,6 +49,7 @@ import {
   shareSaidIn,
   splitIn,
   stanceOf,
+  sumsWrittenIn,
   TURN_BREAK,
   timeFramesIn,
   withoutMarketShares,
@@ -1560,11 +1561,17 @@ function intakeOf(
   // an oil change" name no market.
   if (method === 'model') {
     const filterWords = replyFilter ? phraseIn(text, replyFilter.words) : [];
+    // The words of its filter name a market where the market's own words are all they say: "a
+    // software course" says more than "software" (the third review, Oct 7).
     const namedByModel = (id: Market) =>
       (replyMarkets ?? []).includes(id) ||
-      mentions.some(
-        (m) => m.market === id && filterWords.some((s) => m.at < s.end && s.at < m.end),
-      );
+      (replyFilter !== null &&
+        mentions.some(
+          (m) =>
+            m.market === id &&
+            filterWords.some((s) => m.at < s.end && s.at < m.end) &&
+            wordsWrite(replyFilter.words, m.words),
+        ));
     for (const id of MARKET_IDS)
       if (asked.some((m) => m.market === id) && !namedByModel(id))
         flags.push(`text_only:market:${id}`);
@@ -2005,6 +2012,34 @@ function intakeOf(
     );
   });
   if (saysMore) flags.push('share_not_alone');
+  // No reader decides alone, for the amount too (the third review, Oct 7: "I have $5,000 and owe
+  // $2,000 on my card" with a reply that gave the debt made a plan of $2,000; "My daughter is 12
+  // and I want to invest 5000" one of $12). No code reads which of two figures is the one put in,
+  // so where the last message that writes one writes several, the reply's is one reader's: asked
+  // once, with it as the start. A sum that is a share of the money ("$500 in big tech") is not one
+  // of them, whoever read what it is put in. Bare numbers count only where no sum is written as
+  // money, as for the amount itself.
+  if (method === 'model' && draft.amountUsd !== null && answers.amountUsd === undefined) {
+    const placed = [
+      ...mentions,
+      ...named,
+      ...refusals,
+      ...(mixSaid ? [mixSaid] : []),
+      ...portfolioNames.flatMap((name) => phraseIn(text, name)),
+    ];
+    const sumsOf = (bare: boolean) =>
+      turns
+        .map((turn, t) =>
+          sumsWrittenIn(text, starts[t] ?? 0, (starts[t] ?? 0) + turn.length, placed, bare),
+        )
+        .filter((sums) => sums.length > 0);
+    const asMoney = sumsOf(false);
+    const lastSums = (asMoney.length > 0 ? asMoney : sumsOf(true)).at(-1);
+    if (lastSums && lastSums.length > 1 && lastSums.includes(draft.amountUsd)) {
+      flags.push('amount_several');
+      unclear.add('amountUsd');
+    }
+  }
   const restNotPlain = (partial: boolean) =>
     (partial && (restSaid === 'other' || rest.half)) || carved || saysMore;
   // Not where a theme sleeve is in play: the two are not combined (below).

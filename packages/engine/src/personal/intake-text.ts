@@ -128,8 +128,14 @@ const PER_MONTH_BEFORE = /(?:monthly|mensal|por m[eê]s)\s+(?:income|renda)?\s*(
 const TIME_FRAME_BEFORE =
   /(?:^|[\s,(])(?:for|over|in|within|during|after|next|coming|em|por|durante|dentro de|daqui a|depois de|pr[oó]ximos?|em at[eé]|(?:for|over|within|invest\p{L}*)\s+up to|(?:por|durante|investir)\s+at[eé]|(?:i'?d|i would|would|let'?s)\s+say|say|about|around|roughly|approximately|maybe|perhaps|diria|digamos|uns|umas|cerca de|aproximadamente|talvez)\s*$/iu;
 const AGE_AFTER = /^\s*(?:old|of age|de idade)\b/iu;
+// A duration that says what it is the length of ("After 5 years of marriage", "in 2 years of day
+// trading", "depois de 10 anos de empresa") measures that thing, not the plan (the third review,
+// Oct 7): it is no time frame, whatever word leads into it.
+const SPAN_OF_ANOTHER = /^[^\S\n]+(?:of|de|do|da)[^\S\n]+\p{L}/iu;
 const inTimeFrame = (text: string, at: number, end: number) =>
-  TIME_FRAME_BEFORE.test(tailBefore(text, at)) && !AGE_AFTER.test(text.slice(end));
+  TIME_FRAME_BEFORE.test(tailBefore(text, at)) &&
+  !AGE_AFTER.test(text.slice(end)) &&
+  !SPAN_OF_ANOTHER.test(text.slice(end));
 
 // A time to get the money out, not a date for the goal (gate GLIDE-OPT-IN, Oct 6): "can take up to 3
 // months to get out", "I may need it in 3 months", "posso precisar em 3 meses", "resgatar em até 3
@@ -588,12 +594,66 @@ const riskNegatedAt = (text: string, at: number): boolean => {
       .some((word) => NOT_OF_THE_RISK.test(word))
   );
 };
-/** How the text writes a risk's plain words: each place, and whether a negation is of it. */
+// A negation that comes after the risk word, in its own clause, is of it too (the third review, Oct
+// 7: "High risk is not for me.", "Risco alto não é pra mim."): right after it, with at most two
+// words between, none of them one that starts another clause ("low risk so I don't lose sleep").
+const RISK_NEGATED_AFTER =
+  /^((?:[^\S\n]+[^\s,;.!?]+){0,2}?)[^\S\n]+(?:\p{L}+n['’]t|cannot|not|never|n[aã]o|nunca|nem)(?![\p{L}])/iu;
+const riskNegatedAfter = (text: string, end: number): boolean => {
+  const between = RISK_NEGATED_AFTER.exec(text.slice(end))?.[1];
+  return (
+    between !== undefined &&
+    !between
+      .split(/\s+/)
+      .filter(Boolean)
+      .some((word) => NOT_OF_THE_RISK.test(word) || STARTS_A_CLAUSE.test(word))
+  );
+};
+// A word of degree alone ("low", "high", "medium", "alto", "baixa") says how much of whatever it is
+// said of: "low fees", "a high tax bracket", "interest rates are high right now" say nothing of the
+// risk (the third review, Oct 7). It is a word for the risk where it is said of the risk ("low
+// risk", "risco alto", "the risk can be high"), where it ends its clause with nothing else to be of
+// ("keep it low", "not high, not low"), or beside another degree ("low to medium").
+const DEGREE = String.raw`low|medium|high|baix[oa]|m[eé]dio|m[eé]dia|alt[oa]`;
+const DEGREE_WORD = new RegExp(`^(?:${DEGREE})$`, 'iu');
+const OF_THE_RISK = String.raw`risk\p{L}*|risco\p{L}*|volatil\p{L}*|profile|perfil`;
+const RISK_NAMED_AFTER = new RegExp(String.raw`^[\s-]*(?:${OF_THE_RISK})(?![\p{L}])`, 'iu');
+const RISK_NAMED_BEFORE = new RegExp(
+  String.raw`(?<![\p{L}])(?:${OF_THE_RISK})(?:[^\S\n]+[^\s,;.!?]+){0,3}[^\S\n:]*$`,
+  'iu',
+);
+const DEGREE_BESIDE = new RegExp(
+  String.raw`^\s*(?:(?:to|or|and|ou|e|a|\/|-)\s*)(?:${DEGREE})(?![\p{L}])`,
+  'iu',
+);
+const ENDS_ITS_CLAUSE = /^\s*(?:$|[,;.!?\n)])/u;
+const SUBJECT_BEFORE = /(?:^|[,;.!?\n(])\s*(?:\p{L}+[^\S\n]+){2,}$/u;
+/** Whether a word of degree written from `at` up to `end` is said of something that is not the risk. */
+const degreeOfAnother = (text: string, at: number, end: number): boolean => {
+  if (!DEGREE_WORD.test(text.slice(at, end))) return false;
+  const after = text.slice(end);
+  const before = tailBefore(text, at);
+  if (RISK_NAMED_AFTER.test(after) || RISK_NAMED_BEFORE.test(before)) return false;
+  if (DEGREE_BESIDE.test(after)) return false;
+  // At the end of its clause it is said of what the clause names before it: of the risk where the
+  // clause names nothing ("keep it low", "high"), of that thing where it does ("rates are high").
+  if (ENDS_ITS_CLAUSE.test(after)) return SUBJECT_BEFORE.test(before) && !OWN_SUBJECT.test(before);
+  return true;
+};
+// The clause is the person's own, or about the plan: "I want it low", "keep it high", "make it low".
+const OWN_SUBJECT =
+  /(?:^|[,;.!?\n(])\s*(?:\p{L}+[^\S\n]+)*?(?:i|we|it|eu|n[oó]s|keep|make|go|stay|set|not|nem|n[aã]o|risco|risk)(?:['’]\p{L}+)?[^\S\n]+(?:\p{L}+[^\S\n]+)*$/iu;
+/**
+ * How the text writes a risk's plain words: each place, and whether a negation is of it. A word of
+ * degree said of something else is no place the text writes the risk.
+ */
 const plainRiskMatches = (risk: keyof typeof RISK_CUES, text: string) =>
-  [...text.matchAll(new RegExp(RISK_CUES[risk].source, 'giu'))].map((m) => ({
-    words: m[0],
-    negated: riskNegatedAt(text, m.index),
-  }));
+  [...text.matchAll(new RegExp(RISK_CUES[risk].source, 'giu'))]
+    .filter((m) => !degreeOfAnother(text, m.index, m.index + m[0].length))
+    .map((m) => ({
+      words: m[0],
+      negated: riskNegatedAt(text, m.index) || riskNegatedAfter(text, m.index + m[0].length),
+    }));
 const RISK_LEVELS = Object.keys(RISK_CUES) as (keyof typeof RISK_CUES)[];
 /** The risks the text has a word for, plain or loose, that no negation is of. */
 export const riskCuesIn = (text: string) =>
@@ -2091,6 +2151,66 @@ export function saysMoreIn(
   return false;
 }
 
+/**
+ * The sums the words written from `from` up to `to` (one message) write that could be the sum put
+ * in, each value once, in the order written. A sum written as money, not a rate a month, not in
+ * another currency, and not a share of the money, which is a sum that leads into what it is put in
+ * (`placed`: a narrative, a mix, a refusal, a shared portfolio's name) or into a word for a class
+ * ("$500 in big tech", "$1,000 in cash"). With `bare`, for a text that writes no sum as money: the
+ * bare numbers that could be one, which leaves out one said of the person ("I am 35"), one of a
+ * pair ("70/30") and one inside what is placed ("the S&P 500").
+ *
+ * The third review (Oct 7): "I have $5,000 and owe $2,000 on my card" with a reply that gave the
+ * debt made a plan of $2,000, and "My daughter is 12 and I want to invest 5000" one of $12. Nothing
+ * in code reads which of two figures is the one put in, so where a message writes several the reply
+ * is the one reader, and the amount is asked.
+ */
+export function sumsWrittenIn(
+  text: string,
+  from: number,
+  to: number,
+  placed: readonly Span[],
+  bare = false,
+): number[] {
+  const message = text.slice(from, to);
+  const within = (spans: readonly Span[], at: number, end: number) =>
+    spans.some((s) => s.at <= at && end <= s.end);
+  const into = [
+    ...placed,
+    ...[...message.matchAll(CLASS_WORD)].map((m) => ({
+      at: m.index + from,
+      end: m.index + from + m[0].length,
+    })),
+  ];
+  const share = (at: number, end: number) =>
+    within(into, at, end) ||
+    into.some(
+      (s) =>
+        end <= s.at &&
+        s.at - end <= INTAKE_LIMITS.shareLeadChars &&
+        !/[,;.!?\n]/u.test(text.slice(end, s.at)),
+    );
+  // Where a figure's own characters start: a mention may open on the space before them.
+  const startOf = (m: Mention) => m.end - m.text.length + from;
+  const pairs = [...message.matchAll(PAIR)].map((m) => ({
+    at: m.index + from,
+    end: m.index + from + m[0].length,
+  }));
+  const sums = mentionsIn(message)
+    .filter((m) => m.kind === 'amount' && !m.perMonth)
+    .filter((m) =>
+      bare
+        ? !m.money &&
+          m.currency === null &&
+          !AGE_BEFORE.test(tailBefore(message, m.at)) &&
+          !within(pairs, startOf(m), m.end + from)
+        : m.money && (m.currency === null || m.currency === 'USD'),
+    )
+    .filter((m) => !share(startOf(m), m.end + from))
+    .map((m) => m.value);
+  return [...new Set(sums)];
+}
+
 // A name the person rules out that is no class and no narrative: "no Tesla", "without Tesla", "I do
 // not want Tesla or Meta". A plan leaves out a class, never one name of a list it holds, so this is
 // said and not applied (the review of Oct 7). The name is written with a capital, after the refusal.
@@ -2181,17 +2301,67 @@ const sameWord = (a: string, b: string): boolean => {
   while (shared < a.length && shared < b.length && a[shared] === b[shared]) shared += 1;
   return shared >= INTAKE_LIMITS.sameStemChars;
 };
+// The words that say a kind of holding and nothing of which one ("defense stocks", "the insurance
+// sector", "empresas de seguros"), with the articles that go with them: what a person's words for a
+// filter's value may carry beside the value's own words. A list, as the fixed word lists of the
+// narratives write the same kinds ("space stocks|industry|sector|companies"): without it every
+// faithful reply that quotes "advertising businesses" for "advertising" would be asked.
+const KIND_WORDS = [
+  'the',
+  'and',
+  'stock',
+  'share',
+  'equities',
+  'equity',
+  'company',
+  'companies',
+  'firm',
+  'business',
+  'businesses',
+  'name',
+  'maker',
+  'producer',
+  'sector',
+  'industry',
+  'industries',
+  'acoes',
+  'acao',
+  'empresa',
+  'companhia',
+  'setor',
+  'industria',
+  'fabricante',
+  'papeis',
+  'uma',
+  'dos',
+  'das',
+];
 /**
- * Whether the person's words write the value a filter must carry, or a word of it (the review of
- * Oct 7: "invest in my future" with a model's filter by sector filled a sleeve): "defense stocks" for
- * "Aerospace & Defense", "insurers" for "Insurance", "restaurants" for "Hotels, Restaurants &
- * Leisure". Where they do not ("obesity drugs" for "GLP-1", "my future" for "Consumer
- * Discretionary"), the link between the two is the model's alone: one reader, so it is asked, never
- * taken.
+ * Whether the person's words write the value a filter must carry (the review of Oct 7: "invest in my
+ * future" with a model's filter by sector filled a sleeve): "defense stocks" for "Aerospace &
+ * Defense", "insurers" for "Insurance", "restaurants" for "Hotels, Restaurants & Leisure". Where they
+ * do not ("obesity drugs" for "GLP-1", "my future" for "Consumer Discretionary"), the link between
+ * the two is the model's alone: one reader, so it is asked, never taken.
+ *
+ * The person's words for the thing must be the value's words (the third review, Oct 7: one shared
+ * everyday word was enough, so "my financial future" wrote Financials and "my emergency fund" wrote
+ * index fund). Two things must hold. They write one whole item of the value, every word of it: a
+ * value lists its items with "&", "," or "and" ("Defense" in "Aerospace & Defense"), and a word of
+ * an item is not the item ("the markets" is not "Capital Markets"). And they say nothing else: every
+ * other word of theirs is a word of the value or says a kind of holding ("stocks", "sector").
  */
 export function wordsWrite(words: string, value: string): boolean {
   const written = plain(words);
-  return plain(value).some((v) => written.some((w) => sameWord(v, w)));
+  const writes = (word: string) => written.some((w) => sameWord(word, w));
+  const items = value
+    .split(/\s*(?:&|,|\/|(?<![\p{L}])and(?![\p{L}]))\s*/iu)
+    .map(plain)
+    .filter((item) => item.length > 0);
+  if (!items.some((item) => item.every(writes))) return false;
+  const ofValue = plain(value);
+  return written.every(
+    (w) => ofValue.some((v) => sameWord(v, w)) || KIND_WORDS.some((k) => sameWord(k, w)),
+  );
 }
 
 // A word that puts money in a shared portfolio or picks it, right before its name: "starting from
@@ -2201,15 +2371,26 @@ const PICKS =
 // The name alone, as an answer is: "The Seven", "ok, the seven please".
 const ALONE_BEFORE = /(?:^|[.,;:!?\n])\s*(?:(?:ok(?:ay)?|yes|sure|then|sim|ent[aã]o)[\s,]+)*$/iu;
 const ALONE_AFTER = /^(?:\s+(?:please|thanks|portfolio|por\s+favor))*\s*(?:$|[.,;!?\n])/iu;
+// Where a sentence starts, so that a capital there is the sentence's and not the name's.
+const SENTENCE_START = /(?:^|[.!?\n])\s*$/u;
+// The name runs on into a longer one: "The 500 Club".
+const RUNS_ON = /^[^\S\n]+\p{Lu}/u;
 
 /**
  * How the text says a shared portfolio's name written from `at` up to `end` (the review of Oct 7:
  * "the seven of us are saving" started a plan from The Seven). A portfolio's name must be said as a
- * holding, as a narrative's everyday words must. `held`: its clause states it, and it is written as
- * the shelf writes it (`exact`: its capitals, or its slug), after a word that puts money there or
- * picks it, or alone. `negated`, `aside`: its clause rules it out or says it of something else.
- * `wondered`: the person asks or hedges. `unsure`: the words are written, and nothing says they name
- * the portfolio ("the seven of us", "the 500 reasons").
+ * holding, as a narrative's everyday words must. `held`: its clause states it, and it stands alone,
+ * or after a word that puts money there or picks it. `negated`, `aside`: its clause rules it out or
+ * says it of something else. `wondered`: the person asks or hedges. `unsure`: the words are written,
+ * and nothing says they name the portfolio ("the seven of us", "the 500 reasons").
+ *
+ * Words that are the name and words that only could be are told apart (the third review, Oct 7: "The
+ * 500 dollars I saved", "We want the seven of us to retire", "Take the 500 I owe you"). Written as
+ * the shelf writes it (`exact`: its slug, or its capitals where a capital is the name's own and not
+ * the sentence's, and no capitalised word runs on from it), inside a sentence, it is the name. Any
+ * other writing of it needs a word that picks it before it and must end its clause, so that it is
+ * not the start of something else. A name that opens its sentence has something said of it ("Home
+ * Team lost again"), which picks nothing.
  */
 export function portfolioSaidAt(
   text: string,
@@ -2220,9 +2401,21 @@ export function portfolioSaidAt(
   const stance = stanceOf(text, at, end);
   if (stance === 'negated' || stance === 'aside') return stance;
   const before = text.slice(0, at);
-  const named =
-    exact || PICKS.test(before) || (ALONE_BEFORE.test(before) && ALONE_AFTER.test(text.slice(end)));
-  if (!named) return 'unsure';
+  const after = text.slice(end);
+  const written = text.slice(at, end);
+  // Its slug is no everyday word. Its capitals are the name's own where one of them stands where
+  // a sentence would not write one.
+  const ownCapital = SENTENCE_START.test(before)
+    ? /\p{Lu}/u.test(written.replace(/^\P{L}*\p{L}+/u, ''))
+    : /\p{Lu}/u.test(written);
+  const asTheShelf = exact && !RUNS_ON.test(after) && (ownCapital || !/\p{Lu}|\s/u.test(written));
+  const alone = ALONE_BEFORE.test(before) && ALONE_AFTER.test(after);
+  // Words that are not written as the name need a word that picks them, and to end their clause.
+  const picked = PICKS.test(before) && ALONE_AFTER.test(after);
+  // Written as the name inside a sentence: the sentence leads to it. Where it opens the sentence
+  // something is said of it ("Home Team lost again", "The Seven looks good"), which picks nothing.
+  const named = asTheShelf && !SENTENCE_START.test(before);
+  if (!alone && !picked && !named) return 'unsure';
   return stance === 'wondered' ? 'wondered' : 'held';
 }
 

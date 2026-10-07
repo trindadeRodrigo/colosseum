@@ -331,7 +331,11 @@ describe('the review of Oct 5: what the model gives that the text does not suppo
 describe('the re-review of Oct 5', () => {
   it('cues match whole words only: "highly" is not high, "lowest" not low, "keeper" not keep', () => {
     expect(riskCuesIn('I am highly motivated')).toEqual([]);
-    expect(riskCuesIn('the lowest fees, a medium-sized sum')).toEqual(['medium']);
+    // Changed with the third review (Oct 7, B10): this read "a medium-sized sum" as a word for
+    // medium risk. A word of degree said of something else is no word for the risk; said of the
+    // risk it still is one, as a whole word only.
+    expect(riskCuesIn('the lowest fees, a medium-sized sum')).toEqual([]);
+    expect(riskCuesIn('the lowest fees, at medium risk')).toEqual(['medium']);
     expect(riskCuesIn('risco alto')).toEqual(['high']);
     expect(goalCuesIn('a goalkeeper with an incomer')).toEqual([]);
     expect(goalCuesIn('Grow it')).toEqual(['grow']);

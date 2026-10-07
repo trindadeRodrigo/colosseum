@@ -10,6 +10,7 @@ import {
 } from './intake';
 import {
   amountInText,
+  horizonsIn,
   type Market,
   marketMentionsIn,
   marketShareIn,
@@ -24,6 +25,7 @@ import {
   shareSaidIn,
   splitIn,
   timeFramesIn,
+  wordsWrite,
   yesOrNoSaidIn,
 } from './intake-text';
 import {
@@ -5084,7 +5086,7 @@ describe('the third review (Oct 7), B12: a shared portfolio one reader reads alo
     ['Vou de Storm Cellar.', 'Storm Cellar', 'storm-cellar'],
     ['Quero partir do The 500.', 'The 500', 'the-500', true],
     ['Use the-seven as the base.', 'The Seven', 'the-seven'],
-    ['Invest in the 500 for me.', 'The 500', 'the-500'],
+    ['Please invest in the 500.', 'The 500', 'the-500'],
   ];
 
   it('with a reply that names it: asked once with it as the start, never taken and never dropped', () => {
@@ -5215,5 +5217,427 @@ describe('the third review (Oct 7), B12: a shared portfolio one reader reads alo
         text: 'Which shared portfolio, if any, do you want to start from?',
       },
     ]);
+  });
+});
+
+describe('the third review (Oct 7), B10: a reply that reads more than is written is asked, never taken', () => {
+  const FORM: IntakeAnswers = { goal: 'grow', amountUsd: 5000, horizonMonths: 60, risk: 'medium' };
+  const reads = (over: Record<string, unknown> = {}) =>
+    reply({ goal: null, amountUsd: null, horizonMonths: null, risk: null, ...over });
+  const filter = (by: string, value: string, words: string) => ({
+    marketFilter: { by, value, words },
+  });
+  // MOCK: what a filter matches on the chain, two names or more each.
+  const MATCHES: Record<string, FilterMatch> = {
+    'sector:financials': { value: 'Financials', listed: 2 },
+    'keyword:index-fund': { value: 'index fund', listed: 2 },
+    'industry:capital-markets': { value: 'Capital Markets', listed: 2 },
+    'sector:communication-services': { value: 'Communication Services', listed: 2 },
+    'sector:information-technology': { value: 'Information Technology', listed: 5 },
+    'sector:consumer-discretionary': { value: 'Consumer Discretionary', listed: 3 },
+    'industry:interactive-media-services': { value: 'Interactive Media & Services', listed: 2 },
+    'industry:software': { value: 'Software', listed: 3 },
+    'keyword:storage': { value: 'storage', listed: 2 },
+    'keyword:networking': { value: 'networking', listed: 2 },
+    'keyword:gaming': { value: 'gaming', listed: 2 },
+    'keyword:advertising': { value: 'advertising', listed: 3 },
+    'keyword:stablecoins': { value: 'stablecoins', listed: 2 },
+    'industry:insurance': { value: 'Insurance', listed: 2 },
+  };
+  const over = (answers: IntakeAnswers = FORM): Partial<IntakeInput> => ({
+    answers,
+    matchOf: (f) => MATCHES[`${f.by}:${attributeKey(f.value)}`] ?? null,
+  });
+
+  describe('a filter: the person’s words for the thing must be the value’s words', () => {
+    // One everyday word of the text writes a word of the value: the link is the reply's alone.
+    const NOT_WRITTEN: [string, string, string, string, true?][] = [
+      // The review's own (`repro.ts` B10a, B10b, `r7.ts`).
+      ['I want to invest in my financial future.', 'sector', 'Financials', 'my financial future'],
+      ['Put it in my emergency fund.', 'keyword', 'index fund', 'my emergency fund'],
+      ['I want to put my money in the markets.', 'industry', 'Capital Markets', 'the markets'],
+      [
+        'Invest in better communication with my family.',
+        'sector',
+        'Communication Services',
+        'better communication',
+      ],
+      [
+        'I want to invest in new technology for my bakery.',
+        'sector',
+        'Information Technology',
+        'new technology',
+      ],
+      [
+        'Put half into consumer goods for the house.',
+        'sector',
+        'Consumer Discretionary',
+        'consumer goods',
+      ],
+      [
+        'I want to invest in interactive lessons for my kids.',
+        'industry',
+        'Interactive Media & Services',
+        'interactive lessons',
+      ],
+      ['Invest in storage for my boat.', 'keyword', 'storage', 'storage for my boat'],
+      ['Invest in gaming with my son.', 'keyword', 'gaming', 'gaming with my son'],
+      [
+        'Quero investir no meu futuro financeiro.',
+        'sector',
+        'Financials',
+        'meu futuro financeiro',
+        true,
+      ],
+      ['Invest in my own capital.', 'industry', 'Capital Markets', 'my own capital'],
+      // In other words.
+      ['Invest in my insurance payout.', 'industry', 'Insurance', 'my insurance payout'],
+      ['Put it into advertising for my shop.', 'keyword', 'advertising', 'advertising for my shop'],
+      [
+        'Quero investir na minha reserva financeira.',
+        'sector',
+        'Financials',
+        'minha reserva financeira',
+        true,
+      ],
+      ['I want to invest in a stable future.', 'keyword', 'stablecoins', 'a stable future'],
+      [
+        'Invest in the fund my company offers.',
+        'keyword',
+        'index fund',
+        'the fund my company offers',
+      ],
+    ];
+    // The words are the value's, with at most a word for the kind of holding beside them.
+    const WRITTEN: [string, string, string, string, string, true?][] = [
+      [
+        'Invest in advertising businesses.',
+        'keyword',
+        'advertising',
+        'advertising businesses',
+        'matched-keyword-advertising',
+      ],
+      [
+        'Invest in capital markets firms.',
+        'industry',
+        'Capital Markets',
+        'capital markets firms',
+        'matched-industry-capital-markets',
+      ],
+      [
+        'Invest in the communication services sector.',
+        'sector',
+        'Communication Services',
+        'the communication services sector',
+        'matched-sector-communication-services',
+      ],
+      [
+        'Quero investir em stablecoins.',
+        'keyword',
+        'stablecoins',
+        'stablecoins',
+        'matched-keyword-stablecoins',
+        true,
+      ],
+      ['Invest in insurers.', 'industry', 'Insurance', 'insurers', 'matched-industry-insurance'],
+      [
+        'Quero investir no setor financeiro.',
+        'sector',
+        'Financials',
+        'setor financeiro',
+        'matched-sector-financials',
+        true,
+      ],
+    ];
+
+    it('`wordsWrite`: a whole item of the value, and nothing else but a word for the kind of holding', () => {
+      for (const [, , value, words] of NOT_WRITTEN)
+        expect(wordsWrite(words, value), words).toBe(false);
+      for (const [, , value, words] of WRITTEN) expect(wordsWrite(words, value), words).toBe(true);
+      expect(wordsWrite('defense stocks', 'Aerospace & Defense')).toBe(true);
+      expect(wordsWrite('restaurants', 'Hotels, Restaurants & Leisure')).toBe(true);
+      expect(wordsWrite('obesity drugs', 'GLP-1')).toBe(false);
+      expect(wordsWrite('my future', 'Consumer Discretionary')).toBe(false);
+    });
+
+    it('with a reply that links everyday words to a value: asked once by the question that says the match, never held', () => {
+      for (const [text, by, value, words, pt] of NOT_WRITTEN) {
+        const r = intake(
+          text,
+          reads({ ...filter(by, value, words), ...(pt ? { language: 'pt' } : {}) }),
+          over(),
+        );
+        expect(r.sheet, text).toBeNull();
+        expect(r.flags, text).toContain('filter_not_written');
+        expect(
+          r.questions.map((q) => q.template),
+          text,
+        ).toEqual(['matchedShare']);
+        expect(r.questions[0]?.text, text).toContain(`“${words}”`);
+        // With no model, and with a reply that names nothing, nothing is read of these words.
+        for (const other of [null, reads(pt ? { language: 'pt' } : {})]) {
+          const none = intake(text, other, over());
+          expect(none.sheet?.sleeves, text).toBeUndefined();
+          expect(
+            none.narratives.filter((n) => n.kind === 'matched'),
+            text,
+          ).toEqual([]);
+        }
+      }
+    });
+
+    it('with a reply whose words are the value’s: held with no question, as before', () => {
+      for (const [text, by, value, words, slug, pt] of WRITTEN) {
+        const r = intake(
+          text,
+          reads({ ...filter(by, value, words), ...(pt ? { language: 'pt' } : {}) }),
+          over(),
+        );
+        expect(r.questions, text).toEqual([]);
+        expect(r.sheet?.sleeves, text).toEqual([theme(slug)]);
+      }
+    });
+
+    it('the words of a filter name a fixed market only where the market’s words are all they say', () => {
+      // "software" is a fixed word; "a software course" says more than it.
+      const text = 'Invest in a software course for my daughter.';
+      const r = intake(text, reads(filter('industry', 'Software', 'a software course')), over());
+      expect(r.flags).toContain('text_only:market:cloud_software');
+      expect(r.narratives).toEqual([]);
+      expect(r.sheet?.sleeves).toBeUndefined();
+      expect(r.sheet?.mix).toBeUndefined();
+    });
+  });
+
+  describe('a shared portfolio: its words in another sense are asked, never taken', () => {
+    const ANOTHER_SENSE: [string, string, string][] = [
+      // The review's own (`repro.ts` B10c, `r8.ts`).
+      ['The 500 dollars I saved should grow.', 'The 500', 'the-500'],
+      ['I believe in the seven habits of effective people.', 'The Seven', 'the-seven'],
+      ['We want the seven of us to retire early.', 'The Seven', 'the-seven'],
+      ['I keep canned food in the storm cellar.', 'Storm Cellar', 'storm-cellar'],
+      ['Like the 500 other people in my company, I got a bonus.', 'The 500', 'the-500'],
+      ["Home Team lost again, so no vacation; I'd rather invest.", 'Home Team', 'home-team'],
+      ['Take the 500 I owe you out of my bonus first.', 'The 500', 'the-500'],
+      ['I picked the seven of spades and won a bet.', 'The Seven', 'the-seven'],
+      ['Sou um dos 500 funcionários, The 500 Club como dizemos.', 'The 500', 'the-500'],
+      // In other words.
+      ['The 500 I got from my aunt is where this starts.', 'The 500', 'the-500'],
+      ['I want the seven years ahead of me to count.', 'The Seven', 'the-seven'],
+      ['Storm Cellar flooded last spring, so I am careful now.', 'Storm Cellar', 'storm-cellar'],
+      ['Quero os 500 reais do the 500 clube de volta.', 'The 500', 'the-500'],
+      ['Com the seven amigos do trabalho montamos um grupo.', 'The Seven', 'the-seven'],
+    ];
+    const HELD: [string, string, string][] = [
+      ["I'll go with Storm Cellar.", 'Storm Cellar', 'storm-cellar'],
+      ['Home Team, please.', 'Home Team', 'home-team'],
+      ['Quero a carteira The 500.', 'The 500', 'the-500'],
+      ['Use the-seven as the base.', 'the-seven', 'the-seven'],
+      ['Vou de Storm Cellar.', 'Storm Cellar', 'storm-cellar'],
+      ['I want to start from the seven.', 'The Seven', 'the-seven'],
+    ];
+
+    it('with a reply that names the portfolio: asked once by its name, and nothing is held; with none, nothing is read', () => {
+      for (const [text, name, slug] of ANOTHER_SENSE) {
+        const r = intake(text, reads({ portfolios: [name] }), over());
+        expect(r.sheet, text).toBeNull();
+        expect(r.draft.themes, text).toBeNull();
+        expect(
+          r.questions.map((q) => [q.template, q.read]),
+          text,
+        ).toEqual([['startFrom', [slug]]]);
+        const rules = intake(text, null, over());
+        expect(fields(rules), text).not.toContain('themes');
+        expect(rules.sheet?.themes ?? [], text).toEqual([]);
+        const none = intake(text, reads(), over());
+        expect(none.sheet?.themes, text).toEqual([]);
+      }
+    });
+
+    it('said as a holding it is still taken where both readers read it', () => {
+      for (const [text, name, slug] of HELD) {
+        const r = intake(text, reads({ portfolios: [name] }), over());
+        expect(r.questions, text).toEqual([]);
+        expect(r.sheet?.themes, text).toEqual([slug]);
+      }
+    });
+  });
+
+  describe('a risk: a word a later negation is of, or a word of degree said of something else', () => {
+    const NO_RISK: IntakeAnswers = { goal: 'grow', amountUsd: 5000, horizonMonths: 60 };
+    // The text, the risk a hostile reply gives, and whether the text rules that risk out.
+    const NEGATED_AFTER: [string, 'low' | 'medium' | 'high'][] = [
+      // The review's own (`repro.ts` B10d, `r8.ts`).
+      ['High risk is not for me.', 'high'],
+      ['Risco alto não é pra mim.', 'high'],
+      // In other words.
+      ['Aggressive is not me.', 'high'],
+      ['Conservative is not my style.', 'low'],
+      ['A low profile is not what I want here.', 'low'],
+      ['Perfil conservador não combina comigo.', 'low'],
+      ['Bold investing isn’t for someone like me.', 'high'],
+    ];
+    const OF_ANOTHER: [string, 'low' | 'medium' | 'high'][] = [
+      // The review's own.
+      ['I want low fees.', 'low'],
+      ["I'm in a high tax bracket.", 'high'],
+      ['Interest rates are high right now.', 'high'],
+      // In other words.
+      ['My income is high.', 'high'],
+      ['I am looking for a high yield.', 'high'],
+      ['Os juros altos me preocupam.', 'high'],
+      ['A medium-sized sum is all I have.', 'medium'],
+      ['The fees are low.', 'low'],
+    ];
+    const SAID: [string, 'low' | 'medium' | 'high'][] = [
+      ['I want low risk.', 'low'],
+      ['low-risk please', 'low'],
+      ['My risk tolerance is high.', 'high'],
+      ['Keep it low.', 'low'],
+      ['Risco alto.', 'high'],
+      ['Baixo risco, por favor.', 'low'],
+      ['Low risk so I do not lose sleep.', 'low'],
+      ['I earn a high salary and want low risk.', 'low'],
+      ['Medium risk, definitely not high.', 'medium'],
+    ];
+
+    it('negated after the word: no word for that risk, and the risk is asked with no start', () => {
+      for (const [text, risk] of NEGATED_AFTER) {
+        expect(riskCuesIn(text), text).not.toContain(risk);
+        expect(risksRuledOutIn(text), text).toContain(risk);
+        const hostile = intake(text, reads({ risk }), over(NO_RISK));
+        expect(hostile.flags, text).toContain(`risk_negated:${risk}`);
+        expect(hostile.sheet, text).toBeNull();
+        expect(hostile.questions, text).toEqual([
+          expect.not.objectContaining({ read: expect.anything() }),
+        ]);
+        expect(fields(hostile), text).toEqual(['risk']);
+        // A faithful reply gives no risk, and with no model none is the start either.
+        for (const r of [reads(), null]) {
+          const asked = intake(text, r, over(NO_RISK));
+          expect(asked.sheet, text).toBeNull();
+          expect(asked.questions.find((q) => q.field === 'risk')?.read, text).not.toBe(risk);
+        }
+      }
+    });
+
+    it('a word of degree said of something else is no word for the risk: a reply that gives it is asked', () => {
+      for (const [text, risk] of OF_ANOTHER) {
+        expect(riskCuesIn(text), text).toEqual([]);
+        const hostile = intake(text, reads({ risk }), over(NO_RISK));
+        expect(hostile.flags, text).toContain('no_cue:risk');
+        expect(hostile.sheet, text).toBeNull();
+        expect(fields(hostile), text).toEqual(['risk']);
+        const faithful = intake(text, reads(), over(NO_RISK));
+        expect(fields(faithful), text).toEqual(['risk']);
+        expect(faithful.questions[0], text).not.toHaveProperty('read');
+      }
+    });
+
+    it('said of the risk it is still a word for it, and a reply that reads it is taken', () => {
+      for (const [text, risk] of SAID) {
+        expect(riskCuesIn(text), text).toContain(risk);
+        const r = intake(text, reads({ risk }), over(NO_RISK));
+        expect(r.questions, text).toEqual([]);
+        expect(r.sheet?.risk, text).toBe(risk);
+      }
+    });
+  });
+
+  describe('a number in another role is not the amount or the time frame', () => {
+    const NO_AMOUNT: IntakeAnswers = { goal: 'grow', horizonMonths: 60, risk: 'medium' };
+    const NO_TIME: IntakeAnswers = { goal: 'grow', amountUsd: 5000, risk: 'medium' };
+    // The text, the sum a faithful reply gives, and the one a hostile reply gives.
+    const SEVERAL: [string, number, number][] = [
+      // The review's own (`repro.ts` B10f, `r8.ts`).
+      ['I have $5,000 and owe $2,000 on my card.', 5000, 2000],
+      ['My daughter is 12 and I want to invest 5000 for her.', 5000, 12],
+      ['I need the money by June 2030, and I have 8000.', 8000, 2030],
+      ['I own 25 cows and have 20000 to invest.', 20_000, 25],
+      ['Team of 11, bonus of 2500 each, I want to invest mine.', 2500, 11],
+      // In other words.
+      ['I spent $3,000 on a trip and have $7,000 left to invest.', 7000, 3000],
+      ['My rent is $1,200 and I have $9,000 to invest.', 9000, 1200],
+      ['Tenho US$ 8.000 e devo US$ 1.500 no cartão.', 8000, 1500],
+      ['Somos 40 na empresa e posso aplicar 6000.', 6000, 40],
+      ['Room 204 called: I have 6,500 to invest.', 6500, 204],
+    ];
+
+    it('where a message writes several figures that could be the sum, the reply’s is asked with it as the start, whichever it gives', () => {
+      for (const [text, sum, other] of SEVERAL) {
+        for (const amountUsd of [sum, other]) {
+          const r = intake(text, reads({ amountUsd }), over(NO_AMOUNT));
+          expect(r.flags, `${text} ${amountUsd}`).toContain('amount_several');
+          expect(r.sheet, `${text} ${amountUsd}`).toBeNull();
+          expect(r.questions, `${text} ${amountUsd}`).toEqual([
+            expect.objectContaining({ field: 'amountUsd', read: amountUsd }),
+          ]);
+        }
+        // The form's answer settles it, and with no model the amount is asked as ever.
+        const answered = intake(
+          text,
+          reads({ amountUsd: other }),
+          over({ ...NO_AMOUNT, amountUsd: sum }),
+        );
+        expect(answered.sheet?.amountUsd, text).toBe(sum);
+        expect(fields(intake(text, null, over(NO_AMOUNT))), text).toContain('amountUsd');
+      }
+    });
+
+    it('the last word wins: a later message that writes one sum settles it, and one sum alone is taken as before', () => {
+      const first = 'I have $5,000 and owe $2,000 on my card.';
+      const later = intake(
+        conversationText(first, ['$5,000']),
+        reads({ amountUsd: 5000 }),
+        over(NO_AMOUNT),
+      );
+      expect(later.questions).toEqual([]);
+      expect(later.sheet?.amountUsd).toBe(5000);
+      for (const [text, amountUsd] of [
+        ['I want to invest $5,000 for my daughter.', 5000],
+        // A sum that is a share of the money is not the sum put in.
+        ['I have $5,000. Put $500 in big tech.', 5000],
+        ['I have $5,000, with $1,000 in cash.', 5000],
+        // One said of the person, one of a pair, and one inside a market's words.
+        ['I am 35 and have 5000 to invest.', 5000],
+        ['I have 5000 and want it 70/30.', 5000],
+        ['I have 5000 for the S&P 500.', 5000],
+      ] as const) {
+        const r = intake(text, reads({ amountUsd }), over(NO_AMOUNT));
+        expect(r.flags, text).not.toContain('amount_several');
+        expect(fields(r), text).not.toContain('amountUsd');
+      }
+    });
+
+    it('a duration that says what it is the length of is no time frame', () => {
+      for (const [text, months] of [
+        // The review's own (`repro.ts` B10g, `r8.ts`).
+        ['After 5 years of marriage we finally have savings.', 60],
+        ['I lost money in 2 years of day trading; now I want something steady.', 24],
+        // In other words.
+        ['After 10 years of renting I finally have a deposit.', 120],
+        ['In 3 years of saving I never touched it.', 36],
+        ['Depois de 10 anos de empresa recebi um bônus.', 120],
+        ['Em 6 meses de trabalho juntei este dinheiro.', 6],
+        ['For 4 years of college I saved nothing.', 48],
+      ] as const) {
+        expect(horizonsIn(text, NOW), text).toEqual([]);
+        const hostile = intake(text, reads({ horizonMonths: months }), over(NO_TIME));
+        expect(hostile.flags, text).toContain('not_in_text:horizonMonths');
+        expect(hostile.sheet, text).toBeNull();
+        expect(fields(hostile), text).toEqual(['horizonMonths']);
+        expect(hostile.questions[0], text).not.toHaveProperty('read');
+        // A faithful reply gives none, and the date is asked with no start.
+        const faithful = intake(text, reads(), over(NO_TIME));
+        expect(fields(faithful), text).toEqual(['horizonMonths']);
+        expect(faithful.questions[0], text).not.toHaveProperty('read');
+        // With no model the rules parser's own reading of a date is put to the person, as ever.
+        expect(fields(intake(text, null, over(NO_TIME))), text).toContain('horizonMonths');
+      }
+      // A time frame said as one is read as before, an age too.
+      expect(horizonsIn('I want to invest for 5 years.', NOW)).toEqual([60]);
+      expect(horizonsIn('Por 10 anos, sem pressa.', NOW)).toEqual([120]);
+      expect(horizonsIn('I am 5 years of age.', NOW)).toEqual([]);
+    });
   });
 });
