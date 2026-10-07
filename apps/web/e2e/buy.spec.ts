@@ -278,8 +278,8 @@ async function toReview(page: Page, o: { fund?: 'mock' | 'test' } = {}) {
 
   await expect(page).toHaveURL(/\/orders\/[^/]+$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.order.review.title);
-  // the review names the chain over the page and over its steps
-  await expect(page.locator('main [data-ui="chain-badge"]')).toHaveText(['Solana', 'Solana']);
+  // the review names the chain once, over the page
+  await expect(page.locator('main [data-ui="chain-badge"]')).toHaveText(['Solana']);
 }
 
 test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', async ({ page }) => {

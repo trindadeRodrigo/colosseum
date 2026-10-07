@@ -33,7 +33,6 @@ import {
   Loading,
   MultiSelect,
   NotOnChain,
-  OnChain,
   PageWait,
   Pie,
   Reason,
@@ -396,7 +395,6 @@ function LendBody(p: {
         <>
           <span className="flex flex-wrap items-baseline gap-x-2 font-normal whitespace-nowrap">
             {poolName(row.meta, t.market)}
-            <OnChain />
           </span>
           <a
             href={`https://solscan.io/account/${row.meta.account}`}

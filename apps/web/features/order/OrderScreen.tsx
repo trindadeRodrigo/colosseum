@@ -386,7 +386,7 @@ export function OrderScreen({ id }: { id: string }) {
           announce: testNetwork ? t.shell.testNetworkLine : t.shell.mockAnnounce,
         }}
       >
-        <CardHeader title={t.order.stepsTitle} level={2} meta={<ChainBadge chain={chain} />} />
+        <CardHeader title={t.order.stepsTitle} level={2} />
         <CardBody className="flex flex-col gap-4">
           <StatRow>
             {/* an order that finishes another deposits nothing */}
