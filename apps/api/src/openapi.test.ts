@@ -122,7 +122,9 @@ describe('the committed OpenAPI document (packages/sdk/openapi.json)', () => {
       'POST /v1/orders/{id}/legs/{legId}/build',
       'POST /v1/testnet/fund',
     ]);
-    expect(classes.parse).toBeUndefined();
+    // A turn of a plan's thread is a person's words: the class of the routes that read them, though
+    // this one calls no model (gate PLAN-THREAD).
+    expect(classes.parse).toEqual(['POST /v1/baskets/{id}/thread']);
   });
 
   it('self-check: a route whose rule changed is another document', () => {

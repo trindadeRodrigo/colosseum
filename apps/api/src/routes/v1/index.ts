@@ -49,6 +49,7 @@ import { registerOrderRoutes } from './orders';
 import { registerPortfolioRoute } from './portfolio';
 import { registerSharedRoutes } from './shared';
 import { registerTestnetRoute } from './testnet';
+import { registerThreadRoutes } from './thread';
 import { registerVaultRoute } from './vault';
 
 /**
@@ -129,7 +130,13 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
       solana,
       robinhood,
     });
-  const orderDeps: OrderDeps = { db, chains, now: deps.now ?? (() => new Date()) };
+  const orderDeps: OrderDeps = {
+    db,
+    chains,
+    now: deps.now ?? (() => new Date()),
+    // The kind of failure only: what was being written is a person's own words, and is not logged.
+    onRecordError: (what) => app.log.error(what, 'a plan’s thread could not be written'),
+  };
 
   // The test faucet. Its key-holding file is loaded only here, only when a faucet key is set for a
   // chain on a test network (DESIGN-VAULT section 2, rule 5): otherwise it is never in the process.
@@ -200,6 +207,7 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
       { agentSurface: flags.agentSurface },
       deps.linkedPlans,
     );
+    registerThreadRoutes(scope, orderDeps);
     registerPortfolioRoute(scope, orderDeps);
     registerSharedRoutes(scope, orderDeps);
     registerVaultRoute(scope, orderDeps);

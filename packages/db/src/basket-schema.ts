@@ -15,6 +15,8 @@ import type {
   Order,
   OrderType,
   Target,
+  ThreadEvent,
+  ThreadReply,
   Trade,
   VaultPosition,
   WalletAccount,
@@ -212,6 +214,36 @@ export const proposals = pgTable(
   (t) => [
     // The daily cap and the cleanup read the plans made from a link by their time, and only those.
     index('proposals_from_link_created_idx').on(t.createdAt).where(sql`${t.fromLink}`),
+  ],
+);
+
+/**
+ * A plan's thread (gate PLAN-THREAD): one row a turn, in the order they were written (`seq`). A
+ * person's turn holds their words as typed; the app's holds what it said back as keys and the facts it
+ * used, never a sentence; an event's holds what happened to the plan, written by the server where an
+ * order changes state (`event_key` makes each one a row once). The words are personal: read by the
+ * plan's own person and nobody else, and gone with the plan.
+ */
+export const planTurns = pgTable(
+  'plan_turns',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** The order of the thread: an identity, so two turns written at one instant still have one. */
+    seq: bigint('seq', { mode: 'number' }).notNull().generatedAlwaysAsIdentity(),
+    proposalId: uuid('proposal_id')
+      .notNull()
+      .references(() => proposals.id, { onDelete: 'cascade' }),
+    who: text('who').$type<'person' | 'app' | 'event'>().notNull(),
+    text: text('text'),
+    reply: jsonb('reply').$type<ThreadReply>(),
+    event: jsonb('event').$type<ThreadEvent>(),
+    /** For an event: its kind and what it is about (`deposit_landed:<order id>`), once per plan. */
+    eventKey: text('event_key'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('plan_turns_plan_seq_idx').on(t.proposalId, t.seq),
+    uniqueIndex('plan_turns_event_once_idx').on(t.proposalId, t.eventKey),
   ],
 );
 

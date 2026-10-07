@@ -28,7 +28,10 @@ export const LIMITS = {
     standard: null,
     /** Planning an order and building a transaction: each one asks the chain for quotes. */
     build: 30,
-    /** The sentence parser, which calls a model. No route is in this class yet. */
+    /**
+     * The routes that take a person's own words: a turn of a plan's thread, which calls no model, and
+     * the sentence parser when it is here, which does.
+     */
     parse: 10,
   },
 } as const;

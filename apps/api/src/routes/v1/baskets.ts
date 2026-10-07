@@ -6,12 +6,13 @@ import {
   PersonPlansQuery,
   PersonPlansResponse,
   RiskRollUp,
+  ThreadStart,
 } from '@colosseum/schemas';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { Refusal } from '../../orders/errors';
-import type { OrderDeps } from '../../orders/legs';
+import { failureOf, type OrderDeps } from '../../orders/legs';
 import { homeChain } from '../../orders/person';
 import { type PlanInputs, personalize } from '../../orders/personalize';
 import {
@@ -22,6 +23,7 @@ import {
   loadFamilies,
   loadReadablePlan,
 } from '../../orders/store';
+import { appendEvents, attachThread, ownPlanId } from '../../orders/thread';
 import { signedIn } from './orders';
 
 // The plan routes (DESIGN-VAULT 3.6 and section 7). The web's side is apps/web/features/goal/build-plan.ts.
@@ -32,6 +34,14 @@ import { signedIn } from './orders';
  */
 export const PersonalizeRequest = z.object({ sheet: PersonalSheet });
 export type PersonalizeRequest = z.infer<typeof PersonalizeRequest>;
+
+/**
+ * The same, for the signed-in person's own plan, with the thread so far where the conversation began
+ * before the plan was theirs (signed out, in the tab): stored once, with the plan (gate PLAN-THREAD).
+ * A plan made from a link takes none: `POST /v1/baskets/propose` has no such field.
+ */
+export const OwnPlanRequest = PersonalizeRequest.extend({ thread: ThreadStart.optional() });
+export type OwnPlanRequest = z.infer<typeof OwnPlanRequest>;
 
 /** The stored plan's id, which a buy names (`proposalId`), the plan, and its risk roll-up. */
 export const PersonalizeResponse = z.object({
@@ -96,8 +106,8 @@ export function registerBasketRoutes(
         tags: ['plans'],
         summary: 'Make a plan from a goal and its limits, and store it. Nothing is bought',
         description:
-          "The sheet is validated before anything is computed, and a sheet that does not validate answers 400: the engine never runs on it. The plan is made by a deterministic engine on the chain the signed-in person's plans live on (`GET /v1/me`), from the assets listed there and the shared portfolios that have a recipe there. The sheet names that one chain: another answers 422, and a person with no chain yet gets 409. Stock tokens are never in a plan whose goal is to protect or to earn an income. A line's ceiling comes from the measured exit of its token where there is one; where there is none it is its tier's, and the line and `flags` say so (`ceiling_from_tier:<asset>`). Every line has its reasons; every figure the plan stands on is in `observations` with its source, time, method and provenance. `rollUp` is the plan's concentration by issuer, chain and class and its exit figures, from the same figures; with no stored quote before a buy, its quoted exit is null. The answer's `id` is what `POST /v1/orders` buys (`proposalId`). The plan is not advice: see `disclaimer`.",
-        body: PersonalizeRequest,
+          "The sheet is validated before anything is computed, and a sheet that does not validate answers 400: the engine never runs on it. The plan is made by a deterministic engine on the chain the signed-in person's plans live on (`GET /v1/me`), from the assets listed there and the shared portfolios that have a recipe there. The sheet names that one chain: another answers 422, and a person with no chain yet gets 409. Stock tokens are never in a plan whose goal is to protect or to earn an income. A line's ceiling comes from the measured exit of its token where there is one; where there is none it is its tier's, and the line and `flags` say so (`ceiling_from_tier:<asset>`). Every line has its reasons; every figure the plan stands on is in `observations` with its source, time, method and provenance. `rollUp` is the plan's concentration by issuer, chain and class and its exit figures, from the same figures; with no stored quote before a buy, its quoted exit is null. The answer's `id` is what `POST /v1/orders` buys (`proposalId`). `thread`, where it is sent, is the conversation that led to the plan when it began before the person signed in: at most 50 turns, each the person's words and the app's reply as keys and facts, stored once as the start of the plan's thread (`GET /v1/baskets/{id}/thread`); a plan made again from the same sheet is the same plan and keeps the thread it has. The plan is not advice: see `disclaimer`.",
+        body: OwnPlanRequest,
         response: { 200: PersonalizeResponse, default: OrderError },
       },
     },
@@ -105,6 +115,17 @@ export function registerBasketRoutes(
       const principal = signedIn(req);
       const { proposal, rollUp } = await make(req.body.sheet, () => homeChain(deps.db, principal));
       const id = await insertProposal(deps.db, proposal, principal.userId ?? null);
+      // The plan's thread (thread.ts): the conversation that led to it, where one was sent, then that
+      // the plan was built. Only on a plan that is this person's own, which is what was just stored.
+      // A failure to write it never fails the plan, and nothing of the words reaches a log.
+      try {
+        if (await ownPlanId(deps.db, id, principal.userId ?? null)) {
+          await attachThread(deps.db, id, req.body.thread ?? []);
+          await appendEvents(deps.db, id, [{ type: 'plan_built', planId: id }]);
+        }
+      } catch (e) {
+        deps.onRecordError?.(failureOf(e));
+      }
       return { id, proposal, rollUp };
     },
   );

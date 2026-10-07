@@ -825,6 +825,7 @@ describe('the /v1 route table', () => {
       '/v1/baskets/personalize',
       '/v1/baskets/propose',
       '/v1/baskets/{id}',
+      '/v1/baskets/{id}/thread',
       '/v1/config',
       '/v1/funding',
       '/v1/indexes/{slug}',
@@ -922,6 +923,7 @@ describe('no /v1 route can make the server sign', () => {
       'orders/prepare.ts',
       'orders/shared.ts',
       'orders/store.ts',
+      'orders/thread.ts',
       'orders/withdraw.ts',
       'plugins/auth.ts',
       'plugins/limits.ts',
@@ -936,6 +938,7 @@ describe('no /v1 route can make the server sign', () => {
       'routes/v1/portfolio.ts',
       'routes/v1/shared.ts',
       'routes/v1/testnet.ts',
+      'routes/v1/thread.ts',
       'routes/v1/vault.ts',
     ]);
     // The chain packages that can sign keep that behind their `./server` entry, and neither the

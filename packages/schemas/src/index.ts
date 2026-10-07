@@ -21,6 +21,7 @@ export * from './liquidity';
 export * from './order';
 export * from './order-api';
 export * from './plan';
+export * from './plan-thread';
 export * from './policy';
 export * from './recipe';
 export * from './shared-api';

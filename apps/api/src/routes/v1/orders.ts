@@ -18,6 +18,7 @@ import {
   assertNoneInFlight,
   buildLeg,
   cancelLeg,
+  failureOf,
   type OrderDeps,
   refreshOrder,
   reportLeg,
@@ -35,6 +36,7 @@ import {
   loadOrder,
   type StoredOrder,
 } from '../../orders/store';
+import { noteOrder } from '../../orders/thread';
 import { holds } from '../../plugins/auth';
 
 // The bodies and answers of these routes are named in packages/schemas (order-api.ts), so the SDK and
@@ -109,6 +111,7 @@ const detail = (stored: StoredOrder): OrderDetail => ({
 
 export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
   const f = scope.withTypeProvider<ZodTypeProvider>();
+  const recordError = (e: unknown) => deps.onRecordError?.(failureOf(e));
   const tags = ['orders'];
 
   f.post(
@@ -142,6 +145,8 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
       });
       // Stored as the order holds to it: a follow's version, a publish's family id.
       await insertOrder(deps.db, Order.parse(order), request);
+      // The plan's thread is told an order was made (thread.ts); it never fails the order.
+      await noteOrder(deps.db, { order, request }, { made: true, onError: recordError });
       return detail({ order, request, attempts: [] });
     },
   );
@@ -275,6 +280,9 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
         seen,
       });
       if (existing) return answerMade(existing);
+      // The first order stopped, and this one finishes it: both are said in the plan's thread.
+      await noteOrder(deps.db, fresh, { stopped: true, onError: recordError });
+      await noteOrder(deps.db, { order, request }, { made: true, onError: recordError });
       return detail({ order, request, attempts: [] });
     },
   );
