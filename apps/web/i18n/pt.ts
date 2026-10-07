@@ -1458,6 +1458,15 @@ export const pt: Dictionary = {
     checkingFunds: 'Conferindo sua carteira…',
     preparing: 'Lendo os preços da sua ordem…',
     again: 'Ler os preços de novo',
+    short: {
+      cap: (most: string, times: number) =>
+        `Os fundos de teste enviam até ${most} por vez, ${times} vezes por dia, então um envio não cobre este valor.`,
+      sendAnyway: (most: string) => `Enviar ${most} mesmo assim`,
+      instead: (amount: string) => `Investir ${amount} em vez disso`,
+      covers: (amount: string) => `Sua carteira cobre ${amount} agora.`,
+      typeLess: 'Ou digite um valor menor.',
+      inGoal: 'Para investir outro valor, toque no valor do seu objetivo e mude.',
+    },
     old: 'Estes preços estão velhos: a ordem venceu antes de ser confirmada. Leia de novo para investir.',
     updated: 'Preços atualizados. Leia os passos de novo antes de confirmar.',
     updatedHold: 'Os preços acabaram de mudar: leia primeiro.',

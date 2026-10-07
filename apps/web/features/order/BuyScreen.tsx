@@ -145,6 +145,10 @@ export function BuyScreen({ id, embedded }: { id: string; embedded?: InvestEmbed
       }}
       onDone={embedded?.onDone}
       onStopped={embedded?.onStopped}
+      // On its own page the amount is the field's; inside another screen it is the goal's, and that
+      // screen changes it (and the plan built for it).
+      onAmount={embedded ? embedded.onAmount : (next) => setText(String(next))}
+      amountFrom={embedded ? 'goal' : 'field'}
     />
   );
   if (embedded) return card;
