@@ -10891,6 +10891,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -10932,7 +10933,8 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
