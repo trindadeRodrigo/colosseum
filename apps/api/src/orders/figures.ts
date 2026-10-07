@@ -1,30 +1,17 @@
 import { EXIT_WINDOW_DAYS } from '@colosseum/basket';
 import { PERSONAL_PARAMS } from '@colosseum/engine/personal';
-import type {
-  BasketAsset,
-  HoldingFigures,
-  Provenance,
-  RecipeFigures,
-  Target,
-} from '@colosseum/schemas';
+import type { BasketAsset, HoldingFigures, RecipeFigures, Target } from '@colosseum/schemas';
 import type { PlanInputs } from './personalize';
 
 // What the server has measured about the holdings of a shared portfolio, for its card and its page:
 // the readings a plan is made from (`PlanInputs`: the stored yields and Bearing's sell depth), said a
-// holding at a time. Nothing is estimated here: a token with no reading has none, and the one figure
-// worked out is the whole's yield, the readings times their shares, added.
+// holding at a time. Nothing is estimated and nothing is added up here: a token with no reading has
+// none, and each figure is the reading itself. A yield for the whole portfolio is the engine's to work
+// out, as it does for a plan's card (packages/engine/src/personal/card.ts, `cardOf`), and that function
+// takes the engine's own world of a goal, not a recipe: until the engine exposes one that takes lines
+// and readings, no range of the whole is served.
 
 type Inputs = Awaited<ReturnType<PlanInputs>>;
-
-/** Not live wins: two labels that are both live are live; two that differ and are not live are mock. */
-function worst(a: Provenance, b: Provenance): Provenance {
-  if (a === 'live') return b;
-  if (b === 'live' || a === b) return a;
-  return 'mock';
-}
-
-export const YIELD_METHOD =
-  'each holding’s yield reading times its share, added; a holding with no reading counts as nothing; low after the haircut, high as quoted';
 
 /** The figures of these components from the plan inputs of their chain, read at `now`. */
 export function figuresOf(
@@ -72,23 +59,5 @@ export function figuresOf(
     };
   });
 
-  const read = holdings.flatMap((h, i) =>
-    h.yield ? [{ y: h.yield, share: (components[i]?.weightBps ?? 0) / 10_000 }] : [],
-  );
-  const [first] = read;
-  return {
-    holdings,
-    yield: first
-      ? {
-          low: read.reduce((sum, r) => sum + r.y.afterHaircut * r.share, 0),
-          high: read.reduce((sum, r) => sum + r.y.quoted * r.share, 0),
-          source: [...new Set(read.map((r) => r.y.source))].join(' + '),
-          method: YIELD_METHOD,
-          fetchedAt: read
-            .map((r) => r.y.fetchedAt)
-            .reduce((a, b) => (Date.parse(b) < Date.parse(a) ? b : a)),
-          provenance: read.reduce<Provenance>((label, r) => worst(label, r.y.provenance), 'live'),
-        }
-      : null,
-  };
+  return { holdings };
 }

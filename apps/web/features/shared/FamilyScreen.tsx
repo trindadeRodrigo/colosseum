@@ -18,7 +18,6 @@ import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { DataTable } from '../../components/ui/DataTable';
 import { utcMinute } from '../../components/ui/ExecutionList';
 import { PAGE_TITLE } from '../../components/ui/heading';
-import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { SkeletonPlan, SkeletonRows } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
@@ -29,14 +28,14 @@ import { dollars } from '../goal/sheet';
 import { formatBps, tokenName } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { keepOrder, type OrderRecord, recallOrders } from '../order/order-record';
+import { PlanView } from '../order/PlanView';
 import { goalLine } from '../order/plain';
 import { networkFor } from '../order/readiness';
 import { goalOfVault } from '../portfolio/vault-goal';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { type ChainCheck, familyIdFor, isVaultOf, useChainRecipe } from './chain-recipe';
-import { PlanPane } from './ProductPane';
 import { isPlatformCreator } from './platform';
-import { holdingsOf, kindShares, pinOf, yieldText } from './product-figures';
+import { holdingsOf, kindShares } from './product-figures';
 import { Offer } from './ShelfScreen';
 import { SourceMark } from './SourceMark';
 import { placeShared, readFamily, readPortfolio, readVersions } from './shared-api';
@@ -269,92 +268,60 @@ function RecipeSection({
                 : null;
   const p = t.shared.product;
   const holdings = holdingsOf(recipe, active.components, t);
-  // The whole's yield is the server's sum for the version it stored: where the chain holds other
-  // weights, it is not that version's, and is not shown.
-  const sameAsServer =
-    active.components.length === recipe.active.components.length &&
-    active.components.every(
-      (c, i) =>
-        !c.mint &&
-        c.asset === recipe.active.components[i]?.asset &&
-        c.weightBps === recipe.active.components[i]?.weightBps,
-    );
-  const wholeYield = sameAsServer ? (recipe.figures?.yield ?? null) : null;
+  const unmeasured = holdings.filter((h) => !h.exit);
+  const list = (items: string[]) =>
+    new Intl.ListFormat(locale, { type: 'conjunction' }).format(items);
   return (
     <div className="flex flex-col gap-6">
-      <PlanPane
-        answer={p.answer(
-          new Intl.ListFormat(locale, { type: 'conjunction' }).format(
-            kindShares(holdings, locale, t.plan.kinds),
-          ),
-          chainName,
+      <PlanView
+        title={f.recipe(chainName)}
+        sub={p.sub(
+          f.versionN(active.version),
+          f.since(utcMinute(new Date(active.effectiveAt * 1000).toISOString())),
         )}
+        answer={p.answer(list(kindShares(holdings, locale, t.plan.kinds)), chainName)}
         chain={recipe.chain}
         provenance={recipe.provenance}
-        meta={
-          <span className="text-body-sm text-muted-foreground">{f.versionN(active.version)}</span>
-        }
         holdings={holdings.map((h) => ({
           asset: h.asset,
-          name: h.name,
           shareBps: h.shareBps,
+          // no amount is set on this page: the row shows the share alone
           amountUsd: null,
-          yield: h.yield ? { text: yieldText(h.yield, locale, p), obs: h.yield.obs } : null,
+          // the holding's own reading after the haircut, which is what the row's label says it is
+          yield: h.yield
+            ? {
+                lowPct: h.yield.afterHaircut * 100,
+                highPct: h.yield.afterHaircut * 100,
+                obs: h.yield.obs,
+              }
+            : null,
           why: h.why,
         }))}
-        exit={holdings.map((h) =>
-          h.exit
-            ? {
-                key: h.asset,
-                figure: {
-                  text: (h.exit.lowerBound ? p.exit.atLeast : p.exit.about)(
-                    dollars(Math.floor(h.exit.capacityUsd), lang),
-                  ),
-                  obs: h.exit.obs,
-                },
-                text: p.exit.rest(h.name, h.exit.windowDays, formatBps(h.exit.maxCostBps, locale)),
-              }
-            : { key: h.asset, text: p.exit.notMeasured(h.name) },
-        )}
+        exit={{
+          tiers: holdings.flatMap((h) =>
+            h.exit
+              ? [
+                  {
+                    text: (h.exit.lowerBound ? p.exit.atLeast : p.exit.about)(
+                      dollars(Math.floor(h.exit.capacityUsd), lang),
+                      h.name,
+                      h.exit.windowDays,
+                    ),
+                    cost: {
+                      figure: p.exit.cost(formatBps(h.exit.maxCostBps, locale)),
+                      obs: h.exit.obs,
+                    },
+                  },
+                ]
+              : [],
+          ),
+          ...(unmeasured.length > 0
+            ? { caveat: p.exit.notMeasured(list(unmeasured.map((h) => h.name))) }
+            : {}),
+        }}
         aside={
           <>
-            {/* The whole's yield, the server's figure for the version it stored: shown only where
-                that is the version on the page. */}
-            <p data-ui="product-yield" className="text-body">
-              <span className="text-muted-foreground">{p.yield}: </span>
-              {wholeYield ? (
-                <ProvenancePin
-                  value={yieldText(wholeYield, locale, p)}
-                  obs={pinOf(wholeYield)}
-                  labels={t.pin}
-                />
-              ) : (
-                <span className="text-body-sm">
-                  {recipe.figures?.yield ? p.yieldNotShown : p.noYieldReading}
-                </span>
-              )}
-            </p>
-            <p className="text-body-sm text-muted-foreground">
-              {f.inEffect} · {f.since(utcMinute(new Date(active.effectiveAt * 1000).toISOString()))}
-            </p>
-            {pending && (
-              <div className="flex flex-col gap-2">
-                <h3 className="text-h4 font-semibold">
-                  {f.waits(
-                    pending.version,
-                    utcMinute(new Date(pending.effectiveAt * 1000).toISOString()),
-                  )}
-                </h3>
-                <p className="max-w-(--tf-measure-body) text-body-sm">{f.waitsLead}</p>
-                <WeightsTable
-                  rows={pending.components}
-                  locale={locale}
-                  caption={f.versionN(pending.version)}
-                />
-              </div>
-            )}
-            {/* Who published it, by address: always in sight. Whether its words were checked sits
-                behind a fold unless a check found something wrong (the flow audit, finding 41). */}
+            {/* Who published it, by address: in view (gate PRODUCTS-PLAN-PANE). */}
             <p className="flex flex-wrap items-baseline gap-x-2 text-body-sm text-muted-foreground">
               <span>{p.publisher}</span>
               <span data-ui="creator" className="break-all font-mono text-source text-foreground">
@@ -368,6 +335,34 @@ function RecipeSection({
                 <span className="font-medium text-foreground">{t.shared.shelf.card.platform}</span>
               )}
             </p>
+            {/* Where the version and weights come from, and words that match no version: never
+                folded away (the flow audit, finding 41). */}
+            {check.state === 'read' && check.textMatches === null && <TextMark matches={null} />}
+            <SourceMark check={check} chain={recipe.chain} />
+          </>
+        }
+        figures={
+          pending ? (
+            <div className="flex flex-col gap-2 border-t border-border pt-4">
+              <h3 className="text-h4 font-semibold">
+                {f.waits(
+                  pending.version,
+                  utcMinute(new Date(pending.effectiveAt * 1000).toISOString()),
+                )}
+              </h3>
+              <p className="max-w-(--tf-measure-body) text-body-sm">{f.waitsLead}</p>
+              <WeightsTable
+                rows={pending.components}
+                locale={locale}
+                caption={f.versionN(pending.version)}
+              />
+            </div>
+          ) : undefined
+        }
+        details={
+          <div className="flex flex-col gap-3">
+            <Offer recipe={recipe} />
+            {/* The routine check of its words, behind a fold unless a check found something wrong. */}
             {(check.state !== 'read' || check.textMatches === 'pending') && (
               <details data-ui="family-checks" open={alarm || undefined}>
                 <summary className="w-fit cursor-pointer text-body-sm font-medium text-primary underline decoration-1 underline-offset-4 hover:decoration-2">
@@ -378,37 +373,38 @@ function RecipeSection({
                 </div>
               </details>
             )}
-            {check.state === 'read' && check.textMatches === null && <TextMark matches={null} />}
-            <SourceMark check={check} chain={recipe.chain} />
-            <Offer recipe={recipe} />
-          </>
+          </div>
         }
         invest={
           person.kind === 'ready' && own ? (
-            blocked || !followed ? (
-              <>
-                <Button variant="primary" disabled aria-describedby={reasonId}>
+            <div data-ui="product-invest" className="flex flex-col items-start gap-2">
+              {blocked || !followed ? (
+                <>
+                  <Button variant="primary" disabled aria-describedby={reasonId}>
+                    {f.buy}
+                  </Button>
+                  <p id={reasonId} className="max-w-(--tf-measure-body) text-body-sm">
+                    {blocked ?? t.shared.check.reading}
+                  </p>
+                </>
+              ) : (
+                <Link
+                  href={`/indexes/${encodeURIComponent(family.slug)}/buy`}
+                  className={buttonClass({ variant: 'primary' })}
+                >
                   {f.buy}
-                </Button>
-                <p id={reasonId} className="max-w-(--tf-measure-body) text-body-sm">
-                  {blocked ?? t.shared.check.reading}
-                </p>
-              </>
-            ) : (
-              <Link
-                href={`/indexes/${encodeURIComponent(family.slug)}/buy`}
-                className={buttonClass({ variant: 'primary' })}
-              >
-                {f.buy}
-              </Link>
-            )
+                </Link>
+              )}
+            </div>
           ) : person.kind === 'signed-out' ? (
-            <Link
-              href={`/sign-in?next=/indexes/${encodeURIComponent(family.slug)}`}
-              className={buttonClass({ variant: 'secondary' })}
-            >
-              {f.signIn}
-            </Link>
+            <div data-ui="product-invest" className="flex flex-col items-start gap-2">
+              <Link
+                href={`/sign-in?next=/indexes/${encodeURIComponent(family.slug)}`}
+                className={buttonClass({ variant: 'secondary' })}
+              >
+                {f.signIn}
+              </Link>
+            </div>
           ) : undefined
         }
       />

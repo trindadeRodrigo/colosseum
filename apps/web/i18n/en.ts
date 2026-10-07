@@ -1134,22 +1134,16 @@ export const en = {
       notChecked:
         'The name and description aren’t checked against what the creator published on the chain.',
     },
-    /** A shared portfolio as figures, on its card and in the plan pane of its page. */
+    /** A shared portfolio as figures, on its card and in the plan view of its page. */
     product: {
-      yield: 'Yield',
-      yieldRange: (low: string, high: string) => `${low} to ${high} a year`,
-      yieldOne: (figure: string) => `${figure} a year`,
-      /** The whole has no yield figure: no holding has a reading. */
-      noYieldReading: 'No yield reading yet',
-      /** A row that pays no yield, for a screen reader; the eye sees a dash. */
-      noYield: 'no yield',
-      /** The whole's yield is the server's, for the version it stored, and the chain holds another. */
-      yieldNotShown:
-        'The yield of the whole isn’t shown: the chain holds other weights than the ones our server measured.',
-      holdings: 'What it holds',
-      columns: { holding: 'Holding', share: 'Share', amount: 'Amount', yield: 'Yield a year' },
+      /** Before the holdings' yields on a card: each is that holding's own, after the haircut. */
+      yield: 'Yield a year, after haircut',
+      /** No holding has a yield reading: said, with no figure in its place. */
+      noYieldReading: 'no holding has a yield reading',
       /** The answer in one line: the kinds of asset with their shares, and the chain. */
       answer: (kinds: string, chain: string) => `${kinds}, on ${chain}.`,
+      /** Under the title: the version in effect and since when. */
+      sub: (version: string, since: string) => `${version} · in effect ${since}`,
       why: {
         stock: 'Follows the price of the share it is named for. It pays no yield.',
         etf: 'Follows the price of the fund it is named for. It pays no yield.',
@@ -1162,14 +1156,14 @@ export const en = {
         unread: 'Our server has no record of what kind of token this is.',
       },
       exit: {
-        title: 'Exit plan',
-        lead: 'How much of each holding can be sold, how fast, and at what cost, as measured on its chain.',
-        /** The figure of a line, which carries the pin; `rest` follows it. */
-        about: (amount: string) => `About ${amount}`,
-        atLeast: (amount: string) => `At least ${amount}`,
-        rest: (name: string, days: number, cost: string) =>
-          `of ${name} within ${days} days, at a cost of ${cost} or less.`,
-        notMeasured: (name: string) => `The cost of selling ${name} isn’t measured yet.`,
+        /** One tier a holding whose selling was measured; its cost follows, with its pin. */
+        about: (amount: string, name: string, days: number) =>
+          `about ${amount} of ${name} within ${days} days`,
+        atLeast: (amount: string, name: string, days: number) =>
+          `at least ${amount} of ${name} within ${days} days`,
+        cost: (cost: string) => `≤ ${cost}`,
+        notMeasured: (names: string) =>
+          `Selling ${names} isn’t measured yet, so no cost is shown for it.`,
       },
       publisher: 'Published by',
     },

@@ -13,7 +13,9 @@ import { displayName } from '../order/plain';
 // A shared portfolio as figures (gate PRODUCTS-PLAN-PANE): what its card and its page say of its
 // holdings. Every figure is the server's (`recipe.figures`: the stored yield and Bearing's measured
 // exit, the readings a plan is made from) and is handed on with its source to its pin. Nothing is
-// worked out here: a holding the server has no reading for says so, and is never shown as zero.
+// worked out here and nothing is added up across holdings: a holding the server has no reading for
+// says so, and is never shown as zero. A yield of the whole portfolio is the engine's to work out, as
+// for a plan's card, and it has no entry that takes a recipe yet: none is shown.
 
 /** A figure's source as its pin takes it. */
 export const pinOf = (s: Sourced): PinSource => ({
@@ -28,16 +30,6 @@ export const pinOf = (s: Sourced): PinSource => ({
 export const rate = (fraction: number, locale: string) =>
   formatBps(Math.round(fraction * 10_000), locale);
 
-/** A yield from low to high, or the one figure when they read the same. */
-export function yieldText(
-  y: { low: number; high: number },
-  locale: string,
-  words: Dictionary['shared']['product'],
-): string {
-  const [low, high] = [rate(y.low, locale), rate(y.high, locale)];
-  return low === high ? words.yieldOne(low) : words.yieldRange(low, high);
-}
-
 /** One holding of a product, as the plan pane shows a row. */
 export type ProductHolding = {
   /** The asset's id, or the mint of a token this app does not list. */
@@ -45,8 +37,11 @@ export type ProductHolding = {
   name: string;
   shareBps: number;
   cls: AssetClass | null;
-  /** Null where the holding pays no yield, or the server has no reading of it. */
-  yield: { low: number; high: number; obs: PinSource } | null;
+  /**
+   * The holding's own stored reading, as shares of a year: after the haircut, and as quoted. Null
+   * where it pays no yield, or the server has no reading of it.
+   */
+  yield: { afterHaircut: number; quoted: number; obs: PinSource } | null;
   exit: (NonNullable<HoldingFigures['exit']> & { obs: PinSource }) | null;
   /** One sentence: what it is. */
   why: string;
@@ -78,8 +73,8 @@ export function holdingsOf(
       cls,
       yield: figure?.yield
         ? {
-            low: figure.yield.afterHaircut,
-            high: figure.yield.quoted,
+            afterHaircut: figure.yield.afterHaircut,
+            quoted: figure.yield.quoted,
             obs: pinOf(figure.yield),
           }
         : null,

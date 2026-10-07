@@ -685,14 +685,6 @@ export type GetIndexesBySlugResponse = {
             maxCostBps: number;
           } | null;
         }[];
-        yield: {
-          source: string;
-          method: string;
-          fetchedAt: string;
-          provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
-          low: number;
-          high: number;
-        } | null;
       };
     }[];
   };
@@ -1711,14 +1703,6 @@ export type GetShelfResponse = {
             maxCostBps: number;
           } | null;
         }[];
-        yield: {
-          source: string;
-          method: string;
-          fetchedAt: string;
-          provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
-          low: number;
-          high: number;
-        } | null;
       };
     }[];
   }[];

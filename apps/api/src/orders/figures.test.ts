@@ -5,10 +5,10 @@ import type {
   YieldObservation,
 } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
-import { figuresOf, YIELD_METHOD } from './figures';
+import { figuresOf } from './figures';
 
 // What a shared portfolio's card and page say of its holdings: the readings a plan is made from, a
-// holding at a time, null where there is none, and the whole's yield added up from them.
+// holding at a time, null where there is none, and nothing added up across them.
 
 const NOW = '2026-10-07T12:00:00.000Z';
 const asset = (id: string, cls: BasketAsset['cls']) => ({ id, cls }) as BasketAsset;
@@ -99,31 +99,29 @@ describe('the figures of a shared portfolio’s holdings', () => {
     expect(lending?.exit).toBeNull();
   });
 
-  it('adds the whole’s yield from the readings times their shares, a holding without one as nothing', () => {
-    const figures = figuresOf(
-      components,
-      assets,
-      {
-        yields: [
-          reading('solana:jlusdc', 0.05, 0.04, { fetchedAt: '2026-10-06T00:00:00.000Z' }),
-          reading('solana:syrupusdc', 0.08, 0.06, { provenance: 'sandbox' }),
-        ],
-      },
-      NOW,
-    );
-    // 30% at 4% and 20% at 6% after the haircut; at 5% and 8% as quoted; the stock half adds nothing
-    expect(figures.yield?.low).toBeCloseTo(0.3 * 0.04 + 0.2 * 0.06, 12);
-    expect(figures.yield?.high).toBeCloseTo(0.3 * 0.05 + 0.2 * 0.08, 12);
-    expect(figures.yield).toMatchObject({
-      source: 'feed of solana:jlusdc + feed of solana:syrupusdc',
-      method: YIELD_METHOD,
-      // the oldest reading it stands on, and the label that is not live
-      fetchedAt: '2026-10-06T00:00:00.000Z',
-      provenance: 'sandbox',
-    });
+  it('hands each reading on as it is stored, the one a plan is made from, and adds nothing up', () => {
+    const stored = [
+      reading('solana:jlusdc', 0.05, 0.04, { fetchedAt: '2026-10-06T00:00:00.000Z' }),
+      reading('solana:syrupusdc', 0.08, 0.06, { provenance: 'sandbox' }),
+    ];
+    const figures = figuresOf(components, assets, { yields: stored }, NOW);
+    // The engine's card multiplies these same two numbers by a plan's dollars (cardOf): a holding of a
+    // shared portfolio and the same holding in a plan stand on one observation, field for field.
+    for (const o of stored)
+      expect(figures.holdings.find((h) => h.asset === o.assetId)?.yield).toEqual({
+        quoted: o.quotedYield,
+        afterHaircut: o.haircutYield,
+        haircutRule: o.haircutRule,
+        source: o.source,
+        method: o.method,
+        fetchedAt: o.fetchedAt,
+        provenance: o.provenance,
+      });
+    // no figure of the whole: that is the engine's to work out, and it takes no recipe
+    expect(Object.keys(figures)).toEqual(['holdings']);
   });
 
-  it('says no yield for the whole when no holding has a reading, and labels a fixture as not live', () => {
+  it('labels a fixture’s exit as not live, and has no figure at all where nothing was read', () => {
     const figures = figuresOf(
       [{ asset: 'solana:spyx', weightBps: 10_000 }],
       assets,
@@ -135,7 +133,6 @@ describe('the figures of a shared portfolio’s holdings', () => {
       },
       NOW,
     );
-    expect(figures.yield).toBeNull();
     expect(figures.holdings[0]?.exit).toMatchObject({ provenance: 'mock', fetchedAt: NOW });
     // nothing read at all: every figure is absent
     expect(figuresOf(components, assets, {}, NOW)).toEqual({
@@ -145,7 +142,6 @@ describe('the figures of a shared portfolio’s holdings', () => {
         yield: null,
         exit: null,
       })),
-      yield: null,
     });
   });
 

@@ -79,16 +79,14 @@ export const HoldingFigures = z.object({
 });
 export type HoldingFigures = z.infer<typeof HoldingFigures>;
 
-/** The figures of a recipe's version in effect, a holding at a time and added up. */
+/**
+ * The figures of a recipe's version in effect, a holding at a time. Nothing is added up across the
+ * holdings: a plan's yield range is the engine's to work out (`cardOf`), and it has no entry that
+ * takes a recipe.
+ */
 export const RecipeFigures = z.object({
   /** One per component of the version in effect, in its order. */
   holdings: z.array(HoldingFigures),
-  /**
-   * The yield of the whole, a year, as fractions: each holding's reading times its share, added, a
-   * holding with no reading counted as nothing. `low` after the haircut, `high` as quoted. Null when
-   * no holding has a reading.
-   */
-  yield: Sourced.extend({ low: z.number(), high: z.number() }).nullable(),
 });
 export type RecipeFigures = z.infer<typeof RecipeFigures>;
 

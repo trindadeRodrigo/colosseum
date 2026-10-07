@@ -19,14 +19,14 @@ import { formatBps, tokenName } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { networkFor } from '../order/readiness';
 import { useApiFetch } from '../wallet/WalletProvider';
-import { HoldingsBar } from './ProductPane';
+import { HoldingsBar } from './HoldingsBar';
 import { isPlatformCreator } from './platform';
-import { pinOf, yieldText } from './product-figures';
+import { holdingsOf, rate } from './product-figures';
 import { readShelf } from './shared-api';
 import { shortAddress, useSharedPerson } from './use-person';
 
 // The shelf (DESIGN-VAULT section 11; gate PRODUCTS-PLAN-PANE): a card per shared portfolio, the
-// figures first: one bar of what it holds with each share under it, its yield with its pin, what it
+// figures first: one bar of what it holds with each share under it, each holding's yield with its pin, what it
 // is for in one line of its creator's, its chain and who published it. Whether auto-follow is offered
 // and a version that waits are on its page. It shows the portfolios with a recipe on one chain: a signed-in
 // person's current chain, or the chain someone signed out picked in the bar (gate CHAIN-SWITCH). The
@@ -175,7 +175,11 @@ function FamilyCard({ family }: { family: SharedFamily }) {
   const [recipe] = family.recipes;
   const href = `/indexes/${encodeURIComponent(family.slug)}`;
   const notLive = family.recipes.some((r) => r.provenance !== 'live');
-  const whole = recipe?.figures?.yield ?? null;
+  const paying = recipe
+    ? holdingsOf(recipe, recipe.active.components, t).flatMap((h) =>
+        h.yield ? [{ asset: h.asset, yield: h.yield }] : [],
+      )
+    : [];
   return (
     <Card
       as="article"
@@ -215,17 +219,26 @@ function FamilyCard({ family }: { family: SharedFamily }) {
           </div>
         )}
         {recipe && (
-          // Above the card's stretched link, so the pin can be opened.
-          <p data-ui="product-yield" className="relative z-10 w-fit text-body">
-            <span className="text-muted-foreground">{p.yield}: </span>
-            {whole ? (
-              <ProvenancePin
-                value={yieldText(whole, locale, p)}
-                obs={pinOf(whole)}
-                labels={t.pin}
-              />
+          // Each holding that has a reading, with its own yield and pin: nothing is added up across
+          // them. Above the card's stretched link, so a pin can be opened.
+          <p
+            data-ui="product-yield"
+            className="relative z-10 flex w-fit flex-wrap items-baseline gap-x-3 gap-y-1 text-body-sm"
+          >
+            <span className="text-muted-foreground">{p.yield}:</span>
+            {paying.length > 0 ? (
+              paying.map((h) => (
+                <span key={h.asset} className="inline-flex items-baseline gap-1.5">
+                  <span className="font-mono">{tokenName(h.asset)}</span>
+                  <ProvenancePin
+                    value={rate(h.yield.afterHaircut, locale)}
+                    obs={h.yield.obs}
+                    labels={t.pin}
+                  />
+                </span>
+              ))
             ) : (
-              <span className="text-body-sm">{p.noYieldReading}</span>
+              <span>{p.noYieldReading}</span>
             )}
           </p>
         )}

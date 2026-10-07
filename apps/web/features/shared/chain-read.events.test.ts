@@ -190,11 +190,9 @@ describe('a shared portfolio read from the chain by this app', () => {
     expect(find(host, '[data-ui="creator"]').closest('details')).toBeNull();
     // the chain's version 3 at 50/25/25, not the server's version 2 at 40/30/30
     expect(host.textContent).toContain(en.shared.family.versionN(3));
-    const legs = find(host, '[data-ui="plan-pane-holdings"]').textContent ?? '';
+    const legs = find(host, '[data-ui="plan-legs"]').textContent ?? '';
     for (const part of ['SPYx', '50%', 'NVDAx', '25%', 'TSLAx']) expect(legs).toContain(part);
     expect(legs).not.toContain('40%');
-    // the whole's yield is our server's sum for its own version: not shown for the chain's
-    expect(find(host, '[data-ui="product-yield"]').querySelector('[data-ui="pin"]')).toBeNull();
   });
 
   it('shows a line of the version that waits whose token this app does not list, by its mint', async () => {

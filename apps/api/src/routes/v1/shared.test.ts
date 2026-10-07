@@ -215,8 +215,7 @@ describe('a creator publishes a shared portfolio', () => {
     expect(onchain.active.creator).toBe(creator.solana);
 
     // What the server has measured of the version in effect: a holding at a time, null where it has
-    // no reading, and the whole's yield from the one reading times its share.
-    const share = (WITHOUT_GOLD[0]?.weightBps ?? 0) / 10_000;
+    // no reading.
     expect(recipe?.figures?.holdings.map((h) => h.asset)).toEqual(
       WITHOUT_GOLD.map(({ asset }) => asset),
     );
@@ -230,8 +229,8 @@ describe('a creator publishes a shared portfolio', () => {
       WITHOUT_GOLD.slice(1).map(() => null),
     );
     expect(recipe?.figures?.holdings.map((h) => h.exit)).toEqual(WITHOUT_GOLD.map(() => null));
-    expect(recipe?.figures?.yield?.low).toBeCloseTo(0.03 * share, 12);
-    expect(recipe?.figures?.yield?.high).toBeCloseTo(0.04 * share, 12);
+    // nothing is added up across the holdings: a range of the whole is the engine's to work out
+    expect(Object.keys(recipe?.figures ?? {})).toEqual(['holdings']);
 
     const shelf = ShelfResponse.parse((await get(null, '/v1/shelf?chain=solana')).json());
     const card = shelf.families.find((f) => f.slug === text.slug);

@@ -1026,16 +1026,10 @@ export const pt: Dictionary = {
         'O nome e a descrição não foram conferidos com o que quem criou publicou na rede.',
     },
     product: {
-      yield: 'Rendimento',
-      yieldRange: (low: string, high: string) => `${low} a ${high} ao ano`,
-      yieldOne: (figure: string) => `${figure} ao ano`,
-      noYieldReading: 'Ainda sem leitura de rendimento',
-      noYield: 'sem rendimento',
-      yieldNotShown:
-        'O rendimento do conjunto não é mostrado: a rede guarda pesos diferentes dos que nosso servidor mediu.',
-      holdings: 'O que ele guarda',
-      columns: { holding: 'Ativo', share: 'Parcela', amount: 'Valor', yield: 'Rendimento ao ano' },
+      yield: 'Rendimento ao ano, após o desconto',
+      noYieldReading: 'nenhum ativo tem leitura de rendimento',
       answer: (kinds: string, chain: string) => `${kinds}, na ${chain}.`,
+      sub: (version: string, since: string) => `${version} · em vigor ${since}`,
       why: {
         stock: 'Segue o preço da ação que lhe dá nome. Não paga rendimento.',
         etf: 'Segue o preço do fundo que lhe dá nome. Não paga rendimento.',
@@ -1048,13 +1042,13 @@ export const pt: Dictionary = {
         unread: 'Nosso servidor não tem registro de que tipo de token é este.',
       },
       exit: {
-        title: 'Plano de saída',
-        lead: 'Quanto de cada ativo pode ser vendido, em quanto tempo e a que custo, como medido na rede.',
-        about: (amount: string) => `Cerca de ${amount}`,
-        atLeast: (amount: string) => `Pelo menos ${amount}`,
-        rest: (name: string, days: number, cost: string) =>
-          `de ${name} em até ${days} dias, a um custo de ${cost} ou menos.`,
-        notMeasured: (name: string) => `O custo de vender ${name} ainda não foi medido.`,
+        about: (amount: string, name: string, days: number) =>
+          `cerca de ${amount} de ${name} em até ${days} dias`,
+        atLeast: (amount: string, name: string, days: number) =>
+          `pelo menos ${amount} de ${name} em até ${days} dias`,
+        cost: (cost: string) => `≤ ${cost}`,
+        notMeasured: (names: string) =>
+          `A venda de ${names} ainda não foi medida, então nenhum custo é mostrado para ela.`,
       },
       publisher: 'Publicado por',
     },
