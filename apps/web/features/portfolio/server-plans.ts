@@ -17,19 +17,32 @@ export type ServerPlan = PersonPlan;
 export async function readPersonPlans(
   apiFetch: (path: string) => Promise<Response>,
 ): Promise<ServerPlan[]> {
-  try {
-    const res = await apiFetch('/v1/me/plans');
-    if (!res.ok) return [];
-    const body = (await res.json()) as { plans?: unknown };
-    if (!Array.isArray(body.plans)) return [];
-    return body.plans.flatMap((plan) => {
-      const read = PersonPlan.safeParse(plan);
-      return read.success ? [read.data] : [];
-    });
-  } catch {
-    return [];
+  const plans: ServerPlan[] = [];
+  let before: string | null = null;
+  // Page after page while the server names a next one, to a bound: what was read stays if one fails.
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    try {
+      const res = await apiFetch(
+        before ? `/v1/me/plans?before=${encodeURIComponent(before)}` : '/v1/me/plans',
+      );
+      if (!res.ok) break;
+      const body = (await res.json()) as { plans?: unknown; next?: unknown };
+      if (!Array.isArray(body.plans)) break;
+      for (const plan of body.plans) {
+        const read = PersonPlan.safeParse(plan);
+        if (read.success) plans.push(read.data);
+      }
+      if (typeof body.next !== 'string' || body.next === before) break;
+      before = body.next;
+    } catch {
+      break;
+    }
   }
+  return plans;
 }
+
+/** The most pages of the list one portfolio reads: 200 plans. */
+export const MAX_PAGES = 4;
 
 /**
  * Each buy of each plan as a record of the kind this browser keeps, for this person: the plan, the

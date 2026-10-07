@@ -730,6 +730,12 @@ export type PutMeChainResponse = {
   chainOptions: ('solana' | 'base' | 'robinhood')[];
 };
 
+/** GET /v1/me/plans: query. The signed-in person’s plans, with the goal each was built for and its buys */
+export type GetMePlansQuery = {
+  limit?: number;
+  before?: string;
+};
+
 /** GET /v1/me/plans: response. The signed-in person’s plans, with the goal each was built for and its buys */
 export type GetMePlansResponse = {
   plans: {
@@ -811,6 +817,7 @@ export type GetMePlansResponse = {
       basketId: string;
     } | null;
   }[];
+  next: string | null;
 };
 
 /** POST /v1/orders: body. Plan an order from an intent. Nothing is built or signed */
@@ -1597,7 +1604,7 @@ export interface ApiRoutes {
   };
   'GET /v1/me': { response: GetMeResponse };
   'PUT /v1/me/chain': { body: PutMeChainBody; response: PutMeChainResponse };
-  'GET /v1/me/plans': { response: GetMePlansResponse };
+  'GET /v1/me/plans': { query: GetMePlansQuery; response: GetMePlansResponse };
   'POST /v1/orders': { body: PostOrdersBody; response: PostOrdersResponse };
   'GET /v1/orders/{id}': { params: GetOrdersByIdParams; response: GetOrdersByIdResponse };
   'POST /v1/orders/{id}/legs/{legId}/build': {

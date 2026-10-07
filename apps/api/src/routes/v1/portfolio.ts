@@ -13,7 +13,7 @@ import type { ChainEntry } from '../../orders/chains';
 import { Refusal, refusalFromChainError } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { chainsHeld } from '../../orders/person';
-import { cacheVault, listPersonPlans, vaultNames } from '../../orders/store';
+import { cacheVault, everyPersonPlan, vaultNames } from '../../orders/store';
 import { signedIn } from './orders';
 
 async function chainPortfolio(deps: OrderDeps, entry: ChainEntry, wallets: WalletAccount[]) {
@@ -103,9 +103,10 @@ export function registerPortfolioRoute(scope: FastifyInstance, deps: OrderDeps) 
           },
         );
       // Each vault with the name its owner gave it, and the plan of theirs it was opened from: a plan's
-      // buys kept its vault's number (`listPersonPlans`), so the join is by chain and number.
+      // buys kept its vault's number (`listPersonPlans`), so the join is by chain and number. Every
+      // page of the list is read: a vault's plan may be older than the fifty newest.
       const anyVault = chains.some((c) => c.vaults.length > 0);
-      const plans = anyVault ? await listPersonPlans(deps.db, principal) : [];
+      const plans = anyVault ? await everyPersonPlan(deps.db, principal) : [];
       const planOf = new Map(
         plans.flatMap((p) => {
           const chain = p.proposal.sheet.chains[0] ?? p.proposal.recipes[0]?.chain;

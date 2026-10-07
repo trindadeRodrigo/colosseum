@@ -327,16 +327,40 @@ export type PersonPlan = {
   basketId: string | null;
 };
 
-/** The most plans and buys one answer lists, newest first. */
-export const PERSON_PLANS = { plans: 50, orders: 200 } as const;
+/** The most plans one answer lists. */
+export const PERSON_PLANS = { plans: 50 } as const;
+
+/**
+ * Every plan of a person's, page after page (`listPersonPlans`): what joins each of their vaults to
+ * its plan, however many plans they made. It stops at 40 pages, 2,000 plans: a vault whose plan is
+ * older than that is answered with no plan, never with another's.
+ */
+export async function everyPersonPlan(db: Db, principal: Principal): Promise<PersonPlan[]> {
+  const all: PersonPlan[] = [];
+  let before: Date | undefined;
+  for (let pages = 0; pages < 40; pages += 1) {
+    const { plans, next } = await listPersonPlans(db, principal, { before });
+    all.push(...plans);
+    if (next === null) break;
+    before = new Date(next);
+  }
+  return all;
+}
 
 /**
  * The plans a person made, and the plans made from a link that they bought, newest first, each with
- * its buys. A plan is the person's by its row; a buy is theirs by the wallets of the verified token,
- * as an order is everywhere (`holds`). Another person's plan is never listed, bought or not: a buy
- * that names one lists nothing of it. A stored plan that no longer reads is left out.
+ * its buys: one page of them, of at most `limit`, made before `before` when that is given. `next` is
+ * the time to ask the following page with, or null when this is the last. A plan is the person's by
+ * its row; a buy is theirs by the wallets of the verified token, as an order is everywhere (`holds`).
+ * Another person's plan is never listed, bought or not: a buy that names one lists nothing of it. A
+ * stored plan that no longer reads is left out.
  */
-export async function listPersonPlans(db: Db, principal: Principal): Promise<PersonPlan[]> {
+export async function listPersonPlans(
+  db: Db,
+  principal: Principal,
+  page: { limit?: number; before?: Date } = {},
+): Promise<{ plans: PersonPlan[]; next: string | null }> {
+  const limit = Math.min(Math.max(1, page.limit ?? PERSON_PLANS.plans), PERSON_PLANS.plans);
   const privyId = principal.userId ?? null;
   const [user] = privyId
     ? await db.select({ id: users.id }).from(users).where(eq(users.privyId, privyId))
@@ -348,53 +372,77 @@ export async function listPersonPlans(db: Db, principal: Principal): Promise<Per
     ...(solana.length ? [inArray(orders.ownerSolana, solana)] : []),
     ...(evm.length ? [inArray(orders.ownerEvm, evm)] : []),
   ];
-  const buys = owned.length
-    ? await db
-        .select()
-        .from(orders)
-        .where(and(eq(orders.type, 'buy'), or(...owned)))
-        .orderBy(desc(orders.createdAt))
-        .limit(PERSON_PLANS.orders)
-    : [];
   // An order is the caller's only when every address it names is theirs, as on its own route.
-  const mine = buys.filter((o) => {
+  const theirs = (o: { ownerSolana: string | null; ownerEvm: string | null }) => {
     const has = (family: 'solana' | 'evm', address: string | null) =>
       address === null ||
       principal.wallets.some((w) => w.family === family && w.address === address);
     return has('solana', o.ownerSolana) && has('evm', o.ownerEvm);
-  });
-  const planOf = (o: OrderRow) =>
-    o.request.type === 'buy' ? (o.request.proposalId ?? null) : null;
+  };
+  const planId = sql<string | null>`${orders.request}->>'proposalId'`;
+  // Every plan the person's buys name, by its id alone: the page is cut from the plans, not the buys.
+  const named = owned.length
+    ? await db
+        .selectDistinct({ id: planId, ownerSolana: orders.ownerSolana, ownerEvm: orders.ownerEvm })
+        .from(orders)
+        .where(and(eq(orders.type, 'buy'), or(...owned)))
+    : [];
   const bought = [
-    ...new Set(mine.map(planOf).filter((id): id is string => id !== null && UUID.test(id))),
+    ...new Set(
+      named
+        .filter(theirs)
+        .map((o) => o.id)
+        .filter((id): id is string => id !== null && UUID.test(id)),
+    ),
   ];
+  // The person's own plans, and of those bought the ones made from a link.
+  const whose = [
+    ...(user ? [eq(proposals.userId, user.id)] : []),
+    ...(bought.length ? [and(inArray(proposals.id, bought), eq(proposals.fromLink, true))] : []),
+  ];
+  if (whose.length === 0) return { plans: [], next: null };
+  const rows = await db
+    .select()
+    .from(proposals)
+    .where(and(or(...whose), ...(page.before ? [lt(proposals.createdAt, page.before)] : [])))
+    .orderBy(desc(proposals.createdAt), desc(proposals.id))
+    .limit(limit + 1);
+  const shown = rows.slice(0, limit);
+  const next = rows.length > limit ? (shown.at(-1)?.createdAt.toISOString() ?? null) : null;
 
-  const made = user
-    ? await db
-        .select()
-        .from(proposals)
-        .where(eq(proposals.userId, user.id))
-        .orderBy(desc(proposals.createdAt))
-        .limit(PERSON_PLANS.plans)
-    : [];
-  const known = new Set(made.map((p) => p.id));
-  const rest = bought.filter((id) => !known.has(id));
-  // Of the plans bought and not in the list above: the person's own older ones, and those from a link.
-  const more = rest.length
-    ? await db
-        .select()
-        .from(proposals)
-        .where(
-          and(
-            inArray(proposals.id, rest),
-            user
-              ? or(eq(proposals.fromLink, true), eq(proposals.userId, user.id))
-              : eq(proposals.fromLink, true),
-          ),
-        )
-    : [];
-
-  const confirmed = mine.length
+  const ids = shown.map((row) => row.id);
+  const buys =
+    owned.length && ids.length
+      ? (
+          await db
+            .select()
+            .from(orders)
+            .where(and(eq(orders.type, 'buy'), or(...owned), inArray(planId, ids)))
+            .orderBy(desc(orders.createdAt))
+        ).filter(theirs)
+      : [];
+  // The buys that added to a vault by its address (add money) name no plan: they are found by the
+  // number of the vault a plan of this page opened, and joined to that plan below.
+  const numbers = [...new Set(buys.flatMap((o) => (o.basketId === null ? [] : [o.basketId])))];
+  const adds =
+    owned.length && numbers.length
+      ? (
+          await db
+            .select()
+            .from(orders)
+            .where(
+              and(
+                eq(orders.type, 'buy'),
+                or(...owned),
+                sql`${orders.request}->'vault' is not null`,
+                inArray(orders.basketId, numbers),
+              ),
+            )
+            .orderBy(desc(orders.createdAt))
+        ).filter(theirs)
+      : [];
+  const counted = [...buys, ...adds];
+  const confirmed = counted.length
     ? await db
         .select({ orderId: legs.orderId })
         .from(legs)
@@ -402,7 +450,7 @@ export async function listPersonPlans(db: Db, principal: Principal): Promise<Per
           and(
             inArray(
               legs.orderId,
-              mine.map((o) => o.id),
+              counted.map((o) => o.id),
             ),
             inArray(legs.kind, ['create_vault', 'deposit']),
             eq(legs.status, 'confirmed'),
@@ -410,43 +458,43 @@ export async function listPersonPlans(db: Db, principal: Principal): Promise<Per
         )
     : [];
   const deposited = new Set(confirmed.map((l) => l.orderId));
+  const planOf = (o: OrderRow) =>
+    o.request.type === 'buy' ? (o.request.proposalId ?? null) : null;
 
-  return [...made, ...more]
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-    .flatMap((row) => {
-      const parsed = BasketProposal.safeParse(row.proposal);
-      if (!parsed.success) return [];
-      const named = mine.filter((o) => planOf(o) === row.id);
-      // The vault the plan's buys opened, and with them the buys that added to that vault by its
-      // address (add money): they name no plan, and are the plan's by its vault's number and chain.
-      const basketId = named.find((o) => o.basketId !== null)?.basketId ?? null;
-      const chain = parsed.data.sheet.chains[0] ?? parsed.data.recipes[0]?.chain;
-      const of = mine.filter(
-        (o) =>
-          planOf(o) === row.id ||
-          (basketId !== null &&
-            o.request.type === 'buy' &&
-            o.request.vault !== undefined &&
-            o.request.vault.chain === chain &&
-            o.basketId === basketId),
-      );
-      return [
-        {
-          id: row.id,
-          createdAt: row.createdAt.toISOString(),
-          fromLink: row.fromLink,
-          proposal: parsed.data,
-          orders: of.map((o) => ({
-            id: o.id,
-            createdAt: o.createdAt.toISOString(),
-            amountUsd: o.request.type === 'buy' ? o.request.amountUsd : 0,
-            status: o.status,
-            deposited: deposited.has(o.id),
-          })),
-          basketId,
-        },
-      ];
-    });
+  const plans = shown.flatMap((row) => {
+    const parsed = BasketProposal.safeParse(row.proposal);
+    if (!parsed.success) return [];
+    const named = buys.filter((o) => planOf(o) === row.id);
+    // The vault the plan's buys opened, and with them the buys that added to that vault by its
+    // address (add money): they name no plan, and are the plan's by its vault's number and chain.
+    const basketId = named.find((o) => o.basketId !== null)?.basketId ?? null;
+    const chain = parsed.data.sheet.chains[0] ?? parsed.data.recipes[0]?.chain;
+    const added = adds.filter(
+      (o) =>
+        basketId !== null &&
+        o.basketId === basketId &&
+        o.request.type === 'buy' &&
+        o.request.vault?.chain === chain,
+    );
+    const of = [...named, ...added].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return [
+      {
+        id: row.id,
+        createdAt: row.createdAt.toISOString(),
+        fromLink: row.fromLink,
+        proposal: parsed.data,
+        orders: of.map((o) => ({
+          id: o.id,
+          createdAt: o.createdAt.toISOString(),
+          amountUsd: o.request.type === 'buy' ? o.request.amountUsd : 0,
+          status: o.status,
+          deposited: deposited.has(o.id),
+        })),
+        basketId,
+      },
+    ];
+  });
+  return { plans, next };
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
