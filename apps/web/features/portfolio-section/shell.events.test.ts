@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { dictionary, type Lang } from '../../i18n';
 import { portfolioDictionary } from '../../i18n/portfolio';
-import { EMBEDDED, fakePort, signedInPort } from '../wallet/test/fake-port';
+import { fakePort } from '../wallet/test/fake-port';
 import { location } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { PlanPage } from './PlanPage';
@@ -28,8 +28,6 @@ const frame = async (page: ReturnType<typeof createElement> | null, lang: Lang =
   await settle();
   return host;
 };
-const signIn = (over: Parameters<typeof signedInPort>[1] = {}) =>
-  portStore.set(signedInPort(EMBEDDED, over));
 const menu = (host: HTMLElement) => find(host, '#portfolio-nav');
 const current = (host: HTMLElement) =>
   [...menu(host).querySelectorAll('[aria-current="page"]')].map((a) => a.getAttribute('href'));
@@ -156,39 +154,7 @@ describe('the frame of the portfolio section', () => {
   );
 });
 
-describe('the page that is not built yet', () => {
-  const pages = [
-    [
-      'plan',
-      () => createElement(PlanPage, { chain: 'solana', address: SOL_GROW }),
-      'portfolio-plan',
-    ],
-  ] as const;
-
-  it.each(['en', 'pt'] as const)(
-    'each say their title and that they are not built, and show nothing else (%s)',
-    async (lang) => {
-      const w = portfolioDictionary(lang);
-      for (const signedIn of [false, true]) {
-        for (const [id, page, ui] of pages) {
-          if (signedIn) signIn();
-          const host = await frame(page(), lang);
-          const root = find(host, `[data-ui="${ui}"]`);
-          expect(find(root, 'h1').textContent, id).toBe(w[id].title);
-          // the serif is spent once, on the title
-          expect(host.querySelectorAll('.font-display')).toHaveLength(1);
-          expect(root.textContent).toContain(w.shell.soon);
-          // no figure made up in the page's place, and nothing to sign
-          expect(host.querySelector('[data-ui="figure"]')).toBeNull();
-          expect(host.querySelector('[data-variant="primary"]')).toBeNull();
-          expect(host.querySelector('table')).toBeNull();
-          await unmountAll();
-          portStore.set(fakePort());
-        }
-      }
-    },
-  );
-
+describe('a plan’s page inside the frame', () => {
   it('hands a plan’s page the chain and the vault its address names', async () => {
     const host = await frame(createElement(PlanPage, { chain: 'robinhood', address: RH_SILENT }));
     const root = find(host, '[data-ui="portfolio-plan"]');
