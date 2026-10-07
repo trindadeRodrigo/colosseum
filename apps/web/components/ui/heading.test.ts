@@ -4,8 +4,9 @@ import { read, sourceFiles } from './test/css';
 
 // One register per level across the product (STYLE.md, "The serif is spent once per screen"): a page's
 // title is set by `PAGE_TITLE`, in its gated states as in its loaded one. Three titles are their own,
-// by their specs: the landing's hero, Bearing's analytics (Rodrigo's productive scale) and the
-// monitor's sans heading over goal cards, whose sentences are the serif there (goal-card.md).
+// by their specs: the landing's hero, Bearing's analytics (Rodrigo's productive scale) and the sans
+// heading over goal cards, whose sentences are the serif there (goal-card.md): the monitor's, and the
+// portfolio section's overview, which switches the same way on its `vaults.length`.
 
 const OWN = new Set([
   'features/landing/JointStage.tsx',

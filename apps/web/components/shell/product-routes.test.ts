@@ -118,6 +118,7 @@ describe('the routes of the app', () => {
       'app/(app)/portfolio/exposure/page.tsx',
       'app/(app)/portfolio/layout.tsx',
       'app/(app)/portfolio/loading.tsx',
+      'app/(app)/portfolio/page.tsx',
       'app/(app)/portfolio/plan/[chain]/[address]/loading.tsx',
       'app/(app)/portfolio/plan/[chain]/[address]/page.tsx',
       'app/(app)/portfolio/rebalancing/loading.tsx',
