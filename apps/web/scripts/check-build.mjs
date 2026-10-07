@@ -45,7 +45,9 @@ export const STAGE_MARKERS = ['WebGLRenderer', 'tf-joint-ink', 'tf-coins-ink'];
  *
  * A placeholder is not a key: `?api-key=YOUR_API_KEY`, as a library's own documentation writes it.
  */
-const PLACEHOLDER = /^(your|my|example|xxx+|<|\$\{|\{\{|%)/i;
+// The whole value, never its start: words in capitals joined by underscores, or a run of x. A real
+// key that begins "my" or "your" is a key.
+const PLACEHOLDER = /^(?:[A-Z]+(?:_[A-Z]+)+|x{3,}|X{3,})$/;
 const keyed = (shape) => (text) =>
   [...text.matchAll(shape)].some((m) => !PLACEHOLDER.test(m[1] ?? ''));
 /** A JWT whose claims name Supabase's service role: the key that passes every row rule. */
@@ -99,10 +101,14 @@ export const SECRET_SHAPES = {
     for (const m of text.matchAll(BYTES_64)) {
       const print = fingerprint(m[0]);
       if (KNOWN_BYTE_TABLES.has(print)) continue;
-      // the fingerprint, and the letters before it with every digit masked: enough to say which
-      // table it is and list it, and nothing of the bytes
-      const before = text.slice(Math.max(0, (m.index ?? 0) - 48), m.index).replace(/\d/g, '#');
-      return `fingerprint ${print}, after ${JSON.stringify(before)}`;
+      // The fingerprint, where it is, and the name it is given when it has a short one of letters
+      // alone: enough to find the table and list it. Nothing else around it is printed: what stands
+      // beside a key can be another key.
+      const at = m.index ?? 0;
+      const named = text
+        .slice(Math.max(0, at - 64), at)
+        .match(/(?<![\w$])([A-Za-z_$]{1,16})\s*[:=]\s*(?:new\s+Uint8Array\(\s*)?$/);
+      return `fingerprint ${print}, at offset ${at}${named ? `, named ${named[1]}` : ''}`;
     }
     return false;
   },

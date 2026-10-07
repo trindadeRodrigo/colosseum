@@ -87,7 +87,9 @@ export function connectSources(env: PolicyEnv): string[] {
 
 /** The policy for one request, as the header's value. `dev`: React's debugging needs `eval`. */
 export function reportOnlyPolicy(nonce: string, env: PolicyEnv, dev = false): string {
-  const report = sourceOf(env.reportUri) ? env.reportUri : null;
+  // The address as the URL parser reads it back, never the text as it was given: a value with a
+  // space or a semicolon in it cannot add a directive of its own.
+  const report = sourceOf(env.reportUri) ? new URL(env.reportUri as string).href : null;
   const directives = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ''} ${SIGN_IN.script.join(' ')}`,

@@ -101,6 +101,42 @@ describe('what a browser is sent', () => {
     expect(Object.keys(SECRET_SHAPES)).toHaveLength(9);
   });
 
+  it('takes a placeholder for one only when the whole value is one', () => {
+    const holds = (value: string) =>
+      checkBuild(
+        build({ ...CLEAN, 'static/chunks/env.js': `u:"https://rpc.example/?api-key=${value}"` }),
+      ).length;
+    for (const placeholder of ['YOUR_API_KEY', 'API_KEY_HERE', 'xxxxxxxx', 'XXXXXXXXXXXX'])
+      expect(holds(placeholder), placeholder).toBe(0);
+    // a key is a key whatever it begins with
+    for (const real of [
+      'my8f3k2j9d0s1a7q',
+      'yourKey_4f9a2c7e1b',
+      'example-9f8e7d6c5b4a',
+      'YOUR_API_KEY_9f8e7d6c',
+    ])
+      expect(holds(real), real).toBe(1);
+  });
+
+  it('says where a 64-byte array is and what short name it has, and nothing of what stands beside it', () => {
+    // a neighbour that is itself a secret: a base58 key and a hex key right before the array
+    const base58 = '5Kd3NBUAdUnhyzenEwVLy9pBKxSwXvE9FMPyR4UT1mQa';
+    const hex = 'deadbeefcafebabefeedfacedeadbeefcafebabefeedfacedeadbeefcafebabe';
+    for (const [text, named] of [
+      [`a="${base58}",b="${hex}",payer=${keypair}`, 'payer'],
+      [`"${base58}":${keypair}`, null],
+      [`${hex}=${keypair}`, null],
+    ] as const) {
+      const [problem] = checkBuild(build({ ...CLEAN, 'static/chunks/env.js': text }));
+      expect(problem).toMatch(/fingerprint [0-9a-f]{16}, at offset \d+/);
+      expect(problem?.includes('named ')).toBe(named !== null);
+      if (named) expect(problem).toContain(`named ${named}`);
+      for (const secret of [base58, hex])
+        for (let i = 0; i + 6 <= secret.length; i += 6)
+          expect(problem, text).not.toContain(secret.slice(i, i + 6));
+    }
+  });
+
   it('flags 64 bytes under any name, and lets through only a table listed by its fingerprint', () => {
     // a key is not always called one: a plain name, a payer, an authority, no name at all
     for (const text of [

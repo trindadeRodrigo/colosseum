@@ -86,6 +86,12 @@ describe('the policy the browser only reports on', () => {
       /; report-uri https:\/\/reports\.example\/csp$/,
     );
     expect(reportOnlyPolicy('abc', { reportUri: 'not an address' })).not.toContain('report-uri');
+    // written as the parser reads it, so nothing in the value can start a directive of its own
+    const sly = reportOnlyPolicy('abc', {
+      reportUri: "https://reports.example/csp; script-src 'unsafe-inline' *",
+    });
+    expect(sly.split('; ').filter((d) => d.startsWith('script-src'))).toHaveLength(1);
+    expect(sly).toMatch(/; report-uri https:\/\/reports\.example\/csp;%20script-src%20/);
   });
 
   it('reads an address as its origin, https or on this machine, or not at all', () => {
