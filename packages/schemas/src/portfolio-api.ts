@@ -433,7 +433,11 @@ export type PortfolioRebalancesResponse = z.infer<typeof PortfolioRebalancesResp
 // GET /v1/portfolio/exposure
 // ---------------------------------------------------------------------------------------------------
 
-export const PortfolioExposureQuery = z.object({ chain: ChainId.optional() });
+/**
+ * With `address` the answer covers that one vault of the person's and no other: the sums, the roll-up
+ * and the size each exit is costed at are that vault's alone.
+ */
+export const PortfolioExposureQuery = z.object({ ...VaultFilter });
 export type PortfolioExposureQuery = z.infer<typeof PortfolioExposureQuery>;
 
 /** A share of a total: in dollars, and in basis points of that total. */
@@ -451,6 +455,9 @@ export type ExposureShare = z.infer<typeof ExposureShare>;
  * the asset is not measured or the size is beyond what was measured. Where it is not measured the
  * asset's tier is named as the fallback (gate EXIT-SOURCE), and a tier states no cost: `fallbackTier`
  * with `costBps: null`.
+ *
+ * `method` is the version of the method that measured it and `fetchedAt` the end of the data behind
+ * the measurement. A source or a time the measurement does not have is left out, never made up.
  */
 export const ExposureExit = z.object({
   asset: AssetId,
@@ -468,8 +475,8 @@ export type ExposureExit = z.infer<typeof ExposureExit>;
 /**
  * The person's holdings on one chain, from the newest snapshot of each of their vaults there.
  * `observedAt` is the oldest of those snapshots: the sums are no fresher than it. `unvalued` are the
- * holdings with no price, which are in no sum. `rollUp` is the risk roll-up of `packages/basket` over
- * the same holdings.
+ * holdings with no price, and those the chain's asset list does not name: they are in no sum.
+ * `rollUp` is the risk roll-up of `packages/basket` over the same holdings.
  */
 export const ChainExposure = z.object({
   chain: ChainId,
@@ -489,8 +496,9 @@ export const ChainExposure = z.object({
 export type ChainExposure = z.infer<typeof ChainExposure>;
 
 /**
- * `total` adds the chains up, by underlying and by issuer. Its label is the least live of the chains'
- * labels: a sum with a mock chain in it is `mock`. Null when no chain holds anything.
+ * `total` adds the chains up, by underlying and by issuer. Its label is the least live of the labels
+ * of the chains that add to it: a sum with a mock chain in it is `mock`. Null when no chain holds
+ * anything.
  */
 export const PortfolioExposureResponse = z.object({
   total: z
