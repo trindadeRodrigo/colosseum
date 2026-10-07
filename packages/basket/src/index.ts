@@ -5,4 +5,5 @@ export * from './meta-hash';
 export * from './plan-rebalance';
 export * from './roll-up';
 export { sha256Hex } from './sha256';
+export { statusOf } from './status';
 export { measureVault, view } from './view';
