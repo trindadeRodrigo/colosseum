@@ -211,6 +211,7 @@ export function registerBasketRoutes(
       const { plans, next } = await listPersonPlans(deps.db, signedIn(req), {
         limit: req.query.limit,
         ...(req.query.before ? { before: new Date(req.query.before) } : {}),
+        now: deps.now(),
       });
       return {
         next,

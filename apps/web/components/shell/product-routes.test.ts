@@ -342,6 +342,19 @@ describe('rule 3: no screen can reach a key', () => {
   /** The one screen that imports the runner, and the one route built from it. */
   const ORDER_SCREEN = 'features/order/OrderScreen.tsx';
   const ORDER_ROUTE = 'app/(app)/orders/[id]/page.tsx';
+  /**
+   * The routes that sign: the order's own, and the three whose card runs an order with one press
+   * (features/order/InvestCard.tsx draws the order screen inside it). Each reaches the runner through
+   * the order screen and by no other file.
+   */
+  const SIGNING_ROUTES: readonly string[] = [
+    ORDER_ROUTE,
+    'app/(app)/plan/[id]/buy/page.tsx',
+    'app/(app)/indexes/[slug]/buy/page.tsx',
+    'app/(app)/vaults/[chain]/[address]/add/page.tsx',
+    // the Invest screen's pane mounts the invest card under the plan (gate INVEST-TWO-PANE)
+    'app/(app)/goal/page.tsx',
+  ];
 
   /** What a file outside the seam may take from a file of the seam, by name. Types are free. */
   const OPEN: Record<string, readonly string[]> = {
@@ -596,11 +609,15 @@ describe('rule 3: no screen can reach a key', () => {
       'features/order/order-view.ts',
     ]);
     expect(takesRunner('features/order/order-view.ts')).toBe(false);
-    // by any path: every product route but the order's is built without the whole port
-    expect(product).toContain(ORDER_ROUTE);
-    expect(reach(product.filter((r) => r !== ORDER_ROUTE)).files.has(SIGNING)).toBe(false);
-    expect(reach(product.filter((r) => r !== ORDER_ROUTE)).files.has(RUNNER)).toBe(false);
-    expect(reach([ORDER_ROUTE]).files.has(SIGNING)).toBe(true);
+    // by any path: every product route is built without the whole port, but the order's and the
+    // three that invest, which draw the order's own screen inside their card (INVEST-ONE-PRESS)
+    for (const route of SIGNING_ROUTES) expect(product).toContain(route);
+    const others = product.filter((r) => !SIGNING_ROUTES.includes(r));
+    expect(reach(others).files.has(SIGNING)).toBe(false);
+    expect(reach(others).files.has(RUNNER)).toBe(false);
+    // and none of them reaches the order screen, which is the one way to the runner
+    expect(reach(others).files.has(ORDER_SCREEN)).toBe(false);
+    for (const route of SIGNING_ROUTES) expect(reach([route]).files.has(SIGNING), route).toBe(true);
     expect(built.files.has(RUNNER)).toBe(true);
   });
 

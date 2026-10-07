@@ -36,9 +36,21 @@ export const ordersOfVault = (vault: Vault, records: readonly OrderRecord[]): Or
  * The goal of the first of those orders that kept one, or null. The first: the goal's date counts from
  * the buy that opened the vault, and more money added later never moves it.
  */
-export function goalOfVault(vault: Vault, records: readonly OrderRecord[]): VaultGoal | null {
+export function goalOfVault(
+  vault: Vault,
+  records: readonly OrderRecord[],
+  /**
+   * The orders whose deposit is confirmed, where that is known. An order that was made and never
+   * signed (the invest card makes one to show its prices) opened nothing: once a buy of the vault
+   * has deposited, the date counts from the first that did. Before any is known to have, every
+   * order of the vault counts, as it did.
+   */
+  deposited?: ReadonlySet<string>,
+): VaultGoal | null {
+  const kept = ordersOfVault(vault, records).filter((record) => record.goal);
+  const bought = deposited ? kept.filter((record) => deposited.has(record.orderId)) : [];
   let first: VaultGoal | null = null;
-  for (const record of ordersOfVault(vault, records))
+  for (const record of bought.length > 0 ? bought : kept)
     if (record.goal && (!first || record.goal.placedAt < first.goal.placedAt))
       first = { goal: record.goal, record };
   return first;

@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
-import { throughBuySteps } from './buy-steps';
+import { readyToInvest } from './invest';
 
 // Shared portfolios end to end in a browser, on the mock chain (WEB-4): sign in with the throwaway
 // wallet, publish a portfolio through the form, review it and sign it, find it on the shelf, open its
@@ -149,19 +149,16 @@ test('publish a portfolio, find it on the shelf, buy it and follow it, every ste
 
   await page.getByRole('link', { name: en.shared.family.buy }).click();
   await expect(page).toHaveURL(/\/indexes\/three-of-the-largest\/buy$/);
-  await throughBuySteps(page, { amount: '40' });
+  const press = await readyToInvest(page, { amount: '40' });
   await check(page, 'family-buy');
-  await page.getByRole('button', { name: en.buy.review('$40') }).click();
-
-  await expect(page).toHaveURL(/\/orders\/[^/]+$/);
+  // the review is on the buy's own card, under where the version and weights were read from
+  await expect(page).toHaveURL(/\/indexes\/three-of-the-largest\/buy$/);
   const steps = page.locator('[data-ui="order-step"]');
   // a vault that follows the portfolio, opened with the deposit, then a swap per asset
   await expect(steps).toHaveCount(4);
-  await expect(page.getByRole('region', { name: en.order.shared.followTitle })).toContainText(
-    'three-of-the-largest',
-  );
+  await expect(page.locator('[data-ui="source-mark"]')).toBeVisible();
   await check(page, 'family-review');
-  await page.getByRole('button', { name: en.order.signAndBuy('$40') }).click();
+  await press.click();
   await expect(page.locator('[data-ui="order-status"]')).toHaveText(
     en.order.outcome.done('Solana'),
     { timeout: 90_000 },
