@@ -1465,6 +1465,14 @@ export const en = {
       /** A vault bought from a goal: it follows no shared portfolio. */
       ownPlan: 'Holds your own plan',
       followWith: 'Follow with this vault',
+      noFollowers: 'None of your vaults on this chain follows this portfolio yet.',
+      useExisting: 'Use an existing vault',
+      closeChooser: 'Close vault chooser',
+      choose: 'Choose this vault',
+      selected: 'Selected vault',
+      reviewFollow: 'Review vault update',
+      reviewTarget: (vault: string, portfolio: string, version: number) =>
+        `“${vault}” will follow ${portfolio}, version ${version}. Review the change before signing.`,
       followNote:
         'Your vault takes this portfolio’s weights. Nothing is traded in that step: you rebalance after, or the keeper does with auto-follow on.',
       autoOn: 'Switch auto-follow on',

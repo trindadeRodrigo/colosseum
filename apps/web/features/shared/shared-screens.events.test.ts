@@ -7,6 +7,7 @@ import { click, find, mount, settle, type, unmountAll } from '../../components/u
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary } from '../../i18n';
+import { useAccount } from '../account/AccountProvider';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
 import { acceptTrust, keepOrder, recallOrder, trustAccepted } from '../order/order-record';
@@ -79,8 +80,9 @@ const MY_VAULT = solanaVaultAddress('529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1Q
 
 function api(o: {
   family?: ReturnType<typeof familyOf> | null;
-  vaults?: ReturnType<typeof vaultOf>[];
+  vaults?: (ReturnType<typeof vaultOf> & { name?: string | null })[];
   order?: () => unknown;
+  portfolio?: () => Promise<Response>;
   /** Answers GET /v1/funding: the wallet has what the buy needs. */
   funded?: boolean;
   /** The person's chain; Solana unless said. */
@@ -102,6 +104,7 @@ function api(o: {
       return json({ familyId: FAMILY_ID, slug: SLUG, chains: [] });
     if (path.startsWith('/v1/indexes/'))
       return o.family ? json({ family: o.family, disclaimer: 'd' }) : json({ error: 'no' }, 404);
+    if (path === '/v1/portfolio' && o.portfolio) return o.portfolio();
     if (path === '/v1/portfolio')
       return json({
         chains: [
@@ -117,7 +120,7 @@ function api(o: {
         disclaimer: 'd',
       });
     if (path === '/v1/orders' && method === 'POST') {
-      const made = o.order ? o.order() : {};
+      const made = o.order ? await o.order() : {};
       // an answer the test wrote whole (a refusal), or an order
       return made instanceof Response ? made : json(made);
     }
@@ -233,11 +236,244 @@ describe('a portfolio’s page (gate GOLD-ONE-TAP)', () => {
       ],
     });
     const host = await show(createElement(FamilyScreen, { slug: SLUG }));
+    expect(host.querySelector('[data-ui="my-vault"]')).toBeNull();
+    await click(button(host, en.shared.vaults.useExisting) as HTMLElement);
     const mine = find(host, '[data-ui="my-vault"]');
-    expect(find(mine, 'a').textContent).toBe('Grow $40,000 over 36 months.');
+    expect(find(mine, 'h3').textContent).toBe('Grow $40,000 over 36 months.');
+    expect(find(mine, 'a').getAttribute('href')).toBe(`/vaults/solana/${MY_VAULT}`);
     expect(mine.textContent).toContain(en.shared.vaults.ownPlan);
     expect(mine.textContent).not.toContain('something else');
   });
+
+  it.each(['en', 'pt'] as const)(
+    'keeps followers visible and reviews just the locally selected vault (%s)',
+    async (lang) => {
+      const t = dictionary(lang);
+      const second = solanaVaultAddress(
+        '529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW',
+        SOLANA,
+        '43',
+      );
+      const third = solanaVaultAddress(
+        '529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW',
+        SOLANA,
+        '44',
+      );
+      const calls = api({
+        family: familyOf(FAMILY_ID),
+        vaults: [
+          { ...vaultOf({ address: MY_VAULT }), name: 'Already following' },
+          {
+            ...vaultOf({ address: second, basketId: '43', recipeOnchainId: null }),
+            name: 'Trip fund',
+          },
+          {
+            ...vaultOf({ address: third, basketId: '44', recipeOnchainId: null }),
+            name: 'Long term',
+          },
+        ],
+        order: () => ({ ...followOrder(['accept_version']), vault: third }),
+      });
+      const host = await mount(withAccount(lang, createElement(FamilyScreen, { slug: SLUG })));
+      for (let i = 0; i < 4; i += 1) await settle(50);
+      expect(host.querySelectorAll('[data-ui="my-vault"]')).toHaveLength(1);
+      expect(host.textContent).not.toContain('Trip fund');
+      const panel = find(host, '[data-ui="my-vault"]').closest('section');
+      expect(panel?.getAttribute('data-ui')).not.toBe('card');
+      await click(button(host, t.shared.vaults.useExisting) as HTMLElement);
+      const cards = [...host.querySelectorAll<HTMLElement>('[data-ui="my-vault"]')];
+      expect(cards).toHaveLength(3);
+      expect(find(cards[1], 'h3').textContent).toBe('Trip fund');
+      for (const card of cards) {
+        expect(find(card, 'a').textContent).toBe(t.shared.vaults.open);
+        expect(find(card, '[data-ui="chain-badge"]').textContent).toBe('Solana');
+      }
+      await click(button(cards[1], t.shared.vaults.choose) as HTMLElement);
+      expect(button(cards[1], t.shared.vaults.selected)?.getAttribute('aria-pressed')).toBe('true');
+      await click(button(cards[2], t.shared.vaults.choose) as HTMLElement);
+      expect(button(cards[1], t.shared.vaults.choose)?.getAttribute('aria-pressed')).toBe('false');
+      expect(calls.some((c) => c.path === '/v1/orders')).toBe(false);
+      expect(host.querySelectorAll('[data-ui="review-follow"]')).toHaveLength(1);
+      const review = find(host, '[data-ui="review-follow"]');
+      expect(review.textContent).toContain(
+        t.shared.vaults.reviewTarget('Long term', familyOf(FAMILY_ID).name, 2),
+      );
+      expect(host.textContent?.split(t.shared.vaults.followNote)).toHaveLength(2);
+      await click(button(review, t.shared.vaults.reviewFollow) as HTMLElement);
+      await settle(50);
+      expect(calls.filter((c) => c.path === '/v1/orders')).toHaveLength(1);
+      expect(calls.find((c) => c.path === '/v1/orders')?.body).toMatchObject({
+        type: 'follow',
+        vault: third,
+        family: SLUG,
+        autoFollow: false,
+        version: 2,
+      });
+      expect(recallOrder(ORDER_ID, USER)?.terms).toMatchObject({
+        kind: 'follow',
+        vault: third,
+        basketId: '44',
+        follow: { recipeOnchainId: RECIPE, version: 2 },
+      });
+      expect(router.push).toHaveBeenCalledWith(`/orders/${ORDER_ID}`);
+    },
+  );
+
+  it('closing and reopening the chooser drops its selection without placing an order', async () => {
+    const calls = api({
+      family: familyOf(FAMILY_ID),
+      vaults: [vaultOf({ address: MY_VAULT, recipeOnchainId: null })],
+    });
+    const host = await show(createElement(FamilyScreen, { slug: SLUG }));
+    await click(button(host, en.shared.vaults.useExisting) as HTMLElement);
+    await click(button(host, en.shared.vaults.choose) as HTMLElement);
+    expect(host.querySelector('[data-ui="review-follow"]')).not.toBeNull();
+    await click(button(host, en.shared.vaults.closeChooser) as HTMLElement);
+    expect(host.querySelector('[data-ui="review-follow"]')).toBeNull();
+    await click(button(host, en.shared.vaults.useExisting) as HTMLElement);
+    expect(host.querySelector('[data-ui="review-follow"]')).toBeNull();
+    expect(calls.some((c) => c.path === '/v1/orders')).toBe(false);
+  });
+
+  it('holds the selection and makes only one order while following is busy', async () => {
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const second = solanaVaultAddress('529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW', SOLANA, '43');
+    const calls = api({
+      family: familyOf(FAMILY_ID),
+      vaults: [
+        vaultOf({ address: MY_VAULT, recipeOnchainId: null }),
+        vaultOf({ address: second, basketId: '43', recipeOnchainId: null }),
+      ],
+      order: async () => {
+        await waiting;
+        return followOrder(['accept_version']);
+      },
+    });
+    const host = await show(createElement(FamilyScreen, { slug: SLUG }));
+    await click(button(host, en.shared.vaults.useExisting) as HTMLElement);
+    await click(button(host, en.shared.vaults.choose) as HTMLElement);
+    const review = button(host, en.shared.vaults.reviewFollow) as HTMLElement;
+    await click(review);
+    const other = button(host, en.shared.vaults.choose) as HTMLElement;
+    expect(other.getAttribute('aria-disabled')).toBe('true');
+    expect(button(host, en.shared.vaults.closeChooser)?.getAttribute('aria-disabled')).toBe('true');
+    await click(other);
+    await click(review);
+    expect(calls.filter((c) => c.path === '/v1/orders')).toHaveLength(1);
+    expect(calls.find((c) => c.path === '/v1/orders')?.body?.vault).toBe(MY_VAULT);
+    release();
+    await settle(50);
+    expect(router.push).toHaveBeenCalledWith(`/orders/${ORDER_ID}`);
+  });
+
+  it('drops the chooser, selection and refusal when the account changes, including while its vault read waits', async () => {
+    let paused = false;
+    let release!: (response: Response) => void;
+    const waiting = new Promise<Response>((resolve) => {
+      release = resolve;
+    });
+    const bad = vaultOf({ address: MY_VAULT, basketId: '43', recipeOnchainId: null });
+    const response = () =>
+      json({
+        chains: [
+          {
+            chain: 'solana',
+            name: 'Solana',
+            mode: 'live',
+            provenance: 'sandbox',
+            vaults: [{ ...bad, provenance: 'sandbox' }],
+            prices: [],
+          },
+        ],
+        disclaimer: 'd',
+      });
+    const calls = api({
+      family: familyOf(FAMILY_ID),
+      portfolio: () => (paused ? waiting : Promise.resolve(response())),
+    });
+    const host = await show(createElement(FamilyScreen, { slug: SLUG }));
+    await click(button(host, en.shared.vaults.useExisting) as HTMLElement);
+    await click(button(host, en.shared.vaults.choose) as HTMLElement);
+    await click(button(host, en.shared.vaults.reviewFollow) as HTMLElement);
+    expect(find(host, '[role="alert"]').textContent).toContain(en.order.mismatch.shape);
+    paused = true;
+    await act(async () => {
+      portStore.set(signedInPort(EMBEDDED, { userId: 'another-person' }));
+    });
+    await settle(50);
+    expect(host.querySelector('[data-ui="my-vault"]')).toBeNull();
+    expect(host.querySelector('[data-ui="review-follow"]')).toBeNull();
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    release(response());
+    await settle(50);
+    expect(button(host, en.shared.vaults.useExisting)).toBeDefined();
+    await click(button(host, en.shared.vaults.useExisting) as HTMLElement);
+    expect(host.querySelector('[data-ui="review-follow"]')).toBeNull();
+    expect(calls.some((c) => c.path === '/v1/orders')).toBe(false);
+  });
+
+  it.each([
+    ['account', 'placed'],
+    ['account', 'refused'],
+    ['chain', 'placed'],
+    ['chain', 'refused'],
+  ] as const)(
+    'ignores a late %s-context follow reply (%s) before storing or navigating',
+    async (context, outcome) => {
+      let release!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const calls = api({
+        family: familyOf(FAMILY_ID),
+        vaults: [vaultOf({ address: MY_VAULT, recipeOnchainId: null })],
+        order: async () => {
+          await waiting;
+          return outcome === 'placed'
+            ? followOrder(['accept_version'])
+            : json({ error: 'Changed', code: 'RECIPE_VERSION_CHANGED' }, 409);
+        },
+      });
+      function SwitchChain() {
+        const { choose } = useAccount();
+        return createElement(
+          'button',
+          { type: 'button', onClick: () => choose('robinhood') },
+          'Test chain switch',
+        );
+      }
+      const host = await show(
+        createElement(
+          'div',
+          null,
+          createElement(FamilyScreen, { slug: SLUG }),
+          createElement(SwitchChain),
+        ),
+      );
+      await click(button(host, en.shared.vaults.useExisting) as HTMLElement);
+      await click(button(host, en.shared.vaults.choose) as HTMLElement);
+      await click(button(host, en.shared.vaults.reviewFollow) as HTMLElement);
+      expect(calls.filter((c) => c.path === '/v1/orders')).toHaveLength(1);
+      if (context === 'account') {
+        await act(async () => {
+          portStore.set(signedInPort(EMBEDDED, { userId: 'another-person' }));
+        });
+      } else {
+        await click(button(host, 'Test chain switch') as HTMLElement);
+      }
+      await settle(50);
+      expect(host.querySelector('[data-ui="review-follow"]')).toBeNull();
+      release();
+      await settle(50);
+      expect(recallOrder(ORDER_ID, USER)).toBeNull();
+      expect(recallOrder(ORDER_ID, 'another-person')).toBeNull();
+      expect(router.push).not.toHaveBeenCalled();
+      expect(host.querySelector('[role="alert"]')).toBeNull();
+    },
+  );
 
   it('keeps the publisher and where the weights come from in view, and the routine check behind Details', async () => {
     api({ family: familyOf(FAMILY_ID) });
@@ -365,7 +601,10 @@ describe('a portfolio’s page (gate GOLD-ONE-TAP)', () => {
       vaults: [vaultOf({ address: MY_VAULT, basketId: '43', recipeOnchainId: null })],
     });
     const host = await show(createElement(FamilyScreen, { slug: SLUG }));
-    await click(button(host, en.shared.vaults.followWith) as HTMLElement);
+    await click(button(host, en.shared.vaults.useExisting) as HTMLElement);
+    await click(button(host, en.shared.vaults.choose) as HTMLElement);
+    expect(calls.some((c) => c.path === '/v1/orders')).toBe(false);
+    await click(button(host, en.shared.vaults.reviewFollow) as HTMLElement);
     await settle(50);
     expect(calls.some((c) => c.path === '/v1/orders')).toBe(false);
     expect(find(host, '[role="alert"]').textContent).toContain(en.order.mismatch.shape);

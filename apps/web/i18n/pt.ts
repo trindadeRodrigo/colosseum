@@ -1313,6 +1313,14 @@ export const pt: Dictionary = {
       notFollowing: 'Segue outro portfólio',
       ownPlan: 'Guarda o seu próprio plano',
       followWith: 'Seguir com este cofre',
+      noFollowers: 'Nenhum dos seus cofres nesta rede segue este portfólio ainda.',
+      useExisting: 'Usar um cofre existente',
+      closeChooser: 'Fechar seleção de cofres',
+      choose: 'Escolher este cofre',
+      selected: 'Cofre selecionado',
+      reviewFollow: 'Revisar atualização do cofre',
+      reviewTarget: (vault: string, portfolio: string, version: number) =>
+        `“${vault}” seguirá ${portfolio}, versão ${version}. Revise a mudança antes de assinar.`,
       followNote:
         'Seu cofre assume os pesos deste portfólio. Nada é negociado nesse passo: você rebalanceia depois, ou o operador faz isso com o seguir automático ativado.',
       autoOn: 'Ativar o seguir automático',

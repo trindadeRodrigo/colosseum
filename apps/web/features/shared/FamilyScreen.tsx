@@ -1,6 +1,7 @@
 'use client';
 import type {
   ChainId,
+  PortfolioResponse,
   RecipeVersionView,
   SharedFamily,
   SharedRecipe,
@@ -10,11 +11,12 @@ import type {
 } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardBody, CardHeader } from '../../components/ui/Card';
+import { Card } from '../../components/ui/Card';
+import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
 import { utcMinute } from '../../components/ui/ExecutionList';
 import { PAGE_TITLE } from '../../components/ui/heading';
@@ -496,6 +498,7 @@ function RecipeSection({
 
       {person.kind === 'ready' && own && followed && !blocked && (
         <VaultsPanel
+          key={`${person.userId}:${person.owner}:${person.chain}:${person.mock}:${family.slug}:${recipe.onchainId}:${followed.follow.version}:${followed.source}`}
           family={family}
           recipe={recipe}
           followed={followed}
@@ -619,7 +622,7 @@ function WeightsTable({
 /**
  * The person's vaults on this chain: each one that follows this portfolio, with the prompt when a newer
  * version has taken effect or waits, and the auto-follow switch where it is offered; each one that
- * does not, with a follow. Every action is an order, reviewed and signed on the order screen.
+ * does not is offered in a chooser. Selecting is local; following is reviewed and signed on the order screen.
  */
 function VaultsPanel({
   family,
@@ -640,7 +643,12 @@ function VaultsPanel({
   const v = t.shared.vaults;
   const router = useRouter();
   const apiFetch = useApiFetch();
-  const [vaults, setVaults] = useState<VaultView[] | null | 'failed'>(null);
+  type OwnVault = PortfolioResponse['chains'][number]['vaults'][number];
+  const [vaults, setVaults] = useState<OwnVault[] | null | 'failed'>(null);
+  const [choosing, setChoosing] = useState(false);
+  const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
+  const submitting = useRef(false);
+  const generation = useRef(0);
   // The orders this browser placed: a vault bought from a goal is named by that goal.
   const [records, setRecords] = useState<OrderRecord[]>([]);
   useEffect(() => setRecords(recallOrders(person.userId)), [person.userId]);
@@ -652,6 +660,13 @@ function VaultsPanel({
 
   useEffect(() => {
     let mine = true;
+    setVaults(null);
+    submitting.current = false;
+    setBusy(null);
+    setChoosing(false);
+    setSelectedAddress(null);
+    setFailure(null);
+    setChanged(false);
     readPortfolio(apiFetch).then((read) => {
       if (!mine) return;
       if (read.kind !== 'read') return setVaults('failed');
@@ -660,18 +675,21 @@ function VaultsPanel({
     });
     return () => {
       mine = false;
+      generation.current += 1;
     };
   }, [apiFetch, person.chain]);
 
   /** A follow order for this vault, kept with its terms, then the order screen. */
   async function follow(vault: VaultView, autoFollow: boolean, accept: boolean) {
-    if (!person.owner || !person.userId) return;
+    if (!person.owner || !person.userId || submitting.current) return;
+    submitting.current = true;
     setBusy(`${vault.address}:${autoFollow}:${accept}`);
     setFailure(null);
     // The plan number the step names has to be the vault's own, as the guard derives it.
     if (
       isVaultOf(person.chain, person.mock, vault.owner, vault.basketId, vault.address) === false
     ) {
+      submitting.current = false;
       setBusy(null);
       setFailure(t.order.mismatch.shape);
       return;
@@ -686,6 +704,7 @@ function VaultsPanel({
       autoFollow,
       source: followed.source,
     };
+    const started = generation.current;
     const placed = await placeShared(
       apiFetch,
       {
@@ -697,7 +716,10 @@ function VaultsPanel({
       },
       { chain: person.chain, owner: vault.owner, type: 'follow' },
     );
+    // A late reply belongs to the discarded read, account, chain or version, not this page.
+    if (started !== generation.current) return;
     if (placed.kind !== 'placed') {
+      submitting.current = false;
       setBusy(null);
       // A refusal with a code is said in this app's own words for a portfolio (refusal.ts): a follow
       // of a version that is no longer the one in effect says so, and offers to read it again.
@@ -726,6 +748,7 @@ function VaultsPanel({
       approved: null,
     });
     if (!kept) {
+      submitting.current = false;
       setBusy(null);
       setFailure(t.shared.publish.failure.noStore);
       return;
@@ -740,119 +763,203 @@ function VaultsPanel({
    * version, as the API plans it.
    */
   const keep = (vault: VaultView) => vault.autoFollow && offered;
+  const readVaults = Array.isArray(vaults) ? vaults : [];
+  const related = readVaults.filter(
+    (vault) => vault.recipeOnchainId === followed.follow.recipeOnchainId,
+  );
+  const eligible = readVaults.filter(
+    (vault) => vault.recipeOnchainId !== followed.follow.recipeOnchainId,
+  );
+  // An address alone is not an authority: resolve it against this read, never a previous account's.
+  const selected = choosing
+    ? eligible.find((vault) => vault.address === selectedAddress)
+    : undefined;
+  const nameOf = (vault: OwnVault) => {
+    const goal = goalOfVault(vault, records)?.goal.sheet;
+    return (
+      vault.name ??
+      (goal
+        ? goalLine(goal, t, dollars(goal.amountUsd, lang), (usd) => dollars(usd, lang))
+        : v.address(shortAddress(vault.address)))
+    );
+  };
+  const cards = (items: OwnVault[]) => (
+    <ul className="grid grid-cols-1 gap-4 min-[640px]:grid-cols-2">
+      {items.map((vault) => {
+        const follows = vault.recipeOnchainId === followed.follow.recipeOnchainId;
+        const behind = follows && vault.acceptedVersion < followed.follow.version;
+        const heading = `${titleId}-${vault.address}`;
+        return (
+          <li key={vault.address} data-ui="my-vault" className="min-w-0">
+            <Card
+              as="article"
+              interactive
+              selected={selected?.address === vault.address}
+              aria-labelledby={heading}
+              mock={vault.provenance !== 'live'}
+              mockLabels={{
+                announce:
+                  vault.provenance === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
+              }}
+              className="h-full"
+            >
+              <div className="flex min-w-0 flex-col items-start gap-3 p-6">
+                <div className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">
+                  <ChainBadge chain={vault.chain} />
+                  {vault.recipeOnchainId !== null && (
+                    <span>{t.shared.vault.version(vault.acceptedVersion)}</span>
+                  )}
+                </div>
+                <h3 id={heading} className="w-full break-words font-serif text-h4">
+                  {nameOf(vault)}
+                </h3>
+                <p className="text-body-sm text-muted-foreground">
+                  {follows
+                    ? v.following
+                    : vault.recipeOnchainId === null
+                      ? v.ownPlan
+                      : v.notFollowing}
+                </p>
+                {follows && (
+                  <p className="text-body-sm text-muted-foreground">{v.autoIs(vault.autoFollow)}</p>
+                )}
+                {follows && (behind || vault.pending) && (
+                  <FollowPrompt
+                    vault={vault}
+                    version={followed.follow.version}
+                    behind={behind}
+                    busy={busy !== null}
+                    onAccept={() => follow(vault, keep(vault), true)}
+                  />
+                )}
+                {follows && (offered || vault.autoFollow) && !behind && (
+                  <Button
+                    variant="secondary"
+                    disabled={busy !== null}
+                    busy={busy === `${vault.address}:${!vault.autoFollow}:false`}
+                    onClick={() => follow(vault, !vault.autoFollow, false)}
+                  >
+                    {vault.autoFollow ? v.autoOff : v.autoOn}
+                  </Button>
+                )}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <Link
+                    href={`/vaults/${vault.chain}/${encodeURIComponent(vault.address)}`}
+                    className={buttonClass({ variant: 'link' })}
+                    title={vault.address}
+                  >
+                    {v.open}
+                  </Link>
+                  {!follows && (
+                    <Button
+                      variant="secondary"
+                      pressed={selected?.address === vault.address}
+                      disabled={busy !== null}
+                      onClick={() => {
+                        setSelectedAddress(vault.address);
+                        setFailure(null);
+                        setChanged(false);
+                      }}
+                    >
+                      {selected?.address === vault.address ? v.selected : v.choose}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </Card>
+          </li>
+        );
+      })}
+    </ul>
+  );
   return (
-    <Card as="section" aria-labelledby={titleId}>
-      <CardHeader title={v.title} level={2} id={titleId} />
+    <section aria-labelledby={titleId} className="flex min-w-0 flex-col gap-4">
+      <h2 id={titleId} className="text-h4 font-semibold">
+        {v.title}
+      </h2>
       {vaults === null ? (
         <CardWait label={t.shared.vault.loading} skeleton={<SkeletonRows rows={2} columns={3} />} />
+      ) : vaults === 'failed' ? (
+        <p className="text-body-sm">{v.failure}</p>
       ) : (
-        <CardBody className="flex flex-col gap-4">
-          {vaults === 'failed' ? (
-            <p className="text-body-sm">{v.failure}</p>
-          ) : vaults.length === 0 ? (
-            <p className="text-body-sm">{v.none}</p>
+        <>
+          {related.length > 0 ? (
+            cards(related)
           ) : (
-            <ul className="flex flex-col divide-y divide-border">
-              {vaults.map((vault) => {
-                const follows = vault.recipeOnchainId === followed.follow.recipeOnchainId;
-                // A vault bought from a goal goes by that goal, where this browser kept it.
-                const goal = goalOfVault(vault, records)?.goal.sheet;
-                const behind = follows && vault.acceptedVersion < followed.follow.version;
-                return (
-                  <li
-                    key={vault.address}
-                    data-ui="my-vault"
-                    className="flex flex-col items-start gap-2 py-3"
-                  >
-                    <p className="flex flex-wrap items-baseline gap-x-2 text-body">
-                      <Link
-                        href={`/vaults/${vault.chain}/${encodeURIComponent(vault.address)}`}
-                        className={buttonClass({ variant: 'link' })}
-                        title={vault.address}
-                      >
-                        {goal
-                          ? goalLine(goal, t, dollars(goal.amountUsd, lang), (usd) =>
-                              dollars(usd, lang),
-                            )
-                          : v.address(shortAddress(vault.address))}
-                      </Link>
-                      <span className="text-body-sm text-muted-foreground">
-                        {follows
-                          ? v.following
-                          : vault.recipeOnchainId === null
-                            ? v.ownPlan
-                            : v.notFollowing}
-                      </span>
-                      {follows && (
-                        <span className="text-body-sm text-muted-foreground">
-                          {v.autoIs(vault.autoFollow)}
-                        </span>
-                      )}
-                    </p>
-                    {follows && (behind || vault.pending) && (
-                      <FollowPrompt
-                        vault={vault}
-                        version={followed.follow.version}
-                        behind={behind}
-                        busy={busy === `${vault.address}:${keep(vault)}:true`}
-                        onAccept={() => follow(vault, keep(vault), true)}
-                      />
-                    )}
-                    {follows && !offered && (
-                      <p className="max-w-(--tf-measure-body) text-body-sm">{v.oneTap}</p>
-                    )}
-                    {follows && (offered || vault.autoFollow) && !behind && (
-                      <Button
-                        variant="secondary"
-                        busy={busy === `${vault.address}:${!vault.autoFollow}:false`}
-                        onClick={() => follow(vault, !vault.autoFollow, false)}
-                      >
-                        {vault.autoFollow ? v.autoOff : v.autoOn}
-                      </Button>
-                    )}
-                    {!follows && (
-                      <>
-                        <Button
-                          variant="secondary"
-                          busy={busy === `${vault.address}:${keep(vault)}:true`}
-                          onClick={() => follow(vault, keep(vault), true)}
-                        >
-                          {v.followWith}
-                        </Button>
-                        <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
-                          {v.followNote}
-                        </p>
-                      </>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {failure && (
-            <p
-              role="alert"
-              className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm text-destructive"
-            >
-              <StatusMark status="off-track" size={12} className="mt-1.5" />
-              <span>{failure}</span>
+            <p className="text-body-sm text-muted-foreground">
+              {vaults.length === 0 ? v.none : v.noFollowers}
             </p>
           )}
-          {failure && changed && (
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setFailure(null);
-                setChanged(false);
-                onReread();
-              }}
-            >
-              {t.shared.refusal.reread}
-            </Button>
+          {related.length > 0 && !offered && (
+            <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
+              {v.oneTap}
+            </p>
           )}
-        </CardBody>
+          {eligible.length > 0 && (
+            <div>
+              <Button
+                variant="secondary"
+                pressed={choosing}
+                disabled={busy !== null}
+                onClick={() => {
+                  setChoosing((open) => !open);
+                  setSelectedAddress(null);
+                  setFailure(null);
+                  setChanged(false);
+                }}
+              >
+                {choosing ? v.closeChooser : v.useExisting}
+              </Button>
+            </div>
+          )}
+          {choosing && cards(eligible)}
+          {selected && (
+            <div
+              data-ui="review-follow"
+              className="flex flex-col items-start gap-3 border-l-2 border-primary pl-4"
+            >
+              <p className="max-w-(--tf-measure-body) text-body-sm [overflow-wrap:anywhere]">
+                {v.reviewTarget(nameOf(selected), family.name, followed.follow.version)}
+              </p>
+              <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
+                {v.followNote}
+              </p>
+              <Button
+                variant="secondary"
+                disabled={busy !== null}
+                busy={busy === `${selected.address}:${keep(selected)}:true`}
+                onClick={() => follow(selected, keep(selected), true)}
+              >
+                {v.reviewFollow}
+              </Button>
+            </div>
+          )}
+        </>
       )}
-    </Card>
+      {failure && (
+        <p
+          role="alert"
+          className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm text-destructive"
+        >
+          <StatusMark status="off-track" size={12} className="mt-1.5" />
+          <span>{failure}</span>
+        </p>
+      )}
+      {failure && changed && (
+        <Button
+          variant="secondary"
+          onClick={() => {
+            setFailure(null);
+            setChanged(false);
+            setChoosing(false);
+            setSelectedAddress(null);
+            onReread();
+          }}
+        >
+          {t.shared.refusal.reread}
+        </Button>
+      )}
+    </section>
   );
 }
 
