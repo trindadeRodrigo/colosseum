@@ -468,8 +468,10 @@ describe('the person confirms a sheet', () => {
       risk: 'low',
       currency: 'BRL',
       language: 'pt',
-      limits: { cannotHold: { classes: ['stock'] } },
+      // "Sem ações": no stocks, and none through a fund of stocks either.
+      limits: { cannotHold: { classes: ['etf', 'stock'] } },
     });
+    expect(result.readBack).toContain('Você deixou de fora ações e fundos de ações.');
     const noCredit = run('en-grow-3y-no-credit');
     expect(noCredit.sheet?.limits).toEqual({ creditTolerance: 'none' });
   });

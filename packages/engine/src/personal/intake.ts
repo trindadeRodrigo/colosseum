@@ -249,6 +249,15 @@ export type IntakeResult = {
 const RISKS = ['low', 'medium', 'high'] as const;
 const WHOLE_MIX_BPS = 10_000;
 
+/**
+ * What a stated refusal of a class leaves out with it. Stocks: the funds of stocks too. The product
+ * holds a fund of stocks as a stock token (gate PROTECT-NO-STOCKS; in the registry `stock` and `etf`
+ * are held by the same goals, and every `etf` on the shelf is a stock index fund), so a person who
+ * says "no stocks" means none through a fund either. Not the other way: "no ETFs" leaves single
+ * stocks to hold.
+ */
+const LEFT_OUT_WITH: Partial<Record<Refused, HoldableClass[]>> = { stock: ['etf'] };
+
 const BPS_PER_PCT = WHOLE_MIX_BPS / 100;
 
 type ShareSaidOf = Exclude<MarketShare, null>;
@@ -770,17 +779,24 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
 
   // What the person rules out ("no stocks", "sem ações", "no credit") is taken from the text, by code,
   // with or without a model (found by the playground run of Oct 6, where with no model it was lost):
-  // a refusal that is lost gives the person what they refused. One its clause states becomes the sheet's limits, and the read-back says it back for
-  // the person to confirm: it is taken, not asked. One its clause negates ("I can't do without
-  // stocks"), says of something else ("my brother holds no stocks") or only wonders about ("no
-  // stocks? not sure") is not taken (`refusal_<how>:<what>`). The model's reply is a check, both
-  // ways: what it gives that the text does not write is dropped (`not_in_text:`), and what the text
-  // states that it missed is taken all the same (`disagrees_with_rules:`).
+  // a refusal that is lost gives the person what they refused. One its clause states becomes the
+  // sheet's limits, and the read-back says it back for the person to confirm: it is taken, not asked.
+  // One its clause negates ("I can't do without stocks"), says of something else ("my brother holds
+  // no stocks") or only wonders about ("no stocks? not sure") is not taken (`refusal_<how>:<what>`).
+  // The model's reply is a check, both ways: what it gives that the text does not write is dropped
+  // (`not_in_text:`), and what the text states that it missed is taken all the same
+  // (`disagrees_with_rules:`).
   const refusals = refusalsSaidIn(text);
   const refused = new Set(refusals.filter((x) => x.stance === 'stated').map((x) => x.what));
+  // What a stated refusal leaves out: itself, and what goes with it (`LEFT_OUT_WITH`). "No stocks" is
+  // no stocks through a fund either. What goes with it is no disagreement with the model, either way.
+  const leftOut = new Set<Refused>(
+    [...refused].flatMap((what) => [what, ...(LEFT_OUT_WITH[what] ?? [])]),
+  );
   const refusalOf = (what: Refused) => (what === 'credit' ? 'noCredit' : `cannotHold:${what}`);
   for (const what of replyRefused)
-    if (!refusals.some((x) => x.what === what)) flags.push(`not_in_text:${refusalOf(what)}`);
+    if (!leftOut.has(what) && !refusals.some((x) => x.what === what))
+      flags.push(`not_in_text:${refusalOf(what)}`);
   if (method === 'model')
     for (const what of refused)
       if (!replyRefused.includes(what)) flags.push(`disagrees_with_rules:${refusalOf(what)}`);
@@ -788,16 +804,16 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
   // is said back with the read-back: nothing a reader took for a refusal is dropped in silence.
   const refusalsNotTaken: RefusalSaid[] = [];
   for (const what of new Set(refusals.map((x) => x.what))) {
-    if (refused.has(what)) continue;
+    if (leftOut.has(what)) continue;
     const written = refusals.filter((x) => x.what === what);
     const shown = written.find((x) => x.stance === 'wondered') ?? written[0];
     if (!shown) continue;
     flags.push(`refusal_${shown.stance}:${what}`);
     if (shown.stance === 'wondered' || replyRefused.includes(what)) refusalsNotTaken.push(shown);
   }
-  const classesRefused = [...refused].filter((x): x is HoldableClass => x !== 'credit').sort();
+  const classesRefused = [...leftOut].filter((x): x is HoldableClass => x !== 'credit').sort();
   limits.cannotHoldClasses = classesRefused.length > 0 ? classesRefused : null;
-  if (refused.has('credit')) limits.creditTolerance = 'none';
+  if (leftOut.has('credit')) limits.creditTolerance = 'none';
 
   // What the person wants held (gate EXPLICIT-MIX, Rodrigo, Oct 6). A mix is taken only as written,
   // and only where its clause states it as what the person wants held: code reads it from the text in

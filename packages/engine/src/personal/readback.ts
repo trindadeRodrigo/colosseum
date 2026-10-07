@@ -118,7 +118,12 @@ export function readBack(
   if (limits?.creditTolerance === 'none') out.push(say('NO_CREDIT'));
   if (limits?.creditTolerance === 'limited') out.push(say('CREDIT_LIMITED'));
   if (limits?.creditTolerance === 'accept') out.push(say('CREDIT_ACCEPT'));
-  const classes = limits?.cannotHold?.classes ?? [];
+  // Said in the order of `CLASS_WORDS`, whatever order the sheet holds them in: "stocks and stock
+  // funds".
+  const said = Object.keys(CLASS_WORDS[lang]);
+  const classes = [...(limits?.cannotHold?.classes ?? [])].sort(
+    (a, b) => said.indexOf(a) - said.indexOf(b),
+  );
   if (classes.length > 0)
     out.push(
       say('CANNOT_HOLD', { classes: classes.map((c) => CLASS_WORDS[lang][c] ?? c).join(',') }),

@@ -2079,20 +2079,22 @@ describe('whatever the text, the shelf and the answers', () => {
         expect(asked.includes('risk') && asked.includes('mix'), where).toBe(false);
         // A refusal the text states is read on every turn, with or without a model, and nothing
         // else is: a ruled-out narrative ("No defense stocks.") and "no problem with stocks" leave
-        // out no class.
+        // out no class. Stocks refused are no stocks through a fund either: both classes.
         const refuses = text.includes('No stocks please.');
         if (refuses) refusals += 1;
         expect(result.limits, where).toEqual({
           creditTolerance: null,
-          cannotHoldClasses: refuses ? ['stock'] : null,
+          cannotHoldClasses: refuses ? ['etf', 'stock'] : null,
         });
         if (result.sheet) {
           expect(result.sheet.limits, where).toEqual(
-            refuses ? { cannotHold: { classes: ['stock'] } } : undefined,
+            refuses ? { cannotHold: { classes: ['etf', 'stock'] } } : undefined,
           );
           expect(
             (result.readBack ?? []).some((s) =>
-              /^You left out stocks\.$|^Você deixou de fora ações\.$/.test(s),
+              /^You left out stocks and stock funds\.$|^Você deixou de fora ações e fundos de ações\.$/.test(
+                s,
+              ),
             ),
             where,
           ).toBe(refuses);

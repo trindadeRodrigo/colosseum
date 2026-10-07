@@ -377,6 +377,42 @@ describe('the read-back (C18)', () => {
     expect(unsupported(inYears, sheet).length).toBeGreaterThan(0);
   });
 
+  // "No stocks" leaves out stocks and the funds of them: said in that order, whatever order the
+  // sheet holds the classes in, and the funds as funds of stocks.
+  it('says the classes left out in one order, stocks then stock funds, in both languages', () => {
+    const base = all.find((s) => s.obligations && s.language === 'en') as PersonalSheet;
+    const leftOut = (classes: string[], language: Language) =>
+      readBack(
+        { ...base, language, limits: { cannotHold: { classes } } } as PersonalSheet,
+        portfolios,
+        THEMES,
+      ).find((s) => /^You left out|^Você deixou de fora/.test(s));
+    expect(leftOut(['etf', 'stock'], 'en')).toBe('You left out stocks and stock funds.');
+    expect(leftOut(['stock', 'etf'], 'en')).toBe('You left out stocks and stock funds.');
+    expect(leftOut(['etf', 'stock'], 'pt')).toBe('Você deixou de fora ações e fundos de ações.');
+    expect(leftOut(['etf'], 'en')).toBe('You left out stock funds.');
+    expect(leftOut(['etf'], 'pt')).toBe('Você deixou de fora fundos de ações.');
+    expect(leftOut(['stock'], 'en')).toBe('You left out stocks.');
+    // Every class, in any order of the sheet: one order of saying.
+    const every = ['crypto', 'dollar_yield', 'commodity', 'gold', 'etf', 'stock'];
+    for (const classes of [every, [...every].reverse(), [...every].sort()])
+      expect(leftOut(classes, 'en')).toBe(
+        'You left out stocks, stock funds, gold, commodities, dollar yield and crypto.',
+      );
+    expect(leftOut(every, 'pt')).toBe(
+      'Você deixou de fora ações, fundos de ações, ouro, commodities, rendimento em dólar e cripto.',
+    );
+    // The sheet is not changed by being said.
+    const sheet = {
+      ...base,
+      limits: { cannotHold: { classes: ['etf', 'stock'] } },
+    } as PersonalSheet;
+    readBack(sheet, portfolios, THEMES);
+    expect(sheet.limits?.cannotHold?.classes).toEqual(['etf', 'stock']);
+    // And it holds no name the sheet does not (C18), with the funds said as they are.
+    expect(unsupported(readBack(sheet, portfolios, THEMES), sheet)).toEqual([]);
+  });
+
   it('says "no date set" for a goal with no date, never the months it is built over (Oct 6)', () => {
     const open = all.find((s) => s.horizonOpen && s.language === 'en') as PersonalSheet;
     const said = readBack(open, portfolios, THEMES);

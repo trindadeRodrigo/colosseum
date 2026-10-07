@@ -1,5 +1,5 @@
 {
-  "about": "The goal evaluation set (12 goals on Oct 3, 18 since ENG-3 slice 4: negations, two amounts in one sentence, Portuguese numbers and a goal in reais) for the sentence parser (DESIGN-VAULT section 7). Each goal is a sentence and the draft of the sheet it should parse to: every field of BasketSheetDraft, null where the sentence does not say. Months are counted from nowMonth, and 'by 2031' means January 2031, as the rules parser counts. `expectLimits` is what the intake reads of the person's refusals (a draft of PersonalLimits). A goal written in another currency than dollars has no amountUsd: the intake asks for the amount in dollars.",
+  "about": "The goal evaluation set (12 goals on Oct 3, 18 since ENG-3 slice 4: negations, two amounts in one sentence, Portuguese numbers and a goal in reais) for the sentence parser (DESIGN-VAULT section 7). Each goal is a sentence and the draft of the sheet it should parse to: every field of BasketSheetDraft, null where the sentence does not say. Months are counted from nowMonth, and 'by 2031' means January 2031, as the rules parser counts. `expectLimits` is what the intake reads of the person's refusals (a draft of PersonalLimits); a refusal of stocks leaves out the funds of stocks with them (classes `stock` and `etf`). A goal written in another currency than dollars has no amountUsd: the intake asks for the amount in dollars.",
   "nowMonth": "2026-10",
   "goals": [
     {
@@ -124,7 +124,7 @@
       },
       "expectLimits": {
         "creditTolerance": null,
-        "cannotHoldClasses": ["stock"]
+        "cannotHoldClasses": ["etf", "stock"]
       }
     },
     {
@@ -274,7 +274,7 @@
       },
       "expectLimits": {
         "creditTolerance": null,
-        "cannotHoldClasses": ["stock"]
+        "cannotHoldClasses": ["etf", "stock"]
       }
     },
     {
@@ -399,7 +399,7 @@
       },
       "expectLimits": {
         "creditTolerance": null,
-        "cannotHoldClasses": ["stock"]
+        "cannotHoldClasses": ["etf", "stock"]
       }
     },
     {

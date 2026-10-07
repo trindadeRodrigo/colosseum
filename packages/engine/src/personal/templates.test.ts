@@ -516,6 +516,42 @@ describe('intake templates', () => {
     );
   });
 
+  // A fund of class `etf` is a fund of stocks: "funds" alone would read as any fund, and the shelf
+  // also has funds that pay a dollar yield.
+  it('says each class a person can leave out, and the funds as stock funds, in the order they are said', () => {
+    expect(CLASS_WORDS).toEqual({
+      en: {
+        stock: 'stocks',
+        etf: 'stock funds',
+        gold: 'gold',
+        commodity: 'commodities',
+        dollar_yield: 'dollar yield',
+        crypto: 'crypto',
+      },
+      pt: {
+        stock: 'ações',
+        etf: 'fundos de ações',
+        gold: 'ouro',
+        commodity: 'commodities',
+        dollar_yield: 'rendimento em dólar',
+        crypto: 'cripto',
+      },
+    });
+    // The order of the keys is the order of saying: stocks, then the funds of them.
+    for (const lang of LANGUAGES)
+      expect(Object.keys(CLASS_WORDS[lang]).slice(0, 2)).toEqual(['stock', 'etf']);
+    const said = (lang: 'en' | 'pt', classes: string[]) =>
+      render(
+        READBACK_TEMPLATES.CANNOT_HOLD[lang],
+        { classes: classes.map((c) => CLASS_WORDS[lang][c] ?? c).join(',') },
+        lang,
+      );
+    expect(said('en', ['stock', 'etf'])).toBe('You left out stocks and stock funds.');
+    expect(said('pt', ['stock', 'etf'])).toBe('Você deixou de fora ações e fundos de ações.');
+    expect(said('en', ['etf'])).toBe('You left out stock funds.');
+    expect(said('pt', ['etf'])).toBe('Você deixou de fora fundos de ações.');
+  });
+
   it('ban what reads as advice or a return promise', () => {
     for (const lang of LANGUAGES) {
       const texts = [
