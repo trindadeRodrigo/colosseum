@@ -139,7 +139,7 @@ export function finiteFacts<T>(sheet: T): T {
     if ('value' in o && 'unit' in o && typeof o.value === 'number' && !Number.isFinite(o.value))
       return {
         value: null,
-        reason: 'insufficient_samples',
+        reason: 'not_a_number',
         unit: o.unit,
         ...(o.regime === undefined ? {} : { regime: o.regime }),
         ...(o.sizeUsd === undefined ? {} : { sizeUsd: o.sizeUsd }),
