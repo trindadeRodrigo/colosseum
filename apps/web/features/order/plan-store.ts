@@ -20,6 +20,11 @@ export type StoredPlan = {
    * read back from the API by its id, and said so on the plan screen.
    */
   fromLink?: boolean;
+  /**
+   * Read back from the API in a tab that did not build it. The API keeps the plan and not its risk
+   * roll-up, so there is none, and the plan screen says so.
+   */
+  readBack?: boolean;
 };
 
 const KEY = (id: string) => `tf-plan:${id}`;
@@ -54,6 +59,7 @@ export function recallPlan(id: string, userId: string | null): StoredPlan | null
       proposal: proposal.data,
       rollUp: rollUp?.success ? rollUp.data : null,
       ...(read.fromLink === true ? { fromLink: true } : {}),
+      ...(read.readBack === true ? { readBack: true } : {}),
     };
   } catch {
     return null;

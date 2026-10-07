@@ -2,6 +2,7 @@ import {
   type BasketSheet,
   FundingResponse,
   OrderDetail,
+  PersonPlansResponse,
   PortfolioResponse,
   VaultNameResponse,
   YieldObservation,
@@ -15,7 +16,7 @@ import { bearingPlanInputs } from '../../plan-inputs';
 import mockYields from '../../testing/fixtures/mock-yields.json';
 import { orderFlow } from '../../testing/flow';
 import { person, type TestIssuer, testApp, testDb, testIssuer } from '../../testing/harness';
-import { PersonalizeResponse, PersonPlansResponse } from './baskets';
+import { PersonalizeResponse } from './baskets';
 
 // Several vaults for one person, and more money into one of them (add money): a buy that names a vault
 // of the person's deposits into THAT vault and buys to the targets it has on chain now. A vault that
@@ -152,7 +153,7 @@ describe.each(['solana', 'robinhood'] as const)('several vaults on %s', (chain) 
     );
 
     const done = await settleAll(who, placed);
-    expect(done.status).toBe('completed');
+    expect(done.status).toBe('done');
     const after = await vaultsOf(who, chain);
     const grown = after.find((v) => v.address === growVault.address);
     const other = after.find((v) => v.address === protectVault.address);

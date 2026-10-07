@@ -1,6 +1,7 @@
 import {
   type BasketSheet,
   OrderError,
+  PersonPlansResponse,
   PortfolioResponse,
   YieldObservation,
 } from '@colosseum/schemas';
@@ -12,7 +13,7 @@ import { bearingPlanInputs } from '../../plan-inputs';
 import mockYields from '../../testing/fixtures/mock-yields.json';
 import { orderFlow } from '../../testing/flow';
 import { person, type TestIssuer, testApp, testDb, testIssuer } from '../../testing/harness';
-import { LinkedPlanResponse, PersonalizeResponse, PersonPlansResponse } from './baskets';
+import { LinkedPlanResponse, PersonalizeResponse } from './baskets';
 
 // A plan and its goal, read back from the server: GET /v1/baskets/{id} for the person who made it, and
 // GET /v1/me/plans, which the portfolio joins a vault to its goal by. A plan is one person's: nobody
@@ -87,6 +88,8 @@ describe('a plan read back by its id', () => {
     const read = await get(who, `/v1/baskets/${id}`);
     expect(read.statusCode, read.body).toBe(200);
     expect(LinkedPlanResponse.parse(read.json())).toEqual({ id, proposal, fromLink: false });
+    // theirs alone: nothing between them and the server may keep it for the next caller
+    expect(read.headers['cache-control']).toBe('private, no-store');
   });
 
   it('is never answered to another person, or to nobody: the same 404 as an id that names nothing', async () => {
@@ -116,7 +119,10 @@ describe('a plan read back by its id', () => {
     const off = await testApp({ issuer: issuer.issuer, db: data.db, planInputs: withMockYield });
     try {
       expect((await get(who, `/v1/baskets/${id}`, off.app)).statusCode).toBe(200);
-      expect((await get(who, `/v1/baskets/${linked.id}`, off.app)).statusCode).toBe(404);
+      // a plan from a link that is not served answers the words an unknown id gets: it says nothing
+      const hidden = await get(who, `/v1/baskets/${linked.id}`, off.app);
+      const unknown = await get(who, `/v1/baskets/${crypto.randomUUID()}`, off.app);
+      expect([hidden.statusCode, hidden.json()]).toEqual([404, unknown.json()]);
     } finally {
       await off.app.close();
     }
@@ -197,17 +203,46 @@ describe('a person’s plans', () => {
       [linked.id, true],
       [own.id, false],
     ]);
-    // a buy can name any stored plan by its id; a stranger's goal is still not read back through it
+    // and the stranger's own list shows their plan with no buy
     const theirs = await make(stranger, 4_110);
-    const res = await post(who, '/v1/orders', {
-      type: 'buy',
-      owner: who.owner,
-      amountUsd: 4_110,
-      proposalId: theirs.id,
-    });
-    if (res.statusCode === 200)
-      expect((await plansOf(who)).map((p) => p.id)).not.toContain(theirs.id);
-    // and the stranger's own list shows the plan with no buy of theirs
     expect((await plansOf(stranger)).find((p) => p.id === theirs.id)?.orders).toEqual([]);
+  });
+
+  it('answers the list to its person alone', async () => {
+    const who = await someone();
+    await make(who, 4_111);
+    const res = await get(who, '/v1/me/plans');
+    expect(res.headers['cache-control']).toBe('private, no-store');
+  });
+});
+
+describe('a plan’s id buys it for the person who made it, and for nobody else', () => {
+  it('refuses a buy of another person’s plan, and its funding, as an id that names no plan', async () => {
+    const [who, stranger] = [await someone(), await someone()];
+    const theirs = await make(stranger, 4_112);
+    await fund(who, undefined, 20_000);
+    const buy = (id: string) =>
+      post(who, '/v1/orders', { type: 'buy', owner: who.owner, amountUsd: 4_112, proposalId: id });
+    const [refused, unknown] = [await buy(theirs.id), await buy(crypto.randomUUID())];
+    // nothing of the plan comes back: no steps, no trades, no amounts
+    expect([refused.statusCode, refused.json()]).toEqual([404, unknown.json()]);
+    const funding = (asker: Person, id: string) =>
+      get(asker, `/v1/funding?proposalId=${id}&amountUsd=4112`);
+    const [leak, none] = [await funding(who, theirs.id), await funding(who, crypto.randomUUID())];
+    expect([leak.statusCode, leak.json()]).toEqual([404, none.json()]);
+    // the person who made it reads what it needs, and buys it
+    await fund(stranger, undefined, 20_000);
+    const own = await funding(stranger, theirs.id);
+    expect(own.statusCode, own.body).toBe(200);
+    await order(stranger, { proposalId: theirs.id, amountUsd: 4_112 });
+  });
+
+  it('still sells a plan from a link to whoever opens it', async () => {
+    const who = await someone();
+    const linked = PersonalizeResponse.parse(
+      (await post(null, '/v1/baskets/propose', { sheet: sheet({ amountUsd: 4_113 }) })).json(),
+    );
+    await fund(who, undefined, 20_000);
+    await order(who, { proposalId: linked.id, amountUsd: 4_113 });
   });
 });

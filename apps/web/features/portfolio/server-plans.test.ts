@@ -9,7 +9,7 @@ import { mergeRecords, readPersonPlans, recordsOfPlans } from './server-plans';
 
 const plan = planOn().proposal;
 const listed = (over: object = {}) => ({
-  id: 'plan-1',
+  id: '11111111-1111-4111-8111-111111111111',
   createdAt: '2026-09-30T00:00:00.000Z',
   fromLink: false,
   chain: 'solana',
@@ -18,7 +18,13 @@ const listed = (over: object = {}) => ({
   verdict: null,
   bought: true,
   orders: [
-    { id: 'order-1', createdAt: '2026-10-01T00:00:00.000Z', amountUsd: 40, deposited: true },
+    {
+      id: '33333333-3333-4333-8333-333333333333',
+      createdAt: '2026-10-01T00:00:00.000Z',
+      amountUsd: 40,
+      status: 'done',
+      deposited: true,
+    },
   ],
   vault: { chain: 'solana', basketId: '77' },
   ...over,
@@ -27,8 +33,17 @@ const listed = (over: object = {}) => ({
 describe('the server’s list of plans', () => {
   it('reads each plan that is one, and leaves out one that is not', async () => {
     const answer = async () =>
-      json({ plans: [listed(), { id: 'half a plan' }, listed({ id: 'plan-2', orders: [] })] });
-    expect((await readPersonPlans(answer)).map((p) => p.id)).toEqual(['plan-1', 'plan-2']);
+      json({
+        plans: [
+          listed(),
+          { id: 'half a plan' },
+          listed({ id: '22222222-2222-4222-8222-222222222222', orders: [] }),
+        ],
+      });
+    expect((await readPersonPlans(answer)).map((p) => p.id)).toEqual([
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+    ]);
   });
 
   it('is empty for a server with no such route, a failed call, or another answer', async () => {
@@ -45,13 +60,18 @@ describe('the server’s list of plans', () => {
 
   it('makes one record a buy, with the goal, the amount and the vault’s number, and none for a plan not bought', async () => {
     const plans = await readPersonPlans(async () =>
-      json({ plans: [listed(), listed({ id: 'plan-2', orders: [], vault: null })] }),
+      json({
+        plans: [
+          listed(),
+          listed({ id: '22222222-2222-4222-8222-222222222222', orders: [], vault: null }),
+        ],
+      }),
     );
     expect(recordsOfPlans(plans, 'me')).toEqual([
       {
-        orderId: 'order-1',
+        orderId: '33333333-3333-4333-8333-333333333333',
         userId: 'me',
-        proposalId: 'plan-1',
+        proposalId: '11111111-1111-4111-8111-111111111111',
         chain: 'solana',
         amountUsd: 40,
         lines: [],
@@ -72,9 +92,9 @@ describe('the server’s list of plans', () => {
 
 describe('what this browser kept, with what the server lists', () => {
   const record = (over: Partial<OrderRecord>): OrderRecord => ({
-    orderId: 'order-1',
+    orderId: '33333333-3333-4333-8333-333333333333',
     userId: 'me',
-    proposalId: 'plan-1',
+    proposalId: '11111111-1111-4111-8111-111111111111',
     chain: 'solana',
     amountUsd: 40,
     lines: [],
@@ -94,10 +114,16 @@ describe('what this browser kept, with what the server lists', () => {
       [kept],
       [
         record({ goal: goal('2026-10-01T00:00:00Z') }),
-        record({ orderId: 'order-2', goal: goal('2026-10-03T00:00:00Z') }),
+        record({
+          orderId: '44444444-4444-4444-8444-444444444444',
+          goal: goal('2026-10-03T00:00:00Z'),
+        }),
       ],
     );
-    expect(merged.map((r) => r.orderId)).toEqual(['order-2', 'order-1']);
+    expect(merged.map((r) => r.orderId)).toEqual([
+      '44444444-4444-4444-8444-444444444444',
+      '33333333-3333-4333-8333-333333333333',
+    ]);
     expect(merged[1]).toBe(kept);
   });
 

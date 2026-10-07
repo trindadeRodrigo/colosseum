@@ -274,6 +274,38 @@ export async function loadReadablePlan(
   return { proposal: parsed.data, fromLink: row.fromLink };
 }
 
+/**
+ * A stored plan as one caller may buy it, by its id: the person who made it, anybody for a plan made
+ * from a link, and, for a row that names no person and is not from a link (one stored before plans
+ * named their person), anybody holding its id, as it was. A plan that names another person is null
+ * here, as an id that names no plan is: its id does not buy it, and an order's steps never show its
+ * trades to a stranger.
+ */
+export async function loadBuyablePlan(
+  db: Db,
+  id: string,
+  privyId: string | null,
+): Promise<BasketProposal | null> {
+  if (!UUID.test(id)) return null;
+  const [row] = await db
+    .select({
+      proposal: proposals.proposal,
+      fromLink: proposals.fromLink,
+      userId: proposals.userId,
+      owner: users.privyId,
+    })
+    .from(proposals)
+    .leftJoin(users, eq(users.id, proposals.userId))
+    .where(eq(proposals.id, id));
+  if (!row) return null;
+  const mine = privyId !== null && row.owner === privyId;
+  if (!row.fromLink && row.userId !== null && !mine) return null;
+  const parsed = BasketProposal.safeParse(row.proposal);
+  if (!parsed.success)
+    throw new Refusal(409, 'the stored plan cannot be read: make the plan again');
+  return parsed.data;
+}
+
 /** A buy of a plan, as the list of a person's plans names it. */
 export type PlanOrder = {
   id: string;

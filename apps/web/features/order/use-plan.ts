@@ -55,6 +55,7 @@ export function usePlan(id: string): PlanState {
         userId,
         proposal: read.proposal,
         rollUp: null,
+        readBack: true,
         ...(read.fromLink ? { fromLink: true as const } : {}),
       };
       rememberPlan(stored);

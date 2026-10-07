@@ -18,7 +18,7 @@ import { familyByNameKey, familyBySlug } from '../../orders/families';
 import type { OrderDeps } from '../../orders/legs';
 import { homeChain, personChain } from '../../orders/person';
 import { planBuy, recipeOf } from '../../orders/prepare';
-import { isLinkedProposal, loadFamilies, loadProposal } from '../../orders/store';
+import { isLinkedProposal, loadBuyablePlan, loadFamilies } from '../../orders/store';
 import { signedIn } from './orders';
 
 // What the wallet is missing on its chain before a buy can be signed (DESIGN-VAULT section 9): the
@@ -64,8 +64,9 @@ const missing = (need: string, have: string) =>
   (BigInt(need) > BigInt(have) ? BigInt(need) - BigInt(have) : 0n).toString();
 
 /** The chain of a stored plan, which a buy of it is on (ONE-CHAIN, CHAIN-SWITCH). */
-async function planChain(deps: OrderDeps, id: string): Promise<ChainId> {
-  const proposal = await loadProposal(deps.db, id);
+async function planChain(deps: OrderDeps, id: string, principal: Principal): Promise<ChainId> {
+  // As a buy takes it: the caller's own plan or one from a link, never another person's by its id.
+  const proposal = await loadBuyablePlan(deps.db, id, principal.userId ?? null);
   if (!proposal) throw new Refusal(404, 'no plan with that id');
   return recipeOf(proposal).chain;
 }
@@ -124,7 +125,7 @@ export async function readFunding(
     vault !== undefined && vaultChain !== undefined
       ? vaultChain
       : plan
-        ? await planChain(deps, proposalId)
+        ? await planChain(deps, proposalId, principal)
         : await homeChain(deps.db, principal);
   const entry = deps.chains.get(chain);
   const { family } = entry.config;
@@ -159,7 +160,7 @@ export async function readFunding(
         {
           principal,
           chains: deps.chains,
-          loadProposal: (id) => loadProposal(deps.db, id),
+          loadProposal: (id) => loadBuyablePlan(deps.db, id, principal.userId ?? null),
           isLinkedPlan: (id) => isLinkedProposal(deps.db, id),
           homeChain: async () => chain,
           loadFamilies: (on) => loadFamilies(deps.db, on),

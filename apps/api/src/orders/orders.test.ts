@@ -831,6 +831,7 @@ describe('the /v1 route table', () => {
       '/v1/indexes/{slug}/versions',
       '/v1/me',
       '/v1/me/chain',
+      '/v1/me/plans',
       '/v1/mock/fund',
       '/v1/mock/orders/{id}/legs/{legId}/land',
       '/v1/orders',
@@ -842,6 +843,7 @@ describe('the /v1 route table', () => {
       '/v1/shelf',
       '/v1/testnet/fund',
       '/v1/vaults/{chain}/{address}',
+      '/v1/vaults/{chain}/{address}/name',
     ]);
     // No route lets a caller through without a token: 503 with no Privy app set, 401 with one.
     const res = await app.inject({ method: 'GET', url: '/v1/portfolio' });

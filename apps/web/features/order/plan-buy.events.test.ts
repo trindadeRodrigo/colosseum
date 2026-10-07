@@ -404,6 +404,8 @@ describe('the plan screen', () => {
     // their own plan, not one from a link: it does not say it came from one, and its buy is not kept as one
     expect(host.querySelector('[data-ui="plan-from-link"]')).toBeNull();
     expect(primaryLink(host)?.getAttribute('href')).toBe(`/plan/${PLAN_ID}/buy`);
+    // the server keeps the plan and not its risk summary: the screen says so where the summary was
+    expect(find(host, '[data-ui="plan-risk-not-kept"]').textContent).toBe(en.plan.risk.notKept);
     await unmountAll();
     // kept in the tab from then on: the buy screen opens on it without asking again
     const bought = await buy();

@@ -1,5 +1,4 @@
-import { BasketCard, BasketSheet, ChainId, Verdict } from '@colosseum/schemas';
-import { z } from 'zod';
+import { PersonPlan } from '@colosseum/schemas';
 import type { OrderRecord } from '../order/order-record';
 
 // The person's plans as the server keeps them (`GET /v1/me/plans`): each with the goal it was built
@@ -7,25 +6,8 @@ import type { OrderRecord } from '../order/order-record';
 // and its orders are listed, on a device that never placed them. What this browser kept about an
 // order (order-record.ts) still comes first: it holds the order as the person approved it.
 
-const ServerPlan = z.object({
-  id: z.string().min(1),
-  createdAt: z.string(),
-  fromLink: z.boolean(),
-  chain: ChainId,
-  sheet: BasketSheet,
-  card: BasketCard,
-  verdict: Verdict.nullable(),
-  orders: z.array(
-    z.object({
-      id: z.string().min(1),
-      createdAt: z.string(),
-      amountUsd: z.number().nonnegative(),
-      deposited: z.boolean(),
-    }),
-  ),
-  vault: z.object({ chain: ChainId, basketId: z.string().min(1) }).nullable(),
-});
-export type ServerPlan = z.infer<typeof ServerPlan>;
+/** One plan of the list, as the API's own schema reads it (`PersonPlan` in packages/schemas). */
+export type ServerPlan = PersonPlan;
 
 /**
  * The list, or none: a server that has no such route, a call that fails, or an answer that is not the
@@ -41,7 +23,7 @@ export async function readPersonPlans(
     const body = (await res.json()) as { plans?: unknown };
     if (!Array.isArray(body.plans)) return [];
     return body.plans.flatMap((plan) => {
-      const read = ServerPlan.safeParse(plan);
+      const read = PersonPlan.safeParse(plan);
       return read.success ? [read.data] : [];
     });
   } catch {
