@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { type APIRequestContext, expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
 import { throughBuySteps } from './buy-steps';
+import { inTheme } from './theme';
 
 // An agent's plan, end to end (AGT-3's check, on the stub): an agent calls the MCP server (apps/mcp,
 // started in front of the stub API by playwright.config.ts), makes a plan from a goal sheet with
@@ -14,16 +15,8 @@ const STUB = `http://localhost:${process.env.E2E_API_PORT ?? 3901}`;
 const MCP = `http://localhost:${process.env.E2E_MCP_PORT ?? 3902}/mcp`;
 
 async function check(page: Page, name: string) {
-  await page.addStyleTag({
-    content: '*,*::before,*::after{transition:none!important;animation:none!important}',
-  });
   for (const theme of ['light', 'dark'] as const) {
-    await page.evaluate((t) => {
-      const html = document.documentElement;
-      html.classList.remove('light', 'dark', 'tf-auto');
-      html.classList.add(t);
-    }, theme);
-    await page.waitForTimeout(100);
+    await inTheme(page, theme);
     const result = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
       .analyze();

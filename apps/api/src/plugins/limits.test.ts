@@ -312,6 +312,7 @@ describe('default deny for /v1', () => {
       ['GET', '/v1/orders', 404],
       // Every route but the config needs a person.
       ['GET', '/v1/me', 401],
+      ['GET', '/v1/me/withdrawals', 401],
       ['GET', '/v1/funding', 401],
       ['GET', '/v1/portfolio', 401],
       ['POST', '/v1/orders', 401],

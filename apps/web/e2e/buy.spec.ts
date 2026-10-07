@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
 import { throughBuySteps } from './buy-steps';
+import { inTheme } from './theme';
 
 // A person's buy, end to end in a browser, on the mock chain: sign in with the throwaway wallet, read a
 // goal, build the plan, look at it, buy it, review every step and sign. The order screen's executor
@@ -28,17 +29,8 @@ const REFERENCE = new URL('../../../.design/branding/working-brand/patterns/', i
  * screenshot of each theme at 375 px and at 1280 px to set beside the guide's.
  */
 async function check(page: Page, name: string) {
-  // Colours ease from one theme to the other: with easing off, axe reads the theme it was given.
-  await page.addStyleTag({
-    content: '*,*::before,*::after{transition:none!important;animation:none!important}',
-  });
   for (const theme of ['light', 'dark'] as const) {
-    await page.evaluate((t) => {
-      const html = document.documentElement;
-      html.classList.remove('light', 'dark', 'tf-auto');
-      html.classList.add(t);
-    }, theme);
-    await page.waitForTimeout(100);
+    await inTheme(page, theme);
     const result = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
       .analyze();
@@ -121,12 +113,7 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
   );
   await expect(words.getByRole('heading', { level: 2 })).toHaveText(en.landing.closing.title);
   for (const theme of ['light', 'dark'] as const) {
-    await page.evaluate((t) => {
-      const html = document.documentElement;
-      html.classList.remove('light', 'dark', 'tf-auto');
-      html.classList.add(t);
-    }, theme);
-    await page.waitForTimeout(100);
+    await inTheme(page, theme);
     const read = await new AxeBuilder({ page })
       .include('#updates [data-ui="closing-words"]')
       .withRules(['color-contrast'])
@@ -389,6 +376,73 @@ test('the buy’s steps by keyboard, in Portuguese, at 375 and 1440 px', async (
     .analyze();
   expect(result.violations.map((v) => v.id)).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440);
+});
+
+test('a withdrawal: part of the cash, then everything, to the owner’s own wallet, and the vault says it is empty', async ({
+  page,
+}) => {
+  await toReview(page);
+  await page.getByRole('button', { name: en.order.signAndBuy('$40') }).click();
+  await expect(page.locator('[data-ui="order-status"]')).toHaveText(
+    en.order.outcome.done('Solana'),
+    { timeout: 90_000 },
+  );
+  const w = en.withdraw;
+  /** From the portfolio to the withdraw screen of the one vault. */
+  const open = async () => {
+    await expect(page).toHaveURL(/\/monitor$/);
+    await page.locator('a[data-ui="vault-withdraw"]').click();
+    await expect(page).toHaveURL(/\/vaults\/solana\/[^/]+\/withdraw$/);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(w.title);
+    // the disclaimer is on this page, once, in the foot
+    await expect(page.locator('footer [data-ui="disclaimer"]')).toBeVisible();
+    await expect(page.locator('[data-ui="disclaimer"]:visible')).toHaveCount(1);
+  };
+  /** The review confirmed, the order made, every step signed, and back to the portfolio. */
+  const through = async (steps: number) => {
+    await page.getByRole('button', { name: w.steps.next }).click();
+    // where it goes is the wallet that is signed in, and the person says this is what they want
+    await expect(page.locator('[data-ui="withdraw-to"]:visible')).toHaveText(/^\S+$/);
+    await page.getByLabel(w.check.confirm).check();
+    await page.getByRole('button', { name: w.steps.next }).click();
+    await page.getByRole('button', { name: w.confirm.button }).click();
+    await expect(page).toHaveURL(/\/orders\/[^/]+$/);
+    await expect(page.locator('[data-ui="order-step"]')).toHaveCount(steps);
+    await page.getByRole('button', { name: en.order.shared.signWithdraw }).click();
+    const done = page.locator('[data-ui="withdraw-done"]');
+    await expect(done).toBeVisible({ timeout: 90_000 });
+    for (let i = 0; i < steps; i += 1)
+      await expect(page.locator('[data-ui="order-step"]').nth(i)).toHaveAttribute(
+        'data-status',
+        'confirmed',
+      );
+    await done.getByRole('link', { name: w.back }).click();
+  };
+
+  // 1. Part of the cash: the plan keeps 5% of $40 in cash, and $1 of it leaves.
+  await go(page, en.shell.portfolio);
+  await open();
+  await check(page, 'withdraw');
+  await page.getByLabel(w.what.some).check();
+  await page.getByLabel(w.what.take('USDC')).check();
+  await page.getByLabel(w.what.amount('USDC'), { exact: true }).fill('3');
+  await expect(page.getByText(w.what.errors.over('2 USDC'))).toBeVisible();
+  await page.getByLabel(w.what.amount('USDC'), { exact: true }).fill('1');
+  await through(1);
+  await expect(page.locator('a[data-ui="vault-withdraw"]')).toBeVisible();
+  await expect(page.locator('[data-ui="vault-empty"]')).toHaveCount(0);
+
+  // 2. Everything that is left: a step per token, and then the vault says it is empty.
+  await open();
+  await page.getByRole('button', { name: w.steps.next }).click();
+  await expect(page.locator('[data-ui="withdraw-steps"] tbody tr:visible')).toHaveCount(4);
+  await check(page, 'withdraw-review');
+  await page.getByRole('button', { name: new RegExp(`^${w.steps.names.what}`) }).click();
+  await through(4);
+  await expect(page).toHaveURL(/\/monitor$/);
+  await expect(page.locator('[data-ui="vault-empty"]')).toHaveText(w.empty);
+  await expect(page.locator('a[data-ui="vault-withdraw"]')).toHaveCount(0);
+  await check(page, 'monitor-emptied');
 });
 
 test('a step the server lies about is refused by the guard, and nothing is signed for it', async ({

@@ -25,6 +25,7 @@ import { holds } from '../plugins/auth';
 import { assertBuilds, type ChainEntry, type ChainRegistry } from './chains';
 import { Refusal, refusing } from './errors';
 import { followedOn, planFollow, planPublish, recipeTargets, type SharedContext } from './shared';
+import { planWithdraw } from './withdraw';
 
 // DESIGN-VAULT 3.3: the one function behind the web buttons, REST, the SDK and MCP. It plans the legs
 // of an order and builds nothing: a leg is built just before it is signed.
@@ -589,7 +590,8 @@ export async function prepareIntent(req: IntentRequest, ctx: PrepareContext): Pr
 
 /**
  * Plans an order from an intent. A buy (of a stored plan, or of a shared portfolio by its slug), a
- * follow of a shared portfolio by a vault the person has, and a creator's publish. The rest answer 501.
+ * follow of a shared portfolio by a vault the person has, a creator's publish, and a withdrawal in
+ * kind from a vault the person has. The rest answer 501.
  */
 export async function prepareOrder(req: IntentRequest, ctx: PrepareContext): Promise<Prepared> {
   if (req.type === 'buy') return prepareBuy(req, ctx);
@@ -625,18 +627,39 @@ export async function prepareOrder(req: IntentRequest, ctx: PrepareContext): Pro
       request: { ...req, version: plan.version },
     };
   }
+  if (req.type === 'withdraw') {
+    const plan = await refusing(() => planWithdraw(req, ctx));
+    return {
+      order: sharedOrder(
+        ctx,
+        { [chainFamily(plan.entry.chain)]: plan.owner },
+        'withdraw',
+        `Withdraw from your vault on ${plan.entry.config.name} to your own wallet`,
+        plan.steps,
+        [],
+        plan.entry.provenance,
+      ),
+      request: req,
+    };
+  }
   throw new Refusal(501, `a ${req.type} order is not built yet`);
 }
 
-/** An order of steps that trade nothing: a publish or a follow. */
+/** An order of steps that trade nothing: a publish, a follow or a withdrawal. */
 function sharedOrder(
   ctx: PrepareContext,
   owner: Order['owner'],
-  type: 'publish' | 'follow',
+  type: 'publish' | 'follow' | 'withdraw',
   summary: string,
-  steps: { chain: ChainId; kind: Leg['kind']; description: string }[],
+  steps: {
+    chain: ChainId;
+    kind: Leg['kind'];
+    description: string;
+    withdrawals?: Leg['withdrawals'];
+  }[],
   needsConsent: Order['needsConsent'],
   provenance?: Leg['provenance'],
+  warnings: Order['warnings'] = [],
 ): Order {
   const id = randomUUID();
   const seqs = new Map<ChainId, number>();
@@ -650,6 +673,7 @@ function sharedOrder(
       seq,
       kind: step.kind,
       description: step.description,
+      ...(step.withdrawals ? { withdrawals: step.withdrawals } : {}),
       trades: [],
       signer: 'owner',
       expected: [],
@@ -671,7 +695,7 @@ function sharedOrder(
     // Written by the server: no word of the creator's text is in it.
     summary: type === 'publish' ? `${summary} on ${names}` : summary,
     legs,
-    warnings: [],
+    warnings,
     needsConsent,
     fees: [],
     preparedBy: ctx.principal.kind === 'service' ? 'mcp' : 'app',
