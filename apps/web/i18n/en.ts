@@ -656,6 +656,103 @@ export const en = {
     },
   },
 
+  /** The Invest screen (gate INVEST-TWO-PANE): the conversation on the left, the plan on the right. */
+  invest: {
+    chat: 'The conversation',
+    you: 'You',
+    me: 'tenonfi',
+    box: 'What should this money do?',
+    placeholder: 'Say it in a sentence, or answer the question above.',
+    reply: 'Send',
+    reading: 'Reading…',
+    examples: 'Start from an example',
+    /** What the app says. Every figure in these comes from the sheet, never from a reader. */
+    say: {
+      understood: (facts: string) => `Here’s what I have: ${facts}.`,
+      notUnderstood:
+        'I couldn’t read a goal in that. Say how much, for how long, and what it’s for.',
+      set: (label: string, value: string) => `${label}: ${value}.`,
+      incomeSkipped: 'No set amount a month, then.',
+      ready: 'That’s all I need. Shall I build your plan? Nothing is bought when I do.',
+      /** Words that changed nothing while a goal is held: what is held, then what can be done. */
+      held: (facts: string) => `I still have: ${facts}.`,
+      heldBuilt:
+        'Your plan is built from that. Tap a limit to change it, or tell me what to change.',
+      heldOpen: 'I still need one more thing.',
+      building: 'Building your plan from these limits…',
+      built: 'The plan is ready. Tap any limit to change it and I build it again.',
+      unfit: {
+        goal: 'I can do income, growth or protecting it. Which one?',
+        amount: 'I need an amount in dollars, from $10 to $1,000,000.',
+        income: 'I need an amount in dollars a month, or no set amount.',
+        horizon: 'I need a time frame, from 1 month to 40 years.',
+        risk: 'I can do low, medium or high risk. Which one?',
+      },
+      signIn: 'Sign in to invest. Your goal and this plan stay here.',
+    },
+    /** One question at a time. */
+    ask: {
+      goal: 'What is the money for?',
+      amount: 'How much are you starting with?',
+      income: 'How much do you want it to pay a month?',
+      horizon: 'For how long?',
+      risk: 'How much risk will you take?',
+    },
+    /** The quick replies' words, where the sheet's own are not enough. */
+    replies: {
+      years: (n: number) => (n === 1 ? '1 year' : `${n} years`),
+      aMonth: (amount: string) => `${amount} a month`,
+      noIncome: 'No set amount',
+      build: 'Yes, build it',
+    },
+    facts: {
+      title: 'Your goal',
+      goal: 'What it’s for',
+      amount: 'Amount',
+      income: 'Income a month',
+      horizon: 'For how long',
+      risk: 'Risk',
+      open: 'Not said yet',
+      noIncome: 'No set amount',
+      /** Before a fact's name, for a screen reader: the fact is a button. */
+      change: 'Change',
+      /** What the person is taken to have said by tapping a fact. */
+      changeSay: {
+        goal: 'Change what it’s for',
+        amount: 'Change the amount',
+        income: 'Change the income a month',
+        horizon: 'Change how long',
+        risk: 'Change the risk',
+      },
+      /** At the foot of the facts, once every one is known. */
+      build: 'Build my plan',
+      noAccount: 'Building and seeing the plan needs no account.',
+    },
+    pane: {
+      label: 'Your plan',
+      empty: {
+        title: 'Your plan is built here.',
+        body: 'Say what the money is for. Each thing you tell me shows up on this side, then the plan with the reason for every part and the way out.',
+      },
+      building: 'Building your plan…',
+      /** On a phone the plan is one line that opens. */
+      open: 'Open your plan',
+      close: 'Back to the conversation',
+      summaryEmpty: 'No plan yet',
+      summaryFacts: (known: number, of: number) => `Your goal: ${known} of ${of} set`,
+      ownPage: 'Open this plan on its own page',
+      investTitle: 'Invest',
+      backToPlan: 'Back to the plan',
+    },
+    failure: {
+      unavailable:
+        'Our server can’t build plans right now. Your limits are kept. Try again in a moment.',
+      refused: 'Our server didn’t accept these limits. Change one and I try again.',
+      noPlan: 'No plan fits these limits. Change the amount, the time or the risk and I try again.',
+      again: 'Try again',
+    },
+  },
+
   plan: {
     title: 'Your plan',
     signedOut: 'Sign in to see this plan. A plan is one person’s, on the chain of their wallet.',
@@ -827,7 +924,17 @@ export const en = {
       /** After it: an estimate, not a promise. */
       after: 'if the projected range holds. An estimate, not a promise.',
     },
+    /** The title of the buy page. */
     buy: 'Buy this plan',
+    /** The one button of a plan: it names the action and the amount. */
+    invest: (amount: string) => `Invest ${amount}`,
+    investing: 'Opening the steps…',
+    /** The answer of a plan with no income asked of it: the range it projects, with its pin. */
+    answer: {
+      range: (low: string, high: string) => `${low} to ${high} a year`,
+      rangeAfter: 'projected. A range, not a promise.',
+      none: 'No projection yet: there is no yield reading for this plan.',
+    },
     chainNotReady: (chain: string) =>
       `${chain} isn’t ready for buying yet: its vaults aren’t deployed on this network. Your plan is kept, and can be bought once they are.`,
     chainOff: (chain: string) =>

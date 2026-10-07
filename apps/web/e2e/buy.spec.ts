@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
-import { throughBuySteps } from './buy-steps';
+import { planFromGoal, throughBuySteps } from './buy-steps';
 
 // A person's buy, end to end in a browser, on the mock chain: sign in with the throwaway wallet, read a
 // goal, build the plan, look at it, buy it, review every step and sign. The order screen's executor
@@ -142,7 +142,9 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
   await box.press('Enter');
   await expect(page).toHaveURL(/\/goal$/);
   // the goal screen reads what the landing handed it
-  await expect(page.getByText(en.goal.sheet.title).first()).toBeVisible();
+  await expect(page.locator('[data-ui="invest-turns"] [data-who="person"]').first()).toContainText(
+    'Grow $2,000 for ten years, high risk',
+  );
 });
 
 test('the two sample cases fit their cards on a phone and a tablet, in English and Portuguese', async ({
@@ -249,19 +251,13 @@ async function toBuy(page: Page, o: { fund?: 'mock' | 'test' } = {}) {
   await expect(page).toHaveURL(/\/goal$/);
   await check(page, 'home');
 
-  const goal = page.getByRole('textbox', { name: en.goal.composer.label, exact: true });
-  await goal.fill('Grow $40 for three years, medium risk');
-  await goal.press('Enter');
-  await page.getByLabel(en.goal.fields.amount, { exact: true }).fill('40');
-  await page.getByLabel(en.goal.fields.country, { exact: true }).selectOption('BR');
-  await page.getByRole('button', { name: en.goal.sheet.build }).click();
-  await page.getByRole('link', { name: en.goal.built.done.see }).click();
+  await planFromGoal(page, 'Grow $40 for three years, medium risk');
 
   await expect(page).toHaveURL(/\/plan\/[^/]+$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Grow $40 over 36 months.');
   await expect(page.locator('main')).not.toContainText('MOCK');
   await check(page, 'plan');
-  await page.getByRole('link', { name: en.plan.buy }).click();
+  await page.getByRole('link', { name: en.plan.invest('$40') }).click();
 
   await expect(page).toHaveURL(/\/plan\/[^/]+\/buy$/);
 }

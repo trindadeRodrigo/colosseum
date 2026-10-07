@@ -92,7 +92,7 @@ test('an agent makes a plan through the MCP server, and the person buys it from 
   await expect(page.locator('[data-ui="plan-from-link"]')).toHaveText(en.plan.fromLink);
   await check(page, 'plan-from-link');
 
-  await page.getByRole('link', { name: en.plan.buy }).click();
+  await page.getByRole('link', { name: en.plan.invest('$40') }).click();
   await expect(page).toHaveURL(/\/plan\/[^/]+\/buy$/);
   await throughBuySteps(page);
   await page.getByRole('button', { name: en.buy.review('$40') }).click();

@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
-import { throughBuySteps } from './buy-steps';
+import { planFromGoal, throughBuySteps } from './buy-steps';
 
 // A person's buy on Robinhood Chain, end to end in a browser, on the mock chain: they switch the bar to
 // Robinhood Chain before they sign in, see its shelf, and the plan they build is on it (CHAIN-SWITCH).
@@ -49,16 +49,10 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
     'robinhood',
   );
 
-  const goal = page.getByRole('textbox', { name: en.goal.composer.label, exact: true });
-  await goal.fill('Grow $40 for three years, medium risk');
-  await goal.press('Enter');
-  await page.getByLabel(en.goal.fields.amount, { exact: true }).fill('40');
-  await page.getByLabel(en.goal.fields.country, { exact: true }).selectOption('BR');
-  await page.getByRole('button', { name: en.goal.sheet.build }).click();
-  await page.getByRole('link', { name: en.goal.built.done.see }).click();
+  await planFromGoal(page, 'Grow $40 for three years, medium risk');
   await expect(page).toHaveURL(/\/plan\/[^/]+$/);
   await named(page);
-  await page.getByRole('link', { name: en.plan.buy }).click();
+  await page.getByRole('link', { name: en.plan.invest('$40') }).click();
 
   await expect(page).toHaveURL(/\/plan\/[^/]+\/buy$/);
   await throughBuySteps(page);

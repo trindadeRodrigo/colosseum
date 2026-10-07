@@ -35,3 +35,26 @@ export async function throughBuySteps(
     page.getByRole('button', { name: new RegExp(`^${en.buy.steps.names.review}`), expanded: true }),
   ).toBeVisible();
 }
+
+/**
+ * From the Invest screen to a plan's own page, as a person on a phone does (gate INVEST-TWO-PANE):
+ * the goal said in one sentence that names every fact, "Build my plan", the plan opened from the line
+ * at the foot, then its own page.
+ */
+export async function planFromGoal(page: Page, goal: string) {
+  const box = page.locator('[data-ui="invest-chat"] textarea');
+  await box.fill(goal);
+  await box.press('Enter');
+  // what was understood is said back, and the plan is built only when asked for
+  await expect(page.locator('[data-ui="invest-turns"] [data-who="person"]').first()).toContainText(
+    goal,
+  );
+  await page.getByRole('button', { name: en.invest.replies.build }).click();
+  // on a phone the plan is the line at the foot, which opens
+  await page.getByRole('button', { name: en.invest.pane.open }).click();
+  const pane = page.locator('[data-ui="invest-pane"]');
+  await expect(pane).toHaveAttribute('data-state', 'plan');
+  await expect(pane.locator('[data-ui="plan-pane"]')).toBeVisible();
+  await pane.getByRole('link', { name: en.invest.pane.ownPage }).click();
+  await expect(page).toHaveURL(/\/plan\/[^/]+$/);
+}
