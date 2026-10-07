@@ -16,8 +16,10 @@ import {
 } from './chains';
 import { sampleVault } from './mock-world';
 
-// Which chains the worker reads and how each is wired, from the environment alone. No test here opens a
-// connection: the node's client and the node check are handed in, and a refusal comes before either.
+// Which chains the worker reads and how each is wired, from the environment alone. No test here
+// opens a connection: the node's client and the node check are handed in, and a refusal comes
+// before either. Two tests hand in no check, so the worker's default one runs, on a stand-in client
+// that answers as a mainnet node would.
 
 const REPO = fileURLToPath(new URL('../../../', import.meta.url));
 const SOLANA_URL = 'https://Solana.example.invalid/?api-key=SolKey123';
@@ -298,6 +300,25 @@ describe('Solana on its test network', () => {
     await expect(sourcesFromEnv(SOLANA, s.options)).rejects.toThrow('is a mainnet node');
   });
 
+  it('asks the node itself when no check is handed in, and refuses one that answers mainnet’s genesis', async () => {
+    // Every other test here hands in a check of its own. This one hands in none, so what runs is
+    // the worker's default: with the variable unset (testnet) and a mainnet node behind the URL, it
+    // is the one thing that keeps mainnet's state from being stored as a test network's.
+    const s = seam({
+      checkSolana: undefined,
+      connectSolana: () =>
+        ({
+          // Solana mainnet-beta's genesis, written out: the answer of the real network.
+          getGenesisHash: () => ({
+            send: async () => '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d',
+          }),
+          getSlot: () => ({ send: async () => 1n }),
+        }) as unknown as VaultNodeRpc,
+    });
+    await expect(sourcesFromEnv(SOLANA, s.options)).rejects.toThrow('is a mainnet node');
+    expect(s.checked).toEqual([]);
+  });
+
   it('reads the record of the network, and refuses one that is missing, unreadable or another’s', async () => {
     const devnet = readFileSync(`${REPO}deployments/solana-devnet.json`, 'utf8');
     const asked: string[] = [];
@@ -404,6 +425,22 @@ describe('Robinhood Chain on its test network', () => {
     expect(assets.filter((a) => a.cls === 'cash').map((a) => a.id)).toEqual(['robinhood:tusdg']);
     expect(assets.every((a) => a.provenance === 'sandbox')).toBe(true);
     expect(await source.height()).toBe(99n);
+  });
+
+  it('asks the node itself when no check is handed in, and refuses one that answers a mainnet’s chain id', async () => {
+    // The worker's default check, as for Solana: no check is handed in.
+    const s = seam({
+      checkEvm: undefined,
+      connectEvm: () =>
+        ({
+          // Robinhood Chain's own id; its test network is 46630.
+          getChainId: async () => 4663,
+          getCode: async () => '0x60',
+          getBlockNumber: async () => 1n,
+        }) as unknown as EvmRpc,
+    });
+    await expect(sourcesFromEnv(ROBINHOOD, s.options)).rejects.toThrow("a mainnet's");
+    expect(s.checked).toEqual([]);
   });
 
   it('gives no height when the node cannot say its block', async () => {

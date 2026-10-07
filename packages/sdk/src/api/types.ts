@@ -1348,6 +1348,14 @@ export type GetPortfolioResponse = {
             closesGap: boolean;
           }[];
         } | null;
+        observations?: {
+          source: string;
+          method: string;
+          fetchedAt: string;
+          provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+          id: string;
+          kind: 'yield' | 'price' | 'liquidity' | 'fx';
+        }[];
       };
     }[];
     prices: {

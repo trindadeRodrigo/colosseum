@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BasketCard, BasketSheet, Verdict } from './basket-sheet';
+import { BasketCard, BasketSheet, ObservationRef, Verdict } from './basket-sheet';
 import { BasketTx } from './basket-tx';
 import { ChainId } from './chain';
 import { Provenance } from './enums';
@@ -66,9 +66,12 @@ export type ConsentRequest = z.infer<typeof ConsentRequest>;
  * The plan a vault was opened for, as the server joined the two when the order's step that opens the
  * vault was confirmed: what the browser kept with the order as its `PlacedGoal`, now the server's.
  * `personal` is a plan made to measure, with the stored plan's id; `follow` is a vault opened to follow
- * a shared portfolio, with the family's id and no sheet. The sheet, the card and the verdict are the
- * stored plan's own, as the engine made them: left out where the plan has none stored, or one that no
- * longer reads. `verdict` is null for a plan whose goal is not an income.
+ * a shared portfolio, with the family's id and no sheet.
+ *
+ * The sheet, the card, the verdict and the observations are the stored plan's own, as the engine made
+ * them, and come all four together or not at all: left out where the plan has none stored, where one
+ * of them no longer reads, and for a plan another person made in the app, which is theirs. `verdict`
+ * is null for a plan whose goal is not an income.
  */
 export const VaultPlan = z.object({
   kind: z.enum(['personal', 'follow']),
@@ -79,13 +82,24 @@ export const VaultPlan = z.object({
   sheet: BasketSheet.optional(),
   card: BasketCard.optional(),
   verdict: Verdict.nullable().optional(),
+  /**
+   * Where the card's and the verdict's figures came from: the readings the plan was made with (a
+   * yield, a price, an exit cost, an FX rate), each with its own source, time, method and provenance.
+   * They are of the day the plan was made, not of this read, and the chain entry's label does not
+   * stand in for theirs. A figure with no reading here has no source to show, and none is made up
+   * for it: the list is empty for a plan made from no reading.
+   */
+  observations: z.array(ObservationRef).optional(),
 });
 export type VaultPlan = z.infer<typeof VaultPlan>;
 
 /**
  * GET /v1/portfolio: the signed-in person's vaults, one entry per chain that is not switched off.
- * `provenance` is the label on every figure under it: `mock` when the chain runs on the mock,
- * `sandbox` on a test network, `live` on mainnet only.
+ * `provenance` is the label on every figure read from the chain for this answer, a vault's value and
+ * holdings: `mock` when the chain runs on the mock, `sandbox` on a test network, `live` on mainnet
+ * only. A price carries its own, and so do a plan's figures: the card and the verdict under `plan`
+ * were worked out when the plan was made, from the readings in `plan.observations`, each with its own
+ * source, time, method and provenance.
  */
 export const PortfolioResponse = z.object({
   chains: z.array(

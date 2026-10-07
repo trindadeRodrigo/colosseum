@@ -5,6 +5,7 @@ import { type EnvLike, parseChainConfigs } from '@colosseum/schemas';
 import { parseArgs } from './args';
 import { sourcesFromEnv } from './chains';
 import { hiderFromEnv } from './hide';
+import { reasonOf } from './pass';
 import { runSnapshots } from './run';
 
 // The snapshot worker (docs/vault/PROMPT-BUILD-PORTFOLIO.md, slice 1): a worker with no HTTP listener
@@ -135,16 +136,19 @@ function isEntry(): boolean {
 }
 
 /**
- * What the worker says of an error that ends it: the message only, through the hider. Never the error
- * itself: its cause and its stack are where a transport error keeps the address it failed on.
+ * What the worker says of an error that ends it: its reason as a pass says one (reasonOf of
+ * pass.ts), through the hider. That is the message, with the code in front where the error has one;
+ * and a query the database did not take is said by its code alone, since its message is the query
+ * and says nothing of why. Never the error itself: its cause and its stack are where a transport
+ * error keeps the address it failed on.
  */
 export function lastWords(env: EnvLike, e: unknown): string {
-  return hiderFromEnv(env)(e instanceof Error ? e.message : String(e));
+  return hiderFromEnv(env)(reasonOf(e));
 }
 
 if (isEntry()) {
   // An error nothing caught would be printed whole by the runtime, cause and all. It ends the worker
-  // all the same, with its message alone.
+  // all the same, with its reason alone.
   for (const event of ['uncaughtException', 'unhandledRejection'] as const)
     process.on(event, (e: unknown) => {
       console.error(lastWords(process.env, e));

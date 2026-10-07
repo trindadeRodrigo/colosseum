@@ -14,7 +14,7 @@ import {
   type Provenance,
   type VaultView,
 } from '@colosseum/schemas';
-import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import type { ChainRules, ChainSource, KnownVault } from './source';
 
 // What a pass reads from the database and writes to it (DESIGN-VAULT section 4), through Drizzle. The
@@ -44,16 +44,39 @@ export async function knownVaults(
     .orderBy(asc(vaults.address));
 }
 
-/** Every address a worker has snapshotted on the chain under this label. Read once, at the first pass. */
+/**
+ * Every address a worker has snapshotted on the chain under this label. Read once, at the first
+ * pass.
+ *
+ * A vault has a row every ten minutes and the list wants each address once. Postgres has no skip
+ * scan, so a DISTINCT would visit every row of the table at each start. This steps through the
+ * unique key (chain_id, address, observed_at) instead, one address at a time: the first address of
+ * the chain under the label, then the next one above the last, until there is none. A step is one
+ * descent of the index where the chain's rows carry one label, as they do in a database that serves
+ * one network, so the read costs by the addresses and not by their rows. Rows of another label that
+ * lie between two addresses are still passed over one by one.
+ */
 export async function snapshottedAddresses(
   db: Db,
   chain: ChainId,
   provenance: Provenance,
 ): Promise<string[]> {
-  const rows = await db
-    .selectDistinct({ address: vaultSnapshots.address })
-    .from(vaultSnapshots)
-    .where(and(eq(vaultSnapshots.chainId, chain), eq(vaultSnapshots.provenance, provenance)));
+  const t = vaultSnapshots;
+  const under = sql`${t.chainId} = ${chain} and ${t.provenance} = ${provenance}`;
+  const rows = await db.execute<{ address: string }>(sql`
+    with recursive seen (address) as (
+      (select ${t.address} from ${t} where ${under} order by ${t.address} limit 1)
+      union all
+      select (
+        select ${t.address} from ${t}
+        where ${under} and ${t.address} > seen.address
+        order by ${t.address} limit 1
+      )
+      from seen
+      where seen.address is not null
+    )
+    select address from seen where address is not null
+  `);
   return rows.map((r) => r.address);
 }
 
@@ -117,8 +140,12 @@ export async function closeRun(db: Db, id: string, end: RunEnd): Promise<void> {
   await db.update(snapshotRuns).set(end).where(eq(snapshotRuns.id, id));
 }
 
-/** What a run says when the worker that opened it never closed it. */
-export const LEFT_OPEN = 'left open by a worker that stopped; closed when the next one started';
+/**
+ * What a run says when the pass that opened it never closed it: a start closed it, or a later pass
+ * that found it older than any pass can be.
+ */
+export const LEFT_OPEN =
+  'left open by a pass that never closed it; closed at a later start or pass';
 
 /**
  * Closes every run left open on these chains, and answers how many. A worker that is killed in the
@@ -130,6 +157,33 @@ export async function closeOpenRuns(db: Db, chains: ChainId[], finishedAt: Date)
     .update(snapshotRuns)
     .set({ finishedAt, error: LEFT_OPEN })
     .where(and(inArray(snapshotRuns.chainId, chains), isNull(snapshotRuns.finishedAt)))
+    .returning({ id: snapshotRuns.id });
+  return closed.length;
+}
+
+/**
+ * Closes the runs left open on one chain that started before `before`, and answers how many. A
+ * start closes what it finds (closeOpenRuns); this is for a worker that is running when another
+ * process leaves a run open, which would otherwise refuse every run of that chain until someone
+ * started the worker again. A run that started at or after `before` is left as it is: a pass may
+ * still be in it.
+ */
+export async function closeStaleRuns(
+  db: Db,
+  chain: ChainId,
+  before: Date,
+  finishedAt: Date,
+): Promise<number> {
+  const closed = await db
+    .update(snapshotRuns)
+    .set({ finishedAt, error: LEFT_OPEN })
+    .where(
+      and(
+        eq(snapshotRuns.chainId, chain),
+        isNull(snapshotRuns.finishedAt),
+        lt(snapshotRuns.startedAt, before),
+      ),
+    )
     .returning({ id: snapshotRuns.id });
   return closed.length;
 }

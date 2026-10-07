@@ -7,6 +7,7 @@ import {
   type ChainId,
   chainFamily,
   type IntentRequest,
+  ObservationRef,
   type Principal,
   type Provenance,
   type VaultPlan,
@@ -322,6 +323,17 @@ async function joinFromOrders(db: Db, vault: Named, privyId: string): Promise<vo
  * a join the confirm missed is made here. Then the plans are read in one query, and only those whose
  * `baskets` row is the signed-in person's own: a vault joined to another person's plan, a vault made
  * outside the app and one whose order nobody finds are answered with no plan.
+ *
+ * A buy does not check whose stored plan it names (README, "Before a real chain", item 8), so a person
+ * can hold a plan another person made in the app, by its id alone. The goal that plan was made for is
+ * its maker's: this person is answered that they hold it (`kind`, `placedAt`, `proposalId`) and none of
+ * what it says. The stored plan's goal is answered when the plan was made from a link (it is anybody's
+ * who holds its id, as `GET /v1/baskets/{id}` already answers it), when it names the same user as the
+ * `baskets` row, or when it names no user.
+ *
+ * That last case stays open: a plan stored with no user and not from a link is answered to any buyer.
+ * Every plan the app makes is stored after its person's user row is written, so those name their user;
+ * a row with none is one stored another way (a test's fixture, a row written by hand).
  */
 export async function plansOf(
   db: Db,
@@ -359,6 +371,9 @@ export async function plansOf(
       proposalId: baskets.proposalId,
       familyId: baskets.familyId,
       placedAt: baskets.createdAt,
+      heldBy: baskets.userId,
+      madeBy: proposals.userId,
+      fromLink: proposals.fromLink,
       proposal: proposals.proposal,
     })
     .from(vaults)
@@ -382,7 +397,10 @@ export async function plansOf(
           placedAt: row.placedAt.toISOString(),
           ...(row.proposalId ? { proposalId: row.proposalId } : {}),
           ...(row.familyId ? { familyId: row.familyId } : {}),
-          ...goalOf(row.proposal),
+          // A plan another person made in the app is held, and what it says is not this person's.
+          ...(row.fromLink || row.madeBy === null || row.madeBy === row.heldBy
+            ? goalOf(row.proposal)
+            : {}),
         },
       },
     ]),
@@ -391,15 +409,27 @@ export async function plansOf(
 
 /**
  * The goal a stored plan was made for: its sheet, its card and, for an income goal, the engine's
- * verdict, as they were stored. Nothing where there is no stored plan, or where one of the three no
- * longer reads: a goal is not answered in part.
+ * verdict, as they were stored, with the plan's own observations. The card's range and exit cost and
+ * the verdict's gap were worked out from those readings, so they leave together: each observation has
+ * its source, time, method and provenance. A reading the engine had with no source or no time is not
+ * among them (`sharedProposal` in personalize.ts), and its figure has none to show.
+ *
+ * Nothing where there is no stored plan, or where one of the four no longer reads: a goal is not
+ * answered in part, nor a card without the readings it stands on.
  */
-function goalOf(stored: unknown): Pick<VaultPlan, 'sheet' | 'card' | 'verdict'> {
+function goalOf(stored: unknown): Pick<VaultPlan, 'sheet' | 'card' | 'verdict' | 'observations'> {
   if (typeof stored !== 'object' || stored === null) return {};
   const plan = stored as Record<string, unknown>;
   const sheet = BasketSheet.safeParse(plan.sheet);
   const card = BasketCard.safeParse(plan.card);
   const verdict = plan.verdict == null ? null : Verdict.safeParse(plan.verdict);
-  if (!sheet.success || !card.success || verdict?.success === false) return {};
-  return { sheet: sheet.data, card: card.data, verdict: verdict?.data ?? null };
+  const observations = ObservationRef.array().safeParse(plan.observations);
+  if (!sheet.success || !card.success || verdict?.success === false || !observations.success)
+    return {};
+  return {
+    sheet: sheet.data,
+    card: card.data,
+    verdict: verdict?.data ?? null,
+    observations: observations.data,
+  };
 }

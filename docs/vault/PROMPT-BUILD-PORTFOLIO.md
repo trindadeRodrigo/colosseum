@@ -2,6 +2,15 @@
 
 > Written 2026-10-06 by Rodrigo's session, after the discussion of Oct 6 on how a person's portfolio is to be watched over time. Run it in a fresh Claude Code session started at the repo root, on a branch cut from `staging` (`/start-work`, area `portfolio/`). It builds locally first, on the test networks; going live and mainnet are a person's word, later.
 
+> **As built after slice 1 (PORT-1, 2026-10-07).** Where the code could not follow this prompt, the code and `DESIGN-VAULT.md` are right and these lines are not. Read them before starting slice 2 or 3:
+> - `GET /v1/portfolio` already answers each vault with `planId` (the `baskets` row; `basketId` was taken, it is the plan's number on chain) and `plan` (kind, when it was placed, and for a stored plan its sheet, card, observations and verdict). The line under slice 2 that extends the route is done.
+> - Nothing writes `keeper_runs` or `keeper_legs`: the keeper's trades are not in the database, only the owner's legs are. `leg_attempts` holds no reference price and no cost: the quoted cost is in `legs.expected`, and it is the latest build's. ("Settled", and the rebalances route of slice 2.)
+> - No read of many vaults by address exists on either reader, and `packages/chain-evm` makes no Multicall3 call: the worker reads one vault a call through its own seam (`apps/snapshot/src/source.ts`). ("Discovery".)
+> - `user_wallets` is written by nothing. Owners are those of orders with a confirmed step and of the `vaults` rows, which the goal join now writes when a vault is opened. A leg names no vault address.
+> - The band, the loss budget and the pause are kept on each snapshot row (`band_bps`, `loss_cap_bps`, `paused`), read once a pass from the chain's own settings. `VaultState` gained no field.
+> - A chain on the mock is read only when `SNAPSHOT_CHAINS` names it, and the worker's mock is a chain of its own, replayed from the `vaults` rows (`apps/snapshot/README.md`).
+> - Two decisions were recorded, not one: `ON-TRACK-V1` and `SNAPSHOT-WORKER` (`docs/GATES.md`).
+
 ---
 
 ## The prompt

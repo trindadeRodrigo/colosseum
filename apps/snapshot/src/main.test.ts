@@ -1,4 +1,6 @@
 import type { Db } from '@colosseum/db';
+import { ChainError } from '@colosseum/schemas';
+import { DrizzleQueryError } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { mainnetRefusal, NO_CHAIN } from './chains';
 import { holdChains, lastWords, pingFromEnv, type StartDeps, start } from './main';
@@ -163,6 +165,31 @@ describe('what the worker says of an error that ends it', () => {
     // What is thrown is not always an error.
     expect(lastWords(env, `refused by ${node}`)).toBe('refused by <SOLANA_RPC_URL>');
     expect(lastWords(env, undefined)).toBe('undefined');
+  });
+
+  it('says a database that is down at start by why, never by the query it did not take', () => {
+    const env = { DATABASE_URL: DB_URL };
+    // What Drizzle throws for the first query of a start, with the reason in its cause.
+    const down = new DrizzleQueryError(
+      'select "id", "network" from "chains"',
+      [],
+      Object.assign(new Error(`connect ECONNREFUSED ${DB_URL}`), { code: 'ECONNREFUSED' }),
+    );
+    expect(down.message).toContain('Failed query: select');
+    expect(lastWords(env, down)).toBe('the database did not take a query (ECONNREFUSED)');
+    // A cause with no code still says nothing of the query or of what it carried.
+    const bare = new DrizzleQueryError('insert into "chains" values ($1)', ['solana']);
+    expect(lastWords(env, bare)).toBe('the database did not take a query');
+  });
+
+  it('says a refusal of a chain with its code in front of the sentence', () => {
+    const refused = new ChainError(
+      'NotSupported',
+      'the Solana RPC is a mainnet node, and this server runs a test network only',
+    );
+    expect(lastWords({}, refused)).toBe(
+      'NotSupported: the Solana RPC is a mainnet node, and this server runs a test network only',
+    );
   });
 });
 

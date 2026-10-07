@@ -53,6 +53,12 @@ const WRITES: readonly [RegExp, string][] = [
   // "signal" is not a signature: AbortSignal.timeout, process signals.
   [/^[sS]ign(?!al)\w*$/, 'a signer'],
   [/^send\w*$/, 'a send'],
+  // The same by JSON-RPC method, which a node's client takes as a string: the EVM client the worker
+  // holds would relay `eth_sendRawTransaction` through its `request`. Held to the three namespaces
+  // that send or sign, and to the start of the name, so that "signal" stays a word.
+  [/^(eth|personal|wallet)_(send|sign)\w*$/, 'a JSON-RPC send or sign'],
+  // What viem writes to a chain with, by name.
+  [/^(writeContract|deployContract|createWalletClient|walletActions)$/, 'a wallet client'],
   [/^load\w*Key\w*$/, 'a key loader'],
 ];
 
@@ -183,6 +189,9 @@ describe('the snapshot worker reads only', () => {
           "const height = () => slots.getSlot({ commitment: 'confirmed' }).send();",
           'const signal = AbortSignal.timeout(10_000);',
           "process.once('SIGINT', stop);",
+          // A read by its JSON-RPC method is a read still.
+          "const block = await rpc.request({ method: 'eth_blockNumber' });",
+          "const answer = await rpc.request({ method: 'eth_call', params: [call, 'latest'] });",
           '// Nothing is built, signed or sent: buildDeposit, relay and sendTransaction are not names here.',
         ].join('\n'),
       ),
@@ -235,6 +244,33 @@ describe('the snapshot worker reads only', () => {
       ['await rpc.sendTransaction(wire).send();', 'names sendTransaction: a send'],
       ['await rpc.getBalance(owner).send();', 'names send: a send'],
       ['await wallet.sendRawTransaction({ serializedTransaction });', 'names sendRawTransaction'],
+      [
+        "await rpc.request({ method: 'eth_sendRawTransaction', params: [wire] });",
+        'names eth_sendRawTransaction: a JSON-RPC send or sign',
+      ],
+      [
+        "const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_sendTransaction' });",
+        'names eth_sendTransaction: a JSON-RPC send or sign',
+      ],
+      [
+        "await rpc.request({ method: 'personal_sign', params: [text, who] });",
+        'names personal_sign: a JSON-RPC send or sign',
+      ],
+      [
+        "await rpc.request({ method: 'eth_signTypedData_v4', params: [who, typed] });",
+        'names eth_signTypedData_v4: a JSON-RPC send or sign',
+      ],
+      [
+        "await rpc.request({ method: 'wallet_sendCalls', params: [calls] });",
+        'names wallet_sendCalls: a JSON-RPC send or sign',
+      ],
+      ['await client.writeContract(request);', 'names writeContract: a wallet client'],
+      ['await client.deployContract({ abi, bytecode });', 'names deployContract: a wallet client'],
+      [
+        'const client = createWalletClient({ transport });',
+        'names createWalletClient: a wallet client',
+      ],
+      ['const client = rpc.extend(walletActions);', 'names walletActions: a wallet client'],
       ['const key = loadEvmKey(path);', 'names loadEvmKey: a key loader'],
       ['const built = await compose(input);', 'names compose: the transaction composer'],
     ];

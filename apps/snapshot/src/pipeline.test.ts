@@ -23,12 +23,20 @@ import {
   type VaultState,
 } from '@colosseum/schemas';
 import { and, asc, DrizzleQueryError, eq, gte, inArray, lt, or } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { newChainState } from './discover';
 import { type PassContext, READS_AT_ONCE, snapshotChain } from './pass';
-import { runSnapshots } from './run';
+import { runSnapshots, STALE_RUN_MIN_MS } from './run';
 import type { ChainSource } from './source';
-import { closeOpenRuns, LEFT_OPEN, openRun, SNAPSHOT_METHOD } from './store';
+import {
+  closeOpenRuns,
+  insertSnapshot,
+  LEFT_OPEN,
+  openRun,
+  SNAPSHOT_METHOD,
+  type SnapshotRow,
+  snapshottedAddresses,
+} from './store';
 
 // The worker's passes on packages/chain-mock and a real Postgres (DATABASE_URL; `pnpm db:up`).
 //
@@ -37,18 +45,27 @@ import { closeOpenRuns, LEFT_OPEN, openRun, SNAPSHOT_METHOD } from './store';
 // trip each other, each seeing the other's run as another worker's. Inside a file the tests run one
 // after another.
 //
+// Two runs of this file on one database would trip each other the same way: two worktrees, or a
+// review beside a build, share the local database. So the file holds a Postgres advisory lock from
+// its first query to its last, and a second run waits at its start until the first is done. The
+// lock is the session's and goes with its connection, so a run that is killed leaves none behind.
+//
 // Other test files share this database. Their `vaults` rows and owners turn up in these passes as
-// `skipped` lines (no such vault on this file's own mock), so every assertion here is on this file's
-// own vaults: their owners are new at each run, and so are their addresses. The worker's clock is
-// given three made-up days far from any real row, three hours of them to each test, which is how this
-// file's runs are told apart and taken away at the end.
+// `skipped` lines (no such vault on this file's own mock), so every assertion here is on this
+// file's own vaults: their owners are new at each run, and so are their addresses. The worker's
+// clock is given four made-up days far from any real row, three hours of them to each test, which
+// is how this file's runs are told apart and taken away at the end.
 
 const { db, client } = createDb();
+
+/** The advisory lock a run of this file holds: any number, as long as no other file takes it. */
+const LOCK = 7_016_001;
+let lock: Awaited<ReturnType<typeof client.reserve>> | undefined;
 
 const RUN = randomUUID();
 const HOUR = 3_600_000;
 const SLOT = 3 * HOUR;
-const SPAN = 72 * HOUR;
+const SPAN = 96 * HOUR;
 const T0 = Date.UTC(2040, 0, 1) + Math.floor(Math.random() * 3_000) * SPAN;
 const NODE = 'https://node.example/key-in-the-path';
 const hide = (text: string) => text.split(NODE).join('<NODE>');
@@ -261,6 +278,8 @@ function stage(slot: number) {
     hide,
     out,
     now: clock.now,
+    // What run.ts gives a worker on the ten-minute interval, and one started with --once.
+    staleRunMs: STALE_RUN_MIN_MS,
     ...over,
   });
   const runs = (chain: ChainId) =>
@@ -320,34 +339,53 @@ function rounds(
 
 const count = <T>(items: T[], item: T) => items.filter((i) => i === item).length;
 
+// The hook's limit is two minutes, not the usual ten seconds: a second run of this file waits here
+// for the first to end.
 beforeAll(async () => {
+  // Before anything else: the queries below would already cross another run's.
+  lock = await client.reserve();
+  await lock`select pg_advisory_lock(${LOCK})`;
   await seedChains(db, parseChainConfigs({}));
   // A run a killed test left open would make every pass here another worker's.
+  await closeOpenRuns(db, ['solana', 'robinhood', 'base'], new Date());
+}, 120_000);
+
+// A run a test leaves open, by design or by failing half way, is not the next test's to trip on.
+afterEach(async () => {
   await closeOpenRuns(db, ['solana', 'robinhood', 'base'], new Date());
 });
 
 afterAll(async () => {
-  if (mine.addresses.length) {
-    await db.delete(vaultSnapshots).where(inArray(vaultSnapshots.address, mine.addresses));
-    await db.delete(vaults).where(inArray(vaults.address, mine.addresses));
+  try {
+    if (mine.addresses.length) {
+      await db.delete(vaultSnapshots).where(inArray(vaultSnapshots.address, mine.addresses));
+      await db.delete(vaults).where(inArray(vaults.address, mine.addresses));
+    }
+    if (mine.orders.length) {
+      await db.delete(legs).where(inArray(legs.orderId, mine.orders));
+      await db.delete(orders).where(inArray(orders.id, mine.orders));
+    }
+    if (mine.baskets.length) await db.delete(baskets).where(inArray(baskets.id, mine.baskets));
+    if (mine.users.length) {
+      await db.delete(userWallets).where(inArray(userWallets.userId, mine.users));
+      await db.delete(users).where(inArray(users.id, mine.users));
+    }
+    // This file's runs: started inside its made-up days, or ended inside them. The second is for
+    // the day a change makes the worker stamp a run's start with another clock, so its rows still
+    // go.
+    const inSpan = (at: typeof snapshotRuns.startedAt | typeof snapshotRuns.finishedAt) =>
+      and(gte(at, new Date(T0)), lt(at, new Date(T0 + SPAN)));
+    await db
+      .delete(snapshotRuns)
+      .where(or(inSpan(snapshotRuns.startedAt), inSpan(snapshotRuns.finishedAt)));
+  } finally {
+    // The next run may start only once this one's rows are gone.
+    if (lock) {
+      await lock`select pg_advisory_unlock(${LOCK})`;
+      lock.release();
+    }
+    await client.end();
   }
-  if (mine.orders.length) {
-    await db.delete(legs).where(inArray(legs.orderId, mine.orders));
-    await db.delete(orders).where(inArray(orders.id, mine.orders));
-  }
-  if (mine.baskets.length) await db.delete(baskets).where(inArray(baskets.id, mine.baskets));
-  if (mine.users.length) {
-    await db.delete(userWallets).where(inArray(userWallets.userId, mine.users));
-    await db.delete(users).where(inArray(users.id, mine.users));
-  }
-  // This file's runs: started inside its made-up days, or ended inside them. The second is for the day
-  // a change makes the worker stamp a run's start with another clock, so its rows still go.
-  const inSpan = (at: typeof snapshotRuns.startedAt | typeof snapshotRuns.finishedAt) =>
-    and(gte(at, new Date(T0)), lt(at, new Date(T0 + SPAN)));
-  await db
-    .delete(snapshotRuns)
-    .where(or(inSpan(snapshotRuns.startedAt), inSpan(snapshotRuns.finishedAt)));
-  await client.end();
 });
 
 describe('a pass over a chain', () => {
@@ -735,6 +773,208 @@ describe('a pass over a chain', () => {
     expect(await rowsOf('solana', vault.address)).toEqual([]);
   });
 
+  it('fails the pass when no vault was read and one failed, whatever the reason; one read beside one failed is a good pass', async () => {
+    const s = stage(26);
+    const w = world('solana');
+    const one = await openVault(w, who('solana', 't-none-1'), '1');
+    const two = await openVault(w, who('solana', 't-none-2'), '1');
+    await cacheRow(one);
+    await cacheRow(two);
+    const broken = new Set<string>();
+    let gold: ChainError | null = null;
+    // What a reader says of an account it cannot decode. The chain answered: it is not
+    // `Unavailable`.
+    const undecoded = () => new ChainError('Unknown', 'the vault account could not be decoded');
+    const odd: ChainSource = {
+      ...w.source,
+      getVaults: async (owner) => {
+        if (broken.has(owner)) throw undecoded();
+        return w.source.getVaults(owner);
+      },
+      getVault: async (vault) => {
+        if (broken.has(vault)) throw undecoded();
+        return w.source.getVault(vault);
+      },
+      getPrices: async (ids) => {
+        if (gold && ids.includes('solana:gold')) throw gold;
+        return w.source.getPrices(ids);
+      },
+    };
+    const failedPass = /^no vault was read: 2 failed$/;
+    const pass = () => snapshotChain(s.ctx(), odd, newChainState());
+
+    // One vault cannot be read and the other is: the pass is a good one, as before.
+    broken.add(one.owner).add(one.address);
+    await expect(pass()).resolves.toEqual({
+      outcome: 'done',
+      read: 1,
+      failed: 1,
+      skipped: expect.any(Number),
+    });
+    expect((await s.runs('solana')).at(-1)).toMatchObject({
+      vaultsRead: 1,
+      vaultsFailed: 1,
+      error: null,
+    });
+
+    // Neither can be read. Nothing was kept of the chain: the pass failed, and its run says so.
+    broken.add(two.owner).add(two.address);
+    s.tick([w]);
+    await expect(pass()).rejects.toThrow(failedPass);
+    const run = (await s.runs('solana')).at(-1);
+    expect(run).toMatchObject({
+      vaultsRead: 0,
+      vaultsFailed: 2,
+      error: 'no vault was read: 2 failed',
+    });
+    expect(run?.finishedAt).not.toBeNull();
+    for (const vault of [one, two])
+      expect(s.about(vault.address).at(-1)).toMatchObject({
+        outcome: 'failed',
+        reason: 'Unknown: the vault account could not be decoded',
+      });
+    expect(s.lines.filter((l) => l.pass)).toHaveLength(1);
+    expect(await rowsOf('solana', one.address)).toEqual([]);
+    expect(await rowsOf('solana', two.address)).toHaveLength(1);
+
+    // Both are read, and neither can be valued: the price of what both hold was refused, while the
+    // other prices answered. That is no row either, and a failed pass.
+    broken.clear();
+    gold = new ChainError('Unavailable', `request to ${NODE} failed`);
+    s.tick([w]);
+    await expect(pass()).rejects.toThrow(failedPass);
+    expect((await s.runs('solana')).at(-1)).toMatchObject({
+      vaultsRead: 0,
+      vaultsFailed: 2,
+      error: 'no vault was read: 2 failed',
+    });
+    expect(s.about(two.address).at(-1)).toMatchObject({
+      outcome: 'failed',
+      reason:
+        'the price of solana:gold could not be read (Unavailable: request to <NODE> failed), so the vault was not valued',
+    });
+    expect(await rowsOf('solana', two.address)).toHaveLength(1);
+
+    // The chain is well again, and so is the pass.
+    gold = null;
+    s.tick([w]);
+    await expect(pass()).resolves.toMatchObject({ outcome: 'done', read: 2, failed: 0 });
+  });
+
+  it('fails the pass when the database takes no row of any vault, and still closes its run', async () => {
+    const s = stage(27);
+    const w = world('robinhood');
+    const one = await openVault(w, who('robinhood', 't-unwritten-1'), '1');
+    const two = await openVault(w, who('robinhood', 't-unwritten-2'), '1');
+    await cacheRow(one);
+    await cacheRow(two);
+    // A database that takes the run and refuses every snapshot, as Drizzle says a query that
+    // failed: a role with no grant on `vault_snapshots` would be refused so.
+    const refusing = new Proxy(db, {
+      get(target, key, receiver) {
+        if (key !== 'insert') return Reflect.get(target, key, receiver);
+        return (table: Parameters<typeof db.insert>[0]) => {
+          if (table !== vaultSnapshots) return target.insert(table);
+          throw new DrizzleQueryError(
+            'insert into "vault_snapshots" ("chain_id", "address") values ($1, $2)',
+            [],
+            Object.assign(new Error('permission denied for table vault_snapshots'), {
+              code: '42501',
+            }),
+          );
+        };
+      },
+    });
+
+    // A dry run writes nothing, so nothing is refused: a vault read and valued counts as read.
+    await expect(
+      snapshotChain(s.ctx({ db: refusing, dryRun: true }), w.source, newChainState()),
+    ).resolves.toMatchObject({ outcome: 'done', read: 2, failed: 0 });
+    expect(await s.runs('robinhood')).toEqual([]);
+
+    await expect(snapshotChain(s.ctx({ db: refusing }), w.source, newChainState())).rejects.toThrow(
+      /^no vault was read: 2 failed$/,
+    );
+    for (const vault of [one, two]) {
+      expect(s.about(vault.address).map((l) => [l.outcome, l.reason])).toEqual([
+        ['read', '2 of 2 positions priced'],
+        ['failed', 'the database did not take a query (42501)'],
+      ]);
+      expect(await rowsOf('robinhood', vault.address)).toEqual([]);
+    }
+    // The run was opened and is closed, with what failed and why the pass did.
+    const runs = await s.runs('robinhood');
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({
+      vaultsRead: 0,
+      vaultsFailed: 2,
+      error: 'no vault was read: 2 failed',
+    });
+    expect(runs[0]?.finishedAt).not.toBeNull();
+    // One pass line, the dry run's: the pass that failed said none.
+    expect(s.lines.filter((l) => l.pass)).toHaveLength(1);
+  });
+
+  it('backs off and pings the failure for a chain none of whose vaults was read, and with the loop off the worker fails', async () => {
+    const s = stage(28);
+    const w = world('base');
+    const vault = await openVault(w, who('base', 't-none-loop'), '1');
+    await cacheRow(vault);
+    let broken = true;
+    const refuse = () => new ChainError('Unknown', 'the vault could not be decoded');
+    const odd: ChainSource = {
+      ...w.source,
+      getVaults: async (owner) => {
+        if (broken && owner === vault.owner) throw refuse();
+        return w.source.getVaults(owner);
+      },
+      getVault: async (address) => {
+        if (broken && address === vault.address) throw refuse();
+        return w.source.getVault(address);
+      },
+    };
+    const reason = 'no vault was read: 1 failed';
+    const pings: boolean[] = [];
+    const worker = (loop: boolean, sleep?: (ms: number) => Promise<void>) =>
+      runSnapshots({
+        sources: [odd],
+        db,
+        loop,
+        dryRun: false,
+        intervalMs: 600_000,
+        out: s.out,
+        now: s.clock.now,
+        sleep,
+        ping: async (ok) => {
+          pings.push(ok);
+        },
+      });
+
+    // In the loop: the pass that read nothing is followed by another after 15 s, which reads.
+    const r = rounds(1, 2, () => {
+      broken = false;
+      s.tick([w], 15);
+    });
+    await expect(worker(true, r.sleep)).rejects.toBe(STOP);
+    expect(r.waited).toEqual([[15_000], [600_000]]);
+    expect(pings).toEqual([false, true]);
+    expect(s.lines.filter((l) => l.outcome === 'round-failed')).toEqual([
+      expect.objectContaining({ chain: 'base', reason, alert: true, failures: 1, retryInS: 15 }),
+    ]);
+    const [failed, read] = await s.runs('base');
+    expect(failed).toMatchObject({ vaultsRead: 0, vaultsFailed: 1, error: reason });
+    expect(read).toMatchObject({ vaultsRead: 1, vaultsFailed: 0, error: null });
+    expect(await rowsOf('base', vault.address)).toHaveLength(1);
+
+    // With the loop off, which is --once: the worker ends on it, and main.ts exits with 1.
+    broken = true;
+    s.tick([w]);
+    await expect(worker(false)).rejects.toThrow(
+      `1 of 1 chains failed their pass: base mock: ${reason}`,
+    );
+    expect(pings).toEqual([false, true, false]);
+  });
+
   it('asks for prices asset by asset when the one read is refused, and never values a vault on a price the chain did not answer for', async () => {
     const s = stage(7);
     const w = world('solana');
@@ -874,6 +1114,64 @@ describe('a pass over a chain', () => {
     expect(count(w.asked.vaults, vault.address)).toBe(1);
     expect(count(w.asked.owners, vault.owner)).toBe(1);
     expect(await rowsOf('solana', vault.address)).toHaveLength(2);
+  });
+
+  it('lists the addresses it has snapshotted on a chain under a label, each once, by stepping through them', async () => {
+    // The list is read one address at a time off the unique key, not as a DISTINCT over every row
+    // (store.ts says why). So this gives each address several rows, which a step that went row by
+    // row would answer several times, and sets the two labels among each other in the key's order,
+    // so a step has to pass over a whole address of the other label and still find the next of its
+    // own.
+    const addresses = Array.from({ length: 8 }, (_, i) => who('solana', `t-addresses-${i}`)).sort();
+    const labelOf = (i: number): Provenance => (i % 3 === 1 ? 'sandbox' : 'mock');
+    const row = (address: string, provenance: Provenance, at: number): SnapshotRow => ({
+      chainId: 'solana',
+      address,
+      observedAt: new Date(at),
+      blockOrSlot: null,
+      owner: who('solana', 't-addresses-owner'),
+      basketId: null,
+      onchainBasketId: '1',
+      recipeOnchainId: null,
+      acceptedVersion: 0,
+      autoFollow: false,
+      valueUsd: '0.00',
+      cash: { asset: 'solana:usdc', raw: '0', multiplier: '1', display: '0' },
+      positions: [],
+      pending: null,
+      lossUsedBps: 0,
+      prices: [],
+      provenance,
+      source: 'a row made by pipeline.test.ts for the list of addresses',
+      method: SNAPSHOT_METHOD,
+    });
+    mine.addresses.push(...addresses);
+    for (const [i, address] of addresses.entries())
+      for (let pass = 0; pass < 3; pass++)
+        await insertSnapshot(db, row(address, labelOf(i), T0 + 29 * SLOT + pass * 600_000));
+
+    for (const label of ['mock', 'sandbox'] as const) {
+      const listed = await snapshottedAddresses(db, 'solana', label);
+      expect(new Set(listed).size, label).toBe(listed.length);
+      expect(listed.filter((a) => addresses.includes(a)).sort(), label).toEqual(
+        addresses.filter((_, i) => labelOf(i) === label),
+      );
+    }
+    // Another chain's list has none of them.
+    const elsewhere = await snapshottedAddresses(db, 'robinhood', 'mock');
+    expect(elsewhere.filter((a) => addresses.includes(a))).toEqual([]);
+
+    // And the read is the one stepping query: nothing asks for a DISTINCT over the rows.
+    const asked: (string | symbol)[] = [];
+    const watched = new Proxy(db, {
+      get(target, key, receiver) {
+        asked.push(key);
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    await snapshottedAddresses(watched, 'solana', 'mock');
+    expect(asked).toContain('execute');
+    expect(asked.filter((key) => String(key).startsWith('select'))).toEqual([]);
   });
 
   it('keeps a token the chain shows and the list does not have, with no value, and asks no price for it', async () => {
@@ -1117,6 +1415,50 @@ describe('a run of this worker and of another', () => {
     await closeOpenRuns(db, ['base'], s.clock.now());
   });
 
+  it('closes a run left open for longer than any pass can take, says so in its row, and reads', async () => {
+    const s = stage(23);
+    const w = world('robinhood');
+    const vault = await openVault(w, who('robinhood', 't-left-open'), '1');
+    await cacheRow(vault);
+    // Another process opened the chain's run and is gone. No start will come to close it: the
+    // worker that finds it is already running.
+    const theirs = await openRun(db, 'robinhood', 'mock', s.clock.now());
+    expect(theirs).not.toBeNull();
+    s.clock.advance(STALE_RUN_MIN_MS + 1);
+
+    await expect(snapshotChain(s.ctx(), w.source, newChainState())).resolves.toMatchObject({
+      outcome: 'done',
+      read: 1,
+    });
+    const [left, own] = await s.runs('robinhood');
+    expect(left).toMatchObject({ id: theirs, error: LEFT_OPEN, vaultsRead: 0, vaultsFailed: 0 });
+    expect(left?.finishedAt).toEqual(s.clock.now());
+    expect(own).toMatchObject({ error: null, vaultsRead: 1 });
+    expect(own?.finishedAt).not.toBeNull();
+    expect(await rowsOf('robinhood', vault.address)).toHaveLength(1);
+    expect(s.lines.filter((l) => l.pass).map((l) => l.pass)).toEqual(['done']);
+  });
+
+  it('leaves an open run that a pass may still be in, and is skipped', async () => {
+    const s = stage(24);
+    const w = world('robinhood');
+    const vault = await openVault(w, who('robinhood', 't-still-open'), '1');
+    await cacheRow(vault);
+    const theirs = await openRun(db, 'robinhood', 'mock', s.clock.now());
+    expect(theirs).not.toBeNull();
+    // As old as a run can be and still be another worker's: one millisecond short of left open.
+    s.clock.advance(STALE_RUN_MIN_MS);
+    await expect(snapshotChain(s.ctx(), w.source, newChainState())).resolves.toEqual({
+      outcome: 'skipped',
+    });
+    expect((await s.runs('robinhood')).map((r) => [r.id, r.finishedAt, r.error])).toEqual([
+      [theirs, null, null],
+    ]);
+    expect(s.lines.map((l) => l.pass)).toEqual(['skipped']);
+    expect(w.asked).toEqual({ vaults: [], owners: [], prices: [] });
+    expect(await rowsOf('robinhood', vault.address)).toEqual([]);
+  });
+
   it('in a dry run writes no row, opens and closes no run, and says the same lines', async () => {
     const s = stage(12);
     const w = world('base');
@@ -1273,6 +1615,83 @@ describe('the worker over two chains', () => {
     expect(byRound[1]).toEqual([false]);
     expect(byRound[2]?.every((ok) => ok)).toBe(true);
     expect(byRound[2]?.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('pings no success while an open run keeps one chain from starting, and pings again once that chain reads', async () => {
+    const s = stage(25);
+    const sol = world('solana');
+    const base = world('base');
+    const onSolana = await openVault(sol, who('solana', 't-held-back'), '1');
+    const onBase = await openVault(base, who('base', 't-held-back'), '1');
+    await cacheRow(onSolana);
+    await cacheRow(onBase);
+    // Solana's pass waits for Base's of the same round to have said how it ended, so that which of
+    // the two ends first is not left to the machine.
+    let ended = 0;
+    let heights = 0;
+    const waiting: (() => void)[] = [];
+    const out = (line: string) => {
+      s.out(line);
+      const said = JSON.parse(line) as Said;
+      if (said.chain !== 'base' || !(said.pass || said.outcome === 'round-failed')) return;
+      ended++;
+      for (const go of waiting.splice(0)) go();
+    };
+    const after: ChainSource = {
+      ...sol.source,
+      height: async () => {
+        const round = ++heights;
+        while (ended < round) await new Promise<void>((go) => waiting.push(go));
+        return sol.source.height();
+      },
+    };
+    const pings: boolean[] = [];
+    const byRound: boolean[][] = [];
+    let theirs: string | null = null;
+    const r = rounds(2, 4, async (round) => {
+      byRound.push(pings.splice(0));
+      // After the first round, and a second after its run, another process opens Base's run and is
+      // gone.
+      if (round === 1) {
+        s.clock.advance(1_000);
+        theirs = await openRun(db, 'base', 'mock', s.clock.now());
+      }
+      // Twelve minutes a round: the run is 12 and 24 minutes old at the next two passes, and 36 at
+      // the fourth. On a ten-minute interval the worker takes one for left open after 30.
+      s.tick([sol, base], 720);
+    });
+    await expect(
+      runSnapshots({
+        sources: [after, base.source],
+        db,
+        loop: true,
+        dryRun: false,
+        intervalMs: 600_000,
+        out,
+        now: s.clock.now,
+        sleep: r.sleep,
+        ping: async (ok) => {
+          pings.push(ok);
+        },
+      }),
+    ).rejects.toBe(STOP);
+
+    const passes = (chain: ChainId) =>
+      s.lines.filter((l) => l.chain === chain && l.pass).map((l) => l.pass);
+    expect(passes('base')).toEqual(['done', 'skipped', 'skipped', 'done']);
+    expect(passes('solana')).toEqual(['done', 'done', 'done', 'done']);
+    // A skipped pass is no failure: no back-off, and no ping of its own.
+    expect(r.waited).toEqual(Array(4).fill([600_000, 600_000]));
+    expect(s.lines.filter((l) => l.outcome === 'round-failed')).toEqual([]);
+    // But while Base wrote no row, Solana's good passes pinged no success. Both do once Base reads.
+    expect(byRound).toEqual([[true, true], [], [], [true, true]]);
+    expect(await rowsOf('solana', onSolana.address)).toHaveLength(4);
+    expect(await rowsOf('base', onBase.address)).toHaveLength(2);
+    // What let Base read again: the run left open was closed by the pass that found it old enough.
+    const runs = await s.runs('base');
+    expect(runs.map((run) => run.error)).toEqual([null, LEFT_OPEN, null]);
+    expect(runs[1]?.id).toBe(theirs);
+    expect(runs.every((run) => run.finishedAt !== null)).toBe(true);
   });
 
   it('with the loop off, gives every chain its pass and then fails if one did', async () => {

@@ -13,6 +13,7 @@ import type { RoundFailure } from './loop';
 import type { ChainSource } from './source';
 import {
   closeRun,
+  closeStaleRuns,
   insertSnapshot,
   knownVaults,
   openRun,
@@ -27,9 +28,12 @@ import {
 // own prices, and kept as one row of `vault_snapshots`. Nothing is built, signed or sent: a ChainSource
 // has no way to.
 //
-// What fails a pass is the chain not answering: its height, its rules or its asset list could not be
-// read, no vault at all could be read, or no price at all. The loop then backs off (loop.ts). One vault
-// that cannot be read, valued or written is a `failed` line for that vault, and the others go on.
+// What fails a pass: the chain not answering (its rules or its asset list could not be read, no
+// vault at all could be read, or no price at all), the database not answering, and no vault read
+// while at least one failed, whatever the reason. The loop then backs off (loop.ts). One vault that
+// cannot be read, valued or written beside one that was is a `failed` line for that vault, and the
+// others go on. The height fails nothing: a chain that cannot say it gives null (chains.ts), and
+// the row carries none.
 
 /** How many reads of a chain are in flight at once. Small, for the free allowance of a public node. */
 export const READS_AT_ONCE = 4;
@@ -46,6 +50,12 @@ export type PassContext = {
   /** Where each JSON line goes. */
   out: (line: string) => void;
   now: () => Date;
+  /**
+   * How long ago an open run on the chain must have started for a pass to take it as left open and
+   * close it. run.ts gives it: longer than any pass can take. A younger run may be another worker's
+   * pass, and is left alone.
+   */
+  staleRunMs: number;
 };
 
 /** One line per vault per pass: what was read, or why nothing was. */
@@ -186,8 +196,11 @@ async function pricesOf(
 }
 
 /**
- * Opens the run of this pass, after writing the end of the last one where the database did not take it
- * then. Null when a run is open on the chain that is not this worker's.
+ * Opens the run of this pass, after writing the end of the last one where the database did not take
+ * it then. Where a run is already open on the chain and started longer ago than any pass can take,
+ * the process that opened it is gone and nothing else would close it while this worker runs: it is
+ * closed as left open, and the run is opened once more. Null when the open run is younger than
+ * that: another worker's pass may be in it.
  */
 async function openOwnRun(
   ctx: PassContext,
@@ -198,7 +211,12 @@ async function openOwnRun(
     await closeRun(ctx.db, state.unclosed.id, state.unclosed.end);
     state.unclosed = null;
   }
-  return openRun(ctx.db, source.chain, source.provenance, ctx.now());
+  const now = ctx.now();
+  const run = await openRun(ctx.db, source.chain, source.provenance, now);
+  if (run !== null) return run;
+  const before = new Date(now.getTime() - ctx.staleRunMs);
+  const closed = await closeStaleRuns(ctx.db, source.chain, before, now);
+  return closed === 0 ? null : openRun(ctx.db, source.chain, source.provenance, now);
 }
 
 /**
@@ -226,8 +244,9 @@ async function readChain(
   // The mock's sample world, and what it holds that the database does not name: read like the rest.
   for (const address of (await source.prepare?.(known, started)) ?? []) addresses.add(address);
 
-  // The chain itself. One of these failing is the chain not answering, and the pass fails. The height
-  // comes first, so every vault of the pass is read at or after it.
+  // The chain itself. The height comes first, so every vault of the pass is read at or after it; a
+  // chain that cannot say its height gives null, and the row carries none. The rules or the asset
+  // list failing is the chain not answering, and the pass fails.
   const height = await source.height();
   const rules = await source.rules();
   const listed = await source.listAssets();
@@ -356,6 +375,12 @@ export async function snapshotChain(
       }
     }
     await readChain(ctx, source, state, counts, say);
+    // Nothing was kept of the chain and something failed: that is a failed pass whatever each
+    // refusal was called, or a chain that writes no row would look well for good. A pass with
+    // nothing to read (no vault known, or none at the addresses asked) failed nothing, and is a
+    // good one.
+    if (counts.read === 0 && counts.failed > 0)
+      throw new Error(`no vault was read: ${counts.failed} failed`);
   } catch (e) {
     failure = said(ctx, e);
   }

@@ -27,13 +27,29 @@ export type SnapshotRun = {
   /** Where each JSON line goes. Default: stdout. */
   out?: (line: string) => void;
   /**
-   * The health ping: true after a pass when no chain's newest pass failed, false after a pass that
-   * failed. Its own failure never stops a pass.
+   * The health ping: true after a pass when no chain's newest pass failed or was skipped, false
+   * after a pass that failed. A skipped pass sends none. Its own failure never stops a pass.
    */
   ping?: (ok: boolean) => Promise<void>;
   sleep?: (ms: number) => Promise<void>;
   now?: () => Date;
 };
+
+/** The least an open run must have aged before a pass takes it as left open: 30 minutes. */
+export const STALE_RUN_MIN_MS = 1_800_000;
+
+/**
+ * How long ago an open run must have started for a pass to close it as left open (pass.ts). A pass
+ * is over in seconds, or minutes on a slow node, and a worker gives a chain one pass an interval: a
+ * run that has stood for two intervals, and for 30 minutes at least, is no pass still reading. With
+ * the loop off there is no interval to go by, and it is the 30 minutes. This worker's own pass is
+ * never the open one, since a chain's passes come one after another. Should a second worker's pass
+ * outlast the bound, its run is closed under it and written again when the pass ends (closeRun
+ * writes by id).
+ */
+export function staleRunMs(loop: boolean, intervalMs: number): number {
+  return loop ? Math.max(2 * intervalMs, STALE_RUN_MIN_MS) : STALE_RUN_MIN_MS;
+}
 
 /**
  * With loop false: resolves after every chain had one pass, and rejects (after all of them ran) if any
@@ -47,6 +63,7 @@ export async function runSnapshots(o: SnapshotRun): Promise<void> {
     hide: o.hide ?? ((text: string) => text),
     out: o.out ?? ((line: string) => console.log(line)),
     now: o.now ?? (() => new Date()),
+    staleRunMs: staleRunMs(o.loop, o.intervalMs),
   };
   const ping = async (ok: boolean) => {
     try {
@@ -57,7 +74,9 @@ export async function runSnapshots(o: SnapshotRun): Promise<void> {
   };
 
   // A worker that was killed in the middle of a pass left its run open, and an open run refuses the
-  // next one on its chain: a crash must not keep the next start from reading.
+  // next one on its chain: a crash must not keep the next start from reading. Every open run on
+  // these chains is closed, a live worker's included, since a row does not say who opened it: one
+  // worker a database.
   if (!o.dryRun) {
     const chains = o.sources.map((s) => s.chain);
     await closeOpenRuns(o.db, chains, ctx.now()).catch((e: unknown) => {
@@ -65,7 +84,7 @@ export async function runSnapshots(o: SnapshotRun): Promise<void> {
     });
   }
 
-  /** The chains whose newest pass failed. */
+  /** The chains whose newest pass failed or was skipped: no success is pinged while one is. */
   const failing = new Set<ChainId>();
   const loops = o.sources.map((source) => {
     const state = newChainState();
@@ -82,8 +101,13 @@ export async function runSnapshots(o: SnapshotRun): Promise<void> {
       },
       round: async () => {
         const pass = await snapshotChain(ctx, source, state);
-        // A pass another worker's run kept from starting read nothing, and says nothing of the chain.
-        if (pass.outcome === 'skipped') return;
+        // A pass an open run kept from starting read nothing. It says nothing of the chain, so it
+        // sends no ping and backs off nothing; but this chain wrote no row, so no other chain's
+        // pass may ping a success until this one reads again.
+        if (pass.outcome === 'skipped') {
+          failing.add(source.chain);
+          return;
+        }
         failing.delete(source.chain);
         if (failing.size === 0) await ping(true);
       },

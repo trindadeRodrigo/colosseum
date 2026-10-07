@@ -12,7 +12,7 @@ CHAIN_MODE_SOLANA=readonly SOLANA_RPC_URL=<devnet node> \
 - `--once` or `--loop`, exactly one. With `--once` the exit code is 1 when a pass failed. A flag it does not know stops it: `--dryrun` is refused, not ignored.
 - It reads the environment it is started with and loads no `.env` file, as the keeper.
 - `DATABASE_URL` is the database it writes to. Unset, it is the local one of `pnpm db:up`.
-- What is wrong at start (mainnet, no chain to read, a missing node address, a node of another network, a deploy record it cannot read, a database of another network) is said on stderr and ends it with 1 before any pass.
+- What is wrong at start (mainnet, no chain to read, a missing node address, a node of another network, a deploy record it cannot read, a database of another network, a database that does not answer) is said on stderr and ends it with 1 before any pass. A database that is down is said by the code of the refusal, `the database did not take a query (ECONNREFUSED)`, never by the query.
 
 ## Which chains
 
@@ -82,7 +82,7 @@ Only our people's vaults, never every vault the program or the factory holds.
 - It does not run on mainnet. `CHAIN_NETWORK_<CHAIN>=mainnet` stops it at start for every chain, read or not and whatever its mode, with a sentence that names the variable, before a node or the database is asked anything. Both node checks also refuse a node that answers a mainnet's genesis or chain id. That holds until a person says otherwise.
 - Nothing it reads is ever labelled `live`. A test network or a local copy is `sandbox`, the mock is `mock`, and a network whose figures would carry another label is refused.
 - It writes two tables, `vault_snapshots` and `snapshot_runs`, and at start the rows of `chains`. `vaults`, `orders`, `legs` and `user_wallets` are the API's and are only read.
-- It prints no node address, no database address and no ping address: every reason goes through `src/hide.ts` first (each `*_RPC_URL`, `DATABASE_URL` and `SNAPSHOT_PING_URL` by its setting's name, any other `URL: ...` cut), and only an error's message is ever said, never its cause.
+- It prints no node address, no database address and no ping address: every reason goes through `src/hide.ts` first (each `*_RPC_URL`, `DATABASE_URL` and `SNAPSHOT_PING_URL` by its setting's name, any other `URL: ...` cut), and only an error's code and message are ever said, never its cause or its stack; of a query the database did not take, only the code of the refusal, at start as in a pass.
 
 ## The lines it prints
 
@@ -93,17 +93,19 @@ One JSON object a line on stdout, each with `at`, `chain` and `name` ("Solana de
 - the pass: `pass: done` with `read`, `failed`, `skipped` and `dryRun`, or `pass: skipped` with `alert: true` when another worker's run is open on the chain;
 - a failed pass: `outcome: round-failed`, its `reason`, `alert: true`, `failures` in a row and, with `--loop`, `retryInS`.
 
-A pass fails when the chain does not answer (its rules or its asset list cannot be read, no vault at all could be read, or no price at all), when the mock's sample world cannot be brought up to date, or when the database does not answer. One vault that cannot be read, valued or written is a `failed` line for that vault and the others go on. The chain's height (a slot, a block, the mock's second) is read at the start of the pass and kept on every row as `block_or_slot`; a chain that cannot say it within ten seconds gives null, not a failed pass.
+A pass fails when the chain does not answer (its rules or its asset list cannot be read, no vault at all could be read, or no price at all), when no vault was read and at least one failed, whatever the reason (`no vault was read: 3 failed`), when the mock's sample world cannot be brought up to date, or when the database does not answer. One vault that cannot be read, valued or written beside one that was is a `failed` line for that vault and the others go on. A pass with nothing to read, because no vault is known or none is at the addresses asked, is a good pass. The chain's height (a slot, a block, the mock's second) is read at the start of the pass and kept on every row as `block_or_slot`; a chain that cannot say it within ten seconds gives null, not a failed pass.
 
 Each chain has a loop of its own (`src/loop.ts`, a copy of the keeper's, held equal by `tests/snapshot/loop.test.ts`): after a failed pass the next comes after 15 s, doubled after each failure in a row up to 5 minutes, and the interval returns once a pass goes through. A chain that fails backs off alone while the others keep their interval.
 
-Each pass is one row of `snapshot_runs` per chain, with what it read, what failed and, when the pass failed, why (a dry run opens none). One run is open per chain at a time. A worker that was killed in the middle of a pass left its run open; the next start closes it and says so in the row.
+Each pass is one row of `snapshot_runs` per chain, with what it read, what failed and, when the pass failed, why (a dry run opens none). One run is open per chain at a time, and a pass that finds another open is skipped. A worker that was killed in the middle of a pass left its run open. The next start closes it and says so in the row. A worker that is already running closes it at the first pass that finds it older than any pass can be (two intervals, and 30 minutes at least; 30 minutes with `--once`), says so in the row, and reads; until then that chain's passes are skipped.
+
+Run one worker a database. A start closes every open run on its chains, a live worker's included, since a row does not say who opened it.
 
 Stopped by SIGINT or SIGTERM, the worker closes its database client and exits with 130 or 143.
 
 ## The health check
 
-`SNAPSHOT_PING_URL` (healthchecks.io), optional: a POST after a pass when no chain's newest pass failed, and to its `/fail` after a pass that failed, with ten seconds to answer. The URL is never printed. A post that fails is said on stderr in words of its own (`the health check answered 500`, `the health check could not be reached`) and never stops a pass.
+`SNAPSHOT_PING_URL` (healthchecks.io), optional: a POST after a pass when no chain's newest pass failed or was skipped, and to its `/fail` after a pass that failed, with ten seconds to answer. A skipped pass sends neither, so a chain that is kept from starting lets the check run out. The URL is never printed. A post that fails is said on stderr in words of its own (`the health check answered 500`, `the health check could not be reached`) and never stops a pass.
 
 ## What a pass costs
 

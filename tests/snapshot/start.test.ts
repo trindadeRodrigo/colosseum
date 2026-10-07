@@ -42,12 +42,21 @@ const lines = (stdout: string) => stdout.split('\n').filter((line) => line.trim(
 
 describe('the snapshot worker at start, as a process', () => {
   it('stops on mainnet before any pass, whatever the chain and its mode', async () => {
-    const [read, unread, looped] = await Promise.all([
-      start(['--once'], { CHAIN_NETWORK_SOLANA: 'mainnet', CHAIN_MODE_SOLANA: 'readonly' }),
-      // A chain the worker was not asked to read, beside one on the mock that it was.
-      start(['--once'], { CHAIN_NETWORK_BASE: 'mainnet', SNAPSHOT_CHAINS: 'solana' }),
-      start(['--loop'], { CHAIN_NETWORK_ROBINHOOD: 'mainnet', CHAIN_MODE_ROBINHOOD: 'mock' }),
-    ]);
+    // One start after another, as tests/keeper/loop.test.ts makes its own: several processes at
+    // once slow the test files that run beside this one.
+    const read = await start(['--once'], {
+      CHAIN_NETWORK_SOLANA: 'mainnet',
+      CHAIN_MODE_SOLANA: 'readonly',
+    });
+    // A chain the worker was not asked to read, beside one on the mock that it was.
+    const unread = await start(['--once'], {
+      CHAIN_NETWORK_BASE: 'mainnet',
+      SNAPSHOT_CHAINS: 'solana',
+    });
+    const looped = await start(['--loop'], {
+      CHAIN_NETWORK_ROBINHOOD: 'mainnet',
+      CHAIN_MODE_ROBINHOOD: 'mock',
+    });
     for (const [ended, key] of [
       [read, 'CHAIN_NETWORK_SOLANA'],
       [unread, 'CHAIN_NETWORK_BASE'],
@@ -65,13 +74,14 @@ describe('the snapshot worker at start, as a process', () => {
   }, 120_000);
 
   it('stops with no chain to read, and on a command line it cannot read', async () => {
-    const [none, mockOnly, noMode, typo] = await Promise.all([
-      start(['--once'], {}),
-      // A chain on the mock is not read unless SNAPSHOT_CHAINS names it.
-      start(['--once'], { CHAIN_MODE_SOLANA: 'mock', CHAIN_MODE_ROBINHOOD: 'mock' }),
-      start([], { SNAPSHOT_CHAINS: 'solana' }),
-      start(['--once', '--dryrun'], { SNAPSHOT_CHAINS: 'solana' }),
-    ]);
+    const none = await start(['--once'], {});
+    // A chain on the mock is not read unless SNAPSHOT_CHAINS names it.
+    const mockOnly = await start(['--once'], {
+      CHAIN_MODE_SOLANA: 'mock',
+      CHAIN_MODE_ROBINHOOD: 'mock',
+    });
+    const noMode = await start([], { SNAPSHOT_CHAINS: 'solana' });
+    const typo = await start(['--once', '--dryrun'], { SNAPSHOT_CHAINS: 'solana' });
     for (const ended of [none, mockOnly]) {
       expect(ended.code).not.toBe(0);
       expect(ended.stderr).toContain('no chain to read: set CHAIN_MODE_<CHAIN> to readonly');

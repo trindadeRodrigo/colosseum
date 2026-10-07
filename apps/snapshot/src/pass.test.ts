@@ -3,10 +3,12 @@ import { ChainError, type VaultView } from '@colosseum/schemas';
 import { DrizzleQueryError } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { reasonOf, said, sayer } from './pass';
+import { STALE_RUN_MIN_MS, staleRunMs } from './run';
 import { cutToCents, SNAPSHOT_METHOD, snapshotRow } from './store';
 
-// The parts of a pass that need no chain and no database: how a failure is put in words, what a line
-// carries, and what a row is made of. The passes themselves are in pipeline.test.ts.
+// The parts of a pass that need no chain and no database: how a failure is put in words, what a
+// line carries, how old an open run is before a pass takes it as left open, and what a row is made
+// of. The passes themselves are in pipeline.test.ts.
 
 const NODE = 'https://node.example/key-in-the-path';
 const hide = (text: string) => text.split(NODE).join('<SOLANA_RPC_URL>');
@@ -66,6 +68,19 @@ describe('a line', () => {
     expect(lines).toEqual([
       '{"at":"2026-10-06T12:00:00.000Z","chain":"solana","name":"Solana devnet","pass":"done","read":2,"failed":0,"skipped":1,"dryRun":false}',
     ]);
+  });
+});
+
+describe('a run left open', () => {
+  it('is one that started two intervals ago and 30 minutes at least, or 30 minutes with the loop off', () => {
+    expect(STALE_RUN_MIN_MS).toBe(30 * 60_000);
+    // The ten-minute interval, and the shortest one the worker takes: 30 minutes.
+    expect(staleRunMs(true, 600_000)).toBe(30 * 60_000);
+    expect(staleRunMs(true, 60_000)).toBe(30 * 60_000);
+    // A pass an hour: a run of the last interval may be a pass still, one of two intervals ago not.
+    expect(staleRunMs(true, 3_600_000)).toBe(2 * 3_600_000);
+    // With --once there is no interval to go by, whatever the flag beside it says.
+    expect(staleRunMs(false, 3_600_000)).toBe(30 * 60_000);
   });
 });
 

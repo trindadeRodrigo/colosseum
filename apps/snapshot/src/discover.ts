@@ -28,7 +28,8 @@ export type ChainState = {
   empty: Set<string>;
   /**
    * A run of this worker whose end the database did not take. The next pass writes it before it opens
-   * its own: left open, it would refuse every run after it on the chain.
+   * its own: left open, it would refuse the runs after it on the chain until a pass found it old
+   * enough to close as left open (pass.ts), and its row would then say that and not how it ended.
    */
   unclosed: { id: string; end: RunEnd } | null;
 };
