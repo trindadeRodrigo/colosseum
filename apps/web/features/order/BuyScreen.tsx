@@ -27,7 +27,14 @@ export { MAX_USD, MIN_USD };
 export const startingAmount = (plan: { proposal: { sheet: { amountUsd: number } } }) =>
   String(plan.proposal.sheet.amountUsd);
 
-export function BuyScreen({ id }: { id: string }) {
+export function BuyScreen({
+  id,
+  embedded = false,
+}: {
+  id: string;
+  /** Inside the Invest screen's pane, which has the goal and the plan above it: no heading of its own. */
+  embedded?: boolean;
+}) {
   const t = useT();
   const lang = useLang();
   const router = useRouter();
@@ -159,11 +166,15 @@ export function BuyScreen({ id }: { id: string }) {
 
   return (
     <div data-ui="buy-screen" className="flex flex-col gap-8">
-      <header className="flex flex-col items-start gap-3">
-        <ChainBadge chain={chain} />
-        <h1 className={PAGE_TITLE}>{t.buy.title}</h1>
-        <p className="max-w-(--tf-measure-body) text-body-lg">{t.buy.lead(chainName)}</p>
-      </header>
+      {embedded ? (
+        <p className="max-w-(--tf-measure-body) text-body">{t.buy.lead(chainName)}</p>
+      ) : (
+        <header className="flex flex-col items-start gap-3">
+          <ChainBadge chain={chain} />
+          <h1 className={PAGE_TITLE}>{t.buy.title}</h1>
+          <p className="max-w-(--tf-measure-body) text-body-lg">{t.buy.lead(chainName)}</p>
+        </header>
+      )}
       <BuySteps
         chain={chain}
         chainName={chainName}

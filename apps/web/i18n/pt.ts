@@ -572,6 +572,82 @@ export const pt: Dictionary = {
     },
   },
 
+  invest: {
+    chat: 'A conversa',
+    you: 'Você',
+    me: 'tenonfi',
+    box: 'O que este dinheiro precisa fazer?',
+    placeholder: 'Diga em uma frase, ou responda à pergunta acima.',
+    reply: 'Enviar',
+    reading: 'Lendo…',
+    examples: 'Comece por um exemplo',
+    say: {
+      understood: (facts: string) => `Isto é o que eu tenho: ${facts}.`,
+      notUnderstood:
+        'Não consegui ler um objetivo nisso. Diga quanto, por quanto tempo e para que é.',
+      set: (label: string, value: string) => `${label}: ${value}.`,
+      incomeSkipped: 'Sem valor definido por mês, então.',
+      ready: 'É tudo de que preciso. Nada é comprado quando eu monto o plano.',
+      building: 'Montando seu plano com estes limites…',
+      built: 'O plano está pronto. Toque em qualquer limite para mudar e eu monto de novo.',
+      unfit: {
+        goal: 'Escolha um: crescer, ter renda ou proteger.',
+        amount: 'Preciso de um valor em dólares, de US$ 10 a US$ 1.000.000.',
+        income: 'Preciso de um valor em dólares por mês, ou sem valor definido.',
+        horizon: 'Preciso de um prazo, de 1 mês a 40 anos.',
+        risk: 'Escolha um: baixo, médio ou alto.',
+      },
+      signIn: 'Entre para investir. Seu objetivo e este plano ficam aqui.',
+    },
+    ask: {
+      goal: 'Para que é o dinheiro?',
+      amount: 'Com quanto você começa?',
+      income: 'Quanto você quer que ele pague por mês?',
+      horizon: 'Por quanto tempo?',
+      risk: 'Quanto risco você aceita?',
+    },
+    replies: {
+      years: (n: number) => (n === 1 ? '1 ano' : `${n} anos`),
+      aMonth: (amount: string) => `${amount} por mês`,
+      noIncome: 'Sem valor definido',
+      build: 'Montar meu plano',
+    },
+    facts: {
+      title: 'Seu objetivo',
+      goal: 'Para',
+      amount: 'Valor',
+      income: 'Renda por mês',
+      horizon: 'Prazo',
+      risk: 'Risco',
+      open: 'Ainda não dito',
+      noIncome: 'Sem valor definido',
+      change: (fact: string) => `Mudar ${fact}`.trim(),
+    },
+    pane: {
+      label: 'Seu plano',
+      empty: {
+        title: 'Seu plano é montado aqui.',
+        body: 'Diga para que é o dinheiro. Cada coisa que você me conta aparece deste lado, depois o plano com o motivo de cada parte e o caminho de saída.',
+      },
+      building: 'Montando seu plano…',
+      open: 'Abrir seu plano',
+      close: 'Voltar à conversa',
+      summaryEmpty: 'Ainda sem plano',
+      summaryFacts: (known: number, of: number) => `Seu objetivo: ${known} de ${of} definidos`,
+      ownPage: 'Abrir este plano na página dele',
+      investTitle: 'Investir',
+      backToPlan: 'Voltar ao plano',
+    },
+    failure: {
+      unavailable:
+        'Nosso servidor não consegue montar planos agora. Seus limites continuam guardados. Tente de novo em instantes.',
+      refused: 'Nosso servidor não aceitou estes limites. Mude um e eu tento de novo.',
+      noPlan:
+        'Nenhum plano cabe nestes limites. Mude o valor, o prazo ou o risco e eu tento de novo.',
+      again: 'Tentar de novo',
+    },
+  },
+
   plan: {
     title: 'Seu plano',
     signedOut: 'Entre para ver este plano. Um plano é de uma pessoa, na rede da carteira dela.',
@@ -730,6 +806,13 @@ export const pt: Dictionary = {
       after: 'se a faixa projetada se mantiver. Uma estimativa, não uma promessa.',
     },
     buy: 'Comprar este plano',
+    invest: (amount: string) => `Investir ${amount}`,
+    investing: 'Abrindo os passos…',
+    answer: {
+      range: (low: string, high: string) => `${low} a ${high} ao ano`,
+      rangeAfter: 'projetado. Uma faixa, não uma promessa.',
+      none: 'Ainda sem projeção: não há leitura de rendimento para este plano.',
+    },
     chainNotReady: (chain: string) =>
       `${chain} ainda não está pronta para compras: os cofres dela não estão implantados nesta rede. Seu plano fica guardado e pode ser comprado quando estiverem.`,
     chainOff: (chain: string) =>

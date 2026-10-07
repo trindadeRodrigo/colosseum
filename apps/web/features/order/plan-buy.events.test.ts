@@ -184,7 +184,7 @@ describe('the plan screen', () => {
     );
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
     const next = primaryLink(host);
-    expect(next?.textContent).toBe(en.plan.buy);
+    expect(next?.textContent).toBe(en.plan.invest('$40,000'));
     expect(next?.getAttribute('href')).toBe(`/plan/${PLAN_ID}/buy`);
   });
 
@@ -477,7 +477,7 @@ describe('the plan screen', () => {
     const host = await plan();
     expect(host.textContent).not.toContain(en.plan.chainNotReady('Robinhood Chain'));
     const next = primaryLink(host);
-    expect(next?.textContent).toBe(en.plan.buy);
+    expect(next?.textContent).toBe(en.plan.invest('$40,000'));
     expect(next?.getAttribute('href')).toBe(`/plan/${PLAN_ID}/buy`);
   });
 });

@@ -65,10 +65,21 @@ const answers = (asked: BasketSheet, got: BasketSheet) =>
   got.chains.length === asked.chains.length &&
   got.chains.every((chain, i) => chain === asked.chains[i]);
 
-export async function buildPlan(apiFetch: ApiFetch, sheet: BasketSheet): Promise<BuildOutcome> {
+/**
+ * The same plan for someone who is not signed in (`POST /v1/baskets/propose`, which asks for no
+ * sign-in): a visitor can talk and see a plan. It is stored as a plan made from a link, and is built
+ * again as the person's own once they sign in (features/invest/InvestScreen.tsx).
+ */
+export const PROPOSE_PATH = '/v1/baskets/propose';
+
+export async function buildPlan(
+  apiFetch: ApiFetch,
+  sheet: BasketSheet,
+  path: typeof PERSONALIZE_PATH | typeof PROPOSE_PATH = PERSONALIZE_PATH,
+): Promise<BuildOutcome> {
   let res: Response;
   try {
-    res = await apiFetch(PERSONALIZE_PATH, {
+    res = await apiFetch(path, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ sheet }),
