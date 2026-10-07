@@ -238,11 +238,12 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
       // is that order; after it, what it left is its own to finish, so no swap is ever planned twice.
       const [made] = await continuationsOf(deps.db, stored.order.id);
       if (made) {
-        const open = made.status === 'open' || made.status === 'partial';
-        const again =
-          open && made.expiresAt.getTime() > now.getTime()
-            ? await loadOrder(deps.db, made.id)
-            : null;
+        // Still the one to sign: open, in time, and not itself finished by another order.
+        const open =
+          (made.status === 'open' || made.status === 'partial') &&
+          made.expiresAt.getTime() > now.getTime() &&
+          (await continuationsOf(deps.db, made.id)).length === 0;
+        const again = open ? await loadOrder(deps.db, made.id) : null;
         if (again) return detail(again);
         throw new Refusal(409, 'another order finishes this one: what is left is that order’s', {
           fix: `Finish order ${made.id}.`,

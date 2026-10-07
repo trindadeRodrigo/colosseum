@@ -897,6 +897,7 @@ describe('no /v1 route can make the server sign', () => {
     expect(files.map((f) => relative(src, f)).sort()).toEqual([
       'faucet/test-funds.ts',
       'orders/chains.ts',
+      'orders/continue.ts',
       'orders/errors.ts',
       'orders/families.ts',
       'orders/legs.ts',
