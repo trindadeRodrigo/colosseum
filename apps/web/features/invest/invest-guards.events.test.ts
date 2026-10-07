@@ -2,16 +2,18 @@
 import type { BasketSheet } from '@colosseum/schemas';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import GoalPage from '../../app/(app)/goal/page';
 import { click, find, mount, press, settle, type, unmountAll } from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary, type Lang } from '../../i18n';
 import { ChainSwitch } from '../account/ChainSwitch';
 import type { Person } from '../account/person';
-import { withAccount } from '../account/test/screen';
+import { inShell, withAccount } from '../account/test/screen';
 import { PERSONALIZE_PATH, PROPOSE_PATH } from '../goal/build-plan';
 import { GOAL_DRAFT } from '../goal/draft';
 import { proposalFor, READ_IN_DOLLARS, READ_IN_REAIS } from '../goal/test/plan';
+import { portfolioBody } from '../portfolio/test/portfolio';
 import { EMBEDDED, fakePort, json, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
 import { InvestScreen, restoreDraft } from './InvestScreen';
@@ -48,6 +50,7 @@ function api(
     /** Answers GET /v1/me in place of the person, while set. */
     me?: () => Promise<Response>;
     reading?: unknown;
+    portfolio?: () => Response;
     plan?: (sheet: BasketSheet, path: string) => Response | Promise<Response>;
   } = {},
 ) {
@@ -58,6 +61,7 @@ function api(
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ method, path, body });
     if (down) throw new TypeError('fetch failed');
+    if (path === '/v1/portfolio' && o.portfolio) return o.portfolio();
     if (path === '/goals') return json(o.reading ?? READ_IN_DOLLARS);
     if (path === '/v1/me') return o.me ? o.me() : o.person ? json(o.person) : json({}, 401);
     if (path === '/v1/me/chain' && method === 'PUT' && o.person) {
@@ -437,8 +441,8 @@ describe('a goal in reais', () => {
     await say(host, 'Quero uma renda todo mês a partir de 2029, com resgate em até 7 dias');
     expect(fact(host, 'goal').textContent).toContain(pt.goal.options.goal.income);
     // no figure in reais is carried into a sheet in dollars
-    expect(fact(host, 'amount').getAttribute('data-set')).toBe('false');
-    expect(fact(host, 'income').getAttribute('data-set')).toBe('false');
+    expect(pane(host).querySelector('[data-fact="amount"], [data-fact="income"]')).toBeNull();
+    expect(pane(host).textContent).not.toContain(pt.talk.facts.open);
     expect(host.textContent).not.toMatch(/5[.,]000/);
     expect(last(host)).toContain(pt.talk.ask.amount);
   });
@@ -567,10 +571,128 @@ describe('signed in with a plan that is still a visitor’s', () => {
 });
 
 describe('the plan on a phone', () => {
+  beforeEach(() => {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query) =>
+        ({
+          matches: query.includes('max-width: 1023'),
+          media: query,
+          onchange: null,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          addListener: () => {},
+          removeListener: () => {},
+          dispatchEvent: () => true,
+        }) as MediaQueryList,
+    );
+  });
+  afterEach(() => vi.restoreAllMocks());
+  it('contains mobile focus and owned-vault links, then restores the background when the desktop layout returns', async () => {
+    let wide = false;
+    const changes = new Set<EventTarget>();
+    vi.spyOn(window, 'matchMedia').mockImplementation((query) => {
+      const events = new EventTarget();
+      if (query.includes('min-width: 1024px')) changes.add(events);
+      return {
+        get matches() {
+          return query.includes('min-width: 1024px')
+            ? wide
+            : query.includes('max-width: 1023')
+              ? !wide
+              : false;
+        },
+        media: query,
+        onchange: null,
+        addEventListener: events.addEventListener.bind(events),
+        removeEventListener: events.removeEventListener.bind(events),
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: events.dispatchEvent.bind(events),
+      } as MediaQueryList;
+    });
+    api({ person, portfolio: () => json(portfolioBody()) });
+    signedIn();
+    const host = await mount(inShell('en', 'light', createElement(GoalPage)));
+    await settle();
+    await whole(host);
+    const background = find(host, '[data-ui="owned-vaults"]');
+    const vaultLink = find(background, '[data-ui="owned-vault"] a');
+    const opener = find(host, '[data-ui="invest-summary"]').closest('button') as HTMLElement;
+    await click(opener);
+    expect(vaultLink.closest('[inert]')).not.toBeNull();
+    const dialog = pane(host);
+    const items = [
+      ...dialog.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ].filter((el) => !el.closest('[aria-hidden="true"], [hidden], [inert]'));
+    const first = items[0];
+    const last = items[items.length - 1];
+    expect(document.activeElement).toBe(first);
+    const reverse = await press(first, 'Tab', { shiftKey: true });
+    expect(reverse.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(last);
+    const forward = await press(last, 'Tab');
+    expect(forward.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(first);
+    await act(async () => {
+      wide = true;
+      for (const change of changes) change.dispatchEvent(new Event('change'));
+    });
+    expect(dialog.getAttribute('role')).toBeNull();
+    expect(dialog.getAttribute('aria-modal')).toBeNull();
+    expect(vaultLink.closest('[inert]')).toBeNull();
+    expect(find(host, '[data-ui="invest-chat"]').hasAttribute('inert')).toBe(false);
+    expect(document.activeElement).toBe(box(host));
+    vi.restoreAllMocks();
+  });
+
+  it('closes a waiting-plan dialog after a build failure and returns focus to the usable composer', async () => {
+    let release!: (response: Response) => void;
+    const waiting = new Promise<Response>((resolve) => {
+      release = resolve;
+    });
+    api({ plan: () => waiting });
+    const host = await screen();
+    await say(host, 'Grow $40,000 over 3 years, medium risk');
+    await click(find(host, '[data-ui="pane-build"] button'));
+    await settle();
+    await click(find(host, '[data-ui="invest-summary"]').closest('button') as HTMLElement);
+    expect(pane(host).getAttribute('role')).toBe('dialog');
+    expect(find(host, '[data-ui="invest-chat"]').hasAttribute('inert')).toBe(true);
+    await act(async () => {
+      release(json({ error: 'unavailable' }, 503));
+    });
+    await settle();
+    expect(find(host, '[data-ui="invest-screen"]').getAttribute('data-layout')).toBe('intake');
+    expect(host.querySelector('[data-ui="invest-summary"]')).toBeNull();
+    expect(pane(host).getAttribute('role')).toBeNull();
+    expect(pane(host).getAttribute('aria-modal')).toBeNull();
+    expect(find(host, '[data-ui="invest-chat"]').hasAttribute('inert')).toBe(false);
+    expect(box(host).disabled).toBe(false);
+    expect(document.activeElement).toBe(box(host));
+    expect(last(host)).toContain(en.talk.failure.unavailable);
+    await say(host, 'Start over');
+    expect(turns(host)).toEqual([]);
+    expect(pane(host).classList.contains('hidden')).toBe(true);
+    expect(host.querySelector('[data-ui="invest-summary"]')).toBeNull();
+  });
+
   it('opens as a dialog: focus goes in, Escape closes it, and focus goes back to the line that opened it', async () => {
     api();
     const host = await screen();
     await say(host, 'Grow $40,000');
+    expect(host.querySelector('[data-ui="invest-summary"]')).toBeNull();
+    await say(host, 'Grow $40,000 over 3 years, medium risk');
+    await click(find(host, '[data-ui="pane-build"] button'));
+    await settle();
+    expect(find(host, '[data-ui="invest-screen"]').getAttribute('data-layout')).toBe('plan');
+    expect(pane(host).className).not.toMatch(/border-l|pl-10/);
+    const chat = find(host, '[data-ui="invest-chat"]');
+    expect(chat.className).toContain('lg:max-h-[calc(100dvh-8rem)]');
+    expect(chat.className).not.toMatch(/lg:h-\[|lg:min-h-\[/);
+    expect(find(host, '[data-ui="invest-turns"]').className).toContain('lg:overflow-y-auto');
+    expect(box(host).closest('form')?.classList.contains('shrink-0')).toBe(true);
     const opener = find(host, '[data-ui="invest-summary"]').closest('button') as HTMLElement;
     expect(pane(host).getAttribute('role')).toBeNull();
     await click(opener);

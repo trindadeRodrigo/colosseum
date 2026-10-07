@@ -2,10 +2,9 @@ import { goalMetadata } from '../../../components/shell/metadata';
 import { InvestScreen } from '../../../features/invest/InvestScreen';
 import { PortfolioSummary } from '../../../features/portfolio/PortfolioSummary';
 
-// The product's first screen, Invest (gate INVEST-TWO-PANE): the conversation on the left and the plan
-// built beside it on the right; on a phone, one thread with the plan as a line that opens. Under it, for a person who already holds a vault, one line on where their money
-// is, and the way to the monitor. `/` is his landing page for a visitor, and leads a person signed in
-// on this browser here (app/(marketing)/page.tsx).
+// Invest begins with one question and a naturally sized conversation. Once built, a plan joins its
+// workspace; on a phone it opens from a disclosure. Existing vault cards sit below, each with its own
+// chain, pinned value and direct vault link, plus the link to the monitor. `/` is the visitor landing.
 
 export function generateMetadata() {
   return goalMetadata();
@@ -13,7 +12,7 @@ export function generateMetadata() {
 
 export default function GoalPage() {
   return (
-    <div className="flex flex-col gap-12">
+    <div className="flex min-w-0 flex-col gap-8">
       <InvestScreen />
       <PortfolioSummary />
     </div>

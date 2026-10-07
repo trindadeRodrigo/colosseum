@@ -199,6 +199,27 @@ describe('signed in: the guided intake reads the conversation', () => {
     expect(held).toEqual([`${en.talk.facts.theme}AI · 30%`]);
   });
 
+  it('keeps a long unbroken theme intact in the compact wrapping facts without building a plan', async () => {
+    const name = 'UnbrokenThemeName'.repeat(10);
+    const server = api(
+      answer({
+        sheet: WHOLE,
+        narratives: [{ id: 'ai', words: name, kind: 'label', slug: 'ai', filter: null, name }],
+        readBack: ['Your theme is held as stated.'],
+      }),
+    );
+    const host = await screen();
+    await say(host, 'Grow $2,000 over 5 years, high risk, 30% in my theme');
+    expect(find(host, '[data-ui="invest-screen"]').getAttribute('data-layout')).toBe('intake');
+    const held = find(pane(host), '[data-fact="held"]');
+    expect(held.textContent).toBe(`${en.talk.facts.theme}${en.talk.facts.themeShare(name, '30%')}`);
+    expect(held.classList.contains('min-w-0')).toBe(true);
+    expect(held.classList.contains('max-w-full')).toBe(true);
+    expect(held.classList.contains('[overflow-wrap:anywhere]')).toBe(true);
+    expect(pane(host).textContent).not.toContain(en.talk.facts.open);
+    expect(server.to(PERSONALIZE_PATH)).toEqual([]);
+  });
+
   it('builds from our server’s sheet exactly as it came, once the person says yes', async () => {
     const server = api(answer({ sheet: WHOLE, readBack: READ_BACK }));
     const host = await screen();
@@ -439,7 +460,7 @@ describe('what Thom’s conversation of Oct 7 showed', () => {
 
   it('shows who read each turn in a development build only: a production build has no way to turn it on', async () => {
     api(answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT], method: 'rules' }));
-    // a flag in the browser changes nothing
+    // The flag cannot expose details in production or test builds.
     window.localStorage.setItem('tf-debug', '1');
     for (const mode of ['production', 'test']) {
       vi.stubEnv('NODE_ENV', mode);
@@ -450,6 +471,13 @@ describe('what Thom’s conversation of Oct 7 showed', () => {
       window.sessionStorage.clear();
     }
     vi.stubEnv('NODE_ENV', 'development');
+    window.localStorage.removeItem('tf-debug');
+    const ordinary = await screen();
+    await say(ordinary, 'grow it');
+    expect(ordinary.querySelector('[data-ui="invest-reader"]')).toBeNull();
+    await unmountAll();
+    window.sessionStorage.clear();
+    window.localStorage.setItem('tf-debug', '1');
     const dev = await screen();
     await say(dev, 'grow it');
     expect(find(dev, '[data-ui="invest-reader"]').textContent).toBe(

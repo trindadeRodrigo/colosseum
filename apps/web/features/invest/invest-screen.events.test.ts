@@ -104,7 +104,7 @@ beforeEach(() => {
 afterEach(unmountAll);
 
 describe('before anything is said', () => {
-  it('is one question, the box, three examples, and the outline of a plan beside them', async () => {
+  it('is one full-width question, a natural-height conversation and the box, without an empty plan placeholder', async () => {
     api();
     const host = await screen();
     expect(host.querySelectorAll('h1')).toHaveLength(1);
@@ -116,8 +116,15 @@ describe('before anything is said', () => {
       ),
     ).toEqual(en.goal.examples.list);
     expect(pane(host).getAttribute('data-state')).toBe('empty');
-    expect(find(pane(host), '[data-ui="pane-empty"] h2').textContent).toBe(
-      en.talk.pane.empty.title,
+    expect(pane(host).classList.contains('hidden')).toBe(true);
+    expect(host.querySelector('[data-ui="pane-empty"], [data-ui="invest-summary"]')).toBeNull();
+    expect(find(host, 'h1').closest('[data-ui="invest-chat"]')).toBeNull();
+    expect(find(host, '[data-ui="invest-screen"]').getAttribute('data-layout')).toBe('intake');
+    const chat = find(host, '[data-ui="invest-chat"]');
+    expect(chat.className).not.toMatch(/dvh|min-h-\[|sticky/);
+    expect(find(host, '[data-ui="invest-turns"]').className).not.toMatch(/flex-1|overflow-y-auto/);
+    expect(find(host, 'textarea').closest('form')?.previousElementSibling).toBe(
+      find(host, '[data-ui="invest-turns"]'),
     );
     expect(turns(host)).toEqual([]);
     // no form, no country, no select anywhere
@@ -175,8 +182,11 @@ describe('the conversation, turn by turn', () => {
     expect(last).toContain(en.talk.ask.horizon);
     expect(last).not.toContain(en.talk.ask.risk);
     expect(replies(host)).toEqual(['1 year', '3 years', '5 years', '10 years']);
-    expect(fact(host, 'horizon').getAttribute('data-set')).toBe('false');
-    expect(fact(host, 'horizon').textContent).toContain(en.talk.facts.open);
+    expect(pane(host).querySelector('[data-fact="horizon"], [data-fact="risk"]')).toBeNull();
+    expect(pane(host).textContent).not.toContain(en.talk.facts.open);
+    expect(pane(host).classList.contains('hidden')).toBe(false);
+    expect(pane(host).querySelectorAll('[data-fact]')).toHaveLength(2);
+    expect(server.to(PROPOSE_PATH)).toEqual([]);
 
     await answer(host, '3 years');
     expect(fact(host, 'horizon').textContent).toContain('3 years');
