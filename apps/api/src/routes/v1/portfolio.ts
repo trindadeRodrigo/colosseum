@@ -70,7 +70,10 @@ export function registerPortfolioRoute(scope: FastifyInstance, deps: OrderDeps) 
         response: { 200: PortfolioResponse, default: OrderError },
       },
     },
-    async (req) => {
+    async (req, reply) => {
+      // One person's vaults and, with them, the goal their plan was made for: never kept by a cache
+      // between them and us, as the two routes that read a plan back say too (baskets.ts).
+      reply.header('cache-control', 'private, no-store');
       const principal = signedIn(req);
       // Every chain the person can hold a vault on, not only the current one (CHAIN-SWITCH). Each is
       // read on its own: one that is off, or whose read fails, is said in `unavailable` and does not

@@ -375,10 +375,12 @@ export async function snapshotChain(
       }
     }
     await readChain(ctx, source, state, counts, say);
-    // Nothing was kept of the chain and something failed: that is a failed pass whatever each
-    // refusal was called, or a chain that writes no row would look well for good. A pass with
-    // nothing to read (no vault known, or none at the addresses asked) failed nothing, and is a
-    // good one.
+    // No vault was read and at least one vault failed (its read by address, its value or its row):
+    // that is a failed pass whatever the refusal was called, or a chain that writes no row would
+    // look well for good. A pass with nothing to read (no vault known, or none at the addresses
+    // asked) failed nothing, and is a good one. An owner whose vaults could not be asked for is a
+    // line, is asked again at the next pass, and fails nothing by itself: `user_wallets` carries no
+    // label, so one wallet a chain cannot read must not fail that chain for good.
     if (counts.read === 0 && counts.failed > 0)
       throw new Error(`no vault was read: ${counts.failed} failed`);
   } catch (e) {

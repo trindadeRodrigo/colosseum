@@ -156,6 +156,8 @@ async function unjoin(who: Person) {
 async function portfolio(who: Person, on: FastifyInstance = app) {
   const res = await get(who, '/v1/portfolio', on);
   expect(res.statusCode, res.body).toBe(200);
+  // The answer holds a person's goal: no cache between them and the server may keep it.
+  expect(res.headers['cache-control']).toBe('private, no-store');
   return {
     body: res.body,
     vaults: PortfolioResponse.parse(res.json()).chains.flatMap((c) => c.vaults),

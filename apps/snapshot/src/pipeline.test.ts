@@ -49,6 +49,9 @@ import {
 // review beside a build, share the local database. So the file holds a Postgres advisory lock from
 // its first query to its last, and a second run waits at its start until the first is done. The
 // lock is the session's and goes with its connection, so a run that is killed leaves none behind.
+// What a killed run can leave is an open run stamped in its made-up days. A worker already running
+// on the same database never takes that one for left open, since its start is not in the past, and
+// skips the chain: the next run of this file, or the next start of the worker, closes it.
 //
 // Other test files share this database. Their `vaults` rows and owners turn up in these passes as
 // `skipped` lines (no such vault on this file's own mock), so every assertion here is on this
