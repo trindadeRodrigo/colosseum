@@ -21,10 +21,10 @@ import {
 import { z } from 'zod';
 import aiOnSolana from '../../../../content/themes/solana/ai.json';
 import seedFile from '../../../../docs/vault/research/open-questions/launch-shelf.seed.json';
+import { compose } from './compose';
 import yieldRows from './fixtures/yields.json';
 import { LEG_TYPES } from './leg-types';
 import { attributeKey, filterOfSlug, type MarketFilterBy } from './market-filter';
-import { growthRoomBps, growthTokens, RISKS } from './mix';
 import { PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
 import {
@@ -41,10 +41,11 @@ import {
   type PersonalProposal,
   type PersonalSheet,
   type PooledLiquidityProvider,
+  type RiskLevel,
   SLEEVES,
   type Sleeve,
 } from './types';
-import { buildWorld, monthAfter, tableFor } from './world';
+import { monthAfter, tableFor } from './world';
 
 // Builders for the tests of this folder. Not exported from the engine: every row is a fixture.
 // The shelf is the launch shelf of docs/vault/research/open-questions/launch-shelf.seed.json, turned
@@ -771,9 +772,81 @@ function sleeveOfAsset(byId: Map<string, BasketAsset>, l: { assetId: string }): 
   return a ? sleeveOfClass(a.cls) : null;
 }
 
-/** The growth tokens the engine would fill a mix from, read through a world of the plan's sheet. */
-function mixGrowthTokens(plan: PersonalProposal, shelf: Shelf, ctx: ComposeContext): BasketAsset[] {
-  return growthTokens(buildWorld(plan.sheet, shelf, ctx));
+/** The risks in order, lowest first: written here, not read from the engine. */
+const RISK_ORDER: readonly RiskLevel[] = ['low', 'medium', 'high'];
+
+/**
+ * The same table with the caps of one risk at every risk: whatever risk a plan then takes, these are
+ * the caps it is held to. It is how a test asks "what would this plan hold at that risk?" of the
+ * engine as a whole, with no helper of the engine's in between.
+ */
+export function withCapsOf(table: PersonalParameters, risk: RiskLevel): PersonalParameters {
+  const every = (cap: number | undefined) => ({ low: cap ?? 0, medium: cap ?? 0, high: cap ?? 0 });
+  return {
+    ...table,
+    capPerStockBps: every(table.capPerStockBps[risk]),
+    capPerIssuerBps: every(table.capPerIssuerBps[risk]),
+  };
+}
+
+/** The largest amount a sheet takes: a basis point of it is a whole 10,000 cents. */
+const LARGEST_USD = 1_000_000;
+
+/**
+ * The plan a mix makes on its own under the caps of one risk (gate EXPLICIT-MIX): the person's goal,
+ * chain, portfolios and what they cannot hold, with the mix and nothing else in the way of stocks. No
+ * date, no sum to keep, no withdrawal, no holding, no ceiling, no least size and no count of lines.
+ * Composed by the engine's one entry, under `withCapsOf`.
+ */
+export function mixAlone(
+  s: PersonalSheet,
+  shelf: Shelf,
+  ctx: ComposeContext,
+  table: PersonalParameters,
+  risk: RiskLevel,
+): PersonalProposal {
+  const { cannotHold, creditTolerance } = s.limits ?? {};
+  const limits = {
+    ...(cannotHold ? { cannotHold } : {}),
+    ...(creditTolerance ? { creditTolerance } : {}),
+  };
+  const alone: PersonalSheet = {
+    basketType: 'standard',
+    goal: s.goal,
+    amountUsd: LARGEST_USD,
+    horizonMonths: s.horizonMonths,
+    risk,
+    themes: s.themes,
+    chains: s.chains,
+    rules: { useHoldings: false, glide: false },
+    language: s.language,
+    ...(s.mix ? { mix: s.mix } : {}),
+    ...(Object.keys(limits).length > 0 ? { limits } : {}),
+  };
+  return compose(alone, shelf, {
+    now: ctx.now,
+    ...(ctx.yields ? { yields: ctx.yields } : {}),
+    params: {
+      ...withCapsOf(table, risk),
+      tierCeilingUsd: { A: LARGEST_USD, B: LARGEST_USD, C: LARGEST_USD },
+      minLineBps: 0,
+      minLineUsd: 0,
+      maxLinesPerChain: Math.max(1, shelf.assets.length),
+    },
+  });
+}
+
+/**
+ * What the caps by risk keep out of stocks and crypto in a plan, in cents, as the plan says it: the
+ * money it says is held elsewhere because an issuer or one stock is at its cap for the risk.
+ */
+export function keptOutByRisk(plan: PersonalProposal): number {
+  const said = new Map(
+    allReasons(plan)
+      .filter((r) => r.rule === 'OVERFLOW_ISSUER' || r.rule === 'OVERFLOW_STOCK_CAP')
+      .map((r) => [`${r.rule} ${JSON.stringify(r.params)}`, cents(Number(r.params.usd))]),
+  );
+  return sum([...said.values()]);
 }
 
 /** The rules that say something was left out. */
@@ -1127,12 +1200,19 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
       );
   }
 
-  // A stated mix (gate EXPLICIT-MIX). The limits are the lowest risk whose caps admit it, and the plan
-  // says so; the mix replaces the table, so no line says the table's row. Stocks, crypto and gold hold
-  // no more than asked; where they hold less, a line or a left-out entry says why.
+  // A stated mix (gate EXPLICIT-MIX). The mix replaces the table, so no line says the table's row. The
+  // limits are the lowest risk whose caps admit it, worked out here by composing plans, and the plan
+  // says which. Each class of the mix is held, or a line of that class says what kept it from it.
   const saidRules = new Set(allReasons(plan).map((r) => r.rule));
   if (!s.mix) {
-    for (const rule of ['MIX', 'MIX_ALL', 'MIX_LIMITS', 'CREDIT_BUDGET_MIX', 'CREDIT_NONE_MIX'])
+    for (const rule of [
+      'MIX',
+      'MIX_ALL',
+      'MIX_LIMITS',
+      'MIX_SET_ASIDE',
+      'CREDIT_BUDGET_MIX',
+      'CREDIT_NONE_MIX',
+    ])
       say(!saidRules.has(rule), `${rule} said of a plan with no mix`);
     say(
       !plan.flags.some((f) => f.startsWith('limits_from_mix:')),
@@ -1146,57 +1226,170 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
       plan.flags.includes(`limits_from_mix:${s.risk}`),
       `the plan does not say it takes the limits for ${s.risk} risk from the mix`,
     );
-    const room = (r: typeof s.risk) =>
-      growthRoomBps(
-        mixGrowthTokens(plan, shelf, ctx).filter((a) => a.chain === s.chains[0]),
-        P,
-        r,
-      );
+    const [lowest = s.risk] = RISK_ORDER;
+    const highest = RISK_ORDER.at(-1) ?? s.risk;
     if (mix.growthBps > 0) {
       say(
         saidRules.has('MIX_LIMITS') || !plan.lines.some((l) => sleeveOfAsset(byId, l) === 'growth'),
         'the plan holds stocks for a mix and does not say which limits it took',
       );
-      // The lowest risk that admits it: one lower would not have.
-      const lower = RISKS.slice(0, RISKS.indexOf(s.risk));
-      for (const r of lower)
-        say(room(r) < mix.growthBps, `the mix fits ${r} risk, and the plan took ${s.risk}`);
-    } else say(s.risk === 'low', `a mix with no stocks takes low risk, not ${s.risk}`);
-    const heldOf = (sleeve: Sleeve) =>
-      sum(plan.lines.filter((l) => sleeveOfAsset(byId, l) === sleeve).map((l) => l.weightBps));
-    const slack = plan.lines.length;
-    const short = new Set([
-      'SINGLE_STOCK_CAP',
-      'ISSUER_CAP',
-      'ISSUER_CAP_PLAN',
-      'EXIT_CEILING',
-      'TIER_CEILING',
-      'GLIDE',
-      'CASH_MAY_NEED',
-      'CASH_NEAR_DATE',
-      'MUST_KEEP',
-      'EXCLUDED',
-      'NOT_ON_CHAIN',
-      'NOT_FOR_GOAL',
-      'MAX_LINES',
-      'BELOW_MINIMUM',
-      'ALREADY_HELD',
-      'ALREADY_HELD_NONE',
-      'COVERAGE_MOVED',
-      'COVERAGE_MOVED_UNCOUNTED',
-    ]);
-    const leftOut = plan.removed.flatMap((r) => r.reasons.map((x) => x.rule));
-    const whyLess = [...saidRules, ...leftOut].some((rule) => short.has(rule));
-    for (const [sleeve, asked] of [
-      ['growth', mix.growthBps],
-      ['gold', mix.goldBps],
-    ] as const) {
-      const held = heldOf(sleeve);
-      say(held <= asked + slack, `${sleeve} holds ${held} bps, over the ${asked} of the mix`);
+      // The risk, worked out again from plans the engine composes, and from none of its own helpers.
+      // 1. The mix alone: the lowest risk under whose caps it holds its whole share in stocks and
+      //    crypto, to under a basis point; the highest when none does. The plan is not below it.
+      const holds = (alone: PersonalProposal) => {
+        const whole = cents(alone.sheet.amountUsd);
+        const asked = Math.floor((whole * mix.growthBps) / 10_000);
+        const held = cents(alone.sleeves.find((x) => x.sleeve === 'growth')?.amountUsd ?? 0);
+        return (asked - held) * 10_000 < whole;
+      };
+      const alone = RISK_ORDER.find((r) => holds(mixAlone(s, shelf, given, base, r))) ?? highest;
+      const at = (r: RiskLevel) => RISK_ORDER.indexOf(r);
       say(
-        held >= asked - slack || whyLess,
-        `${sleeve} holds ${held} bps of the ${asked} asked, and no line says why`,
+        at(s.risk) >= at(alone),
+        `the mix alone needs the limits of ${alone} risk, and the plan took ${s.risk}`,
       );
+      // 2. Above that only where it has to be: at each risk from there up to the plan's own, a cap by
+      //    risk keeps stocks out of this very plan. A cent for each line a plan may hold, or a basis
+      //    point of the plan, is the rounding of its parts.
+      const rounding = Math.max(P.maxLinesPerChain, amount / 10_000);
+      for (const r of RISK_ORDER.slice(at(alone), at(s.risk))) {
+        const under = compose(plan.sheet, shelf, { ...given, params: withCapsOf(base, r) });
+        say(
+          keptOutByRisk(under) > rounding,
+          `at ${r} risk no cap keeps stocks out of this plan, and it took ${s.risk}`,
+        );
+      }
+      // 3. And no lower than it has to be: a cap by risk keeps stocks out only at the highest risk.
+      //    A candidate takes the plan's risk as it is, so this is the plan's to hold.
+      if (!plan.candidate && s.risk !== highest)
+        say(
+          keptOutByRisk(plan) <= rounding,
+          `a cap of ${s.risk} risk keeps ${keptOutByRisk(plan) / 100} out of stocks, and the next risk was not taken`,
+        );
+    } else say(s.risk === lowest, `a mix with no stocks takes ${lowest} risk, not ${s.risk}`);
+    // Every class of the mix against what the plan holds: stocks and crypto, dollar yield, gold and
+    // cash. Where a class holds less than asked, a reason says why on the lines of that class, or on
+    // the line that took in what was meant for it: a rule that can keep money out of that class, and
+    // not any rule anywhere. Where it holds more, a line of that class says what it took in. Stocks,
+    // crypto and gold never hold more than asked, but for what the person already holds elsewhere.
+    const stated: Record<Sleeve, number> = {
+      growth: mix.growthBps,
+      dollarYield: mix.dollarYieldBps,
+      gold: mix.goldBps,
+      cash: mix.cashBps,
+    };
+    const linesOf = (sleeve: Sleeve) => plan.lines.filter((l) => sleeveOfAsset(byId, l) === sleeve);
+    const heldOf = (sleeve: Sleeve) => sum(linesOf(sleeve).map((l) => l.weightBps));
+    // Lines are whole basis points, so each may move its class by one; and money is whole cents, so
+    // each class may be a cent off its share, which on a plan of a few dollars is many basis points.
+    const slack = plan.lines.length + Math.ceil((SLEEVES.length * 10_000) / amount);
+    const everyReason = allReasons(plan);
+    /** The reasons that speak for a class: on its own lines, or anywhere when it holds no line. */
+    const spokenFor = (sleeve: Sleeve) =>
+      linesOf(sleeve).length > 0 ? linesOf(sleeve).flatMap((l) => l.reasons) : everyReason;
+    /** The names a sentence can call a class's assets by: the shelf's, and the table's own tickers. */
+    const namesIn = (sleeve: Sleeve) =>
+      new Set([
+        ...shelf.assets
+          .filter((a) => sleeveOfClass(a.cls) === sleeve)
+          .flatMap((a) => [a.underlying, a.symbol]),
+        ...(sleeve === 'growth' ? [P.defaultUnderlying.growth] : []),
+        ...(sleeve === 'gold' ? P.defaultUnderlying.gold : []),
+      ]);
+    /** Money meant for this class that a line says is held in dollar yield or cash instead. */
+    const overflowOf = (sleeve: Sleeve) =>
+      everyReason.filter(
+        (r) =>
+          r.rule.startsWith('OVERFLOW_') &&
+          String(r.params.assets ?? '')
+            .split(',')
+            .some((name) => namesIn(sleeve).has(name)),
+      );
+    const setAsideFrom = (sleeve: Sleeve) =>
+      everyReason.filter((r) => r.rule === 'MIX_SET_ASIDE' && r.params.sleeve === sleeve);
+    const FLOORS = ['GLIDE', 'CASH_MAY_NEED', 'CASH_NEAR_DATE', 'MUST_KEEP'];
+    /** The reasons that can leave a class holding less than the mix asks, as this plan gives them. */
+    const whyLess = (sleeve: Sleeve): Reason[] => {
+      const on = spokenFor(sleeve);
+      const cashLine = linesOf('cash').flatMap((l) => l.reasons);
+      const rules = (from: Reason[], ...names: string[]) =>
+        from.filter((r) => names.includes(r.rule));
+      const heldAlready = plan.removed
+        .filter((x) => namesIn(sleeve).has(x.ref))
+        .flatMap((x) => x.reasons.filter((r) => r.rule === 'ALREADY_HELD_NONE'));
+      // A target rounded down to its token's ceiling: the basis point stays in cash, said there.
+      const rounded = cashLine.filter(
+        (r) => r.rule === 'ROUNDING' && namesIn(sleeve).has(String(r.params.asset)),
+      );
+      if (sleeve === 'growth' || sleeve === 'gold')
+        return [
+          ...setAsideFrom(sleeve),
+          // The date, the need for cash and what must not be lost: filled from stocks first, then gold.
+          ...rules(on, ...FLOORS),
+          // A cap, a ceiling, a line that is not there, a token that cannot be held: said where the
+          // money went, with the names it was meant for.
+          ...overflowOf(sleeve),
+          ...rules(on, 'ALREADY_HELD', 'COVERAGE_MOVED_UNCOUNTED'),
+          ...heldAlready,
+          ...rounded,
+        ];
+      if (sleeve === 'dollarYield')
+        return [
+          ...setAsideFrom(sleeve),
+          // The need for cash may take from dollar yield, after stocks and gold.
+          ...rules(on, 'CASH_MAY_NEED', 'CASH_NEAR_DATE', 'COVERAGE_MOVED'),
+          // What no dollar-yield token took stays in cash, and the cash line says so.
+          ...rules(cashLine, 'UNPLACED', 'NO_DOLLAR_YIELD', 'YIELD_TOO_SMALL', 'SET_ASIDE_CASH'),
+          ...rounded,
+        ];
+      // Cash gives only to what is set aside, where that is held in a rate leg.
+      return setAsideFrom(sleeve);
+    };
+    /** The rules that bring money into a class the mix did not give it. */
+    const TAKES_IN: Record<Sleeve, string[]> = {
+      growth: ['MORE_BECAUSE_HELD'],
+      gold: ['MORE_BECAUSE_HELD'],
+      dollarYield: ['GLIDE', 'MUST_KEEP', 'SET_ASIDE', 'MORE_BECAUSE_HELD'],
+      cash: [
+        'CASH_MAY_NEED',
+        'CASH_NEAR_DATE',
+        'MUST_KEEP',
+        'SET_ASIDE',
+        'COVERAGE_CASH',
+        'UNPLACED',
+        'NO_DOLLAR_YIELD',
+        'YIELD_TOO_SMALL',
+        'ROUNDING',
+        'MORE_BECAUSE_HELD',
+      ],
+    };
+    for (const sleeve of SLEEVES) {
+      const [held, asked] = [heldOf(sleeve), stated[sleeve]];
+      if (held < asked - slack) {
+        const why = whyLess(sleeve);
+        say(
+          why.length > 0,
+          `${sleeve} holds ${held} bps of the ${asked} asked, and no line of it says why`,
+        );
+        // Where what is set aside is the one thing in the way, the class holds what that leaves it.
+        const left = Math.min(...why.map((r) => Number(r.params.leftBps)));
+        if (why.length > 0 && why.every((r) => r.rule === 'MIX_SET_ASIDE'))
+          say(
+            held >= left - slack,
+            `${sleeve} holds ${held} bps, and what is set aside leaves it ${left}`,
+          );
+      }
+      if (held > asked + slack) {
+        const on = linesOf(sleeve).flatMap((l) => l.reasons);
+        const takesIn = (r: Reason) =>
+          TAKES_IN[sleeve].includes(r.rule) ||
+          // What stocks, crypto and gold could not take is held in dollar yield, then in cash.
+          (r.rule.startsWith('OVERFLOW_') && (sleeve === 'dollarYield' || sleeve === 'cash'));
+        say(
+          on.some(takesIn),
+          `${sleeve} holds ${held} bps, over the ${asked} of the mix, and no line of it says why`,
+        );
+      }
     }
   }
 
@@ -1575,8 +1768,61 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
       'withdrawals with no goal sleeve, and no short flag',
     );
   } else {
-    for (const rule of ['SET_ASIDE', 'SET_ASIDE_SHORT', 'SET_ASIDE_CASH', 'NO_MATCHING_LEG'])
+    for (const rule of [
+      'SET_ASIDE',
+      'SET_ASIDE_SHORT',
+      'SET_ASIDE_CASH',
+      'NO_MATCHING_LEG',
+      'MIX_SET_ASIDE',
+    ])
       say(reasonsOf(rule).length === 0, `${rule} said with nothing to set aside`);
+  }
+  // With a mix (gate EXPLICIT-MIX) withdrawals keep their rule: what the next months owe is set aside
+  // in full, as held above. It counts first as the dollar yield and the cash the person asked for.
+  // Stocks, crypto and gold give only what those two together cannot, stocks and crypto before gold,
+  // and each class that gave says how much, and what that leaves it.
+  const asideSaid = [
+    ...new Map(reasonsOf('MIX_SET_ASIDE').map((r) => [JSON.stringify(r.params), r])).values(),
+  ];
+  if (s.mix) {
+    const asked: Record<string, number> = {
+      growth: s.mix.growthBps,
+      dollarYield: s.mix.dollarYieldBps,
+      gold: s.mix.goldBps,
+      cash: s.mix.cashBps,
+    };
+    const asideBps = Math.min(10_000, Math.ceil((owed * 10_000) / amount));
+    const gave: Record<string, number> = { growth: 0, dollarYield: 0, gold: 0, cash: 0 };
+    for (const r of asideSaid) {
+      const sleeve = String(r.params.sleeve);
+      const [was, left] = [Number(r.params.askedBps), Number(r.params.leftBps)];
+      say(was === asked[sleeve], `"${r.text}" but the mix asks ${asked[sleeve]} bps of ${sleeve}`);
+      say(left >= 0 && left < was, `"${r.text}" leaves ${left} bps of ${was}`);
+      say(
+        Math.abs(cents(Number(r.params.usd)) - Math.floor((amount * (was - left)) / 10_000)) <= 1,
+        `"${r.text}" but ${was - left} bps of the plan is not that many dollars`,
+      );
+      say(
+        r.params.from === nowMonth && r.params.to === monthAfter(ctx.now, P.setAsideMonths - 1),
+        `"${r.text}" names other months than the ones set aside for`,
+      );
+      say(gave[sleeve] === 0, `two sentences say what ${sleeve} gave to what is set aside`);
+      gave[sleeve] = (gave[sleeve] ?? 0) + was - left;
+    }
+    const liquid = s.mix.dollarYieldBps + s.mix.cashBps;
+    const fromPriced = Math.max(0, asideBps - liquid);
+    say(
+      (gave.growth ?? 0) + (gave.gold ?? 0) === fromPriced,
+      `stocks, crypto and gold give ${(gave.growth ?? 0) + (gave.gold ?? 0)} bps to what is set aside; the mix's dollar yield and cash leave ${fromPriced} to find`,
+    );
+    say(
+      (gave.gold ?? 0) === 0 || gave.growth === s.mix.growthBps,
+      'gold gives to what is set aside before stocks and crypto have given all of theirs',
+    );
+    say(
+      (gave.dollarYield ?? 0) + (gave.cash ?? 0) <= Math.min(asideBps, liquid),
+      'dollar yield and cash give more to what is set aside than is set aside',
+    );
   }
   // A withdrawal named on the plan is one of the sheet's, in the window.
   for (const r of reasonsOf('WITHDRAWAL'))

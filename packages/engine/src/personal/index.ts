@@ -27,7 +27,7 @@ export {
   type SleeveList,
   shelfLabelsOf,
 } from './matched-theme';
-export { growthRoomBps, RISKS } from './mix';
+export { RISKS } from './mix';
 export { PERSONAL_PARAMS, PERSONAL_PARAMS_STATUS } from './params';
 export { eligibleForGoal, profileOfGoal, registryRowOf, sleeveOfClass } from './registry';
 export { parseStockAttributes, StockAttributes, StockAttributesFile } from './stock-attributes';

@@ -7,9 +7,12 @@ import {
   CANDIDATES,
   type ComposeContext,
   type PersonalCandidates,
+  type PersonalMix,
   type PersonalProposal,
   type PersonalSheet,
   type Scorecard,
+  SLEEVES,
+  type Sleeve,
 } from './types';
 
 // The three candidates of gate THREE-PLANS (slice 3; section 2.4 of the research note, C10 and C11):
@@ -91,28 +94,35 @@ export function distanceBps(a: PersonalProposal, b: PersonalProposal): number {
   return sum([...keys].map((k) => Math.abs((x.get(k) ?? 0) - (y.get(k) ?? 0)))) / 2;
 }
 
-/** The classes a mix states, as the plan's sleeves group them: dollar yield and cash count together. */
-const MIX_CLASSES = [
-  { sleeve: 'growth', of: ['growth'] },
-  { sleeve: 'gold', of: ['gold'] },
-  { sleeve: 'dollarYield', of: ['dollarYield', 'cash'] },
-] as const;
+/** The share of the plan a mix states for each class. */
+const statedOf = (mix: PersonalMix): Record<Sleeve, number> => ({
+  growth: mix.growthBps,
+  dollarYield: mix.dollarYieldBps,
+  gold: mix.goldBps,
+  cash: mix.cashBps,
+});
 
 /**
- * Where a candidate holds another share of a class than the plan for the mix as it is: the first such
- * class and the share it would hold, or null. Lines are rounded to whole basis points, so each line
- * may move its class by one.
+ * Where a candidate holds another share of a class the mix states than the plan made for the mix as
+ * it is: the first such class, the share the candidate would hold and the share that plan holds, or
+ * null. Each class the person gave a share to is compared on its own: stocks and crypto, dollar
+ * yield, gold, cash. A class they gave none holds only what the others could not, or what is set
+ * aside: where that sits is not theirs to have stated. Lines are rounded to whole basis points, so
+ * each line may move its class by one.
  */
 export function mixBreak(
   plan: PersonalProposal,
   carry: PersonalProposal,
-): { sleeve: string; heldBps: number } | null {
-  const shareOf = (p: PersonalProposal, of: readonly string[]) =>
-    sum(p.sleeves.filter((x) => of.includes(x.sleeve)).map((x) => x.weightBps));
+  mix: PersonalMix,
+): { sleeve: Sleeve; heldBps: number; mixBps: number } | null {
+  const shareOf = (p: PersonalProposal, sleeve: Sleeve) =>
+    p.sleeves.find((x) => x.sleeve === sleeve)?.weightBps ?? 0;
   const slack = Math.max(plan.lines.length, carry.lines.length);
-  for (const c of MIX_CLASSES) {
-    const held = shareOf(plan, c.of);
-    if (Math.abs(held - shareOf(carry, c.of)) > slack) return { sleeve: c.sleeve, heldBps: held };
+  const stated = statedOf(mix);
+  for (const sleeve of SLEEVES) {
+    if (stated[sleeve] <= 0) continue;
+    const [heldBps, mixBps] = [shareOf(plan, sleeve), shareOf(carry, sleeve)];
+    if (Math.abs(heldBps - mixBps) > slack) return { sleeve, heldBps, mixBps };
   }
   return null;
 }
@@ -134,12 +144,15 @@ export function candidates(
 
   // A stated mix (gate EXPLICIT-MIX) is the person's, not a candidate's: Cover and Spread may change
   // only what it leaves open (which tokens, the issuers, credit within dollar yield). One that would
-  // hold another share of stocks and crypto, of gold, or of dollar yield and cash together than Carry,
-  // the plan made for the mix as it is, is not made.
+  // hold another share of a class the mix states than Carry is not made. Carry is the plan made for
+  // the mix as it is: what the mix comes to once the person's own withdrawals are set aside and their
+  // limits applied. It is the one measure for every candidate, so each plan shown holds the share
+  // the sentence names.
   const carry = made.find((c) => c.id === 'carry');
+  const mix = carry?.plan.sheet.mix;
   const keeps = made.filter((c) => {
-    if (!carry || c === carry || !made[0]?.plan.sheet.mix) return true;
-    const broken = mixBreak(c.plan, carry.plan);
+    if (!carry || c === carry || !mix) return true;
+    const broken = mixBreak(c.plan, carry.plan, mix);
     if (broken)
       notShown.push({
         id: c.id,

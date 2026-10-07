@@ -676,6 +676,15 @@ export class Book {
     this.spilled.set(keyOf(cause), entry);
   }
 
+  /** The cents waiting to be held in dollar yield that one of these rules kept out. */
+  keptOutBy(rules: readonly RuleId[]): number {
+    return sum(
+      [...this.spilled.values()]
+        .filter((entry) => (rules as readonly string[]).includes(entry.cause.rule))
+        .map((entry) => entry.cents),
+    );
+  }
+
   /**
    * What is waiting to be held in dollar yield, with one reason for each thing that kept money out of
    * where it was meant to go: how much, meant for what, and the real cause. Taking it empties the
