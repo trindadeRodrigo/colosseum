@@ -161,6 +161,12 @@ export async function readVaultNow(
   return vault ? { autoFollow: vault.autoFollow, cashRaw } : null;
 }
 
+/**
+ * How long the read may take. A node that never answers must not hide the offer for as long as its
+ * request hangs (`rpcAt` has no limit of its own): past this the answer is `unknown`.
+ */
+export const VAULT_READ_WAIT_MS = 5_000;
+
 /** Reads it once per chain, owner and number, and only when `at` is given. */
 export function useVaultNow(
   chain: ChainId | null,
@@ -172,6 +178,7 @@ export function useVaultNow(
   const basketId = at?.basketId ?? null;
   useEffect(() => {
     let mine = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const say = (next: VaultNow) => {
       if (mine) setNow(next);
     };
@@ -181,13 +188,23 @@ export function useVaultNow(
     else if (deployment?.family !== 'solana' || !node) say({ state: 'unknown' });
     else {
       say({ state: 'reading' });
+      // Whichever comes first: the read, its failure, or the end of the wait. A late answer is not
+      // taken: the offer was already made, or not, on `unknown`.
+      let settled = false;
+      const once = (next: VaultNow) => {
+        if (settled) return;
+        settled = true;
+        say(next);
+      };
+      timer = setTimeout(() => once({ state: 'unknown' }), VAULT_READ_WAIT_MS);
       readVaultNow(node, deployment, { owner, basketId }).then(
-        (read) => say(read ? { state: 'read', ...read } : { state: 'unknown' }),
-        () => say({ state: 'unknown' }),
+        (read) => once(read ? { state: 'read', ...read } : { state: 'unknown' }),
+        () => once({ state: 'unknown' }),
       );
     }
     return () => {
       mine = false;
+      clearTimeout(timer);
     };
   }, [chain, mock, owner, basketId]);
   return now;

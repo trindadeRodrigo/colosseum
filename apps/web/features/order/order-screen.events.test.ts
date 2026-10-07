@@ -663,6 +663,16 @@ describe('what the executor answers', () => {
       const o = t.order.outcome;
       const OTHER = '77777777-7777-4777-8777-777777777777';
       const UNKNOWN = 'the vault of this order is not open';
+      /** The codes this app has a sentence for. `STEP_LANDED` says nothing (its own test). */
+      const KNOWN = [
+        'ORDER_CONTINUED',
+        'ORDER_BUSY',
+        'STEP_IN_FLIGHT',
+        'NOTHING_LEFT',
+        'VAULT_CASH_SHORT',
+        'DEPOSIT_NOT_LANDED',
+        'CONTINUE_NOT_SUPPORTED',
+      ];
       // each by the code the server sends with it (`OrderErrorCode`); the sentence is the server's
       it.each([
         [
@@ -719,6 +729,13 @@ describe('what the executor answers', () => {
           o.finishRefused(UNKNOWN),
         ],
         ['no code', { error: UNKNOWN }, o.finishRefused(UNKNOWN)],
+        // a code that names a member every object has finds no sentence of this app's
+        [
+          'a code named constructor',
+          { error: UNKNOWN, code: 'constructor' },
+          o.finishRefused(UNKNOWN),
+        ],
+        ['a code named toString', { error: UNKNOWN, code: 'toString' }, o.finishRefused(UNKNOWN)],
         // the words alone decide nothing: a sentence that reads like a known refusal, with no code
         [
           'known words and no code',
@@ -737,9 +754,12 @@ describe('what the executor answers', () => {
         await settle();
         const said = find(host, '[role="alert"]');
         expect(said.textContent).toContain(sentence);
-        // the server's English is shown only for a refusal this app does not know
-        if ('code' in body && body.code !== 'SOMETHING_NEW')
-          expect(said.textContent).not.toContain(body.error);
+        // never `undefined` in place of a sentence
+        expect(said.textContent).not.toContain('undefined');
+        // the server's English is never shown for a refusal this app knows by its code
+        const known = 'code' in body && KNOWN.includes(body.code);
+        if (known) expect(said.textContent).not.toContain(body.error);
+        else expect(said.textContent).toContain(body.error);
         // the order that already finishes this one is a link, not an id to copy
         const link = said.querySelector('[data-ui="order-finish-other"]');
         if (sentence === o.finishOther)

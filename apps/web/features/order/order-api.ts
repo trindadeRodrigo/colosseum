@@ -239,7 +239,8 @@ export function refusalOf(body: unknown): { why: FinishRefusal; orderId?: string
   const refusal = OrderError.safeParse(body);
   if (!refusal.success) return { why: 'said' };
   const { code, details } = refusal.data;
-  const why = (code ? REFUSALS[code] : undefined) ?? 'said';
+  // Its own entries only: a code that names a member every object has (`constructor`) is not one.
+  const why = (code && Object.hasOwn(REFUSALS, code) ? REFUSALS[code] : undefined) ?? 'said';
   const by = details?.continuedBy;
   return { why, ...(why === 'other-order' && by ? { orderId: by } : {}) };
 }
