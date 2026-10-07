@@ -70,6 +70,7 @@
     "risk:freeze-flow-fixture": "tsx scripts/risk/facts/freeze-flow-fixture.ts && biome format --write fixtures/risk/history/flow-tslax.json",
     "risk:facts-methodology": "tsx scripts/risk/facts/gen-methodology.ts",
     "risk:split-snapshot": "tsx scripts/risk/split-snapshot.ts",
+    "risk:split-capture": "tsx scripts/risk/split-capture.ts",
     "risk:cost-breakdown": "tsx scripts/risk/facts/cost-breakdown.ts",
     "risk:network-fees": "tsx scripts/risk/facts/network-fees.ts",
     "risk:freeze-market-fixture": "tsx scripts/risk/facts/freeze-market-fixture.ts && biome format --write fixtures/risk/prices/market-series.json",
