@@ -13,6 +13,7 @@ import {
 import { remember } from '../../components/shell/remember';
 import { SIGNED_IN_COOKIE } from '../../i18n';
 import { forgetGoalDraft } from '../goal/draft';
+import { forgetPlans } from '../order/plan-store';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { chainInAddress, FIRST_CHAIN, recallChain, rememberChain } from './chain-choice';
 import {
@@ -127,7 +128,11 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const who = port.userId;
   const before = useRef(who);
   useEffect(() => {
-    if (before.current !== null && before.current !== who) forgetGoalDraft();
+    if (before.current !== null && before.current !== who) {
+      forgetGoalDraft();
+      // and the plans this browser kept for them: the server has them, for whoever signs in next
+      forgetPlans();
+    }
     before.current = who;
   }, [who]);
 

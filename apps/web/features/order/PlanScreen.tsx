@@ -306,7 +306,11 @@ export function PlanScreen({ id }: { id: string }) {
 
       {/* What the engine noted and how the plan is spread, closed until asked for: every code of the
           engine said in a sentence (features/order/plain.ts), none shown as it is written. */}
-      {(notes.length > 0 || out.length > 0 || plan.rollUp || card.expectedReturn.basis) && (
+      {(notes.length > 0 ||
+        out.length > 0 ||
+        plan.rollUp ||
+        plan.readBack ||
+        card.expectedReturn.basis) && (
         <details data-ui="plan-details" className="border border-border px-6 py-4">
           <summary className="cursor-pointer text-body font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
             {t.plan.details}
@@ -340,6 +344,16 @@ export function PlanScreen({ id }: { id: string }) {
                 notLive={notLive}
                 sandbox={label === 'sandbox'}
               />
+            )}
+            {/* Read back from the server, which keeps the plan and not its risk summary: said, not
+                left out in silence. */}
+            {!plan.rollUp && plan.readBack && (
+              <p
+                data-ui="plan-risk-not-kept"
+                className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground"
+              >
+                {t.plan.risk.notKept}
+              </p>
             )}
           </div>
         </details>

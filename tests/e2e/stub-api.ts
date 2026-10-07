@@ -101,6 +101,8 @@ let tamperNext = false;
 let testNetwork = false;
 /** The plan an agent proposed from a link (`POST /v1/baskets/propose`), read back by its id. */
 let linked: ReturnType<typeof proposal> | null = null;
+/** The plan a person built (`POST /v1/baskets/personalize`), read back by its id as their own. */
+let built: ReturnType<typeof proposal> | null = null;
 /** The risk roll-up of a plan an agent proposed: MOCK, nothing measured, as on the mock chain. */
 const ROLL_UP = {
   byIssuer: [{ key: 'mock', bps: 10_000 }],
@@ -476,6 +478,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     testNetwork = false;
     reports = [];
     linked = null;
+    built = null;
     return send(res, 200, { ok: true });
   }
   if (path === '/__stub/reports') return send(res, 200, reports);
@@ -518,13 +521,16 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     return send(res, 200, { id: PLAN_ID, proposal: linked, rollUp: ROLL_UP });
   }
   if (path.startsWith('/v1/baskets/') && method === 'GET') {
-    if (path !== `/v1/baskets/${PLAN_ID}` || !linked)
-      return send(res, 404, { error: 'no plan made from a link has that id' });
-    return send(res, 200, { id: PLAN_ID, proposal: linked });
+    if (path !== `/v1/baskets/${PLAN_ID}` || !(linked || built))
+      return send(res, 404, { error: 'no plan with that id that you can read' });
+    return linked
+      ? send(res, 200, { id: PLAN_ID, proposal: linked, fromLink: true })
+      : send(res, 200, { id: PLAN_ID, proposal: built, fromLink: false });
   }
   if (path === '/v1/baskets/personalize' && method === 'POST') {
     const body = (await read(req)) as { sheet: BasketSheet };
-    return send(res, 200, { id: PLAN_ID, proposal: proposal(body.sheet) });
+    built = proposal(body.sheet);
+    return send(res, 200, { id: PLAN_ID, proposal: built });
   }
   if (path === '/v1/mock/fund' && method === 'POST') {
     const body = (await read(req)) as { cashUsd: number };

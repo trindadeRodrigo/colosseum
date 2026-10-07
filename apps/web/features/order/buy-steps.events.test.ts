@@ -13,7 +13,7 @@ import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { BuyScreen } from './BuyScreen';
 import { rememberPlan } from './plan-store';
-import { PLAN_ID, planOn, USER } from './test/fixtures';
+import { PLAN_ID, planOn, serverKeepsPlans, USER } from './test/fixtures';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -85,27 +85,29 @@ function api(
     chainOptions: [],
   };
   let funded = o.funded ?? false;
-  portStore.setApi(async (path, init) => {
-    const method = init?.method ?? 'GET';
-    calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-    if (path === '/v1/me') return json(person);
-    if (path.startsWith('/v1/funding?'))
-      return json(funding({ funded, faucet: o.faucet ?? false, provenance: o.provenance }));
-    if (path === '/v1/testnet/fund' && method === 'POST') {
-      if (o.fund) return o.fund();
-      funded = true;
-      return json({
-        chain: 'solana',
-        provenance: 'sandbox',
-        wallet: SOLANA,
-        cash: { symbol: 'tUSDC', decimals: 6, raw: '40400000000' },
-        gas: { symbol: 'SOL', decimals: 9, raw: '12625000' },
-        txIds: ['devnet-signature'],
-        left: 2,
-      });
-    }
-    return json({ error: 'not found' }, 404);
-  });
+  portStore.setApi(
+    serverKeepsPlans(async (path, init) => {
+      const method = init?.method ?? 'GET';
+      calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      if (path === '/v1/me') return json(person);
+      if (path.startsWith('/v1/funding?'))
+        return json(funding({ funded, faucet: o.faucet ?? false, provenance: o.provenance }));
+      if (path === '/v1/testnet/fund' && method === 'POST') {
+        if (o.fund) return o.fund();
+        funded = true;
+        return json({
+          chain: 'solana',
+          provenance: 'sandbox',
+          wallet: SOLANA,
+          cash: { symbol: 'tUSDC', decimals: 6, raw: '40400000000' },
+          gas: { symbol: 'SOL', decimals: 9, raw: '12625000' },
+          txIds: ['devnet-signature'],
+          left: 2,
+        });
+      }
+      return json({ error: 'not found' }, 404);
+    }),
+  );
   return { calls, to: (prefix: string) => calls.filter((c) => c.path.startsWith(prefix)) };
 }
 

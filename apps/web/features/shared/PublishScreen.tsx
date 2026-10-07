@@ -1,5 +1,5 @@
 'use client';
-import { type ChainId, chainFamily, type SharedFamily, type Target } from '@colosseum/schemas';
+import { chainFamily, type SharedFamily, type Target } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useState } from 'react';
@@ -28,8 +28,8 @@ import { useSharedPerson } from './use-person';
 // order screen and signed through the executor with the consent `publish`: the guard holds the bytes to
 // this form's id, text and weights, and hashes the text itself (AGT-4). The limits a portfolio follows
 // are checked here first so the person is told before anything is asked; the server and the registry
-// check them again. Solana only for now: on an EVM chain the form is not shown, since the guard does not
-// sign a publish there until AGT-4 and our server refuses one.
+// check them again. On an EVM chain the form is shown only where the deployment names its registry,
+// the one contract the guard lets a publish go to.
 
 export const LIMITS = { min: 3, max: 12, low: 200, high: 5000, step: 50, chars: 280 } as const;
 
@@ -61,12 +61,13 @@ export const slugOf = (name: string) =>
 export type Problem = 'chain' | 'name' | 'slug' | 'copy' | 'count' | 'weight' | 'sum' | 'twice';
 
 /** What the form breaks of the rules a portfolio follows, in the order the form reads. */
-export function problemsOf(
-  form: { name: string; slug: string; copy: string; rows: { asset: string; bps: number | null }[] },
-  chain: ChainId,
-): Problem[] {
+export function problemsOf(form: {
+  name: string;
+  slug: string;
+  copy: string;
+  rows: { asset: string; bps: number | null }[];
+}): Problem[] {
   const out: Problem[] = [];
-  if (chainFamily(chain) !== 'solana') out.push('chain');
   if (
     !ASCII.test(form.name) ||
     form.name.trim() !== form.name ||
@@ -191,7 +192,7 @@ export function PublishScreen() {
 
   const list = rows ?? [];
   const read = list.map((r) => ({ asset: r.asset, bps: bpsOf(r.weight) }));
-  const problems = problemsOf({ name, slug, copy, rows: read }, chain);
+  const problems = problemsOf({ name, slug, copy, rows: read });
   const sum = read.reduce((n, r) => n + (r.bps ?? 0), 0);
   // Always the page's own: an update is offered only where the stored id is this one.
   const familyId = familyIdFor(slug || 'x');

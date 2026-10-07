@@ -1,4 +1,5 @@
 import { checkCreatorLimits, familyIdOf, metaHash } from '@colosseum/basket';
+import { indexIdOf } from '@colosseum/chain-evm/vault';
 import { mockRecipeId } from '@colosseum/chain-mock';
 import { recipeAddress } from '@colosseum/chain-solana/vault';
 import type { Db } from '@colosseum/db';
@@ -117,8 +118,8 @@ export const recipeTargets = (r: Pick<Recipe, 'components'>): Target[] =>
 
 /**
  * The id of a creator's recipe on a chain, worked out as the registry does: on Solana the account at
- * ["recipe", creator, family id]; on the mock the mock's own rule. An EVM registry's id waits for its
- * final interface.
+ * ["recipe", creator, family id]; on EVM keccak256(abi.encode(creator, familyId)), as
+ * `IndexRegistry.create` makes it; on the mock the mock's own rule.
  */
 export async function recipeIdOf(
   entry: ChainEntry,
@@ -126,11 +127,7 @@ export async function recipeIdOf(
   familyId: string,
 ): Promise<string> {
   if (entry.mock) return mockRecipeId(entry.chain, creator, familyId);
-  if (entry.config.family !== 'solana')
-    throw new Refusal(
-      501,
-      `a shared portfolio on ${entry.config.name} waits for its registry (EVM-3)`,
-    );
+  if (entry.config.family === 'evm') return indexIdOf(creator, familyId);
   const program = entry.config.contracts.program;
   if (!program) throw new Error(`${entry.chain} names no vault program`);
   type Key = Parameters<typeof recipeAddress>[0];
@@ -265,13 +262,6 @@ export async function planPublish(
   for (const draft of req.recipes) {
     const family = chainFamily(draft.chain);
     const name = ctx.chains.name(draft.chain);
-    // The registry calls on EVM wait for EVM-3's final interface and ADE-2's adapter: the guard
-    // refuses them too.
-    if (family !== 'solana')
-      throw new Refusal(
-        501,
-        `publishing on ${name} is not built yet: its registry calls wait for EVM-3`,
-      );
     const entry = ctx.chains.get(draft.chain);
     assertBuilds(entry);
     const creator = req.creator[family];
