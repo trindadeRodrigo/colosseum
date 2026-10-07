@@ -236,7 +236,15 @@ export type BuyPlan = {
   need: FundingNeed;
   /** For a buy of a shared portfolio: the version in effect, which the order holds to. */
   version?: number;
+  /** What the review says about this buy, beside what any buy is told. */
+  warnings?: Order['warnings'];
 };
+
+/** An add to a vault with auto-follow on only deposits: said on the order's review. */
+export const KEEPER_INVESTS = {
+  code: 'KEEPER_INVESTS',
+  text: 'This vault has auto-follow on, so this order only deposits the cash. The keeper buys the vault’s assets with it at its next rebalance.',
+} as const;
 
 /**
  * The one recipe of a stored plan, and so its chain (ONE-CHAIN). A plan is bought on its own chain,
@@ -448,6 +456,14 @@ async function planVaultBuy(
     );
     if (!vault) throw new Refusal(404, NO_SUCH_VAULT);
     const assets = await entry.adapter.listAssets();
+    // The targets the vault has on chain now, whatever newer version the portfolio it follows has
+    // (gate ADD-CURRENT-TARGETS). With auto-follow on the keeper keeps the vault at its targets, so
+    // the add is the deposit alone: trades of the owner's beside the keeper's would cross.
+    if (vault.autoFollow)
+      return {
+        ...(await buySteps(entry, owner, vault.basketId, cents, assets, [])),
+        warnings: [KEEPER_INVESTS],
+      };
     const targets: Target[] = vault.positions
       .filter((p) => p.targetBps > 0)
       .map((p) => ({ asset: p.asset, weightBps: p.targetBps }));
@@ -714,14 +730,17 @@ async function prepareBuy(
     // The vault it is for, kept with it: a step is built for this number whatever becomes of the plan.
     basketId: plan.basketId,
     legs,
-    warnings: closed
-      ? [
-          {
-            code: 'MARKET_CLOSED',
-            text: 'The US stock market is closed now. You can still buy; stock tokens may trade at a wider price.',
-          },
-        ]
-      : [],
+    warnings: [
+      ...(closed
+        ? [
+            {
+              code: 'MARKET_CLOSED',
+              text: 'The US stock market is closed now. You can still buy; stock tokens may trade at a wider price.',
+            },
+          ]
+        : []),
+      ...(plan.warnings ?? []),
+    ],
     needsConsent: [],
     fees: [],
     preparedBy: ctx.principal.kind === 'service' ? 'mcp' : 'app',
