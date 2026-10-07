@@ -81,6 +81,17 @@ const toAttempt = (r: AttemptRow & { legId: string }): Attempt => ({
 
 const chainOrder = (chain: ChainId) => ChainId.options.indexOf(chain);
 
+/**
+ * Which order a stored order finishes. It is kept in the row's request column beside the request's own
+ * fields, written by `insertOrder` from the order the server made (continue.ts). It is no field of a
+ * request: the schema of `POST /v1/orders` has none by that name, so a caller's is dropped unread.
+ */
+const CONTINUES = 'continues';
+const continuesOf = (r: OrderRow): string | undefined => {
+  const value = (r.request as Record<string, unknown>)[CONTINUES];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+};
+
 function toOrder(r: OrderRow, legRows: LegRow[]): Order {
   // What the order deposits is on the step that deposits. The approval repeats it and is not counted.
   const deposit = legRows.find(
@@ -96,7 +107,7 @@ function toOrder(r: OrderRow, legRows: LegRow[]): Order {
     summary: r.summary,
     ...(deposit ? { depositRaw: deposit } : {}),
     ...(r.basketId ? { basketId: r.basketId } : {}),
-    ...(r.request.type === 'buy' && r.request.continues ? { continues: r.request.continues } : {}),
+    ...(continuesOf(r) ? { continues: continuesOf(r) } : {}),
     legs: legRows
       .map(toLeg)
       .sort((a, b) => chainOrder(a.chain) - chainOrder(b.chain) || a.seq - b.seq),
@@ -121,7 +132,10 @@ export async function insertOrder(db: Db, order: Order, request: IntentRequest):
       ownerSolana: order.owner.solana ?? null,
       ownerEvm: order.owner.evm ?? null,
       summary: order.summary,
-      request,
+      // With the order it finishes, where it finishes one: the order's word, not the request's.
+      request: (order.continues
+        ? { ...request, [CONTINUES]: order.continues }
+        : request) as IntentRequest,
       basketId: order.basketId ?? null,
       warnings: order.warnings,
       needsConsent: order.needsConsent,
@@ -178,6 +192,27 @@ export async function loadOrder(db: Db, id: string): Promise<StoredOrder | null>
 }
 
 /**
+ * Runs `work` while holding the one lock of an order, and answers what it answers. Two things are
+ * decided about an order by reading and then writing: building a step of it (is another order
+ * finishing it? can an earlier transaction still land?) and finishing it with another order (has one
+ * been made? is a step's transaction still open?). Without the lock two requests at the same moment
+ * both read "no" and both write: two continuations of one order, or a step built for an order as it
+ * is being continued, and the vault's cash planned twice. The lock is the database's, by the order's
+ * id, held by a transaction of its own until `work` is done; `work` reads and writes on other
+ * connections, and reads the order again once it holds the lock.
+ */
+export async function withOrderLock<T>(
+  db: Db,
+  orderId: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`order:${orderId}`}, 0))`);
+    return work();
+  });
+}
+
+/**
  * The orders that finish this one (`continues`), newest first: at most a handful, since each is made
  * only when the one before it stopped.
  */
@@ -185,7 +220,7 @@ export async function continuationsOf(db: Db, id: string): Promise<OrderRow[]> {
   return db
     .select()
     .from(orders)
-    .where(sql`${orders.request}->>'continues' = ${id}`)
+    .where(sql`${orders.request}->>${CONTINUES} = ${id}`)
     .orderBy(desc(orders.createdAt));
 }
 

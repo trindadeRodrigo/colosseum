@@ -1,4 +1,6 @@
+import { orders } from '@colosseum/db';
 import { OrderDetail, OrderError, PortfolioResponse } from '@colosseum/schemas';
+import { sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ChainRegistry } from '../../orders/chains';
@@ -221,15 +223,22 @@ describe('a buy that stopped after its deposit, finished with the cash in the va
       await finish(a, crypto.randomUUID()),
     ];
     expect(answers.map((r) => r.statusCode)).toEqual([404, 401, 404]);
-    // and `continues` is the server's to write: a buy that sends it is refused
-    const sent = await post(a, '/v1/orders', {
+    // and `continues` is the server's to write: it is no field of a request, so one a buy sends is
+    // dropped unread, and the order made finishes nothing
+    await fund(b, undefined, 5_000);
+    const sent = await post(b, '/v1/orders', {
       type: 'buy',
-      owner: a.owner,
+      owner: b.owner,
       amountUsd: 10,
       proposalId: plans.solana,
       continues: placed.id,
     });
-    expect(sent.statusCode).toBe(400);
+    expect(sent.statusCode, sent.body).toBe(200);
+    const made = OrderDetail.parse(sent.json());
+    expect(made.continues).toBeUndefined();
+    expect((await read(b, made)).continues).toBeUndefined();
+    // so the first order is still its owner's to finish
+    expect((await finish(a, placed.id)).statusCode).toBe(200);
   });
 
   it('is refused before the deposit has landed, when nothing is left, and while a built step can still land', async () => {
@@ -299,5 +308,81 @@ describe('a buy that stopped after its deposit, finished with the cash in the va
     expect(OrderError.parse(res.json()).error).toMatch(
       /less than the \d+ the steps left would spend/,
     );
+  });
+
+  it('is made once when it is asked for twice at the same moment', async () => {
+    for (let round = 0; round < 4; round++) {
+      const { a, placed } = await stopped();
+      const answers = await Promise.all([
+        finish(a, placed.id),
+        finish(a, placed.id),
+        finish(a, placed.id),
+      ]);
+      // every answer is the one order: the first to hold the lock made it, the others were handed it
+      expect(answers.map((r) => r.statusCode)).toEqual([200, 200, 200]);
+      const ids = new Set(answers.map((r) => OrderDetail.parse(r.json()).id));
+      expect(ids.size).toBe(1);
+      const rows = await data.db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(sql`${orders.request}->>'continues' = ${placed.id}`);
+      expect(rows).toHaveLength(1);
+    }
+  });
+
+  it('never lets a step of the first order be built as it is finished: one of the two is refused', async () => {
+    for (let round = 0; round < 4; round++) {
+      const { a, placed, left } = await stopped();
+      const step = left[0]?.id ?? '';
+      const [built, finished] = await Promise.all([
+        post(a, legUrl(placed, step, 'build')),
+        finish(a, placed.id),
+      ]);
+      // either the step was built first, and the buy is not finished while it can land; or the buy
+      // was finished first, and the first order builds nothing more. Never both.
+      expect([built.statusCode, finished.statusCode].sort()).toEqual([200, 409]);
+      const vault = await vaultOf(a);
+      // whichever went through, what can now be signed spends the vault's cash once
+      const next = finished.statusCode === 200 ? OrderDetail.parse(finished.json()) : null;
+      const planned = (next?.legs ?? [])
+        .flatMap((l) => l.trades)
+        .reduce((n, t) => n + BigInt(t.amountInRaw), 0n);
+      expect(planned).toBeLessThanOrEqual(BigInt(vault?.cash.raw ?? '0'));
+    }
+  });
+
+  it('is refused on a chain that trades inside its deposit: nothing is in a vault to finish', async () => {
+    const r = data.track(await person(issuer, 'robinhood'));
+    await fund(r, undefined, 5_000);
+    const placed = await order(r, { amountUsd: 900 });
+    expect(placed.legs.some((l) => l.kind === 'swap')).toBe(false);
+    const res = await finish(r, placed.id);
+    expect(res.statusCode).toBe(409);
+    expect(OrderError.parse(res.json()).error).toMatch(/trades in the same step that deposits/);
+  });
+});
+
+describe('an order states no minimum of nothing', () => {
+  it('is not made for a trade that quotes nothing', async () => {
+    const a = await someone();
+    await fund(a);
+    const probe = await order(a, { amountUsd: 900 });
+    const asset = probe.legs.find((l) => l.kind === 'swap')?.trades[0]?.buy ?? '';
+    // a token so dear that the amount buys none of it
+    const was = await move(asset, 1e15);
+    try {
+      const res = await post(a, '/v1/orders', {
+        type: 'buy',
+        owner: a.owner,
+        amountUsd: 900,
+        proposalId: plans.solana,
+      });
+      expect(res.statusCode).toBe(422);
+      expect(OrderError.parse(res.json()).error).toMatch(
+        /buys no .* that can be held to a minimum/,
+      );
+    } finally {
+      mock().setPrice(asset, was);
+    }
   });
 });

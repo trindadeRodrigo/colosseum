@@ -38,6 +38,17 @@ export async function continueBuy(
   const { order, request } = stored;
   if (order.type !== 'buy' || request.type !== 'buy')
     throw new Refusal(409, 'only a buy is finished with the cash in its vault');
+  const first = order.legs[0]?.chain;
+  if (first && chainFamily(first) === 'evm') {
+    const entry = ctx.chains.get(first);
+    // Where a buy trades inside the step that deposits, a buy that stopped has deposited nothing:
+    // there is no cash in a vault to finish with, and a swap left over is not this route's to remake.
+    throw new Refusal(
+      409,
+      `a buy on ${entry.config.name} trades in the same step that deposits: nothing is left in a vault to finish`,
+      { fix: 'Make the buy again.' },
+    );
+  }
   const funding = order.legs.filter((leg) => leg.kind !== 'swap');
   if (funding.some((leg) => !done(leg)))
     throw new Refusal(409, 'this order has not put its cash in the vault yet', {
@@ -121,5 +132,7 @@ export async function continueBuy(
     createdAt: ctx.now,
     disclaimer: DISCLAIMER.en,
   };
-  return { order: continued, request: { ...request, continues: order.id } };
+  // The request is the first order's own: which order this one finishes is the order's to say
+  // (`continues`), and is stored beside the request, never taken from one (store.ts).
+  return { order: continued, request };
 }

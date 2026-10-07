@@ -97,6 +97,12 @@ export function statedMinimum(
       `${minimums.length} minimums were stated for ${trades.length} trades: one for each`,
     );
   const least = BigInt(stated);
+  // A minimum of nothing accepts any price: no order states one, and none is built with one.
+  if (least <= 0n)
+    throw new ChainError(
+      'BadInput',
+      `a minimum of nothing was stated for ${trade.amountInRaw} raw ${trade.sell}: a trade accepts some least amount`,
+    );
   if (quotedOutRaw < least)
     throw new ChainError(
       'PriceMoved',

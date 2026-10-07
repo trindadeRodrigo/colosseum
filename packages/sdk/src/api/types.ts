@@ -738,7 +738,6 @@ export type PostOrdersBody =
       amountUsd: number;
       maxSlippageBps?: number;
       proposalId?: string;
-      continues?: string;
       family?: string;
       version?: number;
       chains?: unknown;

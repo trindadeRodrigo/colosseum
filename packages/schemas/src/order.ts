@@ -251,11 +251,6 @@ export const IntentRequest = z.discriminatedUnion('type', [
     maxSlippageBps: Bps.max(ORDER_LIMITS.maxSlippageBps).optional(),
     proposalId: z.string().optional(),
     /**
-     * Never sent. The server writes it on the order that finishes another with the cash in its vault
-     * (`POST /v1/orders/{id}/continue`): the id of the buy it finishes. `POST /v1/orders` refuses it.
-     */
-    continues: z.string().optional(),
-    /**
      * A shared portfolio's slug, in place of `proposalId`: the buy opens a vault that follows it on the
      * person's chain (or adds to the one that does), with auto-follow off.
      */

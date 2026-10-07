@@ -44,6 +44,7 @@ import {
   recordRefusal,
   type StoredOrder,
   TakenElsewhere,
+  withOrderLock,
 } from './store';
 
 // Building a leg and settling it (DESIGN-VAULT 3.3). The API builds unsigned transactions and relays
@@ -544,6 +545,19 @@ export async function buildLeg(
   read: StoredOrder,
   legId: string,
   /** The signed-in person's user id: a plan made from a link numbers its vault with it. */
+  buyer?: string,
+): Promise<BuildLegResponse> {
+  // One at a time for an order, with the route that finishes it (store.ts, `withOrderLock`): the
+  // checks below and the attempt they end in are one step to anything else that reads the order.
+  return withOrderLock(deps.db, read.order.id, async () =>
+    buildLegLocked(deps, (await loadOrder(deps.db, read.order.id)) ?? read, legId, buyer),
+  );
+}
+
+async function buildLegLocked(
+  deps: OrderDeps,
+  read: StoredOrder,
+  legId: string,
   buyer?: string,
 ): Promise<BuildLegResponse> {
   // A leg that was sent is tracked first, so what follows sees what the chain says now.

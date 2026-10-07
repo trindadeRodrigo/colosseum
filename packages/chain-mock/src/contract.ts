@@ -736,6 +736,16 @@ group('builds', {
         c.a.buildOwnerSwap({ vault: c.f.vault, trades, slippageBps: 100, minimums: tooMuch }),
         'PriceMoved',
       );
+      // A minimum of nothing accepts any price, and is not one.
+      await refuses(
+        c.a.buildOwnerSwap({
+          vault: c.f.vault,
+          trades,
+          slippageBps: 100,
+          minimums: stated.map((m, i) => (i === 0 ? '0' : m)),
+        }),
+        'BadInput',
+      );
       // One minimum for each trade, or none at all.
       await refuses(
         c.a.buildOwnerSwap({ vault: c.f.vault, trades, slippageBps: 100, minimums: [] }),

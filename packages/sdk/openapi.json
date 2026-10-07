@@ -4754,9 +4754,6 @@
                       "proposalId": {
                         "type": "string"
                       },
-                      "continues": {
-                        "type": "string"
-                      },
                       "family": {
                         "type": "string"
                       },

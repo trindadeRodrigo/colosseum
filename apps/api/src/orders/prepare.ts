@@ -267,10 +267,6 @@ export async function planBuy(
   // The owner in the body is a claim. It stands only where the verified tokens say the same.
   if (!holds(ctx.principal, req.owner))
     throw new Refusal(403, 'the owner in the request is not a wallet of the signed-in person');
-  if (req.continues !== undefined)
-    throw new Refusal(400, '`continues` is written by the server', {
-      fix: 'Finish a buy with POST /v1/orders/{id}/continue.',
-    });
   if (req.family !== undefined && req.proposalId !== undefined)
     throw new Refusal(400, 'a buy names a plan or a shared portfolio, not both');
   if (req.family !== undefined) return planFamilyBuy(req, req.family, ctx);
@@ -498,6 +494,14 @@ export async function expectedOf(
     const quote = await entry.adapter.quote({ ...trade, amountInRaw: total.toString() }, taker);
     const out = BigInt(quote.outRaw) - prior.out;
     before.set(pair, { in: total, out: BigInt(quote.outRaw) });
+    // A trade that quotes nothing, or whose minimum rounds to nothing, would state a minimum that
+    // accepts any price: the order is not made.
+    if (out <= 0n || lessBps(out, slippageBps) <= 0n)
+      throw new Refusal(
+        422,
+        `${trade.amountInRaw} raw ${trade.sell} buys no ${trade.buy} that can be held to a minimum: the amount is too small`,
+        { fix: 'Buy a larger amount.' },
+      );
     expected.push({
       inRaw: trade.amountInRaw,
       outRaw: (out > 0n ? out : 0n).toString(),
