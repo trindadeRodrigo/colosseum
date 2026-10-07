@@ -39,6 +39,8 @@ import {
 import { VaultScreen } from './VaultScreen';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
+// the card draws the order's own screen, which holds the runner: nothing here presses it
+vi.mock('../wallet/signing', () => import('../wallet/test/mock-signing'));
 // A switch for one case: Robinhood Chain's deployment as a file that names no registry would load.
 const deployed = vi.hoisted(() => ({ withoutRegistry: false }));
 vi.mock('../order/readiness', async (original) => {
@@ -392,11 +394,11 @@ describe('buying a portfolio, which follows it', () => {
     const calls = api({ family: familyOf(FAMILY_ID), order: () => familyBuyOrder(), funded: true });
     const host = await show(createElement(FamilyBuyScreen, { slug: SLUG }));
     await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
+    // the wallet is read, then the order is made for the card: no press, and no other page
     await settle(400);
+    await settle(500);
     await settle(50);
-    await click(find(host, `input[type="checkbox"]`));
-    await click(button(host, en.buy.review('$10')) as HTMLElement);
-    await settle(50);
+    expect(router.push).not.toHaveBeenCalled();
     expect(calls.find((c) => c.path === '/v1/orders')?.body).toEqual({
       type: 'buy',
       owner: { solana: SOLANA },
@@ -424,8 +426,9 @@ describe('the trust notice on a buy the keeper may trade', () => {
         ...(keeperShown === undefined ? {} : { keeperShown }),
       }),
     );
+  /** The notice as it is asked: with its box to tick, on the card. */
   const trustStep = (host: HTMLElement) =>
-    host.querySelector('[data-ui="buy-step"][data-step="trust"]');
+    host.querySelector('[data-ui="invest-card"] [data-ui="trust-notice"] input[type="checkbox"]');
 
   it('shows the keeper’s limits among its short points', async () => {
     api({ family: familyOf(FAMILY_ID), funded: true });

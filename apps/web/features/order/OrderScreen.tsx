@@ -4,6 +4,7 @@ import {
   chainFamily,
   type Leg,
   type OrderDetail,
+  TRUST_STATUS,
   type Trade,
 } from '@colosseum/schemas';
 import Link from 'next/link';
@@ -48,12 +49,21 @@ import {
   sharedShapeOk,
   stoppedShort,
 } from './order-check';
-import { isBuy, keepOrder, type OrderRecord, recallOrder, recallOrders } from './order-record';
+import {
+  acceptTrust,
+  isBuy,
+  keepOrder,
+  type OrderRecord,
+  recallOrder,
+  recallOrders,
+  trustAccepted,
+} from './order-record';
 import { legsInOrder, type NextStep, type OutcomeView, outcomeView, stepOf } from './order-view';
 import { readStoredPlan } from './plan-store';
 import { targetsOfPlan } from './plan-terms';
 import { chainReady, explorerUrlFor, onMock } from './readiness';
 import { type RunOutcome, useOrderRunner } from './run-order';
+import { TrustNotice } from './TrustNotice';
 import { type ChainUnits, unitsFor } from './units';
 import { useStayed } from './withdraw-stayed';
 
@@ -123,6 +133,8 @@ export function OrderScreen({
   const stop = useRef({ aborted: false });
   // The person asked to stop between steps: the step under way is finished, the next is not begun.
   const [stopping, setStopping] = useState(false);
+  // The trust notice, ticked on this page: for an order made before the notice was ever accepted.
+  const [trustTicked, setTrustTicked] = useState(false);
   const router = useRouter();
   // Whether this server finishes a buy with the cash in its vault: asked only once an order has
   // stopped after its deposit, and the button is not there until the answer is yes.
@@ -356,6 +368,16 @@ export function OrderScreen({
     [record, load, consents, run, port, embed, t, lang],
   );
 
+  if (
+    embed &&
+    (port.status === 'loading' || account.status === 'loading' || load.kind === 'loading')
+  )
+    // In the card: one quiet line while the order is read, not a card inside the card.
+    return (
+      <p data-ui="invest-reading" className="text-body-sm text-muted-foreground">
+        {t.invest.preparing}
+      </p>
+    );
   if (port.status === 'loading' || account.status === 'loading' || record === undefined)
     return (
       <Card>
@@ -615,8 +637,24 @@ export function OrderScreen({
                     : embed
                       ? t.invest.press(amount)
                       : t.order.signAndBuy(amount);
-  // What holds the first press back in the invest card: the host's reasons (the notice not ticked).
-  const held = embed && !record.approved ? embed.blocked : [];
+  // A deposit is never signed for before the trust notice is accepted (DESIGN-VAULT section 13). The
+  // invest card makes the order before that, to show its prices, so the order's own page asks too:
+  // an order opened here that nobody approved is held until the notice is accepted, as on the card.
+  // A plan's own vault follows nothing, so the keeper's limits are not among its short points.
+  const keeperTrades = terms !== undefined;
+  const trustAsked =
+    !embed &&
+    buying &&
+    !record.approved &&
+    !trustAccepted(userId, TRUST_STATUS.textVersion, keeperTrades);
+  // What holds the first press back: in the invest card, the host's reasons; here, the notice.
+  const held = record.approved
+    ? []
+    : embed
+      ? embed.blocked
+      : trustAsked && !trustTicked
+        ? [t.buy.blocked.trust]
+        : [];
   // The passkey wallet signs with no window of its own; any other wallet confirms each step in its own.
   const quiet = port.active(chainFamily(chain))?.kind === 'embedded';
 
@@ -860,6 +898,15 @@ export function OrderScreen({
             </Link>
           </div>
         )}
+        {trustAsked && check.ok && !done && (
+          <TrustNotice
+            chain={chain}
+            accepted={false}
+            checked={trustTicked}
+            onCheck={setTrustTicked}
+            keeper={keeperTrades}
+          />
+        )}
         {/* An add held to our server's targets, which this app could not read from the chain: said on
             its own line over the button, where it cannot be missed. */}
         {check.ok && !done && terms?.kind === 'vault' && terms.source === 'api' && (
@@ -889,40 +936,42 @@ export function OrderScreen({
                   {quiet ? t.invest.signs.passkey(legs.length) : t.invest.signs.wallet(legs.length)}
                 </p>
               )}
-              <div className="flex flex-wrap items-center gap-3">
+              <Button
+                variant="primary"
+                busy={running}
+                busyLabel={t.order.signing(current, legs.length)}
+                disabled={consentMissing || held.length > 0}
+                aria-describedby={consentMissing || held.length > 0 ? reasonId : undefined}
+                onClick={() => {
+                  // The first press is the approval of what the card showed: the host keeps the
+                  // acceptance of the notice with it, before anything is signed.
+                  if (next.kind === 'first') {
+                    embed?.onApprove();
+                    if (trustAsked && userId)
+                      acceptTrust(userId, TRUST_STATUS.textVersion, keeperTrades);
+                  }
+                  go(
+                    next.kind === 'approve-again'
+                      ? { legId: next.legId, signedTimes: next.signedTimes }
+                      : undefined,
+                  );
+                }}
+              >
+                {primaryLabel}
+              </Button>
+              {embed && running && (
+                // Between steps only: a step that is signed is still sent and reported.
                 <Button
-                  variant="primary"
-                  busy={running}
-                  busyLabel={t.order.signing(current, legs.length)}
-                  disabled={consentMissing || held.length > 0}
-                  aria-describedby={consentMissing || held.length > 0 ? reasonId : undefined}
+                  variant="secondary"
+                  disabled={stopping}
                   onClick={() => {
-                    // The first press is the approval of what the card showed: the host keeps the
-                    // acceptance of the notice with it, before anything is signed.
-                    if (next.kind === 'first') embed?.onApprove();
-                    go(
-                      next.kind === 'approve-again'
-                        ? { legId: next.legId, signedTimes: next.signedTimes }
-                        : undefined,
-                    );
+                    stop.current.aborted = true;
+                    setStopping(true);
                   }}
                 >
-                  {primaryLabel}
+                  {t.invest.stop}
                 </Button>
-                {embed && running && (
-                  // Between steps only: a step that is signed is still sent and reported.
-                  <Button
-                    variant="secondary"
-                    disabled={stopping}
-                    onClick={() => {
-                      stop.current.aborted = true;
-                      setStopping(true);
-                    }}
-                  >
-                    {t.invest.stop}
-                  </Button>
-                )}
-              </div>
+              )}
             </>
           )}
         {held.length > 0 && !consentMissing && (

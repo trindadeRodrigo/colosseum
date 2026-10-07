@@ -39,6 +39,8 @@ const NODE = vi.hoisted(() => {
 });
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
+// the card draws the order's own screen, which holds the runner: nothing here presses it
+vi.mock('../wallet/signing', () => import('../wallet/test/mock-signing'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
 vi.mock('next/link', () => import('../wallet/test/mock-next'));
 
@@ -245,13 +247,9 @@ describe('a shared portfolio read from the chain by this app', () => {
     const host = await mount(withAccount('en', createElement(FamilyBuyScreen, { slug: SLUG })));
     for (let i = 0; i < 4; i += 1) await settle(50);
     await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
+    // the wallet is read, then the order is made for the card
     await settle(400);
-    await settle(50);
-    await click(find(host, 'input[type="checkbox"]'));
-    const review = [...host.querySelectorAll<HTMLElement>('button')].find((b) =>
-      b.textContent?.includes(en.buy.review('$10')),
-    );
-    await click(review as HTMLElement);
+    await settle(500);
     await settle(50);
     // the version the chain holds is the one asked for
     expect(placed).toMatchObject({ type: 'buy', family: SLUG, version: 3 });
@@ -314,15 +312,17 @@ describe('a shared portfolio this app could read from the chain and could not', 
     for (let i = 0; i < 4; i += 1) await settle(50);
     await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
     await settle(400);
+    await settle(500);
     await settle(50);
     await click(find(host, 'input[type="checkbox"]'));
-    const review = [...host.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
-      b.textContent?.includes(en.buy.review('$10')),
+    const press = [...host.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
+      b.textContent?.includes(en.invest.press('$10')),
     );
-    expect(review?.getAttribute('aria-disabled')).toBe('true');
+    expect(press?.getAttribute('aria-disabled')).toBe('true');
     expect(host.textContent).toContain(tampered);
-    await click(review as HTMLElement);
-    await settle(50);
+    await click(press as HTMLElement);
+    await settle(500);
+    // no order is made for it, pressed or not
     expect(placed).toBe(false);
   };
 

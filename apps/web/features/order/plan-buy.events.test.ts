@@ -29,6 +29,8 @@ import { rememberPlan } from './plan-store';
 import { ORDER_ID, orderOn, PLAN_ID, planOn, serverKeepsPlans, USER } from './test/fixtures';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
+// the card draws the order's own screen, which holds the runner: nothing here presses it
+vi.mock('../wallet/signing', () => import('../wallet/test/mock-signing'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
 vi.mock('next/link', () => import('../wallet/test/mock-next'));
 
@@ -104,6 +106,8 @@ function api(
       if (path.startsWith('/v1/funding?'))
         return json(o.say ? o.say(funding(funded)) : funding(funded));
       if (path === '/v1/orders' && method === 'POST') return o.order ? o.order() : json(orderOn());
+      // the order the card shows, read back by its id
+      if (path === `/v1/orders/${ORDER_ID}`) return o.order ? o.order() : json(orderOn());
       if (path === `/v1/baskets/${PLAN_ID}` && o.linked !== undefined) return json(o.linked);
       return json({ error: 'not found' }, 404);
     }),
@@ -130,8 +134,14 @@ const buy = async () => {
   await settle();
   return host;
 };
-/** The buy's one button that makes the order: in its last step, "Review and sign". */
-const SIGN = '[data-step="review"] [data-variant="primary"]';
+/** The card's one button: "Invest $X", held until there is an order to press. */
+const SIGN = '[data-ui="invest-card"] [data-variant="primary"]';
+/** Long enough for the wallet to be read and the order made for the amount. */
+const made = async () => {
+  await settle(350);
+  await settle(450);
+  await settle();
+};
 const label = (el: Element) =>
   el.querySelector('.grid > span:not([aria-hidden])')?.textContent ?? el.textContent;
 const primaryLink = (host: HTMLElement) =>
@@ -369,11 +379,8 @@ describe('the plan screen', () => {
     const bought = await buy();
     expect(server.to('/v1/baskets/')).toHaveLength(1);
     await type(find<HTMLInputElement>(bought, 'input[inputmode="decimal"]'), '10');
-    await settle(350);
-    await click(find(bought, '[data-ui="trust-notice"] input[type="checkbox"]'));
-    await click(find(bought, SIGN));
-    await settle();
-    expect(server.to('/v1/orders').map((c) => c.body)).toEqual([
+    await made();
+    expect(server.to('/v1/orders').flatMap((c) => (c.method === 'POST' ? [c.body] : []))).toEqual([
       { type: 'buy', owner: { solana: SOLANA }, amountUsd: 10, proposalId: PLAN_ID },
     ]);
     // kept as a plan from a link, so the order screen names the buyer's own vault
@@ -397,10 +404,8 @@ describe('the plan screen', () => {
     const bought = await buy();
     expect(server.to('/v1/baskets/')).toHaveLength(1);
     await type(find<HTMLInputElement>(bought, 'input[inputmode="decimal"]'), '10');
-    await settle(350);
-    await click(find(bought, '[data-ui="trust-notice"] input[type="checkbox"]'));
-    await click(find(bought, SIGN));
-    await settle();
+    await made();
+    expect(recallOrder(ORDER_ID, USER)).toMatchObject({ proposalId: PLAN_ID, amountUsd: 10 });
     expect(recallOrder(ORDER_ID, USER)?.linked).toBeUndefined();
   });
 
@@ -495,10 +500,12 @@ describe('the buy screen', () => {
     // in whole units, with the units the test network's deployment committed
     expect(host.textContent).toContain('40,000 USDC');
     const button = find(host, SIGN);
-    expect(label(button)).toBe(en.buy.review('$40,000'));
+    expect(label(button)).toBe(en.invest.press('$40,000'));
     expect(button.getAttribute('aria-disabled')).toBe('true');
     expect(host.textContent).toContain(en.buy.blocked.funding);
     await click(button);
+    await made();
+    // no order is made for a wallet that cannot pay for it
     expect(server.to('/v1/orders')).toEqual([]);
   });
 
@@ -522,30 +529,33 @@ describe('the buy screen', () => {
     api();
     rememberPlan(planOn());
     const host = await buy();
+    await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
+    await made();
     const notice = find(host, '[data-ui="trust-notice"]');
     expect(notice.textContent).toContain(en.trust.unaudited);
     expect(notice.textContent).toContain(en.trust.admin(TRUST_STATUS.admin.solana as string));
     expect(notice.textContent).toContain(en.trust.keeper('0.75%', '1%'));
+    // the order is on the card, and its press is held until the notice is ticked
     const button = find(host, SIGN);
+    expect(label(button)).toBe(en.invest.press('$10'));
     expect(button.getAttribute('aria-disabled')).toBe('true');
     expect(host.textContent).toContain(en.buy.blocked.trust);
     await click(find(notice, 'input[type="checkbox"]'));
     expect(find(host, SIGN).getAttribute('aria-disabled')).toBeNull();
   });
 
-  it('makes the order, keeps the plan beside it and the acceptance, then goes to its review', async () => {
+  it('makes the order once the wallet holds the amount, keeps the plan beside it, and goes to no other page', async () => {
     const server = api();
     rememberPlan(planOn());
     const host = await buy();
     await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
-    await settle(350);
-    await click(find(host, '[data-ui="trust-notice"] input[type="checkbox"]'));
-    await click(find(host, SIGN));
-    await settle();
-    expect(server.to('/v1/orders').map((c) => c.body)).toEqual([
+    await made();
+    expect(server.to('/v1/orders').flatMap((c) => (c.method === 'POST' ? [c.body] : []))).toEqual([
       { type: 'buy', owner: { solana: SOLANA }, amountUsd: 10, proposalId: PLAN_ID },
     ]);
-    expect(router.push).toHaveBeenCalledWith(`/orders/${ORDER_ID}`);
+    // the review is on this card (INVEST-ONE-PRESS): the order's steps, and no second page
+    expect(router.push).not.toHaveBeenCalled();
+    expect(host.querySelectorAll('[data-ui="invest-card"] [data-ui="order-step"]')).toHaveLength(2);
     const kept = recallOrder(ORDER_ID, USER);
     expect(kept).toMatchObject({
       proposalId: PLAN_ID,
@@ -559,10 +569,9 @@ describe('the buy screen', () => {
     expect(Number.isNaN(Date.parse(kept?.goal?.placedAt ?? ''))).toBe(false);
     expect(kept?.lines).toEqual(planOn().proposal.lines);
     expect(kept?.linked).toBeUndefined();
-    // accepted for a plan's own vault, whose short points leave the keeper's limits out: a buy the
-    // keeper may trade asks again
-    expect(trustAccepted(USER, TRUST_STATUS.textVersion, false)).toBe(true);
-    expect(trustAccepted(USER, TRUST_STATUS.textVersion)).toBe(false);
+    // making the order accepts nothing: the notice is kept only as the person presses
+    // (invest.events.test.ts, which runs the press)
+    expect(trustAccepted(USER, TRUST_STATUS.textVersion, false)).toBe(false);
   });
 
   it('says once on each card that its figures are from a test network, and never MOCK', async () => {
@@ -606,6 +615,7 @@ describe('the buy screen', () => {
     expect(host.textContent).toContain('40,000 tUSDG');
     expect(host.textContent).toContain('ETH');
     expect(find(host, SIGN).getAttribute('aria-disabled')).toBe('true');
+    expect(server.to('/v1/orders')).toEqual([]);
 
     await unmountAll();
     const funded = api({
@@ -622,18 +632,20 @@ describe('the buy screen', () => {
     });
     const ready = await buy();
     await type(find<HTMLInputElement>(ready, 'input[inputmode="decimal"]'), '10');
-    await settle(350);
-    await click(find(ready, '[data-ui="trust-notice"] input[type="checkbox"]'));
+    await made();
     // the trust notice names Robinhood Chain's admin and its keeper's limits
     expect(find(ready, '[data-ui="trust-notice"]').textContent).toContain(
       en.trust.admin(TRUST_STATUS.admin.robinhood as string),
     );
-    await click(find(ready, SIGN));
-    await settle();
-    expect(funded.to('/v1/orders').map((c) => c.body)).toEqual([
+    expect(funded.to('/v1/orders').flatMap((c) => (c.method === 'POST' ? [c.body] : []))).toEqual([
       { type: 'buy', owner: { evm: EVM }, amountUsd: 10, proposalId: PLAN_ID },
     ]);
-    expect(router.push).toHaveBeenCalledWith(`/orders/${ORDER_ID}`);
+    // the order's two steps on the card, the permission first, and the press that names the amount
+    expect(ready.querySelectorAll('[data-ui="invest-card"] [data-ui="order-step"]')).toHaveLength(
+      2,
+    );
+    expect(label(find(ready, SIGN))).toBe(en.invest.press('$10'));
+    expect(router.push).not.toHaveBeenCalled();
   });
 
   it('says what the person can do when the order is refused, and goes nowhere', async () => {
@@ -644,10 +656,12 @@ describe('the buy screen', () => {
       JSON.stringify({ textVersion: TRUST_STATUS.textVersion }),
     );
     const host = await buy();
+    await made();
     expect(host.textContent).toContain(en.trust.accepted);
-    await click(find(host, SIGN));
-    await settle();
     expect(find(host, '[role="alert"]').textContent).toBe(en.buy.failure.VERSION_CHANGED);
+    // nothing to press but reading the prices again
+    expect(find(host, SIGN).getAttribute('aria-disabled')).toBe('true');
+    expect(host.querySelector('[data-ui="order-step"]')).toBeNull();
     expect(router.push).not.toHaveBeenCalled();
   });
 });
@@ -682,7 +696,8 @@ describe.each(['solana', 'robinhood'] as const)('the chain, on %s', (chain) => {
   });
 
   it('is badged on the buy screen, and a Robinhood buy never says USDC', async () => {
-    api({ chain, say: onChain });
+    // a wallet that is short, so the card says what it is missing, in the chain's own dollar
+    api({ chain, funded: false, say: onChain });
     rememberPlan(planOn(chain));
     const host = await buy();
     expect(badges(host)).toEqual([named]);

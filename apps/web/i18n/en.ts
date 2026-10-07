@@ -612,9 +612,6 @@ export const en = {
       lead: (chain: string) =>
         `The whole amount goes into this vault on ${chain}, then buys each part at the vault’s targets. Nothing is signed here.`,
       amountHint: 'From $10 to $1,000,000.',
-      review: (amount: string) => `Review the steps to add ${amount}`,
-      reviewLead: (amount: string, chain: string) =>
-        `You’re adding ${amount} to your vault on ${chain}. Next you review every step, then sign each one in your wallet.`,
       missing:
         'I can’t find this vault among yours. Open your portfolio, then choose the vault there.',
       back: 'Back to your portfolio',
@@ -886,15 +883,6 @@ export const en = {
     },
     /** The four steps of a buy, one open at a time. */
     steps: {
-      label: 'Steps to buy',
-      names: { amount: 'Amount', funds: 'Funds', trust: 'Trust', review: 'Review' },
-      /** Read after a step's name by a screen reader. */
-      done: 'done',
-      next: 'Continue',
-      funds: { ready: 'Ready', short: 'Something is missing', reading: 'Reading…' },
-      trust: { accepted: 'Accepted', open: 'Not accepted yet' },
-      reviewLead: (amount: string, chain: string) =>
-        `You’re buying ${amount} on ${chain}. Next you review every step, then sign each one in your wallet.`,
       /** The one line over the card when its figures are not live. */
       note: {
         testNetwork: (chain: string) => `Test network · ${chain} · not live`,
@@ -947,8 +935,6 @@ export const en = {
         refused: 'Our server didn’t accept this amount. Check it, then try again.',
       },
     },
-    review: (amount: string) => `Review the steps to buy ${amount}`,
-    reviewing: 'Making your order…',
     blocked: {
       amount: 'Enter an amount from $10 to $1,000,000 to continue.',
       funding: 'Your wallet needs what is missing before you can continue.',

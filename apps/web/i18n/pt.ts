@@ -533,9 +533,6 @@ export const pt: Dictionary = {
       lead: (chain: string) =>
         `O valor inteiro vai para este cofre na ${chain} e depois compra cada parte nas metas do cofre. Nada é assinado aqui.`,
       amountHint: 'De US$ 10 a US$ 1.000.000.',
-      review: (amount: string) => `Revisar os passos para adicionar ${amount}`,
-      reviewLead: (amount: string, chain: string) =>
-        `Você está adicionando ${amount} ao seu cofre na ${chain}. A seguir você revisa cada passo e assina cada um na sua carteira.`,
       missing:
         'Não encontro este cofre entre os seus. Abra seu portfólio e escolha o cofre por lá.',
       back: 'Voltar ao seu portfólio',
@@ -786,14 +783,6 @@ export const pt: Dictionary = {
         `Seu plano foi montado para ${planned}, e os limites dele foram calculados para esse valor. Para comprar outro valor, monte o plano de novo para ele.`,
     },
     steps: {
-      label: 'Passos para comprar',
-      names: { amount: 'Valor', funds: 'Fundos', trust: 'Confiança', review: 'Revisar' },
-      done: 'feito',
-      next: 'Continuar',
-      funds: { ready: 'Pronto', short: 'Falta algo', reading: 'Lendo…' },
-      trust: { accepted: 'Aceito', open: 'Ainda não aceito' },
-      reviewLead: (amount: string, chain: string) =>
-        `Você está comprando ${amount} em ${chain}. Em seguida você revisa cada passo e assina cada um na sua carteira.`,
       note: {
         testNetwork: (chain: string) => `Rede de teste · ${chain} · valores não reais`,
       },
@@ -846,8 +835,6 @@ export const pt: Dictionary = {
         refused: 'Nosso servidor não aceitou este valor. Confira e tente de novo.',
       },
     },
-    review: (amount: string) => `Revisar os passos para comprar ${amount}`,
-    reviewing: 'Criando sua ordem…',
     blocked: {
       amount: 'Digite um valor de US$ 10 a US$ 1.000.000 para continuar.',
       funding: 'Sua carteira precisa do que falta antes de você continuar.',

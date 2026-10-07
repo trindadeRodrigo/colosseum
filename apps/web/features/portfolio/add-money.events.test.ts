@@ -35,6 +35,8 @@ import { dueOf, goalOfVault, putInto } from './vault-goal';
 import { ownVault, readName, sameAddress } from './vault-name';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
+// the card draws the order's own screen, which holds the runner: nothing here presses it
+vi.mock('../wallet/signing', () => import('../wallet/test/mock-signing'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
 vi.mock('next/link', () => import('../wallet/test/mock-next'));
 
@@ -352,6 +354,8 @@ function api(
         disclaimer: 'd',
       });
     if (path === '/v1/orders' && method === 'POST') return json(addOrder({ basketId: '8' }));
+    // the order the card shows, read back by its id
+    if (path === `/v1/orders/${ORDER_ID}`) return json(addOrder({ basketId: '8' }));
     if (path.endsWith('/name') && method === 'PUT')
       return o.rename
         ? o.rename(body)
@@ -367,7 +371,16 @@ const add = async (address: string, chain = 'solana') => {
   await settle();
   return host;
 };
-const SIGN = '[data-step="review"] [data-variant="primary"]';
+/** The card's one button: "Invest $X", held until there is an order to press. */
+const SIGN = '[data-ui="invest-card"] [data-variant="primary"]';
+/** Long enough for the wallet to be read and the order made for the amount. */
+const made = async () => {
+  await settle(350);
+  await settle(450);
+  await settle();
+};
+const posted = (server: ReturnType<typeof api>) =>
+  server.to('/v1/orders').filter((c) => c.method === 'POST');
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -392,13 +405,9 @@ describe('the add-money screen', () => {
       vaultChain: 'solana',
       wallet: SOLANA,
     });
-    await click(find(host, '[data-ui="trust-notice"] input[type="checkbox"]'));
-    expect(find(host, 'section[data-step="review"]').textContent).toContain(
-      en.portfolio.add.reviewLead('$10', 'Solana'),
-    );
-    await click(find(host, SIGN));
-    await settle();
-    expect(server.to('/v1/orders').map((c) => c.body)).toEqual([
+    await made();
+    // the order is made for the card with no press, and the review is on this page
+    expect(posted(server).map((c) => c.body)).toEqual([
       {
         type: 'buy',
         owner: { solana: SOLANA },
@@ -406,7 +415,14 @@ describe('the add-money screen', () => {
         vault: { chain: 'solana', address: SECOND_VAULT },
       },
     ]);
-    expect(router.push).toHaveBeenCalledWith(`/orders/${ORDER_ID}`);
+    expect(router.push).not.toHaveBeenCalled();
+    // This double answers the fixtures' order, which buys another asset than this vault's targets:
+    // the card says so and offers no press at all, ticked or not (order-check.ts, `checkVaultAdd`).
+    await click(find(host, '[data-ui="trust-notice"] input[type="checkbox"]'));
+    expect(host.querySelector(SIGN)).toBeNull();
+    expect(find(host, '[data-ui="invest-card"] [role="alert"]').textContent).toBe(
+      en.order.mismatch.trades,
+    );
     expect(recallOrder(ORDER_ID, USER)).toMatchObject({
       proposalId: '',
       chain: 'solana',
@@ -437,10 +453,7 @@ describe('the add-money screen', () => {
     expect(find(host, '[data-ui="add-keeper"]').textContent).toBe(en.portfolio.add.keeper);
     expect(host.querySelector('[data-ui="add-newer-version"]')).toBeNull();
     await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
-    await settle(350);
-    await click(find(host, '[data-ui="trust-notice"] input[type="checkbox"]'));
-    await click(find(host, SIGN));
-    await settle();
+    await made();
     expect(recallOrder(ORDER_ID, USER)?.terms).toEqual({
       kind: 'vault',
       vault: VAULT,
@@ -511,7 +524,7 @@ describe('the add-money screen', () => {
       const server = api({ vaults: [lie] });
       const host = await add(lie.address);
       await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
-      await settle(350);
+      await made();
       await click(find(host, '[data-ui="trust-notice"] input[type="checkbox"]'));
       const mark = find(host, '[data-ui="source-mark"]');
       expect(mark.textContent).toContain(en.portfolio.add.source.failed('Solana'));
@@ -546,7 +559,7 @@ describe('the add-money screen', () => {
     const server = api({ vaults: [vault()] });
     const host = await add(SECOND_VAULT);
     expect(host.textContent).toContain(en.portfolio.add.missing);
-    expect(host.querySelector('[data-ui="buy-steps"]')).toBeNull();
+    expect(host.querySelector('[data-ui="invest-card"]')).toBeNull();
     expect(server.to('/v1/funding?')).toEqual([]);
     expect(server.to('/v1/orders')).toEqual([]);
     // nor for the same address named on another chain
@@ -559,8 +572,9 @@ describe('the add-money screen', () => {
     const server = api({ vaults: [vault({ owner: SECOND_VAULT })] });
     const host = await add(VAULT);
     await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
-    await settle(350);
+    await made();
     expect(server.to('/v1/funding?')).toEqual([]);
+    expect(server.to('/v1/orders')).toEqual([]);
     expect(find(host, SIGN).getAttribute('aria-disabled')).toBe('true');
     expect(host.textContent).toContain('This vault belongs to another wallet of yours');
   });
