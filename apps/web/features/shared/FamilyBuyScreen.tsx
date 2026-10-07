@@ -169,18 +169,27 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
     );
     if (placed.kind !== 'placed') {
       setPlacing(false);
+      // A refusal with a code this app has a sentence for is said in the app's words, in the page's
+      // language (the portfolio changed, the wallet is short); only one it has none for is said in
+      // our server's. The server always sends a sentence, so the code is read first.
+      const known =
+        (placed.kind === 'said' || placed.kind === 'code') && placed.code
+          ? t.buy.failure[placed.code as keyof typeof t.buy.failure]
+          : undefined;
       setFailure(
-        placed.kind === 'said'
-          ? t.shared.publish.failure.said(placed.error)
-          : placed.kind === 'code'
-            ? (t.buy.failure[placed.code as keyof typeof t.buy.failure] ?? t.buy.failure.refused)
-            : placed.kind === 'busy'
-              ? t.shell.slowDown
-              : placed.kind === 'signed-out'
-                ? t.buy.failure.signedOut
-                : placed.kind === 'unreadable'
-                  ? t.buy.failure.unreadable
-                  : t.buy.failure.unreachable,
+        known
+          ? known
+          : placed.kind === 'said'
+            ? t.shared.publish.failure.said(placed.error)
+            : placed.kind === 'code'
+              ? (t.buy.failure[placed.code as keyof typeof t.buy.failure] ?? t.buy.failure.refused)
+              : placed.kind === 'busy'
+                ? t.shell.slowDown
+                : placed.kind === 'signed-out'
+                  ? t.buy.failure.signedOut
+                  : placed.kind === 'unreadable'
+                    ? t.buy.failure.unreadable
+                    : t.buy.failure.unreachable,
       );
       return;
     }

@@ -114,7 +114,11 @@ function api(o: {
         ],
         disclaimer: 'd',
       });
-    if (path === '/v1/orders' && method === 'POST') return json(o.order ? o.order() : {});
+    if (path === '/v1/orders' && method === 'POST') {
+      const made = o.order ? o.order() : {};
+      // an answer the test wrote whole (a refusal), or an order
+      return made instanceof Response ? made : json(made);
+    }
     if (path.startsWith('/v1/funding?') && o.funded) return json(FUNDED);
     return json({ error: 'not found' }, 404);
   });
@@ -388,6 +392,44 @@ describe('a portfolio’s page (gate GOLD-ONE-TAP)', () => {
 });
 
 describe('buying a portfolio, which follows it', () => {
+  it('says in the app’s own words that the portfolio changed, though our server sends a sentence with the code', async () => {
+    // as the API refuses it: a code, and always a sentence of its own beside it
+    api({
+      family: familyOf(FAMILY_ID),
+      order: () =>
+        json({ error: 'version 2 is no longer the one in effect', code: 'VERSION_CHANGED' }, 409),
+      funded: true,
+    });
+    const host = await show(createElement(FamilyBuyScreen, { slug: SLUG }));
+    await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
+    await settle(400);
+    await settle(50);
+    await click(find(host, `input[type="checkbox"]`));
+    await click(button(host, en.buy.review('$10')) as HTMLElement);
+    await settle(50);
+    const alert = find(host, '[role="alert"]');
+    expect(alert.textContent).toBe(en.buy.failure.VERSION_CHANGED);
+    expect(alert.textContent).not.toContain('no longer the one in effect');
+  });
+
+  it('keeps our server’s sentence for a refusal this app has no words for', async () => {
+    api({
+      family: familyOf(FAMILY_ID),
+      order: () => json({ error: 'the creator reached their limit' }, 409),
+      funded: true,
+    });
+    const host = await show(createElement(FamilyBuyScreen, { slug: SLUG }));
+    await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
+    await settle(400);
+    await settle(50);
+    await click(find(host, `input[type="checkbox"]`));
+    await click(button(host, en.buy.review('$10')) as HTMLElement);
+    await settle(50);
+    expect(find(host, '[role="alert"]').textContent).toBe(
+      en.shared.publish.failure.said('the creator reached their limit'),
+    );
+  });
+
   it('asks for the version the page showed, and keeps the weights the buy is held to', async () => {
     const calls = api({ family: familyOf(FAMILY_ID), order: () => familyBuyOrder(), funded: true });
     const host = await show(createElement(FamilyBuyScreen, { slug: SLUG }));
