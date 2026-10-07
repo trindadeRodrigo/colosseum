@@ -36,6 +36,7 @@ import {
   noneSaidIn,
   openEndedIn,
   otherLanguageIn,
+  partSaidIn,
   phraseIn,
   portfolioSaidAt,
   type RefusalSaid,
@@ -561,19 +562,27 @@ function mixAnswered(
 }
 
 /**
- * The share a message says where it writes one figure, a percent or a sum of money, and nothing
- * else about money or holdings, whatever words lead into it ("Make that 40%.", "Actually, $1,000").
- * Null where it writes none, or more.
+ * The share a message says where it writes one figure, a percent or a sum of money, or one part of
+ * the whole in words, and nothing else about money or holdings, whatever words lead into it ("Make
+ * that 40%.", "Actually, $1,000", "Hmm, make it half."). Null where it writes none, or more.
  */
 function loneShareIn(message: string, amountUsd: number | null): PersonalMix | null {
   const figures = mentionsIn(message);
   const [figure] = figures;
-  if (!figure || figures.length > 1) return null;
-  if (figure.kind !== 'percent' && !(figure.kind === 'amount' && figure.money && !figure.perMonth))
+  if (figures.length > 1) return null;
+  // With no figure, one part of the whole said in words: "Hmm, make it half.", "No wait, a third.".
+  const part = figure ? null : partSaidIn(message);
+  if (!figure && part === null) return null;
+  if (
+    figure &&
+    figure.kind !== 'percent' &&
+    !(figure.kind === 'amount' && figure.money && !figure.perMonth)
+  )
     return null;
-  if (saysMoreIn(message, 0, message.length, [figure], null, false)) return null;
-  const growthBps =
-    figure.kind === 'percent'
+  if (saysMoreIn(message, 0, message.length, figure ? [figure] : [], null, false)) return null;
+  const growthBps = !figure
+    ? Math.round((part ?? 0) * BPS_PER_PCT)
+    : figure.kind === 'percent'
       ? Math.round(figure.value * BPS_PER_PCT)
       : bpsOf({ kind: 'amount', value: figure.value }, amountUsd);
   if (growthBps === null || growthBps < leastShareBps(amountUsd)) return null;
@@ -840,10 +849,18 @@ export function runIntake(input: IntakeInput): IntakeResult {
       refusedNow.length === 0 &&
       yesOrNoSaidIn(message) === null
     ) {
+      // "None" said of the one holding that stands is its last word too: asked, with no start.
+      if (noneSaidIn(message)) {
+        reopen();
+        continue;
+      }
       const again =
         mixAnswered(message, { field: 'mix', template: 'marketShare', text: '' }, amountUsd) ??
         loneShareIn(message, amountUsd);
-      if (again && again !== 'too_small') {
+      // The same share said again is no new share: nothing is asked of it.
+      const standing =
+        before.result.sheet?.mix?.growthBps ?? themeBpsOf(before.result.sheet?.sleeves);
+      if (again && again !== 'too_small' && again.growthBps !== standing) {
         reopen(again);
         continue;
       }
@@ -2531,7 +2548,8 @@ function intakeOf(
     themes: asks('sleeves') && splitAsk?.id === 'themeShares' ? splitAsk.themes : [],
     refusal: asks('limits') ? refusalAsked : [],
     held:
-      questions.length === 0 && (marketMix !== null || themeSleeves !== null)
+      questions.length === 0 &&
+      (marketMix !== null || themeSleeves !== null || (answers.mix ?? null) !== null)
         ? holdable.map((r) => ({ key: keyOf(r), words: r.words }))
         : [],
   };

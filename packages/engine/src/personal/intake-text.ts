@@ -2183,7 +2183,8 @@ const PAIR_SAID = saidAlone(
 const PERCENT_SAID = saidAlone(String.raw`(?<pct>\d{1,3})\s*(?:%|percent|por cento)`);
 const HALF_SAID = saidAlone(String.raw`half(?:\s+and\s+half)?|metade(?:\s+e\s+metade)?`);
 // "A third", "a quarter", "um terço": one part of that many, in the order of this list from three up.
-const ONE_PART_OF = ['third|ter[cç]o', 'quarter|fourth|quarto'].map((words) =>
+const PART_WORDS = ['third|ter[cç]o', 'quarter|fourth|quarto'];
+const ONE_PART_OF = PART_WORDS.map((words) =>
   saidAlone(String.raw`(?:a|one|um|uma)\s+(?:${words})`),
 );
 const HALVES = 2;
@@ -2251,6 +2252,27 @@ export type ShareSaid =
  * "a third", "50%", "$500", "all of it". Null for any other message: what it means depends on what
  * was asked, and a caller that knows the question reads it.
  */
+/**
+ * The share, in percent, a message says in words where it names one part of the whole and no
+ * other, whatever leads into it: "Hmm, make it half.", "No wait, a third.", "Lower that to a
+ * quarter.". The same words an answer is read by, found anywhere in the message. Null where it
+ * writes none of them, or more than one.
+ */
+export function partSaidIn(message: string): number | null {
+  const found: number[] = [];
+  const count = (source: string, percent: number) => {
+    for (const _ of message.matchAll(
+      new RegExp(String.raw`(?<![\p{L}])(?:${source})(?![\p{L}])`, 'giu'),
+    ))
+      found.push(percent);
+  };
+  count('half|metade', HALF_PCT);
+  for (const [n, words] of PART_WORDS.entries())
+    count(String.raw`(?:a|one|um|uma)\s+(?:${words})`, (HALF_PCT * HALVES) / (n + HALVES + 1));
+  const [only] = found;
+  return found.length === 1 && only !== undefined ? only : null;
+}
+
 export function shareSaidIn(message: string): ShareSaid | null {
   const pair = PAIR_SAID.exec(message);
   const [a, b] = [Number(pair?.groups?.a), Number(pair?.groups?.b)];

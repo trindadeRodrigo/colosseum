@@ -4570,6 +4570,29 @@ describe('the third review (Oct 7), B4, B7 and B3: the last word wins over an an
     }
   });
 
+  it('B7: a part said in words is a new share too; the same share said again asks nothing; "none" of a holding that stands is asked', () => {
+    // Whatever leads into it: read by what the message is, one part of the whole and nothing else.
+    const half = said(['I like AI.', 'all of it', 'Hmm, make it half.'], reads(AI));
+    expect(half.questions.map((q) => [q.template, q.read])).toEqual([['marketShare', share(5000)]]);
+    const third = said(['Put 50% in AI.', 'No wait, a third.'], reads(AI));
+    expect(third.questions.map((q) => q.read)).toEqual([share(3333)]);
+    const quarto = said(['Coloque 50% em IA.', 'Melhor baixar para um quarto.'], reads(AI_PT));
+    expect(quarto.questions.map((q) => q.read)).toEqual([share(2500)]);
+    // The same share said again is no new share.
+    for (const again of ['half', '50%', 'Yes, half.']) {
+      const same = said(['I like AI.', 'half', again], reads(AI));
+      expect(same.questions, again).toEqual([]);
+      expect(same.sheet?.sleeves, again).toEqual([theme('ai', 5000), safe(5000)]);
+    }
+    // "None" said of a share that was taken from the text is its last word: asked, then left out.
+    const none = said(['Put 30% in AI.', 'none'], reads(AI));
+    expect(none.sheet).toBeNull();
+    expect(none.questions.map((q) => q.template)).toEqual(['marketShare']);
+    const gone = said(['Put 30% in AI.', 'none', 'none'], reads(AI));
+    expect(gone.questions).toEqual([]);
+    expect(gone.sheet?.sleeves).toBeUndefined();
+  });
+
   it('B4: an answer stands until the holding is brought up again; a message that says nothing of it changes nothing', () => {
     for (const last of ['thanks', 'My time frame is 5 years.', 'ok', 'I am 41.']) {
       const kept = said(['I like AI.', 'half', last], reads(AI));
