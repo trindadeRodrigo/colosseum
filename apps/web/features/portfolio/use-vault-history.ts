@@ -1,13 +1,15 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import type { Execution } from '../../components/ui/ExecutionList';
-import { useT } from '../../i18n/I18nProvider';
+import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
+import { dollars } from '../goal/sheet';
+import type { ActivityGroup } from '../order/ActivityPanel';
 import { activityOf } from '../order/activity';
 import { readOrder } from '../order/order-api';
-import { type OrderRecord, recallOrders } from '../order/order-record';
+import { isBuy, type OrderRecord, recallOrders } from '../order/order-record';
 import { onMock } from '../order/readiness';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
+import { utc } from './figures';
 import { mergeRecords, readPersonPlans, recordsOfPlans } from './server-plans';
 
 // The person's buys and what of them reached the chain. The buys are the server's list of their plans
@@ -18,13 +20,15 @@ import { mergeRecords, readPersonPlans, recordsOfPlans } from './server-plans';
 
 export type VaultHistory = {
   records: OrderRecord[];
-  activity: Execution[];
+  /** What reached the chain, under the order each line was a step of, newest order first. */
+  activity: ActivityGroup[];
   /** The orders whose deposit is confirmed on chain, as the API last said: only these were put in. */
   deposited: ReadonlySet<string>;
 };
 
 export function useVaultHistory(): VaultHistory {
   const t = useT();
+  const lang = useLang();
   const port = useWalletPort();
   const apiFetch = useApiFetch();
   const { account } = useAccount();
@@ -32,7 +36,7 @@ export function useVaultHistory(): VaultHistory {
   const known = account.status === 'ready';
   const userId = port.userId;
   const [records, setRecords] = useState<OrderRecord[]>([]);
-  const [activity, setActivity] = useState<Execution[]>([]);
+  const [activity, setActivity] = useState<ActivityGroup[]>([]);
   const [deposited, setDeposited] = useState<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
@@ -77,10 +81,26 @@ export function useVaultHistory(): VaultHistory {
       setActivity(
         read
           .flatMap((answer, i) => {
-            const chain = records[i]?.chain;
-            return answer.kind === 'read' && chain
-              ? activityOf(answer.order, t, onMock(port, chain))
-              : [];
+            const record = records[i];
+            if (answer.kind !== 'read' || !record) return [];
+            const executions = activityOf(answer.order, t, onMock(port, record.chain));
+            const when = utc(lang, answer.order.createdAt);
+            return executions.length === 0
+              ? []
+              : [
+                  {
+                    id: answer.order.id,
+                    at: answer.order.createdAt,
+                    title: isBuy(record)
+                      ? t.activity.buy(dollars(record.amountUsd, lang), when)
+                      : record.terms?.kind === 'follow'
+                        ? t.activity.follow(when)
+                        : record.terms?.kind === 'publish'
+                          ? t.activity.publish(when)
+                          : t.activity.order(when),
+                    executions,
+                  },
+                ];
           })
           .sort((a, b) => b.at.localeCompare(a.at)),
       );
@@ -88,7 +108,7 @@ export function useVaultHistory(): VaultHistory {
     return () => {
       live = false;
     };
-  }, [ids, apiFetch, t]);
+  }, [ids, apiFetch, t, lang]);
 
   return { records, activity, deposited };
 }

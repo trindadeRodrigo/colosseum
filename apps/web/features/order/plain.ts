@@ -1,54 +1,12 @@
 import type { BasketLine, BasketProposal } from '@colosseum/schemas';
 import { type Dictionary, type Lang, LOCALE } from '../../i18n';
 import { dollars } from '../goal/sheet';
-import { assetTicker } from './amounts';
+import { CASH, SYMBOLS, tail, tokenName } from './amounts';
 
 // The plan in plain words (Thom, Oct 6: the plan screen read as a list of engine codes). Nothing here
 // shows an engine code: an asset by its name, a kind of asset by a word, a flag by a sentence, and a
-// code this file does not know by one sentence that says only that there is a note. The sentences are
+// code this file does not know by one plain line that says there is a note. The sentences are
 // the dictionary's, in the language of the view.
-
-/** Names a person reads, by the token's symbol written in lower case: the shelf's symbols. */
-const SYMBOLS: Record<string, string> = Object.fromEntries(
-  [
-    'USDC',
-    'USDG',
-    'USDY',
-    'jlUSDC',
-    'syrupUSDC',
-    'SGOV',
-    'SPYx',
-    'QQQx',
-    'NVDAx',
-    'TSLAx',
-    'AAPLx',
-    'GOOGLx',
-    'METAx',
-    'MSFTx',
-    'AMZNx',
-    'SPCXx',
-    'MSTRx',
-    'CRCLx',
-    'HOODx',
-    'COINx',
-    'PLTRx',
-    'GLDx',
-    'SOL',
-    'JitoSOL',
-    'cbBTC',
-    'cbETH',
-    'SPY',
-    'QQQ',
-    'NVDA',
-    'TSLA',
-    'AAPL',
-    'META',
-    'GLD',
-    'SPCX',
-    'MSTR',
-    'CRCL',
-  ].map((s) => [s.toLowerCase(), s]),
-);
 
 /** Who issues a dollar-yield token, where saying so tells the person what it is. */
 const ISSUERS: Record<string, string> = {
@@ -58,33 +16,36 @@ const ISSUERS: Record<string, string> = {
   sgov: 'iShares',
 };
 
-/** The cash tokens: shown as cash, with the token named after it. */
-const CASH = new Set(['usdc', 'usdg', 'tusdc', 'tusdg']);
+/** A test network's name for a token this app knows: "tSPYx", "tsyrupUSDC". Never "tUSDG": that is its name. */
+const TEST_NAME = new RegExp(
+  `\\bt(${Object.keys(SYMBOLS)
+    .filter((symbol) => symbol !== 'usdg')
+    .join('|')})\\b`,
+  'gi',
+);
 
 /** The asset is the chain's dollar, held as cash. */
-export const isCashId = (assetId: string) =>
-  CASH.has(assetId.slice(assetId.indexOf(':') + 1).toLowerCase());
+export const isCashId = (assetId: string) => CASH.has(tail(assetId));
 
 /**
- * An asset as a person reads it: "syrupUSDC (Maple)", "Cash (USDC)", "NVDAx". A test network's token
- * (`tSPYx`) goes by the token it stands in for; the card says it is a test network. An asset this file
- * does not know goes by its symbol as the id writes it, in capitals, never by the id itself.
+ * An asset as a person reads it, the one name every screen uses for it: "syrupUSDC (Maple)", "Cash
+ * (USDC)", "NVDAx". The token's own name is `tokenName` (amounts.ts): a test network's token goes by
+ * the token it stands in for, and the card says it is a test network.
  */
 export function displayName(assetId: string, words: Pick<Dictionary['plan'], 'cash'>): string {
-  const tail = assetId.slice(assetId.indexOf(':') + 1).toLowerCase();
-  // A chain's dollar goes by that chain's name for it (amounts.ts): Robinhood Chain's is tUSDG, also
-  // where the mock stands in for it, and a Robinhood plan never says USDC.
-  if (CASH.has(tail)) {
-    const named = assetTicker(assetId);
-    return words.cash(
-      named === tail.toUpperCase() ? tail.replace(/^t(?=usd)/, '').toUpperCase() : named,
-    );
-  }
-  const bare = SYMBOLS[tail] ? tail : tail.replace(/^t(?=[a-z])/, '');
-  const symbol = SYMBOLS[bare] ?? (bare === 'gold' ? 'Gold' : bare.toUpperCase());
-  const issuer = ISSUERS[bare];
+  const symbol = tokenName(assetId);
+  if (isCashId(assetId)) return words.cash(symbol);
+  const issuer = ISSUERS[symbol.toLowerCase()];
   return issuer ? `${symbol} (${issuer})` : symbol;
 }
+
+/**
+ * A sentence of the engine with its tokens named as the screens name them: the engine writes a test
+ * network's token as the deploy record does ("tsyrupUSDC"), and the page says "syrupUSDC" (the flow
+ * audit, finding 13). Only a name written that way is changed, never a word of the sentence.
+ */
+export const plainNames = (text: string): string =>
+  text.replace(TEST_NAME, (whole, symbol: string) => SYMBOLS[symbol.toLowerCase()] ?? whole);
 
 /** A kind of asset (a class key of the roll-up) as a word; an unknown one is "other". */
 export function kindLabel(key: string, words: Dictionary['plan']['kinds']): string {
@@ -92,7 +53,10 @@ export function kindLabel(key: string, words: Dictionary['plan']['kinds']): stri
   return k in words && k !== 'other' ? (words[k] as string) : words.other;
 }
 
-/** A flag of the engine or the roll-up as one sentence. Never the code. */
+/**
+ * A flag of the engine or the roll-up as one sentence. Never the code: a code this file has no
+ * sentence for is said by one plain line, so a note the engine wrote is never dropped in silence.
+ */
 export function flagSentence(
   flag: string,
   words: Dictionary['plan'],
@@ -196,7 +160,11 @@ export function bindingReason(line: BasketLine) {
 /** A line's reasons with the one that decided it first, each once. */
 export const reasonsOf = (line: BasketLine): string[] => {
   const first = bindingReason(line);
-  return [...new Set([...(first ? [first.text] : []), ...line.reasons.map((r) => r.text)])];
+  return [
+    ...new Set(
+      [...(first ? [first.text] : []), ...line.reasons.map((r) => r.text)].map(plainNames),
+    ),
+  ];
 };
 
 /**
@@ -237,7 +205,9 @@ export function planSummary(
   );
   const list = new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(parts);
   const whys = [holding ? bindingReason(holding)?.text : undefined, cashWhy];
-  return [`${head} ${list}.`, ...new Set(whys)].filter(Boolean).join(' ');
+  return [`${head} ${list}.`, ...new Set(whys.map((why) => why && plainNames(why)))]
+    .filter(Boolean)
+    .join(' ');
 }
 
 /**
@@ -264,5 +234,5 @@ export function goalLine(
  * yield reading for it…"), each once. The sentences are the engine's, in the plan's language.
  */
 export const leftOut = (proposal: Pick<BasketProposal, 'removed'>): string[] => [
-  ...new Set(proposal.removed.flatMap((r) => r.reasons.map((reason) => reason.text))),
+  ...new Set(proposal.removed.flatMap((r) => r.reasons.map((reason) => plainNames(reason.text)))),
 ];

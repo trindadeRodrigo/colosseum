@@ -183,9 +183,7 @@ describe('the embed’s vault', () => {
     const pins = [...host.querySelectorAll('[data-ui="figure"]')];
     expect(pins).toHaveLength(3);
     expect(pins.map((p) => p.getAttribute('data-state'))).toEqual(['mock', 'mock', 'mock']);
-    expect(find(host, '[data-ui="sample-note"]').textContent).toBe(
-      `${en.shell.mockAnnounce} · ${en.shell.testNetwork}`,
-    );
+    expect(find(host, '[data-ui="sample-note"]').textContent).toBe(en.shell.testNetworkLine);
     expect(host.textContent).not.toContain('MOCK');
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
     // the way out, and the credit, both to the public vault page, in a new tab

@@ -1,7 +1,7 @@
 import type { ExecutionStatus, LegStatus, OrderDetail } from '@colosseum/schemas';
 import type { Execution } from '../../components/ui/ExecutionList';
 import type { Dictionary } from '../../i18n';
-import { assetTicker } from './amounts';
+import { tokenName } from './amounts';
 import { explorerUrlFor } from './readiness';
 import { unitsFor } from './units';
 
@@ -34,7 +34,7 @@ export function activityOf(
       );
       // a token by the symbol this repository committed for it, as the review names it
       const tokens = unitsFor(leg.chain, mock)?.tokens;
-      const name = (asset: string) => tokens?.[asset]?.symbol ?? assetTicker(asset);
+      const name = (asset: string) => tokens?.[asset]?.symbol ?? tokenName(asset);
       return {
         id: leg.id,
         verb: t.order.kind[leg.kind],

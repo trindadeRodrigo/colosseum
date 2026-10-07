@@ -94,9 +94,7 @@ describe('home', () => {
     ]);
     // a test network: the hatch and one quiet line with the words, never MOCK
     expect(card.textContent).not.toContain('MOCK');
-    expect(find(card, '[data-ui="sample-note"]').textContent).toBe(
-      `${en.shell.mockAnnounce} · ${en.shell.testNetwork}`,
-    );
+    expect(find(card, '[data-ui="sample-note"]').textContent).toBe(en.shell.testNetworkLine);
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
     // still one serif line on the page, and no primary button but the goal's own
     expect(host.querySelectorAll('.font-display')).toHaveLength(1);
