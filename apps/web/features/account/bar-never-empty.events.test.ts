@@ -3,6 +3,8 @@ import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, unmountAll } from '../../components/ui/test/dom';
 import { dictionary, SIGNED_IN_COOKIE } from '../../i18n';
+import { keepOrder, recallOrder } from '../order/order-record';
+import { ORDER_ID, recordOf, USER } from '../order/test/fixtures';
 import { EMBEDDED, fakePort, json, signedInPort } from '../wallet/test/fake-port';
 import { location, router } from '../wallet/test/mock-next';
 import { portStore, restarts } from '../wallet/test/mock-provider';
@@ -200,6 +202,98 @@ describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s'
     expect(hinted()).toBe(false);
     expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
     expect(way(host)?.textContent).toBe(t.shell.signIn);
+  });
+
+  it('finishes that sign-out when the service loads and names them: never their account, signed out there once, their records gone, and a sign-in after it is as any other', async () => {
+    const asked: string[] = [];
+    portStore.setApi(async (path) => {
+      asked.push(path);
+      return path === '/v1/me'
+        ? json({
+            userId: USER,
+            wallets: EMBEDDED,
+            chain: 'solana',
+            chainSource: 'picked',
+            chainOptions: ['solana', 'robinhood'],
+          })
+        : json({ error: 'not found' }, 404);
+    });
+    // an order's record this browser kept for them, by their id
+    keepOrder(recordOf());
+    hint(true);
+    const host = await shell(lang);
+    await later(SLOW_MS);
+    await click(find(host, '[data-ui="account-menu-button"]'));
+    await click(find(host, '[data-ui="account-menu"] [data-ui="sign-out"]'));
+    expect(way(host)?.textContent).toBe(t.shell.signIn);
+    // the id is not known yet, so the record is still there
+    expect(recallOrder(ORDER_ID, USER)).not.toBeNull();
+
+    // the service loads at last, and its session names the person: a shared computer, walked away from
+    let out: () => void = () => {};
+    const signOut = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          out = resolve;
+        }),
+    );
+    await act(async () => portStore.set(signedInPort(EMBEDDED, { userId: USER, signOut })));
+    await later(0);
+    // signed out there at once, once, and nothing of theirs drawn or asked for meanwhile
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
+    expect(host.querySelector('[data-ui="account-address"]')).toBeNull();
+    expect(host.textContent).not.toContain('So11');
+    expect(way(host)?.textContent).toBe(t.shell.signIn);
+    expect(asked).not.toContain('/v1/me');
+    expect(hinted()).toBe(false);
+    await later(60_000);
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
+
+    // the service says they are out: their records go, by the id it named
+    await act(async () => {
+      out();
+      portStore.set(fakePort());
+    });
+    await later(0);
+    expect(recallOrder(ORDER_ID, USER)).toBeNull();
+    expect(way(host)?.textContent).toBe(t.shell.signIn);
+
+    // a sign-in after that is a sign-in: the account, read from our server, and the hint back
+    await act(async () => portStore.set(signedInPort(EMBEDDED, { userId: USER, signOut })));
+    await later(0);
+    expect(asked).toContain('/v1/me');
+    expect(find(host, '[data-ui="account-menu-button"]').getAttribute('data-chain')).toBe('solana');
+    expect(way(host)).toBeNull();
+    expect(hinted()).toBe(true);
+    expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('remembers that sign-out across a reload, until the service says nobody is signed in', async () => {
+    hint(true);
+    const first = await shell(lang);
+    await later(SLOW_MS);
+    await click(find(first, '[data-ui="account-menu-button"]'));
+    await click(find(first, '[data-ui="account-menu"] [data-ui="sign-out"]'));
+    await unmountAll();
+    // the page is opened again, and now the service loads with their session
+    const signOut = vi.fn(async () => {
+      portStore.set(fakePort());
+    });
+    portStore.set(signedInPort(EMBEDDED, { userId: USER, signOut }));
+    const host = await shell(lang);
+    await later(0);
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
+    expect(way(host)?.textContent).toBe(t.shell.signIn);
+    // out there too: the mark is gone, and the next page is an ordinary one
+    await unmountAll();
+    portStore.set(signedInPort(EMBEDDED, { userId: USER, signOut }));
+    const next = await shell(lang);
+    await later(0);
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(next.querySelector('[data-ui="account-menu-button"]')).not.toBeNull();
   });
 
   it('is the person’s account when it loads late for someone with no hint', async () => {
