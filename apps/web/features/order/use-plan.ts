@@ -61,8 +61,11 @@ export function usePlan(id: string): PlanState {
       const first = await readStoredPlan(apiFetch, id);
       return first === 'gone' ? readStoredPlan(apiFetch, id, true) : first;
     };
-    void read().then((read) => {
+    void read().then((answer) => {
       if (!mine) return;
+      // The throwaway wallet of development is no account on a real API, which answers it as nobody
+      // with fresh tokens too: its "gone" says nothing of the plan, and the copy it just built stands.
+      const read = answer === 'gone' && port.test ? null : answer;
       if (read === 'gone') {
         forgetPlan(id);
         return setPlan(null);
@@ -85,7 +88,7 @@ export function usePlan(id: string): PlanState {
     return () => {
       mine = false;
     };
-  }, [id, userId, apiFetch]);
+  }, [id, userId, apiFetch, port.test]);
 
   if (port.status === 'loading' || account.status === 'loading' || plan === undefined)
     return { kind: 'loading' };
