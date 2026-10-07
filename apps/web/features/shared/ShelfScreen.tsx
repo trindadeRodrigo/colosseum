@@ -8,6 +8,7 @@ import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardEmpty, CardHeader } from '../../components/ui/Card';
 import { ChainBadges } from '../../components/ui/ChainBadge';
 import { PAGE_TITLE } from '../../components/ui/heading';
+import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { SkeletonCards } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
@@ -18,13 +19,16 @@ import { formatBps, tokenName } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { networkFor } from '../order/readiness';
 import { useApiFetch } from '../wallet/WalletProvider';
+import { HoldingsBar } from './ProductPane';
 import { isPlatformCreator } from './platform';
+import { pinOf, yieldText } from './product-figures';
 import { readShelf } from './shared-api';
 import { shortAddress, useSharedPerson } from './use-person';
 
-// The shelf (DESIGN-VAULT section 11): a card per shared portfolio, with its name, its creator's
-// address, the platform badge, the version in effect and its weights, and whether auto-follow is
-// offered on it (gate GOLD-ONE-TAP). It shows the portfolios with a recipe on one chain: a signed-in
+// The shelf (DESIGN-VAULT section 11; gate PRODUCTS-PLAN-PANE): a card per shared portfolio, the
+// figures first: one bar of what it holds with each share under it, its yield with its pin, what it
+// is for in one line of its creator's, its chain and who published it. Whether auto-follow is offered
+// and a version that waits are on its page. It shows the portfolios with a recipe on one chain: a signed-in
 // person's current chain, or the chain someone signed out picked in the bar (gate CHAIN-SWITCH). The
 // address names it (`?chain=robinhood`), so a link opens the same shelf. What a card says is the
 // server's store: the portfolio's page reads the chain. A creator's name and description are text,
@@ -166,9 +170,12 @@ function FamilyCard({ family }: { family: SharedFamily }) {
   const t = useT();
   const lang = useLang();
   const c = t.shared.shelf.card;
+  const p = t.shared.product;
+  const locale = LOCALE[lang];
   const [recipe] = family.recipes;
   const href = `/indexes/${encodeURIComponent(family.slug)}`;
   const notLive = family.recipes.some((r) => r.provenance !== 'live');
+  const whole = recipe?.figures?.yield ?? null;
   return (
     <Card
       as="article"
@@ -191,9 +198,43 @@ function FamilyCard({ family }: { family: SharedFamily }) {
             {family.name}
           </Link>
         }
-        meta={recipe ? c.version(recipe.active.version) : undefined}
+        // The list mixes chains, so each card names its own.
+        meta={<ChainBadges chains={family.chains} />}
       />
       <CardBody className="flex flex-col gap-3">
+        {/* The figures first: what it holds, as one bar with each share said under it, then its yield. */}
+        {recipe && (
+          <div className="flex flex-col gap-2">
+            <HoldingsBar
+              shares={recipe.active.components.map((x) => ({
+                key: x.asset,
+                shareBps: x.weightBps,
+              }))}
+            />
+            <Weights recipe={recipe} locale={locale} />
+          </div>
+        )}
+        {recipe && (
+          // Above the card's stretched link, so the pin can be opened.
+          <p data-ui="product-yield" className="relative z-10 w-fit text-body">
+            <span className="text-muted-foreground">{p.yield}: </span>
+            {whole ? (
+              <ProvenancePin
+                value={yieldText(whole, locale, p)}
+                obs={pinOf(whole)}
+                labels={t.pin}
+              />
+            ) : (
+              <span className="text-body-sm">{p.noYieldReading}</span>
+            )}
+          </p>
+        )}
+        {/* What it is for, in the creator's own words: one line, as text. */}
+        {family.copy && (
+          <p className="line-clamp-1 max-w-(--tf-measure-body) text-body-sm [overflow-wrap:anywhere]">
+            {family.copy}
+          </p>
+        )}
         <p className="flex flex-wrap items-baseline gap-x-2 text-body-sm text-muted-foreground">
           {recipe && (
             <span className="font-mono text-source" title={recipe.creator}>
@@ -206,25 +247,13 @@ function FamilyCard({ family }: { family: SharedFamily }) {
               recipe.chain,
               recipe.creator,
             ) && <span className="font-medium text-foreground">{c.platform}</span>}
-          <span className="inline-flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
-            {c.on} <ChainBadges chains={family.chains} />
-          </span>
+          {recipe && <span>{c.version(recipe.active.version)}</span>}
         </p>
-        {family.copy && (
-          <p className="line-clamp-3 max-w-(--tf-measure-body) text-body-sm [overflow-wrap:anywhere]">
-            {family.copy}
-          </p>
-        )}
-        {recipe && <Weights recipe={recipe} locale={LOCALE[lang]} />}
-        {recipe && <Offer recipe={recipe} />}
         {recipe && recipe.textMatches === null && (
           <p className="flex items-start gap-1.5 text-body-sm">
             <StatusMark status="watch" className="mt-1.5" />
             <span>{t.shared.text.unverified}</span>
           </p>
-        )}
-        {recipe?.pending && (
-          <p className="text-body-sm text-muted-foreground">{c.waiting(recipe.pending.version)}</p>
         )}
       </CardBody>
     </Card>

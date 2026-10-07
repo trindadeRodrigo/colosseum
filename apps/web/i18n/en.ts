@@ -1027,6 +1027,45 @@ export const en = {
       notChecked:
         'The name and description aren’t checked against what the creator published on the chain.',
     },
+    /** A shared portfolio as figures, on its card and in the plan pane of its page. */
+    product: {
+      yield: 'Yield',
+      yieldRange: (low: string, high: string) => `${low} to ${high} a year`,
+      yieldOne: (figure: string) => `${figure} a year`,
+      /** The whole has no yield figure: no holding has a reading. */
+      noYieldReading: 'No yield reading yet',
+      /** A row that pays no yield, for a screen reader; the eye sees a dash. */
+      noYield: 'no yield',
+      /** The whole's yield is the server's, for the version it stored, and the chain holds another. */
+      yieldNotShown:
+        'The yield of the whole isn’t shown: the chain holds other weights than the ones our server measured.',
+      holdings: 'What it holds',
+      columns: { holding: 'Holding', share: 'Share', amount: 'Amount', yield: 'Yield a year' },
+      /** The answer in one line: the kinds of asset with their shares, and the chain. */
+      answer: (kinds: string, chain: string) => `${kinds}, on ${chain}.`,
+      why: {
+        stock: 'Follows the price of the share it is named for. It pays no yield.',
+        etf: 'Follows the price of the fund it is named for. It pays no yield.',
+        gold: 'Follows the price of gold. It pays no yield.',
+        commodity: 'Follows the price of the commodity it is named for. It pays no yield.',
+        dollar_yield: 'A dollar token that earns yield.',
+        crypto: 'Follows the price of the coin it is named for. It pays no yield.',
+        cash: 'The chain’s dollar, held as cash.',
+        unknown: 'A token this app doesn’t list.',
+        unread: 'Our server has no record of what kind of token this is.',
+      },
+      exit: {
+        title: 'Exit plan',
+        lead: 'How much of each holding can be sold, how fast, and at what cost, as measured on its chain.',
+        /** The figure of a line, which carries the pin; `rest` follows it. */
+        about: (amount: string) => `About ${amount}`,
+        atLeast: (amount: string) => `At least ${amount}`,
+        rest: (name: string, days: number, cost: string) =>
+          `of ${name} within ${days} days, at a cost of ${cost} or less.`,
+        notMeasured: (name: string) => `The cost of selling ${name} isn’t measured yet.`,
+      },
+      publisher: 'Published by',
+    },
     family: {
       loading: 'Reading this portfolio…',
       missing: 'I can’t find a shared portfolio with that name.',
@@ -1054,7 +1093,7 @@ export const en = {
         superseded: 'Replaced',
         cancelled: 'Taken back',
       },
-      buy: 'Buy and follow this portfolio',
+      buy: 'Invest in this portfolio',
       signIn: 'Sign in to follow',
       chainNotReady: (chain: string) =>
         `${chain} isn’t ready for following yet: its vaults aren’t deployed on this network.`,

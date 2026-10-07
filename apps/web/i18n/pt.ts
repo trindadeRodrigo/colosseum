@@ -929,6 +929,39 @@ export const pt: Dictionary = {
       notChecked:
         'O nome e a descrição não foram conferidos com o que quem criou publicou na rede.',
     },
+    product: {
+      yield: 'Rendimento',
+      yieldRange: (low: string, high: string) => `${low} a ${high} ao ano`,
+      yieldOne: (figure: string) => `${figure} ao ano`,
+      noYieldReading: 'Ainda sem leitura de rendimento',
+      noYield: 'sem rendimento',
+      yieldNotShown:
+        'O rendimento do conjunto não é mostrado: a rede guarda pesos diferentes dos que nosso servidor mediu.',
+      holdings: 'O que ele guarda',
+      columns: { holding: 'Ativo', share: 'Parcela', amount: 'Valor', yield: 'Rendimento ao ano' },
+      answer: (kinds: string, chain: string) => `${kinds}, na ${chain}.`,
+      why: {
+        stock: 'Segue o preço da ação que lhe dá nome. Não paga rendimento.',
+        etf: 'Segue o preço do fundo que lhe dá nome. Não paga rendimento.',
+        gold: 'Segue o preço do ouro. Não paga rendimento.',
+        commodity: 'Segue o preço da commodity que lhe dá nome. Não paga rendimento.',
+        dollar_yield: 'Um token de dólar que rende.',
+        crypto: 'Segue o preço da moeda que lhe dá nome. Não paga rendimento.',
+        cash: 'O dólar da rede, guardado como caixa.',
+        unknown: 'Um token que este app não lista.',
+        unread: 'Nosso servidor não tem registro de que tipo de token é este.',
+      },
+      exit: {
+        title: 'Plano de saída',
+        lead: 'Quanto de cada ativo pode ser vendido, em quanto tempo e a que custo, como medido na rede.',
+        about: (amount: string) => `Cerca de ${amount}`,
+        atLeast: (amount: string) => `Pelo menos ${amount}`,
+        rest: (name: string, days: number, cost: string) =>
+          `de ${name} em até ${days} dias, a um custo de ${cost} ou menos.`,
+        notMeasured: (name: string) => `O custo de vender ${name} ainda não foi medido.`,
+      },
+      publisher: 'Publicado por',
+    },
     family: {
       loading: 'Lendo este portfólio…',
       missing: 'Não encontro um portfólio compartilhado com esse nome.',
@@ -955,7 +988,7 @@ export const pt: Dictionary = {
         superseded: 'Substituída',
         cancelled: 'Retirada',
       },
-      buy: 'Comprar e seguir este portfólio',
+      buy: 'Investir neste portfólio',
       signIn: 'Entre para seguir',
       chainNotReady: (chain: string) =>
         `A ${chain} ainda não está pronta para seguir portfólios: os cofres dela não estão implantados nesta rede.`,

@@ -233,12 +233,15 @@ describe('a portfolio’s page (gate GOLD-ONE-TAP)', () => {
     expect(mine.textContent).not.toContain('something else');
   });
 
-  it('keeps the creator’s address and the routine check behind Details, and where the weights come from in view', async () => {
+  it('keeps the publisher and where the weights come from in view, and the routine check behind Details', async () => {
     api({ family: familyOf(FAMILY_ID) });
     const host = await show(createElement(FamilyScreen, { slug: SLUG }));
     const checks = find<HTMLDetailsElement>(host, '[data-ui="family-checks"]');
     expect(checks.open).toBe(false);
-    expect(checks.querySelector('[data-ui="creator"]')).not.toBeNull();
+    // who published it is part of the pane (gate PRODUCTS-PLAN-PANE), not folded away
+    const creator = find(host, '[data-ui="creator"]');
+    expect(checks.contains(creator)).toBe(false);
+    expect(creator.closest('[data-ui="plan-pane"]')).not.toBeNull();
     // the word on where the version and weights come from is not folded away
     const source = find(host, '[data-ui="source-mark"]');
     expect(checks.contains(source)).toBe(false);

@@ -185,13 +185,16 @@ describe('a shared portfolio read from the chain by this app', () => {
     const mark = find(host, '[data-ui="source-mark"]');
     expect(mark.getAttribute('data-source')).toBe('chain');
     expect(mark.textContent).toContain(en.shared.check.differs('Solana'));
-    // a check that found something wrong opens the fold over who published it by itself
-    expect(find<HTMLDetailsElement>(host, '[data-ui="family-checks"]').open).toBe(true);
+    // what was found wrong is said in view, in the alarm's colour, beside who published it
+    expect(mark.className).toContain('text-destructive');
+    expect(find(host, '[data-ui="creator"]').closest('details')).toBeNull();
     // the chain's version 3 at 50/25/25, not the server's version 2 at 40/30/30
     expect(host.textContent).toContain(en.shared.family.versionN(3));
-    const legs = find(host, '[data-ui="plan-legs"]').textContent ?? '';
+    const legs = find(host, '[data-ui="plan-pane-holdings"]').textContent ?? '';
     for (const part of ['SPYx', '50%', 'NVDAx', '25%', 'TSLAx']) expect(legs).toContain(part);
     expect(legs).not.toContain('40%');
+    // the whole's yield is our server's sum for its own version: not shown for the chain's
+    expect(find(host, '[data-ui="product-yield"]').querySelector('[data-ui="pin"]')).toBeNull();
   });
 
   it('shows a line of the version that waits whose token this app does not list, by its mint', async () => {
