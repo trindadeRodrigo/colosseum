@@ -979,6 +979,7 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
       'MIX_ALL',
       'MIX_LIMITS',
       'MIX_LIMITS_RAISED',
+      'MIX_ODD_CENTS',
       'MIX_SET_ASIDE',
       'CREDIT_BUDGET_MIX',
       'CREDIT_NONE_MIX',
@@ -1183,9 +1184,23 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
         'NO_DOLLAR_YIELD',
         'YIELD_TOO_SMALL',
         'ROUNDING',
+        'MIX_ODD_CENTS',
         'MORE_BECAUSE_HELD',
       ],
     };
+    // The odd cents of the split: said only where the mix has no cash, on the cash line, and never
+    // more than a cent for each of the three classes that are rounded down.
+    for (const l of plan.lines)
+      for (const r of l.reasons.filter((x) => x.rule === 'MIX_ODD_CENTS')) {
+        say(
+          byId.get(l.assetId)?.cls === 'cash',
+          `${l.assetId}: "${r.text}" is not on the cash line`,
+        );
+        say(
+          mix.cashBps === 0 && cents(Number(r.params.usd)) > 0 && cents(Number(r.params.usd)) < 4,
+          `"${r.text}" said of a mix with ${mix.cashBps} bps in cash`,
+        );
+      }
     /** Whether something the person already holds moved the plan: said on a line, or of what was left out. */
     const holdingMoved = [...everyReason, ...plan.removed.flatMap((x) => x.reasons)].some((r) =>
       ['ALREADY_HELD', 'ALREADY_HELD_NONE', 'MORE_BECAUSE_HELD', 'OVERFLOW_HELD'].includes(r.rule),

@@ -70,6 +70,12 @@ export const REASON_TEMPLATES = {
     'On its own, this mix takes the limits for {alone|risk}. Because of {by|raisers}, the plan uses the limits {steps|steps}, for {risk|risk}: at lower limits it would hold less in stocks and crypto.',
     'Sozinha, esta composição usa os limites de {alone|risk}. Por causa de {by|raisers}, o plano usa os limites {steps|steps}, de {risk|risk}: com limites mais baixos ele teria menos em ações e cripto.',
   ),
+  // The cents a mix's shares leave over, each written in whole cents, where the mix has no cash.
+  MIX_ODD_CENTS: rule(
+    ['amount', 'mix'],
+    '{usd|usd} is left over once each share of your mix is written in whole cents, and stays in cash.',
+    '{usd|usd} sobram quando cada parcela da sua composição é escrita em centavos inteiros, e ficam em caixa.',
+  ),
   // Withdrawals come before the mix: what the next months owe is set aside first. Said on the lines
   // of each class of the mix that holds less for it, and on the lines that hold what is set aside.
   MIX_SET_ASIDE: rule(

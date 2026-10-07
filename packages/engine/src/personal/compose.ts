@@ -384,23 +384,21 @@ function build(
     w.amount,
     [...SLEEVES.map((sleeve) => sleeves.sized[sleeve]), sleeves.safeYieldBps, sleeves.setAsideBps],
   );
-  // A mix states each share exactly, and a share can sit exactly at a cap ("half in stocks", where
-  // one issuer may hold half). The odd cents of the split are then no part of a share: stocks and
-  // crypto, gold and dollar yield take theirs rounded down to the cent, and the odd cents stay in
-  // cash where the mix has cash, else in dollar yield where it has some. So a class sized at a cap
-  // never passes it by a cent of rounding, which the cap, itself rounded down, would call money kept
-  // out. A plan from the table keeps its split as it was.
+  // A mix states each share exactly, and a share can sit exactly at a cap: "half in stocks", where
+  // one issuer may hold half; 40% in dollar yield, where one token may hold 40%. A cap is whole cents
+  // rounded down, so a share rounded up would be a cent over it, and the plan would say a limit kept
+  // that cent out. So with a mix, stocks and crypto, gold and dollar yield take their share rounded
+  // down to the cent, and the odd cents of the split stay in cash, which has no cap: they are no part
+  // of a share. Where the mix has no cash, the cash line says what those cents are (the second review
+  // of Oct 6: sent on to dollar yield, they came out as "no token has room for it" at a token's cap).
+  // A plan from the table keeps its split as it was.
   const whole = (cents: number, sleeve: Sleeve) =>
-    Math.min(cents, shareOf(w.amount, sleeves.sized[sleeve]));
-  const oddToCash = sheet.mix !== undefined && sleeves.sized.cash > 0;
-  const oddToYield = sheet.mix !== undefined && !oddToCash && sleeves.sized.dollarYield > 0;
-  const rounded = oddToCash || oddToYield;
-  const growth = rounded ? whole(growthUp, 'growth') : growthUp;
-  const gold = rounded ? whole(goldUp, 'gold') : goldUp;
-  const yieldDown = oddToCash ? whole(yieldUp, 'dollarYield') : yieldUp;
-  const odd = growthUp - growth + (goldUp - gold) + (yieldUp - yieldDown);
-  const dollarYield = yieldDown + (oddToYield ? odd : 0);
-  const cash = cashDown + (oddToCash ? odd : 0);
+    sheet.mix ? Math.min(cents, shareOf(w.amount, sleeves.sized[sleeve])) : cents;
+  const growth = whole(growthUp, 'growth');
+  const gold = whole(goldUp, 'gold');
+  const dollarYield = whole(yieldUp, 'dollarYield');
+  const odd = growthUp - growth + (goldUp - gold) + (yieldUp - dollarYield);
+  const cash = cashDown + odd;
   const book = new Book(w);
   const themes = resolveThemes(w, book.removed);
 
@@ -465,6 +463,8 @@ function build(
   // ---- Exposure: what the person already holds, then the cap on one stock.
   const yieldUnit: Sized = { cents: dollarYield, reasons: [...sleeves.reasons.dollarYield] };
   const cashUnit: Sized = { cents: cash, reasons: [...sleeves.reasons.cash] };
+  if (odd > 0 && sheet.mix?.cashBps === 0)
+    cashUnit.reasons.push(reason('MIX_ODD_CENTS', { usd: toUsd(odd) }, lang));
   const isCapped = (unit: Unit) => tokensOf(w, unit.name, 'growth').some(capped);
   // What neither leaves a unit to take is held in dollar yield, with the holding or the cap that
   // kept it out.

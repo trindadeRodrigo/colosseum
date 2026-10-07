@@ -858,6 +858,43 @@ describe('a cent of rounding is not a limit', () => {
     expect(plan.flags).not.toContain('unplaced');
   });
 
+  it('where the mix has no cash, the odd cents stay in cash and say what they are: no limit kept them out', () => {
+    // Robinhood Chain, 60% in stocks and 40% in dollar yield: SGOV may hold 40% of a plan, so the
+    // dollar yield sits at its cap. The odd cents of the split were sent on to dollar yield, and at 240
+    // of these 300 amounts the plan said "$0.01 stays in cash: no token you can hold has room for it
+    // at this size", with the flag `unplaced` (the second review of Oct 6).
+    const at = (amountUsd: number, language: 'en' | 'pt' = 'en') =>
+      run(
+        sheet({
+          chains: ['robinhood'],
+          amountUsd,
+          language,
+          rules: noGlide,
+          mix: mix({ growthBps: 6000, dollarYieldBps: 4000 }),
+        }),
+      );
+    for (let i = 0; i < 300; i += 1) {
+      const plan = at((100_000 + i * 37) / 100);
+      expect(plan.flags, String(i)).not.toContain('unplaced');
+      for (const rule of ['UNPLACED', 'YIELD_TOO_SMALL', 'OVERFLOW_ISSUER', 'OVERFLOW_ISSUER_PLAN'])
+        expect(rules(plan), `${i} ${rule}`).not.toContain(rule);
+    }
+    const odd = at(1000.37);
+    expect(odd.lines.map((l) => [l.assetId, l.amountUsd])).toEqual([
+      ['robinhood:spy', 600.22],
+      ['robinhood:sgov', 400.14],
+      ['robinhood:usdg', 0.01],
+    ]);
+    expect(said(odd, 'robinhood:usdg').map((r) => r.text)).toEqual([
+      '$0.01 is left over once each share of your mix is written in whole cents, and stays in cash.',
+    ]);
+    expect(said(at(1000.37, 'pt'), 'robinhood:usdg').map((r) => r.text)).toEqual([
+      'US$ 0,01 sobram quando cada parcela da sua composição é escrita em centavos inteiros, e ficam em caixa.',
+    ]);
+    // Shares that come to whole cents leave nothing over, and the plan has no cash line.
+    expect(at(1000).lines.map((l) => l.assetId)).toEqual(['robinhood:spy', 'robinhood:sgov']);
+  });
+
   it('whatever the cents of the amount, stocks sized at their issuer’s cap spill nothing', () => {
     // 50% with one issuer at low risk, 70% at medium: the share is the cap. Amounts no ceiling binds
     // at, so the cap by risk is the one limit in play.
