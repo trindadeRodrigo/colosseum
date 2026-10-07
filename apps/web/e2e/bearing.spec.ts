@@ -254,6 +254,13 @@ test.describe('Bearing on each chain', () => {
     await check(page, 'stocks on Robinhood Chain');
   });
 
+  /**
+   * A figure of the page's own chain: outside the chains side by side, whose rows name their own.
+   * Not a counter's: on Robinhood Chain the counters are counts and what is not collected.
+   */
+  const ownFigure = (page: Page) =>
+    page.locator('main [data-ui="bearing-fig"]:not([data-ui="bearing-chains"] *)').first();
+
   test('the toggle moves the page to Solana and back, in the address, and the menu keeps it', async ({
     page,
   }) => {
@@ -267,18 +274,14 @@ test.describe('Bearing on each chain', () => {
       .getByRole('button', { name: 'Robinhood Chain' })
       .click();
     await expect(page).toHaveURL(/\/analytics\/stocks\?chain=robinhood$/);
-    await expect(
-      page.locator('main [data-ui="bearing-kpi"] [data-ui="bearing-fig"]').first(),
-    ).toHaveAttribute('data-chain', 'robinhood');
+    await expect(ownFigure(page)).toHaveAttribute('data-chain', 'robinhood');
     await expect(page.locator('#bearing-nav a', { hasText: 'Lending' })).toHaveAttribute(
       'href',
       '/analytics/lending?chain=robinhood',
     );
     await page.locator('[data-ui="bearing-chain"]').getByRole('button', { name: 'Solana' }).click();
     await expect(page).toHaveURL(/\/analytics\/stocks\?chain=solana$/);
-    await expect(
-      page.locator('main [data-ui="bearing-kpi"] [data-ui="bearing-fig"]').first(),
-    ).toHaveAttribute('data-chain', 'solana');
+    await expect(ownFigure(page)).toHaveAttribute('data-chain', 'solana');
   });
 
   test('a page Robinhood Chain has nothing collected for says so, axe clean', async ({ page }) => {
