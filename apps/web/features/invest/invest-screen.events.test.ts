@@ -308,7 +308,9 @@ describe('words that change nothing are answered in context (Thom, Oct 7)', () =
       expect(last, noise).toContain(
         en.talk.say.held('Earn income, $80,000, $300 a month, 5 years, and Low risk'),
       );
-      expect(last, noise).toContain(en.talk.say.ready);
+      // the question was already put: it is not said again in the same words
+      expect(last, noise).not.toContain(en.talk.say.ready);
+      expect(last, noise).toContain(en.talk.say.heldReady);
       expect(last, noise).not.toContain(en.talk.say.notUnderstood);
       // nothing typed is echoed into a sentence of ours
       expect(last, noise).not.toContain(noise);
@@ -318,6 +320,31 @@ describe('words that change nothing are answered in context (Thom, Oct 7)', () =
     expect(server.to('/goals')).toEqual([]);
     expect(server.to(PROPOSE_PATH)).toEqual([]);
     expect(fact(host, 'amount').textContent).toContain('$80,000');
+  });
+
+  it('says what it ignored: a single stock by our name for it, and that the risk is already the highest (Thom, Oct 7)', async () => {
+    const server = api();
+    const host = await screen();
+    // example 1 is "protect, low risk": the risk is tapped up to high first
+    await click(example(host, 1));
+    await settle();
+    await click(find(fact(host, 'risk'), 'button'));
+    await settle();
+    await answer(host, en.goal.options.risk.high);
+    const typed = 'more risk. what else could I use to do more stuff. I like nvidia';
+    await say(host, typed);
+    const last = turns(host).at(-1)?.[1] ?? '';
+    expect(last).toContain(en.talk.say.cantPick.stock('Nvidia'));
+    expect(last).toContain(en.talk.say.riskTop);
+    // not "That's all I need", and not the whole goal over again
+    expect(last).not.toContain(en.talk.say.ready);
+    expect(last).not.toContain('I still have');
+    expect(last).not.toContain('stuff');
+    // the plan can still be asked for, and nothing was built or read again
+    expect(replies(host)).toEqual([en.talk.replies.build]);
+    expect(server.to('/goals')).toEqual([]);
+    expect(server.to(PROPOSE_PATH)).toEqual([]);
+    expect(fact(host, 'risk').textContent).toContain(en.goal.options.risk.high);
   });
 
   it('with the plan built, says the plan stands and how to change it, and builds nothing again', async () => {
@@ -442,7 +469,9 @@ describe('the plan, built beside the conversation', () => {
     expect(pane(host).getAttribute('data-state')).toBe('plan');
     const plan = find(pane(host), '[data-ui="plan-pane"]');
     // the answer first, then the holdings, the exit plan, and one button that names the amount
-    expect(find(plan, '[data-ui="plan-answer"]').textContent).toBe(en.plan.answer.none);
+    expect(find(plan, '[data-ui="plan-answer"]').textContent).toBe(
+      en.plan.answer.inNoFall('60%', 'ONE'),
+    );
     expect(plan.querySelector('[data-ui="plan-legs"]')).not.toBeNull();
     expect(plan.querySelector('[data-ui="exit-plan-line"]')?.textContent).toContain(
       en.plan.exitUnmeasured,
@@ -619,6 +648,67 @@ describe('what is handed to the screen, and what it keeps', () => {
       server.to(PROPOSE_PATH).map((c) => (c.body as { sheet: BasketSheet }).sheet),
     ).toMatchObject([{ goal: 'income', amountUsd: 80000, incomeTargetUsdMonthly: 147 }]);
     expect(fact(host, 'income').textContent).toContain('$147 a month');
+  });
+
+  it('offers the build reply once, says the plan is ready once, and points at the pane (Thom, Oct 7)', async () => {
+    const server = api({ person });
+    const host = await screen();
+    await click(example(host, 1));
+    await settle();
+    await settle();
+    await answer(host, en.talk.replies.build);
+    await settle();
+    const said = () => turns(host).map((turn) => turn[1] ?? '');
+    const count = (sentence: string) => said().filter((text) => text.includes(sentence)).length;
+    // the app's line points at the pane's next step
+    expect(en.talk.say.built).toBe(
+      'The plan is on the right. Review it and invest, or change anything.',
+    );
+    expect(said().at(-1)).toContain(en.talk.say.built);
+    expect(said().at(-1)).toContain(en.talk.say.builtBelow);
+    // with a plan built for the sheet, the build reply is gone, also after words that change nothing
+    expect(replies(host)).toEqual([]);
+    await say(host, 'I like nvidia');
+    expect(replies(host)).toEqual([]);
+    expect(said().at(-1)).not.toContain(en.talk.say.ready);
+    await say(host, 'ok');
+    expect(replies(host)).toEqual([]);
+    expect(server.to(PROPOSE_PATH)).toHaveLength(1);
+    // signing in builds the plan again as the person's own: it is not announced a second time
+    await act(async () => portStore.set(signedInPort(EMBEDDED, { userId: USER })));
+    await settle();
+    await settle();
+    expect(server.to(PERSONALIZE_PATH)).toHaveLength(1);
+    expect(count(en.talk.say.built)).toBe(1);
+    expect(count(en.talk.replies.build)).toBe(1);
+    expect(replies(host)).toEqual([]);
+    // no app turn says what the one before it said
+    const app = turns(host).filter((turn) => turn[0] === 'app');
+    for (let i = 1; i < app.length; i++) {
+      const before = turns(host).indexOf(app[i - 1] as (typeof app)[number]);
+      if (turns(host)[before + 1] === app[i]) expect(app[i]?.[1]).not.toBe(app[i - 1]?.[1]);
+    }
+  });
+
+  it('comes back from a sign-in with the plan built again, and never asks to build it a second time', async () => {
+    const server = api();
+    const host = await screen();
+    await click(example(host, 1));
+    await settle();
+    await settle();
+    await answer(host, en.talk.replies.build);
+    await settle();
+    await unmountAll();
+    const again = await screen();
+    await settle();
+    await settle();
+    // the same sheet, built again without a word: the person already asked for it
+    expect(server.to(PROPOSE_PATH)).toHaveLength(2);
+    expect(pane(again).getAttribute('data-state')).toBe('plan');
+    expect(replies(again)).toEqual([]);
+    const texts = turns(again).map((turn) => turn[1] ?? '');
+    expect(texts.filter((text) => text.includes(en.talk.say.built))).toHaveLength(1);
+    expect(texts.filter((text) => text.includes(en.talk.replies.build))).toHaveLength(1);
   });
 
   it('keeps the conversation in the tab, and reads back only its own keys and the person’s words', async () => {

@@ -6,7 +6,7 @@ import { dictionary } from '../../i18n';
 import { inLanguage } from '../account/test/screen';
 import { PlanView, type PlanViewHolding } from './PlanView';
 
-// PlanView with more holdings than a bar shows: the table, and its yield column.
+// PlanView with more holdings than the wood ramp has colours, and a yield on some of them.
 
 const en = dictionary('en');
 const OBS = {
@@ -39,8 +39,8 @@ const view = (holdings: PlanViewHolding[]) =>
   );
 afterEach(unmountAll);
 
-describe('the table of a plan with more than four holdings', () => {
-  it('has a yield column when some holding has a yield: pinned where there is one, empty where there is none', async () => {
+describe('a plan with more than four holdings', () => {
+  it('shows the yield on the row of a holding that has one, pinned, and nothing where there is none', async () => {
     const host = await view([
       row('usdy', { yield: { lowPct: 4.2, highPct: 4.2, obs: OBS } }),
       row('syrupusdc', { yield: { lowPct: 5, highPct: 6.5, obs: OBS } }),
@@ -48,27 +48,38 @@ describe('the table of a plan with more than four holdings', () => {
       row('nvdax'),
       row('gldx'),
     ]);
-    const table = find(host, 'table');
-    const heads = [...table.querySelectorAll('thead th')].map((th) => th.textContent);
-    expect(heads).toEqual([
-      en.plan.columns.asset,
-      en.plan.columns.share,
-      en.plan.columns.yield,
-      en.plan.columns.why,
-    ]);
-    const cells = [...table.querySelectorAll('tbody tr')].map((tr) => tr.children[2] as Element);
+    const rows = [...host.querySelectorAll('[data-ui="plan-rows"] [data-row]')];
+    expect(rows).toHaveLength(5);
+    const yields = rows.map((r) => r.querySelector('[data-ui="row-yield"]'));
     // one figure for equal ends, a range otherwise, each with its pin
-    expect(cells[0]?.textContent).toContain('4.20%');
-    expect(cells[1]?.textContent).toContain('5.00% to 6.50%');
-    expect(cells[0]?.querySelector('[data-ui="pin"]')).not.toBeNull();
-    expect(cells[1]?.querySelector('[data-ui="pin"]')).not.toBeNull();
-    // a holding with no yield: an empty cell, never a zero or a dash
-    for (const cell of cells.slice(2)) expect(cell.textContent).toBe('');
+    expect(yields[0]?.textContent).toContain('4.20%');
+    expect(yields[1]?.textContent).toContain('5.00% to 6.50%');
+    expect(yields[0]?.querySelector('[data-ui="pin"]')).not.toBeNull();
+    expect(yields[1]?.querySelector('[data-ui="pin"]')).not.toBeNull();
+    // a holding with no yield: no line for one, never a zero or a dash
+    for (const none of yields.slice(2)) expect(none).toBeNull();
+    for (const r of rows.slice(2)) expect(r.textContent).not.toMatch(/0\.00%|—/);
+    // a fifth holding takes the first colour of the ramp again
+    const parts = [...host.querySelectorAll('[data-ui="plan-bar"] button')];
+    expect(parts.map((p) => p.className.match(/bg-leg-\d/)?.[0])).toEqual([
+      'bg-leg-1',
+      'bg-leg-2',
+      'bg-leg-3',
+      'bg-leg-4',
+      'bg-leg-1',
+    ]);
   });
 
-  it('has no yield column when no holding has one, as a goal’s plan has none', async () => {
+  it('has no yield on any row when no holding has one, as a goal’s plan has none', async () => {
     const host = await view(['a', 'b', 'c', 'd', 'e'].map((a) => row(a)));
-    const heads = [...find(host, 'table').querySelectorAll('thead th')].map((th) => th.textContent);
-    expect(heads).not.toContain(en.plan.columns.yield);
+    expect(host.querySelector('[data-ui="row-yield"]')).toBeNull();
+    expect(host.querySelector('table')).toBeNull();
+  });
+
+  it('draws an empty meter, with the caveat once, for a way out with no cost', async () => {
+    const host = await view([row('spyx')]);
+    expect(find(host, '[data-ui="exit-tier"] [data-ui="meter"]').getAttribute('data-empty')).toBe(
+      'true',
+    );
   });
 });

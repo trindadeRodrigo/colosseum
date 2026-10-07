@@ -28,6 +28,7 @@ import {
   FACTS,
   type Fact,
   isGoAhead,
+  PICKS,
   QUICK,
   type Reply,
   readerConversation,
@@ -152,13 +153,24 @@ export function InvestScreen() {
     [apiFetch, lang, chain, t],
   );
 
+  // The app never says the same thing twice in a row: a turn that repeats the one before it, word
+  // for word, is not added.
   const say = (turn: Omit<Extract<Turn, { who: 'app' }>, 'id' | 'who'>) =>
-    setTurns((all) => [...all, { ...turn, id: nextId.current++, who: 'app' }]);
+    setTurns((all) => {
+      const before = all[all.length - 1];
+      if (
+        before?.who === 'app' &&
+        JSON.stringify([before.say, before.fields, before.ask, before.retry]) ===
+          JSON.stringify([turn.say, turn.fields, turn.ask, turn.retry])
+      )
+        return all;
+      return [...all, { ...turn, id: nextId.current++, who: 'app' }];
+    });
   const said = (words: string) =>
     setTurns((all) => [...all, { id: nextId.current++, who: 'person', text: words }]);
 
   /** Builds the plan of a valid sheet: the person's own when signed in, a visitor's otherwise. */
-  async function buildFrom(sheetToBuild: BasketSheet, own: boolean) {
+  async function buildFrom(sheetToBuild: BasketSheet, own: boolean, quiet = false) {
     wanted.current += 1;
     const mine = wanted.current;
     setBuild({ kind: 'building' });
@@ -175,7 +187,9 @@ export function InvestScreen() {
         });
       setPlan({ id: outcome.id, proposal: outcome.proposal, rollUp: outcome.rollUp, own });
       setBuild({ kind: 'idle' });
-      say({ say: [{ key: 'built' }], fields: null, ask: null, retry: false });
+      // A plan built again with nothing changed by the person (theirs now, after a sign-in) is not
+      // announced a second time.
+      if (!quiet) say({ say: [{ key: 'built' }], fields: null, ask: null, retry: false });
       // The person asked to invest before they were signed in: the card is on the pane now.
       if (own && wantsInvest.current) {
         wantsInvest.current = false;
@@ -228,9 +242,10 @@ export function InvestScreen() {
     if (changed) wanted.current += 1;
     if (!reply.valid) setBuild({ kind: 'idle' });
     const rebuild = reply.valid !== null && sure && changed;
+    // "Shall I build it?" is not asked again once a plan was asked for, nor by a turn that changed
+    // nothing: the question was already put, and is not said over in the same words.
     say({
-      // once a plan was asked for, "shall I build it?" is not asked again
-      say: reply.say.filter((s) => !(sure && s.key === 'ready')),
+      say: reply.say.filter((s) => !((sure || !changed) && s.key === 'ready')),
       fields: reply.sheet.fields,
       ask: reply.ask,
       retry: false,
@@ -311,9 +326,24 @@ export function InvestScreen() {
       nextId.current = kept.turns.length;
       setTurns(kept.turns);
       setSheet(kept.sheet);
+      // A plan was asked for before the page was left (a sign-in that came back): it is built again
+      // from the same sheet, and neither the question nor its answer is offered a second time.
+      if (
+        kept.turns.some((turn) => turn.who === 'app' && turn.say.some((x) => x.key === 'built'))
+      ) {
+        setConfirmed(true);
+        again.current = true;
+      }
     }
     setRestored(true);
   }, []);
+  const again = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once, when the kept sheet is valid for the chain
+  useEffect(() => {
+    if (!again.current || !valid || plan || build.kind !== 'idle') return;
+    again.current = false;
+    void buildFrom(valid, signedIn, true);
+  }, [valid]);
   useEffect(() => {
     if (!restored) return;
     try {
@@ -351,7 +381,8 @@ export function InvestScreen() {
   const ready = account.status === 'ready' && who !== '';
   // biome-ignore lint/correctness/useExhaustiveDependencies: when the person is ready and the plan shown is a visitor's
   useEffect(() => {
-    if (ready && visitorPlan && valid && build.kind !== 'building') void buildFrom(valid, true);
+    if (ready && visitorPlan && valid && build.kind !== 'building')
+      void buildFrom(valid, true, true);
   }, [ready, visitorPlan, valid]);
 
   // A plan lives on one chain (gate ONE-CHAIN). When the person moves to another, the plan on the
@@ -378,7 +409,7 @@ export function InvestScreen() {
     // The plan is built again as theirs once they are in, and the invest card is on the pane then.
     wantsInvest.current = true;
     say({ say: [{ key: 'signIn' }], fields: null, ask: null, retry: false });
-    if (signedIn && valid && !plan.own) void buildFrom(valid, true);
+    if (signedIn && valid && !plan.own) void buildFrom(valid, true, true);
   }
 
   // What the invest card tells the conversation (features/order/Invest.tsx): one line as each step
@@ -452,6 +483,12 @@ export function InvestScreen() {
             : s.why === 'too_long'
               ? t.goal.readFailure.tooLong
               : t.goal.readFailure[s.why];
+      case 'cantPick':
+        return w.say.cantPick[PICKS[s.pick].kind](PICKS[s.pick].name);
+      case 'riskTop':
+        return w.say.riskTop;
+      case 'riskBottom':
+        return w.say.riskBottom;
       case 'ready':
         return w.say.ready;
       case 'building':
@@ -532,37 +569,52 @@ export function InvestScreen() {
                 className="motion-safe:animate-seat mr-8 flex flex-col gap-1.5"
               >
                 <span className="text-caption text-muted-foreground">{w.me}</span>
-                {turn.say.map((s) => (
-                  <p key={`${s.key}:${'fact' in s ? s.fact : ''}`} className="text-body">
-                    {line(s, turn.fields)}
-                    {/* where the vault is, once it is open; where a buy that stopped is finished */}
-                    {s.key === 'done' && (
-                      <>
-                        {' '}
-                        <Link href="/monitor" className={buttonClass({ variant: 'link' })}>
-                          {t.order.outcome.seePortfolio}
-                        </Link>
-                      </>
-                    )}
-                    {s.key === 'stopped' && (
-                      <>
-                        {' '}
-                        <Link
-                          href={`/orders/${encodeURIComponent(s.orderId)}`}
-                          className={buttonClass({ variant: 'link' })}
-                        >
-                          {w.say.finish}
-                        </Link>
-                      </>
-                    )}
-                  </p>
-                ))}
+                {turn.say
+                  // what is held is not said over again under a line that says what was not taken
+                  .filter(
+                    (s) =>
+                      s.key !== 'held' ||
+                      !turn.say.some((x) => ['cantPick', 'riskTop', 'riskBottom'].includes(x.key)),
+                  )
+                  .map((s) => (
+                    <p key={`${s.key}:${'fact' in s ? s.fact : ''}`} className="text-body">
+                      {s.key === 'built' ? (
+                        // beside the conversation on a wide screen, at its foot on a phone
+                        <>
+                          <span className="max-lg:hidden">{w.say.built}</span>
+                          <span className="lg:hidden">{w.say.builtBelow}</span>
+                        </>
+                      ) : (
+                        line(s, turn.fields)
+                      )}
+                      {/* where the vault is, once it is open; where a buy that stopped is finished */}
+                      {s.key === 'done' && (
+                        <>
+                          {' '}
+                          <Link href="/monitor" className={buttonClass({ variant: 'link' })}>
+                            {t.order.outcome.seePortfolio}
+                          </Link>
+                        </>
+                      )}
+                      {s.key === 'stopped' && (
+                        <>
+                          {' '}
+                          <Link
+                            href={`/orders/${encodeURIComponent(s.orderId)}`}
+                            className={buttonClass({ variant: 'link' })}
+                          >
+                            {w.say.finish}
+                          </Link>
+                        </>
+                      )}
+                    </p>
+                  ))}
                 {/* Words that changed nothing: what can be done next is said, in context. */}
                 {turn.say.some((x) => x.key === 'held') &&
-                  !turn.say.some((x) => x.key === 'ready') &&
+                  !turn.say.some((x) => x.key === 'ready' || x.key === 'cantPick') &&
                   !turn.ask && (
                     <p className="text-body">
-                      {plan ? w.say.heldBuilt : valid ? w.say.ready : w.say.heldOpen}
+                      {plan ? w.say.heldBuilt : valid ? w.say.heldReady : w.say.heldOpen}
                     </p>
                   )}
                 {turn.ask && <p className="text-body font-medium">{w.ask[turn.ask]}</p>}
@@ -870,6 +922,9 @@ const SAY_KEYS = new Set([
   'ready',
   'built',
   'signIn',
+  'cantPick',
+  'riskTop',
+  'riskBottom',
 ]);
 const isFact = (v: unknown): v is Fact => FACTS.includes(v as Fact);
 const FIELD_KEYS = [
@@ -915,6 +970,10 @@ export function restoreDraft(raw: string | null): { turns: Turn[]; sheet: Sheet 
       const said = (t.say as unknown[]).flatMap((s) => {
         const k = (typeof s === 'object' && s !== null ? s : {}) as Record<string, unknown>;
         if (typeof k.key !== 'string' || !SAY_KEYS.has(k.key)) return [];
+        if (k.key === 'cantPick')
+          return typeof k.pick === 'string' && Object.hasOwn(PICKS, k.pick)
+            ? [{ key: k.key, pick: k.pick } as Say]
+            : [];
         if (k.key === 'set' || k.key === 'unfit')
           return isFact(k.fact) ? [{ key: k.key, fact: k.fact } as Say] : [];
         return [{ key: k.key } as Say];

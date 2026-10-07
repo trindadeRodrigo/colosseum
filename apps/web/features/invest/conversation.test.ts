@@ -7,6 +7,8 @@ import {
   fitAnswer,
   isGoAhead,
   openFacts,
+  PICKS,
+  pickOf,
   QUICK,
   readerConversation,
   type Sheet,
@@ -176,6 +178,79 @@ describe('words that change nothing', () => {
     expect(api).not.toHaveBeenCalled();
     const first = await talk().turn({ kind: 'text', text: 'hello there' }, null);
     expect(first.say.map((s) => s.key)).toEqual(['notUnderstood']);
+  });
+
+  /** Every fact known, at the risk named. */
+  const at = async (risk: 'low' | 'medium' | 'high') =>
+    (
+      await talk().turn(
+        { kind: 'answer', fact: 'risk', value: risk },
+        (
+          await talk().turn({ kind: 'text', text: en.goal.examples.list[0] as string }, null)
+        ).sheet,
+      )
+    ).sheet;
+
+  it('says what it cannot take: a single stock is named back by our own name, and more risk at the highest says so (Thom, Oct 7)', async () => {
+    const high = await at('high');
+    const api = reader();
+    const text = 'more risk. what else could I use to do more stuff. I like nvidia';
+    const reply = await talk(api).turn({ kind: 'text', text }, high);
+    expect(reply.say).toEqual([
+      { key: 'cantPick', pick: 'nvidia' },
+      { key: 'riskTop' },
+      { key: 'held' },
+      { key: 'ready' },
+    ]);
+    // nothing was taken, and nothing typed is carried in the reply
+    expect(reply.sheet).toEqual(high);
+    expect(JSON.stringify(reply.say)).not.toMatch(/stuff|I like/);
+    expect(api).not.toHaveBeenCalled();
+    // the sentences, from the dictionary
+    expect(en.talk.say.cantPick[PICKS.nvidia.kind](PICKS.nvidia.name)).toBe(
+      'I can’t pick single stocks like Nvidia yet. I can change the risk, the amount, the time or what it’s for.',
+    );
+    expect(en.talk.say.riskTop).toBe('The risk is already high, the highest I can do.');
+  });
+
+  it('takes "more risk" and "less risk" as a step from the risk that is held, and stops at the ends', async () => {
+    const up = await talk().turn({ kind: 'text', text: 'more risk please' }, await at('medium'));
+    expect(up.sheet.fields.risk).toBe('high');
+    expect(up.say.map((s) => s.key)).toEqual(['understood', 'ready']);
+    const down = await talk().turn({ kind: 'text', text: 'something safer' }, await at('medium'));
+    expect(down.sheet.fields.risk).toBe('low');
+    const low = await at('low');
+    const floor = await talk().turn({ kind: 'text', text: 'menos risco' }, low);
+    expect(floor.say.map((s) => s.key)).toEqual(['riskBottom', 'held', 'ready']);
+    expect(floor.sheet).toEqual(low);
+    // a risk said outright is taken as said
+    const said = await talk().turn({ kind: 'text', text: 'more risk: high risk' }, low);
+    expect(said.sheet.fields.risk).toBe('high');
+  });
+
+  it('takes what it can from a message and says what it could not', async () => {
+    const reply = await talk().turn(
+      { kind: 'text', text: 'make it 7 years and buy Tesla' },
+      await at('medium'),
+    );
+    expect(reply.sheet.fields.horizon).toBe('84');
+    expect(reply.say).toEqual([
+      { key: 'understood' },
+      { key: 'cantPick', pick: 'tesla' },
+      { key: 'ready' },
+    ]);
+    // on a first sentence too
+    const first = await talk().turn({ kind: 'text', text: 'Forty thousand in bitcoin' }, null);
+    expect(first.say).toContainEqual({ key: 'cantPick', pick: 'bitcoin' });
+    expect(pickOf('a plan for my daughter')).toBeNull();
+    expect(pickOf('something meaningful')).toBeNull();
+  });
+
+  it('holds, and says so, when the words say only what is already held', async () => {
+    const high = await at('high');
+    const reply = await talk().turn({ kind: 'text', text: 'high risk' }, high);
+    expect(reply.say.map((s) => s.key)).toEqual(['held', 'ready']);
+    expect(reply.sheet).toEqual(high);
   });
 
   it('knows the few words that are a go-ahead, alone, in both languages', () => {

@@ -675,12 +675,25 @@ export const en = {
       incomeSkipped: 'No set amount a month, then.',
       ready: 'That’s all I need. Shall I build your plan? Nothing is bought when I do.',
       /** Words that changed nothing while a goal is held: what is held, then what can be done. */
-      held: (facts: string) => `I still have: ${facts}.`,
+      held: (facts: string) => `I found nothing to change in that. I still have: ${facts}.`,
       heldBuilt:
         'Your plan is built from that. Tap a limit to change it, or tell me what to change.',
       heldOpen: 'I still need one more thing.',
       building: 'Building your plan from these limits…',
-      built: 'The plan is ready. Tap any limit to change it and I build it again.',
+      built: 'The plan is on the right. Review it and invest, or change anything.',
+      /** Nothing changed and every fact is known: the plan is offered, in other words than before. */
+      heldReady: 'Nothing changed. Say yes and I build the plan from this.',
+      /** A single name to buy was asked for: said by our own name for it, never the typed words. */
+      cantPick: {
+        stock: (name: string) =>
+          `I can’t pick single stocks like ${name} yet. I can change the risk, the amount, the time or what it’s for.`,
+        coin: (name: string) =>
+          `I can’t pick single coins like ${name} yet. I can change the risk, the amount, the time or what it’s for.`,
+      },
+      riskTop: 'The risk is already high, the highest I can do.',
+      riskBottom: 'The risk is already low, the lowest I can do.',
+      /** The same, on a phone, where the plan is at the foot of the conversation. */
+      builtBelow: 'The plan is ready below. Open it to review and invest, or change anything.',
       unfit: {
         goal: 'I can do income, growth or protecting it. Which one?',
         amount: 'I need an amount in dollars, from $10 to $1,000,000.',
@@ -876,6 +889,9 @@ export const en = {
       after: (months: number) => `After ${months} months`,
       /** An income plan: what its yield pays out over the term, in all. */
       paid: (months: number) => `Paid out over ${months} months, in all`,
+      /** The drawing of an income plan: what is paid out, added up. */
+      paidLabel: (months: number, low: string, high: string) =>
+        `What the dollar yield pays out over ${months} months, added up: from ${low} to ${high} a year, projected.`,
       projected: 'projected',
       low: 'low end',
       high: 'high end',
@@ -888,6 +904,19 @@ export const en = {
     },
     exitPlan: 'Exit plan',
     costPrefix: 'cost',
+    /** The fold under a holding's row: every reason behind its share. */
+    whyShare: 'Why this share',
+    /** Under the meter of what leaving costs. */
+    exitScale: 'A full bar is 1%, the cost at which selling is measured.',
+    income: {
+      /** Beside the meter of what an income plan pays: what was asked. */
+      asked: (amount: string) => `asked: ${amount} a month`,
+    },
+    fall: {
+      /** Under the bar of a bad fall: what the whole bar stands for. */
+      put: (amount: string, months: string) =>
+        `The whole bar is the ${amount} you put in, for ${months}.`,
+    },
     columns: {
       asset: 'Asset',
       share: 'Share',
@@ -942,6 +971,13 @@ export const en = {
     investing: 'Opening the steps…',
     /** The answer of a plan with no income asked of it: the range it projects, with its pin. */
     answer: {
+      /** A plan to grow or protect: what most of it is in, and what a bad fall could cost. */
+      inFall: (share: string, what: string, loss: string) =>
+        `${share} in ${what} · in a bad fall about −${loss}`,
+      inNoFall: (share: string, what: string) =>
+        `${share} in ${what} · no loss counted in a bad fall`,
+      /** After the yield, where it is a small figure under the answer. */
+      yieldAfter: 'a year from its dollar yield, projected. Not a promise.',
       range: (low: string, high: string) => `${low} to ${high} a year`,
       rangeAfter: 'projected. A range, not a promise.',
       none: 'No projection yet: there is no yield reading for this plan.',
