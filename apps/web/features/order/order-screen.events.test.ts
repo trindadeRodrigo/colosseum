@@ -30,6 +30,7 @@ import {
   ORDER_ID,
   orderOn,
   PLAN_ID,
+  planOn,
   recordOf,
   USER,
 } from './test/fixtures';
@@ -731,6 +732,70 @@ describe('what a run is handed after a reload', () => {
       '/monitor',
     ]);
     expect(host.querySelector('[data-variant="primary"]')).toBeNull();
+  });
+});
+
+describe('a stopped order opened in a browser that did not make it', () => {
+  it('finishes from there too, on the plan the server keeps for the person', async () => {
+    const plan = planOn();
+    const calls: string[] = [];
+    portStore.setApi(async (path, init) => {
+      calls.push(`${init?.method ?? 'GET'} ${path}`);
+      if (path === '/v1/me') return json(person('solana'));
+      if (path === `/v1/orders/${ORDER_ID}`)
+        return json({ ...stopped(orderOn()), status: 'failed' });
+      if (path === '/v1/me/plans')
+        return json({
+          plans: [
+            {
+              id: PLAN_ID,
+              createdAt: '2026-10-05T11:00:00.000Z',
+              fromLink: false,
+              chain: 'solana',
+              sheet: plan.proposal.sheet,
+              card: plan.proposal.card,
+              verdict: null,
+              bought: true,
+              orders: [
+                {
+                  id: ORDER_ID,
+                  createdAt: '2026-10-05T12:00:00.000Z',
+                  amountUsd: 10,
+                  status: 'failed',
+                  deposited: true,
+                },
+              ],
+              vault: { chain: 'solana', basketId: basketIdOfPlan(PLAN_ID) },
+            },
+          ],
+        });
+      if (path === `/v1/baskets/${PLAN_ID}`)
+        return json({ id: PLAN_ID, proposal: plan.proposal, fromLink: false });
+      if (path === `/v1/orders/${ORDER_ID}/continue`) return json(continuation());
+      return json({ error: 'not found' }, 404);
+    });
+    // nothing of this order is kept in this browser
+    router.push.mockClear();
+    const host = await screen();
+    await settle();
+    expect(host.textContent).not.toContain(en.order.elsewhere);
+    expect(find(host, '[data-ui="deposit-safe"]').textContent).toBe(
+      en.order.outcome.stopped('$10'),
+    );
+    // nothing of the first order is offered for signing here: only the way to finish it
+    expect(label(primary(host))).toBe(en.order.outcome.finish);
+    expect(host.querySelectorAll('[data-variant="primary"]')).toHaveLength(1);
+    await click(primary(host));
+    await settle();
+    expect(calls).toContain(`POST /v1/orders/${ORDER_ID}/continue`);
+    expect(router.push).toHaveBeenCalledWith(`/orders/${NEXT_ID}`);
+    // the new order is this browser's from here on, with the server's plan and what was left to buy
+    expect(recallOrder(NEXT_ID, USER)).toMatchObject({
+      proposalId: PLAN_ID,
+      amountUsd: 6,
+      lines: plan.proposal.lines,
+      continues: { orderId: ORDER_ID, left: [{ buy: SPY, amountInRaw: '6000000' }] },
+    });
   });
 });
 

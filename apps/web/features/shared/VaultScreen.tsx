@@ -9,12 +9,14 @@ import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/C
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
 import { PAGE_TITLE } from '../../components/ui/heading';
+import { Icon } from '../../components/ui/Icon';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { pinSourceOfPrice } from '../../components/ui/price-source';
 import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { assetTicker } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
+import { explorerAddressUrlFor } from '../order/readiness';
 import { dollars, drift, share, tokens } from '../portfolio/figures';
 import { vaultValueSource } from '../portfolio/portfolio';
 import { useApiFetch } from '../wallet/WalletProvider';
@@ -81,6 +83,9 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
         <Link href="/shelf" className={buttonClass({ variant: 'secondary' })}>
           {t.shared.family.backToShelf}
         </Link>
+        <Link href="/monitor" className={buttonClass({ variant: 'link' })}>
+          {v.back}
+        </Link>
       </section>
     );
 
@@ -88,6 +93,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
   const { vault } = read;
   const priceOf = (asset: string): Price | undefined => read.prices.find((p) => p.asset === asset);
   const follows = vault.recipeOnchainId;
+  const explorer = explorerAddressUrlFor(read.chain, vault.address, read.provenance === 'mock');
   return (
     <div data-ui="vault-screen" className="flex flex-col gap-8">
       <header className="flex flex-col items-start gap-3">
@@ -97,6 +103,24 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
         </h1>
         <p className="max-w-(--tf-measure-body) text-body-lg">{v.lead(read.name)}</p>
         <p className="break-all font-mono text-source text-muted-foreground">{vault.address}</p>
+        {/* the way back, and the vault on its chain's own explorer */}
+        <p className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <Link href="/monitor" className={buttonClass({ variant: 'link' })}>
+            {v.back}
+          </Link>
+          {explorer && (
+            <a
+              data-ui="vault-explorer"
+              href={explorer}
+              target="_blank"
+              rel="noopener"
+              className={buttonClass({ variant: 'link' })}
+            >
+              {v.explorer(t.chain.explorers[read.chain])}
+              <Icon name="ArrowUpRight" size={16} />
+            </a>
+          )}
+        </p>
       </header>
 
       <Card

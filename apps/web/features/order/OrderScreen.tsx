@@ -18,6 +18,7 @@ import { type Dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { dollars } from '../goal/sheet';
+import { readPersonPlans, recordsOfPlans } from '../portfolio/server-plans';
 import { SharedReview } from '../shared/SharedReview';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { assetTicker, formatBps, formatRaw, shortfallBps } from './amounts';
@@ -32,6 +33,7 @@ import {
 } from './order-check';
 import { isBuy, keepOrder, type OrderRecord, recallOrder } from './order-record';
 import { legsInOrder, type NextStep, type OutcomeView, outcomeView, stepOf } from './order-view';
+import { readStoredPlan } from './plan-store';
 import { chainReady, explorerUrlFor, onMock } from './readiness';
 import { type RunOutcome, useOrderRunner } from './run-order';
 import { type ChainUnits, unitsFor } from './units';
@@ -64,6 +66,18 @@ function checkOf(order: OrderDetail, record: OrderRecord, units: ChainUnits | nu
     : { ok: false, why: 'shape' };
 }
 type Phase = { legId: string; phase: string } | null;
+
+/** The order's deposit reached the chain, and the order goes no further with a step not done. */
+function stoppedAfterDeposit(order: OrderDetail): boolean {
+  const landed = order.legs.some(
+    (leg) => (leg.kind === 'create_vault' || leg.kind === 'deposit') && leg.status === 'confirmed',
+  );
+  const over =
+    order.status === 'failed' ||
+    order.status === 'expired' ||
+    order.legs.some((leg) => leg.status === 'failed' || leg.status === 'expired');
+  return landed && order.status !== 'done' && over;
+}
 
 export function OrderScreen({ id }: { id: string }) {
   const t = useT();
@@ -106,6 +120,27 @@ export function OrderScreen({ id }: { id: string }) {
       mine = false;
     };
   }, [id, apiFetch, port.status, round]);
+
+  // An order this browser did not make, stopped after its deposit: the server's list of plans names
+  // its plan (`GET /v1/me/plans`) and the plan is read back by its id, so the buy can be finished
+  // from here too. `undefined` while that is asked; null when the server has no such plan to give.
+  const [served, setServed] = useState<OrderRecord | null | undefined>(undefined);
+  useEffect(() => {
+    if (record !== null || load.kind !== 'read' || !userId) return;
+    if (!stoppedAfterDeposit(load.order)) return setServed(null);
+    let mine = true;
+    setServed(undefined);
+    void (async () => {
+      const listed = recordsOfPlans(await readPersonPlans(apiFetch), userId).find(
+        (r) => r.orderId === id,
+      );
+      const plan = listed ? await readStoredPlan(apiFetch, listed.proposalId) : null;
+      if (mine) setServed(listed && plan ? { ...listed, lines: plan.proposal.lines } : null);
+    })();
+    return () => {
+      mine = false;
+    };
+  }, [record, load, userId, id, apiFetch]);
 
   // Leaving the page stops the run between steps; what was signed is still reported.
   useEffect(() => {
@@ -204,10 +239,19 @@ export function OrderScreen({ id }: { id: string }) {
       </section>
     );
   }
-  if (!record) {
-    // Made in another browser: its plan is not here to check the steps against. When its deposit
-    // landed and the buying did not finish, the page says where the money is, not only "make a new
-    // order".
+  // The record this page stands on: this browser's own, or, for an order stopped after its deposit
+  // that another browser made, the one made from the server's plan. Nothing but the continuation is
+  // offered from the server's: an order is signed where it was reviewed.
+  if (record === null && served === undefined && stoppedAfterDeposit(load.order))
+    return (
+      <Card>
+        <CardWait label={t.order.loading} skeleton={<SkeletonSummary />} />
+      </Card>
+    );
+  const kept = record ?? served ?? null;
+  if (!kept) {
+    // Made in another browser, and its plan is not the server's to give: its steps cannot be checked
+    // here. When its deposit landed and the buying did not finish, the page says where the money is.
     const there = load.order;
     const landed =
       there.status !== 'done' &&
@@ -237,17 +281,17 @@ export function OrderScreen({ id }: { id: string }) {
     );
   }
 
-  const shown = record.approved?.order ?? load.order;
+  const shown = kept.approved?.order ?? load.order;
   const now = live ?? load.order;
-  const chain = record.chain;
+  const chain = kept.chain;
   // Every amount on this screen is the order's own, read with units this repository committed, and the
   // order is offered for signing only when it deposits what the person typed (order-check.ts).
   const units = unitsFor(chain, onMock(port, chain));
-  const check = checkOf(shown, record, units);
-  const buying = isBuy(record);
+  const check = checkOf(shown, kept, units);
+  const buying = isBuy(kept);
   const amount = check.ok
     ? dollars(Number(check.depositRaw) / 10 ** check.decimals, lang)
-    : dollars(record.amountUsd, lang);
+    : dollars(kept.amountUsd, lang);
   const cash = units?.tokens[units.cash];
   const depositShown =
     shown.depositRaw === undefined
@@ -259,11 +303,11 @@ export function OrderScreen({ id }: { id: string }) {
   const done = now.status === 'done';
   const view: OutcomeView | null = outcome ? outcomeView(outcome, t, chain) : null;
   const needed = shown.needsConsent;
-  const consentMissing = !record.approved && needed.some((kind) => !consents.includes(kind));
+  const consentMissing = !kept.approved && needed.some((kind) => !consents.includes(kind));
   const current = phase ? stepOf(shown, phase.legId) : 1;
-  const terms = record.terms;
+  const terms = kept.terms;
   const newOrder = !terms
-    ? `/plan/${encodeURIComponent(record.proposalId)}/buy`
+    ? `/plan/${encodeURIComponent(kept.proposalId)}/buy`
     : terms.kind === 'family'
       ? `/indexes/${encodeURIComponent(terms.slug)}/buy`
       : terms.kind === 'follow'
@@ -278,7 +322,7 @@ export function OrderScreen({ id }: { id: string }) {
         (leg.kind === 'create_vault' || leg.kind === 'deposit') && leg.status === 'confirmed',
     );
   // The same for an order that finishes another: it deposited nothing, and the cash is in the vault.
-  const inVault = deposited || (buying && record.continues !== undefined);
+  const inVault = deposited || (buying && kept.continues !== undefined);
   // It goes no further: the executor said so, or (on a page opened again) the order's own state does.
   const over = view
     ? view.next.kind === 'new-order'
@@ -289,11 +333,11 @@ export function OrderScreen({ id }: { id: string }) {
 
   /** A new order that finishes this buy with the cash in the vault, then its own review page. */
   async function finish() {
-    if (!record || finishing) return;
+    if (!kept || finishing) return;
     setFinishing(true);
     setFinishProblem(null);
     const o = t.order.outcome;
-    const firstId = record.continues?.orderId ?? id;
+    const firstId = kept.continues?.orderId ?? id;
     const made = await continueOrder(
       apiFetch,
       { id: firstId, owner: shown.owner, basketId: shown.basketId },
@@ -312,17 +356,17 @@ export function OrderScreen({ id }: { id: string }) {
     const left = tradesLeft(shown, now);
     const cashToken = units?.tokens[units.cash];
     const spent = left.reduce((sum, trade) => sum + BigInt(trade.amountInRaw), 0n);
-    const kept =
+    const stored =
       cashToken !== undefined &&
       spent > 0n &&
       keepOrder({
-        ...record,
+        ...kept,
         orderId: made.order.id,
         amountUsd: Number(spent) / 10 ** cashToken.decimals,
         approved: null,
         continues: { orderId: firstId, left },
       });
-    if (!kept) {
+    if (!stored) {
       setFinishing(false);
       setFinishProblem({ sentence: cashToken ? o.finishNoStore : o.finishRefused, said: '' });
       return;
@@ -332,7 +376,7 @@ export function OrderScreen({ id }: { id: string }) {
 
   // The one primary button of the view: sign, carry on, approve a step again, or nothing.
   const next: NextStep | { kind: 'first' } =
-    view?.next ?? (record.approved ? { kind: 'run' } : { kind: 'first' });
+    view?.next ?? (kept.approved ? { kind: 'run' } : { kind: 'first' });
   const primaryLabel =
     next.kind === 'approve-again'
       ? t.order.outcome.approveAgain(next.step)
@@ -341,14 +385,14 @@ export function OrderScreen({ id }: { id: string }) {
         : next.kind === 'run' && view
           ? t.order.outcome.tryAgain
           : terms?.kind === 'publish'
-            ? record.approved
+            ? kept.approved
               ? t.order.shared.resume
               : t.order.shared.signPublish
             : terms?.kind === 'follow'
-              ? record.approved
+              ? kept.approved
                 ? t.order.shared.resume
                 : t.order.shared.signFollow
-              : record.approved
+              : kept.approved
                 ? t.order.resume(amount)
                 : t.order.signAndBuy(amount);
 
@@ -357,12 +401,12 @@ export function OrderScreen({ id }: { id: string }) {
       <header className="flex flex-col items-start gap-3">
         <ChainBadge chain={chain} />
         <h1 id={titleId} className={PAGE_TITLE}>
-          {record.approved ? t.order.title : t.order.review.title}
+          {kept.approved || stranded ? t.order.title : t.order.review.title}
         </h1>
-        {!record.approved && (
+        {!kept.approved && !stranded && (
           <p className="max-w-(--tf-measure-body) text-body-lg">{t.order.review.lead}</p>
         )}
-        {record.continues && (
+        {kept.continues && (
           <p data-ui="order-continues" className="max-w-(--tf-measure-body) text-body">
             {t.order.review.continuesLead}
           </p>
@@ -381,12 +425,12 @@ export function OrderScreen({ id }: { id: string }) {
         <CardHeader title={t.order.stepsTitle} level={2} meta={<ChainBadge chain={chain} />} />
         <CardBody className="flex flex-col gap-4">
           <StatRow>
-            {buying && !record.continues && (
+            {buying && !kept.continues && (
               <Stat label={t.order.review.deposit}>{depositShown}</Stat>
             )}
-            {record.continues && <Stat label={t.order.review.fromVault}>{amount}</Stat>}
+            {kept.continues && <Stat label={t.order.review.fromVault}>{amount}</Stat>}
             <Stat label={t.order.review.steps}>{legs.length}</Stat>
-            {!record.approved && (
+            {!kept.approved && (
               <Stat label={t.order.review.expires} className="max-[620px]:col-span-2">
                 {/* The one way a time is written here, with its zone (ExecutionList's). */}
                 <time dateTime={new Date(shown.expiresAt * 1000).toISOString()}>
@@ -431,7 +475,7 @@ export function OrderScreen({ id }: { id: string }) {
         </section>
       )}
 
-      {!record.approved && needed.length > 0 && (
+      {!kept.approved && !stranded && needed.length > 0 && (
         <fieldset className="flex flex-col gap-2">
           <legend className="pb-2 text-h4 font-semibold">{t.order.review.consents}</legend>
           {needed.map((kind) => (

@@ -130,6 +130,48 @@ export function registerLimits(
 }
 
 /**
+ * The structurer's writes outside /v1, by method and route: each stores a row, and `POST /goals`
+ * reaches the model when one is configured. None asks for a sign-in.
+ */
+export const OPEN_WRITES: readonly string[] = [
+  'POST /goals',
+  'POST /plans',
+  'POST /plans/:id/transactions',
+  'POST /executions/:id/report',
+  'POST /policies/:id/revoke',
+  'POST /policies/:id/rebalance',
+];
+
+/**
+ * A budget for those writes, on the root: the anonymous caller's, by address, counted apart from /v1.
+ * Nothing else about the routes changes, and no other route is counted. Until the host's proxies are
+ * named (`TRUST_PROXY_HOPS`, plugins/proxy.ts) the address is the proxy's, so the budget is one that
+ * every caller shares.
+ */
+export function registerOpenWriteLimit(
+  root: FastifyInstance,
+  options: { limits?: Limits; now?: () => Date } = {},
+): void {
+  const limits = options.limits ?? LIMITS;
+  const now = options.now ?? (() => new Date());
+  const counter = createCounter(limits.windowSeconds * 1000);
+  root.addHook('onRequest', async (req, reply) => {
+    if (!OPEN_WRITES.includes(`${req.method} ${req.routeOptions?.url ?? ''}`)) return;
+    const at = now().getTime();
+    const taken = counter.take(`address:${req.ip}`, limits.caller.anonymous, at);
+    if (taken.ok) return;
+    const wait = Math.max(1, Math.ceil((taken.resetAt - at) / 1000));
+    return reply
+      .code(429)
+      .header('retry-after', wait)
+      .send({
+        error: 'too many requests',
+        fix: `Try again in ${wait} second${wait === 1 ? '' : 's'}.`,
+      });
+  });
+}
+
+/**
  * Default deny, at start, for every path under /v1 wherever it is registered. Called on the root
  * before any route is added. The API then does not start with:
  * - a /v1 route that does not say who may call it (`config.auth`) or which budget it counts against

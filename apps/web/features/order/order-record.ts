@@ -71,6 +71,11 @@ export type OrderRecord = {
    * signing only while its own trades are among them (order-check.ts, `checkContinuation`).
    */
   continues?: { orderId: string; left: { buy: string; amountInRaw: string }[] };
+  /**
+   * The vault's number on chain as the server's list of plans gave it (`GET /v1/me/plans`), for a
+   * record made from that list and not kept in this browser (features/portfolio/server-plans.ts).
+   */
+  basketId?: string;
 };
 
 /** What a continuation finishes, as it was written, or null when it does not read. */

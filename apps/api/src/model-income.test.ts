@@ -3,11 +3,12 @@ import { join } from 'node:path';
 import { EvmDeploymentRecord, deploymentAssets as evmAssets } from '@colosseum/chain-evm/vault';
 import { deploymentAssets, SolanaDeploymentRecord } from '@colosseum/chain-solana/vault';
 import { compose, type PersonalSheet } from '@colosseum/engine';
-import { type BasketAsset, YieldObservation } from '@colosseum/schemas';
+import { type AssetCurves, createLiquidityProvider, defaultRegimeParams } from '@colosseum/risk';
+import { type BasketAsset, type LiquidityProvider, YieldObservation } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { DEPLOYMENTS_DIR } from './deployments';
-import { issuerTwins, shelfTiers, standIns, tierTwins } from './model-exits';
+import { asSandbox, isMeasured, issuerTwins, shelfTiers, standIns, tierTwins } from './model-exits';
 import { modelledTokens, modelYields } from './model-yields';
 import { tiersSaid, withTiers } from './orders/personalize';
 import readings from './testing/fixtures/model-readings.json';
@@ -47,9 +48,13 @@ function serverPlan(
   listed: BasketAsset[],
   amountUsd: number,
   goal: 'income' | 'protect' = 'income',
+  provider?: LiquidityProvider,
 ) {
   const tokens = standIns(listed, 'sandbox');
-  const tiers = tierTwins(tokens, SHELF).map((t) => ({
+  const tiers = tierTwins(
+    tokens.filter((t) => !isMeasured(provider, t.id, 0.01, 7)),
+    SHELF,
+  ).map((t) => ({
     assetId: t.id,
     tier: t.tier,
     source: `tier ${t.tier} of ${t.twinSymbol} on mainnet, applied to the test-network token ${t.symbol}`,
@@ -69,6 +74,7 @@ function serverPlan(
     {
       now: '2026-10-06T12:00:00.000Z',
       yields: modelYields(modelledTokens(assets, [], 'sandbox'), READINGS),
+      ...(provider ? { liquidity: provider, liquiditySource: 'Bearing (test)' } : {}),
     },
   );
   const weight = (id: string) => plan.lines.find((l) => l.assetId === id)?.weightBps ?? 0;
@@ -161,5 +167,46 @@ describe('two stand-ins of one issuer', () => {
     expect(weight(gld.id)).toBeGreaterThan(0);
     expect(weight(sgov.id) + weight(gld.id)).toBe(5000);
     expect(plan.lines.flatMap((l) => l.reasons.map((r) => r.rule))).toContain('ISSUER_CAP_PLAN');
+  });
+});
+
+// On the hosted API after #133, Robinhood Chain's plans were still mostly cash (income 98%, protect 94%,
+// grow 85%): its twins' curves were there, from the collector's first two runs, but too thin to read,
+// so no tier was borrowed and every stand-in fell back to the test network's own tier C.
+describe('a twin whose curves are too thin to read', () => {
+  const listed = evmAssets(EvmDeploymentRecord.parse(read('robinhood-testnet.json')));
+  // two samples a point where eight are needed: every point of the curve is insufficient
+  const thin = (assetId: string): AssetCurves => {
+    const c = {
+      points: [100, 10_000, 1_000_000].map((n) => ({ notionalUsd: n, cost: 0.001, samples: 2 })),
+      insufficientFrom: 0,
+      quantile: 0.5,
+      minSamples: 8,
+      from: '2026-10-06T20:07:54.000Z',
+      to: '2026-10-06T20:09:31.000Z',
+      samples: 16,
+    };
+    return { assetId, byRegime: { us_offhours_weekday: c } };
+  };
+  const provider = asSandbox(
+    createLiquidityProvider({
+      curves: new Map(standIns(listed, 'sandbox').map((t) => [t.id, thin(t.id)])),
+      regimeParams: defaultRegimeParams(read('../fixtures/risk/us-market-holidays.json')),
+      methodVersion: 'risk-0.3',
+      provenance: 'live',
+    }),
+  );
+
+  it('is covered and not measured, so the stand-in still takes its model’s tier', () => {
+    expect(provider.covers('robinhood:tsgov')).toBe(true);
+    expect(isMeasured(provider, 'robinhood:tsgov', 0.01, 7)).toBe(false);
+    expect(isMeasured(undefined, 'robinhood:tsgov', 0.01, 7)).toBe(false);
+    const { tiers } = serverPlan('robinhood', listed, 80_000, 'income', provider);
+    expect(tiers.find((t) => t.assetId === 'robinhood:tsgov')?.tier).toBe('A');
+  });
+
+  it('and the $80,000 income plan holds tSGOV at its 40% cap, not at tier C’s $1,500', () => {
+    const { weight } = serverPlan('robinhood', listed, 80_000, 'income', provider);
+    expect(weight('robinhood:tsgov')).toBe(4000);
   });
 });

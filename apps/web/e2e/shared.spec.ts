@@ -91,10 +91,8 @@ async function publish(page: Page, name: string, weights: [string, string][], ph
   await page.getByLabel(en.shared.publish.name, { exact: true }).fill(name);
   await page.getByLabel(en.shared.publish.copy, { exact: true }).fill('Three test tokens.');
   for (const [i, [asset, weight]] of weights.entries()) {
-    await page
-      .getByLabel(`${en.shared.publish.asset} ${i + 1}`, { exact: true })
-      .selectOption(asset);
-    await page.getByLabel(`${en.shared.publish.weight} ${i + 1}`, { exact: true }).fill(weight);
+    await page.getByLabel(en.shared.publish.assetOf(i + 1), { exact: true }).selectOption(asset);
+    await page.getByLabel(en.shared.publish.weightOf(i + 1), { exact: true }).fill(weight);
   }
   await expect(page.locator('[data-ui="family-id"]')).not.toHaveText('—');
   if (photograph) await check(page, 'publish');

@@ -359,7 +359,7 @@ export const pt: Dictionary = {
       publish: 'Publicar um portfólio',
     },
     noneVault:
-      'Nada que este navegador fez para os seus cofres chegou à rede. Operações feitas em outro lugar, ou pelo agente, ainda não aparecem aqui.',
+      'Nada das suas compras chegou à rede ainda. As operações do agente, e as ordens sobre um portfólio compartilhado feitas em outro navegador, ainda não aparecem aqui.',
   },
   pin: {
     sourceFor: 'Fonte de {value}',
@@ -432,6 +432,7 @@ export const pt: Dictionary = {
     vault: {
       title: 'Seu cofre',
       address: 'Endereço do cofre',
+      page: (address: string) => `Abrir a página do cofre ${address}`,
       value: 'Valor',
       cash: 'Caixa',
       autoFollow: 'Seguir automaticamente',
@@ -478,7 +479,7 @@ export const pt: Dictionary = {
       runsTo: (when: string) => `Vai até ${when}`,
       unknown: (chain: string) => `Seu cofre na ${chain}.`,
       notJoined:
-        'Não sei para qual objetivo este cofre foi comprado: a compra foi feita em outro navegador, ou antes de este guardar objetivos. O que ele guarda está abaixo.',
+        'Este cofre não tem um objetivo que eu consiga ler: foi comprado a partir de um portfólio compartilhado, que não tem, ou antes de os planos guardarem seu objetivo. O que ele guarda está abaixo.',
       putIn: (amount: string) => `você colocou ${amount}`,
       seePlan: 'Ver seu plano',
       seeOrder: 'Ver a ordem',
@@ -499,8 +500,8 @@ export const pt: Dictionary = {
     fromLink:
       'Este plano veio de um link: nosso motor o montou com os limites que o link trazia, que outra pessoa pode ter definido. Confira o objetivo, o valor e os limites acima antes de comprar.',
     missing: {
-      title: 'Não tenho este plano nesta aba.',
-      body: 'Um plano fica guardado na aba do navegador que o montou, e este não está aqui. Monte de novo a partir do seu objetivo: seus limites continuam guardados.',
+      title: 'Não encontro este plano para você.',
+      body: 'Não é um plano feito com este login, ou não está mais guardado. Monte um a partir do seu objetivo: seus limites continuam guardados.',
     },
     backToGoal: 'Voltar ao seu objetivo',
     unsignable: (plan: string) =>
@@ -633,6 +634,8 @@ export const pt: Dictionary = {
     exitCost: (cost: string) => `≤ ${cost}`,
     inKind: 'Você também pode tirar os próprios tokens do seu cofre a qualquer momento.',
     risk: {
+      notKept:
+        'Como este plano se divide, e quanto custa vendê-lo, é calculado quando um plano é montado e não fica guardado com ele. Monte o plano de novo a partir do seu objetivo para ver.',
       title: 'Como o plano se divide, e quanto custa vender',
       byClass: 'Por tipo de ativo',
       byIssuer: 'Por emissor',
@@ -817,6 +820,10 @@ export const pt: Dictionary = {
       empty: (chain: string) => `Nenhum portfólio foi compartilhado na ${chain} ainda.`,
       emptyAll: 'Nenhum portfólio foi compartilhado ainda.',
       publish: 'Publicar um portfólio',
+      publishSoon: (chain: string) =>
+        `Publicar um portfólio na ${chain} está a caminho. Por enquanto dá para publicar na Solana.`,
+      signedOut: (chain: string) =>
+        `Você saiu da conta. Esta ainda é a prateleira da ${chain}; entre para seguir um portfólio.`,
       card: {
         by: (creator: string) => `por ${creator}`,
         platform: 'Da tenonfi',
@@ -894,6 +901,8 @@ export const pt: Dictionary = {
         mock: 'Rede de exemplo: não há rede para ler, então estas são palavras do nosso servidor, não conferidas.',
         'no-node': (chain: string) =>
           `Não conferido na ${chain}: este app não tem um nó próprio para ler. Estas são palavras do nosso servidor.`,
+        'no-reader': (chain: string) =>
+          `Não conferido na ${chain}: este app ainda não lê o registro da ${chain}. Estas são palavras do nosso servidor.`,
         'no-deployment': (chain: string) =>
           `Não conferido na ${chain}: este app não tem registro dos tokens nesta rede. Estas são palavras do nosso servidor.`,
         'family-id':
@@ -972,6 +981,8 @@ export const pt: Dictionary = {
       assetsHint: 'De 3 a 12 ativos, cada um de 2% a 50%, em passos de 0,5%, somando 100%.',
       asset: 'Ativo',
       weight: 'Peso, em %',
+      assetOf: (n: number) => `Ativo ${n}`,
+      weightOf: (n: number) => `Peso do ativo ${n} (%)`,
       add: 'Incluir um ativo',
       remove: (asset: string) => `Tirar ${asset}`,
       total: (sum: string) => `Total: ${sum}`,
@@ -989,7 +1000,7 @@ export const pt: Dictionary = {
         weight: 'Cada peso vai de 2% a 50%, em passos de 0,5%.',
         sum: 'Os pesos somam 100%.',
         twice: 'Um ativo aparece uma vez só.',
-        chain: 'Por enquanto, publicar só funciona na Solana.',
+        chain: 'Publicar ainda não está aberto nesta rede.',
       },
       failure: {
         said: (error: string) => `Nosso servidor recusou: ${error}.`,
@@ -1007,6 +1018,8 @@ export const pt: Dictionary = {
         `Lido da ${chain} para esta página. Qualquer pessoa pode ver um cofre: o que ele tem é público na rede.`,
       loading: 'Lendo o cofre…',
       missing: 'Não há cofre neste endereço.',
+      back: 'Voltar ao seu portfólio',
+      explorer: (explorer: string) => `Ver no ${explorer}`,
       owner: 'Dono',
       follows: 'Segue',
       followsNothing: 'Nada: quem é dono define os pesos',
