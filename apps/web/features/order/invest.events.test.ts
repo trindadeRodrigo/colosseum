@@ -127,6 +127,8 @@ function api(
     finishes?: boolean;
     /** Each POST makes another order, as the server does. Default: the same one every time. */
     distinct?: boolean;
+    /** A plan our server keeps that this tab did not build: one of a goal's three candidates. */
+    candidate?: string;
     /** How long the first order is open for, from when it is made. Default: the fixtures' time, long past. */
     openFor?: number;
   } = {},
@@ -147,6 +149,12 @@ function api(
       const method = init?.method ?? 'GET';
       calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
       if (path === '/v1/me') return json(person);
+      if (o.candidate && path === `/v1/baskets/${o.candidate}`)
+        return json({
+          id: o.candidate,
+          proposal: { ...planOn().proposal, candidate: 'spread' },
+          fromLink: false,
+        });
       if (path.startsWith('/v1/funding?')) return json(funding(funded));
       if (path === '/v1/testnet/fund') {
         funded = true;
@@ -452,6 +460,36 @@ describe('the card while the wallet is read', () => {
     await settle();
     expect(box()).toBe(before);
     expect(box().checked).toBe(true);
+  });
+});
+
+describe('investing in a picked candidate', () => {
+  it('buys the candidate by its own id: the plan is read from our server by it, and the order and the vault are that plan’s', async () => {
+    // Each of a goal's three candidates is stored as a plan with its own id (gate THREE-PLANS): the
+    // one the person picked is what the card is handed, and nothing of the other two.
+    const CANDIDATE = '7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f';
+    window.localStorage.clear();
+    const server = api({ candidate: CANDIDATE });
+    const host = await mount(
+      withAccount('en', createElement(Invest, { of: { plan: CANDIDATE }, amount: 10 })),
+    );
+    await settle();
+    await settle(350);
+    await settle(1050);
+    await settle();
+    expect(server.to(`/v1/baskets/${CANDIDATE}`)).toHaveLength(1);
+    expect(server.to('/v1/funding').at(-1)?.path).toContain(`proposalId=${CANDIDATE}`);
+    expect(server.placed().map((c) => c.body)).toEqual([
+      { type: 'buy', owner: { solana: SOLANA }, amountUsd: 10, proposalId: CANDIDATE },
+    ]);
+    expect(recallOrder(ORDER_ID, USER)).toMatchObject({ proposalId: CANDIDATE, amountUsd: 10 });
+    await tick(host);
+    await click(find(host, PRESS));
+    await settle();
+    // the guard is held to the vault this candidate's id gives, and to its lines
+    expect(run.calls).toHaveLength(1);
+    expect(run.calls[0]?.deps.plan).toMatchObject({ basketId: basketOfPlan(CANDIDATE) });
+    expect(basketOfPlan(CANDIDATE)).not.toBe(basketOfPlan(PLAN_ID));
   });
 });
 
