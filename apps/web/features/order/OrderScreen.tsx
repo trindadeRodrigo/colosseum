@@ -4,6 +4,7 @@ import {
   chainFamily,
   type Leg,
   type OrderDetail,
+  TRUST_STATUS,
   type Trade,
 } from '@colosseum/schemas';
 import Link from 'next/link';
@@ -28,6 +29,7 @@ import { readPersonPlans, recordsOfPlans } from '../portfolio/server-plans';
 import { SharedReview } from '../shared/SharedReview';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { formatBps, formatRaw, shortfallBps, shownRaw, tokenName } from './amounts';
+import { landedSentence, type OrderEmbed, progressOf } from './invest-words';
 import {
   addMoneyPath,
   type CallFailure,
@@ -47,12 +49,21 @@ import {
   sharedShapeOk,
   stoppedShort,
 } from './order-check';
-import { isBuy, keepOrder, type OrderRecord, recallOrder, recallOrders } from './order-record';
+import {
+  acceptTrust,
+  isBuy,
+  keepOrder,
+  type OrderRecord,
+  recallOrder,
+  recallOrders,
+  trustAccepted,
+} from './order-record';
 import { legsInOrder, type NextStep, type OutcomeView, outcomeView, stepOf } from './order-view';
 import { readStoredPlan } from './plan-store';
 import { targetsOfPlan } from './plan-terms';
 import { chainReady, explorerUrlFor, onMock } from './readiness';
 import { type RunOutcome, useOrderRunner } from './run-order';
+import { TrustNotice } from './TrustNotice';
 import { type ChainUnits, unitsFor } from './units';
 import { useStayed } from './withdraw-stayed';
 
@@ -93,7 +104,18 @@ function checkOf(order: OrderDetail, record: OrderRecord, units: ChainUnits | nu
 }
 type Phase = { legId: string; phase: string } | null;
 
-export function OrderScreen({ id }: { id: string }) {
+export function OrderScreen({
+  id,
+  embed,
+}: {
+  id: string;
+  /**
+   * Drawn inside the invest card (InvestCard.tsx, gate INVEST-ONE-PRESS): the same review, the same
+   * one press and the same run, with no page title of its own, the card's words on the button and
+   * its progress in one line. Everything that decides what is signed is as on the order's own page.
+   */
+  embed?: OrderEmbed;
+}) {
   const t = useT();
   const lang = useLang();
   const port = useWalletPort();
@@ -109,6 +131,12 @@ export function OrderScreen({ id }: { id: string }) {
   const [consents, setConsents] = useState<ConsentKind[]>([]);
   const [round, setRound] = useState(0);
   const stop = useRef({ aborted: false });
+  // The person asked to stop between steps: the step under way is finished, the next is not begun.
+  const [stopping, setStopping] = useState(false);
+  // What keeps the acceptance of the trust notice, set by the first press and called as the run begins.
+  const accepts = useRef<(() => void) | null>(null);
+  // The trust notice, ticked on this page: for an order made before the notice was ever accepted.
+  const [trustTicked, setTrustTicked] = useState(false);
   const router = useRouter();
   // Whether this server finishes a buy with the cash in its vault: asked only once an order has
   // stopped after its deposit, and the button is not there until the answer is yes.
@@ -265,6 +293,17 @@ export function OrderScreen({ id }: { id: string }) {
     open(made.order.id);
   }
 
+  // The card that holds this screen is told how far the steps are, and how they ended.
+  const told = useRef<string | null>(null);
+  useEffect(() => {
+    if (!embed || !record?.approved || running || !outcome) return;
+    const key = `${record.orderId}:${outcome.status}`;
+    if (told.current === key) return;
+    told.current = key;
+    if (outcome.status === 'done') embed.onDone?.({ orderId: record.orderId });
+    else embed.onStopped?.({ orderId: record.orderId });
+  }, [embed, record, running, outcome]);
+
   // Leaving the page stops the run between steps; what was signed is still reported.
   useEffect(() => {
     const signal = stop.current;
@@ -292,7 +331,13 @@ export function OrderScreen({ id }: { id: string }) {
         }
         setRecord(next);
       }
+      // The first press's acceptance of the trust notice, kept once and only when the run begins.
+      const begun = () => {
+        accepts.current?.();
+        accepts.current = null;
+      };
       stop.current = { aborted: false };
+      setStopping(false);
       setRunning(true);
       setOutcome(null);
       const answer = await run({
@@ -307,19 +352,44 @@ export function OrderScreen({ id }: { id: string }) {
         consents: approved.consents,
         ...(again ? { approvedAgain: again } : {}),
         onEvent: (event) => {
+          begun();
           setLive(event.order);
           setPhase({ legId: event.legId, phase: event.phase });
+          if (embed?.onProgress)
+            embed.onProgress(
+              progressOf(
+                approved.order,
+                event.legId,
+                unitsFor(record.chain, onMock(port, record.chain)),
+                t,
+                LOCALE[lang],
+              ),
+            );
         },
         signal: stop.current,
       });
+      // The run began when the executor reached a step (above), or answers that every step is
+      // confirmed. One that could not run here, or was refused before any step, accepted nothing.
+      if (answer.status === 'done') begun();
+      accepts.current = null;
       if ('order' in answer) setLive(answer.order);
       setPhase(null);
       setOutcome(answer);
       setRunning(false);
     },
-    [record, load, consents, run, port],
+    [record, load, consents, run, port, embed, t, lang],
   );
 
+  if (
+    embed &&
+    (port.status === 'loading' || account.status === 'loading' || load.kind === 'loading')
+  )
+    // In the card: one quiet line while the order is read, not a card inside the card.
+    return (
+      <p data-ui="invest-reading" className="text-body-sm text-muted-foreground">
+        {t.invest.preparing}
+      </p>
+    );
   if (port.status === 'loading' || account.status === 'loading' || record === undefined)
     return (
       <Card>
@@ -555,103 +625,153 @@ export function OrderScreen({ id }: { id: string }) {
   const primaryLabel =
     next.kind === 'approve-again'
       ? t.order.outcome.approveAgain(next.step)
-      : next.kind === 'run' && view && outcome?.status === 'waiting'
-        ? t.order.outcome.lookAgain
-        : next.kind === 'run' && view
-          ? t.order.outcome.tryAgain
-          : terms?.kind === 'publish'
-            ? record.approved
-              ? t.order.shared.resume
-              : t.order.shared.signPublish
-            : terms?.kind === 'follow'
+      : next.kind === 'run' && view && outcome?.status === 'waiting' && outcome.why === 'stopped'
+        ? // the person stopped it between steps: the same order goes on from where it is
+          t.order.resume(amount)
+        : next.kind === 'run' && view && outcome?.status === 'waiting'
+          ? t.order.outcome.lookAgain
+          : next.kind === 'run' && view
+            ? t.order.outcome.tryAgain
+            : terms?.kind === 'publish'
               ? record.approved
                 ? t.order.shared.resume
-                : t.order.shared.signFollow
-              : terms?.kind === 'withdraw'
+                : t.order.shared.signPublish
+              : terms?.kind === 'follow'
                 ? record.approved
                   ? t.order.shared.resume
-                  : t.order.shared.signWithdraw
-                : record.approved
-                  ? t.order.resume(amount)
-                  : t.order.signAndBuy(amount);
+                  : t.order.shared.signFollow
+                : terms?.kind === 'withdraw'
+                  ? record.approved
+                    ? t.order.shared.resume
+                    : t.order.shared.signWithdraw
+                  : record.approved
+                    ? t.order.resume(amount)
+                    : embed
+                      ? t.invest.press(amount)
+                      : t.order.signAndBuy(amount);
+  // A deposit is never signed for before the trust notice is accepted (DESIGN-VAULT section 13). The
+  // invest card makes the order before that, to show its prices, so the order's own page asks too:
+  // an order opened here that nobody approved is held until the notice is accepted, as on the card.
+  // A plan's own vault follows nothing, so the keeper's limits are not among its short points.
+  const keeperTrades = terms !== undefined;
+  const trustAsked =
+    !embed &&
+    buying &&
+    !record.approved &&
+    !trustAccepted(userId, TRUST_STATUS.textVersion, keeperTrades);
+  // What holds the first press back: in the invest card, the host's reasons; here, the notice.
+  const held = record.approved
+    ? []
+    : embed
+      ? embed.blocked
+      : trustAsked && !trustTicked
+        ? [t.buy.blocked.trust]
+        : [];
+  // The passkey wallet signs with no window of its own; any other wallet confirms each step in its own.
+  const quiet = port.active(chainFamily(chain))?.kind === 'embedded';
+
+  const stepsBody = (
+    <>
+      <StatRow>
+        {/* an order that finishes another deposits nothing */}
+        {buying && !record.continues && <Stat label={t.order.review.deposit}>{depositShown}</Stat>}
+        {record.continues && check.ok && <Stat label={t.order.review.fromVault}>{amount}</Stat>}
+        <Stat label={t.order.review.steps}>{legs.length}</Stat>
+        {!record.approved && (
+          <Stat label={t.order.review.expires} className="max-[620px]:col-span-2">
+            <time dateTime={new Date(shown.expiresAt * 1000).toISOString()}>
+              {/* the one way this app writes a time: the date, the minute and the zone */}
+              {utc(lang, shown.expiresAt)}
+            </time>
+          </Stat>
+        )}
+      </StatRow>
+      <ol className="flex flex-col divide-y divide-border">
+        {legs.map((leg, i) => {
+          const standing = now.legs.find((l) => l.id === leg.id) ?? leg;
+          return (
+            <Step
+              key={leg.id}
+              n={i + 1}
+              leg={leg}
+              now={standing}
+              phase={phase?.legId === leg.id ? phase.phase : null}
+              units={units}
+              multipliers={
+                terms?.kind === 'withdraw'
+                  ? Object.fromEntries(terms.items.map((i) => [i.asset, i.multiplier]))
+                  : undefined
+              }
+              explorer={t.chain.explorers[chain]}
+              mock={onMock(port, chain)}
+              money={(value) => dollars(value, lang)}
+              t={t}
+              locale={LOCALE[lang]}
+            />
+          );
+        })}
+      </ol>
+    </>
+  );
 
   return (
-    <div data-ui="order-screen" className="flex flex-col gap-8">
-      <header className="flex flex-col items-start gap-3">
-        <ChainBadge chain={chain} />
-        <h1 id={titleId} className={PAGE_TITLE}>
-          {record.approved ? t.order.title : t.order.review.title}
-        </h1>
-        {!record.approved && (
-          <p
-            data-ui={record.continues ? 'order-continues' : undefined}
-            className="max-w-(--tf-measure-body) text-body-lg"
-          >
-            {record.continues ? t.order.review.continuesLead : t.order.review.lead}
-          </p>
-        )}
-        {record.continues?.unseen && (
-          <p data-ui="order-unseen" className="max-w-(--tf-measure-body) text-body-sm">
-            {t.order.review.unseen}
-          </p>
-        )}
-      </header>
+    <div data-ui="order-screen" className={embed ? 'flex flex-col gap-5' : 'flex flex-col gap-8'}>
+      {!embed && (
+        <header className="flex flex-col items-start gap-3">
+          <ChainBadge chain={chain} />
+          <h1 id={titleId} className={PAGE_TITLE}>
+            {record.approved ? t.order.title : t.order.review.title}
+          </h1>
+          {!record.approved && (
+            <p
+              data-ui={record.continues ? 'order-continues' : undefined}
+              className="max-w-(--tf-measure-body) text-body-lg"
+            >
+              {record.continues ? t.order.review.continuesLead : t.order.review.lead}
+            </p>
+          )}
+          {record.continues?.unseen && (
+            <p data-ui="order-unseen" className="max-w-(--tf-measure-body) text-body-sm">
+              {t.order.review.unseen}
+            </p>
+          )}
+        </header>
+      )}
 
-      <Card
-        as="section"
-        aria-label={t.order.stepsTitle}
-        mock={shown.legs[0]?.provenance !== 'live'}
-        mockLabels={{
-          announce: testNetwork ? t.shell.testNetworkLine : t.shell.mockAnnounce,
-        }}
-      >
-        <CardHeader title={t.order.stepsTitle} level={2} />
-        <CardBody className="flex flex-col gap-4">
-          <StatRow>
-            {/* an order that finishes another deposits nothing */}
-            {buying && !record.continues && (
-              <Stat label={t.order.review.deposit}>{depositShown}</Stat>
-            )}
-            {record.continues && check.ok && <Stat label={t.order.review.fromVault}>{amount}</Stat>}
-            <Stat label={t.order.review.steps}>{legs.length}</Stat>
-            {!record.approved && (
-              <Stat label={t.order.review.expires} className="max-[620px]:col-span-2">
-                <time dateTime={new Date(shown.expiresAt * 1000).toISOString()}>
-                  {/* the one way this app writes a time: the date, the minute and the zone */}
-                  {utc(lang, shown.expiresAt)}
-                </time>
-              </Stat>
-            )}
-          </StatRow>
-          <ol className="flex flex-col divide-y divide-border">
-            {legs.map((leg, i) => {
-              const standing = now.legs.find((l) => l.id === leg.id) ?? leg;
-              return (
-                <Step
-                  key={leg.id}
-                  n={i + 1}
-                  leg={leg}
-                  now={standing}
-                  phase={phase?.legId === leg.id ? phase.phase : null}
-                  units={units}
-                  multipliers={
-                    terms?.kind === 'withdraw'
-                      ? Object.fromEntries(terms.items.map((i) => [i.asset, i.multiplier]))
-                      : undefined
-                  }
-                  explorer={t.chain.explorers[chain]}
-                  mock={onMock(port, chain)}
-                  money={(value) => dollars(value, lang)}
-                  t={t}
-                  locale={LOCALE[lang]}
-                />
-              );
-            })}
-          </ol>
-        </CardBody>
-      </Card>
+      {embed ? (
+        // Inside the invest card: the same steps, under the card's own heading and label.
+        <section
+          aria-label={t.order.stepsTitle}
+          data-ui="invest-steps"
+          className="flex flex-col gap-4"
+        >
+          {stepsBody}
+          <p data-ui="invest-fee" className="text-body-sm text-muted-foreground">
+            {shown.fees.length === 0
+              ? t.invest.fee.none
+              : t.invest.fee.some(
+                  new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(
+                    shown.fees.map((fee) => `${fee.kind} ${formatBps(fee.bps, LOCALE[lang])}`),
+                  ),
+                )}
+          </p>
+        </section>
+      ) : (
+        <Card
+          as="section"
+          aria-label={t.order.stepsTitle}
+          mock={shown.legs[0]?.provenance !== 'live'}
+          mockLabels={{
+            announce: testNetwork ? t.shell.testNetworkLine : t.shell.mockAnnounce,
+          }}
+        >
+          <CardHeader title={t.order.stepsTitle} level={2} />
+          <CardBody className="flex flex-col gap-4">{stepsBody}</CardBody>
+        </Card>
+      )}
 
-      {terms && <SharedReview terms={terms} chain={chain} />}
+      {/* Inside the invest card the host shows what the buy is held to, over the card. */}
+      {terms && !embed && <SharedReview terms={terms} chain={chain} />}
 
       {shown.warnings.length > 0 && (
         <section aria-label={t.order.review.warnings} className="flex flex-col gap-2">
@@ -687,10 +807,25 @@ export function OrderScreen({ id }: { id: string }) {
       )}
 
       <div aria-live="polite" data-ui="order-status" className="flex flex-col gap-2">
-        {running && phase && (
+        {running && phase && !embed && (
           <p className="text-body">
             {t.order.step(current)}:{' '}
             {t.order.phase[phase.phase as keyof Dictionary['order']['phase']]}
+          </p>
+        )}
+        {running && phase && embed && (
+          // One line for the whole sequence: the step before, confirmed, and the one under way.
+          <p data-ui="invest-progress" className="text-body">
+            {progressOf(shown, phase.legId, units, t, LOCALE[lang]).line}
+            <span className="text-muted-foreground">
+              {' · '}
+              {t.order.phase[phase.phase as keyof Dictionary['order']['phase']]}
+            </span>
+          </p>
+        )}
+        {running && stopping && (
+          <p data-ui="invest-stopping" className="text-body-sm">
+            {t.invest.stopping}
           </p>
         )}
         {!running && done && !view && <p className="text-body">{doneSentence}</p>}
@@ -712,6 +847,12 @@ export function OrderScreen({ id }: { id: string }) {
                 {done && !plainlyDone ? doneSentence : view.sentence}
               </span>
             </p>
+            {embed && !done && record.approved && buying && (
+              // What landed and what did not, in one sentence, from where the API says each step is.
+              <p data-ui="invest-landed" className="text-body">
+                {landedSentence(shown, now, units, t, LOCALE[lang])}
+              </p>
+            )}
             {!done && deposited && view.next.kind === 'new-order' && (
               <p data-ui="order-deposit-kept" className="text-body">
                 {stranded ? t.order.outcome.stopped(amount) : t.order.outcome.depositKept}
@@ -769,6 +910,15 @@ export function OrderScreen({ id }: { id: string }) {
             </Link>
           </div>
         )}
+        {trustAsked && check.ok && !done && (
+          <TrustNotice
+            chain={chain}
+            accepted={false}
+            checked={trustTicked}
+            onCheck={setTrustTicked}
+            keeper={keeperTrades}
+          />
+        )}
         {/* An add held to our server's targets, which this app could not read from the chain: said on
             its own line over the button, where it cannot be missed. */}
         {check.ok && !done && terms?.kind === 'vault' && terms.source === 'api' && (
@@ -791,23 +941,62 @@ export function OrderScreen({ id }: { id: string }) {
           next.kind !== 'none' &&
           next.kind !== 'new-order' &&
           next.kind !== 'other-order' && (
-            <Button
-              variant="primary"
-              busy={running}
-              busyLabel={t.order.signing(current, legs.length)}
-              disabled={consentMissing}
-              aria-describedby={consentMissing ? reasonId : undefined}
-              onClick={() =>
-                go(
-                  next.kind === 'approve-again'
-                    ? { legId: next.legId, signedTimes: next.signedTimes }
-                    : undefined,
-                )
-              }
-            >
-              {primaryLabel}
-            </Button>
+            <>
+              {embed && next.kind === 'first' && (
+                // Said once before the press: who is asked to sign, and how many times.
+                <p data-ui="invest-signing" className="max-w-(--tf-measure-body) text-body-sm">
+                  {quiet ? t.invest.signs.passkey(legs.length) : t.invest.signs.wallet(legs.length)}
+                </p>
+              )}
+              <Button
+                variant="primary"
+                busy={running}
+                busyLabel={t.order.signing(current, legs.length)}
+                disabled={consentMissing || held.length > 0}
+                aria-describedby={consentMissing || held.length > 0 ? reasonId : undefined}
+                onClick={() => {
+                  // The first press is the approval of what the card showed: the host keeps the
+                  // acceptance of the notice with it, before anything is signed.
+                  if (next.kind === 'first') {
+                    embed?.onApprove();
+                    // The notice is accepted by a press that starts: kept in `go`, as the run begins.
+                    accepts.current = embed
+                      ? embed.onStarted
+                      : trustAsked && userId
+                        ? () => acceptTrust(userId, TRUST_STATUS.textVersion, keeperTrades)
+                        : null;
+                  }
+                  go(
+                    next.kind === 'approve-again'
+                      ? { legId: next.legId, signedTimes: next.signedTimes }
+                      : undefined,
+                  );
+                }}
+              >
+                {primaryLabel}
+              </Button>
+              {embed && running && (
+                // Between steps only: a step that is signed is still sent and reported.
+                <Button
+                  variant="secondary"
+                  disabled={stopping}
+                  onClick={() => {
+                    stop.current.aborted = true;
+                    setStopping(true);
+                  }}
+                >
+                  {t.invest.stop}
+                </Button>
+              )}
+            </>
           )}
+        {held.length > 0 && !consentMissing && (
+          <ul id={reasonId} className="flex max-w-(--tf-measure-body) flex-col gap-1 text-body-sm">
+            {held.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+        )}
         {consentMissing && (
           <p id={reasonId} className="text-body-sm">
             {t.order.review.consentNeeded}
@@ -844,12 +1033,19 @@ export function OrderScreen({ id }: { id: string }) {
                 {t.order.outcome.seePortfolio}
               </Link>
             )}
-            <Link
-              href={newOrder}
-              className={buttonClass({ variant: deposited ? 'secondary' : 'primary' })}
-            >
-              {t.order.outcome.newOrder}
-            </Link>
+            {embed ? (
+              // In the card: a new order is made in place, for the same amount.
+              <Button variant={deposited ? 'secondary' : 'primary'} onClick={embed.onAgain}>
+                {t.order.outcome.newOrder}
+              </Button>
+            ) : (
+              <Link
+                href={newOrder}
+                className={buttonClass({ variant: deposited ? 'secondary' : 'primary' })}
+              >
+                {t.order.outcome.newOrder}
+              </Link>
+            )}
           </div>
         )}
         {offerFinish && (
@@ -886,7 +1082,7 @@ export function OrderScreen({ id }: { id: string }) {
             <Link href="/monitor" className={buttonClass({ variant: 'primary' })}>
               {t.order.outcome.seePortfolio}
             </Link>
-            {buying && (
+            {buying && !embed && (
               <Link href={newOrder} className={buttonClass({ variant: 'secondary' })}>
                 {t.order.outcome.buyMore}
               </Link>

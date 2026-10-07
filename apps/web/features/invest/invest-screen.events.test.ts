@@ -111,13 +111,13 @@ describe('before anything is said', () => {
     expect(find(host, 'h1').textContent).toBe(en.goal.title);
     expect(box(host)).toBeTruthy();
     expect(
-      [...find(host, `ul[aria-label="${en.invest.examples}"]`).querySelectorAll('button')].map(
+      [...find(host, `ul[aria-label="${en.talk.examples}"]`).querySelectorAll('button')].map(
         (b) => b.textContent,
       ),
     ).toEqual(en.goal.examples.list);
     expect(pane(host).getAttribute('data-state')).toBe('empty');
     expect(find(pane(host), '[data-ui="pane-empty"] h2').textContent).toBe(
-      en.invest.pane.empty.title,
+      en.talk.pane.empty.title,
     );
     expect(turns(host)).toEqual([]);
     // no form, no country, no select anywhere
@@ -134,11 +134,11 @@ describe('the conversation, turn by turn', () => {
     await settle();
     await settle();
     expect(turns(host)).toEqual([
-      ['person', `${en.invest.you}: ${en.goal.examples.list[1]}`],
+      ['person', `${en.talk.you}: ${en.goal.examples.list[1]}`],
       [
         'app',
         // what was understood, the next step, and the reply that takes it, right under it
-        `${en.invest.me}${en.invest.say.understood('Protect it, $50,000, 18 months, and Low risk')}${en.invest.say.ready}${en.invest.replies.build}`,
+        `${en.talk.me}${en.talk.say.understood('Protect it, $50,000, 18 months, and Low risk')}${en.talk.say.ready}${en.talk.replies.build}`,
       ],
     ]);
     // the page's own example: no reader is asked, and no plan is built before the person says so
@@ -159,9 +159,9 @@ describe('the conversation, turn by turn', () => {
     expect(fact(host, 'amount').textContent).toContain('$50,000');
     expect(fact(host, 'horizon').textContent).toContain('18 months');
     // the one reply is to ask for the plan (GUIDED-INTAKE: the solver runs on what was confirmed)
-    expect(replies(host)).toEqual([en.invest.replies.build]);
+    expect(replies(host)).toEqual([en.talk.replies.build]);
     // the examples are for a start: gone once the conversation has one
-    expect(host.querySelector(`ul[aria-label="${en.invest.examples}"]`)).toBeNull();
+    expect(host.querySelector(`ul[aria-label="${en.talk.examples}"]`)).toBeNull();
   });
 
   it('asks what is open, one question at a time, with quick replies, and fills the pane as answers come', async () => {
@@ -171,24 +171,22 @@ describe('the conversation, turn by turn', () => {
     expect(server.to('/goals')).toHaveLength(1);
     // understood, then the one open question
     const last = turns(host).at(-1)?.[1] ?? '';
-    expect(last).toContain(en.invest.say.understood('Grow it and $40,000'));
-    expect(last).toContain(en.invest.ask.horizon);
-    expect(last).not.toContain(en.invest.ask.risk);
+    expect(last).toContain(en.talk.say.understood('Grow it and $40,000'));
+    expect(last).toContain(en.talk.ask.horizon);
+    expect(last).not.toContain(en.talk.ask.risk);
     expect(replies(host)).toEqual(['1 year', '3 years', '5 years', '10 years']);
     expect(fact(host, 'horizon').getAttribute('data-set')).toBe('false');
-    expect(fact(host, 'horizon').textContent).toContain(en.invest.facts.open);
+    expect(fact(host, 'horizon').textContent).toContain(en.talk.facts.open);
 
     await answer(host, '3 years');
     expect(fact(host, 'horizon').textContent).toContain('3 years');
-    expect(turns(host).at(-1)?.[1]).toContain(
-      en.invest.say.set(en.invest.facts.horizon, '3 years'),
-    );
-    expect(turns(host).at(-1)?.[1]).toContain(en.invest.ask.risk);
+    expect(turns(host).at(-1)?.[1]).toContain(en.talk.say.set(en.talk.facts.horizon, '3 years'));
+    expect(turns(host).at(-1)?.[1]).toContain(en.talk.ask.risk);
     expect(replies(host)).toEqual(['Low', 'Medium', 'High']);
 
     await answer(host, 'Medium');
-    expect(turns(host).at(-1)?.[1]).toContain(en.invest.say.ready);
-    expect(replies(host)).toEqual([en.invest.replies.build]);
+    expect(turns(host).at(-1)?.[1]).toContain(en.talk.say.ready);
+    expect(replies(host)).toEqual([en.talk.replies.build]);
     // an income goal has a fifth fact; this one does not show it
     expect(pane(host).querySelector('[data-fact="income"]')).toBeNull();
   });
@@ -198,8 +196,8 @@ describe('the conversation, turn by turn', () => {
     const host = await screen();
     await say(host, 'Grow $40,000');
     await say(host, 'not sure');
-    expect(turns(host).at(-1)?.[1]).toContain(en.invest.say.unfit.horizon);
-    expect(turns(host).at(-1)?.[1]).toContain(en.invest.ask.horizon);
+    expect(turns(host).at(-1)?.[1]).toContain(en.talk.say.unfit.horizon);
+    expect(turns(host).at(-1)?.[1]).toContain(en.talk.ask.horizon);
     await say(host, '5');
     expect(fact(host, 'horizon').textContent).toContain('5 years');
   });
@@ -217,17 +215,17 @@ describe('the conversation, turn by turn', () => {
     api();
     const host = await screen();
     await say(host, 'Income from $80,000 for 5 years, low risk');
-    expect(turns(host).at(-1)?.[1]).toContain(en.invest.ask.income);
+    expect(turns(host).at(-1)?.[1]).toContain(en.talk.ask.income);
     expect(replies(host)).toEqual([
       '$100 a month',
       '$300 a month',
       '$500 a month',
-      en.invest.replies.noIncome,
+      en.talk.replies.noIncome,
     ]);
-    await answer(host, en.invest.replies.noIncome);
-    expect(turns(host).at(-1)?.[1]).toContain(en.invest.say.incomeSkipped);
-    expect(fact(host, 'income').textContent).toContain(en.invest.facts.noIncome);
-    expect(replies(host)).toEqual([en.invest.replies.build]);
+    await answer(host, en.talk.replies.noIncome);
+    expect(turns(host).at(-1)?.[1]).toContain(en.talk.say.incomeSkipped);
+    expect(fact(host, 'income').textContent).toContain(en.talk.facts.noIncome);
+    expect(replies(host)).toEqual([en.talk.replies.build]);
   });
 });
 
@@ -242,17 +240,17 @@ describe('once the goal is whole: the next step is said, and is right there (Tho
     await say(host, INCOME);
     const last = turns(host).at(-1)?.[1] ?? '';
     expect(last).toContain(
-      en.invest.say.understood('Earn income, $80,000, $300 a month, 5 years, and Low risk'),
+      en.talk.say.understood('Earn income, $80,000, $300 a month, 5 years, and Low risk'),
     );
-    expect(last).toContain(en.invest.say.ready);
+    expect(last).toContain(en.talk.say.ready);
     // in the thread: one primary, under the question
     const inThread = find(host, '[data-ui="invest-turns"] [data-ui="invest-replies"] button');
-    expect(inThread.textContent).toBe(en.invest.replies.build);
+    expect(inThread.textContent).toBe(en.talk.replies.build);
     expect(inThread.getAttribute('data-variant')).toBe('primary');
     // and at the foot of the facts, with a quiet word that no account is needed
     const foot = find(pane(host), '[data-ui="pane-build"]');
-    expect(find(foot, 'button').textContent).toBe(en.invest.facts.build);
-    expect(foot.textContent).toContain(en.invest.facts.noAccount);
+    expect(find(foot, 'button').textContent).toBe(en.talk.facts.build);
+    expect(foot.textContent).toContain(en.talk.facts.noAccount);
     expect(server.to(PROPOSE_PATH)).toEqual([]);
     await click(find(foot, 'button'));
     await settle();
@@ -273,7 +271,7 @@ describe('once the goal is whole: the next step is said, and is right there (Tho
       await settle();
       expect(server.to(PROPOSE_PATH)).toHaveLength(1);
       expect(
-        turns(host).some(([who, text]) => who === 'person' && text === `${en.invest.you}: ${word}`),
+        turns(host).some(([who, text]) => who === 'person' && text === `${en.talk.you}: ${word}`),
       ).toBe(true);
       expect(pane(host).getAttribute('data-state')).toBe('plan');
     },
@@ -286,7 +284,7 @@ describe('once the goal is whole: the next step is said, and is right there (Tho
     await settle();
     await say(host, INCOME);
     const foot = find(pane(host), '[data-ui="pane-build"]');
-    expect(foot.textContent).not.toContain(en.invest.facts.noAccount);
+    expect(foot.textContent).not.toContain(en.talk.facts.noAccount);
   });
 });
 
@@ -308,13 +306,13 @@ describe('words that change nothing are answered in context (Thom, Oct 7)', () =
       await say(host, noise);
       const last = turns(host).at(-1)?.[1] ?? '';
       expect(last, noise).toContain(
-        en.invest.say.held('Earn income, $80,000, $300 a month, 5 years, and Low risk'),
+        en.talk.say.held('Earn income, $80,000, $300 a month, 5 years, and Low risk'),
       );
-      expect(last, noise).toContain(en.invest.say.ready);
-      expect(last, noise).not.toContain(en.invest.say.notUnderstood);
+      expect(last, noise).toContain(en.talk.say.ready);
+      expect(last, noise).not.toContain(en.talk.say.notUnderstood);
       // nothing typed is echoed into a sentence of ours
       expect(last, noise).not.toContain(noise);
-      expect(replies(host)).toEqual([en.invest.replies.build]);
+      expect(replies(host)).toEqual([en.talk.replies.build]);
     }
     // the reader was not asked again, and nothing was built
     expect(server.to('/goals')).toEqual([]);
@@ -332,8 +330,8 @@ describe('words that change nothing are answered in context (Thom, Oct 7)', () =
     await say(host, 'is that a lot?');
     await settle();
     const last = turns(host).at(-1)?.[1] ?? '';
-    expect(last).toContain(en.invest.say.heldBuilt);
-    expect(last).not.toContain(en.invest.say.notUnderstood);
+    expect(last).toContain(en.talk.say.heldBuilt);
+    expect(last).not.toContain(en.talk.say.notUnderstood);
     expect(server.to(PROPOSE_PATH)).toHaveLength(1);
     expect(pane(host).getAttribute('data-state')).toBe('plan');
   });
@@ -344,9 +342,9 @@ describe('words that change nothing are answered in context (Thom, Oct 7)', () =
     await say(host, 'Grow $40,000');
     await say(host, 'whatever you think');
     const last = turns(host).at(-1)?.[1] ?? '';
-    expect(last).toContain(en.invest.say.unfit.horizon);
-    expect(last).toContain(en.invest.ask.horizon);
-    expect(last).not.toContain(en.invest.say.notUnderstood);
+    expect(last).toContain(en.talk.say.unfit.horizon);
+    expect(last).toContain(en.talk.ask.horizon);
+    expect(last).not.toContain(en.talk.say.notUnderstood);
     expect(replies(host)).toEqual(['1 year', '3 years', '5 years', '10 years']);
   });
 });
@@ -362,18 +360,18 @@ describe('a tap on a fact (Thom, Oct 7)', () => {
     await settle();
     expect(turns(host).at(-2)).toEqual([
       'person',
-      `${en.invest.you}: ${en.invest.facts.changeSay.goal}`,
+      `${en.talk.you}: ${en.talk.facts.changeSay.goal}`,
     ]);
-    expect(turns(host).at(-1)?.[1]).toContain(en.invest.ask.goal);
+    expect(turns(host).at(-1)?.[1]).toContain(en.talk.ask.goal);
     expect(replies(host)).toEqual(['Grow it', 'Earn income', 'Protect it']);
     // the facts are named in plain words
-    expect(fact(host, 'goal').textContent).toContain(en.invest.facts.goal);
-    expect(en.invest.facts.goal).toBe('What it’s for');
+    expect(fact(host, 'goal').textContent).toContain(en.talk.facts.goal);
+    expect(en.talk.facts.goal).toBe('What it’s for');
     // words that are not one of the choices: the choices again, never the whole-goal error
     await say(host, 'bananas');
     const last = turns(host).at(-1)?.[1] ?? '';
-    expect(last).toContain(en.invest.say.unfit.goal);
-    expect(last).not.toContain(en.invest.say.notUnderstood);
+    expect(last).toContain(en.talk.say.unfit.goal);
+    expect(last).not.toContain(en.talk.say.notUnderstood);
     expect(replies(host)).toEqual(['Grow it', 'Earn income', 'Protect it']);
     await answer(host, 'Protect it');
     expect(fact(host, 'goal').textContent).toContain('Protect it');
@@ -385,8 +383,8 @@ describe('a tap on a fact (Thom, Oct 7)', () => {
     await say(host, INCOME);
     await click(find(fact(host, 'amount'), 'button'));
     await settle();
-    expect(turns(host).at(-2)?.[1]).toContain(en.invest.facts.changeSay.amount);
-    expect(turns(host).at(-1)?.[1]).toContain(en.invest.ask.amount);
+    expect(turns(host).at(-2)?.[1]).toContain(en.talk.facts.changeSay.amount);
+    expect(turns(host).at(-1)?.[1]).toContain(en.talk.ask.amount);
     await say(host, '120,000');
     expect(fact(host, 'amount').textContent).toContain('$120,000');
   });
@@ -404,7 +402,7 @@ describe('a tap on a fact (Thom, Oct 7)', () => {
     await settle();
     expect(turns(host).at(-2)).toEqual([
       'person',
-      `${pt.invest.you}: ${pt.invest.facts.changeSay.risk}`,
+      `${pt.talk.you}: ${pt.talk.facts.changeSay.risk}`,
     ]);
     expect(replies(host)).toEqual(Object.values(pt.goal.options.risk));
   });
@@ -415,7 +413,7 @@ describe('the plan, built beside the conversation', () => {
     await click(example(host, 1));
     await settle();
     await settle();
-    await answer(host, en.invest.replies.build);
+    await answer(host, en.talk.replies.build);
     await settle();
   };
 
@@ -452,7 +450,7 @@ describe('the plan, built beside the conversation', () => {
     const invest = find(plan, '[data-ui="plan-invest"] a');
     expect(invest.textContent).toBe(en.plan.invest('$50,000'));
     expect(invest.getAttribute('href')).toBe('/sign-in?next=/goal');
-    expect(turns(host).at(-1)?.[1]).toContain(en.invest.say.built);
+    expect(turns(host).at(-1)?.[1]).toContain(en.talk.say.built);
     // a visitor's plan is not kept as anyone's
     expect(recallPlan(PLAN, USER)).toBeNull();
     // the facts stay above the plan, to change
@@ -464,19 +462,20 @@ describe('the plan, built beside the conversation', () => {
     const host = await screen();
     await whole(host);
     await click(find(pane(host), '[data-ui="plan-invest"] a'));
-    expect(turns(host).at(-1)?.[1]).toContain(en.invest.say.signIn);
+    expect(turns(host).at(-1)?.[1]).toContain(en.talk.say.signIn);
     await act(async () => portStore.set(signedInPort(EMBEDDED, { userId: USER })));
     await settle();
     await settle();
     expect(server.to(PERSONALIZE_PATH)).toHaveLength(1);
     expect(recallPlan(PLAN, USER)).not.toBeNull();
-    // the conversation is still there, and the pane hosts the invest step
+    // the conversation is still there, and the pane now has the invest card under the plan
     expect(turns(host)[0]?.[0]).toBe('person');
     expect(pane(host).getAttribute('data-state')).toBe('invest');
-    expect(find(pane(host), '[data-ui="invest-step"] [data-ui="buy-steps"]')).toBeTruthy();
+    expect(find(pane(host), '[data-ui="invest-step"] [data-ui="invest-card"]')).toBeTruthy();
+    expect(pane(host).querySelector('[data-ui="plan-pane"]')).not.toBeNull();
   });
 
-  it('signed in: builds the person’s own plan, keeps it, and "Invest" opens the step in the same pane', async () => {
+  it('signed in: builds the person’s own plan, keeps it, and the pane’s last state is the plan with the invest card and its one press', async () => {
     const server = api({ person });
     portStore.set(signedInPort(EMBEDDED, { userId: USER }));
     const host = await screen();
@@ -486,20 +485,21 @@ describe('the plan, built beside the conversation', () => {
     expect(server.to(PERSONALIZE_PATH)).toHaveLength(1);
     expect(recallPlan(PLAN, USER)?.proposal.sheet.amountUsd).toBe(50000);
     const own = [...pane(host).querySelectorAll('a')].find(
-      (a) => a.textContent === en.invest.pane.ownPage,
+      (a) => a.textContent === en.talk.pane.ownPage,
     );
     expect(own?.getAttribute('href')).toBe(`/plan/${PLAN}`);
-    await click(find(pane(host), '[data-ui="plan-invest"] button'));
-    await settle();
+    // one card: the plan showing how, then the invest card, with no second button between them
     expect(pane(host).getAttribute('data-state')).toBe('invest');
-    expect(find(pane(host), '[data-ui="buy-steps"]')).toBeTruthy();
-    // and back
-    await click(
-      [...pane(host).querySelectorAll('button')].find(
-        (b) => b.textContent === en.invest.pane.backToPlan,
-      ) as HTMLElement,
-    );
-    expect(pane(host).getAttribute('data-state')).toBe('plan');
+    expect(pane(host).querySelector('[data-ui="plan-pane"]')).not.toBeNull();
+    expect(pane(host).querySelector('[data-ui="plan-invest"]')).toBeNull();
+    const card = find(pane(host), '[data-ui="invest-step"] [data-ui="invest-card"]');
+    // the one press names the action and the plan's amount; the pane has no amount box of its own
+    expect(
+      [...card.querySelectorAll('button')].filter((b) =>
+        b.textContent?.startsWith(en.invest.press('$50,000')),
+      ),
+    ).toHaveLength(1);
+    expect(pane(host).querySelector('input[inputmode="decimal"]')).toBeNull();
   });
 
   it('asks about a fact again when it is tapped, and builds the plan again from the answer, with no second confirm', async () => {
@@ -508,7 +508,7 @@ describe('the plan, built beside the conversation', () => {
     await whole(host);
     await click(find(fact(host, 'risk'), 'button'));
     await settle();
-    expect(turns(host).at(-1)?.[1]).toContain(en.invest.ask.risk);
+    expect(turns(host).at(-1)?.[1]).toContain(en.talk.ask.risk);
     await answer(host, 'High');
     await settle();
     expect(
@@ -537,7 +537,7 @@ describe('the plan, built beside the conversation', () => {
     await click(example(host, 2));
     await settle();
     await settle();
-    await answer(host, en.invest.replies.build);
+    await answer(host, en.talk.replies.build);
     await settle();
     const plan = find(pane(host), '[data-ui="plan-pane"]');
     expect(find(plan, '[data-ui="plan-answer"]').textContent).toBe(en.plan.verdict.gap('$152.80'));
@@ -558,7 +558,7 @@ describe('the plan, built beside the conversation', () => {
     api({ plan: () => json({ error: 'x', code: 'GOAL_NOT_ACHIEVABLE' }, 422) });
     const host = await screen();
     await whole(host);
-    expect(turns(host).at(-1)?.[1]).toContain(en.invest.failure.noPlan);
+    expect(turns(host).at(-1)?.[1]).toContain(en.talk.failure.noPlan);
     expect(pane(host).querySelector('[data-ui="plan-pane"]')).toBeNull();
     expect(pane(host).getAttribute('data-state')).toBe('facts');
   });
@@ -571,9 +571,9 @@ describe('the plan, built beside the conversation', () => {
     });
     const host = await screen();
     await whole(host);
-    expect(turns(host).at(-1)?.[1]).toContain(en.invest.failure.unavailable);
+    expect(turns(host).at(-1)?.[1]).toContain(en.talk.failure.unavailable);
     down = false;
-    await answer(host, en.invest.failure.again);
+    await answer(host, en.talk.failure.again);
     await settle();
     expect(server.to(PROPOSE_PATH)).toHaveLength(2);
     expect(pane(host).getAttribute('data-state')).toBe('plan');
@@ -588,7 +588,7 @@ describe('what is handed to the screen, and what it keeps', () => {
     await settle();
     expect(turns(host)[0]).toEqual([
       'person',
-      `${en.invest.you}: Protect $50,000 for 18 months, low risk, please`,
+      `${en.talk.you}: Protect $50,000 for 18 months, low risk, please`,
     ]);
     expect(window.sessionStorage.getItem(GOAL_HANDOFF)).toBeNull();
     expect(fact(host, 'amount').textContent).toContain('$50,000');
@@ -629,7 +629,7 @@ describe('what is handed to the screen, and what it keeps', () => {
     expect(kept).toContain('Grow $40,000');
     await unmountAll();
     const again = await screen();
-    expect(turns(again)[0]).toEqual(['person', `${en.invest.you}: Grow $40,000`]);
+    expect(turns(again)[0]).toEqual(['person', `${en.talk.you}: Grow $40,000`]);
     expect(fact(again, 'amount').textContent).toContain('$40,000');
     expect(replies(again)).toEqual(['1 year', '3 years', '5 years', '10 years']);
     // what is not in that form is dropped, whole; a sentence is never taken from storage
@@ -666,10 +666,10 @@ describe('the rules every screen holds', () => {
     );
     await settle();
     await settle();
-    expect(turns(host).at(-1)?.[1]).toContain(pt.invest.say.ready);
-    expect(replies(host)).toEqual([pt.invest.replies.build]);
-    expect(find(pane(host), '[data-ui="pane-facts"] h2').textContent).toBe(pt.invest.facts.title);
-    expect(host.textContent).not.toContain(en.invest.say.ready);
+    expect(turns(host).at(-1)?.[1]).toContain(pt.talk.say.ready);
+    expect(replies(host)).toEqual([pt.talk.replies.build]);
+    expect(find(pane(host), '[data-ui="pane-facts"] h2').textContent).toBe(pt.talk.facts.title);
+    expect(host.textContent).not.toContain(en.talk.say.ready);
   });
 
   it('has the disclaimer once on the page, from the one constant, and one primary at most', async () => {

@@ -653,6 +653,9 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
         [doneOrder(), true],
         [orderOn(), true],
         [stoppedOrder(), false],
+        // an order nobody signed that ran out (the invest card makes one to show its prices): no
+        // deposit of its own landed, so it is no stopped buy, however much cash the vault holds
+        [{ ...orderOn(), status: 'expired' as const }, true],
       ] as const) {
         api({
           person: onSolana,

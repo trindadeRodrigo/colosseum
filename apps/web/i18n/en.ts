@@ -612,9 +612,6 @@ export const en = {
       lead: (chain: string) =>
         `The whole amount goes into this vault on ${chain}, then buys each part at the vault’s targets. Nothing is signed here.`,
       amountHint: 'From $10 to $1,000,000.',
-      review: (amount: string) => `Review the steps to add ${amount}`,
-      reviewLead: (amount: string, chain: string) =>
-        `You’re adding ${amount} to your vault on ${chain}. Next you review every step, then sign each one in your wallet.`,
       missing:
         'I can’t find this vault among yours. Open your portfolio, then choose the vault there.',
       back: 'Back to your portfolio',
@@ -656,8 +653,11 @@ export const en = {
     },
   },
 
-  /** The Invest screen (gate INVEST-TWO-PANE): the conversation on the left, the plan on the right. */
-  invest: {
+  /**
+   * The Invest screen's conversation and pane (gate INVEST-TWO-PANE): the conversation on the left,
+   * the plan on the right. The invest card's own words are `invest`.
+   */
+  talk: {
     chat: 'The conversation',
     you: 'You',
     me: 'tenonfi',
@@ -689,6 +689,11 @@ export const en = {
         risk: 'I can do low, medium or high risk. Which one?',
       },
       signIn: 'Sign in to invest. Your goal and this plan stay here.',
+      /** From the invest card: every step is confirmed. */
+      done: 'Your vault is open.',
+      /** The buy stopped short: what landed is kept, and the order's page has the rest. */
+      stopped: 'The buy stopped before every step was done. What landed is kept.',
+      finish: 'Finish the buy',
     },
     /** One question at a time. */
     ask: {
@@ -999,15 +1004,6 @@ export const en = {
     },
     /** The four steps of a buy, one open at a time. */
     steps: {
-      label: 'Steps to buy',
-      names: { amount: 'Amount', funds: 'Funds', trust: 'Trust', review: 'Review' },
-      /** Read after a step's name by a screen reader. */
-      done: 'done',
-      next: 'Continue',
-      funds: { ready: 'Ready', short: 'Something is missing', reading: 'Reading…' },
-      trust: { accepted: 'Accepted', open: 'Not accepted yet' },
-      reviewLead: (amount: string, chain: string) =>
-        `You’re buying ${amount} on ${chain}. Next you review every step, then sign each one in your wallet.`,
       /** The one line over the card when its figures are not live. */
       note: {
         testNetwork: (chain: string) => `Test network · ${chain} · not live`,
@@ -1060,8 +1056,6 @@ export const en = {
         refused: 'Our server didn’t accept this amount. Check it, then try again.',
       },
     },
-    review: (amount: string) => `Review the steps to buy ${amount}`,
-    reviewing: 'Making your order…',
     blocked: {
       amount: 'Enter an amount from $10 to $1,000,000 to continue.',
       funding: 'Your wallet needs what is missing before you can continue.',
@@ -1431,6 +1425,57 @@ export const en = {
         vault:
           'I couldn’t hold this vault to your wallet, so I’m not offering the withdrawal. Nothing was signed.',
       },
+    },
+  },
+
+  invest: {
+    label: 'Invest',
+    buying: 'What you’re buying',
+    columns: { holding: 'Holding', share: 'Share', amount: 'Amount' },
+    cash: 'Kept as cash',
+    press: (amount: string) => `Invest ${amount}`,
+    checkingFunds: 'Checking your wallet…',
+    preparing: 'Reading prices for your order…',
+    again: 'Read the prices again',
+    fee: {
+      none: 'We charge no fee on this order. The network fee is paid from your wallet.',
+      some: (list: string) =>
+        `Fees on this order: ${list}. The network fee is paid from your wallet.`,
+    },
+    signs: {
+      passkey: (n: number) =>
+        n === 1
+          ? 'One press signs the one step with your passkey wallet. No other window opens.'
+          : `One press signs the ${n} steps with your passkey wallet, one after another. No other window opens, and you can stop between steps.`,
+      wallet: (n: number) =>
+        n === 1
+          ? 'Your wallet asks you to confirm the one step in its own window.'
+          : `Your wallet asks you to confirm each of the ${n} steps in its own window.`,
+    },
+    stop: 'Stop after this step',
+    stopping: 'Stopping once this step is finished. What is already signed is still sent.',
+    progress: {
+      depositing: 'Depositing',
+      deposited: 'Deposit confirmed',
+      depositingAndBuying: (names: string) => `Depositing and buying ${names}`,
+      depositedAndBought: (names: string) => `Deposit confirmed, ${names} bought`,
+      approving: 'Allowing the deposit',
+      approved: 'Deposit allowed',
+      buying: (names: string) => `Buying ${names}`,
+      bought: (names: string) => `${names} bought`,
+      confirmed: (what: string) => `${what}, confirmed`,
+      line: (did: string | null, doing: string, n: number, of: number) =>
+        `${did ? `${did} · ` : ''}${doing} · ${n} of ${of}`,
+    },
+    things: {
+      deposit: 'the deposit',
+      approval: 'the permission for the deposit',
+      step: 'a step',
+    },
+    stopped: {
+      nothing: 'Nothing has landed yet: no step is confirmed.',
+      all: (landed: string) => `What landed: ${landed}.`,
+      some: (landed: string, not: string) => `What landed: ${landed}. What didn’t: ${not}.`,
     },
   },
 

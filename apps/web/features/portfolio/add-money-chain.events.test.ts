@@ -28,8 +28,14 @@ const NODE = vi.hoisted(() => {
 });
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
+// the card draws the order's own screen, which holds the runner: nothing here presses it
+vi.mock('../wallet/signing', () => import('../wallet/test/mock-signing'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
 vi.mock('next/link', () => import('../wallet/test/mock-next'));
+
+// The card makes an order only once the amount has been still for a second: a test that opens the
+// page several times waits that long each time.
+vi.setConfig({ testTimeout: 20_000 });
 
 const en = dictionary('en');
 const PROGRAM = '529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW';
@@ -143,13 +149,18 @@ function api(vaults = [served()]) {
       orders.push(JSON.parse(String(init.body)));
       return json(orderOn());
     }
+    if (path === `/v1/orders/${ORDER_ID}`) return json(orderOn());
     return json({ error: 'not found' }, 404);
   });
   return orders;
 }
 
-const SIGN = '[data-step="review"] [data-variant="primary"]';
-/** Opens the page, types $10, accepts the trust notice, and waits for the reads. */
+/** The card's one button: "Invest $10", held while no order may be made. */
+const SIGN = '[data-ui="invest-card"] > div > [data-variant="primary"]';
+/**
+ * Opens the page, types $10, accepts the trust notice, and waits for the reads and for the order,
+ * which the card makes by itself once nothing stands in its way.
+ */
 async function ready(address = MY_VAULT) {
   const host = await mount(
     withAccount('en', createElement(AddMoneyScreen, { chain: 'solana', address })),
@@ -158,6 +169,8 @@ async function ready(address = MY_VAULT) {
   await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
   await settle(350);
   await click(find(host, '[data-ui="trust-notice"] input[type="checkbox"]'));
+  await settle(1050);
+  await settle();
   return host;
 }
 
@@ -201,8 +214,6 @@ describe('an add, held to the vault’s targets as this app reads them from the 
     expect(mark.getAttribute('data-source')).toBe('chain');
     expect(mark.textContent).toContain(en.shared.check.verified);
     expect(mark.textContent).toContain(en.portfolio.add.source.read('Solana'));
-    await click(find(host, SIGN));
-    await settle();
     expect(orders).toHaveLength(1);
     expect(recallOrder(ORDER_ID, USER)?.terms).toEqual({
       kind: 'vault',
@@ -301,8 +312,6 @@ describe('an add, held to the vault’s targets as this app reads them from the 
     api([served({ autoFollow: true })]);
     const host = await ready();
     expect(find(host, '[data-ui="add-keeper"]').textContent).toBe(en.portfolio.add.keeper);
-    await click(find(host, SIGN));
-    await settle();
     expect(recallOrder(ORDER_ID, USER)?.terms).toMatchObject({
       targets: [],
       keeper: true,

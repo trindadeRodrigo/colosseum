@@ -533,9 +533,6 @@ export const pt: Dictionary = {
       lead: (chain: string) =>
         `O valor inteiro vai para este cofre na ${chain} e depois compra cada parte nas metas do cofre. Nada é assinado aqui.`,
       amountHint: 'De US$ 10 a US$ 1.000.000.',
-      review: (amount: string) => `Revisar os passos para adicionar ${amount}`,
-      reviewLead: (amount: string, chain: string) =>
-        `Você está adicionando ${amount} ao seu cofre na ${chain}. A seguir você revisa cada passo e assina cada um na sua carteira.`,
       missing:
         'Não encontro este cofre entre os seus. Abra seu portfólio e escolha o cofre por lá.',
       back: 'Voltar ao seu portfólio',
@@ -572,7 +569,7 @@ export const pt: Dictionary = {
     },
   },
 
-  invest: {
+  talk: {
     chat: 'A conversa',
     you: 'Você',
     me: 'tenonfi',
@@ -602,6 +599,9 @@ export const pt: Dictionary = {
         risk: 'Posso fazer risco baixo, médio ou alto. Qual?',
       },
       signIn: 'Entre para investir. Seu objetivo e este plano ficam aqui.',
+      done: 'Seu cofre está aberto.',
+      stopped: 'A compra parou antes de todos os passos. O que chegou fica guardado.',
+      finish: 'Terminar a compra',
     },
     ask: {
       goal: 'Para que é o dinheiro?',
@@ -888,14 +888,6 @@ export const pt: Dictionary = {
         `Seu plano foi montado para ${planned}, e os limites dele foram calculados para esse valor. Para comprar outro valor, monte o plano de novo para ele.`,
     },
     steps: {
-      label: 'Passos para comprar',
-      names: { amount: 'Valor', funds: 'Fundos', trust: 'Confiança', review: 'Revisar' },
-      done: 'feito',
-      next: 'Continuar',
-      funds: { ready: 'Pronto', short: 'Falta algo', reading: 'Lendo…' },
-      trust: { accepted: 'Aceito', open: 'Ainda não aceito' },
-      reviewLead: (amount: string, chain: string) =>
-        `Você está comprando ${amount} em ${chain}. Em seguida você revisa cada passo e assina cada um na sua carteira.`,
       note: {
         testNetwork: (chain: string) => `Rede de teste · ${chain} · valores não reais`,
       },
@@ -948,8 +940,6 @@ export const pt: Dictionary = {
         refused: 'Nosso servidor não aceitou este valor. Confira e tente de novo.',
       },
     },
-    review: (amount: string) => `Revisar os passos para comprar ${amount}`,
-    reviewing: 'Criando sua ordem…',
     blocked: {
       amount: 'Digite um valor de US$ 10 a US$ 1.000.000 para continuar.',
       funding: 'Sua carteira precisa do que falta antes de você continuar.',
@@ -1314,6 +1304,56 @@ export const pt: Dictionary = {
         vault:
           'Não consegui confirmar que este cofre é da sua carteira, então não ofereço o saque. Nada foi assinado.',
       },
+    },
+  },
+
+  invest: {
+    label: 'Investir',
+    buying: 'O que você está comprando',
+    columns: { holding: 'Ativo', share: 'Parte', amount: 'Valor' },
+    cash: 'Fica em dinheiro',
+    press: (amount: string) => `Investir ${amount}`,
+    checkingFunds: 'Conferindo sua carteira…',
+    preparing: 'Lendo os preços da sua ordem…',
+    again: 'Ler os preços de novo',
+    fee: {
+      none: 'Não cobramos taxa nesta ordem. A taxa da rede sai da sua carteira.',
+      some: (list: string) => `Taxas desta ordem: ${list}. A taxa da rede sai da sua carteira.`,
+    },
+    signs: {
+      passkey: (n: number) =>
+        n === 1
+          ? 'Um toque assina o único passo com sua carteira de chave de acesso. Nenhuma outra janela abre.'
+          : `Um toque assina os ${n} passos com sua carteira de chave de acesso, um depois do outro. Nenhuma outra janela abre, e você pode parar entre os passos.`,
+      wallet: (n: number) =>
+        n === 1
+          ? 'Sua carteira pede que você confirme o único passo na janela dela.'
+          : `Sua carteira pede que você confirme cada um dos ${n} passos na janela dela.`,
+    },
+    stop: 'Parar depois deste passo',
+    stopping: 'Parando quando este passo terminar. O que já foi assinado ainda é enviado.',
+    progress: {
+      depositing: 'Depositando',
+      deposited: 'Depósito confirmado',
+      depositingAndBuying: (names: string) => `Depositando e comprando ${names}`,
+      depositedAndBought: (names: string) => `Depósito confirmado, ${names} comprado`,
+      approving: 'Autorizando o depósito',
+      approved: 'Depósito autorizado',
+      buying: (names: string) => `Comprando ${names}`,
+      bought: (names: string) => `${names} comprado`,
+      confirmed: (what: string) => `${what}, confirmado`,
+      line: (did: string | null, doing: string, n: number, of: number) =>
+        `${did ? `${did} · ` : ''}${doing} · ${n} de ${of}`,
+    },
+    things: {
+      deposit: 'o depósito',
+      approval: 'a autorização do depósito',
+      step: 'um passo',
+    },
+    stopped: {
+      nothing: 'Nada chegou à rede ainda: nenhum passo está confirmado.',
+      all: (landed: string) => `O que chegou: ${landed}.`,
+      some: (landed: string, not: string) => `O que chegou: ${landed}. O que não chegou: ${not}.`,
     },
   },
 

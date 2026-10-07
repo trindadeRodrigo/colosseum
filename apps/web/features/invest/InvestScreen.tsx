@@ -17,7 +17,8 @@ import { type BuildOutcome, buildPlan, PERSONALIZE_PATH, PROPOSE_PATH } from '..
 import { GOAL_DRAFT, GOAL_HANDOFF } from '../goal/draft';
 import { GOAL_TEXT } from '../goal/read-goal';
 import { dollars, type SheetFields } from '../goal/sheet';
-import { BuyScreen } from '../order/BuyScreen';
+import { Invest } from '../order/Invest';
+import type { InvestProgress } from '../order/invest-words';
 import { PlanPane } from '../order/PlanPane';
 import { rememberPlan } from '../order/plan-store';
 import { chainReady, onMock } from '../order/readiness';
@@ -64,7 +65,12 @@ type Turn =
       id: number;
       who: 'app';
       /** What to say, as keys; the sentences are the dictionary's, the figures the sheet's. */
-      say: (Say | { key: 'building' | 'built' | 'signIn' } | { key: 'failure'; text: string })[];
+      say: (
+        | Say
+        | { key: 'building' | 'built' | 'signIn' | 'done' }
+        | { key: 'failure' | 'progress'; text: string }
+        | { key: 'stopped'; orderId: string }
+      )[];
       /** The sheet as it stood when this was said. */
       fields: SheetFields | null;
       ask: Fact | null;
@@ -79,9 +85,9 @@ function factValue(fact: Fact, value: string, t: Dictionary, lang: Lang): string
   if (fact === 'risk') return t.goal.options.risk[value as 'low' | 'medium' | 'high'] ?? value;
   if (fact === 'horizon') {
     const months = Number(value);
-    return months % 12 === 0 ? t.invest.replies.years(months / 12) : t.goal.card.months(months);
+    return months % 12 === 0 ? t.talk.replies.years(months / 12) : t.goal.card.months(months);
   }
-  if (fact === 'income') return t.invest.replies.aMonth(dollars(Number(value), lang));
+  if (fact === 'income') return t.talk.replies.aMonth(dollars(Number(value), lang));
   return dollars(Number(value), lang);
 }
 
@@ -105,14 +111,13 @@ export function InvestScreen() {
   // to be signed in always has one, also while the wallet library is still loading: a visitor can
   // talk and see a plan whatever the sign-in service is doing.
   const chain = accountChain ?? (port.userId ? null : FIRST_CHAIN);
-  const w = t.invest;
+  const w = t.talk;
   const [turns, setTurns] = useState<Turn[]>([]);
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [reading, setReading] = useState(false);
   const [build, setBuild] = useState<Build>({ kind: 'idle' });
   const [plan, setPlan] = useState<Plan | null>(null);
-  const [investing, setInvesting] = useState(false);
   const [paneOpen, setPaneOpen] = useState(false);
   const [text, setText] = useState('');
   const nextId = useRef(0);
@@ -157,7 +162,6 @@ export function InvestScreen() {
     wanted.current += 1;
     const mine = wanted.current;
     setBuild({ kind: 'building' });
-    setInvesting(false);
     const outcome = await buildPlan(apiFetch, sheetToBuild, own ? PERSONALIZE_PATH : PROPOSE_PATH);
     if (wanted.current !== mine) return;
     if (outcome.kind === 'built') {
@@ -172,9 +176,9 @@ export function InvestScreen() {
       setPlan({ id: outcome.id, proposal: outcome.proposal, rollUp: outcome.rollUp, own });
       setBuild({ kind: 'idle' });
       say({ say: [{ key: 'built' }], fields: null, ask: null, retry: false });
+      // The person asked to invest before they were signed in: the card is on the pane now.
       if (own && wantsInvest.current) {
         wantsInvest.current = false;
-        setInvesting(true);
         setPaneOpen(true);
       }
       return;
@@ -337,7 +341,6 @@ export function InvestScreen() {
       setConfirmed(false);
       setPlan(null);
       setBuild({ kind: 'idle' });
-      setInvesting(false);
       return;
     }
   }, [whoNow]);
@@ -372,15 +375,28 @@ export function InvestScreen() {
   const SIGN_IN = '/sign-in?next=/goal';
   function invest() {
     if (!plan) return;
-    if (!signedIn || !plan.own) {
-      // The plan is built again as theirs once they are in, and the invest step opens then.
-      wantsInvest.current = true;
-      say({ say: [{ key: 'signIn' }], fields: null, ask: null, retry: false });
-      if (signedIn && valid) void buildFrom(valid, true);
-      return;
-    }
-    setInvesting(true);
+    // The plan is built again as theirs once they are in, and the invest card is on the pane then.
+    wantsInvest.current = true;
+    say({ say: [{ key: 'signIn' }], fields: null, ask: null, retry: false });
+    if (signedIn && valid && !plan.own) void buildFrom(valid, true);
   }
+
+  // What the invest card tells the conversation (features/order/Invest.tsx): one line as each step
+  // runs, in the card's own words, then that the vault is open, or that the buy stopped short.
+  const lastLine = useRef('');
+  function onProgress(progress: InvestProgress) {
+    if (progress.line === '' || progress.line === lastLine.current) return;
+    lastLine.current = progress.line;
+    say({ say: [{ key: 'progress', text: progress.line }], fields: null, ask: null, retry: false });
+  }
+  const onDone = () => say({ say: [{ key: 'done' }], fields: null, ask: null, retry: false });
+  const onStopped = (stopped: { orderId: string }) =>
+    say({
+      say: [{ key: 'stopped', orderId: stopped.orderId }],
+      fields: null,
+      ask: null,
+      retry: false,
+    });
 
   const lastTurn = turns[turns.length - 1];
   const open = lastTurn?.who === 'app' ? lastTurn : null;
@@ -399,7 +415,10 @@ export function InvestScreen() {
           ? null
           : t.plan.chainNotReady(chainName)
       : null;
-  const state = investing && plan ? 'invest' : plan ? 'plan' : fields ? 'facts' : 'empty';
+  // The plan is the person's own, on a chain that can be invested in: the invest card is on the
+  // pane under it, and the pane's last state is the plan and its one press.
+  const canInvest = plan !== null && plan.own && signedIn && blocked === null;
+  const state = canInvest ? 'invest' : plan ? 'plan' : fields ? 'facts' : 'empty';
   const knownCount = FACTS.filter((fact) => known(fields, fact)).length;
 
   /** The words of a quick reply, and what it sends. */
@@ -442,7 +461,12 @@ export function InvestScreen() {
       case 'signIn':
         return w.say.signIn;
       case 'failure':
+      case 'progress':
         return s.text;
+      case 'done':
+        return w.say.done;
+      case 'stopped':
+        return w.say.stopped;
     }
   };
 
@@ -511,6 +535,26 @@ export function InvestScreen() {
                 {turn.say.map((s) => (
                   <p key={`${s.key}:${'fact' in s ? s.fact : ''}`} className="text-body">
                     {line(s, turn.fields)}
+                    {/* where the vault is, once it is open; where a buy that stopped is finished */}
+                    {s.key === 'done' && (
+                      <>
+                        {' '}
+                        <Link href="/monitor" className={buttonClass({ variant: 'link' })}>
+                          {t.order.outcome.seePortfolio}
+                        </Link>
+                      </>
+                    )}
+                    {s.key === 'stopped' && (
+                      <>
+                        {' '}
+                        <Link
+                          href={`/orders/${encodeURIComponent(s.orderId)}`}
+                          className={buttonClass({ variant: 'link' })}
+                        >
+                          {w.say.finish}
+                        </Link>
+                      </>
+                    )}
                   </p>
                 ))}
                 {/* Words that changed nothing: what can be done next is said, in context. */}
@@ -639,14 +683,14 @@ export function InvestScreen() {
           <Facts
             fields={fields}
             skipped={sheet?.skipped ?? []}
-            disabled={busy || investing}
+            disabled={busy}
             onChange={(fact) => post({ kind: 'reopen', fact }, w.facts.changeSay[fact])}
             build={toConfirm && !busy ? () => confirm() : null}
             visitor={!signedIn}
           />
         )}
         {build.kind === 'building' && <LatticeStatus label={w.pane.building} />}
-        {plan && planChain && !investing && (
+        {plan && planChain && (
           <div className="motion-safe:animate-seat flex flex-col gap-4">
             <PlanPane
               plan={plan}
@@ -660,7 +704,15 @@ export function InvestScreen() {
                   way,
                 );
               }}
-              invest={signedIn ? { onPress: invest } : { href: SIGN_IN, onFollow: invest }}
+              // Its own button only while the card cannot be here: signed out it leads to the
+              // sign-in dialog, and on a chain that is not ready it is off and says why.
+              invest={
+                canInvest
+                  ? undefined
+                  : signedIn && plan.own
+                    ? { onPress: invest }
+                    : { href: SIGN_IN, onFollow: invest }
+              }
             />
             {plan.own && (
               <Link
@@ -672,16 +724,21 @@ export function InvestScreen() {
             )}
           </div>
         )}
-        {plan && investing && (
+        {plan && canInvest && (
           <section
             data-ui="invest-step"
             aria-label={w.pane.investTitle}
             className="flex flex-col gap-4"
           >
-            <Button variant="link" className="self-start" onClick={() => setInvesting(false)}>
-              {w.pane.backToPlan}
-            </Button>
-            <BuyScreen id={plan.id} embedded />
+            <Invest
+              // a plan built again is another plan: its card starts over
+              key={plan.id}
+              of={{ plan: plan.id }}
+              amount={plan.proposal.sheet.amountUsd}
+              onProgress={onProgress}
+              onDone={onDone}
+              onStopped={onStopped}
+            />
           </section>
         )}
       </aside>
@@ -692,7 +749,7 @@ export function InvestScreen() {
 /** The pane before anything is said: the outline of a plan, drawn in hairlines, and what fills it. */
 function EmptyPane() {
   const t = useT();
-  const w = t.invest.pane.empty;
+  const w = t.talk.pane.empty;
   return (
     <div data-ui="pane-empty" className="flex flex-col gap-5">
       <div className="flex flex-col gap-1">
@@ -738,7 +795,7 @@ function Facts({
 }) {
   const t = useT();
   const lang = useLang();
-  const w = t.invest.facts;
+  const w = t.talk.facts;
   const shown = FACTS.filter((fact) => fact !== 'income' || fields.goal === 'income');
   return (
     <section data-ui="pane-facts" aria-label={w.title} className="flex flex-col gap-2">
