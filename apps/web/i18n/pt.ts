@@ -916,6 +916,16 @@ export const pt: Dictionary = {
       notChecked:
         'O nome e a descrição não foram conferidos com o que quem criou publicou na rede.',
     },
+    refusal: {
+      versionChanged:
+        'Este portfólio tem uma versão nova desde que você abriu esta página. Abra de novo para ver o que ele guarda agora.',
+      reopen: 'Abrir o portfólio de novo',
+      reread: 'Ler o portfólio de novo',
+      assetNamed: (asset: string) =>
+        `${asset} não pode ser comprado nesta rede agora, então este portfólio não pode ser comprado como está.`,
+      asset:
+        'Um ativo deste portfólio não pode ser comprado nesta rede agora, então o portfólio não pode ser comprado como está.',
+    },
     family: {
       loading: 'Lendo este portfólio…',
       missing: 'Não encontro um portfólio compartilhado com esse nome.',

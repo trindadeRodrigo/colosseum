@@ -21,6 +21,7 @@ import { keepOrder } from '../order/order-record';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { familyIdFor, useChainRecipe } from './chain-recipe';
 import { followedOf } from './FamilyScreen';
+import { sharedRefusal } from './refusal';
 import { SourceMark } from './SourceMark';
 import { placeShared, readFamily } from './shared-api';
 import type { SharedTerms } from './terms';
@@ -43,6 +44,8 @@ export function FamilyBuyScreen({ slug, embedded }: { slug: string; embedded?: I
   const [text, setText] = useState('100');
   const [locked, setLocked] = useState(false);
   const [round, setRound] = useState(0);
+  // Our server said the portfolio changed: the way back to its page is offered under the card.
+  const [changed, setChanged] = useState(false);
   const chain = person.kind === 'ready' ? person.chain : null;
   const owner = person.kind === 'ready' ? person.owner : null;
 
@@ -146,19 +149,22 @@ export function FamilyBuyScreen({ slug, embedded }: { slug: string; embedded?: I
       { chain, owner, type: 'buy' },
     );
     if (placed.kind !== 'placed') {
-      const versionChanged =
-        (placed.kind === 'code' || placed.kind === 'said') && placed.code === 'VERSION_CHANGED';
+      // A refusal with a code is said in this app's own words for a portfolio (refusal.ts); only
+      // one it has none for is said in our server's.
+      const refused =
+        placed.kind === 'said' || placed.kind === 'code' ? sharedRefusal(placed, t) : null;
       // The portfolio has another version than the page showed: it is read again here, so what the
-      // next order is held to is the new one, and the host is told.
-      if (versionChanged) setRound((n) => n + 1);
+      // next order is held to is the new one, the host is told, and the way back to its page is offered.
+      setChanged(refused?.changed === true);
+      if (refused?.changed) setRound((n) => n + 1);
       return {
-        ...(versionChanged ? { versionChanged: true } : {}),
-        failure: versionChanged
-          ? t.buy.failure.VERSION_CHANGED
+        ...(refused?.changed ? { versionChanged: true } : {}),
+        failure: refused
+          ? refused.sentence
           : placed.kind === 'said'
             ? t.shared.publish.failure.said(placed.error)
             : placed.kind === 'code'
-              ? (t.buy.failure[placed.code as keyof typeof t.buy.failure] ?? t.buy.failure.refused)
+              ? t.buy.failure.refused
               : placed.kind === 'busy'
                 ? t.shell.slowDown
                 : placed.kind === 'signed-out'
@@ -168,6 +174,7 @@ export function FamilyBuyScreen({ slug, embedded }: { slug: string; embedded?: I
                     : t.buy.failure.unreachable,
       };
     }
+    setChanged(false);
     const kept = keepOrder({
       orderId: placed.order.id,
       userId: person.userId,
@@ -234,6 +241,15 @@ export function FamilyBuyScreen({ slug, embedded }: { slug: string; embedded?: I
         disabled={locked}
       />
       {card}
+      {changed && (
+        <Link
+          data-ui="family-reopen"
+          href={`/indexes/${encodeURIComponent(slug)}`}
+          className={`${buttonClass({ variant: 'secondary' })} self-start`}
+        >
+          {t.shared.refusal.reopen}
+        </Link>
+      )}
     </div>
   );
 }
