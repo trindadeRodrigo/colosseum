@@ -1,5 +1,5 @@
 import type { Shelf } from '@colosseum/schemas';
-import { composeAs } from './compose';
+import { composeAs, limitsOf } from './compose';
 import { sum } from './money';
 import { PERSONAL_PARAMS } from './params';
 import { text } from './templates';
@@ -138,7 +138,13 @@ export function candidates(
   context: ComposeContext,
 ): PersonalCandidates {
   const P = context.params ?? PERSONAL_PARAMS;
-  const made = CANDIDATES.map((id) => ({ id, plan: composeAs(id, sheet, shelf, context) }));
+  // The limits a mix takes are the ones of the person's own plan, whichever candidate is made: they
+  // are found once, and the three take them.
+  const limits = sheet.mix ? limitsOf(sheet, shelf, context) : undefined;
+  const made = CANDIDATES.map((id) => ({
+    id,
+    plan: composeAs(id, sheet, shelf, context, limits),
+  }));
   const lang = made[0]?.plan.sheet.language ?? sheet.language;
   const notShown: PersonalCandidates['notShown'] = [];
 

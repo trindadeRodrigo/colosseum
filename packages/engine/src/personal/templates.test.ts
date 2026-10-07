@@ -79,6 +79,8 @@ const SAMPLE: Record<string, string | number> = {
   month: '2028-04',
   months: 18,
   regimes: 'weekend,us_holiday',
+  raisers: 'withdrawals,holdings',
+  steps: 1,
   list: 'AAPL,NVDA',
   '': 'NVDA',
 };
@@ -256,6 +258,42 @@ describe('explanation templates', () => {
     expect(Object.keys(WORDS.en.regime)).toEqual(Object.keys(WORDS.pt.regime));
     // A time of the week this file does not know is an error, never a blank.
     expect(() => when('weekend,full_moon', 'en')).toThrow(/times of the week/);
+  });
+
+  it('writes what raised the limits of a mix in one order, and how many risks up', () => {
+    const by = (codes: string, lang: 'en' | 'pt') => render('{b|raisers}', { b: codes }, lang);
+    expect(by('holdings', 'en')).toBe('what you already hold');
+    expect(by('cannotHold,withdrawals', 'en')).toBe(
+      'what is set aside for your withdrawals and what you cannot hold',
+    );
+    expect(by('date,limits,cannotHold,holdings,withdrawals', 'pt')).toBe(
+      'o que fica separado para os seus saques, o que você já tem, o que você não pode ter, os seus outros limites e a sua data',
+    );
+    expect(Object.keys(WORDS.en.raiser)).toEqual(Object.keys(WORDS.pt.raiser));
+    expect(Object.keys(WORDS.en.steps)).toEqual(Object.keys(WORDS.pt.steps));
+    // Something this file has no words for is an error, never a blank.
+    expect(() => by('holdings,the_weather', 'en')).toThrow(/what raised the limits/);
+    expect(render('{n|steps}', { n: 1 }, 'en')).toBe('one step up');
+    expect(render('{n|steps}', { n: 2 }, 'pt')).toBe('dois níveis acima');
+    expect(() => render('{n|steps}', { n: 3 }, 'en')).toThrow(/number of steps/);
+    expect(
+      reason(
+        'MIX_LIMITS_RAISED',
+        { alone: 'low', risk: 'medium', by: 'withdrawals', steps: 1 },
+        'en',
+      ).text,
+    ).toBe(
+      'On its own, this mix takes the limits for low risk. Because of what is set aside for your withdrawals, the plan uses the limits one step up, for medium risk: at lower limits it would hold less in stocks and crypto.',
+    );
+    expect(
+      reason(
+        'MIX_LIMITS_RAISED',
+        { alone: 'low', risk: 'high', by: 'holdings,cannotHold', steps: 2 },
+        'pt',
+      ).text,
+    ).toBe(
+      'Sozinha, esta composição usa os limites de risco baixo. Por causa de o que você já tem e o que você não pode ter, o plano usa os limites dois níveis acima, de risco alto: com limites mais baixos ele teria menos em ações e cripto.',
+    );
   });
 
   it('writes a list of names as a person would: one, two with "and", more with commas', () => {
