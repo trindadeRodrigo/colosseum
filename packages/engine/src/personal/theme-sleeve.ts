@@ -294,12 +294,14 @@ export function placeThemeSleeve(
     limits = caps.map((c) => Math.max(0, c.cents));
     whys = caps.map((c) => c.why);
     // Equal parts within each name's own cap; then each issuer within its room, its names scaled
-    // down together and held there while the others share again. The room is read per name: the cap
-    // on stocks and crypto counts every sleeve of an issuer, the plan's cap only gold and the rest,
-    // so an issuer with names of both kinds is two limits.
+    // down together and held there while the others share again. The room is read per name
+    // (`Book.issuerLimit`, with the sentence of the cap that binds): the cap by risk counts all the
+    // plan holds with an issuer, the plan's own cap only gold and the rest, so an issuer with names
+    // of both kinds is two limits.
     const offsets = chosen.map((n) => n.held);
     const limitsOn = chosen.flatMap((n) => {
       const growth = w.sleeveOf(n.asset) === 'growth';
+      const limit = book.issuerLimit(n.asset);
       return [
         {
           key: `${n.asset.issuer} all`,
@@ -313,7 +315,7 @@ export function placeThemeSleeve(
         },
       ]
         .filter((c) => c.when)
-        .map((c) => ({ ...c, room: book.issuerRoom(n.asset), why: w.issuerWhy(n.asset) }));
+        .map((c) => ({ ...c, room: Math.max(0, limit.cents), why: limit.why }));
     });
     const byKey = new Map(byName(limitsOn, (c) => c.key).map((c) => [c.key, c]));
     const fixed = new Set<string>();

@@ -63,7 +63,8 @@ const MixBps = z.number().int().min(0).max(10_000);
  * LOCAL TYPE. What the person said they want held (gate EXPLICIT-MIX, Rodrigo, Oct 6): "all in
  * stocks", "70% stocks and 30% cash", "only credit". In basis points of the whole plan, adding up to
  * 10,000. It replaces the table row for the goal and the risk, and the limits follow it: the plan
- * takes the lowest risk whose caps admit it (`riskForMix`), so risk is never asked.
+ * takes the lowest risk at which it holds the most in stocks and crypto (`riskForMix`), so risk is
+ * never asked.
  */
 export const PersonalMix = z
   .object({

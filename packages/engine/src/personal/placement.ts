@@ -82,9 +82,16 @@ export class Book {
     { cents: number; names: Set<string>; cause: Reason }
   >();
   readonly cash = { cents: 0, reasons: [] as Reason[] };
+  /** Everything the plan holds with each issuer, whatever it is: what the cap by risk counts. */
   private readonly withIssuer = new Map<string, number>();
   /** The same, counting dollar yield, gold and cash only: what the plan's issuer cap reads (Rodrigo, Oct 5). */
   private readonly withIssuerOutsideGrowth = new Map<string, number>();
+  /**
+   * Of `withIssuer`, the stocks and crypto of shared portfolios held whole, by issuer and by
+   * portfolio, until `followedOver` has been asked. A portfolio held whole is booked before the rest
+   * of the plan, and has no claim on its issuer for that: see `issuerLimit`.
+   */
+  private readonly followedWith = new Map<string, Map<string, number>>();
 
   /**
    * Room held for the theme sleeves, by issuer, while the goal sleeve follows a shared portfolio
@@ -96,13 +103,6 @@ export class Book {
    * then stops the goal's stocks, the reason says the theme came first (gate THEME-FIRST).
    */
   readonly themeFirst = new Map<string, string[]>();
-
-  /** What is already with this token's issuer, as the cap for its sleeve counts it. */
-  private usedOf(asset: BasketAsset): number {
-    if (this.w.sleeveOf(asset) !== 'growth')
-      return this.withIssuerOutsideGrowth.get(asset.issuer) ?? 0;
-    return (this.withIssuer.get(asset.issuer) ?? 0) + (this.reserved.get(asset.issuer) ?? 0);
-  }
 
   /** Cents held of an underlying in stocks and crypto, on every line. */
   heldOfUnderlying(underlying: string): number {
@@ -116,30 +116,49 @@ export class Book {
     return n;
   }
 
-  constructor(private readonly w: World) {}
-
-  /** How many more cents a token takes, and the limit that stops it there. */
-  room(asset: BasketAsset): { cents: number; why: Reason } {
+  /**
+   * How many more cents this token's issuer takes, and the cap that stops it there.
+   *
+   * No issuer holds more of the plan than the cap for the plan's risk, whatever it holds of that
+   * issuer: stocks, crypto, gold, dollar yield or a leg in another currency. Dollar yield, gold and
+   * such a leg are also held to the plan's own cap, which counts those only (gate SOLVER-CAPS, Rodrigo,
+   * Oct 5). The smaller room binds, and its sentence is the one said; on a tie, the plan's own cap.
+   *
+   * What is set aside, the dollar yield and the gold are placed before the stocks, and so come
+   * first with an issuer they share. A shared portfolio held whole is booked before all of them, so
+   * until `followedOver` is asked its stocks are not counted against what those may take: the
+   * portfolio is the one that gives way, as stocks placed after them would. The room held for the
+   * theme sleeves (`reserved`) counts against stocks and crypto until the themes are placed.
+   */
+  issuerLimit(asset: BasketAsset): { cents: number; why: Reason } {
     const { w } = this;
-    const ceiling = w.ceilingOf(asset);
-    const underCeiling = ceiling - (this.lines.get(asset.id)?.cents ?? 0);
-    const underIssuerCap = w.issuerCapOf(asset) - this.usedOf(asset);
-    if (underIssuerCap < underCeiling)
-      return { cents: Math.max(0, underIssuerCap), why: this.issuerWhy(asset) };
-    return { cents: Math.max(0, underCeiling), why: w.ceilingWhy(asset) };
+    const all = this.withIssuer.get(asset.issuer) ?? 0;
+    if (w.sleeveOf(asset) === 'growth')
+      return {
+        cents: w.issuerCapAtRisk - all - (this.reserved.get(asset.issuer) ?? 0),
+        why: w.issuerWhyAtRisk(asset),
+      };
+    const followed = sum([...(this.followedWith.get(asset.issuer)?.values() ?? [])]);
+    const atRisk = w.issuerCapAtRisk - (all - followed);
+    const ofPlan = w.issuerCapOf(asset) - (this.withIssuerOutsideGrowth.get(asset.issuer) ?? 0);
+    return atRisk < ofPlan
+      ? { cents: atRisk, why: w.issuerWhyAtRisk(asset) }
+      : { cents: ofPlan, why: w.issuerWhy(asset) };
   }
 
-  /** How many more cents this token's issuer may take, as the cap for its sleeve counts it. */
-  issuerRoom(asset: BasketAsset): number {
-    return Math.max(0, this.w.issuerCapOf(asset) - this.usedOf(asset));
-  }
-
-  /** Why an issuer takes no more: the most of a plan one issuer may hold, at the person's risk. */
-  private issuerWhy(asset: BasketAsset): Reason {
+  /**
+   * `issuerLimit` for what the goal sleeve places. Its stocks and crypto come after the theme sleeves
+   * (gate THEME-FIRST): where a theme holds names of the issuer, the sentence says the theme came
+   * first. A theme's own names read `issuerLimit`, and say the cap as it is.
+   */
+  private goalLimit(asset: BasketAsset): { cents: number; why: Reason } {
     const { w } = this;
+    const limit = this.issuerLimit(asset);
     const themes = this.themeFirst.get(asset.issuer);
-    if (themes && themes.length > 0 && w.sleeveOf(asset) === 'growth')
-      return reason(
+    if (!themes || themes.length === 0 || w.sleeveOf(asset) !== 'growth') return limit;
+    return {
+      cents: limit.cents,
+      why: reason(
         'ISSUER_CAP_THEME',
         {
           capBps: w.P.capPerIssuerBps[w.sheet.risk] ?? 0,
@@ -148,8 +167,39 @@ export class Book {
           themes: themes.join(','),
         },
         w.lang,
-      );
-    return w.issuerWhy(asset);
+      ),
+    };
+  }
+
+  /**
+   * The shared portfolios held whole whose issuer now holds more of the plan than the cap by risk
+   * allows, with that issuer: what was placed after them took the room they were booked in. The room
+   * held for a theme sleeve counts as taken (gate THEME-FIRST): the portfolio gives way to the theme
+   * as it does to the gold. Asked once, when everything that comes before the themes and the stocks
+   * is placed and before that room is let go; from then on what a portfolio holds counts for every
+   * token of its issuer.
+   */
+  followedOver(): { slug: string; issuer: string }[] {
+    const over: { slug: string; issuer: string }[] = [];
+    for (const [issuer, bySlug] of this.followedWith) {
+      const taken = (this.withIssuer.get(issuer) ?? 0) + (this.reserved.get(issuer) ?? 0);
+      if (taken > this.w.issuerCapAtRisk)
+        for (const slug of bySlug.keys()) over.push({ slug, issuer });
+    }
+    this.followedWith.clear();
+    return over;
+  }
+
+  constructor(private readonly w: World) {}
+
+  /** How many more cents a token takes, and the limit that stops it there. */
+  room(asset: BasketAsset): { cents: number; why: Reason } {
+    const { w } = this;
+    const ceiling = w.ceilingOf(asset);
+    const underCeiling = ceiling - (this.lines.get(asset.id)?.cents ?? 0);
+    const issuer = this.goalLimit(asset);
+    if (issuer.cents < underCeiling) return { cents: Math.max(0, issuer.cents), why: issuer.why };
+    return { cents: Math.max(0, underCeiling), why: w.ceilingWhy(asset) };
   }
 
   /** The reason a token gets no line of its own when the plan is full, or null when it may. */
@@ -176,6 +226,11 @@ export class Book {
         asset.issuer,
         (this.withIssuerOutsideGrowth.get(asset.issuer) ?? 0) + cents,
       );
+    else if (via !== undefined) {
+      const bySlug = this.followedWith.get(asset.issuer) ?? new Map<string, number>();
+      bySlug.set(via, (bySlug.get(via) ?? 0) + cents);
+      this.followedWith.set(asset.issuer, bySlug);
+    }
     if (this.w.sleeveOf(asset) === 'dollarYield' && this.w.isCredit(asset))
       this.creditUsed += cents;
   }
@@ -237,7 +292,8 @@ export class Book {
     /** The limit that leaves a token no room at all, or null when it can take something. */
     const full = (a: Able): Reason | null => {
       if (a.cap.cents - held(a.asset) <= 0) return a.cap.why;
-      if (w.issuerCapOf(a.asset) - this.usedOf(a.asset) <= 0) return this.issuerWhy(a.asset);
+      const issuer = this.issuerLimit(a.asset);
+      if (issuer.cents <= 0) return issuer.why;
       if (w.isCredit(a.asset) && w.creditBudget.cents - this.creditUsed <= 0)
         return w.creditBudget.bps === 0 && w.creditBudget.byPlan
           ? reason('CREDIT_NONE_PLAN', { asset: a.asset.symbol }, w.lang)
@@ -280,8 +336,9 @@ export class Book {
         return false;
       });
       const groupRoom: Record<string, number> = { credit: w.creditBudget.cents - this.creditUsed };
-      for (const a of live)
-        groupRoom[issuerKey(a.asset)] = w.issuerCapOf(a.asset) - this.usedOf(a.asset);
+      // The cap that binds on each issuer, read before anything of this fill is placed.
+      const issuerOf = new Map(live.map((a) => [a.id, this.issuerLimit(a.asset)]));
+      for (const a of live) groupRoom[issuerKey(a.asset)] = issuerOf.get(a.id)?.cents ?? 0;
       const result = bandedFill({
         amount: unit.cents,
         band: w.P.yieldBand,
@@ -320,7 +377,7 @@ export class Book {
         if (!b) return null;
         if (b.by === 'own') return a.cap.why;
         if (b.group === 'credit') return creditWhy(a.asset);
-        return this.issuerWhy(a.asset);
+        return issuerOf.get(a.id)?.why ?? this.issuerLimit(a.asset).why;
       };
       const byYield = reason('BY_YIELD', { chain: w.chain }, w.lang);
       const takers = live.filter((a) => (result.take.get(a.id) ?? 0) > 0);
@@ -453,8 +510,9 @@ export class Book {
         return reason('NOT_WHOLE_SMALL', { theme, asset, usd: toUsd(p.cents) }, w.lang);
       const ofIssuer = (asked.get(p.asset.issuer) ?? 0) + p.cents;
       asked.set(p.asset.issuer, ofIssuer);
-      if (ofIssuer > w.issuerCapOf(p.asset) - this.usedOf(p.asset))
-        return w.sleeveOf(p.asset) === 'growth'
+      const issuer = this.issuerLimit(p.asset);
+      if (ofIssuer > issuer.cents)
+        return issuer.why.rule === 'ISSUER_CAP'
           ? reason(
               'NOT_WHOLE_ISSUER',
               {
@@ -581,6 +639,9 @@ export class Book {
     const tooSmall = new Map<Unit, Reason>();
     let noLine = new Set<Unit>();
     let takes = new Map<Unit, number>();
+    // The cap that binds on each unit's issuer, read before anything of this sleeve is placed.
+    const issuerOf = new Map(able.map((u) => [u, this.goalLimit(tokenOf(u))]));
+    const issuerWhy = (u: Unit) => issuerOf.get(u)?.why ?? this.goalLimit(tokenOf(u)).why;
     for (;;) {
       // 1. Lines.
       noLine = new Set();
@@ -599,9 +660,7 @@ export class Book {
         const group = live.filter((u) => tokenOf(u).issuer === issuer);
         const asks = group.map(askOf);
         const first = group[0];
-        const room = first
-          ? Math.max(0, w.issuerCapOf(tokenOf(first)) - this.usedOf(tokenOf(first)))
-          : 0;
+        const room = first ? Math.max(0, issuerOf.get(first)?.cents ?? 0) : 0;
         const shares = sum(asks) > room ? split(room, asks) : asks;
         group.forEach((u, i) => {
           takes.set(u, shares[i] ?? 0);
@@ -620,23 +679,21 @@ export class Book {
             ? byStockCap(last)
               ? stockWhy(last)
               : w.ceilingWhy(token)
-            : this.issuerWhy(token),
+            : issuerWhy(last),
       );
     }
 
-    /** Each issuer's room before this sleeve is placed. */
-    const roomBefore = new Map(able.map((u) => [u, this.issuerRoom(tokenOf(u))]));
     const over: { unit: Unit; cents: number }[] = [];
     for (const u of able) {
       const token = tokenOf(u);
       const small = tooSmall.get(u);
-      // A unit with no line whose issuer has no room either is out for the issuer: a line would not
-      // have held it.
+      // A unit with no line whose issuer has no room either (as read before this sleeve is placed)
+      // is out for the issuer: a line would not have held it.
       const out =
         small ??
         (noLine.has(u)
-          ? (roomBefore.get(u) ?? 0) <= 0
-            ? this.issuerWhy(token)
+          ? (issuerOf.get(u)?.cents ?? 0) <= 0
+            ? issuerWhy(u)
             : this.noLineLeft(token)
           : null);
       if (out) {
@@ -649,9 +706,9 @@ export class Book {
       const reasons = [...u.reasons];
       const stock = byStockCap(u);
       if (ask < u.cents) reasons.push(stock ? stockWhy(u) : w.ceilingWhy(token));
-      if (take < ask) reasons.push(this.issuerWhy(token));
+      if (take < ask) reasons.push(issuerWhy(u));
       if (take > 0) this.put(token, take, reasons);
-      this.spill([u.name], ask - take, this.issuerWhy(token));
+      this.spill([u.name], ask - take, issuerWhy(u));
       // Over the cap on one stock: no other token of it may take it either.
       if (stock) this.spill([u.name], u.cents - ask, stockWhy(u));
       else if (u.cents > ask) over.push({ unit: u, cents: u.cents - ask });
@@ -672,15 +729,6 @@ export class Book {
     entry.cents += cents;
     for (const name of names) entry.names.add(name);
     this.spilled.set(keyOf(cause), entry);
-  }
-
-  /** The cents waiting to be held in dollar yield that one of these rules kept out. */
-  keptOutBy(rules: readonly RuleId[]): number {
-    return sum(
-      [...this.spilled.values()]
-        .filter((entry) => (rules as readonly string[]).includes(entry.cause.rule))
-        .map((entry) => entry.cents),
-    );
   }
 
   /**
