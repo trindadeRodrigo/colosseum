@@ -15,7 +15,7 @@ import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { assetTicker, formatRaw, parseRaw } from '../order/amounts';
+import { assetTicker, formatRaw, parseRaw, rawOfShown, shownRaw } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { keepOrder } from '../order/order-record';
 import { chainReady, onMock } from '../order/readiness';
@@ -116,9 +116,15 @@ export function WithdrawScreen({ chain: chainText, address }: { chain: string; a
   const chainName = t.chain.names[chain];
   const units = unitsFor(chain, mock);
   const symbol = (asset: string) => units?.tokens[asset]?.symbol ?? assetTicker(asset);
+  // Every amount here is the figure the portfolio and the wallet show: the raw amount times the
+  // token's multiplier (a stock token's issuer sets one), in the units this repository committed.
+  const multiplierOf = (asset: string) =>
+    holdings.find((h) => h.asset === asset)?.multiplier ?? '1';
   const whole = (raw: string, asset: string) => {
     const u = units?.tokens[asset];
-    const figure = u ? formatRaw(raw, u.decimals, LOCALE[lang]) : null;
+    const shown = shownRaw(BigInt(raw), multiplierOf(asset)).toString();
+    // To the token's last place: an amount typed back as it is shown is the amount that was shown.
+    const figure = u ? formatRaw(shown, u.decimals, LOCALE[lang], u.decimals) : null;
     return u && figure !== null ? `${figure} ${u.symbol}` : `${raw} ${assetTicker(asset)}`;
   };
 
@@ -126,19 +132,28 @@ export function WithdrawScreen({ chain: chainText, address }: { chain: string; a
   // token, or is more than the vault holds, is said beside its field and holds the step.
   const errors: Record<string, string> = {};
   const items: WithdrawItem[] = everything
-    ? holdings.map((h) => ({ asset: h.asset, amountRaw: null, heldRaw: h.raw }))
+    ? holdings.map((h) => ({
+        asset: h.asset,
+        amountRaw: null,
+        heldRaw: h.raw,
+        multiplier: h.multiplier,
+      }))
     : holdings.flatMap((h) => {
         const pick = picks[h.asset];
         if (!pick?.on) return [];
         const decimals = units?.tokens[h.asset]?.decimals;
-        if (!pick.text.trim() || decimals === undefined)
-          return [{ asset: h.asset, amountRaw: null, heldRaw: h.raw }];
-        const raw = parseRaw(pick.text, decimals);
-        if (raw === null) errors[h.asset] = w.what.errors.amount;
-        else if (raw > BigInt(h.raw)) errors[h.asset] = w.what.errors.over(whole(h.raw, h.asset));
-        return [
-          { asset: h.asset, amountRaw: raw === null ? null : raw.toString(), heldRaw: h.raw },
-        ];
+        const item = { asset: h.asset, heldRaw: h.raw, multiplier: h.multiplier };
+        if (!pick.text.trim() || decimals === undefined) return [{ ...item, amountRaw: null }];
+        // Typed as it is shown; signed in exact raw units, rounded down, never above the balance: the
+        // whole shown balance is the whole raw balance, whatever the rounding.
+        const typed = parseRaw(pick.text, decimals);
+        const held = BigInt(h.raw);
+        const all = shownRaw(held, h.multiplier);
+        const raw = typed === null ? null : typed === all ? held : rawOfShown(typed, h.multiplier);
+        if (typed === null || raw === null || raw === 0n) errors[h.asset] = w.what.errors.amount;
+        else if (typed > all || raw > held)
+          errors[h.asset] = w.what.errors.over(whole(h.raw, h.asset));
+        return [{ ...item, amountRaw: raw === null || raw === 0n ? null : raw.toString() }];
       });
   const valid = items.length > 0 && Object.keys(errors).length === 0;
   // Everything a token holds, taken by amount, empties it as taking all of it does.
@@ -182,6 +197,7 @@ export function WithdrawScreen({ chain: chainText, address }: { chain: string; a
       owner,
       everything,
       items,
+      autoFollowOff: vault.autoFollow,
     };
     const placed = await placeShared(
       apiFetch,
@@ -344,7 +360,7 @@ export function WithdrawScreen({ chain: chainText, address }: { chain: string; a
       <p className="max-w-(--tf-measure-body) text-body-sm">
         {emptied ? w.check.emptied : w.check.stays}
       </p>
-      {vault.autoFollow && !emptied && (
+      {vault.autoFollow && (
         <p
           data-ui="withdraw-keeper"
           className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm"

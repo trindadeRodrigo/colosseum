@@ -510,6 +510,11 @@ export const en = {
       observed: (when: string) => `Read from the chain on ${when}.`,
       /** The method line in the pin of a vault's whole value. */
       valueMethod: 'holdings read from the vault, times their prices; cash at one dollar',
+      takenOut: 'Taken out',
+      takenOutMethod: (n: number) =>
+        `the sum of ${n === 1 ? 'the one token' : `the ${n} tokens`} your confirmed withdrawals took out of this vault, each at the reference price when the withdrawal was ordered; cash at one dollar`,
+      takenUnvalued: (n: number) =>
+        `${n === 1 ? 'One token taken out had' : `${n} tokens taken out had`} no price then, and ${n === 1 ? 'is' : 'are'} not in a sum.`,
       /** The method line in the pin of one holding's value, after its price's own method. */
       positionMethod: (method: string) => `${method}; times the amount the vault holds`,
     },
@@ -525,6 +530,7 @@ export const en = {
       notJoined:
         'This vault has no goal I can read: it was bought from a shared portfolio, which has none, or before plans kept their goal. What it holds is below.',
       putIn: (amount: string) => `you put in ${amount}`,
+      tookOut: 'you took some out since',
       seePlan: 'See your plan',
       seeOrder: 'See the order',
       startGoal: 'Start with your goal',
@@ -687,7 +693,8 @@ export const en = {
       `In a bad fall, the engine counts a loss of about ${amount} on this plan.`,
     exitUnmeasured: 'Not measured yet, so no cost is shown.',
     exitCost: (cost: string) => `≤ ${cost}`,
-    inKind: 'You can also take the tokens themselves out of your vault at any time.',
+    inKind:
+      'You can take the tokens themselves out of your vault at any time. Selling them to cash for you isn’t offered yet.',
     risk: {
       /** On a plan read back from the server, which keeps the plan and not this summary. */
       notKept:
@@ -1140,7 +1147,7 @@ export const en = {
       stays: 'Everything else stays in the vault.',
       emptied: 'The vault will be empty afterwards.',
       autoFollow:
-        'Auto-follow is on for this vault. After this withdrawal our keeper may trade what stays back toward your plan’s weights: it may buy again a token you took out. Switch auto-follow off first if you don’t want that.',
+        'Automatic following stops for this vault. Auto-follow is on, and the first step switches it off, so our keeper doesn’t trade the vault while you withdraw or afterwards. Switch it on again when you want it.',
       noSale:
         'Selling to cash before withdrawing isn’t offered yet; you can withdraw the tokens themselves.',
       seen: 'Reviewed',
@@ -1239,6 +1246,14 @@ export const en = {
       withdraws: (amount: string) => `${amount} to your own wallet`,
       withdrawsAll: (held: string) => `All of it, ${held} when reviewed, to your own wallet`,
       withdrawDone: 'What you withdrew is in your wallet now.',
+      autoFollowStops: 'Automatic following stops for this vault: the first step switches it off.',
+      /** A step whose token could not be moved: it stayed in the vault, and the others went on. */
+      skipped: (what: string) =>
+        `${what} stayed in the vault: it can’t be moved now. Its issuer may have frozen it, or it needs a wallet that handles its transfer rules.`,
+      doneExcept: (chain: string, n: number) =>
+        n === 1
+          ? `Done on ${chain}, except one step that was skipped: what it would have moved stayed in the vault.`
+          : `Done on ${chain}, except ${n} steps that were skipped: what they would have moved stayed in the vault.`,
     },
     signAndBuy: (amount: string) => `Sign and buy ${amount}`,
     resume: (amount: string) => `Continue the buy of ${amount}`,

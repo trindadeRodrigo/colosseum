@@ -20,7 +20,7 @@ import { SharedReview } from '../shared/SharedReview';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { ActivityPanel } from './ActivityPanel';
 import { activityOf } from './activity';
-import { assetTicker, formatBps, formatRaw, shortfallBps } from './amounts';
+import { assetTicker, formatBps, formatRaw, shortfallBps, shownRaw } from './amounts';
 import { type CallFailure, readOrder } from './order-api';
 import { checkDeposit, checkFamilyBuy, type DepositCheck, sharedShapeOk } from './order-check';
 import { isBuy, keepOrder, type OrderRecord, recallOrder } from './order-record';
@@ -220,6 +220,12 @@ export function OrderScreen({ id }: { id: string }) {
         : shown.depositRaw;
   const legs = legsInOrder(shown);
   const done = now.status === 'done';
+  // Done with a step skipped (a token that could not move) says so: never plainly done.
+  const skippedSteps = now.legs.filter((l) => l.status === 'skipped').length;
+  const doneSentence =
+    skippedSteps > 0
+      ? t.order.shared.doneExcept(t.chain.names[chain], skippedSteps)
+      : t.order.outcome.done(t.chain.names[chain]);
   const view: OutcomeView | null = outcome ? outcomeView(outcome, t, chain) : null;
   const needed = shown.needsConsent;
   const consentMissing = !record.approved && needed.some((kind) => !consents.includes(kind));
@@ -310,6 +316,11 @@ export function OrderScreen({ id }: { id: string }) {
                   now={standing}
                   phase={phase?.legId === leg.id ? phase.phase : null}
                   units={units}
+                  multipliers={
+                    terms?.kind === 'withdraw'
+                      ? Object.fromEntries(terms.items.map((i) => [i.asset, i.multiplier]))
+                      : undefined
+                  }
                   explorer={t.chain.explorers[chain]}
                   mock={onMock(port, chain)}
                   t={t}
@@ -363,9 +374,7 @@ export function OrderScreen({ id }: { id: string }) {
             {t.order.phase[phase.phase as keyof Dictionary['order']['phase']]}
           </p>
         )}
-        {!running && done && !view && (
-          <p className="text-body">{t.order.outcome.done(t.chain.names[chain])}</p>
-        )}
+        {!running && done && !view && <p className="text-body">{doneSentence}</p>}
         {view && (
           <div className="flex max-w-(--tf-measure-body) flex-col gap-1">
             <p
@@ -374,7 +383,8 @@ export function OrderScreen({ id }: { id: string }) {
               }
             >
               {view.alarm && <StatusMark status="off-track" size={12} className="mt-1.5" />}
-              <span>{view.sentence}</span>
+              {/* An order with a skipped step is never said to be plainly done. */}
+              <span>{done && skippedSteps > 0 ? doneSentence : view.sentence}</span>
             </p>
             {view.check && (
               <p className="font-mono text-source text-muted-foreground">{view.check}</p>
@@ -405,7 +415,9 @@ export function OrderScreen({ id }: { id: string }) {
         {done && terms?.kind === 'withdraw' && (
           // The portfolio reads the vault again from its chain: what stayed, or that it is empty.
           <div data-ui="withdraw-done" className="flex flex-col items-start gap-3">
-            <p className="max-w-(--tf-measure-body) text-body">{t.order.shared.withdrawDone}</p>
+            {skippedSteps < now.legs.length && (
+              <p className="max-w-(--tf-measure-body) text-body">{t.order.shared.withdrawDone}</p>
+            )}
             <Link href="/monitor" className={buttonClass({ variant: 'secondary' })}>
               {t.withdraw.back}
             </Link>
@@ -495,6 +507,7 @@ function Step({
   now,
   phase,
   units,
+  multipliers,
   explorer,
   mock,
   t,
@@ -512,16 +525,21 @@ function Step({
   phase: string | null;
   /** What each token's raw amount means, from what this repository committed. */
   units: ChainUnits | null;
+  /** For a withdrawal: each token's multiplier at the review, which its amounts are shown with. */
+  multipliers?: Record<string, string>;
   t: Dictionary;
   locale: string;
 }) {
   /** A raw amount of a token in whole units with its symbol, or null when its units are not known. */
-  const whole = (raw: string, asset: string) => {
+  const whole = (raw: string, asset: string, places?: number) => {
     const u = units?.tokens[asset];
-    const figure = u ? formatRaw(raw, u.decimals, locale) : null;
+    const figure = u ? formatRaw(raw, u.decimals, locale, places ?? Math.min(u.decimals, 6)) : null;
     return u && figure !== null ? `${figure} ${u.symbol}` : null;
   };
   const spend = (raw: string) => (units ? whole(raw, units.cash) : null) ?? raw;
+  /** A withdrawal's raw amount as its review showed it: with the token's multiplier then. */
+  const shown = (raw: string, asset: string) =>
+    shownRaw(BigInt(raw), multipliers?.[asset] ?? '1').toString();
   /** A token by the symbol this repository committed for it, or its id on the chain where none is. */
   const symbol = (asset: string) => units?.tokens[asset]?.symbol ?? assetTicker(asset);
   const status = phase
@@ -553,6 +571,11 @@ function Step({
           </span>
         )}
       </p>
+      {now.status === 'skipped' && leg.withdrawals && (
+        <p data-ui="order-skipped" className="max-w-(--tf-measure-body) text-body-sm">
+          {t.order.shared.skipped(leg.withdrawals.map((w) => symbol(w.asset)).join(', '))}
+        </p>
+      )}
       {leg.withdrawals && (
         // What this step takes out, for the owner's own wallet: the amount, or all of the token.
         <ul className="flex flex-col gap-0.5 text-body-sm text-muted-foreground">
@@ -560,10 +583,12 @@ function Step({
             <li key={w.asset} data-ui="order-withdrawal" className="tabular-nums">
               {w.amountRaw === null
                 ? t.order.shared.withdrawsAll(
-                    whole(w.heldRaw, w.asset) ?? `${w.heldRaw} ${assetTicker(w.asset)}`,
+                    whole(shown(w.heldRaw, w.asset), w.asset, 18) ??
+                      `${w.heldRaw} ${assetTicker(w.asset)}`,
                   )
                 : t.order.shared.withdraws(
-                    whole(w.amountRaw, w.asset) ?? `${w.amountRaw} ${assetTicker(w.asset)}`,
+                    whole(shown(w.amountRaw, w.asset), w.asset, 18) ??
+                      `${w.amountRaw} ${assetTicker(w.asset)}`,
                   )}
             </li>
           ))}

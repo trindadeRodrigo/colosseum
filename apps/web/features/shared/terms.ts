@@ -53,6 +53,8 @@ export type SharedTerms =
       owner: string;
       everything: boolean;
       items: WithdrawItem[];
+      /** The vault had auto-follow on at the review: the order's first step switches it off. */
+      autoFollowOff: boolean;
     }
   /** A creator's publish, with the text and the weights of the form. */
   | {
@@ -64,8 +66,16 @@ export type SharedTerms =
       version: number;
     };
 
-/** One token of a withdrawal: how much leaves (null: all of it), and what the vault held at the review. */
-export type WithdrawItem = { asset: string; amountRaw: string | null; heldRaw: string };
+/**
+ * One token of a withdrawal: how much leaves (null: all of it), what the vault held at the review, and
+ * the token's multiplier then, which its amounts are shown with (`shownRaw`): 1 for a token with none.
+ */
+export type WithdrawItem = {
+  asset: string;
+  amountRaw: string | null;
+  heldRaw: string;
+  multiplier: string;
+};
 
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
 const RAW = /^\d+$/;
@@ -132,6 +142,7 @@ export function readTerms(value: unknown): SharedTerms | null {
       !isText(t.owner) ||
       !t.owner ||
       typeof t.everything !== 'boolean' ||
+      typeof t.autoFollowOff !== 'boolean' ||
       !items?.length ||
       !items.every(
         (i) =>
@@ -141,7 +152,9 @@ export function readTerms(value: unknown): SharedTerms | null {
           i.asset.includes(':') &&
           (i.amountRaw === null || (isText(i.amountRaw) && RAW.test(i.amountRaw))) &&
           isText(i.heldRaw) &&
-          RAW.test(i.heldRaw),
+          RAW.test(i.heldRaw) &&
+          isText(i.multiplier) &&
+          /^\d+(\.\d+)?$/.test(i.multiplier),
       ) ||
       new Set(items.map((i) => i.asset)).size !== items.length ||
       // Everything names no amount: each token leaves in full.
@@ -154,10 +167,12 @@ export function readTerms(value: unknown): SharedTerms | null {
       basketId: t.basketId,
       owner: t.owner,
       everything: t.everything,
+      autoFollowOff: t.autoFollowOff,
       items: items.map((i) => ({
         asset: i.asset as string,
         amountRaw: i.amountRaw as string | null,
         heldRaw: i.heldRaw as string,
+        multiplier: i.multiplier as string,
       })),
     };
   }

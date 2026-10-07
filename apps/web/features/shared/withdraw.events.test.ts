@@ -108,6 +108,14 @@ function api(o: { vault?: VaultView | null; order?: () => Response | OrderDetail
     placed: () => calls.filter((c) => c.path === '/v1/orders' && c.method === 'POST'),
   };
 }
+/** A token as a review keeps it: with the multiplier its amounts are shown with. */
+const term = (asset: string, amountRaw: string | null, heldRaw: string, multiplier = '1') => ({
+  asset,
+  amountRaw,
+  heldRaw,
+  multiplier,
+});
+/** A token as a step of an order carries it. */
 const item = (asset: string, amountRaw: string | null, heldRaw: string) => ({
   asset,
   amountRaw,
@@ -225,7 +233,8 @@ describe('the withdraw screen', () => {
       basketId: '42',
       owner: SOLANA,
       everything: true,
-      items: [item(CASH, null, '600000000'), item(SPYX, null, '250000000')],
+      items: [term(CASH, null, '600000000'), term(SPYX, null, '250000000')],
+      autoFollowOff: false,
     });
     expect(router.push).toHaveBeenCalledWith(`/orders/${ORDER_ID}`);
   });
@@ -262,7 +271,7 @@ describe('the withdraw screen', () => {
     ]);
     expect(recallOrder(ORDER_ID, USER)?.terms).toMatchObject({
       everything: false,
-      items: [item(CASH, '250500000', '600000000')],
+      items: [term(CASH, '250500000', '600000000')],
     });
   });
 
@@ -306,15 +315,112 @@ describe('the withdraw screen', () => {
     expect(panel(host, 'confirm').textContent).toContain(w.confirm.blocked.check);
   });
 
-  it('says, on a vault with auto-follow on, that the keeper trades what stays; not when everything leaves', async () => {
-    api({ vault: holdingVault({ autoFollow: true }) });
+  it('says that automatic following stops, on a vault that has it on, whatever leaves, and orders it so', async () => {
+    const server = api({
+      vault: holdingVault({ autoFollow: true }),
+      order: () =>
+        withdrawOrder([[item(CASH, null, '600000000')], [item(SPYX, null, '250000000')]], {}, true),
+    });
+    const host = await show();
+    await click(primary(host, 'what'));
+    // everything, too: the keeper would trade what is left between the steps
+    expect(find(panel(host, 'check'), '[data-ui="withdraw-keeper"]').textContent).toBe(
+      w.check.autoFollow,
+    );
+    expect(w.check.autoFollow).toMatch(/^Automatic following stops for this vault\./);
+    await click(radio(host, w.what.some));
+    await click(find(pick(host, SPYX), 'input[type="checkbox"]'));
+    expect(panel(host, 'check').querySelector('[data-ui="withdraw-keeper"]')).not.toBeNull();
+    await click(radio(host, w.what.everything));
+    await through(host);
+    expect(server.placed()).toHaveLength(1);
+    expect(recallOrder(ORDER_ID, USER)?.terms).toMatchObject({ autoFollowOff: true });
+  });
+
+  it('says nothing of auto-follow on a vault that has it off', async () => {
+    api();
     const host = await show();
     await click(primary(host, 'what'));
     expect(panel(host, 'check').querySelector('[data-ui="withdraw-keeper"]')).toBeNull();
+  });
+
+  it('shows a stock token as the portfolio does, with its multiplier, and signs exact raw units, rounded down', async () => {
+    // tSPYx: one token on the chain stands for 1.0057 shares. 2.5 tokens held are shown as 2.51425.
+    const server = api({
+      vault: holdingVault({
+        positions: [
+          {
+            ...holding(SPYX, '250000000'),
+            multiplier: '1.0057',
+            display: '2.51425',
+            targetBps: 4_000,
+            lastKeeperAt: null,
+            valueUsd: '400',
+            weightBps: 4_000,
+            driftBps: 0,
+          },
+        ] as VaultView['positions'],
+      }),
+      order: () => withdrawOrder([[item(SPYX, '99433230', '250000000')]]),
+    });
+    const host = await show();
     await click(radio(host, w.what.some));
     await click(find(pick(host, SPYX), 'input[type="checkbox"]'));
-    expect(find(panel(host, 'check'), '[data-ui="withdraw-keeper"]').textContent).toBe(
-      w.check.autoFollow,
+    expect(pick(host, SPYX).textContent).toContain(w.what.holds('2.51425 tSPYx'));
+    const input = find<HTMLInputElement>(pick(host, SPYX), 'input[inputmode="decimal"]');
+    // more than is shown is refused, by a unit of the shown figure
+    await type(input, '2.51425001');
+    expect(pick(host, SPYX).textContent).toContain(w.what.errors.over('2.51425 tSPYx'));
+    // one share: 1 / 1.0057 of a token, rounded down, so never more than was typed
+    await type(input, '1');
+    await click(primary(host, 'what'));
+    expect(panel(host, 'check').querySelector('tbody tr')?.textContent).toBe(
+      'tSPYx0.99999999 tSPYx',
+    );
+    await click(find(panel(host, 'check'), 'input[type="checkbox"]'));
+    await click(primary(host, 'check'));
+    await click(primary(host, 'confirm'));
+    await settle();
+    await settle();
+    expect(server.placed().at(-1)?.body).toMatchObject({
+      withdrawals: [{ asset: SPYX, amountRaw: '99433230' }],
+    });
+    expect(recallOrder(ORDER_ID, USER)?.terms).toMatchObject({
+      items: [term(SPYX, '99433230', '250000000', '1.0057')],
+    });
+  });
+
+  it('the whole shown balance is the whole raw balance, whatever the rounding', async () => {
+    api({
+      vault: holdingVault({
+        positions: [
+          {
+            ...holding(SPYX, '250000001'),
+            multiplier: '1.0057',
+            display: '2.51425001',
+            targetBps: 4_000,
+            lastKeeperAt: null,
+            valueUsd: '400',
+            weightBps: 4_000,
+            driftBps: 0,
+          },
+        ] as VaultView['positions'],
+      }),
+    });
+    const host = await show();
+    await click(radio(host, w.what.some));
+    await click(find(pick(host, SPYX), 'input[type="checkbox"]'));
+    // 250000001 raw is shown as 2.51425001 (rounded down from 2.514250010057)
+    expect(pick(host, SPYX).textContent).toContain(w.what.holds('2.51425001 tSPYx'));
+    await type(
+      find<HTMLInputElement>(pick(host, SPYX), 'input[inputmode="decimal"]'),
+      '2.51425001',
+    );
+    expect(primary(host, 'what').getAttribute('aria-disabled')).toBeNull();
+    await click(primary(host, 'what'));
+    // the cash stays, so the vault is not emptied; the stock token leaves in full
+    expect(panel(host, 'check').querySelector('tbody tr')?.textContent).toBe(
+      'tSPYx2.51425001 tSPYx',
     );
   });
 
@@ -351,9 +457,10 @@ describe('a withdrawal on the order screen', () => {
     basketId: '42',
     owner: SOLANA,
     everything: false,
-    items: [item(CASH, '250000000', '600000000'), item(SPYX, null, '250000000')],
+    items: [term(CASH, '250000000', '600000000'), term(SPYX, null, '250000000')],
+    autoFollowOff: false,
   };
-  const ALL: SharedTerms = { ...PART, everything: true, items: [item(CASH, null, '600000000')] };
+  const ALL: SharedTerms = { ...PART, everything: true, items: [term(CASH, null, '600000000')] };
 
   function seed(terms: SharedTerms) {
     const record: OrderRecord = {
@@ -420,6 +527,57 @@ describe('a withdrawal on the order screen', () => {
     expect(run.calls[0]?.deps.plan).toEqual({ basketId: '42' });
   });
 
+  it('a vault with auto-follow on: the switch off comes first, and the guard is told off and nothing else', async () => {
+    api({ order: () => withdrawOrder([[item(CASH, null, '600000000')]], {}, true) });
+    seed({ ...ALL, autoFollowOff: true });
+    const host = await screen();
+    const review = find(host, `[aria-label="${en.order.shared.withdrawTitle}"]`);
+    expect(find(review, '[data-ui="withdraw-keeper"]').textContent).toBe(
+      en.order.shared.autoFollowStops,
+    );
+    expect(host.querySelectorAll('[data-ui="order-step"]')).toHaveLength(2);
+    await click(sign(host) as HTMLElement);
+    await settle();
+    expect(run.calls[0]?.deps.plan).toEqual({ basketId: '42', autoFollow: false });
+  });
+
+  it.each([
+    ['a switch the review did not show', false, true],
+    ['no switch where the review showed one', true, false],
+  ])('is not offered for signing when the order has %s', async (_name, reviewed, ordered) => {
+    api({ order: () => withdrawOrder([[item(CASH, null, '600000000')]], {}, ordered) });
+    seed({ ...ALL, autoFollowOff: reviewed });
+    const host = await screen();
+    expect(host.textContent).toContain(en.order.mismatch.withdraw);
+    expect(sign(host)).toBeNull();
+  });
+
+  it('a token that could not move: its step says so, and the order is done except for it, never plainly done', async () => {
+    const answered = asReviewed();
+    const order = {
+      ...answered,
+      status: 'done',
+      legs: answered.legs.map((l, i) =>
+        i === 0
+          ? { ...l, status: 'confirmed', txId: 'sig' }
+          : {
+              ...l,
+              status: 'skipped',
+              error: { code: 'BalanceUnreadable', message: 'frozen', retryable: false },
+            },
+      ),
+    } as OrderDetail;
+    api({ order: () => order });
+    seed(PART);
+    const host = await screen();
+    expect(find(host, '[data-ui="order-skipped"]').textContent).toBe(
+      en.order.shared.skipped('tSPYx'),
+    );
+    expect(host.textContent).toContain(en.order.shared.doneExcept('Solana', 1));
+    expect(host.textContent).not.toContain(en.order.outcome.done('Solana'));
+    expect(host.querySelectorAll('[data-ui="order-step"][data-status="skipped"]')).toHaveLength(1);
+  });
+
   it.each([
     [
       'a larger amount',
@@ -478,7 +636,8 @@ describe('the terms of a withdrawal, read back', () => {
     basketId: '42',
     owner: SOLANA,
     everything: false,
-    items: [item(CASH, '1', '2')],
+    items: [term(CASH, '1', '2')],
+    autoFollowOff: false,
   };
   it('reads what was written, and nothing that is not a withdrawal in full', () => {
     expect(readTerms(good)).toEqual(good);
@@ -486,12 +645,15 @@ describe('the terms of a withdrawal, read back', () => {
       { ...good, owner: '' },
       { ...good, basketId: 'x' },
       { ...good, items: [] },
-      { ...good, items: [item(CASH, '1', '2'), item(CASH, null, '2')] },
-      { ...good, items: [item(CASH, '-1', '2')] },
+      { ...good, items: [term(CASH, '1', '2'), term(CASH, null, '2')] },
+      { ...good, items: [term(CASH, '-1', '2')] },
       { ...good, items: [{ asset: CASH, amountRaw: '1' }] },
       // everything names no amount
       { ...good, everything: true },
       { ...good, everything: 'yes' },
+      { ...good, autoFollowOff: undefined },
+      { ...good, items: [{ ...term(CASH, '1', '2'), multiplier: '-1' }] },
+      { ...good, items: [item(CASH, '1', '2')] },
     ])
       expect(readTerms(bad), JSON.stringify(bad)).toBeNull();
   });

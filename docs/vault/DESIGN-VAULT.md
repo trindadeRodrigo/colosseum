@@ -418,7 +418,8 @@ type IntentRequest =
   | { type: 'publish'; creator: Owner; family: string; familyId?: string; name: string; copy: string;
       recipes: RecipeDraft[] }   // { chain, components } per chain. The family id is familyIdOf(slug) for a
                                  // new portfolio (API-3); the registry assigns the version and the time
-  | { type: 'withdraw'; vaults: Address[]; sellToCash: boolean }
+  | { type: 'withdraw'; vaults: Address[]; sellToCash: boolean;            // one vault, the person's own
+      withdrawals?: { asset: AssetId; amountRaw?: RawAmount }[] }          // left out = everything; GET /v1/me/withdrawals lists them
   | { type: 'settings'; vault: Address; autoFollow: boolean };
 type Principal = { kind: 'anon' | 'user' | 'service'; userId?: string; wallets: WalletAccount[]; ip: string };
 // apps/api/src/orders/prepare.ts: the one function behind the web buttons, REST, SDK and MCP

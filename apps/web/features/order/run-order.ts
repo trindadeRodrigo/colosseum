@@ -110,6 +110,8 @@ export function planTermsOf(terms: SharedTerms): PlanTerms {
       // amounts reviewed, and nothing else.
       return {
         basketId: terms.basketId,
+        // The one switch a withdrawal may carry is off, and only where the review said it would.
+        ...(terms.autoFollowOff ? { autoFollow: false } : {}),
         ...(terms.everything
           ? {}
           : {

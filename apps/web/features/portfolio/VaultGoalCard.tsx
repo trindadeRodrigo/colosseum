@@ -26,12 +26,15 @@ export function VaultGoalCard({
   vault,
   joined,
   putIn,
+  tookOut = false,
 }: {
   chain: PortfolioChain;
   vault: Vault;
   joined: VaultGoal | null;
   /** What the orders confirmed on chain put in, or null when none is (vault-goal.ts, `putInto`). */
   putIn: number | null;
+  /** Something confirmed was taken out of the vault since: said in words, the figure is on the vault. */
+  tookOut?: boolean;
 }) {
   const t = useT();
   const lang = useLang();
@@ -93,7 +96,9 @@ export function VaultGoalCard({
       }
       amount={amount}
       detail={
-        putIn === null ? card.exit.text : `${words.putIn(whole(putIn, lang))} · ${card.exit.text}`
+        putIn === null
+          ? card.exit.text
+          : `${words.putIn(whole(putIn, lang))}${tookOut ? ` · ${words.tookOut}` : ''} · ${card.exit.text}`
       }
       pinLabels={t.pin}
       action={

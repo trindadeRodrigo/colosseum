@@ -195,15 +195,22 @@ export const FUNDED = {
 export const withdrawOrder = (
   steps: { asset: string; amountRaw: string | null; heldRaw: string }[][],
   over: Record<string, unknown> = {},
-) =>
-  order({
+  /** The vault had auto-follow on: the first step switches it off. */
+  autoFollowOff = false,
+) => {
+  const first = autoFollowOff ? [{ ...leg, id: LEG_C, seq: 0, kind: 'set_auto_follow' }] : [];
+  return order({
     type: 'withdraw',
-    legs: steps.map((withdrawals, seq) => ({
-      ...leg,
-      id: [LEG_A, LEG_B, LEG_C][seq],
-      seq,
-      kind: 'withdraw',
-      withdrawals,
-    })),
+    legs: [
+      ...first,
+      ...steps.map((withdrawals, i) => ({
+        ...leg,
+        id: [LEG_A, LEG_B, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'][i],
+        seq: i + first.length,
+        kind: 'withdraw',
+        withdrawals,
+      })),
+    ],
     ...over,
   });
+};

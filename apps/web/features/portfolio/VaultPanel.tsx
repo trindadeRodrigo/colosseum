@@ -24,6 +24,7 @@ import {
   vaultValueSource,
   worst,
 } from './portfolio';
+import type { TakenOut } from './vault-goal';
 
 // One vault, as the monitor shows it (DESIGN-VAULT section 11, "Monitor"): what it is worth, its cash,
 // whether it follows its portfolio, what the keeper has lost of it this week, a version of the followed
@@ -33,7 +34,16 @@ import {
 // something links to its withdrawal (features/shared/WithdrawScreen.tsx); one that holds nothing says
 // so. The auto-follow switch is not offered on this page.
 
-export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vault }) {
+export function VaultPanel({
+  chain,
+  vault,
+  taken = null,
+}: {
+  chain: PortfolioChain;
+  vault: Vault;
+  /** What confirmed withdrawals took out of this vault (vault-goal.ts, `takenOut`), or null. */
+  taken?: TakenOut | null;
+}) {
   const t = useT();
   const lang = useLang();
   const words = t.portfolio.vault;
@@ -189,6 +199,21 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
           </Stat>
           <Stat label={words.lossUsed}>{share(lang, vault.lossUsedBps)}</Stat>
         </StatRow>
+        {taken && (
+          <dl data-ui="vault-taken-out">
+            <dt className="text-caption text-muted-foreground">{words.takenOut}</dt>
+            <dd className="font-mono tabular-nums">
+              {taken.usd !== null && (
+                <ProvenancePin value={dollars(lang, taken.usd)} obs={taken.obs} labels={t.pin} />
+              )}
+              {taken.unvalued > 0 && (
+                <span className="block font-sans text-body-sm text-muted-foreground">
+                  {words.takenUnvalued(taken.unvalued)}
+                </span>
+              )}
+            </dd>
+          </dl>
+        )}
         {missing > 0 && (
           <p className="text-body-sm text-muted-foreground">{words.unpriced(missing)}</p>
         )}

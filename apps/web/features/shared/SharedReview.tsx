@@ -4,7 +4,7 @@ import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { DataTable } from '../../components/ui/DataTable';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { assetTicker, formatBps, formatRaw } from '../order/amounts';
+import { assetTicker, formatBps, formatRaw, shownRaw } from '../order/amounts';
 import { onMock } from '../order/readiness';
 import { unitsFor } from '../order/units';
 import { useWalletPort } from '../wallet/WalletProvider';
@@ -75,7 +75,10 @@ export function SharedReview({ terms, chain }: { terms: SharedTerms; chain: Chai
     const units = unitsFor(chain, mock);
     const whole = (raw: string, asset: string) => {
       const u = units?.tokens[asset];
-      const figure = u ? formatRaw(raw, u.decimals, LOCALE[lang]) : null;
+      // As the withdraw screen showed it: with the token's multiplier at the review.
+      const multiplier = terms.items.find((i) => i.asset === asset)?.multiplier ?? '1';
+      const shown = shownRaw(BigInt(raw), multiplier).toString();
+      const figure = u ? formatRaw(shown, u.decimals, LOCALE[lang], u.decimals) : null;
       return u && figure !== null ? `${figure} ${u.symbol}` : `${raw} ${assetTicker(asset)}`;
     };
     const w = t.withdraw.check;
@@ -116,6 +119,11 @@ export function SharedReview({ terms, chain }: { terms: SharedTerms; chain: Chai
             <dt className="text-muted-foreground">{w.from}</dt>
             <dd className="break-all font-mono text-source">{terms.vault}</dd>
           </dl>
+          {terms.autoFollowOff && (
+            <p data-ui="withdraw-keeper" className="max-w-(--tf-measure-body) text-body-sm">
+              {s.autoFollowStops}
+            </p>
+          )}
           <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
             {w.onlyOwner}
           </p>

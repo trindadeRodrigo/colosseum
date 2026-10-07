@@ -455,6 +455,11 @@ export const pt: Dictionary = {
       pendingAssets: (assets: string) => `Ela inclui ${assets}, que você ainda não aceitou.`,
       observed: (when: string) => `Lido da rede em ${when}.`,
       valueMethod: 'posições lidas do cofre, vezes seus preços; caixa a um dólar',
+      takenOut: 'Sacado',
+      takenOutMethod: (n: number) =>
+        `a soma ${n === 1 ? 'do token' : `dos ${n} tokens`} que seus saques confirmados tiraram deste cofre, cada um ao preço de referência de quando o saque foi pedido; caixa a um dólar`,
+      takenUnvalued: (n: number) =>
+        `${n === 1 ? 'Um token sacado não tinha' : `${n} tokens sacados não tinham`} preço na hora, e não ${n === 1 ? 'entra' : 'entram'} em soma.`,
       positionMethod: (method: string) => `${method}; vezes a quantidade que o cofre guarda`,
     },
     goalCard: {
@@ -467,6 +472,7 @@ export const pt: Dictionary = {
       notJoined:
         'Este cofre não tem um objetivo que eu consiga ler: foi comprado a partir de um portfólio compartilhado, que não tem, ou antes de os planos guardarem seu objetivo. O que ele guarda está abaixo.',
       putIn: (amount: string) => `você colocou ${amount}`,
+      tookOut: 'você sacou parte depois',
       seePlan: 'Ver seu plano',
       seeOrder: 'Ver a ordem',
       startGoal: 'Comece pelo seu objetivo',
@@ -618,7 +624,8 @@ export const pt: Dictionary = {
       `Numa queda forte, o motor conta uma perda de cerca de ${amount} neste plano.`,
     exitUnmeasured: 'Ainda não foi medido, então nenhum custo é mostrado.',
     exitCost: (cost: string) => `≤ ${cost}`,
-    inKind: 'Você também pode tirar os próprios tokens do seu cofre a qualquer momento.',
+    inKind:
+      'Você pode tirar os próprios tokens do seu cofre a qualquer momento. Vendê-los por dinheiro para você ainda não é oferecido.',
     risk: {
       notKept:
         'Como este plano se divide, e quanto custa vendê-lo, é calculado quando um plano é montado e não fica guardado com ele. Monte o plano de novo a partir do seu objetivo para ver.',
@@ -1070,7 +1077,7 @@ export const pt: Dictionary = {
       stays: 'Todo o resto fica no cofre.',
       emptied: 'O cofre ficará vazio depois.',
       autoFollow:
-        'O seguir automático está ativado neste cofre. Depois deste saque nosso operador pode negociar o que ficou de volta aos pesos do seu plano: ele pode comprar de novo um token que você tirou. Desative o seguir automático antes se não quiser isso.',
+        'O seguir automático para neste cofre. Ele está ativado, e o primeiro passo o desativa, para que nosso operador não negocie o cofre enquanto você saca nem depois. Ative de novo quando quiser.',
       noSale:
         'Vender por dinheiro antes de sacar ainda não é oferecido; você pode sacar os próprios tokens.',
       seen: 'Revisado',
@@ -1168,6 +1175,13 @@ export const pt: Dictionary = {
       withdraws: (amount: string) => `${amount} para a sua própria carteira`,
       withdrawsAll: (held: string) => `Tudo, ${held} na revisão, para a sua própria carteira`,
       withdrawDone: 'O que você sacou está na sua carteira agora.',
+      autoFollowStops: 'O seguir automático para neste cofre: o primeiro passo o desativa.',
+      skipped: (what: string) =>
+        `${what} ficou no cofre: não pode ser movido agora. O emissor pode tê-lo congelado, ou ele precisa de uma carteira que trate suas regras de transferência.`,
+      doneExcept: (chain: string, n: number) =>
+        n === 1
+          ? `Feito em ${chain}, exceto um passo que foi pulado: o que ele moveria ficou no cofre.`
+          : `Feito em ${chain}, exceto ${n} passos que foram pulados: o que eles moveriam ficou no cofre.`,
       resume: 'Continuar',
     },
     signAndBuy: (amount: string) => `Assinar e comprar ${amount}`,

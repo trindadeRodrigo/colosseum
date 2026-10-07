@@ -393,6 +393,9 @@ test('a withdrawal: part of the cash, then everything, to the owner’s own wall
     await page.locator('a[data-ui="vault-withdraw"]').click();
     await expect(page).toHaveURL(/\/vaults\/solana\/[^/]+\/withdraw$/);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(w.title);
+    // the disclaimer is on this page, once, in the foot
+    await expect(page.locator('footer [data-ui="disclaimer"]')).toBeVisible();
+    await expect(page.locator('[data-ui="disclaimer"]:visible')).toHaveCount(1);
   };
   /** The review confirmed, the order made, every step signed, and back to the portfolio. */
   const through = async (steps: number) => {

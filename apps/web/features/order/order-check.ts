@@ -89,14 +89,17 @@ export function sharedShapeOk(
   if (order.legs.some((l) => l.cashRaw !== undefined || l.trades.length > 0)) return false;
   const kinds = order.legs.map((l) => l.kind);
   if (terms.kind === 'withdraw') {
-    // Only withdrawals, of the tokens and the amounts the review showed, in its order, each once.
-    const taken = order.legs
-      .slice()
-      .sort((a, b) => a.seq - b.seq)
-      .flatMap((l) => l.withdrawals ?? []);
+    // Only withdrawals, of the tokens and the amounts the review showed, in its order, each once;
+    // before them, the switch that turns auto-follow off, exactly where the review said there is one.
+    const inOrder = order.legs.slice().sort((a, b) => a.seq - b.seq);
+    const first = inOrder[0]?.kind === 'set_auto_follow' ? inOrder[0] : null;
+    if ((first !== null) !== terms.autoFollowOff) return false;
+    const moving = first ? inOrder.slice(1) : inOrder;
+    const taken = moving.flatMap((l) => l.withdrawals ?? []);
     return (
-      kinds.every((k) => k === 'withdraw') &&
-      order.legs.every((l) => l.withdrawals !== undefined) &&
+      moving.length > 0 &&
+      first?.withdrawals === undefined &&
+      moving.every((l) => l.kind === 'withdraw' && l.withdrawals !== undefined) &&
       taken.length === terms.items.length &&
       taken.every(
         (w, i) => w.asset === terms.items[i]?.asset && w.amountRaw === terms.items[i]?.amountRaw,
