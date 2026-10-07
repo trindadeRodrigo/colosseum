@@ -40,4 +40,5 @@ const leaveHere = () => {
   left.count += 1;
 };
 export const useLeaveHere = () => leaveHere;
+export const useOustedPerson = () => null;
 export const WalletProvider = ({ children }: { children: ReactNode }) => children;
