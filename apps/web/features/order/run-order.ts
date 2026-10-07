@@ -20,7 +20,7 @@ import {
 } from '@colosseum/sdk';
 import { useCallback } from 'react';
 import type { SharedTerms } from '../shared/terms';
-import { useSigningPort } from '../wallet/signing';
+import { useSigningHold, useSigningPort } from '../wallet/signing';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { chainNode } from './chain-node';
 import { targetsOfPlan } from './plan-terms';
@@ -179,6 +179,7 @@ function storageWorks(): boolean {
 /** The order runner. `run` takes an order the person approved and walks it as far as it can go. */
 export function useOrderRunner(): { run: (input: RunInput) => Promise<RunOutcome> } {
   const port = useSigningPort();
+  const hold = useSigningHold();
   const apiFetch = useApiFetch();
 
   const run = useCallback(
@@ -218,6 +219,8 @@ export function useOrderRunner(): { run: (input: RunInput) => Promise<RunOutcome
           onEvent: input.onEvent,
           signal: input.signal,
         });
+      // The wallet provider is not mounted again while this runs: the step is signed by this port.
+      const release = hold();
       try {
         // One run of an order at a time, across the tabs of this browser: a second tab that ran while
         // the first had asked the wallet and not yet written down what it signed would sign again.
@@ -226,9 +229,11 @@ export function useOrderRunner(): { run: (input: RunInput) => Promise<RunOutcome
         );
       } catch (e) {
         return { status: 'crashed', message: e instanceof Error ? e.message : String(e) };
+      } finally {
+        release();
       }
     },
-    [port, apiFetch],
+    [port, apiFetch, hold],
   );
   return { run };
 }

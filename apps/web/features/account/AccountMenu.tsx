@@ -10,6 +10,7 @@ import { explorerAddressUrlFor, onMock } from '../order/readiness';
 import { useWalletPort } from '../wallet/WalletProvider';
 import { useAccount } from './AccountProvider';
 import { ChainOptions, usePopover } from './ChainSwitch';
+import { SlowSignIn } from './SlowSignIn';
 
 // The bar's account control for someone signed in (Thom, Oct 6): one compact button with the current
 // chain and the short address, opening what was spread along the bar: the chain switch, the short
@@ -41,7 +42,7 @@ export function AccountBlock({
 }) {
   const t = useT();
   const port = useWalletPort();
-  const { account } = useAccount();
+  const { account, slow } = useAccount();
   const chain = account.status === 'ready' ? account.chain : null;
   // Only the wallet of the current chain: the one a new plan is built with.
   const wallet = chain ? port.active(chainFamily(chain)) : null;
@@ -50,6 +51,8 @@ export function AccountBlock({
 
   return (
     <div data-ui="account-block" className={className}>
+      {/* Still not ready after a while: said here, above the way out. */}
+      <SlowSignIn className="flex flex-col gap-1 px-2 pb-2" />
       {chain && <ChainOptions className="flex flex-col gap-1" onPicked={onPicked} />}
       {wallet && (
         <div className="flex flex-col gap-1 border-t border-border pt-2">
@@ -88,7 +91,7 @@ export function AccountBlock({
           )}
         </div>
       )}
-      <div className={chain || wallet ? 'border-t border-border pt-2' : undefined}>
+      <div className={chain || wallet || slow ? 'border-t border-border pt-2' : undefined}>
         <button
           type="button"
           data-ui="sign-out"
@@ -113,7 +116,7 @@ export function AccountBlock({
 export function AccountMenu({ out }: { out: SignOutState }) {
   const t = useT();
   const port = useWalletPort();
-  const { account } = useAccount();
+  const { account, slow } = useAccount();
   const button = useRef<HTMLButtonElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const [open, setOpen] = usePopover(root, button);
@@ -126,7 +129,7 @@ export function AccountMenu({ out }: { out: SignOutState }) {
   return (
     <div ref={root} data-ui="account" className="relative flex items-center gap-2">
       <span role="status" data-ui="chain-said" className="sr-only">
-        {said}
+        {slow ? t.shell.slow.title : said}
       </span>
       {/* The throwaway wallet of development is marked sample beside its address. */}
       {port.test && wallet && (
@@ -168,7 +171,11 @@ export function AccountMenu({ out }: { out: SignOutState }) {
             )}
           </>
         ) : (
-          <span>{t.shell.account}</span>
+          // Signed in and still not ready after a while: the bar says so, and the menu says what
+          // is slow, with "Try again" and "Sign out".
+          <span data-ui={slow ? 'account-slow' : undefined}>
+            {slow ? t.shell.slow.title : t.shell.account}
+          </span>
         )}
         <Icon name="ChevronDown" size={16} />
       </button>

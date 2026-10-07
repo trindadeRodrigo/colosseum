@@ -22,6 +22,7 @@ import { utc } from '../portfolio/figures';
 import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
+import { holds } from '../wallet/test/mock-signing';
 import { OrderScreen } from './OrderScreen';
 import { recallOrder } from './order-record';
 import { doneOrder, LEG_SWAP, ORDER_ID, orderOn, PLAN_ID, recordOf, USER } from './test/fixtures';
@@ -803,6 +804,25 @@ describe('one run of an order at a time', () => {
     finish({ status: 'done', order: doneOrder() });
     await settle();
     expect(status(first)).toBe(en.order.outcome.done('Solana'));
+  });
+
+  it('holds the wallet provider in place while it runs, and lets go when the run is over, however it ends', async () => {
+    api(orderOn());
+    seed();
+    let fail: (e: Error) => void = () => {};
+    run.answer = () =>
+      new Promise((_, reject) => {
+        fail = reject;
+      });
+    const host = await screen();
+    expect(holds.open).toBe(0);
+    await click(primary(host));
+    await settle();
+    // "Try again" for a slow sign-in is refused meanwhile (WalletProvider's `restart`)
+    expect(holds.open).toBe(1);
+    fail(new Error('the run broke'));
+    await settle();
+    expect(holds.open).toBe(0);
   });
 
   it('signs nothing in a browser that cannot keep an order to one tab', async () => {

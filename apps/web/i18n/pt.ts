@@ -25,6 +25,16 @@ export const pt: Dictionary = {
     signOutFailed:
       'Não consegui encerrar sua sessão: o serviço de login não respondeu. Tente de novo.',
     account: 'Sua carteira',
+    slow: {
+      title: 'O login está lento',
+      wallets:
+        'Você entrou, mas o serviço de login ainda não entregou suas carteiras. Nada foi perdido.',
+      server:
+        'Você entrou, mas nosso servidor ainda não disse em qual rede fica o seu plano. Nada foi perdido.',
+      again: 'Tentar de novo',
+      trying: 'Tentando de novo…',
+      held: 'Um passo da sua ordem está sendo assinado. Conclua ou cancele esse passo primeiro e tente de novo.',
+    },
     address: 'Endereço',
     copyAddress: 'Copiar endereço',
     copied: 'Copiado',

@@ -26,6 +26,21 @@ export const en = {
     signedOut: 'You’re signed out.',
     signOutFailed: 'I couldn’t sign you out: the sign-in service didn’t answer. Try again.',
     account: 'Your wallet',
+    /**
+     * Someone signed in who is still not ready after a quarter of a minute: said in the bar and where
+     * the chain would be, with "Try again" and "Sign out". Which side is slow is said when it is known.
+     */
+    slow: {
+      title: 'Sign-in is slow',
+      wallets:
+        'You’re signed in, but the sign-in service hasn’t handed over your wallets yet. Nothing is lost.',
+      server:
+        'You’re signed in, but our server hasn’t said yet which chain your plan lives on. Nothing is lost.',
+      again: 'Try again',
+      trying: 'Trying again…',
+      /** "Try again" pressed while a step of an order is being signed. */
+      held: 'A step of your order is being signed. Finish or cancel that step first, then try again.',
+    },
     /** The account menu in the bar: its items under the chains. */
     address: 'Address',
     copyAddress: 'Copy address',
