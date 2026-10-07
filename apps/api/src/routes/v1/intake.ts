@@ -214,6 +214,13 @@ export function registerIntakeRoute(
       const read: { reply: unknown; why?: string } = model
         ? await model.read(text, nowMonth, language, principal.userId ?? principal.ip, vocabulary)
         : { reply: null, why: 'model_not_configured' };
+      // No model read it: said in the log with why (the request's id is on the line), and never
+      // with the text. The answer says the same to the screen (`reader.why`).
+      if (read.reply === null)
+        req.log.warn(
+          { why: read.why ?? 'model_no_reply', model: model?.id ?? null },
+          'the intake fell back to the rules parser',
+        );
       // What the read-back's risk is found on: this chain's shelf and figures, as the plan route
       // reads them, at the time of this request.
       const context: ComposeContext | null = held

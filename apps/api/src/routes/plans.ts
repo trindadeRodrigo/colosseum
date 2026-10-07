@@ -1,13 +1,13 @@
 import {
   assets as assetsTable,
   constraintSheets,
-  createDb,
   fxObservations,
   goals,
   planLegs,
   plans,
   riskSheets,
   schedules,
+  sharedDb,
   stressCases,
   yieldObservations,
 } from '@colosseum/db';
@@ -46,7 +46,8 @@ const rowToAsset = (r: typeof assetsTable.$inferSelect): Asset =>
   });
 
 export async function registerPlanRoutes(app: FastifyInstance) {
-  const { db } = createDb();
+  // The process's one pool (packages/db: `sharedDb`).
+  const { db } = sharedDb();
   const f = app.withTypeProvider<ZodTypeProvider>();
 
   f.post(
