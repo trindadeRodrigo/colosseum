@@ -129,11 +129,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     keepLeft(true);
     setMarked(true);
   }, []);
-  // Another tab of this browser set the mark, or let go of it: this one learns it at once, so a tab
-  // left open on the person's account is closed to them with the tab the press was made in.
+  // Another tab of this browser set the mark: this one learns it at once, so a tab left open on the
+  // person's account is closed to them with the tab the press was made in. Only ever set from there:
+  // the mark goes in a tab when that tab's own service says nobody is signed in, never because
+  // another tab let go of it while this one's service still names the person.
   useEffect(() => {
     const heard = (event: StorageEvent) => {
-      if (event.key === null || event.key === LEFT_HERE) setMarked(leftHere());
+      if ((event.key === null || event.key === LEFT_HERE) && leftHere()) setMarked(true);
     };
     window.addEventListener('storage', heard);
     return () => window.removeEventListener('storage', heard);
@@ -144,6 +146,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // The sign-out the mark stands for, at the service: once it names someone, and again after a
   // refusal when its wait is over or the service reports anything new, whichever is later.
   const signingOut = useRef(false);
+  // The wait of the try that is open, ended with the provider itself.
+  const waiting = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(waiting.current), []);
   // Who the service named while the mark was set: told to the account once the service says they
   // are out, for what this browser kept under their id (`useOustedPerson`).
   const named = useRef<string | null>(null);
@@ -186,6 +191,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       setAgain((n) => n + 1);
     };
     const limit = setTimeout(refused, SIGN_OUT_WAIT_MS);
+    waiting.current = limit;
     reported.signOut().then(() => {
       if (over) return;
       over = true;

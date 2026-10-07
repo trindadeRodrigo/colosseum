@@ -298,14 +298,69 @@ describe('signed out here while the sign-in service could not be reached', () =>
     expect(host.querySelector('[data-ui="order-screen"]')).toBeNull();
     expect(host.querySelector('[data-variant="primary"]')).toBeNull();
     expect(signOut).toHaveBeenCalledTimes(1);
-    // and when that tab's mark goes (the service said they are out), this one lets go too
+  });
+
+  it('is not let go of because another tab let go: this tab keeps the person back, and keeps trying, until its own service says they are out', async () => {
+    let refuse = true;
+    const signOut = vi.fn(async () => {
+      if (refuse) throw new Error('the sign-in service did not answer');
+    });
+    await page([]);
+    await later(0);
+    await report(theirs(signOut));
+    await act(async () => {
+      window.localStorage.setItem('tf-left', '1');
+      window.dispatchEvent(new StorageEvent('storage', { key: 'tf-left', newValue: '1' }));
+    });
+    await later(0);
+    expect(seen.screen?.userId).toBeNull();
+    expect(signOut).toHaveBeenCalledTimes(1);
+    // the other tab's service says they are out, and that tab clears the mark
     await act(async () => {
       window.localStorage.removeItem('tf-left');
       window.dispatchEvent(new StorageEvent('storage', { key: 'tf-left', newValue: null }));
     });
+    await later(0);
+    // this tab's service still names them: nothing is handed out, and its own sign-out is tried again
+    expect(seen.screen?.userId).toBeNull();
+    expect(seen.whole?.status).toBe('loading');
+    refuse = false;
+    await later(SIGN_OUT_RETRY_MS);
+    expect(signOut).toHaveBeenCalledTimes(2);
+    expect(seen.screen?.userId).toBeNull();
+    // let go only on this tab's own service saying they are out
     await report(fakePort());
     await later(0);
     expect(seen.screen?.status).toBe('signed-out');
+    await report(theirs(signOut));
+    await later(0);
+    expect(seen.screen?.userId).toBe(USER);
+  });
+
+  it('takes nothing from the late answer of a sign-out whose wait ran out', async () => {
+    window.localStorage.setItem('tf-left', '1');
+    const answers: (() => void)[] = [];
+    const signOut = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          answers.push(resolve);
+        }),
+    );
+    await page([]);
+    await later(0);
+    await report(theirs(signOut));
+    await later(SIGN_OUT_WAIT_MS);
+    // counted as refused: its answer, when it comes, is not a sign-out done
+    await act(async () => answers[0]?.());
+    await later(0);
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(seen.screen?.userId).toBeNull();
+    expect(marked()).toBe(true);
+    // the next try comes at its own time, no sooner for the late answer
+    await later(SIGN_OUT_RETRY_MS - 1);
+    expect(signOut).toHaveBeenCalledTimes(1);
+    await later(1);
+    expect(signOut).toHaveBeenCalledTimes(2);
   });
 
   it('counts a sign-out that never answers as refused once its wait is over, and tries again', async () => {
