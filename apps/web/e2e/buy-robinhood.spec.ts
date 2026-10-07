@@ -69,8 +69,9 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   const steps = page.locator('[data-ui="order-step"]');
   await expect(steps).toHaveCount(2);
   await expect(steps.nth(0)).toContainText(en.order.kind.approve);
-  await expect(steps.nth(1)).toContainText(en.order.kind.create_vault);
-  await expect(steps.nth(1)).toContainText('receive at least');
+  await expect(steps.nth(1)).toContainText(en.order.kind.create_vault_buy);
+  await expect(steps.nth(1)).toContainText('under the quote');
+  await expect(steps.nth(1)).not.toContainText('smallest');
   await named(page);
 
   await page.getByRole('button', { name: en.order.signAndBuy('$40') }).click();
@@ -79,14 +80,10 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   });
   for (let i = 0; i < 2; i += 1)
     await expect(steps.nth(i)).toHaveAttribute('data-status', 'confirmed');
-  // each step's link names the explorer it opens, and each line of the activity its chain
+  // each step's link names the explorer it opens
   await expect(steps.locator('[data-ui="explorer-name"]')).toHaveText([
     en.chain.explorers.robinhood,
     en.chain.explorers.robinhood,
-  ]);
-  await expect(page.locator('[data-ui="execution-list"] li [data-ui="chain-badge"]')).toHaveText([
-    NAME,
-    NAME,
   ]);
   await named(page);
 

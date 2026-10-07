@@ -8,8 +8,9 @@ import { parse } from '../../components/ui/test/html';
 import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
-import { recallOrder } from '../order/order-record';
-import { explorerAddressUrlFor } from '../order/readiness';
+import { keepOrder, recallOrder } from '../order/order-record';
+import { basketOfPlan, explorerAddressUrlFor } from '../order/readiness';
+import { PLAN_ID, planOn, recordOf } from '../order/test/fixtures';
 import { EMBEDDED, fakePort, json, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
@@ -142,12 +143,12 @@ describe('the shelf', () => {
     ]);
     // words that match no version the creator published are said to be unverified
     expect(card.textContent).toContain(en.shared.text.unverified);
-    expect(card.textContent).toContain('SPYX 40%');
+    expect(card.textContent).toContain('SPYx 40%');
     expect(card.textContent).not.toContain(en.shared.shelf.card.platform);
     // a test network's portfolio carries the hatch and one quiet line, never the word MOCK
     expect(card.textContent).not.toContain('MOCK');
     expect(card.querySelector('[data-ui="sample-note"]')?.textContent).toBe(
-      `${en.shell.mockAnnounce} · ${en.shell.testNetwork}`,
+      en.shell.testNetworkLine,
     );
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
@@ -190,6 +191,44 @@ describe('a portfolio’s page (gate GOLD-ONE-TAP)', () => {
     expect(host.textContent).not.toContain(en.shared.vaults.oneTap);
   });
 
+  it('names a vault bought from a goal by that goal, and says it holds the person’s own plan', async () => {
+    const plan = planOn();
+    keepOrder(
+      recordOf('solana', {
+        userId: USER,
+        amountUsd: 40_000,
+        goal: {
+          sheet: plan.proposal.sheet,
+          card: plan.proposal.card,
+          verdict: null,
+          placedAt: '2026-10-01T00:00:00Z',
+        },
+      }),
+    );
+    api({
+      family: familyOf(FAMILY_ID),
+      vaults: [
+        vaultOf({ address: MY_VAULT, basketId: basketOfPlan(PLAN_ID), recipeOnchainId: null }),
+      ],
+    });
+    const host = await show(createElement(FamilyScreen, { slug: SLUG }));
+    const mine = find(host, '[data-ui="my-vault"]');
+    expect(find(mine, 'a').textContent).toBe('Grow $40,000 over 36 months.');
+    expect(mine.textContent).toContain(en.shared.vaults.ownPlan);
+    expect(mine.textContent).not.toContain('something else');
+  });
+
+  it('keeps the creator’s address and the routine check behind Details, and where the weights come from in view', async () => {
+    api({ family: familyOf(FAMILY_ID) });
+    const host = await show(createElement(FamilyScreen, { slug: SLUG }));
+    const checks = find<HTMLDetailsElement>(host, '[data-ui="family-checks"]');
+    expect(checks.open).toBe(false);
+    expect(checks.querySelector('[data-ui="creator"]')).not.toBeNull();
+    // the word on where the version and weights come from is not folded away
+    const source = find(host, '[data-ui="source-mark"]');
+    expect(checks.contains(source)).toBe(false);
+  });
+
   it('offers no switch on one that holds an asset with no oracle, says why, and asks for the one tap', async () => {
     api({
       family: familyOf(FAMILY_ID, {
@@ -204,7 +243,7 @@ describe('a portfolio’s page (gate GOLD-ONE-TAP)', () => {
     const host = await show(createElement(FamilyScreen, { slug: SLUG }));
     const offer = find(host, '[data-ui="auto-follow-offer"]');
     expect(offer.getAttribute('data-offered')).toBe('false');
-    expect(offer.textContent).toContain(en.shared.offer.noOracle('GLDX', 'Solana'));
+    expect(offer.textContent).toContain(en.shared.offer.noOracle('GLDx', 'Solana'));
     expect(button(host, en.shared.vaults.autoOn)).toBeUndefined();
     expect(host.textContent).toContain(en.shared.vaults.oneTap);
   });
@@ -341,7 +380,7 @@ describe('buying a portfolio, which follows it', () => {
     await settle(400);
     await settle(50);
     await click(find(host, `input[type="checkbox"]`));
-    await click(button(host, en.shared.buy.review('$10')) as HTMLElement);
+    await click(button(host, en.buy.review('$10')) as HTMLElement);
     await settle(50);
     expect(calls.find((c) => c.path === '/v1/orders')?.body).toEqual({
       type: 'buy',
@@ -365,6 +404,9 @@ describe('the publish form', () => {
   it('works out the family id from the address, holds the limits, and keeps its own text', async () => {
     const calls = api({ family: null, order: () => publishOrder() });
     const host = await show(createElement(PublishScreen));
+    // an empty form says nothing is wrong with it: the person has typed nothing yet
+    for (const problem of Object.values(en.shared.publish.problems))
+      expect(host.textContent, problem).not.toContain(problem);
     const field = (label: string) =>
       find<HTMLInputElement>(
         host,
@@ -500,6 +542,30 @@ describe('a vault’s public page', () => {
     // no priced holding: the value stands on the chain's read of the vault, at its time
     const line = find(host, '[data-ui="pin-source"]').textContent ?? '';
     for (const part of ['Solana', en.portfolio.vault.valueMethod]) expect(line).toContain(part);
+    // written as the portfolio writes it: cents in full
+    expect(figure?.textContent).toContain('$1,234.50');
+  });
+
+  it('asks for the vault once, and for a vault that is not there says so with the way back', async () => {
+    let asked = 0;
+    portStore.setApi(async (path) => {
+      if (path === '/v1/me') return json(person);
+      if (path.startsWith('/v1/vaults/')) asked += 1;
+      return json({ error: 'not found' }, 404);
+    });
+    const host = await show(createElement(VaultScreen, { chain: 'solana', address: VAULT }));
+    await settle();
+    expect(find(host, 'h1').textContent).toBe(en.shared.vault.missing);
+    // a change of the sign-in around the page does not ask again
+    portStore.set(signedInPort(EMBEDDED, { userId: USER }));
+    portStore.setApi(async (path) => {
+      if (path.startsWith('/v1/vaults/')) asked += 1;
+      return json({ error: 'not found' }, 404);
+    });
+    for (let i = 0; i < 3; i += 1) await settle(50);
+    expect(asked).toBe(1);
+    const ways = [...host.querySelectorAll('a')].map((link) => link.getAttribute('href'));
+    expect(ways).toEqual(['/shelf', '/monitor']);
   });
 });
 
@@ -558,7 +624,16 @@ describe('the chain, on the shelf and on a vault’s page', () => {
       });
       const host = await show(createElement(VaultScreen, { chain, address }));
       expect(badges(host)).toEqual([chain]);
-      expect(host.textContent).toContain(`5 ${name}`);
+      // cash is a holding like any other, named as the plan and the portfolio name it
+      const rows = [...find(host, 'table').querySelectorAll('tbody tr')].map((tr) =>
+        [...tr.children].map((cell) => cell.textContent?.trim()),
+      );
+      expect(rows.at(-1)?.slice(0, 2)).toEqual([`Cash (${name})`, '5']);
+      // and the page leads back to the portfolio
+      const back = [...host.querySelectorAll('a')].find(
+        (a) => a.textContent === en.shared.vault.back,
+      );
+      expect(back?.getAttribute('href')).toBe('/monitor');
       if (chain === 'robinhood') expect(host.textContent).not.toMatch(/usdc/i);
     },
   );
@@ -612,12 +687,15 @@ describe('the flow audit’s findings on these screens (34, 38, 42)', () => {
     expect(explorer.getAttribute('href')).toContain(`/account/${VAULT}`);
     expect(explorer.getAttribute('target')).toBe('_blank');
     expect(find(host, 'header [data-ui="chain-badge"]').textContent).toBe('Solana');
-    // the portfolio's formats: two decimals on dollars and shares, six places at most on a token
+    // the portfolio's formats: cents in full, shares to one decimal at most, six places on a token
     const text = host.textContent ?? '';
     expect(text).toContain('$377.40');
     expect(text).toContain('0.00837');
     expect(text).not.toContain('0.00837024899664214');
-    expect(text).toContain('65.00%');
+    expect(text).toContain('65%');
+    expect(text).not.toContain('65.00%');
+    // and cash is a holding of its own, so the shares add up to the whole
+    expect(text).toContain('Cash (USDC)');
     expect(text).not.toMatch(/\$377\.4(?!0)/);
   });
 

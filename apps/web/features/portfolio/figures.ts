@@ -19,21 +19,24 @@ export const dollars = (lang: Lang, decimal: string): string =>
 export const tokens = (lang: Lang, decimal: string): string =>
   new Intl.NumberFormat(LOCALE[lang], { maximumFractionDigits: 6 }).format(Number(decimal));
 
-/** Basis points as a share, with two decimals: `25.00%`. */
+/**
+ * Basis points as a share, to one decimal at most: `25%`, `24.9%`. A second decimal read as noise
+ * beside a plan's round shares (the flow audit, finding 32).
+ */
 export const share = (lang: Lang, bps: number): string =>
   new Intl.NumberFormat(LOCALE[lang], {
     style: 'percent',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
   }).format(bps / 10_000);
 
-/** A drift in basis points, signed: `+1.20%`, `−0.40%`, `0.00%`. */
+/** A difference in basis points, signed: `+1.2%`, `−0.4%`, `0%`. */
 export const drift = (lang: Lang, bps: number): string =>
   trueMinus(
     new Intl.NumberFormat(LOCALE[lang], {
       style: 'percent',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 1,
       signDisplay: 'exceptZero',
     }).format(bps / 10_000),
   );

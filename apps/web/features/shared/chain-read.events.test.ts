@@ -188,7 +188,7 @@ describe('a shared portfolio read from the chain by this app', () => {
     // the chain's version 3 at 50/25/25, not the server's version 2 at 40/30/30
     expect(host.textContent).toContain(en.shared.family.versionN(3));
     const legs = find(host, '[data-ui="plan-legs"]').textContent ?? '';
-    for (const part of ['SPYX', '50%', 'NVDAX', '25%', 'TSLAX']) expect(legs).toContain(part);
+    for (const part of ['SPYx', '50%', 'NVDAx', '25%', 'TSLAx']) expect(legs).toContain(part);
     expect(legs).not.toContain('40%');
   });
 
@@ -247,7 +247,7 @@ describe('a shared portfolio read from the chain by this app', () => {
     await settle(50);
     await click(find(host, 'input[type="checkbox"]'));
     const review = [...host.querySelectorAll<HTMLElement>('button')].find((b) =>
-      b.textContent?.includes(en.shared.buy.review('$10')),
+      b.textContent?.includes(en.buy.review('$10')),
     );
     await click(review as HTMLElement);
     await settle(50);
@@ -315,7 +315,7 @@ describe('a shared portfolio this app could read from the chain and could not', 
     await settle(50);
     await click(find(host, 'input[type="checkbox"]'));
     const review = [...host.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
-      b.textContent?.includes(en.shared.buy.review('$10')),
+      b.textContent?.includes(en.buy.review('$10')),
     );
     expect(review?.getAttribute('aria-disabled')).toBe('true');
     expect(host.textContent).toContain(tampered);

@@ -151,10 +151,8 @@ describe('the plan screen', () => {
     rememberPlan(planOn());
     const host = await plan();
     expect(find(host, 'h1').textContent).toBe('Grow $40,000 over 36 months.');
-    // the plan pane of the showcase: the limits as chips, the figures as stat cells, the legs
-    const chips = find(host, `ul[aria-label="${en.plan.chips.label}"]`).textContent;
-    expect(chips).toContain('amount: $40,000');
-    expect(chips).toContain('chain: Solana');
+    // the limits are the heading: no chips say them again (the flow audit, finding 12)
+    expect(host.textContent).not.toMatch(/amount: |chain: |horizon: /);
     // the bad fall is a sentence, not a bare figure with "estimate" beside it
     expect(host.querySelectorAll('[data-ui="stat"]')).toHaveLength(3);
     expect(find(host, '[data-ui="plan-bad-fall"]').textContent).toMatch(/^In a bad fall: /);
@@ -170,18 +168,17 @@ describe('the plan screen', () => {
     );
     // the disclaimer is the shell's foot, once per page: the screen does not repeat it
     expect(host.textContent).not.toContain(DISCLAIMER.en);
-    expect(host.textContent).toContain(DISCLAIMER_SHORT.en);
-    // "test network" is said once on the plan's card, in its quiet line
-    const pane = [...host.querySelectorAll('[data-ui="card"]')].find((c) =>
-      c.textContent?.includes(en.plan.title),
-    );
-    expect(pane?.textContent?.split(en.shell.testNetwork)).toHaveLength(2);
+    // nor its short line, which read as jargon on the plan ("Policy in your wallet, not a fund.")
+    expect(host.textContent).not.toContain(DISCLAIMER_SHORT.en);
+    // how the range was worked out is kept, behind Details
+    expect(find(host, '[data-ui="plan-details"]').textContent).toContain('How it was worked out');
     // the API sent no risk roll-up, so there is no panel for one
     expect(host.textContent).not.toContain(en.plan.risk.title);
     // a plan built on a test network: the hatch and one quiet line, never the word MOCK
     expect(host.textContent).not.toContain('MOCK');
+    // figures read from a test network are not samples: the card says "Test network", once
     expect(host.querySelector('[data-ui="sample-note"]')?.textContent).toBe(
-      `${en.shell.mockAnnounce} · ${en.shell.testNetwork}`,
+      en.shell.testNetworkLine,
     );
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
     const next = primaryLink(host);
@@ -201,9 +198,6 @@ describe('the plan screen', () => {
     );
     expect(names.length).toBeGreaterThanOrEqual(2);
     for (const name of names) expect(name.startsWith(pt.sourceFor.split('{value}')[0])).toBe(true);
-    // and the risk chip agrees with its word: "risco: médio", not the field's "média"
-    const chips = find(host, `ul[aria-label="${dictionary('pt').plan.chips.label}"]`).textContent;
-    expect(chips).toMatch(/risco: (baixo|médio|alto)/);
     const exit = find(host, '[data-ui="exit-plan-line"] [data-ui="pin"]');
     expect(exit.getAttribute('aria-label')).not.toContain(en.pin.sourceFor.split('{value}')[0]);
   });
@@ -279,16 +273,6 @@ describe('the plan screen', () => {
     );
     expect(find(chart, 'g[data-series="high"]').getAttribute('opacity')).toBe('0.25');
     expect(find(chart, 'g[data-series="low"]').getAttribute('opacity')).toBe('1');
-  });
-
-  it('says its short disclaimer line in the reader’s language (binding rule 3)', async () => {
-    api();
-    rememberPlan(planOn());
-    const pt = await mount(withAccount('pt', createElement(PlanScreen, { id: PLAN_ID })));
-    await settle();
-    await settle();
-    expect(pt.textContent).toContain(DISCLAIMER_SHORT.pt);
-    expect(pt.textContent).not.toContain(DISCLAIMER_SHORT.en);
   });
 
   it('draws his chart from the plan’s own range, pinned to its yield, and none from a range with no source', async () => {
@@ -479,7 +463,7 @@ describe('the buy screen', () => {
     );
     expect(host.textContent).toContain(en.buy.funding.short('Solana'));
     // in whole units, with the units the test network's deployment committed
-    expect(host.textContent).toContain('40,000 tUSDC');
+    expect(host.textContent).toContain('40,000 USDC');
     const button = find(host, SIGN);
     expect(label(button)).toBe(en.buy.review('$40,000'));
     expect(button.getAttribute('aria-disabled')).toBe('true');
@@ -489,7 +473,7 @@ describe('the buy screen', () => {
   });
 
   it('reads the funding figures with committed decimals, whatever decimals the answer states', async () => {
-    // an answer that says 9 decimals for the dollar and 18 for SOL: 40,000 tUSDC would read as 40, and
+    // an answer that says 9 decimals for the dollar and 18 for SOL: 40,000 USDC would read as 40, and
     // the network fee as nothing
     api({
       funded: false,
@@ -498,10 +482,10 @@ describe('the buy screen', () => {
     rememberPlan(planOn());
     const host = await buy();
     expect(host.textContent).toContain(en.buy.funding.short('Solana'));
-    expect(host.textContent).toContain('40,000 tUSDC');
+    expect(host.textContent).toContain('40,000 USDC');
     expect(host.textContent).toContain('1 SOL');
     expect(host.textContent).toContain('0.02 SOL');
-    expect(host.textContent).not.toContain('40 tUSDC ');
+    expect(host.textContent).not.toContain('40 USDC ');
   });
 
   it('asks for the trust notice once, before the first deposit, from the one constant', async () => {

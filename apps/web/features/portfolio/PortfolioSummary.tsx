@@ -42,8 +42,8 @@ export function PortfolioSummary() {
       className="max-w-(--tf-measure-docs)"
       mock={notLive !== undefined}
       mockLabels={{
-        announce: t.shell.mockAnnounce,
-        note: notLive?.provenance === 'sandbox' ? t.shell.testNetwork : undefined,
+        announce:
+          notLive?.provenance === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
       }}
     >
       <CardHeader
