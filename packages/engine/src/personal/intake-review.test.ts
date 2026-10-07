@@ -1141,15 +1141,24 @@ describe('a refusal the text writes is never lost: it is taken from the text, wi
   });
 
   it('the model adds none: what it gives that the text does not state is not taken, and never in silence', () => {
-    // Not written at all: dropped and flagged, as before.
+    // Not written at all: not taken and flagged, as before; and asked once, since no reader decides
+    // alone (the third review, Oct 7). It was dropped with the flag.
     const unwritten = intake(GOAL, model({ cannotHold: ['gold'], noCredit: true }));
     expect(unwritten.limits).toEqual(NONE);
     expect(unwritten.flags).toEqual(
       expect.arrayContaining(['not_in_text:cannotHold:gold', 'not_in_text:noCredit']),
     );
-    expect(unwritten.sheet?.limits).toBeUndefined();
-    // Written, and the clause says otherwise: the text's reading stands, and because a reader took
-    // it for a refusal it is said back for the person to settle.
+    expect(unwritten.sheet).toBeNull();
+    expect(unwritten.questions.filter((q) => q.field === 'limits')).toEqual([
+      {
+        field: 'limits',
+        template: 'limits',
+        text: 'Do you want to leave out gold and tokens that lend to borrowers or trade a spread?',
+        read: ['gold', 'credit'],
+      },
+    ]);
+    // Written, and the clause says otherwise: the text's reading stands, and because the other
+    // reader took it for a refusal it is asked, where it was said back in a line.
     for (const [sentence, stance, words] of [
       ['No stocks? Not sure.', 'wondered', 'No stocks'],
       ['My brother holds no stocks.', 'aside', 'no stocks'],
@@ -1159,12 +1168,27 @@ describe('a refusal the text writes is never lost: it is taken from the text, wi
         answers: { risk: 'low' },
       });
       expect(result.limits, sentence).toEqual(NONE);
-      expect(result.sheet?.limits, sentence).toBeUndefined();
+      expect(result.sheet, sentence).toBeNull();
       expect(result.flags, sentence).toContain(`refusal_${stance}:stock`);
       expect(result.flags, sentence).not.toContain('not_in_text:cannotHold:stock');
-      expect(result.assumptions, sentence).toContain(
-        `I did not read “${words}” as something to leave out. Say so if you want it left out.`,
-      );
+      expect(
+        result.questions.map((q) => q.text),
+        sentence,
+      ).toEqual(['Do you want to leave out stocks and stock funds?']);
+      // The question takes the place of the line that said it was not read as one.
+      expect(result.assumptions.join(' '), sentence).not.toContain(words);
+      // With no model there is no second reader: nothing is asked, and one the person is not sure
+      // of is said back as before.
+      const alone = intake(GOAL + sentence, null, {
+        answers: { goal: 'grow', amountUsd: 5000, horizonMonths: 60, risk: 'low' },
+      });
+      expect(alone.questions, sentence).toEqual([]);
+      expect(
+        alone.assumptions.includes(
+          `I did not read “${words}” as something to leave out. Say so if you want it left out.`,
+        ),
+        sentence,
+      ).toBe(stance === 'wondered');
     }
     // The model's mix is never offered as the start of a question where the text refuses its class.
     const erring = intake(`${GOAL}I am retired so no stocks please.`, model({ mix: pct(100, 0) }));
@@ -3987,9 +4011,12 @@ describe('the second review (Oct 7): every sentence of its scripts, with a model
     expect(held.assumptions).toContain(
       'To hold “big tech”, the plan uses the limits for medium risk.',
     );
-    // An amount answered on the form is the sheet's too.
+    // An amount answered on the form is the sheet's too. The text writes no sum here: one it wrote
+    // that is not the form's would be a sum beside the share, and the share would be asked (the
+    // third review, B6).
     seen.length = 0;
-    const answered = intake(text, goal({ markets: ['big_tech'], amountUsd: null }), {
+    const noSum = 'I want to grow my savings over 5 years. Invest in big tech.';
+    const answered = intake(noSum, goal({ markets: ['big_tech'], amountUsd: null }), {
       riskOfMix,
       answers: { amountUsd: 1200 },
     });
@@ -4016,5 +4043,696 @@ describe('the second review (Oct 7): every sentence of its scripts, with a model
     expect(intake(text, goal({ markets: ['big_tech'] }), { riskOfMix: two }).sheet?.risk).toBe(
       'low',
     );
+  });
+});
+
+// The third independent review (Oct 7) ran 412 new sentences and 22,000 generated texts against the
+// rules of the second. What held is in the blocks above. Where it did not, one reader still decided
+// alone, and an answer stood against the last word. The rule built for it: no reader decides alone,
+// and the last word wins over an answer. Each finding below has the review's own sentences and
+// others in other words, in English and Portuguese, with a reply that reads them, one that errs,
+// and none. Every reply is MOCK.
+describe('the third review (Oct 7): no reader decides alone, and the last word wins over an answer', () => {
+  const FORM: IntakeAnswers = { goal: 'grow', amountUsd: 5000, horizonMonths: 60, risk: 'medium' };
+  /** A reply that reads no goal, so the form's answers stand, and what `over` says it read. */
+  const reads = (over: Record<string, unknown> = {}) =>
+    reply({ goal: null, amountUsd: null, horizonMonths: null, risk: null, ...over });
+  /** The messages of a conversation, in order, read with a reply or with none. */
+  const said = (messages: string[], r: unknown, answers: IntakeAnswers = FORM) =>
+    intake(conversationText(messages[0] ?? '', messages.slice(1)), r, { answers });
+  const asked = (r: { questions: { text: string }[] }) => r.questions.map((q) => q.text);
+
+  describe('B1: a refusal the reply reads that the text check does not confirm is asked once', () => {
+    type Refusal = {
+      text: string;
+      pt?: true;
+      reply: Record<string, unknown>;
+      question: string;
+      line: string;
+      limits: PersonalSheet['limits'];
+      declined: string;
+    };
+    const STOCKS: Omit<Refusal, 'text' | 'reply'> = {
+      question: 'Do you want to leave out stocks and stock funds?',
+      line: 'You left out stocks and stock funds.',
+      limits: { cannotHold: { classes: ['etf', 'stock'] } },
+      declined: 'You said not to leave out stocks and stock funds, so the plan may hold them.',
+    };
+    const ACOES: Omit<Refusal, 'text' | 'reply'> = {
+      pt: true,
+      question: 'Você quer deixar de fora ações e fundos de ações?',
+      line: 'Você deixou de fora ações e fundos de ações.',
+      limits: { cannotHold: { classes: ['etf', 'stock'] } },
+      declined:
+        'Você disse para não deixar de fora ações e fundos de ações, então o plano pode ter.',
+    };
+    const CASES: Refusal[] = [
+      // The review's own.
+      { text: 'Do not buy stocks for me.', reply: { cannotHold: ['stock'] }, ...STOCKS },
+      {
+        text: 'I want nothing to do with crypto.',
+        reply: { cannotHold: ['crypto'] },
+        question: 'Do you want to leave out crypto?',
+        line: 'You left out crypto.',
+        limits: { cannotHold: { classes: ['crypto'] } },
+        declined: 'You said not to leave out crypto, so the plan may hold them.',
+      },
+      { text: 'Stocks are off the table.', reply: { cannotHold: ['stock'] }, ...STOCKS },
+      { text: 'Nada de bolsa.', reply: { language: 'pt', cannotHold: ['stock'] }, ...ACOES },
+      // In other words.
+      {
+        text: 'Count me out of anything in the stock market.',
+        reply: { cannotHold: ['stock'] },
+        ...STOCKS,
+      },
+      {
+        text: 'Lending is not something I am comfortable with.',
+        reply: { noCredit: true },
+        question: 'Do you want to leave out tokens that lend to borrowers or trade a spread?',
+        line: 'No tokens that lend to borrowers or trade a spread.',
+        limits: { creditTolerance: 'none' },
+        declined:
+          'You said not to leave out tokens that lend to borrowers or trade a spread, so the plan may hold them.',
+      },
+      {
+        text: 'Whatever you do, the yellow metal is not for me.',
+        reply: { cannotHold: ['gold'] },
+        question: 'Do you want to leave out gold?',
+        line: 'You left out gold.',
+        limits: { cannotHold: { classes: ['gold'] } },
+        declined: 'You said not to leave out gold, so the plan may hold them.',
+      },
+      {
+        text: 'Bolsa de valores não é para mim.',
+        reply: { language: 'pt', cannotHold: ['stock'] },
+        ...ACOES,
+      },
+      {
+        text: 'Ouro está fora de questão.',
+        pt: true,
+        reply: { language: 'pt', cannotHold: ['gold'] },
+        question: 'Você quer deixar de fora ouro?',
+        line: 'Você deixou de fora ouro.',
+        limits: { cannotHold: { classes: ['gold'] } },
+        declined: 'Você disse para não deixar de fora ouro, então o plano pode ter.',
+      },
+    ];
+
+    it('asked once, with what a yes would leave out; never taken and never dropped in silence', () => {
+      for (const c of CASES) {
+        // The text check reads no refusal in these words: the reply is the one reader.
+        expect(refusalsSaidIn(c.text), c.text).toEqual([]);
+        const first = said([c.text], reads(c.reply));
+        expect(asked(first), c.text).toEqual([c.question]);
+        expect(first.questions[0], c.text).toMatchObject({ field: 'limits', template: 'limits' });
+        expect(first.sheet, c.text).toBeNull();
+        expect(first.limits, c.text).toEqual({ creditTolerance: null, cannotHoldClasses: null });
+      }
+    });
+
+    it('a yes takes it, and the read-back says what is left out; the question does not come back', () => {
+      for (const c of CASES)
+        for (const yes of c.pt ? ['sim', 'isso'] : ['yes', "that's right"]) {
+          const taken = said([c.text, yes], reads(c.reply));
+          expect(taken.questions, `${c.text} / ${yes}`).toEqual([]);
+          expect(taken.sheet?.limits, `${c.text} / ${yes}`).toEqual(c.limits);
+          expect(taken.readBack, `${c.text} / ${yes}`).toContain(c.line);
+          // A later message that says nothing of it leaves it taken.
+          const later = said([c.text, yes, c.pt ? 'obrigado' : 'thanks'], reads(c.reply));
+          expect(later.questions, c.text).toEqual([]);
+          expect(later.sheet?.limits, c.text).toEqual(c.limits);
+        }
+    });
+
+    it('a no leaves the class in, and one line says so; the question does not come back', () => {
+      for (const c of CASES) {
+        const left = said([c.text, c.pt ? 'não' : 'no'], reads(c.reply));
+        expect(left.questions, c.text).toEqual([]);
+        expect(left.sheet, c.text).not.toBeNull();
+        expect(left.sheet?.limits, c.text).toBeUndefined();
+        expect(left.assumptions, c.text).toContain(c.declined);
+        expect(left.readBack, c.text).toContain(c.declined);
+      }
+    });
+
+    it('with a reply that errs: a refusal nobody wrote is asked, never taken; one it misses has no reader', () => {
+      // The reply reads a refusal where the text names nothing to leave out.
+      const invented = said(['I want my savings to grow.'], reads({ cannotHold: ['stock'] }));
+      expect(asked(invented)).toEqual(['Do you want to leave out stocks and stock funds?']);
+      expect(invented.sheet).toBeNull();
+      // And where the text states the class as what to hold: the holding is still read by both,
+      // the refusal is asked, and no sheet is made with either meanwhile.
+      const against = said(
+        ['Put all of it in stocks.'],
+        reads({ mix: pct(100, 0), cannotHold: ['stock'] }),
+      );
+      expect(asked(against)).toContain('Do you want to leave out stocks and stock funds?');
+      expect(against.sheet).toBeNull();
+      for (const c of CASES) {
+        // The reply misses it, or there is no model: the words are in no reader's forms, so nothing
+        // is asked and nothing is left out. With no model only the fixed forms are read.
+        for (const r of [reads(c.pt ? { language: 'pt' } : {}), null]) {
+          const unread = said([c.text], r);
+          expect(unread.questions, c.text).toEqual([]);
+          expect(unread.sheet?.limits, c.text).toBeUndefined();
+        }
+      }
+    });
+
+    it('the same refusal in a form the text check reads is taken with no question, with or without a model', () => {
+      for (const r of [reads({ cannotHold: ['stock'] }), reads(), null]) {
+        const taken = said(['No stocks for me.'], r);
+        expect(taken.questions).toEqual([]);
+        expect(taken.sheet?.limits).toEqual({ cannotHold: { classes: ['etf', 'stock'] } });
+      }
+    });
+
+    it('a yes or no answers it only where it is the one question asked, and the form’s own limits stand over it', () => {
+      const r = reads({ cannotHold: ['stock'] });
+      // The risk is open too: nothing says which of the two a "yes" answers.
+      const two = said(['Do not buy stocks for me.', 'yes'], r, {
+        goal: 'grow',
+        amountUsd: 5000,
+        horizonMonths: 60,
+      });
+      expect(two.questions.map((q) => q.field)).toEqual(['limits', 'risk']);
+      // The form says what is left out: nothing is asked.
+      for (const limits of [{}, { cannotHold: { classes: ['gold' as const] } }]) {
+        const formed = said(['Do not buy stocks for me.'], r, { ...FORM, limits });
+        expect(formed.questions).toEqual([]);
+        expect(formed.sheet?.limits ?? {}).toEqual(limits);
+      }
+    });
+  });
+
+  describe('B2: a class the clause of a refusal goes on to name is left out with it', () => {
+    const BOTH = { cannotHold: { classes: ['etf', 'stock'] } };
+    const STOCKS_ONLY = { cannotHold: { classes: ['stock'] } };
+    // Each with a reply that reads both, one that reads the stocks alone, one that reads nothing,
+    // and none: the funds go with the stocks whoever reads the rest.
+    const REPLIES = [
+      (pt: boolean) => reads({ cannotHold: ['stock', 'etf'], ...(pt ? { language: 'pt' } : {}) }),
+      (pt: boolean) => reads({ cannotHold: ['stock'], ...(pt ? { language: 'pt' } : {}) }),
+      (pt: boolean) => reads(pt ? { language: 'pt' } : {}),
+      () => null,
+    ];
+    it('"including ETFs", "same goes for ETFs", "isso vale para ETFs": the funds are left out too, and nothing is asked', () => {
+      for (const [text, pt] of [
+        // The review's own.
+        ['No stocks, including ETFs.', false],
+        ['No stocks. Same goes for ETFs.', false],
+        // In other words.
+        ['No stocks, and that includes ETFs.', false],
+        ['No stocks, ETFs too.', false],
+        ['No stocks; the same for stock funds.', false],
+        ['Sem ações, inclusive ETFs.', true],
+        ['Sem ações. Isso vale para ETFs.', true],
+      ] as const)
+        for (const r of REPLIES) {
+          const result = said([text], r(pt));
+          expect(result.questions, text).toEqual([]);
+          expect(result.sheet?.limits, text).toEqual(BOTH);
+          expect(
+            result.flags.filter((f) => f.startsWith('not_in_text')),
+            text,
+          ).toEqual([]);
+        }
+    });
+
+    it('the funds stay in only where their own clause holds them: an ask, a contrast with the refusal, or something said of them', () => {
+      for (const [text, pt] of [
+        ['No stocks, but ETFs are fine.', false],
+        ['No stocks, although I want ETFs.', false],
+        ['No stocks. Put it in ETFs instead.', false],
+        ['No stocks. ETFs are ok though.', false],
+        ['Sem ações, mas ETFs pode.', true],
+      ] as const)
+        for (const r of [REPLIES[1], REPLIES[3]]) {
+          const result = said([text], r?.(pt) ?? null);
+          expect(result.limits.cannotHoldClasses, text).toEqual(['stock']);
+          expect(result.sheet?.limits ?? STOCKS_ONLY, text).toEqual(STOCKS_ONLY);
+        }
+    });
+  });
+});
+
+describe('the third review (Oct 7), B5: where the two readers read different mixes, neither is taken', () => {
+  const FORM: IntakeAnswers = { goal: 'grow', amountUsd: 5000, horizonMonths: 60, risk: 'medium' };
+  const reads = (over: Record<string, unknown> = {}) =>
+    reply({ goal: null, amountUsd: null, horizonMonths: null, risk: null, ...over });
+  const said = (messages: string[], r: unknown) =>
+    intake(conversationText(messages[0] ?? '', messages.slice(1)), r, { answers: FORM });
+  const MIX_EN =
+    'How do you want the money held: how much in stocks and crypto, and how much in cash?';
+  const MIX_PT = 'Como você quer o dinheiro: quanto em ações e cripto, e quanto em caixa?';
+  // The messages, the mix a faithful reply reads, and the words that then say it.
+  const CASES: [string[], ReturnType<typeof pct>, string, ReturnType<typeof bps>, 'pt'?][] = [
+    // The review's own.
+    [
+      ['My advisor wants 60/40 stocks and bonds, but I want all in stocks.'],
+      pct(100, 0),
+      'all of it in stocks',
+      bps(10_000, 0),
+    ],
+    [
+      ['The bank proposed everything in bonds. I say everything in stocks.'],
+      pct(100, 0),
+      'all of it in stocks',
+      bps(10_000, 0),
+    ],
+    [
+      ['Put 60% in stocks and 40% in cash.', 'Make the cash 50%.'],
+      pct(50, 50),
+      '50% stocks and 50% cash',
+      bps(5000, 5000),
+    ],
+    // In other words.
+    [
+      ['Put 70% in stocks and 30% in cash.', 'Actually make the stocks half.'],
+      pct(50, 50),
+      'half in stocks and half in cash',
+      bps(5000, 5000),
+    ],
+    [
+      ['The robo-adviser suggests everything in cash. I would rather have everything in stocks.'],
+      pct(100, 0),
+      'everything in stocks',
+      bps(10_000, 0),
+    ],
+    [
+      ['Meu gerente sugeriu 60% em ações e 40% em renda fixa, mas eu quero tudo em ações.'],
+      pct(100, 0),
+      'tudo em ações',
+      bps(10_000, 0),
+      'pt',
+    ],
+    [
+      ['Quero 80% em ações e 20% em caixa.', 'Pensando bem, deixa o caixa em 40%.'],
+      pct(60, 40),
+      '60% em ações e 40% em caixa',
+      bps(6000, 4000),
+      'pt',
+    ],
+  ];
+
+  it('with a reply that reads the person’s mix: asked once with no start, never the text check’s reading taken', () => {
+    for (const [messages, mix, , , pt] of CASES) {
+      const where = messages.join(' / ');
+      const result = said(messages, reads({ mix, ...(pt ? { language: 'pt' } : {}) }));
+      expect(result.flags, where).toEqual(
+        expect.arrayContaining(['disagrees_with_rules:mix', 'mix_asked:differs']),
+      );
+      expect(result.questions, where).toEqual([
+        { field: 'mix', template: 'mix', text: pt ? MIX_PT : MIX_EN },
+      ]);
+      expect(result.sheet, where).toBeNull();
+      expect(result.mix, where).toBeNull();
+    }
+  });
+
+  it('the person then says it: taken as said; a yes has no start to take, and a no leaves no mix', () => {
+    for (const [messages, mix, words, held, pt] of CASES) {
+      const where = messages.join(' / ');
+      const r = reads({ mix, ...(pt ? { language: 'pt' } : {}) });
+      const answered = said([...messages, words], r);
+      expect(answered.questions, where).toEqual([]);
+      expect(answered.sheet?.mix, where).toEqual(held);
+      expect(answered.flags, where).toContain('mix_from_words');
+      // A plain yes confirms nothing: there was no start. The question stays.
+      expect(said([...messages, pt ? 'sim' : 'yes'], r).questions, where).toHaveLength(1);
+      const none = said([...messages, pt ? 'nenhum' : 'none'], r);
+      expect(none.questions, where).toEqual([]);
+      expect(none.sheet, where).not.toBeNull();
+      expect(none.sheet?.mix, where).toBeUndefined();
+    }
+  });
+
+  it('with a reply that errs: a mix against what the text states is asked, never taken, and never the form’s start', () => {
+    for (const [text, hostile] of [
+      ['Put all of it in stocks.', pct(0, 100)],
+      ['I want 70% stocks and 30% cash.', pct(100, 0)],
+      ['Quero tudo em ações.', pct(0, 0, 0, 100)],
+    ] as const) {
+      const result = said([text], reads({ mix: hostile }));
+      expect(result.sheet, text).toBeNull();
+      expect(
+        result.questions.map((q) => [q.field, q.read]),
+        text,
+      ).toEqual([['mix', undefined]]);
+    }
+  });
+
+  it('with no model: the mix the text check reads is asked once with it as the start, as before', () => {
+    for (const [messages] of CASES) {
+      const result = said([messages[0] ?? ''], null);
+      expect(result.sheet, messages[0]).toBeNull();
+      expect(
+        result.questions.map((q) => q.field),
+        messages[0],
+      ).toEqual(['mix']);
+      expect(result.flags, messages[0]).toContain('mix_asked:rules');
+    }
+  });
+
+  it('where both read the same mix it is taken with no question, as before', () => {
+    const same = said(['Put 60% in stocks and 40% in cash.'], reads({ mix: pct(60, 40) }));
+    expect(same.questions).toEqual([]);
+    expect(same.sheet?.mix).toEqual(bps(6000, 4000));
+  });
+});
+
+describe('the third review (Oct 7), B6: a share is taken only where its message says nothing else about money or holdings', () => {
+  const FORM: IntakeAnswers = { goal: 'grow', amountUsd: 5000, horizonMonths: 60, risk: 'medium' };
+  const reads = (over: Record<string, unknown> = {}) =>
+    reply({ goal: null, amountUsd: null, horizonMonths: null, risk: null, ...over });
+  const said = (text: string, r: unknown) => intake(text, r, { answers: FORM });
+  const AI = { markets: ['ai'] };
+  const AI_PT = { markets: ['ai'], language: 'pt' };
+  // What the plain form did not account for: a sum, a percent, or another holding.
+  const MORE: [string, Record<string, unknown>][] = [
+    // The review's own.
+    ['All of it in AI except for a $1,000 cushion.', AI],
+    ['Put 30% in AI and the balance in stocks.', AI],
+    ['Invest in AI, but only 10%.', AI],
+    ['Invest in AI, and some gold too.', AI],
+    ['All of it in AI except $1,000 that I need in cash', AI],
+    // In other words.
+    ['Put half in AI, apart from $500 I owe my sister.', AI],
+    ['Everything in AI. Well, 80% of it.', AI],
+    ['Invest in AI and keep the other 70% for bonds.', AI],
+    ['Go all in on AI, with a little crypto on the side.', AI],
+    ['Put 30% in AI and the rest in ETFs.', AI],
+    ['Put half in AI... or was it a third? Let me think.', AI],
+    ['Coloque 30% em IA e o que sobrar em ouro.', AI_PT],
+    ['Invista em IA, mas só US$ 500.', AI_PT],
+    ['Tudo em IA, tirando 20% para ações.', AI_PT],
+  ];
+  const holds = (r: ReturnType<typeof said>) => ({
+    mix: r.sheet?.mix ?? null,
+    sleeves: r.sheet?.sleeves ?? null,
+  });
+
+  it('with a reply that names the narrative as written: the share is asked, never taken', () => {
+    for (const [text, r] of MORE) {
+      const result = said(text, reads(r));
+      expect(result.sheet, text).toBeNull();
+      expect(result.flags, text).toContain('share_not_alone');
+      expect(
+        result.questions.filter((q) => q.field === 'mix' || q.field === 'sleeves'),
+        text,
+      ).toHaveLength(1);
+    }
+  });
+
+  it('with no model it is asked too, and with a reply that reads nothing of it nothing is held', () => {
+    for (const [text, r] of MORE) {
+      const alone = said(text, null);
+      expect(alone.sheet, text).toBeNull();
+      expect(
+        alone.questions.filter((q) => q.field === 'mix' || q.field === 'sleeves'),
+        text,
+      ).toHaveLength(1);
+      // Words the reply did not read are never taken.
+      const unread = said(text, reads('language' in r ? { language: 'pt' } : {}));
+      expect(holds(unread), text).toEqual({ mix: null, sleeves: null });
+    }
+  });
+
+  it('a message that says nothing else is still taken: the goal’s own sum, a time frame, the rest kept safe and a holding ruled out say nothing of a share', () => {
+    const thirty = [theme('ai', 3000), safe(7000)];
+    for (const [text, r, sleeves] of [
+      ['Put 30% in AI.', AI, thirty],
+      ['I want to grow $5,000 over 5 years. Put 30% in AI.', AI, thirty],
+      ['Put $1,500 in AI, I have $5,000 in total.', AI, thirty],
+      ['Put 30% in AI and the rest in cash.', AI, thirty],
+      ["I don't want bonds, put 30% in AI.", AI, thirty],
+      ['Invest in AI stocks.', AI, [theme('ai')]],
+      ['Coloque 30% em IA.', AI_PT, thirty],
+    ] as const) {
+      const result = said(text, reads(r));
+      expect(result.questions, text).toEqual([]);
+      expect(result.sheet?.sleeves, text).toEqual(sleeves);
+      expect(result.flags, text).not.toContain('share_not_alone');
+    }
+  });
+
+  it('a percent written with a decimal mark is a share too: taken where a line of the plan can be that small, asked where it cannot', () => {
+    const tech = said('Put 0.5% in big tech.', reads({ markets: ['big_tech'] }));
+    expect(tech.questions).toEqual([]);
+    expect(tech.sheet).toMatchObject({ themes: ['the-seven'], mix: bps(50, 9950) });
+    expect(said('Put 2.5% in AI.', reads(AI)).sheet?.sleeves).toEqual([
+      theme('ai', 250),
+      safe(9750),
+    ]);
+    expect(said('Coloque 0,5% em IA.', reads(AI_PT)).sheet?.sleeves).toEqual([
+      theme('ai', 50),
+      safe(9950),
+    ]);
+    const tiny = said('Put 0.05% in big tech.', reads({ markets: ['big_tech'] }));
+    expect(tiny.flags).toContain('share_too_small');
+    expect(tiny.questions.map((q) => q.text)).toEqual(['How much of the $5,000 for big tech?']);
+    expect(tiny.sheet).toBeNull();
+  });
+});
+
+describe('the third review (Oct 7), B4, B7 and B3: the last word wins over an answer, and a refusal never shares a sheet with a holding of its class', () => {
+  const FORM: IntakeAnswers = { goal: 'grow', amountUsd: 5000, horizonMonths: 60, risk: 'medium' };
+  const reads = (over: Record<string, unknown> = {}) =>
+    reply({ goal: null, amountUsd: null, horizonMonths: null, risk: null, ...over });
+  // Index funds are matched by a keyword on this MOCK shelf, beside the labels of the file.
+  const matchOf3 = (filter: MarketFilter): FilterMatch | null =>
+    filter.by === 'keyword' && attributeKey(filter.value) === 'index-fund'
+      ? { value: 'index fund', listed: 2 }
+      : matchOf(filter);
+  const said = (messages: string[], r: unknown) =>
+    intake(conversationText(messages[0] ?? '', messages.slice(1)), r, {
+      answers: FORM,
+      matchOf: matchOf3,
+    });
+  type Result = ReturnType<typeof said>;
+  const AI = { markets: ['ai'] };
+  const AI_PT = { markets: ['ai'], language: 'pt' };
+  const share = (growthBps: number) => bps(growthBps, 10_000 - growthBps);
+  /** A sheet that leaves out stocks or their funds and holds them all the same. */
+  const holdsWhatItRefuses = (r: Result): boolean => {
+    const out = r.sheet?.limits?.cannotHold?.classes ?? [];
+    const stocksOut = out.includes('stock') || out.includes('etf');
+    const held =
+      (r.sheet?.themes ?? []).length > 0 ||
+      (r.sheet?.sleeves ?? []).some((x) => x.kind === 'theme') ||
+      (r.sheet?.mix?.growthBps ?? 0) > 0;
+    return (
+      (stocksOut && held) ||
+      (out.includes('gold') && (r.sheet?.mix?.goldBps ?? 0) > 0) ||
+      (out.includes('crypto') && (r.sheet?.mix?.growthBps ?? 0) > 0)
+    );
+  };
+
+  // The messages, the reply (null: no model), and the start of the share question asked again.
+  const AGAIN: [string[], Record<string, unknown> | null, number][] = [
+    // The review's own (B4b, B4d, B7a, B7c).
+    [['I like AI.', 'all of it', 'Put 20% in AI.'], AI, 2000],
+    [['I like AI.', 'none', 'On second thought, put 30% in AI.'], AI, 3000],
+    [['Put 30% in AI.', 'Make that 40%.'], AI, 4000],
+    [['Put $2,000 in AI.', 'Make it $1,000.'], AI, 2000],
+    // In other words.
+    [['Put 50% in AI.', 'On reflection, 15%.'], AI, 1500],
+    [['I like AI.', 'a quarter', 'I changed my mind. Put 10% in AI.'], AI, 1000],
+    [['Invest in AI.', 'Hmm, only $500.'], AI, 1000],
+    [['Gosto de IA.', 'metade', 'Melhor: coloque 10% em IA.'], AI_PT, 1000],
+    [['Coloque 30% em IA.', 'Pensando bem, 45%.'], AI_PT, 4500],
+    // With no model the question was asked anyway; its answer is reopened the same.
+    [['I like AI.', 'all of it', 'Put 20% in AI.'], null, 2000],
+    [['Gosto de IA.', 'tudo', 'Melhor: coloque 10% em IA.'], null, 1000],
+  ];
+
+  it('B4, B7: a later message that says a new share for a holding reopens its question, asked once with the new reading as its start', () => {
+    for (const [messages, r, start] of AGAIN) {
+      const where = `${messages.join(' / ')} (${r ? 'model' : 'no model'})`;
+      const again = said(messages, r && reads(r));
+      expect(again.sheet, where).toBeNull();
+      expect(again.flags, where).toContain('answer_reopened');
+      expect(
+        again.questions.map((q) => [q.field, q.template, q.read]),
+        where,
+      ).toEqual([['mix', 'marketShare', share(start)]]);
+      // A plain yes takes the new reading, and the question does not come back.
+      const pt = r?.language === 'pt' || /IA/.test(messages[0] ?? '');
+      const confirmed = said([...messages, pt ? 'sim' : 'yes'], r && reads(r));
+      expect(confirmed.questions, where).toEqual([]);
+      expect(confirmed.sheet?.sleeves, where).toEqual(
+        start === 10_000 ? [theme('ai')] : [theme('ai', start), safe(10_000 - start)],
+      );
+      const later = said(
+        [...messages, pt ? 'sim' : 'yes', pt ? 'obrigado' : 'thanks'],
+        r && reads(r),
+      );
+      expect(later.questions, where).toEqual([]);
+      expect(later.sheet?.sleeves, where).toEqual(confirmed.sheet?.sleeves);
+    }
+  });
+
+  it('B7: a part said in words is a new share too; the same share said again asks nothing; "none" of a holding that stands is asked', () => {
+    // Whatever leads into it: read by what the message is, one part of the whole and nothing else.
+    const half = said(['I like AI.', 'all of it', 'Hmm, make it half.'], reads(AI));
+    expect(half.questions.map((q) => [q.template, q.read])).toEqual([['marketShare', share(5000)]]);
+    const third = said(['Put 50% in AI.', 'No wait, a third.'], reads(AI));
+    expect(third.questions.map((q) => q.read)).toEqual([share(3333)]);
+    const quarto = said(['Coloque 50% em IA.', 'Melhor baixar para um quarto.'], reads(AI_PT));
+    expect(quarto.questions.map((q) => q.read)).toEqual([share(2500)]);
+    // The same share said again is no new share.
+    for (const again of ['half', '50%', 'Yes, half.']) {
+      const same = said(['I like AI.', 'half', again], reads(AI));
+      expect(same.questions, again).toEqual([]);
+      expect(same.sheet?.sleeves, again).toEqual([theme('ai', 5000), safe(5000)]);
+    }
+    // "None" said of a share that was taken from the text is its last word: asked, then left out.
+    const none = said(['Put 30% in AI.', 'none'], reads(AI));
+    expect(none.sheet).toBeNull();
+    expect(none.questions.map((q) => q.template)).toEqual(['marketShare']);
+    const gone = said(['Put 30% in AI.', 'none', 'none'], reads(AI));
+    expect(gone.questions).toEqual([]);
+    expect(gone.sheet?.sleeves).toBeUndefined();
+  });
+
+  it('B4: an answer stands until the holding is brought up again; a message that says nothing of it changes nothing', () => {
+    for (const last of ['thanks', 'My time frame is 5 years.', 'ok', 'I am 41.']) {
+      const kept = said(['I like AI.', 'half', last], reads(AI));
+      expect(kept.questions, last).toEqual([]);
+      expect(kept.sheet?.sleeves, last).toEqual([theme('ai', 5000), safe(5000)]);
+      expect(kept.flags, last).not.toContain('answer_reopened');
+    }
+  });
+
+  it('B4: another holding named after the answer reopens it, and one taken back after it is no longer held', () => {
+    // The half was said of AI alone: with big tech beside it the split is asked (B4c).
+    const two = said(
+      ['I like AI.', 'half', 'And add big tech as well.'],
+      reads({ markets: ['ai', 'big_tech'] }),
+    );
+    expect(two.sheet).toBeNull();
+    expect(two.questions.map((q) => q.field)).toEqual(['sleeves']);
+    // Taken back after "all" was said of it: nothing is held, and the "all" is said of nothing (B4f).
+    for (const [messages, r] of [
+      [['Gosto de IA.', 'tudo', 'Pensando melhor, não quero IA.'], null],
+      [['I like AI.', 'all of it', 'On second thought, no AI.'], reads()],
+      [['I like AI.', 'all of it', 'On second thought, no AI.'], reads(AI)],
+    ] as const) {
+      const none = said([...messages], r);
+      expect(none.questions, messages[2]).toEqual([]);
+      expect(none.sheet, messages[2]).not.toBeNull();
+      expect(none.sheet?.sleeves, messages[2]).toBeUndefined();
+      expect(none.sheet?.mix, messages[2]).toBeUndefined();
+    }
+  });
+
+  it('B4: a mix answered and then said anew is asked once more with the new one as its start (no model)', () => {
+    for (const [messages, start, yes] of [
+      [
+        ['Make it 70% stocks and 30% cash.', 'yes', 'Change of plan: 20% stocks and 80% cash.'],
+        bps(2000, 8000),
+        'yes',
+      ],
+      [
+        [
+          'Quero 60% em ações e 40% em caixa.',
+          'sim',
+          'Mudei de ideia: 30% em ações e 70% em caixa.',
+        ],
+        bps(3000, 7000),
+        'sim',
+      ],
+    ] as const) {
+      const again = said([...messages], null);
+      expect(again.sheet, messages[2]).toBeNull();
+      expect(
+        again.questions.map((q) => [q.field, q.read]),
+        messages[2],
+      ).toEqual([['mix', start]]);
+      expect(said([...messages, yes], null).sheet?.mix, messages[2]).toEqual(start);
+    }
+  });
+
+  // A refusal against a holding of its class, wherever the holding comes from: one question, and
+  // never a sheet with both.
+  const AGAINST: [string[], Record<string, unknown> | null, string][] = [
+    // The review's own (B4a, B3a, B3c).
+    [
+      ['I like AI.', 'half', 'Also, no stocks.'],
+      { markets: ['ai'], cannotHold: ['stock'] },
+      'You wrote “no stocks” and also “AI”. Which one stands? Say how much of the money goes to it, or none.',
+    ],
+    [
+      ['No stocks. Start from The Seven.'],
+      { cannotHold: ['stock'], portfolios: ['The Seven'] },
+      'You wrote “No stocks” and also “The Seven”. Which one stands? Say how much of the money goes to it, or none.',
+    ],
+    [
+      ['No ETFs. Put it all in index funds.'],
+      { cannotHold: ['etf'], markets: ['broad_market'] },
+      'You wrote “No ETFs” and also “index funds”. Which one stands? Say how much of the money goes to it, or none.',
+    ],
+    // In other words.
+    [
+      ['I like AI.', 'all of it', 'Actually, no stocks at all.'],
+      { markets: ['ai'], cannotHold: ['stock'] },
+      'You wrote “no stocks” and also “AI”. Which one stands? Say how much of the money goes to it, or none.',
+    ],
+    [
+      ['No stock funds. Invest in the S&P 500.'],
+      { cannotHold: ['etf'], markets: ['us_market'] },
+      'You wrote “No stock funds” and also “S&P 500”. Which one stands? Say how much of the money goes to it, or none.',
+    ],
+    [
+      ['Sem ações. Comece pela The Seven.'],
+      { language: 'pt', cannotHold: ['stock'], portfolios: ['The Seven'] },
+      'Você escreveu “Sem ações” e também “The Seven”. Qual dos dois vale? Diga quanto do dinheiro vai para isso, ou nada.',
+    ],
+  ];
+
+  it('B3, B4a: a refusal and a holding of its class are one question, whatever the holding is: a narrative, an answer, a shared portfolio the reply names, a theme of funds', () => {
+    for (const [messages, r, question] of AGAINST) {
+      const where = messages.join(' / ');
+      const asked = said(messages, r && reads(r));
+      expect(asked.sheet, where).toBeNull();
+      expect(
+        asked.questions.map((q) => [q.field, q.template]),
+        where,
+      ).toEqual([['mix', 'holdOrLeaveOut']]);
+      expect(asked.questions[0]?.text, where).toBe(question);
+      // "None" leaves the holding out and the refusal stands; a share for it takes the refusal
+      // back, said in a line. Never both in one sheet.
+      const pt = r?.language === 'pt';
+      const none = said([...messages, pt ? 'nada' : 'none'], r && reads(r));
+      expect(none.questions, where).toEqual([]);
+      expect(none.sheet?.limits?.cannotHold, where).toBeDefined();
+      expect(holdsWhatItRefuses(none), where).toBe(false);
+      const held = said([...messages, pt ? 'tudo' : 'all of it'], r && reads(r));
+      expect(held.questions, where).toEqual([]);
+      expect(held.sheet, where).not.toBeNull();
+      expect(
+        held.flags.some((f) => f.startsWith('refusal_withdrawn:')),
+        where,
+      ).toBe(true);
+      expect(holdsWhatItRefuses(held), where).toBe(false);
+    }
+  });
+
+  it('B3b: a mix answered and then refused is no longer held, with a model or with none', () => {
+    for (const [messages, r, classes] of [
+      [['Everything in stocks.', 'yes', 'On second thought, no stocks.'], null, ['etf', 'stock']],
+      [['All of it in crypto.', 'yes', 'Forget it, no crypto.'], null, ['crypto']],
+      [['Tudo em ações.', 'sim', 'Pensando melhor, sem ações.'], null, ['etf', 'stock']],
+      [
+        ['How should I hold it?', 'all of it in stocks', 'On second thought, no stocks.'],
+        reads({ cannotHold: ['stock'] }),
+        ['etf', 'stock'],
+      ],
+    ] as const) {
+      const result = said([...messages], r);
+      expect(result.sheet?.mix, messages[2]).toBeUndefined();
+      expect(result.limits.cannotHoldClasses, messages[2]).toEqual(classes);
+      expect(holdsWhatItRefuses(result), messages[2]).toBe(false);
+    }
   });
 });

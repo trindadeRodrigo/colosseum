@@ -268,4 +268,11 @@ export const INTAKE_LIMITS = {
    */
   nameWordChars: 3,
   sameStemChars: 5,
+  /**
+   * How far back a clause is first read, in characters. A matter of speed and never of what is read:
+   * a clause that runs further back is read from further back.
+   */
+  clauseReachChars: 240,
+  /** How far before an ask its own figure may stand, in characters: "30% of my money in". */
+  shareLeadChars: 24,
 } as const;

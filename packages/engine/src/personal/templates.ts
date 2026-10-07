@@ -1068,6 +1068,11 @@ export const QUESTION_TEMPLATES = {
   // and the text does not state ("Should I put all of it in stocks?", or a mix the model reads that the
   // text's words cannot confirm) and, by the two after it, a market named with no share of the money
   // said ("I like big tech").
+  // A refusal one reader read and the other did not confirm (the third review, Oct 7): asked once.
+  limits: {
+    en: 'Do you want to leave out {classes|list}?',
+    pt: 'Você quer deixar de fora {classes|list}?',
+  },
   mix: {
     en: 'How do you want the money held: how much in stocks and crypto, and how much in cash?',
     pt: 'Como você quer o dinheiro: quanto em ações e cripto, e quanto em caixa?',
@@ -1328,6 +1333,10 @@ export const ASSUMPTION_TEMPLATES = {
   // A refusal the text writes that its clause does not state as the person's ("no stocks? not sure",
   // "maybe no stocks"), or that the model read as one and the clause says otherwise: not taken, and
   // said so, so it is never dropped in silence. `words` is the refusal as written.
+  REFUSAL_DECLINED: {
+    en: 'You said not to leave out {classes|list}, so the plan may hold them.',
+    pt: 'Você disse para não deixar de fora {classes|list}, então o plano pode ter.',
+  },
   REFUSAL_NOT_TAKEN: {
     en: 'I did not read “{words}” as something to leave out. Say so if you want it left out.',
     pt: 'Não li “{words}” como algo a deixar de fora. Diga se quiser que fique de fora.',
@@ -1439,6 +1448,11 @@ export const MATCHED_NAME = {
  * stocks, then the funds of them. `etf` is said "stock funds": every fund of that class is a fund of
  * stocks, and the shelf also has funds that pay a dollar yield, which that class is not.
  */
+/** What "no credit" leaves out, where a line lists it beside classes of asset. */
+export const CREDIT_WORDS: Record<Language, string> = {
+  en: 'tokens that lend to borrowers or trade a spread',
+  pt: 'tokens que emprestam a tomadores ou operam um spread',
+};
 export const CLASS_WORDS: Record<Language, Record<string, string>> = {
   en: {
     stock: 'stocks',

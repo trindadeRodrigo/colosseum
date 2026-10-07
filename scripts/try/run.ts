@@ -31,6 +31,7 @@ export const ANSWER_KEY: Record<QuestionField, string> = {
   amountUsd: 'amount',
   sleeves: 'sleeves',
   mix: 'mix',
+  limits: 'limits',
   incomeTargetUsdMonthly: 'income',
   horizonMonths: 'horizon',
   risk: 'risk',
