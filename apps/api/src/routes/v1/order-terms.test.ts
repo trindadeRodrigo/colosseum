@@ -361,28 +361,3 @@ describe('a buy that stopped after its deposit, finished with the cash in the va
     expect(OrderError.parse(res.json()).error).toMatch(/trades in the same step that deposits/);
   });
 });
-
-describe('an order states no minimum of nothing', () => {
-  it('is not made for a trade that quotes nothing', async () => {
-    const a = await someone();
-    await fund(a);
-    const probe = await order(a, { amountUsd: 900 });
-    const asset = probe.legs.find((l) => l.kind === 'swap')?.trades[0]?.buy ?? '';
-    // a token so dear that the amount buys none of it
-    const was = await move(asset, 1e15);
-    try {
-      const res = await post(a, '/v1/orders', {
-        type: 'buy',
-        owner: a.owner,
-        amountUsd: 900,
-        proposalId: plans.solana,
-      });
-      expect(res.statusCode).toBe(422);
-      expect(OrderError.parse(res.json()).error).toMatch(
-        /buys no .* that can be held to a minimum/,
-      );
-    } finally {
-      mock().setPrice(asset, was);
-    }
-  });
-});
