@@ -129,7 +129,7 @@ const TIME_FRAME_BEFORE =
   /(?:^|[\s,(])(?:for|over|in|within|during|after|next|coming|em|por|durante|dentro de|daqui a|depois de|pr[oó]ximos?|em at[eé]|(?:for|over|within|invest\p{L}*)\s+up to|(?:por|durante|investir)\s+at[eé]|(?:i'?d|i would|would|let'?s)\s+say|say|about|around|roughly|approximately|maybe|perhaps|diria|digamos|uns|umas|cerca de|aproximadamente|talvez)\s*$/iu;
 const AGE_AFTER = /^\s*(?:old|of age|de idade)\b/iu;
 const inTimeFrame = (text: string, at: number, end: number) =>
-  TIME_FRAME_BEFORE.test(text.slice(0, at)) && !AGE_AFTER.test(text.slice(end));
+  TIME_FRAME_BEFORE.test(tailBefore(text, at)) && !AGE_AFTER.test(text.slice(end));
 
 // A time to get the money out, not a date for the goal (gate GLIDE-OPT-IN, Oct 6): "can take up to 3
 // months to get out", "I may need it in 3 months", "posso precisar em 3 meses", "resgatar em até 3
@@ -141,6 +141,50 @@ const EXIT_AFTER =
 const exitAround = (text: string, at: number, end: number) =>
   EXIT_BEFORE.test(text.slice(0, at)) || EXIT_AFTER.test(text.slice(end));
 
+/** Whether a character, by its code, is one a pattern's `\s` matches. */
+const isSpace = (code: number): boolean => SPACES.has(code);
+const SPACES = new Set(
+  Array.from(
+    '\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff',
+    (c) => c.charCodeAt(0),
+  ),
+);
+// How many words back the patterns that end at a place read: each reads fewer.
+const TAIL_WORDS = 12;
+/**
+ * The last words written before a place, from the start of a word: all that a pattern which ends at
+ * the place can read, so a long text costs it no more than a short one.
+ */
+function tailBefore(text: string, at: number): string {
+  const space = (i: number) => isSpace(text.charCodeAt(i));
+  let from = at;
+  for (let words = 0; from > 0 && words < TAIL_WORDS; words += 1) {
+    while (from > 0 && space(from - 1)) from -= 1;
+    while (from > 0 && !space(from - 1)) from -= 1;
+  }
+  return text.slice(from, at);
+}
+
+/**
+ * The last word written before a place, with a Portuguese "de" after it ("até o fim de"): what leads
+ * into a year. Read backwards from the place, so a long text costs no more than a short one.
+ */
+function lastWordBefore(text: string, at: number): string {
+  const space = (i: number) => isSpace(text.charCodeAt(i));
+  let end = at;
+  while (end > 0 && space(end - 1)) end -= 1;
+  const wordFrom = (to: number) => {
+    let from = to;
+    while (from > 0 && !space(from - 1)) from -= 1;
+    return from;
+  };
+  const start = wordFrom(end);
+  if (text.slice(start, end) !== 'de') return text.slice(start, end);
+  let gap = start;
+  while (gap > 0 && space(gap - 1)) gap -= 1;
+  return gap === start || gap === 0 ? 'de' : text.slice(wordFrom(gap), end);
+}
+
 /** Every number in the text, read with its currency and what it counts. */
 export function mentionsIn(text: string): Mention[] {
   const out: Mention[] = [];
@@ -151,8 +195,7 @@ export function mentionsIn(text: string): Mention[] {
     const value = base * multiplierOf(g.mult);
     const at = m.index ?? 0;
     const end = at + m[0].length;
-    const before = text.slice(0, at).trimEnd();
-    const lastWord = /(\S+(?:\s+de)?)$/.exec(before)?.[1] ?? '';
+    const lastWord = lastWordBefore(text, at);
     const kind: Mention['kind'] = g.pct
       ? 'percent'
       : g.after && UNIT_TIME.test(g.after)
@@ -163,7 +206,7 @@ export function mentionsIn(text: string): Mention[] {
     const currency = kind === 'amount' ? (currencyOf(g.before) ?? currencyOf(g.after)) : null;
     const perMonth =
       kind === 'amount' &&
-      (PER_MONTH_AFTER.test(text.slice(end)) || PER_MONTH_BEFORE.test(text.slice(0, at)));
+      (PER_MONTH_AFTER.test(text.slice(end)) || PER_MONTH_BEFORE.test(tailBefore(text, at)));
     const timeFrame = kind === 'year' || (kind === 'duration' && inTimeFrame(text, at, end));
     const money = kind === 'amount' && (currency !== null || Boolean(g.mult));
     out.push({ value, currency, kind, perMonth, timeFrame, money, text: m[0].trim(), at, end });
@@ -213,7 +256,7 @@ export function amountInText(
   const sum = (m: Mention) =>
     role === 'income' ||
     m.money ||
-    (!AGE_BEFORE.test(text.slice(0, m.at)) && !amounts.some((x) => x.money && !x.perMonth));
+    (!AGE_BEFORE.test(tailBefore(text, m.at)) && !amounts.some((x) => x.money && !x.perMonth));
   const sums = found.filter(sum);
   if (sums.some((m) => m.currency === null) && !foreignMarkIn(text)) return 'dollars';
   if (sums.length > 0) return 'other_currency';
@@ -338,6 +381,8 @@ function phraseAround(text: string, at: number, end: number): string {
 // No date for the goal (gate GLIDE-OPT-IN, Oct 6): "no hard cap", "no date", "open-ended", "sem prazo".
 const OPEN_ENDED =
   /(?<![\p{L}])(?:no (?:hard )?(?:cap|deadline|date|end date|time limit|horizon|time frame|timeframe|rush)|(?:do not|don't|dont|do n't) have (?:a |any )?(?:hard )?(?:cap|deadline|date|end date|time limit|horizon|time frame|timeframe|term)|open[- ]ended|indefinitely|no particular (?:date|time)|sem (?:prazo|data|pressa|horizonte)|n[aã]o tenho (?:um )?(?:prazo|data|horizonte)|prazo indefinido|por tempo indeterminado)(?![\p{L}])/iu;
+/** The same words, wherever a clause writes them. */
+const OPEN_ENDED_ANYWHERE = new RegExp(OPEN_ENDED.source, 'giu');
 /** The words that say the goal has no date, as written; null when the text has none. */
 export const openEndedIn = (text: string): string | null => OPEN_ENDED.exec(text)?.[0] ?? null;
 
@@ -534,7 +579,7 @@ const looseMatches = (pattern: RegExp, text: string): string[] =>
 const RISK_NEGATED =
   /(?<![\p{L}])(?:\p{L}+n['’]t|cannot|not|no|never|nothing|n[aã]o|nunca|nada|sem|nem)((?:\s+[^\s,;.!?]+){0,4})\s*$/iu;
 const riskNegatedAt = (text: string, at: number): boolean => {
-  const between = RISK_NEGATED.exec(text.slice(0, at))?.[1];
+  const between = RISK_NEGATED.exec(tailBefore(text, at))?.[1];
   return (
     between !== undefined &&
     !between
@@ -870,7 +915,7 @@ function narrativeHitsIn(text: string): Hit[] {
         const at = m.index;
         const end = at + m[0].length;
         if (hits.some((h) => h.at < end && at < h.end)) continue;
-        const join = ITEM_JOIN.exec(text.slice(0, at));
+        const join = ITEM_JOIN.exec(tailBefore(text, at));
         if (!join || !hits.some((h) => h.end === at - join[0].length)) continue;
         hits.push({ market, order: MARKET_IDS.indexOf(market), words: m[0], at, end });
         added = true;
@@ -902,22 +947,27 @@ type Span = { at: number; end: number };
  * number is no break ("US$ 2.000", "$1,500.50").
  */
 function sentenceBefore(text: string, at: number): string {
-  return (
-    text
-      .slice(0, at)
-      .split(/[.;!?](?=\s)|\n/)
-      .at(-1) ?? ''
-  );
+  // Only the line the place is on is read, so a long text costs no more than a short one.
+  const line = text.slice(text.lastIndexOf('\n', at - 1) + 1, at);
+  let from = 0;
+  for (const m of line.matchAll(/[.;!?](?=\s)/gu)) from = m.index + 1;
+  return line.slice(from);
 }
 
 const CLASS_WORD = new RegExp(`(?<![\\p{L}])(?:${CLASS_ANY})(?![\\p{L}])`, 'giu');
 /** Every place the text names something to hold: a narrative's words, or a part of a mix. */
 function holdingsIn(text: string): Span[] {
+  if (holdingsRead?.text === text) return holdingsRead.spans;
   const spans: Span[] = narrativeSpansIn(text);
   for (const m of text.matchAll(CLASS_WORD))
     spans.push({ at: m.index, end: m.index + m[0].length });
-  return spans.sort((a, b) => a.at - b.at);
+  spans.sort((a, b) => a.at - b.at);
+  holdingsRead = { text, spans };
+  return spans;
 }
+// The last text read and its places: a stance is asked of each mention of a text in turn, and the
+// places are the text's, the same each time. One text is kept, so nothing grows.
+let holdingsRead: { text: string; spans: Span[] } | null = null;
 
 // A word of the text that names another holding, while a clause is read.
 const HELD = '\u{E000}';
@@ -949,55 +999,141 @@ const DOLLAR_MARK = /^(?:us\$|u\$s|usd|\$)$/iu;
  * all of it in stocks" starts anew at "all".
  */
 function clauseBefore(text: string, at: number, holdings: Span[], listed: boolean): string {
+  // Several readers ask for the clause of one place of a text: it is read once for a text and its
+  // holdings. One text is kept, so nothing grows.
+  if (clausesRead?.text !== text) clausesRead = { text, around: new WeakMap() };
+  let read = clausesRead.around.get(holdings);
+  if (!read) {
+    read = new Map();
+    clausesRead.around.set(holdings, read);
+  }
+  const key = listed ? at : -1 - at;
+  let clause = read.get(key);
+  if (clause === undefined) {
+    clause = clauseRead(text, at, holdings, listed);
+    read.set(key, clause);
+  }
+  return clause;
+}
+let clausesRead: { text: string; around: WeakMap<Span[], Map<number, string>> } | null = null;
+
+function clauseRead(text: string, at: number, holdings: Span[], listed: boolean): string {
   const sentence = sentenceBefore(text, at);
   const start = at - sentence.length;
-  let masked = '';
-  let from = start;
+  // The holdings of this sentence the clause is read around, in the order they are given.
+  const held: Span[] = [];
+  let taken = start;
   for (const h of holdings) {
-    if (h.at < from || h.end > at) continue;
-    masked += `${text.slice(from, h.at)} ${HELD} `;
-    from = h.end;
+    if (h.at < taken || h.end > at) continue;
+    held.push(h);
+    taken = h.end;
   }
-  masked += text.slice(from, at);
-  const portuguese = PORTUGUESE_WORD.test(sentence);
   // "No" is "in the" in Portuguese, and leads into a holding there ("no setor de defesa").
   const leads = (word: string) =>
     LEADS_IN.test(word) ||
     FIGURE.test(word) ||
     HALF_WORD.test(word) ||
     DOLLAR_MARK.test(word) ||
-    (portuguese && /^no$/iu.test(word));
+    (/^no$/iu.test(word) && portugueseBefore(text, start, at));
+  // The clause is read from the end of the sentence backwards. The last stretch is read first, and
+  // a longer one only where the clause or the list it ends runs past it: what is read is the same
+  // as from the whole sentence, and a long sentence costs no more than its clause.
+  for (let reach = INTAKE_LIMITS.clauseReachChars; ; reach *= 2) {
+    let begin = Math.max(start, at - reach);
+    // Never from inside a word, nor from inside a holding.
+    for (let moved = true; moved && begin > start; ) {
+      moved = false;
+      const inside = held.find((h) => h.at < begin && begin < h.end);
+      if (inside) {
+        begin = Math.max(start, inside.at);
+        moved = true;
+      } else if (!/\s/u.test(text[begin - 1] ?? '')) {
+        begin -= 1;
+        moved = true;
+      }
+    }
+    const clause = clauseFrom(text, begin, at, held, listed, leads, begin === start);
+    if (clause !== null) return clause;
+  }
+}
+
+/**
+ * The clause read from the words written from `begin` up to `at`; null where it, or the list it
+ * ends, runs back past `begin` and `begin` is not where the sentence starts (`whole`).
+ */
+function clauseFrom(
+  text: string,
+  begin: number,
+  at: number,
+  held: Span[],
+  listed: boolean,
+  leads: (word: string) => boolean,
+  whole: boolean,
+): string | null {
+  let masked = '';
+  let from = begin;
+  for (const h of held) {
+    if (h.at < begin) continue;
+    masked += `${text.slice(from, h.at)} ${HELD} `;
+    from = h.end;
+  }
+  masked += text.slice(from, at);
   // A mark inside a figure ends no clause ("$2,000", "US$ 1.500,50").
-  let words = masked
+  const words = masked
     .replace(/[;:]|,(?!\d)|(?<!\d),/g, ' , ')
     .split(/\s+/)
     .filter(Boolean);
+  // The words still read are the first `n`: a long list is walked back without copying it.
+  let n = words.length;
   // Back over the items of a list this holding ends, or to the join that starts its clause.
   for (;;) {
-    let i = words.length;
+    let i = n;
     while (i > 0 && leads(words[i - 1] ?? '')) i -= 1;
+    if (i === 0 && !whole) return null;
     const join = words[i - 1] ?? '';
     if (i === 0 || !(join === ',' || JOINS.test(join))) break;
     let before = i - 1;
+    if (before === 0 && !whole) return null;
     if (before > 0 && (words[before - 1] === ',' || JOINS.test(words[before - 1] ?? '')))
       before -= 1;
-    if (!listed || words[before - 1] !== HELD) return words.slice(i).join(' ');
-    words = words.slice(0, before - 1);
+    if (before === 0 && !whole) return null;
+    if (!listed || words[before - 1] !== HELD) return words.slice(i, n).join(' ');
+    n = before - 1;
   }
-  // From the last word that starts a clause.
-  let clause = 0;
-  for (const [i, word] of words.entries()) {
-    const next = words[i + 1] ?? '';
+  // From the last word that starts a clause: read backwards, and the first one found is the last.
+  let onlyLeadsAfter = true;
+  for (let i = n - 1; i >= 0; i -= 1) {
+    const word = words[i] ?? '';
+    const next = i + 1 < n ? (words[i + 1] ?? '') : '';
+    if (i === 0 && !whole && /^but$/iu.test(word)) return null;
     if (
       word === ',' ||
       (BREAKS.test(word) && !(/^but$/iu.test(word) && BEFORE_BUT.test(words[i - 1] ?? ''))) ||
       (JOINS.test(word) && STARTS_A_CLAUSE.test(next)) ||
-      (MAY_BREAK.test(word) && (STARTS_A_CLAUSE.test(next) || words.slice(i + 1).every(leads)))
+      (MAY_BREAK.test(word) && (STARTS_A_CLAUSE.test(next) || onlyLeadsAfter))
     )
-      clause = i + 1;
+      return words.slice(i + 1, n).join(' ');
+    onlyLeadsAfter &&= leads(word);
   }
-  return words.slice(clause).join(' ');
+  return whole ? words.slice(0, Math.max(0, n)).join(' ') : null;
 }
+
+/**
+ * Whether the sentence that starts at `start` writes a Portuguese word before `at`. Where its first
+ * one ends is worked out once for a sentence of a text, and one text is kept, so nothing grows.
+ */
+function portugueseBefore(text: string, start: number, at: number): boolean {
+  if (portugueseRead?.text !== text) portugueseRead = { text, firstEnds: new Map() };
+  let end = portugueseRead.firstEnds.get(start);
+  if (end === undefined) {
+    const line = text.indexOf('\n', start);
+    const found = PORTUGUESE_WORD.exec(text.slice(start, line < 0 ? text.length : line));
+    end = found ? start + found.index + found[0].length : Number.POSITIVE_INFINITY;
+    portugueseRead.firstEnds.set(start, end);
+  }
+  return end <= at;
+}
+let portugueseRead: { text: string; firstEnds: Map<number, number> } | null = null;
 
 // A text with one of these words is Portuguese: there "no" is "in the" ("investir no S&P 500", "tudo
 // no setor de defesa"), and it rules nothing out.
@@ -1057,22 +1193,26 @@ function stanceIn(
   holdings: Span[],
   listed: boolean,
 ): Stance {
-  const before = text.slice(0, at);
   const after = text.slice(end);
-  if (ABOUT_THEM.test(before) || THEIRS.test(before) || WHAT_THEY_ARE.test(after)) return 'aside';
+  const lastWords = tailBefore(text, at);
+  if (ABOUT_THEM.test(lastWords) || THEIRS.test(lastWords) || WHAT_THEY_ARE.test(after))
+    return 'aside';
   // Words that say the goal has no date ("no hard cap", "I don't have a term") rule no holding out.
-  const clause = clauseBefore(text, at, holdings, listed).replace(
-    new RegExp(OPEN_ENDED.source, 'giu'),
-    ' ',
-  );
+  const clause = clauseBefore(text, at, holdings, listed).replace(OPEN_ENDED_ANYWHERE, ' ');
   // What is said of the first item of a list is said of each: "I work in AI and defense".
-  if (listed && (ABOUT_THEM.test(`${clause} `) || THEIRS.test(`${clause} `))) return 'aside';
+  if (listed) {
+    // Both patterns end where the clause ends, so its last words are all they read.
+    const ending = `${clause} `;
+    const lastOfClause = tailBefore(ending, ending.length);
+    if (ABOUT_THEM.test(lastOfClause) || THEIRS.test(lastOfClause)) return 'aside';
+  }
   if (HELD_ALREADY.test(clause) || HELD_ELSEWHERE.test(after)) return 'aside';
   if (ANSWERED_NO.test(after)) return 'negated';
   if (WONDERS.test(clause) || ASKED_AFTER.test(after)) return 'wondered';
   if (RULED_OUT.test(clause) || SET_ASIDE.test(clause) || JUDGED_AFTER.test(after))
     return 'negated';
-  if (NO.test(clause) && !PORTUGUESE_WORD.test(sentenceBefore(text, at))) return 'negated';
+  if (NO.test(clause) && !portugueseBefore(text, at - sentenceBefore(text, at).length, at))
+    return 'negated';
   if (OF_ANOTHER.test(clause) || IN_THE_PAST.test(clause)) return 'aside';
   return 'stated';
 }
@@ -1191,10 +1331,7 @@ function refusalStance(
   if (narratives.some((n) => n.at <= clsAt && end <= n.end && n.end - n.at > cls.length))
     return 'aside';
   // Words that say the goal has no date ("no hard cap", "I don't have a term") negate no refusal.
-  const clause = clauseBefore(text, at, [], false).replace(
-    new RegExp(OPEN_ENDED.source, 'giu'),
-    ' ',
-  );
+  const clause = clauseBefore(text, at, [], false).replace(OPEN_ENDED_ANYWHERE, ' ');
   if (HOLDS_NONE.test(clause) && HELD_IN.test(between.trim())) return 'aside';
   if (IS_NOT_IN.test(clause) && NOT_IN.test(lead.trim().replace(/\s+/g, ' '))) return 'aside';
   if (HELD_ALREADY.test(clause) || OF_ANOTHER.test(clause) || IN_THE_PAST.test(clause))
@@ -1214,14 +1351,21 @@ export function refusalsSaidIn(text: string): RefusalSaid[] {
   // Each with the length of the word that names what is refused, which ends where the refusal ends.
   const found: (RefusalSaid & { named: number })[] = [];
   const narratives = narrativeSpansIn(text);
+  // A refusal is one class ruled out up to one place: the first reading of it stands. One read
+  // again from a later word of the same list is the same refusal, and so is the rest of that list,
+  // which the first reading walked to its end: neither is worked out twice.
+  const read = new Set<string>();
+  const key = (what: Refused, end: number) => `${what}:${end}`;
   const add = (r: RefusalSaid, named: number) => {
-    if (!found.some((x) => x.what === r.what && x.end === r.end)) found.push({ ...r, named });
+    read.add(key(r.what, r.end));
+    found.push({ ...r, named });
   };
   for (const [what, pattern] of REFUSALS)
     for (const m of text.matchAll(pattern)) {
       const at = m.index;
       const { lead = '', between = '', cls = '' } = m.groups ?? {};
       let end = at + m[0].length;
+      if (read.has(key(what, end))) continue;
       const stance = refusalStance(text, what, lead, between, cls, at, end, narratives);
       // A refusal its clause states, of a part of the class: the words up to where the clause ends.
       const ofAPart =
@@ -1243,6 +1387,7 @@ export function refusalsSaidIn(text: string): RefusalSaid[] {
         const other = next ? refusedBy(word) : null;
         if (!next || !other) break;
         end += next[0].length;
+        if (read.has(key(other, end))) break;
         add(
           {
             what: other,

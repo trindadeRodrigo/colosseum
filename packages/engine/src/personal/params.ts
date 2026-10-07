@@ -267,4 +267,9 @@ export const INTAKE_LIMITS = {
    */
   nameWordChars: 3,
   sameStemChars: 5,
+  /**
+   * How far back a clause is first read, in characters. A matter of speed and never of what is read:
+   * a clause that runs further back is read from further back.
+   */
+  clauseReachChars: 240,
 } as const;
