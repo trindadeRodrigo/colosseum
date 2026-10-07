@@ -164,7 +164,11 @@ export const HISTORY_STEP_SECONDS: Record<HistoryStep, number> = {
   '1d': 86_400,
 };
 
-/** The most points one vault has in one answer. A window that asks for more is refused, not cut. */
+/**
+ * The most steps one window spans. A window that asks for more is refused, not cut. A vault has a
+ * point for each step the window touches, so one more than this at the most: a window of exactly this
+ * many steps touches the step it starts in and the step it ends in.
+ */
 export const HISTORY_MAX_POINTS = 1000;
 
 /**

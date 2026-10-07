@@ -2,7 +2,6 @@ import { type Db, legAttempts, legs, orders, vaults } from '@colosseum/db';
 import {
   chainFamily,
   type IntentRequest,
-  normalizeAddress,
   type RebalanceEntry,
   type TradeExpected,
 } from '@colosseum/schemas';
@@ -14,7 +13,7 @@ import {
   type SnapshotPoint,
   snapshotsNear,
 } from './rebalances-snapshots';
-import { ownedOn, type ScopedChain } from './scope';
+import { addressOn, ownedOn, type ScopedChain } from './scope';
 import { knownVaults } from './snapshots';
 
 // The list behind GET /v1/portfolio/rebalances (PORT-2): the steps that reached a chain for a person's
@@ -228,20 +227,6 @@ async function addDrift(db: Db, scoped: ScopedChain, steps: readonly OwnerStep[]
 }
 
 /**
- * The vault a query asks for, in the form the rows hold an address in: an EVM address in lower case,
- * whatever case it was sent in. Null for text that is no address of the chain's family. scope.ts
- * gains `addressOn(scoped, address)`, which reads an address this way for every route of the
- * section: it takes this function's place where this branch meets it.
- */
-function vaultAsked(scoped: ScopedChain, address: string): string | null {
-  try {
-    return normalizeAddress(chainFamily(scoped.entry.chain), address);
-  } catch {
-    return null;
-  }
-}
-
-/**
  * The rebalances of one chain for one person, newest first, cut to `limit`: the attempts of their own
  * steps that landed, and the keeper's trades in their vaults worked out from the snapshots of the
  * last thirty days. `address` narrows both to one vault: an address that is not a vault of theirs
@@ -252,8 +237,9 @@ export async function chainRebalances(
   scoped: ScopedChain,
   a: { privyId: string | undefined; now: Date; address?: string; limit: number },
 ): Promise<RebalanceEntry[]> {
-  // The one place the query's address is read: everything below compares and binds `only`.
-  const only = a.address === undefined ? undefined : vaultAsked(scoped, a.address);
+  // The one place the query's address is read (`addressOn`): everything below compares and binds
+  // `only`.
+  const only = a.address === undefined ? undefined : addressOn(scoped, a.address);
   // Text that is no address of this chain names no vault here: the chain answers nothing.
   if (only === null) return [];
   const narrowed = only === undefined ? {} : { address: only };

@@ -29,7 +29,10 @@ export function registerPortfolioHistoryRoute(scope: FastifyInstance, deps: Orde
         response: { 200: PortfolioHistoryResponse, default: OrderError },
       },
     },
-    async (req): Promise<PortfolioHistoryResponse> => {
+    async (req, reply): Promise<PortfolioHistoryResponse> => {
+      // The answer is one person's: nothing between them and the server keeps it for the next caller.
+      // Set before anything is read, so a refusal carries it too.
+      reply.header('cache-control', 'private, no-store');
       const principal = signedIn(req);
       const { chain, address } = req.query;
       // Refused before anything is read: a window that is not one, or one too long to answer whole.

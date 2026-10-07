@@ -9656,6 +9656,7 @@
       "get": {
         "summary": "What the signed-in person holds across their vaults, by underlying and by issuer",
         "tags": ["portfolio"],
+        "description": "The person’s holdings added up, read from what the snapshot worker kept (`vault_snapshots`) and never from a chain: the newest snapshot of each vault of the wallets of the identity token, on every chain this server runs that the person holds a wallet for. `chain` narrows the answer to one chain, and `address` to one vault: the sums, the roll-up and the size each exit is costed at are then that vault’s alone, and an address that is not a vault of the person’s narrows the answer to nothing, never to an error. `chains` has an entry for each chain also when it holds nothing; a chain of the person’s that is switched off here is in `unavailable`, never shown as zero, and `total` then adds up only what could be read. In an entry, `valueUsd` is the sum, each position at the value its snapshot gave it and the cash at one dollar each; `byUnderlying` and `byIssuer` are that sum by what each asset stands for and by who issued it, largest first, in dollars and in basis points that add up to 10,000; `vaults` is how many vaults were counted (a vault the worker has not read yet adds nothing) and `observedAt` the oldest snapshot used, so no figure is fresher than it. A holding with no price, or one the asset list does not name, is in `unvalued` with the amount held, and in no sum. On a test network a token is counted under the issuer, and falls back to the tier, of the mainnet token it models where the server holds them, as in a plan made there. `rollUp` is the risk roll-up over the same holdings, null when the chain holds nothing; no stored quote is read, so its quoted exit is null and it says `exit_quote_missing`. `exit` has one entry for each asset in the sums that is not cash, at the whole holding (`usd`). Where Bearing measures the asset, `measured` is true and `costBps` is the measured cost of selling that size in the worst measured time of the week, to a hundredth of a basis point, with its `source`, `method` (the version of the method that measured it), `fetchedAt` (the end of the data behind the measurement, left out where it has none) and `provenance`; it is null where the size is beyond what was measured. Where it does not, `measured` is false, `fallbackTier` names the asset’s tier and `costBps` is null: a tier is a ceiling on what a plan may hold and states no cost (gate EXIT-SOURCE). `total` adds the chains up and is null when none holds anything; its `provenance` is the least live of the labels of the chains that add to it. Every entry carries `provenance`: `live` is mainnet, `sandbox` a test network and `mock` a chain made up in memory (MOCK); nothing that is not `live` is to be shown as live. A call with no sign-in is refused (401). None of it is advice: see `disclaimer`.",
         "parameters": [
           {
             "schema": {
@@ -9664,6 +9665,16 @@
             },
             "in": "query",
             "name": "chain",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "query",
+            "name": "address",
             "required": false
           }
         ],
@@ -10239,6 +10250,7 @@
       "get": {
         "summary": "The signed-in person's vaults over time, from the snapshots kept of them",
         "tags": ["portfolio"],
+        "description": "What each of the person’s vaults was worth and held over a window of time: for each vault, a point for each `step` (`10m`, `1h` or `1d`) in which it was read. It is read from the snapshots this server keeps of every vault it knows, taken about every ten minutes, and from no chain: a point is as old as its `observedAt` says, and a vault opened a moment ago may have none yet. A step’s point is the last snapshot taken in it, and steps are counted on UTC boundaries (the ten minutes, the hour, the day) whatever the window is. `chains` has an entry for every chain this server runs that the person holds a wallet for, in the server’s order, also when it holds no vault; a chain of theirs that is switched off is in `unavailable` (`CHAIN_UNAVAILABLE`, not retryable), never shown as empty. Only the person’s own vaults are read, by the wallets of the identity token: `chain` and `address` narrow the answer, and an address that is not a vault of theirs narrows it to nothing, with no word on whether it exists. A vault is listed when it has a snapshot in the window, with the `name` the person gave it or null, and its points oldest first; a window with no snapshot answers empty lists. `from` and `to` are ISO instants in UTC that end in `Z`, from the year 1 on. Left out, `to` is now and `from` is 1000 steps before `to`, and never more than 90 days; both ends are included, and the answer says the `from`, `to` and `step` it used. Refused with 400 and what to change: a `from` that is not before `to`, and a window longer than 1000 steps, which is never cut to fit. `valueUsd` is the vault’s value in dollars, cut to cents, and `cashUsd` its cash, counted as one dollar each. A position with no price has `valueUsd: null` and weighs nothing; `driftBps` is the weight of a position minus its target. A vault’s `source` and `method` say where its newest point was read from and how its values were made, and a point carries its own only where they differ. Every figure under a chain carries that chain’s `provenance`: `mock` on the mock chain, `sandbox` on a test network, and only `live` is live.",
         "parameters": [
           {
             "schema": {
@@ -10662,6 +10674,7 @@
       "get": {
         "summary": "The signed-in person's plans, each with what was put in, its value and its status",
         "tags": ["portfolio"],
+        "description": "One entry for each vault of the signed-in person, on every chain this server runs that they hold a wallet for, each chain on its own and in the server’s order: the vault’s address and owner, the plan’s number on the chain (`basketId`) and the name its owner gave it. It is read from the database alone, never from a chain: the vaults are the ones the vault cache names for the person’s wallets and the ones the snapshot worker read in the last seven days, and `answeredAt` is when a pass of that worker last went through on the chain. `plan` is the plan the vault was opened for, as the server joined it, and null for a vault no order of the person’s opened; what a plan says (its goal, its card, its verdict) is answered to the person who made it, to a buyer of a plan made from a link, and to nobody else. `openedFor` is the shared portfolio the vault was opened to follow, as that join holds it, with the id, slug and name of the server’s own row; it is null for a plan made to measure, for a vault with no plan, and where the server holds no row for the portfolio. `putIn` is what the person put in through this app: the cash of each buy of theirs whose deposit confirmed on that chain, counted once an order and listed in `deposits`, oldest first, each with the time the server learned of it. It is gross: a withdrawal is not taken off, and money that reached the vault any other way is not in it. It is null where no deposit of theirs is confirmed. `newest` is the newest snapshot of the vault, whole, with its age in `ageSeconds` and `stale` once it is more than an hour old; it is null where the worker has not read the vault yet. `status` is `on_track`, `watch` or `off_track`, or null where the rule gives none yet, always with the rule that gave it (`ON-TRACK-V1`), the line of the rule that holds and its sentence in `text`. The verdict stored with a plan is a figure from when the plan was built and never changes the status. `follows` is the shared portfolio the vault follows now, as its newest snapshot says, with the family’s name where the server holds one, and null where the snapshot shows none. `openedFor` says what the vault was opened as and `follows` what the chain shows, and the two can differ. `chain` narrows the answer to one chain and `address` to one vault; an address that is not a vault of the person’s narrows it to nothing and is never an error. A chain of the person’s that is switched off here is in `unavailable` (`CHAIN_UNAVAILABLE`), never shown as empty. Every chain, every entry, every snapshot with its prices, and `putIn` carry `provenance`: `mock` is the mock chain, `sandbox` a test network, and only `live` is mainnet. A call with no sign-in is answered 401, and a `chain` that is no chain, or an `address` that is empty or longer than 64 characters, 400.",
         "parameters": [
           {
             "schema": {
@@ -11127,6 +11140,29 @@
                                     }
                                   ]
                                 },
+                                "openedFor": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "familyId": {
+                                          "type": "string"
+                                        },
+                                        "slug": {
+                                          "type": "string"
+                                        },
+                                        "name": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": ["familyId", "slug", "name"],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
                                 "putIn": {
                                   "anyOf": [
                                     {
@@ -11163,6 +11199,29 @@
                                           "type": "integer",
                                           "exclusiveMinimum": 0,
                                           "maximum": 9007199254740991
+                                        },
+                                        "deposits": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "properties": {
+                                              "orderId": {
+                                                "type": "string",
+                                                "minLength": 1
+                                              },
+                                              "at": {
+                                                "type": "string",
+                                                "format": "date-time",
+                                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                              },
+                                              "usd": {
+                                                "type": "string",
+                                                "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+                                              }
+                                            },
+                                            "required": ["orderId", "at", "usd"],
+                                            "additionalProperties": false
+                                          }
                                         }
                                       },
                                       "required": [
@@ -11171,7 +11230,8 @@
                                         "fetchedAt",
                                         "provenance",
                                         "usd",
-                                        "orders"
+                                        "orders",
+                                        "deposits"
                                       ],
                                       "additionalProperties": false
                                     },
@@ -11598,6 +11658,7 @@
                                 "name",
                                 "basketId",
                                 "plan",
+                                "openedFor",
                                 "putIn",
                                 "newest",
                                 "status",
@@ -11802,8 +11863,9 @@
     },
     "/v1/portfolio/rebalances": {
       "get": {
-        "summary": "The steps that traded in the signed-in person's vaults, newest first",
+        "summary": "The steps that traded or adopted a version in the signed-in person's vaults, newest first",
         "tags": ["portfolio"],
+        "description": "Read from the database alone, never from a chain: `chains` has an entry for every chain this server runs that the person holds a wallet for, also one with nothing to list, each with the label its figures carry and its entries newest first, at most `limit` a chain (50 unless asked, never more than 200). A chain of theirs that is switched off is in `unavailable`, never an empty list in its place. The wallets are those of the identity token. There are two kinds of entry. `by: owner` is an attempt of one of the person’s own steps that confirmed or failed (a transaction that reverted is `failed`), where the step carries a trade or adopts a version of a shared portfolio: an approval and a deposit with no trade are not listed, nor is anything of a publish. It has its order, why the step was made, and its transaction id and link as they were stored; `at` is when the step was built, since no record says when it confirmed. Each of its trades has `expected`, the quote the step was last built with: a quote, not what the trade paid, which nothing records, and left out for an attempt that is not the step’s latest build, whose quote was not kept. `by: keeper` with `derived: true` is a trade of the keeper’s worked out from two snapshots of the last thirty days between which the vault’s last keeper time on an asset changed. The keeper’s own log is not in the database, so such an entry has no transaction id, no quote and no reason: `rawBefore` and `rawAfter` are what the vault held of the asset in the two snapshots, every trade of the asset between them is in the one entry, and `at` is the chain’s time of the last. On a trade of either kind, `reference` is the asset’s price in the newest snapshot before it, with its own source, time and method, and `before` and `after` are the asset’s weight, target and drift in the snapshots nearest each side; each is left out where there is no such snapshot. `vault` is null where the server has not cached the vault a step was for. `address` narrows the answer to one vault (an EVM address is read in any case) and `chain` to one chain; a vault or a chain that is not the person’s, or text that is no address, narrows it to nothing, with no error. A `limit` under 1 or over 200 is refused with 400. Every entry carries `source`, `method`, `fetchedAt` and `provenance`; anything that is not `live` is a test network or MOCK.",
         "parameters": [
           {
             "schema": {

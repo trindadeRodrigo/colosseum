@@ -36,7 +36,10 @@ export function registerPortfolioExposureRoute(
         response: { 200: PortfolioExposureResponse, default: OrderError },
       },
     },
-    async (req) => {
+    async (req, reply) => {
+      // The answer is one person's: nothing between them and the server keeps it for the next caller.
+      // Set before anything is read, so a refusal carries it too.
+      reply.header('cache-control', 'private, no-store');
       const { chain, address } = req.query;
       const person = personScope(deps.chains, signedIn(req), chain);
       const now = deps.now();

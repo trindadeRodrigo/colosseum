@@ -945,15 +945,15 @@ describe('the shared portfolio a vault was opened to follow', () => {
       chain,
       owner: chain === 'solana' ? who.solana : who.evm,
     });
-    const planId = await joinVault(data.db, {
+    const joinId = await joinVault(data.db, {
       chain,
       address,
       privyId: who.sub,
       plan,
       placedAt: NOW,
     });
-    if (!planId) throw new Error('the vault was not joined');
-    return { address, planId };
+    if (!joinId) throw new Error('the vault was not joined');
+    return { address, joinId };
   }
 
   it('is named from the server’s own row for a vault bought as a follow, though its snapshot shows it following none, and to nobody else', async () => {
@@ -1058,7 +1058,7 @@ describe('the shared portfolio a vault was opened to follow', () => {
     await data.db
       .update(baskets)
       .set({ familyId: two.familyId })
-      .where(eq(baskets.id, carrying.planId));
+      .where(eq(baskets.id, carrying.joinId));
     const unjoined = await seedVault(data.db, { chain: 'solana', owner: a.solana });
 
     const read = await plansFor(a);
@@ -1094,7 +1094,7 @@ describe('the shared portfolio a vault was opened to follow', () => {
   it('is not named where the server holds no row for it, and never guessed', async () => {
     const held = await storedFamily('solana');
     const follow = (familyId?: string): JoinedPlan => ({
-      planId: randomUUID(),
+      joinId: randomUUID(),
       plan: { kind: 'follow', placedAt: NOW.toISOString(), ...(familyId ? { familyId } : {}) },
     });
     // The join's own foreign key keeps a plan's family in the table, so no vault's plan names one

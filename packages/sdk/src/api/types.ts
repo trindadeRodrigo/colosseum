@@ -1501,6 +1501,7 @@ export type GetPortfolioResponse = {
 /** GET /v1/portfolio/exposure: query. What the signed-in person holds across their vaults, by underlying and by issuer */
 export type GetPortfolioExposureQuery = {
   chain?: 'solana' | 'base' | 'robinhood';
+  address?: string;
 };
 
 /** GET /v1/portfolio/exposure: response. What the signed-in person holds across their vaults, by underlying and by issuer */
@@ -1730,6 +1731,11 @@ export type GetPortfolioPlansResponse = {
           kind: 'yield' | 'price' | 'liquidity' | 'fx';
         }[];
       } | null;
+      openedFor: {
+        familyId: string;
+        slug: string;
+        name: string;
+      } | null;
       putIn: {
         source: string;
         method: string;
@@ -1737,6 +1743,11 @@ export type GetPortfolioPlansResponse = {
         provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
         usd: string;
         orders: number;
+        deposits: {
+          orderId: string;
+          at: string;
+          usd: string;
+        }[];
       } | null;
       newest: {
         observedAt: string;
@@ -1832,14 +1843,14 @@ export type GetPortfolioPlansResponse = {
   disclaimer: string;
 };
 
-/** GET /v1/portfolio/rebalances: query. The steps that traded in the signed-in person's vaults, newest first */
+/** GET /v1/portfolio/rebalances: query. The steps that traded or adopted a version in the signed-in person's vaults, newest first */
 export type GetPortfolioRebalancesQuery = {
   chain?: 'solana' | 'base' | 'robinhood';
   address?: string;
   limit?: number;
 };
 
-/** GET /v1/portfolio/rebalances: response. The steps that traded in the signed-in person's vaults, newest first */
+/** GET /v1/portfolio/rebalances: response. The steps that traded or adopted a version in the signed-in person's vaults, newest first */
 export type GetPortfolioRebalancesResponse = {
   chains: {
     chain: 'solana' | 'base' | 'robinhood';

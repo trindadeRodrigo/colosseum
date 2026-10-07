@@ -96,7 +96,10 @@ export function registerPortfolioPlansRoute(scope: FastifyInstance, deps: OrderD
         response: { 200: PortfolioPlansResponse, default: OrderError },
       },
     },
-    async (req): Promise<PortfolioPlansResponse> => {
+    async (req, reply): Promise<PortfolioPlansResponse> => {
+      // The answer is one person's: nothing between them and the server keeps it for the next caller.
+      // Set before anything is read, so a refusal carries it too.
+      reply.header('cache-control', 'private, no-store');
       const principal = signedIn(req);
       const { chain, address } = req.query;
       const mine = personScope(deps.chains, principal, chain);

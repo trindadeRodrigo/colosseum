@@ -915,6 +915,7 @@ describe('no /v1 route can make the server sign', () => {
     // a faucet key is set (tests/boundaries.test.ts, BEHIND_A_FLAG).
     expect(files.map((f) => relative(src, f)).sort()).toEqual([
       'faucet/test-funds.ts',
+      'model-exits.ts',
       'orders/chains.ts',
       'orders/continue.ts',
       'orders/errors.ts',
@@ -929,6 +930,13 @@ describe('no /v1 route can make the server sign', () => {
       'plugins/auth.ts',
       'plugins/limits.ts',
       'plugins/paths.ts',
+      'portfolio/exposure.ts',
+      'portfolio/history.ts',
+      'portfolio/plans.ts',
+      'portfolio/rebalances-snapshots.ts',
+      'portfolio/rebalances.ts',
+      'portfolio/scope.ts',
+      'portfolio/snapshots.ts',
       'routes/v1/baskets.ts',
       'routes/v1/config.ts',
       'routes/v1/funding.ts',
