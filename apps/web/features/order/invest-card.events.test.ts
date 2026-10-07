@@ -12,6 +12,7 @@ import { EMBEDDED, json, SOLANA, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { BuyScreen } from './BuyScreen';
+import { Invest } from './Invest';
 import { rememberPlan } from './plan-store';
 import { ORDER_ID, orderOn, PLAN_ID, planOn, serverKeepsPlans, USER } from './test/fixtures';
 
@@ -33,7 +34,7 @@ const en = dictionary('en');
 type Call = { method: string; path: string; body?: unknown };
 
 /** GET /v1/funding on the test network: nothing held unless `funded`, test funds where `faucet`. */
-const funding = (o: { funded: boolean; faucet?: boolean; provenance?: string }) => {
+const funding = (o: { funded: boolean; faucet?: boolean; provenance?: string; have?: string }) => {
   const provenance = o.provenance ?? 'sandbox';
   const stamp = {
     source: 'devnet RPC',
@@ -52,17 +53,18 @@ const funding = (o: { funded: boolean; faucet?: boolean; provenance?: string }) 
       asset: 'solana:usdc',
       symbol: 'USDC',
       decimals: 6,
-      haveRaw: o.funded ? '50000000000' : '0',
+      haveRaw: o.funded ? '50000000000' : (o.have ?? '0'),
       needRaw: '40000000000',
-      missingRaw: o.funded ? '0' : '40000000000',
+      missingRaw: o.funded ? '0' : (40_000_000_000n - BigInt(o.have ?? '0')).toString(),
     },
     gas: {
       ...stamp,
       symbol: 'SOL',
       decimals: 9,
-      haveRaw: o.funded ? '1000000000' : '0',
+      // a wallet that holds some test dollars has its fees too
+      haveRaw: o.funded || o.have ? '1000000000' : '0',
       needRaw: '10100000',
-      missingRaw: o.funded ? '0' : '10100000',
+      missingRaw: o.funded || o.have ? '0' : '10100000',
     },
     steps: 3,
     newVault: true,
@@ -76,6 +78,8 @@ function api(
     funded?: boolean;
     faucet?: boolean;
     provenance?: string;
+    /** What the wallet holds of the test dollar, in raw units, while it is short. */
+    have?: string;
     /** The answer of POST /v1/testnet/fund. Default: what was sent, and the wallet funded after. */
     fund?: () => Response;
   } = {},
@@ -95,7 +99,9 @@ function api(
       calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
       if (path === '/v1/me') return json(person);
       if (path.startsWith('/v1/funding?'))
-        return json(funding({ funded, faucet: o.faucet ?? false, provenance: o.provenance }));
+        return json(
+          funding({ funded, faucet: o.faucet ?? false, provenance: o.provenance, have: o.have }),
+        );
       if (path === '/v1/testnet/fund' && method === 'POST') {
         if (o.fund) return o.fund();
         funded = true;
@@ -263,6 +269,9 @@ describe('the card', () => {
 });
 
 describe('the funds, shown because the wallet is short', () => {
+  // 36,000 of the 40,000 test dollars held: what is missing is within one send of test funds
+  const WITHIN = '36000000000';
+
   it('says the need in one line, with the details behind a disclosure', async () => {
     api({ funded: false });
     const host = await buy();
@@ -284,7 +293,7 @@ describe('the funds, shown because the wallet is short', () => {
   });
 
   it('offers test funds where the server can send them, sends for this buy, then reads the wallet again', async () => {
-    const server = api({ funded: false, faucet: true });
+    const server = api({ funded: false, faucet: true, have: WITHIN });
     const host = await buy();
     const get = button(host, en.buy.funding.testFunds);
     expect(get).toBeDefined();
@@ -310,7 +319,7 @@ describe('the funds, shown because the wallet is short', () => {
   });
 
   it('offers one way to fill the wallet at a time, and names the cash as the plan does', async () => {
-    api({ funded: false, faucet: true });
+    api({ funded: false, faucet: true, have: WITHIN });
     portStore.set(signedInPort(EMBEDDED, { userId: USER, test: true }, 'mock'));
     const host = await buy();
     expect(button(host, en.buy.funding.testFunds)).toBeDefined();
@@ -332,7 +341,7 @@ describe('the funds, shown because the wallet is short', () => {
   });
 
   it('never offers test funds on figures that are not the test network’s', async () => {
-    api({ funded: false, faucet: true, provenance: 'live' });
+    api({ funded: false, faucet: true, provenance: 'live', have: WITHIN });
     const host = await buy();
     expect(button(host, en.buy.funding.testFunds)).toBeUndefined();
   });
@@ -341,6 +350,7 @@ describe('the funds, shown because the wallet is short', () => {
     const server = api({
       funded: false,
       faucet: true,
+      have: WITHIN,
       fund: () => json({ error: 'x', code: 'RATE_LIMITED' }, 429),
     });
     const host = await buy();
@@ -358,7 +368,7 @@ describe('the funds, shown because the wallet is short', () => {
       [TEST_FUNDS_LOW.cash, en.buy.funding.testFailure.lowCash],
       [TEST_FUNDS_LOW.gas, en.buy.funding.testFailure.lowGas],
     ] as const) {
-      api({ funded: false, faucet: true, fund: () => json({ error }, 409) });
+      api({ funded: false, faucet: true, have: WITHIN, fund: () => json({ error }, 409) });
       const host = await buy();
       await click(button(host, en.buy.funding.testFunds) as HTMLButtonElement);
       await settle();
@@ -367,6 +377,81 @@ describe('the funds, shown because the wallet is short', () => {
       );
       await unmountAll();
     }
+  });
+});
+
+describe('short by more than one send of test funds gives', () => {
+  // $40,000 asked for, 12,900 test dollars in the wallet, fees covered: 27,100 short, and one send
+  // gives at most $5,000.
+  const HAVE = '12900000000';
+
+  it('says what a send gives before the ask, and sends that much instead of being refused the whole amount', async () => {
+    const server = api({ funded: false, faucet: true, have: HAVE });
+    const host = await buy();
+    expect(find(host, '[data-ui="funding-line"]').textContent).toContain('27,100 USDC');
+    expect(find(host, '[data-ui="test-funds-cap"]').textContent).toContain(
+      en.invest.short.cap('$5,000', 3),
+    );
+    // the button says what it will do, and "Get test funds" is not offered as if it covered it
+    expect(button(host, en.buy.funding.testFunds)).toBeUndefined();
+    const send = button(host, en.invest.short.sendAnyway('$5,000'));
+    expect(send).toBeDefined();
+    await click(send as HTMLButtonElement);
+    await settle();
+    await settle();
+    // asked for what one send covers over what the wallet holds: 4,950 short, which with the
+    // server's 1% over is within its $5,000
+    expect(server.to('/v1/testnet/fund').map((c) => c.body)).toEqual([
+      { proposalId: PLAN_ID, amountUsd: 12_900 + 4_950, wallet: SOLANA },
+    ]);
+    expect(host.textContent).not.toContain(en.buy.funding.testFailure.tooMuch);
+  });
+
+  it('offers the amount the wallet covers in one press, and says how to choose another where it is typed', async () => {
+    const server = api({ funded: false, faucet: true, have: HAVE });
+    const host = await buy();
+    const ways = find(host, '[data-ui="invest-short"]');
+    expect(ways.textContent).toContain(en.invest.short.covers('$12,900'));
+    expect(ways.textContent).toContain(en.invest.short.typeLess);
+    await click(button(ways, en.invest.short.instead('$12,900')) as HTMLButtonElement);
+    await settle(350);
+    await settle();
+    // the amount is the page's field: it changes, and the wallet is read for it
+    expect(amountField(host).value).toBe('12900');
+    expect(server.to('/v1/funding').at(-1)?.path).toContain('amountUsd=12900');
+  });
+
+  it('on a plan’s card the amount is the goal’s: the host is handed the amount, and the card says where to change it', async () => {
+    api({ funded: false, faucet: true, have: HAVE });
+    const chosen = vi.fn();
+    const host = await mount(
+      withAccount(
+        'en',
+        createElement(Invest, { of: { plan: PLAN_ID }, amount: 40_000, onAmount: chosen }),
+      ),
+    );
+    await settle();
+    await settle(350);
+    await settle();
+    const ways = find(host, '[data-ui="invest-short"]');
+    expect(ways.textContent).toContain(en.invest.short.inGoal);
+    expect(ways.textContent).not.toContain(en.invest.short.typeLess);
+    await click(button(ways, en.invest.short.instead('$12,900')) as HTMLButtonElement);
+    expect(chosen).toHaveBeenCalledWith(12_900);
+  });
+
+  it('says none of it for a shortfall one send covers, or where our server sends no test funds', async () => {
+    // 36,000 held: 4,000 short
+    api({ funded: false, faucet: true, have: '36000000000' });
+    const within = await buy();
+    expect(button(within, en.buy.funding.testFunds)).toBeDefined();
+    expect(within.querySelector('[data-ui="invest-short"]')).toBeNull();
+    expect(within.querySelector('[data-ui="test-funds-cap"]')).toBeNull();
+    await unmountAll();
+    api({ funded: false, faucet: false, have: HAVE });
+    const none = await buy();
+    expect(none.querySelector('[data-ui="invest-short"]')).toBeNull();
+    expect(none.textContent).toContain(en.buy.funding.address(SOLANA));
   });
 });
 

@@ -237,6 +237,7 @@ export function AddMoneyScreen({
       }}
       onDone={embedded?.onDone}
       onStopped={embedded?.onStopped}
+      onAmount={embedded ? embedded.onAmount : (next) => setText(String(next))}
     />
   );
 

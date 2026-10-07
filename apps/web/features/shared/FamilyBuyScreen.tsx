@@ -212,6 +212,7 @@ export function FamilyBuyScreen({ slug, embedded }: { slug: string; embedded?: I
       onDone={embedded?.onDone}
       onStopped={embedded?.onStopped}
       onVersionChanged={embedded?.onVersionChanged}
+      onAmount={embedded ? embedded.onAmount : (next) => setText(String(next))}
     />
   );
   if (embedded)

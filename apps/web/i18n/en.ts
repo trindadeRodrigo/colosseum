@@ -1319,6 +1319,16 @@ export const en = {
     checkingFunds: 'Checking your wallet…',
     preparing: 'Reading prices for your order…',
     again: 'Read the prices again',
+    short: {
+      /** The shortfall is more than one send of test funds: what a send gives, said before the ask. */
+      cap: (most: string, times: number) =>
+        `Test funds send up to ${most} at a time, ${times} times a day, so one send won’t cover this amount.`,
+      sendAnyway: (most: string) => `Send ${most} anyway`,
+      instead: (amount: string) => `Invest ${amount} instead`,
+      covers: (amount: string) => `Your wallet covers ${amount} now.`,
+      typeLess: 'Or type a smaller amount.',
+      inGoal: 'To invest another amount, tap the amount in your goal and change it.',
+    },
     old: 'These prices are old: the order ran out before it was pressed. Read them again to invest.',
     updated: 'Prices updated. Read the steps again before you press.',
     updatedHold: 'The prices just changed: read them first.',

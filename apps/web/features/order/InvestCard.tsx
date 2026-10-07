@@ -20,6 +20,7 @@ import {
   fundMock,
   readFunding,
   requestTestFunds,
+  TEST_SEND,
   type TestFundsOutcome,
 } from './order-api';
 import { acceptTrust, forgetUnapproved, trustAccepted } from './order-record';
@@ -104,12 +105,22 @@ export type InvestCardProps = {
    * asks for the prices again.
    */
   onVersionChanged?: () => void;
+  /**
+   * The person chose another amount on the card ("Invest $12,900 instead", what the wallet covers):
+   * the host changes its amount, and what was built for the old one. Left out: no such choice.
+   */
+  onAmount?: (amount: number) => void;
+  /**
+   * Where the amount is changed: a field on the page, or the goal the plan was built from, where it
+   * cannot be typed. Said when the wallet is short by more than test funds send.
+   */
+  amountFrom?: 'field' | 'goal';
 };
 
 /** What a host that mounts a buy inside its own screen passes: the amount, and what it is told. */
 export type InvestEmbedded = Pick<
   InvestCardProps,
-  'amount' | 'onProgress' | 'onDone' | 'onStopped' | 'onVersionChanged'
+  'amount' | 'onProgress' | 'onDone' | 'onStopped' | 'onVersionChanged' | 'onAmount'
 >;
 
 /** The amount of a buy, typed in dollars: the one field over the card on a screen of its own. */
@@ -174,6 +185,8 @@ export function InvestCard({
   onDone,
   onStopped,
   onVersionChanged,
+  onAmount,
+  amountFrom = 'field',
 }: InvestCardProps) {
   const t = useT();
   const lang = useLang();
@@ -387,13 +400,40 @@ export function InvestCard({
     setFundsRound((n) => n + 1);
   }
 
+  // The wallet's cash in dollars as the funding read has it, with the units this repository committed.
+  const cashDecimals =
+    (read ? unitsFor(chain, mock)?.tokens[read.cash.asset]?.decimals : undefined) ??
+    read?.cash.decimals;
+  const dollarsOf = (raw: string) =>
+    cashDecimals === undefined ? null : Number(BigInt(raw)) / 10 ** cashDecimals;
+  const haveUsd = read ? dollarsOf(read.cash.haveRaw) : null;
+  const missingUsd = read ? dollarsOf(read.cash.missingRaw) : null;
+  // The most a send may be asked to cover, so that with the server's margin it stays within one send.
+  const sendCovers = Math.floor((TEST_SEND.maxUsd * 10_000) / (10_000 + TEST_SEND.marginBps));
+  // Short by more than one send of test funds gives, where our server sends them: asking for the
+  // whole amount would only be refused, so the card says what a send gives and what else can be done.
+  const beyondOneSend =
+    read !== null &&
+    !read.ok &&
+    read.provenance === 'sandbox' &&
+    read.testFunds === true &&
+    missingUsd !== null &&
+    missingUsd > sendCovers;
+  // What the wallet covers now, in whole dollars: offered as the amount, where the fees are covered.
+  const covered =
+    beyondOneSend && haveUsd !== null && read?.gas.missingRaw === '0' && haveUsd >= MIN_USD
+      ? Math.floor(haveUsd)
+      : null;
+
   async function askTestFunds() {
     if (!owner || amount === null) return;
     setTestBusy(true);
     setTestOutcome(null);
     const outcome = await requestTestFunds(apiFetch, {
       ...buyOf,
-      amountUsd: amount,
+      // Beyond one send: asked for what one send covers over what the wallet holds, so that it
+      // sends that much instead of refusing the whole amount.
+      amountUsd: beyondOneSend && haveUsd !== null ? Math.floor(haveUsd) + sendCovers : amount,
       wallet: owner,
     });
     setTestBusy(false);
@@ -523,8 +563,34 @@ export function InvestCard({
                 onReadAgain={() => setFundsRound((n) => n + 1)}
                 onMock={addMock}
                 testFunds={{ busy: testBusy, outcome: testOutcome, onAsk: askTestFunds }}
+                capped={
+                  beyondOneSend
+                    ? {
+                        note: t.invest.short.cap(dollars(TEST_SEND.maxUsd, lang), TEST_SEND.perDay),
+                        label: t.invest.short.sendAnyway(dollars(TEST_SEND.maxUsd, lang)),
+                      }
+                    : undefined
+                }
               />
             )}
+          {!started && beyondOneSend && (
+            // The other ways on: the amount the wallet covers, in one press, and how to choose another.
+            <div data-ui="invest-short" className="flex flex-col items-start gap-2">
+              {covered !== null && onAmount && (
+                <>
+                  <p className="max-w-(--tf-measure-body) text-body-sm">
+                    {t.invest.short.covers(dollars(covered, lang))}
+                  </p>
+                  <Button variant="secondary" onClick={() => onAmount(covered)}>
+                    {t.invest.short.instead(dollars(covered, lang))}
+                  </Button>
+                </>
+              )}
+              <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
+                {amountFrom === 'goal' ? t.invest.short.inGoal : t.invest.short.typeLess}
+              </p>
+            </div>
+          )}
 
           {!accepted && !started ? (
             // Before the first deposit: the notice with its box, in the card. The press is held
