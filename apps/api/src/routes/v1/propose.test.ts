@@ -110,7 +110,7 @@ describe('a plan proposed from a link', () => {
 
     const read = await get(null, `/v1/baskets/${id}`);
     expect(read.statusCode, read.body).toBe(200);
-    expect(LinkedPlanResponse.parse(read.json())).toEqual({ id, proposal });
+    expect(LinkedPlanResponse.parse(read.json())).toEqual({ id, proposal, fromLink: true });
   });
 
   it('is bought by the person who opens it, on their own chain, and by nobody on another', async () => {
@@ -135,14 +135,14 @@ describe('a plan proposed from a link', () => {
     expect(refused.statusCode).toBe(422);
   });
 
-  it('never reads back a plan a person made in the app', async () => {
+  it('never reads back a plan a person made in the app to anybody without their sign-in', async () => {
     const who = data.track(await person(issuer, 'solana'));
     const made = await post(who, '/v1/baskets/personalize', { sheet: sheet({ amountUsd: 7_000 }) });
     expect(made.statusCode, made.body).toBe(200);
     const { id } = PersonalizeResponse.parse(made.json());
     const read = await get(null, `/v1/baskets/${id}`);
     expect(read.statusCode).toBe(404);
-    expect(OrderError.parse(read.json()).error).toBe('no plan made from a link has that id');
+    expect(OrderError.parse(read.json()).error).toBe('no plan with that id that you can read');
     // nor an id that names nothing, and a word that is no id is refused as one
     expect((await get(null, `/v1/baskets/${crypto.randomUUID()}`)).statusCode).toBe(404);
     expect((await get(null, '/v1/baskets/not-an-id')).statusCode).toBe(400);

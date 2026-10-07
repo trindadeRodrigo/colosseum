@@ -1,5 +1,5 @@
 'use client';
-import { CHAIN_NAMES, ChainBadge } from '../../components/ui/ChainBadge';
+import { ChainBadge } from '../../components/ui/ChainBadge';
 import { type Column, DataTable } from '../../components/ui/DataTable';
 import { TAU, useAnswer, useBearing } from './BearingProvider';
 import { R } from './data';
@@ -10,6 +10,7 @@ import type { ChainFigure, ChainsBody } from './types';
 // The chains side by side (GET /risk/chains): for each chain Bearing measures, how many assets it
 // tracks, their pools' TVL, the exit capacity at ≤ 1% cost in the time of week it is now, and the
 // swap volume of the newest 24 h. Every figure has its pin; one a chain does not have yet says so.
+// This is where the page mixes chains, so each row is headed by its chain's tag.
 
 type Row = ChainsBody['chains'][number];
 
@@ -40,7 +41,7 @@ export function ChainsSide() {
         title={f.nullReason}
         className="font-sans text-caption text-muted-foreground"
       >
-        {t.chain.notCollectedOn(CHAIN_NAMES[row.chain])}
+        {t.reasons.not_collected}
       </span>
     ) : (
       <Fig f={fact(f)} fmt={fmt} chain={row.chain} />
@@ -78,7 +79,7 @@ export function ChainsSide() {
         {w.title}
       </h2>
       <p className="mb-3 max-w-[88ch] text-muted-foreground">{w.note}</p>
-      <Card ofChain={false}>
+      <Card>
         {res?.ok ? (
           <DataTable
             dense
