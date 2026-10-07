@@ -8,7 +8,6 @@ import { portfolioDictionary } from '../../i18n/portfolio';
 import { EMBEDDED, fakePort, signedInPort } from '../wallet/test/fake-port';
 import { location } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
-import { ExposurePage } from './ExposurePage';
 import { PlanPage } from './PlanPage';
 import { href, METHODOLOGY, PAGES, pageOf, planHref, SECTION } from './pages';
 import { RebalancingPage } from './RebalancingPage';
@@ -21,8 +20,8 @@ vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
 vi.mock('next/link', () => import('../wallet/test/mock-next'));
 
 // The frame of the portfolio section: the side menu with its own ids and its own memory, which page
-// is current, the one disclaimer under the page, and the three pages that are not built yet, each
-// saying so inside the frame. Its own section: nothing of Bearing's is in it.
+// is current, the one disclaimer under the page, and the page that is not built yet, saying so
+// inside the frame (the rebalancing and exposure pages have their own tests). Its own section: nothing of Bearing's is in it.
 
 const frame = async (page: ReturnType<typeof createElement> | null, lang: Lang = 'en') => {
   const host = await mount(inFrame(lang, page));
@@ -157,10 +156,8 @@ describe('the frame of the portfolio section', () => {
   );
 });
 
-describe('the three pages that are not built yet', () => {
+describe('the page that is not built yet', () => {
   const pages = [
-    ['rebalancing', () => createElement(RebalancingPage), 'portfolio-rebalancing'],
-    ['exposure', () => createElement(ExposurePage), 'portfolio-exposure'],
     [
       'plan',
       () => createElement(PlanPage, { chain: 'solana', address: SOL_GROW }),
