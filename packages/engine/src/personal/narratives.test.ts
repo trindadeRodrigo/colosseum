@@ -1964,6 +1964,8 @@ describe('whatever the text, the shelf and the answers', () => {
     "I wouldn't put all of it in stocks.",
     'Should I put all of it in stocks?',
     'Stocks only.',
+    'No stocks please.',
+    'I have no problem with stocks.',
   ];
   const mixes = [
     { growthBps: 5000, dollarYieldBps: 0, goldBps: 0, cashBps: 5000 },
@@ -1971,7 +1973,7 @@ describe('whatever the text, the shelf and the answers', () => {
     { growthBps: WHOLE, dollarYieldBps: 0, goldBps: 0, cashBps: 0 },
   ];
 
-  it('never throws, never holds what the shelf has not, never a mix with sleeves, never asks the risk with a share, never holds or asks what the chain has nothing for', () => {
+  it('never throws, never holds what the shelf has not, never a mix with sleeves, never asks the risk with a share, never holds or asks what the chain has nothing for, never loses a refusal', () => {
     let state = 20_261_006;
     const next = () => {
       state = (state * 1_103_515_245 + 12_345) % 2_147_483_648;
@@ -1982,6 +1984,7 @@ describe('whatever the text, the shelf and the answers', () => {
     let themed = 0;
     let noneOnly = 0;
     let otherRisk = 0;
+    let refusals = 0;
     for (let run = 0; run < 400; run += 1) {
       const opener = pick(openers);
       const words = [pick(named), pick(named)].slice(0, Math.floor(next() * 3));
@@ -2074,6 +2077,26 @@ describe('whatever the text, the shelf and the answers', () => {
         const asked = fields(result);
         expect(new Set(asked).size, where).toBe(asked.length);
         expect(asked.includes('risk') && asked.includes('mix'), where).toBe(false);
+        // A refusal the text states is read on every turn, with or without a model, and nothing
+        // else is: a ruled-out narrative ("No defense stocks.") and "no problem with stocks" leave
+        // out no class.
+        const refuses = text.includes('No stocks please.');
+        if (refuses) refusals += 1;
+        expect(result.limits, where).toEqual({
+          creditTolerance: null,
+          cannotHoldClasses: refuses ? ['stock'] : null,
+        });
+        if (result.sheet) {
+          expect(result.sheet.limits, where).toEqual(
+            refuses ? { cannotHold: { classes: ['stock'] } } : undefined,
+          );
+          expect(
+            (result.readBack ?? []).some((s) =>
+              /^You left out stocks\.$|^Você deixou de fora ações\.$/.test(s),
+            ),
+            where,
+          ).toBe(refuses);
+        }
         // A share is asked only of a narrative the chain holds something for, and where every
         // narrative named has nothing there, none of them makes a mix or a sleeve (THEME-NONE-YET).
         const share = result.questions.find((q) => q.field === 'mix' && q.template !== 'mix');
@@ -2169,5 +2192,6 @@ describe('whatever the text, the shelf and the answers', () => {
     expect(themed).toBeGreaterThan(20);
     expect(noneOnly).toBeGreaterThan(20);
     expect(otherRisk).toBeGreaterThan(0);
+    expect(refusals).toBeGreaterThan(20);
   });
 });

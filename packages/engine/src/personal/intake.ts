@@ -30,7 +30,9 @@ import {
   openEndedIn,
   otherLanguageIn,
   phraseIn,
-  refusalsIn,
+  type RefusalSaid,
+  type Refused,
+  refusalsSaidIn,
   riskCuesIn,
   shareSaidIn,
   splitIn,
@@ -69,8 +71,9 @@ import {
 // The guided intake (gate GUIDED-INTAKE; DESIGN-VAULT section 7). A model reads the person's goal into
 // a draft of the sheet and says which fields it could not read. Everything after that is here, in pure
 // code: each value is validated on its own and dropped to null when it fails; an amount and a time
-// frame must be written in the text; a shared portfolio must be on the shelf; a refusal must be
-// written; any field where the model and the rules parser disagree is flagged and asked about. A
+// frame must be written in the text; a shared portfolio must be on the shelf; a refusal is taken from
+// the text where its clause states it, with or without the model; any field where the model and the
+// rules parser disagree is flagged and asked about. A
 // market or an industry the person names is read by fixed words, or named by the model as one
 // attribute and its value, and code decides what holds it on the person's chain: a shared portfolio, a
 // curated label, the names a filter matches, or nothing, said so and never held (gates THEMES,
@@ -541,6 +544,8 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
   let replyFilter: (MarketFilter & { words: string }) | null = null;
   // The shared portfolios the model says the text names, as written.
   let namedPortfolios: string[] = [];
+  // What the model says the person rules out; none with no model.
+  let replyRefused: Refused[] = [];
 
   if (input.reply === null) {
     Object.assign(draft, rules);
@@ -710,18 +715,12 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
       draft.chains = [r.chain];
       if (input.homeChain && r.chain !== input.homeChain) flags.push(`other_chain:${r.chain}`);
     }
-    // A refusal must be written: "no stocks", "sem ações", "no credit".
-    const written = refusalsIn(text);
-    if (r.cannotHold !== null && r.cannotHold.length > 0) {
-      const kept = r.cannotHold.filter((cls) => written.classes.includes(cls));
-      for (const cls of r.cannotHold)
-        if (!written.classes.includes(cls)) flags.push(`not_in_text:cannotHold:${cls}`);
-      limits.cannotHoldClasses = kept.length > 0 ? [...new Set(kept)].sort() : null;
-    }
-    if (r.noCredit === true) {
-      if (written.noCredit) limits.creditTolerance = 'none';
-      else flags.push('not_in_text:noCredit');
-    }
+    // What the model says the person rules out ("no stocks", "sem ações", "no credit"): held to the
+    // text below, where the refusals are read with or without it.
+    replyRefused = [
+      ...new Set(r.cannotHold ?? []),
+      ...(r.noCredit === true ? ['credit' as const] : []),
+    ];
     // What the model itself says it could not read.
     for (const field of r.unclear ?? [])
       if ((QUESTION_FIELDS as readonly string[]).includes(field))
@@ -768,6 +767,37 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
       }
     }
   }
+
+  // What the person rules out ("no stocks", "sem ações", "no credit") is taken from the text, by code,
+  // with or without a model (found by the playground run of Oct 6, where with no model it was lost):
+  // a refusal that is lost gives the person what they refused. One its clause states becomes the sheet's limits, and the read-back says it back for
+  // the person to confirm: it is taken, not asked. One its clause negates ("I can't do without
+  // stocks"), says of something else ("my brother holds no stocks") or only wonders about ("no
+  // stocks? not sure") is not taken (`refusal_<how>:<what>`). The model's reply is a check, both
+  // ways: what it gives that the text does not write is dropped (`not_in_text:`), and what the text
+  // states that it missed is taken all the same (`disagrees_with_rules:`).
+  const refusals = refusalsSaidIn(text);
+  const refused = new Set(refusals.filter((x) => x.stance === 'stated').map((x) => x.what));
+  const refusalOf = (what: Refused) => (what === 'credit' ? 'noCredit' : `cannotHold:${what}`);
+  for (const what of replyRefused)
+    if (!refusals.some((x) => x.what === what)) flags.push(`not_in_text:${refusalOf(what)}`);
+  if (method === 'model')
+    for (const what of refused)
+      if (!replyRefused.includes(what)) flags.push(`disagrees_with_rules:${refusalOf(what)}`);
+  // Written, and not taken. Where the person is not sure, or the model read it as their refusal, it
+  // is said back with the read-back: nothing a reader took for a refusal is dropped in silence.
+  const refusalsNotTaken: RefusalSaid[] = [];
+  for (const what of new Set(refusals.map((x) => x.what))) {
+    if (refused.has(what)) continue;
+    const written = refusals.filter((x) => x.what === what);
+    const shown = written.find((x) => x.stance === 'wondered') ?? written[0];
+    if (!shown) continue;
+    flags.push(`refusal_${shown.stance}:${what}`);
+    if (shown.stance === 'wondered' || replyRefused.includes(what)) refusalsNotTaken.push(shown);
+  }
+  const classesRefused = [...refused].filter((x): x is HoldableClass => x !== 'credit').sort();
+  limits.cannotHoldClasses = classesRefused.length > 0 ? classesRefused : null;
+  if (refused.has('credit')) limits.creditTolerance = 'none';
 
   // What the person wants held (gate EXPLICIT-MIX, Rodrigo, Oct 6). A mix is taken only as written,
   // and only where its clause states it as what the person wants held: code reads it from the text in
@@ -1146,12 +1176,11 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
     (m) => !m.wondered && marketShareIn(text, m.at, m.end) !== null,
   );
   const ruledOut = PersonalMix.safeParse(mixSaid?.stance === 'negated' ? mixSaid.mix : null);
-  const refused = refusalsIn(text);
   const againstRefusal =
     replyMix !== null &&
-    ((replyMix.growthBps > 0 && refused.classes.some((c) => c === 'stock' || c === 'crypto')) ||
-      (replyMix.goldBps > 0 && refused.classes.includes('gold')) ||
-      ((replyMix.creditBps ?? 0) > 0 && refused.noCredit));
+    ((replyMix.growthBps > 0 && (refused.has('stock') || refused.has('crypto'))) ||
+      (replyMix.goldBps > 0 && refused.has('gold')) ||
+      ((replyMix.creditBps ?? 0) > 0 && refused.has('credit')));
   let mixAsk: { read: PersonalMix | null; why: 'wondered' | 'part' | 'model' } | null = null;
   const nothingStated =
     !mixRead &&
@@ -1406,6 +1435,7 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
       assume('MIX_LIMITS_OTHER_RISK', { said: riskSaid, words, risk: limitsFor.risk });
     else assume('MIX_LIMITS', { words, risk: limitsFor.risk });
   }
+  for (const { words } of refusalsNotTaken) assume('REFUSAL_NOT_TAKEN', { words });
   if (mixDropped) assume('MIX_DROPPED', mixDropped);
   if (themesNotHeld && value.goal)
     for (const { words } of themes) assume('MIX_DROPPED', { words, goal: value.goal });

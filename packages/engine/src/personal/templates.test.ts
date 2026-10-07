@@ -504,6 +504,18 @@ describe('intake templates', () => {
     );
   });
 
+  // A refusal the text writes and the intake does not take (the person was not sure, or the model
+  // read one where the clause says otherwise) is said, never dropped in silence.
+  it('says a refusal it did not take, in the person words, and how to have it taken', () => {
+    expect(ASSUMPTION_TEMPLATES.REFUSAL_NOT_TAKEN).toEqual({
+      en: 'I did not read “{words}” as something to leave out. Say so if you want it left out.',
+      pt: 'Não li “{words}” como algo a deixar de fora. Diga se quiser que fique de fora.',
+    });
+    expect(render(ASSUMPTION_TEMPLATES.REFUSAL_NOT_TAKEN.en, { words: 'no stocks' }, 'en')).toBe(
+      'I did not read “no stocks” as something to leave out. Say so if you want it left out.',
+    );
+  });
+
   it('ban what reads as advice or a return promise', () => {
     for (const lang of LANGUAGES) {
       const texts = [

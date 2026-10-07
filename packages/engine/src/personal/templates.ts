@@ -1243,6 +1243,13 @@ export const ASSUMPTION_TEMPLATES = {
     en: 'You said {said|risk}, but to hold “{words}” the plan uses the limits for {risk|risk}.',
     pt: 'Você disse {said|risk}, mas para manter “{words}” o plano usa os limites de {risk|risk}.',
   },
+  // A refusal the text writes that its clause does not state as the person's ("no stocks? not sure",
+  // "maybe no stocks"), or that the model read as one and the clause says otherwise: not taken, and
+  // said so, so it is never dropped in silence. `words` is the refusal as written.
+  REFUSAL_NOT_TAKEN: {
+    en: 'I did not read “{words}” as something to leave out. Say so if you want it left out.',
+    pt: 'Não li “{words}” como algo a deixar de fora. Diga se quiser que fique de fora.',
+  },
   MIX_DROPPED: {
     en: 'A plan for {goal|goal} holds no stocks or crypto, so “{words}” is not held.',
     pt: 'Um plano com {goal|goal} não tem ações nem cripto, então “{words}” não é mantido.',
