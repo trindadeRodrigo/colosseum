@@ -37,7 +37,7 @@ const testWalletOn =
  * `port` is the whole wallet, signing included: only signing.ts reads it. `screen` is the same wallet
  * with no signing member, which is what every screen gets.
  */
-type Value = { port: WebWalletPort; screen: ScreenPort; activate: () => void };
+type Value = { port: WebWalletPort; screen: ScreenPort; activate: () => void; restart: () => void };
 export const WalletContext = createContext<Value | null>(null);
 WalletContext.displayName = WALLET_MARKER;
 
@@ -77,12 +77,19 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [port, setPort] = useState<WebWalletPort>(LOADING);
   const [active, setActive] = useState(false);
   const activate = useCallback(() => setActive(true), []);
-  const value = useMemo(() => ({ port, screen: screenPort(port), activate }), [port, activate]);
+  // The wallet provider mounted again, for a sign-in that never finished loading: it reads the
+  // session and the wallets from the start. The page is not loaded again, so what was typed stays.
+  const [turn, setTurn] = useState(0);
+  const restart = useCallback(() => setTurn((n) => n + 1), []);
+  const value = useMemo(
+    () => ({ port, screen: screenPort(port), activate, restart }),
+    [port, activate, restart],
+  );
   const Bridge = testWalletOn && TestBridge ? TestBridge : PrivyBridge;
   return (
     <WalletContext.Provider value={value}>
       {children}
-      {active ? <Bridge onPort={setPort} /> : null}
+      {active ? <Bridge key={turn} onPort={setPort} /> : null}
     </WalletContext.Provider>
   );
 }
@@ -98,6 +105,13 @@ export function useWalletPort(): ScreenPort {
   const { activate } = value;
   useEffect(activate, [activate]);
   return value.screen;
+}
+
+/** Mounts the wallet provider again (`restart` above). Only the account's "Try again" calls it. */
+export function useWalletRestart(): () => void {
+  const value = useContext(WalletContext);
+  if (!value) throw new Error('useWalletRestart() needs <WalletProvider> above it');
+  return value.restart;
 }
 
 /**

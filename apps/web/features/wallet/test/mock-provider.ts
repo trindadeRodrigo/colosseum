@@ -24,4 +24,10 @@ const screenOf = () => {
 
 export const useWalletPort = () => useSyncExternalStore(portStore.subscribe, screenOf, screenOf);
 export const useApiFetch = () => portStore.api;
+/** How often the wallet provider was asked to start again. */
+export const restarts = { count: 0 };
+const restart = () => {
+  restarts.count += 1;
+};
+export const useWalletRestart = () => restart;
 export const WalletProvider = ({ children }: { children: ReactNode }) => children;
