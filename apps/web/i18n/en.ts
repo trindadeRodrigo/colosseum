@@ -704,6 +704,8 @@ export const en = {
       heldBuilt:
         'Your plan is built from that. Tap a limit to change it, or tell me what to change.',
       heldOpen: 'I still need one more thing.',
+      /** As many messages as a reader takes: the way on is a tap, or a new conversation. */
+      full: 'This conversation is as long as I can read. Tap a limit on the plan to change it.',
       building: 'Building your plan from these limits…',
       built: 'The plan is on the right. Review it and invest, or change anything.',
       /** Nothing changed and every fact is known: the plan is offered, in other words than before. */
@@ -746,9 +748,21 @@ export const en = {
       years: (n: number) => (n === 1 ? '1 year' : `${n} years`),
       aMonth: (amount: string) => `${amount} a month`,
       noIncome: 'No set amount',
+      yes: 'Yes',
+      no: 'No',
       build: 'Yes, build it',
     },
     facts: {
+      /** What was read beyond the five facts, from the sheet. */
+      theme: 'Theme',
+      themeShare: (name: string, share: string) => `${name} · ${share}`,
+      mix: 'Held as you said',
+      mixPart: {
+        growth: (share: string) => `${share} stocks and crypto`,
+        dollarYield: (share: string) => `${share} dollar yield`,
+        gold: (share: string) => `${share} gold`,
+        cash: (share: string) => `${share} cash`,
+      },
       title: 'Your goal',
       goal: 'What it’s for',
       amount: 'Amount',

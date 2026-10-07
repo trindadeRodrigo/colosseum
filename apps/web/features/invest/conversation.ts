@@ -5,6 +5,7 @@ import { exampleDraft } from '../goal/examples';
 import { preRead, type Words } from '../goal/pre-read';
 import { type ReadFailure, ReadGoalError, readGoal } from '../goal/read-goal';
 import { checkSheet, fieldsOfDraft, parseNumber, type SheetFields } from '../goal/sheet';
+import type { HeldMix, HeldTheme, IntakeAnswers } from './intake';
 
 // The conversation of the Invest screen, behind one small interface (gate INVEST-TWO-PANE): a person
 // sends words or an answer, and gets back the sheet so far, what is still open, and what to say next.
@@ -26,7 +27,45 @@ export type Sheet = {
   fields: SheetFields;
   /** Asked and declined: "no set amount a month". Not asked again unless the person taps the fact. */
   skipped: Fact[];
+  /** The person's own messages so far, in order: what a reader is sent again on a later turn. */
+  words?: string[];
+  /** What the guided intake holds for this conversation (intake-conversation.ts). */
+  intake?: IntakeState;
 };
+
+/**
+ * The guided intake's side of a conversation: the answers given by a tap, and what our server last
+ * said of the whole. The server's sheet and its question are never read back from the tab's storage:
+ * they are asked for again.
+ */
+export type IntakeState = {
+  answers: IntakeAnswers;
+  /** The answers as they stood when each later message was sent, one for each. */
+  answersThen: IntakeAnswers[];
+  /** The sheet the person confirms, as the server sent it; null while anything is open. */
+  sheet: BasketSheet | null;
+  /** The question that is open, with its replies; null when none is. */
+  question: Question | null;
+  /** What the person said to hold, and the themes the plan holds, from the server's reading. */
+  mix: HeldMix | null;
+  themes: HeldTheme[];
+  /** The goal has no date (gate GLIDE-OPT-IN): the time frame shows "No date set". */
+  horizonOpen: boolean;
+};
+
+/** A quick reply: what it sends, and what it is said by. The screen has the words. */
+export type QuickReply = {
+  /** What a press posts as the person's turn. */
+  posts: Send;
+  label:
+    | { kind: 'fact'; fact: Fact; value: string }
+    | { kind: 'word'; word: 'yes' | 'no' | 'noDate' }
+    /** A choice our server offers, in its own words. */
+    | { kind: 'option'; text: string };
+};
+
+/** A question our server asks, in its own words from its fixed templates. */
+export type Question = { text: string; replies: QuickReply[] };
 
 /** What the person sends: their own words, or an answer to the fact that was asked. */
 export type Send =
@@ -34,7 +73,9 @@ export type Send =
   | { kind: 'text'; text: string; asked?: Fact | null }
   | { kind: 'answer'; fact: Fact; value: string }
   /** A tap on a fact in the plan pane: the person wants to change it. */
-  | { kind: 'reopen'; fact: Fact };
+  | { kind: 'reopen'; fact: Fact }
+  /** Nothing new: what is held is read again, after the page was left and came back. */
+  | { kind: 'replay' };
 
 /** What to say back, as a key the screen has words for. Never a sentence, never a figure. */
 export type Say =
@@ -61,6 +102,13 @@ export type Say =
   /** "More risk" at the highest risk, "less risk" at the lowest: nothing to change. */
   | { key: 'riskTop' }
   | { key: 'riskBottom' }
+  /**
+   * Sentences our server wrote from its own templates over the validated sheet: what it understood,
+   * said back. Shown as given. Never kept in the tab's storage, and never a model's words.
+   */
+  | { key: 'said'; lines: string[] }
+  /** The conversation has as many messages as a reader takes: a fact is changed by a tap. */
+  | { key: 'full' }
   /** Every fact is known: the plan is being built. */
   | { key: 'ready' };
 
@@ -71,6 +119,8 @@ export type Reply = {
   say: Say[];
   /** The one question to ask next, with its quick replies. Null when nothing is open. */
   ask: Fact | null;
+  /** The question in our server's words, where it wrote one; else the screen's own for `ask`. */
+  question?: Question | null;
   /** The sheet as the API takes it, once it is whole and valid: what a plan is built from. */
   valid: BasketSheet | null;
 };
@@ -171,7 +221,7 @@ export const QUICK: Record<Fact, readonly string[]> = {
 };
 
 // No country: no plan is shaped by one, and none is asked or sent (gate COUNTRY-REMOVED).
-const EMPTY = (lang: Lang): SheetFields => ({
+export const EMPTY = (lang: Lang): SheetFields => ({
   goal: '',
   amount: '',
   income: '',
@@ -223,7 +273,7 @@ export function fitAnswer(fact: Fact, value: string, lang: Lang): string | null 
 }
 
 /** A typed answer to the question that is open, read from the words or, failing that, as a bare figure. */
-function typedAnswer(fact: Fact, text: string, lang: Lang): string | null {
+export function typedAnswer(fact: Fact, text: string, lang: Lang): string | null {
   const words = fieldsOfWords(preRead(text));
   const said = words[fact];
   if (said !== undefined) return fitAnswer(fact, said, lang);
@@ -241,6 +291,11 @@ function typedAnswer(fact: Fact, text: string, lang: Lang): string | null {
 
 /** The sheet as the API takes it, once every fact is known and it is valid for the chain; else null. */
 export function validOf(sheet: Sheet, chain: ChainId | null): BasketSheet | null {
+  // Read by the guided intake: the sheet is our server's, sent back as it came, on the person's chain.
+  if (sheet.intake)
+    return sheet.intake.sheet && chain && sheet.intake.sheet.chains[0] === chain
+      ? sheet.intake.sheet
+      : null;
   if (openFacts(sheet).length > 0) return null;
   const check = checkSheet(sheet.fields, chain);
   return Object.keys(check.errors).length === 0 ? check.sheet : null;
@@ -326,6 +381,8 @@ export function readerConversation(
 
   return {
     async turn(input, known) {
+      if (input.kind === 'replay')
+        return reply(known ?? { fields: EMPTY(lang), skipped: [] }, [], chain);
       if (input.kind === 'reopen') {
         const sheet = known ?? { fields: EMPTY(lang), skipped: [] };
         return reply(

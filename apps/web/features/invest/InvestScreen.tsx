@@ -17,6 +17,7 @@ import { type BuildOutcome, buildPlan, PERSONALIZE_PATH, PROPOSE_PATH } from '..
 import { GOAL_DRAFT, GOAL_HANDOFF } from '../goal/draft';
 import { GOAL_TEXT } from '../goal/read-goal';
 import { dollars, type SheetFields } from '../goal/sheet';
+import { formatBps } from '../order/amounts';
 import { Invest } from '../order/Invest';
 import type { InvestProgress } from '../order/invest-words';
 import { PlanPane } from '../order/PlanPane';
@@ -27,10 +28,13 @@ import {
   type Conversation,
   FACTS,
   type Fact,
+  type IntakeState,
   isFact,
   isGoAhead,
   PICKS,
   QUICK,
+  type Question,
+  type QuickReply,
   type Reply,
   readerConversation,
   type Say,
@@ -39,6 +43,8 @@ import {
   validOf,
 } from './conversation';
 import { takeWay } from './handoff';
+import { IntakeAnswers, MAX_FOLLOW_UPS } from './intake';
+import { intakeConversation } from './intake-conversation';
 import { wayChange } from './ways';
 
 // Invest, as one screen (gate INVEST-TWO-PANE): the conversation on the left, the plan built beside it
@@ -75,6 +81,8 @@ type Turn =
       /** The sheet as it stood when this was said. */
       fields: SheetFields | null;
       ask: Fact | null;
+      /** The question in our server's words, with its replies. Never kept in the tab's storage. */
+      question?: Question | null;
       retry: boolean;
     };
 
@@ -142,15 +150,14 @@ export function InvestScreen() {
     [sheet, asking, chain],
   );
 
-  const conversation: Conversation = useMemo(
-    () =>
-      readerConversation(apiFetch, {
-        lang,
-        chain,
-        examples: t.goal.examples.list,
-      }),
-    [apiFetch, lang, chain, t],
-  );
+  // Who reads the conversation. Signed in, with their chain known: the guided intake on our server
+  // (gate GUIDED-INTAKE), which needs a sign-in. A visitor, and anyone the intake cannot read for
+  // (no route, a sign-in our server does not know): the rules reader and this app's own questions.
+  const guided = account.status === 'ready' && who !== '';
+  const conversation: Conversation = useMemo(() => {
+    const rules = readerConversation(apiFetch, { lang, chain, examples: t.goal.examples.list });
+    return guided ? intakeConversation(apiFetch, { lang, chain, fallback: rules }) : rules;
+  }, [apiFetch, lang, chain, t, guided]);
 
   // The app never says the same thing twice in a row: a turn that repeats the one before it, word
   // for word, is not added.
@@ -159,8 +166,8 @@ export function InvestScreen() {
       const before = all[all.length - 1];
       if (
         before?.who === 'app' &&
-        JSON.stringify([before.say, before.fields, before.ask, before.retry]) ===
-          JSON.stringify([turn.say, turn.fields, turn.ask, turn.retry])
+        JSON.stringify([before.say, before.fields, before.ask, before.question, before.retry]) ===
+          JSON.stringify([turn.say, turn.fields, turn.ask, turn.question, turn.retry])
       )
         return all;
       return [...all, { ...turn, id: nextId.current++, who: 'app' }];
@@ -251,8 +258,14 @@ export function InvestScreen() {
       setReading(false);
     }
     // Words that changed nothing build nothing again.
-    const changed = !reply.say.some((x) => x.key === 'held' || x.key === 'unfit');
-    setSheet(reply.sheet);
+    const changed = !reply.say.some((x) => ['held', 'unfit', 'failed', 'full'].includes(x.key));
+    // The person's own messages are kept with the sheet: a reader that reads the whole conversation
+    // (the guided intake, once they sign in) is sent them again.
+    const kept =
+      input.kind === 'text' && !reply.sheet.intake && !reply.say.some((x) => x.key === 'failed')
+        ? [...(from?.words ?? []), input.text.trim()].slice(0, MAX_FOLLOW_UPS + 1)
+        : null;
+    setSheet(kept ? { ...reply.sheet, words: kept } : reply.sheet);
     // The limits on the page are no longer the ones a plan was built for.
     if (changed) wanted.current += 1;
     if (!reply.valid) setBuild({ kind: 'idle' });
@@ -263,6 +276,7 @@ export function InvestScreen() {
       say: reply.say.filter((s) => !((sure || !changed) && s.key === 'ready')),
       fields: reply.sheet.fields,
       ask: reply.ask,
+      question: reply.question ?? null,
       retry: false,
     });
     if (rebuild && reply.valid) void buildFrom(reply.valid, signedIn);
@@ -350,9 +364,36 @@ export function InvestScreen() {
         setConfirmed(true);
         again.current = true;
       }
+      // What our server said of the conversation is never read back from the tab: it is asked again.
+      replay.current = kept.sheet.intake !== undefined;
     }
     setRestored(true);
   }, []);
+  const replay = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once, when the person and their chain are known again
+  useEffect(() => {
+    if (!replay.current || !guided || !sheet?.intake) return;
+    replay.current = false;
+    let mine = true;
+    setReading(true);
+    void conversation
+      .turn({ kind: 'replay' }, sheet)
+      .then((reply) => {
+        if (!mine) return;
+        setSheet(reply.sheet);
+        say({
+          say: reply.say,
+          fields: reply.sheet.fields,
+          ask: reply.ask,
+          question: reply.question ?? null,
+          retry: false,
+        });
+      })
+      .finally(() => setReading(false));
+    return () => {
+      mine = false;
+    };
+  }, [guided, restored]);
   const again = useRef(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: once, when the kept sheet is valid for the chain
   useEffect(() => {
@@ -485,12 +526,23 @@ export function InvestScreen() {
   const state = canInvest ? 'invest' : plan ? 'plan' : fields ? 'facts' : 'empty';
   const knownCount = FACTS.filter((fact) => known(fields, fact)).length;
 
-  /** The words of a quick reply, and what it sends. */
-  const replies = (fact: Fact) =>
+  /** The quick replies of a question this app asks itself. */
+  const replies = (fact: Fact): QuickReply[] =>
     QUICK[fact].map((value) => ({
-      value,
-      label: value === '' ? w.replies.noIncome : factValue(fact, value, t, lang),
+      posts: { kind: 'answer', fact, value },
+      label: { kind: 'fact', fact, value },
     }));
+  /** The words of a quick reply. A choice our server offers is said in its words. */
+  const replyLabel = (r: QuickReply) =>
+    r.label.kind === 'option'
+      ? r.label.text
+      : r.label.kind === 'word'
+        ? r.label.word === 'noDate'
+          ? t.goal.card.noDate
+          : w.replies[r.label.word]
+        : r.label.value === ''
+          ? w.replies.noIncome
+          : factValue(r.label.fact, r.label.value, t, lang);
 
   const line = (s: Extract<Turn, { who: 'app' }>['say'][number], at: SheetFields | null) => {
     switch (s.key) {
@@ -522,6 +574,10 @@ export function InvestScreen() {
         return w.say.riskTop;
       case 'riskBottom':
         return w.say.riskBottom;
+      case 'full':
+        return w.say.full;
+      case 'said':
+        return '';
       case 'ready':
         return w.say.ready;
       case 'building':
@@ -618,6 +674,13 @@ export function InvestScreen() {
                           <span className="max-lg:hidden">{w.say.built}</span>
                           <span className="lg:hidden">{w.say.builtBelow}</span>
                         </>
+                      ) : s.key === 'said' ? (
+                        // our server's own sentences, from its templates: shown as given
+                        s.lines.map((sentence) => (
+                          <span key={sentence} data-ui="invest-said" className="block">
+                            {sentence}
+                          </span>
+                        ))
                       ) : (
                         line(s, turn.fields)
                       )}
@@ -651,37 +714,49 @@ export function InvestScreen() {
                       {plan ? w.say.heldBuilt : valid ? w.say.heldReady : w.say.heldOpen}
                     </p>
                   )}
-                {turn.ask && <p className="text-body font-medium">{w.ask[turn.ask]}</p>}
+                {/* The one question: in our server's words where it wrote it, else this app's. */}
+                {turn.question ? (
+                  <p data-ui="invest-question" className="text-body font-medium">
+                    {turn.question.text}
+                  </p>
+                ) : (
+                  turn.ask && (
+                    <p data-ui="invest-question" className="text-body font-medium">
+                      {w.ask[turn.ask]}
+                    </p>
+                  )
+                )}
                 {/* The replies of the turn that is open, right under it: one press answers. */}
-                {turn === open && !busy && (turn.ask || toConfirm || (turn.retry && valid)) && (
-                  <div data-ui="invest-replies" className="mt-1 flex flex-wrap gap-2">
-                    {turn.ask &&
-                      replies(turn.ask).map((r) => (
+                {turn === open &&
+                  !busy &&
+                  (turn.ask || turn.question || toConfirm || (turn.retry && valid)) && (
+                    <div data-ui="invest-replies" className="mt-1 flex flex-wrap gap-2">
+                      {(turn.question
+                        ? turn.question.replies
+                        : turn.ask
+                          ? replies(turn.ask)
+                          : []
+                      ).map((r) => (
                         <Button
-                          key={r.value}
+                          key={JSON.stringify(r.posts)}
                           variant="chip"
-                          onClick={() =>
-                            post(
-                              { kind: 'answer', fact: turn.ask as Fact, value: r.value },
-                              r.label,
-                            )
-                          }
+                          onClick={() => post(r.posts, replyLabel(r))}
                         >
-                          {r.label}
+                          {replyLabel(r)}
                         </Button>
                       ))}
-                    {toConfirm && !turn.ask && (
-                      <Button variant="primary" onClick={() => confirm()}>
-                        {w.replies.build}
-                      </Button>
-                    )}
-                    {turn.retry && valid && !toConfirm && (
-                      <Button variant="secondary" onClick={() => buildFrom(valid, signedIn)}>
-                        {w.failure.again}
-                      </Button>
-                    )}
-                  </div>
-                )}
+                      {toConfirm && !turn.ask && !turn.question && (
+                        <Button variant="primary" onClick={() => confirm()}>
+                          {w.replies.build}
+                        </Button>
+                      )}
+                      {turn.retry && valid && !toConfirm && (
+                        <Button variant="secondary" onClick={() => buildFrom(valid, signedIn)}>
+                          {w.failure.again}
+                        </Button>
+                      )}
+                    </div>
+                  )}
               </li>
             ),
           )}
@@ -778,6 +853,7 @@ export function InvestScreen() {
           <Facts
             fields={fields}
             skipped={sheet?.skipped ?? []}
+            held={sheet?.intake ?? null}
             disabled={busy}
             onChange={(fact) => post({ kind: 'reopen', fact }, w.facts.changeSay[fact])}
             build={toConfirm && !busy ? () => confirm() : null}
@@ -895,6 +971,7 @@ function EmptyPane() {
 function Facts({
   fields,
   skipped,
+  held,
   disabled,
   onChange,
   build,
@@ -902,6 +979,8 @@ function Facts({
 }: {
   fields: SheetFields;
   skipped: readonly Fact[];
+  /** What the guided intake read beyond the five facts: no date, a stated mix, themes. */
+  held: Pick<IntakeState, 'mix' | 'themes' | 'horizonOpen'> | null;
   disabled: boolean;
   onChange: (fact: Fact) => void;
   /** Every fact is known and no plan was asked for yet: the way to ask is here too. */
@@ -913,6 +992,31 @@ function Facts({
   const lang = useLang();
   const w = t.talk.facts;
   const shown = FACTS.filter((fact) => fact !== 'income' || fields.goal === 'income');
+  const share = (bps: number) => formatBps(bps, LOCALE[lang]);
+  // What the person said to hold, from the sheet: each part with its share, largest first.
+  const mix = held?.mix
+    ? new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(
+        (
+          [
+            ['growth', held.mix.growthBps],
+            ['dollarYield', held.mix.dollarYieldBps],
+            ['gold', held.mix.goldBps],
+            ['cash', held.mix.cashBps],
+          ] as const
+        )
+          .filter(([, bps]) => bps > 0)
+          .sort((a, b) => b[1] - a[1])
+          .map(([part, bps]) => w.mixPart[part](share(bps))),
+      )
+    : null;
+  const extras = [
+    ...(held?.themes ?? []).map((theme) => ({
+      key: `theme:${theme.name}`,
+      label: w.theme,
+      value: theme.shareBps === null ? theme.name : w.themeShare(theme.name, share(theme.shareBps)),
+    })),
+    ...(mix ? [{ key: 'mix', label: w.mix, value: mix }] : []),
+  ];
   return (
     <section data-ui="pane-facts" aria-label={w.title} className="flex flex-col gap-2">
       <h2 className="text-[0.8125rem]/5 font-medium">{w.title}</h2>
@@ -924,7 +1028,9 @@ function Facts({
             ? factValue(fact, fields[fact], t, lang)
             : fact === 'income' && skipped.includes('income')
               ? w.noIncome
-              : w.open;
+              : fact === 'horizon' && held?.horizonOpen
+                ? t.goal.card.noDate
+                : w.open;
           return (
             <li
               key={fact}
@@ -957,6 +1063,17 @@ function Facts({
             </li>
           );
         })}
+        {/* What was read beyond those: a theme, a mix the person stated. From the sheet, as it is. */}
+        {extras.map((extra) => (
+          <li
+            key={extra.key}
+            data-fact="held"
+            className="flex flex-col gap-0.5 bg-card px-3 py-2 max-sm:last:odd:col-span-2"
+          >
+            <span className="text-caption text-muted-foreground">{extra.label}</span>
+            <span className="text-body font-medium tabular-nums">{extra.value}</span>
+          </li>
+        ))}
       </ul>
       {build && (
         <div data-ui="pane-build" className="mt-2 flex flex-col items-start gap-1.5">
@@ -1063,5 +1180,42 @@ export function restoreDraft(raw: string | null): { turns: Turn[]; sheet: Sheet 
       });
     } else return null;
   }
-  return { turns: read, sheet: { fields: cleanFields, skipped: skipped.filter(isFact) } };
+  // The person's own messages, and the answers they gave by a tap, each held to its own form. What
+  // our server said of them (its sheet, its question, its sentences) is not read back.
+  const { words, intake } = sheet as Record<string, unknown>;
+  const said = Array.isArray(words)
+    ? words.filter(
+        (word): word is string =>
+          typeof word === 'string' && word.trim() !== '' && word.length <= GOAL_TEXT.max,
+      )
+    : [];
+  const state = (typeof intake === 'object' && intake !== null ? intake : null) as Record<
+    string,
+    unknown
+  > | null;
+  const answers = state ? IntakeAnswers.safeParse(state.answers) : null;
+  const then = state ? IntakeAnswers.array().safeParse(state.answersThen) : null;
+  return {
+    turns: read,
+    sheet: {
+      fields: cleanFields,
+      skipped: skipped.filter(isFact),
+      ...(Array.isArray(words) && said.length === words.length && said.length <= MAX_FOLLOW_UPS + 1
+        ? { words: said }
+        : {}),
+      ...(answers?.success && then?.success && said.length > 0
+        ? {
+            intake: {
+              answers: answers.data,
+              answersThen: then.data.slice(0, MAX_FOLLOW_UPS),
+              sheet: null,
+              question: null,
+              mix: null,
+              themes: [],
+              horizonOpen: answers.data.horizonOpen === true,
+            },
+          }
+        : {}),
+    },
+  };
 }

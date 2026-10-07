@@ -40,7 +40,8 @@ export async function readyToInvest(
 
 /**
  * From the Invest screen to a plan's own page, as a person on a phone does (gate INVEST-TWO-PANE):
- * the goal said in one sentence that names every fact, "Build my plan", the plan opened from the line
+ * the goal said in one sentence that names every fact, what our server asks to be sure of confirmed,
+ * "Build my plan", the plan opened from the line
  * at the foot, then its own page.
  */
 export async function planFromGoal(page: Page, goal: string) {
@@ -51,7 +52,19 @@ export async function planFromGoal(page: Page, goal: string) {
   await expect(page.locator('[data-ui="invest-turns"] [data-who="person"]').first()).toContainText(
     goal,
   );
-  await page.getByRole('button', { name: en.talk.replies.build }).click();
+  // Signed in, our server's intake reads the goal. With no model it asks each thing it read once,
+  // with what it read as the first reply: each is confirmed by a press, until the build is offered.
+  const build = page.getByRole('button', { name: en.talk.replies.build });
+  const first = page.locator('[data-ui="invest-replies"] button').first();
+  const said = page.locator('[data-ui="invest-turns"] [data-who="person"]');
+  for (let asked = 0; asked < 8; asked++) {
+    await expect(first).toBeVisible();
+    if (await build.isVisible()) break;
+    const before = await said.count();
+    await first.click();
+    await expect(said).toHaveCount(before + 1);
+  }
+  await build.click();
   // on a phone the plan is the line at the foot, which opens
   await page.getByRole('button', { name: en.talk.pane.open }).click();
   const pane = page.locator('[data-ui="invest-pane"]');

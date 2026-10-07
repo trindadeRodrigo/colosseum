@@ -606,6 +606,7 @@ export const pt: Dictionary = {
       heldBuilt:
         'Seu plano foi montado com isso. Toque em um limite para mudar, ou me diga o que mudar.',
       heldOpen: 'Ainda preciso de mais uma coisa.',
+      full: 'Esta conversa já tem o tamanho que eu consigo ler. Toque em um limite do plano para mudar.',
       building: 'Montando seu plano com estes limites…',
       built: 'O plano está à direita. Revise e invista, ou mude o que quiser.',
       heldReady: 'Nada mudou. Diga sim e eu monto o plano com isso.',
@@ -641,9 +642,20 @@ export const pt: Dictionary = {
       years: (n: number) => (n === 1 ? '1 ano' : `${n} anos`),
       aMonth: (amount: string) => `${amount} por mês`,
       noIncome: 'Sem valor definido',
+      yes: 'Sim',
+      no: 'Não',
       build: 'Sim, pode montar',
     },
     facts: {
+      theme: 'Tema',
+      themeShare: (name: string, share: string) => `${name} · ${share}`,
+      mix: 'Mantido como você disse',
+      mixPart: {
+        growth: (share: string) => `${share} em ações e cripto`,
+        dollarYield: (share: string) => `${share} em rendimento em dólar`,
+        gold: (share: string) => `${share} em ouro`,
+        cash: (share: string) => `${share} em caixa`,
+      },
       title: 'Seu objetivo',
       goal: 'Para que é',
       amount: 'Valor',
