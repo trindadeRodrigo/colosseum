@@ -632,6 +632,32 @@ describe('what the executor answers', () => {
       );
     });
 
+    it('reads the order again, and says nothing, when a step turns out to have landed', async () => {
+      const calls = server({
+        route: true,
+        made: () =>
+          json(
+            {
+              error: 'the transaction built earlier for this step has landed: read the order again',
+              code: 'STEP_LANDED',
+            },
+            409,
+          ),
+      });
+      router.push.mockClear();
+      const host = await stop();
+      const reads = () => calls.filter((c) => c.path === `/v1/orders/${ORDER_ID}`).length;
+      const before = reads();
+      await click(finishButton(host) as HTMLElement);
+      await settle();
+      await settle();
+      expect(reads()).toBe(before + 1);
+      expect(host.querySelector('[role="alert"]')).toBeNull();
+      expect(host.textContent).not.toContain('has landed');
+      expect(router.push).not.toHaveBeenCalled();
+      expect(recallOrder(NEXT_ID, USER)).toBeNull();
+    });
+
     describe.each(['en', 'pt'] as const)('a refusal by the server, in %s', (lang) => {
       const t = dictionary(lang);
       const o = t.order.outcome;

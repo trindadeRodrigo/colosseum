@@ -203,6 +203,8 @@ export async function continuesOrders(apiFetch: ApiFetch): Promise<boolean> {
  * - `in-flight`: a transaction built for a step left can still land.
  * - `nothing-left`, `cash-short`, `not-deposited`: there is nothing to finish, or nothing to finish it with.
  * - `unsupported`: not an order this route finishes.
+ * - `landed`: a step's transaction had landed unreported; the server has settled the step on it, so
+ *   the order is read again and nothing is said.
  * `PRICE_MOVED` is not among them: this route quotes anew and builds nothing, so it never answers it.
  */
 export type FinishRefusal =
@@ -213,6 +215,7 @@ export type FinishRefusal =
   | 'cash-short'
   | 'not-deposited'
   | 'unsupported'
+  | 'landed'
   | 'said';
 
 const REFUSALS: Partial<Record<string, FinishRefusal>> = {
@@ -223,6 +226,7 @@ const REFUSALS: Partial<Record<string, FinishRefusal>> = {
   VAULT_CASH_SHORT: 'cash-short',
   DEPOSIT_NOT_LANDED: 'not-deposited',
   CONTINUE_NOT_SUPPORTED: 'unsupported',
+  STEP_LANDED: 'landed',
 };
 
 /** The refusal's reason from its code, and for `ORDER_CONTINUED` the order that finishes this one. */

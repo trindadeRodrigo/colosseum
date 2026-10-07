@@ -228,6 +228,8 @@ export function OrderScreen({ id }: { id: string }) {
     if (made.kind !== 'placed') {
       setFinishing(false);
       if (made.kind === 'unavailable') return setCanFinish(false);
+      // A step had landed and the server has settled it: the order as it now stands is the answer.
+      if (made.kind === 'refused' && made.why === 'landed') return setRound((n) => n + 1);
       if (made.kind === 'refused') {
         // Each refusal this app knows in its own words, in the language of the page; one it does
         // not, in the server's. An order that already finishes this one is linked.
@@ -239,6 +241,7 @@ export function OrderScreen({ id }: { id: string }) {
           'cash-short': o.finishShort,
           'not-deposited': o.finishNotDeposited,
           unsupported: o.finishUnsupported,
+          landed: '',
           said: o.finishRefused(made.sentence),
         }[made.why];
         return setFinishFailure({ text: said, ...(made.orderId ? { orderId: made.orderId } : {}) });
