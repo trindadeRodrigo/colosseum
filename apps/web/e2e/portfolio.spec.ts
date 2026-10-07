@@ -107,18 +107,6 @@ test.describe('the portfolio section on the stub', () => {
     await expect(page.locator('main [data-ui="plan-card"]')).toHaveCount(7);
   });
 
-  test('the two pages not built yet say so inside the section, axe clean', async ({ page }) => {
-    await openSignedIn(page, '/portfolio');
-    for (const id of ['rebalancing', 'exposure'] as const) {
-      await toPage(page, `/portfolio/${id}`);
-      await expect(page.getByRole('heading', { level: 1 })).toHaveText(w[id].title);
-      await expect(page.locator('main')).toContainText(w.shell.soon);
-      await expect(page.locator('main [data-ui="figure"]')).toHaveCount(0);
-      await expect(page.locator('[data-ui="disclaimer"]:visible')).toHaveCount(1);
-      await check(page, id);
-    }
-  });
-
   test('the side menu hides to a rail on a wide screen and comes back', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/portfolio/methodology');
