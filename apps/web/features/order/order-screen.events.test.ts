@@ -17,9 +17,10 @@ import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
-import { withAccount } from '../account/test/screen';
+import { inShell, withAccount } from '../account/test/screen';
 import { utc } from '../portfolio/figures';
 import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
+import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { OrderScreen } from './OrderScreen';
 import { recallOrder } from './order-record';
@@ -89,7 +90,8 @@ function api(order: OrderDetail, chain: 'solana' | 'robinhood' | 'base' = 'solan
   portStore.setApi(async (path) => {
     if (path === '/v1/me') return json(person(chain));
     if (path === `/v1/orders/${ORDER_ID}`) return json(order);
-    return json({ error: 'not found' }, 404);
+    // any other route is not there, said as the web framework says it
+    return json({ message: `Route ${path} not found`, error: 'Not Found', statusCode: 404 }, 404);
   });
 }
 
@@ -123,6 +125,37 @@ beforeEach(() => {
 });
 afterEach(unmountAll);
 
+describe('the disclaimer on the order page (STYLE.md rule 3)', () => {
+  // The order page carries no disclaimer block of its own since its activity list went: the shell's
+  // foot draws it, from the one constant, and hides its own only on a page that has one in <main>
+  // (AppShell: `group-has-[main_[data-ui=disclaimer]]/shell:hidden`).
+  it.each(['en', 'pt'] as const)(
+    'is the shell’s foot, once, in the language of the view, at the review and when done (%s)',
+    async (lang) => {
+      api(orderOn());
+      seed();
+      const host = await mount(inShell(lang, 'auto', createElement(OrderScreen, { id: ORDER_ID })));
+      await settle();
+      await settle();
+      const held = () => {
+        expect(find(host, 'main [data-ui="order-screen"]')).toBeTruthy();
+        // nothing in the page hides the foot's
+        expect(host.querySelector('main [data-ui="disclaimer"]')).toBeNull();
+        const all = [...host.querySelectorAll('[data-ui="disclaimer"]')];
+        expect(all).toHaveLength(1);
+        expect(all[0]?.closest('[data-ui="app-foot"]')).not.toBeNull();
+        expect(find(all[0] as HTMLElement, 'p[lang]').textContent).toBe(DISCLAIMER[lang]);
+      };
+      held();
+      run.answer = async () => ({ status: 'done', order: doneOrder() });
+      await click(primary(host));
+      await settle();
+      expect(find(host, '[data-ui="order-next"]')).toBeTruthy();
+      held();
+    },
+  );
+});
+
 describe('the review', () => {
   it('shows every step with what it spends and the least each trade receives, and one button that names the amount', async () => {
     api(orderOn());
@@ -136,6 +169,8 @@ describe('the review', () => {
     expect(steps[0]).toContain('10 USDC');
     expect(steps[1]).toContain(en.order.review.spend('6 USDC', 'SPYx'));
     expect(steps[1]).toContain(en.order.review.atLeastWhole('0.0099 SPYx'));
+    // with the price that minimum means: $6 over 0.0099 of the token
+    expect(steps[1]).toContain(`(${en.order.review.atMostEach('$606.06')})`);
     expect(steps[1]).toContain(en.order.review.under('1%'));
     expect(label(primary(host))).toBe(en.order.signAndBuy('$10'));
     // the deadline in the one way this app writes a time: the date, the minute and the zone
@@ -411,8 +446,231 @@ describe('what the executor answers', () => {
       a.textContent,
       a.getAttribute('href'),
     ]);
-    expect(links).toContainEqual([en.order.outcome.newOrder, `/plan/${PLAN_ID}/buy`]);
-    expect(links).toContainEqual([en.order.outcome.seePortfolio, '/monitor']);
+    // the portfolio first, where the deposit is; a new order, which deposits again, beside it
+    const stopped = [...find(host, '[data-ui="order-stopped"]').querySelectorAll('a')];
+    expect(stopped.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      [en.order.outcome.seePortfolio, '/monitor'],
+      [en.order.outcome.newOrder, `/plan/${PLAN_ID}/buy`],
+    ]);
+    expect(stopped[0]?.className).toContain(buttonClass({ variant: 'primary' }));
+    // one primary: the new order, which deposits again, is beside it
+    expect(stopped[1]?.className).not.toContain('bg-primary');
+    expect(links.length).toBeGreaterThan(0);
+  });
+
+  describe('finishing a buy with the cash in its vault (finding 24)', () => {
+    const NEXT_ID = '99999999-9999-4999-8999-999999999999';
+    /** The first order, its deposit landed and its swap failed. */
+    const stoppedOrder = (): OrderDetail => {
+      const landed = doneOrder();
+      return {
+        ...landed,
+        status: 'open',
+        legs: landed.legs.map((leg) =>
+          leg.id === LEG_SWAP ? { ...leg, status: 'failed', txId: null } : leg,
+        ),
+      };
+    };
+    /** The order that finishes it: only the swap, no deposit, and which order it finishes. */
+    const continuation = (over: Record<string, unknown> = {}) => {
+      const first = orderOn();
+      const { depositRaw: _, ...rest } = first;
+      return {
+        ...rest,
+        id: NEXT_ID,
+        approvalUrl: `/orders/${NEXT_ID}`,
+        legs: first.legs
+          .filter((leg) => leg.kind === 'swap')
+          .map((leg) => ({ ...leg, orderId: NEXT_ID, seq: 0 })),
+        continues: ORDER_ID,
+        ...over,
+      };
+    };
+    type Call = { method: string; path: string };
+    /** The API with the route there (or not), answering `made` to the real order. */
+    function server(o: { route: boolean; made?: () => Response }) {
+      const calls: Call[] = [];
+      portStore.setApi(async (path, init) => {
+        const method = init?.method ?? 'GET';
+        calls.push({ method, path });
+        if (path === '/v1/me') return json(person('solana'));
+        if (path === `/v1/orders/${ORDER_ID}`) return json(orderOn());
+        if (path === `/v1/orders/${NEXT_ID}`) return json(continuation());
+        if (method === 'POST' && path.endsWith('/continue')) {
+          // a server without the route answers as the web framework does
+          if (!o.route)
+            return json(
+              { message: `Route POST:${path} not found`, error: 'Not Found', statusCode: 404 },
+              404,
+            );
+          if (path === `/v1/orders/${ORDER_ID}/continue` && o.made) return o.made();
+          return json({ error: 'no order with that id' }, 404);
+        }
+        return json({ error: 'not found' }, 404);
+      });
+      return calls;
+    }
+    const stop = async () => {
+      seed();
+      run.answer = async () => ({
+        status: 'failed',
+        order: stoppedOrder(),
+        legId: LEG_SWAP,
+        error: null,
+      });
+      const host = await screen();
+      await click(primary(host));
+      await settle();
+      await settle();
+      return host;
+    };
+    const finishButton = (host: HTMLElement) =>
+      [...host.querySelectorAll<HTMLElement>('button')].find((b) =>
+        b.textContent?.startsWith(en.order.outcome.finish),
+      );
+
+    it('is not offered where the server has no such route: the portfolio leads', async () => {
+      const calls = server({ route: false });
+      const host = await stop();
+      expect(finishButton(host)).toBeUndefined();
+      expect(host.querySelector('[data-ui="order-finish-note"]')).toBeNull();
+      const stopped = [...find(host, '[data-ui="order-stopped"]').querySelectorAll('a')];
+      expect(stopped[0]?.textContent).toBe(en.order.outcome.seePortfolio);
+      // the server was asked about an order nobody has: nothing was made to find out
+      expect(calls.filter((c) => c.path.endsWith('/continue')).map((c) => c.path)).toEqual([
+        '/v1/orders/00000000-0000-4000-8000-000000000000/continue',
+      ]);
+    });
+
+    it('is not asked about at all while the order has not stopped', async () => {
+      const calls = server({ route: true });
+      seed();
+      await screen();
+      expect(calls.some((c) => c.path.endsWith('/continue'))).toBe(false);
+    });
+
+    it('is the first thing offered where the server can: it makes the order that finishes this one, keeps what it is held to, and opens it', async () => {
+      const calls = server({ route: true, made: () => json(continuation()) });
+      router.push.mockClear();
+      const host = await stop();
+      const button = finishButton(host) as HTMLElement;
+      expect(button.getAttribute('data-variant')).toBe('primary');
+      expect(find(host, '[data-ui="order-finish-note"]').textContent).toBe(
+        en.order.outcome.finishNote,
+      );
+      // nothing was made by looking
+      expect(calls.some((c) => c.path === `/v1/orders/${ORDER_ID}/continue`)).toBe(false);
+      await click(button);
+      await settle();
+      expect(calls.filter((c) => c.path === `/v1/orders/${ORDER_ID}/continue`)).toEqual([
+        { method: 'POST', path: `/v1/orders/${ORDER_ID}/continue` },
+      ]);
+      expect(router.push).toHaveBeenCalledWith(`/orders/${NEXT_ID}`);
+      const kept = recallOrder(NEXT_ID, USER);
+      expect(kept?.approved).toBeNull();
+      expect(kept?.continues).toEqual({
+        orderId: ORDER_ID,
+        trades: orderOn().legs.flatMap((leg) => leg.trades),
+      });
+    });
+
+    it('says why in a sentence when the server refuses, and makes no record', async () => {
+      for (const [body, sentence] of [
+        [{ error: 'x', code: 'PRICE_MOVED' }, en.order.outcome.finishPriceMoved],
+        [{ error: 'x', details: { retryable: true } }, en.order.outcome.finishLater],
+        [
+          { error: 'this order has nothing left to buy' },
+          en.order.outcome.finishRefused('this order has nothing left to buy'),
+        ],
+      ] as const) {
+        server({ route: true, made: () => json(body, 409) });
+        router.push.mockClear();
+        const host = await stop();
+        await click(finishButton(host) as HTMLElement);
+        await settle();
+        expect(host.textContent).toContain(sentence);
+        expect(router.push).not.toHaveBeenCalled();
+        expect(recallOrder(NEXT_ID, USER)).toBeNull();
+        await unmountAll();
+        window.localStorage.clear();
+      }
+    });
+
+    it('does not take an answer that names another order, or the same one', async () => {
+      for (const answer of [
+        continuation({ continues: 'another-order' }),
+        continuation({ id: ORDER_ID }),
+      ]) {
+        server({ route: true, made: () => json(answer) });
+        router.push.mockClear();
+        const host = await stop();
+        await click(finishButton(host) as HTMLElement);
+        await settle();
+        expect(host.textContent).toContain(en.buy.failure.unreadable);
+        expect(router.push).not.toHaveBeenCalled();
+        await unmountAll();
+        window.localStorage.clear();
+      }
+    });
+
+    it('reviews the order that finishes another: no deposit, the steps left, and it can be signed', async () => {
+      const left = orderOn().legs.flatMap((leg) => leg.trades);
+      const record = {
+        ...recordOf(),
+        orderId: NEXT_ID,
+        continues: { orderId: ORDER_ID, trades: left },
+      };
+      window.localStorage.setItem(`tf-order:${NEXT_ID}`, JSON.stringify(record));
+      server({ route: true });
+      const host = await mount(withAccount('en', createElement(OrderScreen, { id: NEXT_ID })));
+      await settle();
+      await settle();
+      expect(host.querySelector('[role="alert"]')).toBeNull();
+      expect(host.textContent).not.toContain(en.order.review.deposit);
+      const steps = [...host.querySelectorAll('[data-ui="order-step"]')].map((s) => s.textContent);
+      expect(steps).toHaveLength(1);
+      expect(steps[0]).toContain(en.order.review.spend('6 USDC', 'SPYx'));
+      // the button names what the steps spend of the vault's cash
+      expect(label(primary(host))).toBe(en.order.signAndBuy('$6'));
+    });
+
+    it('offers nothing to sign for one that deposits, opens a vault, buys something else or does not say what it finishes', async () => {
+      const left = orderOn().legs.flatMap((leg) => leg.trades);
+      const whole = orderOn();
+      for (const hostile of [
+        continuation({ depositRaw: '10000000' }),
+        continuation({ legs: whole.legs.map((leg) => ({ ...leg, orderId: NEXT_ID })) }),
+        continuation({
+          legs: continuation().legs.map((leg) => ({
+            ...leg,
+            trades: leg.trades.map((t) => ({ ...t, amountInRaw: '9000000' })),
+          })),
+        }),
+        continuation({ continues: undefined }),
+      ]) {
+        const record = {
+          ...recordOf(),
+          orderId: NEXT_ID,
+          continues: { orderId: ORDER_ID, trades: left },
+        };
+        window.localStorage.setItem(`tf-order:${NEXT_ID}`, JSON.stringify(record));
+        portStore.setApi(async (path) =>
+          path === '/v1/me'
+            ? json(person('solana'))
+            : path === `/v1/orders/${NEXT_ID}`
+              ? json(hostile)
+              : json({ error: 'not found' }, 404),
+        );
+        const host = await mount(withAccount('en', createElement(OrderScreen, { id: NEXT_ID })));
+        await settle();
+        await settle();
+        expect(find(host, '[role="alert"]').textContent).toMatch(/Nothing was signed/);
+        expect(host.querySelector('button[data-variant="primary"]')).toBeNull();
+        expect(run.calls).toHaveLength(0);
+        await unmountAll();
+        window.localStorage.clear();
+      }
+    });
   });
 
   it('never shows a token’s smallest units: where it has none for a token, how far under the quote', async () => {

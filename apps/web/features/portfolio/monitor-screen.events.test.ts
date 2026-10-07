@@ -870,6 +870,12 @@ describe('the chain of each vault', () => {
     expect(find(host, '[data-ui="chains-out"] [data-chain="solana"]').textContent).toBe(
       en.portfolio.chainOut('Solana'),
     );
+    // and it can be asked again
+    expect(
+      [...host.querySelectorAll('button')].some((b) =>
+        b.textContent?.startsWith(en.portfolio.again),
+      ),
+    ).toBe(true);
     await unmountAll();
     // no wallet of theirs signs on Solana: that is what is said
     api({

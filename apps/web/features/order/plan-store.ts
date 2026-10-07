@@ -1,10 +1,10 @@
 import { BasketProposal, RiskRollUp } from '@colosseum/schemas';
 
-// The plan a goal built, kept for the plan screen and the buy screen. The API has no route that reads
-// a stored plan back by its id, so the plan is what "Build my plan" answered, kept in the browser under
-// its id: another tab, and the portfolio's "See your plan", find it there (the flow audit, finding 14).
-// The few newest are kept. It is one person's: it is read back only for the person who built it, and a
-// plan that does not parse is not shown.
+// The plan a goal built, kept for the plan screen and the buy screen: what "Build my plan" answered,
+// kept in the browser under its id, so the screens open at once and another tab finds it (the flow
+// audit, finding 14). The browser is a cache, of the few newest: where it has no plan, the API is asked
+// (use-plan.ts). It is one person's: it is read back only for the person who built it, and a plan that
+// does not parse is not shown.
 
 export type StoredPlan = {
   /** The stored plan's id, which a buy names (`proposalId`). */

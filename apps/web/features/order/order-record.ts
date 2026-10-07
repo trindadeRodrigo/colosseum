@@ -10,6 +10,8 @@ import {
   OrderDetail as Order,
   type OrderDetail,
   type TRUST_STATUS,
+  type Trade,
+  Trade as TradeSchema,
   Verdict,
 } from '@colosseum/schemas';
 import { readTerms, type SharedTerms } from '../shared/terms';
@@ -65,6 +67,12 @@ export type OrderRecord = {
    * too (`basketIdOfLinkedPlan`), so the link alone does not lead to the vault.
    */
   linked?: true;
+  /**
+   * For an order that finishes another with the cash already in its vault (`POST
+   * /v1/orders/{id}/continue`): that order's id, and the trades it left undone, as this browser's
+   * record of it had them. The order is held to these, and deposits nothing (order-check.ts).
+   */
+  continues?: { orderId: string; trades: Trade[] };
 };
 
 function readGoal(value: unknown): PlacedGoal | null {
@@ -110,6 +118,17 @@ function readRecord(value: unknown): OrderRecord | null {
     (buy ? !(r.amountUsd > 0) : r.amountUsd !== 0)
   )
     return null;
+  let continues: OrderRecord['continues'];
+  if (r.continues !== undefined) {
+    const c = (typeof r.continues === 'object' ? r.continues : null) as Record<
+      string,
+      unknown
+    > | null;
+    const trades = TradeSchema.array().min(1).safeParse(c?.trades);
+    // A record that says it finishes an order and does not say which, or with what, is not read.
+    if (!c || !text(c.orderId) || !trades.success) return null;
+    continues = { orderId: c.orderId, trades: trades.data };
+  }
   let approved: ApprovedOrder | null = null;
   if (r.approved !== null) {
     const a = (typeof r.approved === 'object' ? r.approved : null) as Record<
@@ -132,6 +151,7 @@ function readRecord(value: unknown): OrderRecord | null {
     approved,
     goal: readGoal(r.goal),
     ...(r.linked === true ? { linked: true as const } : {}),
+    ...(continues ? { continues } : {}),
   };
 }
 

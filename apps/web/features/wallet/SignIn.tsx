@@ -282,7 +282,11 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
         </p>
       )}
       {offerCreate && (
-        <div data-ui="create-new-passkey">
+        <div data-ui="create-new-passkey" className="flex flex-col items-start gap-2">
+          {/* Said before one is made by mistake: a new passkey is a new, empty wallet. */}
+          <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
+            {t.signIn.passkey.createNewNote}
+          </p>
           <Button
             busy={busy === 'create'}
             busyLabel={t.signIn.passkey.waiting}
@@ -293,10 +297,6 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
           >
             {t.signIn.passkey.createNew}
           </Button>
-          {/* Said before one is made by mistake: a new passkey is a new, empty wallet. */}
-          <p className="mt-2 max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
-            {t.signIn.passkey.createNewNote}
-          </p>
         </div>
       )}
     </div>

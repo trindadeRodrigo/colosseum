@@ -70,7 +70,7 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   await expect(steps).toHaveCount(2);
   await expect(steps.nth(0)).toContainText(en.order.kind.approve);
   await expect(steps.nth(1)).toContainText(en.order.kind.create_vault_buy);
-  await expect(steps.nth(1)).toContainText('under the quote');
+  await expect(steps.nth(1)).toContainText('receive at least');
   await expect(steps.nth(1)).not.toContainText('smallest');
   await named(page);
 

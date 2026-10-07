@@ -411,6 +411,53 @@ describe('a notice accepted before', () => {
   });
 });
 
+describe('the first deposit', () => {
+  const reviewButton = (host: HTMLElement) =>
+    find(panel(host, 'review'), ':scope > div > [data-variant="primary"]');
+
+  it('cannot reach an order without the notice: the step is there, and the review holds until it is ticked', async () => {
+    const server = api({ funded: true });
+    const host = await buy();
+    expect(step(host, 'trust')).toBeTruthy();
+    // the review step can be opened from its heading, and its button still refuses
+    await click(head(host, 'review'));
+    expect(reviewButton(host).getAttribute('aria-disabled')).toBe('true');
+    expect(panel(host, 'review').textContent).toContain(en.buy.blocked.trust);
+    await click(reviewButton(host));
+    await settle();
+    expect(server.to('/v1/orders')).toEqual([]);
+    expect(window.localStorage.getItem(`tf-trust:${USER}`)).toBeNull();
+    // ticked, it lets go
+    await click(head(host, 'trust'));
+    await click(find(panel(host, 'trust'), 'input[type="checkbox"]'));
+    await click(head(host, 'review'));
+    expect(reviewButton(host).getAttribute('aria-disabled')).toBeNull();
+  });
+
+  it('asks again where the acceptance is not this person’s, not this text’s, or not in this browser', async () => {
+    const stored = (who: string, textVersion: string) =>
+      window.localStorage.setItem(`tf-trust:${who}`, JSON.stringify({ textVersion }));
+    for (const seed of [
+      // another person accepted in this browser
+      () => stored('did:privy:someone-else', TRUST_STATUS.textVersion),
+      // this person accepted an earlier text
+      () => stored(USER, 'an-earlier-text'),
+      // a new device: nothing is stored
+      () => undefined,
+    ]) {
+      window.localStorage.clear();
+      rememberPlan(planOn());
+      seed();
+      api({ funded: true });
+      const host = await buy();
+      expect(step(host, 'trust')).toBeTruthy();
+      await click(head(host, 'review'));
+      expect(reviewButton(host).getAttribute('aria-disabled')).toBe('true');
+      await unmountAll();
+    }
+  });
+});
+
 describe('what you’re trusting', () => {
   it('says in short only what applies to a plan’s own vault, and keeps every item of the notice behind "Read the full list"', async () => {
     api({ funded: true });

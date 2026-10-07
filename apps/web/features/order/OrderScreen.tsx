@@ -1,6 +1,7 @@
 'use client';
 import type { ConsentKind, Leg, OrderDetail } from '@colosseum/schemas';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
@@ -20,8 +21,14 @@ import { utc } from '../portfolio/figures';
 import { SharedReview } from '../shared/SharedReview';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { formatBps, formatRaw, shortfallBps, tokenName } from './amounts';
-import { type CallFailure, readOrder } from './order-api';
-import { checkDeposit, checkFamilyBuy, type DepositCheck, sharedShapeOk } from './order-check';
+import { type CallFailure, continueOrder, continuesOrders, readOrder } from './order-api';
+import {
+  checkContinuation,
+  checkDeposit,
+  checkFamilyBuy,
+  type DepositCheck,
+  sharedShapeOk,
+} from './order-check';
 import { isBuy, keepOrder, type OrderRecord, recallOrder } from './order-record';
 import { legsInOrder, type NextStep, type OutcomeView, outcomeView, stepOf } from './order-view';
 import { chainReady, explorerUrlFor, onMock } from './readiness';
@@ -47,6 +54,9 @@ type Check = DepositCheck | { ok: false; why: 'trades' | 'shape' };
  */
 function checkOf(order: OrderDetail, record: OrderRecord, units: ChainUnits | null): Check {
   const terms = record.terms;
+  // An order that finishes another deposits nothing: it is held to the trades that one left.
+  if (record.continues)
+    return checkContinuation(order, record.continues, units, order !== record.approved?.order);
   if (!terms) return checkDeposit(order, record.amountUsd, units);
   if (terms.kind === 'family') return checkFamilyBuy(order, record.amountUsd, units, terms.targets);
   return sharedShapeOk(order, terms)
@@ -71,6 +81,12 @@ export function OrderScreen({ id }: { id: string }) {
   const [consents, setConsents] = useState<ConsentKind[]>([]);
   const [round, setRound] = useState(0);
   const stop = useRef({ aborted: false });
+  const router = useRouter();
+  // Whether this server finishes a buy with the cash in its vault: asked only once an order has
+  // stopped after its deposit, and the button is not there until the answer is yes.
+  const [canFinish, setCanFinish] = useState(false);
+  const [finishing, setFinishing] = useState(false);
+  const [finishFailure, setFinishFailure] = useState<string | null>(null);
   const titleId = useId();
   const reasonId = useId();
   const userId = port.userId;
@@ -91,6 +107,21 @@ export function OrderScreen({ id }: { id: string }) {
       mine = false;
     };
   }, [id, apiFetch, port.status, round]);
+
+  // An order that stopped for good is the one case a buy may be finished from: only then is the
+  // server asked whether it can.
+  const stopped =
+    outcome?.status === 'refused' || outcome?.status === 'failed' || outcome?.status === 'expired';
+  useEffect(() => {
+    if (!stopped) return;
+    let mine = true;
+    void continuesOrders(apiFetch).then((yes) => {
+      if (mine) setCanFinish(yes);
+    });
+    return () => {
+      mine = false;
+    };
+  }, [stopped, apiFetch]);
 
   // Leaving the page stops the run between steps; what was signed is still reported.
   useEffect(() => {
@@ -232,10 +263,70 @@ export function OrderScreen({ id }: { id: string }) {
         ? `/indexes/${encodeURIComponent(terms.slug)}`
         : '/publish';
   const testNetwork = shown.legs[0]?.provenance === 'sandbox';
+  // The swaps the order left undone: what an order that finishes it would make, and is held to.
+  const left = legsInOrder(now)
+    .filter((leg) => leg.kind === 'swap' && leg.status !== 'confirmed' && leg.status !== 'skipped')
+    .flatMap((leg) => leg.trades);
   // A deposit that landed stays in the vault as cash, whatever became of the steps after it.
   const deposited = now.legs.some(
     (leg) => (leg.kind === 'create_vault' || leg.kind === 'deposit') && leg.status === 'confirmed',
   );
+
+  // Stopped for good after the deposit landed, with swaps left: where the server can finish it, that
+  // is offered first (the flow audit, finding 24).
+  const stranded =
+    !done &&
+    deposited &&
+    !terms &&
+    !record.continues &&
+    left.length > 0 &&
+    view?.next.kind === 'new-order';
+  const offerFinish = stranded && canFinish;
+
+  async function finish() {
+    if (!record || finishing) return;
+    setFinishing(true);
+    setFinishFailure(null);
+    const o = t.order.outcome;
+    const made = await continueOrder(apiFetch, record.orderId);
+    if (made.kind !== 'placed') {
+      setFinishing(false);
+      if (made.kind === 'unavailable') return setCanFinish(false);
+      setFinishFailure(
+        made.kind === 'refused'
+          ? made.priceMoved
+            ? o.finishPriceMoved
+            : made.retryable
+              ? o.finishLater
+              : o.finishRefused(made.sentence)
+          : made.kind === 'busy'
+            ? t.shell.slowDown
+            : made.kind === 'signed-out'
+              ? t.buy.failure.signedOut
+              : made.kind === 'unreadable'
+                ? t.buy.failure.unreadable
+                : t.buy.failure.unreachable,
+      );
+      return;
+    }
+    // The new order's record: the same plan and vault, nothing approved yet, and what it is held to.
+    const kept = keepOrder({
+      orderId: made.order.id,
+      userId: record.userId,
+      proposalId: record.proposalId,
+      chain: record.chain,
+      amountUsd: record.amountUsd,
+      lines: record.lines,
+      approved: null,
+      ...(record.linked ? { linked: true as const } : {}),
+      continues: { orderId: record.orderId, trades: left },
+    });
+    if (!kept) {
+      setFinishing(false);
+      return setFinishFailure(t.buy.failure.noStore);
+    }
+    router.push(`/orders/${encodeURIComponent(made.order.id)}`);
+  }
 
   // The one primary button of the view: sign, carry on, approve a step again, or nothing.
   const next: NextStep | { kind: 'first' } =
@@ -282,7 +373,10 @@ export function OrderScreen({ id }: { id: string }) {
         <CardHeader title={t.order.stepsTitle} level={2} meta={<ChainBadge chain={chain} />} />
         <CardBody className="flex flex-col gap-4">
           <StatRow>
-            {buying && <Stat label={t.order.review.deposit}>{depositShown}</Stat>}
+            {/* an order that finishes another deposits nothing */}
+            {buying && !record.continues && (
+              <Stat label={t.order.review.deposit}>{depositShown}</Stat>
+            )}
             <Stat label={t.order.review.steps}>{legs.length}</Stat>
             {!record.approved && (
               <Stat label={t.order.review.expires} className="max-[620px]:col-span-2">
@@ -306,6 +400,7 @@ export function OrderScreen({ id }: { id: string }) {
                   units={units}
                   explorer={t.chain.explorers[chain]}
                   mock={onMock(port, chain)}
+                  money={(value) => dollars(value, lang)}
                   t={t}
                   locale={LOCALE[lang]}
                 />
@@ -437,16 +532,49 @@ export function OrderScreen({ id }: { id: string }) {
           </p>
         )}
         {next.kind === 'new-order' && (
-          <div className="flex flex-wrap items-center gap-3">
-            <Link href={newOrder} className={buttonClass({ variant: 'primary' })}>
-              {t.order.outcome.newOrder}
-            </Link>
-            {deposited && (
-              <Link href="/monitor" className={buttonClass({ variant: 'secondary' })}>
+          // With the deposit in the vault, that is where to look first, not at a second deposit.
+          <div data-ui="order-stopped" className="flex flex-wrap items-center gap-3">
+            {offerFinish && (
+              <>
+                <Button
+                  variant="primary"
+                  busy={finishing}
+                  busyLabel={t.order.outcome.finishing}
+                  onClick={finish}
+                >
+                  {t.order.outcome.finish}
+                </Button>
+                <Link href="/monitor" className={buttonClass({ variant: 'secondary' })}>
+                  {t.order.outcome.seePortfolio}
+                </Link>
+              </>
+            )}
+            {deposited && !offerFinish && (
+              <Link href="/monitor" className={buttonClass({ variant: 'primary' })}>
                 {t.order.outcome.seePortfolio}
               </Link>
             )}
+            <Link
+              href={newOrder}
+              className={buttonClass({ variant: deposited ? 'secondary' : 'primary' })}
+            >
+              {t.order.outcome.newOrder}
+            </Link>
           </div>
+        )}
+        {offerFinish && (
+          <p data-ui="order-finish-note" className="max-w-(--tf-measure-body) text-body-sm">
+            {t.order.outcome.finishNote}
+          </p>
+        )}
+        {finishFailure && (
+          <p
+            role="alert"
+            className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm text-destructive"
+          >
+            <StatusMark status="off-track" size={12} className="mt-1.5" />
+            <span>{finishFailure}</span>
+          </p>
         )}
         {/* The order is done: the next step is the portfolio it filled, and another buy beside it. */}
         {done && !running && terms?.kind !== 'publish' && (
@@ -508,10 +636,13 @@ function Step({
   units,
   explorer,
   mock,
+  money,
   t,
   locale,
 }: {
   n: number;
+  /** A dollar figure in the language of the page. */
+  money: (value: number) => string;
   /** The explorer's name, for the link's accessible name. */
   explorer: string;
   /** The chain runs on the mock: its transactions are no network's, and link to the mock's own address. */
@@ -535,6 +666,16 @@ function Step({
   const spend = (raw: string) => (units ? whole(raw, units.cash) : null) ?? raw;
   /** A token by the symbol this repository committed for it, or its id on the chain where none is. */
   const symbol = (asset: string) => units?.tokens[asset]?.symbol ?? tokenName(asset);
+  /** The most one token costs when the least is received: what is spent over that minimum. */
+  const each = (spentRaw: string, minOutRaw: string, asset: string) => {
+    const cash = units?.tokens[units.cash];
+    const token = units?.tokens[asset];
+    const least = Number(minOutRaw);
+    if (!cash || !token || !(least > 0)) return null;
+    const price = Number(spentRaw) / 10 ** cash.decimals / (least / 10 ** token.decimals);
+    // A minimum too small to mean a price (a dust amount) gets none.
+    return Number.isFinite(price) && price < 1e9 ? money(price) : null;
+  };
   const status = phase
     ? t.order.phase[phase as keyof Dictionary['order']['phase']]
     : t.order.status[now.status];
@@ -544,9 +685,11 @@ function Step({
       <p className="flex flex-wrap items-baseline gap-x-2 text-body">
         <span className="font-medium">
           {t.order.step(n)} ·{' '}
-          {leg.kind === 'create_vault' && leg.trades.length > 0
+          {leg.trades.length > 0 && leg.kind === 'create_vault'
             ? t.order.kind.create_vault_buy
-            : t.order.kind[leg.kind]}
+            : leg.trades.length > 0 && leg.kind === 'deposit'
+              ? t.order.kind.deposit_buy
+              : t.order.kind[leg.kind]}
         </span>
         {leg.cashRaw && <span className="tabular-nums">{spend(leg.cashRaw)}</span>}
         <span aria-hidden="true">·</span>
@@ -582,6 +725,10 @@ function Step({
                   <>
                     {' · '}
                     {t.order.review.atLeastWhole(whole(expected.minOutRaw, trade.buy) as string)}
+                    {each(trade.amountInRaw, expected.minOutRaw, trade.buy) !== null &&
+                      ` (${t.order.review.atMostEach(
+                        each(trade.amountInRaw, expected.minOutRaw, trade.buy) as string,
+                      )})`}
                     {under !== null && ` · ${t.order.review.under(formatBps(under, locale))}`}
                   </>
                 )}

@@ -136,6 +136,74 @@ export async function placeOrder(
   return { kind: 'placed', order: order.data };
 }
 
+// Finishing a buy with the cash already in its vault (the flow audit, finding 24):
+//
+//   POST /v1/orders/{id}/continue   no body; the owner's alone
+//   200  a new order with `continues: <the first order's id>`, no `depositRaw`, and only `swap` steps;
+//        asked again while that order can still be signed, the same one
+//   409  a sentence: the deposit has not landed, nothing is left, a step built before can still land
+//        (`details.retryable`), or the vault's cash is short; `PRICE_MOVED` when a step can no longer
+//        meet the least it states
+//
+// The route is not on every server yet. Nothing is offered until it is known to be there.
+
+/** A well-formed id no order has: asking to finish it tells whether the route is there, and makes nothing. */
+const NO_ORDER = '00000000-0000-4000-8000-000000000000';
+
+const continuePath = (id: string) => `/v1/orders/${encodeURIComponent(id)}/continue`;
+
+/**
+ * Whether this server finishes buys. A server with the route answers that it has no such order, in
+ * the API's own shape (`{ error }`); one without it answers that there is no such route (the web
+ * framework's `{ message: "Route POST:… not found" }`), or with a method it does not take.
+ */
+export async function continuesOrders(apiFetch: ApiFetch): Promise<boolean> {
+  try {
+    const res = await apiFetch(continuePath(NO_ORDER), { method: 'POST' });
+    if (res.status !== 404) return false;
+    const body = await bodyOf(res);
+    return typeof body.error === 'string' && body.message === undefined;
+  } catch {
+    return false;
+  }
+}
+
+export type ContinueOutcome =
+  | { kind: 'placed'; order: OrderDetail & { continues: string } }
+  /** 409: why not, in the server's sentence; `retryable` when asking again later may work. */
+  | { kind: 'refused'; sentence: string; retryable: boolean; priceMoved: boolean }
+  | { kind: 'signed-out' | 'busy' | 'unreachable' | 'unreadable' | 'unavailable' };
+
+/** Asks for the order that finishes `id` with the cash in its vault. Nothing is deposited. */
+export async function continueOrder(apiFetch: ApiFetch, id: string): Promise<ContinueOutcome> {
+  let res: Response;
+  try {
+    res = await apiFetch(continuePath(id), { method: 'POST' });
+  } catch {
+    return { kind: 'unreachable' };
+  }
+  const body = await bodyOf(res);
+  if (res.status === 409) {
+    const details = typeof body.details === 'object' && body.details !== null ? body.details : {};
+    return {
+      kind: 'refused',
+      sentence: typeof body.error === 'string' ? body.error : '',
+      retryable: (details as { retryable?: unknown }).retryable === true,
+      priceMoved: body.code === 'PRICE_MOVED',
+    };
+  }
+  if (res.status === 404 || res.status === 405 || res.status === 501)
+    return { kind: 'unavailable' };
+  if (res.status === 401 || res.status === 403) return { kind: 'signed-out' };
+  if (res.status === 429) return { kind: 'busy' };
+  if (!res.ok) return { kind: 'unreachable' };
+  const order = OrderDetail.safeParse(body);
+  // The answer must say which order it finishes, and be another order than that one.
+  if (!order.success || body.continues !== id || order.data.id === id)
+    return { kind: 'unreadable' };
+  return { kind: 'placed', order: { ...order.data, continues: id } };
+}
+
 /** GET /v1/orders/{id}: the order as it stands. */
 export async function readOrder(
   apiFetch: ApiFetch,
@@ -151,7 +219,14 @@ export async function readOrder(
   if (!res.ok) return { kind: failureOf(res.status, body.code) };
   const order = OrderDetail.safeParse(body);
   return order.success && order.data.id === id
-    ? { kind: 'read', order: order.data }
+    ? {
+        kind: 'read',
+        // Which order it finishes, where it finishes one: kept as the server said it.
+        order: {
+          ...order.data,
+          ...(typeof body.continues === 'string' ? { continues: body.continues } : {}),
+        },
+      }
     : { kind: 'unreadable' };
 }
 

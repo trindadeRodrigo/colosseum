@@ -185,6 +185,8 @@ describe('a shared portfolio read from the chain by this app', () => {
     const mark = find(host, '[data-ui="source-mark"]');
     expect(mark.getAttribute('data-source')).toBe('chain');
     expect(mark.textContent).toContain(en.shared.check.differs('Solana'));
+    // a check that found something wrong opens the fold over who published it by itself
+    expect(find<HTMLDetailsElement>(host, '[data-ui="family-checks"]').open).toBe(true);
     // the chain's version 3 at 50/25/25, not the server's version 2 at 40/30/30
     expect(host.textContent).toContain(en.shared.family.versionN(3));
     const legs = find(host, '[data-ui="plan-legs"]').textContent ?? '';

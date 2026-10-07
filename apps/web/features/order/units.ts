@@ -21,6 +21,19 @@ export const MOCK_CASH_SYMBOL: Record<ChainId, string> = {
   base: 'USDC',
 };
 
+/**
+ * The mock chain's shelf (packages/chain-mock), by slug: what a portfolio can be published with on the
+ * mock, where the committed deployment names the cash token and nothing else. Sample throughout.
+ */
+const MOCK_SHELF = ['spy', 'nvda', 'tsla', 'gold', 'yield'] as const;
+/**
+ * The decimals of the mock's tokens as packages/chain-mock gives them (apps/web may not import the
+ * mock, so tests/web-units.test.ts holds this to it): the chain's stock-token decimals, but 6 for the
+ * dollar-yield token. With these an order on the mock reads in whole tokens, as one on a test network
+ * does.
+ */
+const MOCK_STOCK_DECIMALS: Record<ChainId, number> = { solana: 8, robinhood: 18, base: 8 };
+
 /** The units of a chain's tokens on the network this app signs for, or null when none are committed. */
 export function unitsFor(chain: ChainId, mock: boolean): ChainUnits | null {
   const deployment = deploymentsFor(chain, mock)?.[chain];
@@ -29,6 +42,16 @@ export function unitsFor(chain: ChainId, mock: boolean): ChainUnits | null {
     return {
       cash: deployment.cash,
       tokens: {
+        ...Object.fromEntries(
+          MOCK_SHELF.map((slug) => [
+            `${chain}:${slug}`,
+            {
+              symbol: tokenName(`${chain}:${slug}`),
+              decimals: slug === 'yield' ? 6 : MOCK_STOCK_DECIMALS[chain],
+            },
+          ]),
+        ),
+        // after the shelf, so the chain's dollar keeps its own name and decimals
         [deployment.cash]: { symbol: MOCK_CASH_SYMBOL[chain], decimals: deployment.cashDecimals },
       },
     };
@@ -42,12 +65,6 @@ export function unitsFor(chain: ChainId, mock: boolean): ChainUnits | null {
     ),
   };
 }
-
-/**
- * The mock chain's shelf (packages/chain-mock), by slug: what a portfolio can be published with on the
- * mock, where the committed deployment names the cash token and nothing else. MOCK throughout.
- */
-const MOCK_SHELF = ['spy', 'nvda', 'tsla', 'gold', 'yield'] as const;
 
 /**
  * The assets a portfolio may name on this chain, other than cash: the committed deployment's on a real

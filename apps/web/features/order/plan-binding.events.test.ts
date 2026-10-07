@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
-import type { BasketLine } from '@colosseum/schemas';
+import { type BasketLine, DISCLAIMER, DISCLAIMER_SHORT } from '@colosseum/schemas';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buttonClass } from '../../components/ui/button-class';
 import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
-import { withAccount } from '../account/test/screen';
+import { inShell, withAccount } from '../account/test/screen';
 import { GOAL_DRAFT } from '../goal/draft';
 import { restoreGoal } from '../goal/sheet';
 import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
@@ -263,6 +263,23 @@ describe('an income plan and its gap (the flow audit, findings 11 and 14)', () =
     expect(verdict.textContent).toBe(en.plan.verdict.met);
     expect(verdict.querySelector('a')).toBeNull();
   });
+
+  it.each(['en', 'pt'] as const)(
+    'keeps the full disclaimer on the plan’s page, in the shell’s foot, with the short line gone (%s)',
+    async (lang) => {
+      rememberPlan(short());
+      const host = await mount(inShell(lang, 'auto', createElement(PlanScreen, { id: PLAN_ID })));
+      await settle();
+      await settle();
+      expect(find(host, 'main [data-ui="plan-screen"]')).toBeTruthy();
+      expect(host.textContent).not.toContain(DISCLAIMER_SHORT[lang]);
+      expect(host.querySelector('main [data-ui="disclaimer"]')).toBeNull();
+      const all = [...host.querySelectorAll('[data-ui="disclaimer"]')];
+      expect(all).toHaveLength(1);
+      expect(all[0]?.closest('[data-ui="app-foot"]')).not.toBeNull();
+      expect(find(all[0] as HTMLElement, 'p[lang]').textContent).toBe(DISCLAIMER[lang]);
+    },
+  );
 
   it('finds the plan again in another tab of the same browser, and only for the person who built it', async () => {
     rememberPlan(short());
