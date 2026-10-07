@@ -26,6 +26,9 @@ import type { PromptGoal } from './prompt-file';
 // else the rules parser), the file's answers through the same `runIntake` the route calls, and once
 // the sheet is whole, `candidates()` and `compose` for the plain plan, on the chain's shelf and figures.
 
+/** The messages of a prompt file the answers are said to stand for: more than the intake reads one by one. */
+const ANSWERS_THEN = 12;
+
 /** The key to write under `answers` for each field the intake may ask about. */
 export const ANSWER_KEY: Record<QuestionField, string> = {
   goal: 'goal',
@@ -136,6 +139,9 @@ export async function runGoal(goal: PromptGoal, opts: RunOptions): Promise<GoalR
     ...(language ? { language } : {}),
     reply: read.reply,
     answers: goal.answers,
+    // A prompt file is one conversation written whole: its answers stand for every message of it,
+    // so a plain yes or no in the text is read with them (`IntakeInput.answersThen`).
+    answersThen: Array.from({ length: ANSWERS_THEN }, () => goal.answers),
     homeChain: goal.chain,
     portfolios: data.portfolios,
     // The curated labels of the chain and what a filter matches there (gates THEMES, THEME-MATCHED):

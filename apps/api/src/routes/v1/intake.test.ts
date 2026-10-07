@@ -549,7 +549,12 @@ describe('POST /v1/baskets/intake', () => {
     const ask = async (text: string, followUps: string[] = []) =>
       IntakeResponse.parse(
         (
-          await post(who, PATH, { text, answers, ...(followUps.length ? { followUps } : {}) })
+          await post(who, PATH, {
+            text,
+            answers,
+            // The form was answered before the messages: a plain yes then answers the one question.
+            ...(followUps.length ? { followUps, answersThen: followUps.map(() => answers) } : {}),
+          })
         ).json(),
       );
     const WHOLE = { growthBps: 10_000, dollarYieldBps: 0, goldBps: 0, cashBps: 0 };
@@ -641,7 +646,11 @@ describe('POST /v1/baskets/intake', () => {
           await post(
             who,
             PATH,
-            { text, answers, ...(followUps.length ? { followUps } : {}) },
+            {
+              text,
+              answers,
+              ...(followUps.length ? { followUps, answersThen: followUps.map(() => answers) } : {}),
+            },
             mocked,
           )
         ).json(),
@@ -734,6 +743,8 @@ describe('POST /v1/baskets/intake', () => {
       text: 'I want to invest $2,000 in AI for 5 years',
       answers: { goal: 'grow', amountUsd: 2000, horizonMonths: 60 },
       followUps: ['yes'],
+      // The form was answered before the yes was sent.
+      answersThen: [{ goal: 'grow', amountUsd: 2000, horizonMonths: 60 }],
     });
     const sleeves = [{ kind: 'theme', theme: 'ai', shareBps: 10_000 }];
     expect(ai.sheet?.sleeves).toEqual(sleeves);

@@ -274,6 +274,16 @@ export type IntakeInput = {
    * none is known, and no such line is said. The model never sees this list.
    */
   names?: readonly string[];
+  /**
+   * The form's answers as they stood when each of the last messages was sent, the last entry for
+   * the last message (the third review, Oct 7). A plain yes or no names no question: it is applied
+   * only to the question that was the one open when it was said, and what was open then depends on
+   * what the form had answered then, not on what it answers now ("Put 30% in big tech.", "no" with
+   * four questions open, and the form filled in afterwards, left big tech out for good). For a
+   * message with no entry the form is counted as empty: a yes or no then answers only a question
+   * that was the one open whatever the form says.
+   */
+  answersThen?: readonly IntakeAnswers[];
 };
 
 export type IntakeResult = {
@@ -771,6 +781,18 @@ export function runIntake(input: IntakeInput): IntakeResult {
   };
   const portfolioNames = input.portfolios.map((p) => p.name);
   let turnNow = 0;
+  /**
+   * Whether the question of `field` was the one question open when message `n` was sent, with the
+   * form as it stood then (`answersThen`; empty where the caller does not say). A plain yes or no
+   * answers no other.
+   */
+  const onlyOpenThen = (n: number, field: QuestionField, now: IntakeResult): boolean => {
+    if (now.questions.length !== 1 || now.questions[0]?.field !== field) return false;
+    const then = input.answersThen?.[input.answersThen.length - (turns.length - n)] ?? {};
+    if (JSON.stringify(then) === JSON.stringify(form)) return true;
+    const asked = intakeOf(input, turns.slice(0, n), { ...then, ...words }, heard).result.questions;
+    return asked.length === 1 && asked[0]?.field === field;
+  };
   for (let n = 1; n < turns.length; n += 1) {
     turnNow = n;
     const message = turns[n] ?? '';
@@ -849,7 +871,8 @@ export function runIntake(input: IntakeInput): IntakeResult {
       // one that asks which of two things stands. A yes takes the question's start, the share the
       // text states (`mix_confirmed`); with no start it is no answer. A no leaves out what was asked
       // about, as "none" does.
-      const said = before.result.questions.length === 1 ? yesOrNoSaidIn(message) : null;
+      const yesOrNo = yesOrNoSaidIn(message);
+      const said = yesOrNo !== null && onlyOpenThen(n, 'mix', before.result) ? yesOrNo : null;
       const start = PersonalMix.safeParse(asked.read);
       if (said !== null && asked.template !== 'holdOrLeaveOut') {
         if (said === 'yes' && start.success) {
@@ -901,7 +924,7 @@ export function runIntake(input: IntakeInput): IntakeResult {
     const doubted = before.open.refusal;
     if (doubted.length > 0 && before.result.questions.length === 1) {
       const said = yesOrNoSaidIn(message);
-      if (said !== null) {
+      if (said !== null && onlyOpenThen(n, 'limits', before.result)) {
         heard.refusals.push({ classes: doubted, taken: said === 'yes' });
         continue;
       }
@@ -912,7 +935,7 @@ export function runIntake(input: IntakeInput): IntakeResult {
     const startFrom = before.open.startFrom;
     if (startFrom.length > 0 && before.result.questions.length === 1) {
       const said = yesOrNoSaidIn(message);
-      if (said !== null) {
+      if (said !== null && onlyOpenThen(n, 'themes', before.result)) {
         heard.portfolios.push(...startFrom.map((slug) => ({ slug, taken: said === 'yes' })));
         heard.answered.push(n);
         continue;

@@ -109,6 +109,10 @@ const reply = (over: Record<string, unknown> = {}) => ({
   marketFilter: null,
   ...over,
 });
+// In these tests the form's answers were given before the messages were sent, unless a test says
+// otherwise: `answersThen` says so for every message (the third review, B8: a plain yes or no is
+// applied to the question that was the one open when it was said, with the form as it stood then).
+const TURNS_TOLD = 12;
 const intake = (text: string, r: unknown = reply(), over: Partial<IntakeInput> = {}) =>
   runIntake({
     text,
@@ -119,6 +123,9 @@ const intake = (text: string, r: unknown = reply(), over: Partial<IntakeInput> =
     labels: LABELS,
     matchOf,
     names: NAMES,
+    ...(over.answers
+      ? { answersThen: Array.from({ length: TURNS_TOLD }, () => over.answers ?? {}) }
+      : {}),
     ...over,
   });
 const fields = (r: { questions: { field: string }[] }) => r.questions.map((q) => q.field);
@@ -5639,5 +5646,90 @@ describe('the third review (Oct 7), B10: a reply that reads more than is written
       expect(horizonsIn('Por 10 anos, sem pressa.', NOW)).toEqual([120]);
       expect(horizonsIn('I am 5 years of age.', NOW)).toEqual([]);
     });
+  });
+});
+
+describe('the third review (Oct 7), B8: a yes or no answers only the question that was the one open when it was said', () => {
+  const FORM: IntakeAnswers = { goal: 'grow', amountUsd: 5000, horizonMonths: 60, risk: 'medium' };
+  const reads = (over: Record<string, unknown> = {}) =>
+    reply({ goal: null, amountUsd: null, horizonMonths: null, risk: null, ...over });
+  /** A conversation read now with `answers`, the form having stood as `then` at each later message. */
+  const said = (messages: string[], r: unknown, answers: IntakeAnswers, then?: IntakeAnswers[]) =>
+    runIntake({
+      text: conversationText(messages[0] ?? '', messages.slice(1)),
+      nowMonth: NOW,
+      reply: r,
+      homeChain: 'solana',
+      portfolios,
+      labels: LABELS,
+      matchOf,
+      names: NAMES,
+      answers,
+      ...(then ? { answersThen: then } : {}),
+    });
+  // The first message, the yes or no said after it, the reply that reads the first, and what the
+  // word would wrongly settle: a flag that says it was applied.
+  const CASES: [string, string, Record<string, unknown> | null, string][] = [
+    // The review's own (`repro.ts` B8): no model.
+    ['Put 30% in big tech.', 'no', null, 'none_from_words'],
+    // In other words.
+    ['Put 30% in big tech.', 'yes', null, 'mix_confirmed'],
+    ['I like AI.', 'no', { markets: ['ai'] }, 'none_from_words'],
+    ['Coloque 40% em IA.', 'sim', null, 'mix_confirmed'],
+    ['Quero tudo em ações.', 'não', null, 'none_from_words'],
+    ['Do not buy stocks for me.', 'yes', { cannotHold: ['stock'] }, 'refusal_confirmed:stock'],
+    ['Nada de bolsa.', 'não', { language: 'pt', cannotHold: ['stock'] }, 'refusal_declined:stock'],
+    ['My pick is the seven.', 'yes', { portfolios: ['The Seven'] }, 'portfolio_confirmed'],
+    ['Start me off from The Seven.', 'no', null, 'portfolio_left_out'],
+  ];
+
+  it('said while several questions were open and the form filled in afterwards: it answers none of them', () => {
+    for (const [first, word, r, applied] of CASES) {
+      const at = `${first} / ${word}`;
+      const model = r === null ? null : reads(r);
+      // When it was said the form was empty, and more than one question was open.
+      expect(said([first], model, {}).questions.length, at).toBeGreaterThan(1);
+      const now = said([first, word], model, FORM, [{}]);
+      expect(now.flags, at).not.toContain(applied);
+      // The question it might have answered is still asked, and no sheet is made without it.
+      expect(now.sheet, at).toBeNull();
+      expect(now.questions, at).toHaveLength(1);
+      // The same where the caller does not say how the form stood: counted as empty.
+      const untold = said([first, word], model, FORM);
+      expect(untold.flags, at).not.toContain(applied);
+      expect(untold.questions, at).toEqual(now.questions);
+    }
+  });
+
+  it('said while it was the one question open, the form as it stood then: it answers it', () => {
+    for (const [first, word, r, applied] of CASES) {
+      const at = `${first} / ${word}`;
+      const model = r === null ? null : reads(r);
+      expect(said([first], model, FORM).questions, at).toHaveLength(1);
+      const now = said([first, word], model, FORM, [FORM]);
+      expect(now.flags, at).toContain(applied);
+      expect(now.questions, at).toEqual([]);
+      expect(now.sheet, at).not.toBeNull();
+    }
+    // And where the text itself leaves one question open, whatever the form says.
+    const whole = 'I want to grow $5,000 over 5 years at medium risk. I like big tech.';
+    const r = reply({ markets: ['big_tech'] });
+    expect(said([whole], r, {}).questions).toHaveLength(1);
+    expect(said([whole, 'no'], r, {}).flags).toContain('none_from_words');
+  });
+
+  it('the form at each message is its own: answered between two messages, the later yes counts and the earlier does not', () => {
+    const model = null;
+    const first = 'Put 30% in big tech.';
+    // "no" with the form empty, then the form filled in, then "yes" to the one question left.
+    const r = said([first, 'no', 'yes'], model, FORM, [{}, FORM]);
+    expect(r.flags).toContain('mix_confirmed');
+    expect(r.flags).not.toContain('none_from_words');
+    expect(r.sheet?.mix).toEqual(bps(3000, 7000));
+    // A share or "none" names what it answers, so it never depended on the form.
+    const share = said([first, 'half'], model, FORM, [{}]);
+    expect(share.flags).toContain('mix_from_words');
+    expect(share.sheet?.mix).toEqual(bps(5000, 5000));
+    expect(said([first, 'none'], model, FORM, [{}]).flags).toContain('none_from_words');
   });
 });
