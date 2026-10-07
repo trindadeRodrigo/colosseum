@@ -160,6 +160,8 @@ const kept = allRows
       ...(p.labels ? { labels: p.labels } : {}),
       ...(p.liquidity ? { liquidity: { usd: p.liquidity.usd } } : {}),
       ...(p.volume ? { volume: { h24: p.volume.h24 } } : {}),
+      // the day's trades: a volume of zero beside them is a zero of pricing, not of trading
+      ...(p.txns?.h24 ? { txns: { h24: { buys: p.txns.h24.buys, sells: p.txns.h24.sells } } } : {}),
     })),
   }));
 const discoveryStamp = discoveryFile.match(/(\d{8}T\d{4})/)?.[1] ?? 'unknown';
@@ -167,7 +169,7 @@ write(
   `discovery-dexscreener-${discoveryStamp}.json.gz`,
   gzipSync(
     JSON.stringify({
-      source: `${discoveryFile.split('/').at(-1)} (pnpm risk:discover), the rows of the ${kept.length} tracked stocks, each pair cut to its address, DexScreener's name for the venue, its liquidity and its 24-hour volume`,
+      source: `${discoveryFile.split('/').at(-1)} (pnpm risk:discover), the rows of the ${kept.length} tracked stocks, each pair cut to its address, DexScreener's name for the venue, its liquidity, its 24-hour volume and its trades of the day`,
       provenance: 'fixture',
       tokensInTheFile: allRows.length,
       // every venue name the whole file carries, with its pairs: what DexScreener listed at all

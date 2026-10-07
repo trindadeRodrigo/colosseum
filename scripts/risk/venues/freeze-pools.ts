@@ -86,9 +86,15 @@ const whole = addresses.filter((a) => {
   return s && (s.owner in DECODED_PROGRAMS || s.space === CLMM_POOL_SIZE);
 });
 const data = new Map<string, string>();
+let slotAccounts: number | null = null;
+let slotVaults: number | null = null;
 for (let i = 0; i < whole.length; i += 100) {
   const batch = whole.slice(i, i + 100);
-  const r = await rpc<{ value: Info[] }>('getMultipleAccounts', [batch, { encoding: 'base64' }]);
+  const r = await rpc<{ context: { slot: number }; value: Info[] }>('getMultipleAccounts', [
+    batch,
+    { encoding: 'base64' },
+  ]);
+  slotAccounts = r.context.slot;
   r.value.forEach((v, k) => {
     if (v) data.set(batch[k] as string, v.data[0]);
   });
@@ -119,10 +125,11 @@ type Parsed = {
 } | null;
 for (let i = 0; i < vaultKeys.length; i += 100) {
   const batch = vaultKeys.slice(i, i + 100);
-  const r = await rpc<{ value: Parsed[] }>('getMultipleAccounts', [
+  const r = await rpc<{ context: { slot: number }; value: Parsed[] }>('getMultipleAccounts', [
     batch,
     { encoding: 'jsonParsed' },
   ]);
+  slotVaults = r.context.slot;
   r.value.forEach((v, k) => {
     const info = v?.data?.parsed?.info;
     if (info?.mint && info.tokenAmount)
@@ -165,6 +172,7 @@ const file: RoutePoolsFile = {
   programLabels: { source: LABEL_URL, fetchedAt, labels: programLabels },
   tokens: { source: TOKEN_URL, fetchedAt, symbols },
   vaults,
+  slots: { accounts: slotAccounts, vaults: slotVaults },
   pools,
 };
 writeFileSync(out, `${JSON.stringify(file, null, 2)}\n`);

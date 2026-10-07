@@ -66,9 +66,14 @@ export type RoutePoolsFile = {
   tokens: { source: string; fetchedAt: string; symbols: Record<string, string> };
   /**
    * The two vaults of each pool that has Raydium's pool size under another program and pairs a tracked stock: what
-   * the pool held at `slot`. Keyed by the vault's address.
+   * the pool held when they were read, a call or two after `slot`. Keyed by the vault's address.
    */
   vaults: Record<string, VaultRow>;
+  /**
+   * The slot of the call that read the whole accounts and of the call that read the vaults. `slot` is the first
+   * call's, the one that read owners and sizes. Absent in a file written before these were recorded.
+   */
+  slots?: { accounts: number | null; vaults: number | null };
   pools: RoutePoolRow[];
 };
 
@@ -503,6 +508,7 @@ export type DiscoveryRow = {
     labels?: string[];
     liquidity?: { usd?: number };
     volume?: { h24?: number };
+    txns?: { h24?: { buys?: number; sells?: number } };
   }> | null;
 };
 
@@ -525,6 +531,8 @@ export type DiscoveryPair = {
   fate: DiscoveryFate;
   liquidityUsd: number | null;
   volume24hUsd: number | null;
+  /** Trades DexScreener counted in the day; null when the row does not say. */
+  trades24h: number | null;
   /** The tracked stocks whose row lists the pair: two for a pair of two tracked stocks. */
   stocks: string[];
 };
@@ -537,6 +545,11 @@ export type DiscoveryMoney = {
   withoutLiquidity: number;
   volume24hUsd: number | null;
   withoutVolume: number;
+  /**
+   * Pairs DexScreener gives a volume of zero and trades in the same day: its own figure, kept as it gave it, and
+   * counted, because it is a zero of pricing and not of trading.
+   */
+  zeroVolumeWithTrades: number;
   stocks: string[];
 };
 
@@ -549,6 +562,8 @@ export function discoveryMoney(pairs: readonly DiscoveryPair[]): DiscoveryMoney 
     withoutLiquidity: pairs.length - liq.length,
     volume24hUsd: vol.length ? vol.reduce((t, x) => t + x, 0) : null,
     withoutVolume: pairs.length - vol.length,
+    zeroVolumeWithTrades: pairs.filter((p) => p.volume24hUsd === 0 && (p.trades24h ?? 0) > 0)
+      .length,
     stocks: [...new Set(pairs.flatMap((p) => p.stocks))].sort(),
   };
 }
@@ -618,6 +633,7 @@ export function discoveryTable(
               : 'not_in_the_registry_run',
         liquidityUsd: typeof p.liquidity?.usd === 'number' ? p.liquidity.usd : null,
         volume24hUsd: typeof p.volume?.h24 === 'number' ? p.volume.h24 : null,
+        trades24h: p.txns?.h24 ? (p.txns.h24.buys ?? 0) + (p.txns.h24.sells ?? 0) : null,
         stocks: [stock],
       });
     }
@@ -1081,6 +1097,7 @@ export type CutPoolRow = {
  * What a venue is to the code we have, from what its pools answered and from the swaps the walk decoded:
  * - `reached`: the vault's swap path reaches it and the collector quotes it;
  * - `hook`: a Uniswap v4 pool with a hook, which the path leaves out;
+ * - `not_reached`: a Uniswap v4 pool the path leaves out for another reason discovery gave;
  * - `v3_interface`: its pools answer Uniswap v3's own reads and log Uniswap v3's swap: a fork, which needs its
  *   factory's address and no decoder;
  * - `v3_reads_other_swap_log`: they answer the reads, and the walk decoded no swap of theirs;
@@ -1090,6 +1107,7 @@ export type CutPoolRow = {
 export type RobinhoodFit =
   | 'reached'
   | 'hook'
+  | 'not_reached'
   | 'v3_interface'
   | 'v3_reads_other_swap_log'
   | 'cl_other_interface'
@@ -1114,7 +1132,14 @@ export type RobinhoodVenue = {
   volumeSharePct: number | null;
   poolsWithoutASwap: number;
   /** DexScreener's own figures over the pools it listed: estimates. */
-  dexscreener: { pools: number; liquidityUsd: number; volume24hUsd: number };
+  dexscreener: {
+    pools: number;
+    liquidityUsd: number;
+    volume24hUsd: number;
+    /** Listed pools with no liquidity figure, and with no volume figure: in neither sum, and not zeros. */
+    withoutLiquidity: number;
+    withoutVolume: number;
+  };
 };
 
 export type RobinhoodTable = {
@@ -1149,11 +1174,14 @@ export function robinhoodTable(
   const venues = new Map<string, Acc>();
   let missing = 0;
   for (const p of cut) {
+    // a v4 pool the path leaves out is named by the reason discovery gave, not by the fact that it is left out
     const name =
       p.venue === 'uniswap-v4'
         ? p.reachable
           ? 'uniswap-v4 (no hook)'
-          : 'uniswap-v4 (hook)'
+          : p.unreachableReason === 'has_hook'
+            ? 'uniswap-v4 (hook)'
+            : `uniswap-v4 (${p.unreachableReason ?? 'not reached'})`
         : p.venue;
     const v = venues.get(name) ?? {
       venue: name,
@@ -1170,7 +1198,13 @@ export function robinhoodTable(
       volumeReason: null,
       volumeSharePct: null,
       poolsWithoutASwap: 0,
-      dexscreener: { pools: 0, liquidityUsd: 0, volume24hUsd: 0 },
+      dexscreener: {
+        pools: 0,
+        liquidityUsd: 0,
+        volume24hUsd: 0,
+        withoutLiquidity: 0,
+        withoutVolume: 0,
+      },
       stockSet: new Set<string>(),
       factorySet: new Set<string>(),
       answered: { slot0: 0, liquidity: 0 },
@@ -1186,8 +1220,10 @@ export function robinhoodTable(
     if (p.answers.liquidity) v.answered.liquidity++;
     if (p.dexscreener) {
       v.dexscreener.pools++;
-      v.dexscreener.liquidityUsd += p.dexscreener.liquidityUsd ?? 0;
-      v.dexscreener.volume24hUsd += p.dexscreener.volumeH24Usd ?? 0;
+      if (p.dexscreener.liquidityUsd === null) v.dexscreener.withoutLiquidity++;
+      else v.dexscreener.liquidityUsd += p.dexscreener.liquidityUsd;
+      if (p.dexscreener.volumeH24Usd === null) v.dexscreener.withoutVolume++;
+      else v.dexscreener.volume24hUsd += p.dexscreener.volumeH24Usd;
     }
     const f = flowByPool.get(p.address.toLowerCase());
     if (!f) {
@@ -1209,13 +1245,15 @@ export function robinhoodTable(
       ? 'reached'
       : v.venue === 'uniswap-v4 (hook)'
         ? 'hook'
-        : v.answered.liquidity === 0
-          ? 'not_cl'
-          : v.answered.slot0 < v.pools
-            ? 'cl_other_interface'
-            : v.swaps === 0
-              ? 'v3_reads_other_swap_log'
-              : 'v3_interface';
+        : v.venue.startsWith('uniswap-v4 (')
+          ? 'not_reached'
+          : v.answered.liquidity === 0
+            ? 'not_cl'
+            : v.answered.slot0 < v.pools
+              ? 'cl_other_interface'
+              : v.swaps === 0
+                ? 'v3_reads_other_swap_log'
+                : 'v3_interface';
   }
   const total = [...venues.values()].reduce((t, v) => t + (v.volume28dUsd ?? 0), 0);
   const rows = [...venues.values()].map(({ stockSet, factorySet, answered: _a, ...v }) => ({

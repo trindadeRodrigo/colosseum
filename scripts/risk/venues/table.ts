@@ -38,6 +38,8 @@ export type RegistryRow = RegistryPool & {
   program: string;
   assetMint: string;
   assetSymbol: string;
+  /** The other token of the pool. A pool of two stocks is filed under one of them: the other is here. */
+  quoteMint: string;
   tvlUsd: number | null;
 };
 
@@ -84,6 +86,8 @@ export type SolanaRow = {
     | (Money & {
         at: string;
         what: string;
+        /** Pools of the row with no measured money: in `pools`, in no dollar figure, and not zeros. */
+        notMeasured?: number;
         /** Of `usd`, the dollars themselves, where the two sides were told apart: the rest is the stock, at the pool's price. */
         dollarUsd?: number;
       })
@@ -210,7 +214,7 @@ export function solanaTable(inp: SolanaInputs): SolanaTable {
       usd: sum(valued.map((m) => m.tvlUsd)),
       dollarUsd: sum(valued.map((m) => m.dollarUsd)),
       at: inp.routePools.fetchedAt,
-      what: 'the two vault balances of the pools on stored routes that pair a tracked stock with USDC or USDT, the stock side at the pool’s own price, wherever in the pool’s range it sits: a lower bound, pools Jupiter did not use are not in it',
+      what: 'the two vault balances of the pools the chain read holds that pair a tracked stock with USDC or USDT, the stock side at the pool’s own price, wherever in the pool’s range it sits: a lower bound, pools Jupiter did not use are not in it',
     };
   };
 
@@ -233,7 +237,32 @@ export function solanaTable(inp: SolanaInputs): SolanaTable {
       .filter((p) => p.program && !(p.program in DECODED_PROGRAMS))
       .map((p) => p.program as string),
   ]);
-  const noDiscovery = discovery ? NO_PAIR_LISTED : 'no discovery file was read';
+  // A pair of a discovery file newer than the registry run was never opened on chain: its program is not known, so
+  // it is in no venue's row. It gets a row under DexScreener's own name, and no venue is then said to have no pair.
+  const unopened = pairs.filter((p) => p.fate === 'not_in_the_registry_run');
+  const noDiscovery = !discovery
+    ? 'no discovery file was read'
+    : unopened.length
+      ? `${NO_PAIR_LISTED} among the pairs the registry run opened (not opened by that run, program not known: ${unopened.length})`
+      : NO_PAIR_LISTED;
+  for (const dex of new Set(unopened.map((p) => p.dex))) {
+    const key = `unopened:${dex}`;
+    rows.push({
+      key,
+      group: 'unread',
+      name: `DexScreener’s “${dex}”: pairs the registry run did not open (the discovery file is newer than the registry)`,
+      program: null,
+      fact: null,
+      onRoutes: { pools: 0, withAStockLeg: 0 },
+      measured: { none: 'not opened on chain: neither its program nor what it holds was read' },
+      discovery: cellOf(
+        unopened.filter((p) => p.dex === dex),
+        NO_PAIR_LISTED,
+      ),
+      routed: cells(key),
+      stocks: [],
+    });
+  }
   for (const program of unreadPrograms) {
     const key = `unread:${program}`;
     const listed = pairs.filter((p) => p.program === program);
@@ -252,7 +281,18 @@ export function solanaTable(inp: SolanaInputs): SolanaTable {
   }
 
   // --- pools on programs we decode: what the registry run measured, and DexScreener's figures for those it listed
-  const ofTracked = inp.registry.pools.filter((p) => trackedSymbols.has(p.assetSymbol));
+  // a pool of two stocks is filed under one of them: it is a pool of a tracked stock when either side is tracked
+  const ofTracked = inp.registry.pools.filter(
+    (p) => trackedMints.has(p.assetMint) || trackedMints.has(p.quoteMint),
+  );
+  const money = (pools: ReadonlyArray<{ tvlUsd: number | null }>) => {
+    const measured = pools.map((p) => p.tvlUsd).filter((x): x is number => x !== null);
+    return {
+      pools: pools.length,
+      usd: sum(measured),
+      ...(measured.length < pools.length ? { notMeasured: pools.length - measured.length } : {}),
+    };
+  };
   const listedAmong = (addresses: readonly string[]) =>
     cellOf(pairsOf(addresses), 'DexScreener listed none of these pools');
   const registryRow = (exitPath: string, group: SolanaRow['group']): SolanaRow => {
@@ -266,8 +306,7 @@ export function solanaTable(inp: SolanaInputs): SolanaTable {
       fact: null,
       onRoutes: onRoutes(key),
       measured: {
-        pools: mine.length,
-        usd: sum(mine.map((p) => p.tvlUsd ?? 0)),
+        ...money(mine),
         at: inp.registry.fetchedAt,
         what:
           exitPath === 'other'
@@ -292,10 +331,9 @@ export function solanaTable(inp: SolanaInputs): SolanaTable {
     fact: null,
     onRoutes: onRoutes('registry:dust_at_the_registry_run'),
     measured: {
-      pools: dust.length,
-      usd: sum(dust.map((p) => p.tvlUsd ?? 0)),
+      ...money(dust),
       at: inp.known.fetchedAt,
-      what: 'every pool of the tracked stocks the registry run found on the four programs and left out as dust, vault balances priced then',
+      what: 'every pool the registry run found on the four programs, filed under a tracked stock and left out as dust, vault balances priced then',
     },
     discovery: listedAmong(dust.map((p) => p.address)),
     routed: cells('registry:dust_at_the_registry_run'),
@@ -321,10 +359,19 @@ export function solanaTable(inp: SolanaInputs): SolanaTable {
     shares.pools.filter((p) => p.key.startsWith('other_market:')).map((p) => p.key),
   )) {
     const program = key.slice('other_market:'.length);
+    const symbols = inp.routePools.tokens.symbols;
+    const tokens = [
+      ...new Set(
+        shares.pools
+          .filter((p) => p.key === key)
+          .flatMap((p) => mintsOf(p.pool) ?? [])
+          .map((mint) => symbols[mint] ?? `${mint.slice(0, 6)}…`),
+      ),
+    ].sort();
     rows.push({
       key,
       group: 'other_market',
-      name: `${labels[program] ?? program}: pools that hold no tracked stock (SOL, a gold token or another issuer’s stock token against dollars or SOL)`,
+      name: `${labels[program] ?? program}: pools that hold no tracked stock (${tokens.join(', ')})`,
       program,
       fact: null,
       onRoutes: onRoutes(key),
@@ -446,9 +493,9 @@ export type SolanaRank = {
   decodable: VenueFact['decodable'] | 'registry_matter';
   /**
    * What its legs, taken as Jupiter used them, close of the gap to Jupiter at that size, in basis points of the
-   * median and of the mean. Null without captures.
+   * median and of the mean. Null without captures; its reason when no pair of the gap sample uses the row.
    */
-  closesBp: Record<Side, { median: number; mean: number } | null>;
+  closesBp: Record<Side, { median: number; mean: number } | { none: string } | null>;
 };
 
 /**
@@ -458,9 +505,16 @@ export type SolanaRank = {
  */
 export function solanaRanking(table: SolanaTable, gap: readonly GapAccount[] | null): SolanaRank[] {
   const size = Math.max(...table.quotes.sizes);
-  const closeOf = (key: string, side: Side) =>
-    gap?.find((g) => g.side === side && g.notionalUsd === size)?.rows.find((r) => r.key === key)
-      ?.asJupiterUsedIt?.closesBp ?? (gap ? { median: 0, mean: 0 } : null);
+  const closeOf = (key: string, side: Side): SolanaRank['closesBp'][Side] => {
+    if (!gap) return null;
+    const row = gap
+      .find((g) => g.side === side && g.notionalUsd === size)
+      ?.rows.find((r) => r.key === key);
+    // no pair of the gap sample uses the row at this size: there is nothing to replay, which is not "closes nothing"
+    return row?.asJupiterUsedIt
+      ? row.asJupiterUsedIt.closesBp
+      : { none: 'no pair of the gap sample uses it at this size' };
+  };
   return table.rows
     .filter((r) => r.group === 'unread' || r.group === 'outside_the_router')
     .map(
@@ -517,9 +571,12 @@ function shareCells(row: SolanaRow, side: Side, sizes: readonly number[], n: num
 /** DexScreener's figures for a row: an estimate, a figure it did not give said as such and never as zero. */
 function discoveryCell(d: SolanaRow['discovery']): string {
   if ('none' in d) return `no data: ${d.none}`;
-  const money = (sum: number | null, without: number) =>
-    sum === null ? 'no figure' : `${usd(sum)}${without ? ` (${without} with no figure)` : ''}`;
-  return `${d.pools} · ${money(d.liquidityUsd, d.withoutLiquidity)} · ${money(d.volume24hUsd, d.withoutVolume)} (${count(d.stocks.length, 'stock')}; DexScreener: ${d.dex.join(', ')})`;
+  const money = (total: number | null, without: number) =>
+    total === null ? 'no figure' : `${usd(total)}${without ? ` (${without} with no figure)` : ''}`;
+  const zero = d.zeroVolumeWithTrades
+    ? `, ${d.zeroVolumeWithTrades} of them at $0 on a day with trades`
+    : '';
+  return `${d.pools} · ${money(d.liquidityUsd, d.withoutLiquidity)} · ${money(d.volume24hUsd, d.withoutVolume)}${zero} (${count(d.stocks.length, 'stock')}; DexScreener: ${d.dex.join(', ')})`;
 }
 
 /** The Solana tables as Markdown, for section 6 of the plan. Every figure's source and date is in the lines above it. */
@@ -582,7 +639,7 @@ export function solanaMarkdown(t: SolanaTable, probe: ByrealProbe | null): strin
     const measured =
       'none' in r.measured
         ? `no data: ${r.measured.none}`
-        : `${r.measured.pools.toLocaleString('en-US')} · ${usd(r.measured.usd)} (${day(r.measured.at)})`;
+        : `${r.measured.pools.toLocaleString('en-US')} · ${usd(r.measured.usd)}${r.measured.notMeasured ? ` (${r.measured.notMeasured} not measured)` : ''} (${day(r.measured.at)})`;
     lines.push(
       `| ${r.name} | ${measured} | ${discoveryCell(r.discovery)} | ${r.onRoutes.pools} (${r.onRoutes.withAStockLeg}) | ${shareCells(r, 'sell', sizes, n('sell'))} | ${shareCells(r, 'buy', sizes, n('buy'))} | ${onward(r)} | ${r.stocks.join(', ') || 'none'} |`,
     );
@@ -622,6 +679,7 @@ export function byrealMarkdown(p: ByrealProbe): string {
 const FIT_TEXT: Record<string, string> = {
   reached: 'reached by the vault’s swap path',
   hook: 'Uniswap v4 with a hook: left out by the path',
+  not_reached: 'left out by the path',
   v3_interface:
     'answers Uniswap v3’s reads and logs its swap: a fork, which needs a factory address, not a decoder',
   v3_reads_other_swap_log: 'answers Uniswap v3’s reads; the walk decoded none of its swaps',
@@ -654,7 +712,7 @@ export function robinhoodMarkdown(
         : `${usd(v.volume28dUsd)} · ${(v.volumeSharePct as number).toFixed(2)}% · ${v.swaps.toLocaleString('en-US')}${v.unpricedSwaps ? ` (${v.unpricedSwaps.toLocaleString('en-US')} not valued)` : ''}`;
     const name = /^0x[0-9a-f]{40}$/i.test(v.venue) ? 'a factory with no name' : v.venue;
     lines.push(
-      `| ${name}${v.factories.length ? ` (${v.factories.map((f) => short(f)).join(', ')})` : ''} | ${v.reached ? 'yes' : 'no'} | ${v.pools} (${v.stocks.length}) | ${usd(v.tvlUsd)}${v.poolsWithoutTvl ? ` (${v.poolsWithoutTvl} not measured)` : ''} | ${volume} | ${v.dexscreener.pools} · ${usd(v.dexscreener.liquidityUsd)} · ${usd(v.dexscreener.volume24hUsd)} | ${FIT_TEXT[v.fit] ?? v.fit} |`,
+      `| ${name}${v.factories.length ? ` (${v.factories.map((f) => short(f)).join(', ')})` : ''} | ${v.reached ? 'yes' : 'no'} | ${v.pools} (${v.stocks.length}) | ${usd(v.tvlUsd)}${v.poolsWithoutTvl ? ` (${v.poolsWithoutTvl} not measured)` : ''} | ${volume} | ${v.dexscreener.pools} · ${usd(v.dexscreener.liquidityUsd)}${v.dexscreener.withoutLiquidity ? ` (${v.dexscreener.withoutLiquidity} with no figure)` : ''} · ${usd(v.dexscreener.volume24hUsd)}${v.dexscreener.withoutVolume ? ` (${v.dexscreener.withoutVolume} with no figure)` : ''} | ${FIT_TEXT[v.fit] ?? v.fit} |`,
     );
   }
   return lines.join('\n');

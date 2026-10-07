@@ -1,6 +1,6 @@
 import { type RoutePool, routeTrade } from '@colosseum/risk';
 import type { StoredQuote } from '../lib-routing-gap';
-import type { QuoteLeg } from './lib';
+import type { GapShare, QuoteLeg, Side } from './lib';
 
 // PLAN-UNIVERSE RU.13 — how much of the gap to Jupiter a class of pools accounts for, by replay. Our router is run on
 // the amount Jupiter did not send through the class, and the class's own legs are added exactly as Jupiter quoted
@@ -84,5 +84,54 @@ export function gapWithLegs(
   return {
     gapBp: (jupiter / withLegs - 1) * 10_000,
     baseGapBp: (jupiter / base - 1) * 10_000,
+  };
+}
+
+/** Every class the router does not use, taken together: one more key of a pair's shares. */
+export const OUTSIDE = 'outside:all';
+
+/**
+ * One compared pair as the gap account reads it: the percent of the stock amount Jupiter traded in each class of
+ * pool and, for each class the router does not use, the gap with that class's legs taken as Jupiter quoted them.
+ * `OUTSIDE` is every such class at once. `plainGapBp` is the pair's gap as the router report gives it; a replay
+ * whose own plain gap is another number was not run on the same pools, and that throws.
+ */
+export function gapShareOf(
+  q: StoredQuote,
+  legs: readonly QuoteLeg[],
+  plainGapBp: number,
+  pools: readonly RoutePool[],
+  keyOf: (pool: string) => string,
+  routed: (key: string) => boolean,
+  chunks: number,
+): GapShare {
+  const stockPctByClass: Record<string, number> = {};
+  const legsOfClass = new Map<string, number[]>();
+  legs.forEach((leg, i) => {
+    if (leg.stockPct === null) return;
+    const key = keyOf(leg.pool);
+    stockPctByClass[key] = (stockPctByClass[key] ?? 0) + leg.stockPct;
+    legsOfClass.set(key, [...(legsOfClass.get(key) ?? []), i]);
+  });
+  const outside = [...legsOfClass].filter(([key]) => !routed(key));
+  const gapWithClassBp: Record<string, number | null> = {};
+  const replay = (indexes: readonly number[]) => {
+    const r = gapWithLegs(q, legs, indexes, pools, chunks);
+    if (r && Math.abs(r.baseGapBp - plainGapBp) > 1e-6)
+      throw new Error(`${q.asset}: the replay's plain gap is not the router report's`);
+    return r ? r.gapBp : null;
+  };
+  for (const [key, indexes] of outside) gapWithClassBp[key] = replay(indexes);
+  if (outside.length) {
+    stockPctByClass[OUTSIDE] = outside.reduce((t, [key]) => t + (stockPctByClass[key] ?? 0), 0);
+    gapWithClassBp[OUTSIDE] = replay(outside.flatMap(([, indexes]) => indexes));
+  }
+  return {
+    asset: q.asset,
+    side: q.side as Side,
+    notionalUsd: q.notionalUsd,
+    gapBp: plainGapBp,
+    stockPctByClass,
+    gapWithClassBp,
   };
 }

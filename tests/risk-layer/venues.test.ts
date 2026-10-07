@@ -1,6 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { gunzipSync } from 'node:zlib';
 import { decodeClmmPool, ROUTE_CHUNKS, type RoutePool, routeTrade } from '@colosseum/risk';
 import { describe, expect, it } from 'vitest';
 import {
@@ -13,33 +12,44 @@ import {
   stockShares,
 } from '../../scripts/risk/lib-routing-gap';
 import { buildSplit, loadCapture } from '../../scripts/risk/lib-split';
-import solanaList from '../../scripts/risk/universe/solana.json';
 import {
-  type ByrealProbeFile,
+  FROZEN,
+  frozenByreal,
+  frozenRobinhood,
+  frozenSolana,
+  readFrozen,
+  readQuotes,
+  trackedStocks,
+} from '../../scripts/risk/venues/frozen';
+import {
   byrealProbe,
   type CutPoolRow,
   classifyPool,
   classKey,
   clmmArrayStart,
   cutPoolRows,
-  DECODED_PROGRAMS,
   type DiscoveryRow,
   discoveryTable,
   type ExcludedPool,
-  type FlowRow,
   forkPoolMoney,
   type GapShare,
   gapAccount,
   type KnownPool,
   poolMints,
   quoteLegs,
-  type RoutePoolsFile,
   robinhoodTable,
   routedShares,
 } from '../../scripts/risk/venues/lib';
-import { dollarsOfStockLeg, gapWithLegs } from '../../scripts/risk/venues/replay';
+import {
+  dollarsOfStockLeg,
+  gapShareOf,
+  gapWithLegs,
+  OUTSIDE,
+} from '../../scripts/risk/venues/replay';
+import { venuesReport } from '../../scripts/risk/venues/run';
 import {
   ACCOUNTS_NOT_DECODED,
+  gapByStockMarkdown,
   gapMarkdown,
   NO_PAIR_LISTED,
   type RegistryRow,
@@ -61,46 +71,31 @@ import { PROPRIETARY_MARKET_MAKERS, VENUE_FACTS } from '../../scripts/risk/venue
 // - Robinhood Chain: the 28-day flow row of each of the cut's 427 pools, and the cut's pools with what discovery read.
 // Each share is recomputed here from the row's own amounts, by a reference written apart from the code. No test calls
 // the network, the collector's home or the database.
-const F = 'fixtures/risk/venues';
-const gz = <T>(file: string): T => JSON.parse(gunzipSync(readFileSync(file)).toString()) as T;
-const json = <T>(file: string): T => JSON.parse(readFileSync(file, 'utf8')) as T;
-
-const routePools = json<RoutePoolsFile>(`${F}/route-pools-20261007T1222.json`);
-const windowQuotes = parseQuotes(
-  gunzipSync(readFileSync(`${F}/quotes-20261006T2115-20261007T0110.jsonl.gz`)).toString(),
-);
-const cases = parseQuotes(readFileSync(`${F}/quotes-cases.jsonl`, 'utf8'));
-const excludedFile = json<{ fetchedAt: string; minPoolTvlUsd: number; excluded: ExcludedPool[] }>(
-  `${F}/registry-excluded-20261001T0138.json`,
-);
+const gz = <T>(file: string): T => readFrozen<T>(file);
+const frozen = frozenSolana();
+const routePools = frozen.routePools;
+const windowQuotes = frozen.quotes as StoredQuote[];
+const cases = readQuotes(FROZEN.cases);
+const excludedFile = {
+  fetchedAt: frozen.registry.fetchedAt,
+  minPoolTvlUsd: frozen.registry.minPoolTvlUsd as number,
+  excluded: frozen.registry.excluded as ExcludedPool[],
+};
 const discovery = gz<{ dexIdsInTheFile: Record<string, number>; rows: DiscoveryRow[] }>(
-  `${F}/discovery-dexscreener-20261001T0049.json.gz`,
+  FROZEN.discovery,
 );
-const robinhood = gz<{
-  flow: { source: string; rows: FlowRow[] };
-  cut: { source: string; dexscreenerAtCap: string[]; pools: CutPoolRow[] };
-}>(`${F}/robinhood-20261005T2011.json.gz`);
-const byrealFile = json<ByrealProbeFile>(`${F}/byreal-5pobXo-20261007T1222.json`);
+const robinhood = frozenRobinhood();
+const byrealFile = frozenByreal();
 
 // the registry run of Oct 1, from the copies frozen for RU.1 and RU.4
-const base = gz<{ fetched_at: string; source: string; pools: KnownPool[] }>(
-  'fixtures/risk/universe/solana-registry-20261001T0139.json.gz',
-);
-const detail = gz<{
-  pools: Array<{ address: string; mint: string; venue: string; exitPath: string }>;
-}>('fixtures/risk/universe/solana-registry-detail-20261001T0139.json.gz');
-const programOf = Object.fromEntries(Object.entries(DECODED_PROGRAMS).map(([p, v]) => [v, p]));
+const base = {
+  source: frozen.known.source,
+  fetched_at: frozen.known.fetchedAt,
+  pools: frozen.known.pools as KnownPool[],
+};
 const knownByAddress = new Map(base.pools.map((p) => [p.address, p]));
-const registryRows: RegistryRow[] = detail.pools.map((p) => ({
-  address: p.address,
-  venue: p.venue,
-  exitPath: p.exitPath,
-  program: programOf[p.venue] as string,
-  assetMint: p.mint,
-  assetSymbol: knownByAddress.get(p.address)?.asset as string,
-  tvlUsd: knownByAddress.get(p.address)?.tvlUsd ?? null,
-}));
-const tracked = new Map(solanaList.assets.map((a) => [a.address, a.symbol]));
+const registryRows = frozen.registry.pools as RegistryRow[];
+const tracked = trackedStocks();
 const ctx = {
   registry: new Map(registryRows.map((p) => [p.address, p])),
   known: knownByAddress,
@@ -531,21 +526,7 @@ describe('discovery: DexScreener’s rows of Oct 1 (estimates)', () => {
 });
 
 describe('the table', () => {
-  const table = solanaTable({
-    tracked,
-    quotes: windowQuotes,
-    quotesSource: 'the frozen window',
-    routePools,
-    registry: {
-      source: 'the frozen registry of Oct 1',
-      fetchedAt: excludedFile.fetchedAt,
-      minPoolTvlUsd: excludedFile.minPoolTvlUsd,
-      pools: registryRows,
-      excluded: excludedFile.excluded,
-    },
-    known: { source: base.source, fetchedAt: base.fetched_at, pools: base.pools },
-    discovery: discovery.rows,
-  });
+  const table = solanaTable(frozen);
   const text = solanaMarkdown(table, byrealProbe(byrealFile));
   const row = (key: string) => {
     const r = table.rows.find((x) => x.key === key);
@@ -615,7 +596,8 @@ describe('the table', () => {
     const line = text.split('\n').find((l) => l.startsWith('| Pump.fun |')) as string;
     expect(line).toContain('on none of the 346 routes');
     expect(line).toContain('41 · no figure · $643,796');
-    expect(line).not.toContain('$0');
+    // the liquidity nobody gave is not printed as a zero between the two dots
+    expect(line).not.toContain('· $0 ·');
     expect(row('registry:not_found_by_the_registry_run').measured).toEqual({
       none: 'not in the registry: nothing measured what they hold',
     });
@@ -661,8 +643,81 @@ describe('the table', () => {
     expect([direct.pools, other.pools]).toEqual([71, 718]);
     expect(Math.round(other.usd)).toBe(5_610_870);
     expect(row('read:via_sol').measured).toMatchObject({ pools: 58 });
-    expect(row('read:via_xstock').measured).toMatchObject({ pools: 22 });
+    // 22 are filed under a tracked stock; one more pairs SPYx with TQQQx and is filed under TQQQx (RU.12's 260th)
+    expect(
+      registryRows.filter((p) => p.exitPath === 'via_xstock' && tracked.has(p.assetMint)),
+    ).toHaveLength(22);
+    const twoStocks = row('read:via_xstock').measured;
+    if ('none' in twoStocks) throw new Error('no money');
+    expect(twoStocks.pools).toBe(23);
+    expect(Math.round(twoStocks.usd)).toBe(235_360);
+    expect(twoStocks.notMeasured).toBeUndefined();
     expect(dust.pools).toBe(4553);
+  });
+
+  it('every pair DexScreener listed is in one row, and one row only', () => {
+    const listed = table.rows.reduce(
+      (t, r) => t + ('none' in r.discovery ? 0 : r.discovery.pools),
+      0,
+    );
+    expect(listed).toBe(table.discovery?.pairs.length);
+    expect(listed).toBe(519);
+  });
+
+  it('a volume of zero on a day with trades is DexScreener’s own figure, and is said', () => {
+    const curve = row('unread:dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN').discovery;
+    if ('none' in curve) throw new Error('no discovery figure');
+    expect(curve).toMatchObject({
+      pools: 2,
+      liquidityUsd: null,
+      volume24hUsd: 0,
+      zeroVolumeWithTrades: 2,
+    });
+    const line = text.split('\n').find((l) => l.startsWith('| Dynamic Bonding Curve |')) as string;
+    expect(line).toContain('2 · no figure · $0, 2 of them at $0 on a day with trades');
+  });
+
+  it('a pair the registry run did not open has a row of its own, and no venue is then said to have none', () => {
+    // what a discovery file newer than the registry would hold: one more pair of SPYx, never opened on chain
+    const newer = (frozen.discovery as DiscoveryRow[]).map((r) =>
+      r.symbol === 'SPYx'
+        ? {
+            ...r,
+            pairs: [
+              ...(r.pairs ?? []),
+              {
+                pairAddress: 'a-pair-listed-after-the-registry-run',
+                dexId: 'byreal',
+                liquidity: { usd: 1000 },
+                volume: { h24: 50 },
+              },
+            ],
+          }
+        : r,
+    );
+    const later = solanaTable({ ...frozen, discovery: newer });
+    const unopened = later.rows.find((r) => r.key === 'unopened:byreal');
+    expect(unopened?.discovery).toMatchObject({
+      pools: 1,
+      liquidityUsd: 1000,
+      volume24hUsd: 50,
+      stocks: ['SPYx'],
+    });
+    expect(unopened?.measured).toEqual({
+      none: 'not opened on chain: neither its program nor what it holds was read',
+    });
+    expect(later.rows.find((r) => r.key === `unread:${BYREAL}`)?.discovery).toEqual({
+      none: 'no pair of it listed among the pairs the registry run opened (not opened by that run, program not known: 1)',
+    });
+    // with the files of one run, as frozen, nothing is unopened
+    expect(table.rows.some((r) => r.key.startsWith('unopened:'))).toBe(false);
+  });
+
+  it('the pools of a second hop are named by the tokens the chain read found in them', () => {
+    const name = row('other_market:whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc').name;
+    expect(name).toMatch(/^Whirlpool: pools that hold no tracked stock \(/);
+    expect(name).toContain('SOL');
+    expect(name).toContain('USDC');
   });
 
   it('the ranking lists what carries the stock, largest first, and marks what cannot be decoded', () => {
@@ -900,6 +955,89 @@ describe('the gap to Jupiter, and what a row accounts for', () => {
     expect(gapWithLegs(q, legsOf(q), [0], poolsOf(q), ROUTE_CHUNKS)?.gapBp).toBeCloseTo(0, 6);
   });
 
+  it('a pair as the account reads it: each class the router does not use, and all of them together', () => {
+    // Jupiter: 33% Byreal, 4% PancakeSwap, 63% a Raydium pool of the registry
+    const q = pick('SPYx', 'sell', 1000);
+    const legs = legsOf(q);
+    const share = gapShareOf(q, legs, plain(q), poolsOf(q), keyOf, routed, ROUTE_CHUNKS);
+    const pancake = 'unread:HpNfyc2Saw7RKkQd8nEL4khUcuPhQ7WwY1B2qjx8jxFq';
+    expect(Object.keys(share.stockPctByClass).sort()).toEqual(
+      [OUTSIDE, 'read:direct_usd', `unread:${BYREAL}`, pancake].sort(),
+    );
+    expect(share.stockPctByClass[OUTSIDE]).toBeCloseTo(
+      (share.stockPctByClass[`unread:${BYREAL}`] as number) +
+        (share.stockPctByClass[pancake] as number),
+      9,
+    );
+    expect(share.stockPctByClass[OUTSIDE]).toBeCloseTo(37, 4);
+    const at = (label: string) => legs.findIndex((l) => l.label === label);
+    const by = (indexes: number[]) =>
+      gapWithLegs(q, legs, indexes, poolsOf(q), ROUTE_CHUNKS)?.gapBp;
+    expect(share.gapWithClassBp?.[`unread:${BYREAL}`]).toBeCloseTo(by([at('Byreal')]) as number, 9);
+    expect(share.gapWithClassBp?.[pancake]).toBeCloseTo(by([at('PancakeSwap')]) as number, 9);
+    expect(share.gapWithClassBp?.[OUTSIDE]).toBeCloseTo(
+      by([at('Byreal'), at('PancakeSwap')]) as number,
+      9,
+    );
+    // the classes the router uses are not replayed
+    expect(share.gapWithClassBp?.['read:direct_usd']).toBeUndefined();
+    // a plain gap that is not the replay's own is refused: the two were not run on the same pools
+    expect(() =>
+      gapShareOf(q, legs, plain(q) + 1, poolsOf(q), keyOf, routed, ROUTE_CHUNKS),
+    ).toThrow('the replay’s plain gap is not the router report’s'.replace(/’/g, "'"));
+    // a pair inside the router's pools has nothing outside
+    const inside = pick('QQQx', 'sell', 1000);
+    const own = gapShareOf(
+      inside,
+      legsOf(inside),
+      plain(inside),
+      poolsOf(inside),
+      keyOf,
+      routed,
+      ROUTE_CHUNKS,
+    );
+    expect(own.stockPctByClass).toEqual({ 'read:direct_usd': 100 });
+    expect(own.gapWithClassBp).toEqual({});
+  });
+
+  it('the ranking carries what a row closes, and says when the gap sample never saw it', () => {
+    const rows = quotes.map((q) =>
+      gapShareOf(q, legsOf(q), plain(q), poolsOf(q), keyOf, routed, ROUTE_CHUNKS),
+    );
+    const account = gapAccount(rows, routed);
+    const ranking = solanaRanking(solanaTable(frozen), account);
+    const group = account.find((g) => g.side === 'sell' && g.notionalUsd === 100000);
+    const byreal = group?.rows.find((r) => r.key === `unread:${BYREAL}`);
+    if (!byreal?.asJupiterUsedIt) throw new Error('no replay');
+    expect(ranking.find((r) => r.key === `unread:${BYREAL}`)?.closesBp.sell).toEqual(
+      byreal.asJupiterUsedIt.closesBp,
+    );
+    // GoonFi V2 is in the table and on none of these twelve pairs: no figure, which is not "closes nothing"
+    expect(ranking.find((r) => r.key === `unread:${GOONFI}`)?.closesBp.sell).toEqual({
+      none: 'no pair of the gap sample uses it at this size',
+    });
+    // both $100k sales use Byreal and nothing else outside: the row for everything together is Byreal's
+    expect(group?.rows.find((r) => r.key === OUTSIDE)?.asJupiterUsedIt).toEqual(
+      byreal.asJupiterUsedIt,
+    );
+    // by stock: QQQx's sale of $100k is 13.00 bp behind Jupiter, and 2.85 bp ahead with Byreal's leg
+    const byStock = ['QQQx', 'SPYx'].map((asset) => ({
+      asset,
+      account: gapAccount(
+        rows.filter((r) => r.asset === asset && r.notionalUsd === 100000),
+        routed,
+      ),
+    }));
+    const lines = gapByStockMarkdown(
+      byStock,
+      (key) => (key === `unread:${BYREAL}` ? 'Byreal' : key),
+      OUTSIDE,
+    );
+    expect(lines).toContain('| QQQx | 1 · 13.00 → -2.85 | Byreal 15.86 |');
+    expect(lines).toContain('at $100k, by stock');
+    expect(lines.split('\n').filter((l) => l.startsWith('| SPYx |'))).toHaveLength(1);
+  });
+
   it('the account of a group, recomputed by hand', () => {
     // every class the router does not use, each with its own legs; the pools of the capture are the routed ones
     const inCapture = (q: StoredQuote) => new Set(poolsOf(q).map((p) => p.pool));
@@ -1048,6 +1186,42 @@ describe('Robinhood Chain, by venue', () => {
     expect(venue('uniswap-v2').fit).toBe('not_cl');
   });
 
+  it('a figure DexScreener did not give is counted, and a v4 pool is named by why it is left out', () => {
+    const pools = robinhood.cut.pools.map((p, i) => ({
+      ...p,
+      // one listed pool with no liquidity figure
+      dexscreener:
+        i === robinhood.cut.pools.findIndex((x) => x.venue === 'ramses-v3')
+          ? { liquidityUsd: null, volumeH24Usd: p.dexscreener?.volumeH24Usd ?? null }
+          : p.dexscreener,
+    }));
+    const t = robinhoodTable(robinhood.flow.rows, pools);
+    const ramses = t.venues.find((v) => v.venue === 'ramses-v3');
+    expect(ramses?.dexscreener.withoutLiquidity).toBe(1);
+    expect(ramses?.dexscreener.pools).toBe(21);
+    expect(ramses?.dexscreener.liquidityUsd).toBeLessThan(
+      venue('ramses-v3').dexscreener.liquidityUsd,
+    );
+    expect(venue('ramses-v3').dexscreener).toMatchObject({ withoutLiquidity: 0, withoutVolume: 0 });
+    // every v4 pool the path leaves out today has a hook; one left out for another reason is not called a hook
+    expect(
+      cutOf((p) => p.venue === 'uniswap-v4' && !p.reachable).every(
+        (p) => p.unreachableReason === 'has_hook',
+      ),
+    ).toBe(true);
+    const other = robinhoodTable(
+      robinhood.flow.rows,
+      robinhood.cut.pools.map((p) =>
+        p.venue === 'uniswap-v4' && !p.reachable ? { ...p, unreachableReason: 'paused' } : p,
+      ),
+    );
+    expect(other.venues.some((v) => v.venue === 'uniswap-v4 (hook)')).toBe(false);
+    expect(other.venues.find((v) => v.venue === 'uniswap-v4 (paused)')).toMatchObject({
+      pools: 59,
+      fit: 'not_reached',
+    });
+  });
+
   it('the join of the cut with its discovery refuses a pool the discovery does not hold', () => {
     const p = {
       address: '0xabc',
@@ -1065,6 +1239,62 @@ describe('Robinhood Chain, by venue', () => {
       answers: { slot0: true, liquidity: false, fee: false, tickSpacing: false },
       dexscreener: null,
     });
+  });
+});
+
+describe('the command, from the frozen rows alone', () => {
+  // no collector's home, no database, no network: the folders it would read by default do not exist here
+  const run = (...args: string[]) =>
+    venuesReport(['--fixtures', ...args], {
+      RISK_HOME: '/no-such-folder/risk-home',
+      RISK_DATA_DIR: '/no-such-folder/data',
+      RISK_EVM_DIR: '/no-such-folder/evm',
+    });
+
+  it('prints the tables the functions give', async () => {
+    const text = await run('--md');
+    expect(text).toContain(solanaMarkdown(solanaTable(frozen), byrealProbe(byrealFile)));
+    expect(text).toContain(
+      robinhoodMarkdown(robinhoodTable(robinhood.flow.rows, robinhood.cut.pools), {
+        flow: `${FROZEN.robinhood}: ${robinhood.flow.source}`,
+        cut: `the same file: ${robinhood.cut.source.split(':')[0]} (${robinhood.cut.method}, ${robinhood.cut.fetchedAt.slice(0, 16)}Z)`,
+      }),
+    );
+    // no captures were named: no gap table, and nothing said about a gap
+    expect(text).not.toContain('Table 4');
+  });
+
+  it('as JSON with RU.11’s frozen capture: the gap of the pairs it can compare, and the ranking', async () => {
+    const out = JSON.parse(await run('--captures', 'fixtures/risk/route', '--no-robinhood')) as {
+      method: string;
+      robinhood: unknown;
+      gap: {
+        source: string;
+        bySideAndSize: Array<{ side: string; notionalUsd: number; pairs: number }>;
+      };
+      ranking: { solana: Array<{ key: string; closesBp: { sell: unknown } }> };
+      solana: { quotes: { rows: number; withARoute: number }; shares?: unknown };
+    };
+    expect(out.method).toBe('venues-0.1');
+    expect(out.robinhood).toBeNull();
+    expect(out.solana.quotes).toMatchObject({ rows: 720, withARoute: 693 });
+    // the capture is cut to QQQx: only its quotes within five minutes are compared
+    expect(out.gap.bySideAndSize.length).toBeGreaterThan(0);
+    for (const g of out.gap.bySideAndSize) expect(g.pairs).toBeGreaterThan(0);
+    expect(out.ranking.solana[0]?.key).toBe(`unread:${BYREAL}`);
+    expect(out.ranking.solana[0]?.closesBp.sell).toHaveProperty('median');
+  });
+
+  it('takes the frozen quotes and the frozen Robinhood file by name as well', async () => {
+    const text = await run('--quotes', FROZEN.cases, '--robinhood', FROZEN.robinhood, '--md');
+    // the thirteen case rows: eleven with a route
+    expect(text).toContain('13 rows, 11 with a route');
+    expect(text).toContain('**Table 5. Robinhood Chain, by venue.**');
+  });
+
+  it('refuses an option with no value, and a time that is not one', async () => {
+    await expect(run('--until')).rejects.toThrow('--until takes a value');
+    await expect(run('--until', 'yesterday')).rejects.toThrow('not a time');
   });
 });
 
