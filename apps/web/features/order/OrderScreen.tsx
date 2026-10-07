@@ -133,6 +133,8 @@ export function OrderScreen({
   const stop = useRef({ aborted: false });
   // The person asked to stop between steps: the step under way is finished, the next is not begun.
   const [stopping, setStopping] = useState(false);
+  // What keeps the acceptance of the trust notice, set by the first press and called as the run begins.
+  const accepts = useRef<(() => void) | null>(null);
   // The trust notice, ticked on this page: for an order made before the notice was ever accepted.
   const [trustTicked, setTrustTicked] = useState(false);
   const router = useRouter();
@@ -329,6 +331,11 @@ export function OrderScreen({
         }
         setRecord(next);
       }
+      // The first press's acceptance of the trust notice, kept once and only when the run begins.
+      const begun = () => {
+        accepts.current?.();
+        accepts.current = null;
+      };
       stop.current = { aborted: false };
       setStopping(false);
       setRunning(true);
@@ -345,6 +352,7 @@ export function OrderScreen({
         consents: approved.consents,
         ...(again ? { approvedAgain: again } : {}),
         onEvent: (event) => {
+          begun();
           setLive(event.order);
           setPhase({ legId: event.legId, phase: event.phase });
           if (embed?.onProgress)
@@ -360,6 +368,10 @@ export function OrderScreen({
         },
         signal: stop.current,
       });
+      // The run began when the executor reached a step (above), or answers that every step is
+      // confirmed. One that could not run here, or was refused before any step, accepted nothing.
+      if (answer.status === 'done') begun();
+      accepts.current = null;
       if ('order' in answer) setLive(answer.order);
       setPhase(null);
       setOutcome(answer);
@@ -947,8 +959,12 @@ export function OrderScreen({
                   // acceptance of the notice with it, before anything is signed.
                   if (next.kind === 'first') {
                     embed?.onApprove();
-                    if (trustAsked && userId)
-                      acceptTrust(userId, TRUST_STATUS.textVersion, keeperTrades);
+                    // The notice is accepted by a press that starts: kept in `go`, as the run begins.
+                    accepts.current = embed
+                      ? embed.onStarted
+                      : trustAsked && userId
+                        ? () => acceptTrust(userId, TRUST_STATUS.textVersion, keeperTrades)
+                        : null;
                   }
                   go(
                     next.kind === 'approve-again'

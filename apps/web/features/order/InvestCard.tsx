@@ -22,7 +22,7 @@ import {
   requestTestFunds,
   type TestFundsOutcome,
 } from './order-api';
-import { acceptTrust, trustAccepted } from './order-record';
+import { acceptTrust, forgetUnapproved, trustAccepted } from './order-record';
 import { displayName } from './plain';
 import { gasUnitsFor } from './readiness';
 import { TrustNotice } from './TrustNotice';
@@ -40,6 +40,11 @@ import { unitsFor } from './units';
 // signed twice: all of it is the order's own screen (OrderScreen.tsx), drawn inside this card, and
 // the runner behind it (run-order.ts). This card only decides when an order is made and what stands
 // in the way of the press.
+
+/** How long the amount has to be still, once the wallet is read, before an order is made for it. */
+export const STILL_MS = 1_000;
+/** How many orders a card makes by itself; after that the person asks for the prices. */
+export const AUTO_ORDERS = 4;
 
 export const MIN_USD = 10;
 export const MAX_USD = 1_000_000;
@@ -166,6 +171,10 @@ export function InvestCard({
   const [testOutcome, setTestOutcome] = useState<TestFundsOutcome | null>(null);
   const fundsAsked = useRef(0);
   const orderAsked = useRef(0);
+  // How many orders this card has made, and the one the person asked for by hand.
+  const orders = useRef(0);
+  const asked = useRef<string | null>(null);
+  const [paused, setPaused] = useState(false);
   // The host's way of making the order, as it is now: read when an order is made, never a reason
   // to make one.
   const placer = useRef(place);
@@ -209,11 +218,28 @@ export function InvestCard({
   // needs and the host has no reason against it. One order for an amount, a wallet and a round.
   const key = want !== null && clear && funded ? `${want}|${orderRound}` : null;
 
+  // One order at a time for the card. The one before it, which nobody approved, is forgotten here
+  // as another takes its place or the card goes away; our server's copy runs out by itself.
+  const open = useRef<string | null>(null);
+  const forget = useRef((orderId: string) => forgetUnapproved(orderId, userId));
+  forget.current = (orderId: string) => forgetUnapproved(orderId, userId);
+  useEffect(
+    () => () => {
+      if (open.current) forget.current(open.current);
+    },
+    [],
+  );
+
   useEffect(() => {
     if (started) return;
+    const drop = () => {
+      if (open.current) forget.current(open.current);
+      open.current = null;
+    };
     if (key === null) {
-      // What it was made for no longer holds: the order is left unsigned, and runs out by itself.
+      // What it was made for no longer holds: the order is left unsigned.
       orderAsked.current += 1;
+      drop();
       setMade(null);
       setPlacing(false);
       return;
@@ -221,16 +247,33 @@ export function InvestCard({
     if (made?.key === key || amount === null) return;
     orderAsked.current += 1;
     const mine = orderAsked.current;
+    drop();
     setMade(null);
     setFailure(null);
+    // Making an order asks the chain for quotes and counts against the person's budget for
+    // building steps (the API's `build` class), which the run itself needs. So a card makes few
+    // by itself: after that the person asks for the prices.
+    if (orders.current >= AUTO_ORDERS && asked.current !== key) {
+      setPlacing(false);
+      setPaused(true);
+      return;
+    }
+    setPaused(false);
     setPlacing(true);
+    // Only once the amount has been still for a moment: never an order for each key pressed.
     const timer = setTimeout(async () => {
+      orders.current += 1;
       const answer = await placer.current(amount);
-      if (orderAsked.current !== mine) return;
+      if (orderAsked.current !== mine) {
+        // Too late: another amount is on the card. This one is nobody's.
+        if ('orderId' in answer) forget.current(answer.orderId);
+        return;
+      }
       setPlacing(false);
       if ('failure' in answer) return setFailure(answer.failure);
+      open.current = answer.orderId;
       setMade({ key, ...answer });
-    }, 400);
+    }, STILL_MS);
     return () => clearTimeout(timer);
   }, [key, made, amount, started]);
 
@@ -432,11 +475,18 @@ export function InvestCard({
               embed={{
                 blocked: trustHeld ? [t.buy.blocked.trust] : [],
                 onApprove: () => {
-                  if (!accepted && userId) acceptTrust(userId, TRUST_STATUS.textVersion, keeper);
+                  // The order is the person's now: it is kept, whatever becomes of the card.
+                  open.current = null;
                   setStarted(true);
                   onProgress?.({ orderId: made.orderId, step: 0, of: 0, line: '' });
                 },
+                // Kept only once the run has begun: a press that could not start accepted nothing.
+                onStarted: () => {
+                  if (!accepted && userId) acceptTrust(userId, TRUST_STATUS.textVersion, keeper);
+                },
                 onAgain: () => {
+                  // asked for by the person: made whatever the card has made by itself
+                  asked.current = want ? `${want}|${orderRound + 1}` : null;
                   setStarted(false);
                   setMade(null);
                   setOrderRound((n) => n + 1);
@@ -467,6 +517,17 @@ export function InvestCard({
                   ))}
                 </ul>
               )}
+              {paused && !failure && (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    asked.current = want ? `${want}|${orderRound + 1}` : null;
+                    setOrderRound((n) => n + 1);
+                  }}
+                >
+                  {t.invest.again}
+                </Button>
+              )}
               {failure && (
                 <>
                   <p
@@ -476,7 +537,13 @@ export function InvestCard({
                     <StatusMark status="off-track" size={12} className="mt-1.5" />
                     <span>{failure}</span>
                   </p>
-                  <Button variant="secondary" onClick={() => setOrderRound((n) => n + 1)}>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      asked.current = want ? `${want}|${orderRound + 1}` : null;
+                      setOrderRound((n) => n + 1);
+                    }}
+                  >
                     {t.invest.again}
                   </Button>
                 </>

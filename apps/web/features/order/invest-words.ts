@@ -113,8 +113,13 @@ export function landedSentence(
 export type OrderEmbed = {
   /** Why the press is not offered yet (the trust notice is not ticked): said under the button. */
   blocked: readonly string[];
-  /** Called as the person presses, before anything is signed: the acceptance of the notice is kept. */
+  /** Called as the person presses, before anything is asked of the wallet. */
   onApprove: () => void;
+  /**
+   * Called once the run has begun (the executor is on a step, or has answered for the order): the
+   * acceptance of the trust notice is kept here, never for a press that could not start.
+   */
+  onStarted: () => void;
   /** Start again with a new order, in the same card. */
   onAgain: () => void;
   onProgress?: (progress: InvestProgress) => void;

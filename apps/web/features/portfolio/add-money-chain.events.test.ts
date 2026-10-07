@@ -33,6 +33,10 @@ vi.mock('../wallet/signing', () => import('../wallet/test/mock-signing'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
 vi.mock('next/link', () => import('../wallet/test/mock-next'));
 
+// The card makes an order only once the amount has been still for a second: a test that opens the
+// page several times waits that long each time.
+vi.setConfig({ testTimeout: 20_000 });
+
 const en = dictionary('en');
 const PROGRAM = '529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1QW';
 const testnet = deploymentsOf('testnet').solana;
@@ -165,7 +169,7 @@ async function ready(address = MY_VAULT) {
   await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
   await settle(350);
   await click(find(host, '[data-ui="trust-notice"] input[type="checkbox"]'));
-  await settle(450);
+  await settle(1050);
   await settle();
   return host;
 }

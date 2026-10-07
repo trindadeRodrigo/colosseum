@@ -194,6 +194,40 @@ describe('a person’s plans', () => {
     expect(after?.vault).toEqual({ chain: 'solana', basketId: vaults[0]?.basketId });
   });
 
+  it('leave out an order nobody signed in its time: it is no buy, and lists no plan from a link', async () => {
+    // The invest screen makes an order to show its prices; a person who looks and leaves bought nothing.
+    let clock = Date.now();
+    const timed = await testApp({
+      issuer: issuer.issuer,
+      db: data.db,
+      env: { AGENT_SURFACE: 'on' },
+      planInputs: withMockYield,
+      now: () => new Date(clock),
+    });
+    undo.push(() => timed.app.close());
+    const who = await someone();
+    const { id } = await make(who, 4_109);
+    await fund(who, timed.app, 9_000);
+    const looked = await order(who, { proposalId: id, amountUsd: 4_109 }, timed.app);
+    // within its time it is the plan's open order
+    expect((await plansOf(who, timed.app))[0]?.orders.map((o) => o.id)).toEqual([looked.id]);
+    // past it, with no step ever built: the plan stays, the order is gone from its buys
+    clock += 16 * 60 * 1000;
+    const after = (await plansOf(who, timed.app))[0];
+    expect(after).toMatchObject({ id, bought: false });
+    expect(after?.orders).toEqual([]);
+    // one that was signed for, even once, stays whatever became of it
+    const begun = await order(who, { proposalId: id, amountUsd: 4_109 }, timed.app);
+    const [first] = begun.legs;
+    if (!first) throw new Error('no step');
+    expect(
+      (await post(who, `/v1/orders/${begun.id}/legs/${first.id}/build`, undefined, timed.app))
+        .statusCode,
+    ).toBe(200);
+    clock += 16 * 60 * 1000;
+    expect((await plansOf(who, timed.app))[0]?.orders.map((o) => o.id)).toEqual([begun.id]);
+  });
+
   it('list a plan from a link once the person bought it, newest first, and never a stranger’s plan they bought', async () => {
     const [who, stranger] = [await someone(), await someone()];
     const own = await make(who, 4_108);

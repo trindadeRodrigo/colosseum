@@ -92,8 +92,31 @@ const funding = (ok: boolean) => ({
   ok,
 });
 
-function api(o: { funded?: boolean; order?: () => OrderDetail; finishes?: boolean } = {}) {
+/** The fixtures' order under another id: the n-th order a card made. */
+const orderNo = (n: number): OrderDetail => {
+  const order = orderOn();
+  if (n === 0) return order;
+  const id = `00000000-0000-4000-8000-00000000000${n}`;
+  return {
+    ...order,
+    id,
+    approvalUrl: `/orders/${id}`,
+    legs: order.legs.map((leg) => ({ ...leg, orderId: id })),
+  };
+};
+
+function api(
+  o: {
+    funded?: boolean;
+    order?: () => OrderDetail;
+    finishes?: boolean;
+    /** Each POST makes another order, as the server does. Default: the same one every time. */
+    distinct?: boolean;
+  } = {},
+) {
   const calls: Call[] = [];
+  const kept = new Map<string, OrderDetail>();
+  let made = 0;
   const person: Person = {
     userId: USER,
     wallets: EMBEDDED,
@@ -112,8 +135,16 @@ function api(o: { funded?: boolean; order?: () => OrderDetail; finishes?: boolea
         funded = true;
         return json({ error: 'nothing is missing' }, 409);
       }
-      if (path === '/v1/orders' && method === 'POST') return json(o.order?.() ?? orderOn());
-      if (path === `/v1/orders/${ORDER_ID}`) return json(o.order?.() ?? orderOn());
+      if (path === '/v1/orders' && method === 'POST') {
+        const order = o.order?.() ?? orderNo(o.distinct ? made : 0);
+        made += 1;
+        kept.set(order.id, order);
+        return json(order);
+      }
+      if (path.startsWith('/v1/orders/') && method === 'GET' && !path.endsWith('/continue')) {
+        const order = kept.get(path.slice('/v1/orders/'.length));
+        return order ? json(order) : json({ error: 'not found' }, 404);
+      }
       // whether this server finishes buys: asked with something that is no order's id
       if (path.endsWith('/continue'))
         return o.finishes ? json({ error: 'the id is not a uuid' }, 400) : json({}, 404);
@@ -128,6 +159,11 @@ function api(o: { funded?: boolean; order?: () => OrderDetail; finishes?: boolea
     calls,
     to: (prefix: string) => calls.filter((c) => c.path.startsWith(prefix)),
     placed: () => calls.filter((c) => c.path === '/v1/orders' && c.method === 'POST'),
+    /** Our server's copy of an order, changed after the card read it. */
+    change: (id: string, to: (order: OrderDetail) => OrderDetail) => {
+      const order = kept.get(id);
+      if (order) kept.set(id, to(order));
+    },
   };
 }
 
@@ -143,7 +179,7 @@ const buy = async () => {
   await settle();
   await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
   await settle(350);
-  await settle(450);
+  await settle(1050);
   await settle();
   return host;
 };
@@ -258,7 +294,7 @@ describe('investing with one press, with the passkey wallet', () => {
       ),
     );
     await settle(350);
-    await settle(450);
+    await settle(1050);
     await settle();
     await tick(host);
     await click(find(host, PRESS));
@@ -354,7 +390,7 @@ describe('investing with one press, with the passkey wallet', () => {
     expect(ask).toBeTruthy();
     await click(ask as HTMLElement);
     await settle(350);
-    await settle(450);
+    await settle(1050);
     await settle();
     expect(server.to('/v1/testnet/fund')).toHaveLength(1);
     // the wallet holds it now: the funds are gone from the card and the order is there
@@ -439,7 +475,7 @@ describe('a sequence that stops', () => {
       ),
     );
     await settle(350);
-    await settle(450);
+    await settle(1050);
     await settle();
     await tick(host);
     await click(find(host, PRESS));
@@ -521,12 +557,188 @@ describe('a sequence that stops', () => {
     );
     expect(again).toBeTruthy();
     await click(again as HTMLElement);
-    await settle(450);
+    await settle(1050);
     await settle();
     // a second order, shown again with its own minimums, and not run until it is pressed
     expect(server.placed()).toHaveLength(2);
     expect(run.calls).toHaveLength(1);
     expect(label(find(host, PRESS))).toBe(en.invest.press('$10'));
     expect(pressable(host)).toBe(true);
+  });
+});
+
+describe('the orders a card makes before the press', () => {
+  const amountOf = (host: HTMLElement) =>
+    find<HTMLInputElement>(host, 'input[inputmode="decimal"]');
+  const bodies = (server: ReturnType<typeof api>) =>
+    server.placed().map((c) => (c.body as { amountUsd: number }).amountUsd);
+  const still = async () => {
+    await settle(350);
+    await settle(1050);
+    await settle();
+  };
+
+  it('makes none while the amount is being typed, and one once it has been still', async () => {
+    const server = api({ distinct: true });
+    const host = await mount(withAccount('en', createElement(BuyScreen, { id: PLAN_ID })));
+    await settle();
+    // typed key by key, each a valid amount, faster than the card waits
+    for (const text of ['1', '10', '100', '10']) {
+      await type(amountOf(host), text);
+      await settle(200);
+    }
+    expect(server.placed()).toEqual([]);
+    await still();
+    expect(bodies(server)).toEqual([10]);
+    // and it is reused while the amount and the plan are the same: a later look makes no other
+    await settle(1500);
+    expect(bodies(server)).toEqual([10]);
+  });
+
+  it('keeps one order at a time: a new amount makes another, and the one before is forgotten here', async () => {
+    const server = api({ distinct: true });
+    const host = await buy();
+    expect(bodies(server)).toEqual([10]);
+    expect(recallOrder(orderNo(0).id, USER)).not.toBeNull();
+    await type(amountOf(host), '20');
+    // at once the card shows no order: the one for $10 is not there to press for $20
+    expect(host.querySelector('[data-ui="order-step"]')).toBeNull();
+    await still();
+    expect(bodies(server)).toEqual([10, 20]);
+    expect(recallOrder(orderNo(0).id, USER)).toBeNull();
+    expect(recallOrder(orderNo(1).id, USER)).toMatchObject({ amountUsd: 20, approved: null });
+  });
+
+  it('forgets an order nobody pressed when the person leaves, and keeps one that was pressed', async () => {
+    api({ distinct: true });
+    await buy();
+    expect(recallOrder(ORDER_ID, USER)).not.toBeNull();
+    await unmountAll();
+    expect(recallOrder(ORDER_ID, USER)).toBeNull();
+
+    api({ distinct: true });
+    const again = await buy();
+    await tick(again);
+    await click(find(again, PRESS));
+    await settle();
+    expect(run.calls).toHaveLength(1);
+    await unmountAll();
+    expect(recallOrder(ORDER_ID, USER)?.approved?.order.id).toBe(ORDER_ID);
+  });
+
+  it('makes few by itself: after that the person asks for the prices', async () => {
+    const server = api({ distinct: true });
+    const host = await buy();
+    for (const text of ['11', '12', '13']) {
+      await type(amountOf(host), text);
+      await still();
+    }
+    expect(bodies(server)).toEqual([10, 11, 12, 13]);
+    await type(amountOf(host), '14');
+    await still();
+    // no fifth by itself
+    expect(bodies(server)).toEqual([10, 11, 12, 13]);
+    expect(host.querySelector('[data-ui="order-step"]')).toBeNull();
+    const ask = [...host.querySelectorAll('button')].find((b) => label(b) === en.invest.again);
+    expect(ask).toBeTruthy();
+    await click(ask as HTMLElement);
+    await still();
+    expect(bodies(server)).toEqual([10, 11, 12, 13, 14]);
+    expect(host.querySelectorAll('[data-ui="order-step"]')).toHaveLength(2);
+  }, 20_000);
+});
+
+describe('what the press approves', () => {
+  it('is the order as the card showed it, whatever our server says of that order afterwards', async () => {
+    const server = api();
+    const host = await buy();
+    const shown = find(host, '[data-ui="invest-steps"]').textContent;
+    expect(shown).toContain(en.order.review.atLeastWhole('0.0099 SPYx'));
+    // the server's copy changes under the card: a lower minimum for the same trade
+    server.change(ORDER_ID, (order) => ({ ...orderOn('solana', '500000'), id: order.id }));
+    await tick(host);
+    await click(find(host, PRESS));
+    await settle();
+    // the card did not read it again, and what it handed the runner is what it showed
+    expect(server.calls.filter((c) => c.path === `/v1/orders/${ORDER_ID}`)).toHaveLength(1);
+    expect(run.calls).toHaveLength(1);
+    expect(run.calls[0]?.order).toEqual(orderOn());
+    expect(run.calls[0]?.order.legs[1]?.expected[0]?.minOutRaw).toBe('990000');
+    expect(recallOrder(ORDER_ID, USER)?.approved?.order).toEqual(orderOn());
+    expect(find(host, '[data-ui="invest-steps"]').textContent).toContain(
+      en.order.review.atLeastWhole('0.0099 SPYx'),
+    );
+  });
+
+  it('an order that ran out before the press is not signed for: the card says so and offers a new one', async () => {
+    const server = api({ distinct: true });
+    // as the executor answers for an order past its time: nothing was built, nothing signed
+    run.script = async (order) => ({ status: 'expired', order: { ...order, status: 'expired' } });
+    const host = await buy();
+    await tick(host);
+    await click(find(host, PRESS));
+    await settle();
+    await settle();
+    expect(find(host, '[data-ui="order-status"]').textContent).toContain(en.order.outcome.expired);
+    expect(find(host, '[data-ui="invest-landed"]').textContent).toBe(en.invest.stopped.nothing);
+    // a new order is asked for, shown with its own figures, and pressed again: never run by itself
+    const again = [...host.querySelectorAll('button')].find(
+      (b) => label(b) === en.order.outcome.newOrder,
+    );
+    await click(again as HTMLElement);
+    await settle(1050);
+    await settle();
+    expect(server.placed()).toHaveLength(2);
+    expect(run.calls).toHaveLength(1);
+    expect(label(find(host, PRESS))).toBe(en.invest.press('$10'));
+  });
+});
+
+describe('when the trust notice is accepted', () => {
+  it('not by a press that could not start: this browser cannot hold an order to one tab', async () => {
+    Object.defineProperty(window.navigator, 'locks', { value: undefined, configurable: true });
+    api();
+    const host = await buy();
+    await tick(host);
+    await click(find(host, PRESS));
+    await settle();
+    expect(run.calls).toEqual([]);
+    expect(host.textContent).toContain(en.order.outcome.notRunnable['no-lock']);
+    expect(trustAccepted(USER, TRUST_STATUS.textVersion, false)).toBe(false);
+  });
+
+  it('not by a press the guard refused before any step', async () => {
+    api();
+    run.script = async (order) =>
+      ({
+        status: 'refused',
+        order,
+        legId: null,
+        refusal: { code: 'order', message: 'the order is not the one reviewed' },
+      }) as never;
+    const host = await buy();
+    await tick(host);
+    await click(find(host, PRESS));
+    await settle();
+    expect(run.calls).toHaveLength(1);
+    expect(trustAccepted(USER, TRUST_STATUS.textVersion, false)).toBe(false);
+  });
+
+  it('as the first step begins, and once', async () => {
+    api();
+    const hold = gate<void>();
+    run.script = async (order, deps) => {
+      deps.onEvent?.({ order, legId: LEG_CREATE, phase: 'building' } as never);
+      await hold.wait;
+      return { status: 'done', order: { ...order, status: 'done' } };
+    };
+    const host = await buy();
+    await tick(host);
+    expect(trustAccepted(USER, TRUST_STATUS.textVersion, false)).toBe(false);
+    await click(find(host, PRESS));
+    await settle();
+    expect(trustAccepted(USER, TRUST_STATUS.textVersion, false)).toBe(true);
+    hold.open();
+    await settle();
   });
 });

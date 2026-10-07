@@ -376,7 +376,7 @@ const SIGN = '[data-ui="invest-card"] [data-variant="primary"]';
 /** Long enough for the wallet to be read and the order made for the amount. */
 const made = async () => {
   await settle(350);
-  await settle(450);
+  await settle(1050);
   await settle();
 };
 const posted = (server: ReturnType<typeof api>) =>

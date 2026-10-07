@@ -122,7 +122,7 @@ export function MonitorScreen() {
       <VaultActions
         chain={entry}
         vault={vault}
-        joined={goalOfVault(vault, history.records)}
+        joined={goalOfVault(vault, history.records, history.deposited)}
         onRenamed={again}
         level={grouped ? 3 : 2}
       />
@@ -131,7 +131,7 @@ export function MonitorScreen() {
         <VaultGoalCard
           chain={entry}
           vault={vault}
-          joined={goalOfVault(vault, history.records)}
+          joined={goalOfVault(vault, history.records, history.deposited)}
           putIn={putInto(vault, history.records, history.deposited)}
           followed={familyOfVault(vault, history.records)}
           tookOut={takenOut(vault, history.withdrawals, words.vault.takenOutMethod) !== null}

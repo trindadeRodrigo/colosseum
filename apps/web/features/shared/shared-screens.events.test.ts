@@ -396,7 +396,7 @@ describe('buying a portfolio, which follows it', () => {
     await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
     // the wallet is read, then the order is made for the card: no press, and no other page
     await settle(400);
-    await settle(500);
+    await settle(1050);
     await settle(50);
     expect(router.push).not.toHaveBeenCalled();
     expect(calls.find((c) => c.path === '/v1/orders')?.body).toEqual({
