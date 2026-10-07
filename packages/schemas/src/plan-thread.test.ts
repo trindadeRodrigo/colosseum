@@ -116,6 +116,17 @@ describe('a turn sent by a person', () => {
   it('names what happened by kind and id only', () => {
     const id = '3c1f9a7e-5b2d-4c8e-9f0a-1b2c3d4e5f60';
     expect(ThreadEvent.safeParse({ type: 'plan_built', planId: id }).success).toBe(true);
+    // a plan built again names both plans and the sheet's fields that changed, as keys
+    const rebuilt = {
+      type: 'plan_rebuilt',
+      planId: id,
+      previousPlanId: id,
+      changed: ['amountUsd'],
+    };
+    expect(ThreadEvent.parse(rebuilt)).toEqual(rebuilt);
+    expect(ThreadEvent.safeParse({ ...rebuilt, changed: ['from $5,000 to $7,000'] }).success).toBe(
+      false,
+    );
     expect(
       ThreadEvent.safeParse({ type: 'order_made', orderId: id, kind: 'add', amountUsd: 100 })
         .success,

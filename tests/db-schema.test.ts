@@ -61,6 +61,7 @@ const EXPECTED_VAULT = [
   'recipe_versions',
   'baskets',
   'proposals',
+  'plan_threads',
   'plan_turns',
   'vaults',
   'follows',

@@ -1,6 +1,6 @@
 import type { IntentRequest, Leg, Order } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
-import { madeEvent, orderKind, stateEvents } from './thread';
+import { changedFields, madeEvent, orderKind, stateEvents } from './thread';
 
 // What a plan's thread is told of an order, read from the order as the database has it: no request
 // names an event. (The store and the routes are tested on the database: routes/v1/thread.test.ts.)
@@ -137,5 +137,27 @@ describe('what the thread is told of an order', () => {
         autoFollow: true,
       }),
     ).toEqual([]);
+  });
+});
+
+describe('what a plan built again changed', () => {
+  it('is the names of the sheet’s fields that differ, in order, and never a value', () => {
+    const before = {
+      goal: 'grow',
+      amountUsd: 5000,
+      risk: 'high',
+      themes: ['ai'],
+      rules: { glide: true },
+    };
+    expect(changedFields(before, before)).toEqual([]);
+    expect(
+      changedFields(before, { ...before, risk: 'low', amountUsd: 7000, rules: { glide: false } }),
+    ).toEqual(['amountUsd', 'risk', 'rules']);
+    // a field one sheet has and the other does not
+    expect(changedFields(before, { ...before, incomeTargetUsdMonthly: 400 })).toEqual([
+      'incomeTargetUsdMonthly',
+    ]);
+    // a name that is not a key is not said
+    expect(changedFields(before, { ...before, 'not a key': 1 })).toEqual([]);
   });
 });

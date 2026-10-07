@@ -209,20 +209,40 @@ export const proposals = pgTable(
      * by anybody holding its id, and a buyer's vault numbered from the plan and the buyer.
      */
     fromLink: boolean('from_link').notNull().default(false),
+    /**
+     * The thread the plan is in (gate PLAN-THREAD): a conversation's, shared by every plan built in
+     * it. Set by the server alone, and null for a plan made from a link, which has none.
+     */
+    threadId: uuid('thread_id').references(() => planThreads.id, { onDelete: 'set null' }),
     createdAt: ts('created_at').notNull().defaultNow(),
   },
   (t) => [
+    index('proposals_thread_idx').on(t.threadId),
     // The daily cap and the cleanup read the plans made from a link by their time, and only those.
     index('proposals_from_link_created_idx').on(t.createdAt).where(sql`${t.fromLink}`),
   ],
 );
 
 /**
- * A plan's thread (gate PLAN-THREAD): one row a turn, in the order they were written (`seq`). A
- * person's turn holds their words as typed; the app's holds what it said back as keys and the facts it
- * used, never a sentence; an event's holds what happened to the plan, written by the server where an
- * order changes state (`event_key` makes each one a row once). The words are personal: read by the
- * plan's own person and nobody else, and gone with the plan.
+ * A thread (gate PLAN-THREAD): one conversation of one person's, from its first sentence through
+ * every plan built in it to the vault the last one funded. A plan names its thread
+ * (`proposals.thread_id`), so a plan built again in the same conversation is in the same thread.
+ */
+export const planThreads = pgTable('plan_threads', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** Whose it is: the only person who reads or writes it. */
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: ts('created_at').notNull().defaultNow(),
+});
+
+/**
+ * A thread's turns: one row a turn, in the order they were written (`seq`). A person's turn holds
+ * their words as typed; the app's holds what it said back as keys and the facts it used, never a
+ * sentence; an event's holds what happened, written by the server where a plan is built or an order
+ * changes state (`event_key` makes each one a row once). A turn names the plan it was written under,
+ * and goes with that plan. The words are personal: read by the thread's own person and nobody else.
  */
 export const planTurns = pgTable(
   'plan_turns',
@@ -230,6 +250,10 @@ export const planTurns = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     /** The order of the thread: an identity, so two turns written at one instant still have one. */
     seq: bigint('seq', { mode: 'number' }).notNull().generatedAlwaysAsIdentity(),
+    threadId: uuid('thread_id')
+      .notNull()
+      .references(() => planThreads.id, { onDelete: 'cascade' }),
+    /** The plan the turn was written under: the one the conversation had reached. */
     proposalId: uuid('proposal_id')
       .notNull()
       .references(() => proposals.id, { onDelete: 'cascade' }),
@@ -237,13 +261,14 @@ export const planTurns = pgTable(
     text: text('text'),
     reply: jsonb('reply').$type<ThreadReply>(),
     event: jsonb('event').$type<ThreadEvent>(),
-    /** For an event: its kind and what it is about (`deposit_landed:<order id>`), once per plan. */
+    /** For an event: its kind and what it is about (`deposit_landed:<order id>`), once per thread. */
     eventKey: text('event_key'),
     createdAt: ts('created_at').notNull().defaultNow(),
   },
   (t) => [
-    index('plan_turns_plan_seq_idx').on(t.proposalId, t.seq),
-    uniqueIndex('plan_turns_event_once_idx').on(t.proposalId, t.eventKey),
+    index('plan_turns_thread_seq_idx').on(t.threadId, t.seq),
+    index('plan_turns_plan_idx').on(t.proposalId),
+    uniqueIndex('plan_turns_event_once_idx').on(t.threadId, t.eventKey),
   ],
 );
 

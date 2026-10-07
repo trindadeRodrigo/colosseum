@@ -73,6 +73,7 @@ export type PostBasketsPersonalizeBody = {
       };
     };
   }[];
+  previousPlanId?: string;
 };
 
 /** POST /v1/baskets/personalize: response. Make a plan from a goal and its limits, and store it. Nothing is bought */
@@ -601,6 +602,12 @@ export type GetBasketsByIdThreadResponse = {
               planId: string;
             }
           | {
+              type: 'plan_rebuilt';
+              planId: string;
+              previousPlanId: string;
+              changed: string[];
+            }
+          | {
               type: 'order_made';
               orderId: string;
               kind: 'buy' | 'add' | 'finish' | 'withdraw';
@@ -696,6 +703,12 @@ export type PostBasketsByIdThreadResponse = {
           | {
               type: 'plan_built';
               planId: string;
+            }
+          | {
+              type: 'plan_rebuilt';
+              planId: string;
+              previousPlanId: string;
+              changed: string[];
             }
           | {
               type: 'order_made';

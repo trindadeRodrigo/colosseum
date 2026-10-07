@@ -27,6 +27,8 @@ export const THREAD_LIMITS = {
   sayMax: 8,
   /** The most turns of a thread started before sign-in that a new plan takes with it. */
   attachMax: 50,
+  /** The most fields of a sheet a rebuilt plan may be said to have changed. */
+  changedMax: 16,
 } as const;
 
 /**
@@ -93,6 +95,16 @@ export type ThreadReply = z.infer<typeof ThreadReply>;
 /** What happened to the plan, as the server saw it. `orderId` reads at `GET /v1/orders/{id}`. */
 export const ThreadEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('plan_built'), planId: z.string().uuid() }),
+  /**
+   * A plan built again in the same conversation: the new plan, the one it follows, and the names of
+   * the sheet's fields that differ between the two (`amountUsd`, `risk`), never their values.
+   */
+  z.object({
+    type: z.literal('plan_rebuilt'),
+    planId: z.string().uuid(),
+    previousPlanId: z.string().uuid(),
+    changed: z.array(ThreadKey).max(THREAD_LIMITS.changedMax),
+  }),
   z.object({
     type: z.literal('order_made'),
     orderId: z.string().uuid(),

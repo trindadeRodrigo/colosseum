@@ -1,5 +1,5 @@
 {
-  "id": "3b60ea39-1e5c-47ec-ae66-4d41f2adf789",
+  "id": "eb424dff-b58d-495f-9658-92c4bba0e91f",
   "prevId": "1c60026a-0380-4a7d-80ba-b90bd05d7ecb",
   "version": "7",
   "dialect": "postgresql",
@@ -5479,6 +5479,53 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.plan_threads": {
+      "name": "plan_threads",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "plan_threads_user_id_users_id_fk": {
+          "name": "plan_threads_user_id_users_id_fk",
+          "tableFrom": "plan_threads",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.plan_turns": {
       "name": "plan_turns",
       "schema": "",
@@ -5506,6 +5553,12 @@
             "cache": "1",
             "cycle": false
           }
+        },
+        "thread_id": {
+          "name": "thread_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
         },
         "proposal_id": {
           "name": "proposal_id",
@@ -5552,11 +5605,11 @@
         }
       },
       "indexes": {
-        "plan_turns_plan_seq_idx": {
-          "name": "plan_turns_plan_seq_idx",
+        "plan_turns_thread_seq_idx": {
+          "name": "plan_turns_thread_seq_idx",
           "columns": [
             {
-              "expression": "proposal_id",
+              "expression": "thread_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -5573,11 +5626,26 @@
           "method": "btree",
           "with": {}
         },
+        "plan_turns_plan_idx": {
+          "name": "plan_turns_plan_idx",
+          "columns": [
+            {
+              "expression": "proposal_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "plan_turns_event_once_idx": {
           "name": "plan_turns_event_once_idx",
           "columns": [
             {
-              "expression": "proposal_id",
+              "expression": "thread_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -5596,6 +5664,19 @@
         }
       },
       "foreignKeys": {
+        "plan_turns_thread_id_plan_threads_id_fk": {
+          "name": "plan_turns_thread_id_plan_threads_id_fk",
+          "tableFrom": "plan_turns",
+          "tableTo": "plan_threads",
+          "columnsFrom": [
+            "thread_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
         "plan_turns_proposal_id_proposals_id_fk": {
           "name": "plan_turns_proposal_id_proposals_id_fk",
           "tableFrom": "plan_turns",
@@ -5763,6 +5844,12 @@
           "notNull": true,
           "default": false
         },
+        "thread_id": {
+          "name": "thread_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -5772,6 +5859,21 @@
         }
       },
       "indexes": {
+        "proposals_thread_idx": {
+          "name": "proposals_thread_idx",
+          "columns": [
+            {
+              "expression": "thread_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "proposals_from_link_created_idx": {
           "name": "proposals_from_link_created_idx",
           "columns": [
@@ -5801,6 +5903,19 @@
             "id"
           ],
           "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "proposals_thread_id_plan_threads_id_fk": {
+          "name": "proposals_thread_id_plan_threads_id_fk",
+          "tableFrom": "proposals",
+          "tableTo": "plan_threads",
+          "columnsFrom": [
+            "thread_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },

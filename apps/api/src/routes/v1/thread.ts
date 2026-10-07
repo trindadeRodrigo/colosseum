@@ -11,10 +11,11 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { Refusal } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
-import { appendTurn, listTurns, ownPlanId } from '../../orders/thread';
+import { appendTurn, listTurns, ownPlan, threadOf } from '../../orders/thread';
 import { signedIn } from './orders';
 
-// A plan's thread (gate PLAN-THREAD): read it, and add a turn to it. Both need a sign-in, and both
+// A plan's thread (gate PLAN-THREAD): read it, and add a turn to it. The thread is the conversation's:
+// every plan built in it reads the same one, whole (orders/thread.ts). Both need a sign-in, and both
 // answer only the plan's own person: another person's plan, a plan made from a link (which has no
 // thread) and an id that names nothing get one 404 in the same words as the plan's own read
 // (baskets.ts), so the answer says nothing of what an id names. Nothing of a thread is in any other
@@ -28,9 +29,9 @@ export function registerThreadRoutes(scope: FastifyInstance, deps: OrderDeps) {
   const tags = ['plans'];
   /** The caller's own plan, or the one refusal. */
   const own = async (id: string, privyId: string | undefined) => {
-    const planId = await ownPlanId(deps.db, id, privyId ?? null);
-    if (!planId) throw new Refusal(404, 'no plan with that id that you can read');
-    return planId;
+    const plan = await ownPlan(deps.db, id, privyId ?? null);
+    if (!plan) throw new Refusal(404, 'no plan with that id that you can read');
+    return plan;
   };
 
   f.get(
@@ -41,7 +42,7 @@ export function registerThreadRoutes(scope: FastifyInstance, deps: OrderDeps) {
         tags,
         summary: 'A plan’s thread: what was asked, what was understood, and what happened since',
         description:
-          'The signed-in person’s own plan only: another person’s plan, a plan made from a link (it has no thread) and an unknown id all answer the same 404. A page holds the newest turns, oldest first, so the newest turn is last; `before` is what to send for the page of older turns, and null when the page starts at the first turn. A `person` turn is their words as typed. An `app` turn is what the app said back, as keys and the facts it used: the screen says it in the person’s language, and no sentence or formatted figure is stored. An `event` turn is written by the server where an order changes state (the plan was built, an order was made, its deposit landed, the buy was done or stopped, money was taken out): no request writes one. Answered with `Cache-Control: private, no-store`.',
+          'The signed-in person’s own plan only: another person’s plan, a plan made from a link (it has no thread) and an unknown id all answer the same 404. The thread is the conversation’s: a plan built again in it is in the same thread, so the id of any plan of the conversation answers the whole of it, from the first sentence through every rebuild to the buy and what happened to the vault since. A page holds the newest turns, oldest first, so the newest turn is last; `before` is what to send for the page of older turns, and null when the page starts at the first turn. A `person` turn is their words as typed. An `app` turn is what the app said back, as keys and the facts it used: the screen says it in the person’s language, and no sentence or formatted figure is stored. An `event` turn is written by the server where an order changes state (the plan was built, or built again with the names of the sheet’s fields that changed, an order was made, its deposit landed, the buy was done or stopped, money was taken out): no request writes one. Answered with `Cache-Control: private, no-store`.',
         params: ThreadParams,
         querystring: ThreadQuery,
         response: { 200: ThreadResponse, default: OrderError },
@@ -50,12 +51,12 @@ export function registerThreadRoutes(scope: FastifyInstance, deps: OrderDeps) {
     async (req, reply): Promise<ThreadResponse> => {
       // Before the lookup, so the 404 is as private as the thread.
       reply.header('cache-control', 'private, no-store');
-      const planId = await own(req.params.id, signedIn(req).userId);
-      const page = await listTurns(deps.db, planId, {
+      const plan = await own(req.params.id, signedIn(req).userId);
+      const page = await listTurns(deps.db, plan.threadId, {
         limit: req.query.limit,
         ...(req.query.before === undefined ? {} : { before: Number(req.query.before) }),
       });
-      return { planId, ...page };
+      return { planId: plan.id, ...page };
     },
   );
 
@@ -76,8 +77,9 @@ export function registerThreadRoutes(scope: FastifyInstance, deps: OrderDeps) {
     },
     async (req, reply): Promise<ThreadTurnResponse> => {
       reply.header('cache-control', 'private, no-store');
-      const planId = await own(req.params.id, signedIn(req).userId);
-      return { planId, turns: await appendTurn(deps.db, planId, req.body) };
+      const plan = await own(req.params.id, signedIn(req).userId);
+      const at = { threadId: await threadOf(deps.db, plan), planId: plan.id };
+      return { planId: plan.id, turns: await appendTurn(deps.db, at, req.body) };
     },
   );
 }
