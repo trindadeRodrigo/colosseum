@@ -497,14 +497,11 @@ describe('what the executor answers', () => {
         if (path === `/v1/orders/${ORDER_ID}`) return json(orderOn());
         if (path === `/v1/orders/${NEXT_ID}`) return json(continuation());
         if (method === 'POST' && path.endsWith('/continue')) {
-          // a server without the route answers as the web framework does
-          if (!o.route)
-            return json(
-              { message: `Route POST:${path} not found`, error: 'Not Found', statusCode: 404 },
-              404,
-            );
+          // a server without the route has no such route, whatever its 404 says
+          if (!o.route) return json({ error: 'no order with that id' }, 404);
           if (path === `/v1/orders/${ORDER_ID}/continue` && o.made) return o.made();
-          return json({ error: 'no order with that id' }, 404);
+          // the route takes a uuid: anything else is a badly formed request
+          return json({ error: 'params/id must be a uuid' }, 400);
         }
         return json({ error: 'not found' }, 404);
       });
@@ -538,7 +535,7 @@ describe('what the executor answers', () => {
       expect(stopped[0]?.textContent).toBe(en.order.outcome.seePortfolio);
       // the server was asked about an order nobody has: nothing was made to find out
       expect(calls.filter((c) => c.path.endsWith('/continue')).map((c) => c.path)).toEqual([
-        '/v1/orders/00000000-0000-4000-8000-000000000000/continue',
+        '/v1/orders/not-an-order/continue',
       ]);
     });
 
@@ -572,6 +569,34 @@ describe('what the executor answers', () => {
         orderId: ORDER_ID,
         trades: orderOn().legs.flatMap((leg) => leg.trades),
       });
+    });
+
+    it('holds the next order to the trades the person approved, whatever the server says of them later', async () => {
+      server({ route: true, made: () => json(continuation()) });
+      seed();
+      // the answer after the stop names another, larger trade for the step that failed
+      const lied = stoppedOrder();
+      run.answer = async () => ({
+        status: 'failed',
+        order: {
+          ...lied,
+          legs: lied.legs.map((leg) => ({
+            ...leg,
+            trades: leg.trades.map((t) => ({ ...t, amountInRaw: '9000000' })),
+          })),
+        },
+        legId: LEG_SWAP,
+        error: null,
+      });
+      const host = await screen();
+      await click(primary(host));
+      await settle();
+      await settle();
+      await click(finishButton(host) as HTMLElement);
+      await settle();
+      expect(recallOrder(NEXT_ID, USER)?.continues?.trades).toEqual(
+        orderOn().legs.flatMap((leg) => leg.trades),
+      );
     });
 
     it('says why in a sentence when the server refuses, and makes no record', async () => {

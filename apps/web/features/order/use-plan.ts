@@ -5,7 +5,6 @@ import { useAccount } from '../account/AccountProvider';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import {
   forgetPlan,
-  planStanding,
   readStoredPlan,
   recallPlan,
   rememberPlan,
@@ -48,27 +47,21 @@ export function usePlan(id: string): PlanState {
   const apiFetch = useApiFetch();
   const userId = port.userId;
   useEffect(() => {
+    // One read path: the browser's copy first, so the screen opens at once with its risk roll-up,
+    // then the server's (`readStoredPlan`), which is the last word. A plan it says is gone, or
+    // another person's, is dropped and not shown; when it does not answer, the copy stands.
     const kept = recallPlan(id, userId);
     if (!userId) return setPlan(kept);
     let mine = true;
-    if (kept) {
-      // The browser's copy opens the screen at once, with its risk roll-up. The server is the last
-      // word: a plan it says is gone, or another person's, is dropped and not shown. When it does
-      // not answer, the copy stands.
-      setPlan(kept);
-      void planStanding(apiFetch, id).then((standing) => {
-        if (!mine || standing !== 'gone') return;
-        forgetPlan(id);
-        setPlan(null);
-      });
-      return () => {
-        mine = false;
-      };
-    }
-    // Not built in this browser: the API reads it back by its id, the person's own or one made from a link.
-    setPlan(undefined);
+    setPlan(kept ?? undefined);
     void readStoredPlan(apiFetch, id).then((read) => {
       if (!mine) return;
+      if (read === 'gone') {
+        forgetPlan(id);
+        return setPlan(null);
+      }
+      // the copy kept here stands while the server has the plan, or says nothing
+      if (kept) return;
       if (!read) return setPlan(null);
       // The risk roll-up is not stored with a plan: the plan screen shows none for one read back.
       const stored: StoredPlan = {

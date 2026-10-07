@@ -264,8 +264,14 @@ export function OrderScreen({ id }: { id: string }) {
         : '/publish';
   const testNetwork = shown.legs[0]?.provenance === 'sandbox';
   // The swaps the order left undone: what an order that finishes it would make, and is held to.
-  const left = legsInOrder(now)
-    .filter((leg) => leg.kind === 'swap' && leg.status !== 'confirmed' && leg.status !== 'skipped')
+  // The trades are the approved order's own, step by step: of the API's later answer only where each
+  // step stands is read, so an answer that changed a trade cannot widen what the next order may buy.
+  const standing = new Map(now.legs.map((leg) => [leg.id, leg.status]));
+  const left = legsInOrder(record.approved?.order ?? { legs: [] })
+    .filter((leg) => {
+      const status = standing.get(leg.id) ?? leg.status;
+      return leg.kind === 'swap' && status !== 'confirmed' && status !== 'skipped';
+    })
     .flatMap((leg) => leg.trades);
   // A deposit that landed stays in the vault as cash, whatever became of the steps after it.
   const deposited = now.legs.some(

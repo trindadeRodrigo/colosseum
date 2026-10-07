@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { TRUST_STATUS } from '@colosseum/schemas';
 import { deploymentsOf, type GuardDeployment, solanaVaultAddress } from '@colosseum/sdk';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,7 +9,7 @@ import { parse } from '../../components/ui/test/html';
 import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
-import { keepOrder, recallOrder } from '../order/order-record';
+import { acceptTrust, keepOrder, recallOrder, trustAccepted } from '../order/order-record';
 import { basketOfPlan, explorerAddressUrlFor, publishableOn } from '../order/readiness';
 import { PLAN_ID, planOn, recordOf } from '../order/test/fixtures';
 import { EMBEDDED, fakePort, json, signedInPort } from '../wallet/test/fake-port';
@@ -411,6 +412,57 @@ describe('buying a portfolio, which follows it', () => {
       targets: WEIGHTS,
       source: 'api',
     });
+  });
+});
+
+describe('the trust notice on a buy the keeper may trade', () => {
+  const stored = (keeperShown?: boolean) =>
+    window.localStorage.setItem(
+      `tf-trust:${USER}`,
+      JSON.stringify({
+        textVersion: TRUST_STATUS.textVersion,
+        ...(keeperShown === undefined ? {} : { keeperShown }),
+      }),
+    );
+  const trustStep = (host: HTMLElement) =>
+    host.querySelector('[data-ui="buy-step"][data-step="trust"]');
+
+  it('shows the keeper’s limits among its short points', async () => {
+    api({ family: familyOf(FAMILY_ID), funded: true });
+    const host = await show(createElement(FamilyBuyScreen, { slug: SLUG }));
+    const short = [...find(host, '[data-ui="trust-short"]').querySelectorAll('li')].map(
+      (li) => li.textContent,
+    );
+    expect(short).toContain(en.trust.short.keeper('0.75%', '1%'));
+  });
+
+  it('asks again of someone who accepted it on a plan’s buy, where the keeper’s limits were not shown', async () => {
+    stored(false);
+    api({ family: familyOf(FAMILY_ID), funded: true });
+    const host = await show(createElement(FamilyBuyScreen, { slug: SLUG }));
+    expect(trustStep(host)).not.toBeNull();
+    expect(find(host, '[data-ui="trust-short"]').textContent).toContain(
+      en.trust.short.keeper('0.75%', '1%'),
+    );
+  });
+
+  it('does not ask again of someone who accepted it with the keeper’s limits shown, or before that was recorded', async () => {
+    for (const shown of [true, undefined]) {
+      stored(shown);
+      api({ family: familyOf(FAMILY_ID), funded: true });
+      const host = await show(createElement(FamilyBuyScreen, { slug: SLUG }));
+      expect(trustStep(host), String(shown)).toBeNull();
+      await unmountAll();
+    }
+  });
+
+  it('records what was shown, and an acceptance with the keeper’s limits is not written over by one without', () => {
+    acceptTrust(USER, TRUST_STATUS.textVersion, false);
+    expect(trustAccepted(USER, TRUST_STATUS.textVersion, false)).toBe(true);
+    expect(trustAccepted(USER, TRUST_STATUS.textVersion, true)).toBe(false);
+    acceptTrust(USER, TRUST_STATUS.textVersion, true);
+    acceptTrust(USER, TRUST_STATUS.textVersion, false);
+    expect(trustAccepted(USER, TRUST_STATUS.textVersion, true)).toBe(true);
   });
 });
 

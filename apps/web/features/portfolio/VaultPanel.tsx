@@ -11,7 +11,7 @@ import { pinSourceOfPrice } from '../../components/ui/price-source';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { displayName } from '../order/plain';
-import { dollars, drift, share, tokens, utc } from './figures';
+import { dollars, drift, shareExact, sharesOf, tokens, utc } from './figures';
 import {
   type HoldingRow,
   holdingsOf,
@@ -42,6 +42,26 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
   const missing = unpriced(vault);
 
   const page = `/vaults/${vault.chain}/${encodeURIComponent(vault.address)}`;
+  // The rows' shares, rounded together so they add up to the whole (figures.ts, `sharesOf`).
+  const rows = holdingsOf(vault);
+  const now = new Map(
+    rows.map((row, i) => [
+      row.asset,
+      sharesOf(
+        lang,
+        rows.map((r) => r.weightBps),
+      )[i],
+    ]),
+  );
+  const planned = new Map(
+    rows.map((row, i) => [
+      row.asset,
+      sharesOf(
+        lang,
+        rows.map((r) => r.targetBps),
+      )[i],
+    ]),
+  );
   const columns: Column<HoldingRow>[] = [
     {
       key: 'asset',
@@ -109,13 +129,13 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
       key: 'weight',
       header: words.columns.weight,
       numeric: true,
-      cell: (row) => share(lang, row.weightBps),
+      cell: (row) => now.get(row.asset) ?? '',
     },
     {
       key: 'target',
       header: words.columns.target,
       numeric: true,
-      cell: (row) => share(lang, row.targetBps),
+      cell: (row) => planned.get(row.asset) ?? '',
     },
     {
       key: 'drift',
@@ -190,7 +210,7 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
         <DataTable
           caption={words.holdings}
           columns={columns}
-          rows={holdingsOf(vault)}
+          rows={rows}
           rowKey={(row) => row.asset}
           dense
         />
@@ -215,7 +235,7 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
             {vault.autoFollow && (
               <>
                 <dt className="text-muted-foreground">{words.lossUsed}</dt>
-                <dd className="tabular-nums">{share(lang, vault.lossUsedBps)}</dd>
+                <dd className="tabular-nums">{shareExact(lang, vault.lossUsedBps)}</dd>
               </>
             )}
           </dl>
@@ -255,7 +275,17 @@ export function PlanParts({ vault }: { vault: Vault }) {
   const positions = [...vault.positions].sort((a, b) => b.weightBps - a.weightBps);
   // Cash is a part of the plan like any other: what the positions leave, named and counted.
   const fills = new Map(positions.map((p, i) => [p.asset, FILL[i] ?? '']));
-  const parts = holdingsOf(vault)
+  const all = holdingsOf(vault);
+  const nowOf = sharesOf(
+    lang,
+    all.map((r) => r.weightBps),
+  );
+  const plannedOf = sharesOf(
+    lang,
+    all.map((r) => r.targetBps),
+  );
+  const parts = all
+    .map((row, i) => ({ ...row, now: nowOf[i] ?? '', planned: plannedOf[i] ?? '' }))
     .filter((row) => !row.cash || row.weightBps > 0)
     .map((row) => ({
       ...row,
@@ -296,11 +326,9 @@ export function PlanParts({ vault }: { vault: Vault }) {
                 >
                   <span aria-hidden="true" className={`size-2.5 translate-y-px ${p.fill}`} />
                   <span className="font-mono">{displayName(p.asset, t.plan)}</span>
-                  <span className="font-mono text-[12px] font-medium tabular-nums">
-                    {share(lang, p.weightBps)}
-                  </span>
+                  <span className="font-mono text-[12px] font-medium tabular-nums">{p.now}</span>
                   <span className="col-start-2 col-end-4 -mt-0.5 text-[12px]/4 text-muted-foreground">
-                    {words.target(share(lang, p.targetBps))}
+                    {words.target(p.planned)}
                   </span>
                 </li>
               ))}

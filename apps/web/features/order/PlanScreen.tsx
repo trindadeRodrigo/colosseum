@@ -186,11 +186,18 @@ export function PlanScreen({ id }: { id: string }) {
               : t.plan.badFall.none}
           </p>
           {sheet.goal === 'income' && ranged && (
+            // A figure worked from the yield range: it carries that range's pin (STYLE.md rule 1),
+            // and is said as an estimate, never as what the plan pays.
             <p data-ui="plan-monthly" className="text-body">
-              {t.plan.monthly(
-                aMonth(card.expectedReturn.lowPct),
-                aMonth(card.expectedReturn.highPct),
-              )}
+              <ProvenancePin
+                value={t.plan.monthly.figure(
+                  aMonth(card.expectedReturn.lowPct),
+                  aMonth(card.expectedReturn.highPct),
+                )}
+                obs={yieldObs}
+                labels={t.pin}
+              />{' '}
+              {t.plan.monthly.after}
             </p>
           )}
           {/* The chart of his case: drawn only from a range that has a source. */}

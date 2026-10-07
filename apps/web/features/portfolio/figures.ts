@@ -30,6 +30,36 @@ export const share = (lang: Lang, bps: number): string =>
     maximumFractionDigits: 1,
   }).format(bps / 10_000);
 
+/** Basis points to two decimals, where the second one matters: the keeper's losses, `0.12%`. */
+export const shareExact = (lang: Lang, bps: number): string =>
+  new Intl.NumberFormat(LOCALE[lang], {
+    style: 'percent',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(bps / 10_000);
+
+/**
+ * The shares of one whole, each to one decimal, that add up to what the whole adds up to: each is
+ * cut to a tenth of a percent, and the tenths left over go to the largest remainders (63.46, 12.50
+ * and 24.04 are 63.5%, 12.5% and 24.0%: 100.0, where rounding each alone can give 100.1).
+ */
+export function sharesOf(lang: Lang, bps: readonly number[]): string[] {
+  const tenths = bps.map((b) => Math.floor(b / 10));
+  const whole = Math.round(bps.reduce((sum, b) => sum + b, 0) / 10);
+  const order = bps
+    .map((b, i) => ({ i, rest: b % 10 }))
+    .sort((a, b) => b.rest - a.rest || a.i - b.i);
+  for (
+    let left = whole - tenths.reduce((sum, t) => sum + t, 0), k = 0;
+    left > 0;
+    left -= 1, k += 1
+  ) {
+    const at = order[k % order.length]?.i;
+    if (at !== undefined) tenths[at] = (tenths[at] ?? 0) + 1;
+  }
+  return tenths.map((t) => share(lang, t * 10));
+}
+
 /** A difference in basis points, signed: `+1.2%`, `−0.4%`, `0%`. */
 export const drift = (lang: Lang, bps: number): string =>
   trueMinus(

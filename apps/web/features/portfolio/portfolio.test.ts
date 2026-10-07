@@ -4,7 +4,7 @@ import { dictionary } from '../../i18n';
 import { tokenName } from '../order/amounts';
 import { displayName, plainNames } from '../order/plain';
 import { json } from '../wallet/test/fake-port';
-import { dollars, drift, share, tokens, utc } from './figures';
+import { dollars, drift, share, shareExact, sharesOf, tokens, utc } from './figures';
 import {
   addDecimals,
   chainTotal,
@@ -283,6 +283,28 @@ describe('how the figures are written', () => {
     expect(drift('en', -250)).not.toContain('-');
     expect(drift('en', 0)).toBe('0%');
     expect(drift('pt', -250).replace(/\s/g, ' ')).toBe('−2,5%');
+  });
+
+  it('rounds the shares of one whole together, so they add up to it', () => {
+    // each rounded alone: 33.4 + 33.4 + 33.3 = 100.1
+    expect(sharesOf('en', [3335, 3335, 3330])).toEqual(['33.4%', '33.3%', '33.3%']);
+    expect(sharesOf('en', [6346, 1250, 2404])).toEqual(['63.5%', '12.5%', '24%']);
+    expect(sharesOf('en', [2499, 7501])).toEqual(['25%', '75%']);
+    for (const bps of [
+      [3335, 3335, 3330],
+      [6346, 1250, 2404],
+      [1111, 2222, 3333, 3334],
+      [9999, 1],
+    ]) {
+      const tenths = sharesOf('en', bps).map((s) => Math.round(Number.parseFloat(s) * 10));
+      expect(
+        tenths.reduce((a, b) => a + b, 0),
+        String(bps),
+      ).toBe(1000);
+    }
+    // a vault with nothing in it has no whole to add up to
+    expect(sharesOf('en', [0, 0])).toEqual(['0%', '0%']);
+    expect(shareExact('en', 12)).toBe('0.12%');
   });
 
   it('counts cash among what a vault holds, so the shares add up to the whole', () => {

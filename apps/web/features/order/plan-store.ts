@@ -85,26 +85,6 @@ export function forgetPlans(): void {
   }
 }
 
-/**
- * Where a cached plan stands on the server, which is the last word on it (`GET /v1/baskets/{id}`):
- * `there` when it answers the plan, `gone` when it says there is none this person can read (404, or
- * 403), `unknown` when it did not answer or answered anything else, and then the cache stands.
- */
-export async function planStanding(
-  apiFetch: (path: string) => Promise<Response>,
-  id: string,
-): Promise<'there' | 'gone' | 'unknown'> {
-  try {
-    const res = await apiFetch(`/v1/baskets/${encodeURIComponent(id)}`);
-    if (res.status === 404 || res.status === 403) return 'gone';
-    if (!res.ok) return 'unknown';
-    const body = (await res.json()) as { id?: unknown };
-    return body.id === id ? 'there' : 'unknown';
-  } catch {
-    return 'unknown';
-  }
-}
-
 /** The plan with this id, if this person built it in this browser and it still parses. */
 export function recallPlan(id: string, userId: string | null): StoredPlan | null {
   if (!userId) return null;
@@ -139,15 +119,17 @@ export function recallPlan(id: string, userId: string | null): StoredPlan | null
  * A stored plan read from the API by its id (`GET /v1/baskets/{id}`): the signed-in person's own, or
  * one made from a link (what an agent proposed for a person it could not sign in as), which the
  * answer says (`fromLink`). An answer that does not say is from a server that served only plans from
- * a link, and is read as one. Null when the API has none by that id for this person, does not answer,
- * or answers something that is not a plan.
+ * a link, and is read as one. `gone` when the API says it has none by that id for this person (404,
+ * or 403); null when it does not answer, or answers something that is not a plan.
  */
 export async function readStoredPlan(
   apiFetch: (path: string) => Promise<Response>,
   id: string,
-): Promise<{ proposal: BasketProposal; fromLink: boolean } | null> {
+): Promise<{ proposal: BasketProposal; fromLink: boolean } | 'gone' | null> {
   try {
     const res = await apiFetch(`/v1/baskets/${encodeURIComponent(id)}`);
+    // The server's word that there is no such plan for this person: a copy kept here is dropped.
+    if (res.status === 404 || res.status === 403) return 'gone';
     if (!res.ok) return null;
     const body = (await res.json()) as { id?: unknown; proposal?: unknown; fromLink?: unknown };
     if (body.id !== id) return null;

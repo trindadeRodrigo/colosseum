@@ -216,9 +216,19 @@ describe('an income plan and its gap (the flow audit, findings 11 and 14)', () =
     rememberPlan({ ...plan, proposal: { ...plan.proposal, sheet, verdict: undefined } });
     const host = await shown();
     // $80,000 at 2.21% to 2.45% a year, over twelve months
-    expect(find(host, '[data-ui="plan-monthly"]').textContent).toBe(
-      en.plan.monthly('$147', '$163'),
-    );
+    const monthly = find(host, '[data-ui="plan-monthly"]');
+    // said as an estimate from the range, never as what the plan pays
+    expect(monthly.textContent).toContain(en.plan.monthly.figure('$147', '$163'));
+    expect(monthly.textContent).toContain(en.plan.monthly.after);
+    expect(monthly.textContent).toMatch(/estimate, not a promise/);
+    expect(monthly.textContent).not.toMatch(/^Pays/);
+    // and the figure carries the pin of the yield reading it stands on (STYLE.md rule 1)
+    const pin = find(monthly, '[data-ui="figure"] [data-ui="pin"]');
+    expect(pin.getAttribute('aria-label')).toMatch(/^Source for About \$147/);
+    // in Portuguese too
+    const pt = dictionary('pt');
+    expect(pt.plan.monthly.figure('US$ 147', 'US$ 163')).toBe('Cerca de US$ 147 a US$ 163 por mês');
+    expect(pt.plan.monthly.after).toMatch(/estimativa, não uma promessa/);
     expect(host.querySelector('[data-ui="plan-verdict"]')).toBeNull();
   });
 
