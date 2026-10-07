@@ -145,8 +145,6 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
       });
       // Stored as the order holds to it: a follow's version, a publish's family id.
       await insertOrder(deps.db, Order.parse(order), request);
-      // The plan's thread is told an order was made (thread.ts); it never fails the order.
-      await noteOrder(deps.db, { order, request }, { made: true, onError: recordError });
       return detail({ order, request, attempts: [] });
     },
   );
@@ -280,9 +278,9 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
         seen,
       });
       if (existing) return answerMade(existing);
-      // The first order stopped, and this one finishes it: both are said in the plan's thread.
+      // The first order stopped: said in the plan's thread now. That this one was made is said when
+      // its first step is built (thread.ts).
       await noteOrder(deps.db, fresh, { stopped: true, onError: recordError });
-      await noteOrder(deps.db, { order, request }, { made: true, onError: recordError });
       return detail({ order, request, attempts: [] });
     },
   );

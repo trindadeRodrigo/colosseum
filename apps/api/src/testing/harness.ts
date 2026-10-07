@@ -385,6 +385,8 @@ export async function testApp(a: {
   planInputs?: PlanInputs;
   /** The test faucet's senders (POST /v1/testnet/fund). Default: none. */
   testFunds?: TestFundsSender[];
+  /** Where the app's log lines go, for a test that reads them. Default: no log. */
+  logTo?: { write(line: string): void };
 }) {
   const env = a.env ?? {};
   const registry = createChainRegistry(parseFlags(env), parseChainConfigs(env), {
@@ -393,6 +395,7 @@ export async function testApp(a: {
   });
   const app = await buildApp({
     env,
+    ...(a.logTo ? { logTo: a.logTo } : {}),
     v1: {
       auth: a.issuer,
       chains: a.wrap ? a.wrap(registry) : registry,

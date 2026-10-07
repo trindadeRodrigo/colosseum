@@ -1,4 +1,5 @@
 import {
+  factsNotHeld,
   OrderError,
   THREAD_LIMITS,
   ThreadParams,
@@ -10,8 +11,8 @@ import {
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { Refusal } from '../../orders/errors';
-import type { OrderDeps } from '../../orders/legs';
-import { appendTurn, listTurns, ownPlan, threadOf } from '../../orders/thread';
+import { failureOf, type OrderDeps } from '../../orders/legs';
+import { appendTurn, listTurns, ownPlan, sheetOfPlan, threadOf } from '../../orders/thread';
 import { signedIn } from './orders';
 
 // A plan's thread (gate PLAN-THREAD): read it, and add a turn to it. The thread is the conversation's:
@@ -69,7 +70,7 @@ export function registerThreadRoutes(scope: FastifyInstance, deps: OrderDeps) {
       schema: {
         tags,
         summary: 'Add a turn to a plan’s thread: the person’s words and what the app said back',
-        description: `The signed-in person’s own plan only, with the same 404 as the read. \`text\` is the person’s words as typed: plain text of at most ${THREAD_LIMITS.textMax} characters, with no control characters but a line break and a tab, and none of the marks that reorder text. \`reply\` is what the app said back, as keys and facts and never a sentence: each key is letters and digits with no spaces, and \`facts\` takes the sheet’s own values and no other name. Anything else answers 400 and stores nothing. No model is called, and the plan does not change: this is the record. An event turn cannot be sent. Counted in the \`parse\` class of the rate limits.`,
+        description: `The signed-in person’s own plan only, with the same 404 as the read. \`text\` is the person’s words as typed: plain text of at most ${THREAD_LIMITS.textMax} characters, with no control characters but a line break and a tab, and none of the marks that reorder text. \`reply\` is what the app said back, as keys and facts and never a sentence: \`facts\` takes the sheet’s own values and no other name. A key is one of a closed list (\`ThreadSay\`), a fact is named from the list of five, and each fact given must be the one the plan’s sheet holds: a figure that is not the plan’s answers 422, naming the fact. Anything else answers 400 and stores nothing. A line break sent as CR LF is stored as LF. No model is called, and the plan does not change: this is the record. An event turn cannot be sent. Counted in the \`parse\` class of the rate limits.`,
         params: ThreadParams,
         body: ThreadTurnRequest,
         response: { 200: ThreadTurnResponse, default: OrderError },
@@ -78,8 +79,30 @@ export function registerThreadRoutes(scope: FastifyInstance, deps: OrderDeps) {
     async (req, reply): Promise<ThreadTurnResponse> => {
       reply.header('cache-control', 'private, no-store');
       const plan = await own(req.params.id, signedIn(req).userId);
-      const at = { threadId: await threadOf(deps.db, plan), planId: plan.id };
-      return { planId: plan.id, turns: await appendTurn(deps.db, at, req.body) };
+      // What the reply says the facts are is said back to the person as the app's: each one given is
+      // the plan's own, or the turn is refused. Named by the fact, never by the value.
+      const sheet = await sheetOfPlan(deps.db, plan.id);
+      const off = sheet ? factsNotHeld(req.body.reply.facts, sheet) : [];
+      if (off.length > 0)
+        throw new Refusal(
+          422,
+          `the reply holds what the plan’s sheet does not: ${off.join(', ')}`,
+          {
+            fix: 'send each fact as the plan’s sheet has it, and leave out a fact that is not in the plan yet',
+          },
+        );
+      try {
+        const at = { threadId: await threadOf(deps.db, plan), planId: plan.id };
+        return { planId: plan.id, turns: await appendTurn(deps.db, at, req.body) };
+      } catch (e) {
+        // The words are in the request, and a database's error repeats what it was sent: the store
+        // lets out the failure's name and code alone (`ThreadWriteError`), that is what is logged,
+        // and the answer is one fixed line. Nothing else of this request reaches a log.
+        deps.onRecordError?.(failureOf(e));
+        throw new Refusal(503, 'the turn could not be stored: send it again in a moment', {
+          details: { retryable: true },
+        });
+      }
     },
   );
 }

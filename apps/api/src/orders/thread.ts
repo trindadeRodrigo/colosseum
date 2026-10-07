@@ -1,6 +1,7 @@
 import type { Db } from '@colosseum/db';
 import { orders, planThreads, planTurns, proposals, users, vaults } from '@colosseum/db';
 import {
+  type BasketSheet,
   type IntentRequest,
   type Order,
   THREAD_LIMITS,
@@ -28,6 +29,33 @@ import type { StoredOrder } from './store';
 //
 // Events are written here by the server, from a plan as it is stored and an order as the database
 // has it. Nothing a browser sends becomes one.
+
+/**
+ * A write to a thread failed. The database driver's own error holds the statement's values, which
+ * for a turn are the person's words: this one holds the failure's name and code and nothing else, so
+ * whatever catches or logs it has none of them. Every write in this file fails as one of these.
+ */
+export class ThreadWriteError extends Error {
+  readonly code?: string;
+  constructor(cause: unknown) {
+    super('a thread could not be written');
+    this.name = 'ThreadWriteError';
+    const own = (cause as { code?: unknown } | null)?.code;
+    const under = (cause as { cause?: { code?: unknown } } | null)?.cause?.code;
+    const code = typeof own === 'string' ? own : typeof under === 'string' ? under : undefined;
+    // A database's code is five characters (23503); nothing longer is kept.
+    if (code && /^[A-Za-z0-9_]{1,32}$/.test(code)) this.code = code;
+  }
+}
+
+/** Runs a write, and lets nothing of a failure out but its code. */
+async function written<T>(work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (e) {
+    throw e instanceof ThreadWriteError ? e : new ThreadWriteError(e);
+  }
+}
 
 type Row = typeof planTurns.$inferSelect;
 
@@ -60,6 +88,15 @@ export async function ownPlan(db: Db, id: string, privyId: string | null): Promi
   return row ?? null;
 }
 
+/** The sheet a plan was made from: what a reply's facts are checked against. */
+export async function sheetOfPlan(db: Db, id: string): Promise<BasketSheet | null> {
+  const [row] = await db
+    .select({ sheet: sql<BasketSheet | null>`${proposals.proposal}->'sheet'` })
+    .from(proposals)
+    .where(eq(proposals.id, id));
+  return row?.sheet ?? null;
+}
+
 const lock = (tx: Pick<Db, 'execute'>, what: string) =>
   tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`thread:${what}`}, 0))`);
 
@@ -73,29 +110,31 @@ export async function threadOf(
   plan: Pick<OwnPlan, 'id' | 'userId'>,
   join?: string,
 ): Promise<string> {
-  return db.transaction(async (tx) => {
-    // One at a time for a plan: two requests at once would each start a thread.
-    await lock(tx, plan.id);
-    const [now] = await tx
-      .select({ threadId: proposals.threadId })
-      .from(proposals)
-      .where(eq(proposals.id, plan.id));
-    if (now?.threadId) return now.threadId;
-    let threadId = join;
-    if (!threadId) {
-      const [made] = await tx
-        .insert(planThreads)
-        .values({ userId: plan.userId })
-        .returning({ id: planThreads.id });
-      if (!made) throw new Error('a thread was not stored');
-      threadId = made.id;
-    }
-    await tx
-      .update(proposals)
-      .set({ threadId })
-      .where(and(eq(proposals.id, plan.id), isNull(proposals.threadId)));
-    return threadId;
-  });
+  return written(() =>
+    db.transaction(async (tx) => {
+      // One at a time for a plan: two requests at once would each start a thread.
+      await lock(tx, plan.id);
+      const [now] = await tx
+        .select({ threadId: proposals.threadId })
+        .from(proposals)
+        .where(eq(proposals.id, plan.id));
+      if (now?.threadId) return now.threadId;
+      let threadId = join;
+      if (!threadId) {
+        const [made] = await tx
+          .insert(planThreads)
+          .values({ userId: plan.userId })
+          .returning({ id: planThreads.id });
+        if (!made) throw new Error('a thread was not stored');
+        threadId = made.id;
+      }
+      await tx
+        .update(proposals)
+        .set({ threadId })
+        .where(and(eq(proposals.id, plan.id), isNull(proposals.threadId)));
+      return threadId;
+    }),
+  );
 }
 
 /**
@@ -139,7 +178,7 @@ export async function appendTurn(
   at: ThreadPlace,
   turn: ThreadTurnRequest,
 ): Promise<ThreadTurn[]> {
-  const rows = await db.insert(planTurns).values(turnRows(at, turn)).returning();
+  const rows = await written(() => db.insert(planTurns).values(turnRows(at, turn)).returning());
   return rows.sort((a, b) => a.seq - b.seq).flatMap((row) => toTurn(row) ?? []);
 }
 
@@ -154,17 +193,19 @@ export async function attachThread(
   turns: readonly ThreadTurnRequest[],
 ): Promise<void> {
   if (turns.length === 0) return;
-  await db.transaction(async (tx) => {
-    // One at a time for a thread: two requests at once would both find it empty.
-    await lock(tx, at.threadId);
-    const [said] = await tx
-      .select({ id: planTurns.id })
-      .from(planTurns)
-      .where(and(eq(planTurns.threadId, at.threadId), eq(planTurns.who, 'person')))
-      .limit(1);
-    if (said) return;
-    await tx.insert(planTurns).values(turns.flatMap((turn) => turnRows(at, turn)));
-  });
+  await written(() =>
+    db.transaction(async (tx) => {
+      // One at a time for a thread: two requests at once would both find it empty.
+      await lock(tx, at.threadId);
+      const [said] = await tx
+        .select({ id: planTurns.id })
+        .from(planTurns)
+        .where(and(eq(planTurns.threadId, at.threadId), eq(planTurns.who, 'person')))
+        .limit(1);
+      if (said) return;
+      await tx.insert(planTurns).values(turns.flatMap((turn) => turnRows(at, turn)));
+    }),
+  );
 }
 
 /** What makes an event a row once: its kind and the plan or the order it is about. */
@@ -178,18 +219,20 @@ export async function appendEvents(
   events: readonly ThreadEvent[],
 ): Promise<void> {
   if (events.length === 0) return;
-  await db
-    .insert(planTurns)
-    .values(
-      events.map((event) => ({
-        threadId: at.threadId,
-        proposalId: at.planId,
-        who: 'event' as const,
-        event,
-        eventKey: keyOf(event),
-      })),
-    )
-    .onConflictDoNothing({ target: [planTurns.threadId, planTurns.eventKey] });
+  await written(() =>
+    db
+      .insert(planTurns)
+      .values(
+        events.map((event) => ({
+          threadId: at.threadId,
+          proposalId: at.planId,
+          who: 'event' as const,
+          event,
+          eventKey: keyOf(event),
+        })),
+      )
+      .onConflictDoNothing({ target: [planTurns.threadId, planTurns.eventKey] }),
+  );
 }
 
 /**
@@ -232,24 +275,30 @@ export async function placePlan(
   const joined = previous ? await threadOf(db, previous) : undefined;
   const threadId = await threadOf(db, plan, joined);
   const at = { threadId, planId: plan.id };
-  await attachThread(db, at, a.turns ?? []);
-  if (!previous || threadId !== joined) {
-    await appendEvents(db, at, [{ type: 'plan_built', planId: plan.id }]);
-    return;
-  }
+  // The conversation so far, where one was sent. A failure to store it is the caller's to report,
+  // after the thread has been told of the plan: the event does not wait on the words.
+  const attached = await attachThread(db, at, a.turns ?? []).then(
+    () => null,
+    (e: unknown) => ({ failure: e }),
+  );
+  await appendEvents(db, at, [await builtEvent(db, plan, joined === threadId ? previous : null)]);
+  if (attached) throw attached.failure;
+}
+
+/** That a plan was built, or built again after another in its thread, with what changed. */
+async function builtEvent(db: Db, plan: OwnPlan, previous: OwnPlan | null): Promise<ThreadEvent> {
+  if (!previous) return { type: 'plan_built', planId: plan.id };
   const sheets = await db
     .select({ id: proposals.id, sheet: sql<object | null>`${proposals.proposal}->'sheet'` })
     .from(proposals)
     .where(or(eq(proposals.id, plan.id), eq(proposals.id, previous.id)));
   const sheetOf = (id: string) => sheets.find((row) => row.id === id)?.sheet ?? {};
-  await appendEvents(db, at, [
-    {
-      type: 'plan_rebuilt',
-      planId: plan.id,
-      previousPlanId: previous.id,
-      changed: changedFields(sheetOf(previous.id), sheetOf(plan.id)),
-    },
-  ]);
+  return {
+    type: 'plan_rebuilt',
+    planId: plan.id,
+    previousPlanId: previous.id,
+    changed: changedFields(sheetOf(previous.id), sheetOf(plan.id)),
+  };
 }
 
 /** What kind of order it is, as the thread says it. */
@@ -263,10 +312,15 @@ export function orderKind(
   return request.vault ? 'add' : 'buy';
 }
 
-/** The event of an order having been made, or null for an order the thread does not tell of. */
+/**
+ * The event of an order having been made, or null for an order the thread does not tell of, and for
+ * one no step of which was built yet. A screen makes an order to show its steps, before the person
+ * has pressed anything, and may make several: the thread says an order was made when its first step
+ * is built, which is the person's press.
+ */
 export function madeEvent(order: Order, request: IntentRequest): ThreadEvent | null {
   const kind = orderKind(order, request);
-  if (!kind) return null;
+  if (!kind || order.legs.every((l) => l.status === 'planned')) return null;
   return {
     type: 'order_made',
     orderId: order.id,
@@ -279,19 +333,21 @@ export function madeEvent(order: Order, request: IntentRequest): ThreadEvent | n
 const settled = (status: string) => status === 'confirmed' || status === 'skipped';
 
 /**
- * What an order's state says has happened, as events: its deposit landed, the buy is done or has
- * stopped with its cash in the vault, the withdrawal is done. Read from the order as the database
+ * What an order's state says has happened, as events, in order: it was made (a step of it was
+ * built), its deposit landed, the buy is done or has stopped with its cash in the vault, the
+ * withdrawal is done. Read from the order as the database
  * has it, every time: an event already written is not written again (`appendEvents`).
  */
 export function stateEvents(order: Order, request: IntentRequest): ThreadEvent[] {
   const kind = orderKind(order, request);
   if (!kind) return [];
   const orderId = order.id;
+  const made = madeEvent(order, request);
+  const events: ThreadEvent[] = made ? [made] : [];
   if (kind === 'withdraw')
-    return order.status === 'done' ? [{ type: 'withdrawal_done', orderId }] : [];
+    return order.status === 'done' ? [...events, { type: 'withdrawal_done', orderId }] : events;
   const deposits = order.legs.filter((l) => l.kind === 'create_vault' || l.kind === 'deposit');
   const landed = deposits.length > 0 && deposits.every((l) => l.status === 'confirmed');
-  const events: ThreadEvent[] = [];
   if (landed) events.push({ type: 'deposit_landed', orderId });
   if (order.status === 'done') events.push({ type: 'buy_done', orderId });
   // Stopped: the cash is in the vault (or, for an order that finishes one, was already there) and the
@@ -353,19 +409,17 @@ export async function planOfOrder(
 }
 
 /**
- * Tells the thread of the order's plan what the order's state says, and, when the order was just
- * made, that it was; `stopped` says so of a buy another order now finishes, whatever its own status.
+ * Tells the thread of the order's plan what the order's state says; `stopped` says so of a buy another order now finishes, whatever its own status.
  * The thread is a record beside the order: a failure to write it never fails what the order was
  * doing, and is reported to `onError` with no word of the thread in it.
  */
 export async function noteOrder(
   db: Db,
   stored: Pick<StoredOrder, 'order' | 'request'>,
-  o: { made?: boolean; stopped?: boolean; onError?: (e: unknown) => void } = {},
+  o: { stopped?: boolean; onError?: (e: unknown) => void } = {},
 ): Promise<void> {
   try {
-    const made = o.made ? madeEvent(stored.order, stored.request) : null;
-    const events = [...(made ? [made] : []), ...stateEvents(stored.order, stored.request)];
+    const events = stateEvents(stored.order, stored.request);
     if (o.stopped && !events.some((e) => e.type === 'buy_stopped'))
       events.push({ type: 'buy_stopped', orderId: stored.order.id });
     if (events.length === 0) return;

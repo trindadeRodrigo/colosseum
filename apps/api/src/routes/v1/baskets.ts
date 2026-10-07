@@ -2,6 +2,7 @@ import { PersonalSheet } from '@colosseum/engine/personal';
 import {
   BasketProposal,
   type ChainId,
+  factsNotHeld,
   OrderError,
   PersonPlansQuery,
   PersonPlansResponse,
@@ -120,6 +121,14 @@ export function registerBasketRoutes(
     },
     async (req): Promise<PersonalizeResponse> => {
       const principal = signedIn(req);
+      // The conversation ends at this plan: what its last reply says the facts are is this sheet's.
+      const last = req.body.thread?.at(-1);
+      const off = last ? factsNotHeld(last.reply.facts, req.body.sheet) : [];
+      if (off.length > 0)
+        throw new Refusal(
+          422,
+          `the thread’s last reply holds what the sheet does not: ${off.join(', ')}`,
+        );
       const { proposal, rollUp } = await make(req.body.sheet, () => homeChain(deps.db, principal));
       const id = await insertProposal(deps.db, proposal, principal.userId ?? null);
       // The plan's thread (thread.ts): the thread of the plan it was built after, or one of its own

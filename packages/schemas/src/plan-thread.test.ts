@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { BasketSheet } from './basket-sheet';
 import {
+  factsNotHeld,
   THREAD_LIMITS,
+  THREAD_SAY_KEYS,
   ThreadEvent,
   ThreadKey,
   ThreadReply,
@@ -28,6 +31,11 @@ describe('a person’s words', () => {
       'x'.repeat(THREAD_LIMITS.textMax),
     ])
       expect(ThreadText.safeParse(text).success, text.slice(0, 20)).toBe(true);
+  });
+
+  it('have a line break from Windows stored as the one character, and a return alone refused', () => {
+    expect(ThreadText.parse('two lines\r\nfrom Windows\r\n')).toBe('two lines\nfrom Windows\n');
+    expect(ThreadText.safeParse('a carriage\rreturn').success).toBe(false);
   });
 
   it('are refused when empty, too long, or holding a control or direction character', () => {
@@ -65,23 +73,89 @@ describe('the app’s reply', () => {
     ).toBe(false);
   });
 
-  it('has no room for a sentence or a figure with its unit: a key has no space and no sign', () => {
-    for (const key of ['understood', 'plan.built', 'set_amount', 'a1.b2'])
-      expect(ThreadKey.safeParse(key).success, key).toBe(true);
-    for (const key of [
-      'You will earn 8% a year',
-      'earn8%',
-      '$5,000',
-      'amount: 5000',
-      '',
-      '.set',
-      'set.',
-      'x'.repeat(49),
+  it('says only what is on its list: a key the screen has no words for is refused', () => {
+    expect(THREAD_SAY_KEYS).toEqual([
+      'understood',
+      'notUnderstood',
+      'held',
+      'set',
+      'failed',
+      'unfit',
+      'cantPick',
+      'riskTop',
+      'riskBottom',
+      'ready',
+    ]);
+    for (const say of [
+      { key: 'set', fact: 'amount' },
+      { key: 'unfit', fact: 'horizon' },
+      { key: 'failed', why: 'busy' },
+      { key: 'cantPick', pick: 'nvidia' },
+      { key: 'riskTop' },
+      { key: 'ready' },
     ])
-      expect(ThreadKey.safeParse(key).success, key).toBe(false);
-    const sentence = { ...reply, say: [{ key: 'I recommend buying NVDA now' }] };
-    expect(ThreadReply.safeParse(sentence).success).toBe(false);
+      expect(ThreadReply.safeParse({ ...reply, say: [say] }).success, say.key).toBe(true);
+    for (const say of [
+      { key: 'I recommend buying NVDA now' },
+      { key: 'plan.built' },
+      { key: 'promise' },
+      // a key with a value that is not its own, or without the one it is said with
+      { key: 'set' },
+      { key: 'set', fact: 'returns' },
+      { key: 'understood', fact: 'amount' },
+      { key: 'failed', why: 'the market crashed' },
+      { key: 'cantPick', pick: 'gamestop' },
+      { key: 'ready', pick: 'nvidia' },
+    ])
+      expect(ThreadReply.safeParse({ ...reply, say: [say] }).success, JSON.stringify(say)).toBe(
+        false,
+      );
+    // the question and what is open are facts by name
     expect(ThreadReply.safeParse({ ...reply, ask: 'how much?' }).success).toBe(false);
+    expect(ThreadReply.safeParse({ ...reply, ask: 'returns' }).success).toBe(false);
+    expect(ThreadReply.safeParse({ ...reply, open: ['amount', 'yield'] }).success).toBe(false);
+  });
+
+  it('holds only the plan’s own facts: a figure the sheet does not have is named', () => {
+    const sheet = BasketSheet.parse({
+      basketType: 'standard',
+      goal: 'grow',
+      amountUsd: 5000,
+      horizonMonths: 60,
+      risk: 'high',
+      themes: [],
+      country: 'BR',
+      chains: ['solana'],
+      rules: { useHoldings: false, glide: true },
+      language: 'en',
+    });
+    expect(factsNotHeld({}, sheet)).toEqual([]);
+    expect(
+      factsNotHeld(
+        { goal: 'grow', amountUsd: 5000, horizonMonths: 60, risk: 'high', chain: 'solana' },
+        sheet,
+      ),
+    ).toEqual([]);
+    // asked and declined is held by a sheet with no income target, and a figure is not
+    expect(factsNotHeld({ incomeTargetUsdMonthly: null }, sheet)).toEqual([]);
+    expect(factsNotHeld({ incomeTargetUsdMonthly: 400 }, sheet)).toEqual([
+      'incomeTargetUsdMonthly',
+    ]);
+    expect(
+      factsNotHeld({ goal: 'income', amountUsd: 999_999, risk: 'low', chain: 'robinhood' }, sheet),
+    ).toEqual(['goal', 'amountUsd', 'risk', 'chain']);
+    const income = { ...sheet, goal: 'income' as const, incomeTargetUsdMonthly: 400 };
+    expect(factsNotHeld({ incomeTargetUsdMonthly: 400 }, income)).toEqual([]);
+    expect(factsNotHeld({ incomeTargetUsdMonthly: null }, income)).toEqual([
+      'incomeTargetUsdMonthly',
+    ]);
+  });
+
+  it('keeps a key of a sheet’s field to letters and digits: no room for a sentence', () => {
+    for (const key of ['amountUsd', 'horizonMonths', 'a1.b2'])
+      expect(ThreadKey.safeParse(key).success, key).toBe(true);
+    for (const key of ['You will earn 8% a year', 'earn8%', '$5,000', '', '.set', 'x'.repeat(49)])
+      expect(ThreadKey.safeParse(key).success, key).toBe(false);
   });
 
   it('takes no field it does not name: free text has nowhere to go', () => {
@@ -95,7 +169,7 @@ describe('the app’s reply', () => {
       false,
     );
     expect(ThreadReply.safeParse({ ...reply, facts: { goal: 'get rich' } }).success).toBe(false);
-    expect(ThreadReply.safeParse({ ...reply, say: Array(9).fill({ key: 'set' }) }).success).toBe(
+    expect(ThreadReply.safeParse({ ...reply, say: Array(9).fill({ key: 'held' }) }).success).toBe(
       false,
     );
   });

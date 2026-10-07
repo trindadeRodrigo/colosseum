@@ -687,7 +687,8 @@ export async function buildLeg(
       ? { exclusive: { owner, orderId: order.id, chainName: entry.config.name, clear } }
       : {}),
   });
-  await reload(deps, order.id);
+  // A step was built: the thread is told the order was made, the first time (thread.ts).
+  await tellThread(deps, await reload(deps, order.id));
   return { tx: stampTx(built, { legId: leg.id, attemptId: attempt.id }), attempt };
 }
 

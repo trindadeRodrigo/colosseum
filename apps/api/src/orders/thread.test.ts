@@ -68,40 +68,46 @@ describe('what the thread is told of an order', () => {
     expect(orderKind(plain, { type: 'settings', vault: 'vault', autoFollow: true })).toBeNull();
   });
 
-  it('says an order was made with the dollars it moves in, and none for one that moves none in', () => {
-    expect(madeEvent(order('open', []), buy)).toEqual({
+  it('says an order was made once a step of it is built, with the dollars it moves in', () => {
+    const pressed = [leg('deposit', 'built'), leg('swap', 'planned')];
+    expect(madeEvent(order('open', pressed), buy)).toEqual({
       type: 'order_made',
       orderId: ID,
       kind: 'buy',
       amountUsd: 900,
     });
-    expect(madeEvent(order('open', []), add)).toMatchObject({ kind: 'add', amountUsd: 300 });
-    expect(madeEvent(order('open', [], { continues: 'x' }), buy)).toMatchObject({
-      kind: 'finish',
-      amountUsd: null,
-    });
-    expect(madeEvent(order('open', []), withdraw)).toMatchObject({
+    expect(madeEvent(order('open', pressed), add)).toMatchObject({ kind: 'add', amountUsd: 300 });
+    expect(madeEvent(order('open', [leg('swap', 'built')], { continues: 'x' }), buy)).toMatchObject(
+      { kind: 'finish', amountUsd: null },
+    );
+    expect(madeEvent(order('open', [leg('withdraw', 'sent')]), withdraw)).toMatchObject({
       kind: 'withdraw',
       amountUsd: null,
     });
     expect(
-      madeEvent(order('open', []), { type: 'settings', vault: 'v', autoFollow: true }),
+      madeEvent(order('open', pressed), { type: 'settings', vault: 'v', autoFollow: true }),
     ).toBeNull();
+    // an order a screen made to show its steps, with nothing pressed: not said, however many there are
+    for (const request of [buy, add, withdraw])
+      expect(
+        madeEvent(order('open', [leg('deposit', 'planned'), leg('swap', 'planned')]), request),
+      ).toBeNull();
+    expect(madeEvent(order('expired', [leg('deposit', 'planned')]), buy)).toBeNull();
   });
 
-  it('follows a buy: nothing yet, the deposit landed, then done', () => {
+  it('follows a buy: nothing until a step is built, then made, the deposit landed, done', () => {
     expect(
       types(order('open', [leg('create_vault', 'planned'), leg('swap', 'planned')]), buy),
     ).toEqual([]);
     expect(
       types(order('open', [leg('create_vault', 'built'), leg('swap', 'planned')]), buy),
-    ).toEqual([]);
+    ).toEqual(['order_made']);
     expect(
       types(order('open', [leg('create_vault', 'confirmed'), leg('swap', 'planned')]), buy),
-    ).toEqual(['deposit_landed']);
+    ).toEqual(['order_made', 'deposit_landed']);
     expect(
       types(order('done', [leg('create_vault', 'confirmed'), leg('swap', 'confirmed')]), buy),
-    ).toEqual(['deposit_landed', 'buy_done']);
+    ).toEqual(['order_made', 'deposit_landed', 'buy_done']);
   });
 
   it('says a buy stopped only when its cash is in the vault and it can no longer finish as it is', () => {
@@ -109,16 +115,18 @@ describe('what the thread is told of an order', () => {
     for (const status of ['failed', 'expired'] as const)
       expect(
         types(order(status, [leg('create_vault', 'confirmed'), leg('swap', 'failed')]), buy),
-      ).toEqual(['deposit_landed', 'buy_stopped']);
-    // run out of time before anything landed: nothing happened, and nothing is said
+      ).toEqual(['order_made', 'deposit_landed', 'buy_stopped']);
+    // run out of time before anything was built: nothing happened, and nothing is said
     expect(
       types(order('expired', [leg('create_vault', 'planned'), leg('swap', 'planned')]), buy),
     ).toEqual([]);
     // an order that finishes another has no deposit: its cash was already there
     expect(types(order('failed', [leg('swap', 'failed')], { continues: 'x' }), buy)).toEqual([
+      'order_made',
       'buy_stopped',
     ]);
     expect(types(order('done', [leg('swap', 'confirmed')], { continues: 'x' }), buy)).toEqual([
+      'order_made',
       'buy_done',
     ]);
   });
@@ -129,7 +137,7 @@ describe('what the thread is told of an order', () => {
     ).toEqual([]);
     expect(
       types(order('done', [leg('withdraw', 'confirmed')], { type: 'withdraw' }), withdraw),
-    ).toEqual(['withdrawal_done']);
+    ).toEqual(['order_made', 'withdrawal_done']);
     expect(
       types(order('done', [leg('set_auto_follow', 'confirmed')], { type: 'settings' }), {
         type: 'settings',

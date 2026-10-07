@@ -1,4 +1,5 @@
-import { planTurns, proposals } from '@colosseum/db';
+import { randomUUID } from 'node:crypto';
+import { type Db, planTurns, proposals } from '@colosseum/db';
 import {
   type BasketSheet,
   OrderDetail,
@@ -34,6 +35,33 @@ let data: Awaited<ReturnType<typeof testDb>>;
 let app: FastifyInstance;
 let registry: ChainRegistry;
 const undo: (() => Promise<unknown>)[] = [];
+/**
+ * The database, with every write of a person's or the app's turn made to fail as the database itself
+ * fails it: the row is sent with a thread that does not exist, so the driver throws its own error,
+ * with the statement's values in it. Events are written as they are.
+ */
+function breaking(db: Db): Db {
+  return new Proxy(db, {
+    get(target, prop) {
+      if (prop === 'insert')
+        return (table: unknown) => {
+          const builder = target.insert(table as typeof planTurns);
+          if (table !== planTurns) return builder;
+          return {
+            values: (rows: (typeof planTurns.$inferInsert)[]) =>
+              builder.values(
+                rows.map((row) => (row.who === 'event' ? row : { ...row, threadId: randomUUID() })),
+              ),
+          };
+        };
+      if (prop === 'transaction')
+        return (work: (tx: Db) => Promise<unknown>) =>
+          target.transaction((tx) => work(breaking(tx as unknown as Db)));
+      const value = Reflect.get(target, prop, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
 const withMockYield: PlanInputs = async (q) => ({
   ...(await bearingPlanInputs(q)),
   yields: YieldObservation.array()
@@ -92,7 +120,8 @@ const reply = (over: object = {}) => ({
   say: [{ key: 'understood' }, { key: 'set', fact: 'amount' }],
   ask: 'horizon',
   open: ['horizon', 'risk'],
-  facts: { goal: 'grow', amountUsd: 6100 },
+  // every sheet of this file is a goal to grow: a reply's facts are its plan's own
+  facts: { goal: 'grow' },
   ...over,
 });
 const thread = async (who: Person, id: string, query = '') => {
@@ -216,10 +245,32 @@ describe('a plan’s thread', () => {
       // the answer names what is wrong and repeats none of what was sent
       expect(res.body, what).not.toMatch(/evil|NVDA|earn 8%/);
     }
+    // a figure or a value that is not the plan's own: refused by the fact's name, with no value
+    for (const facts of [
+      { amountUsd: 999_999 },
+      { goal: 'income' },
+      { incomeTargetUsdMonthly: 777 },
+    ]) {
+      const res = await say(who, id, { text: 'hi', reply: reply({ facts }) });
+      expect(res.statusCode, res.body).toBe(422);
+      expect(OrderError.parse(res.json()).error).toContain(Object.keys(facts)[0]);
+      expect(res.body).not.toMatch(/999|777/);
+    }
     // larger than a turn can be: refused before it is read
     const huge = await say(who, id, { text: 'hi', reply: reply({ pad: 'x'.repeat(20_000) }) });
     expect(huge.statusCode).toBe(413);
     expect(lines(await thread(who, id))).toEqual(['plan_built']);
+    // the plan's own facts are taken, and a line break from Windows is stored as the one character
+    const ok = await say(who, id, {
+      text: 'two lines\r\nfrom Windows',
+      reply: reply({ facts: { goal: 'grow', amountUsd: 6_105, horizonMonths: 60, risk: 'high' } }),
+    });
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect(lines(await thread(who, id))).toEqual([
+      'plan_built',
+      'person: two lines\nfrom Windows',
+      'app',
+    ]);
   });
 
   it('pages from the newest back, oldest first on each page, and ends', async () => {
@@ -291,6 +342,14 @@ describe('a thread begun before the plan was the person’s own', () => {
       thread: Array.from({ length: THREAD_LIMITS.attachMax + 1 }, () => started[0]),
     });
     expect(many.statusCode).toBe(400);
+    // the conversation ends at the plan: its last reply's facts are the sheet's, or nothing is made
+    const off = await post(who, '/v1/baskets/personalize', {
+      sheet: sheet({ amountUsd: 6_109 }),
+      thread: [{ text: 'fine', reply: reply({ facts: { amountUsd: 123_456 } }) }],
+    });
+    expect(off.statusCode, off.body).toBe(422);
+    expect(off.body).toContain('amountUsd');
+    expect(off.body).not.toContain('123');
     // an agent's plan is nobody's conversation: the field is not one of that route's, and no row is written
     const linked = await post(null, '/v1/baskets/propose', {
       sheet: sheet({ amountUsd: 6_110 }),
@@ -430,7 +489,14 @@ describe('what happened to the plan, written by the server', () => {
     const who = await someone();
     const { id } = await make(who, 6_111);
     await fund(who, undefined, 20_000);
+    // Orders a screen makes to show their steps, with nothing pressed: the thread says none of them.
+    for (let i = 0; i < 3; i++) await order(who, { proposalId: id, amountUsd: 900 });
     const placed = await order(who, { proposalId: id, amountUsd: 900 });
+    expect(lines(await thread(who, id))).toEqual(['plan_built']);
+    // the first step is built, which is the person's press: the order was made
+    const firstLeg = placed.legs[0];
+    if (!firstLeg) throw new Error('the buy has no step');
+    await build(who, placed, firstLeg.id);
     expect(lines(await thread(who, id))).toEqual(['plan_built', 'order_made']);
     const made = (await thread(who, id)).turns[1];
     expect(made).toMatchObject({
@@ -439,7 +505,11 @@ describe('what happened to the plan, written by the server', () => {
     });
 
     // the vault is opened and the deposit lands; no swap is signed yet
-    await settleAll(who, placed, undefined, (leg) => leg.kind === 'swap');
+    await report(who, placed, firstLeg.id, { txId: await land(who, placed, firstLeg.id) });
+    for (const leg of placed.legs.slice(1).filter((l) => l.kind !== 'swap')) {
+      await build(who, placed, leg.id);
+      await report(who, placed, leg.id, { txId: await land(who, placed, leg.id) });
+    }
     expect(lines(await thread(who, id))).toEqual(['plan_built', 'order_made', 'deposit_landed']);
     // reading the order again, however often, writes nothing twice
     for (let i = 0; i < 3; i++) await get(who, `/v1/orders/${placed.id}`);
@@ -536,6 +606,60 @@ describe('a thread’s place in the limits and the database', () => {
       expect(codes.at(-1)).toBe(429);
     } finally {
       await strict.app.close();
+    }
+  });
+
+  it('lets nothing of a person’s words into a log when the database refuses a write', async () => {
+    const secret = 'what I earn is my own 5521';
+    // the driver's own error repeats what it was sent: this is what must never be logged
+    const raw = await breaking(data.db)
+      .insert(planTurns)
+      .values([{ threadId: randomUUID(), proposalId: randomUUID(), who: 'person', text: secret }])
+      .then(
+        () => null,
+        (e: unknown) => e as Error & { params?: unknown },
+      );
+    expect(`${raw?.message} ${JSON.stringify(raw?.params)}`).toContain('5521');
+
+    const logged: string[] = [];
+    const broken = await testApp({
+      issuer: issuer.issuer,
+      db: breaking(data.db),
+      planInputs: withMockYield,
+      logTo: { write: (line) => logged.push(line) },
+    });
+    try {
+      const who = await someone();
+      // the conversation sent with the plan is not stored, and the plan is made all the same
+      const plan = await make(
+        who,
+        6_140,
+        { thread: [{ text: `${secret}, said first`, reply: reply() }] },
+        broken.app,
+      );
+      const res = await say(
+        who,
+        plan.id,
+        { text: secret, reply: reply({ say: [{ key: 'cantPick', pick: 'tesla' }] }) },
+        broken.app,
+      );
+      expect(res.statusCode, res.body).toBe(503);
+      expect(OrderError.parse(res.json())).toEqual({
+        error: 'the turn could not be stored: send it again in a moment',
+        details: { retryable: true },
+      });
+      // both failures are in the log, by their name and the database's code
+      const failures = logged.filter((line) => line.includes('ThreadWriteError'));
+      expect(failures).toHaveLength(2);
+      for (const line of failures) expect(JSON.parse(line)).toMatchObject({ code: '23503' });
+      // and no line of the log, of any request, has a word of either turn or of the reply
+      const all = logged.join('\n');
+      expect(logged.length).toBeGreaterThan(2);
+      for (const word of ['5521', 'what I earn', 'said first', 'tesla', 'cantPick'])
+        expect(all, word).not.toContain(word);
+      expect(lines(await thread(who, plan.id))).toEqual(['plan_built']);
+    } finally {
+      await broken.app.close();
     }
   });
 

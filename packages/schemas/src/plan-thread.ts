@@ -7,10 +7,13 @@ import { ChainId } from './chain';
 // is joined to its plan by its number on chain (`GET /v1/me/plans`). It is the person's own and nobody
 // else's: `GET` and `POST /v1/baskets/{id}/thread`, signed in.
 //
+// The thread is a conversation's: every plan built in it shares it (apps/api/src/orders/thread.ts).
+//
 // Three kinds of turn:
 //   person   their words, as they typed them. Plain text, and personal: never in a log, never on a
 //            public route, never in what a shared plan shows.
-//   app      what the app said back, as KEYS and the facts it used, never a sentence. The screen says
+//   app      what the app said back, as KEYS of a closed list and the facts it used, each of which
+//            the plan's own sheet holds, never a sentence. The screen says
 //            it from its dictionary in the person's language, with every figure taken from the facts.
 //            No model's free text is stored, and no rendered figure: a figure kept as words could not
 //            be told from one the app made up.
@@ -43,6 +46,8 @@ const NOT_PLAIN =
 /** A person's words: plain text of a bounded length, with something in it. */
 export const ThreadText = z
   .string()
+  // A browser on Windows sends a line break as two characters: stored as the one.
+  .overwrite((text) => text.replace(/\r\n/g, '\n'))
   .max(THREAD_LIMITS.textMax)
   .refine((text) => text.trim().length > 0, 'a turn says something')
   .refine((text) => !NOT_PLAIN.test(text), 'plain text only: no control or direction characters');
@@ -69,28 +74,96 @@ export const ThreadFacts = z.strictObject({
 });
 export type ThreadFacts = z.infer<typeof ThreadFacts>;
 
+/**
+ * The facts of a goal a conversation settles, by the names the screen's dictionary has for them: what
+ * a line is about, the question asked next, what is still open. The whole list; the web's templates
+ * are keyed by it.
+ */
+export const THREAD_FACT_NAMES = ['goal', 'amount', 'income', 'horizon', 'risk'] as const;
+export const ThreadFactName = z.enum(THREAD_FACT_NAMES);
+export type ThreadFactName = z.infer<typeof ThreadFactName>;
+
+/** Why the reader gave nothing back, as the screen says it (`failed`). */
+export const THREAD_WHYS = ['too_short', 'too_long', 'busy', 'unreachable', 'unreadable'] as const;
+
+/**
+ * The single names a person may ask for that a plan cannot be told to hold (`cantPick`), by the app's
+ * own key for each: what is said back is the app's name for it, never the person's typed words.
+ */
+export const THREAD_PICKS = [
+  'nvidia',
+  'apple',
+  'tesla',
+  'microsoft',
+  'amazon',
+  'google',
+  'meta',
+  'bitcoin',
+  'ether',
+] as const;
+
+const line = <K extends string, S extends z.ZodRawShape>(key: K, more: S = {} as S) =>
+  z.strictObject({ key: z.literal(key), ...more });
+
+/**
+ * One thing the app said, by its key: a closed list, each key with the one value it is said with and
+ * no other field. The screen has the words for each; a key that is not here has none, and is refused.
+ */
+export const ThreadSay = z.discriminatedUnion('key', [
+  /** What was understood, said from the facts. */
+  line('understood'),
+  line('notUnderstood'),
+  /** Words that change nothing while a goal is held. */
+  line('held'),
+  /** The fact was set by the answer. */
+  line('set', { fact: ThreadFactName }),
+  /** The reader could not be reached, or could not read the text. */
+  line('failed', { why: z.enum(THREAD_WHYS) }),
+  /** An answer that is not one the fact takes. */
+  line('unfit', { fact: ThreadFactName }),
+  /** One stock or coin asked for by name, which a plan cannot be told yet. */
+  line('cantPick', { pick: z.enum(THREAD_PICKS) }),
+  line('riskTop'),
+  line('riskBottom'),
+  /** Every fact is known: the plan is being built. */
+  line('ready'),
+]);
+export type ThreadSay = z.infer<typeof ThreadSay>;
+/** Every key a reply may say. */
+export const THREAD_SAY_KEYS = ThreadSay.options.map((o) => o.shape.key.value);
+
 /** What the app said back: what to say by key, the next question, what is still open, and the facts. */
 export const ThreadReply = z.strictObject({
-  say: z
-    .array(
-      z.strictObject({
-        key: ThreadKey,
-        /** The fact the line is about (`set`, `unfit`). */
-        fact: ThreadKey.optional(),
-        /** A reason by its key (`failed`). */
-        why: ThreadKey.optional(),
-        /** What the person asked for by name, as the screen's own key for it (`cantPick`). */
-        pick: ThreadKey.optional(),
-      }),
-    )
-    .max(THREAD_LIMITS.sayMax),
+  say: z.array(ThreadSay).max(THREAD_LIMITS.sayMax),
   /** The one question asked next, by the fact it asks for; null when none. */
-  ask: ThreadKey.nullable(),
+  ask: ThreadFactName.nullable(),
   /** The facts still to settle. */
-  open: z.array(ThreadKey).max(THREAD_LIMITS.sayMax),
+  open: z.array(ThreadFactName).max(THREAD_FACT_NAMES.length),
   facts: ThreadFacts,
 });
 export type ThreadReply = z.infer<typeof ThreadReply>;
+
+/**
+ * The facts of a reply that the sheet does not hold, by name: a figure or a value that is not the
+ * plan's own. A reply's facts are said back to the person as the app's, so each one given must be the
+ * sheet's; a fact not settled yet is left out. An income target given as null (asked and declined)
+ * is held by a sheet that has none.
+ */
+export function factsNotHeld(facts: ThreadFacts, sheet: BasketSheet): (keyof ThreadFacts)[] {
+  const held: {
+    [K in keyof ThreadFacts]-?: (value: NonNullable<ThreadFacts[K]> | null) => boolean;
+  } = {
+    goal: (v) => v === sheet.goal,
+    amountUsd: (v) => v === sheet.amountUsd,
+    incomeTargetUsdMonthly: (v) => (v ?? undefined) === sheet.incomeTargetUsdMonthly,
+    horizonMonths: (v) => v === sheet.horizonMonths,
+    risk: (v) => v === sheet.risk,
+    chain: (v) => v !== null && sheet.chains.includes(v),
+  };
+  return (Object.keys(held) as (keyof ThreadFacts)[]).filter(
+    (name) => facts[name] !== undefined && !held[name](facts[name] as never),
+  );
+}
 
 /** What happened to the plan, as the server saw it. `orderId` reads at `GET /v1/orders/{id}`. */
 export const ThreadEvent = z.discriminatedUnion('type', [
