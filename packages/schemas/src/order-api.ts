@@ -5,7 +5,7 @@ import { ChainId } from './chain';
 import { Provenance } from './enums';
 import { ChainMode } from './flags';
 import { Attempt, ConsentKind, OrderBase } from './order';
-import { Price, VaultView } from './vault';
+import { Price, VaultName, VaultView } from './vault';
 
 // The bodies of the order routes (DESIGN-VAULT 3.3), named once so the API, the SDK and the web share
 // them. POST /v1/orders takes an IntentRequest. Every order route but the build answers with an
@@ -112,16 +112,16 @@ export const ConsentRequest = z.object({
 export type ConsentRequest = z.infer<typeof ConsentRequest>;
 
 /**
- * The plan a vault was opened for, as the server joined the two when the order's step that opens the
- * vault was confirmed: what the browser kept with the order as its `PlacedGoal`, now the server's.
- * `personal` is a plan made to measure, with the stored plan's id; `follow` is a vault opened to follow
- * a shared portfolio, with the family's id and no sheet.
- *
- * The sheet, the card, the verdict and the observations are the stored plan's own, as the engine made
- * them, and come all four together or not at all: left out where the plan has none stored, where one
- * of them no longer reads, and for a plan that is not this person's to read back: one another person
- * made in the app, which is theirs, or one stored with no person and not made from a link. `verdict`
- * is null for a plan whose goal is not an income.
+ * The plan a vault was opened for, as the server's join holds it (`vaults.basket_id`, DESIGN-VAULT
+ * section 4): what the portfolio section's routes answer a vault with. `personal` is a plan made to
+ * measure, with the stored plan's id; `follow` is a vault opened to follow a shared portfolio, with the
+ * family's id and no sheet. The sheet, the card, the verdict and the observations are the stored plan's
+ * own, as the engine made them, and come the four together or not at all: left out where the plan has
+ * none stored, where one of them no longer reads, and for a plan that is not this person's to read
+ * back (one another person made in the app, or one stored with no person and not made from a link).
+ * The card's range and exit cost and the verdict's gap were worked out from the readings in
+ * `observations`, each with its own source, time, method and provenance. `verdict` is null for a plan
+ * whose goal is not an income.
  */
 export const VaultPlan = z.object({
   kind: z.enum(['personal', 'follow']),
@@ -132,24 +132,14 @@ export const VaultPlan = z.object({
   sheet: BasketSheet.optional(),
   card: BasketCard.optional(),
   verdict: Verdict.nullable().optional(),
-  /**
-   * Where the card's and the verdict's figures came from: the readings the plan was made with (a
-   * yield, a price, an exit cost, an FX rate), each with its own source, time, method and provenance.
-   * They are of the day the plan was made, not of this read, and the chain entry's label does not
-   * stand in for theirs. A figure with no reading here has no source to show, and none is made up
-   * for it: the list is empty for a plan made from no reading.
-   */
   observations: z.array(ObservationRef).optional(),
 });
 export type VaultPlan = z.infer<typeof VaultPlan>;
 
 /**
  * GET /v1/portfolio: the signed-in person's vaults, one entry per chain that is not switched off.
- * `provenance` is the label on every figure read from the chain for this answer, a vault's value and
- * holdings: `mock` when the chain runs on the mock, `sandbox` on a test network, `live` on mainnet
- * only. A price carries its own, and so do a plan's figures: the card and the verdict under `plan`
- * were worked out when the plan was made, from the readings in `plan.observations`, each with its own
- * source, time, method and provenance.
+ * `provenance` is the label on every figure under it: `mock` when the chain runs on the mock,
+ * `sandbox` on a test network, `live` on mainnet only.
  */
 export const PortfolioResponse = z.object({
   chains: z.array(
@@ -158,17 +148,14 @@ export const PortfolioResponse = z.object({
       name: z.string(),
       mode: ChainMode,
       provenance: Provenance,
-      /**
-       * The caller's vaults, each with its value, and the weight and drift of every position.
-       * `basketId` is the plan's number on the chain. `planId` is the id of the person's own plan the
-       * vault is joined to, and `plan` what that plan is: both are left out for a vault no order of
-       * this person opened, and by a server older than these fields.
-       */
+      /** The caller's vaults, each with its value, and the weight and drift of every position. */
       vaults: z.array(
         VaultView.extend({
           provenance: Provenance,
-          planId: z.uuid().optional(),
-          plan: VaultPlan.optional(),
+          /** The name its owner gave it; null when they gave none. Left out by a server older than names. */
+          name: VaultName.nullable().optional(),
+          /** The caller's plan this vault was opened from; null when it follows a shared portfolio or the plan is not theirs to read. */
+          planId: z.string().uuid().nullable().optional(),
         }),
       ),
       /** The reference prices the values were worked out with, each with its source and time. */
@@ -194,6 +181,19 @@ export const PortfolioResponse = z.object({
   disclaimer: z.string(),
 });
 export type PortfolioResponse = z.infer<typeof PortfolioResponse>;
+
+/**
+ * PUT /v1/vaults/{chain}/{address}/name: the name a person gives a vault of theirs, or null to give it
+ * none again. Plain text, shown as text.
+ */
+export const VaultNameRequest = z.object({ name: VaultName.nullable() });
+export type VaultNameRequest = z.infer<typeof VaultNameRequest>;
+export const VaultNameResponse = z.object({
+  chain: ChainId,
+  address: z.string(),
+  name: VaultName.nullable(),
+});
+export type VaultNameResponse = z.infer<typeof VaultNameResponse>;
 
 /** The path of GET /v1/vaults/{chain}/{address}: any vault, read from its chain. */
 export const VaultRouteParams = z.object({ chain: ChainId, address: z.string().min(1).max(64) });

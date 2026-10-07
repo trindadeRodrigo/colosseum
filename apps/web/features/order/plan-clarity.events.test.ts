@@ -9,9 +9,9 @@ import { withAccount } from '../account/test/screen';
 import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
 import { PlanScreen } from './PlanScreen';
-import { displayName, flagSentence, kindLabel } from './plain';
+import { displayName, flagSentence, flagSentences, kindLabel } from './plain';
 import { rememberPlan, type StoredPlan } from './plan-store';
-import { PLAN_ID, planOn, USER } from './test/fixtures';
+import { PLAN_ID, planOn, serverKeepsPlans, USER } from './test/fixtures';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -138,8 +138,10 @@ const shown = async (lang: Lang = 'en') => {
 beforeEach(() => {
   window.sessionStorage.clear();
   portStore.set(signedInPort(EMBEDDED, { userId: USER }));
-  portStore.setApi(async (path) =>
-    path === '/v1/me' ? json(person) : json({ error: 'not found' }, 404),
+  portStore.setApi(
+    serverKeepsPlans(async (path) =>
+      path === '/v1/me' ? json(person) : json({ error: 'not found' }, 404),
+    ),
   );
 });
 afterEach(unmountAll);
@@ -161,7 +163,7 @@ describe('the plan in plain words', () => {
     expect(displayName('solana:usdc', pt.plan)).toBe('Dinheiro (USDC)');
   });
 
-  it('says every flag the engine writes as a sentence, and one it does not know as a note, never as its code', () => {
+  it('says every flag the engine writes as a sentence, and one it does not know as one plain line, never as its code', () => {
     for (const d of [en, pt])
       for (const flag of FLAGS) {
         const said = flagSentence(flag, d.plan, (id) => displayName(id, d.plan));
@@ -171,7 +173,12 @@ describe('the plan in plain words', () => {
     expect(
       flagSentence('ceiling_from_tier:solana:syrupusdc', en.plan, (id) => displayName(id, en.plan)),
     ).toBe(en.plan.flagWords.ceilingFromTier('syrupUSDC (Maple)'));
+    // a flag with no sentence yet is not dropped in silence: one plain line, once, and no engine word
     expect(flagSentence('a_code_nobody_wrote_yet', en.plan, String)).toBe(en.plan.flagWords.other);
+    expect(en.plan.flagWords.other).not.toMatch(/engine/i);
+    expect(
+      flagSentences(['a_code_nobody_wrote_yet', 'another_unknown', 'unplaced'], en.plan, String),
+    ).toEqual([en.plan.flagWords.other, en.plan.flagWords.simple.unplaced]);
     expect(kindLabel('dollar_yield', en.plan.kinds)).toBe('Dollar yield');
     expect(kindLabel('dollar-yield', en.plan.kinds)).toBe('Dollar yield');
     expect(kindLabel('something_else', en.plan.kinds)).toBe(en.plan.kinds.other);
@@ -252,10 +259,12 @@ describe('the plan in plain words', () => {
   it('never says USDC on a Robinhood plan: its dollar is tUSDG, in the summary and the legs', async () => {
     const plan = planOn('robinhood', 'sandbox');
     rememberPlan(plan);
-    portStore.setApi(async (path) =>
-      path === '/v1/me'
-        ? json({ ...person, chain: 'robinhood' })
-        : json({ error: 'not found' }, 404),
+    portStore.setApi(
+      serverKeepsPlans(async (path) =>
+        path === '/v1/me'
+          ? json({ ...person, chain: 'robinhood' })
+          : json({ error: 'not found' }, 404),
+      ),
     );
     const host = await shown();
     expect(find(host, '[data-ui="plan-summary"]').textContent).toContain('Cash (tUSDG)');

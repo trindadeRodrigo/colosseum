@@ -117,8 +117,15 @@
     {
       "idx": 16,
       "version": "7",
-      "when": 1791321577873,
-      "tag": "0016_vault_snapshots",
+      "when": 1791330642913,
+      "tag": "0016_vault_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791346037391,
+      "tag": "0017_vault_snapshots",
       "breakpoints": true
     }
   ]

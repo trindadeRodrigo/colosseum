@@ -58,13 +58,24 @@ export const FundingQuery = z
       .string()
       .regex(/^[a-z0-9][a-z0-9-]*$/)
       .optional(),
+    /**
+     * A vault of the person's, in place of `proposalId` and `family`: adding `amountUsd` to it (a buy
+     * that names the vault). Sent with `vaultChain`, the chain it is on, and with `wallet`, its owner.
+     */
+    vault: Address.optional(),
+    vaultChain: ChainId.optional(),
   })
-  .refine((q) => !(q.proposalId !== undefined && q.family !== undefined), {
-    message: 'send proposalId or family, not both',
+  .refine((q) => [q.proposalId, q.family, q.vault].filter((x) => x !== undefined).length <= 1, {
+    message: 'send one of proposalId, family and vault',
+  })
+  .refine((q) => (q.vault === undefined) === (q.vaultChain === undefined), {
+    message: 'send vault and vaultChain together',
   })
   .refine(
-    (q) => (q.amountUsd === undefined) === (q.proposalId === undefined && q.family === undefined),
-    { message: 'send amountUsd with proposalId or family, or none of them' },
+    (q) =>
+      (q.amountUsd === undefined) ===
+      (q.proposalId === undefined && q.family === undefined && q.vault === undefined),
+    { message: 'send amountUsd with proposalId, family or vault, or none of them' },
   );
 export type FundingQuery = z.infer<typeof FundingQuery>;
 
@@ -123,9 +134,15 @@ export const TestFundsRequest = z
       .max(ORDER_LIMITS.maxAmountUsd, 'one order buys at most $1,000,000'),
     proposalId: z.uuid().optional(),
     family: FundingQuery.shape.family,
+    /** A vault of the person's that the buy adds to, with the chain it is on (as GET /v1/funding). */
+    vault: FundingQuery.shape.vault,
+    vaultChain: FundingQuery.shape.vaultChain,
   })
-  .refine((q) => (q.proposalId === undefined) !== (q.family === undefined), {
-    message: 'send proposalId or family, one of them',
+  .refine((q) => [q.proposalId, q.family, q.vault].filter((x) => x !== undefined).length === 1, {
+    message: 'send proposalId, family or vault, one of them',
+  })
+  .refine((q) => (q.vault === undefined) === (q.vaultChain === undefined), {
+    message: 'send vault and vaultChain together',
   });
 export type TestFundsRequest = z.infer<typeof TestFundsRequest>;
 

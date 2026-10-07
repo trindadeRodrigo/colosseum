@@ -25,6 +25,16 @@ export const pt: Dictionary = {
     signOutFailed:
       'Não consegui encerrar sua sessão: o serviço de login não respondeu. Tente de novo.',
     account: 'Sua carteira',
+    slow: {
+      title: 'O login está lento',
+      wallets:
+        'Você entrou, mas o serviço de login ainda não entregou suas carteiras. Nada foi perdido.',
+      server:
+        'Você entrou, mas nosso servidor ainda não disse em qual rede fica o seu plano. Nada foi perdido.',
+      again: 'Tentar de novo',
+      trying: 'Tentando de novo…',
+      held: 'Um passo da sua ordem está sendo assinado. Conclua ou cancele esse passo primeiro e tente de novo.',
+    },
     address: 'Endereço',
     copyAddress: 'Copiar endereço',
     copied: 'Copiado',
@@ -34,6 +44,7 @@ export const pt: Dictionary = {
     themes: { auto: 'Sistema', light: 'Claro', dark: 'Escuro' },
     language: 'Idioma',
     testNetwork: 'rede de teste',
+    testNetworkLine: 'Rede de teste',
     slowDown: 'Nosso servidor pediu para eu ir mais devagar. Espere um minuto e tente de novo.',
     mockAnnounce: 'Números de exemplo',
     sampleFigure: 'número de exemplo',
@@ -56,6 +67,8 @@ export const pt: Dictionary = {
       body: 'Você não precisa anotar frase de recuperação. Eu uso a chave de acesso que este aparelho guarda para este site. A carteira que criamos para você só abre com essa chave.',
       continue: 'Continuar com uma chave de acesso',
       createNew: 'Criar uma chave de acesso nova',
+      createNewNote:
+        'É sua primeira vez? Uma chave de acesso nova abre uma conta nova, com uma carteira nova e vazia. Ela não abre uma carteira que você já tem.',
       waiting: 'Aguardando sua chave de acesso…',
       making: 'Criando sua carteira…',
     },
@@ -85,10 +98,13 @@ export const pt: Dictionary = {
       passkeyNotCreated:
         'A chave de acesso não foi criada: a janela foi fechada ou o tempo acabou. Nada foi salvo. Tente de novo quando quiser.',
       passkeyNotUsed:
-        'Nenhuma chave de acesso foi usada. Se você criou uma em outro aparelho, use esse aparelho ou escolha “usar um celular” na janela. É novo aqui? Crie uma chave de acesso: ela abre uma conta nova, com uma carteira nova e vazia.',
-      passkeyUnknown: 'Não reconheço essa chave de acesso. Crie uma nova ou conecte uma carteira.',
+        'Nenhuma chave de acesso foi usada. Se você criou uma em outro aparelho, use esse aparelho ou escolha “usar um celular” na janela.',
+      passkeyUnknown:
+        'Não reconheço essa chave de acesso: nenhuma conta aqui foi aberta com ela. Tente a chave com que você se cadastrou.',
+      passkeyNotAccepted:
+        'Nenhuma chave de acesso deste site foi aceita, então você não entrou. Tente de novo com a chave com que você se cadastrou, no aparelho que a tem.',
       passkeyNotRegistered:
-        'Essa chave de acesso não está registrada aqui. Escolha outra ou crie uma.',
+        'Essa chave de acesso não está registrada aqui: ela foi criada para outro site ou aplicativo. Escolha a chave com que você se cadastrou aqui.',
       accountsFull:
         'Este app não está aceitando contas novas agora. Use uma chave de acesso ou carteira com que você já entrou, ou volte mais tarde.',
       notInvited:
@@ -190,11 +206,9 @@ export const pt: Dictionary = {
       list: [
         'Fazer US$ 2.000 crescerem por dez anos, risco alto',
         'Proteger US$ 50.000 por 18 meses, risco baixo',
-        'US$ 80.000 para ter US$ 300 por mês de renda',
+        'US$ 80.000 para ter US$ 300 por mês de renda, 5 anos, risco baixo',
       ],
-      source: 'os limites do próprio exemplo',
     },
-    filledFromWords: 'preenchido a partir das suas palavras',
     readFailure: {
       unreachable:
         'Não consegui falar com nosso servidor para ler isso. Seu texto continua aqui. Tente de novo daqui a pouco.',
@@ -203,10 +217,8 @@ export const pt: Dictionary = {
       unreadable:
         'Recebi uma resposta que não consegui ler. Seu texto continua aqui. Tente de novo.',
     },
-    readerNote:
-      'O leitor de hoje foi feito para objetivos em reais, então pode deixar passar um valor em dólares ou uma data. Confira cada campo: o que ele não encontrou ficou em branco para você.',
     readerMissed: (fields: string) =>
-      `O leitor de hoje foi feito para objetivos em reais, então não encontrou isto no seu objetivo: ${fields}. Preencha abaixo. Nada é montado até que todos os campos estejam certos.`,
+      `Não encontrei isto no seu objetivo: ${fields}. Preencha abaixo.`,
     sheet: {
       title: 'Como li seu objetivo',
       parser: 'leitor',
@@ -216,6 +228,8 @@ export const pt: Dictionary = {
       missingOther: 'Ainda faltam {n} coisas. Preencha para montar o plano.',
       goToField: 'Ir para o campo',
       build: 'Montar meu plano',
+      signInToBuild: 'Entrar para montar meu plano',
+      more: 'Mais limites',
       building: 'Montando seu plano…',
       fixOne: 'Corrija o campo acima para continuar.',
       fixOther: 'Corrija os {n} campos acima para continuar.',
@@ -252,6 +266,7 @@ export const pt: Dictionary = {
       holdings: 'O plano preenche lacunas e evita repetir o que você já tem.',
       amount: 'Com quanto o plano começa, de US$ 10 a US$ 1.000.000.',
       notFound: 'Não encontrei no seu objetivo: preencha.',
+      assumed: 'Seu objetivo não disse isto: eu assumi. Mude se estiver errado.',
     },
     captions: {
       income: 'Um plano de renda não tem ações tokenizadas.',
@@ -287,7 +302,6 @@ export const pt: Dictionary = {
       unknown: 'Ainda não sei',
     },
     blocked: {
-      signedOut: 'Entre para montar: um plano é montado para a rede da sua carteira.',
       chainNotChosen: 'Escolha primeiro uma rede na barra no topo.',
       chainUnknown:
         'Ainda não sei em qual rede seu plano fica, então não consigo montar para ela. Pergunte de novo, acima.',
@@ -346,7 +360,10 @@ export const pt: Dictionary = {
     unknownStatus: 'situação desconhecida',
     notRetried: '(não repetida)',
     signature: 'id da transação',
-    noneYet: 'Nada desta ordem chegou à rede ainda.',
+    buy: (amount: string, when: string) => `Compra de ${amount} · ${when}`,
+    order: (when: string) => `Ordem · ${when}`,
+    follow: (when: string) => `Seguir um portfólio compartilhado · ${when}`,
+    publish: (when: string) => `Publicar um portfólio · ${when}`,
     noneVault:
       'Nada das suas compras chegou à rede ainda. As operações do agente, e as ordens sobre um portfólio compartilhado feitas em outro navegador, ainda não aparecem aqui.',
   },
@@ -378,7 +395,8 @@ export const pt: Dictionary = {
   portfolio: {
     chainOut: (chain: string) => `${chain} está indisponível agora.`,
     chainOff: (chain: string) => `${chain} está indisponível no nosso servidor por enquanto.`,
-    notHeld: (chain: string) => `${chain} não está nesta conta.`,
+    notHeld: (chain: string) =>
+      `Nenhuma carteira desta conta está na ${chain}, então nada é lido lá.`,
     title: (vaults: number) =>
       vaults > 1 ? 'O que seus cofres guardam.' : 'O que seu cofre guarda.',
     lead: 'Lido de cada rede onde seus planos ficam, cada vez que você abre esta página. Nada aqui assina ou move coisa alguma.',
@@ -428,22 +446,25 @@ export const pt: Dictionary = {
       on: 'Ativado',
       off: 'Desativado',
       lossUsed: 'Perdas do agente, últimos 7 dias',
-      holdings: 'Posições',
-      chips: { label: 'O cofre', address: 'endereço', version: 'versão', follow: 'seguir' },
+      holdings: 'O que você tem',
+      details: 'Detalhes',
+      version: 'Versão do portfólio que ele segue',
+      followsNothing: 'Ele não segue nenhum portfólio compartilhado: você define as fatias.',
+      openPage: 'Abrir a página deste cofre',
       parts: 'As partes, por peso',
       planTitle: (parts: number) =>
         parts === 1 ? 'Seu plano · 1 parte' : `Seu plano · ${parts} partes`,
       tooMany: 'Mais partes do que uma barra mostra: cada uma está na tabela abaixo.',
-      target: (share: string) => `alvo ${share}`,
+      target: (share: string) => `planejado ${share}`,
       onlyCash: 'Só caixa por enquanto: nada foi comprado para este cofre ainda.',
       columns: {
         asset: 'Ativo',
         amount: 'Quantidade',
         price: 'Preço',
         value: 'Valor',
-        weight: 'Peso',
-        target: 'Alvo',
-        drift: 'Desvio',
+        weight: 'Fatia agora',
+        target: 'Planejado',
+        drift: 'Diferença',
       },
       noPrice: 'sem preço',
       unpriced: (n: number) =>
@@ -462,14 +483,74 @@ export const pt: Dictionary = {
       builtShort: 'Abaixo da renda quando o plano foi montado',
       builtPaid: (paid: string, asked: string) =>
         `Quando este plano foi montado, ele pagava ${paid} por mês dos ${asked} que você pediu.`,
-      noStatus: 'Ainda sem situação: o motor não dá uma para um cofre',
+      due: (date: string) => `Data do objetivo: ${date}`,
       unknown: (chain: string) => `Seu cofre na ${chain}.`,
       notJoined:
         'Este cofre não tem um objetivo que eu consiga ler: foi comprado a partir de um portfólio compartilhado, que não tem, ou antes de os planos guardarem seu objetivo. O que ele guarda está abaixo.',
+      follows: (name: string) => `Seu cofre segue ${name}.`,
+      followsShared: 'Ele segue um portfólio compartilhado. O que ele guarda está abaixo.',
+      seeShared: 'Ver esse portfólio',
       putIn: (amount: string) => `você colocou ${amount}`,
       seePlan: 'Ver seu plano',
       seeOrder: 'Ver a ordem',
       startGoal: 'Comece pelo seu objetivo',
+    },
+    actions: {
+      label: 'Este cofre',
+      unnamed: (chain: string) => `Seu cofre na ${chain}`,
+      addMoney: 'Adicionar dinheiro',
+      rename: 'Renomear',
+      newPlan: 'Novo plano',
+      nameLabel: 'Nome deste cofre',
+      nameHint: 'Até 60 caracteres. Só você vê.',
+      save: 'Salvar o nome',
+      saving: 'Salvando…',
+      cancel: 'Cancelar',
+      clear: 'Remover o nome',
+      failure: {
+        invalid:
+          'Um nome tem de 1 a 60 caracteres de texto simples. Encurte, ou tire o que não é texto, e salve de novo.',
+        signedOut:
+          'Nosso servidor não reconhece mais o seu login, então o nome não foi salvo. Saia e entre de novo.',
+        notYours:
+          'Nosso servidor não lista este cofre como seu, então o nome não foi salvo. Leia seu portfólio de novo.',
+        unreachable: 'Não consegui salvar o nome: nosso servidor não respondeu. Tente de novo.',
+      },
+    },
+    add: {
+      title: 'Adicione dinheiro ao seu cofre',
+      lead: (chain: string) =>
+        `O valor inteiro vai para este cofre na ${chain} e depois compra cada parte nas metas do cofre. Nada é assinado aqui.`,
+      amountHint: 'De US$ 10 a US$ 1.000.000.',
+      review: (amount: string) => `Revisar os passos para adicionar ${amount}`,
+      reviewLead: (amount: string, chain: string) =>
+        `Você está adicionando ${amount} ao seu cofre na ${chain}. A seguir você revisa cada passo e assina cada um na sua carteira.`,
+      missing:
+        'Não encontro este cofre entre os seus. Abra seu portfólio e escolha o cofre por lá.',
+      back: 'Voltar ao seu portfólio',
+      otherWallet: (address: string) =>
+        `Este cofre pertence a outra carteira sua (${address}). Entre com essa carteira para adicionar dinheiro a ele.`,
+      noVault:
+        'Nosso servidor não lista mais este cofre como seu. Leia seu portfólio de novo e tente outra vez.',
+      keeper:
+        'Seguir automático está ativado neste cofre, então este aporte só deposita o caixa. Nosso operador compra os ativos do cofre com ele quando rebalancear este cofre de novo.',
+      newerVersion: (version: number) =>
+        `O portfólio que este cofre segue tem uma versão mais nova, a versão ${version}. Este aporte compra as metas atuais do cofre; aceitar a nova versão é um passo separado.`,
+      source: {
+        read: (chain: string) =>
+          `Lido da ${chain} por este app, não do nosso servidor: as metas que este aporte compra são as da rede.`,
+        mock: 'Rede de exemplo: não há rede para ler, então as metas são palavras do nosso servidor, sem conferência.',
+        notRead: (chain: string) =>
+          `Sem conferência com a ${chain}: este app não tem um nó próprio para ler. As metas são palavras do nosso servidor.`,
+        failed: (chain: string) =>
+          `Não consegui ler este cofre na ${chain}: o nó que este app lê não respondeu, ou o que nosso servidor indicou não é o cofre que a rede guarda. Não ofereço adicionar dinheiro até conseguir.`,
+        missing: (chain: string) =>
+          `Li a ${chain}, e ela não guarda um cofre assim para a sua carteira, então não ofereço adicionar dinheiro a ele.`,
+        differs: (chain: string) =>
+          `A resposta do nosso servidor difere das metas que a ${chain} guarda para este cofre, então não ofereço adicionar dinheiro agora. Leia seu portfólio de novo em instantes.`,
+        unlisted:
+          'Este cofre tem uma meta em um token que este app não lista, então não consigo conferir um aporte e não ofereço um.',
+      },
     },
     summary: {
       title: 'Seu portfólio',
@@ -488,6 +569,7 @@ export const pt: Dictionary = {
     missing: {
       title: 'Não encontro este plano para você.',
       body: 'Não é um plano feito com este login, ou não está mais guardado. Monte um a partir do seu objetivo: seus limites continuam guardados.',
+      again: 'Montar de novo',
     },
     backToGoal: 'Voltar ao seu objetivo',
     unsignable: (plan: string) =>
@@ -545,7 +627,7 @@ export const pt: Dictionary = {
       withdrawalsShort: 'Nem todo saque é pago em dia com o que está separado.',
       notLive:
         'Alguns números vêm de uma rede de teste ou de dados de exemplo, não de mercados ao vivo.',
-      other: 'O motor anotou mais uma coisa sobre este plano.',
+      other: 'O plano traz mais uma observação que ainda não sabemos descrever.',
       simple: {
         exit_not_measured: 'Nenhuma parte deste plano tem custo de venda medido ainda.',
         exit_partly_measured: 'Só parte deste plano tem custo de venda medido.',
@@ -576,15 +658,6 @@ export const pt: Dictionary = {
     shortRange: (low: string, high: string) => `cerca de ${low} a ${high}`,
     sub: (risk: string, chain: string) => `${risk} · em ${chain} · nada comprado ainda`,
     riskWord: { low: 'Risco baixo', medium: 'Risco médio', high: 'Risco alto' },
-    chips: {
-      label: 'Seus limites',
-      goal: 'objetivo',
-      amount: 'valor',
-      horizon: 'prazo',
-      risk: 'risco',
-      riskValue: { low: 'baixo', medium: 'médio', high: 'alto' },
-      chain: 'rede',
-    },
     kpi: {
       amount: 'você coloca',
       horizon: 'por',
@@ -636,6 +709,13 @@ export const pt: Dictionary = {
     verdict: {
       met: 'A renda que você pediu é atendida por este plano, nos números do motor.',
       gap: (gap: string) => `Este plano fica ${gap} por mês abaixo da renda que você pediu.`,
+      ways: 'Para fechar a diferença:',
+      change: 'Mudar meus limites',
+    },
+    monthly: {
+      figure: (low: string, high: string) =>
+        low === high ? `Cerca de ${low} por mês` : `Cerca de ${low} a ${high} por mês`,
+      after: 'se a faixa projetada se mantiver. Uma estimativa, não uma promessa.',
     },
     buy: 'Comprar este plano',
     chainNotReady: (chain: string) =>
@@ -690,16 +770,18 @@ export const pt: Dictionary = {
       label: 'Valor (dólares)',
       hint: (planned: string) =>
         `Seu plano foi montado para ${planned}. De US$ 10 a US$ 1.000.000.`,
+      other: (planned: string) =>
+        `Seu plano foi montado para ${planned}, e os limites dele foram calculados para esse valor. Para comprar outro valor, monte o plano de novo para ele.`,
     },
     steps: {
       label: 'Passos para comprar',
-      names: { amount: 'Valor', funds: 'Fundos', trust: 'Confiança', review: 'Assinar' },
+      names: { amount: 'Valor', funds: 'Fundos', trust: 'Confiança', review: 'Revisar' },
       done: 'feito',
       next: 'Continuar',
       funds: { ready: 'Pronto', short: 'Falta algo', reading: 'Lendo…' },
       trust: { accepted: 'Aceito', open: 'Ainda não aceito' },
       reviewLead: (amount: string, chain: string) =>
-        `Você está comprando ${amount} do seu plano em ${chain}. Em seguida você revisa cada passo e assina cada um na sua carteira.`,
+        `Você está comprando ${amount} em ${chain}. Em seguida você revisa cada passo e assina cada um na sua carteira.`,
       note: {
         testNetwork: (chain: string) => `Rede de teste · ${chain} · valores não reais`,
       },
@@ -913,7 +995,6 @@ export const pt: Dictionary = {
       lead: (chain: string) =>
         `Um cofre seu na ${chain} segue este portfólio, na versão mostrada, com o seguir automático desativado. Nada é comprado até você revisar cada passo e assinar.`,
       amountHint: 'Em dólares, a partir de US$ 10.',
-      review: (amount: string) => `Revisar a compra de ${amount}`,
       blocked: {
         terms: 'Não consegui ler este portfólio, então ainda não há o que seguir.',
         missing: 'A rede não tem este portfólio, então não dá para segui-lo.',
@@ -924,7 +1005,8 @@ export const pt: Dictionary = {
       title: 'Seus cofres',
       none: 'Você ainda não tem um cofre nesta rede. Compre este portfólio para abrir um que o segue.',
       following: 'Segue este portfólio',
-      notFollowing: 'Segue outra coisa',
+      notFollowing: 'Segue outro portfólio',
+      ownPlan: 'Guarda o seu próprio plano',
       followWith: 'Seguir com este cofre',
       followNote:
         'Seu cofre assume os pesos deste portfólio. Nada é negociado nesse passo: você rebalanceia depois, ou o operador faz isso com o seguir automático ativado.',
@@ -1014,9 +1096,9 @@ export const pt: Dictionary = {
         asset: 'Ativo',
         held: 'Quantidade',
         price: 'Preço',
-        weight: 'Peso',
-        target: 'Alvo',
-        drift: 'Desvio',
+        weight: 'Fatia agora',
+        target: 'Planejado',
+        drift: 'Diferença',
       },
       on: 'Ativado',
       off: 'Desativado',
@@ -1043,9 +1125,9 @@ export const pt: Dictionary = {
       steps: 'Passos',
       expires: 'Assine antes de',
       spend: (amount: string, asset: string) => `Gastar ${amount} em ${asset}`,
-      atLeast: (amount: string, asset: string) =>
-        `receber pelo menos ${amount} de ${asset}, em suas menores unidades`,
+      atMostUnder: (pct: string) => `no máximo ${pct} abaixo da cotação`,
       atLeastWhole: (amount: string) => `receber pelo menos ${amount}`,
+      atMostEach: (price: string) => `no máximo ${price} cada`,
       under: (pct: string) => `${pct} abaixo da cotação`,
       noTrades: 'Nenhuma negociação neste passo.',
       warnings: 'Nosso servidor avisa',
@@ -1089,6 +1171,10 @@ export const pt: Dictionary = {
       on: 'Ativado',
       off: 'Desativado',
       weights: 'Ativos e pesos',
+      addTitle: 'Onde você adiciona',
+      addNote:
+        'O valor compra estes ativos nestes pesos, as metas que seu cofre mostrava quando você o escolheu. O que elas deixam fica no cofre como caixa.',
+      addCashNote: 'Este cofre não tem metas, então o valor inteiro fica nele como caixa.',
       publishNote:
         'Sua carteira só é chamada para assinar uma transação que publique exatamente este nome, esta descrição e estes pesos, com este identificador.',
       signPublish: 'Assinar e publicar',
@@ -1103,6 +1189,8 @@ export const pt: Dictionary = {
     kind: {
       approve: 'Autorizar o depósito',
       create_vault: 'Abrir seu cofre e depositar',
+      create_vault_buy: 'Abrir seu cofre, depositar e comprar',
+      deposit_buy: 'Depositar e comprar',
       deposit: 'Depositar',
       swap: 'Comprar',
       set_targets: 'Definir as metas do seu cofre',
@@ -1140,7 +1228,22 @@ export const pt: Dictionary = {
     },
     outcome: {
       done: (chain: string) =>
-        `Todos os passos estão confirmados em ${chain}, segundo nosso servidor. A transação de cada passo está no link ao lado dele.`,
+        `Todos os passos estão confirmados em ${chain}. A transação de cada passo está no link ao lado dele.`,
+      seePortfolio: 'Ver seu portfólio',
+      buyMore: 'Comprar mais',
+      depositKept:
+        'O que você depositou está no seu cofre, em caixa: nada se perdeu. Uma nova ordem depositaria de novo.',
+      forSupport: 'Detalhes para o suporte',
+      finish: 'Terminar a compra com o caixa do seu cofre',
+      finishing: 'Criando a ordem…',
+      finishNote:
+        'Uma nova ordem para os passos que ficaram, ao preço de agora. Ela não deposita nada: você revisa e assina como antes.',
+      finishPriceMoved:
+        'O preço mudou enquanto a ordem era criada, então nada foi criado. Tente de novo.',
+      finishLater:
+        'Um passo assinado antes ainda pode chegar. Olhe de novo em um minuto e tente outra vez.',
+      finishRefused: (why: string) =>
+        `Não consegui criar essa ordem. Nosso servidor disse: ${why}.`,
       refused: (step: number) =>
         `Não assinei o passo ${step}: a transação que nosso servidor montou para ele não é o passo que você aprovou. Nada foi assinado para ele.`,
       refusedOrder:

@@ -20,7 +20,7 @@ import {
 } from '@colosseum/sdk';
 import { useCallback } from 'react';
 import type { SharedTerms } from '../shared/terms';
-import { useSigningPort } from '../wallet/signing';
+import { useSigningHold, useSigningPort } from '../wallet/signing';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { chainNode } from './chain-node';
 import { targetsOfPlan } from './plan-terms';
@@ -92,7 +92,8 @@ export function chainReadFor(chain: ChainId, mock: boolean): ChainRead | undefin
 /**
  * The guard's terms for an order about a shared portfolio, from what its screen showed: a buy follows
  * the portfolio's version from a vault numbered by the family's id, with auto-follow off; a follow
- * names the vault the person picked; a publish names the form's family id, text and weights.
+ * names the vault the person picked, and so does an add of money to one; a publish names the form's
+ * family id, text and weights.
  */
 export function planTermsOf(terms: SharedTerms): PlanTerms {
   switch (terms.kind) {
@@ -104,6 +105,9 @@ export function planTermsOf(terms: SharedTerms): PlanTerms {
         ...(terms.follow ? { follow: terms.follow } : {}),
         autoFollow: terms.autoFollow,
       };
+    case 'vault':
+      // The guard derives the vault from this number and the signing wallet: every step is held to it.
+      return { basketId: terms.basketId };
     case 'publish':
       return {
         basketId: '0',
@@ -175,6 +179,7 @@ function storageWorks(): boolean {
 /** The order runner. `run` takes an order the person approved and walks it as far as it can go. */
 export function useOrderRunner(): { run: (input: RunInput) => Promise<RunOutcome> } {
   const port = useSigningPort();
+  const hold = useSigningHold();
   const apiFetch = useApiFetch();
 
   const run = useCallback(
@@ -214,6 +219,8 @@ export function useOrderRunner(): { run: (input: RunInput) => Promise<RunOutcome
           onEvent: input.onEvent,
           signal: input.signal,
         });
+      // The wallet provider is not mounted again while this runs: the step is signed by this port.
+      const release = hold();
       try {
         // One run of an order at a time, across the tabs of this browser: a second tab that ran while
         // the first had asked the wallet and not yet written down what it signed would sign again.
@@ -222,9 +229,11 @@ export function useOrderRunner(): { run: (input: RunInput) => Promise<RunOutcome
         );
       } catch (e) {
         return { status: 'crashed', message: e instanceof Error ? e.message : String(e) };
+      } finally {
+        release();
       }
     },
-    [port, apiFetch],
+    [port, apiFetch, hold],
   );
   return { run };
 }

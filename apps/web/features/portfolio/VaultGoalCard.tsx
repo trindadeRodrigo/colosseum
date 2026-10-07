@@ -26,10 +26,13 @@ export function VaultGoalCard({
   vault,
   joined,
   putIn,
+  followed = null,
 }: {
   chain: PortfolioChain;
   vault: Vault;
   joined: VaultGoal | null;
+  /** The shared portfolio this browser bought the vault from, by its address on the shelf. */
+  followed?: string | null;
   /** What the orders confirmed on chain put in, or null when none is (vault-goal.ts, `putInto`). */
   putIn: number | null;
 }) {
@@ -43,17 +46,30 @@ export function VaultGoalCard({
     obs: vaultValueSource(chain, vault, t.portfolio.vault.valueMethod),
   };
   const mock = vault.provenance !== 'live';
+  // The card's quiet line, in the language of the view: "Test network" where the figures are one's.
+  const labels = {
+    sample: vault.provenance === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
+  };
 
   if (!joined)
     return (
       <GoalCard
-        sentence={words.unknown(chainName)}
+        // A vault bought from a shared portfolio has no goal: it says what it follows.
+        sentence={followed ? words.follows(followed) : words.unknown(chainName)}
         status={null}
-        noStatus={{ sentence: words.notJoined }}
+        noStatus={{
+          sentence:
+            followed || vault.recipeOnchainId !== null ? words.followsShared : words.notJoined,
+        }}
         amount={amount}
         pinLabels={t.pin}
-        action={{ label: words.startGoal, href: '/goal' }}
+        action={
+          followed
+            ? { label: words.seeShared, href: `/indexes/${encodeURIComponent(followed)}` }
+            : { label: words.startGoal, href: '/goal' }
+        }
         mock={mock}
+        labels={labels}
         chain={chain.chain}
       />
     );
@@ -65,7 +81,18 @@ export function VaultGoalCard({
   const asked = sheet.incomeTargetUsdMonthly;
   return (
     <GoalCard
-      sentence={goalLine(sheet, t, whole(sheet.amountUsd, lang), (usd) => whole(usd, lang))}
+      // The goal, at what was put in: a goal of $50,000 that $40 went into is not said as $50,000,
+      // and the income asked of the plan's amount is not said of another (the flow audit, 32).
+      sentence={
+        putIn !== null && putIn !== sheet.amountUsd
+          ? goalLine(
+              { ...sheet, incomeTargetUsdMonthly: undefined },
+              t,
+              whole(putIn, lang),
+              (usd) => whole(usd, lang),
+            )
+          : goalLine(sheet, t, whole(sheet.amountUsd, lang), (usd) => whole(usd, lang))
+      }
       status={
         // The engine gives no status for a vault. The one word it gave is the income plan's verdict
         // when the plan was built, for the plan's amount: it is said, as that, only when what went in
@@ -85,7 +112,7 @@ export function VaultGoalCard({
               : { kind: 'off-track', word: words.builtShort, date: due }
           : null
       }
-      noStatus={{ sentence: words.noStatus, date: due }}
+      noStatus={{ sentence: words.due(due) }}
       reason={
         builtFor && !builtFor.met && asked === undefined
           ? t.plan.verdict.gap(whole(builtFor.gapUsdMonthly, lang))
@@ -104,6 +131,7 @@ export function VaultGoalCard({
           : { label: words.seeOrder, href: `/orders/${encodeURIComponent(record.orderId)}` }
       }
       mock={mock}
+      labels={labels}
       chain={chain.chain}
     />
   );

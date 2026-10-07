@@ -41,8 +41,12 @@ export function formatBps(bps: number, locale: string): string {
 }
 
 /**
- * How far under the quote a minimum is, in basis points, rounded up: what the trade may give up.
- * Null when either is not an amount or the quote is zero.
+ * How far under the quote a minimum is, in basis points, rounded up: what the trade may give up, never
+ * said smaller than it is. One case is not a gap of its own: a minimum is the quote less a tolerance in
+ * whole basis points, cut down to a raw unit of the token, so 1% of a quote that does not divide reads
+ * a hair over 1%. Where the minimum is exactly what the next basis point down gives once cut to a raw
+ * unit, that is the tolerance the order states, and it is the one said ("1%", not "1.01%"): the
+ * difference is under one raw unit. Null when either is not an amount or the quote is zero.
  */
 export function shortfallBps(outRaw: string, minOutRaw: string): number | null {
   if (!DIGITS.test(outRaw) || !DIGITS.test(minOutRaw)) return null;
@@ -51,8 +55,63 @@ export function shortfallBps(outRaw: string, minOutRaw: string): number | null {
   if (out === 0n) return null;
   if (min >= out) return 0;
   const gap = (out - min) * 10_000n;
-  return Number(gap / out + (gap % out === 0n ? 0n : 1n));
+  const up = gap / out + (gap % out === 0n ? 0n : 1n);
+  // the minimum's own rounding: quote × (1 − tolerance), cut down to a raw unit
+  const stated = up - 1n;
+  return Number(up > 0n && (out * (10_000n - stated)) / 10_000n === min ? stated : up);
 }
+
+/** Names a person reads, by the token's symbol written in lower case: the shelf's symbols. */
+export const SYMBOLS: Record<string, string> = Object.fromEntries(
+  [
+    'USDC',
+    'USDG',
+    'USDY',
+    'jlUSDC',
+    'syrupUSDC',
+    'SGOV',
+    'SPYx',
+    'QQQx',
+    'NVDAx',
+    'TSLAx',
+    'AAPLx',
+    'GOOGLx',
+    'METAx',
+    'MSFTx',
+    'AMZNx',
+    'SPCXx',
+    'MSTRx',
+    'CRCLx',
+    'HOODx',
+    'COINx',
+    'PLTRx',
+    'GLDx',
+    'SOL',
+    'JitoSOL',
+    'cbBTC',
+    'cbETH',
+    'SPY',
+    'QQQ',
+    'NVDA',
+    'TSLA',
+    'AAPL',
+    'META',
+    'GLD',
+    'SPCX',
+    'MSTR',
+    'CRCL',
+    'GOOGL',
+    'MSFT',
+    'AMZN',
+    'PAXG',
+  ].map((s) => [s.toLowerCase(), s]),
+);
+
+/** The cash tokens: shown as cash, with the token named after it. */
+export const CASH = new Set(['usdc', 'usdg', 'tusdc', 'tusdg']);
+
+/** An asset's id without the chain it is on, in lower case. */
+export const tail = (id: string) => id.slice(id.indexOf(':') + 1).toLowerCase();
 
 /**
  * A chain's dollar goes by that chain's name for it, whatever its id: Robinhood Chain's is tUSDG,
@@ -63,8 +122,17 @@ const NAMED: Readonly<Record<string, string>> = {
   'robinhood:tusdg': 'tUSDG',
 };
 
-/** An asset as a plan on one chain names it: its id without the chain it is on. */
-export const assetName = (id: string) => NAMED[id] ?? id.slice(id.indexOf(':') + 1);
-
-/** The same name as a ticker: upper case, except a name the chain gives in its own case (tUSDG). */
-export const assetTicker = (id: string) => NAMED[id] ?? assetName(id).toUpperCase();
+/**
+ * A token's name, the one every screen writes beside an amount: "USDC", "syrupUSDC", "SPYx", "tUSDG".
+ * One convention for a test network (the flow audit, finding 13): a test token goes by the token it
+ * stands in for ("tSPYx" is SPYx, "tUSDC" is USDC), on the plan, the order, the portfolio and the vault
+ * alike, and the card says it is a test network. A token this app does not know goes by its id's own
+ * name in capitals, never by the id.
+ */
+export function tokenName(id: string): string {
+  const named = NAMED[id];
+  if (named) return named;
+  const name = tail(id);
+  const bare = name.replace(/^t(?=[a-z])/, '');
+  return SYMBOLS[name] ?? SYMBOLS[bare] ?? (name === 'gold' ? 'Gold' : name.toUpperCase());
+}

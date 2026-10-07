@@ -226,3 +226,27 @@ export function recordOf(chain: ChainId = 'solana', over: Partial<OrderRecord> =
     ...over,
   };
 }
+
+type Handler = (path: string, init?: RequestInit) => Promise<Response>;
+
+/**
+ * A test's API, as a server that keeps the plans a person builds (API-PLANS): `GET /v1/baskets/{id}`
+ * answers the plan this browser kept under that id as the person's own, and everything else is the
+ * test's. A test of a plan the server no longer has answers that route itself, without this.
+ */
+export const serverKeepsPlans =
+  (handler: Handler): Handler =>
+  async (path, init) => {
+    const id = /^\/v1\/baskets\/([^/?]+)$/.exec(path)?.[1];
+    if (id && (init?.method ?? 'GET') === 'GET') {
+      const raw = window.localStorage.getItem(`tf-plan:${decodeURIComponent(id)}`);
+      const kept = raw ? (JSON.parse(raw) as { userId?: string; proposal?: unknown }) : null;
+      // a plan is its maker's: another person's is not answered
+      if (kept?.userId === USER)
+        return new Response(JSON.stringify({ id, proposal: kept.proposal, fromLink: false }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+    }
+    return handler(path, init);
+  };

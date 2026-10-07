@@ -1,6 +1,6 @@
 import type { OrderRecord, PlacedGoal } from '../order/order-record';
 import { basketOfPlan } from '../order/readiness';
-import type { Vault } from './portfolio';
+import type { Vault as PortfolioVault } from './portfolio';
 
 // Which goal a vault was bought for. The API's portfolio names a vault by its plan's number on chain
 // (`basketId`) and does not join it to the plan. The join is the server's list of the person's plans
@@ -11,6 +11,9 @@ import type { Vault } from './portfolio';
 // name and this browser did not place (a buy of a shared portfolio, which has no goal) is joined to
 // nothing, and the screen says so: no target is made up for it.
 
+/** What joins a vault to an order: its chain and its plan's number. */
+type Vault = Pick<PortfolioVault, 'chain' | 'basketId'>;
+
 export type VaultGoal = { goal: PlacedGoal; record: OrderRecord };
 
 /** The orders this browser placed into this vault, newest first. */
@@ -19,14 +22,31 @@ export const ordersOfVault = (vault: Vault, records: readonly OrderRecord[]): Or
     (r) =>
       r.chain === vault.chain &&
       (r.basketId ??
+        // more money into the vault: the order names the vault's number itself
+        (r.terms?.kind === 'vault' ? r.terms.basketId : undefined) ??
         r.approved?.order.basketId ??
         basketOfPlan(r.proposalId, r.linked ? r.userId : null)) === vault.basketId,
   );
 
-/** The goal of the newest of those orders that kept one, or null. */
+/**
+ * The goal of the first of those orders that kept one, or null. The first: the goal's date counts from
+ * the buy that opened the vault, and more money added later never moves it.
+ */
 export function goalOfVault(vault: Vault, records: readonly OrderRecord[]): VaultGoal | null {
+  let first: VaultGoal | null = null;
   for (const record of ordersOfVault(vault, records))
-    if (record.goal) return { goal: record.goal, record };
+    if (record.goal && (!first || record.goal.placedAt < first.goal.placedAt))
+      first = { goal: record.goal, record };
+  return first;
+}
+
+/**
+ * The shared portfolio the vault was bought from in this browser, by its address on the shelf: the
+ * newest order of the vault that bought one. Null when none did.
+ */
+export function familyOfVault(vault: Vault, records: readonly OrderRecord[]): string | null {
+  for (const record of ordersOfVault(vault, records))
+    if (record.terms?.kind === 'family') return record.terms.slug;
   return null;
 }
 

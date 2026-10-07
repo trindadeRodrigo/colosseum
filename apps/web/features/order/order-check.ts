@@ -49,6 +49,50 @@ export function checkDeposit(
 }
 
 /**
+ * An order that finishes another with the cash already in its vault: it deposits nothing, opens
+ * nothing, and only buys. It says which order it finishes; it has no `depositRaw` and no cash on a
+ * step; every step is a swap; and its trades are, one for one, trades the first order left undone
+ * (the same token, the same amount of cash), none of them twice. A server that answered a deposit, or
+ * a buy of something else, or of more, is caught here and nothing is offered for signing.
+ */
+export function checkContinuation(
+  order: Pick<OrderDetail, 'depositRaw' | 'legs'> & { continues?: unknown },
+  first: { orderId: string; trades: readonly { sell: string; buy: string; amountInRaw: string }[] },
+  units: ChainUnits | null,
+  /**
+   * The order as the server just answered it, not yet approved: it must say which order it finishes.
+   * The approved copy this browser kept was held to that when it was reviewed.
+   */
+  fresh = true,
+): DepositCheck | { ok: false; why: 'trades' | 'shape' } {
+  const cash = units?.tokens[units.cash];
+  if (!units || !cash) return { ok: false, why: 'units' };
+  if (order.depositRaw !== undefined) return { ok: false, why: 'shape' };
+  if (
+    fresh ? order.continues !== first.orderId : (order.continues ?? first.orderId) !== first.orderId
+  )
+    return { ok: false, why: 'shape' };
+  if (
+    order.legs.length === 0 ||
+    order.legs.some((l) => l.kind !== 'swap' || l.cashRaw !== undefined)
+  )
+    return { ok: false, why: 'shape' };
+  const left = first.trades.map((t) => `${t.sell}>${t.buy}:${t.amountInRaw}`);
+  let spent = 0n;
+  for (const trade of order.legs.flatMap((l) => l.trades)) {
+    if (trade.sell !== units.cash || !RAW.test(trade.amountInRaw))
+      return { ok: false, why: 'trades' };
+    const at = left.indexOf(`${trade.sell}>${trade.buy}:${trade.amountInRaw}`);
+    if (at < 0) return { ok: false, why: 'trades' };
+    left.splice(at, 1);
+    spent += BigInt(trade.amountInRaw);
+  }
+  if (order.legs.every((l) => l.trades.length === 0)) return { ok: false, why: 'shape' };
+  // What it spends of the vault's cash, for the button's amount: nothing is deposited.
+  return { ok: true, depositRaw: spent, decimals: cash.decimals };
+}
+
+/**
  * A buy of a shared portfolio (WEB-4): the deposit as for a plan, and each trade the share of the
  * deposit that the portfolio's weight gives, in the order its screen read them (`tradesOf`). An API that
  * planned other weights than the version read from the chain is caught here.
@@ -75,6 +119,38 @@ export function checkFamilyBuy(
   return same ? deposit : { ok: false, why: 'trades' };
 }
 
+/** The steps an add of money to a vault is made of. */
+const ADD_KINDS: readonly string[] = ['approve', 'deposit', 'swap'];
+
+/**
+ * More money into a vault the person has (add money): the deposit as for a plan, into the vault they
+ * chose and no new one, once, and each trade the share its targets give: every trade buys a target with
+ * the cash token, for exactly the share of the deposit that target's weight gives, and no target is
+ * left out. The targets are the ones this app read from the chain itself where it could
+ * (features/portfolio/chain-vault.ts): the guard holds every step's bytes to the vault of that number
+ * and the person's own wallet, and a swap to the tokens the deployment lists, but not to the vault's
+ * targets, so this is where an add's trades are held to them.
+ */
+export function checkVaultAdd(
+  order: Pick<OrderDetail, 'depositRaw' | 'legs' | 'basketId'>,
+  amountUsd: number,
+  units: ChainUnits | null,
+  terms: Extract<SharedTerms, { kind: 'vault' }>,
+): DepositCheck | { ok: false; why: 'trades' | 'shape' } {
+  // An add is an approval where the chain needs one, the deposit, and the swaps; with auto-follow on,
+  // no swap. Any other step beside them (a new vault, a withdrawal, a change of targets or of a
+  // setting) is not an add, whatever else the order does right.
+  const kinds = order.legs.map((l) => l.kind);
+  const allowed: readonly string[] = terms.keeper ? ['approve', 'deposit'] : ADD_KINDS;
+  const count = (kind: string) => kinds.filter((k) => k === kind).length;
+  if (kinds.some((k) => !allowed.includes(k)) || count('deposit') !== 1 || count('approve') > 1)
+    return { ok: false, why: 'shape' };
+  // An order that states the vault's number states the one of the vault chosen.
+  if (order.basketId !== undefined && order.basketId !== terms.basketId)
+    return { ok: false, why: 'shape' };
+  return checkFamilyBuy(order, amountUsd, units, terms.targets);
+}
+
 /**
  * A follow or a publish moves no cash and trades nothing: no deposit, no cash on a step, no trade, and
  * only the steps its terms call for, each once. The guard holds each step's bytes to the terms; this
@@ -82,7 +158,7 @@ export function checkFamilyBuy(
  */
 export function sharedShapeOk(
   order: Pick<OrderDetail, 'depositRaw' | 'legs'>,
-  terms: Exclude<SharedTerms, { kind: 'family' }>,
+  terms: Extract<SharedTerms, { kind: 'follow' | 'publish' }>,
 ): boolean {
   if (order.depositRaw !== undefined || order.legs.length === 0) return false;
   if (order.legs.some((l) => l.cashRaw !== undefined || l.trades.length > 0)) return false;

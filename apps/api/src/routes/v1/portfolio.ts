@@ -13,8 +13,8 @@ import type { ChainEntry } from '../../orders/chains';
 import { Refusal, refusalFromChainError } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { chainsHeld } from '../../orders/person';
-import { type JoinLog, plansOf } from '../../orders/plan-join';
-import { cacheVault } from '../../orders/store';
+import { type JoinLog, joinMissed } from '../../orders/plan-join';
+import { cacheVault, everyPersonPlan, vaultNames } from '../../orders/store';
 import { signedIn } from './orders';
 
 async function chainPortfolio(
@@ -44,15 +44,15 @@ async function chainPortfolio(
   }));
   // The cache follows what was just read from the chain.
   for (const v of vaults) await cacheVault(deps.db, v, entry.provenance);
-  // The plan each vault was opened for, where it is the person's own (orders/plan-join.ts). A vault
-  // whose join was missed when its order confirmed is joined here, now that it is in the cache.
-  const plans = await plansOf(deps.db, entry.chain, vaults, principal, log);
+  // A vault whose order confirmed without its plan being joined to it is joined now that it is in the
+  // cache (orders/plan-join.ts). The join is kept in the database and changes nothing in this answer.
+  await joinMissed(deps.db, entry.chain, vaults, principal, log);
   return {
     chain: entry.chain,
     name: entry.config.name,
     mode: entry.mode,
     provenance: entry.provenance,
-    vaults: vaults.map((v) => ({ ...v, ...plans.get(v.address) })),
+    vaults,
     prices,
   };
 }
@@ -66,14 +66,11 @@ export function registerPortfolioRoute(scope: FastifyInstance, deps: OrderDeps) 
         tags: ['portfolio'],
         summary: "The signed-in person's vaults on every chain, with holdings, prices and drift",
         description:
-          'Read from every chain this server runs that the person holds a wallet for, whatever their current chain is: each plan lives on its own chain, and `chains` has an entry for each that could be read, in the server’s order. A chain that could not be read is in `unavailable` with its code, why, and whether asking again may help: one switched off here (`CHAIN_UNAVAILABLE`, not retryable) or one whose read failed; the others are answered all the same. Only when none of the person’s chains could be read is the answer 503 `CHAIN_UNAVAILABLE`. The wallets are those of the identity token. `driftBps` is the weight of a position minus its target. The entry and every price carry `provenance`; anything that is not `live` is a test network or MOCK. A vault’s `basketId` is its plan’s number on the chain. A vault that an order of this person opened also carries `planId`, the id of the person’s plan, and `plan`: whether it was made to measure (`personal`, with `proposalId`) or follows a shared portfolio (`follow`, with `familyId`), when the order that opened the vault was made (`placedAt`, which the goal’s date counts from), and for a stored plan its `sheet`, its `card`, for an income goal its `verdict`, and its `observations`, as they were stored. The card’s and the verdict’s figures were worked out when the plan was made, from the readings in `observations`: each has its own `source`, `fetchedAt`, `method` and `provenance`, which the entry’s `provenance` does not stand in for. The four come together or not at all: a stored plan that no longer reads carries none of them, and neither does a plan that is not this person’s to read back: one another person made in the app, whose goal is its maker’s, or one stored with no person and not made from a link. The server joins the two when the order’s step that opens the vault is confirmed, and on this read for a vault it missed then. A vault opened outside the app, or joined to another person’s plan, carries neither field.',
+          'Read from every chain this server runs that the person holds a wallet for, whatever their current chain is: each plan lives on its own chain, and `chains` has an entry for each that could be read, in the server’s order. A chain that could not be read is in `unavailable` with its code, why, and whether asking again may help: one switched off here (`CHAIN_UNAVAILABLE`, not retryable) or one whose read failed; the others are answered all the same. Only when none of the person’s chains could be read is the answer 503 `CHAIN_UNAVAILABLE`. The wallets are those of the identity token. `driftBps` is the weight of a position minus its target. The entry and every price carry `provenance`; anything that is not `live` is a test network or MOCK.',
         response: { 200: PortfolioResponse, default: OrderError },
       },
     },
-    async (req, reply) => {
-      // One person's vaults and, with them, the goal their plan was made for: never kept by a cache
-      // between them and us, as the two routes that read a plan back say too (baskets.ts).
-      reply.header('cache-control', 'private, no-store');
+    async (req) => {
       const principal = signedIn(req);
       // Every chain the person can hold a vault on, not only the current one (CHAIN-SWITCH). Each is
       // read on its own: one that is off, or whose read fails, is said in `unavailable` and does not
@@ -116,7 +113,35 @@ export function registerPortfolioRoute(scope: FastifyInstance, deps: OrderDeps) 
             details: { retryable: unavailable.some((u) => u.retryable) },
           },
         );
-      return { chains, unavailable, disclaimer: DISCLAIMER.en };
+      // Each vault with the name its owner gave it, and the plan of theirs it was opened from: a plan's
+      // buys kept its vault's number (`listPersonPlans`), so the join is by chain and number. Every
+      // page of the list is read: a vault's plan may be older than the fifty newest.
+      const anyVault = chains.some((c) => c.vaults.length > 0);
+      const plans = anyVault ? await everyPersonPlan(deps.db, principal) : [];
+      const planOf = new Map(
+        plans.flatMap((p) => {
+          const chain = p.proposal.sheet.chains[0] ?? p.proposal.recipes[0]?.chain;
+          return p.basketId !== null && chain ? [[`${chain}:${p.basketId}`, p.id] as const] : [];
+        }),
+      );
+      const named = await Promise.all(
+        chains.map(async (c) => {
+          const names = await vaultNames(
+            deps.db,
+            c.chain,
+            c.vaults.map((v) => v.address),
+          );
+          return {
+            ...c,
+            vaults: c.vaults.map((v) => ({
+              ...v,
+              name: names.get(v.address) ?? null,
+              planId: planOf.get(`${c.chain}:${v.basketId}`) ?? null,
+            })),
+          };
+        }),
+      );
+      return { chains: named, unavailable, disclaimer: DISCLAIMER.en };
     },
   );
 }

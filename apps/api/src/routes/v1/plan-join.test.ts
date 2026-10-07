@@ -18,7 +18,13 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ChainEntry, ChainRegistry } from '../../orders/chains';
 import type { PlanInputs } from '../../orders/personalize';
-import { joinVault, plansOf, rememberVault } from '../../orders/plan-join';
+import {
+  type JoinedPlan,
+  joinMissed,
+  joinVault,
+  plansOf,
+  rememberVault,
+} from '../../orders/plan-join';
 import { basketIdOf, basketIdOfLinked } from '../../orders/prepare';
 import { loadProposal } from '../../orders/store';
 import { bearingPlanInputs } from '../../plan-inputs';
@@ -40,7 +46,8 @@ import { PersonalizeResponse } from './baskets';
 
 // The goal join on the server (PORT-1, orders/plan-join.ts), through HTTP on the mock chain and the
 // real database: a vault is in the cache, joined to the plan it was opened for, from the moment the
-// step that opens it is confirmed, and the portfolio answers it with that plan. Every test makes its
+// step that opens it is confirmed, and the join answers it with that plan (`plansOf`, which the
+// portfolio section's routes will serve; `GET /v1/portfolio` is not changed by it). Every test makes its
 // own people and reads only their rows: other sessions write to this database at the same time.
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -153,15 +160,30 @@ async function unjoin(who: Person) {
   if (ids.length) await data.db.delete(baskets).where(inArray(baskets.id, ids));
 }
 
+/**
+ * A person's vaults as GET /v1/portfolio reads them, each with the plan the join holds for it. The
+ * route's read makes a join the confirm missed and changes nothing in its own answer, which names a
+ * vault's stored plan itself (`planId`, API-ADD-MONEY). What the join holds is read as the portfolio
+ * section's routes will read it, with `plansOf`, for the same person. Here `planId` is the join's, the
+ * `baskets` row, and the route's own is kept as `storedPlan`. `body` is everything said to the person:
+ * the route's answer, then the joined plans.
+ */
 async function portfolio(who: Person, on: FastifyInstance = app) {
   const res = await get(who, '/v1/portfolio', on);
   expect(res.statusCode, res.body).toBe(200);
-  // The answer holds a person's goal: no cache between them and the server may keep it.
-  expect(res.headers['cache-control']).toBe('private, no-store');
-  return {
-    body: res.body,
-    vaults: PortfolioResponse.parse(res.json()).chains.flatMap((c) => c.vaults),
-  };
+  const answered = PortfolioResponse.parse(res.json()).chains.flatMap((c) => c.vaults);
+  const joined = new Map<string, JoinedPlan>();
+  for (const chain of new Set(answered.map((v) => v.chain))) {
+    const addresses = answered.filter((v) => v.chain === chain).map((v) => v.address);
+    for (const [address, plan] of await plansOf(data.db, chain, addresses, who.sub))
+      joined.set(address, plan);
+  }
+  const vaults = answered.map(({ planId: storedPlan, ...v }) => ({
+    ...v,
+    storedPlan: storedPlan ?? null,
+    ...(joined.get(v.address) as Partial<JoinedPlan>),
+  }));
+  return { body: `${res.body}\n${JSON.stringify([...joined.values()])}`, vaults };
 }
 
 /**
@@ -220,7 +242,7 @@ async function flaky(now?: () => Date) {
 }
 
 describe('a vault is joined to its plan when the step that opens it is confirmed', () => {
-  it('on each chain: the vault is in the cache with its plan before any portfolio read, and the portfolio answers the plan', async () => {
+  it('on each chain: the vault is in the cache with its plan before any portfolio read, and the join answers the plan', async () => {
     for (const chain of CHAINS) {
       const a = await someone(chain);
       // A plan of the person's own: what it says is answered to the person who made it.
@@ -263,6 +285,8 @@ describe('a vault is joined to its plan when the step that opens it is confirmed
       const [vault] = mine.vaults;
       // `basketId` stays the plan's number on the chain; the person's plan is `planId`.
       expect([vault?.basketId, vault?.planId]).toEqual([basketIdOf(own.id), plan?.id]);
+      // The route's own answer names the same stored plan the join does.
+      expect(vault?.storedPlan).toBe(own.id);
       expect(vault?.plan).toEqual({
         kind: 'personal',
         placedAt: placed.createdAt,
@@ -777,7 +801,8 @@ describe('the portfolio read joins what the confirm missed', () => {
       ip: '127.0.0.1',
     };
     const quiet = { warn: () => {}, error: () => {} };
-    expect(await plansOf(data.db, 'solana', [vault], principal, quiet)).toEqual(new Map());
+    await joinMissed(data.db, 'solana', [vault], principal, quiet);
+    expect(await plansOf(data.db, 'solana', [vault.address], stranger.sub)).toEqual(new Map());
     expect(await held(stranger)).toEqual([]);
     expect((await cached(a)).map((v) => v.basketId)).toEqual([null]);
   });

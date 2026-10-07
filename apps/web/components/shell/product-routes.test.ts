@@ -117,6 +117,8 @@ describe('the routes of the app', () => {
       'app/(app)/publish/page.tsx',
       'app/(app)/shelf/page.tsx',
       'app/(app)/sign-in/page.tsx',
+      'app/(app)/vaults/[chain]/[address]/add/loading.tsx',
+      'app/(app)/vaults/[chain]/[address]/add/page.tsx',
       'app/(app)/vaults/[chain]/[address]/loading.tsx',
       'app/(app)/vaults/[chain]/[address]/page.tsx',
       'app/(embed)/embed/[chain]/[address]/page.tsx',
@@ -346,9 +348,15 @@ describe('rule 3: no screen can reach a key', () => {
   };
   /** More that one file may take, and no other: the runner the whole port, and both the network table. */
   const OPEN_TO: Record<string, Record<string, readonly string[]>> = {
-    [RUNNER]: { [SIGNING]: ['useSigningPort'] },
+    // the hold says a run is open, so the wallet provider is not mounted again under it
+    [RUNNER]: { [SIGNING]: ['useSigningPort', 'useSigningHold'] },
     'features/order/readiness.ts': {
       'features/wallet/chains.ts': ['publicWalletEnv', 'walletChains'],
+    },
+    // "Try again" for a slow sign-in mounts the wallet provider again: a function that takes and
+    // returns nothing, open to the account alone.
+    'features/account/AccountProvider.tsx': {
+      'features/wallet/WalletProvider.tsx': ['useWalletRestart'],
     },
   };
 
@@ -363,6 +371,9 @@ describe('rule 3: no screen can reach a key', () => {
     'features/order/chain-node.ts',
     // a shared portfolio read from that node, and a family's id worked out from its slug (WEB-4)
     'features/shared/chain-recipe.ts',
+    // a vault's targets read from that node, which an add of money is held to (WEB-ADD-MONEY): a read
+    // of the chain, with no wallet in it
+    'features/portfolio/chain-vault.ts',
   ];
   const SDK = '@colosseum/sdk';
 
@@ -605,7 +616,7 @@ describe('rule 3: no screen can reach a key', () => {
       .replace('signer: port,', '')
       .replace('onMock(port, chain)', '')
       .replace('port.active(chainFamily(chain))', '')
-      .replace('[port, apiFetch]', '');
+      .replace('[port, apiFetch, hold]', '');
     expect(rest.match(/\bport\b/g) ?? []).toEqual([]);
     // what the executor is handed beside it is the README's list (features/wallet/README.md, item 3)
     for (const dep of [

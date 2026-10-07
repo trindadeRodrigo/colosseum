@@ -13,7 +13,7 @@ import type { ApiFetch } from '../account/person';
 //
 //   GET  /v1/funding?amountUsd=&proposalId=&wallet=   what the wallet is missing for this buy, cash and gas
 //   POST /v1/orders { type: 'buy', owner, amountUsd, proposalId }   the order, its steps planned, nothing built
-//   POST /v1/testnet/fund { amountUsd, proposalId | family, wallet }   test network only: what is missing, sent
+//   POST /v1/testnet/fund { amountUsd, proposalId | family | vault, wallet }   test network only: what is missing, sent
 //
 // Every answer is read with the shared schema. What the server says in a refusal is written for a
 // developer: the screen has a sentence of its own for each thing the person can do about it.
@@ -58,16 +58,33 @@ const bodyOf = async (res: Response): Promise<Record<string, unknown>> => {
 };
 
 /**
- * What the wallet is missing for a buy of this plan, or of this shared portfolio (by its slug), and
+ * What a buy is of: a plan, a shared portfolio (by its slug), or a vault the person has, which the buy
+ * adds to (its address and its chain, as GET /v1/funding and POST /v1/testnet/fund name it).
+ */
+export type BuyOf =
+  | { proposalId: string }
+  | { family: string }
+  | { vault: string; vaultChain: ChainId };
+
+/** Where the screen that adds money to a vault lives. */
+export const addMoneyPath = (chain: ChainId, address: string) =>
+  `/vaults/${chain}/${encodeURIComponent(address)}/add`;
+
+/**
+ * What the wallet is missing for a buy of this plan, of this shared portfolio or into this vault, and
  * amount, read from the wallet on its chain.
  */
 export async function readFunding(
   apiFetch: ApiFetch,
-  ask: ({ proposalId: string } | { family: string }) & { amountUsd: number; wallet: string },
+  ask: BuyOf & { amountUsd: number; wallet: string },
 ): Promise<FundingOutcome> {
   const query = new URLSearchParams({
     amountUsd: String(ask.amountUsd),
-    ...('family' in ask ? { family: ask.family } : { proposalId: ask.proposalId }),
+    ...('vault' in ask
+      ? { vault: ask.vault, vaultChain: ask.vaultChain }
+      : 'family' in ask
+        ? { family: ask.family }
+        : { proposalId: ask.proposalId }),
     wallet: ask.wallet,
   });
   let res: Response;
@@ -93,13 +110,18 @@ const CODES: readonly OrderErrorCode[] = [
 ];
 
 /**
- * POST /v1/orders: a buy of this plan for this amount, owned by the wallet of the plan's chain. The
- * order that comes back is the one the review screen shows; it is checked here only for being an order
- * of this plan's chain and this owner. What it may sign is the guard's, later, from that same object.
+ * POST /v1/orders: a buy of this plan for this amount, owned by the wallet of the plan's chain, or, with
+ * `vault`, that amount added to a vault of that wallet's on the chain. The order that comes back is the
+ * one the review screen shows; it is checked here only for being an order of this chain and this owner.
+ * What it may sign is the guard's, later, from that same object.
  */
 export async function placeOrder(
   apiFetch: ApiFetch,
-  ask: { proposalId: string; amountUsd: number; chain: ChainId; owner: string },
+  ask: ({ proposalId: string } | { vault: string }) & {
+    amountUsd: number;
+    chain: ChainId;
+    owner: string;
+  },
 ): Promise<OrderOutcome> {
   const family = chainFamily(ask.chain);
   let res: Response;
@@ -111,7 +133,9 @@ export async function placeOrder(
         type: 'buy',
         owner: { [family]: ask.owner },
         amountUsd: ask.amountUsd,
-        proposalId: ask.proposalId,
+        ...('vault' in ask
+          ? { vault: { chain: ask.chain, address: ask.vault } }
+          : { proposalId: ask.proposalId }),
       }),
     });
   } catch {
@@ -136,6 +160,91 @@ export async function placeOrder(
   return { kind: 'placed', order: order.data };
 }
 
+// Finishing a buy with the cash already in its vault (the flow audit, finding 24):
+//
+//   POST /v1/orders/{id}/continue   no body; the owner's alone
+//   200  a new order with `continues: <the first order's id>`, no `depositRaw`, and only `swap` steps;
+//        asked again while that order can still be signed, the same one
+//   409  a sentence: the deposit has not landed, nothing is left, a step built before can still land
+//        (`details.retryable`), or the vault's cash is short; `PRICE_MOVED` when a step can no longer
+//        meet the least it states
+//
+// The route is not on every server yet. Nothing is offered until it is known to be there.
+
+/** Not an order's id: asking to finish it tells whether the route is there, and can make nothing. */
+const NO_ORDER = 'not-an-order';
+
+const continuePath = (id: string) => `/v1/orders/${encodeURIComponent(id)}/continue`;
+
+/**
+ * Whether this server finishes buys, by the status alone. The route takes an order's id, a uuid
+ * (`OrderRouteParams`): asked with something that is not one, a server with the route refuses the
+ * request as badly formed (400), and one without it has no such route (404). Anything else, a
+ * sign-in it does not know included, is read as no: the button stays hidden.
+ */
+export async function continuesOrders(apiFetch: ApiFetch): Promise<boolean> {
+  try {
+    const res = await apiFetch(continuePath(NO_ORDER), { method: 'POST' });
+    return res.status === 400;
+  } catch {
+    return false;
+  }
+}
+
+export type ContinueOutcome =
+  | { kind: 'placed'; order: OrderDetail & { continues: string } }
+  /** 409: why not, in the server's sentence; `retryable` when asking again later may work. */
+  | { kind: 'refused'; sentence: string; retryable: boolean; priceMoved: boolean }
+  | { kind: 'signed-out' | 'busy' | 'unreachable' | 'unreadable' | 'unavailable' };
+
+/**
+ * Asks for the order that finishes `first` with the cash in its vault. Nothing is deposited. The
+ * answer is taken only if it names that order, is another order, is the same owner's for the same
+ * vault, deposits nothing and has only swap steps, all on the first order's chain.
+ */
+export async function continueOrder(
+  apiFetch: ApiFetch,
+  first: Pick<OrderDetail, 'id' | 'owner' | 'basketId' | 'legs'>,
+): Promise<ContinueOutcome> {
+  const id = first.id;
+  let res: Response;
+  try {
+    res = await apiFetch(continuePath(id), { method: 'POST' });
+  } catch {
+    return { kind: 'unreachable' };
+  }
+  const body = await bodyOf(res);
+  if (res.status === 409) {
+    const details = typeof body.details === 'object' && body.details !== null ? body.details : {};
+    return {
+      kind: 'refused',
+      sentence: typeof body.error === 'string' ? body.error : '',
+      retryable: (details as { retryable?: unknown }).retryable === true,
+      priceMoved: body.code === 'PRICE_MOVED',
+    };
+  }
+  if (res.status === 404 || res.status === 405 || res.status === 501)
+    return { kind: 'unavailable' };
+  if (res.status === 401 || res.status === 403) return { kind: 'signed-out' };
+  if (res.status === 429) return { kind: 'busy' };
+  if (!res.ok) return { kind: 'unreachable' };
+  const order = OrderDetail.safeParse(body);
+  // The answer must say which order it finishes, and be another order than that one.
+  if (!order.success || body.continues !== id || order.data.id === id)
+    return { kind: 'unreadable' };
+  const chain = first.legs[0]?.chain;
+  const made = order.data;
+  if (
+    JSON.stringify(made.owner) !== JSON.stringify(first.owner) ||
+    made.basketId !== first.basketId ||
+    made.depositRaw !== undefined ||
+    made.legs.length === 0 ||
+    made.legs.some((leg) => leg.kind !== 'swap' || leg.chain !== chain)
+  )
+    return { kind: 'unreadable' };
+  return { kind: 'placed', order: { ...order.data, continues: id } };
+}
+
 /** GET /v1/orders/{id}: the order as it stands. */
 export async function readOrder(
   apiFetch: ApiFetch,
@@ -151,7 +260,14 @@ export async function readOrder(
   if (!res.ok) return { kind: failureOf(res.status, body.code) };
   const order = OrderDetail.safeParse(body);
   return order.success && order.data.id === id
-    ? { kind: 'read', order: order.data }
+    ? {
+        kind: 'read',
+        // Which order it finishes, where it finishes one: kept as the server said it.
+        order: {
+          ...order.data,
+          ...(typeof body.continues === 'string' ? { continues: body.continues } : {}),
+        },
+      }
     : { kind: 'unreadable' };
 }
 
@@ -193,7 +309,7 @@ export type TestFundsOutcome =
  */
 export async function requestTestFunds(
   apiFetch: ApiFetch,
-  ask: ({ proposalId: string } | { family: string }) & { amountUsd: number; wallet: string },
+  ask: BuyOf & { amountUsd: number; wallet: string },
 ): Promise<TestFundsOutcome> {
   let res: Response;
   try {

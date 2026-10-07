@@ -10,7 +10,7 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars } from '../goal/sheet';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { type Funding, FundingStep } from './FundingStep';
-import { fundMock, requestTestFunds, type TestFundsOutcome } from './order-api';
+import { type BuyOf, fundMock, requestTestFunds, type TestFundsOutcome } from './order-api';
 import { gasUnitsFor } from './readiness';
 import { TrustNotice } from './TrustNotice';
 import { unitsFor } from './units';
@@ -21,13 +21,14 @@ import { unitsFor } from './units';
 // again from its heading; "Continue" opens the next one and moves the focus to it. Figures that are not
 // live are said once per card, never with a plate on a figure: on the mock the card's hatch band and
 // its "Sample figures" line (MOCK-QUIET), on a test network one line at the top (gate BUY-STEPS). The plan's buy and a shared
-// portfolio's share it; what is checked before an order is made stays theirs (`order.blocked`).
+// portfolio's share it, and so does adding money to a vault; what is checked before an order is made
+// stays theirs (`order.blocked`).
 
 export const MIN_USD = 10;
 export const MAX_USD = 1_000_000;
 
 export type StepId = 'amount' | 'funds' | 'trust' | 'review';
-const STEPS: readonly StepId[] = ['amount', 'funds', 'trust', 'review'];
+const ALL_STEPS: readonly StepId[] = ['amount', 'funds', 'trust', 'review'];
 
 export type BuyStepsProps = {
   chain: ChainId;
@@ -44,10 +45,16 @@ export type BuyStepsProps = {
   funding: Funding;
   owner: string | null;
   /** The buy the funding is read for: what POST /v1/testnet/fund is asked about. */
-  buyOf: { proposalId: string } | { family: string };
+  buyOf: BuyOf;
   /** Read the wallet again. */
   onReadAgain: () => void;
-  trust: { accepted: boolean; checked: boolean; onCheck: (yes: boolean) => void };
+  trust: {
+    accepted: boolean;
+    checked: boolean;
+    onCheck: (yes: boolean) => void;
+    /** The keeper may trade the vault this buy opens. Left out: it may. */
+    keeper?: boolean;
+  };
   order: {
     /** Names the action and the amount. */
     label: string;
@@ -57,6 +64,8 @@ export type BuyStepsProps = {
     blocked: string[];
     failure: string | null;
     onReview: () => void;
+    /** The sentence over the button, where the buy is not of a plan (an add to a vault). */
+    lead?: string;
   };
 };
 
@@ -86,6 +95,9 @@ export function BuySteps({
   const heads = useRef<Partial<Record<StepId, HTMLButtonElement | null>>>({});
   const moved = useRef(false);
 
+  // The notice was accepted before, in this browser, for this text: the step is not opened again
+  // only to press Continue (the flow audit, finding 20). The order screen still links the notice.
+  const STEPS = trust.accepted ? ALL_STEPS.filter((step) => step !== 'trust') : ALL_STEPS;
   const read = funding.kind === 'read' ? funding.funding : null;
   const done: Record<StepId, boolean> = {
     amount: confirmed && amount.value !== null,
@@ -215,6 +227,7 @@ export function BuySteps({
           accepted={trust.accepted}
           checked={trust.checked}
           onCheck={trust.onCheck}
+          keeper={trust.keeper}
         />
         {continueButton('trust')}
       </div>
@@ -222,11 +235,29 @@ export function BuySteps({
     review: (
       <div className="flex flex-col items-start gap-3">
         <p className="max-w-(--tf-measure-body) text-body">
-          {t.buy.steps.reviewLead(
-            amount.value === null ? '' : dollars(amount.value, lang),
-            chainName,
-          )}
+          {order.lead ??
+            t.buy.steps.reviewLead(
+              amount.value === null ? '' : dollars(amount.value, lang),
+              chainName,
+            )}
         </p>
+        {/* Accepted before: the notice is not a step again, and is still here to read. */}
+        {trust.accepted && (
+          <details data-ui="trust-kept">
+            <summary className="w-fit cursor-pointer text-body-sm font-medium text-primary underline decoration-1 underline-offset-4 hover:decoration-2">
+              {t.trust.short.title}
+            </summary>
+            <div className="mt-3">
+              <TrustNotice
+                chain={chain}
+                accepted
+                checked={false}
+                onCheck={trust.onCheck}
+                keeper={trust.keeper}
+              />
+            </div>
+          </details>
+        )}
         <Button
           variant="primary"
           busy={order.busy}

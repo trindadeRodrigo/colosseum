@@ -13,7 +13,9 @@ import {
 import { remember } from '../../components/shell/remember';
 import { SIGNED_IN_COOKIE } from '../../i18n';
 import { forgetGoalDraft } from '../goal/draft';
-import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
+import { forgetOrders } from '../order/order-record';
+import { forgetPlans } from '../order/plan-store';
+import { useApiFetch, useWalletPort, useWalletRestart } from '../wallet/WalletProvider';
 import { chainInAddress, FIRST_CHAIN, recallChain, rememberChain } from './chain-choice';
 import {
   fetchPerson,
@@ -58,8 +60,34 @@ export type Account =
  */
 export type Unknown = 'unreachable' | 'signed_out' | 'no_identity' | 'busy' | 'off' | 'refused';
 
+/**
+ * Someone signed in has waited this long and is not ready: they are told, and not left looking at
+ * "Reading…". Nothing is asked again by itself: a sign-in service that answered 429 is left alone
+ * until the person presses "Try again", and each press waits twice as long as the one before.
+ */
+export const SLOW_MS = 15_000;
+const SLOWEST_MS = 120_000;
+
+/**
+ * Which side has not answered: `wallets`, the sign-in service has not handed over the session's
+ * wallets; `server`, ours has not said who this is (GET /v1/me, or the chain being stored).
+ */
+export type Slow = {
+  side: 'wallets' | 'server';
+  trying: boolean;
+  /** "Try again" was not done: a step of an order is being signed, and is finished or cancelled first. */
+  held: boolean;
+};
+
 export type AccountValue = {
   account: Account;
+  /**
+   * Set while someone signed in is still not ready after `SLOW_MS`. `trying`: they pressed "Try
+   * again" and its wait is not over.
+   */
+  slow: Slow | null;
+  /** Reads the wallets and the person again, with no reload of the page. */
+  again(): void;
   /**
    * The person is the throwaway wallet of development: the API has no account for them, so their
    * chain is worked out here and kept only while the page is open. Shown with the sample glyph.
@@ -93,6 +121,7 @@ const whyNot = (e: unknown): Unknown => {
 export function AccountProvider({ children }: { children: ReactNode }) {
   const port = useWalletPort();
   const apiFetch = useApiFetch();
+  const restart = useWalletRestart();
   const [read, setRead] = useState<Read | null>(null);
   const [round, setRound] = useState(0);
   // The chain someone signed out is looking at: the address's, else this browser's, else the first.
@@ -123,13 +152,24 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   latest.current = { port, apiFetch, key };
 
   // What a person typed is theirs: when they sign out, or another person signs in, the draft kept in
-  // the tab is forgotten. A person who was signed out and signs in keeps what they typed.
+  // the tab is forgotten. A person who was signed out and signs in keeps what they typed, and so does
+  // one whose wallet provider is loading again ("Try again"): nobody is known then, and nobody left.
   const who = port.userId;
+  const out = port.status === 'signed-out';
   const before = useRef(who);
   useEffect(() => {
-    if (before.current !== null && before.current !== who) forgetGoalDraft();
+    // Loading again and naming nobody: nothing of the person's is forgotten, their order's record
+    // least of all ("Try again" pressed on an order's page).
+    if (who === null && !out) return;
+    if (before.current !== null && before.current !== who) {
+      forgetGoalDraft();
+      // and the plans and order records this browser kept for them: the server has them, for when
+      // they sign in again. The trust acceptance stays: it holds no figure (order-record.ts).
+      forgetPlans();
+      forgetOrders(before.current);
+    }
     before.current = who;
-  }, [who]);
+  }, [who, out]);
 
   // The landing page sends a person signed in here to their goal, from this hint. Only a settled port
   // changes it: while it loads, nothing is known.
@@ -223,6 +263,45 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     return { status: 'loading' };
   }, [port.status, port.walletsOwed, key, read]);
 
+  // Signed in and not ready: the wallets are loading, or our server has not answered. Once someone was
+  // seen signed in, a wallet provider that loads again still counts, until it says they are out.
+  const seen = useRef(false);
+  if (port.userId !== null) seen.current = true;
+  else if (port.status === 'signed-out') seen.current = false;
+  const waiting = account.status === 'loading' && (port.userId !== null || seen.current);
+  const side = port.status === 'ready' ? 'server' : 'wallets';
+  const [tries, setTries] = useState(0);
+  const [late, setLate] = useState(false);
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    if (!waiting) {
+      setTries(0);
+      setLate(false);
+      setHeld(false);
+      return;
+    }
+    const timer = setTimeout(() => setLate(true), Math.min(SLOW_MS * 2 ** tries, SLOWEST_MS));
+    return () => clearTimeout(timer);
+  }, [waiting, tries]);
+  const slow = useMemo(
+    (): Slow | null => (waiting && (late || tries > 0) ? { side, trying: !late, held } : null),
+    [waiting, late, tries, side, held],
+  );
+  // The wallets are read again by mounting their provider again; the person, by asking our server
+  // again. A second press does both: the token our server is waiting for comes from that provider,
+  // and our server is asked only once the new one has its wallets and tokens (there is no person to
+  // ask about while it loads). Not while an order is being run: the press is refused, and says so.
+  const again = useCallback(() => {
+    if ((side === 'wallets' || tries > 0) && !restart()) {
+      setHeld(true);
+      return;
+    }
+    setHeld(false);
+    if (side === 'server') retry();
+    setLate(false);
+    setTries((n) => n + 1);
+  }, [side, tries, restart, retry]);
+
   // Signed out later, the person goes on looking at the chain they were on.
   const current = account.status === 'ready' ? account.chain : null;
   useEffect(() => {
@@ -233,8 +312,8 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
   const chain = current ?? (account.status === 'signed-out' ? browsing : null);
   const value = useMemo(
-    () => ({ account, mock: port.test, chain, choose, retry }),
-    [account, port.test, chain, choose, retry],
+    () => ({ account, slow, again, mock: port.test, chain, choose, retry }),
+    [account, slow, again, port.test, chain, choose, retry],
   );
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;
 }

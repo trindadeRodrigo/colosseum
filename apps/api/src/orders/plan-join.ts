@@ -198,7 +198,7 @@ async function isJoined(db: Db, chain: ChainId, owner: Address, number: string):
  * database whether the join is there, and reads the chain only when it is not.
  *
  * It never fails the order's answer and never changes it. A chain that does not answer, or does not
- * show the vault yet, leaves the join to the portfolio's read (`plansOf`), and the log says why.
+ * show the vault yet, leaves the join to the portfolio's read (`joinMissed`), and the log says why.
  *
  * An order past its time is not asked about: once a step has landed an order stays open for a day, and
  * a join still missing after that is the portfolio read's to make. Without this, an order whose vault
@@ -316,37 +316,20 @@ async function joinFromOrders(db: Db, vault: Named, privyId: string): Promise<vo
 }
 
 /**
- * The plans of the person's vaults on one chain, by vault address, for the portfolio's answer. The
- * vaults are the ones just read from the chain and written to the cache.
- *
- * First the vaults the cache holds with no plan are joined from the person's orders (`joinFromOrders`):
- * a join the confirm missed is made here. Then the plans are read in one query, and only those whose
- * `baskets` row is the signed-in person's own: a vault joined to another person's plan, a vault made
- * outside the app and one whose order nobody finds are answered with no plan.
- *
- * Whose goal is answered (the stored plan's sheet, card, verdict and observations) follows the rule a
- * stored plan is read back by, `loadReadablePlan` in store.ts: the plan was made from a link (it is
- * anybody's who holds its id, as `GET /v1/baskets/{id}` answers it), or its row names the same user as
- * the `baskets` row. Any other vault is answered that the person holds the plan (`kind`, `placedAt`,
- * `proposalId`) and none of what it says: the goal it was made for is its maker's, whoever that is.
- * So the portfolio answers a plan's goal to nobody `loadReadablePlan` would refuse the plan to.
- *
- * A person can hold such a plan in two ways. A buy refuses a plan that names another person
- * (`loadBuyablePlan`), but a buy made before it did may have opened a vault for one. And a plan that
- * names no person and is not from a link is still bought by anybody holding its id: buying is the
- * looser of the two rules there, and holding the id does not read the plan back. Every plan the app
- * makes is stored after its person's user row is written, so those name their user; a row with none is
- * one stored another way (before plans named their person, a test's fixture, a row written by hand).
+ * Joins the vaults the confirm missed, at the portfolio's read: the vaults are the ones just read from
+ * the chain and written to the cache, and each that holds no plan yet is joined from the person's
+ * orders (`joinFromOrders`). Only a vault of the person's own wallet is joined. It answers nothing and
+ * never fails the read: what goes wrong is logged, and the next read tries again.
  */
-export async function plansOf(
+export async function joinMissed(
   db: Db,
   chain: ChainId,
   states: readonly Named[],
   principal: Principal,
   log: JoinLog,
-): Promise<Map<Address, JoinedPlan>> {
+): Promise<void> {
   const privyId = principal.userId;
-  if (!privyId || states.length === 0) return new Map();
+  if (!privyId || states.length === 0) return;
   const addresses = states.map((v) => v.address);
   const unjoined = await db
     .select({ address: vaults.address })
@@ -362,10 +345,39 @@ export async function plansOf(
     try {
       await joinFromOrders(db, vault, privyId);
     } catch (err) {
-      // The portfolio is answered all the same, this vault with no plan.
+      // The portfolio is answered all the same: the join changes nothing in its answer.
       log.error({ err, chain, vault: address }, 'a vault could not be joined to its plan');
     }
   }
+}
+
+/**
+ * The plans of the person's vaults on one chain, by vault address, as the join holds them: for the
+ * routes that answer a vault with the plan it was opened for (the portfolio section's, PORT-2). Read in
+ * one query, and only the plans whose `baskets` row is this person's own: a vault joined to another
+ * person's plan, a vault made outside the app and one whose order nobody finds have none.
+ *
+ * Whose goal is answered (the stored plan's sheet, card, verdict and observations) follows the rule a
+ * stored plan is read back by, `loadReadablePlan` in store.ts: the plan was made from a link (it is
+ * anybody's who holds its id, as `GET /v1/baskets/{id}` answers it), or its row names the same user as
+ * the `baskets` row. Any other vault is answered that the person holds the plan (`kind`, `placedAt`,
+ * `proposalId`) and none of what it says: the goal it was made for is its maker's, whoever that is.
+ * So a plan's goal is answered to nobody `loadReadablePlan` would refuse the plan to.
+ *
+ * A person can hold such a plan in two ways. A buy refuses a plan that names another person
+ * (`loadBuyablePlan`), but a buy made before it did may have opened a vault for one. And a plan that
+ * names no person and is not from a link is still bought by anybody holding its id: buying is the
+ * looser of the two rules there, and holding the id does not read the plan back. Every plan the app
+ * makes is stored after its person's user row is written, so those name their user; a row with none is
+ * one stored another way (before plans named their person, a test's fixture, a row written by hand).
+ */
+export async function plansOf(
+  db: Db,
+  chain: ChainId,
+  addresses: readonly Address[],
+  privyId: string | undefined,
+): Promise<Map<Address, JoinedPlan>> {
+  if (!privyId || addresses.length === 0) return new Map();
   const rows = await db
     .select({
       address: vaults.address,
@@ -386,7 +398,7 @@ export async function plansOf(
     .where(
       and(
         eq(vaults.chainId, chain),
-        inArray(vaults.address, addresses),
+        inArray(vaults.address, [...addresses]),
         eq(users.privyId, privyId),
       ),
     );

@@ -11,14 +11,24 @@ import {
 } from '@colosseum/schemas';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { continueBuy, leftOf } from '../../orders/continue';
 import { Refusal } from '../../orders/errors';
 import { familyByNameKey, familyBySlug } from '../../orders/families';
-import { buildLeg, cancelLeg, type OrderDeps, refreshOrder, reportLeg } from '../../orders/legs';
+import {
+  assertNoneInFlight,
+  buildLeg,
+  cancelLeg,
+  type OrderDeps,
+  refreshOrder,
+  reportLeg,
+} from '../../orders/legs';
 import { homeChain } from '../../orders/person';
 import { joinConfirmed } from '../../orders/plan-join';
 import { prepareOrder } from '../../orders/prepare';
 import { recordPublished } from '../../orders/shared';
 import {
+  continuationsOf,
+  insertContinuation,
   insertOrder,
   isLinkedProposal,
   loadBuyablePlan,
@@ -235,6 +245,63 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
           ),
         ),
       ),
+  );
+
+  f.post(
+    '/v1/orders/:id/continue',
+    {
+      config: { auth: 'user', limit: 'build' },
+      schema: {
+        tags,
+        summary: 'Finish a buy with the cash already in its vault. Nothing is deposited',
+        description:
+          'For a buy whose deposit landed and whose swaps did not all follow: a step was not signed, or could no longer be built at the terms the order stated (`PRICE_MOVED`; an order’s minimums are never changed after it is made). Answers a new order, for the same owner and the same vault, whose steps are the swaps the first one left, with the same amounts, quoted now and stating new minimums to review and approve. It has no `depositRaw` and names the order it finishes in `continues`; its steps spend only the cash the vault holds, and it is refused (409) when the vault holds less than they spend, when the first order’s deposit has not landed, when nothing is left, and while a step of it is built or on its way. An order is finished by one order: called again while that one is still open, it answers that same order, and after that it is refused (409, naming it), since what that order left is its own to finish by this route. From then on the first order builds nothing more. No body. The order is its owner’s alone: anybody else gets 404.',
+        params: OrderRouteParams,
+        response: { 200: OrderDetail, default: OrderError },
+      },
+    },
+    async (req) => {
+      const stored = await ownOrder(deps, req, req.params.id);
+      const now = deps.now();
+      // An order is finished by one order. Asked again while that one can still be signed, the answer
+      // is that order; after it, what it left is its own to finish, so no swap is ever planned twice.
+      const answerMade = async (made: { id: string; status: string; expiresAt: Date }) => {
+        // Still the one to sign: open, in time, and not itself finished by another order.
+        const open =
+          (made.status === 'open' || made.status === 'partial') &&
+          made.expiresAt.getTime() > now.getTime() &&
+          (await continuationsOf(deps.db, made.id)).length === 0;
+        const again = open ? await loadOrder(deps.db, made.id) : null;
+        if (again) return detail(again);
+        throw new Refusal(409, 'another order finishes this one: what is left is that order’s', {
+          fix: `Finish order ${made.id}.`,
+        });
+      };
+      const [made] = await continuationsOf(deps.db, stored.order.id);
+      if (made) return answerMade(made);
+      // What the chain says now of a step that was sent, before anything is decided on its status.
+      const fresh = await refreshOrder(deps, stored);
+      const left = leftOf(fresh.order);
+      const leftLegIds = left.map((leg) => leg.id);
+      // The attempts looked at here; one recorded after this is seen under the lock below.
+      const seen = fresh.attempts.filter((a) => leftLegIds.includes(a.legId)).map((a) => a.id);
+      // No transaction built for a step left can still land: it would spend the cash twice.
+      await assertNoneInFlight(deps, fresh, left);
+      // The chain is asked its quotes here, with nothing held.
+      const { order, request } = await continueBuy(fresh, {
+        chains: deps.chains,
+        now: now.toISOString(),
+      });
+      // Then, under the order's lock and in one short transaction: has another order been made, was
+      // a step built meanwhile, and the new order's rows (store.ts).
+      const { existing } = await insertContinuation(deps.db, Order.parse(order), request, {
+        id: fresh.order.id,
+        leftLegIds,
+        seen,
+      });
+      if (existing) return answerMade(existing);
+      return detail({ order, request, attempts: [] });
+    },
   );
 
   f.post(

@@ -14,7 +14,7 @@ import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { chainInAddress } from '../account/chain-choice';
-import { assetTicker, formatBps } from '../order/amounts';
+import { formatBps, tokenName } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { networkFor } from '../order/readiness';
 import { useApiFetch } from '../wallet/WalletProvider';
@@ -176,10 +176,9 @@ function FamilyCard({ family }: { family: SharedFamily }) {
       className="h-full"
       mock={notLive}
       mockLabels={{
-        announce: t.shell.mockAnnounce,
-        note: family.recipes.some((r) => r.provenance === 'sandbox')
-          ? t.shell.testNetwork
-          : undefined,
+        announce: family.recipes.some((r) => r.provenance === 'sandbox')
+          ? t.shell.testNetworkLine
+          : t.shell.mockAnnounce,
       }}
     >
       <CardHeader
@@ -237,7 +236,7 @@ export function Weights({ recipe, locale }: { recipe: SharedRecipe; locale: stri
   return (
     <p className="font-mono text-source [overflow-wrap:anywhere]">
       {recipe.active.components
-        .map((c) => `${assetTicker(c.asset)} ${formatBps(c.weightBps, locale)}`)
+        .map((c) => `${tokenName(c.asset)} ${formatBps(c.weightBps, locale)}`)
         .join(' · ')}
     </p>
   );
@@ -252,7 +251,7 @@ export function Offer({ recipe }: { recipe: SharedRecipe }) {
   const sentence = offer.offered
     ? o.offered
     : offer.reason === 'no_oracle'
-      ? o.noOracle(offer.assets.map((a) => assetTicker(a)).join(', '), name)
+      ? o.noOracle(offer.assets.map((a) => tokenName(a)).join(', '), name)
       : o.switchedOff(name);
   return (
     <p
