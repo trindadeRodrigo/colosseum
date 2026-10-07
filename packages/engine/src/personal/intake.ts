@@ -623,6 +623,12 @@ type Heard = {
    */
   refusals: { classes: Refused[]; taken: boolean }[];
   /**
+   * The answers to the question that asks of a shared portfolio by its name (`themes`, template
+   * `startFrom`): its slug, and whether the person said yes. Taken back where a later message
+   * writes the portfolio's name again: it is then read anew, as written.
+   */
+  portfolios: { slug: string; taken: boolean }[];
+  /**
    * Set where a later message brought a holding up again after its question was answered, or said a
    * share of a holding that stands: the share is asked once more and not taken, with `start` as the
    * question's start where the message gave one. Cleared by the answer.
@@ -647,6 +653,8 @@ type Open = {
   themes: { keys: string[]; slug: string; words: string }[];
   /** What the `limits` question asks whether to leave out: a refusal one reader read alone. */
   refusal: Refused[];
+  /** The shared portfolios the `themes` question asks of by name: one a reader read alone. */
+  startFrom: string[];
   /** The narratives a share of the money is held for, where nothing is asked. */
   held: { key: string; words: string }[];
 };
@@ -736,7 +744,14 @@ export function runIntake(input: IntakeInput): IntakeResult {
   let answers: IntakeAnswers = form;
   /** The narratives the standing answer to the `mix` question was about; none: the mix itself. */
   let settled: string[] | null = null;
-  const heard: Heard = { flags: [], leftOut: [], refusals: [], reask: null, answered: [] };
+  const heard: Heard = {
+    flags: [],
+    leftOut: [],
+    refusals: [],
+    portfolios: [],
+    reask: null,
+    answered: [],
+  };
   const say = (answer: typeof words, of: string[] | null = settled) => {
     heard.answered.push(turnNow);
     Object.assign(words, answer);
@@ -790,6 +805,12 @@ export function runIntake(input: IntakeInput): IntakeResult {
       reopen();
       continue;
     }
+    // An answer to the question that asks of a shared portfolio by its name stands until a later
+    // message writes that portfolio's name again: then it is read anew, as written.
+    heard.portfolios = heard.portfolios.filter((answer) => {
+      const p = input.portfolios.find((x) => x.slug === answer.slug);
+      return ![p?.name, p?.slug].some((w) => w !== undefined && phraseIn(message, w).length > 0);
+    });
     const before = intakeOf(input, turns.slice(0, n), answers, heard);
     const amountUsd = answers.amountUsd ?? before.result.draft.amountUsd;
     const asked = before.result.questions.find((q) => q.field === 'mix');
@@ -884,6 +905,18 @@ export function runIntake(input: IntakeInput): IntakeResult {
         continue;
       }
     }
+    // The question that asks of a shared portfolio by its name ("Do you want to start from the
+    // shared portfolio The Seven?") is answered by a plain yes or no too, where it is the one
+    // question asked: a yes takes its start, a no leaves the portfolio out.
+    const startFrom = before.open.startFrom;
+    if (startFrom.length > 0 && before.result.questions.length === 1) {
+      const said = yesOrNoSaidIn(message);
+      if (said !== null) {
+        heard.portfolios.push(...startFrom.map((slug) => ({ slug, taken: said === 'yes' })));
+        heard.answered.push(n);
+        continue;
+      }
+    }
     const themes = before.open.themes;
     if (themes.length > 0 && !('sleeves' in answers)) {
       if (noneSaidIn(message)) {
@@ -960,6 +993,9 @@ function intakeOf(
   let namedPortfolios: string[] = [];
   // What the model says the person rules out; none with no model.
   let replyRefused: Refused[] = [];
+  // The shared portfolios one reader reads alone, by slug: asked once ("Do you want to start from
+  // the shared portfolio The Seven?"), with them as the question's start.
+  const startAsked: string[] = [];
 
   if (input.reply === null) {
     Object.assign(draft, rules);
@@ -985,6 +1021,33 @@ function intakeOf(
       }
     // "No hard cap", "sem prazo": no date, read by code, the same with or without a model.
     if (openWords !== null && rules.horizonMonths === null && !dated) openEnded = true;
+    // A shared portfolio's name said as a holding ("Start me off from The Seven.") was never read
+    // with no model (the third review, Oct 7). The text check is then the one reader: it is asked
+    // once, with it as the start, as a mix is, and never taken.
+    for (const p of portfolios) {
+      const said = [p.name, p.slug]
+        .flatMap((words) => phraseIn(text, words))
+        .map((m) => portfolioSaidAt(text, m.at, m.end, m.words === p.name || m.words === p.slug));
+      // One the person only wonders about is asked by the portfolio question, as with a model.
+      if (!said.includes('held')) {
+        if (said.includes('wondered')) {
+          flags.push('portfolio_wondered');
+          unclear.add('themes');
+        }
+        continue;
+      }
+      flags.push('from_rules:themes');
+      const answer = heard.portfolios.filter((x) => x.slug === p.slug).at(-1);
+      if (answer?.taken) {
+        flags.push('portfolio_confirmed');
+        namedPortfolios.push(p.name);
+        draft.themes = [...(draft.themes ?? []), p.slug];
+      } else if (answer) flags.push('portfolio_left_out');
+      else {
+        unclear.add('themes');
+        startAsked.push(p.slug);
+      }
+    }
   } else {
     const read = readReply(input.reply);
     flags.push(...read.flags);
@@ -1158,17 +1221,37 @@ function intakeOf(
             ),
           );
         return (
-          (['held', 'wondered', 'negated', 'aside'] as const).find((how) => said.includes(how)) ??
-          null
+          (['held', 'wondered', 'negated', 'aside', 'unsure'] as const).find((how) =>
+            said.includes(how),
+          ) ?? null
         );
       };
       const said = r.portfolios.map((name) => ({ name, how: saidAs(name) }));
       namedPortfolios = said.flatMap((p) => (p.how === 'held' ? [p.name] : []));
-      for (const { how } of said) {
+      for (const { name, how } of said) {
+        const slug = portfolioSlug(name, portfolios);
         if (how === null) flags.push('no_cue:portfolios');
         else if (how === 'wondered') {
           flags.push('portfolio_wondered');
           unclear.add('themes');
+        } else if (how === 'unsure') {
+          // No reader decides alone (the third review, Oct 7: "My pick is the seven." was dropped
+          // with a flag). The reply names it and the text writes its words with nothing that says
+          // they name the portfolio: asked once, with it as the start, never taken and never
+          // dropped. One the shelf does not hold cannot be held, and is not asked about.
+          flags.push('no_cue:portfolios');
+          const answer = heard.portfolios.filter((x) => x.slug === slug).at(-1);
+          if (slug === null) continue;
+          if (answer?.taken) {
+            // The person's yes is the second reader: held from here on as one the text states.
+            flags.push('portfolio_confirmed');
+            namedPortfolios.push(name);
+          } else if (answer) flags.push('portfolio_left_out');
+          else {
+            flags.push('portfolio_asked');
+            unclear.add('themes');
+            if (!startAsked.includes(slug)) startAsked.push(slug);
+          }
         } else if (how !== 'held') flags.push(`portfolio_${how}`);
       }
       const slugs = namedPortfolios.map((name) => portfolioSlug(name, portfolios));
@@ -2302,6 +2385,16 @@ function intakeOf(
     }
   };
 
+  // The question that asks of a shared portfolio by its name, where that is all the `themes`
+  // question is asked for: one read alone, and nothing the shelf does not hold.
+  const startFrom =
+    startAsked.length > 0 &&
+    !flags.includes('portfolio_wondered') &&
+    !flags.includes('not_on_shelf:themes') &&
+    !flags.some((flag) => flag.startsWith('no_cue:market:')) &&
+    !(answers.themes !== undefined && value.themes === null)
+      ? startAsked
+      : [];
   /** What a yes to leaving `classes` out would leave out: each, and what goes with it. */
   const wouldLeaveOut = (classes: readonly Refused[]): Refused[] => {
     const order = [...Object.keys(CLASS_WORDS[language]), 'credit'];
@@ -2352,6 +2445,15 @@ function intakeOf(
       return { id: 'goalMixConflict', params: { words: mixWords(mix), goal: value.goal } };
     if (field === 'limits')
       return { id: 'limits', params: { classes: classWords(wouldLeaveOut(refusalAsked)) } };
+    if (field === 'themes' && startFrom.length > 0)
+      return {
+        id: 'startFrom',
+        params: {
+          portfolios: listed(
+            startFrom.map((slug) => portfolios.find((x) => x.slug === slug)?.name ?? slug),
+          ),
+        },
+      };
     return { id: field, params: {} };
   };
   // What a question starts from: what was read, and for the `mix` question the mix it is asked about,
@@ -2359,13 +2461,15 @@ function intakeOf(
   const startOf = (field: QuestionField): IntakeQuestion['read'] =>
     field === 'limits'
       ? wouldLeaveOut(refusalAsked)
-      : field !== 'mix'
-        ? readOf(field, value)
-        : conflictAsk
-          ? undefined
-          : marketShareAsk === null
-            ? (mixAsk?.read ?? undefined)
-            : (heard.reask?.start ?? shareRead ?? undefined);
+      : field === 'themes' && startFrom.length > 0
+        ? [...new Set([...(value.themes ?? []), ...startFrom])]
+        : field !== 'mix'
+          ? readOf(field, value)
+          : conflictAsk
+            ? undefined
+            : marketShareAsk === null
+              ? (mixAsk?.read ?? undefined)
+              : (heard.reask?.start ?? shareRead ?? undefined);
   const questions: IntakeQuestion[] = QUESTION_FIELDS.filter(needed).map((field) =>
     question(field, language, templateOf(field), startOf(field)),
   );
@@ -2597,6 +2701,7 @@ function intakeOf(
         : shareAskedOf,
     themes: asks('sleeves') && splitAsk?.id === 'themeShares' ? splitAsk.themes : [],
     refusal: asks('limits') ? refusalAsked : [],
+    startFrom: asks('themes') ? startFrom : [],
     held:
       questions.length === 0 &&
       (marketMix !== null || themeSleeves !== null || (answers.mix ?? null) !== null)

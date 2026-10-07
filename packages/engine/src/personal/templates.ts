@@ -1127,6 +1127,14 @@ export const QUESTION_TEMPLATES = {
     en: 'Which shared portfolio, if any, do you want to start from?',
     pt: 'De qual portfólio compartilhado você quer partir, se de algum?',
   },
+  // A shared portfolio one reader read alone (the third review, Oct 7): the model names it and the
+  // text writes its words with nothing that says they name it ("My pick is the seven."), or, with no
+  // model, the text says its name as a holding. Asked once by its name, never taken and never
+  // dropped. `portfolios` is the names as the shelf writes them, joined.
+  startFrom: {
+    en: 'Do you want to start from the shared portfolio {portfolios}?',
+    pt: 'Você quer partir do portfólio compartilhado {portfolios}?',
+  },
   currency: {
     en: 'In which currency do you count this goal?',
     pt: 'Em que moeda você conta este objetivo?',

@@ -2598,6 +2598,8 @@ describe('the second review (Oct 7): every sentence of its scripts, with a model
     if (asked.length === 0) return 'none';
     return asked
       .map((q) => {
+        // A shared portfolio asked of by its name starts from its slug; a mix, from its parts.
+        if (Array.isArray(q.read)) return `ask ${q.field}/${q.template} start ${q.read.join(',')}`;
         const start = q.read as PersonalMix | undefined;
         return `ask ${q.field}/${q.template}${start ? ` start ${parts(start)}` : ''}`;
       })
@@ -3596,20 +3598,22 @@ describe('the second review (Oct 7): every sentence of its scripts, with a model
     [T2, { ...MEDIUM, markets: ['robots'] }, 'none', [], ['model_invalid:markets']],
     [T2, { ...MEDIUM, markets: ['ai'] }, 'ask themes/themes', ['themes'], ['no_cue:market:ai']],
     [T2, { ...MEDIUM, portfolios: ['The Seven'] }, 'none', [], ['no_cue:portfolios']],
-    // The words of a portfolio's name, said of something else.
+    // The words of a portfolio's name, said of something else: never taken. Changed with the third
+    // review (Oct 7, B12): these two were dropped with a flag and nothing asked. The reply names the
+    // portfolio and the text writes its words, so one reader reads it alone: asked once.
     [
       `${T2}, the seven of us are saving`,
       { ...MEDIUM, portfolios: ['The Seven'] },
-      'none',
-      [],
-      ['no_cue:portfolios'],
+      'ask themes/startFrom start the-seven',
+      ['themes'],
+      ['no_cue:portfolios', 'portfolio_asked'],
     ],
     [
       `${T2}. My kids are the 500 reasons I save.`,
       { ...MEDIUM, portfolios: ['The 500'] },
-      'none',
-      [],
-      ['no_cue:portfolios'],
+      'ask themes/startFrom start the-500',
+      ['themes'],
+      ['no_cue:portfolios', 'portfolio_asked'],
     ],
     // A risk word under a negation.
     [
@@ -3872,17 +3876,26 @@ describe('the second review (Oct 7): every sentence of its scripts, with a model
       expect(outcome(named(text)), text).toBe('hold from the-seven');
       expect(named(text).readBack, text).toContain('The plan starts from The Seven.');
     }
-    // Words that nothing says name the portfolio are not read: dropped, flagged, nothing asked.
-    for (const [text, portfolio] of [
-      [`${T2}, the seven of us are saving`, 'The Seven'],
-      [`${T2}. My kids are the 500 reasons I save.`, 'The 500'],
-      [`${T2}. The seven years I worked abroad taught me patience.`, 'The Seven'],
+    // Words that nothing says name the portfolio are never taken. Changed with the third review
+    // (Oct 7, B12): they were dropped with a flag and nothing asked; the reply names the portfolio,
+    // so it is asked once by its name, with it as the start, and nothing is held meanwhile.
+    for (const [text, portfolio, slug] of [
+      [`${T2}, the seven of us are saving`, 'The Seven', 'the-seven'],
+      [`${T2}. My kids are the 500 reasons I save.`, 'The 500', 'the-500'],
+      [`${T2}. The seven years I worked abroad taught me patience.`, 'The Seven', 'the-seven'],
     ] as const) {
       const result = named(text, portfolio);
       expect(result.flags, text).toContain('no_cue:portfolios');
-      expect(result.questions, text).toEqual([]);
-      expect(result.sheet?.themes, text).toEqual([]);
-      expect((result.readBack ?? []).join(' '), text).not.toMatch(/starts from/);
+      expect(result.questions, text).toEqual([
+        {
+          field: 'themes',
+          template: 'startFrom',
+          text: `Do you want to start from the shared portfolio ${portfolio}?`,
+          read: [slug],
+        },
+      ]);
+      expect(result.sheet, text).toBeNull();
+      expect(result.draft.themes, text).toBeNull();
     }
     // One its clause rules out, or says of someone else, is dropped and flagged by how.
     for (const [sentence, flag] of [
@@ -5032,5 +5045,175 @@ describe('the third review (Oct 7), B9: on a goal of income or to protect a narr
     });
     expect(named.draft.themes).toEqual(['the-seven']);
     expect(named.flags).not.toContain('themes_dropped_for_goal');
+  });
+});
+
+describe('the third review (Oct 7), B12: a shared portfolio one reader reads alone is asked once by its name', () => {
+  const FORM: IntakeAnswers = { goal: 'grow', amountUsd: 5000, horizonMonths: 60, risk: 'medium' };
+  const reads = (over: Record<string, unknown> = {}) =>
+    reply({ goal: null, amountUsd: null, horizonMonths: null, risk: null, ...over });
+  const said = (messages: string[], r: unknown, answers: IntakeAnswers = FORM) =>
+    intake(conversationText(messages[0] ?? '', messages.slice(1)), r, { answers });
+  const ask = (name: string, slug: string, pt = false) => ({
+    field: 'themes',
+    template: 'startFrom',
+    text: pt
+      ? `Você quer partir do portfólio compartilhado ${name}?`
+      : `Do you want to start from the shared portfolio ${name}?`,
+    read: [slug],
+  });
+  // The reply names the portfolio; the text writes its words with nothing that says they name it.
+  const UNSURE: [string, string, string, true?][] = [
+    // The review's own (`repro.ts` B12a, `r8.ts`).
+    ['My pick is the seven.', 'The Seven', 'the-seven'],
+    ['the 500 looks right for me', 'The 500', 'the-500'],
+    ['For the stocks part, mirror the seven.', 'The Seven', 'the-seven'],
+    // In other words.
+    ['Storm cellar seems like the one for me.', 'Storm Cellar', 'storm-cellar'],
+    ['If I had to name one, the home team.', 'Home Team', 'home-team'],
+    ['Minha escolha é o home team.', 'Home Team', 'home-team', true],
+    ['A carteira que me agrada é a storm cellar.', 'Storm Cellar', 'storm-cellar', true],
+    ['My favourite so far would be the seven.', 'The Seven', 'the-seven'],
+  ];
+  // With no model: the text check reads the name as a holding, and is the one reader.
+  const HELD: [string, string, string, true?][] = [
+    // The review's own (`repro.ts` B12b).
+    ['Start me off from The Seven.', 'The Seven', 'the-seven'],
+    // In other words.
+    ["I'll go with Home Team.", 'Home Team', 'home-team'],
+    ['Vou de Storm Cellar.', 'Storm Cellar', 'storm-cellar'],
+    ['Quero partir do The 500.', 'The 500', 'the-500', true],
+    ['Use the-seven as the base.', 'The Seven', 'the-seven'],
+    ['Invest in the 500 for me.', 'The 500', 'the-500'],
+  ];
+
+  it('with a reply that names it: asked once with it as the start, never taken and never dropped', () => {
+    for (const [text, name, slug, pt] of UNSURE) {
+      const r = said([text], reads({ portfolios: [name], ...(pt ? { language: 'pt' } : {}) }));
+      expect(r.questions, text).toEqual([ask(name, slug, pt)]);
+      expect(r.flags, text).toEqual(
+        expect.arrayContaining(['no_cue:portfolios', 'portfolio_asked']),
+      );
+      expect(r.sheet, text).toBeNull();
+      expect(r.draft.themes, text).toBeNull();
+      // With no model nothing says these words name a portfolio: not read, not asked.
+      const rules = said([text], null);
+      expect(fields(rules), text).not.toContain('themes');
+      expect(rules.sheet?.themes ?? [], text).toEqual([]);
+      // A reply that names none: the text check alone reads nothing either.
+      const none = said([text], reads());
+      expect(none.questions, text).toEqual([]);
+      expect(none.sheet?.themes, text).toEqual([]);
+    }
+  });
+
+  it('a yes takes it and the read-back says so; a no leaves it out; the question does not come back', () => {
+    for (const [text, name, slug, pt] of UNSURE) {
+      const r = reads({ portfolios: [name], ...(pt ? { language: 'pt' } : {}) });
+      for (const yes of ['yes', 'sim', "that's right"]) {
+        const taken = said([text, yes], r);
+        expect(taken.questions, `${text} ${yes}`).toEqual([]);
+        expect(taken.sheet?.themes, `${text} ${yes}`).toEqual([slug]);
+        expect(taken.flags, text).toContain('portfolio_confirmed');
+        expect(taken.readBack, text).toContain(
+          pt ? `O plano parte de ${name}.` : `The plan starts from ${name}.`,
+        );
+      }
+      for (const no of ['no', 'não']) {
+        const left = said([text, no], r);
+        expect(left.questions, `${text} ${no}`).toEqual([]);
+        expect(left.sheet?.themes, `${text} ${no}`).toEqual([]);
+        expect(left.flags, text).toContain('portfolio_left_out');
+        // A message that says nothing of it leaves the answer as it is.
+        expect(said([text, no, 'thanks'], r).sheet?.themes, text).toEqual([]);
+      }
+      // The form's own answer stands over the question, either way.
+      expect(intake(text, r, { answers: { ...FORM, themes: [slug] } }).sheet?.themes).toEqual([
+        slug,
+      ]);
+      expect(intake(text, r, { answers: { ...FORM, themes: [] } }).sheet?.themes).toEqual([]);
+    }
+  });
+
+  it('the last word wins over the answer: the name said again as a holding is held, and said alone it answers', () => {
+    const r = reads({ portfolios: ['The Seven'] });
+    const again = said(['My pick is the seven.', 'no', 'Actually, start from The Seven.'], r);
+    expect(again.questions).toEqual([]);
+    expect(again.sheet?.themes).toEqual(['the-seven']);
+    const alone = said(['My pick is the seven.', 'The Seven'], r);
+    expect(alone.questions).toEqual([]);
+    expect(alone.sheet?.themes).toEqual(['the-seven']);
+    // A yes or no answers it only where it is the one question asked.
+    const more = said(['My pick is the seven.', 'yes'], r, { goal: 'grow', amountUsd: 5000 });
+    expect(fields(more)).toContain('themes');
+    expect(more.flags).not.toContain('portfolio_confirmed');
+  });
+
+  it('a yes is a holding like any other: beside a refusal of stocks it is one question, never a sheet with both', () => {
+    const r = reads({ portfolios: ['The Seven'], cannotHold: ['stock'] });
+    const first = said(['My pick is the seven. No stocks.'], r);
+    expect(first.questions).toEqual([ask('The Seven', 'the-seven')]);
+    const then = said(['My pick is the seven. No stocks.', 'yes'], r);
+    expect(then.sheet).toBeNull();
+    expect(then.questions.map((q) => q.template)).toEqual(['holdOrLeaveOut']);
+  });
+
+  it('what cannot be held or is not the person’s is not asked: off the shelf, never written, ruled out, said of another', () => {
+    for (const [text, name, flag] of [
+      ['My pick is moon rockets.', 'Moon Rockets', 'no_cue:portfolios'],
+      ['I want to grow my savings.', 'The Seven', 'no_cue:portfolios'],
+      ['I do not want The Seven.', 'The Seven', 'portfolio_negated'],
+      ['My brother holds The Seven.', 'The Seven', 'portfolio_aside'],
+    ] as const) {
+      const r = said([text], reads({ portfolios: [name] }));
+      expect(r.flags, text).toContain(flag);
+      expect(r.flags, text).not.toContain('portfolio_asked');
+      expect(fields(r), text).not.toContain('themes');
+      expect(r.sheet?.themes ?? [], text).toEqual([]);
+    }
+  });
+
+  it('with no model a portfolio’s name said as a holding is asked once, with it as the start, never taken', () => {
+    for (const [text, name, slug, pt] of HELD) {
+      const first = intake(text, null, { answers: FORM, ...(pt ? { language: 'pt' } : {}) });
+      expect(first.questions, text).toEqual([ask(name, slug, pt)]);
+      expect(first.flags, text).toContain('from_rules:themes');
+      expect(first.sheet, text).toBeNull();
+      expect(first.draft.themes, text).toBeNull();
+      const yes = said([text, 'yes'], null);
+      expect(yes.questions, text).toEqual([]);
+      expect(yes.sheet?.themes, text).toEqual([slug]);
+      const no = said([text, 'no'], null);
+      expect(no.questions, text).toEqual([]);
+      expect(no.sheet?.themes, text).toEqual([]);
+      // On the form.
+      expect(
+        intake(text, null, { answers: { ...FORM, themes: [slug] } }).sheet?.themes,
+        text,
+      ).toEqual([slug]);
+      // With a reply that names it both readers read it: taken with no question, as before.
+      const both = said([text], reads({ portfolios: [name] }));
+      expect(both.questions, text).toEqual([]);
+      expect(both.sheet?.themes, text).toEqual([slug]);
+    }
+    // Words that nothing says name the portfolio, one ruled out and one said of another: not read.
+    for (const text of [
+      'The seven of us are saving.',
+      'I do not want The Seven.',
+      'My brother holds The Seven.',
+    ]) {
+      const r = said([text], null);
+      expect(r.questions, text).toEqual([]);
+      expect(r.sheet?.themes, text).toEqual([]);
+    }
+    // One the person only wonders about is asked by the portfolio question, with no start.
+    const wondered = said(['Should I start from The Seven?'], null);
+    expect(wondered.questions).toEqual([
+      {
+        field: 'themes',
+        template: 'themes',
+        text: 'Which shared portfolio, if any, do you want to start from?',
+      },
+    ]);
   });
 });

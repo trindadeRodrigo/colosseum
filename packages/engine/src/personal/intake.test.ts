@@ -419,7 +419,8 @@ describe('questions', () => {
         for (const q of result.questions) {
           const template = QUESTION_TEMPLATES[q.template as keyof typeof QUESTION_TEMPLATES];
           expect(template, q.template).toBeDefined();
-          if (q.template !== 'amountOtherCurrency' && q.template !== 'sleevesMismatch')
+          // These three take values: their words are held in the tests of their own.
+          if (!['amountOtherCurrency', 'sleevesMismatch', 'startFrom'].includes(q.template))
             expect(q.text).toBe(render(template[result.language], {}, result.language));
         }
       }
@@ -495,7 +496,18 @@ describe('the model off (C17)', () => {
       expect(result.draft, g.id).toEqual(rules);
       // Every field the rules parser read is put to the person once, its reading the start.
       const read = (['goal', 'horizonMonths', 'risk'] as const).filter((f) => rules[f] !== null);
-      expect(result.flags, g.id).toEqual(read.map((f) => `from_rules:${f}`));
+      // And a shared portfolio's name said as a holding ("starting from The Seven", "a partir do portfólio The Seven") is asked once
+      // too, with it as the start (the third review, Oct 7, B12): one reader never takes it.
+      const named = /The Seven/.test(g.text) ? ['from_rules:themes'] : [];
+      expect(result.flags, g.id).toEqual([...read.map((f) => `from_rules:${f}`), ...named]);
+      if (named.length > 0)
+        expect(
+          result.questions.find((q) => q.field === 'themes'),
+          g.id,
+        ).toMatchObject({
+          template: 'startFrom',
+          read: ['the-seven'],
+        });
       for (const f of read)
         expect(
           result.questions.find((q) => q.field === f),
