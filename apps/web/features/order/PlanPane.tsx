@@ -1,13 +1,11 @@
 'use client';
-import type { BasketLine, ChainId, ObservationRef, RiskRollUp } from '@colosseum/schemas';
+import type { ChainId, ObservationRef, RiskRollUp } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useId } from 'react';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/Card';
 import { DataTable } from '../../components/ui/DataTable';
-import { ExitPlanLine } from '../../components/ui/ExitPlanLine';
-import { MAX_LEGS, PlanLegs } from '../../components/ui/PlanLegs';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import type { PinSource } from '../../components/ui/provenance';
 import { type Dictionary, type Lang, LOCALE } from '../../i18n';
@@ -16,6 +14,7 @@ import { planProvenance } from '../goal/build-plan';
 import { dollars } from '../goal/sheet';
 import { formatBps } from './amounts';
 import { PlanChart } from './PlanChart';
+import { PlanView } from './PlanView';
 import { displayName, flagSentences, kindLabel, leftOut, reasonsOf } from './plain';
 import type { StoredPlan } from './plan-store';
 
@@ -63,9 +62,7 @@ export type PlanPaneProps = {
 export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2 }: PlanPaneProps) {
   const t = useT();
   const lang = useLang();
-  const paneId = useId();
   const reasonId = useId();
-  const Title = `h${level}` as 'h2' | 'h3';
   const { proposal } = plan;
   const { sheet, card } = proposal;
   const chainName = t.chain.names[chain];
@@ -76,7 +73,6 @@ export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2
   const locale = LOCALE[lang];
   const share = (bps: number) => formatBps(bps, locale);
 
-  const tableOnly = proposal.lines.length > MAX_LEGS;
   // What the range a year comes to a month, for a plan whose goal is income: the same share of the
   // amount the chart draws, over twelve months. Shown only where the range has a source.
   const ranged =
@@ -107,150 +103,96 @@ export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2
   const amount = dollars(sheet.amountUsd, lang);
 
   return (
-    <div data-ui="plan-pane" className="flex flex-col gap-6">
-      <Card
-        as="section"
-        aria-labelledby={paneId}
-        mock={notLive}
-        mockLabels={{
-          announce: label === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
-        }}
-      >
-        {/* The head, then the rest; a sample card says so once at its foot. */}
-        <div className="px-6 pt-6">
-          <Title id={paneId} className="text-[1.125rem]/7 font-medium">
-            {t.plan.title}
-          </Title>
-          <p className="mt-1 text-body-sm text-muted-foreground">
-            {t.plan.sub(t.plan.riskWord[sheet.risk], chainName)}
-          </p>
-        </div>
-        <div className="clear-both flex flex-col gap-5 px-6 pt-5 pb-6">
-          {/* The answer first, in one line: reached, the gap in dollars, or the range projected. */}
-          <div data-ui="plan-verdict" className="flex max-w-(--tf-measure-body) flex-col gap-3">
-            <p data-ui="plan-answer" className="text-body-lg">
-              {verdict ? (
-                verdict.met ? (
-                  t.plan.verdict.met
-                ) : (
-                  t.plan.verdict.gap(dollars(verdict.gapUsdMonthly, lang))
-                )
-              ) : ranged ? (
-                <>
-                  <ProvenancePin
-                    value={t.plan.answer.range(
-                      percent(card.expectedReturn.lowPct, lang),
-                      percent(card.expectedReturn.highPct, lang),
-                    )}
-                    obs={yieldObs}
-                    labels={t.pin}
-                  />{' '}
-                  {t.plan.answer.rangeAfter}
-                </>
-              ) : (
-                t.plan.answer.none
+    <PlanView
+      title={t.plan.title}
+      sub={t.plan.sub(t.plan.riskWord[sheet.risk], chainName)}
+      level={level}
+      chain={chain}
+      provenance={label}
+      profile={sheet.goal === 'income' ? 'income' : undefined}
+      answer={
+        verdict ? (
+          verdict.met ? (
+            t.plan.verdict.met
+          ) : (
+            t.plan.verdict.gap(dollars(verdict.gapUsdMonthly, lang))
+          )
+        ) : ranged ? (
+          <>
+            <ProvenancePin
+              value={t.plan.answer.range(
+                percent(card.expectedReturn.lowPct, lang),
+                percent(card.expectedReturn.highPct, lang),
               )}
-            </p>
-            {/* The ways the engine found to close the gap. Each is the engine's own sentence, with
+              obs={yieldObs}
+              labels={t.pin}
+            />{' '}
+            {t.plan.answer.rangeAfter}
+          </>
+        ) : (
+          t.plan.answer.none
+        )
+      }
+      aside={
+        <>
+          {/* The ways the engine found to close the gap. Each is the engine's own sentence, with
                 its own figures; pressed, it is a turn of the conversation and the plan is redrawn. */}
-            {verdict && !verdict.met && verdict.ways.length > 0 && (
-              <div data-ui="plan-ways" className="flex flex-col items-start gap-2">
-                <p className="text-body-sm">{t.plan.verdict.ways}</p>
-                {onWay ? (
-                  <div className="flex flex-wrap gap-2">
-                    {verdict.ways.map((way) => (
-                      <Button
-                        key={way.change}
-                        variant="secondary"
-                        className="h-auto! min-h-10 py-2 text-left whitespace-normal"
-                        onClick={() => onWay(way.change)}
-                      >
-                        {way.change}
-                      </Button>
-                    ))}
-                  </div>
-                ) : (
-                  <ul className="flex list-disc flex-col gap-1 pl-5 text-body-sm">
-                    {verdict.ways.map((way) => (
-                      <li key={way.change}>{way.change}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-          </div>
-          <div className="flex flex-col gap-3">
-            <h3 className="text-[0.8125rem]/5 font-medium">{t.plan.holds}</h3>
-            {tableOnly ? (
-              <DataTable<BasketLine>
-                caption={t.plan.holds}
-                captionHidden
-                rows={proposal.lines}
-                rowKey={(line) => `${line.assetId}:${line.viaIndex ?? ''}`}
-                columns={[
-                  {
-                    key: 'asset',
-                    header: t.plan.columns.asset,
-                    rowHeader: true,
-                    cell: (l) => name(l.assetId),
+          {verdict && !verdict.met && verdict.ways.length > 0 && (
+            <div data-ui="plan-ways" className="flex flex-col items-start gap-2">
+              <p className="text-body-sm">{t.plan.verdict.ways}</p>
+              {onWay ? (
+                <div className="flex flex-wrap gap-2">
+                  {verdict.ways.map((way) => (
+                    <Button
+                      key={way.change}
+                      variant="secondary"
+                      className="h-auto! min-h-10 py-2 text-left whitespace-normal"
+                      onClick={() => onWay(way.change)}
+                    >
+                      {way.change}
+                    </Button>
+                  ))}
+                </div>
+              ) : (
+                <ul className="flex list-disc flex-col gap-1 pl-5 text-body-sm">
+                  {verdict.ways.map((way) => (
+                    <li key={way.change}>{way.change}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </>
+      }
+      holdings={proposal.lines.map((line) => ({
+        key: `${line.assetId}:${line.viaIndex ?? ''}`,
+        asset: line.assetId,
+        shareBps: line.weightBps,
+        amountUsd: line.amountUsd,
+        // a plan's lines carry no yield of their own: the range is the plan's, in the answer
+        yield: null,
+        // the reason that decided the line, not the share it only started from
+        why: reasonsOf(line)[0] ?? '',
+        reasons: reasonsOf(line),
+      }))}
+      exit={{
+        tiers: [
+          {
+            text: card.exit.text,
+            ...(card.exit.costBps === null
+              ? {}
+              : {
+                  cost: {
+                    figure: t.plan.exitCost(share(Math.max(0, card.exit.costBps))),
+                    obs: exitObs,
                   },
-                  {
-                    key: 'share',
-                    header: t.plan.columns.share,
-                    numeric: true,
-                    cell: (l) => share(l.weightBps),
-                  },
-                  {
-                    key: 'amount',
-                    header: t.plan.columns.amount,
-                    numeric: true,
-                    cell: (l) => dollars(l.amountUsd, lang),
-                  },
-                  {
-                    key: 'why',
-                    header: t.plan.columns.why,
-                    cell: (l) => reasonsOf(l).join(' ') || t.plan.noReason,
-                  },
-                ]}
-              />
-            ) : (
-              <PlanLegs
-                profile={sheet.goal === 'income' ? 'income' : undefined}
-                legs={proposal.lines.map((line) => ({
-                  id: line.assetId,
-                  name: name(line.assetId),
-                  weight: line.weightBps / 10_000,
-                  weightLabel: `${share(line.weightBps)} · ${dollars(line.amountUsd, lang)}`,
-                  rate: null,
-                  // the reason that decided the line, not the share it only started from
-                  why: reasonsOf(line)[0],
-                  // The pane carries the plate for the whole plan, as the showcase case does.
-                  mock: false,
-                }))}
-                labels={{ afterHaircut: t.plan.legs.afterHaircut, quoted: t.plan.legs.quoted }}
-                pinLabels={t.pin}
-              />
-            )}
-          </div>
-          <ExitPlanLine
-            tiers={[
-              {
-                text: card.exit.text,
-                ...(card.exit.costBps === null
-                  ? {}
-                  : {
-                      cost: {
-                        figure: t.plan.exitCost(share(Math.max(0, card.exit.costBps))),
-                        obs: exitObs,
-                      },
-                    }),
-              },
-            ]}
-            caveat={card.exit.costBps === null ? t.plan.exitUnmeasured : undefined}
-            inKind={t.plan.inKind}
-            labels={{ exitPlan: t.plan.exitPlan, costPrefix: t.plan.costPrefix }}
-            pinLabels={t.pin}
-          />
+                }),
+          },
+        ],
+        caveat: card.exit.costBps === null ? t.plan.exitUnmeasured : undefined,
+      }}
+      figures={
+        <>
           <StatRow>
             <Stat label={t.plan.kpi.amount}>{dollars(sheet.amountUsd, lang)}</Stat>
             <Stat label={t.plan.kpi.horizon}>{t.goal.card.months(sheet.horizonMonths)}</Stat>
@@ -291,96 +233,100 @@ export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2
           )}
           {/* The chart of his case: drawn only from a range that has a source. */}
           {ranged && <PlanChart amountUsd={sheet.amountUsd} card={card} yieldObs={yieldObs} />}
-        </div>
-      </Card>
-
-      {/* What the engine noted and how the plan is spread, closed until asked for: every code of the
+        </>
+      }
+      details={
+        <>
+          {/* What the engine noted and how the plan is spread, closed until asked for: every code of the
           engine said in a sentence (features/order/plain.ts), none shown as it is written. */}
-      {(notes.length > 0 ||
-        out.length > 0 ||
-        plan.rollUp ||
-        plan.readBack ||
-        card.expectedReturn.basis) && (
-        <details data-ui="plan-details" className="border border-border px-6 py-4">
-          <summary className="cursor-pointer text-body font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
-            {t.plan.details}
-          </summary>
-          <div className="mt-4 flex flex-col gap-6">
-            <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
-              {t.plan.basis(card.expectedReturn.basis)}
-            </p>
-            {notes.length > 0 && (
-              <ul className="flex max-w-(--tf-measure-body) list-disc flex-col gap-1 pl-5 text-body-sm">
-                {notes.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
-            )}
-            {out.length > 0 && (
-              <div data-ui="plan-left-out" className="flex flex-col gap-1">
-                <h3 className="text-[0.8125rem]/5 font-medium">{t.plan.leftOut}</h3>
-                <ul className="flex max-w-(--tf-measure-body) list-disc flex-col gap-1 pl-5 text-body-sm">
-                  {out.map((sentence) => (
-                    <li key={sentence}>{sentence}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {plan.rollUp && (
-              <RiskPanel
-                rollUp={plan.rollUp}
-                t={t}
-                share={share}
-                notLive={notLive}
-                sandbox={label === 'sandbox'}
-              />
-            )}
-            {/* Read back from the server, which keeps the plan and not its risk summary: said, not
+          {(notes.length > 0 ||
+            out.length > 0 ||
+            plan.rollUp ||
+            plan.readBack ||
+            card.expectedReturn.basis) && (
+            <details data-ui="plan-details" className="border border-border px-6 py-4">
+              <summary className="cursor-pointer text-body font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+                {t.plan.details}
+              </summary>
+              <div className="mt-4 flex flex-col gap-6">
+                <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
+                  {t.plan.basis(card.expectedReturn.basis)}
+                </p>
+                {notes.length > 0 && (
+                  <ul className="flex max-w-(--tf-measure-body) list-disc flex-col gap-1 pl-5 text-body-sm">
+                    {notes.map((note) => (
+                      <li key={note}>{note}</li>
+                    ))}
+                  </ul>
+                )}
+                {out.length > 0 && (
+                  <div data-ui="plan-left-out" className="flex flex-col gap-1">
+                    <h3 className="text-[0.8125rem]/5 font-medium">{t.plan.leftOut}</h3>
+                    <ul className="flex max-w-(--tf-measure-body) list-disc flex-col gap-1 pl-5 text-body-sm">
+                      {out.map((sentence) => (
+                        <li key={sentence}>{sentence}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {plan.rollUp && (
+                  <RiskPanel
+                    rollUp={plan.rollUp}
+                    t={t}
+                    share={share}
+                    notLive={notLive}
+                    sandbox={label === 'sandbox'}
+                  />
+                )}
+                {/* Read back from the server, which keeps the plan and not its risk summary: said, not
                 left out in silence. */}
-            {!plan.rollUp && plan.readBack && (
-              <p
-                data-ui="plan-risk-not-kept"
-                className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground"
+                {!plan.rollUp && plan.readBack && (
+                  <p
+                    data-ui="plan-risk-not-kept"
+                    className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground"
+                  >
+                    {t.plan.risk.notKept}
+                  </p>
+                )}
+              </div>
+            </details>
+          )}
+        </>
+      }
+      invest={
+        invest && (
+          <div data-ui="plan-invest" className="flex flex-col items-start gap-2">
+            {blocked ? (
+              <>
+                <Button variant="primary" disabled aria-describedby={reasonId}>
+                  {t.plan.invest(amount)}
+                </Button>
+                <p id={reasonId} className="max-w-(--tf-measure-body) text-body-sm">
+                  {blocked}
+                </p>
+              </>
+            ) : 'href' in invest ? (
+              <Link
+                href={invest.href}
+                onClick={invest.onFollow}
+                className={buttonClass({ variant: 'primary' })}
               >
-                {t.plan.risk.notKept}
-              </p>
-            )}
-          </div>
-        </details>
-      )}
-
-      {invest && (
-        <div data-ui="plan-invest" className="flex flex-col items-start gap-2">
-          {blocked ? (
-            <>
-              <Button variant="primary" disabled aria-describedby={reasonId}>
+                {t.plan.invest(amount)}
+              </Link>
+            ) : (
+              <Button
+                variant="primary"
+                busy={invest.busy}
+                busyLabel={t.plan.investing}
+                onClick={invest.onPress}
+              >
                 {t.plan.invest(amount)}
               </Button>
-              <p id={reasonId} className="max-w-(--tf-measure-body) text-body-sm">
-                {blocked}
-              </p>
-            </>
-          ) : 'href' in invest ? (
-            <Link
-              href={invest.href}
-              onClick={invest.onFollow}
-              className={buttonClass({ variant: 'primary' })}
-            >
-              {t.plan.invest(amount)}
-            </Link>
-          ) : (
-            <Button
-              variant="primary"
-              busy={invest.busy}
-              busyLabel={t.plan.investing}
-              onClick={invest.onPress}
-            >
-              {t.plan.invest(amount)}
-            </Button>
-          )}
-        </div>
-      )}
-    </div>
+            )}
+          </div>
+        )
+      }
+    />
   );
 }
 
