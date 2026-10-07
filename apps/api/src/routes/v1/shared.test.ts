@@ -30,7 +30,7 @@ import {
 
 // The shared-portfolio routes (API-3) through HTTP on the mock chain and the real database: the shelf,
 // a portfolio's page and its versions, a creator's publish, a buy that follows a portfolio, and a
-// follow by a vault the person has. Solana only: publishing on Robinhood Chain waits for EVM-3. On
+// follow by a vault the person has, on Solana and on Robinhood Chain. On
 // this mock, gold has no price oracle, as on Solana's test network (TNET-5), so a portfolio that holds
 // it offers no auto-follow (gate GOLD-ONE-TAP).
 
@@ -368,6 +368,35 @@ describe('a creator publishes a shared portfolio', () => {
     ]);
   });
 
+  it('on Robinhood Chain too, from the creator’s EVM wallet, onto that chain’s shelf', async () => {
+    const creator = await someone('robinhood');
+    const text = fresh();
+    const components = WITHOUT_GOLD.map((c) => ({
+      ...c,
+      asset: c.asset.replace('solana', 'robinhood'),
+    }));
+    const res = await post(creator, '/v1/orders', {
+      ...publishBody(creator, text, components),
+      creator: { evm: creator.evm },
+      recipes: [{ chain: 'robinhood', components }],
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const placed = OrderDetail.parse(res.json());
+    expect(placed.needsConsent).toEqual(['publish']);
+    expect(placed.legs.map((l) => [l.chain, l.kind])).toEqual([['robinhood', 'publish']]);
+    await fund(creator);
+    expect((await settleAll(creator, placed)).status).toBe('done');
+    const family = await page(text.slug);
+    expect(family.chains).toEqual(['robinhood']);
+    expect(family.recipes[0]).toMatchObject({
+      chain: 'robinhood',
+      creator: creator.evm,
+      textMatches: 'active',
+    });
+    const shelf = ShelfResponse.parse((await get(null, '/v1/shelf?chain=robinhood')).json());
+    expect(shelf.families.some((f) => f.slug === text.slug)).toBe(true);
+  });
+
   it('refuses a publish it cannot plan, and says why', async () => {
     const creator = await someone();
     const text = fresh();
@@ -396,8 +425,8 @@ describe('a creator publishes a shared portfolio', () => {
             },
           ],
         },
-        501,
-        /Robinhood Chain is not built yet/,
+        422,
+        /the creator has no evm address/,
       ],
       [
         {
@@ -645,7 +674,7 @@ describe('a person buys a shared portfolio, following it on their own chain', ()
     });
     expect([res.statusCode, res.json().error]).toEqual([
       422,
-      'this shared portfolio is not published on Robinhood Chain, where your plans live',
+      'this shared portfolio is not published on Robinhood Chain',
     ]);
     // The shelf of that chain does not offer it.
     const shelf = ShelfResponse.parse((await get(evm, '/v1/shelf?chain=robinhood')).json());
@@ -887,6 +916,8 @@ describe('a vault follows a shared portfolio, and auto-follow where it is offere
       404,
       'no vault of yours at that address',
     ]);
+    // A vault is read on its own chain, named by its address: a person on Robinhood Chain with no
+    // Solana wallet has no vault there.
     const evm = await someone('robinhood');
     const wrongChain = await post(evm, '/v1/orders', {
       type: 'follow',
@@ -895,8 +926,8 @@ describe('a vault follows a shared portfolio, and auto-follow where it is offere
       autoFollow: false,
     });
     expect([wrongChain.statusCode, wrongChain.json().error]).toEqual([
-      422,
-      'that vault is not on Robinhood Chain, where your plans live',
+      404,
+      'no vault of yours at that address',
     ]);
     const { who, vault: own } = await withVault();
     const stale = await post(who, '/v1/orders', {

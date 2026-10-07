@@ -192,16 +192,28 @@ export const recipeVersions = pgTable(
 );
 
 /** A stored plan as the engine built it, keyed by the hash of its inputs. */
-export const proposals = pgTable('proposals', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  inputsHash: text('inputs_hash').notNull().unique(),
-  userId: uuid('user_id').references(() => users.id),
-  proposal: jsonb('proposal').$type<BasketProposal>().notNull(),
-  engineVersion: text('engine_version').notNull(),
-  shelfVersion: text('shelf_version').notNull(),
-  paramsHash: text('params_hash').notNull(),
-  createdAt: ts('created_at').notNull().defaultNow(),
-});
+export const proposals = pgTable(
+  'proposals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    inputsHash: text('inputs_hash').notNull().unique(),
+    userId: uuid('user_id').references(() => users.id),
+    proposal: jsonb('proposal').$type<BasketProposal>().notNull(),
+    engineVersion: text('engine_version').notNull(),
+    shelfVersion: text('shelf_version').notNull(),
+    paramsHash: text('params_hash').notNull(),
+    /**
+     * Made from a link (`POST /v1/baskets/propose`, gate `AGENT-LINK`): stored with no person, read back
+     * by anybody holding its id, and a buyer's vault numbered from the plan and the buyer.
+     */
+    fromLink: boolean('from_link').notNull().default(false),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    // The daily cap and the cleanup read the plans made from a link by their time, and only those.
+    index('proposals_from_link_created_idx').on(t.createdAt).where(sql`${t.fromLink}`),
+  ],
+);
 
 /** A person's plan: made to measure (`personal`) or following a shared portfolio (`follow`). */
 export const baskets = pgTable(
@@ -227,6 +239,8 @@ export const vaults = pgTable(
     chainId: chainId(),
     address: text('address').notNull(),
     owner: text('owner').notNull(),
+    /** The name its owner gave it (`VaultName`, plain text); null when they gave none. */
+    name: text('name'),
     basketId: uuid('basket_id').references(() => baskets.id),
     /** The plan's number onchain: the Solana seed and the EVM salt. */
     onchainBasketId: numeric('onchain_basket_id', { precision: 20, scale: 0 }).notNull(),
@@ -280,6 +294,8 @@ export const orders = pgTable(
     /** Written by the server, never caller text. */
     summary: text('summary').notNull(),
     request: jsonb('request').$type<IntentRequest>().notNull(),
+    /** For a buy: the vault's number on chain, as the order was made (`Order.basketId`). */
+    basketId: text('basket_id'),
     warnings: jsonb('warnings').$type<Order['warnings']>().notNull().default([]),
     needsConsent: jsonb('needs_consent').$type<ConsentKind[]>().notNull().default([]),
     fees: jsonb('fees').$type<Order['fees']>().notNull().default([]),
@@ -332,6 +348,8 @@ export const legs = pgTable(
      * and the deposit of one order both hold it, so it is not summed over an order's rows.
      */
     cashRaw: raw('cash_raw'),
+    /** What a `withdraw` step takes out (`Leg.withdrawals`). Null on any other step. */
+    withdrawals: jsonb('withdrawals').$type<Leg['withdrawals']>(),
     trades: jsonb('trades').$type<Trade[]>().notNull(),
     expected: jsonb('expected').$type<Leg['expected']>(),
     status: text('status').$type<LegStatus>().notNull(),

@@ -20,11 +20,11 @@ import {
 } from '@colosseum/sdk';
 import { useCallback } from 'react';
 import type { SharedTerms } from '../shared/terms';
-import { useSigningPort } from '../wallet/signing';
+import { useSigningHold, useSigningPort } from '../wallet/signing';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { chainNode } from './chain-node';
 import { targetsOfPlan } from './plan-terms';
-import { deploymentsFor, onMock } from './readiness';
+import { basketOfPlan, deploymentsFor, onMock } from './readiness';
 
 // The one place in the app that signs: an order, through `execute(order, deps)` of @colosseum/sdk. The
 // executor runs the guard on the bytes of every step and asks the wallet only for what the guard
@@ -59,7 +59,14 @@ export type RunInput = {
   /** The order exactly as the review screen showed it when the person approved it. */
   order: OrderDetail;
   /** The plan it buys, as the plan screen showed it: its id and its lines. */
-  plan: { proposalId: string; lines: readonly BasketLine[] };
+  plan: {
+    proposalId: string;
+    lines: readonly BasketLine[];
+    /** The person the order is for: a plan made from a link numbers their vault with it. */
+    userId: string;
+    /** This browser kept the plan as one made from a link: for an order that states no number. */
+    linked?: boolean;
+  };
   /**
    * For an order about a shared portfolio: the terms its screen showed (features/shared/terms.ts),
    * which take the plan's place.
@@ -85,7 +92,8 @@ export function chainReadFor(chain: ChainId, mock: boolean): ChainRead | undefin
 /**
  * The guard's terms for an order about a shared portfolio, from what its screen showed: a buy follows
  * the portfolio's version from a vault numbered by the family's id, with auto-follow off; a follow
- * names the vault the person picked; a publish names the form's family id, text and weights.
+ * names the vault the person picked, and so does an add of money to one; a publish names the form's
+ * family id, text and weights; a withdrawal names the vault and what its review showed leaving it.
  */
 export function planTermsOf(terms: SharedTerms): PlanTerms {
   switch (terms.kind) {
@@ -96,6 +104,22 @@ export function planTermsOf(terms: SharedTerms): PlanTerms {
         basketId: terms.basketId,
         ...(terms.follow ? { follow: terms.follow } : {}),
         autoFollow: terms.autoFollow,
+      };
+    case 'vault':
+      // The guard derives the vault from this number and the signing wallet: every step is held to it.
+      return { basketId: terms.basketId };
+    case 'withdraw':
+      // Everything: any token the vault holds, each once, to its owner. Otherwise the tokens and the
+      // amounts reviewed, and nothing else.
+      return {
+        basketId: terms.basketId,
+        // The one switch a withdrawal may carry is off, and only where the review said it would.
+        ...(terms.autoFollowOff ? { autoFollow: false } : {}),
+        ...(terms.everything
+          ? {}
+          : {
+              withdrawals: terms.items.map(({ asset, amountRaw }) => ({ asset, amountRaw })),
+            }),
       };
     case 'publish':
       return {
@@ -134,6 +158,25 @@ export const localSigned: SignedStore = {
   },
 };
 
+/**
+ * The vault's number for a plan's order: the one the order states, held to a number this app works out
+ * itself (the plan's, or the person's own for a plan made from a link, gate `AGENT-LINK`); null when it
+ * is neither. An order that states none, made before the API kept it, is numbered as this browser kept
+ * the plan.
+ */
+export function planNumberOf(
+  stated: string | undefined,
+  plan: { proposalId: string; userId: string; linked?: boolean },
+): string | null {
+  // A plan this browser kept as one made from a link has the person's own number and no other: an
+  // API that states the plan's shared number for it would lead the link to this vault.
+  const own = plan.linked
+    ? [basketOfPlan(plan.proposalId, plan.userId)]
+    : [basketOfPlan(plan.proposalId), basketOfPlan(plan.proposalId, plan.userId)];
+  if (stated !== undefined) return own.includes(stated) ? stated : null;
+  return basketOfPlan(plan.proposalId, plan.linked ? plan.userId : null);
+}
+
 /** True when this browser keeps what is written to local storage. */
 function storageWorks(): boolean {
   try {
@@ -149,6 +192,7 @@ function storageWorks(): boolean {
 /** The order runner. `run` takes an order the person approved and walks it as far as it can go. */
 export function useOrderRunner(): { run: (input: RunInput) => Promise<RunOutcome> } {
   const port = useSigningPort();
+  const hold = useSigningHold();
   const apiFetch = useApiFetch();
 
   const run = useCallback(
@@ -164,6 +208,9 @@ export function useOrderRunner(): { run: (input: RunInput) => Promise<RunOutcome
       const plan = input.terms ? planTermsOf(input.terms) : null;
       const targets = input.terms ? [] : targetsOfPlan(input.plan.lines, chain, deployment.cash);
       if (!targets) return { status: 'not-runnable', why: 'plan-mismatch' };
+      const basketId = input.terms ? null : planNumberOf(order.basketId, input.plan);
+      if (!input.terms && basketId === null)
+        return { status: 'not-runnable', why: 'plan-mismatch' };
       if (!storageWorks()) return { status: 'not-runnable', why: 'no-store' };
       if (typeof navigator === 'undefined' || !navigator.locks)
         return { status: 'not-runnable', why: 'no-lock' };
@@ -174,7 +221,7 @@ export function useOrderRunner(): { run: (input: RunInput) => Promise<RunOutcome
           signer: port,
           deployments,
           plan: plan ?? {
-            basketId: basketIdOfPlan(input.plan.proposalId),
+            basketId: basketId ?? '',
             targets,
             autoFollow: false,
           },
@@ -185,6 +232,8 @@ export function useOrderRunner(): { run: (input: RunInput) => Promise<RunOutcome
           onEvent: input.onEvent,
           signal: input.signal,
         });
+      // The wallet provider is not mounted again while this runs: the step is signed by this port.
+      const release = hold();
       try {
         // One run of an order at a time, across the tabs of this browser: a second tab that ran while
         // the first had asked the wallet and not yet written down what it signed would sign again.
@@ -193,9 +242,11 @@ export function useOrderRunner(): { run: (input: RunInput) => Promise<RunOutcome
         );
       } catch (e) {
         return { status: 'crashed', message: e instanceof Error ? e.message : String(e) };
+      } finally {
+        release();
       }
     },
-    [port, apiFetch],
+    [port, apiFetch, hold],
   );
   return { run };
 }

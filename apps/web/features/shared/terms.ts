@@ -39,6 +39,23 @@ export type SharedTerms =
       autoFollow: boolean;
       source: TermsSource;
     }
+  /**
+   * A withdrawal from a vault the person owns, as its review showed it: each token that leaves, with
+   * the amount of it (null: all the vault holds of it), for the owner's own wallet. `everything`: the
+   * person asked for all the vault holds, and the list is what it held when they looked.
+   */
+  | {
+      kind: 'withdraw';
+      vault: string;
+      /** The plan number of that vault, held to its address where this app can derive it. */
+      basketId: string;
+      /** Where every token goes: the vault's owner, who is the person signing. */
+      owner: string;
+      everything: boolean;
+      items: WithdrawItem[];
+      /** The vault had auto-follow on at the review: the order's first step switches it off. */
+      autoFollowOff: boolean;
+    }
   /** A creator's publish, with the text and the weights of the form. */
   | {
       kind: 'publish';
@@ -47,9 +64,37 @@ export type SharedTerms =
       components: Target[];
       text: PublishText;
       version: number;
+    }
+  /**
+   * More money into a vault the person has (add money): a deposit, and the trades the vault's targets
+   * give. The targets are the chain's where this app read the vault from its own node (`source:
+   * 'chain'`), and the API's answer, shown as unverified, where it could not (`source: 'api'`).
+   */
+  | {
+      kind: 'vault';
+      vault: string;
+      /** The plan number of that vault, which the guard derives its address from. */
+      basketId: string;
+      /** The vault's targets, which the add's trades are held to. None: the amount stays as cash. */
+      targets: Target[];
+      /** Auto-follow is on: the add only deposits, and the keeper invests it. Then no target is named. */
+      keeper: boolean;
+      source: TermsSource;
     };
 
+/**
+ * One token of a withdrawal: how much leaves (null: all of it), what the vault held at the review, and
+ * the token's multiplier then, which its amounts are shown with (`shownRaw`): 1 for a token with none.
+ */
+export type WithdrawItem = {
+  asset: string;
+  amountRaw: string | null;
+  heldRaw: string;
+  multiplier: string;
+};
+
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
+const RAW = /^\d+$/;
 const isText = (v: unknown): v is string => typeof v === 'string';
 const isSlug = (v: unknown): v is string => isText(v) && SLUG.test(v);
 const isVersion = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 1;
@@ -100,6 +145,66 @@ export function readTerms(value: unknown): SharedTerms | null {
       basketId: t.basketId,
       follow,
       autoFollow: t.autoFollow,
+      source,
+    };
+  }
+  if (t.kind === 'withdraw') {
+    const items = Array.isArray(t.items) ? (t.items as Record<string, unknown>[]) : null;
+    if (
+      !isText(t.vault) ||
+      !t.vault ||
+      !isText(t.basketId) ||
+      !RAW.test(t.basketId) ||
+      !isText(t.owner) ||
+      !t.owner ||
+      typeof t.everything !== 'boolean' ||
+      typeof t.autoFollowOff !== 'boolean' ||
+      !items?.length ||
+      !items.every(
+        (i) =>
+          typeof i === 'object' &&
+          i !== null &&
+          isText(i.asset) &&
+          i.asset.includes(':') &&
+          (i.amountRaw === null || (isText(i.amountRaw) && RAW.test(i.amountRaw))) &&
+          isText(i.heldRaw) &&
+          RAW.test(i.heldRaw) &&
+          isText(i.multiplier) &&
+          /^\d+(\.\d+)?$/.test(i.multiplier),
+      ) ||
+      new Set(items.map((i) => i.asset)).size !== items.length ||
+      // Everything names no amount: each token leaves in full.
+      (t.everything && items.some((i) => i.amountRaw !== null))
+    )
+      return null;
+    return {
+      kind: 'withdraw',
+      vault: t.vault,
+      basketId: t.basketId,
+      owner: t.owner,
+      everything: t.everything,
+      autoFollowOff: t.autoFollowOff,
+      items: items.map((i) => ({
+        asset: i.asset as string,
+        amountRaw: i.amountRaw as string | null,
+        heldRaw: i.heldRaw as string,
+        multiplier: i.multiplier as string,
+      })),
+    };
+  }
+  if (t.kind === 'vault') {
+    const targets = Target.array().safeParse(t.targets);
+    if (!isText(t.vault) || !t.vault || !isText(t.basketId) || !/^\d+$/.test(t.basketId))
+      return null;
+    const source = sourceOf(t.source);
+    if (!targets.success || !source || typeof t.keeper !== 'boolean') return null;
+    if (t.keeper && targets.data.length > 0) return null;
+    return {
+      kind: 'vault',
+      vault: t.vault,
+      basketId: t.basketId,
+      targets: targets.data,
+      keeper: t.keeper,
       source,
     };
   }

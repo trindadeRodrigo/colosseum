@@ -5,11 +5,16 @@ import { landingTheme } from '../../features/landing/theme';
 import { dictionary, LOCALE, THEME_CLASS } from '../../i18n';
 import { I18nProvider } from '../../i18n/I18nProvider';
 import { readPreferences } from '../../i18n/server';
+import { BLACK } from '../../lib/brand-grounds';
 
 // His landing page's document (compact-nav.md, joint-stage.md): the three faces, the language, and
 // the ground. Marketing is dark unless the visitor chose otherwise (token-mapping.md, section 6), so
-// with no choice made the class is `dark`, not `tf-auto` (features/landing/theme.ts). No wallet, no sign-in and no API here: the
-// page sends a goal on to the product (`/goal`), which has all three.
+// with no choice made the class is `dark`, not `tf-auto` (features/landing/theme.ts). No wallet and no
+// API at first load: the page sends a goal on to the product (`/goal`), and its "Sign in" loads the
+// wallet and the sign-in dialog on the first press only (features/landing/LandingSignIn.tsx).
+
+// The landing opens dark, so the browser's bar is black around it in either scheme.
+export const viewport = { themeColor: BLACK };
 
 export async function generateMetadata() {
   const { lang } = await readPreferences();

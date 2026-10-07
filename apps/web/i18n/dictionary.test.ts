@@ -1,5 +1,6 @@
 import { DISCLAIMER } from '@colosseum/schemas';
 import { describe, expect, it } from 'vitest';
+import { bearingDictionary } from './bearing';
 import {
   DEFAULT_LANG,
   dictionary,
@@ -35,6 +36,12 @@ function sentences(node: unknown, path = ''): Leaf[] {
   return [];
 }
 
+/** A language's whole dictionary: the product's, and Bearing's, which ships on its own pages only. */
+const everything = (lang: (typeof LANGS)[number]) => ({
+  ...dictionary(lang),
+  bearing: bearingDictionary(lang),
+});
+
 const paths = (node: unknown) => [...new Set(sentences(node).map((leaf) => leaf.path))].sort();
 
 /** voice-and-tone.md, "Banned words and phrases", and the two words the design bans from templates. */
@@ -45,11 +52,46 @@ const BANNED: Record<string, RegExp> = {
   pt: /garantid|sem risco|renda passiva|piloto automático|inteligente|mágic|desbloque(?!ie a carteira)|revolucion|recomend|adequad|ideal para você|ops\b|desculp/i,
 };
 
+/**
+ * The names Bearing's analytics write in capitals: tokens and units, zones, venues, the exchange's
+ * calendar and the API it reads. Nothing else on those pages is.
+ */
+const BEARING_NAMES = new Set(
+  'API USD USDC USDT USDY SOL TVL LP UTC US EUA KYC DEX CLMM DLMM CPMM NYSE'.split(' '),
+);
+/**
+ * Bearing's labels that are not sentences: a chart's note under its title, an accessible name, the
+ * "how" of a path, a tooltip, and the start of the verdict that the page completes. Rodrigo's
+ * fragments, kept as he wrote them. Each is named: a new one has to be added here on purpose.
+ */
+const BEARING_FRAGMENTS = new Set([
+  'bearing.chain.sideBySide.caption',
+  'bearing.dex.capacity.aria',
+  'bearing.dex.capacity.note',
+  'bearing.dex.liquidity.aria',
+  'bearing.dex.liquidity.note',
+  'bearing.flow.aria',
+  'bearing.flow.tips.issuerPays',
+  'bearing.flow.tips.legCost',
+  'bearing.flow.tips.sol',
+  'bearing.heat.aria',
+  'bearing.lending.avail.jupiter',
+  'bearing.lending.avail.note',
+  'bearing.lending.covered.aria',
+  'bearing.lending.supplied.note',
+  'bearing.lending.table.jupiterAvailable',
+  'bearing.lending.toleranceTitle',
+  'bearing.sim.paths.open.how',
+  'bearing.sim.paths.split.how',
+  'bearing.sim.verdict.best',
+  'bearing.stable.supplied.note',
+]);
+
 describe.each(LANGS)('the dictionary in %s', (lang) => {
-  const all = sentences(dictionary(lang));
+  const all = sentences(everything(lang));
 
   it('has every sentence the English one has, and no other', () => {
-    expect(paths(dictionary(lang))).toEqual(paths(dictionary('en')));
+    expect(paths(everything(lang))).toEqual(paths(everything('en')));
     expect(all.length).toBeGreaterThan(150);
     for (const { path, text } of all) expect(text.trim(), path).not.toBe('');
   });
@@ -63,9 +105,11 @@ describe.each(LANGS)('the dictionary in %s', (lang) => {
 
   it('writes no word in capitals but MOCK', () => {
     for (const { path, text } of all) {
-      // "US$" is how Portuguese writes a dollar amount, and a sentence may start with one capital
+      // "US$" is how Portuguese writes a dollar amount, and a sentence may start with one capital.
+      // Bearing's pages name tokens, units, zones and venues as they are written (Rodrigo's words).
+      const named = path.startsWith('bearing.') ? BEARING_NAMES : new Set<string>();
       const shouting = (text.replace(/US\$/g, '').match(/\p{Lu}{2,}/gu) ?? []).filter(
-        (word) => word !== 'MOCK',
+        (word) => word !== 'MOCK' && !named.has(word),
       );
       expect(shouting, `${path}: ${text}`).toEqual([]);
     }
@@ -90,6 +134,7 @@ describe.each(LANGS)('the dictionary in %s', (lang) => {
         (text.split(' ').length > 12 || /\. \p{L}/u.test(text)) &&
         !/[·…]/.test(text) &&
         !text.startsWith(':') &&
+        !BEARING_FRAGMENTS.has(path) &&
         !/^goal\.(examples|composer\.placeholder)/.test(path),
     );
     expect(full.length).toBeGreaterThan(50);
@@ -99,7 +144,7 @@ describe.each(LANGS)('the dictionary in %s', (lang) => {
 
 describe('the words of the product, in each language', () => {
   const en = dictionary('en');
-  const pt = dictionary('pt');
+  const pt = everything('pt');
 
   it('says goal, limits and plan in English, and objetivo, limites and plano in Portuguese', () => {
     expect(en.goal.sheet.build).toBe('Build my plan');
@@ -138,7 +183,7 @@ describe('the words of the product, in each language', () => {
     expect(text).not.toMatch(word('ligad[oa]s?|desligad[oa]s?'));
     expect(pt.signIn.failure.passkeyOff).toContain('ativadas');
     expect(pt.chain.noWallet).toContain('vinculada');
-    expect(pt.chain.pick.off('Solana')).toContain('indisponível');
+    expect(pt.chain.switch.off('Solana')).toContain('indisponível');
     // one word for dollar yield, which is not income
     expect(text).not.toMatch(/renda em dólar/i);
     expect(pt.goal.fields.glide).toContain('rendimento em dólar');
@@ -153,12 +198,13 @@ describe('the words of the product, in each language', () => {
 
   it('says a passkey that is not registered here in so many words, in both languages', () => {
     const [en, pt] = [dictionary('en'), dictionary('pt')];
-    expect(en.signIn.failure.passkeyNotRegistered).toBe(
-      'That passkey isn’t registered here. Pick another, or create one.',
+    expect(en.signIn.failure.passkeyNotRegistered).toMatch(/^That passkey isn’t registered here: /);
+    expect(pt.signIn.failure.passkeyNotRegistered).toMatch(
+      /^Essa chave de acesso não está registrada aqui: /,
     );
-    expect(pt.signIn.failure.passkeyNotRegistered).toBe(
-      'Essa chave de acesso não está registrada aqui. Escolha outra ou crie uma.',
-    );
+    // and it does not send the person to make a new one, which would open a second, empty account
+    for (const d of [en, pt])
+      expect(d.signIn.failure.passkeyNotRegistered).not.toMatch(/create|crie|criar/i);
   });
 
   it('still bans "unlock" as a word of promise, in Portuguese too', () => {
@@ -178,7 +224,7 @@ describe('the words of the product, in each language', () => {
     expect(en.goal.examples.list).toEqual([
       'Grow $2,000 for ten years, high risk',
       'Protect $50,000 for 18 months, low risk',
-      '$80,000 for $300 a month of income',
+      '$80,000 for $300 a month of income, 5 years, low risk',
     ]);
   });
 
@@ -210,16 +256,13 @@ describe('the words of the product, in each language', () => {
     expect(en.shell.testNetwork).toBe('test network');
   });
 
-  it('says what the chain choice means and that it stands, in both', () => {
-    for (const d of [en, pt]) {
-      expect(d.chain.pick.body.split('.').length).toBeGreaterThan(2);
-      expect(d.chain.pick.warning).toMatch(/can’t be changed later|não pode ser mudado depois/);
-      // why this person is asked, and that it is asked once, whichever way they came
-      for (const reason of [d.chain.pick.asked.made, d.chain.pick.asked.connected])
-        expect(reason).toMatch(/, once\.$|, uma única vez\.$/);
-    }
-    expect(en.chain.pick.body).toMatch(/never split across two/);
-    expect(pt.chain.pick.body).toMatch(/nunca é dividido entre duas/);
+  it('says what a chain switch changes and what it leaves, in both (CHAIN-SWITCH)', () => {
+    // new plans move; plans already made stay on their own chain
+    expect(en.chain.switch.plansStay).toMatch(/^New plans .* stay on their own chain\.$/);
+    expect(pt.chain.switch.plansStay).toMatch(/^Planos novos .* continuam na rede deles\.$/);
+    // nothing says the chain can't be changed any more
+    for (const d of [en, pt])
+      expect(JSON.stringify(d.chain)).not.toMatch(/can’t be changed|não pode ser mudad|once\b/);
   });
 });
 

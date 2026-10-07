@@ -46,6 +46,8 @@ overrides:
   # GHSA-96hv-2xvq-fx4p (high) and GHSA-58qx-3vcg-4xpx: the older viem copies under Privy's WalletConnect
   # pin ws 8.18. Only Node opens a socket with ws; a browser uses its own WebSocket.
   'ws@>=8.0.0 <8.21.0': ^8.21.0
+  # GHSA-68fv-2mgg-jv7q (high): source-map-js 1.2.1 under next's postcss. 1.2.2 is the fix, a patch.
+  'source-map-js@<1.2.2': ^1.2.2
 auditConfig:
   ignoreGhsas:
     - GHSA-rfgv-xxqx-mfg5 # undici, under @scalar/fastify-api-reference

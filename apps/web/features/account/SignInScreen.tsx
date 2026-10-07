@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody } from '../../components/ui/Card';
+import { PAGE_TITLE } from '../../components/ui/heading';
 import { LatticeStatus } from '../../components/ui/Lattice';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { useT } from '../../i18n/I18nProvider';
@@ -11,26 +12,38 @@ import { SignIn } from '../wallet/SignIn';
 import { useWalletPort } from '../wallet/WalletProvider';
 import { useAccount } from './AccountProvider';
 import { ChainName } from './ChainName';
-import { ChainPick } from './ChainPick';
 import { AFTER_SIGN_IN } from './next-path';
+import { SignInSilent } from './SignInSilent';
 
-// Sign-in as a product screen: the two ways in, then, for a person who made their wallet here, the one
-// question of where their plan lives. A person who connected a wallet is not asked: the chain is that
-// wallet's. Once the chain is known the person goes on to where they were headed.
+// Sign-in as a product screen: the two ways in. Nobody is asked for a chain here (gate CHAIN-SWITCH): a
+// person who connected a wallet starts on its chain, one who made their wallets here on the chain they
+// were looking at, and either switches from the bar. Once the chain is known the person goes on to
+// where they were headed.
 
 /**
  * What the screen is showing. It changes because of something the person did here (signed in, chose,
  * asked again, signed out), and each time the button they pressed is gone: focus goes to what took
  * its place, and the change is said to a screen reader.
  */
-type Stage = 'out' | 'making' | 'reading' | 'pick' | 'unknown' | 'no-wallet' | 'ready';
+type Stage = 'out' | 'making' | 'reading' | 'unknown' | 'no-wallet' | 'ready';
 /** The stages a person waits through. Focus rests on the heading until one of the others comes. */
 const PASSING: readonly Stage[] = ['making', 'reading'];
 
-export function SignInScreen({ next = AFTER_SIGN_IN }: { next?: string }) {
+export type SignInScreenProps = {
+  /** Where the person goes once the chain is known, when this is the page at `/sign-in`. */
+  next?: string;
+  /**
+   * In the sign-in dialog: called once the chain is known, in place of going to `next`, and the
+   * title is the dialog's (an h2 with this id) rather than the page's h1.
+   */
+  onDone?: () => void;
+  titleId?: string;
+};
+
+export function SignInScreen({ next = AFTER_SIGN_IN, onDone, titleId }: SignInScreenProps) {
   const t = useT();
   const port = useWalletPort();
-  const { account, retry, overruled } = useAccount();
+  const { account, retry, stalled } = useAccount();
   const router = useRouter();
   // Signed in on this page, in this visit: only then does the screen move the person on by itself.
   const [arrived, setArrived] = useState(false);
@@ -44,14 +57,24 @@ export function SignInScreen({ next = AFTER_SIGN_IN }: { next?: string }) {
   // The person did something on this screen, and what they pressed is about to go.
   const acted = useRef(false);
 
-  // A person whose choice was not kept is not moved on by the page: they read why first.
-  const settled = account.status === 'ready' && overruled === null;
+  const settled = account.status === 'ready';
+  const gone = useRef(false);
   useEffect(() => {
-    if (arrived && settled) router.replace(next);
-  }, [arrived, settled, next, router]);
+    if (!arrived || !settled || gone.current) return;
+    gone.current = true;
+    if (onDone) onDone();
+    else router.replace(next);
+  }, [arrived, settled, next, router, onDone]);
+  // In the dialog, anything the person does here that ends with their chain known closes it: the
+  // sign-in, the chain question, making the wallet, asking again. On the page only a sign-in does;
+  // someone who came to the page signed in asked to see it.
+  const moved = () => {
+    acted.current = true;
+    if (onDone) setArrived(true);
+  };
 
   async function makeWallet() {
-    acted.current = true;
+    moved();
     setMaking(true);
     setNotMade(false);
     try {
@@ -79,7 +102,7 @@ export function SignInScreen({ next = AFTER_SIGN_IN }: { next?: string }) {
   }
 
   function askAgain() {
-    acted.current = true;
+    moved();
     retry();
   }
 
@@ -88,7 +111,7 @@ export function SignInScreen({ next = AFTER_SIGN_IN }: { next?: string }) {
   const owed = port.walletsOwed;
   const signedIn = port.status === 'ready' || owed !== null;
   const noWallet = owed === 'failed' || (port.status === 'ready' && account.status === 'no-wallet');
-  const labels = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.mockAnnounce };
+  const labels = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.sampleFigure };
   const chainName = (chain: ChainId) => port.network(chain)?.name ?? t.chain.names[chain];
 
   // After a sign-in the port loads once more while the wallets of a passkey are made.
@@ -99,13 +122,11 @@ export function SignInScreen({ next = AFTER_SIGN_IN }: { next?: string }) {
         ? 'no-wallet'
         : !signedIn
           ? 'out'
-          : account.status === 'needs-chain'
-            ? 'pick'
-            : account.status === 'unknown'
-              ? 'unknown'
-              : account.status === 'ready'
-                ? 'ready'
-                : 'reading';
+          : account.status === 'unknown'
+            ? 'unknown'
+            : account.status === 'ready'
+              ? 'ready'
+              : 'reading';
 
   const unknownSentence =
     account.status !== 'unknown'
@@ -116,13 +137,13 @@ export function SignInScreen({ next = AFTER_SIGN_IN }: { next?: string }) {
           ? t.chain.unknown.noIdentity
           : account.why === 'busy'
             ? t.shell.slowDown
-            : t.chain.unknown.body;
+            : account.why === 'off'
+              ? t.chain.unknown.off
+              : account.why === 'refused'
+                ? t.chain.unknown.refused
+                : t.chain.unknown.body;
   const readySentence =
-    account.status !== 'ready'
-      ? ''
-      : overruled && overruled !== account.chain
-        ? t.chain.failure.taken(chainName(account.chain), chainName(overruled))
-        : t.chain.is[account.source](chainName(account.chain));
+    account.status !== 'ready' ? '' : t.chain.is[account.source](chainName(account.chain));
   const noWalletSentence = owed === 'failed' ? t.signIn.failure.walletNotMade : t.chain.noWallet;
 
   // What a screen reader is told when the stage changes: where the person is now.
@@ -130,7 +151,6 @@ export function SignInScreen({ next = AFTER_SIGN_IN }: { next?: string }) {
     out: t.shell.signedOut,
     making: `${t.signIn.done.title} ${t.signIn.passkey.making}`,
     reading: `${t.signIn.done.title} ${t.chain.reading}`,
-    pick: `${t.signIn.done.title} ${t.chain.pick.title}`,
     unknown: unknownSentence,
     'no-wallet': noWalletSentence,
     ready: readySentence,
@@ -151,15 +171,29 @@ export function SignInScreen({ next = AFTER_SIGN_IN }: { next?: string }) {
   }, [stage, now]);
 
   return (
-    <div data-ui="sign-in-screen" data-account={account.status} className="flex flex-col gap-8">
+    // One centred column, as wide as the bar can grow (compact-nav.md: max 860px): the headline, the
+    // lead, the cards and, by the shell's rule for a centred page, the foot share its left edge.
+    <div
+      data-ui="sign-in-screen"
+      data-column="centred"
+      data-account={account.status}
+      className="mx-auto flex w-full max-w-[860px] flex-col gap-8"
+    >
       <header className="flex flex-col gap-3">
-        <h1
-          ref={heading}
-          tabIndex={-1}
-          className="max-w-(--tf-measure-display) font-display text-h1 font-normal"
-        >
-          {signedIn ? t.signIn.done.title : t.signIn.title}
-        </h1>
+        {onDone ? (
+          <h2
+            ref={heading}
+            id={titleId}
+            tabIndex={-1}
+            className="max-w-(--tf-measure-display) font-display text-h2 font-normal"
+          >
+            {signedIn ? t.signIn.done.title : t.signIn.title}
+          </h2>
+        ) : (
+          <h1 ref={heading} tabIndex={-1} className={PAGE_TITLE}>
+            {signedIn ? t.signIn.done.title : t.signIn.title}
+          </h1>
+        )}
         {!signedIn && (
           <p className="max-w-(--tf-measure-body) text-body-lg text-foreground">{t.signIn.lead}</p>
         )}
@@ -179,6 +213,7 @@ export function SignInScreen({ next = AFTER_SIGN_IN }: { next?: string }) {
             acted.current = false;
           }}
           onSignedIn={() => setArrived(true)}
+          silent={stalled ? <SignInSilent /> : undefined}
         />
       )}
       {stage === 'making' && <LatticeStatus label={t.signIn.passkey.making} />}
@@ -186,29 +221,12 @@ export function SignInScreen({ next = AFTER_SIGN_IN }: { next?: string }) {
 
       {/* What took the place of the button the person pressed: focus comes here. */}
       <div ref={card} tabIndex={-1} data-ui="sign-in-stage" className="empty:hidden">
-        {stage === 'pick' && account.status === 'needs-chain' && (
-          <ChainPick
-            options={account.options}
-            onConfirm={() => {
-              acted.current = true;
-            }}
-            onFailed={() => {
-              acted.current = false;
-            }}
-          />
-        )}
-
         {stage === 'unknown' && account.status === 'unknown' && (
           <Card as="section">
             <CardBody className="flex flex-col items-start gap-4">
-              {overruled && (
-                <p role="alert" className="max-w-(--tf-measure-body) text-body">
-                  {t.chain.failure.takenUnknown(chainName(overruled))}
-                </p>
-              )}
               <p className="max-w-(--tf-measure-body) text-body">{unknownSentence}</p>
-              {/* Asking again does not help a sign-in the server no longer knows: the way on is out. */}
-              {account.why === 'signed_out' ? (
+              {/* Asking again does not help a sign-in the server no longer knows, or a chain it refused: the way on is out. */}
+              {account.why === 'signed_out' || account.why === 'refused' ? (
                 <Button
                   variant="primary"
                   busy={leaving}
@@ -266,13 +284,7 @@ export function SignInScreen({ next = AFTER_SIGN_IN }: { next?: string }) {
         {stage === 'ready' && account.status === 'ready' && (
           <Card as="section" mock={port.test} mockLabels={{ announce: t.shell.mockAnnounce }}>
             <CardBody className="flex flex-col items-start gap-3">
-              {/* Chosen first on another device or tab: where the plan lives, and what was not kept. */}
-              <p
-                role={overruled && overruled !== account.chain ? 'alert' : undefined}
-                className="max-w-(--tf-measure-body) text-body"
-              >
-                {readySentence}
-              </p>
+              <p className="max-w-(--tf-measure-body) text-body">{readySentence}</p>
               {/* The wallet of that chain alone: the other family's is never shown or used. */}
               <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-sm">
                 {port.test ? (
@@ -288,9 +300,16 @@ export function SignInScreen({ next = AFTER_SIGN_IN }: { next?: string }) {
                   {port.active(chainFamily(account.chain))?.address ?? t.signIn.done.noWallet}
                 </span>
               </p>
-              <Button variant="link" href={next}>
-                {t.signIn.done.next}
-              </Button>
+              {/* In the dialog the way on is the dialog's: it closes, and the action carries on. */}
+              {onDone ? (
+                <Button variant="link" onClick={onDone}>
+                  {t.signIn.done.next}
+                </Button>
+              ) : (
+                <Button variant="link" href={next}>
+                  {t.signIn.done.next}
+                </Button>
+              )}
             </CardBody>
           </Card>
         )}

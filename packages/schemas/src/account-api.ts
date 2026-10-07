@@ -6,15 +6,17 @@ import { ORDER_LIMITS } from './order';
 import { WalletAccount } from './wallet';
 
 // The bodies of the /v1 routes about the signed-in person and their wallet: who they are and which
-// chain their plans live on (gates ONE-CHAIN and CHAIN-PICK), and what the wallet is missing there.
+// current chain, where their new plans are made (gates ONE-CHAIN and CHAIN-SWITCH), and what the
+// wallet is missing there.
 
 /**
- * GET /v1/me, and the answer of PUT /v1/me/chain. A person's plans live on one chain.
- * - Someone who connected an outside wallet is on the chain of that wallet's family: a Solana wallet
- *   means Solana, an EVM wallet means Robinhood Chain while Base is not deployed. `chainSource` is
- *   `wallet`, and there is nothing to pick.
- * - Someone who made a wallet in the app picks the chain once. Until then `chain` is null and
- *   `chainOptions` lists what they may pick; after, `chainSource` is `picked` and it never changes.
+ * GET /v1/me, and the answer of PUT /v1/me/chain. `chain` is the current chain: a new plan is made
+ * there. Each plan lives on one chain, its own, and stays there when the current chain changes.
+ * - Someone who connected an outside wallet starts on the chain of that wallet's family: a Solana
+ *   wallet means Solana, an EVM wallet means Robinhood Chain while Base is not deployed. `chainSource`
+ *   is `wallet`.
+ * - Someone who made a wallet in the app picks the chain. Until then `chain` is null.
+ * - Either may switch to any chain in `chainOptions`; after a switch `chainSource` is `picked`.
  */
 export const PersonResponse = z.object({
   /** The person, as the sign-in provider names them. */
@@ -23,12 +25,12 @@ export const PersonResponse = z.object({
   wallets: z.array(WalletAccount),
   chain: ChainId.nullable(),
   chainSource: z.enum(['picked', 'wallet']).nullable(),
-  /** The chains this person may pick. Empty once there is a chain. */
+  /** The chains this person holds a wallet for, and so may switch to. An EVM wallet alone: Robinhood Chain. */
   chainOptions: z.array(ChainId),
 });
 export type PersonResponse = z.infer<typeof PersonResponse>;
 
-/** PUT /v1/me/chain. Set once: the same chain again answers as before, another one is refused. */
+/** PUT /v1/me/chain. Switches the current chain; the same chain again answers as before. */
 export const PickChainRequest = z.strictObject({ chain: ChainId });
 export type PickChainRequest = z.infer<typeof PickChainRequest>;
 
@@ -56,13 +58,24 @@ export const FundingQuery = z
       .string()
       .regex(/^[a-z0-9][a-z0-9-]*$/)
       .optional(),
+    /**
+     * A vault of the person's, in place of `proposalId` and `family`: adding `amountUsd` to it (a buy
+     * that names the vault). Sent with `vaultChain`, the chain it is on, and with `wallet`, its owner.
+     */
+    vault: Address.optional(),
+    vaultChain: ChainId.optional(),
   })
-  .refine((q) => !(q.proposalId !== undefined && q.family !== undefined), {
-    message: 'send proposalId or family, not both',
+  .refine((q) => [q.proposalId, q.family, q.vault].filter((x) => x !== undefined).length <= 1, {
+    message: 'send one of proposalId, family and vault',
+  })
+  .refine((q) => (q.vault === undefined) === (q.vaultChain === undefined), {
+    message: 'send vault and vaultChain together',
   })
   .refine(
-    (q) => (q.amountUsd === undefined) === (q.proposalId === undefined && q.family === undefined),
-    { message: 'send amountUsd with proposalId or family, or none of them' },
+    (q) =>
+      (q.amountUsd === undefined) ===
+      (q.proposalId === undefined && q.family === undefined && q.vault === undefined),
+    { message: 'send amountUsd with proposalId, family or vault, or none of them' },
   );
 export type FundingQuery = z.infer<typeof FundingQuery>;
 
@@ -99,5 +112,67 @@ export const FundingResponse = z.object({
   newVault: z.boolean(),
   /** True when nothing is missing. */
   ok: z.boolean(),
+  /**
+   * True when this server can send the missing test tokens and gas itself (POST /v1/testnet/fund): a
+   * test network only, with a faucet key configured for the chain. Left out or false: it cannot.
+   */
+  testFunds: z.boolean().optional(),
 });
 export type FundingResponse = z.infer<typeof FundingResponse>;
+
+/**
+ * POST /v1/testnet/fund: send the signed-in wallet what it is missing for this buy, on a test network
+ * only. The same buy as GET /v1/funding names: the server works out what is missing itself, and sends
+ * that with a small margin, never an amount the request states.
+ */
+export const TestFundsRequest = z
+  .strictObject({
+    wallet: Address.optional(),
+    amountUsd: z
+      .number()
+      .positive()
+      .max(ORDER_LIMITS.maxAmountUsd, 'one order buys at most $1,000,000'),
+    proposalId: z.uuid().optional(),
+    family: FundingQuery.shape.family,
+    /** A vault of the person's that the buy adds to, with the chain it is on (as GET /v1/funding). */
+    vault: FundingQuery.shape.vault,
+    vaultChain: FundingQuery.shape.vaultChain,
+  })
+  .refine((q) => [q.proposalId, q.family, q.vault].filter((x) => x !== undefined).length === 1, {
+    message: 'send proposalId, family or vault, one of them',
+  })
+  .refine((q) => (q.vault === undefined) === (q.vaultChain === undefined), {
+    message: 'send vault and vaultChain together',
+  });
+export type TestFundsRequest = z.infer<typeof TestFundsRequest>;
+
+/**
+ * What POST /v1/testnet/fund answers, with 409, when its float cannot cover a send: the faucet is a
+ * wallet holding test tokens, and a person tops it up. `error` tells these from the other 409 (nothing
+ * missing) and the gas from the test dollars.
+ */
+export const TEST_FUNDS_LOW = {
+  gas: 'test gas is low; ask the team',
+  cash: 'test funds are low; ask the team',
+} as const;
+
+/** One token sent by the test faucet, in raw units. */
+export const TestFundsSent = z.object({
+  symbol: z.string().min(1),
+  decimals: z.number().int().nonnegative(),
+  raw: RawAmount,
+});
+
+/** What POST /v1/testnet/fund sent: test tokens on a test network, never anything of value. */
+export const TestFundsResponse = z.object({
+  chain: ChainId,
+  provenance: z.literal('sandbox'),
+  wallet: Address,
+  cash: TestFundsSent,
+  gas: TestFundsSent,
+  /** The test network's transaction ids, in the order they were sent. */
+  txIds: z.array(z.string().min(1)),
+  /** How many more times this person may ask today. */
+  left: z.number().int().nonnegative(),
+});
+export type TestFundsResponse = z.infer<typeof TestFundsResponse>;

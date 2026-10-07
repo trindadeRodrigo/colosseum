@@ -246,11 +246,17 @@ describe('POST /v1/baskets/intake', () => {
     expect(second.readBack?.[0]).toBe(
       'Você definiu um objetivo de proteção com US$ 550 em 1 ano, com risco baixo.',
     );
-    // The person confirms: the sheet goes as it is to the engine.
-    const plan = await post(who, '/v1/baskets/personalize', { sheet: second.sheet });
+    // The person confirms. Plans are in US dollars for now (gate USD-ONLY, Thom, Oct 6): a sheet whose
+    // goal is in reais is refused with its own code, and the same sheet in dollars goes as it is to
+    // the engine.
+    const inReais = await post(who, '/v1/baskets/personalize', { sheet: second.sheet });
+    expect(inReais.statusCode, inReais.body).toBe(422);
+    expect(inReais.json().code).toBe('CURRENCY_UNSUPPORTED');
+    const { currency: _currency, ...inDollars } = second.sheet as NonNullable<typeof second.sheet>;
+    const plan = await post(who, '/v1/baskets/personalize', { sheet: inDollars });
     expect(plan.statusCode, plan.body).toBe(200);
     const { proposal } = PersonalizeResponse.parse(plan.json());
-    const { limits: _, ...sent } = second.sheet as NonNullable<typeof second.sheet>;
+    const { limits: _, ...sent } = inDollars;
     expect(proposal.sheet).toEqual(sent);
   });
 

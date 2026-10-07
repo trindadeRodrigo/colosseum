@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import { BasketCard, BasketSheet, Verdict } from './basket-sheet';
 import { BasketTx } from './basket-tx';
-import { ChainId } from './chain';
+import { Address, ChainId } from './chain';
 import { Provenance } from './enums';
 import { ChainMode } from './flags';
-import { Attempt, ConsentKind, OrderBase } from './order';
-import { Price, VaultView } from './vault';
+import { Attempt, ConsentKind, LegStatus, LegWithdrawal, OrderBase } from './order';
+import { Price, VaultName, VaultView } from './vault';
 
 // The bodies of the order routes (DESIGN-VAULT 3.3), named once so the API, the SDK and the web share
 // them. POST /v1/orders takes an IntentRequest. Every order route but the build answers with an
@@ -18,6 +19,95 @@ import { Price, VaultView } from './vault';
  */
 export const OrderDetail = OrderBase.extend({ attempts: z.array(Attempt) });
 export type OrderDetail = z.infer<typeof OrderDetail>;
+
+/** One plan of a person's, as `GET /v1/me/plans` lists it. */
+export const PersonPlan = z.object({
+  id: z.string().uuid(),
+  createdAt: z.string(),
+  /** Made from a link (an agent's): its vault is numbered from the plan and the buyer. */
+  fromLink: z.boolean(),
+  chain: ChainId,
+  /** The goal the plan was built for. */
+  sheet: BasketSheet,
+  card: BasketCard,
+  verdict: Verdict.nullable(),
+  /** A buy's deposit is confirmed on chain. */
+  bought: z.boolean(),
+  orders: z.array(
+    z.object({
+      id: z.string().uuid(),
+      createdAt: z.string(),
+      amountUsd: z.number(),
+      status: OrderBase.shape.status,
+      deposited: z.boolean(),
+    }),
+  ),
+  /** The vault the buys opened, by its chain and its number there; null while nothing was ordered. */
+  vault: z.object({ chain: ChainId, basketId: z.string().min(1) }).nullable(),
+});
+export type PersonPlan = z.infer<typeof PersonPlan>;
+
+/**
+ * The signed-in person's plans, newest first: each with the goal it was built for (`sheet`), what the
+ * plan screen says of it (`card`, and `verdict` for an income goal), its chain, the buys of it and the
+ * vault they opened. The portfolio joins a vault to its goal by `vault`.
+ */
+export const PersonPlansResponse = z.object({
+  plans: z.array(PersonPlan),
+  /**
+   * What to send as `before` for the page after this one: the time the last plan here was made.
+   * Null on the last page.
+   */
+  next: z.string().nullable(),
+});
+
+/** The query of `GET /v1/me/plans`: a page of at most `limit` plans made before `before`. */
+export const PersonPlansQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(50),
+  before: z.string().datetime().optional(),
+});
+export type PersonPlansQuery = z.infer<typeof PersonPlansQuery>;
+export type PersonPlansResponse = z.infer<typeof PersonPlansResponse>;
+
+/**
+ * One withdrawal of the signed-in person, as `GET /v1/me/withdrawals` lists it: the vault it took
+ * from, and each step with what it took out, where it stands and its transaction.
+ */
+export const PersonWithdrawal = z.object({
+  orderId: z.string().uuid(),
+  createdAt: z.string(),
+  chain: ChainId,
+  vault: Address,
+  status: OrderBase.shape.status,
+  steps: z.array(
+    z.object({
+      legId: z.string().uuid(),
+      status: LegStatus,
+      txId: z.string().nullable(),
+      explorerUrl: z.string().nullable(),
+      /** When the step last changed: when it confirmed, for one that has. */
+      at: z.string(),
+      provenance: Provenance,
+      withdrawals: z.array(LegWithdrawal),
+    }),
+  ),
+});
+export type PersonWithdrawal = z.infer<typeof PersonWithdrawal>;
+
+/** A page of the person's withdrawals, newest first, paged as `GET /v1/me/plans` is. */
+export const PersonWithdrawalsResponse = z.object({
+  withdrawals: z.array(PersonWithdrawal),
+  /**
+   * What to send as `before` for the page after this one: the time the last withdrawal here was
+   * ordered. Null on the last page.
+   */
+  next: z.string().nullable(),
+});
+
+/** The query of `GET /v1/me/withdrawals`: at most `limit` withdrawals ordered before `before`. */
+export const PersonWithdrawalsQuery = PersonPlansQuery;
+export type PersonWithdrawalsQuery = PersonPlansQuery;
+export type PersonWithdrawalsResponse = z.infer<typeof PersonWithdrawalsResponse>;
 
 /** The path of GET /v1/orders/{id}. */
 export const OrderRouteParams = z.object({ id: z.uuid() });
@@ -74,14 +164,51 @@ export const PortfolioResponse = z.object({
       mode: ChainMode,
       provenance: Provenance,
       /** The caller's vaults, each with its value, and the weight and drift of every position. */
-      vaults: z.array(VaultView.extend({ provenance: Provenance })),
+      vaults: z.array(
+        VaultView.extend({
+          provenance: Provenance,
+          /** The name its owner gave it; null when they gave none. Left out by a server older than names. */
+          name: VaultName.nullable().optional(),
+          /** The caller's plan this vault was opened from; null when it follows a shared portfolio or the plan is not theirs to read. */
+          planId: z.string().uuid().nullable().optional(),
+        }),
+      ),
       /** The reference prices the values were worked out with, each with its source and time. */
       prices: z.array(Price),
     }),
   ),
+  /**
+   * The chains of the person's that could not be read this time, each with why: one switched off on
+   * this server (`CHAIN_UNAVAILABLE`, not retryable), or one whose read failed. The chains that were
+   * read are in `chains` all the same. Left out by a server older than this field: none.
+   */
+  unavailable: z
+    .array(
+      z.object({
+        chain: ChainId,
+        name: z.string(),
+        code: z.string(),
+        error: z.string(),
+        retryable: z.boolean(),
+      }),
+    )
+    .default([]),
   disclaimer: z.string(),
 });
 export type PortfolioResponse = z.infer<typeof PortfolioResponse>;
+
+/**
+ * PUT /v1/vaults/{chain}/{address}/name: the name a person gives a vault of theirs, or null to give it
+ * none again. Plain text, shown as text.
+ */
+export const VaultNameRequest = z.object({ name: VaultName.nullable() });
+export type VaultNameRequest = z.infer<typeof VaultNameRequest>;
+export const VaultNameResponse = z.object({
+  chain: ChainId,
+  address: z.string(),
+  name: VaultName.nullable(),
+});
+export type VaultNameResponse = z.infer<typeof VaultNameResponse>;
 
 /** The path of GET /v1/vaults/{chain}/{address}: any vault, read from its chain. */
 export const VaultRouteParams = z.object({ chain: ChainId, address: z.string().min(1).max(64) });

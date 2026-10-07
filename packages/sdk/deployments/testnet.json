@@ -84,6 +84,69 @@
           "decimals": 8
         }
       }
+    },
+    "robinhood": {
+      "family": "evm",
+      "evmChainId": 46630,
+      "factory": "0xa3309dc51b41e55fcd48b12377025cd2ba4d21a4",
+      "beacon": "0x4c6699623966be46a40844da3e79d7da3d8d3d96",
+      "routers": ["0xd290cfe0738e1ab9cea9dc138bbec024dc3bd127"],
+      "registry": "0xe73c5df15452469873f610a26dac7fec68a23b14",
+      "cash": "robinhood:tusdg",
+      "assets": {
+        "robinhood:tusdg": {
+          "address": "0xd3d6e7bf284d922651983468b75492be4f3f689a",
+          "decimals": 6
+        },
+        "robinhood:tspy": {
+          "address": "0xb4e18cbb171bdd09e69255e69f94aaf081e943ad",
+          "decimals": 18
+        },
+        "robinhood:tqqq": {
+          "address": "0xd2589158fde964d7a6fea7918568aaa1a6b6283f",
+          "decimals": 18
+        },
+        "robinhood:tnvda": {
+          "address": "0x92c47af3a0878f360106db7b79b0ca9c32f0c4fd",
+          "decimals": 18
+        },
+        "robinhood:taapl": {
+          "address": "0x8fdea72a9d0fb5c21364d6ac4cc8544beb84b9fc",
+          "decimals": 18
+        },
+        "robinhood:tmsft": {
+          "address": "0x5d7f0011031cdb8fa954d451c3348a96e10a23f0",
+          "decimals": 18
+        },
+        "robinhood:tgoogl": {
+          "address": "0xb4c3e6dd28c98c8c0f27b3db2f77cc4d257297d5",
+          "decimals": 18
+        },
+        "robinhood:tamzn": {
+          "address": "0x837a0b2aacedef3ed3d4bec19be3c5bc0873185b",
+          "decimals": 18
+        },
+        "robinhood:tmeta": {
+          "address": "0x872ba0c735b0c41c43d8881bce2ef1deccd6bc69",
+          "decimals": 18
+        },
+        "robinhood:ttsla": {
+          "address": "0x9f8c39aff46ce9d06dd4b1c31107761f7f2d9796",
+          "decimals": 18
+        },
+        "robinhood:tgld": {
+          "address": "0xb3fc39f47282ef0a9e2451ba406f04074d27c425",
+          "decimals": 18
+        },
+        "robinhood:tsgov": {
+          "address": "0xb68427c11ecd92eaefa0f44ed87071f38e2ac216",
+          "decimals": 18
+        }
+      },
+      "fee": {
+        "maxFeeNativeRaw": "1000000000000000",
+        "maxGas": 5000000
+      }
     }
   }
 }

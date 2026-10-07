@@ -1,4 +1,5 @@
-import type { ExecutionStatus, Provenance } from '@colosseum/schemas';
+import type { ChainId, ExecutionStatus, Provenance } from '@colosseum/schemas';
+import { ChainBadge } from './ChainBadge';
 import { CopyButton } from './CopyButton';
 import { cn } from './cn';
 import { ExplorerLink, type ExplorerLinkLabels } from './ExplorerLink';
@@ -24,11 +25,13 @@ export type Execution = {
   at: string;
   signature: string | null;
   explorerUrl: string | null;
-  /** The explorer's name: "Solana Explorer". */
+  /** The explorer's name, shown beside the link: "Solscan". */
   explorer: string;
+  /** The chain it was done on, as a badge after the verb. */
+  chain?: ChainId;
   /**
-   * Anything but `live` carries the hatch and the MOCK plate. A transaction on a test network
-   * (`sandbox`) also says "test network" after the plate: a row has no popover to say it in.
+   * Anything but `live` carries the hatch and the sample glyph. A transaction on a test network
+   * (`sandbox`) also says "test network" after the glyph: a row has no popover to say it in.
    */
   provenance: Provenance;
 };
@@ -37,7 +40,7 @@ export type ExecutionListLabels = {
   status: Record<ExecutionStatus, string>;
   /** For a status this build does not know. It is said, never left blank. */
   unknownStatus: string;
-  /** After the plate of a transaction on a test network (CLAUDE.md: the same plate, with these words). */
+  /** After the glyph of a transaction on a test network (CLAUDE.md: the same mark, with these words). */
   testNetwork: string;
   notRetried: string;
   signature: string;
@@ -68,11 +71,27 @@ export function utcMinute(at: string): string {
 
 export type ExecutionListProps = {
   executions: readonly Execution[];
+  /**
+   * How an instant is written, where the screen has one way for every time it shows ("Oct 5, 2026,
+   * 15:00 UTC"). Left out: `utcMinute`. A time that is not an instant is shown as it was given.
+   */
+  formatTime?: (at: string) => string;
+  /**
+   * False where the page is already headed by the one chain every line is on: the lines then carry
+   * no chain badge (gate CHAIN-EVERYWHERE, as amended). A list that mixes chains keeps them.
+   */
+  chainTags?: boolean;
   labels?: Partial<ExecutionListLabels>;
   className?: string;
 };
 
-export function ExecutionList({ executions, labels, className }: ExecutionListProps) {
+export function ExecutionList({
+  executions,
+  labels,
+  formatTime,
+  chainTags = true,
+  className,
+}: ExecutionListProps) {
   const text = {
     ...EXECUTION_LIST_LABELS,
     ...labels,
@@ -94,6 +113,7 @@ export function ExecutionList({ executions, labels, className }: ExecutionListPr
           >
             {mock && <HatchBand className="absolute inset-y-0 left-0" />}
             <span className="font-medium">{e.verb}</span>
+            {chainTags && e.chain && <ChainBadge chain={e.chain} />}
             <span className="tabular-nums">{e.detail}</span>
             <span aria-hidden="true">·</span>
             {e.status === 'failed' ? (
@@ -114,7 +134,7 @@ export function ExecutionList({ executions, labels, className }: ExecutionListPr
               dateTime={isoUtc(e.at) ?? undefined}
               className="tabular-nums text-muted-foreground"
             >
-              {utcMinute(e.at)}
+              {formatTime && isoUtc(e.at) !== null ? formatTime(e.at) : utcMinute(e.at)}
             </time>
             {mock && <MockWord />}
             {e.provenance === 'sandbox' && (

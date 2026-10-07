@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { pinState } from '../../components/ui/provenance';
+import { dictionary } from '../../i18n';
+import { tokenName } from '../order/amounts';
+import { displayName, plainNames } from '../order/plain';
 import { json } from '../wallet/test/fake-port';
-import { dollars, drift, share, tokens, utc } from './figures';
+import { dollars, drift, share, shareExact, sharesOf, tokens, utc } from './figures';
 import {
-  assetName,
+  addDecimals,
+  chainTotal,
+  holdingsOf,
   PORTFOLIO_PATH,
   positionValueSource,
   readPortfolio,
@@ -11,7 +16,16 @@ import {
   vaultValueSource,
   worst,
 } from './portfolio';
-import { chainOf, portfolioBody, price, READ_AT, vault } from './test/portfolio';
+import {
+  chainOf,
+  portfolioBody,
+  portfolioOf,
+  price,
+  READ_AT,
+  robinhoodChain,
+  SECOND_VAULT,
+  vault,
+} from './test/portfolio';
 
 // Reading the person's vaults, GET /v1/portfolio, and what each figure's pin is handed. The API is a
 // double that answers the way apps/api/src/routes/v1/portfolio.ts and its error handler do.
@@ -22,13 +36,15 @@ const answering = (res: Response | Error) =>
     return res;
   });
 
+const en = dictionary('en');
+
 describe('reading the portfolio', () => {
   it('asks the one route, and hands back the chain it answered for', async () => {
     const api = answering(json(portfolioBody()));
     const outcome = await readPortfolio(api, 'solana');
     expect(api).toHaveBeenCalledWith(PORTFOLIO_PATH);
     expect(outcome.kind).toBe('read');
-    if (outcome.kind === 'read') expect(outcome.chain.vaults[0]?.address).toBe(vault().address);
+    if (outcome.kind === 'read') expect(outcome.chains[0].vaults[0]?.address).toBe(vault().address);
   });
 
   it.each([
@@ -73,23 +89,96 @@ describe('reading the portfolio', () => {
       expect((await readPortfolio(answering(json(answer)), 'solana')).kind).toBe('unreadable');
   });
 
-  it('shows nothing for another chain than the person’s, nor for two chains (ONE-CHAIN)', async () => {
+  it('shows the chains that were read when the current one was not, and says where the current one stands', async () => {
     const other = chainOf([vault({ chain: 'robinhood' })], { chain: 'robinhood' });
     const evmVault = { ...portfolioBody(), chains: [other] };
-    // the answer is for Robinhood Chain; the person's plan lives on Solana
-    expect((await readPortfolio(answering(json(evmVault)), 'solana')).kind).toBe('unreadable');
-    const both = { ...portfolioBody(), chains: [chainOf(), other] };
-    expect((await readPortfolio(answering(json(both)), 'solana')).kind).toBe('unreadable');
+    // the answer is for Robinhood Chain alone; the person's current chain is Solana, not held here
+    expect(await readPortfolio(answering(json(evmVault)), 'solana')).toEqual({
+      kind: 'read',
+      chains: [other],
+      unavailable: [],
+      current: 'not-held',
+    });
+    // Solana could not be read this time: Robinhood Chain is shown, and Solana is said to be out
+    const out = {
+      chain: 'solana',
+      name: 'Solana',
+      code: 'CHAIN_UNAVAILABLE',
+      error: 'the node did not answer',
+      retryable: true,
+    };
+    expect(
+      await readPortfolio(answering(json({ ...evmVault, unavailable: [out] })), 'solana'),
+    ).toMatchObject({ kind: 'read', chains: [other], unavailable: [out], current: 'unavailable' });
+    // the current chain read, another out: the current first, the other said
+    const both = {
+      ...portfolioBody(),
+      unavailable: [{ ...out, chain: 'robinhood', name: 'Robinhood Chain' }],
+    };
+    expect(await readPortfolio(answering(json(both)), 'solana')).toMatchObject({
+      kind: 'read',
+      current: 'read',
+      unavailable: [{ chain: 'robinhood' }],
+    });
+    // a chain both read and out is not an answer
+    expect(
+      (await readPortfolio(answering(json({ ...portfolioBody(), unavailable: [out] })), 'solana'))
+        .kind,
+    ).toBe('unreadable');
+  });
+
+  it('shows nothing with a chain twice, nor a vault filed under another chain', async () => {
+    const other = chainOf([vault({ chain: 'robinhood' })], { chain: 'robinhood' });
+    const evmVault = { ...portfolioBody(), chains: [other] };
+    // Solana twice
+    const twice = { ...portfolioBody(), chains: [chainOf(), chainOf()] };
+    expect((await readPortfolio(answering(json(twice)), 'solana')).kind).toBe('unreadable');
     // a vault of another chain inside the person's chain
     const mixed = { ...portfolioBody(), chains: [chainOf([vault(), vault({ chain: 'base' })])] };
     expect((await readPortfolio(answering(json(mixed)), 'solana')).kind).toBe('unreadable');
-    // another chain's answer with no vault in it: not "no vault on Solana yet"
-    const emptyElsewhere = { ...portfolioBody(), chains: [chainOf([], { chain: 'robinhood' })] };
-    expect((await readPortfolio(answering(json(emptyElsewhere)), 'solana')).kind).toBe(
-      'unreadable',
+    // a Solana vault filed under Robinhood Chain, beside the person's own chain
+    const misfiled = {
+      ...portfolioBody(),
+      chains: [chainOf(), chainOf([vault()], { chain: 'robinhood' })],
+    };
+    expect((await readPortfolio(answering(json(misfiled)), 'solana')).kind).toBe('unreadable');
+    // the same answer for the person's own chain is read as theirs
+    expect(await readPortfolio(answering(json(evmVault)), 'robinhood')).toMatchObject({
+      kind: 'read',
+      current: 'read',
+    });
+  });
+
+  it('reads vaults on two chains, each under its own chain, the person’s first', async () => {
+    const outcome = await readPortfolio(
+      answering(json(portfolioOf(robinhoodChain(), chainOf()))),
+      'solana',
     );
-    // the bite: the same answer for the person's own chain is read
-    expect((await readPortfolio(answering(json(evmVault)), 'robinhood')).kind).toBe('read');
+    expect(outcome.kind).toBe('read');
+    if (outcome.kind === 'read')
+      expect(outcome.chains.map((entry) => entry.chain)).toEqual(['solana', 'robinhood']);
+  });
+});
+
+describe('a chain’s total', () => {
+  it('adds decimal strings exactly, never through a float', () => {
+    expect(addDecimals(['1040', '20.5'])).toBe('1060.5');
+    expect(addDecimals(['0.1', '0.2'])).toBe('0.3');
+    expect(addDecimals(['0.05', '0.95'])).toBe('1');
+    expect(addDecimals(['12345678901234567890.01', '1'])).toBe('12345678901234567891.01');
+    expect(addDecimals([])).toBe('0');
+  });
+
+  it('is its vaults’ values added, with a pin on every source and the label that is not live', () => {
+    const entry = chainOf([
+      vault(),
+      vault({ address: SECOND_VAULT, valueUsd: '20.5', provenance: 'mock' }),
+    ]);
+    const total = chainTotal(entry, 'their sum', 'the vaults added');
+    expect(total.valueUsd).toBe('1060.5');
+    expect(total.obs.method).toBe('the vaults added');
+    expect(total.obs.provenance).toBe('mock');
+    expect(total.obs.source).toBe('Pyth Hermes');
   });
 });
 
@@ -184,13 +273,56 @@ describe('how the figures are written', () => {
     expect(dollars('pt', '1040').replace(/\s/g, ' ')).toBe('US$ 1.040,00');
   });
 
-  it('as shares and drifts with two decimals, and a true minus', () => {
-    expect(share('en', 6346)).toBe('63.46%');
-    expect(drift('en', 346)).toBe('+3.46%');
-    expect(drift('en', -250)).toBe('−2.50%');
+  it('as shares and differences with one decimal at most, and a true minus', () => {
+    expect(share('en', 6346)).toBe('63.5%');
+    // a plan's round share is said round: 24.99% beside 25.00% read as noise
+    expect(share('en', 2500)).toBe('25%');
+    expect(share('en', 2499)).toBe('25%');
+    expect(drift('en', 346)).toBe('+3.5%');
+    expect(drift('en', -250)).toBe('−2.5%');
     expect(drift('en', -250)).not.toContain('-');
-    expect(drift('en', 0)).toBe('0.00%');
-    expect(drift('pt', -250).replace(/\s/g, ' ')).toBe('−2,50%');
+    expect(drift('en', 0)).toBe('0%');
+    expect(drift('pt', -250).replace(/\s/g, ' ')).toBe('−2,5%');
+  });
+
+  it('rounds the shares of one whole together, so they add up to it', () => {
+    // each rounded alone: 33.4 + 33.4 + 33.3 = 100.1
+    expect(sharesOf('en', [3335, 3335, 3330])).toEqual(['33.4%', '33.3%', '33.3%']);
+    expect(sharesOf('en', [6346, 1250, 2404])).toEqual(['63.5%', '12.5%', '24%']);
+    expect(sharesOf('en', [2499, 7501])).toEqual(['25%', '75%']);
+    for (const bps of [
+      [3335, 3335, 3330],
+      [6346, 1250, 2404],
+      [1111, 2222, 3333, 3334],
+      [9999, 1],
+    ]) {
+      const tenths = sharesOf('en', bps).map((s) => Math.round(Number.parseFloat(s) * 10));
+      expect(
+        tenths.reduce((a, b) => a + b, 0),
+        String(bps),
+      ).toBe(1000);
+    }
+    // a vault with nothing in it has no whole to add up to
+    expect(sharesOf('en', [0, 0])).toEqual(['0%', '0%']);
+    expect(shareExact('en', 12)).toBe('0.12%');
+  });
+
+  it('counts cash among what a vault holds, so the shares add up to the whole', () => {
+    const rows = holdingsOf(vault());
+    expect(rows.map((row) => [row.asset, row.weightBps, row.targetBps, row.driftBps])).toEqual([
+      ['solana:usdy', 6346, 6000, 346],
+      ['solana:paxg', 1250, 1500, -250],
+      ['solana:usdc', 2404, 2500, -96],
+    ]);
+    expect(rows.reduce((sum, row) => sum + row.weightBps, 0)).toBe(10_000);
+    expect(rows.reduce((sum, row) => sum + row.targetBps, 0)).toBe(10_000);
+    expect(rows.at(-1)).toMatchObject({ cash: true, valueUsd: vault().cash.display });
+    // a vault with nothing in it has no share to give its cash, and cash is never counted twice
+    expect(holdingsOf(vault({ positions: [], valueUsd: '0' })).at(-1)?.weightBps).toBe(0);
+    const [usdy] = vault().positions;
+    if (!usdy) throw new Error('fixture');
+    const cashHeld = vault({ positions: [{ ...usdy, asset: vault().cash.asset }] });
+    expect(holdingsOf(cashHeld)).toHaveLength(1);
   });
 
   it('as token amounts, and instants in UTC that say so', () => {
@@ -200,9 +332,29 @@ describe('how the figures are written', () => {
     expect(utc('en', Date.parse(READ_AT) / 1000)).toBe('Oct 5, 2026, 14:00 UTC');
   });
 
-  it('names an asset by the part of its id after the chain', () => {
-    expect(assetName('solana:usdy')).toBe('USDY');
-    expect(assetName('robinhood:tsla-x')).toBe('TSLA-X');
+  it('names a token one way on every screen, and a test token by the token it stands in for', () => {
+    expect(tokenName('solana:usdy')).toBe('USDY');
+    expect(tokenName('robinhood:tsla-x')).toBe('TSLA-X');
+    // Robinhood Chain's dollar is tUSDG, on the mock too, where its id says usdc
+    expect(tokenName('robinhood:usdc')).toBe('tUSDG');
+    expect(tokenName('robinhood:tusdg')).toBe('tUSDG');
+    expect(tokenName('solana:usdc')).toBe('USDC');
+    // the flow audit, finding 13: syrupUSDC / tsyrupUSDC / SYRUPUSDC, USDC / tUSDC, SPY / TSPY
+    for (const id of ['solana:syrupusdc', 'solana:tsyrupusdc', 'solana:SYRUPUSDC'])
+      expect(tokenName(id)).toBe('syrupUSDC');
+    expect(tokenName('solana:tusdc')).toBe('USDC');
+    expect(tokenName('robinhood:tspy')).toBe('SPY');
+    expect(tokenName('robinhood:tgld')).toBe('GLD');
+    expect(tokenName('solana:tsla')).toBe('TSLA');
+    expect(tokenName('solana:tslax')).toBe('TSLAx');
+    // the label of a row is the same name, with who issues it, and cash as cash
+    expect(displayName('solana:tsyrupusdc', en.plan)).toBe('syrupUSDC (Maple)');
+    expect(displayName('solana:tusdc', en.plan)).toBe('Cash (USDC)');
+    expect(displayName('robinhood:usdc', en.plan)).toBe('Cash (tUSDG)');
+    // and a sentence of the engine names them the same way, changing no other word
+    expect(plainNames('tsyrupUSDC is left out: tUSDC stays. A meta de tUSDG fica.')).toBe(
+      'syrupUSDC is left out: USDC stays. A meta de tUSDG fica.',
+    );
   });
 });
 

@@ -9,14 +9,24 @@ import {
   type Regime,
 } from '@colosseum/risk';
 import type { Asset, RegimeLiquidityProvider } from '@colosseum/schemas';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import {
+  CURVE_METHOD_VERSIONS,
+  curveKey,
+  curveVersionOf,
+  EVM_METHOD_VERSION,
+  RISK_METHOD_VERSION,
+} from './curve-version';
 
 const ROOT = process.env.REPO_ROOT ?? join(import.meta.dirname, '..', '..', '..');
-export const RISK_METHOD_VERSION = 'risk-0.3';
+
+export { RISK_METHOD_VERSION };
 
 /**
- * Builds the structurer's LiquidityProvider from the risk layer's stored curves (current method version),
- * keyed by registry asset id through the asset's mint. Sell curves answer every exit question; buy curves
+ * Builds the structurer's LiquidityProvider from the risk layer's stored curves, keyed by registry asset
+ * id through the asset's mint. Each address is read under its own method version (`curveVersionOf`): the
+ * routed risk-0.3 on Solana, the EVM collector's evmq-0.1 for an EVM address. The provider's own
+ * `methodVersion` is still the one name, risk-0.3. Sell curves answer every exit question; buy curves
  * answer `entryCostIn` only. Returns undefined when disabled
  * (RISK_LIQUIDITY=off) or when no curve exists for any registry asset: the engine then behaves exactly as
  * before the risk layer.
@@ -26,23 +36,34 @@ export async function loadLiquidityProvider(
   assets: Pick<Asset, 'id' | 'mint'>[],
 ): Promise<RegimeLiquidityProvider | undefined> {
   if (process.env.RISK_LIQUIDITY === 'off') return undefined;
-  const byMint = new Map(assets.filter((a) => a.mint).map((a) => [a.mint as string, a.id]));
+  // Keyed by `curveKey`: an EVM address in lower case, since the shelf and the collector do not spell
+  // it alike (PLAN-UNIVERSE RU.8); a Solana address as it is, base58 being case-sensitive.
+  const byMint = new Map(
+    assets.filter((a) => a.mint).map((a) => [curveKey(a.mint as string), a.id]),
+  );
   if (byMint.size === 0) return undefined;
+  const keys = [...byMint.keys()];
+  const evm = keys.filter((k) => curveVersionOf(k) === EVM_METHOD_VERSION);
+  const solana = keys.filter((k) => curveVersionOf(k) !== EVM_METHOD_VERSION);
   const rows = await db
     .select()
     .from(riskDepthCurves)
     .where(
       and(
-        inArray(riskDepthCurves.assetMint, [...byMint.keys()]),
+        or(
+          solana.length ? inArray(riskDepthCurves.assetMint, solana) : undefined,
+          evm.length ? inArray(sql`lower(${riskDepthCurves.assetMint})`, evm) : undefined,
+        ),
         inArray(riskDepthCurves.side, ['sell', 'buy']),
-        eq(riskDepthCurves.methodVersion, RISK_METHOD_VERSION),
+        inArray(riskDepthCurves.methodVersion, CURVE_METHOD_VERSIONS),
       ),
-    );
+    )
+    .then((all) => all.filter((r) => r.methodVersion === curveVersionOf(r.assetMint)));
   if (!rows.some((r) => r.side === 'sell')) return undefined;
   const curves = new Map<string, AssetCurves>();
   const buyCurves = new Map<string, AssetCurves>();
   for (const r of rows) {
-    const id = byMint.get(r.assetMint);
+    const id = byMint.get(curveKey(r.assetMint));
     if (!id) continue;
     const side = r.side === 'sell' ? curves : buyCurves;
     const a = side.get(id) ?? { assetId: id, byRegime: {} };

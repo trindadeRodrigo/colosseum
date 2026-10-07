@@ -30,9 +30,16 @@ import { z } from 'zod';
 import { displayAmount, fromScaled, multiplierString } from './amounts';
 import { revertDataOf, revertToChainError } from './errors';
 import { BASKET_VAULT_ABI, INDEX_REGISTRY_ABI, VAULT_FACTORY_ABI } from './generated/abi';
+import {
+  type ReferenceRefusal,
+  type Round,
+  referenceOf,
+  type TradeRefusal,
+  tradeRefusal,
+} from './keeper';
 import { dayOf, marketAt } from './market';
 import { ask, type EvmRpc, isRevert } from './rpc';
-import { unlistedAssetId } from './unlisted';
+import { unlistedAssetId, unlistedToken } from './unlisted';
 
 // The read side of the EVM adapter (DESIGN-VAULT 3.2, ADE-1): one codebase for every EVM chain, with
 // what differs between them in its `ChainConfig` (the network, the factory and the registry under
@@ -152,6 +159,52 @@ export type EvmVaultReader = ChainReader & {
   getPlatform(): Promise<PlatformState>;
   /** Every token the factory lists now, then every one it took off the list, with its settings. */
   getAssetSettings(): Promise<AssetSettings[]>;
+  /** A vault as `keeperSwap` would find it now, or null when the factory made no vault there. */
+  getKeeperContext(vault: string): Promise<EvmKeeperContext | null>;
+};
+
+/** One position of a vault, as the keeper's swap would find it now. */
+export type EvmKeeperPosition = {
+  asset: AssetId;
+  token: Address;
+  targetBps: number;
+  /** One of the vault's `targets()`, a dropped asset kept at weight zero included: the contract values it on every leg. */
+  target: boolean;
+  /** On the factory's list: an asset taken off it can be sold and never bought (`isAsset`). */
+  listed: boolean;
+  /** What the vault holds: balances are read, not tracked, so there is never a record to sync. */
+  raw: string;
+  needsSync: false;
+  /** The admin's switch on the asset. */
+  keeperOn: boolean;
+  /** The feed's price and its one-hour average, with their ages by the block's clock; null when unreadable. */
+  price: { usdPerToken: string; ageSeconds: number } | null;
+  average: { usdPerToken: string; ageSeconds: number } | null;
+  /** Why the contract would not value the asset now; while the vault holds any of it, no leg passes. */
+  reference: ReferenceRefusal | null;
+  /** Why the asset itself cannot be traded now, though it can be valued. */
+  trade: TradeRefusal | null;
+  /** Unix seconds from which the cooldown allows a trade in the asset again; null when it never traded. */
+  cooldownUntil: number | null;
+};
+
+/** What a keeper needs to plan a leg in one vault, all of it read at one block. */
+export type EvmKeeperContext = {
+  vault: VaultState;
+  /** The factory's rules for the keeper now. */
+  rules: {
+    paused: boolean;
+    toleranceBps: number;
+    lossCapBps: number;
+    bandBps: number;
+    cooldownSeconds: number;
+    priceDevBps: number;
+  };
+  positions: EvmKeeperPosition[];
+  /** Why no leg at all would pass now: auto-follow off, the pause, the sequencer, or a held target with no reference. */
+  blocked: ChainErrorCode | null;
+  /** The block's time, in unix seconds. */
+  clock: number;
 };
 
 /** One moment of the chain: every call of a read names this block. */
@@ -325,6 +378,31 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
       )) as T;
     } catch (e) {
       if (isRevert(e)) return null;
+      throw e;
+    }
+  }
+
+  /** A feed's answer and its time, as the vault reads it: null for one that does not answer as a feed. */
+  async function roundOf(m: Moment, feed: Address): Promise<Round> {
+    const r = await tryRead<readonly [bigint, bigint, bigint, bigint, bigint]>(
+      m,
+      feed,
+      FEED_ABI,
+      'latestRoundData',
+    );
+    return r ? { answer: r[1], updatedAt: r[3] } : null;
+  }
+
+  /** One word from a view that takes no argument, as `_readWord` reads it: 'unanswered' for a revert or a short answer. */
+  async function wordOf(m: Moment, target: Address, selector: Hex): Promise<bigint | 'unanswered'> {
+    try {
+      const { data } = await ask(`${selector} of ${target}`, () =>
+        rpc.call({ to: target, data: selector, blockNumber: m.block, ...overrides }),
+      );
+      if (!data || data.length < 66) return 'unanswered';
+      return BigInt(data.slice(0, 66));
+    } catch (e) {
+      if (isRevert(e)) return 'unanswered';
       throw e;
     }
   }
@@ -728,6 +806,132 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
         return tokens.map(({ t, on }, i) => settingsOf(t, on, configs[i] as OnchainAsset));
       }),
 
+    getKeeperContext: (vault) =>
+      guarded(async (): Promise<EvmKeeperContext | null> => {
+        const address = evmAddress(vault, 'vault');
+        const m = await moment();
+        const [onchain, isVault] = await Promise.all([
+          settings(m),
+          onFactory(m, 'isVault', [address]) as Promise<boolean>,
+        ]);
+        if (!isVault) return null;
+        const [state, platform, snap] = await Promise.all([
+          readVault(m, address, onchain),
+          platformAt(m),
+          onVault(m, address, 'snapshot') as Promise<Snapshot>,
+        ]);
+        // The vault's targets, the cash token last left out: those the contract values on every leg.
+        const targetTokens = new Set(snap.tokens.slice(0, -1).map(lower));
+        const tokenOfId = (id: AssetId) =>
+          (byId.get(id)?.address ?? unlistedToken(id) ?? ZERO_ADDRESS) as Address;
+        const seen = (r: Round, decimals: number) =>
+          r && r.answer > 0n
+            ? {
+                usdPerToken: fromScaled(r.answer, decimals),
+                ageSeconds: r.updatedAt < m.time ? Number(m.time - r.updatedAt) : 0,
+              }
+            : null;
+        const positions = await Promise.all(
+          state.positions.map(async (p): Promise<EvmKeeperPosition> => {
+            const token = tokenOfId(p.asset);
+            const a = await assetOf(m, token);
+            const feed = orNull(a.feed);
+            const average = orNull(a.averageFeed);
+            const [priceRound, averageRound, effectiveAt, paused, listed] = await Promise.all([
+              feed ? roundOf(m, feed) : Promise.resolve(null),
+              average ? roundOf(m, average) : Promise.resolve(null),
+              a.scheduleSelector === '0x00000000'
+                ? Promise.resolve(null)
+                : wordOf(m, token, a.scheduleSelector),
+              orNull(a.pauseProbe) && a.pauseSelector !== '0x00000000'
+                ? wordOf(m, lower(a.pauseProbe), a.pauseSelector)
+                : Promise.resolve(null),
+              onFactory(m, 'isAsset', [token]) as Promise<boolean>,
+            ]);
+            const lastKeeperAt = BigInt(p.lastKeeperAt ?? 0);
+            return {
+              asset: p.asset,
+              token,
+              targetBps: p.targetBps,
+              target: targetTokens.has(lower(token)),
+              listed,
+              raw: p.raw,
+              needsSync: false,
+              keeperOn: (a.flags & 1) === 1,
+              price: seen(priceRound, a.feedDecimals),
+              average: seen(averageRound, a.feedDecimals),
+              reference: referenceOf(
+                {
+                  source: a.source,
+                  feed,
+                  flags: a.flags,
+                  minPrice: a.minPrice,
+                  maxPrice: a.maxPrice,
+                  maxAge: a.maxAge,
+                },
+                priceRound,
+                averageRound,
+                platform.priceDevBps,
+                m.time,
+              ),
+              trade: tradeRefusal(
+                {
+                  lastKeeperAt,
+                  cooldown: platform.params.assetCooldown,
+                  effectiveAt,
+                  paused,
+                  haltUntil: a.haltUntil,
+                  session: a.session === 1 ? 'us_equity' : 'always',
+                  market: {
+                    sessionOpen: platform.params.sessionOpen,
+                    sessionClose: platform.params.sessionClose,
+                    closedUntil: BigInt(platform.closedUntil),
+                    closedToday: platform.today.closed,
+                  },
+                },
+                m.time,
+              ),
+              cooldownUntil:
+                p.lastKeeperAt === null ? null : p.lastKeeperAt + platform.params.assetCooldown,
+            };
+          }),
+        );
+        // The sequencer feed, where the factory names one: up, and for an hour (`_checkSequencer`).
+        let sequencerDown = false;
+        if (platform.sequencerFeed) {
+          const up = await tryRead<readonly [bigint, bigint, bigint, bigint, bigint]>(
+            m,
+            platform.sequencerFeed,
+            FEED_ABI,
+            'latestRoundData',
+          );
+          sequencerDown = up === null || up[1] !== 0n || up[2] > m.time || m.time - up[2] < 3_600n;
+        }
+        // A target the vault holds that cannot be valued stops every leg, as it does in the contract:
+        // every one of its `targets()`, a dropped asset kept at weight zero included.
+        const held = positions.find((p) => p.target && p.raw !== '0' && p.reference);
+        return {
+          vault: state,
+          rules: {
+            paused: platform.keeperPaused,
+            toleranceBps: platform.params.toleranceBps,
+            lossCapBps: platform.params.lossCapBps,
+            bandBps: platform.params.bandBps,
+            cooldownSeconds: platform.params.assetCooldown,
+            priceDevBps: platform.priceDevBps,
+          },
+          positions,
+          blocked: !state.autoFollow
+            ? 'AutoFollowOff'
+            : platform.keeperPaused
+              ? 'KeeperPaused'
+              : sequencerDown
+                ? 'PriceStale'
+                : (held?.reference ?? null),
+          clock: Number(m.time),
+        };
+      }),
+
     listAssets: () => guarded(async () => structuredClone(assets)),
 
     getPrices: (ids) =>
@@ -923,10 +1127,7 @@ export function createEvmVaultReader(options: EvmVaultReaderOptions): EvmVaultRe
 
     quote: () =>
       guarded(async () =>
-        refuse(
-          'NotSupported',
-          'the reader does not quote: quotes arrive with the builders (ADE-2)',
-        ),
+        refuse('NotSupported', 'the reader alone does not quote: createEvmVaultAdapter does'),
       ),
 
     track: (txId, validUntil) =>

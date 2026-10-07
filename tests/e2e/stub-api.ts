@@ -20,9 +20,16 @@ import {
   type SharedFamily,
   type Target,
 } from '@colosseum/schemas';
-import { ApiRefusal, basketIdOfPlan, deploymentsOf, type OrderApi } from '@colosseum/sdk';
+import {
+  ApiRefusal,
+  basketIdOfLinkedPlan,
+  basketIdOfPlan,
+  deploymentsOf,
+  type OrderApi,
+} from '@colosseum/sdk';
 import { apiDouble } from '../../packages/sdk/test/api-double';
 import { type MockWorld, tampered } from '../../packages/sdk/test/mock';
+import { riskAnswer } from './stub-risk';
 
 // The API the end-to-end spec of the web app runs against (apps/web/e2e): a stub over HTTP, on the
 // mock chain. It answers the routes the goal, plan, buy and order screens call, in their shared shapes.
@@ -33,14 +40,33 @@ import { type MockWorld, tampered } from '../../packages/sdk/test/mock';
 //
 //   tsx tests/e2e/stub-api.ts            STUB_API_PORT (3901), WEB_ORIGIN (http://localhost:3100)
 //
-// Three routes of its own, for the spec: POST /__stub/reset forgets everything, GET /__stub/reports
-// lists the steps the web reported as signed, and POST
+// Plans an agent proposes from a link are made and read back as the API does (AGT-2). Four routes of
+// its own, for the spec: POST /__stub/reset forgets everything, GET /__stub/reports
+// lists the steps the web reported as signed, POST
 // /__stub/tamper makes the next swap it builds carry a lower minimum than the order states, as a
-// server that lies would. MOCK throughout: every figure says so.
+// server that lies would, and POST /__stub/test-network has the funding answer as a test network's
+// with test funds offered (POST /v1/testnet/fund), as a server with a faucet key does. MOCK throughout: every figure says so. The /risk routes are the one
+// exception: they answer from Rodrigo's recording of the risk API (stub-risk.ts), measured and old.
 
 const PORT = Number(process.env.STUB_API_PORT ?? 3901);
 const ORIGIN = process.env.WEB_ORIGIN ?? 'http://localhost:3100';
-const CHAIN = 'solana' as const;
+/**
+ * The chain the stub's mock runs: Solana by default, Robinhood Chain with STUB_CHAIN=robinhood, where
+ * a buy is an approval of the deposit and a create that trades (the EVM mock's capabilities).
+ */
+const CHAIN = (process.env.STUB_CHAIN === 'robinhood' ? 'robinhood' : 'solana') as
+  | 'solana'
+  | 'robinhood';
+const CHAIN_NAME = CHAIN === 'robinhood' ? 'Robinhood Chain' : 'Solana';
+/** The mock's dollar, by the name of the chain it stands in for (packages/chain-mock, shelf.ts). */
+const CASH_SYMBOL = CHAIN === 'robinhood' ? 'tUSDG' : 'USDC';
+const GAS =
+  CHAIN === 'robinhood' ? { symbol: 'ETH', decimals: 18 } : { symbol: 'SOL', decimals: 9 };
+/** What the stub's faucet gives a wallet in gas: a little of the chain's own coin. */
+const GAS_FAUCET = CHAIN === 'robinhood' ? '1000000000000000000' : '1000000000';
+/** The owner a request names on this chain's family. */
+const ownerIn = (o: unknown): string =>
+  ((o ?? {}) as { solana?: string; evm?: string })[CHAIN === 'robinhood' ? 'evm' : 'solana'] ?? '';
 const PLAN_ID = '3c1f9a7e-5b2d-4c8e-9f0a-1b2c3d4e5f60';
 /** The plan's weights on the mock shelf; the rest is cash. */
 const WEIGHTS: Target[] = [
@@ -71,12 +97,26 @@ const freshWorld = (): World => ({
 });
 let world: World = freshWorld();
 let tamperNext = false;
+/** The funding answers as a test network's, and the test faucet sends (POST /__stub/test-network). */
+let testNetwork = false;
+/** The plan an agent proposed from a link (`POST /v1/baskets/propose`), read back by its id. */
+let linked: ReturnType<typeof proposal> | null = null;
+/** The plan a person built (`POST /v1/baskets/personalize`), read back by its id as their own. */
+let built: ReturnType<typeof proposal> | null = null;
+/** The risk roll-up of a plan an agent proposed: MOCK, nothing measured, as on the mock chain. */
+const ROLL_UP = {
+  byIssuer: [{ key: 'mock', bps: 10_000 }],
+  byChain: [{ key: CHAIN, bps: 10_000 }],
+  byClass: [{ key: 'stock', bps: 10_000 }],
+  flags: ['exit_not_measured', 'exit_quote_missing'],
+  exit: { quotedBps: null, quotedAt: null, measuredWorstBps: null, measuredShareBps: 0 },
+};
 /** The steps the web reported signed bytes or an id for, in order. */
 let reports: string[] = [];
 
 const OBSERVED = {
   source: 'the e2e stub',
-  method: 'MOCK: made up for the end-to-end spec',
+  method: 'sample: made up for the end-to-end spec',
   fetchedAt: '2026-10-05T12:00:00.000Z',
   provenance: 'mock' as const,
 };
@@ -101,7 +141,9 @@ function proposal(sheet: BasketSheet) {
       assetId: t.asset,
       weightBps: t.weightBps,
       amountUsd: (sheet.amountUsd * t.weightBps) / 10_000,
-      reasons: [{ rule: 'stub', inputs: [], params: {}, text: 'MOCK: a reason the stub made up.' }],
+      reasons: [
+        { rule: 'stub', inputs: [], params: {}, text: 'Sample: a reason the stub made up.' },
+      ],
     })),
     { chain: CHAIN, assetId: cash, weightBps: 500, amountUsd: sheet.amountUsd / 20, reasons: [] },
   ];
@@ -124,8 +166,8 @@ function proposal(sheet: BasketSheet) {
       moneyTodayUsd: sheet.amountUsd,
       termMonths: sheet.horizonMonths,
       cashFlow: 'none',
-      expectedReturn: { lowPct: 0, highPct: 0, basis: 'MOCK', lossInFallUsd: 0 },
-      exit: { text: 'MOCK: up to the whole amount within a day', costBps: 25 },
+      expectedReturn: { lowPct: 0, highPct: 0, basis: 'sample', lossInFallUsd: 0 },
+      exit: { text: 'Sample: up to the whole amount within a day', costBps: 25 },
     },
     flags: [],
     observations: [
@@ -152,8 +194,13 @@ function doubleFor(owner: string) {
   };
   // A wallet first seen here gets mock gas, as from a faucet: a publish or a follow deposits nothing,
   // and its one step still pays the network fee.
-  adapter.mock.fund(owner, { gasRaw: '1000000000' });
-  const made = apiDouble(w, { basketId: basketIdOfPlan(PLAN_ID), targets: WEIGHTS });
+  adapter.mock.fund(owner, { gasRaw: GAS_FAUCET });
+  // A plan made from a link numbers the buyer's vault from the plan and the person (gate AGENT-LINK):
+  // the throwaway wallet's user id is `test:` and the first 8 letters of its Solana address.
+  const basketId = linked
+    ? basketIdOfLinkedPlan(PLAN_ID, `test:${owner.slice(0, 8)}`)
+    : basketIdOfPlan(PLAN_ID);
+  const made = apiDouble(w, { basketId, targets: WEIGHTS });
   world.double = { owner, api: made.api, buy: made.buy, place: made.place };
   return world.double;
 }
@@ -249,8 +296,77 @@ function tradesFor(targets: Target[], cashRaw: bigint) {
 
 type Body = Record<string, unknown> & { type: string };
 
+/**
+ * POST /v1/orders for a withdrawal, as apps/api plans one (orders/withdraw.ts): the vault's tokens, all
+ * of them or the ones named, each in full or by amount, a step per token on Solana and one for all on
+ * an EVM chain. Built for the vault's owner, from the vault as it is when the step is built.
+ */
+async function placeWithdraw(body: Body): Promise<OrderDetail> {
+  const { adapter } = world;
+  const [address] = body.vaults as string[];
+  const state = await adapter.getVault(String(address));
+  if (!state || body.sellToCash)
+    throw new ApiRefusal(state ? 422 : 404, {
+      error: state
+        ? 'Selling to cash before withdrawing isn’t offered yet; you can withdraw the tokens themselves'
+        : 'no vault of yours at that address',
+    });
+  const held = new Map(
+    [state.cash, ...state.positions]
+      .filter((h) => BigInt(h.raw) > 0n)
+      .map((h) => [h.asset, h.raw] as const),
+  );
+  const asked = body.withdrawals as { asset: string; amountRaw?: string | null }[] | undefined;
+  const all = (asked ?? [...held.keys()].map((asset) => ({ asset, amountRaw: null }))).map((x) => {
+    const heldRaw = held.get(x.asset);
+    if (heldRaw === undefined || (x.amountRaw != null && BigInt(x.amountRaw) > BigInt(heldRaw)))
+      throw new ApiRefusal(409, { error: `the vault holds less ${x.asset} than asked for` });
+    return { asset: x.asset, amountRaw: x.amountRaw ?? null, heldRaw };
+  });
+  if (!all.length) throw new ApiRefusal(409, { error: 'the vault holds nothing to withdraw' });
+  const groups = CHAIN === 'solana' ? all.map((x) => [x]) : [all];
+  return doubleFor(state.owner).place({
+    type: 'withdraw',
+    summary: `Withdraw from your vault on ${CHAIN_NAME} to your own wallet`,
+    needsConsent: [],
+    steps: [
+      // A vault with auto-follow on has it switched off first, as apps/api plans it.
+      ...(state.autoFollow
+        ? [{ kind: 'set_auto_follow' as const, description: 'Switch auto-follow off', trades: [] }]
+        : []),
+      ...groups.map((withdrawals) => ({
+        kind: 'withdraw' as const,
+        description: 'Withdraw to your own wallet',
+        trades: [],
+        withdrawals,
+      })),
+    ],
+    build: async (leg, nonce) => {
+      if (leg.kind === 'set_auto_follow')
+        return adapter.buildSetAutoFollow({
+          vault: state.address,
+          on: false,
+          ...(nonce === undefined ? {} : { nonce }),
+        });
+      const named = leg.withdrawals ?? [];
+      const amounts = named.flatMap((x) =>
+        x.amountRaw === null ? [] : [[x.asset, x.amountRaw] as const],
+      );
+      const [tx] = await adapter.buildWithdrawInKind({
+        vault: state.address,
+        ...(asked || CHAIN === 'solana' ? { assets: named.map((x) => x.asset) } : {}),
+        ...(amounts.length ? { amounts: Object.fromEntries(amounts) } : {}),
+        ...(nonce === undefined ? {} : { nonce }),
+      });
+      if (!tx) throw new ApiRefusal(409, { error: 'the vault holds none of it any more' });
+      return tx;
+    },
+  });
+}
+
 /** POST /v1/orders for a publish, a buy of a shared portfolio, or a follow. */
 async function placeShared(body: Body): Promise<OrderDetail> {
+  if (body.type === 'withdraw') return placeWithdraw(body);
   const { adapter } = world;
   if (body.type === 'publish') {
     const creator = (body.creator as { solana?: string }).solana ?? '';
@@ -428,10 +544,21 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   if (path === '/__stub/reset' && method === 'POST') {
     world = freshWorld();
     tamperNext = false;
+    testNetwork = false;
     reports = [];
+    linked = null;
+    built = null;
     return send(res, 200, { ok: true });
   }
   if (path === '/__stub/reports') return send(res, 200, reports);
+  if (path.startsWith('/risk/') && method === 'GET') {
+    const answer = riskAnswer(`${path}${url.search}`);
+    return send(res, answer.status, answer.body);
+  }
+  if (path === '/__stub/test-network' && method === 'POST') {
+    testNetwork = true;
+    return send(res, 200, { ok: true });
+  }
   if (path === '/__stub/tamper' && method === 'POST') {
     tamperNext = true;
     return send(res, 200, { ok: true });
@@ -456,19 +583,62 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       parser: { method: 'rules' },
       disclaimer: 'MOCK',
     });
+  // A plan an agent proposes for a person (AGT-2): no sign-in, the same plan, read back by its id.
+  if (path === '/v1/baskets/propose' && method === 'POST') {
+    const body = (await read(req)) as { sheet: BasketSheet };
+    linked = proposal(body.sheet);
+    return send(res, 200, { id: PLAN_ID, proposal: linked, rollUp: ROLL_UP });
+  }
+  if (path.startsWith('/v1/baskets/') && method === 'GET') {
+    if (path !== `/v1/baskets/${PLAN_ID}` || !(linked || built))
+      return send(res, 404, { error: 'no plan with that id that you can read' });
+    return linked
+      ? send(res, 200, { id: PLAN_ID, proposal: linked, fromLink: true })
+      : send(res, 200, { id: PLAN_ID, proposal: built, fromLink: false });
+  }
   if (path === '/v1/baskets/personalize' && method === 'POST') {
     const body = (await read(req)) as { sheet: BasketSheet };
-    return send(res, 200, { id: PLAN_ID, proposal: proposal(body.sheet) });
+    built = proposal(body.sheet);
+    return send(res, 200, { id: PLAN_ID, proposal: built });
   }
   if (path === '/v1/mock/fund' && method === 'POST') {
     const body = (await read(req)) as { cashUsd: number };
     const owner = world.double?.owner ?? lastWallet;
     for (const who of [owner, lastWallet].filter((x): x is string => Boolean(x)))
       world.adapter.mock.fund(who, {
-        gasRaw: '1000000000',
+        gasRaw: GAS_FAUCET,
         assets: { [world.adapter.mock.cash]: String(Math.round(body.cashUsd * 1_000_000)) },
       });
     return send(res, 200, { chain: CHAIN, provenance: 'mock', wallets: [] });
+  }
+  if (path === '/v1/testnet/fund' && method === 'POST') {
+    if (!testNetwork) return send(res, 404, { error: 'this server sends no test funds' });
+    const body = (await read(req)) as { amountUsd: number; wallet: string };
+    const need = {
+      cashRaw: String(Math.round(body.amountUsd * 1_000_000)),
+      legs: 4,
+      newVault: true,
+    };
+    const f = await world.adapter.funding(body.wallet, need);
+    // What is missing, with the API's margins: 1% of cash, 25% of gas.
+    const short = (n: string, h: string) => (BigInt(n) > BigInt(h) ? BigInt(n) - BigInt(h) : 0n);
+    const cash = short(f.cashNeedRaw, f.cashHaveRaw);
+    const gas = short(f.gasNeedRaw, f.gasHaveRaw);
+    const cashRaw = cash + (cash + 99n) / 100n;
+    const gasRaw = gas + (gas + 3n) / 4n;
+    world.adapter.mock.fund(body.wallet, {
+      gasRaw: gasRaw.toString(),
+      assets: { [world.adapter.mock.cash]: cashRaw.toString() },
+    });
+    return send(res, 200, {
+      chain: CHAIN,
+      provenance: 'sandbox',
+      wallet: body.wallet,
+      cash: { symbol: 'USDC', decimals: 6, raw: cashRaw.toString() },
+      gas: { ...GAS, raw: gasRaw.toString() },
+      txIds: ['stub-test-network-tx'],
+      left: 2,
+    });
   }
   if (path === '/v1/funding') {
     const wallet = url.searchParams.get('wallet') ?? '';
@@ -478,22 +648,26 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     const f = await world.adapter.funding(wallet, need);
     const missing = (n: string, h: string) =>
       String(BigInt(n) > BigInt(h) ? BigInt(n) - BigInt(h) : 0n);
+    const provenance = testNetwork ? 'sandbox' : 'mock';
     const stamp = {
-      source: 'the mock chain',
+      source: testNetwork ? 'the stub, as a test network' : 'the mock chain',
       fetchedAt: new Date().toISOString(),
-      provenance: 'mock',
+      provenance,
     };
     return send(res, 200, {
       chain: CHAIN,
-      name: 'Solana',
-      mode: 'mock',
-      provenance: 'mock',
+      name: CHAIN_NAME,
+      mode: testNetwork ? 'live' : 'mock',
+      provenance,
+      ...(testNetwork ? { testFunds: true } : {}),
       wallet,
       cash: {
         ...stamp,
-        method: 'MOCK: the wallet’s balance on the mock chain',
+        method: testNetwork
+          ? 'the wallet’s balance, read by the stub as a test network'
+          : 'sample: the wallet’s balance on the mock chain',
         asset: world.adapter.mock.cash,
-        symbol: 'USDC',
+        symbol: CASH_SYMBOL,
         decimals: 6,
         haveRaw: f.cashHaveRaw,
         needRaw: f.cashNeedRaw,
@@ -501,9 +675,10 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       },
       gas: {
         ...stamp,
-        method: 'MOCK: the wallet’s gas on the mock chain',
-        symbol: 'SOL',
-        decimals: 9,
+        method: testNetwork
+          ? 'the wallet’s gas, read by the stub as a test network'
+          : 'sample: the wallet’s gas on the mock chain',
+        ...GAS,
         haveRaw: f.gasHaveRaw,
         needRaw: f.gasNeedRaw,
         missingRaw: missing(f.gasNeedRaw, f.gasHaveRaw),
@@ -526,15 +701,17 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     const prices = ids.length ? await adapter.getPrices(ids) : [];
     const vaults = states.map((v) => ({ ...view(v, prices, listed), provenance: 'mock' }));
     return send(res, 200, {
-      chains: [{ chain: CHAIN, name: 'Solana', mode: 'mock', provenance: 'mock', vaults, prices }],
+      chains: [
+        { chain: CHAIN, name: CHAIN_NAME, mode: 'mock', provenance: 'mock', vaults, prices },
+      ],
       disclaimer: 'MOCK',
     });
   }
   if (path === '/v1/orders' && method === 'POST') {
-    const body = (await read(req)) as Body & { owner?: { solana?: string }; amountUsd: number };
+    const body = (await read(req)) as Body & { owner?: unknown; amountUsd: number };
     if (body.type !== 'buy' || body.family !== undefined)
       return send(res, 200, await placeShared(body));
-    const owner = body.owner?.solana;
+    const owner = ownerIn(body.owner);
     if (!owner) return send(res, 422, { error: 'a buy names its owner' });
     return send(res, 200, await doubleFor(owner).buy(body.amountUsd));
   }

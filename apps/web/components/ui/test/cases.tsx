@@ -163,14 +163,14 @@ export const card = {
     </Card>
   ),
   mockEmpty: <Card mock>{null}</Card>,
-  /** The plate's hidden words in the language of the view, and a note under it for a test network. */
+  /** The card's quiet line in the language of the view, with a note after it for a test network. */
   mockNoted: (
-    <Card mock mockLabels={{ announce: ': dados de exemplo', note: 'rede de teste' }}>
+    <Card mock mockLabels={{ announce: 'Números de exemplo', note: 'rede de teste' }}>
       <CardBody>x</CardBody>
     </Card>
   ),
   mockTold: (
-    <Card mock mockLabels={{ announce: ': dados de exemplo' }}>
+    <Card mock mockLabels={{ announce: 'Números de exemplo' }}>
       <CardBody>x</CardBody>
     </Card>
   ),
@@ -635,11 +635,18 @@ export const embed = {
     </EmbedShell>
   ),
   faint: (
-    <EmbedShell label="Plan by tenonfi" title="Apartment fund" credit={CREDIT} suppressHatch>
+    <EmbedShell
+      label="Plan by tenonfi"
+      title="Apartment fund"
+      credit={CREDIT}
+      suppressHatch
+      sample={{ line: 'Sample figures' }}
+    >
       <PlanLegs legs={LEGS} />
     </EmbedShell>
   ),
   loading: <EmbedShell label="Plan by tenonfi" state="loading" />,
+  slow: <EmbedShell label="Plan by tenonfi" state="loading" slow />,
   unavailable: <EmbedShell label="Plan by tenonfi" state="unavailable" />,
 };
 

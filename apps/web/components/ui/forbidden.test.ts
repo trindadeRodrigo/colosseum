@@ -29,22 +29,28 @@ const LEGACY: Record<string, readonly Kind[]> = {
   // Rodrigo's pages and components: Tailwind's cool greys, blue links, 4px corners, chart colours,
   // and two uppercase labels
   'app/(structurer)/layout.tsx': ['hue'],
-  'app/(structurer)/embed/[id]/layout.tsx': ['hue', 'radius', 'case'],
-  'app/(structurer)/risk/page.tsx': ['hue'],
-  'app/(structurer)/risk/[asset]/page.tsx': ['hue'],
-  'app/(structurer)/risk/methodology/page.tsx': ['hue'],
   'components/PlanView.tsx': ['hue'],
   'components/Provenance.tsx': ['radius', 'case'],
   'components/ScheduleChart.tsx': ['hue'],
-  'components/risk/CostCurveChart.tsx': ['hue'],
-  'components/risk/HourOfWeekHeatmap.tsx': ['hue'],
   // the wallet check, a development page (WAL-1), plain until it takes the primitives
   'features/wallet/dev/DevWallet.tsx': ['hue'],
 };
 
+/**
+ * Pictures drawn at build by `next/og`, which reads no stylesheet and so no `var(--font-…)`: each
+ * names the brand's face itself, and that finding alone is excused. So are the two files where the faces
+ * are defined (app/fonts.ts, app/fonts-mono.ts): each face is told its own name there, since
+ * `next/font/local` would name it after its export.
+ */
+const DRAWN: Record<string, string> = {
+  'app/opengraph-image.tsx': "fontFamily: 'Newsreader'",
+  'app/fonts.ts': 'font-family',
+  'app/fonts-mono.ts': 'font-family',
+};
+
 /** The product's own routes and what they are built from: none of it may ever be on the list above. */
 const PRODUCT =
-  /^(app\/\((app|marketing)\)|components\/shell|features\/(account|goal|portfolio|landing|order)|i18n)\//;
+  /^(app\/\((app|marketing|embed)\)|components\/shell|features\/(account|goal|portfolio|landing|order|embed)|i18n)\//;
 
 /**
  * The stylesheet of @solana/wallet-adapter-react-ui, which the layout of the pages not yet rebuilt
@@ -258,7 +264,16 @@ describe('the forbidden things', () => {
     });
 
     it('finds nothing forbidden outside the pages listed as legacy', () => {
-      const fresh = found.filter((f) => !LEGACY[f.file]?.includes(f.kind));
+      const fresh = found.filter(
+        (f) =>
+          !LEGACY[f.file]?.includes(f.kind) && !(f.kind === 'font' && DRAWN[f.file] === f.what),
+      );
+      // and each picture's excuse is still needed
+      for (const [file, what] of Object.entries(DRAWN))
+        expect(
+          found.some((f) => f.file === file && f.what === what),
+          file,
+        ).toBe(true);
       expect(fresh.map((f) => `${f.file}: ${f.kind}: ${f.what}`)).toEqual([]);
     });
 
@@ -294,16 +309,13 @@ describe('the forbidden things', () => {
       expect(blamed.filter((b) => !base(b) && !legacy(b) && !centred(b)).map(say)).toEqual([]);
     });
 
-    it('sets uppercase on the MOCK plate and nowhere else but two legacy labels', () => {
+    it('sets uppercase nowhere but one legacy label: the boxed MOCK is gone (MOCK-QUIET)', () => {
       const upper: string[] = [];
       root.walkDecls('text-transform', (decl) => {
         if (/uppercase/.test(decl.value)) upper.push((decl.parent as postcss.Rule).selector);
       });
-      expect(upper.sort()).toEqual(['.tf-mock-plate', '.uppercase']);
-      expect(users('uppercase').sort()).toEqual([
-        'app/(structurer)/embed/[id]/layout.tsx',
-        'components/Provenance.tsx',
-      ]);
+      expect(upper.sort()).toEqual(['.uppercase']);
+      expect(users('uppercase').sort()).toEqual(['components/Provenance.tsx']);
     });
 
     it('centres text only where a spec allows it, and every such place still does', () => {

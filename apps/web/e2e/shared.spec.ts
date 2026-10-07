@@ -1,6 +1,8 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
+import { throughBuySteps } from './buy-steps';
+import { inTheme } from './theme';
 
 // Shared portfolios end to end in a browser, on the mock chain (WEB-4): sign in with the throwaway
 // wallet, publish a portfolio through the form, review it and sign it, find it on the shelf, open its
@@ -11,6 +13,9 @@ import { dictionary } from '../i18n';
 // checked with axe at 375 px, in light and in dark, and for no sideways scroll.
 
 const en = dictionary('en');
+
+// These run on the stub's Solana; the Robinhood Chain run (E2E_CHAIN=robinhood) is buy-robinhood.spec.ts.
+test.skip(process.env.E2E_CHAIN === 'robinhood', 'the stub runs Robinhood Chain');
 const STUB = `http://localhost:${process.env.E2E_API_PORT ?? 3901}`;
 const SHOTS = process.env.SCREENSHOTS_DIR;
 const shot = (name: string) => `${SHOTS}/${name}.png`;
@@ -20,12 +25,7 @@ const REFERENCE = new URL('../../../.design/branding/working-brand/patterns/', i
 
 async function check(page: Page, name: string) {
   for (const theme of ['light', 'dark'] as const) {
-    await page.evaluate((t) => {
-      const html = document.documentElement;
-      html.classList.remove('light', 'dark', 'tf-auto');
-      html.classList.add(t);
-    }, theme);
-    await page.waitForTimeout(600);
+    await inTheme(page, theme);
     const result = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
       .analyze();
@@ -47,11 +47,12 @@ async function check(page: Page, name: string) {
 
 async function signIn(page: Page) {
   await page.request.post(`${STUB}/__stub/reset`);
-  await page.goto('/sign-in');
-  await page.getByRole('button', { name: en.signIn.passkey.create }).click();
-  await page.getByRole('button', { name: 'Solana' }).click();
-  await page.getByRole('button', { name: en.chain.pick.confirm('Solana') }).click();
-  // sign-in leads to the goal (WEB-2b)
+  // the bar's "Sign in" opens the sign-in dialog over the goal (SIGN-IN-FLOW); the person stays there
+  await page.goto('/goal');
+  await page.locator('header a[href="/sign-in"]').click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
+  await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/goal$/);
 }
 
@@ -66,7 +67,8 @@ async function toShelf(page: Page) {
     .locator('[data-ui="compact-nav-sheet"]')
     .getByRole('link', { name: en.shell.products })
     .click();
-  await expect(page).toHaveURL(/\/shelf$/);
+  // the address names the chain the shelf shows (CHAIN-SWITCH)
+  await expect(page).toHaveURL(/\/shelf\?chain=solana$/);
 }
 
 /** A portfolio's page, from the shelf. */
@@ -85,10 +87,8 @@ async function publish(page: Page, name: string, weights: [string, string][], ph
   await page.getByLabel(en.shared.publish.name, { exact: true }).fill(name);
   await page.getByLabel(en.shared.publish.copy, { exact: true }).fill('Three test tokens.');
   for (const [i, [asset, weight]] of weights.entries()) {
-    await page
-      .getByLabel(`${en.shared.publish.asset} ${i + 1}`, { exact: true })
-      .selectOption(asset);
-    await page.getByLabel(`${en.shared.publish.weight} ${i + 1}`, { exact: true }).fill(weight);
+    await page.getByLabel(en.shared.publish.assetOf(i + 1), { exact: true }).selectOption(asset);
+    await page.getByLabel(en.shared.publish.weightOf(i + 1), { exact: true }).fill(weight);
   }
   await expect(page.locator('[data-ui="family-id"]')).not.toHaveText('—');
   if (photograph) await check(page, 'publish');
@@ -145,12 +145,9 @@ test('publish a portfolio, find it on the shelf, buy it and follow it, every ste
 
   await page.getByRole('link', { name: en.shared.family.buy }).click();
   await expect(page).toHaveURL(/\/indexes\/three-of-the-largest\/buy$/);
-  await page.getByLabel(en.buy.amount.label, { exact: true }).fill('40');
-  await page.getByRole('button', { name: en.buy.funding.mockFund }).click();
-  await expect(page.getByText(en.buy.funding.ok)).toBeVisible();
-  await page.getByLabel(en.trust.accept).check();
+  await throughBuySteps(page, { amount: '40' });
   await check(page, 'family-buy');
-  await page.getByRole('button', { name: en.shared.buy.review('$40') }).click();
+  await page.getByRole('button', { name: en.buy.review('$40') }).click();
 
   await expect(page).toHaveURL(/\/orders\/[^/]+$/);
   const steps = page.locator('[data-ui="order-step"]');
@@ -191,7 +188,7 @@ test('a portfolio that holds gold offers no auto-follow, and says why', async ({
   await toFamily(page, 'With some gold');
   const offer = page.locator('[data-ui="auto-follow-offer"]');
   await expect(offer).toHaveAttribute('data-offered', 'false');
-  await expect(offer).toContainText(en.shared.offer.noOracle('GOLD', 'Solana'));
+  await expect(offer).toContainText(en.shared.offer.noOracle('Gold', 'Solana'));
   await check(page, 'family-gold');
 });
 

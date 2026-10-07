@@ -345,8 +345,8 @@ describe('the guard on Solana: an interface that drops an account it cannot do w
   });
 });
 
-describe('the registry calls elsewhere: not signed yet', () => {
-  it("on Robinhood Chain until IndexRegistry's interface is final; the mock takes only its own publish", () => {
+describe('the registry calls elsewhere: not signed without a registry', () => {
+  it('on an EVM chain whose deployment names no registry; the mock takes only its own publish', () => {
     const evmStep = {
       ...publishStep,
       chain: 'robinhood',
@@ -358,7 +358,7 @@ describe('the registry calls elsewhere: not signed yet', () => {
       guardTransaction({ step: evmStep, tx: evmCall, deployment: e.EVM, consents: ['publish'] }),
     );
     expect(onEvm?.code).toBe('unsupported');
-    expect(onEvm?.message).toMatch(/IndexRegistry/);
+    expect(onEvm?.message).toMatch(/names no registry/);
     const mock = deploymentsOf('mock').solana;
     if (!mock) throw new Error('the mock has no solana');
     const onMock = refusalOf(() =>

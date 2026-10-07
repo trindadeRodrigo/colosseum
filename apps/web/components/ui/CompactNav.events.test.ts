@@ -121,11 +121,21 @@ describe('CompactNav over a stage (compact-nav.md, Trigger)', () => {
       }),
     );
     expect(bar(host).getAttribute('data-compact')).toBe('false');
+    // over the hero there is no ground: the band is see-through and lets clicks pass
+    const ground = find(host, '[data-ui="compact-nav-ground"]');
+    expect(ground.className).toContain('opacity-0');
+    expect(ground.className).toContain('pointer-events-none');
     // straight to the end of the page: both steps far above the window
     tops.s2 = -9000;
     tops.s3 = -8000;
     await scroll();
     expect(bar(host).getAttribute('data-compact')).toBe('true');
+    // compact, the band the bar floats in is the page's ground, the full width of the window, so no
+    // copy is read behind the bar or beside it (e2e/landing-nav.spec.ts checks it in a browser)
+    expect(ground.className).toContain('opacity-100');
+    expect(ground.className).toEqual(expect.stringContaining('inset-x-0'));
+    expect(ground.className).toContain('bg-background');
+    expect(ground.getAttribute('aria-hidden')).toBe('true');
     // back between them: it stays compact until step 02 is below the line again
     tops.s2 = 100;
     tops.s3 = 900;
@@ -135,5 +145,44 @@ describe('CompactNav over a stage (compact-nav.md, Trigger)', () => {
     tops.s3 = 6000;
     await scroll();
     expect(bar(host).getAttribute('data-compact')).toBe('false');
+  });
+
+  it('gets its ground in the full state once copy reaches it, and loses it when the copy has gone', async () => {
+    const tops = steps();
+    const copy = document.createElement('div');
+    copy.setAttribute('data-under-bar', '');
+    let at = { top: 400, bottom: 700 };
+    copy.getBoundingClientRect = () => ({ ...at, height: at.bottom - at.top }) as DOMRect;
+    document.body.append(copy);
+    const { CompactNav } = await import('./CompactNav');
+    const { createElement } = await import('react');
+    const host = await mount(
+      createElement(CompactNav, {
+        symbol: null,
+        wordmark: 'tenonfi',
+        homeLabel: 'home',
+        links: [{ label: 'Invest', href: '#simulate' }],
+        cta: { label: 'Sign in', href: '/sign-in' },
+        contentId: 'content',
+        stage: { compactAt: 'step-3', releaseAbove: 'step-2' },
+      }),
+    );
+    const ground = find(host, '[data-ui="compact-nav-ground"]');
+    // at the top of the hero: the bar is full and see-through
+    expect(bar(host).getAttribute('data-compact')).toBe('false');
+    expect(ground.getAttribute('data-on')).toBe('false');
+    expect(ground.className).toContain('opacity-0');
+    // the heading scrolls up into the bar's band: the bar is still full, now on the ground
+    at = { top: 20, bottom: 320 };
+    await scroll();
+    expect(bar(host).getAttribute('data-compact')).toBe('false');
+    expect(ground.getAttribute('data-on')).toBe('true');
+    expect(ground.className).toContain('opacity-100');
+    // and gone above the window: see-through again over the stage
+    at = { top: -600, bottom: -300 };
+    await scroll();
+    expect(ground.getAttribute('data-on')).toBe('false');
+    copy.remove();
+    expect(tops.s3).toBe(3000);
   });
 });

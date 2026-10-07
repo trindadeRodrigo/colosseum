@@ -1,4 +1,5 @@
 import { checkCreatorLimits, familyIdOf, metaHash } from '@colosseum/basket';
+import { indexIdOf } from '@colosseum/chain-evm/vault';
 import { mockRecipeId } from '@colosseum/chain-mock';
 import { recipeAddress } from '@colosseum/chain-solana/vault';
 import type { Db } from '@colosseum/db';
@@ -20,6 +21,7 @@ import { holds } from '../plugins/auth';
 import { assertBuilds, type ChainEntry, type ChainRegistry } from './chains';
 import { Refusal } from './errors';
 import { hasVersion, type StoredFamily, syncVersions, userIdOf, writePublished } from './families';
+import { HOME_CHAIN } from './person';
 
 // Shared portfolios as orders (DESIGN-VAULT section 6, gate SHARED-FULL): a creator publishes one, a
 // person follows one. The API plans and builds; the creator's own form says what is published, and the
@@ -116,8 +118,8 @@ export const recipeTargets = (r: Pick<Recipe, 'components'>): Target[] =>
 
 /**
  * The id of a creator's recipe on a chain, worked out as the registry does: on Solana the account at
- * ["recipe", creator, family id]; on the mock the mock's own rule. An EVM registry's id waits for its
- * final interface.
+ * ["recipe", creator, family id]; on EVM keccak256(abi.encode(creator, familyId)), as
+ * `IndexRegistry.create` makes it; on the mock the mock's own rule.
  */
 export async function recipeIdOf(
   entry: ChainEntry,
@@ -125,11 +127,7 @@ export async function recipeIdOf(
   familyId: string,
 ): Promise<string> {
   if (entry.mock) return mockRecipeId(entry.chain, creator, familyId);
-  if (entry.config.family !== 'solana')
-    throw new Refusal(
-      501,
-      `a shared portfolio on ${entry.config.name} waits for its registry (EVM-3)`,
-    );
+  if (entry.config.family === 'evm') return indexIdOf(creator, familyId);
   const program = entry.config.contracts.program;
   if (!program) throw new Error(`${entry.chain} names no vault program`);
   type Key = Parameters<typeof recipeAddress>[0];
@@ -197,7 +195,6 @@ export type SharedContext = {
   principal: Principal;
   chains: ChainRegistry;
   db: Db;
-  homeChain(): Promise<ChainId>;
   bySlug(slug: string): Promise<StoredFamily | null>;
   byNameKey(key: string): Promise<StoredFamily | null>;
 };
@@ -265,13 +262,6 @@ export async function planPublish(
   for (const draft of req.recipes) {
     const family = chainFamily(draft.chain);
     const name = ctx.chains.name(draft.chain);
-    // The registry calls on EVM wait for EVM-3's final interface and ADE-2's adapter: the guard
-    // refuses them too.
-    if (family !== 'solana')
-      throw new Refusal(
-        501,
-        `publishing on ${name} is not built yet: its registry calls wait for EVM-3`,
-      );
     const entry = ctx.chains.get(draft.chain);
     assertBuilds(entry);
     const creator = req.creator[family];
@@ -321,10 +311,7 @@ export async function followedOn(
   const entry = ctx.chains.get(chain);
   const stored = family.recipes.find((r) => r.chain === chain);
   if (!stored)
-    throw new Refusal(
-      422,
-      `this shared portfolio is not published on ${entry.config.name}, where your plans live`,
-    );
+    throw new Refusal(422, `this shared portfolio is not published on ${entry.config.name}`);
   const onchain = await readRecipe(entry, stored.onchainId);
   if (!onchain)
     throw new Refusal(409, `this shared portfolio is not on ${entry.config.name} any more`);
@@ -353,12 +340,12 @@ export async function planFollow(
   steps: SharedStep[];
   needsConsent: ('auto_follow_on' | 'new_asset')[];
 }> {
-  const chain = await ctx.homeChain();
+  // The vault's own chain, named by its address, whatever the person's current chain is (CHAIN-SWITCH).
+  const family = (['solana', 'evm'] as const).find((f) => isAddressOf(f, req.vault));
+  if (!family) throw new Refusal(422, 'that is not a vault address');
+  const chain = HOME_CHAIN[family];
   const entry = ctx.chains.get(chain);
   assertBuilds(entry);
-  const family = chainFamily(chain);
-  if (!isAddressOf(family, req.vault))
-    throw new Refusal(422, `that vault is not on ${entry.config.name}, where your plans live`);
   const vault = await entry.adapter.getVault(req.vault);
   const mine = ctx.principal.wallets.some((w) => w.family === family && w.address === vault?.owner);
   if (!vault || !mine) throw new Refusal(404, 'no vault of yours at that address');

@@ -1,23 +1,30 @@
 'use client';
-import type { BasketSheet } from '@colosseum/schemas';
+import type { BasketSheet, BasketSheetDraft } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState } from 'react';
+import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
+import { ChainBadge } from '../../components/ui/ChainBadge';
 import { Composer } from '../../components/ui/Composer';
 import { ConstraintSheet, type SheetFact } from '../../components/ui/ConstraintSheet';
 import { cn } from '../../components/ui/cn';
 import { GoalCard } from '../../components/ui/GoalCard';
+import { PAGE_TITLE } from '../../components/ui/heading';
+import { Skeleton, SkeletonText } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
-import { ChainName } from '../account/ChainName';
+import { ChainBadgeMarked } from '../account/ChainName';
+import { SlowSignIn } from '../account/SlowSignIn';
 import { rememberPlan } from '../order/plan-store';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { type BuildOutcome, buildPlan, planProvenance } from './build-plan';
 import { GOAL_DRAFT, GOAL_HANDOFF } from './draft';
+import { exampleDraft } from './examples';
+import { browserCountry, fillFromWords, preRead } from './pre-read';
 import { GOAL_TEXT, type ReadFailure, ReadGoalError, readGoal } from './read-goal';
 import {
   checkSheet,
@@ -39,6 +46,12 @@ import {
 const LIMITS = 'limits';
 const STORE = GOAL_DRAFT;
 const SIGN_IN = '/sign-in?next=/goal';
+/** The fields the reader may answer with a start of its own, by their name in the draft and here. */
+const ASSUMABLE = [
+  ['goal', 'goal'],
+  ['risk', 'risk'],
+  ['horizonMonths', 'horizon'],
+] as const;
 
 type Build = { kind: 'idle' } | { kind: 'solving' } | BuildOutcome;
 
@@ -47,13 +60,13 @@ export function GoalScreen() {
   const lang = useLang();
   const port = useWalletPort();
   const apiFetch = useApiFetch();
-  const { account, retry } = useAccount();
+  const { account, slow, retry } = useAccount();
   const [text, setText] = useState('');
   const [reading, setReading] = useState(false);
   const [readFailure, setReadFailure] = useState<ReadFailure | null>(null);
   const [sheet, setSheet] = useState<ReadSheet | null>(null);
   const [build, setBuild] = useState<Build>({ kind: 'idle' });
-  const composer = useRef<HTMLDivElement>(null);
+  const builtCard = useRef<HTMLDivElement>(null);
   const outcomeId = useId();
   const hintId = useId();
   // Which request for a plan is still wanted. An answer is shown only for the limits it was asked
@@ -77,8 +90,22 @@ export function GoalScreen() {
         setText(stored.text);
         setSheet(stored.sheet);
       }
-      const typed = window.sessionStorage.getItem(GOAL_HANDOFF);
+      // A goal handed over by the landing page (in the tab), or by a partner's embed, whose frame
+      // shares no storage with this tab: in the fragment of the address, which no server sees. The
+      // fragment is taken out of the address once read. Any site can link here with a goal of its
+      // own: it is only text in the box, read by the public reader (`POST /goals`), and nothing is
+      // built or signed until the person asks.
+      const fragment = /^#goal=(.*)$/.exec(window.location.hash)?.[1];
+      let typed = window.sessionStorage.getItem(GOAL_HANDOFF);
       window.sessionStorage.removeItem(GOAL_HANDOFF);
+      if (fragment !== undefined) {
+        try {
+          typed = decodeURIComponent(fragment);
+        } catch {
+          typed = null;
+        }
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
       if (typed !== null && typed.trim() !== '' && typed.length <= GOAL_TEXT.max) {
         handed.current = typed.trim();
         setText(handed.current);
@@ -109,12 +136,14 @@ export function GoalScreen() {
 
   // A plan is one person's, on their chain: an answer for someone else, or for another chain, is not
   // shown to whoever is here now. While the chain is being read again it is not known to have
-  // changed, so nothing is forgotten until it is read.
-  const who = port.userId ?? '';
+  // changed, so nothing is forgotten until it is read. The same while the wallet loads again and
+  // names nobody: nobody is known to have left.
+  const who = port.status === 'loading' && port.userId === null ? null : (port.userId ?? '');
   const where = account.status === 'loading' ? null : (chain ?? '');
-  const whose = useRef({ who, where: where ?? '' });
+  const whose = useRef({ who: who ?? '', where: where ?? '' });
   useEffect(() => {
     const last = whose.current;
+    if (who === null) return;
     if (last.who === who && (where === null || last.where === where)) return;
     whose.current = { who, where: where ?? last.where };
     wanted.current += 1;
@@ -128,19 +157,62 @@ export function GoalScreen() {
     }
   }, [who, where]);
 
+  /**
+   * The country a sheet starts with: the one the reading gave, else the one the browser's language
+   * names, which the sheet says it took from there (the schema needs one: BasketSheet.country).
+   */
+  function withCountry(draft: BasketSheetDraft) {
+    const guess = draft.country
+      ? null
+      : browserCountry(navigator.languages ?? [navigator.language]);
+    return {
+      draft: guess ? { ...draft, country: guess } : draft,
+      countryFromBrowser: guess !== null,
+    };
+  }
+
   async function read(typed: string) {
     setReading(true);
     setReadFailure(null);
     forget();
+    // One of this page's own examples, sent as it is: its limits are known here (examples.ts).
+    const known = exampleDraft(typed, t.goal.examples.list, lang);
+    if (known) {
+      const { draft, countryFromBrowser } = withCountry(known);
+      const fields = fieldsOfDraft(draft, lang);
+      setSheet({
+        goalText: typed.trim(),
+        source: {
+          method: 'example',
+          fetchedAt: new Date().toISOString(),
+          provenance: 'live',
+        },
+        firstReader: false,
+        read: fields,
+        fields,
+        countryFromBrowser,
+      });
+      setReading(false);
+      return;
+    }
+    // What the words say, read here before the text is sent: they fill what the reader leaves.
+    const words = preRead(typed);
     try {
       const reading = await readGoal(apiFetch, typed, lang);
-      const fields = fieldsOfDraft(reading.draft, lang);
+      const filled = fillFromWords(reading.draft, reading.guessed, words);
+      const { draft, countryFromBrowser } = withCountry(filled.draft);
+      const fields = fieldsOfDraft(draft, lang);
       setSheet({
         goalText: typed,
         source: reading.source,
         firstReader: reading.firstReader,
         read: fields,
         fields,
+        countryFromBrowser,
+        // What the reader answered with a start of its own, and the words did not say either.
+        assumed: ASSUMABLE.filter(
+          ([word, key]) => reading.guessed.has(word) && words[word] == null && fields[key] !== '',
+        ).map(([, key]) => key),
       });
     } catch (e) {
       // The text stays in the box, and a sheet read before stays as it was.
@@ -186,17 +258,25 @@ export function GoalScreen() {
     if (outcome.kind === 'no-chain') retry();
   }
 
+  /** A chip is a goal said in one click: it fills the box and is read at once. */
   function fillWith(example: string) {
     setText(example);
-    // The chip fills the box and hands it over: the person reads it, changes it, and sends it.
-    composer.current?.querySelector('textarea')?.focus();
+    void read(example);
   }
+
+  // The plan lands below the limits: the page goes to it, and so does the keyboard.
+  const builtId = build.kind === 'built' ? build.id : null;
+  useEffect(() => {
+    if (builtId === null) return;
+    builtCard.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+    builtCard.current?.focus({ preventScroll: true });
+  }, [builtId]);
 
   const network = chain ? port.network(chain) : null;
   const chainName = chain ? (network?.name ?? t.chain.names[chain]) : '';
   // Our server has the person's chain switched off: nothing can be built there for now.
   const chainOff = network?.on === false;
-  const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.mockAnnounce };
+  const marks = { testNetwork: t.shell.testNetwork, mockAnnounce: t.shell.sampleFigure };
   const link = buttonClass({ variant: 'link' });
   // Why the API did not say which chain: it did not answer, it no longer knows this sign-in, it was
   // sent no identity token, or it asked for fewer requests. Each is a different thing for the person
@@ -208,18 +288,37 @@ export function GoalScreen() {
         ? t.chain.unknown.signedOut
         : account.why === 'no_identity'
           ? t.chain.unknown.noIdentity
-          : t.shell.slowDown;
+          : account.why === 'off'
+            ? t.chain.unknown.off
+            : account.why === 'refused'
+              ? t.chain.unknown.refused
+              : t.shell.slowDown;
   const chainFact: SheetFact =
     account.status === 'ready'
       ? {
           label: t.goal.chain.label,
           value: (
-            <ChainName name={chainName} provenance={network?.provenance ?? 'mock'} labels={marks} />
+            <ChainBadgeMarked
+              chain={account.chain}
+              provenance={network?.provenance ?? 'mock'}
+              labels={marks}
+            />
           ),
           note: t.goal.chain.note,
         }
       : account.status === 'loading'
-        ? { label: t.goal.chain.label, value: t.chain.reading }
+        ? {
+            label: t.goal.chain.label,
+            // Still reading after a while: said, with the two things the person can do.
+            value: slow ? (
+              <SlowSignIn
+                className="flex flex-col gap-1"
+                onSignOut={() => void port.signOut().catch(() => {})}
+              />
+            ) : (
+              t.chain.reading
+            ),
+          }
         : account.status === 'unknown'
           ? {
               label: t.goal.chain.label,
@@ -251,8 +350,6 @@ export function GoalScreen() {
 
   // What stands between valid limits and a plan, besides the fields: who is asking, and on which chain.
   const blocked = [
-    ...(account.status === 'signed-out' ? [t.goal.blocked.signedOut] : []),
-    ...(account.status === 'needs-chain' ? [t.goal.blocked.chainNotChosen] : []),
     ...(account.status === 'no-wallet' ? [t.chain.noWallet] : []),
     ...(account.status === 'unknown'
       ? [account.why === 'unreachable' ? t.goal.blocked.chainUnknown : unknownWhy]
@@ -260,11 +357,9 @@ export function GoalScreen() {
     ...(chainOff ? [t.goal.blocked.chainOff(chainName)] : []),
     ...(build.kind === 'signed-out' ? [t.goal.blocked.signInAgain] : []),
     ...(build.kind === 'no-identity' ? [t.goal.blocked.noIdentity] : []),
-    // Said once: the account says the same when it has read that no chain is chosen.
-    ...(build.kind === 'no-chain' && account.status !== 'needs-chain'
-      ? [t.goal.blocked.chainNotChosen]
-      : []),
+    ...(build.kind === 'no-chain' ? [t.goal.blocked.chainNotChosen] : []),
     ...(build.kind === 'refused' ? [t.goal.blocked.refused] : []),
+    ...(build.kind === 'currency' ? [t.goal.blocked.currency] : []),
   ];
 
   const readSentence =
@@ -286,15 +381,14 @@ export function GoalScreen() {
 
   // A built plan is named by its own chain and labelled by its own figures, not by this page's.
   const plan = build.kind === 'built' ? build.proposal : null;
-  // The first reader was made for goals in reais: the note names what it left empty, for the person
-  // to fill in.
+  // What the reading left empty, named in one line for the person to fill in.
   const missed = sheet ? notFound(sheet.fields, sheet.read).map((key) => t.goal.fields[key]) : [];
   const readerNote =
     missed.length > 0
       ? t.goal.readerMissed(
           new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(missed),
         )
-      : t.goal.readerNote;
+      : null;
   const planLabel = plan ? planProvenance(plan) : 'live';
   const planChain = plan?.sheet.chains[0];
   const planChainName = planChain
@@ -311,6 +405,8 @@ export function GoalScreen() {
           t,
           dictionary(sheet.fields.language),
           lang,
+          sheet.countryFromBrowser,
+          sheet.assumed,
         )
       : null;
 
@@ -337,9 +433,7 @@ export function GoalScreen() {
         ) : (
           <header className="flex flex-col gap-3 lg:col-span-5">
             {/* Beside the box the question is set a step smaller, so it holds two lines, as his is. */}
-            <h1 className="max-w-(--tf-measure-display) font-display text-h2 font-normal">
-              {t.goal.title}
-            </h1>
+            <h1 className={PAGE_TITLE}>{t.goal.title}</h1>
             <p className="max-w-(--tf-measure-body) text-body text-muted-foreground">
               {t.goal.lead}
             </p>
@@ -347,7 +441,6 @@ export function GoalScreen() {
         )}
 
         <div
-          ref={composer}
           className={cn('flex max-w-(--tf-measure-docs) flex-col gap-3', !sheet && 'lg:col-span-7')}
         >
           <Composer
@@ -398,7 +491,7 @@ export function GoalScreen() {
         </div>
       </div>
 
-      {sheet?.firstReader && (
+      {readerNote && (
         <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">{readerNote}</p>
       )}
 
@@ -408,9 +501,15 @@ export function GoalScreen() {
           level={2}
           className="scroll-mt-6"
           goalText={sheet.goalText}
-          source={sheet.source}
           facts={[chainFact]}
           groups={drawn.groups}
+          more={{ label: t.goal.sheet.more, groups: drawn.more }}
+          // A visitor's next step is to sign in: a button where the build button is, not an error.
+          next={
+            account.status === 'signed-out'
+              ? { label: t.goal.sheet.signInToBuild, href: SIGN_IN }
+              : undefined
+          }
           capital={drawn.amount}
           state={
             build.kind === 'solving' ? 'solving' : build.kind === 'no-plan' ? 'no-plan' : 'idle'
@@ -419,7 +518,7 @@ export function GoalScreen() {
           otherIssues={blocked}
           onChange={change}
           onBuild={buildFrom}
-          labels={{ ...t.goal.sheet, mockAnnounce: t.shell.mockAnnounce }}
+          labels={{ ...t.goal.sheet, mockAnnounce: t.shell.sampleFigure }}
         />
       ) : reading ? (
         <ConstraintSheet<BasketSheet>
@@ -430,11 +529,28 @@ export function GoalScreen() {
           valid={null}
           onChange={change}
           onBuild={buildFrom}
-          labels={{ ...t.goal.sheet, mockAnnounce: t.shell.mockAnnounce }}
+          labels={{ ...t.goal.sheet, mockAnnounce: t.shell.sampleFigure }}
         />
       ) : null}
 
       <div aria-live="polite" className="flex flex-col gap-4">
+        {/* While the plan is built: the card it comes in, in its own shape, and the wait in words. The
+            hosted API may be waking; after a minute the wait gives up and asks to build again. */}
+        {solving && (
+          <Card as="section" aria-label={t.goal.sheet.building}>
+            <CardWait
+              label={t.goal.sheet.building}
+              skeleton={
+                <span aria-hidden="true" className="flex flex-col gap-3">
+                  <Skeleton className="h-6 w-1/2" />
+                  <SkeletonText lines={2} />
+                  <Skeleton className="h-4 w-32" />
+                </span>
+              }
+              onRetry={forget}
+            />
+          </Card>
+        )}
         {build.kind === 'unavailable' && (
           <Card as="section" aria-labelledby={outcomeId}>
             <CardHeader title={t.goal.built.unavailable.title} level={2} id={outcomeId} />
@@ -444,32 +560,43 @@ export function GoalScreen() {
           </Card>
         )}
         {plan && (
-          <Card
-            as="section"
-            aria-labelledby={outcomeId}
-            // A plan built on anything that is not live says so, whatever else it says: the plate,
-            // and for a test network the words too.
-            mock={planLabel !== 'live'}
-            mockLabels={{
-              announce: t.shell.mockAnnounce,
-              note: planLabel === 'sandbox' ? t.shell.testNetwork : undefined,
-            }}
+          <div
+            ref={builtCard}
+            tabIndex={-1}
+            data-ui="built-plan"
+            className="scroll-mt-6 outline-none"
           >
-            <CardHeader title={t.goal.built.done.title} level={2} id={outcomeId} />
-            <CardBody>
-              <p className="max-w-(--tf-measure-body) text-body">
-                {t.goal.built.done.body(plan.lines.length, planChainName)}
-              </p>
-              {build.kind === 'built' && (
-                <Link
-                  href={`/plan/${encodeURIComponent(build.id)}`}
-                  className={buttonClass({ variant: 'link' })}
-                >
-                  {t.goal.built.done.see}
-                </Link>
-              )}
-            </CardBody>
-          </Card>
+            <Card
+              as="section"
+              aria-labelledby={outcomeId}
+              // A plan built on anything that is not live says so, whatever else it says: the plate,
+              // and for a test network the words too.
+              mock={planLabel !== 'live'}
+              mockLabels={{
+                announce: planLabel === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
+              }}
+            >
+              <CardHeader
+                title={t.goal.built.done.title}
+                level={2}
+                id={outcomeId}
+                meta={planChain ? <ChainBadge chain={planChain} /> : undefined}
+              />
+              <CardBody>
+                <p className="max-w-(--tf-measure-body) text-body">
+                  {t.goal.built.done.body(plan.lines.length, planChainName)}
+                </p>
+                {build.kind === 'built' && (
+                  <Link
+                    href={`/plan/${encodeURIComponent(build.id)}`}
+                    className={buttonClass({ variant: 'link' })}
+                  >
+                    {t.goal.built.done.see}
+                  </Link>
+                )}
+              </CardBody>
+            </Card>
+          </div>
         )}
         {buildSentence && (
           <p

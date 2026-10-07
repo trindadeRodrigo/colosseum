@@ -704,6 +704,55 @@ group('builds', {
     expect(tightLeast).toBeGreaterThan(least);
   },
 
+  'writes the least an order stated for each trade, never one of its own, and refuses a price that moved under it':
+    async (c) => {
+      const { sell, buy, amountInRaw } = c.f.ownerTrade;
+      const half = { sell, buy, amountInRaw: (BigInt(amountInRaw) / 2n).toString() };
+      const trades = c.a.capabilities.maxTradesPerTx > 1 ? [half, half] : [c.f.ownerTrade];
+      // What the builder would set by itself, at the widest slippage a caller may ask: a floor every
+      // trade clears now.
+      const own = await c.a.buildOwnerSwap({ vault: c.f.vault, trades, slippageBps: 300 });
+      // An order made a while ago stated other figures: each a little under that floor, and not one
+      // any slippage of today's quote would give.
+      const stated = own.preview.minimums.map((m, i) =>
+        (BigInt(m.minOutRaw) - BigInt(7 + i)).toString(),
+      );
+      for (const slippageBps of [0, 100, 300]) {
+        const tx = await c.a.buildOwnerSwap({
+          vault: c.f.vault,
+          trades,
+          slippageBps,
+          minimums: stated,
+        });
+        expect(tx.preview.minimums.map((m) => m.minOutRaw)).toEqual(stated);
+        expect(tx.preview.minimums.map((m) => [m.sell, m.buy, m.inRaw])).toEqual(
+          trades.map((t) => [t.sell, t.buy, t.amountInRaw]),
+        );
+      }
+      // The price has moved under what the order accepts: nothing is built, and no other figure is.
+      const out = delta(own, 'vault', buy);
+      const tooMuch = stated.map((_, i) => (i === 0 ? (out * 2n).toString() : (stated[i] ?? '0')));
+      await refuses(
+        c.a.buildOwnerSwap({ vault: c.f.vault, trades, slippageBps: 100, minimums: tooMuch }),
+        'PriceMoved',
+      );
+      // A minimum of nothing accepts any price, and is not one.
+      await refuses(
+        c.a.buildOwnerSwap({
+          vault: c.f.vault,
+          trades,
+          slippageBps: 100,
+          minimums: stated.map((m, i) => (i === 0 ? '0' : m)),
+        }),
+        'BadInput',
+      );
+      // One minimum for each trade, or none at all.
+      await refuses(
+        c.a.buildOwnerSwap({ vault: c.f.vault, trades, slippageBps: 100, minimums: [] }),
+        'BadInput',
+      );
+    },
+
   'previews a withdrawal as the tokens themselves going to the owner': async (c) => {
     const vault = await vaultAt(c, c.f.vault);
     const txs = await c.a.buildWithdrawInKind({ vault: c.f.vault });
@@ -735,7 +784,9 @@ group('builds', {
       await c.a.buildKeeperLeg(c.f.vault, c.f.keeperTrade),
     ];
     expect(new Set(txs.map((tx) => tx.messageHash)).size).toBe(txs.length);
-    expect(new Set(txs.map((tx) => tx.payload)).size).toBe(txs.length);
+    // On EVM the payload is the call data alone and the target is in `evm.to`: the same deposit into
+    // two vaults is one payload sent to two addresses. The transaction is the two together.
+    expect(new Set(txs.map((tx) => `${tx.evm?.to ?? ''}:${tx.payload}`)).size).toBe(txs.length);
   },
 
   'lets the keeper end inside the band, short of the target or a little past it': async (c) => {
@@ -1355,6 +1406,60 @@ group('state after a transaction lands', {
         expect(BigInt((await vaultAt(c, opened.address)).cash.raw)).toBe(amount * 2n);
         await refuses(deposit(1n), 'AllowanceTooLow');
       }
+    },
+
+  'a withdrawal of an amount takes that much and no more: part of a token, exactly what is left, never a unit over':
+    async (c) => {
+      // The token the vault holds most of: the fixture's vault may keep no cash.
+      const start = await vaultAt(c, c.f.vault);
+      const most = [start.cash, ...start.positions].reduce((a, b) =>
+        BigInt(b.raw) > BigInt(a.raw) ? b : a,
+      );
+      const cash = most.asset;
+      const held = BigInt(most.raw);
+      expect(held).toBeGreaterThan(2n);
+      const of = (v: Awaited<ReturnType<typeof vaultAt>>, asset: string) =>
+        BigInt([v.cash, ...v.positions].find((h) => h.asset === asset)?.raw ?? '0');
+      const part = held / 3n;
+      const before = await walletRaw(c, c.f.owner, cash);
+      const some = (raw: bigint) =>
+        c.a.buildWithdrawInKind({
+          vault: c.f.vault,
+          assets: [cash],
+          amounts: { [cash]: raw.toString() },
+        });
+
+      // one unit more than the vault holds: refused, and nothing is built
+      await refuses(some(held + 1n), 'BadInput');
+      // an amount for a token the withdrawal does not name, and an amount of nothing
+      await refuses(
+        c.a.buildWithdrawInKind({ vault: c.f.vault, assets: [], amounts: { [cash]: '1' } }),
+        'BadInput',
+      );
+      await refuses(some(0n), 'BadInput');
+
+      // part of it: that much leaves, the rest stays, the other tokens are untouched
+      const rest = (v: Awaited<ReturnType<typeof vaultAt>>) =>
+        [v.cash, ...v.positions].filter((h) => h.asset !== cash).map((h) => h.raw);
+      const others = rest(start);
+      const [first, ...more] = await some(part);
+      expect(more).toEqual([]);
+      if (!first) throw new Error('no withdrawal was built');
+      checkTx(c, first, 'withdraw', c.f.owner);
+      expect(delta(first, 'vault', cash)).toBe(-part);
+      expect(delta(first, 'wallet', cash)).toBe(part);
+      await land(c, first);
+      const mid = await vaultAt(c, c.f.vault);
+      expect(of(mid, cash)).toBe(held - part);
+      expect(rest(mid)).toEqual(others);
+      expect((await walletRaw(c, c.f.owner, cash)) - before).toBe(part);
+
+      // one unit more than is left now is refused; exactly the rest is built, and would empty it
+      await refuses(some(held - part + 1n), 'BadInput');
+      const [last] = await some(held - part);
+      if (!last) throw new Error('no withdrawal was built');
+      expect(delta(last, 'vault', cash)).toBe(-(held - part));
+      expect(await c.a.getWalletHoldings(c.f.stranger)).toEqual([]);
     },
 
   'a withdrawal hands every token to the owner, and to nobody else': async (c) => {

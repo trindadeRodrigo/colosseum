@@ -10,6 +10,7 @@ import {
   DISCLAIMER,
   type FundingNeed,
   type IntentRequest,
+  isAddressOf,
   type Leg,
   ORDER_LIMITS,
   type Order,
@@ -24,6 +25,7 @@ import { holds } from '../plugins/auth';
 import { assertBuilds, type ChainEntry, type ChainRegistry } from './chains';
 import { Refusal, refusing } from './errors';
 import { followedOn, planFollow, planPublish, recipeTargets, type SharedContext } from './shared';
+import { planWithdraw } from './withdraw';
 
 // DESIGN-VAULT 3.3: the one function behind the web buttons, REST, the SDK and MCP. It plans the legs
 // of an order and builds nothing: a leg is built just before it is signed.
@@ -58,7 +60,12 @@ export type PrepareContext = {
   chains: ChainRegistry;
   /** A stored plan by its id, or null when there is none. */
   loadProposal(id: string): Promise<BasketProposal | null>;
-  /** The chain the person's plans live on (gates ONE-CHAIN, CHAIN-PICK). Refuses when there is none yet. */
+  /**
+   * True when the plan was made from a link (stored with no person, gate `AGENT-LINK`): its vault's
+   * number then takes the buyer too (`basketIdOfLinked`). Left out, no plan is.
+   */
+  isLinkedPlan?(id: string): Promise<boolean>;
+  /** The person's current chain, where a new plan is made (CHAIN-SWITCH). Refuses when there is none yet. */
   homeChain(): Promise<ChainId>;
   /** The shared portfolios that have a recipe on `chain`, each with that recipe as it is in effect. */
   loadFamilies(chain: ChainId): Promise<Shelf['families']>;
@@ -80,6 +87,31 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function basketIdOf(proposalId: string): string {
   const hex = createHash('sha256').update(`plan:${proposalId.toLowerCase()}`).digest('hex');
   return BigInt(`0x${hex.slice(0, 16)}`).toString();
+}
+
+/**
+ * The number of a vault bought from a plan made from a link (gate `AGENT-LINK`): from the plan's id and
+ * the buyer's user id, the first 8 bytes of the SHA-256 of `linked-plan:<id>:<user id>`. A link is
+ * shared by design, and the number is a seed of the vault's address and is stored in it: from the
+ * plan's id alone, nobody can find the vaults its buyers opened. The same person buying it again
+ * reaches the same vault. `basketIdOfLinkedPlan` in packages/sdk repeats it.
+ */
+export function basketIdOfLinked(proposalId: string, userId: string): string {
+  const hex = createHash('sha256')
+    .update(`linked-plan:${proposalId.toLowerCase()}:${userId}`)
+    .digest('hex');
+  return BigInt(`0x${hex.slice(0, 16)}`).toString();
+}
+
+/** The vault number of a buy of a stored plan: the buyer's own for a plan made from a link. */
+export function basketIdOfBuy(proposalId: string, linked: boolean, userId: string | undefined) {
+  if (!linked) return basketIdOf(proposalId);
+  if (!userId)
+    throw new Refusal(
+      403,
+      'a plan made from a link is bought by a signed-in person, as themselves',
+    );
+  return basketIdOfLinked(proposalId, userId);
 }
 
 export const lessBps = (amount: bigint, bps: number) => (amount * BigInt(10_000 - bps)) / 10_000n;
@@ -192,7 +224,7 @@ const chunk = <T>(items: T[], size: number): T[][] =>
 
 type Step = Pick<Leg, 'kind' | 'description' | 'trades' | 'cashRaw'>;
 
-/** A buy on the person's chain, before it is an order: its steps, and what they need of the wallet. */
+/** A buy on one chain, before it is an order: its steps, and what they need of the wallet. */
 export type BuyPlan = {
   entry: ChainEntry;
   owner: Address;
@@ -205,14 +237,38 @@ export type BuyPlan = {
   need: FundingNeed;
   /** For a buy of a shared portfolio: the version in effect, which the order holds to. */
   version?: number;
+  /** What the review says about this buy, beside what any buy is told. */
+  warnings?: Order['warnings'];
 };
+
+/** An add to a vault with auto-follow on only deposits: said on the order's review. */
+export const KEEPER_INVESTS = {
+  code: 'KEEPER_INVESTS',
+  text: 'This vault has auto-follow on, so this order only deposits the cash. The keeper buys the vault’s assets with it when it next rebalances this vault.',
+} as const;
+
+/**
+ * The one recipe of a stored plan, and so its chain (ONE-CHAIN). A plan is bought on its own chain,
+ * whatever the person's current chain is now (CHAIN-SWITCH).
+ */
+export function recipeOf(proposal: BasketProposal): BasketProposal['recipes'][number] {
+  const [recipe, ...more] = proposal.recipes;
+  if (!recipe) throw new Refusal(422, 'this plan names no chain');
+  if (more.length)
+    throw new Refusal(
+      422,
+      `this plan is spread over ${proposal.recipes.length} chains, and a plan lives on one: make the plan again`,
+    );
+  return recipe;
+}
 
 /**
  * The plan of a buy: the one chain it is on, the vault it reaches, and its steps. Nothing is quoted and
  * nothing is stored, so the funding check plans with the same function the order does.
  *
- * A buy is on one chain, the chain of the person's wallet, and so is the plan it buys: a stored plan
- * with recipes on several chains, or one made for another chain, is refused.
+ * A buy of a stored plan is on the plan's own chain, whatever the person's current chain is; a plan with
+ * recipes on several chains is refused. A buy of a shared portfolio opens a vault, so it is a new plan,
+ * on the current chain.
  */
 export async function planBuy(
   req: Extract<IntentRequest, { type: 'buy' }>,
@@ -221,8 +277,17 @@ export async function planBuy(
   // The owner in the body is a claim. It stands only where the verified tokens say the same.
   if (!holds(ctx.principal, req.owner))
     throw new Refusal(403, 'the owner in the request is not a wallet of the signed-in person');
-  if (req.family !== undefined && req.proposalId !== undefined)
-    throw new Refusal(400, 'a buy names a plan or a shared portfolio, not both');
+  const named = [req.proposalId, req.family, req.vault].filter((x) => x !== undefined).length;
+  if (named > 1)
+    throw new Refusal(400, 'a buy names one thing: a plan, a shared portfolio or a vault of yours');
+  if (req.vault !== undefined) {
+    if (req.version !== undefined)
+      throw new Refusal(
+        400,
+        '`version` is the version of a shared portfolio: send it with `family`',
+      );
+    return planVaultBuy(req, req.vault, ctx);
+  }
   if (req.family !== undefined) return planFamilyBuy(req, req.family, ctx);
   if (req.version !== undefined)
     throw new Refusal(400, '`version` is the version of a shared portfolio: send it with `family`');
@@ -230,19 +295,8 @@ export async function planBuy(
   const proposal = UUID.test(req.proposalId) ? await ctx.loadProposal(req.proposalId) : null;
   if (!proposal) throw new Refusal(404, 'no plan with that id');
 
-  const chain = await ctx.homeChain();
-  const [recipe, ...more] = proposal.recipes;
-  if (!recipe) throw new Refusal(422, 'this plan names no chain');
-  if (more.length)
-    throw new Refusal(
-      422,
-      `this plan is spread over ${proposal.recipes.length} chains, and a plan lives on one: make the plan again`,
-    );
-  if (recipe.chain !== chain)
-    throw new Refusal(
-      422,
-      `this plan was made for ${ctx.chains.name(recipe.chain)}, and your plans live on ${ctx.chains.name(chain)}: make the plan again`,
-    );
+  const recipe = recipeOf(proposal);
+  const chain = recipe.chain;
   // Refuses a chain that is off before anything is planned.
   const entry = ctx.chains.get(chain);
   const owner = req.owner[chainFamily(chain)];
@@ -280,7 +334,10 @@ export async function planBuy(
         );
     }
 
-    return buySteps(entry, owner, basketIdOf(req.proposalId ?? ''), cents, assets, targets);
+    const id = req.proposalId ?? '';
+    const linked = (await ctx.isLinkedPlan?.(id)) ?? false;
+    const basketId = basketIdOfBuy(id, linked, ctx.principal.userId);
+    return buySteps(entry, owner, basketId, cents, assets, targets);
   });
 }
 
@@ -365,6 +422,56 @@ async function planFamilyBuy(
   });
 }
 
+/** One answer for a vault that is not there, one on another chain and one that is another person's. */
+export const NO_SUCH_VAULT = 'no vault with that address that you can add to';
+
+/** Two addresses of one chain are the same vault: an EVM address in any case. */
+export const sameVaultAddress = (chain: ChainId, a: string, b: string) =>
+  chainFamily(chain) === 'evm' ? a.toLowerCase() === b.toLowerCase() : a === b;
+
+/**
+ * More money into a vault the person already has (add money): the amount is deposited into THAT vault
+ * and buys to the targets the vault has on chain now, so a vault that follows a shared portfolio buys
+ * the version it follows and a plan's vault its plan's lines; the cash share the targets leave stays
+ * as cash. The vault is found among the vaults of the signing wallet, read from the chain: one that
+ * is not there is answered like one that does not exist, whoever it belongs to. The order is the
+ * vault's number and no plan's: its steps are the deposit, then the swaps, as for any buy into an open
+ * vault.
+ */
+async function planVaultBuy(
+  req: Extract<IntentRequest, { type: 'buy' }>,
+  named: { chain: ChainId; address: string },
+  ctx: Omit<PrepareContext, 'now'>,
+): Promise<BuyPlan> {
+  const family = chainFamily(named.chain);
+  if (!isAddressOf(family, named.address)) throw new Refusal(404, NO_SUCH_VAULT);
+  // Refuses a chain that is off before anything is read.
+  const entry = ctx.chains.get(named.chain);
+  assertBuilds(entry);
+  const owner = req.owner[family];
+  if (!owner) throw new Refusal(404, NO_SUCH_VAULT);
+  const cents = amountOf(req);
+  return refusing(async () => {
+    const vault = (await entry.adapter.getVaults(owner)).find((v) =>
+      sameVaultAddress(named.chain, v.address, named.address),
+    );
+    if (!vault) throw new Refusal(404, NO_SUCH_VAULT);
+    const assets = await entry.adapter.listAssets();
+    // The targets the vault has on chain now, whatever newer version the portfolio it follows has
+    // (gate ADD-CURRENT-TARGETS). With auto-follow on the keeper keeps the vault at its targets, so
+    // the add is the deposit alone: trades of the owner's beside the keeper's would cross.
+    if (vault.autoFollow)
+      return {
+        ...(await buySteps(entry, owner, vault.basketId, cents, assets, [])),
+        warnings: [KEEPER_INVESTS],
+      };
+    const targets: Target[] = vault.positions
+      .filter((p) => p.targetBps > 0)
+      .map((p) => ({ asset: p.asset, weightBps: p.targetBps }));
+    return buySteps(entry, owner, vault.basketId, cents, assets, targets);
+  });
+}
+
 /**
  * The steps of a buy of these targets into the vault `basketId`: an approval where the chain needs
  * one, the create or the deposit with the whole amount, then the swaps.
@@ -437,7 +544,9 @@ async function buySteps(
 /**
  * What each trade of a leg is expected to pay out, from a quote taken now: one entry per trade, in the
  * order of the trades, and none for a leg that trades nothing. `minOutRaw` is the quote less the
- * slippage the order is built with.
+ * slippage the order is built with. Two trades of one pair in one leg follow each other: the second is
+ * quoted after the first, as the quote of both less the quote of the first, as the EVM builder quotes
+ * them.
  */
 export async function expectedOf(
   entry: ChainEntry,
@@ -446,12 +555,26 @@ export async function expectedOf(
   slippageBps: number,
 ): Promise<Leg['expected']> {
   const expected: Leg['expected'] = [];
+  const before = new Map<string, { in: bigint; out: bigint }>();
   for (const trade of trades) {
-    const quote = await entry.adapter.quote(trade, taker);
+    const pair = `${trade.sell}>${trade.buy}`;
+    const prior = before.get(pair) ?? { in: 0n, out: 0n };
+    const total = prior.in + BigInt(trade.amountInRaw);
+    const quote = await entry.adapter.quote({ ...trade, amountInRaw: total.toString() }, taker);
+    const out = BigInt(quote.outRaw) - prior.out;
+    before.set(pair, { in: total, out: BigInt(quote.outRaw) });
+    // A trade that quotes nothing, or whose minimum rounds to nothing, would state a minimum that
+    // accepts any price: the order is not made.
+    if (out <= 0n || lessBps(out, slippageBps) <= 0n)
+      throw new Refusal(
+        422,
+        `${trade.amountInRaw} raw ${trade.sell} buys no ${trade.buy} that can be held to a minimum: the amount is too small`,
+        { fix: 'Buy a larger amount.' },
+      );
     expected.push({
       inRaw: trade.amountInRaw,
-      outRaw: quote.outRaw,
-      minOutRaw: lessBps(BigInt(quote.outRaw), slippageBps).toString(),
+      outRaw: (out > 0n ? out : 0n).toString(),
+      minOutRaw: lessBps(out > 0n ? out : 0n, slippageBps).toString(),
       costBps: quote.costBps,
     });
   }
@@ -467,7 +590,8 @@ export async function prepareIntent(req: IntentRequest, ctx: PrepareContext): Pr
 
 /**
  * Plans an order from an intent. A buy (of a stored plan, or of a shared portfolio by its slug), a
- * follow of a shared portfolio by a vault the person has, and a creator's publish. The rest answer 501.
+ * follow of a shared portfolio by a vault the person has, a creator's publish, and a withdrawal in
+ * kind from a vault the person has. The rest answer 501.
  */
 export async function prepareOrder(req: IntentRequest, ctx: PrepareContext): Promise<Prepared> {
   if (req.type === 'buy') return prepareBuy(req, ctx);
@@ -478,7 +602,6 @@ export async function prepareOrder(req: IntentRequest, ctx: PrepareContext): Pro
       ...shared,
       principal: ctx.principal,
       chains: ctx.chains,
-      homeChain: ctx.homeChain,
     };
     if (req.type === 'publish') {
       const { familyId, steps } = await refusing(() => planPublish(req, sctx));
@@ -504,18 +627,39 @@ export async function prepareOrder(req: IntentRequest, ctx: PrepareContext): Pro
       request: { ...req, version: plan.version },
     };
   }
+  if (req.type === 'withdraw') {
+    const plan = await refusing(() => planWithdraw(req, ctx));
+    return {
+      order: sharedOrder(
+        ctx,
+        { [chainFamily(plan.entry.chain)]: plan.owner },
+        'withdraw',
+        `Withdraw from your vault on ${plan.entry.config.name} to your own wallet`,
+        plan.steps,
+        [],
+        plan.entry.provenance,
+      ),
+      request: req,
+    };
+  }
   throw new Refusal(501, `a ${req.type} order is not built yet`);
 }
 
-/** An order of steps that trade nothing: a publish or a follow. */
+/** An order of steps that trade nothing: a publish, a follow or a withdrawal. */
 function sharedOrder(
   ctx: PrepareContext,
   owner: Order['owner'],
-  type: 'publish' | 'follow',
+  type: 'publish' | 'follow' | 'withdraw',
   summary: string,
-  steps: { chain: ChainId; kind: Leg['kind']; description: string }[],
+  steps: {
+    chain: ChainId;
+    kind: Leg['kind'];
+    description: string;
+    withdrawals?: Leg['withdrawals'];
+  }[],
   needsConsent: Order['needsConsent'],
   provenance?: Leg['provenance'],
+  warnings: Order['warnings'] = [],
 ): Order {
   const id = randomUUID();
   const seqs = new Map<ChainId, number>();
@@ -529,6 +673,7 @@ function sharedOrder(
       seq,
       kind: step.kind,
       description: step.description,
+      ...(step.withdrawals ? { withdrawals: step.withdrawals } : {}),
       trades: [],
       signer: 'owner',
       expected: [],
@@ -550,7 +695,7 @@ function sharedOrder(
     // Written by the server: no word of the creator's text is in it.
     summary: type === 'publish' ? `${summary} on ${names}` : summary,
     legs,
-    warnings: [],
+    warnings,
     needsConsent,
     fees: [],
     preparedBy: ctx.principal.kind === 'service' ? 'mcp' : 'app',
@@ -614,15 +759,20 @@ async function prepareBuy(
       : `Buy ${usd(cents)} of your plan on ${entry.config.name}`,
     // Once, whatever the steps repeat: the approval and the deposit both carry it.
     depositRaw: plan.need.cashRaw,
+    // The vault it is for, kept with it: a step is built for this number whatever becomes of the plan.
+    basketId: plan.basketId,
     legs,
-    warnings: closed
-      ? [
-          {
-            code: 'MARKET_CLOSED',
-            text: 'The US stock market is closed now. You can still buy; stock tokens may trade at a wider price.',
-          },
-        ]
-      : [],
+    warnings: [
+      ...(closed
+        ? [
+            {
+              code: 'MARKET_CLOSED',
+              text: 'The US stock market is closed now. You can still buy; stock tokens may trade at a wider price.',
+            },
+          ]
+        : []),
+      ...(plan.warnings ?? []),
+    ],
     needsConsent: [],
     fees: [],
     preparedBy: ctx.principal.kind === 'service' ? 'mcp' : 'app',

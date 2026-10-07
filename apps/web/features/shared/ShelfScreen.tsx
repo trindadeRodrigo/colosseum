@@ -1,14 +1,20 @@
 'use client';
 import type { SharedFamily, SharedRecipe } from '@colosseum/schemas';
 import Link from 'next/link';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { Wait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardBody, CardEmpty, CardHeader, CardLoading } from '../../components/ui/Card';
+import { Card, CardBody, CardEmpty, CardHeader } from '../../components/ui/Card';
+import { ChainBadges } from '../../components/ui/ChainBadge';
+import { PAGE_TITLE } from '../../components/ui/heading';
+import { SkeletonCards } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { assetName, formatBps } from '../order/amounts';
+import { useAccount } from '../account/AccountProvider';
+import { chainInAddress } from '../account/chain-choice';
+import { formatBps, tokenName } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { networkFor } from '../order/readiness';
 import { useApiFetch } from '../wallet/WalletProvider';
@@ -18,9 +24,11 @@ import { shortAddress, useSharedPerson } from './use-person';
 
 // The shelf (DESIGN-VAULT section 11): a card per shared portfolio, with its name, its creator's
 // address, the platform badge, the version in effect and its weights, and whether auto-follow is
-// offered on it (gate GOLD-ONE-TAP). A signed-in person sees only the portfolios with a recipe on their
-// own chain (gate ONE-CHAIN). What a card says is the server's store: the portfolio's page reads the
-// chain. A creator's name and description are text, never markup or a link.
+// offered on it (gate GOLD-ONE-TAP). It shows the portfolios with a recipe on one chain: a signed-in
+// person's current chain, or the chain someone signed out picked in the bar (gate CHAIN-SWITCH). The
+// address names it (`?chain=robinhood`), so a link opens the same shelf. What a card says is the
+// server's store: the portfolio's page reads the chain. A creator's name and description are text,
+// never markup or a link.
 
 type Load =
   | { kind: 'loading' }
@@ -34,8 +42,29 @@ export function ShelfScreen() {
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [round, setRound] = useState(0);
   const titleId = useId();
-  const chain = person.kind === 'ready' ? person.chain : null;
+  const { chain: looking, choose } = useAccount();
+  const chain =
+    person.kind === 'ready' ? person.chain : person.kind === 'signed-out' ? looking : null;
   const settled = person.kind !== 'loading';
+
+  // The address names the chain: someone signed out who opens a link to another chain's shelf is
+  // moved to it, once; after that the address follows the chain the bar shows.
+  const adopted = useRef(false);
+  useEffect(() => {
+    if (!settled || !chain) return;
+    if (!adopted.current) {
+      adopted.current = true;
+      const named = chainInAddress(window.location.search);
+      if (person.kind === 'signed-out' && named && named !== chain) {
+        void choose(named);
+        return;
+      }
+    }
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('chain') === chain) return;
+    params.set('chain', chain);
+    window.history.replaceState(null, '', `${window.location.pathname}?${params}`);
+  }, [settled, chain, person.kind, choose]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `round` reads the shelf again
   useEffect(() => {
@@ -52,26 +81,48 @@ export function ShelfScreen() {
   }, [apiFetch, chain, settled, round]);
 
   const chainName = chain ? t.chain.names[chain] : null;
+  // Signed in when the page was read, signed out now: the person left while looking at it.
+  const wasIn = useRef(false);
+  const [left, setLeft] = useState(false);
+  useEffect(() => {
+    if (person.kind === 'ready') {
+      wasIn.current = true;
+      setLeft(false);
+    } else if (person.kind === 'signed-out' && wasIn.current) setLeft(true);
+  }, [person.kind]);
   return (
     <div data-ui="shelf-screen" className="flex flex-col gap-8">
       <header className="flex flex-col gap-3">
-        <h1 id={titleId} className="max-w-(--tf-measure-display) font-display text-h1 font-normal">
+        <h1 id={titleId} className={PAGE_TITLE}>
           {t.shared.shelf.title}
         </h1>
         <p className="max-w-(--tf-measure-body) text-body-lg">
           {chainName ? t.shared.shelf.lead(chainName) : t.shared.shelf.leadAll}
         </p>
-        {person.kind === 'ready' && (
+        {person.kind === 'ready' && person.publishable && (
           <Link href="/publish" className={`${buttonClass({ variant: 'link' })} self-start`}>
             {t.shared.shelf.publish}
           </Link>
         )}
+        {/* where a portfolio cannot be published yet, the shelf says so: no silent gap */}
+        {person.kind === 'ready' && !person.publishable && chainName && (
+          <p
+            data-ui="shelf-publish-soon"
+            className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground"
+          >
+            {t.shared.shelf.publishSoon(chainName)}
+          </p>
+        )}
+        {/* the bar says "signed out" to a screen reader; the page says it to the eye, with what it still shows */}
+        {left && person.kind === 'signed-out' && chainName && (
+          <p data-ui="shelf-signed-out" className="max-w-(--tf-measure-body) text-body-sm">
+            {t.shared.shelf.signedOut(chainName)}
+          </p>
+        )}
       </header>
 
       {load.kind === 'loading' ? (
-        <Card>
-          <CardLoading label={t.shared.shelf.loading} />
-        </Card>
+        <Wait label={t.shared.shelf.loading} skeleton={<SkeletonCards />} />
       ) : load.kind !== 'read' ? (
         <section aria-labelledby={titleId} className="flex flex-col items-start gap-4">
           <p className="max-w-(--tf-measure-body) text-body">
@@ -90,7 +141,7 @@ export function ShelfScreen() {
           <CardEmpty
             sentence={chainName ? t.shared.shelf.empty(chainName) : t.shared.shelf.emptyAll}
             action={
-              person.kind === 'ready' ? (
+              person.kind === 'ready' && person.publishable ? (
                 <Link href="/publish" className={buttonClass({ variant: 'link' })}>
                   {t.shared.shelf.publish}
                 </Link>
@@ -125,10 +176,9 @@ function FamilyCard({ family }: { family: SharedFamily }) {
       className="h-full"
       mock={notLive}
       mockLabels={{
-        announce: t.shell.mockAnnounce,
-        note: family.recipes.some((r) => r.provenance === 'sandbox')
-          ? t.shell.testNetwork
-          : undefined,
+        announce: family.recipes.some((r) => r.provenance === 'sandbox')
+          ? t.shell.testNetworkLine
+          : t.shell.mockAnnounce,
       }}
     >
       <CardHeader
@@ -156,7 +206,9 @@ function FamilyCard({ family }: { family: SharedFamily }) {
               recipe.chain,
               recipe.creator,
             ) && <span className="font-medium text-foreground">{c.platform}</span>}
-          <span>{c.on(family.chains.map((chain) => t.chain.names[chain]).join(', '))}</span>
+          <span className="inline-flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
+            {c.on} <ChainBadges chains={family.chains} />
+          </span>
         </p>
         {family.copy && (
           <p className="line-clamp-3 max-w-(--tf-measure-body) text-body-sm [overflow-wrap:anywhere]">
@@ -184,7 +236,7 @@ export function Weights({ recipe, locale }: { recipe: SharedRecipe; locale: stri
   return (
     <p className="font-mono text-source [overflow-wrap:anywhere]">
       {recipe.active.components
-        .map((c) => `${assetName(c.asset).toUpperCase()} ${formatBps(c.weightBps, locale)}`)
+        .map((c) => `${tokenName(c.asset)} ${formatBps(c.weightBps, locale)}`)
         .join(' · ')}
     </p>
   );
@@ -199,7 +251,7 @@ export function Offer({ recipe }: { recipe: SharedRecipe }) {
   const sentence = offer.offered
     ? o.offered
     : offer.reason === 'no_oracle'
-      ? o.noOracle(offer.assets.map((a) => assetName(a).toUpperCase()).join(', '), name)
+      ? o.noOracle(offer.assets.map((a) => tokenName(a)).join(', '), name)
       : o.switchedOff(name);
   return (
     <p

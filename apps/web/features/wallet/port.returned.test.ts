@@ -24,6 +24,8 @@ import { createTestDriver } from './test/test-driver';
 // is checked against what was sent before anything is returned as signed. From the review of WAL-1.
 
 /** The port over a driver that misbehaves in one way. */
+/** The call alone, without the nonce, gas and fee the server stated: for a signer that sets its own. */
+const callOf = ({ to, data, value, chainId }: EvmRequest) => ({ to, data, value, chainId });
 const over = (driver: WalletDriver, wrong: Partial<WalletDriver>) =>
   createWalletPort({ ...driver, ...wrong }, chains);
 
@@ -290,6 +292,34 @@ describe('EVM: what the wallet hands back is checked before it is returned as si
     expect(chains.solana.feeCeilingRaw).toBeNull();
   });
 
+  it('hands a wallet that fills in nothing the stated nonce, gas and fee, as Privy’s embedded one', async () => {
+    const { driver } = await signedIn();
+    const account = privateKeyToAccount(generatePrivateKey());
+    // Signs exactly the fields it is given, as Privy's embedded wallet does (WEB-RH-BUY, Oct 6).
+    const literal = over(driver, {
+      accounts: [{ family: 'evm', address: account.address, kind: 'embedded' }],
+      signEvm: (_address, request) => account.signTransaction({ type: 'eip1559', ...request }),
+    });
+    const owner = account.address.toLowerCase();
+    const stated = evmTx(owner, 'robinhood', {
+      evm: { to: OTHER_EVM, value: '7', chainId: 46630, nonce: 3, gas: 60_000 },
+    });
+    const [signed] = await literal.sign('robinhood', [stated]);
+    const parsed = parseTransaction(signed as `0x${string}`);
+    // a tip of zero is written as nothing, and read back as none
+    expect([parsed.nonce, parsed.gas, parsed.maxPriorityFeePerGas ?? 0n]).toEqual([3, 60_000n, 0n]);
+    expect(parsed.maxFeePerGas).toBe(BigInt(DEFAULT_EVM_FEE) / 60_000n);
+    // gas times price is the fee the server stated, under the ceiling
+    expect((parsed.gas ?? 0n) * (parsed.maxFeePerGas ?? 0n)).toBeLessThanOrEqual(
+      BigInt(DEFAULT_EVM_FEE),
+    );
+    // a transaction that states no gas leaves it with none, and what it signs is refused
+    expect(await reasonOf(literal.sign('robinhood', [evmTx(owner)]))).toEqual([
+      'changed',
+      'changed',
+    ]);
+  });
+
   it('accepts a legacy transaction, and holds its fee the same way', async () => {
     const { driver, evm } = await signedIn();
     const key = generatePrivateKey();
@@ -297,7 +327,13 @@ describe('EVM: what the wallet hands back is checked before it is returned as si
     const legacy = (gasPrice: bigint): Partial<WalletDriver> => ({
       accounts: [{ family: 'evm', address: account.address, kind: 'embedded' }],
       signEvm: (_address, request) =>
-        account.signTransaction({ type: 'legacy', ...request, nonce: 0, gas: 21_000n, gasPrice }),
+        account.signTransaction({
+          type: 'legacy',
+          ...callOf(request),
+          nonce: 0,
+          gas: 21_000n,
+          gasPrice,
+        }),
     });
     const tx = evmTx(account.address.toLowerCase());
     const [signed] = await over(driver, legacy(1_000_000_000n)).sign('robinhood', [tx]);
@@ -321,7 +357,7 @@ describe('EVM: what the wallet hands back is checked before it is returned as si
       (request) =>
         account.signTransaction({
           type: 'eip7702',
-          ...request,
+          ...callOf(request),
           ...base,
           ...price,
           authorizationList: [
@@ -336,9 +372,21 @@ describe('EVM: what the wallet hands back is checked before it is returned as si
           ],
         }),
       (request) =>
-        account.signTransaction({ type: 'eip2930', ...request, ...base, gasPrice: 1n, accessList }),
+        account.signTransaction({
+          type: 'eip2930',
+          ...callOf(request),
+          ...base,
+          gasPrice: 1n,
+          accessList,
+        }),
       (request) =>
-        account.signTransaction({ type: 'eip1559', ...request, ...base, ...price, accessList }),
+        account.signTransaction({
+          type: 'eip1559',
+          ...callOf(request),
+          ...base,
+          ...price,
+          accessList,
+        }),
     ];
     for (const signEvm of signers) {
       const port = over(driver, {

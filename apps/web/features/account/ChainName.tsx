@@ -1,8 +1,9 @@
-import type { Provenance } from '@colosseum/schemas';
+import type { ChainId, Provenance } from '@colosseum/schemas';
+import { ChainBadge } from '../../components/ui/ChainBadge';
 import { MockPlate } from '../../components/ui/MockPlate';
 
 // A chain's name as a screen shows it, with what a person has to know about where it runs. A chain the
-// API runs on the mock, and a chain on a test network, are not live: the name carries the MOCK plate,
+// API runs on the mock, and a chain on a test network, are not live: the name carries the sample glyph,
 // and a test network adds the words (DESIGN-VAULT section 11, "Test networks"). Only `live` has no
 // mark; a label this build does not know is shown as not live.
 
@@ -21,7 +22,7 @@ export function ChainMark({ provenance, labels, announce = true }: ChainMarkProp
   if (provenance === 'live') return null;
   return (
     <span data-ui="chain-mark" className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
-      <MockPlate announce={announce} labels={{ announce: labels.mockAnnounce }} />
+      <MockPlate announce={announce} labels={{ figure: labels.mockAnnounce }} />
       {provenance === 'sandbox' && (
         <span className="text-caption text-muted-foreground">{labels.testNetwork}</span>
       )}
@@ -34,6 +35,16 @@ export function ChainName({ name, ...mark }: ChainMarkProps & { name: string }) 
   return (
     <span data-ui="chain-name" className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
       <span>{name}</span>
+      <ChainMark {...mark} />
+    </span>
+  );
+}
+
+/** The chain's badge, then the mark: where a screen names the chain a plan or a vault is on. */
+export function ChainBadgeMarked({ chain, ...mark }: ChainMarkProps & { chain: ChainId }) {
+  return (
+    <span data-ui="chain-name" className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+      <ChainBadge chain={chain} />
       <ChainMark {...mark} />
     </span>
   );

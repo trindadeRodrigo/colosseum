@@ -9,17 +9,21 @@ import type { PinSource } from '../../components/ui/provenance';
 import { type ApiFetch, signInRefusal } from '../account/person';
 
 // What the monitor and the home page read of a person's vaults: GET /v1/portfolio, the one route the
-// API has for it (DESIGN-VAULT 3.3). It answers for the one chain the person's plans live on, with
-// each vault's holdings, their value, weight and drift, and the prices they were valued at. Nothing
+// API has for it (DESIGN-VAULT 3.3). It answers an entry per chain, the person's own chain among them,
+// with each vault's holdings, their value, weight and drift, and the prices they were valued at.
+// Today the API answers the person's chain alone; a person with vaults on two chains is read the same
+// way, and the screens keep each chain's figures apart. Nothing
 // here works a figure out: value, weight and drift are the API's (packages/basket), and a figure's
 // source, time and method are handed on to its pin as they came.
 //
 //   GET /v1/portfolio
-//   200     { chains: [{ chain, name, mode, provenance, vaults, prices }], disclaimer }
+//   200     { chains: [{ chain, name, mode, provenance, vaults, prices }], unavailable, disclaimer }
+//           `unavailable`: the person's chains that could not be read this time, each with why; the
+//           others are answered all the same
 //   401/403 the server does not know this sign-in, or was sent no identity token
 //   409     no chain is chosen yet (or the chain refused the read: `details.chainCode`)
 //   429     it asked for fewer requests
-//   503     the chain is switched off here, or did not answer
+//   503     none of the person's chains could be read
 //
 // A server without the route answers 404, and the screen says it cannot read vaults: it shows no
 // holdings in their place.
@@ -27,11 +31,22 @@ import { type ApiFetch, signInRefusal } from '../account/person';
 export const PORTFOLIO_PATH = '/v1/portfolio';
 
 export type PortfolioChain = PortfolioResponse['chains'][number];
+export type UnavailableChain = PortfolioResponse['unavailable'][number];
 export type Vault = PortfolioChain['vaults'][number];
 export type Position = Vault['positions'][number];
 
 export type PortfolioOutcome =
-  | { kind: 'read'; chain: PortfolioChain }
+  /**
+   * Every chain the API could read, the person's current chain first when it is among them; the
+   * chains it could not read, with why; and where the current chain stands: read, unavailable this
+   * time, or not held in this sign-in (no wallet of theirs signs there, so nothing was asked of it).
+   */
+  | {
+      kind: 'read';
+      chains: PortfolioChain[];
+      unavailable: UnavailableChain[];
+      current: 'read' | 'unavailable' | 'not-held';
+    }
   /** The route is not there: this server cannot read vaults. */
   | { kind: 'unavailable' }
   /** The server does not know this sign-in any more (401), or does not let it read (403). */
@@ -79,10 +94,21 @@ export async function readPortfolio(apiFetch: ApiFetch, chain: ChainId): Promise
   if (!res.ok) return { kind: 'unreachable' };
   const parsed = PortfolioResponse.safeParse(body);
   if (!parsed.success) return { kind: 'unreadable' };
-  const [only, ...more] = parsed.data.chains;
-  if (!only || more.length > 0 || only.chain !== chain) return { kind: 'unreadable' };
-  if (only.vaults.some((vault) => vault.chain !== chain)) return { kind: 'unreadable' };
-  return { kind: 'read', chain: only };
+  const entries = parsed.data.chains;
+  const { unavailable } = parsed.data;
+  // A chain twice, read and unavailable at once, or a vault filed under a chain it is not on.
+  const named = [...entries.map((entry) => entry.chain), ...unavailable.map((u) => u.chain)];
+  if (new Set(named).size !== named.length) return { kind: 'unreadable' };
+  if (entries.some((entry) => entry.vaults.some((vault) => vault.chain !== entry.chain)))
+    return { kind: 'unreadable' };
+  // The chains that were read are shown, whatever happened to the current one.
+  const own = entries.find((entry) => entry.chain === chain);
+  return {
+    kind: 'read',
+    chains: own ? [own, ...entries.filter((entry) => entry !== own)] : entries,
+    unavailable,
+    current: own ? 'read' : unavailable.some((u) => u.chain === chain) ? 'unavailable' : 'not-held',
+  };
 }
 
 /**
@@ -141,9 +167,84 @@ export function vaultValueSource(chain: PortfolioChain, vault: Vault, method: st
   };
 }
 
+/**
+ * Decimal strings added up exactly, as a decimal string: `1040` and `20.5` make `1060.5`. A chain's
+ * total is its vaults' values added; nothing is added across chains unless a screen says so.
+ */
+export function addDecimals(values: readonly string[]): string {
+  const places = Math.max(0, ...values.map((v) => v.split('.')[1]?.length ?? 0));
+  const sum = values.reduce((total, v) => {
+    const [whole = '0', part = ''] = v.split('.');
+    return total + BigInt(whole + part.padEnd(places, '0'));
+  }, 0n);
+  if (places === 0) return sum.toString();
+  const digits = sum.toString().padStart(places + 1, '0');
+  const fraction = digits.slice(-places).replace(/0+$/, '');
+  return fraction ? `${digits.slice(0, -places)}.${fraction}` : digits.slice(0, -places);
+}
+
+/**
+ * The pin of a sum of values: the sources of every part, the oldest of their times, the label that
+ * is not live if any is, the age of the oldest stale part, and the sum's own method.
+ */
+export function sumSource(parts: readonly PinSource[], method: string): PinSource {
+  const sources = [...new Set(parts.flatMap((p) => p.source.split(' + ')))];
+  const times = parts.map((p) => p.fetchedAt);
+  const stale = parts.flatMap((p) => (p.staleAgeSec == null ? [] : [p.staleAgeSec]));
+  return {
+    source: sources.join(' + '),
+    fetchedAt: times.reduce((a, b) => (Date.parse(b) < Date.parse(a) ? b : a)),
+    method,
+    provenance: parts.reduce<Provenance>((label, p) => worst(label, p.provenance), 'live'),
+    staleAgeSec: stale.length > 0 ? Math.max(...stale) : null,
+  };
+}
+
+/** A chain's vaults, worth: their values added, with the pin of that sum. */
+export function chainTotal(
+  chain: PortfolioChain,
+  valueMethod: string,
+  method: string,
+): { valueUsd: string; obs: PinSource } {
+  return {
+    valueUsd: addDecimals(chain.vaults.map((vault) => vault.valueUsd)),
+    obs: sumSource(
+      chain.vaults.map((vault) => vaultValueSource(chain, vault, valueMethod)),
+      method,
+    ),
+  };
+}
+
+/** A row of what a vault holds: a position, or its cash. */
+export type HoldingRow = Position & { cash?: true };
+
+/**
+ * What a vault holds, cash included, so the shares add up to the whole (the flow audit, finding 28):
+ * its positions as the API answered them, then its cash as a row like any other. The cash's share is
+ * what the positions leave of the vault, and its planned share what their targets leave; its value is
+ * its amount, at one dollar, as the vault's own value counts it.
+ */
+export function holdingsOf(vault: Vault): HoldingRow[] {
+  if (vault.positions.some((position) => position.asset === vault.cash.asset))
+    return vault.positions;
+  const held = vault.positions.reduce((sum, p) => sum + p.weightBps, 0);
+  const targeted = vault.positions.reduce((sum, p) => sum + p.targetBps, 0);
+  const weightBps = Number(vault.valueUsd) > 0 ? Math.max(0, 10_000 - held) : 0;
+  const targetBps = Math.max(0, 10_000 - targeted);
+  return [
+    ...vault.positions,
+    {
+      ...vault.cash,
+      targetBps,
+      lastKeeperAt: null,
+      valueUsd: vault.cash.display,
+      weightBps,
+      driftBps: weightBps - targetBps,
+      cash: true,
+    },
+  ];
+}
+
 /** How many holdings the value leaves out, because the API had no price for them. */
 export const unpriced = (vault: Vault): number =>
   vault.positions.filter((position) => position.valueUsd === null).length;
-
-/** How an asset is named in a row: the part of its id after the chain, as a ticker. */
-export const assetName = (asset: string): string => (asset.split(':')[1] ?? asset).toUpperCase();

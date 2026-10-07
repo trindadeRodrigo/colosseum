@@ -1,5 +1,5 @@
 'use client';
-import type { ChainId } from '@colosseum/schemas';
+import { ChainId } from '@colosseum/schemas';
 import {
   createContext,
   type ReactNode,
@@ -13,13 +13,30 @@ import {
 import { remember } from '../../components/shell/remember';
 import { SIGNED_IN_COOKIE } from '../../i18n';
 import { forgetGoalDraft } from '../goal/draft';
-import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
-import { fetchPerson, localPerson, type Person, PersonError, storeChain } from './person';
+import { forgetEveryOrder, forgetOrders } from '../order/order-record';
+import { forgetPlans } from '../order/plan-store';
+import {
+  useApiFetch,
+  useLeaveHere,
+  useOustedPerson,
+  useWalletPort,
+  useWalletRestart,
+} from '../wallet/WalletProvider';
+import { chainInAddress, FIRST_CHAIN, recallChain, rememberChain } from './chain-choice';
+import {
+  fetchPerson,
+  HOME_CHAIN,
+  localPerson,
+  type Person,
+  PersonError,
+  storeChain,
+} from './person';
 
-// The signed-in person and the one chain their plan lives on, for every product screen. The chain is
-// the API's to say (GET /v1/me): the chain of the outside wallet a person connected, or the one they
-// chose when they made a wallet here. It is asked for once per person, and read again on every
-// device, so a second device lands on the same chain without asking.
+// The signed-in person and their current chain, for every product screen (gate CHAIN-SWITCH). The
+// current chain is where a new plan is made; a plan already made stays on its own. It is the API's to
+// say (GET /v1/me): the chain of the outside wallet a person connected, or the one they chose. A person
+// who made their wallets here is not asked: they start on the chain they were looking at, and switch
+// from the bar. Someone signed out has a chain too, the one they are looking at, kept in this browser.
 
 export type Account =
   /** The wallet is loading, or the API is being asked. */
@@ -36,48 +53,134 @@ export type Account =
    * made, or none is linked to the sign-in.
    */
   | { status: 'no-wallet' }
-  /** A wallet made here, and no chain chosen yet: the one time it is asked. */
-  | { status: 'needs-chain'; options: ChainId[] }
-  | { status: 'ready'; chain: ChainId; source: 'picked' | 'wallet' };
+  /**
+   * The current chain, and the chains a wallet of the person's signs on, which they may switch to: an
+   * EVM wallet alone signs on Robinhood Chain only.
+   */
+  | { status: 'ready'; chain: ChainId; source: 'picked' | 'wallet'; options: ChainId[] };
 
-export type Unknown = 'unreachable' | 'signed_out' | 'no_identity' | 'busy';
+/**
+ * `off`: every chain a wallet of theirs signs on is switched off on our server, so none can be started
+ * on. `refused`: the server would not start them on the chain asked for (409 `NO_WALLET_FOR_CHAIN`,
+ * 422): it does not take that chain for these wallets.
+ */
+export type Unknown = 'unreachable' | 'signed_out' | 'no_identity' | 'busy' | 'off' | 'refused';
+
+/**
+ * Someone signed in has waited this long and is not ready: they are told, and not left looking at
+ * "Reading…". Nothing is asked again by itself: a sign-in service that answered 429 is left alone
+ * until the person presses "Try again", and each press waits twice as long as the one before.
+ */
+export const SLOW_MS = 15_000;
+/**
+ * How long the bar waits for the sign-in service before it offers "Sign in" anyway to someone nobody
+ * knows to be signed in. A service that never loads (a blocker, a network that drops it) must not
+ * leave the bar with no way in.
+ */
+export const WAY_IN_MS = 4_000;
+const SLOWEST_MS = 120_000;
+
+/**
+ * Which side has not answered: `wallets`, the sign-in service has not handed over the session's
+ * wallets; `server`, ours has not said who this is (GET /v1/me, or the chain being stored).
+ */
+export type Slow = {
+  /**
+   * `service`: nobody is known to be signed in, because the sign-in service has not loaded at all.
+   */
+  side: 'wallets' | 'server' | 'service';
+  trying: boolean;
+  /** "Try again" was not done: a step of an order is being signed, and is finished or cancelled first. */
+  held: boolean;
+};
 
 export type AccountValue = {
   account: Account;
   /**
+   * Set while someone signed in is still not ready after `SLOW_MS`. `trying`: they pressed "Try
+   * again" and its wait is not over.
+   */
+  slow: Slow | null;
+  /** Reads the wallets and the person again, with no reload of the page. */
+  again(): void;
+  /**
+   * Signs out as far as this browser can when the sign-in service names nobody and cannot be asked:
+   * forgets the signed-in hint and what was kept for the person, and shows the visitor's way in.
+   * The wallet provider keeps back any port that names a person from then on, and signs them out at
+   * the service when it loads (WalletProvider, `useLeaveHere`).
+   */
+  leave(): void;
+  /**
+   * The sign-in service has not loaded after `WAY_IN_MS`, and nobody is known to be signed in: the
+   * bar offers "Sign in" as to a visitor, and the sign-in screen says the service has not answered.
+   */
+  stalled: boolean;
+  /**
    * The person is the throwaway wallet of development: the API has no account for them, so their
-   * chain is worked out here and kept only while the page is open. Shown with the MOCK plate.
+   * chain is worked out here and kept only while the page is open. Shown with the sample glyph.
    */
   mock: boolean;
-  /** Stores the choice. Throws a `PersonError` whose kind says why it was not stored. */
-  pick(chain: ChainId): Promise<void>;
   /**
-   * The chain this person tried to choose when another had been stored before, on another device or
-   * in another tab. The account then says where the plan does live, and the screen says why the
-   * choice was not kept. Null otherwise.
+   * The chain a screen shows and builds on: the current chain of someone signed in, the chain someone
+   * signed out is looking at. Null while the person is signed in and their chain is not known.
    */
-  overruled: ChainId | null;
+  chain: ChainId | null;
+  /**
+   * Switches it. Signed in, the API stores it, and a `PersonError` says why it was not stored;
+   * signed out, this browser keeps it.
+   */
+  choose(chain: ChainId): Promise<void>;
   /** Asks the API again, after it did not answer. */
   retry(): void;
 };
 
 const AccountContext = createContext<AccountValue | null>(null);
 
+/** The hint says someone was signed in here when the page was last open. False on the server. */
+function signedInHint(): boolean {
+  if (typeof document === 'undefined') return false;
+  return document.cookie.split(';').some((pair) => pair.trim() === `${SIGNED_IN_COOKIE}=1`);
+}
+
 type Read = { key: string; person: Person | null; why?: Unknown };
 
 /** Why the API did not say who is signed in, as far as a person can do something about it. */
-const whyNot = (e: unknown): Unknown =>
-  e instanceof PersonError &&
-  (e.kind === 'signed_out' || e.kind === 'no_identity' || e.kind === 'busy')
-    ? e.kind
-    : 'unreachable';
+const whyNot = (e: unknown): Unknown => {
+  if (!(e instanceof PersonError)) return 'unreachable';
+  if (e.kind === 'signed_out' || e.kind === 'no_identity' || e.kind === 'busy') return e.kind;
+  return e.kind === 'no_wallet' || e.kind === 'not_offered' ? 'refused' : 'unreachable';
+};
 
 export function AccountProvider({ children }: { children: ReactNode }) {
   const port = useWalletPort();
   const apiFetch = useApiFetch();
+  const restart = useWalletRestart();
+  const leaveHere = useLeaveHere();
+  // Someone who signed out here while the service was silent, now out at the service too: what this
+  // browser kept under their id since the press (another tab of theirs may have) goes with them.
+  const ousted = useOustedPerson();
+  useEffect(() => {
+    if (ousted) forgetOrders(ousted.userId);
+  }, [ousted]);
   const [read, setRead] = useState<Read | null>(null);
   const [round, setRound] = useState(0);
-  const [refused, setRefused] = useState<{ key: string; tried: ChainId } | null>(null);
+  // The chain someone signed out is looking at: the address's, else this browser's, else the first.
+  // Read as the provider is made, before any screen reads it or writes the address. Nothing shows it
+  // while the wallet loads, so the server's page and the browser's first one are the same.
+  const [browsing, setBrowsing] = useState<ChainId>(() =>
+    typeof window === 'undefined'
+      ? FIRST_CHAIN
+      : (chainInAddress(window.location.search) ?? recallChain() ?? FIRST_CHAIN),
+  );
+  const looking = useRef(browsing);
+  looking.current = browsing;
+  // The throwaway wallet's chain, chosen in this tab: it has no account on the API to keep it.
+  const testPick = useRef<ChainId | null>(null);
+  // A chain the address named is the one this browser is on now.
+  useEffect(() => {
+    const named = chainInAddress(window.location.search);
+    if (named) rememberChain(named);
+  }, []);
 
   // Who is signed in, with which wallets. A new person or a new wallet is read again; the same ones
   // are not, however often the port is rebuilt.
@@ -89,13 +192,24 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   latest.current = { port, apiFetch, key };
 
   // What a person typed is theirs: when they sign out, or another person signs in, the draft kept in
-  // the tab is forgotten. A person who was signed out and signs in keeps what they typed.
+  // the tab is forgotten. A person who was signed out and signs in keeps what they typed, and so does
+  // one whose wallet provider is loading again ("Try again"): nobody is known then, and nobody left.
   const who = port.userId;
+  const out = port.status === 'signed-out';
   const before = useRef(who);
   useEffect(() => {
-    if (before.current !== null && before.current !== who) forgetGoalDraft();
+    // Loading again and naming nobody: nothing of the person's is forgotten, their order's record
+    // least of all ("Try again" pressed on an order's page).
+    if (who === null && !out) return;
+    if (before.current !== null && before.current !== who) {
+      forgetGoalDraft();
+      // and the plans and order records this browser kept for them: the server has them, for when
+      // they sign in again. The trust acceptance stays: it holds no figure (order-record.ts).
+      forgetPlans();
+      forgetOrders(before.current);
+    }
     before.current = who;
-  }, [who]);
+  }, [who, out]);
 
   // The landing page sends a person signed in here to their goal, from this hint. Only a settled port
   // changes it: while it loads, nothing is known.
@@ -113,45 +227,50 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     const done = (person: Person | null, why?: Unknown) => {
       if (live) setRead({ key, person, why });
     };
-    if (now.test) done(localPerson(now.userId ?? 'test', now.accounts, null));
+    if (now.test) done(localPerson(now.userId ?? 'test', now.accounts, testPick.current));
     else fetchPerson(call).then(done, (e: unknown) => done(null, whyNot(e)));
     return () => {
       live = false;
     };
   }, [key, round]);
 
-  const pick = useCallback(
+  const choose = useCallback(
     async (chain: ChainId) => {
+      if (key === null) {
+        rememberChain(chain);
+        setBrowsing(chain);
+        return;
+      }
       const { port: now, apiFetch: call } = latest.current;
-      if (key === null) throw new PersonError('signed_out');
       if (now.test) {
+        testPick.current = chain;
         setRead({ key, person: localPerson(now.userId ?? 'test', now.accounts, chain) });
         return;
       }
+      const person = await storeChain(call, chain);
       // An answer is this person's only while they are still the one signed in.
-      const mine = () => latest.current.key === key;
-      try {
-        const person = await storeChain(call, chain);
-        if (mine()) setRead({ key, person });
-      } catch (e) {
-        // Chosen before, on another device or in another tab: read where the plan does live, so the
-        // screen can name that chain and not the one just tried.
-        if (e instanceof PersonError && e.kind === 'taken') {
-          let why: Unknown | undefined;
-          const person = await fetchPerson(call).catch((again: unknown) => {
-            why = whyNot(again);
-            return null;
-          });
-          if (mine()) {
-            setRefused({ key, tried: chain });
-            setRead({ key, person, why });
-          }
-        }
-        throw e;
-      }
+      if (latest.current.key === key) setRead({ key, person });
     },
     [key],
   );
+
+  // A person with wallets and no chain yet (they made their wallets here, or connected wallets of
+  // both families) starts on the chain they were looking at, where a wallet of theirs signs and our
+  // server runs. Not asked: they switch from the bar. When it cannot be stored, the account says why.
+  const person = read?.key === key ? read.person : null;
+  useEffect(() => {
+    if (!person || person.chain || person.chainOptions.length === 0 || key === null) return;
+    const on = person.chainOptions.filter((c) => latest.current.port.network(c)?.on !== false);
+    const start = on.includes(looking.current) ? looking.current : on[0];
+    if (!start) {
+      setRead({ key, person: null, why: 'off' });
+      return;
+    }
+    choose(start).catch((e: unknown) => {
+      if (latest.current.key === key) setRead({ key, person: null, why: whyNot(e) });
+    });
+  }, [person, key, choose]);
+
   const retry = useCallback(() => {
     setRead(null);
     setRound((n) => n + 1);
@@ -166,16 +285,114 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     if (!read || read.key !== key) return { status: 'loading' };
     const person = read.person;
     if (!person) return { status: 'unknown', why: read.why ?? 'unreachable' };
-    if (person.chain)
-      return { status: 'ready', chain: person.chain, source: person.chainSource ?? 'picked' };
+    if (person.chain) {
+      // The chains a wallet of theirs signs on, as the API says (`chainOptions`); worked out from the
+      // wallets it read when it lists none, as an API from before CHAIN-SWITCH does once there is a chain.
+      const held = new Set(person.wallets.map((w) => HOME_CHAIN[w.family]));
+      return {
+        status: 'ready',
+        chain: person.chain,
+        source: person.chainSource ?? 'picked',
+        options: person.chainOptions.length
+          ? person.chainOptions
+          : ChainId.options.filter((c) => held.has(c)),
+      };
+    }
     if (person.chainOptions.length === 0) return { status: 'no-wallet' };
-    return { status: 'needs-chain', options: person.chainOptions };
+    // The chain they start on is being stored.
+    return { status: 'loading' };
   }, [port.status, port.walletsOwed, key, read]);
 
-  const overruled = refused !== null && refused.key === key ? refused.tried : null;
+  // Signed in and not ready: the wallets are loading, or our server has not answered. Once someone was
+  // seen signed in, a wallet provider that loads again still counts, until it says they are out.
+  // Someone who reloads is known before the provider says so, by the hint this app keeps while a
+  // person is signed in (`SIGNED_IN_COOKIE`): they are never shown "Sign in" while it loads.
+  const seen = useRef<boolean | null>(null);
+  if (seen.current === null) seen.current = signedInHint();
+  if (port.userId !== null) seen.current = true;
+  else if (port.status === 'signed-out') seen.current = false;
+  // And nobody known at all: the sign-in service has not loaded, so it has not said who is here.
+  const nobody = port.status === 'loading' && port.userId === null && !seen.current;
+  const waiting = account.status === 'loading';
+  const side = port.status === 'ready' ? 'server' : nobody ? 'service' : 'wallets';
+  const [stalled, setStalled] = useState(false);
+  useEffect(() => {
+    if (!nobody) return setStalled(false);
+    const timer = setTimeout(() => setStalled(true), WAY_IN_MS);
+    return () => clearTimeout(timer);
+  }, [nobody]);
+  // The way out for someone the hint says was signed in, when the sign-in service cannot be reached
+  // to sign them out: the hint and what this browser kept for them go, and they are a visitor, with
+  // the visitor's way in at once. What the service holds of their session is its own to end.
+  const [, setLeft] = useState(0);
+  const leave = useCallback(() => {
+    remember(SIGNED_IN_COOKIE, null);
+    leaveHere();
+    forgetGoalDraft();
+    forgetPlans();
+    // nobody is known, so every record goes, whoever it was kept for
+    forgetEveryOrder();
+    before.current = null;
+    seen.current = false;
+    setStalled(true);
+    setLeft((n) => n + 1);
+  }, [leaveHere]);
+  const [tries, setTries] = useState(0);
+  const [late, setLate] = useState(false);
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    if (!waiting) {
+      setTries(0);
+      setLate(false);
+      setHeld(false);
+      return;
+    }
+    const timer = setTimeout(() => setLate(true), Math.min(SLOW_MS * 2 ** tries, SLOWEST_MS));
+    return () => clearTimeout(timer);
+  }, [waiting, tries]);
+  const slow = useMemo(
+    (): Slow | null => (waiting && (late || tries > 0) ? { side, trying: !late, held } : null),
+    [waiting, late, tries, side, held],
+  );
+  // The wallets are read again by mounting their provider again; the person, by asking our server
+  // again. A second press does both: the token our server is waiting for comes from that provider,
+  // and our server is asked only once the new one has its wallets and tokens (there is no person to
+  // ask about while it loads). Not while an order is being run: the press is refused, and says so.
+  const again = useCallback(() => {
+    if ((side !== 'server' || tries > 0) && !restart()) {
+      setHeld(true);
+      return;
+    }
+    setHeld(false);
+    if (side === 'server') retry();
+    setLate(false);
+    setTries((n) => n + 1);
+  }, [side, tries, restart, retry]);
+
+  // Signed out later, the person goes on looking at the chain they were on.
+  const current = account.status === 'ready' ? account.chain : null;
+  useEffect(() => {
+    if (!current) return;
+    rememberChain(current);
+    setBrowsing(current);
+  }, [current]);
+
+  // A visitor the sign-in service never answered for browses as one signed out: the chain is theirs
+  // to look at and to switch.
+  const chain = current ?? (account.status === 'signed-out' || stalled ? browsing : null);
   const value = useMemo(
-    () => ({ account, mock: port.test, pick, retry, overruled }),
-    [account, port.test, pick, retry, overruled],
+    () => ({
+      account,
+      slow,
+      again,
+      leave,
+      stalled,
+      mock: port.test,
+      chain,
+      choose,
+      retry,
+    }),
+    [account, slow, again, leave, stalled, port.test, chain, choose, retry],
   );
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;
 }

@@ -185,10 +185,12 @@ describe('a shared portfolio read from the chain by this app', () => {
     const mark = find(host, '[data-ui="source-mark"]');
     expect(mark.getAttribute('data-source')).toBe('chain');
     expect(mark.textContent).toContain(en.shared.check.differs('Solana'));
+    // a check that found something wrong opens the fold over who published it by itself
+    expect(find<HTMLDetailsElement>(host, '[data-ui="family-checks"]').open).toBe(true);
     // the chain's version 3 at 50/25/25, not the server's version 2 at 40/30/30
     expect(host.textContent).toContain(en.shared.family.versionN(3));
     const legs = find(host, '[data-ui="plan-legs"]').textContent ?? '';
-    for (const part of ['SPYX', '50%', 'NVDAX', '25%', 'TSLAX']) expect(legs).toContain(part);
+    for (const part of ['SPYx', '50%', 'NVDAx', '25%', 'TSLAx']) expect(legs).toContain(part);
     expect(legs).not.toContain('40%');
   });
 
@@ -247,7 +249,7 @@ describe('a shared portfolio read from the chain by this app', () => {
     await settle(50);
     await click(find(host, 'input[type="checkbox"]'));
     const review = [...host.querySelectorAll<HTMLElement>('button')].find((b) =>
-      b.textContent?.includes(en.shared.buy.review('$10')),
+      b.textContent?.includes(en.buy.review('$10')),
     );
     await click(review as HTMLElement);
     await settle(50);
@@ -315,7 +317,7 @@ describe('a shared portfolio this app could read from the chain and could not', 
     await settle(50);
     await click(find(host, 'input[type="checkbox"]'));
     const review = [...host.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
-      b.textContent?.includes(en.shared.buy.review('$10')),
+      b.textContent?.includes(en.buy.review('$10')),
     );
     expect(review?.getAttribute('aria-disabled')).toBe('true');
     expect(host.textContent).toContain(tampered);
@@ -349,6 +351,37 @@ describe('a shared portfolio this app could read from the chain and could not', 
 });
 
 describe('a shared portfolio the chain does not hold', () => {
+  it('says on Robinhood Chain that this app does not read its registry yet, node or no node', async () => {
+    // a node is set for the chain: the reason is still that nothing here reads an EVM registry
+    process.env.NEXT_PUBLIC_CHAIN_READ_RPC_ROBINHOOD = 'https://node.example/robinhood';
+    portStore.setApi(async (path) => {
+      if (path === '/v1/me') return json({ ...person, chain: 'robinhood' });
+      if (path.startsWith('/v1/indexes/') && !path.includes('versions'))
+        return json({
+          family: familyOf(FAMILY_ID, {
+            recipes: [recipeOf({ chain: 'robinhood', name: 'Robinhood Chain' })],
+            chains: ['robinhood'],
+          }),
+          disclaimer: 'd',
+        });
+      if (path === '/v1/portfolio') return json({ chains: [], disclaimer: 'd' });
+      return json({ error: 'no' }, 404);
+    });
+    try {
+      const host = await mount(withAccount('en', createElement(FamilyScreen, { slug: SLUG })));
+      for (let i = 0; i < 5; i += 1) await settle(50);
+      const mark = find(host, '[data-ui="source-mark"]');
+      expect(mark.getAttribute('data-source')).toBe('api');
+      expect(mark.textContent).toContain(
+        en.shared.check.unverified['no-reader']('Robinhood Chain'),
+      );
+      expect(mark.textContent).not.toContain('no node of its own');
+      expect(NODE.asked).toEqual([]);
+    } finally {
+      delete process.env.NEXT_PUBLIC_CHAIN_READ_RPC_ROBINHOOD;
+    }
+  });
+
   it('blocks the buy, and the mark says the chain was read and holds no such portfolio', async () => {
     NODE_HOLDS.none = true;
     const host = await mount(withAccount('en', createElement(FamilyScreen, { slug: SLUG })));

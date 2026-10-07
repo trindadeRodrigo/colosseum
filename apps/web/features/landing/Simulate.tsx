@@ -15,7 +15,8 @@ import { GOAL_TEXT } from '../goal/read-goal';
 // is handed to the goal screen (`/goal`), which reads it into limits the person can check, before
 // they sign in. So there is no made-up plan on this page, only the real reader one step on.
 
-export function Simulate() {
+/** `signedIn`: a person signed in on this browser is not asked to sign in. */
+export function Simulate({ signedIn = false }: { signedIn?: boolean }) {
   const d = useT();
   const t = d.landing.sim;
   const lang = useLang();
@@ -46,7 +47,7 @@ export function Simulate() {
           <p className="font-mono text-[12px] font-medium tracking-[0.06em] text-primary">
             {t.eyebrow}
           </p>
-          <h2 className="mt-2.5 mb-3 font-display text-[clamp(1.8rem,1.3rem+1.6vw,2.6rem)]/[1.15] font-normal">
+          <h2 className="mt-2.5 mb-3 font-display text-[clamp(1.8rem,1.3rem+1.6vw,2.6rem)]/[round(1.15em,4px)] font-normal">
             {t.title}
           </h2>
           <p className="text-muted-foreground">{t.lead}</p>
@@ -82,17 +83,19 @@ export function Simulate() {
               </li>
             ))}
           </ul>
-          <div className="flex flex-wrap justify-between gap-x-6 gap-y-2 text-[13px] text-muted-foreground">
-            <p id={hintId} className="pt-0.5 font-mono text-[11px]">
+          <div className="flex flex-wrap justify-between gap-x-6 gap-y-2 text-[13px]/5 text-muted-foreground">
+            <p id={hintId} className="pt-0.5 font-mono text-[12px]/5">
               {d.goal.composer.hint}
             </p>
-            <p>
-              {d.goal.visitor.before}{' '}
-              <Link href="/sign-in?next=/goal" className={buttonClass({ variant: 'link' })}>
-                {d.goal.visitor.link}
-              </Link>{' '}
-              {d.goal.visitor.after}
-            </p>
+            {!signedIn && (
+              <p>
+                {d.goal.visitor.before}{' '}
+                <Link href="/sign-in?next=/goal" className={buttonClass({ variant: 'link' })}>
+                  {d.goal.visitor.link}
+                </Link>{' '}
+                {d.goal.visitor.after}
+              </p>
+            )}
           </div>
         </div>
       </div>

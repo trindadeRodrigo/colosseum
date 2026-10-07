@@ -289,15 +289,16 @@ describe('one chain per order (gate ONE-CHAIN)', () => {
     }
   });
 
-  it('refuses a plan made for another chain, and one spread over several', async () => {
+  it('refuses a plan on a chain the owner has no wallet on, and one spread over several', async () => {
     const a = await someone('solana');
     const buy = (proposalId: string) =>
       post(a, '/v1/orders', { type: 'buy', owner: a.owner, amountUsd: 1000, proposalId });
 
+    // The plan is bought on its own chain (CHAIN-SWITCH), and a Solana wallet cannot own a vault there.
     const elsewhere = await buy(plans.robinhood);
     expect(elsewhere.statusCode).toBe(422);
     expect(elsewhere.json().error).toBe(
-      'this plan was made for Robinhood Chain, and your plans live on Solana: make the plan again',
+      'the owner has no evm address, and this plan is on Robinhood Chain',
     );
 
     // A plan as API-1 took them: a recipe on each chain, the amount split 600 to 400.
@@ -370,6 +371,7 @@ describe('sign-in', () => {
     { method: 'POST', url: legUrl(o, first(o).id, 'cancel') },
     { method: 'GET', url: '/v1/portfolio' },
     { method: 'GET', url: '/v1/me' },
+    { method: 'GET', url: '/v1/me/withdrawals' },
     { method: 'PUT', url: '/v1/me/chain', payload: { chain: 'solana' } },
     { method: 'GET', url: '/v1/funding' },
     { method: 'POST', url: '/v1/mock/fund', payload: { chain: 'solana', cashUsd: 1 } },
@@ -907,6 +909,8 @@ describe('a leg settles only on the transaction that was built for it', () => {
     const again = await post(a, legUrl(placed, deposit.id, 'build'), undefined, on);
     expect(again.statusCode).toBe(409);
     expect(again.json().error).toMatch(/has landed/);
+    // by its code, so a client reads the order again and shows no sentence for it
+    expect(again.json().code).toBe('STEP_LANDED');
     const after = await read(a, placed, on);
     expect(legOf(after, deposit.id)).toMatchObject({ status: 'confirmed', attempt: 1, txId });
     expect(attemptsOf(after, deposit.id)).toEqual([[1, 'confirmed']]);
@@ -1493,17 +1497,27 @@ describe('refusals', () => {
     );
     expect(res.statusCode).toBe(503);
     expect(res.json()).toMatchObject(refusal);
-    // Their portfolio and their funding are on that chain too, and answer the same.
-    for (const url of ['/v1/portfolio', '/v1/funding']) {
-      const read = await get(rh, url, off.app);
-      expect([url, read.statusCode]).toEqual([url, 503]);
-      expect(read.json()).toMatchObject(refusal);
-    }
+    // Their funding is on that chain too, and answers the same.
+    const funding = await get(rh, '/v1/funding', off.app);
+    expect(funding.statusCode).toBe(503);
+    expect(funding.json()).toMatchObject(refusal);
+    // Their portfolio has no other chain to read: 503, saying which chain could not be and why.
+    const portfolio503 = await get(rh, '/v1/portfolio', off.app);
+    expect(portfolio503.statusCode).toBe(503);
+    expect(portfolio503.json()).toMatchObject({
+      ...refusal,
+      error: `none of your chains could be read: ${refusal.error}`,
+    });
     // A person on the chain that is on still buys on that server, and reads their portfolio.
     const solanaOnly = await order(sol, { amountUsd: 600 }, off.app);
     expect(solanaOnly.legs.every((l) => l.chain === 'solana')).toBe(true);
     const portfolio = PortfolioResponse.parse((await get(sol, '/v1/portfolio', off.app)).json());
     expect(portfolio.chains.map((c) => c.chain)).toEqual(['solana']);
+    // A person with wallets of both families reads the chain that is on (CHAIN-SWITCH).
+    const both = await someone('passkey');
+    const theirs = await get(both, '/v1/portfolio', off.app);
+    expect(theirs.statusCode, theirs.body).toBe(200);
+    expect(PortfolioResponse.parse(theirs.json()).chains.map((c) => c.chain)).toEqual(['solana']);
     await off.app.close();
   });
 
@@ -1565,7 +1579,7 @@ describe('refusals', () => {
     const cases: [object, number, RegExp][] = [
       [{ proposalId: undefined }, 400, /names the plan/],
       [{ proposalId: '4b1c0f0e-3f8e-4d0e-9d2b-0d7a3a6b1c2d' }, 404, /no plan/],
-      [{ proposalId: plans.robinhood }, 422, /made for Robinhood Chain/],
+      [{ proposalId: plans.robinhood }, 422, /no evm address, and this plan is on Robinhood Chain/],
       [{ proposalId: undefined, family: 'core' }, 404, /no shared portfolio with that slug/],
       [{ amountUsd: 0.0001 }, 422, /less than one cent/],
     ];

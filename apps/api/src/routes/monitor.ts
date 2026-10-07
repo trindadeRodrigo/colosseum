@@ -104,7 +104,10 @@ export async function registerMonitorRoutes(app: FastifyInstance) {
       null;
     const trig = policy.trigger.liquidity;
     if (trig && read.errors.length === 0) {
-      const provider = await loadLiquidityProvider(db, assets);
+      const provider = await loadLiquidityProvider(
+        db,
+        assets.filter((a) => a.chain === 'solana'),
+      );
       const [planRow] = await db.select().from(plans).where(eq(plans.id, policy.planId));
       if (provider && planRow) {
         const [sheetRow] = await db

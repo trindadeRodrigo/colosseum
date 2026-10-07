@@ -121,6 +121,8 @@ const ADAPTER_ERRORS = [
   'AllowanceTooLow',
   /** Built too long ago to be sent. */
   'Expired',
+  /** A trade would now give less than the least its order stated: the terms are not changed for it. */
+  'PriceMoved',
   /** Bytes this server did not build are never relayed. */
   'NotBuiltHere',
   /** The RPC or the quote source did not answer. */
@@ -253,7 +255,7 @@ export const CHAIN_ERROR_RETRYABLE: Record<ChainErrorCode, boolean> = {
   MintNotAccepted: false,
   RouterNotAllowed: false,
   SpentTooMuch: false,
-  /** The price moved past the slippage: a new build takes a fresh quote. */
+  /** The price moved past the least the step accepts; it can come back, and a new build tries again. */
   ReceivedTooLittle: true,
   OtherAccountDebited: false,
   AccountTampered: false,
@@ -318,6 +320,8 @@ export const CHAIN_ERROR_RETRYABLE: Record<ChainErrorCode, boolean> = {
   NoGas: false,
   AllowanceTooLow: false,
   Expired: true,
+  /** The order is made again, at the price now: nothing about this one changes. */
+  PriceMoved: false,
   NotBuiltHere: false,
   Unavailable: true,
   Unknown: false,
@@ -335,15 +339,22 @@ export type ChainErrorInfo = z.infer<typeof ChainErrorInfo>;
 export class ChainError extends Error {
   readonly code: ChainErrorCode;
   readonly retryable: boolean;
+  /**
+   * The transaction was refused before it left this process (a relay's preflight): it can never land,
+   * so a caller that remembered it as sent may forget it.
+   */
+  readonly unsent: boolean;
   constructor(
     code: ChainErrorCode,
     message: string,
     retryable: boolean = CHAIN_ERROR_RETRYABLE[code],
+    options: { unsent?: boolean } = {},
   ) {
     super(message);
     this.name = 'ChainError';
     this.code = code;
     this.retryable = retryable;
+    this.unsent = options.unsent ?? false;
   }
   toJSON(): ChainErrorInfo {
     return { code: this.code, message: this.message, retryable: this.retryable };

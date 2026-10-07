@@ -26,11 +26,13 @@ import {
 import { inArray, or } from 'drizzle-orm';
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { buildApp } from '../app';
+import type { TestFundsSender } from '../faucet/test-funds';
 import type { IntakeModel } from '../llm';
 import { type ChainRegistry, createChainRegistry } from '../orders/chains';
 import type { PlanInputs } from '../orders/personalize';
 import { IDENTITY_TOKEN_HEADER, type TokenIssuer } from '../plugins/auth';
 import { LIMITS, type Limits } from '../plugins/limits';
+import type { LinkedPlanLimits } from '../routes/v1/baskets';
 
 // For tests only. Nothing the server runs imports this file: the tokens here are signed with a key
 // pair made in the test, and the app under test is handed that pair's public half as its only issuer.
@@ -65,9 +67,10 @@ export async function testIssuer(name: string): Promise<TestIssuer> {
 }
 
 /**
- * How a test person signed in, which is what decides their chain (gates ONE-CHAIN, CHAIN-PICK):
- * - `solana`: connected an outside Solana wallet. Their plans live on Solana.
- * - `robinhood`: connected an outside EVM wallet. Their plans live on Robinhood Chain.
+ * How a test person signed in, which is what decides the chain they start on (gates ONE-CHAIN,
+ * CHAIN-SWITCH):
+ * - `solana`: connected an outside Solana wallet. They are on Solana.
+ * - `robinhood`: connected an outside EVM wallet. They are on Robinhood Chain.
  * - `passkey`: made their wallets in the app, one of each family. No chain until they pick one.
  */
 export type PersonKind = 'solana' | 'robinhood' | 'passkey';
@@ -380,12 +383,16 @@ export async function testApp(a: {
   env?: EnvLike;
   now?: () => Date;
   limits?: Limits;
+  /** The daily cap and keeping time of plans made from a link. */
+  linkedPlans?: LinkedPlanLimits;
   /** Wraps the registry, to make a chain misbehave. */
   wrap?: (registry: ChainRegistry) => ChainRegistry;
   /** The figures a plan is made with. Default: the server's reader of the stored ones. */
   planInputs?: PlanInputs;
   /** The guided intake's model. Default: none (no key in a test's environment). */
   intakeModel?: IntakeModel | null;
+  /** The test faucet's senders (POST /v1/testnet/fund). Default: none. */
+  testFunds?: TestFundsSender[];
 }) {
   const env = a.env ?? {};
   const registry = createChainRegistry(parseFlags(env), parseChainConfigs(env), {
@@ -400,8 +407,10 @@ export async function testApp(a: {
       db: a.db,
       now: a.now,
       limits: a.limits ?? ROOMY,
+      ...(a.linkedPlans ? { linkedPlans: a.linkedPlans } : {}),
       ...(a.planInputs ? { planInputs: a.planInputs } : {}),
       ...(a.intakeModel !== undefined ? { intakeModel: a.intakeModel } : {}),
+      ...(a.testFunds ? { testFunds: a.testFunds } : {}),
     },
   });
   return { app, registry };

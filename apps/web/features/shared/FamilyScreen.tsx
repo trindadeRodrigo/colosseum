@@ -11,19 +11,27 @@ import type {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useState } from 'react';
+import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardBody, CardHeader, CardLoading } from '../../components/ui/Card';
+import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { DataTable } from '../../components/ui/DataTable';
 import { utcMinute } from '../../components/ui/ExecutionList';
+import { PAGE_TITLE } from '../../components/ui/heading';
 import { MAX_LEGS, PlanLegs } from '../../components/ui/PlanLegs';
+import { SkeletonPlan, SkeletonRows } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { assetName, formatBps } from '../order/amounts';
+import { useAccount } from '../account/AccountProvider';
+import { switchFailure } from '../account/ChainSwitch';
+import { dollars } from '../goal/sheet';
+import { formatBps, tokenName } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
-import { keepOrder } from '../order/order-record';
+import { keepOrder, type OrderRecord, recallOrders } from '../order/order-record';
+import { goalLine } from '../order/plain';
 import { networkFor } from '../order/readiness';
+import { goalOfVault } from '../portfolio/vault-goal';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { type ChainCheck, familyIdFor, isVaultOf, useChainRecipe } from './chain-recipe';
 import { isPlatformCreator } from './platform';
@@ -129,13 +137,13 @@ export function FamilyScreen({ slug }: { slug: string }) {
   if (load.kind === 'loading')
     return (
       <Card>
-        <CardLoading label={t.shared.family.loading} />
+        <CardWait label={t.shared.family.loading} skeleton={<SkeletonPlan />} />
       </Card>
     );
   if (load.kind !== 'read')
     return (
       <section aria-labelledby={titleId} className="flex flex-col items-start gap-4">
-        <h1 id={titleId} className="font-sans text-h2 font-semibold">
+        <h1 id={titleId} className={PAGE_TITLE}>
           {load.kind === 'no-plan' ? t.shared.family.missing : t.shared.shelf.title}
         </h1>
         {load.kind !== 'no-plan' && (
@@ -166,10 +174,7 @@ export function FamilyScreen({ slug }: { slug: string }) {
   return (
     <div data-ui="family-screen" className="flex flex-col gap-8">
       <header className="flex flex-col gap-3">
-        <h1
-          id={titleId}
-          className="max-w-(--tf-measure-display) font-display text-h1 font-normal [overflow-wrap:anywhere]"
-        >
+        <h1 id={titleId} className={`${PAGE_TITLE} [overflow-wrap:anywhere]`}>
           {family.name}
         </h1>
         {family.copy && (
@@ -187,6 +192,7 @@ export function FamilyScreen({ slug }: { slug: string }) {
       {recipes.map((recipe) => (
         <RecipeSection key={recipe.chain} family={family} recipe={recipe} person={person} />
       ))}
+      {person.kind === 'ready' && <VaultsElsewhere family={family} chain={person.chain} />}
       <VersionsPanel slug={family.slug} chain={chain} />
       <Link href="/shelf" className={`${buttonClass({ variant: 'link' })} self-start`}>
         {t.shared.family.backToShelf}
@@ -213,6 +219,12 @@ function RecipeSection({
   const mock = own ? person.mock : recipe.provenance === 'mock';
   const check = useChainRecipe(recipe.chain, mock, family, recipe);
   const followed = followedOf(recipe, check);
+  // A check that found something wrong is not folded away: the read failed, the chain has no such
+  // portfolio, it differs from what our server said, or its words match no version on the chain.
+  const alarm =
+    check.state === 'failed' ||
+    check.state === 'missing' ||
+    (check.state === 'read' && (check.differs || check.textMatches === null));
   const reasonId = useId();
   const locale = LOCALE[lang];
   const read = check.state === 'read' ? check.recipe : null;
@@ -260,8 +272,8 @@ function RecipeSection({
         aria-label={f.recipe(chainName)}
         mock={recipe.provenance !== 'live'}
         mockLabels={{
-          announce: t.shell.mockAnnounce,
-          note: recipe.provenance === 'sandbox' ? t.shell.testNetwork : undefined,
+          announce:
+            recipe.provenance === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
         }}
       >
         <CardHeader title={f.recipe(chainName)} level={2} meta={f.versionN(active.version)} />
@@ -277,13 +289,14 @@ function RecipeSection({
             <PlanLegs
               legs={active.components.map((c) => ({
                 id: c.asset,
-                name: assetName(c.asset).toUpperCase(),
+                name: tokenName(c.asset),
                 weight: c.weightBps / 10_000,
                 weightLabel: formatBps(c.weightBps, locale),
                 rate: null,
                 mock: false,
               }))}
               labels={{ afterHaircut: t.plan.legs.afterHaircut, quoted: t.plan.legs.quoted }}
+              pinLabels={t.pin}
             />
           ) : (
             <WeightsTable
@@ -308,20 +321,35 @@ function RecipeSection({
               />
             </div>
           )}
-          <p className="flex flex-wrap items-baseline gap-x-2 text-body-sm text-muted-foreground">
-            <span>{t.shared.text.creator}</span>
-            <span data-ui="creator" className="break-all font-mono text-source text-foreground">
-              {read?.creator ?? recipe.creator}
-            </span>
-            {isPlatformCreator(
-              networkFor(recipe.chain, mock),
-              recipe.chain,
-              read?.creator ?? recipe.creator,
-            ) && (
-              <span className="font-medium text-foreground">{t.shared.shelf.card.platform}</span>
-            )}
-          </p>
-          <TextMark matches={check.state === 'read' ? check.textMatches : 'unchecked'} />
+          {/* Who published it, by address, and whether its words were checked: kept, behind a fold.
+              What a person must see stays outside it: words that match no version, and where the
+              version and weights come from (the flow audit, finding 41). */}
+          <details data-ui="family-checks" open={alarm || undefined}>
+            <summary className="w-fit cursor-pointer text-body-sm font-medium text-primary underline decoration-1 underline-offset-4 hover:decoration-2">
+              {t.plan.details}
+            </summary>
+            <div className="mt-3 flex flex-col gap-2">
+              <p className="flex flex-wrap items-baseline gap-x-2 text-body-sm text-muted-foreground">
+                <span>{t.shared.text.creator}</span>
+                <span data-ui="creator" className="break-all font-mono text-source text-foreground">
+                  {read?.creator ?? recipe.creator}
+                </span>
+                {isPlatformCreator(
+                  networkFor(recipe.chain, mock),
+                  recipe.chain,
+                  read?.creator ?? recipe.creator,
+                ) && (
+                  <span className="font-medium text-foreground">
+                    {t.shared.shelf.card.platform}
+                  </span>
+                )}
+              </p>
+              {(check.state !== 'read' || check.textMatches === 'pending') && (
+                <TextMark matches={check.state === 'read' ? check.textMatches : 'unchecked'} />
+              )}
+            </div>
+          </details>
+          {check.state === 'read' && check.textMatches === null && <TextMark matches={null} />}
           <SourceMark check={check} chain={recipe.chain} />
           <Offer recipe={recipe} />
         </CardBody>
@@ -363,6 +391,68 @@ function RecipeSection({
   );
 }
 
+/**
+ * The person's vaults on another chain than the current one that follow this portfolio. A vault is
+ * updated on its own chain (CHAIN-SWITCH), and this page signs on the current chain only, so it says
+ * which chain to switch to, with the switch.
+ */
+function VaultsElsewhere({ family, chain }: { family: SharedFamily; chain: ChainId }) {
+  const t = useT();
+  const f = t.shared.family;
+  const apiFetch = useApiFetch();
+  const { choose } = useAccount();
+  const [elsewhere, setElsewhere] = useState<ChainId[]>([]);
+  const [failed, setFailed] = useState('');
+  useEffect(() => {
+    let mine = true;
+    const recipeOn = new Map(family.recipes.map((r) => [r.chain, r.onchainId]));
+    readPortfolio(apiFetch).then((read) => {
+      if (!mine || read.kind !== 'read') return;
+      setElsewhere(
+        read.value.chains
+          .filter(
+            (entry) =>
+              entry.chain !== chain &&
+              entry.vaults.some(
+                (v) =>
+                  v.recipeOnchainId !== null && v.recipeOnchainId === recipeOn.get(entry.chain),
+              ),
+          )
+          .map((entry) => entry.chain),
+      );
+    });
+    return () => {
+      mine = false;
+    };
+  }, [apiFetch, chain, family]);
+  if (elsewhere.length === 0) return null;
+  return (
+    <div data-ui="vaults-elsewhere" className="flex flex-col items-start gap-2">
+      {elsewhere.map((other) => (
+        <p key={other} className="max-w-(--tf-measure-body) text-body">
+          {f.elsewhere(t.chain.names[other])}{' '}
+          <Button
+            variant="link"
+            onClick={() => {
+              setFailed('');
+              choose(other).catch((e: unknown) =>
+                setFailed(switchFailure(t, e, t.chain.names[other])),
+              );
+            }}
+          >
+            {f.switchTo(t.chain.names[other])}
+          </Button>
+        </p>
+      ))}
+      {failed && (
+        <p role="alert" className="text-body-sm text-destructive">
+          {failed}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** A line of a version as shown: a listed asset, or the mint of a token this app does not list. */
 type Line = Target & { mint?: string };
 
@@ -396,7 +486,7 @@ function WeightsTable({
                 </span>
               </span>
             ) : (
-              assetName(r.asset).toUpperCase()
+              tokenName(r.asset)
             ),
         },
         {
@@ -427,10 +517,14 @@ function VaultsPanel({
   person: Extract<SharedPerson, { kind: 'ready' }>;
 }) {
   const t = useT();
+  const lang = useLang();
   const v = t.shared.vaults;
   const router = useRouter();
   const apiFetch = useApiFetch();
   const [vaults, setVaults] = useState<VaultView[] | null | 'failed'>(null);
+  // The orders this browser placed: a vault bought from a goal is named by that goal.
+  const [records, setRecords] = useState<OrderRecord[]>([]);
+  useEffect(() => setRecords(recallOrders(person.userId)), [person.userId]);
   const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const titleId = useId();
@@ -522,7 +616,7 @@ function VaultsPanel({
     <Card as="section" aria-labelledby={titleId}>
       <CardHeader title={v.title} level={2} id={titleId} />
       {vaults === null ? (
-        <CardLoading label={t.shared.vault.loading} />
+        <CardWait label={t.shared.vault.loading} skeleton={<SkeletonRows rows={2} columns={3} />} />
       ) : (
         <CardBody className="flex flex-col gap-4">
           {vaults === 'failed' ? (
@@ -533,6 +627,8 @@ function VaultsPanel({
             <ul className="flex flex-col divide-y divide-border">
               {vaults.map((vault) => {
                 const follows = vault.recipeOnchainId === followed.follow.recipeOnchainId;
+                // A vault bought from a goal goes by that goal, where this browser kept it.
+                const goal = goalOfVault(vault, records)?.goal.sheet;
                 const behind = follows && vault.acceptedVersion < followed.follow.version;
                 return (
                   <li
@@ -546,10 +642,18 @@ function VaultsPanel({
                         className={buttonClass({ variant: 'link' })}
                         title={vault.address}
                       >
-                        {v.address(shortAddress(vault.address))}
+                        {goal
+                          ? goalLine(goal, t, dollars(goal.amountUsd, lang), (usd) =>
+                              dollars(usd, lang),
+                            )
+                          : v.address(shortAddress(vault.address))}
                       </Link>
                       <span className="text-body-sm text-muted-foreground">
-                        {follows ? v.following : v.notFollowing}
+                        {follows
+                          ? v.following
+                          : vault.recipeOnchainId === null
+                            ? v.ownPlan
+                            : v.notFollowing}
                       </span>
                       {follows && (
                         <span className="text-body-sm text-muted-foreground">
@@ -652,7 +756,7 @@ export function FollowPrompt({
       </p>
       {added.length > 0 && (
         <p className="max-w-(--tf-measure-body) text-body-sm">
-          {p.newAssets(added.map((a) => assetName(a).toUpperCase()).join(', '))}
+          {p.newAssets(added.map((a) => tokenName(a)).join(', '))}
         </p>
       )}
       {behind && (

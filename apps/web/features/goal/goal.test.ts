@@ -267,6 +267,12 @@ describe('building a plan: the one call, against a double of the route that is n
     expect(await answers(422, { error: 'no plan', code: 'GOAL_NOT_ACHIEVABLE' })).toEqual({
       kind: 'no-plan',
     });
+    expect(
+      await answers(422, {
+        error: 'Plans are in US dollars for now',
+        code: 'CURRENCY_UNSUPPORTED',
+      }),
+    ).toEqual({ kind: 'currency' });
     expect(await answers(429)).toEqual({ kind: 'busy' });
     expect(await answers(500)).toEqual({ kind: 'unreachable' });
     expect(
@@ -303,6 +309,16 @@ describe('a number as a person types one', () => {
 
   it('is null for nothing typed', () => {
     expect(parseNumber('')).toBeNull();
+    // in the language of the page a lone mark means one thing
+    expect(parseNumber('10.555', 'en')).toBeNaN();
+    expect(parseNumber('10.55', 'en')).toBe(10.55);
+    expect(parseNumber('10,555', 'en')).toBe(10555);
+    expect(parseNumber('10,5', 'en')).toBeNaN();
+    expect(parseNumber('10.555', 'pt')).toBe(10555);
+    expect(parseNumber('10,55', 'pt')).toBe(10.55);
+    expect(parseNumber('10,555', 'pt')).toBeNaN();
+    expect(parseNumber('1.000,50', 'pt')).toBe(1000.5);
+    expect(parseNumber('1,000.50', 'en')).toBe(1000.5);
     expect(parseNumber('  $ ')).toBeNull();
   });
 
@@ -521,11 +537,17 @@ describe('the goal as one sentence', () => {
     expect(goalSentence({ ...FIELDS, amount: '40.000' }, pt, 'pt')).toMatch(
       /^Fazer US\$\s40\.000 crescer em 36 meses\.$/,
     );
-    expect(dollars(1500.5, 'en')).toBe('$1,500.5');
+    expect(dollars(1500.5, 'en')).toBe('$1,500.50');
   });
 
   it('is not made while any of the three cannot be read', () => {
-    for (const over of [{ goal: '' as const }, { amount: '' }, { amount: 'x' }, { horizon: '' }])
+    for (const over of [
+      { goal: '' as const },
+      { amount: '' },
+      { amount: 'x' },
+      { horizon: '' },
+      { horizon: '0' },
+    ])
       expect(goalSentence({ ...FIELDS, ...over }, en, 'en')).toBeNull();
   });
 });
