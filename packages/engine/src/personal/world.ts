@@ -13,7 +13,6 @@ import {
 import { z } from 'zod';
 import { pickPrimaryYield } from '../risk/index';
 import { CREDIT_LEG_TYPES, legTypesOf } from './leg-types';
-import { riskOfWorld } from './mix';
 import { BPS, byName, ceilCents, floorCents, shareOf, toCents, toUsd } from './money';
 import { PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
@@ -526,12 +525,7 @@ export function buildWorld(
         message: `a withdrawal in ${cur} needs an FX reading for USD${cur}`,
       })),
     );
-  // A stated mix sets the limits (gate EXPLICIT-MIX): the lowest risk whose caps admit it. The world
-  // is made again at that risk, so every cap, reason and check reads it; the plan's sheet says it.
-  if (sheet.mix) {
-    const risk = riskOfWorld(world);
-    if (risk !== sheet.risk) return buildWorld({ ...sheet, risk }, shelf, context, candidate);
-    flags.add(`limits_from_mix:${risk}`);
-  }
+  // The world is at the sheet's own risk. A stated mix sets the limits (gate EXPLICIT-MIX), and which
+  // risk that is takes a plan to tell: `build` in ./compose.ts settles it and makes the world at it.
   return world;
 }

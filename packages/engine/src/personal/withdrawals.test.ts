@@ -305,6 +305,53 @@ describe('the schedule, in the goal’s currency (C7)', () => {
   }, 60_000);
 });
 
+describe('a shared portfolio held whole, when the coverage check takes money from one of its lines', () => {
+  // Found by the mix's property test once it had withdrawals (Oct 6), and there without a mix too: a
+  // table row with no dollar yield, Sand to Server held whole on Robinhood Chain, and $140 owed this
+  // month. The $140 is set aside in SGOV, which nothing measures, so its sale is counted at a cost
+  // and falls $1.40 short: that comes out of the largest stock line alone. The portfolio's lines are
+  // then no longer in the weights it publishes. Kept as one component, the vault's target for that
+  // line was the published 30% and its dollars five basis points less.
+  const params = {
+    ...PERSONAL_PARAMS,
+    sleeves: {
+      ...PERSONAL_PARAMS.sleeves,
+      'grow:high': { growthBps: 10_000, dollarYieldBps: 0, goldBps: 0 },
+    },
+  };
+  const c = fixtureContext({ params });
+  const s = sheet({
+    chains: ['robinhood'],
+    themes: ['sand-to-server'],
+    risk: 'high',
+    amountUsd: 2000,
+    rules: { useHoldings: true, glide: false },
+    obligations: [{ month: inMonths(0), amount: 140, currency: 'USD' }],
+  });
+
+  it('is held part by part: each line’s target is what its dollars come to, and the lines say so', () => {
+    const plan = run(s, launch, c);
+    expect(plan.flags).toContain('coverage_moved');
+    const nvda = line(plan, 'robinhood:nvda');
+    expect(nvda?.reasons.map((r) => r.rule)).toEqual(
+      expect.arrayContaining(['OPENED', 'COVERAGE_MOVED_UNCOUNTED']),
+    );
+    expect(nvda?.reasons.map((r) => r.rule)).not.toContain('FOLLOWS');
+    expect(nvda?.viaIndex).toBeUndefined();
+    expect([nvda?.amountUsd, nvda?.weightBps]).toEqual([556.6, 2783]);
+    expect(plan.recipes[0]?.components.every((x) => x.kind === 'asset')).toBe(true);
+  });
+
+  it('stays whole where nothing is taken from it', () => {
+    const plan = run({ ...s, obligations: [] }, launch, c);
+    expect(plan.flags).not.toContain('coverage_moved');
+    expect(line(plan, 'robinhood:nvda')?.viaIndex).toBe('sand-to-server');
+    expect(plan.recipes[0]?.components).toEqual([
+      { kind: 'index', family: 'sand-to-server', weightBps: 10_000 },
+    ]);
+  });
+});
+
 describe('moving part of a line to cash', () => {
   it('takes the line’s own part first, and keeps what is through a shared portfolio within the line', () => {
     const w = buildWorld(sheet(), launch, ctx);

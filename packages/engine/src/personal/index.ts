@@ -5,7 +5,7 @@
 export { candidates } from './candidates';
 export { compose, composeAs, PERSONAL_ENGINE_VERSION, riskForMix } from './compose';
 export { draftFromRules } from './draft';
-export { growthRoomBps, RISKS } from './mix';
+export { RISKS } from './mix';
 export { PERSONAL_PARAMS, PERSONAL_PARAMS_STATUS } from './params';
 export {
   proposeSleeveRebalances,
