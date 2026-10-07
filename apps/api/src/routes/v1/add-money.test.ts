@@ -253,6 +253,15 @@ describe('a vault’s name', () => {
     const named = await vaultsOf(who, 'solana');
     expect(named.find((v) => v.address === growVault.address)?.name).toBe('House fund');
     expect(named.find((v) => v.address === protectVault.address)?.name).toBeNull();
+    // The name is its owner's alone (gate VAULT-NAME): the vault's public page reads none, for
+    // anybody, and neither does another person's portfolio.
+    const open = await get(null, `/v1/vaults/solana/${growVault.address}`);
+    expect(open.statusCode, open.body).toBe(200);
+    expect(open.body).not.toContain('House fund');
+    const visitor = await someone();
+    const seen = await get(visitor, `/v1/vaults/solana/${growVault.address}`);
+    expect(seen.body).not.toContain('House fund');
+    expect((await get(visitor, '/v1/portfolio')).body).not.toContain('House fund');
     // a read of the chain does not lose the name
     expect((await vaultsOf(who, 'solana')).find((v) => v.address === growVault.address)?.name).toBe(
       'House fund',
