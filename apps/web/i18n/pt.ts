@@ -523,7 +523,7 @@ export const pt: Dictionary = {
       noVault:
         'Nosso servidor não lista mais este cofre como seu. Leia seu portfólio de novo e tente outra vez.',
       keeper:
-        'Seguir automático está ativado neste cofre, então este aporte só deposita o caixa. Nosso operador compra os ativos do cofre com ele no próximo rebalanceamento.',
+        'Seguir automático está ativado neste cofre, então este aporte só deposita o caixa. Nosso operador compra os ativos do cofre com ele quando rebalancear este cofre de novo.',
       newerVersion: (version: number) =>
         `O portfólio que este cofre segue tem uma versão mais nova, a versão ${version}. Este aporte compra as metas atuais do cofre; aceitar a nova versão é um passo separado.`,
       source: {

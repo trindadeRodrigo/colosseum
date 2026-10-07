@@ -596,7 +596,7 @@ export const en = {
         'Our server doesn’t list this vault as yours any more. Read your portfolio again, then try again.',
       /** Auto-follow is on: the add is the deposit alone. */
       keeper:
-        'Auto-follow is on for this vault, so this add only deposits the cash. Our keeper buys the vault’s assets with it at its next rebalance.',
+        'Auto-follow is on for this vault, so this add only deposits the cash. Our keeper buys the vault’s assets with it when it next rebalances this vault.',
       /** The portfolio the vault follows has a version the owner has not accepted. */
       newerVersion: (version: number) =>
         `The portfolio this vault follows has a newer version, version ${version}. This add buys the vault’s current targets; accepting the new version is a separate step.`,
