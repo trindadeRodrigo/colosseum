@@ -1,4 +1,5 @@
 import {
+  BasketCard,
   BasketSheet,
   BasketSheetDraft,
   currencyOf,
@@ -147,5 +148,30 @@ describe('the goal currency and dated withdrawals', () => {
 
   it('refuses a goal currency that is not a code', () => {
     expect(BasketSheet.safeParse({ ...sheet, currency: 'usd' }).success).toBe(false);
+  });
+});
+
+// Gate GLIDE-OPT-IN (Rodrigo, Oct 6): a goal with no date, and a card with no term.
+describe('a goal with no date', () => {
+  it('the sheet says so, and a sheet without it is a dated goal', () => {
+    expect(BasketSheet.parse({ ...sheet, horizonOpen: true }).horizonOpen).toBe(true);
+    expect(BasketSheet.parse(sheet).horizonOpen).toBeUndefined();
+    expect(BasketSheet.safeParse({ ...sheet, horizonOpen: 'yes' }).success).toBe(false);
+    expect(
+      BasketSheetDraft.parse({
+        ...Object.fromEntries(Object.keys(BasketSheet.shape).map((k) => [k, null])),
+      }).horizonOpen,
+    ).toBeNull();
+  });
+  it('the card takes no term for it', () => {
+    const card = {
+      moneyTodayUsd: 2000,
+      termMonths: null,
+      cashFlow: 'none',
+      expectedReturn: { lowPct: 0, highPct: 0, basis: 'none assumed', lossInFallUsd: 0 },
+      exit: { text: 'x', costBps: null },
+    };
+    expect(BasketCard.safeParse(card).success).toBe(true);
+    expect(BasketCard.safeParse({ ...card, termMonths: 0 }).success).toBe(false);
   });
 });

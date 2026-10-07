@@ -81,6 +81,8 @@ export function PlanScreen({ id }: { id: string }) {
   const share = (bps: number) => formatBps(bps, locale);
 
   const tableOnly = proposal.lines.length > MAX_LEGS;
+  // A goal with no date shows "no date set", never the months it is built over (gate GLIDE-OPT-IN).
+  const term = sheet.horizonOpen ? t.goal.card.noDate : t.goal.card.months(sheet.horizonMonths);
   const goal = goalLine(sheet, t, dollars(sheet.amountUsd, lang), (usd) => dollars(usd, lang));
   // What the range a year comes to a month, for a plan whose goal is income: the same share of the
   // amount the chart draws, over twelve months. Shown only where the range has a source.
@@ -164,7 +166,7 @@ export function PlanScreen({ id }: { id: string }) {
         <div className="clear-both flex flex-col gap-5 px-6 pt-5 pb-6">
           <StatRow>
             <Stat label={t.plan.kpi.amount}>{dollars(sheet.amountUsd, lang)}</Stat>
-            <Stat label={t.plan.kpi.horizon}>{t.goal.card.months(sheet.horizonMonths)}</Stat>
+            <Stat label={t.plan.kpi.horizon}>{term}</Stat>
             {/* On a phone the last two take a row each: a range with its pin is the widest figure. */}
             <Stat
               label={t.plan.kpi.projected}

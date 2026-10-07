@@ -62,11 +62,23 @@ export const BasketSheet = z.object({
   goal: z.enum(['grow', 'income', 'protect']),
   amountUsd: z.number().min(10).max(1_000_000),
   horizonMonths: z.number().int().min(1).max(480),
+  /**
+   * The person gave no date for the goal ("no hard cap", "sem prazo"; gate GLIDE-OPT-IN, Oct 6).
+   * `horizonMonths` then holds a starting parameter, not the person's date: nothing shows it, no
+   * date is made from it, and the glide is off. Left out: the goal has its date.
+   */
+  horizonOpen: z.boolean().optional(),
   risk: z.enum(['low', 'medium', 'high']),
   /** Family slugs. */
   themes: z.array(ThemeSlug).max(3),
-  /** ISO two-letter, self-declared. */
-  country: z.string().regex(/^[A-Z]{2}$/),
+  /**
+   * ISO two-letter, self-declared. Optional and unused in planning (gate COUNTRY-REMOVED, Rodrigo,
+   * Oct 6): no plan is shaped by it. Kept so stored sheets that carry one still parse.
+   */
+  country: z
+    .string()
+    .regex(/^[A-Z]{2}$/)
+    .optional(),
   chains: z.array(ChainId).min(1),
   incomeTargetUsdMonthly: z.number().positive().optional(),
   rules: z.object({ useHoldings: z.boolean(), glide: z.boolean() }),
@@ -102,6 +114,8 @@ export const BasketSheetDraft = z.object({
   goal: BasketSheet.shape.goal.nullable(),
   amountUsd: BasketSheet.shape.amountUsd.nullable(),
   horizonMonths: BasketSheet.shape.horizonMonths.nullable(),
+  // Added on Oct 6 (gate GLIDE-OPT-IN): left out, the text did not say the goal has no date.
+  horizonOpen: z.boolean().nullable().optional(),
   risk: BasketSheet.shape.risk.nullable(),
   themes: BasketSheet.shape.themes.nullable(),
   country: BasketSheet.shape.country.nullable(),
@@ -166,7 +180,8 @@ export type BasketLine = z.infer<typeof BasketLine>;
 
 export const BasketCard = z.object({
   moneyTodayUsd: z.number().nonnegative(),
-  termMonths: z.number().int().positive(),
+  /** The goal's term; null for a goal with no date (`horizonOpen`), shown as "no date set". */
+  termMonths: z.number().int().positive().nullable(),
   cashFlow: z.enum(['none', 'monthly', 'at_end']),
   expectedReturn: z.object({
     lowPct: z.number(),
@@ -193,6 +208,22 @@ export const ObservationRef = Sourced.extend({
 });
 export type ObservationRef = z.infer<typeof ObservationRef>;
 
+/**
+ * One of the person's sleeves as the plan was made (gate SLEEVES, ENG-3 slice 4): its share, its
+ * dollars, and for the safe-yield and theme sleeves what it holds by token, cash included, before the
+ * lines are rounded to whole basis points. The goal sleeve's `holds` is empty: it is the rest of every
+ * line. A stored plan keeps this so each sleeve can be rebalanced against its own targets.
+ */
+export const PlanSplitSleeve = z.object({
+  kind: z.enum(['goal', 'theme', 'safe_yield']),
+  /** A theme sleeve's slug. */
+  theme: z.string().min(1).optional(),
+  shareBps: Bps.min(1),
+  amountUsd: z.number().nonnegative(),
+  holds: z.array(z.object({ assetId: AssetId, amountUsd: z.number().nonnegative() })),
+});
+export type PlanSplitSleeve = z.infer<typeof PlanSplitSleeve>;
+
 export const BasketProposalBase = z.object({
   sheet: BasketSheet,
   engineVersion: z.string().min(1),
@@ -213,6 +244,14 @@ export const BasketProposalBase = z.object({
   flags: z.array(z.string()),
   observations: z.array(ObservationRef),
   disclaimer: z.string(),
+  /** Present when the person split the plan (gate SLEEVES): each sleeve and its targets. Additive. */
+  split: z.array(PlanSplitSleeve).optional(),
+  /**
+   * Present on a plan made as one of the three candidates (gate THREE-PLANS): which one, so the table
+   * it was made with (`paramsHash`) can be rebuilt to rebalance it. The ids of `PlanCandidateId`,
+   * written here because plan-candidates.ts imports this file. Additive.
+   */
+  candidate: z.enum(['cover', 'spread', 'carry']).optional(),
 });
 
 export const BasketProposal = BasketProposalBase.refine(

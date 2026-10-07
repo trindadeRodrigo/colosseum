@@ -29,6 +29,7 @@ import {
   type TestFunds,
   type TestFundsSender,
 } from '../../faucet/test-funds';
+import { type IntakeModel, intakeModelFromEnv } from '../../llm';
 import {
   type ChainRegistry,
   createChainRegistry,
@@ -43,6 +44,7 @@ import { type Limits, registerLimits, requireDeclared } from '../../plugins/limi
 import { type LinkedPlanLimits, registerBasketRoutes } from './baskets';
 import { buildConfig, registerConfigRoute } from './config';
 import { registerFundingRoute } from './funding';
+import { registerIntakeRoute } from './intake';
 import { registerMeRoutes } from './me';
 import { registerMockRoutes } from './mock';
 import { registerOrderRoutes } from './orders';
@@ -79,6 +81,11 @@ export type V1Deps = {
    * ceiling is its tier's and says so. The server hands in the reader of the stored figures.
    */
   planInputs?: PlanInputs;
+  /**
+   * The model the guided intake reads a goal with. Default: Anthropic's when `ANTHROPIC_API_KEY` is
+   * set, else none, and the intake reads with the rules parser alone. A test hands in a replay.
+   */
+  intakeModel?: IntakeModel | null;
   /** The rate limits. Default: `LIMITS`, the ones a server runs with. */
   limits?: Limits;
   /** The daily cap and the keeping time of plans made from a link. Default: `LINKED_PLANS`. */
@@ -199,6 +206,12 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
       deps.planInputs ?? (async () => ({})),
       { agentSurface: flags.agentSurface },
       deps.linkedPlans,
+    );
+    registerIntakeRoute(
+      scope,
+      orderDeps,
+      deps.intakeModel === undefined ? intakeModelFromEnv(env, deps.now) : deps.intakeModel,
+      deps.planInputs,
     );
     registerPortfolioRoute(scope, orderDeps);
     registerSharedRoutes(scope, orderDeps);
