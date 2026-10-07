@@ -32,7 +32,7 @@ import type { IntakeModel } from '../../llm';
 import { Refusal, refusing } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { personChain } from '../../orders/person';
-import { type PlanInputs, shelfVersionOf } from '../../orders/personalize';
+import { type PlanInputs, preparePersonalInputs } from '../../orders/personalize';
 import { loadFamilies } from '../../orders/store';
 import { signedIn } from './orders';
 
@@ -183,15 +183,22 @@ async function shelfOf(
   chain: NonNullable<Awaited<ReturnType<typeof personChain>>['chain']>,
   families: Shelf['families'],
 ) {
+  let entry: ReturnType<OrderDeps['chains']['get']>;
   let assets: BasketAsset[];
   try {
-    assets = await refusing(() => deps.chains.get(chain).adapter.listAssets());
+    entry = deps.chains.get(chain);
+    assets = await refusing(() => entry.adapter.listAssets());
   } catch (err) {
     if (err instanceof Refusal) return null;
     throw err;
   }
-  const shelf: Shelf = { version: shelfVersionOf(chain, assets, families), assets, families };
-  return { shelf, figures: await inputs({ db: deps.db, chain, assets }) };
+  return preparePersonalInputs(
+    chain,
+    assets,
+    families,
+    entry.provenance,
+    (chain, assets, provenance) => inputs({ db: deps.db, chain, assets, provenance }),
+  );
 }
 
 export function registerIntakeRoute(
@@ -238,6 +245,13 @@ export function registerIntakeRoute(
       const read: { reply: unknown; why?: string } = model
         ? await model.read(text, nowMonth, language, principal.userId ?? principal.ip, vocabulary)
         : { reply: null, why: 'model_not_configured' };
+      // No model read it: said in the log with why (the request's id is on the line), and never
+      // with the text. The answer says the same to the screen (`reader.why`).
+      if (read.reply === null)
+        req.log.warn(
+          { why: read.why ?? 'model_no_reply', model: model?.id ?? null },
+          'the intake fell back to the rules parser',
+        );
       // What the read-back's risk is found on: this chain's shelf and figures, as the plan route
       // reads them, at the time of this request.
       const context: ComposeContext | null = held

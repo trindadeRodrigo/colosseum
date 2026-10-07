@@ -927,6 +927,7 @@ describe('no /v1 route can make the server sign', () => {
       'orders/withdraw.ts',
       'plugins/auth.ts',
       'plugins/limits.ts',
+      'plugins/loggable.ts',
       'plugins/paths.ts',
       'routes/v1/baskets.ts',
       'routes/v1/config.ts',

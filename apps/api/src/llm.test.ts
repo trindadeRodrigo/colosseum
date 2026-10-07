@@ -5,6 +5,8 @@ import {
   INTAKE_REPLY_SCHEMA,
   INTAKE_SYSTEM,
   type IntakeVocabulary,
+  intakeModelFromEnv,
+  intakeSettings,
   intakeUserMessage,
   type ReadCall,
 } from './llm';
@@ -165,5 +167,73 @@ describe('the cache around a call', () => {
       reply: { read: 2 },
     });
     expect(calls).toBe(2);
+  });
+});
+
+describe('the model’s settings, from the environment', () => {
+  it('are today’s values where nothing is set, and the environment’s where it is', () => {
+    expect(intakeSettings({})).toEqual({
+      model: 'claude-haiku-4-5',
+      timeoutMs: 6_000,
+      dailyCalls: 1_000,
+      dailyCallsPerPerson: 30,
+    });
+    expect(
+      intakeSettings({
+        INTAKE_MODEL: ' claude-sonnet-5-5 ',
+        INTAKE_MODEL_TIMEOUT_MS: '12000',
+        INTAKE_MODEL_DAILY_CALLS: '0',
+        INTAKE_MODEL_DAILY_CALLS_PER_PERSON: '200',
+      }),
+    ).toEqual({
+      model: 'claude-sonnet-5-5',
+      timeoutMs: 12_000,
+      dailyCalls: 0,
+      dailyCallsPerPerson: 200,
+    });
+    // set and empty is not set
+    expect(intakeSettings({ INTAKE_MODEL: '', INTAKE_MODEL_TIMEOUT_MS: ' ' }).timeoutMs).toBe(
+      6_000,
+    );
+  });
+
+  it('stop the start on a value that cannot be read, naming the variable and never a value', () => {
+    const KEY = 'a-test-key-not-real';
+    for (const [name, value] of [
+      ['INTAKE_MODEL', 'haiku please'],
+      ['INTAKE_MODEL', 'x'.repeat(101)],
+      ['INTAKE_MODEL_TIMEOUT_MS', '6s'],
+      ['INTAKE_MODEL_TIMEOUT_MS', '100'],
+      ['INTAKE_MODEL_TIMEOUT_MS', '600000'],
+      ['INTAKE_MODEL_DAILY_CALLS', '-1'],
+      ['INTAKE_MODEL_DAILY_CALLS', '1e3'],
+      ['INTAKE_MODEL_DAILY_CALLS_PER_PERSON', 'thirty'],
+      ['INTAKE_MODEL_DAILY_CALLS_PER_PERSON', '2.5'],
+    ] as const) {
+      // with a key and without one: the setting is read either way
+      for (const env of [{ [name]: value }, { [name]: value, ANTHROPIC_API_KEY: KEY }]) {
+        let said = '';
+        try {
+          intakeModelFromEnv(env);
+        } catch (e) {
+          said = (e as Error).message;
+        }
+        expect(said, `${name}=${value}`).toMatch(new RegExp(`^${name} must be `));
+        expect(said).not.toContain(value);
+        expect(said).not.toContain(KEY);
+      }
+    }
+  });
+
+  it('give no model with no key, and one that says the model it runs with a key', () => {
+    expect(intakeModelFromEnv({ INTAKE_MODEL: 'claude-sonnet-5-5' })).toBeNull();
+    const model = intakeModelFromEnv({
+      ANTHROPIC_API_KEY: 'a-test-key-not-real',
+      INTAKE_MODEL: 'claude-sonnet-5-5',
+    });
+    expect(model).toMatchObject({ id: 'claude-sonnet-5-5', provenance: 'live' });
+    expect(intakeModelFromEnv({ ANTHROPIC_API_KEY: 'a-test-key-not-real' })?.id).toBe(
+      'claude-haiku-4-5',
+    );
   });
 });

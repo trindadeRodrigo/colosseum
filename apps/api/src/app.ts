@@ -38,7 +38,13 @@ import { registerV1Routes, type V1Deps } from './routes/v1';
  * repo's own for the server, none for a test that passes its own environment unless it names one.
  */
 export async function buildApp(
-  deps: { v1?: V1Deps; env?: EnvLike; deployments?: string | null } = {},
+  deps: {
+    v1?: V1Deps;
+    env?: EnvLike;
+    deployments?: string | null;
+    /** Where the log's lines go, for a test that reads them. Default: the process's own output. */
+    logTo?: { write(line: string): void };
+  } = {},
 ) {
   const deployments =
     deps.deployments === undefined ? (deps.env ? null : DEPLOYMENTS_DIR) : deps.deployments;
@@ -59,7 +65,11 @@ export async function buildApp(
   const flags = parseFlags(env);
   const app = Fastify({
     // No node's URL in a log line (redact.ts): the configured ones, and any a library's error names.
-    logger: process.env.NODE_ENV !== 'test' ? loggerOptions({ ...process.env, ...env }) : false,
+    logger: deps.logTo
+      ? { ...loggerOptions({ ...process.env, ...env }), stream: deps.logTo }
+      : process.env.NODE_ENV !== 'test'
+        ? loggerOptions({ ...process.env, ...env })
+        : false,
     // Whose address a request is counted against, behind a host's proxy (plugins/proxy.ts).
     trustProxy: proxyTrust(env),
     // Not a counter: a request's id is in the answer to a failed request, and says nothing of how

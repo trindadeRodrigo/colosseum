@@ -13,7 +13,7 @@ import {
   type SolanaDeploymentRecord,
   type VaultNodeRpc,
 } from '@colosseum/chain-solana/vault';
-import { basketAssets, createDb, type Db } from '@colosseum/db';
+import { basketAssets, type Db, sharedDb } from '@colosseum/db';
 import {
   BasketAsset,
   ChainError,
@@ -41,6 +41,7 @@ import type { OrderDeps } from '../../orders/legs';
 import type { PlanInputs } from '../../orders/personalize';
 import { authFromEnv, enforceSignIn, identify, type TokenIssuer } from '../../plugins/auth';
 import { type Limits, registerLimits, requireDeclared } from '../../plugins/limits';
+import { loggable } from '../../plugins/loggable';
 import { type LinkedPlanLimits, registerBasketRoutes } from './baskets';
 import { buildConfig, registerConfigRoute } from './config';
 import { registerFundingRoute } from './funding';
@@ -114,10 +115,9 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
   const issuer = deps.auth === undefined ? authFromEnv(env) : deps.auth;
   let db = deps.db;
   if (!db) {
-    // Opens no connection until the first query.
-    const own = createDb();
-    db = own.db;
-    app.addHook('onClose', () => own.client.end());
+    // The process's one pool, shared with the routes outside /v1 (packages/db: `sharedDb`). Opens no
+    // connection until the first query.
+    db = sharedDb().db;
   }
   // Read only when the registry is made here: a test that hands in its chains hands in its senders.
   const solana = deps.chains
@@ -191,7 +191,9 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
           .code(status)
           .send({ error: ours ? err.message : 'the request body could not be read as JSON' });
       }
-      req.log.error({ err }, 'a /v1 route failed');
+      // By what it is called and its code where it has one, and nothing else of it: a database's
+      // error repeats the statement's values, which name the person (plugins/loggable.ts).
+      req.log.error({ err: loggable(err) }, 'a /v1 route failed');
       // The request id and nothing else: no SQL, no stack.
       return reply.code(500).send({ error: `the server failed on this request (${req.id})` });
     });

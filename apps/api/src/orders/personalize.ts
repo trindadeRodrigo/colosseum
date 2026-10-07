@@ -143,6 +143,22 @@ export function shelfVersionOf(
   return `${chain}:${createHash('sha256').update(content).digest('hex').slice(0, 16)}`;
 }
 
+/** The same shelf and figures for the intake's read-back and for the plan it builds. */
+export async function preparePersonalInputs(
+  chain: ChainId,
+  listed: BasketAsset[],
+  families: Shelf['families'],
+  provenance: Provenance,
+  loadInputs: PersonalizeContext['inputs'],
+): Promise<{ shelf: Shelf; figures: Awaited<ReturnType<PlanInputs>> }> {
+  const figures = await loadInputs(chain, listed, provenance);
+  const assets = withTiers(listed, figures.tiers, figures.issuers);
+  return {
+    figures,
+    shelf: { version: shelfVersionOf(chain, assets, families), assets, families },
+  };
+}
+
 /**
  * The plan in the shared shape. The limits leave the sheet (its lines already hold them), the four
  * sleeves and the verdict's sentence beside the ways are not in the shape, the person's split stays
@@ -221,9 +237,13 @@ export async function personalize(
   const entry = ctx.chains.get(chain);
   const listed = await refusing(() => entry.adapter.listAssets());
   const families = await ctx.loadFamilies(chain);
-  const figures = await ctx.inputs(chain, listed, entry.provenance);
-  const assets = withTiers(listed, figures.tiers, figures.issuers);
-  const shelf: Shelf = { version: shelfVersionOf(chain, assets, families), assets, families };
+  const { shelf, figures } = await preparePersonalInputs(
+    chain,
+    listed,
+    families,
+    entry.provenance,
+    ctx.inputs,
+  );
   const context: ComposeContext = {
     now: ctx.now,
     ...(figures.yields ? { yields: figures.yields } : {}),
