@@ -4926,3 +4926,111 @@ describe('the third review (Oct 7), B11: only a name the shelf knows is a name r
     expect(namesRuledOutIn('No Stocks. No Gold. No AI.', ['Stocks', 'Gold', 'AI'])).toEqual([]);
   });
 });
+
+describe('the third review (Oct 7), B9: on a goal of income or to protect a narrative that reads to a shared portfolio is not held', () => {
+  const PROTECT: IntakeAnswers = {
+    goal: 'protect',
+    amountUsd: 5000,
+    horizonMonths: 60,
+    risk: 'low',
+  };
+  const INCOME: IntakeAnswers = {
+    goal: 'income',
+    amountUsd: 10_000,
+    incomeTargetUsdMonthly: 50,
+    horizonMonths: 60,
+    risk: 'low',
+  };
+  const reads = (over: Record<string, unknown> = {}) =>
+    reply({ goal: null, amountUsd: null, horizonMonths: null, risk: null, ...over });
+  const notHeld = (words: string, goal: 'income' | 'protect', pt = false) =>
+    pt
+      ? `Um plano com ${goal === 'income' ? 'um objetivo de renda' : 'um objetivo de proteção'} não tem ações nem cripto, então “${words}” não é mantido.`
+      : `A plan for ${goal === 'income' ? 'a goal of income' : 'a goal to protect'} holds no stocks or crypto, so “${words}” is not held.`;
+  // The text, the market a faithful reply names, the person's words for it, and the form's goal.
+  const CASES: [string, Market, string, IntakeAnswers, true?][] = [
+    // The review's own.
+    ['Invest in the S&P 500.', 'us_market', 'S&P 500', PROTECT],
+    // In other words.
+    ['Put it all in big tech.', 'big_tech', 'big tech', PROTECT],
+    ['I want it in the S&P.', 'us_market', 'S&P', INCOME],
+    ['Half in big tech, please.', 'big_tech', 'big tech', INCOME],
+    ['Quero investir em big techs.', 'big_tech', 'big techs', PROTECT, true],
+    ['Quero tudo no S&P 500.', 'us_market', 'S&P 500', INCOME, true],
+  ];
+
+  it('nothing is held for it and one line says so: with a reply that names it, with one that also gives a mix, and with none', () => {
+    for (const [text, market, words, form, pt] of CASES) {
+      const goal = form.goal as 'income' | 'protect';
+      const lang = pt ? { language: 'pt' } : {};
+      const line = notHeld(words, goal, pt);
+      const faithful = intake(text, reads({ markets: [market], ...lang }), { answers: form });
+      // A reply that also reads the narrative as a plan all in stocks: nothing more is held.
+      const hostile = intake(text, reads({ markets: [market], mix: pct(100, 0), ...lang }), {
+        answers: form,
+      });
+      const rules = intake(text, null, { answers: form, ...(pt ? { language: 'pt' } : {}) });
+      for (const [how, r] of [
+        ['faithful', faithful],
+        ['hostile', hostile],
+        ['none', rules],
+      ] as const) {
+        const at = `${text} (${how})`;
+        expect(r.flags, at).toContain('themes_dropped_for_goal');
+        expect(r.draft.themes, at).toBeNull();
+        expect(r.mix, at).toBeNull();
+        expect(r.assumptions, at).toContain(line);
+        expect(
+          r.assumptions.filter((x) => x === line),
+          at,
+        ).toHaveLength(1);
+        if (how !== 'hostile') {
+          expect(r.questions, at).toEqual([]);
+          expect(r.sheet, at).toMatchObject({ goal, themes: [] });
+          expect(r.sheet?.mix, at).toBeUndefined();
+          expect(r.sheet?.sleeves, at).toBeUndefined();
+          expect(r.readBack, at).toContain(line);
+        } else expect(r.sheet?.themes ?? [], at).toEqual([]);
+      }
+    }
+  });
+
+  it('the review’s second sentence, where the reply reads the goal of income itself', () => {
+    const text =
+      'I want a monthly income of $50 from $10,000 over 5 years, low risk, invested in the S&P 500.';
+    const r = intake(
+      text,
+      reply({
+        goal: 'income',
+        amountUsd: 10_000,
+        incomeTargetUsdMonthly: 50,
+        horizonMonths: 60,
+        risk: 'low',
+        markets: ['us_market'],
+      }),
+    );
+    expect(r.questions).toEqual([]);
+    expect(r.sheet).toMatchObject({ goal: 'income', themes: [] });
+    expect(r.readBack).toContain(notHeld('S&P 500', 'income'));
+  });
+
+  it('on a goal to grow the same words are held as before, and a portfolio the person names is not a narrative', () => {
+    const grow: IntakeAnswers = {
+      goal: 'grow',
+      amountUsd: 5000,
+      horizonMonths: 60,
+      risk: 'medium',
+    };
+    const held = intake('Invest in the S&P 500.', reads({ markets: ['us_market'] }), {
+      answers: grow,
+    });
+    expect(held.sheet?.themes).toEqual(['the-500']);
+    expect(held.flags).not.toContain('themes_dropped_for_goal');
+    // A shared portfolio named by its own name is where the plan starts from: not this rule's.
+    const named = intake('Start from The Seven.', reads({ portfolios: ['The Seven'] }), {
+      answers: PROTECT,
+    });
+    expect(named.draft.themes).toEqual(['the-seven']);
+    expect(named.flags).not.toContain('themes_dropped_for_goal');
+  });
+});

@@ -1788,9 +1788,18 @@ function intakeOf(
   if (leftOut.has('credit')) limits.creditTolerance = 'none';
 
   // A shared portfolio is where the plan starts from, as before. Not one the person answered "none"
-  // of the money for.
+  // of the money for. Nor on a goal of income or to protect (the third review, Oct 7: "Invest in
+  // the S&P 500." on a goal to protect started the plan from The 500 with no question): a narrative
+  // holds stocks whatever it reads to, so one that reads to a shared portfolio is not held there
+  // either, as one that reads to a label or a filter is not, and that is said.
+  const portfoliosNotHeld: string[] = [];
   for (const r of inPlay) {
     if (r.kind !== 'portfolio' || !r.slug) continue;
+    if (!growsSoFar) {
+      flags.push('themes_dropped_for_goal');
+      if (!portfoliosNotHeld.includes(r.words)) portfoliosNotHeld.push(r.words);
+      continue;
+    }
     if (noneHeld) flags.push(`market_left_out:${keyOf(r)}`);
     else if (!(draft.themes ?? []).includes(r.slug))
       draft.themes = [...(draft.themes ?? []), r.slug];
@@ -2508,6 +2517,8 @@ function intakeOf(
   if (mixDropped) assume('MIX_DROPPED', mixDropped);
   if (themesNotHeld && value.goal)
     for (const { words } of themes) assume('MIX_DROPPED', { words, goal: value.goal });
+  if (value.goal)
+    for (const words of portfoliosNotHeld) assume('MIX_DROPPED', { words, goal: value.goal });
   const chain = input.homeChain;
   if (chain)
     for (const r of [...reads].sort((a, b) => a.at - b.at)) {

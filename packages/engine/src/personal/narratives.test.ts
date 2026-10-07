@@ -1777,7 +1777,9 @@ describe('a theme on a goal of income or to protect (gate PROTECT-NO-STOCKS)', (
     expect(protect.assumptions.join(' ')).not.toMatch(/matched by/);
   });
 
-  it('a market with a shared portfolio on such a goal is read as before', () => {
+  // Changed with the third review (Oct 7, B9): this pinned the plan starting from The Seven on a goal
+  // of income. A narrative holds stocks whatever it reads to, so it is not held there, and said.
+  it('a market with a shared portfolio on such a goal is not held either, and that is said', () => {
     const result = intake(
       'I want $50 a month of income from $10,000 for 5 years, invested in big tech',
       reply({
@@ -1787,9 +1789,13 @@ describe('a theme on a goal of income or to protect (gate PROTECT-NO-STOCKS)', (
         markets: ['big_tech'],
       }),
     );
-    expect(result.draft.themes).toEqual(['the-seven']);
+    expect(result.draft.themes).toBeNull();
+    expect(result.flags).toContain('themes_dropped_for_goal');
     expect(result.mix).toBeNull();
     expect(fields(result)).toEqual(['risk']);
+    expect(result.assumptions).toContain(
+      'A plan for a goal of income holds no stocks or crypto, so “big tech” is not held.',
+    );
   });
 
   it('a goal answered as income after the theme was read drops it, and says so', () => {
