@@ -93,6 +93,20 @@ function goalJson(run: GoalRun, mode: DataMode) {
       keywords: run.offers.keywords,
     },
     sheetWhole: i.sheet !== null,
+    // What each plan needs to pay what the person asked of it, to the cent, found by making the
+    // plan at each amount: the least amount that pays every withdrawal (`withdrawalsUsd`) and, for
+    // an income target, the least whose income alone reaches it (`incomeUsd`); null where no amount
+    // does. There while the amount is the one thing still asked, too. Plated as every figure is.
+    needs: run.needs
+      ? {
+          plate: mode === 'fixtures' ? 'MOCK' : 'as the yields behind it',
+          each: run.needs.map((n) => ({
+            ...n,
+            name:
+              WORDS[lang].candidate[n.id as keyof (typeof WORDS)[typeof lang]['candidate']] ?? n.id,
+          })),
+        }
+      : null,
     error: run.error,
     candidates: (run.made?.shown ?? []).map((c) => ({
       id: c.id,

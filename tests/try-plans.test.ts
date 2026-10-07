@@ -496,6 +496,85 @@ describe("an income goal's verdict", () => {
   });
 });
 
+describe('what the plans need, before an amount is given', () => {
+  // Rodrigo's test of `/plan-chat` on Oct 7: "$2k a month for a sabbatical year in three years. How
+  // much should I invest?" was answered "I can't size the amount for you".
+  const source = (answers: string[]) =>
+    [
+      '## A sabbatical year',
+      'I want $2,000 a month for a sabbatical year, three years from now. How much should I invest?',
+      '```yaml answers',
+      'goal: income',
+      'income: 2000',
+      'horizon: 36',
+      'withdrawals: { monthly: 2000, from: 2029-10, months: 12 }',
+      ...answers,
+      '```',
+    ].join('\n');
+  const goalRun = async (answers: string[]) => {
+    const [goal] = parsePromptFile(source(answers), 'test.md');
+    if (!goal) throw new Error('no goal');
+    return runGoal(goal, { data: fixturesSource(), model: null, now: NOW });
+  };
+
+  it('with only the amount open, says what each plan needs to the cent, and makes no plan', async () => {
+    const r = await goalRun(['risk: medium']);
+    expect(r.open.map((q) => q.key)).toEqual(['amount']);
+    expect(r.made).toBeNull();
+    expect(r.needs?.map((n) => n.id)).toEqual(['cover', 'spread', 'carry']);
+    for (const n of r.needs ?? []) {
+      expect(n.risk).toBeUndefined();
+      // Less than the $24,000 withdrawn, since the money earns for three years first.
+      expect(n.withdrawalsUsd).toBeGreaterThan(12_000);
+      expect(n.withdrawalsUsd).toBeLessThan(24_000);
+      expect(Number.isInteger(Math.round((n.withdrawalsUsd ?? 0) * 100))).toBe(true);
+    }
+    // The amount it names pays every withdrawal, and the plan made at it says so.
+    const cover = r.needs?.find((n) => n.id === 'cover')?.withdrawalsUsd ?? 0;
+    const at = await goalRun(['risk: medium', `amount: ${cover}`]);
+    const plan = at.made?.shown.find((c) => c.id === 'cover')?.plan;
+    expect(plan?.status?.met).toBe(true);
+    expect(at.needs?.find((n) => n.id === 'cover')?.withdrawalsUsd).toBe(cover);
+    // In the document a chat reads, plated, and on the page.
+    const doc = toJson([r], { file: 'test.md', mode: 'fixtures', now: NOW.toISOString() });
+    expect(doc.goals[0]?.needs?.plate).toBe('MOCK');
+    expect(doc.goals[0]?.needs?.each.map((n) => n.name)).toEqual(['Cover', 'Spread', 'Carry']);
+    expect(
+      renderReport([r], { file: 'test.md', mode: 'fixtures', now: NOW.toISOString() }),
+    ).toMatch(/What the plans need/);
+  });
+
+  it('with the risk open too, says it at each risk, and picks none', async () => {
+    const r = await goalRun([]);
+    expect(r.open.map((q) => q.key).sort()).toEqual(['amount', 'risk']);
+    expect(r.needs?.map((n) => `${n.id}:${n.risk}`)).toEqual(
+      ['low', 'medium', 'high'].flatMap((risk) =>
+        ['cover', 'spread', 'carry'].map((id) => `${id}:${risk}`),
+      ),
+    );
+    expect(r.intake.sheet).toBeNull();
+  });
+
+  it('says nothing for a goal with nothing to pay, or with more still open', async () => {
+    const [grow] = parsePromptFile(
+      [
+        '## Grow',
+        'I want to grow my money.',
+        '```yaml answers',
+        'goal: grow',
+        'risk: low',
+        'horizon: 5y',
+        '```',
+      ].join('\n'),
+      'test.md',
+    );
+    if (!grow) throw new Error('no goal');
+    const r = await runGoal(grow, { data: fixturesSource(), model: null, now: NOW });
+    expect(r.open.map((q) => q.key)).toEqual(['amount']);
+    expect(r.needs).toBeNull();
+  });
+});
+
 describe('a run of examples.md on the fixtures, the model off', () => {
   const run = async (): Promise<GoalRun[]> => {
     const goals = parsePromptFile(readFileSync(EXAMPLES, 'utf8'), 'examples.md');

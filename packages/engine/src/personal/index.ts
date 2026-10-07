@@ -3,7 +3,13 @@
 // to read what it returns.
 
 export { candidates } from './candidates';
-export { compose, composeAs, PERSONAL_ENGINE_VERSION, riskForMix } from './compose';
+export {
+  amountToMeet,
+  compose,
+  composeAs,
+  PERSONAL_ENGINE_VERSION,
+  riskForMix,
+} from './compose';
 export { draftFromRules } from './draft';
 // The guided intake (gate GUIDED-INTAKE, ENG-3 slice 4): the checks after the model, the questions
 // and the read-back. The model call itself is the API's (apps/api/src/llm.ts).

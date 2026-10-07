@@ -1,15 +1,21 @@
 import {
+  amountToMeet,
   attributeVocabularyOf,
+  CANDIDATES,
   type ComposeContext,
   candidates,
   companyNamesOf,
   compose,
   filterMatchOf,
+  type IntakeInput,
   type IntakeResult,
   type PersonalCandidates,
   PersonalInputError,
   type PersonalProposal,
+  type PersonalSheet,
   type QuestionField,
+  RISKS,
+  type RiskLevel,
   riskForMix,
   riskForMixEstimate,
   riskForSleeves,
@@ -63,6 +69,21 @@ export type GoalRun = {
   made: PersonalCandidates | null;
   /** Why no plan was made from a whole sheet: the engine's own words. */
   error: string | null;
+  /**
+   * What each plan needs to pay what the person asked of it, to the cent (`amountToMeet`): there
+   * once the sheet is whole, and also while the amount is the one thing still asked, so "how much
+   * should I invest?" has the engine's answer before any amount is given. Null: nothing to pay, or
+   * more than the amount is still open.
+   */
+  needs:
+    | {
+        id: string;
+        /** The risk it was asked at, while the person has not said theirs. */
+        risk?: RiskLevel;
+        withdrawalsUsd?: number | null;
+        incomeUsd?: number | null;
+      }[]
+    | null;
   sources: string[];
   /** What the chain's shelf lists and leaves out of every plan, each with its reason. */
   heldOut: LeftOffPlans[];
@@ -133,7 +154,7 @@ export async function runGoal(goal: PromptGoal, opts: RunOptions): Promise<GoalR
     rules: { useHoldings: false, glide: false },
     language: 'en' as const,
   });
-  const intake = runIntake({
+  const input: IntakeInput = {
     text: goal.text,
     nowMonth,
     ...(language ? { language } : {}),
@@ -171,7 +192,8 @@ export async function runGoal(goal: PromptGoal, opts: RunOptions): Promise<GoalR
         });
       }
     },
-  });
+  };
+  const intake = runIntake(input);
   const pasted = goal.reply !== undefined && read.reply !== null;
   const byModel = read.reply !== null && opts.model !== null && !pasted;
   const reader: Reader = {
@@ -195,6 +217,47 @@ export async function runGoal(goal: PromptGoal, opts: RunOptions): Promise<GoalR
   let plain: PersonalProposal | null = null;
   let made: PersonalCandidates | null = null;
   let error: string | null = null;
+  let needs: GoalRun['needs'] = null;
+  // While the amount is the one thing still asked, or the amount and the risk, the rest of the sheet
+  // is read with a stand-in for it, only to ask the engine what amount the plans need:
+  // `amountToMeet` does not read the amount. With the risk open too, it is asked at each risk, and
+  // each answer says which: no risk is picked for the person.
+  const stillOpen = new Set(intake.questions.map((q) => q.field));
+  const amountOpen =
+    intake.sheet === null &&
+    stillOpen.has('amountUsd') &&
+    [...stillOpen].every((f) => f === 'amountUsd' || f === 'risk');
+  const sized: { risk: RiskLevel | null; sheet: PersonalSheet }[] = intake.sheet
+    ? [{ risk: null, sheet: intake.sheet }]
+    : amountOpen
+      ? (stillOpen.has('risk') ? RISKS : [null]).flatMap((risk) => {
+          const { sheet } = runIntake({
+            ...input,
+            answers: { ...goal.answers, amountUsd: RISK_PROBE_USD, ...(risk ? { risk } : {}) },
+          });
+          return sheet ? [{ risk, sheet }] : [];
+        })
+      : [];
+  try {
+    const each = sized.flatMap(({ risk, sheet }) => {
+      const needsFx =
+        currencyOf(sheet) !== 'USD' || (sheet.obligations ?? []).some((o) => o.currency !== 'USD');
+      const context: ComposeContext = {
+        ...data.context,
+        now: nowIso,
+        ...(goal.holdings.length ? { holdings: goal.holdings } : {}),
+        ...(needsFx && data.fx.length ? { fx: data.fx } : {}),
+      };
+      return CANDIDATES.map((id) => ({
+        id,
+        ...(risk ? { risk } : {}),
+        ...amountToMeet(id, sheet, data.shelf, context),
+      }));
+    });
+    needs = each.some((x) => 'withdrawalsUsd' in x || 'incomeUsd' in x) ? each : null;
+  } catch (e) {
+    if (!(e instanceof PersonalInputError)) throw e;
+  }
   if (intake.sheet) {
     const sheet = intake.sheet;
     // An exchange rate is handed in only to a goal that counts or pays in another currency.
@@ -223,6 +286,7 @@ export async function runGoal(goal: PromptGoal, opts: RunOptions): Promise<GoalR
     plain,
     made,
     error,
+    needs,
     sources: data.sources,
     heldOut: data.heldOut,
     symbols,

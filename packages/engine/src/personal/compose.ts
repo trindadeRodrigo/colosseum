@@ -36,6 +36,7 @@ import { claimHoldings, fillingList, namesOf, placeThemeSleeve } from './theme-s
 import {
   type CandidateId,
   type ComposeContext,
+  PersonalInputError,
   type PersonalProposal,
   type PersonalSchedule,
   type PersonalSheet,
@@ -1109,6 +1110,65 @@ export function riskForMix(
 ): PersonalSheet['risk'] {
   const { sheet: valid } = buildWorld(sheet, shelf, context);
   return valid.mix ? riskOfMix(sheet, shelf, context) : valid.risk;
+}
+
+/** The least and the most a sheet's amount may be, in cents. */
+const AMOUNT_CENTS = {
+  least: toCents(BasketSheet.shape.amountUsd.minValue ?? 0),
+  most: toCents(BasketSheet.shape.amountUsd.maxValue ?? 0),
+};
+
+/**
+ * What a plan needs to pay what the person asked of it, to the cent: `withdrawalsUsd`, the least
+ * amount at which every withdrawal is paid at the rates observed; `incomeUsd`, for an income goal
+ * with a target, the least amount whose income alone reaches it. Each is there only where the sheet
+ * asks for it, and null where no amount a sheet allows does it. Null: the sheet has nothing to pay.
+ *
+ * It is found by making the plan, never beside it: the same engine, as the same candidate (null:
+ * the plain plan), with only the amount changed, and each amount tried. More money never pays less,
+ * so the range is halved; the answer is one that was tried and met, and one cent less was tried
+ * and did not. The sheet's own amount is not read. A figure of the plan: it carries the plate of the
+ * yields it was made with, and changes when they do.
+ */
+export function amountToMeet(
+  candidate: CandidateId | null,
+  sheet: PersonalSheet,
+  shelf: Shelf,
+  context: ComposeContext,
+): { withdrawalsUsd?: number | null; incomeUsd?: number | null } | null {
+  const withdrawals = (sheet.obligations ?? []).length > 0;
+  const income = sheet.goal === 'income' && sheet.incomeTargetUsdMonthly !== undefined;
+  if (!withdrawals && !income) return null;
+  const least = (meets: (plan: PersonalProposal) => boolean, status: boolean): number | null => {
+    const at = (cents: number) => {
+      try {
+        return meets(
+          build({ ...sheet, amountUsd: toUsd(cents) }, shelf, context, {
+            ways: false,
+            status,
+            candidate,
+          }),
+        );
+      } catch (err) {
+        // An amount this sheet cannot be made at (under what must not be lost) pays nothing.
+        if (err instanceof PersonalInputError) return false;
+        throw err;
+      }
+    };
+    if (!at(AMOUNT_CENTS.most)) return null;
+    if (at(AMOUNT_CENTS.least)) return toUsd(AMOUNT_CENTS.least);
+    let [low, high] = [AMOUNT_CENTS.least, AMOUNT_CENTS.most];
+    while (high - low > 1) {
+      const middle = Math.floor((low + high) / 2);
+      if (at(middle)) high = middle;
+      else low = middle;
+    }
+    return toUsd(high);
+  };
+  return {
+    ...(withdrawals ? { withdrawalsUsd: least((plan) => plan.status?.met === true, true) } : {}),
+    ...(income ? { incomeUsd: least((plan) => plan.verdict?.met === true, false) } : {}),
+  };
 }
 
 /**

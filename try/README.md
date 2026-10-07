@@ -17,7 +17,8 @@ files in `try/mine/`: that folder and `try/out/` are not committed.
 With `--json` the command prints one JSON document to stdout instead (`scripts/try/json.ts`): per goal
 the reader, what was read, the flags and disagreements, the open questions with their answer keys, text
 and options, the read-back, each candidate shown (lines with symbol, share, dollars and reasons; the
-scorecard, the status, the income verdict and its ways), the candidates not shown with why, the shelf
+scorecard, the status, the income verdict and its ways), what each plan needs to pay what the person
+asked of it (`needs`, below), the candidates not shown with why, the shelf
 and what it leaves out of every plan, the plates and the disclaimer. No page is written and nothing opens.
 
 ## Chat with it
@@ -71,6 +72,17 @@ withdrawals: { monthly: 300, from: 2026-11, months: 24 }
 - The `yaml answers` block is optional. It holds the person's answers to the intake's questions. The
   goal text is read first; the answers are then applied the same way the API's intake route applies
   them (`runIntake` with `answers`).
+
+## How much a plan needs
+
+For a goal with withdrawals or an income target, each goal shows **What the plans need**, and the JSON
+has it as `needs`: for Cover, Spread and Carry, the least amount that pays every withdrawal
+(`withdrawalsUsd`) and, for an income target, the least amount whose income alone reaches it
+(`incomeUsd`, `null` where no amount does). It is found by making each plan at each amount
+(`amountToMeet` in the engine), to the cent, at the yields observed after haircut, so it carries their
+plate and changes when they do. It is shown as soon as the amount is the one answer missing, so "how
+much should I invest?" is answered before an amount is given; while the risk is missing too, it is
+shown at each risk. The ways to close a gap under a plan stay in round hundreds of dollars.
 
 ## Answering questions
 

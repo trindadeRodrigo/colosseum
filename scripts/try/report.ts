@@ -99,6 +99,23 @@ ${run.open.map((q) => `${esc(q.key)}: `).join('\n')}
     <h4>Intake flags</h4>${codes(i.flags)}${dis}`;
 }
 
+/** What each plan needs to pay what the person asked of it, to the cent (`GoalRun.needs`). */
+function needsSection(run: GoalRun, mode: DataMode): string {
+  if (!run.needs) return '';
+  const cell = (n: number | null | undefined) =>
+    n === undefined ? '' : `<td class="n">${n === null ? 'no amount does' : usd(n)}</td>`;
+  const has = (key: 'withdrawalsUsd' | 'incomeUsd') => run.needs?.some((n) => key in n) ?? false;
+  return `
+    <h3>What the plans need ${mode === 'fixtures' ? plate('fixture-mode') : ''}</h3>
+    <p class="meta">The least amount, found by making each plan at each amount, at the yields observed after haircut. It changes when they do.</p>
+    <table><tr><th>Plan</th>${has('withdrawalsUsd') ? '<th>To pay every withdrawal</th>' : ''}${has('incomeUsd') ? '<th>For the income alone to reach the target</th>' : ''}</tr>${run.needs
+      .map(
+        (n) =>
+          `<tr><td>${esc(n.id)}${n.risk ? ` at ${esc(n.risk)} risk` : ''}</td>${cell(n.withdrawalsUsd)}${cell(n.incomeUsd)}</tr>`,
+      )
+      .join('')}</table>`;
+}
+
 function readBackSection(run: GoalRun): string {
   if (!run.intake.readBack) return '';
   return `<h3>Read-back</h3>${list(run.intake.readBack.map(esc), 'readback')}`;
@@ -278,6 +295,7 @@ function goalSection(run: GoalRun, i: number, mode: DataMode): string {
     <blockquote>${esc(run.goal.text)}</blockquote>
     ${readSection(run)}
     ${questionsSection(run)}
+    ${needsSection(run, mode)}
     ${readBackSection(run)}
     ${plansSection(run, mode)}
     ${
