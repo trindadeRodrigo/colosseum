@@ -471,6 +471,44 @@ export const pt: Dictionary = {
       seeOrder: 'Ver a ordem',
       startGoal: 'Comece pelo seu objetivo',
     },
+    actions: {
+      label: 'Este cofre',
+      unnamed: (chain: string) => `Seu cofre na ${chain}`,
+      addMoney: 'Adicionar dinheiro',
+      rename: 'Renomear',
+      newPlan: 'Novo plano',
+      nameLabel: 'Nome deste cofre',
+      nameHint: 'Até 60 caracteres. Só você vê.',
+      save: 'Salvar o nome',
+      saving: 'Salvando…',
+      cancel: 'Cancelar',
+      clear: 'Remover o nome',
+      failure: {
+        invalid:
+          'Um nome tem de 1 a 60 caracteres de texto simples. Encurte, ou tire o que não é texto, e salve de novo.',
+        signedOut:
+          'Nosso servidor não reconhece mais o seu login, então o nome não foi salvo. Saia e entre de novo.',
+        notYours:
+          'Nosso servidor não lista este cofre como seu, então o nome não foi salvo. Leia seu portfólio de novo.',
+        unreachable: 'Não consegui salvar o nome: nosso servidor não respondeu. Tente de novo.',
+      },
+    },
+    add: {
+      title: 'Adicione dinheiro ao seu cofre',
+      lead: (chain: string) =>
+        `O valor inteiro vai para este cofre na ${chain} e depois compra cada parte nas metas do cofre. Nada é assinado aqui.`,
+      amountHint: 'De US$ 10 a US$ 1.000.000.',
+      review: (amount: string) => `Revisar os passos para adicionar ${amount}`,
+      reviewLead: (amount: string, chain: string) =>
+        `Você está adicionando ${amount} ao seu cofre na ${chain}. A seguir você revisa cada passo e assina cada um na sua carteira.`,
+      missing:
+        'Não encontro este cofre entre os seus. Abra seu portfólio e escolha o cofre por lá.',
+      back: 'Voltar ao seu portfólio',
+      otherWallet: (address: string) =>
+        `Este cofre pertence a outra carteira sua (${address}). Entre com essa carteira para adicionar dinheiro a ele.`,
+      noVault:
+        'Nosso servidor não lista mais este cofre como seu. Leia seu portfólio de novo e tente outra vez.',
+    },
     summary: {
       title: 'Seu portfólio',
       worth: (chain: string) => `Seu cofre na ${chain} vale`,
@@ -1087,6 +1125,10 @@ export const pt: Dictionary = {
       on: 'Ativado',
       off: 'Desativado',
       weights: 'Ativos e pesos',
+      addTitle: 'Onde você adiciona',
+      addNote:
+        'O valor compra estes ativos nestes pesos, as metas que seu cofre mostrava quando você o escolheu. O que elas deixam fica no cofre como caixa.',
+      addCashNote: 'Este cofre não tem metas, então o valor inteiro fica nele como caixa.',
       publishNote:
         'Sua carteira só é chamada para assinar uma transação que publique exatamente este nome, esta descrição e estes pesos, com este identificador.',
       signPublish: 'Assinar e publicar',

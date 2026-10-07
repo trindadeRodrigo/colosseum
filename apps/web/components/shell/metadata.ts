@@ -43,6 +43,12 @@ export async function buyMetadata() {
   return { title: t.buy.title, description: t.buy.funding.title };
 }
 
+export async function addMoneyMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.portfolio.add.title, description: t.buy.funding.title };
+}
+
 export async function orderMetadata() {
   const { lang } = await readPreferences();
   const t = dictionary(lang);

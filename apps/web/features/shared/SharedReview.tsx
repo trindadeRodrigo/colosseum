@@ -11,8 +11,8 @@ import { SourceMark } from './SourceMark';
 import type { SharedTerms } from './terms';
 
 // What an order about a shared portfolio is held to, on the review, as its screen showed it: the
-// form's text and weights for a publish, the portfolio and version read for a follow. Never the order
-// the API answered. The creator's words are shown as text, never as markup or a link.
+// form's text and weights for a publish, the portfolio and version read for a follow, the vault and
+// its targets for more money into one. Never the order the API answered. The creator's words are shown as text, never as markup or a link.
 
 export function SharedReview({ terms, chain }: { terms: SharedTerms; chain: ChainId }) {
   const t = useT();
@@ -64,6 +64,22 @@ export function SharedReview({ terms, chain }: { terms: SharedTerms; chain: Chai
           {weights(terms.components)}
           <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
             {s.publishNote}
+          </p>
+        </CardBody>
+      </Card>
+    );
+  if (terms.kind === 'vault')
+    return (
+      <Card as="section" aria-label={s.addTitle}>
+        <CardHeader title={s.addTitle} level={2} meta={t.chain.names[chain]} />
+        <CardBody className="flex flex-col gap-4">
+          <dl className="grid gap-x-6 gap-y-1 text-body-sm sm:grid-cols-[auto_1fr]">
+            <dt className="text-muted-foreground">{s.vault}</dt>
+            <dd className="break-all font-mono text-source">{terms.vault}</dd>
+          </dl>
+          {terms.targets.length > 0 && weights(terms.targets)}
+          <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
+            {terms.targets.length > 0 ? s.addNote : s.addCashNote}
           </p>
         </CardBody>
       </Card>

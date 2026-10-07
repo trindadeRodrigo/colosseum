@@ -47,6 +47,18 @@ export type SharedTerms =
       components: Target[];
       text: PublishText;
       version: number;
+    }
+  /**
+   * More money into a vault the person has (add money): a deposit, and the trades the vault's targets
+   * give. The vault and its targets are the ones the person's portfolio showed when they chose it.
+   */
+  | {
+      kind: 'vault';
+      vault: string;
+      /** The plan number of that vault, which the guard derives its address from. */
+      basketId: string;
+      /** The vault's targets as shown, which the add's trades are held to. None: it keeps cash. */
+      targets: Target[];
     };
 
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
@@ -102,6 +114,13 @@ export function readTerms(value: unknown): SharedTerms | null {
       autoFollow: t.autoFollow,
       source,
     };
+  }
+  if (t.kind === 'vault') {
+    const targets = Target.array().safeParse(t.targets);
+    if (!isText(t.vault) || !t.vault || !isText(t.basketId) || !/^\d+$/.test(t.basketId))
+      return null;
+    if (!targets.success) return null;
+    return { kind: 'vault', vault: t.vault, basketId: t.basketId, targets: targets.data };
   }
   if (t.kind === 'publish') {
     const components = targetsOf(t.components);

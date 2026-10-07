@@ -21,8 +21,14 @@ import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { ActivityPanel } from './ActivityPanel';
 import { activityOf } from './activity';
 import { assetTicker, formatBps, formatRaw, shortfallBps } from './amounts';
-import { type CallFailure, readOrder } from './order-api';
-import { checkDeposit, checkFamilyBuy, type DepositCheck, sharedShapeOk } from './order-check';
+import { addMoneyPath, type CallFailure, readOrder } from './order-api';
+import {
+  checkDeposit,
+  checkFamilyBuy,
+  checkVaultAdd,
+  type DepositCheck,
+  sharedShapeOk,
+} from './order-check';
 import { isBuy, keepOrder, type OrderRecord, recallOrder } from './order-record';
 import { legsInOrder, type NextStep, type OutcomeView, outcomeView, stepOf } from './order-view';
 import { chainReady, explorerUrlFor, onMock } from './readiness';
@@ -43,13 +49,14 @@ type Check = DepositCheck | { ok: false; why: 'trades' | 'shape' };
 
 /**
  * Before an order is offered for signing (order-check.ts): a buy of a plan deposits what was typed; a
- * buy of a shared portfolio does too, and spends it on the weights its screen read; a follow and a
- * publish move nothing and have only the steps their terms call for.
+ * buy of a shared portfolio does too, and spends it on the weights its screen read; an add to a vault
+ * deposits it into that vault and spends it on the vault's targets; a follow and a publish move nothing and have only the steps their terms call for.
  */
 function checkOf(order: OrderDetail, record: OrderRecord, units: ChainUnits | null): Check {
   const terms = record.terms;
   if (!terms) return checkDeposit(order, record.amountUsd, units);
   if (terms.kind === 'family') return checkFamilyBuy(order, record.amountUsd, units, terms.targets);
+  if (terms.kind === 'vault') return checkVaultAdd(order, record.amountUsd, units, terms);
   return sharedShapeOk(order, terms)
     ? { ok: true, depositRaw: 0n, decimals: 0 }
     : { ok: false, why: 'shape' };
@@ -231,7 +238,9 @@ export function OrderScreen({ id }: { id: string }) {
       ? `/indexes/${encodeURIComponent(terms.slug)}/buy`
       : terms.kind === 'follow'
         ? `/indexes/${encodeURIComponent(terms.slug)}`
-        : '/publish';
+        : terms.kind === 'vault'
+          ? addMoneyPath(chain, terms.vault)
+          : '/publish';
   const testNetwork = shown.legs[0]?.provenance === 'sandbox';
 
   // The one primary button of the view: sign, carry on, approve a step again, or nothing.

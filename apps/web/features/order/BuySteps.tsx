@@ -10,7 +10,7 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars } from '../goal/sheet';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { type Funding, FundingStep } from './FundingStep';
-import { fundMock, requestTestFunds, type TestFundsOutcome } from './order-api';
+import { type BuyOf, fundMock, requestTestFunds, type TestFundsOutcome } from './order-api';
 import { gasUnitsFor } from './readiness';
 import { TrustNotice } from './TrustNotice';
 import { unitsFor } from './units';
@@ -21,7 +21,8 @@ import { unitsFor } from './units';
 // again from its heading; "Continue" opens the next one and moves the focus to it. Figures that are not
 // live are said once per card, never with a plate on a figure: on the mock the card's hatch band and
 // its "Sample figures" line (MOCK-QUIET), on a test network one line at the top (gate BUY-STEPS). The plan's buy and a shared
-// portfolio's share it; what is checked before an order is made stays theirs (`order.blocked`).
+// portfolio's share it, and so does adding money to a vault; what is checked before an order is made
+// stays theirs (`order.blocked`).
 
 export const MIN_USD = 10;
 export const MAX_USD = 1_000_000;
@@ -44,7 +45,7 @@ export type BuyStepsProps = {
   funding: Funding;
   owner: string | null;
   /** The buy the funding is read for: what POST /v1/testnet/fund is asked about. */
-  buyOf: { proposalId: string } | { family: string };
+  buyOf: BuyOf;
   /** Read the wallet again. */
   onReadAgain: () => void;
   trust: { accepted: boolean; checked: boolean; onCheck: (yes: boolean) => void };
@@ -57,6 +58,8 @@ export type BuyStepsProps = {
     blocked: string[];
     failure: string | null;
     onReview: () => void;
+    /** The sentence over the button, where the buy is not of a plan (an add to a vault). */
+    lead?: string;
   };
 };
 
@@ -212,10 +215,11 @@ export function BuySteps({
     review: (
       <div className="flex flex-col items-start gap-3">
         <p className="max-w-(--tf-measure-body) text-body">
-          {t.buy.steps.reviewLead(
-            amount.value === null ? '' : dollars(amount.value, lang),
-            chainName,
-          )}
+          {order.lead ??
+            t.buy.steps.reviewLead(
+              amount.value === null ? '' : dollars(amount.value, lang),
+              chainName,
+            )}
         </p>
         <Button
           variant="primary"

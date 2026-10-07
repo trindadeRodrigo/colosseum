@@ -76,13 +76,33 @@ export function checkFamilyBuy(
 }
 
 /**
+ * More money into a vault the person has (add money): the deposit as for a plan, into the vault they
+ * chose and no new one, once, and each trade the share its targets give, as the portfolio showed them.
+ * The guard then holds every step's bytes to the vault of that number and the person's own wallet.
+ */
+export function checkVaultAdd(
+  order: Pick<OrderDetail, 'depositRaw' | 'legs' | 'basketId'>,
+  amountUsd: number,
+  units: ChainUnits | null,
+  terms: Extract<SharedTerms, { kind: 'vault' }>,
+): DepositCheck | { ok: false; why: 'trades' | 'shape' } {
+  const kinds = order.legs.map((l) => l.kind);
+  if (kinds.includes('create_vault') || kinds.filter((k) => k === 'deposit').length !== 1)
+    return { ok: false, why: 'shape' };
+  // An order that states the vault's number states the one of the vault chosen.
+  if (order.basketId !== undefined && order.basketId !== terms.basketId)
+    return { ok: false, why: 'shape' };
+  return checkFamilyBuy(order, amountUsd, units, terms.targets);
+}
+
+/**
  * A follow or a publish moves no cash and trades nothing: no deposit, no cash on a step, no trade, and
  * only the steps its terms call for, each once. The guard holds each step's bytes to the terms; this
  * holds the order's shape to them before anything is offered for signing.
  */
 export function sharedShapeOk(
   order: Pick<OrderDetail, 'depositRaw' | 'legs'>,
-  terms: Exclude<SharedTerms, { kind: 'family' }>,
+  terms: Extract<SharedTerms, { kind: 'follow' | 'publish' }>,
 ): boolean {
   if (order.depositRaw !== undefined || order.legs.length === 0) return false;
   if (order.legs.some((l) => l.cashRaw !== undefined || l.trades.length > 0)) return false;
