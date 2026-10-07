@@ -2184,6 +2184,24 @@ describe('the second review (Oct 7): every sentence of its scripts, with a model
     }
   });
 
+  it('b1 and b2, a year gone by is no date the money is needed by: the glide stays off', () => {
+    // Found by these sentences: "in 2022" turned the glide on, and the read-back said the plan
+    // would move to cash as a date neared that nobody had named.
+    for (const sentence of [
+      'Being all in stocks cost me a lot in 2022',
+      'I got burned by big tech in 2022',
+    ]) {
+      const result = read(sentence, NOTHING_READ);
+      expect(result.sheet?.rules.glide, sentence).toBe(false);
+      expect((result.readBack ?? []).join(' '), sentence).not.toMatch(/As the date nears/);
+    }
+    // A year to come still is one.
+    expect(
+      intake('I want to grow $5,000 by 2031, at medium risk', reply({ horizonMonths: 51 })).sheet
+        ?.rules.glide,
+    ).toBe(true);
+  });
+
   // b2: a narrative's words that are not about investing, or said of something else. The id is the
   // narrative the text check reads as an ask, null where it reads none; then its words, and what the
   // no-model path does with it on this shelf: `asked` (how much of the money, once) or `said` (the

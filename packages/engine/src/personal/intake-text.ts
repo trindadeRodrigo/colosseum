@@ -350,7 +350,13 @@ const NEED_BY =
 /** Whether the text asks for the glide, or names a date by which the money is needed. */
 export function glideAskedIn(text: string, nowMonth: string): boolean {
   if (DERISK.test(text)) return true;
-  if (mentionsIn(text).some((m) => m.kind === 'year' && m.timeFrame)) return true;
+  // A date the money is needed by is a date to come: "I got burned by big tech in 2022" names none.
+  if (
+    mentionsIn(text).some(
+      (m) => m.kind === 'year' && m.timeFrame && monthsBetween(nowMonth, m.value) > 0,
+    )
+  )
+    return true;
   const need = NEED_BY.exec(text);
   return need !== null && horizonsIn(text.slice(need.index), nowMonth).length > 0;
 }
