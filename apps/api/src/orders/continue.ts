@@ -37,7 +37,9 @@ export async function continueBuy(
 ): Promise<Prepared> {
   const { order, request } = stored;
   if (order.type !== 'buy' || request.type !== 'buy')
-    throw new Refusal(409, 'only a buy is finished with the cash in its vault');
+    throw new Refusal(409, 'only a buy is finished with the cash in its vault', {
+      code: 'CONTINUE_NOT_SUPPORTED',
+    });
   const first = order.legs[0]?.chain;
   if (first && chainFamily(first) === 'evm') {
     const entry = ctx.chains.get(first);
@@ -46,28 +48,36 @@ export async function continueBuy(
     throw new Refusal(
       409,
       `a buy on ${entry.config.name} trades in the same step that deposits: nothing is left in a vault to finish`,
-      { fix: 'Make the buy again.' },
+      { code: 'CONTINUE_NOT_SUPPORTED', fix: 'Make the buy again.' },
     );
   }
   const funding = order.legs.filter((leg) => leg.kind !== 'swap');
   if (funding.some((leg) => !done(leg)))
     throw new Refusal(409, 'this order has not put its cash in the vault yet', {
+      code: 'DEPOSIT_NOT_LANDED',
       fix: 'Sign its steps in order; there is nothing to finish before the deposit has landed.',
     });
   const left = leftOf(order);
-  if (left.length === 0) throw new Refusal(409, 'this order has nothing left to buy');
+  if (left.length === 0)
+    throw new Refusal(409, 'this order has nothing left to buy', { code: 'NOTHING_LEFT' });
   const basketId = order.basketId;
   if (!basketId)
     throw new Refusal(409, 'this order was made before it kept its vault’s number', {
+      code: 'CONTINUE_NOT_SUPPORTED',
       fix: 'Make a new buy.',
     });
   const chain = left[0]?.chain;
   if (!chain || left.some((leg) => leg.chain !== chain))
-    throw new Refusal(409, 'the steps left are not on one chain');
+    throw new Refusal(409, 'the steps left are not on one chain', {
+      code: 'CONTINUE_NOT_SUPPORTED',
+    });
   const entry = ctx.chains.get(chain);
   assertBuilds(entry);
   const owner = order.owner[chainFamily(chain)];
-  if (!owner) throw new Refusal(409, 'this order names no wallet on the chain of its steps');
+  if (!owner)
+    throw new Refusal(409, 'this order names no wallet on the chain of its steps', {
+      code: 'CONTINUE_NOT_SUPPORTED',
+    });
   const slippageBps = slippageOf(request);
   const id = randomUUID();
 
@@ -76,17 +86,25 @@ export async function continueBuy(
     const cash = assets.find((asset) => asset.cls === 'cash');
     if (!cash) throw new Error(`${entry.chain} lists no cash token`);
     const vault = (await entry.adapter.getVaults(owner)).find((v) => v.basketId === basketId);
-    if (!vault) throw new Refusal(409, 'the vault of this order is not open');
+    if (!vault)
+      throw new Refusal(409, 'the vault of this order is not open', {
+        code: 'CONTINUE_NOT_SUPPORTED',
+      });
     const trades = left.flatMap((leg) => leg.trades);
     if (trades.some((trade) => trade.sell !== cash.id))
-      throw new Refusal(409, 'a step left sells something other than cash');
+      throw new Refusal(409, 'a step left sells something other than cash', {
+        code: 'CONTINUE_NOT_SUPPORTED',
+      });
     // Only what the vault holds: no step of this order moves anything from the wallet.
     const spend = trades.reduce((sum, trade) => sum + BigInt(trade.amountInRaw), 0n);
     if (spend > BigInt(vault.cash.raw))
       throw new Refusal(
         409,
         `the vault holds ${vault.cash.raw} raw ${cash.symbol} in cash, less than the ${spend} the steps left would spend`,
-        { fix: 'The cash was spent or withdrawn since. Make a new buy for what you want to add.' },
+        {
+          code: 'VAULT_CASH_SHORT',
+          fix: 'The cash was spent or withdrawn since. Make a new buy for what you want to add.',
+        },
       );
     const made: Leg[] = [];
     for (const [seq, leg] of left.entries())

@@ -908,6 +908,8 @@ describe('a leg settles only on the transaction that was built for it', () => {
     const again = await post(a, legUrl(placed, deposit.id, 'build'), undefined, on);
     expect(again.statusCode).toBe(409);
     expect(again.json().error).toMatch(/has landed/);
+    // by its code, so a client reads the order again and shows no sentence for it
+    expect(again.json().code).toBe('STEP_LANDED');
     const after = await read(a, placed, on);
     expect(legOf(after, deposit.id)).toMatchObject({ status: 'confirmed', attempt: 1, txId });
     expect(attemptsOf(after, deposit.id)).toEqual([[1, 'confirmed']]);

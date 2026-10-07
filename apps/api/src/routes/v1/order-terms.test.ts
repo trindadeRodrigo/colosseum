@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ChainRegistry } from '../../orders/chains';
+import { ORDER_LOCK_WAIT_MS } from '../../orders/store';
 import { orderFlow } from '../../testing/flow';
 import {
   type HomeChain,
@@ -193,7 +194,11 @@ describe('a buy that stopped after its deposit, finished with the cash in the va
       expect(OrderDetail.parse((await finish(a, placed.id)).json()).id).toBe(next.id);
       const old = await post(a, legUrl(placed, left[0]?.id ?? '', 'build'));
       expect(old.statusCode).toBe(409);
-      expect(OrderError.parse(old.json()).error).toMatch(/another order finishes this one/);
+      expect(OrderError.parse(old.json())).toMatchObject({
+        error: expect.stringMatching(/another order finishes this one/),
+        code: 'ORDER_CONTINUED',
+        details: { continuedBy: next.id },
+      });
 
       // signed to its end: the vault holds the assets, and the wallet paid no second deposit
       const done = await settleAll(a, next);
@@ -247,7 +252,10 @@ describe('a buy that stopped after its deposit, finished with the cash in the va
     const placed = await order(a, { amountUsd: 900 });
     const early = await finish(a, placed.id);
     expect(early.statusCode).toBe(409);
-    expect(OrderError.parse(early.json()).error).toMatch(/has not put its cash in the vault yet/);
+    expect(OrderError.parse(early.json())).toMatchObject({
+      error: expect.stringMatching(/has not put its cash in the vault yet/),
+      code: 'DEPOSIT_NOT_LANDED',
+    });
 
     await settleAll(a, placed, undefined, (leg) => leg.kind === 'swap');
     const swap = placed.legs.find((l) => l.kind === 'swap');
@@ -256,7 +264,10 @@ describe('a buy that stopped after its deposit, finished with the cash in the va
     await build(a, placed, swap.id);
     const open = await finish(a, placed.id);
     expect(open.statusCode).toBe(409);
-    expect(OrderError.parse(open.json()).details?.retryable).toBe(true);
+    expect(OrderError.parse(open.json())).toMatchObject({
+      code: 'STEP_IN_FLIGHT',
+      details: { retryable: true },
+    });
     // past its time it can no longer land, and the buy is finished
     mock().advance(10_000);
     expect((await finish(a, placed.id)).statusCode).toBe(200);
@@ -267,7 +278,10 @@ describe('a buy that stopped after its deposit, finished with the cash in the va
     await settleAll(whole, all);
     const none = await finish(whole, all.id);
     expect(none.statusCode).toBe(409);
-    expect(OrderError.parse(none.json()).error).toMatch(/nothing left to buy/);
+    expect(OrderError.parse(none.json())).toMatchObject({
+      error: expect.stringMatching(/nothing left to buy/),
+      code: 'NOTHING_LEFT',
+    });
   });
 
   it('is made once for an order: what a continuation left is that continuation’s to finish', async () => {
@@ -290,9 +304,17 @@ describe('a buy that stopped after its deposit, finished with the cash in the va
     expect(again.statusCode).toBe(409);
     expect(OrderError.parse(again.json())).toMatchObject({
       error: expect.stringMatching(/another order finishes this one/),
+      code: 'ORDER_CONTINUED',
       fix: expect.stringContaining(next.id),
+      details: { continuedBy: next.id },
     });
-    expect((await finish(a, next.id)).statusCode).toBe(409);
+    // and the second names the third
+    const second = await finish(a, next.id);
+    expect(second.statusCode).toBe(409);
+    expect(OrderError.parse(second.json())).toMatchObject({
+      code: 'ORDER_CONTINUED',
+      details: { continuedBy: third.id },
+    });
   });
 
   it('is refused when the vault no longer holds the cash the steps left would spend', async () => {
@@ -305,9 +327,41 @@ describe('a buy that stopped after its deposit, finished with the cash in the va
     for (const tx of out) await mock().send(tx);
     const res = await finish(a, placed.id);
     expect(res.statusCode).toBe(409);
-    expect(OrderError.parse(res.json()).error).toMatch(
-      /less than the \d+ the steps left would spend/,
-    );
+    expect(OrderError.parse(res.json())).toMatchObject({
+      error: expect.stringMatching(/less than the \d+ the steps left would spend/),
+      code: 'VAULT_CASH_SHORT',
+    });
+  });
+
+  it('says the order is busy, and to try again, when another request holds it past the wait', async () => {
+    const { a, placed } = await stopped();
+    // another request's transaction holds the order's lock for longer than this one waits
+    await data.db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${`order:${placed.id}`}, 0))`,
+      );
+      const started = Date.now();
+      const res = await finish(a, placed.id);
+      expect(res.statusCode).toBe(409);
+      expect(OrderError.parse(res.json())).toMatchObject({
+        code: 'ORDER_BUSY',
+        details: { retryable: true },
+      });
+      // it waited its bound and no longer
+      expect(Date.now() - started).toBeLessThan(ORDER_LOCK_WAIT_MS + 8_000);
+    });
+    // nothing was stored for it, and once the lock is free the same request goes through
+    expect((await finish(a, placed.id)).statusCode).toBe(200);
+  });
+
+  it('answers an id that is not one with 400 and a sentence, before anything is looked up', async () => {
+    const a = await someone();
+    for (const id of ['not-an-id', '123', `${crypto.randomUUID()}x`]) {
+      const res = await finish(a, id);
+      expect(res.statusCode, id).toBe(400);
+      expect(Object.keys(res.json())).toEqual(['error']);
+      expect(typeof res.json().error).toBe('string');
+    }
   });
 
   it('is made once when it is asked for twice at the same moment', async () => {
@@ -358,7 +412,10 @@ describe('a buy that stopped after its deposit, finished with the cash in the va
     expect(placed.legs.some((l) => l.kind === 'swap')).toBe(false);
     const res = await finish(r, placed.id);
     expect(res.statusCode).toBe(409);
-    expect(OrderError.parse(res.json()).error).toMatch(/trades in the same step that deposits/);
+    expect(OrderError.parse(res.json())).toMatchObject({
+      error: expect.stringMatching(/trades in the same step that deposits/),
+      code: 'CONTINUE_NOT_SUPPORTED',
+    });
   });
 });
 
