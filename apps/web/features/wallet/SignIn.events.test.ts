@@ -421,23 +421,6 @@ describe('the sign-in panel: when sign-in is off', () => {
     expect(host.querySelectorAll('button')).toHaveLength(2);
   });
 
-  it.each(['en', 'pt'] as const)(
-    'says sign-in is not set up for this address when the service refuses it, in %s',
-    async (lang) => {
-      portStore.set(
-        fakePort({
-          problem: 'the sign-in service takes no sign-in from http://localhost:3000',
-          problemKind: 'origin',
-        }),
-      );
-      const host = await screen(lang);
-      expect(host.textContent).toContain(dictionary(lang).signIn.off.origin);
-      // not a wait, and no button that could only fail
-      expect(host.textContent).not.toContain(dictionary(lang).signIn.loading);
-      expect(host.querySelectorAll('button')).toHaveLength(0);
-    },
-  );
-
   it('says this copy is not set up, in words a person can use, for every other reason', async () => {
     portStore.set(
       fakePort({ problem: 'NEXT_PUBLIC_PRIVY_APP_ID is not set', problemKind: 'setup' }),

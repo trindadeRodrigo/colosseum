@@ -33,6 +33,7 @@ const control = (host: HTMLElement) => find(host, '[data-ui="account-control"]')
 const way = (host: HTMLElement) =>
   host.querySelector<HTMLAnchorElement>('[data-ui="account-control"] a[href="/sign-in"]');
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
+const OTHERS_ORDER = '44444444-4444-4444-8444-444444444444';
 /** The hint this app keeps while someone is signed in, as a reload finds it. */
 const hint = (on: boolean) => {
   // biome-ignore lint/suspicious/noDocumentCookie: the test sets the cookie the app reads
@@ -218,16 +219,18 @@ describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s'
           })
         : json({ error: 'not found' }, 404);
     });
-    // an order's record this browser kept for them, by their id
+    // order records this browser kept: theirs, and one of somebody else who used this computer
     keepOrder(recordOf());
+    keepOrder(recordOf('solana', { orderId: OTHERS_ORDER, userId: 'did:privy:other' }));
     hint(true);
     const host = await shell(lang);
     await later(SLOW_MS);
     await click(find(host, '[data-ui="account-menu-button"]'));
     await click(find(host, '[data-ui="account-menu"] [data-ui="sign-out"]'));
     expect(way(host)?.textContent).toBe(t.shell.signIn);
-    // the id is not known yet, so the record is still there
-    expect(recallOrder(ORDER_ID, USER)).not.toBeNull();
+    // nobody is known, so every order record in the browser went with the press, whoever's it was
+    expect(recallOrder(ORDER_ID, USER)).toBeNull();
+    expect(recallOrder(OTHERS_ORDER, 'did:privy:other')).toBeNull();
 
     // the service loads at last, and its session names the person: a shared computer, walked away from
     let out: () => void = () => {};
@@ -251,7 +254,8 @@ describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s'
     expect(signOut).toHaveBeenCalledTimes(1);
     expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
 
-    // the service says they are out: their records go, by the id it named
+    // a record written for them meanwhile (another tab) goes when the service says they are out
+    keepOrder(recordOf());
     await act(async () => {
       out();
       portStore.set(fakePort());
@@ -268,6 +272,37 @@ describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s'
     expect(way(host)).toBeNull();
     expect(hinted()).toBe(true);
     expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('tries that sign-out again the next time the service reports, when the service refused it, and not in a loop', async () => {
+    hint(true);
+    const host = await shell(lang);
+    await later(SLOW_MS);
+    await click(find(host, '[data-ui="account-menu-button"]'));
+    await click(find(host, '[data-ui="account-menu"] [data-ui="sign-out"]'));
+    let refuse = true;
+    const signOut = vi.fn(async () => {
+      if (refuse) throw new Error('the sign-in service did not answer');
+      portStore.set(fakePort());
+    });
+    await act(async () => portStore.set(signedInPort(EMBEDDED, { userId: USER, signOut })));
+    await later(60_000);
+    // refused once: not hammered, and still nothing of theirs drawn
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
+    expect(way(host)?.textContent).toBe(t.shell.signIn);
+    // the service reports again (its wallets arrive): the sign-out is tried again, with no reload
+    refuse = false;
+    await act(async () => portStore.set(signedInPort(EMBEDDED, { userId: USER, signOut })));
+    await later(0);
+    expect(signOut).toHaveBeenCalledTimes(2);
+    expect(way(host)?.textContent).toBe(t.shell.signIn);
+    expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
+    // out there now: the next sign-in is an ordinary one
+    await act(async () => portStore.set(signedInPort(EMBEDDED, { userId: USER, signOut })));
+    await later(0);
+    expect(signOut).toHaveBeenCalledTimes(2);
+    expect(host.querySelector('[data-ui="account-menu-button"]')).not.toBeNull();
   });
 
   it('remembers that sign-out across a reload, until the service says nobody is signed in', async () => {

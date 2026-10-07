@@ -13,7 +13,7 @@ import {
 import { remember } from '../../components/shell/remember';
 import { SIGNED_IN_COOKIE } from '../../i18n';
 import { forgetGoalDraft } from '../goal/draft';
-import { forgetOrders } from '../order/order-record';
+import { forgetEveryOrder, forgetOrders } from '../order/order-record';
 import { forgetPlans } from '../order/plan-store';
 import { useApiFetch, useWalletPort, useWalletRestart } from '../wallet/WalletProvider';
 import { chainInAddress, FIRST_CHAIN, recallChain, rememberChain } from './chain-choice';
@@ -218,9 +218,12 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     }
     if (!ousting || ousted.current) return;
     ousted.current = true;
-    // A sign-out the service refuses leaves the mark: it is tried again when the page next loads.
-    void latest.current.port.signOut().catch(() => {});
-  }, [ousting, marked, signedOutNow]);
+    // A sign-out the service refuses leaves the mark, and is tried again the next time the service
+    // reports anything (a new port), and when the page next loads: never in a loop of its own.
+    void port.signOut().catch(() => {
+      ousted.current = false;
+    });
+  }, [ousting, marked, signedOutNow, port]);
 
   const key =
     port.status === 'ready' && !ousting
@@ -369,7 +372,8 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     setMarked(true);
     forgetGoalDraft();
     forgetPlans();
-    if (before.current !== null) forgetOrders(before.current);
+    // nobody is known, so every record goes, whoever it was kept for
+    forgetEveryOrder();
     before.current = null;
     seen.current = false;
     setStalled(true);

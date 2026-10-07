@@ -98,8 +98,6 @@ export const pt: Dictionary = {
       api: 'O login está indisponível no momento: nosso servidor não está respondendo. Eu tento de novo a cada poucos segundos, e esta página se atualiza sozinha.',
       setup:
         'O login está indisponível aqui: esta cópia do app não foi configurada corretamente. Não há nada para você corrigir. Por favor, avise a gente.',
-      origin:
-        'O login não está configurado para este endereço: o serviço de login não aceita logins a partir dele. Não há nada para você corrigir. Use o site no endereço dele, ou nos avise.',
       detail: 'Para a equipe',
     },
     failure: {
