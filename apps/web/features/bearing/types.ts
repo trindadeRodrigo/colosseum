@@ -30,6 +30,11 @@ export type Pool = {
   venue: string;
   assetSymbol: string;
   quoteSymbol: string | null;
+  /**
+   * How a seller reaches dollars through the pool: `direct_usd`, `via_sol`, `via_xstock`, or `other`,
+   * a quote token with no measured way to dollars: no recording of such a pool has a dollar value.
+   */
+  exitPath: string;
   tvlUsd: number | null;
   fetchedAt: string;
 };
@@ -88,7 +93,13 @@ export type LendPoint = {
 };
 export type LendHistBody = Series<LendPoint>;
 
-export type LiqHistBody = Series<{ t: string; valueUsd: number | null; assetUsd: number | null }>;
+export type LiqHistBody = Series<{
+  t: string;
+  valueUsd: number | null;
+  assetUsd: number | null;
+  /** Why a recording has no dollar value (`no_quote_price`: its quote token has no measured price). */
+  usdNullReason?: string | null;
+}>;
 
 export type LiquidityBody = {
   pool: string;
@@ -101,8 +112,10 @@ export type LiquidityBody = {
   midPrice: number;
   asset?: string;
   quote?: string;
-  totalAssetUsd?: number;
-  totalQuoteUsd?: number;
+  /** Both null when the quote token has no price in dollars; `usdNullReason` says so. */
+  totalAssetUsd?: number | null;
+  totalQuoteUsd?: number | null;
+  usdNullReason?: string | null;
   basis?: string;
   fetchedAt: string;
   source: string;

@@ -6,6 +6,7 @@ import type {
   AssetsBody,
   HistBody,
   LiqHistBody,
+  LiquidityBody,
   Pool,
   PoolsBody,
   SheetBody,
@@ -204,71 +205,138 @@ export function capacitySeries(
 }
 
 /**
+ * The dollars one pool's liquidity holds, both sides, as its answer gives them. An answer with no
+ * dollar figure (its quote token has no price in dollars) is that reason, never a measured $0.
+ */
+export function liquidityTotal(d: LiquidityBody): Fact {
+  if (d.totalAssetUsd == null || d.totalQuoteUsd == null)
+    return none(d.usdNullReason ?? 'not_served');
+  return mk(d.totalAssetUsd + d.totalQuoteUsd, {
+    source: d.source,
+    fetchedAt: d.fetchedAt,
+    method: d.method,
+    methodVersion: d.methodVersion,
+    provenance: d.provenance,
+  });
+}
+
+/** Each distinct text once, in the order met. */
+const each = (texts: ReadonlyArray<string | null | undefined>) => [
+  ...new Set(texts.filter((s): s is string => !!s)),
+];
+
+/** The sources of a sum: each distinct one, and one that another already names is not named twice. */
+export function sourcesOf(texts: ReadonlyArray<string | null | undefined>): string {
+  const all = each(texts);
+  return all.filter((s) => !all.some((o) => o !== s && o.includes(s))).join('; ');
+}
+
+/** The API's reason for a recording with no dollar value: its quote token has no price in dollars. */
+const NO_QUOTE_PRICE = 'no_quote_price';
+
+/**
  * The value held by the recorded pools, hour by hour. A pool not recorded in an hour keeps its last
  * value for up to 6 h, so the sum does not jump with the set recorded that hour; an hour still short
- * of a pool is a lower bound.
+ * of a pool is a lower bound. A recording with no dollar value (its quote token has no price) adds
+ * nothing and counts as a pool short, never as $0. The sum's source and method are those of every
+ * history summed, each distinct one named: the pools need not have been recorded by the same job.
+ *
+ * `n` is every recorded pool of the selection. `unpriced` of them have no history here: the registry
+ * says their quote token has no way to dollars, so no recording of theirs can add a dollar and none
+ * was read. `inSum` says, history by history, which are in the sum; `noUsd` counts the recorded pools
+ * with no price in dollars, those left unread and those whose every recording read says so.
  */
 export function tvlSeries(
   hs: ReadonlyArray<Res<LiqHistBody>>,
   n: number,
   partial: PartialW = (k, of) => `(${k} of ${of} pools)`,
   money: (v: number) => string = usd1,
+  unpriced = 0,
 ) {
   const CARRY = 6 * HOUR;
-  let src: LiqHistBody | null = null;
+  type P = { t: number; v: number; a: number | null };
+  const summed: LiqHistBody[] = [];
+  const inSum: boolean[] = [];
+  // why a history read adds nothing: its newest recording's reason, null where it gives none
+  const whys: Array<string | null> = [];
+  let failed: string | null = null;
   let last: string | null | undefined = null;
   let t0 = Number.POSITIVE_INFINITY;
   let t1 = Number.NEGATIVE_INFINITY;
-  const series: Array<Array<{ t: number; v: number; a: number }>> = [];
+  const series: P[][] = [];
   for (const h of hs) {
-    if (!h.ok) continue;
-    src ??= h.body;
-    const ps = (h.body.points ?? [])
+    if (!h.ok) {
+      failed ??= h.reason;
+      inSum.push(false);
+      continue;
+    }
+    const all = h.body.points ?? [];
+    const ps: P[] = all
       .filter((q) => q.valueUsd != null)
-      .map((q) => ({ t: hourOf(q.t), v: q.valueUsd as number, a: q.assetUsd ?? 0 }));
+      .map((q) => ({ t: hourOf(q.t), v: q.valueUsd as number, a: q.assetUsd ?? null }));
     for (const q of ps) {
       t0 = Math.min(t0, q.t);
       t1 = Math.max(t1, q.t);
     }
-    if (ps.length) last = maxT(last, h.body.to);
+    if (ps.length) {
+      last = maxT(last, h.body.to);
+      summed.push(h.body);
+    } else whys.push(all[all.length - 1]?.usdNullReason ?? null);
+    inSum.push(ps.length > 0);
     series.push(ps);
   }
-  const pts: Array<{ t: number; v: number; a: number; k: number }> = [];
+  // With nothing in the sum, why. A read that failed is its own reason: what that pool holds is not
+  // known, so no other pool's reason speaks for the selection. The recordings' reason stands only
+  // when every history read gives the same one, and the pools left unread have that one too.
+  const reasons = new Set(whys);
+  if (unpriced) reasons.add(NO_QUOTE_PRICE);
+  const why = failed ?? (reasons.size === 1 ? [...reasons][0] : null) ?? 'not_collected';
+  const pts: Array<{ t: number; v: number; a: number; k: number; ka: number }> = [];
   for (let t = t0; t <= t1; t += HOUR) {
-    const o = { t, v: 0, a: 0, k: 0 };
+    const o = { t, v: 0, a: 0, k: 0, ka: 0 };
     for (const ps of series) {
-      let q: { t: number; v: number; a: number } | null = null;
+      let q: P | null = null;
       for (let i = ps.length - 1; i >= 0; i--)
-        if ((ps[i] as { t: number }).t <= t) {
-          q = ps[i] as { t: number; v: number; a: number };
+        if ((ps[i] as P).t <= t) {
+          q = ps[i] as P;
           break;
         }
       if (q && t - q.t <= CARRY) {
         o.v += q.v;
-        o.a += q.a;
         o.k++;
+        if (q.a != null) {
+          o.a += q.a;
+          o.ka++;
+        }
       }
     }
     pts.push(o);
   }
   const lp = pts.filter((q) => q.k).pop();
+  const methods = each(summed.map((s) => s.method));
   const fact: Fact =
-    lp && src
+    lp && summed.length
       ? mk(lp.v, {
           quality: lp.k < n ? 'lower_bound' : 'measured',
-          source: src.source,
+          source: sourcesOf(summed.map((s) => s.source)),
           fetchedAt: last,
-          method: `summed over ${lp.k} of ${n} recorded pools in the selection, each at its newest recording within 6 h; ${src.method}`,
-          methodVersion: src.methodVersion,
+          method: `summed over ${lp.k} of ${n} recorded pools in the selection, each at its newest recording within 6 h; ${
+            methods.length > 1
+              ? `each pool by its own history’s method: ${methods.join(' | ')}`
+              : (methods[0] ?? '')
+          }`,
+          methodVersion: each(summed.map((s) => s.methodVersion)).join(', '),
         })
-      : none('not_collected');
+      : none(why);
   const value: TPoint[] = pts.map((q) => ({
     t: q.t,
     v: q.k ? q.v : null,
     show: q.k ? `${money(q.v)}${q.k < n ? ` ${partial(q.k, n)}` : ''}` : null,
   }));
-  const held: TPoint[] = pts.map((q) => ({ t: q.t, v: q.k ? q.a : null }));
-  return { fact, value, held };
+  // the asset's part of an hour is known only when every pool counted in it gives one
+  const held: TPoint[] = pts.map((q) => ({ t: q.t, v: q.k && q.ka === q.k ? q.a : null }));
+  const noUsd = unpriced + whys.filter((w) => w === NO_QUOTE_PRICE).length;
+  return { fact, value, held, inSum, noUsd };
 }
 
 export const countW = (n: number, one: string) => `${num(n)} ${one}${n === 1 ? '' : 's'}`;

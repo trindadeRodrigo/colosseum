@@ -8,7 +8,7 @@ import { Sparkline, sparkable } from '../../components/ui/Sparkline';
 import { type ChartRange, Segmented, TimeChart } from '../../components/ui/TimeChart';
 import type { BearingDictionary } from '../../i18n/bearing';
 import { type Base, useAnswer, useBearing } from './BearingProvider';
-import { R } from './data';
+import { inPool, R, type Reader, type Res } from './data';
 import {
   COMMODITIES,
   capacitySeries,
@@ -17,12 +17,13 @@ import {
   type DexAsset,
   dexCounters,
   dexIds,
+  liquidityTotal,
   poolLabel,
   poolsOf,
   tvlSeries,
   vol24,
 } from './dex';
-import { type Fact, mk, none } from './fact';
+import { none } from './fact';
 import { type Fmt, iso } from './format';
 import { HeatTile } from './HeatTile';
 import {
@@ -428,6 +429,21 @@ function CapacityChart({
   );
 }
 
+/**
+ * How many pool histories the page asks for at once. Each makes the API read and decode every
+ * recording of its pool before it answers anything else: a few at a time, never a whole selection.
+ */
+export const HISTORIES_AT_ONCE = 4;
+
+/** The value history of each of these pools, in their order, a few at a time. */
+async function histories(reader: Reader, pools: readonly Pool[]) {
+  const hs: Res<LiqHistBody>[] = [];
+  await inPool([...pools.keys()], HISTORIES_AT_ONCE, async (i) => {
+    hs[i] = await reader.get<LiqHistBody>(R.liqHist((pools[i] as Pool).address));
+  });
+  return hs;
+}
+
 function TvlChart({
   pools,
   b,
@@ -450,25 +466,23 @@ function TvlChart({
   const say = useReason();
   const t = all.dex.tvl;
   const rec = pools.filter((p) => b.recorded.has(p.address));
-  const key = rec.map((p) => p.address).join(',');
-  const hs = useAnswer(
-    () =>
-      rec.length
-        ? Promise.all(rec.map((p) => reader.get<LiqHistBody>(R.liqHist(p.address))))
-        : null,
-    [key, reader],
-  );
+  // A pool whose quote token has no measured way to dollars has no dollar value in any recording,
+  // and its registry row says so: its history is not asked for.
+  const read = rec.filter((p) => p.exitPath !== 'other');
+  const key = read.map((p) => p.address).join(',');
+  const got = useAnswer(() => (read.length ? histories(reader, read) : null), [key, reader]);
   if (!rec.length)
     return (
       <EmptyChart title={t.title} tools={tools}>
         {say('not_collected')}: {t.none}
       </EmptyChart>
     );
-  if (!hs) return <Loading>{t.reading(rec.length)}</Loading>;
-  const n = rec.length;
-  const s = tvlSeries(hs, n, t.partial, fm.usd1);
-  const recTvl = rec.reduce((a, p) => a + (p.tvlUsd || 0), 0);
-  const share = tvl ? recTvl / tvl : null;
+  const hs = read.length ? got : [];
+  if (!hs) return <Loading>{t.reading(read.length)}</Loading>;
+  const s = tvlSeries(hs, rec.length, t.partial, fm.usd1, rec.length - read.length);
+  // the note counts what the sum holds: its pools, and their part of the selection's TVL
+  const summed = read.filter((_, i) => s.inSum[i]);
+  const share = tvl && summed.length ? summed.reduce((a, p) => a + (p.tvlUsd || 0), 0) / tvl : null;
   return (
     <TimeChart
       {...chartPin(s.fact)}
@@ -477,7 +491,7 @@ function TvlChart({
       locale={fm.locale}
       tools={tools}
       value={<Fig f={s.fact} fmt={fm.usd1} />}
-      note={t.note(n, pools.length, share != null ? fm.pct(share) : null)}
+      note={t.note(summed.length, pools.length, share != null ? fm.pct(share) : null, s.noUsd)}
       ranges={RANGES}
       range={range}
       onRange={setRange}
@@ -498,7 +512,7 @@ function TvlChart({
       ]}
       aria={t.aria}
       src={<SrcLine f={s.fact} what={t.src} />}
-      empty={<Reason code="not_collected" />}
+      empty={<Reason code={s.fact.reason ?? 'not_collected'} />}
     />
   );
 }
@@ -539,6 +553,8 @@ function LiquidityChart({
         {say('not_applicable')}: {t.none}
       </EmptyChart>
     );
+  // the dollars the pool holds, or the reason the answer has none (never a measured $0)
+  const total = res?.ok ? liquidityTotal(res.body) : null;
   let body: ReactNode;
   if (!res) body = <Loading>{t.reading}</Loading>;
   else if (!res.ok)
@@ -553,16 +569,16 @@ function LiquidityChart({
         <Reason code={res.body.reason ?? 'not_collected'} />
       </EmptyChart>
     );
+  else if (total?.value == null)
+    // no dollar figure (the quote token has no price in dollars): the bands are drawn in dollars, so
+    // the page says the reason in their place, as it does for any fact it does not have
+    body = (
+      <EmptyChart title={t.both}>
+        <Fig f={total} fmt={fm.usd1} />
+      </EmptyChart>
+    );
   else {
     const d = res.body;
-    const meta = {
-      source: d.source,
-      fetchedAt: d.fetchedAt,
-      method: d.method,
-      methodVersion: d.methodVersion,
-      provenance: d.provenance,
-    };
-    const total: Fact = mk((d.totalAssetUsd || 0) + (d.totalQuoteUsd || 0), meta);
     const when =
       d.basis === 'recorded'
         ? t.recordedAt(fm.minute(d.fetchedAt))

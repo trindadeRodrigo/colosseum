@@ -73,6 +73,7 @@ export const bearingPt: BearingDictionary = {
     api_error: 'a API não respondeu',
     nothing_selected: 'nada selecionado',
     no_price_source: 'sem fonte de preço',
+    no_quote_price: 'sem preço em dólar para a moeda de cotação',
   },
   filter: {
     all: (n: number) => `Todos (${n})`,
@@ -173,11 +174,15 @@ export const bearingPt: BearingDictionary = {
     },
     tvl: {
       title: 'TVL no tempo',
-      none: 'o coletor registra o valor do pool hora a hora só para os pools de liquidez concentrada que formam os 80% maiores do TVL do registro, e nenhum dos pools selecionados é um deles. O TVL de hoje da seleção está nos contadores; a capacidade de saída no tempo é medida para todo ativo.',
+      none: 'o valor do pool no tempo é registrado só para alguns dos pools de liquidez concentrada, e nenhum dos pools selecionados é um deles. O TVL de hoje da seleção está nos contadores; a capacidade de saída no tempo é medida para todo ativo.',
       reading: (n: number) => `Lendo ${n} ${n === 1 ? 'pool registrado' : 'pools registrados'}…`,
       recorded: 'TVL no tempo, pools registrados',
-      note: (n: number, of: number, share: string | null) =>
-        `${n} de ${of} pools selecionados são registrados de hora em hora${share ? `, com ${share} do TVL da seleção` : ''}; o valor dos tokens que a liquidez deles guarda, sem contar taxas não coletadas. Um pool sem registro numa hora mantém seu último valor por até 6 h. Os registros começaram em 2026-10-01.`,
+      note: (n: number, of: number, share: string | null, noUsd: number) =>
+        `${n} de ${of} pools selecionados são registrados e entram na soma${share ? `, com ${share} do TVL da seleção` : ''}; o valor dos tokens que a liquidez deles guarda, sem contar taxas não coletadas.${
+          noUsd
+            ? ` ${n ? 'Mais ' : ''}${noUsd} ${noUsd === 1 ? 'é registrado e não tem' : 'são registrados e não têm'} preço em dólar para a moeda de cotação, por isso não ${noUsd === 1 ? 'entra' : 'entram'} na soma.`
+            : ''
+        } Um pool sem registro numa hora mantém seu último valor por até 6 h. Nenhum registro é anterior a 2026-10-01.`,
       value: 'valor do pool',
       valueLegend: 'valor do pool (TVL)',
       held: 'parte no ativo',
@@ -192,11 +197,11 @@ export const bearingPt: BearingDictionary = {
       reading: 'Lendo o pool…',
       both: 'Liquidez por faixa de preço, os dois lados',
       failed: (error: string) =>
-        `${error}. O coletor registra só os pools que formam os 80% maiores do TVL do registro; escolha um sem “não registrado”, ou espere pela leitura ao vivo.`,
-      recordedAt: (at: string) => `o registro horário mais recente do coletor, ${at}`,
-      liveAt: (at: string) => `lido ao vivo às ${at} UTC`,
+        `${error}. Só alguns pools são registrados; escolha um sem “não registrado”, ou espere pela leitura ao vivo.`,
+      recordedAt: (at: string) => `a partir do registro mais recente do pool, ${at}`,
+      liveAt: (at: string) => `a partir da leitura ao vivo das ${at} UTC`,
       note: (when: string) =>
-        `guardada a até ±30% do preço, a partir de ${when}; o ativo espera acima do preço (vendido conforme sobe), a moeda de cotação abaixo (usada para comprar conforme cai); + e − para zoom`,
+        `guardada a até ±30% do preço, ${when}; o ativo espera acima do preço (vendido conforme sobe), a moeda de cotação abaixo (usada para comprar conforme cai); + e − para zoom`,
       aria: (pool: string) =>
         `Liquidez do pool ${pool} por faixa de preço em torno do preço do pool`,
       src: 'gráfico de distribuição',

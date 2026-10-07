@@ -7,12 +7,14 @@ import { TimeChart } from '../../components/ui/TimeChart';
 import { click, find, fire, mount, press, unmountAll } from '../../components/ui/test/dom';
 import { BearingProvider, TICK_MS } from './BearingProvider';
 import { Banner } from './BearingShell';
-import { DexPage } from './DexPage';
+import { DexPage, HISTORIES_AT_ONCE } from './DexPage';
+import { R } from './data';
 import { mk, none } from './fact';
 import { LendingPage } from './LendingPage';
 import { Fig, MultiSelect } from './parts';
 import { inPortuguese, onSnapshot } from './test/cases';
 import { snapshotReader } from './test/snapshot';
+import type { LiqHistBody, LiquidityBody } from './types';
 
 // Bearing's pages as a person uses them, in happy-dom, on Rodrigo's recording of the risk API.
 
@@ -42,6 +44,15 @@ async function settle(host: HTMLElement, done: (h: HTMLElement) => boolean) {
 const busy = (h: HTMLElement) =>
   h.querySelector('[data-ui="waiting"]') != null ||
   [...h.querySelectorAll('p')].some((p) => /^(Reading|Pricing)/.test(p.textContent ?? ''));
+const ready = (h: HTMLElement) => h.querySelector('[data-ui="bearing-kpis"]') != null && !busy(h);
+/** The card of the chart, beside the pie's. */
+const chartCard = (h: HTMLElement) =>
+  [...h.querySelectorAll<HTMLElement>('[data-ui="bearing-card"]')][1] as HTMLElement;
+/** A button of the chart's metric selector; `group` is the selector's name in the reader's words. */
+const metric = (h: HTMLElement, name: string, group = 'Metric') =>
+  [...h.querySelectorAll<HTMLButtonElement>(`[aria-label="${group}"] button`)].find(
+    (b) => b.textContent === name,
+  ) as HTMLButtonElement;
 
 describe('the commodities page on the recording', () => {
   it('says every figure is stale, and gives every figure its pin and its age; nothing is MOCK', async () => {
@@ -128,6 +139,256 @@ describe('the commodities page on the recording', () => {
     expect(find(host, '[data-ui="bearing"]').hasAttribute('data-collapsed')).toBe(true);
     expect(find(host, 'a[aria-current="page"]').textContent).toContain('Commodities');
   });
+});
+
+describe('the recorded pools on the commodities page', () => {
+  // Gold's two recorded pools: one against USDC, one against a token with no measured way to dollars.
+  const USDC_POOL = '78ReVNMLGRWmjtf2HmBoHUe2pRcsctXTTbxJnbhchyze';
+  const OTHER_POOL = '7WQcQi2dDgZDnpJKwoY7F9cALk3QEUG4kAyhtjZVkVa1';
+  const NO_USD = 'no USD price for the quote token';
+
+  /** His recording, with one pool answered as the API answers a quote token that has no price in dollars. */
+  function withNoUsd(pool: string) {
+    const recording = snapshotReader();
+    return {
+      ...recording,
+      get: async <T>(path: string) => {
+        const r = await recording.get<T>(path);
+        if (!r.ok) return r;
+        if (path === R.liquidity(pool)) {
+          const d = r.body as LiquidityBody;
+          const body: LiquidityBody = {
+            ...d,
+            bands: d.bands.map((band) => ({ ...band, amountUsd: null })),
+            totalAssetUsd: null,
+            totalQuoteUsd: null,
+            usdNullReason: 'no_quote_price',
+          };
+          return { ...r, body: body as T };
+        }
+        if (path === R.liqHist(pool)) {
+          const h = r.body as LiqHistBody;
+          const body: LiqHistBody = {
+            ...h,
+            points: h.points.map((p) => ({
+              ...p,
+              valueUsd: null,
+              assetUsd: null,
+              usdNullReason: 'no_quote_price',
+            })),
+          };
+          return { ...r, body: body as T };
+        }
+        return r;
+      },
+    };
+  }
+  /** Picks an option of a select the way React hears it: the value, then a `change` event. */
+  async function choose(select: HTMLSelectElement, value: string) {
+    await act(async () => {
+      select.value = value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  }
+
+  it('captions a recording as the pool’s newest, and cites the answer’s own source under the chart', async () => {
+    const host = await mount(onSnapshot(createElement(DexPage, { page: 'commodities' })));
+    await settle(host, ready);
+    await click(metric(host, 'Liquidity'));
+    await settle(host, (h) => h.querySelector('[data-ui="dist-chart"]') != null && !busy(h));
+    const card = chartCard(host);
+    const head = find(card, '[data-ui="chart-head"]');
+    expect(head.textContent).toContain(
+      'held within ±30% of the price, from the pool’s newest recording, 2026-10-03 15:12 UTC;',
+    );
+    expect(head.textContent).not.toMatch(/collector|hourly/);
+    expect(find(head, '[data-ui="figure"] .tf-figure').textContent).toBe('$831.9K');
+    // whose recording it is, the answer says itself, beside its time and its pin
+    const src = find(card, '[data-ui="bearing-src"]');
+    expect(src.textContent).toContain(
+      'pool collector hourly raw recording (Solana RPC getMultipleAccounts: pool head + every tick/bin array), decoded by packages/risk/src/pools · 2026-10-03T15:12:02Z',
+    );
+    expect(src.querySelector('[data-ui="pin"]')).not.toBeNull();
+  });
+
+  it('says a pool has no dollar figure in place of its total and its bands; no $0 is shown', async () => {
+    const host = await mount(
+      onSnapshot(createElement(DexPage, { page: 'commodities' }), withNoUsd(OTHER_POOL)),
+    );
+    await settle(host, ready);
+    await click(metric(host, 'Liquidity'));
+    await settle(host, (h) => h.querySelector('[data-ui="dist-chart"]') != null && !busy(h));
+    await choose(find<HTMLSelectElement>(chartCard(host), 'select'), OTHER_POOL);
+    await settle(host, (h) => h.querySelector('[data-ui="dist-chart"]') == null && !busy(h));
+    const card = chartCard(host);
+    expect(card.textContent).toContain('Liquidity by price band, both sides');
+    expect(find(card, '[data-ui="bearing-reason"]').textContent).toBe(NO_USD);
+    // no figure, so no pin and no source line: nothing here is a measured amount
+    expect(card.querySelectorAll('[data-ui="figure"]')).toHaveLength(0);
+    expect(card.querySelector('[data-ui="bearing-src"]')).toBeNull();
+    expect(card.textContent).not.toMatch(/\$0(?![\d.,])/);
+  });
+
+  it('says the same reason for that pool’s TVL over time, not that it was not collected', async () => {
+    const reader = withNoUsd(OTHER_POOL);
+    const host = await mount(onSnapshot(createElement(DexPage, { page: 'commodities' }), reader));
+    await settle(host, ready);
+    // the pool filter: that pool alone
+    const pools = [
+      ...host.querySelectorAll<HTMLButtonElement>('[data-ui="bearing-multi"] > button'),
+    ][1] as HTMLButtonElement;
+    await click(pools);
+    await click(
+      [...host.querySelectorAll('button')].find((b) => b.textContent === 'None') as HTMLElement,
+    );
+    await click(find(host, `input[type="checkbox"][value="${OTHER_POOL}"]`));
+    await click(metric(host, 'TVL over time'));
+    await settle(host, (h) => h.querySelector('[data-ui="time-chart"]') != null && !busy(h));
+    const card = chartCard(host);
+    // the pool is recorded and not in the sum: the note counts it apart, and nothing as in the sum
+    expect(card.textContent).toContain(
+      '0 of 1 selected pools are recorded and in the sum; the value of the tokens their liquidity holds, uncollected fees not counted. 1 is recorded and has no USD price for the quote token, so it is not in the sum. A pool not recorded',
+    );
+    expect(
+      [...card.querySelectorAll('[data-ui="bearing-reason"]')].map((r) => r.textContent),
+    ).toEqual([NO_USD, NO_USD]);
+    expect(card.textContent).not.toContain('not collected yet');
+    expect(card.querySelectorAll('[data-ui="figure"]')).toHaveLength(0);
+    // its registry row says its quote token has no way to dollars: its history was not asked for
+    expect(reader.read).not.toContain(R.liqHist(OTHER_POOL));
+  });
+
+  it('counts that pool as a pool short in a sum with the other, a lower bound', async () => {
+    const host = await mount(
+      onSnapshot(createElement(DexPage, { page: 'commodities' }), withNoUsd(OTHER_POOL)),
+    );
+    await settle(host, ready);
+    await click(metric(host, 'TVL over time'));
+    await settle(host, (h) => h.querySelector('[data-ui="time-chart"]') != null && !busy(h));
+    const head = find(chartCard(host), '[data-ui="chart-head"]');
+    expect(find(head, '[data-ui="figure"] .tf-figure').textContent).toBe('≥ $915.8K');
+  });
+
+  it('the note counts the pool in the sum and its share, and says the other recorded one apart', async () => {
+    // his recording as it is: of gold's two recorded pools, one is against USDC (41.44% of the TVL
+    // of the 63 selected) and one against a token with no measured way to dollars (17.53%)
+    const reader = snapshotReader();
+    const host = await mount(onSnapshot(createElement(DexPage, { page: 'commodities' }), reader));
+    await settle(host, ready);
+    await click(metric(host, 'TVL over time'));
+    await settle(host, (h) => h.querySelector('[data-ui="time-chart"]') != null && !busy(h));
+    const head = find(chartCard(host), '[data-ui="chart-head"]');
+    expect(head.textContent).toContain(
+      '1 of 63 selected pools are recorded and in the sum, holding 41.44% of the selection’s TVL; the value of the tokens their liquidity holds, uncollected fees not counted. 1 more is recorded and has no USD price for the quote token, so it is not in the sum. A pool not recorded in an hour keeps its last value for up to 6 h. No recording is older than 2026-10-01.',
+    );
+    expect(head.textContent).not.toContain('58.97%');
+    expect(find(head, '[data-ui="figure"] .tf-figure').textContent).toBe('≥ $915.8K');
+    // one history read, the USDC pool's; the other pool is counted from its registry row alone
+    expect(reader.read.filter((path) => path.includes('/liquidity/history'))).toEqual([
+      R.liqHist(USDC_POOL),
+    ]);
+  });
+
+  it('says the note in Portuguese too', async () => {
+    const host = await mount(
+      inPortuguese(onSnapshot(createElement(DexPage, { page: 'commodities' }))),
+    );
+    await settle(host, ready);
+    await click(metric(host, 'TVL no tempo', 'Métrica'));
+    await settle(host, (h) => h.querySelector('[data-ui="time-chart"]') != null && !busy(h));
+    expect(find(chartCard(host), '[data-ui="chart-head"]').textContent).toContain(
+      '1 de 63 pools selecionados são registrados e entram na soma, com 41,44% do TVL da seleção; o valor dos tokens que a liquidez deles guarda, sem contar taxas não coletadas. Mais 1 é registrado e não tem preço em dólar para a moeda de cotação, por isso não entra na soma. Um pool sem registro',
+    );
+  });
+
+  it('counts a pool whose every recording read has no price with the one left unread: none in the sum', async () => {
+    // the USDC pool answered as a pool is whose recordings all lack a price: its row does not say
+    // so, its history is read, and it is the history that says it
+    const reader = withNoUsd(USDC_POOL);
+    const host = await mount(onSnapshot(createElement(DexPage, { page: 'commodities' }), reader));
+    await settle(host, ready);
+    await click(metric(host, 'TVL over time'));
+    await settle(host, (h) => h.querySelector('[data-ui="time-chart"]') != null && !busy(h));
+    const card = chartCard(host);
+    expect(card.textContent).toContain(
+      '0 of 63 selected pools are recorded and in the sum; the value of the tokens their liquidity holds, uncollected fees not counted. 2 are recorded and have no USD price for the quote token, so they are not in the sum. A pool not recorded',
+    );
+    expect(
+      [...card.querySelectorAll('[data-ui="bearing-reason"]')].map((r) => r.textContent),
+    ).toEqual([NO_USD, NO_USD]);
+    expect(reader.read).toContain(R.liqHist(USDC_POOL));
+    expect(reader.read).not.toContain(R.liqHist(OTHER_POOL));
+  });
+
+  it('says a history did not load, not the other pool’s missing price, when a read fails', async () => {
+    const recording = snapshotReader();
+    const reader = {
+      ...recording,
+      get: async <T>(path: string) =>
+        path === R.liqHist(USDC_POOL)
+          ? { ok: false as const, status: 503, body: { error: 'busy' }, reason: 'api_error' }
+          : recording.get<T>(path),
+    };
+    const host = await mount(onSnapshot(createElement(DexPage, { page: 'commodities' }), reader));
+    await settle(host, ready);
+    await click(metric(host, 'TVL over time'));
+    await settle(host, (h) => h.querySelector('[data-ui="time-chart"]') != null && !busy(h));
+    const card = chartCard(host);
+    expect(
+      [...card.querySelectorAll('[data-ui="bearing-reason"]')].map((r) => r.textContent),
+    ).toEqual(['the API returned no answer', 'the API returned no answer']);
+    // the pool that did not load is in neither count: nothing is known of it
+    expect(card.textContent).toContain(
+      '0 of 63 selected pools are recorded and in the sum; the value of the tokens their liquidity holds, uncollected fees not counted. 1 is recorded and has no USD price for the quote token, so it is not in the sum. A pool not recorded',
+    );
+    expect(card.querySelectorAll('[data-ui="figure"]')).toHaveLength(0);
+  });
+});
+
+describe('the recorded pools on the stocks page: thirty of them, one with no way to dollars', () => {
+  // SPYx's recorded pool against a token with no measured way to dollars (exit path `other`).
+  const SPY_OTHER = '7a8xxAJBELDo6P9dikSYctdw6ce8F4mWr3ahcAD8Ao49';
+  const isHistory = (path: string) => path.includes('/liquidity/history');
+
+  /** His recording, each history a moment in coming, as the API's is, and the most open at once. */
+  function watched() {
+    const recording = snapshotReader();
+    const seen = { asked: [] as string[], open: 0, most: 0 };
+    return {
+      seen,
+      reader: {
+        ...recording,
+        get: async <T>(path: string) => {
+          if (!isHistory(path)) return recording.get<T>(path);
+          seen.asked.push(path);
+          seen.most = Math.max(seen.most, ++seen.open);
+          await new Promise((r) => setTimeout(r, 3));
+          seen.open--;
+          return recording.get<T>(path);
+        },
+      },
+    };
+  }
+
+  it('asks for no history of that pool, and for the others a few at a time', async () => {
+    const { reader, seen } = watched();
+    const host = await mount(onSnapshot(createElement(DexPage, { page: 'stocks' }), reader));
+    await settle(host, ready);
+    expect(seen.asked).toEqual([]);
+    await click(metric(host, 'TVL over time'));
+    await settle(host, (h) => h.querySelector('[data-ui="time-chart"]') != null && !busy(h));
+    // thirty recorded pools are selected: twenty-nine histories, each asked for once
+    expect(seen.asked).toHaveLength(29);
+    expect(new Set(seen.asked).size).toBe(29);
+    expect(seen.asked).not.toContain(R.liqHist(SPY_OTHER));
+    // never more than the bound in flight, and that many when there are that many to read
+    expect(seen.most).toBe(HISTORIES_AT_ONCE);
+    expect(seen.open).toBe(0);
+    expect(find(chartCard(host), '[data-ui="chart-head"]').textContent).toContain(
+      '29 of 929 selected pools are recorded and in the sum, holding 75.10% of the selection’s TVL; the value of the tokens their liquidity holds, uncollected fees not counted. 1 more is recorded and has no USD price for the quote token, so it is not in the sum. A pool not recorded',
+    );
+    // the whole stocks page is mounted, 46 assets and 929 pools: slower than the tests of one asset
+  }, 20_000);
 });
 
 describe('the lending page’s tolerance', () => {
