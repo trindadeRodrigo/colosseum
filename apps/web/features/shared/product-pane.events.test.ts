@@ -485,7 +485,10 @@ describe('a product’s page, when the portfolio gets a new version as the perso
     expect(rows[0]).toContain('60%');
     expect(pane.querySelector('[data-ui="plan-rows"]')?.textContent).not.toContain('SPYx');
     const notice = find(host, '[data-ui="product-version-changed"]');
-    expect(notice.textContent).toBe(en.shared.product.versionChanged(en.shared.family.versionN(3)));
+    // the one sentence for it, the same the buy page and a refused follow say (refusal.ts)
+    expect(notice.textContent).toBe(en.shared.refusal.versionChanged);
+    // and it is said once on the page, not again on the card
+    expect((host.textContent ?? '').split(en.shared.refusal.versionChanged)).toHaveLength(2);
     expect(notice.getAttribute('role')).toBe('status');
     // no order is made for the new version by itself: the amount is cleared, and none was asked for
     expect(amountField(host).value).toBe('');

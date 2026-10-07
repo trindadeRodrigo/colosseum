@@ -421,7 +421,10 @@ function RecipeSection({
                   className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body font-medium"
                 >
                   <StatusMark status="watch" size={12} className="mt-1.5" />
-                  <span>{p.versionChanged(f.versionN(active.version))}</span>
+                  {/* the one sentence for it, from the one place (refusal.ts) */}
+                  <span>
+                    {sharedRefusal({ kind: 'code', code: 'VERSION_CHANGED' }, t)?.sentence}
+                  </span>
                 </p>
               )}
               {blocked || !followed ? (

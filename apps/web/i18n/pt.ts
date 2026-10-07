@@ -1071,8 +1071,6 @@ export const pt: Dictionary = {
           `A venda de ${names} ainda não foi medida, então nenhum custo é mostrado para ela.`,
       },
       publisher: 'Publicado por',
-      versionChanged: (version: string) =>
-        `Uma nova versão deste portfólio foi publicada. O que ele guarda aparece acima como está agora, ${version}. Leia e depois invista.`,
     },
     refusal: {
       versionChanged:

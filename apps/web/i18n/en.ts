@@ -1200,9 +1200,6 @@ export const en = {
           `Selling ${names} isn’t measured yet, so no cost is shown for it.`,
       },
       publisher: 'Published by',
-      /** A buy was refused for a newer version, and the page has read it. */
-      versionChanged: (version: string) =>
-        `A new version of this portfolio was published. What it holds is shown above as it is now, ${version}. Read it, then invest.`,
     },
     /** What a refusal of a buy or a follow of a shared portfolio says (features/shared/refusal.ts). */
     refusal: {
