@@ -2755,7 +2755,19 @@ describe('the second review (Oct 7): every sentence of its scripts, with a model
       'Ignore what I said about stocks, include them',
     ])
       for (const r of [goal({ risk: 'medium' }), null]) {
-        const back = read(turns(refusal, later), r);
+        // With no model one reader alone would take it back: it is asked by `limits` (the third
+        // review, priority 2), and a no takes it back as the model's agreement does.
+        if (r === null) {
+          const asked = read(turns(refusal, later), null);
+          expect(
+            asked.questions.map((q) => q.text),
+            later,
+          ).toEqual(['Do you want to leave out stocks and stock funds?']);
+          expect(asked.sheet, later).toBeNull();
+          const kept = read(turns(refusal, later, 'yes'), null);
+          expect(kept.sheet?.limits, later).toEqual({ cannotHold: { classes: ['etf', 'stock'] } });
+        }
+        const back = read(r === null ? turns(refusal, later, 'no') : turns(refusal, later), r);
         expect(back.limits.cannotHoldClasses, later).toBeNull();
         expect(back.sheet?.limits, later).toBeUndefined();
         expect(back.flags, later).toContain('refusal_withdrawn:stock');
@@ -4197,6 +4209,64 @@ describe('the third review (Oct 7): no reader decides alone, and the last word w
           expect(unread.sheet?.limits, c.text).toBeUndefined();
         }
       }
+    });
+
+    it('priority 2: a yes to leaving a class out is the last word on it, so nothing that would hold it shares the sheet', () => {
+      for (const [text, r] of [
+        ['Put all of it in stocks.', { mix: pct(100, 0), cannotHold: ['stock'] }],
+        ['Invest in AI.', { markets: ['ai'], cannotHold: ['stock'] }],
+        ['Start from The Seven.', { portfolios: ['The Seven'], cannotHold: ['stock'] }],
+        ['Coloque tudo em ações.', { language: 'pt', mix: pct(100, 0), cannotHold: ['stock'] }],
+        ['Half in stocks and half in gold.', { mix: pct(50, 0, 0, 50), cannotHold: ['gold'] }],
+      ] as const) {
+        const yes = 'language' in r ? 'sim' : 'yes';
+        const taken = said([text, yes], reads(r));
+        expect(
+          taken.flags.some((f) => f.startsWith('refusal_confirmed:')),
+          text,
+        ).toBe(true);
+        expect(taken.sheet?.limits?.cannotHold, text).toBeDefined();
+        expect(taken.sheet?.mix, text).toBeUndefined();
+        expect(taken.sheet?.sleeves, text).toBeUndefined();
+        expect(taken.sheet?.themes ?? [], text).toEqual([]);
+        // A no leaves the holding as both readers read it.
+        expect(
+          said([text, 'language' in r ? 'não' : 'no'], reads(r)).sheet?.limits,
+          text,
+        ).toBeUndefined();
+      }
+    });
+
+    it('priority 2: with no model a refusal a later mention would take back is asked, not taken back', () => {
+      for (const [messages, yes, no] of [
+        [['No stocks.', 'Remember, stocks are out.'], 'yes', 'no'],
+        [['No stocks.', 'Stocks scare me.'], 'yes', 'no'],
+        [['No crypto.', 'Crypto is what my cousin talks about.'], 'yes', 'no'],
+        [['Sem ações.', 'Lembre: ações estão fora.'], 'sim', 'não'],
+        [['No gold.', 'Gold is fine after all.'], 'yes', 'no'],
+      ] as const) {
+        const where = messages.join(' / ');
+        const asked = said([...messages], null);
+        if (asked.questions.length === 0) {
+          // The text check reads the later mention as no word on holding it: the refusal stands.
+          expect(asked.sheet?.limits, where).toBeDefined();
+          continue;
+        }
+        expect(
+          asked.questions.map((q) => q.field),
+          where,
+        ).toEqual(['limits']);
+        expect(asked.sheet, where).toBeNull();
+        expect(said([...messages, yes], null).sheet?.limits, where).toBeDefined();
+        const back = said([...messages, no], null);
+        expect(back.sheet?.limits, where).toBeUndefined();
+        expect(
+          back.flags.some((f) => f.startsWith('refusal_withdrawn:')),
+          where,
+        ).toBe(true);
+      }
+      // The review's own is among the ones asked.
+      expect(said(['No stocks.', 'Remember, stocks are out.'], null).questions).toHaveLength(1);
     });
 
     it('the same refusal in a form the text check reads is taken with no question, with or without a model', () => {

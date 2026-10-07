@@ -1290,7 +1290,22 @@ function intakeOf(
     flags.push(`refusal_withdrawn:${what}`);
     if (last && !refusalsNotTaken.includes(last)) refusalsNotTaken.push(last);
   };
-  for (const what of stated) if (takenBack(what)) withdraw(what);
+  // With no model one reader alone would take a refusal back on a later mention of its class
+  // ("No stocks." then "Remember, stocks are out."): it is asked instead (`limits`), where a yes
+  // keeps it and a no takes it back, said in a line.
+  const takeBackAsked: Refused[] = [];
+  for (const what of stated) {
+    if (!takenBack(what)) continue;
+    const answer = heard.refusals.filter((r) => r.classes.includes(what)).at(-1);
+    // An answer that says what is held settles it, as the form's own limits do.
+    const settledByAnswer =
+      answers.limits !== undefined || 'mix' in answers || answers.sleeves !== undefined;
+    if (method === 'model' || settledByAnswer || answer?.taken === false) withdraw(what);
+    else if (answer === undefined) {
+      takeBackAsked.push(what);
+      flags.push(`refusal_asked:${what}`);
+    } else refused.add(what);
+  }
   // What a stated refusal leaves out: itself, and what goes with it (`LEFT_OUT_WITH`). "No stocks" is
   // no stocks through a fund either, unless the text then names the funds as something to hold ("no
   // stocks, but ETFs are fine"). What goes with it is no disagreement with the model, either way.
@@ -1309,7 +1324,9 @@ function intakeOf(
   // does not confirm was flagged and dropped: "Do not buy stocks for me." and "Nada de bolsa." gave
   // a plan with stocks. It is asked once ("Do you want to leave out stocks?"): a yes takes it, a no
   // leaves the class in and says so in a line. The form's own limits stand over the question.
-  const refusalAsked: Refused[] = [];
+  const refusalAsked: Refused[] = [...takeBackAsked];
+  // A refusal the person confirmed by a yes: their last word on the class.
+  const confirmed = new Set<Refused>();
   const refusalDeclined: Refused[] = [];
   if (method === 'model' && answers.limits === undefined) {
     const taken = leftOutOf(refused);
@@ -1319,6 +1336,7 @@ function intakeOf(
       if (answer === undefined) refusalAsked.push(what);
       else if (answer.taken) {
         refused.add(what);
+        confirmed.add(what);
         flags.push(`refusal_confirmed:${what}`);
       } else {
         refusalDeclined.push(what);
@@ -1743,7 +1761,18 @@ function intakeOf(
     mixRead = null;
     mixOfRules = null;
   }
-  const inPlay = conflictAsk?.of === 'market' ? reads.filter((r) => r.kind === 'none') : reads;
+  // A yes to leaving a class out is the person's last word on it: a mix or a narrative that would
+  // hold it is not held, and never shares a sheet with it.
+  const mixGone = written !== null && written.classes.some((c) => confirmed.has(c));
+  const marketsGone = (confirmed.has('stock') || confirmed.has('etf')) && heldWords.length > 0;
+  if (mixGone) {
+    mixRead = null;
+    mixOfRules = null;
+    flags.push('mix_refused_later');
+  }
+  if (marketsGone && startsFrom.length > 0) draft.themes = null;
+  const inPlay =
+    conflictAsk?.of === 'market' || marketsGone ? reads.filter((r) => r.kind === 'none') : reads;
   // What the refusals that stand leave out: the sheet's limits.
   const leftOut = leftOutOf(refused);
   const classesRefused = [...leftOut].filter((x): x is HoldableClass => x !== 'credit').sort();
@@ -2118,6 +2147,7 @@ function intakeOf(
   } else if (
     nothingStated &&
     replyMix &&
+    !mixGone &&
     !shareOfANarrative &&
     !(ruledOut.success && sameMix(replyMix, ruledOut.data))
   )
