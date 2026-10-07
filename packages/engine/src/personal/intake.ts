@@ -65,6 +65,7 @@ import {
   PersonalMix,
   type PersonalParameters,
   PersonalSheet,
+  type RiskLevel,
 } from './types';
 
 // The guided intake (gate GUIDED-INTAKE; DESIGN-VAULT section 7). A model reads the person's goal into
@@ -209,6 +210,19 @@ export type IntakeInput = {
    * sourced attributes, passed by a caller that has them. Left out, or null: nothing matches.
    */
   matchOf?: (filter: MarketFilter) => FilterMatch | null;
+  /**
+   * The risk whose limits a sheet held in themes takes, for the read-back (the review of Oct 7). A
+   * caller with the shelf passes the engine's exact rule for the sleeves and the shared portfolios
+   * read; left out, the estimate on the issuer caps, the themes' share counted as stocks.
+   */
+  riskOfSleeves?: (sleeves: PlanSleeve[], themes: string[]) => RiskLevel;
+  /**
+   * False when the caller could not read what the person's chain lists (the chain is off, its adapter
+   * failed). A narrative is then left unresolved, as with no chain (flags `market_unresolved:`):
+   * nothing is said of what the chain has, no sentence says it has no stock, and no sheet is made
+   * from a goal that names one. Left out: true.
+   */
+  shelfKnown?: boolean;
 };
 
 export type IntakeResult = {
@@ -534,6 +548,9 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
   let otherCurrency: { amount: number; currency: string } | null = null;
   const disagreements: Disagreement[] = [];
   const method = input.reply === null ? 'rules' : 'model';
+  // Whether the caller could read what the person's chain lists; where it could not, nothing is
+  // resolved on it, as with no chain.
+  const shelfKnown = input.shelfKnown !== false;
   const split = splitIn(text);
   const exits = exitTimesIn(text);
   const openWords = openEndedIn(text);
@@ -707,7 +724,8 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
       if (namedPortfolios.length < r.portfolios.length) flags.push('no_cue:portfolios');
       const slugs = namedPortfolios.map((name) => portfolioSlug(name, portfolios));
       const found = [...new Set(slugs.filter((s): s is string => s !== null))];
-      if (found.length < slugs.length) {
+      // Where the shelf could not be read, a name it does not show is not said to be off it.
+      if (found.length < slugs.length && shelfKnown) {
         flags.push('not_on_shelf:themes');
         unclear.add('themes');
       }
@@ -893,13 +911,19 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
   // The value a matched slug was matched by, as the stocks' attributes write it: the read-back says it.
   const matchedValues: Record<string, string> = {};
   // A filter that matches: the slug its theme sleeve takes, and the filter with the value as the
-  // attributes write it. The two writings must be one value (`attributeKey`), or nothing matches.
-  const matchFor = (filter: MarketFilter): { slug: string; filter: MarketFilter } | null => {
+  // attributes write it. The two writings must be one value (`attributeKey`), or nothing matches. A
+  // filter is never used to pick one stock (the review of Oct 7: "invest in my future" with a filter
+  // by industry gave a sheet all in one car maker): it matches only where it selects at least
+  // `filterMinListed` names listed on the chain, and `one` where it selects one alone.
+  const matchFor = (
+    filter: MarketFilter,
+  ): { slug: string; filter: MarketFilter } | 'one' | null => {
     const slug = matchedSlug(filter);
     const match = slug ? (input.matchOf?.(filter) ?? null) : null;
     if (!slug || !match || !(match.listed > 0)) return null;
     const kept = MarketFilter.safeParse({ by: filter.by, value: match.value });
     if (!kept.success || attributeKey(kept.data.value) !== attributeKey(filter.value)) return null;
+    if (match.listed < INTAKE_LIMITS.filterMinListed) return 'one';
     matchedValues[slug] = kept.data.value;
     return { slug, filter: kept.data };
   };
@@ -912,17 +936,19 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
     kind: IntakeNarrative['kind'];
     slug: string | null;
     filter: MarketFilter | null;
+    /** For `none`: a filter matched one name alone there, which is no theme. */
+    one: boolean;
   };
   const resolve = (
     id: Market | null,
     ofModel: MarketFilter | null,
-  ): Pick<Read, 'kind' | 'slug' | 'filter'> => {
+  ): Pick<Read, 'kind' | 'slug' | 'filter' | 'one'> => {
     const narrative = id ? NARRATIVES[id] : null;
     const portfolio = narrative?.portfolio;
     if (portfolio && portfolios.some((p) => p.slug === portfolio))
-      return { kind: 'portfolio', slug: portfolio, filter: null };
+      return { kind: 'portfolio', slug: portfolio, filter: null, one: false };
     if (narrative && usableLabel(narrative.label))
-      return { kind: 'label', slug: narrative.label, filter: null };
+      return { kind: 'label', slug: narrative.label, filter: null, one: false };
     const label = narrative ? labels.find((l) => l.slug === narrative.label) : undefined;
     // A label that is still a proposal, or lists no stock on this chain, holds nothing: said to the
     // operator, once, and the narrative goes on to its filters.
@@ -931,14 +957,17 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
       : null;
     if (unusable && !flags.includes(unusable)) flags.push(unusable);
     const filters = narrative ? narrative.filters : ofModel ? [ofModel] : [];
+    let one = false;
     for (const filter of filters) {
       const match = matchFor(filter);
-      if (match) return { kind: 'matched', ...match };
+      if (match === 'one') one = true;
+      else if (match) return { kind: 'matched', ...match, one: false };
     }
     const name = id ?? 'marketFilter';
-    if (filters.length > 0) flags.push(`filter_no_match:${name}`);
+    if (one) flags.push(`filter_one_name:${name}`);
+    else if (filters.length > 0) flags.push(`filter_no_match:${name}`);
     flags.push(`market_not_on_shelf:${name}`);
-    return { kind: 'none', slug: null, filter: null };
+    return { kind: 'none', slug: null, filter: null, one };
   };
   // A share is read where the narrative is stated; one the person only wonders about has none yet.
   const shareOf = (spans: Named[]): MarketShare =>
@@ -947,10 +976,13 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
       .filter((s) => s !== null)
       .at(-1) ?? null;
   // In the order of the fixed lists, then the model's filter. While the person has no chain nothing
-  // is resolved, and nothing is said of what their chain has: the chain is asked first.
+  // is resolved, and nothing is said of what their chain has: the chain is asked first. The same
+  // where the caller could not read what the chain lists (`shelfKnown`): no sentence then says the
+  // chain has no stock for it, since nobody looked.
   const reads: Read[] = [];
   const marketsAsked = MARKET_IDS.filter((id) => asked.some((m) => m.market === id));
-  if (input.homeChain === null) {
+  const resolvable = input.homeChain !== null && shelfKnown;
+  if (!resolvable) {
     for (const id of marketsAsked) flags.push(`market_unresolved:${id}`);
     if (filterAsked) flags.push('market_unresolved:marketFilter');
   } else {
@@ -995,11 +1027,12 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
   // the split asked again, as a portfolio answered off the shelf is.
   let sleevesAnswered = answers.sleeves;
   let sleevesRefused = false;
-  if (sleevesAnswered && input.homeChain !== null) {
+  if (sleevesAnswered && resolvable) {
     for (const s of sleevesAnswered) {
       if (s.kind !== 'theme' || usableLabel(s.theme)) continue;
       const by = filterOfSlug(s.theme);
-      if (!by || matchFor({ by: by.by, value: by.key })?.slug !== s.theme) sleevesRefused = true;
+      const match = by ? matchFor({ by: by.by, value: by.key }) : null;
+      if (!match || match === 'one' || match.slug !== s.theme) sleevesRefused = true;
     }
     if (sleevesRefused) {
       flags.push('answer_not_on_shelf:sleeves');
@@ -1219,12 +1252,7 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
     themeAsk !== null ||
     shareWaits ||
     mixAsk !== null ||
-    (input.homeChain === null &&
-      named.length > 0 &&
-      !mixRead &&
-      !('mix' in answers) &&
-      !splitWritten &&
-      toGrow);
+    (!resolvable && named.length > 0 && !mixRead && !('mix' in answers) && !splitWritten && toGrow);
   let mix: PersonalMix | null =
     themeSleeves || sleevesWin
       ? null
@@ -1275,7 +1303,10 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
   if (mix || mixConflict || marketShareAsk !== null || heldInThemes || heldOpen) {
     unclear.delete('risk');
     if (heldInThemes) {
-      value.risk = riskForMixEstimate({ growthBps: themeBps });
+      // A caller with the shelf passes the engine's exact rule; left out, the estimate on the caps.
+      value.risk =
+        input.riskOfSleeves?.(sleeves ?? [], value.themes ?? []) ??
+        riskForMixEstimate({ growthBps: themeBps });
       flags.push('risk_from_themes');
       limitsFor = { words: null, risk: value.risk };
     } else if (mix && !mixConflict && !heldOpen) {
@@ -1291,8 +1322,8 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
       unclear.delete('sleeves');
   }
   const keptSafe = sleeves?.some((x) => x.kind === 'safe_yield') === true && sleeves.length > 1;
-  // An answer naming a portfolio is held to the shelf too.
-  if (answers.themes) {
+  // An answer naming a portfolio is held to the shelf too, where the shelf could be read.
+  if (answers.themes && shelfKnown) {
     const off = answers.themes.filter((slug) => !portfolios.some((p) => p.slug === slug));
     if (off.length > 0) {
       flags.push('answer_not_on_shelf:themes');
@@ -1360,8 +1391,21 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
     question(field, language, templateOf(field), startOf(field)),
   );
 
+  // What the goal names that only the chain's shelf can settle, where the shelf could not be read: a
+  // narrative, a shared portfolio, a theme in an answered split. No sheet is made then: it would
+  // leave out, without a word, what the person asked for. It is said in one line that says nothing
+  // of what the chain has.
+  const waitsForShelf: string[] = shelfKnown
+    ? []
+    : [
+        ...[...named].sort((a, b) => a.at - b.at).map((m) => m.words),
+        ...namedPortfolios,
+        ...(answers.themes ?? []),
+        ...(answers.sleeves ?? []).flatMap((x) => (x.kind === 'theme' ? [x.theme] : [])),
+      ].filter((words, i, all) => all.indexOf(words) === i);
+  if (waitsForShelf.length > 0) flags.push('shelf_unread');
   let sheet: PersonalSheet | null = null;
-  if (questions.length === 0 && input.homeChain) {
+  if (questions.length === 0 && input.homeChain && waitsForShelf.length === 0) {
     const limitsOut = answers.limits ?? limitsOf(limits);
     const candidate = {
       basketType: 'standard' as const,
@@ -1444,6 +1488,8 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
       assume('MIX_LIMITS_OTHER_RISK', { said: riskSaid, words, risk: limitsFor.risk });
     else assume('MIX_LIMITS', { words, risk: limitsFor.risk });
   }
+  if (input.homeChain)
+    for (const words of waitsForShelf) assume('SHELF_UNREAD', { words, chain: input.homeChain });
   for (const { words } of refusalsNotTaken) assume('REFUSAL_NOT_TAKEN', { words });
   if (mixDropped) assume('MIX_DROPPED', mixDropped);
   if (themesNotHeld && value.goal)
@@ -1471,8 +1517,13 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
               portfolios.find((p) => p.slug === slug)?.name ?? usableLabel(slug)?.name[language],
           )
           .find((name) => name);
-        if (nearest) assume('MARKET_NEAREST', { words: r.words, chain, nearest });
-        else assume('MARKET_NONE', { words: r.words, chain });
+        if (nearest)
+          assume(r.one ? 'MARKET_ONE_NEAREST' : 'MARKET_NEAREST', {
+            words: r.words,
+            chain,
+            nearest,
+          });
+        else assume(r.one ? 'MARKET_ONE' : 'MARKET_NONE', { words: r.words, chain });
       }
     }
   if (sheet && !sheet.rules.glide && !horizonOpen && answers.rules === undefined)

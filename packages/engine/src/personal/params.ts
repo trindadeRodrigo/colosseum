@@ -207,4 +207,10 @@ export const INTAKE_LIMITS = {
    * before it: the first message and ten later ones, the most the API takes, and one to spare.
    */
   turnsRead: 12,
+  /**
+   * The names a filter must match on the person's chain to be held as a theme (Oct 7): a filter that
+   * matches one name alone would be a stock pick by another name. A curated label is a person's
+   * list and may hold one.
+   */
+  filterMinListed: 2,
 } as const;

@@ -306,6 +306,41 @@ describe('intake templates', () => {
     });
   });
 
+  // The second review of the intake (Oct 7): a filter that matches one name alone is no theme, and
+  // "there is no stock" would be false of it.
+  it('says "only one stock" as written, with and without a nearest', () => {
+    expect(ASSUMPTION_TEMPLATES.MARKET_ONE).toEqual({
+      en: 'There is only one stock for “{words}” on {chain|chain} at the moment, and a theme is not made of one. We will be adding more soon.',
+      pt: 'No momento há só uma ação para “{words}” na {chain|chain}, e um tema não se faz de uma só. Vamos incluir mais em breve.',
+    });
+    expect(ASSUMPTION_TEMPLATES.MARKET_ONE_NEAREST).toEqual({
+      en: `${ASSUMPTION_TEMPLATES.MARKET_ONE.en} The nearest today is {nearest}, which you can choose.`,
+      pt: `${ASSUMPTION_TEMPLATES.MARKET_ONE.pt} O mais próximo hoje é {nearest}, que você pode escolher.`,
+    });
+    // The offer is the one the sentence for no stock makes, word for word.
+    for (const lang of LANGUAGES) {
+      const offer = ASSUMPTION_TEMPLATES.MARKET_ONE_NEAREST[lang].slice(
+        ASSUMPTION_TEMPLATES.MARKET_ONE[lang].length + 1,
+      );
+      expect(ASSUMPTION_TEMPLATES.MARKET_NEAREST[lang].endsWith(offer), lang).toBe(true);
+    }
+  });
+
+  it('says a shelf that could not be read without a word on what the chain has', () => {
+    expect(
+      render(ASSUMPTION_TEMPLATES.SHELF_UNREAD.en, { words: 'AI', chain: 'solana' }, 'en'),
+    ).toBe('What is listed on Solana could not be read just now, so nothing is held for “AI” yet.');
+    expect(
+      render(ASSUMPTION_TEMPLATES.SHELF_UNREAD.pt, { words: 'IA', chain: 'solana' }, 'pt'),
+    ).toBe(
+      'Não foi possível ler agora o que está listado na Solana, então nada é mantido para “IA” por enquanto.',
+    );
+    for (const lang of LANGUAGES)
+      expect(ASSUMPTION_TEMPLATES.SHELF_UNREAD[lang]).not.toMatch(
+        /no stock|nenhuma ação|only one|só uma/,
+      );
+  });
+
   it('names a theme filled by a filter by what it was matched by, in both languages', () => {
     expect(placeholdersOf(MATCHED_NAME.pt)).toEqual(placeholdersOf(MATCHED_NAME.en));
     for (const lang of LANGUAGES) {

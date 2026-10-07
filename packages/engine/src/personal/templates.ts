@@ -988,12 +988,28 @@ export const ASSUMPTION_TEMPLATES = {
     en: 'There is no stock for “{words}” on {chain|chain} at the moment, and we will be adding more soon. The nearest today is {nearest}, which you can choose.',
     pt: 'No momento não há nenhuma ação para “{words}” na {chain|chain}, e vamos incluir mais em breve. O mais próximo hoje é {nearest}, que você pode escolher.',
   },
+  // A filter that matches one name alone on the person's chain is never used to pick that stock (Oct
+  // 7): nothing is held for it, and the line says why, with the nearest the shelf has where it has one.
+  MARKET_ONE: {
+    en: 'There is only one stock for “{words}” on {chain|chain} at the moment, and a theme is not made of one. We will be adding more soon.',
+    pt: 'No momento há só uma ação para “{words}” na {chain|chain}, e um tema não se faz de uma só. Vamos incluir mais em breve.',
+  },
+  MARKET_ONE_NEAREST: {
+    en: 'There is only one stock for “{words}” on {chain|chain} at the moment, and a theme is not made of one. We will be adding more soon. The nearest today is {nearest}, which you can choose.',
+    pt: 'No momento há só uma ação para “{words}” na {chain|chain}, e um tema não se faz de uma só. Vamos incluir mais em breve. O mais próximo hoje é {nearest}, que você pode escolher.',
+  },
   // No curated list for what the person named, and a filter over the sourced attributes that matches
   // some (gate THEME-MATCHED): the plan holds those, said as matched, never as curated. "Names", not
   // "stocks": a fund can be matched too, by a keyword.
   MARKET_MATCHED: {
     en: 'No curated list covers “{words}” on {chain|chain}, so the plan holds the names matched by {by}: {value}. Matched from the sourced attributes of each, not a curated theme.',
     pt: 'Nenhuma lista com curadoria cobre “{words}” na {chain|chain}, então o plano fica com os nomes filtrados por {by}: {value}. Filtrados pelos atributos de cada um, que têm fonte; não é um tema com curadoria.',
+  },
+  // What the chain lists could not be read (the chain is off, its adapter failed): what the person
+  // named is not looked up, nothing is held for it, and nothing is said of what the chain has.
+  SHELF_UNREAD: {
+    en: 'What is listed on {chain|chain} could not be read just now, so nothing is held for “{words}” yet.',
+    pt: 'Não foi possível ler agora o que está listado na {chain|chain}, então nada é mantido para “{words}” por enquanto.',
   },
   MAX_YIELD_LATER: {
     en: 'A part that seeks the highest yield is not built yet, so the part that seeks the goal is built as a goal to grow.',
