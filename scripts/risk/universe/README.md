@@ -1,6 +1,6 @@
 # The asset list, one file per chain
 
-`pnpm risk:universe <chain>` (PLAN-UNIVERSE RU.4 and RU.10, gate `UNIVERSE`, decision DU2; method `universe-list-0.1`) writes `robinhood.json` and `solana.json` in this folder. They are generated and committed: the one generated file under the plan that is. The collector (RU.6), the seed (RU.8) and the vault's asset entries read them. The command reads files and calls nothing.
+`pnpm risk:universe <chain>` (PLAN-UNIVERSE RU.4 and RU.10, gate `UNIVERSE`, decision DU2; method `universe-list-0.1`) writes `robinhood.json` and `solana.json` in this folder. They are generated and committed: the one generated file under the plan that is. The collector (RU.6), the seed (RU.8) and the vault's asset entries read them. The command reads files and calls nothing. The hourly raw-arrays job (RU.12) carries `solana.json` inside its installed bundle: after a new Solana list, run `pnpm risk:raw-arrays-install-job` again (`scripts/risk/raw-arrays/README.md`), or the job keeps recording the stocks of the list it was built with.
 
 ```sh
 pnpm risk:universe robinhood                # the newest cut, oracle map and token list in data/risk-evm/
