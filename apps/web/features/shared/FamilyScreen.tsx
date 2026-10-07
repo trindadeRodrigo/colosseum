@@ -24,8 +24,10 @@ import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { switchFailure } from '../account/ChainSwitch';
-import { dollars } from '../goal/sheet';
+import { dollars, parseNumber } from '../goal/sheet';
 import { formatBps, tokenName } from '../order/amounts';
+import { Invest } from '../order/Invest';
+import { AmountField, MAX_USD, MIN_USD } from '../order/InvestCard';
 import type { CallFailure } from '../order/order-api';
 import { keepOrder, type OrderRecord, recallOrders } from '../order/order-record';
 import { PlanView } from '../order/PlanView';
@@ -118,6 +120,8 @@ export function FamilyScreen({ slug }: { slug: string }) {
   const person = useSharedPerson();
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [round, setRound] = useState(0);
+  // A buy was refused because the portfolio has a newer version: the page reads it again and says so.
+  const [changed, setChanged] = useState(false);
   const titleId = useId();
   const chain = person.kind === 'ready' ? person.chain : null;
   const settled = person.kind !== 'loading';
@@ -126,7 +130,8 @@ export function FamilyScreen({ slug }: { slug: string }) {
   useEffect(() => {
     if (!settled) return;
     let mine = true;
-    setLoad({ kind: 'loading' });
+    // What was read stays on the page while it is read again: only the first read shows the wait.
+    setLoad((was) => (was.kind === 'read' ? was : { kind: 'loading' }));
     readFamily(apiFetch, slug, chain).then((read) => {
       if (mine) setLoad(read.kind === 'read' ? { kind: 'read', family: read.value.family } : read);
     });
@@ -191,7 +196,17 @@ export function FamilyScreen({ slug }: { slug: string }) {
         </p>
       )}
       {recipes.map((recipe) => (
-        <RecipeSection key={recipe.chain} family={family} recipe={recipe} person={person} />
+        <RecipeSection
+          key={recipe.chain}
+          family={family}
+          recipe={recipe}
+          person={person}
+          changed={changed}
+          onVersionChanged={() => {
+            setChanged(true);
+            setRound((n) => n + 1);
+          }}
+        />
       ))}
       {person.kind === 'ready' && <VaultsElsewhere family={family} chain={person.chain} />}
       <VersionsPanel slug={family.slug} chain={chain} />
@@ -207,13 +222,21 @@ function RecipeSection({
   family,
   recipe,
   person,
+  changed,
+  onVersionChanged,
 }: {
   family: SharedFamily;
   recipe: SharedRecipe;
   person: SharedPerson;
+  /** A buy was refused for a newer version, and the page read the portfolio again. */
+  changed: boolean;
+  onVersionChanged: () => void;
 }) {
   const t = useT();
   const lang = useLang();
+  // The amount to invest, typed on this page; locked once the person has pressed.
+  const [amountText, setAmountText] = useState('');
+  const [pressed, setPressed] = useState(false);
   const f = t.shared.family;
   const chainName = t.chain.names[recipe.chain];
   const own = person.kind === 'ready' && person.chain === recipe.chain;
@@ -268,6 +291,11 @@ function RecipeSection({
                 : null;
   const p = t.shared.product;
   const holdings = holdingsOf(recipe, active.components, t);
+  const typed = parseNumber(amountText, lang);
+  const amount =
+    typed !== null && !Number.isNaN(typed) && typed >= MIN_USD && typed <= MAX_USD ? typed : null;
+  /** The invest card is on the page: the person is ready on this chain and nothing blocks a buy. */
+  const investing = person.kind === 'ready' && own && !blocked && followed !== null;
   const unmeasured = holdings.filter((h) => !h.exit);
   const list = (items: string[]) =>
     new Intl.ListFormat(locale, { type: 'conjunction' }).format(items);
@@ -338,7 +366,8 @@ function RecipeSection({
             {/* Where the version and weights come from, and words that match no version: never
                 folded away (the flow audit, finding 41). */}
             {check.state === 'read' && check.textMatches === null && <TextMark matches={null} />}
-            <SourceMark check={check} chain={recipe.chain} />
+            {/* The invest card says the same line over itself: said once on the page. */}
+            {!investing && <SourceMark check={check} chain={recipe.chain} />}
           </>
         }
         figures={
@@ -377,7 +406,18 @@ function RecipeSection({
         }
         invest={
           person.kind === 'ready' && own ? (
-            <div data-ui="product-invest" className="flex flex-col items-start gap-2">
+            <div data-ui="product-invest" className="flex flex-col items-start gap-4">
+              {changed && (
+                // Said before any new order is offered: what is shown above is the new version.
+                <p
+                  data-ui="product-version-changed"
+                  role="status"
+                  className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body font-medium"
+                >
+                  <StatusMark status="watch" size={12} className="mt-1.5" />
+                  <span>{p.versionChanged(f.versionN(active.version))}</span>
+                </p>
+              )}
               {blocked || !followed ? (
                 <>
                   <Button variant="primary" disabled aria-describedby={reasonId}>
@@ -388,12 +428,34 @@ function RecipeSection({
                   </p>
                 </>
               ) : (
-                <Link
-                  href={`/indexes/${encodeURIComponent(family.slug)}/buy`}
-                  className={buttonClass({ variant: 'primary' })}
-                >
-                  {f.buy}
-                </Link>
+                <>
+                  <AmountField
+                    text={amountText}
+                    onText={setAmountText}
+                    hint={t.shared.buy.amountHint}
+                    value={amount}
+                    disabled={pressed}
+                  />
+                  {/* One invest step everywhere (gate INVEST-ONE-PRESS). A new version remounts it,
+                      so it reads the portfolio again before it makes another order. */}
+                  <div className="w-full">
+                    <Invest
+                      key={`${recipe.active.version}:${active.version}`}
+                      of={{ family: family.slug }}
+                      amount={amount}
+                      onProgress={() => setPressed(true)}
+                      onDone={() => setPressed(false)}
+                      onStopped={() => setPressed(false)}
+                      onVersionChanged={() => {
+                        // The amount is cleared with it: no order is made for the new version
+                        // until the person has seen it and typed an amount again.
+                        setPressed(false);
+                        setAmountText('');
+                        onVersionChanged();
+                      }}
+                    />
+                  </div>
+                </>
               )}
             </div>
           ) : person.kind === 'signed-out' ? (

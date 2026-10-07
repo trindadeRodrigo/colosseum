@@ -147,12 +147,11 @@ test('publish a portfolio, find it on the shelf, buy it and follow it, every ste
   );
   await check(page, 'family');
 
-  await page.getByRole('link', { name: en.shared.family.buy }).click();
-  await expect(page).toHaveURL(/\/indexes\/three-of-the-largest\/buy$/);
+  // The invest step is on the portfolio's own page, under what it holds (gate PRODUCTS-PLAN-PANE).
   const press = await readyToInvest(page, { amount: '40' });
   await check(page, 'family-buy');
-  // the review is on the buy's own card, under where the version and weights were read from
-  await expect(page).toHaveURL(/\/indexes\/three-of-the-largest\/buy$/);
+  // the review is on the invest card, under where the version and weights were read from
+  await expect(page).toHaveURL(/\/indexes\/three-of-the-largest$/);
   const steps = page.locator('[data-ui="order-step"]');
   // a vault that follows the portfolio, opened with the deposit, then a swap per asset
   await expect(steps).toHaveCount(4);

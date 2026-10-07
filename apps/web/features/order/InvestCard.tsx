@@ -95,7 +95,13 @@ export type InvestCardProps = {
 export type InvestEmbedded = Pick<
   InvestCardProps,
   'amount' | 'onProgress' | 'onDone' | 'onStopped'
->;
+> & {
+  /**
+   * A buy of a shared portfolio was refused because the portfolio has a newer version than the one
+   * this card read: the host reads the portfolio again and shows it before another order is made.
+   */
+  onVersionChanged?: () => void;
+};
 
 /** The amount of a buy, typed in dollars: the one field over the card on a screen of its own. */
 export function AmountField({

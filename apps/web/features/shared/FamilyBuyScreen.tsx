@@ -143,6 +143,9 @@ export function FamilyBuyScreen({ slug, embedded }: { slug: string; embedded?: I
       },
       { chain, owner, type: 'buy' },
     );
+    // The portfolio moved on since this card read it: the host is told, so it reads it again.
+    if ((placed.kind === 'code' || placed.kind === 'said') && placed.code === 'VERSION_CHANGED')
+      embedded?.onVersionChanged?.();
     if (placed.kind !== 'placed')
       return {
         failure:

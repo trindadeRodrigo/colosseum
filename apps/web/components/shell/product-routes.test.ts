@@ -351,6 +351,8 @@ describe('rule 3: no screen can reach a key', () => {
     ORDER_ROUTE,
     'app/(app)/plan/[id]/buy/page.tsx',
     'app/(app)/indexes/[slug]/buy/page.tsx',
+    // a shared portfolio's own page mounts the invest card under its holdings (gate PRODUCTS-PLAN-PANE)
+    'app/(app)/indexes/[slug]/page.tsx',
     'app/(app)/vaults/[chain]/[address]/add/page.tsx',
     // the Invest screen's pane mounts the invest card under the plan (gate INVEST-TWO-PANE)
     'app/(app)/goal/page.tsx',

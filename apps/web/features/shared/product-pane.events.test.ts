@@ -2,7 +2,7 @@
 import { type RecipeFigures, ShelfResponse } from '@colosseum/schemas';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
+import { click, find, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary, type Lang } from '../../i18n';
@@ -14,7 +14,7 @@ import { portStore } from '../wallet/test/mock-provider';
 import { FamilyScreen } from './FamilyScreen';
 import { holdingsOf, kindShares, rate } from './product-figures';
 import { ShelfScreen } from './ShelfScreen';
-import { CREATOR, FAMILY_ID, familyOf, recipeOf, SLUG, USER } from './test/fixtures';
+import { CREATOR, FAMILY_ID, FUNDED, familyOf, recipeOf, SLUG, USER } from './test/fixtures';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -89,9 +89,25 @@ const person: Person = {
   chainOptions: [],
 };
 
+/** Every call the screens made, with what they sent. */
+const asked: { method: string; path: string; body?: Record<string, unknown> }[] = [];
+/** What the double answers beyond the reads, set by a test. */
+const server: {
+  /** The portfolio the page reads, when it is not the first of the shelf's. */
+  family: (() => ReturnType<typeof familyOf>) | null;
+  order: ((body: Record<string, unknown>) => Response) | null;
+} = { family: null, order: null };
+
 function api(families = [familyOf(FAMILY_ID, { recipes: [withFigures()] })]) {
   const [first] = families;
-  portStore.setApi(async (path) => {
+  portStore.setApi(async (path, init) => {
+    const method = init?.method ?? 'GET';
+    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    asked.push({ method, path, body });
+    if (path === '/v1/orders' && method === 'POST' && server.order) return server.order(body);
+    if (path.startsWith('/v1/funding?')) return json(FUNDED);
+    if (path.startsWith('/v1/indexes/') && !path.includes('/versions') && server.family)
+      return json({ family: server.family(), disclaimer: 'd' });
     if (path === '/v1/me') return json(person);
     if (path.startsWith('/v1/shelf'))
       return json(ShelfResponse.parse({ families, disclaimer: 'd' }));
@@ -123,6 +139,9 @@ const show = async (node: Parameters<typeof withAccount>[1], lang: Lang = 'en') 
 };
 
 beforeEach(() => {
+  asked.length = 0;
+  server.family = null;
+  server.order = null;
   window.localStorage.clear();
   portStore.set(signedInPort(EMBEDDED, { userId: USER }));
 });
@@ -279,11 +298,16 @@ describe('a product’s page, on the plan view', () => {
     const creator = find(pane, '[data-ui="creator"]');
     expect(creator.textContent).toBe(CREATOR);
     expect(creator.closest('details')).toBeNull();
+    // one invest step, on the page: the amount and the one-press card, and no way off to a buy page
     const invest = find(pane, '[data-ui="product-invest"]');
-    const links = [...invest.querySelectorAll('a, button')];
-    expect(links).toHaveLength(1);
-    expect(links[0]?.textContent).toBe(en.shared.family.buy);
-    expect(links[0]?.getAttribute('href')).toBe(`/indexes/${SLUG}/buy`);
+    expect(find(invest, 'input[inputmode="decimal"]').getAttribute('value')).toBe('');
+    expect(find(invest, '[data-ui="family-invest"]')).toBeTruthy();
+    expect(host.querySelector(`a[href="/indexes/${SLUG}/buy"]`)).toBeNull();
+    // where the version and weights come from is said once on the page, over the card
+    expect(host.querySelectorAll('[data-ui="source-mark"]')).toHaveLength(1);
+    expect(find(invest, '[data-ui="source-mark"]')).toBeTruthy();
+    // nothing typed: nothing is asked of the server about an order
+    expect(asked.filter((c) => c.path === '/v1/orders')).toEqual([]);
     expect(host.textContent).not.toContain('MOCK');
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
@@ -371,4 +395,80 @@ describe('a product’s page, on the plan view', () => {
       en.shared.product.exit.notMeasured('SPYx, jlUSDC (Jupiter Lend), and syrupUSDC (Maple)'),
     );
   });
+});
+
+describe('a product’s page, when the portfolio gets a new version as the person invests', () => {
+  /** Version 3: the fund is gone, and the two dollar tokens share it all. */
+  const NEXT = [
+    { asset: 'solana:jlusdc', weightBps: 6000 },
+    { asset: 'solana:syrupusdc', weightBps: 4000 },
+  ];
+  const version = (n: number, components: typeof HELD) =>
+    familyOf(FAMILY_ID, {
+      recipes: [
+        recipeOf({
+          active: {
+            version: n,
+            effectiveAt: 1_791_000_000,
+            components,
+            metaHash: 'ab'.repeat(32),
+            status: 'active',
+          },
+          figures: {
+            holdings: FIGURES.holdings.filter((h) => components.some((c) => c.asset === h.asset)),
+          },
+        }),
+      ],
+    });
+  const amountField = (host: HTMLElement) =>
+    find<HTMLInputElement>(host, '[data-ui="product-invest"] input[inputmode="decimal"]');
+  const orders = () => asked.filter((c) => c.path === '/v1/orders' && c.method === 'POST');
+
+  it('reads the portfolio again, shows the new version’s holdings and says so, before any new order', async () => {
+    let published = 2;
+    api();
+    server.family = () => (published === 2 ? version(2, HELD) : version(3, NEXT));
+    // our server refuses the buy of version 2: version 3 took effect meanwhile
+    server.order = (body) => {
+      if (body.version === 2) {
+        published = 3;
+        return json({ error: 'the portfolio has a newer version', code: 'VERSION_CHANGED' }, 409);
+      }
+      return json({ error: 'not in this test' }, 500);
+    };
+    const host = await show(createElement(FamilyScreen, { slug: SLUG }));
+    expect(host.textContent).toContain(en.shared.family.versionN(2));
+    expect(host.querySelector('[data-ui="product-version-changed"]')).toBeNull();
+    await type(amountField(host), '40');
+    for (let i = 0; i < 8; i += 1) await settle(250);
+    // the one order asked for named version 2, and was refused
+    expect(orders().map((c) => [c.body?.family, c.body?.version, c.body?.amountUsd])).toEqual([
+      [SLUG, 2, 40],
+    ]);
+    for (let i = 0; i < 4; i += 1) await settle(100);
+
+    // the page is the new version's: its holdings, and the sentence that says it changed
+    const pane = find(host, '[data-ui="plan-pane"]');
+    expect(pane.textContent).toContain(en.shared.family.versionN(3));
+    expect(pane.textContent).not.toContain(en.shared.family.versionN(2));
+    const rows = [...pane.querySelectorAll('[data-ui="plan-legs"] li')].map((li) => li.textContent);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toContain('jlUSDC');
+    expect(rows[0]).toContain('60%');
+    expect(pane.querySelector('[data-ui="plan-legs"]')?.textContent).not.toContain('SPYx');
+    const notice = find(host, '[data-ui="product-version-changed"]');
+    expect(notice.textContent).toBe(en.shared.product.versionChanged(en.shared.family.versionN(3)));
+    expect(notice.getAttribute('role')).toBe('status');
+    // no order is made for the new version by itself: the amount is cleared, and none was asked for
+    expect(amountField(host).value).toBe('');
+    expect(amountField(host).disabled).toBe(false);
+    for (let i = 0; i < 6; i += 1) await settle(250);
+    expect(orders()).toHaveLength(1);
+
+    // the person reads it and types an amount again: the next order names version 3
+    await type(amountField(host), '40');
+    for (let i = 0; i < 8; i += 1) await settle(250);
+    expect(orders().map((c) => c.body?.version)).toEqual([2, 3]);
+    // the card waits a second of a still amount before it makes an order: this test waits for three
+  }, 20_000);
 });
