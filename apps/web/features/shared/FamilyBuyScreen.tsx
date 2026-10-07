@@ -17,6 +17,7 @@ import { acceptTrust, keepOrder, trustAccepted } from '../order/order-record';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { familyIdFor, useChainRecipe } from './chain-recipe';
 import { followedOf } from './FamilyScreen';
+import { sharedRefusal } from './refusal';
 import { SourceMark } from './SourceMark';
 import { placeShared, readFamily } from './shared-api';
 import type { SharedTerms } from './terms';
@@ -43,10 +44,14 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
   const [ticked, setTicked] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  // The server said the portfolio changed: the way back to its page is offered under the steps.
+  const [changed, setChanged] = useState(false);
+  const [reads, setReads] = useState(0);
   const asked = useRef(0);
   const chain = person.kind === 'ready' ? person.chain : null;
   const owner = person.kind === 'ready' ? person.owner : null;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `reads` reads the portfolio again
   useEffect(() => {
     if (!chain) return;
     let mine = true;
@@ -56,7 +61,7 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
     return () => {
       mine = false;
     };
-  }, [apiFetch, slug, chain]);
+  }, [apiFetch, slug, chain, reads]);
 
   const recipe =
     family && family !== 'failed' && chain
@@ -146,6 +151,7 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
     if (person.kind !== 'ready' || !person.userId) return;
     setPlacing(true);
     setFailure(null);
+    setChanged(false);
     // What the buy is held to: the version and weights shown, never the order the API answers.
     const terms: SharedTerms = {
       kind: 'family',
@@ -169,20 +175,21 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
     );
     if (placed.kind !== 'placed') {
       setPlacing(false);
-      // A refusal with a code this app has a sentence for is said in the app's words, in the page's
-      // language (the portfolio changed, the wallet is short); only one it has none for is said in
-      // our server's. The server always sends a sentence, so the code is read first.
-      const known =
-        (placed.kind === 'said' || placed.kind === 'code') && placed.code
-          ? t.buy.failure[placed.code as keyof typeof t.buy.failure]
-          : undefined;
+      // A refusal with a code is said in this app's own words for a portfolio (refusal.ts); only
+      // one it has none for is said in our server's.
+      const refused =
+        placed.kind === 'said' || placed.kind === 'code' ? sharedRefusal(placed, t) : null;
+      // The portfolio is not what this page showed any more: it is read again here, and the person
+      // is led to its page.
+      setChanged(refused?.changed === true);
+      if (refused?.changed) setReads((n) => n + 1);
       setFailure(
-        known
-          ? known
+        refused
+          ? refused.sentence
           : placed.kind === 'said'
             ? t.shared.publish.failure.said(placed.error)
             : placed.kind === 'code'
-              ? (t.buy.failure[placed.code as keyof typeof t.buy.failure] ?? t.buy.failure.refused)
+              ? t.buy.failure.refused
               : placed.kind === 'busy'
                 ? t.shell.slowDown
                 : placed.kind === 'signed-out'
@@ -247,6 +254,15 @@ export function FamilyBuyScreen({ slug }: { slug: string }) {
           onReview: review,
         }}
       />
+      {changed && (
+        <Link
+          data-ui="family-reopen"
+          href={`/indexes/${encodeURIComponent(slug)}`}
+          className={`${buttonClass({ variant: 'secondary' })} self-start`}
+        >
+          {t.shared.refusal.reopen}
+        </Link>
+      )}
     </div>
   );
 }
