@@ -34,17 +34,58 @@ export const STAGE_BUDGET = 180 * 1024;
 export const STAGE_MARKERS = ['WebGLRenderer', 'tf-joint-ink', 'tf-coins-ink'];
 
 /**
- * What no file a browser is sent may hold (`static/`): a node's URL with its key in it, a model
- * provider's key, a database URL with its password. A `NEXT_PUBLIC_` value is written into the
- * bundle as it is, so a keyed RPC URL set as `NEXT_PUBLIC_CHAIN_READ_RPC_<CHAIN>` would be public:
- * the read node of the web is a public one (features/wallet/README.md). The match is never printed.
+ * What no file a browser is sent may hold: a node's URL with its key in it, a provider's or a
+ * database's key, a private key in any of its usual forms, a webhook's address. A `NEXT_PUBLIC_` value
+ * is written into the bundle as it is, so a keyed RPC URL set as `NEXT_PUBLIC_CHAIN_READ_RPC_<CHAIN>`
+ * would be public: the read node of the web is a public one (features/wallet/README.md). A server
+ * component can also write a value into a page it renders ahead of time, so the pages and the
+ * payloads the build wrote (`SENT_FILES`) are read as the bundle is. Each shape answers whether the
+ * text holds one; the match is never printed.
+ *
+ * A placeholder is not a key: `?api-key=YOUR_API_KEY`, as a library's own documentation writes it.
  */
+const PLACEHOLDER = /^(your|my|example|xxx+|<|\$\{|\{\{|%)/i;
+const keyed = (shape) => (text) =>
+  [...text.matchAll(shape)].some((m) => !PLACEHOLDER.test(m[1] ?? ''));
+/** A JWT whose claims name Supabase's service role: the key that passes every row rule. */
+const serviceRoleJwt = (text) =>
+  [...text.matchAll(/\beyJ[A-Za-z0-9_-]{8,}\.(eyJ[A-Za-z0-9_-]{8,})\.[A-Za-z0-9_-]{16,}/g)].some(
+    (m) => {
+      try {
+        return /"role"\s*:\s*"service_role"/.test(Buffer.from(m[1], 'base64url').toString());
+      } catch {
+        return false;
+      }
+    },
+  );
 export const SECRET_SHAPES = {
-  'a URL with an api key in its query': /[?&]api[-_]?key=[A-Za-z0-9_-]{8,}/i,
-  'a keyed node URL': /(alchemy\.com\/v2|infura\.io\/v3|quiknode\.pro)\/[A-Za-z0-9_-]{16,}/i,
-  'a provider key': /\bsk-[A-Za-z0-9_-]{32,}/,
-  'a database URL with a password': /\bpostgres(ql)?:\/\/[^\s"'`:@/]+:[^\s"'`@/]{6,}@/i,
+  'a URL with an api key in its query': keyed(/[?&]api[-_]?key=([A-Za-z0-9_-]{8,})/gi),
+  'a keyed node URL': keyed(
+    /(?:alchemy\.com\/v2|infura\.io\/v3|quiknode\.pro)\/([A-Za-z0-9_-]{16,})/gi,
+  ),
+  'a provider key': (text) => /\bsk-[A-Za-z0-9_-]{32,}/.test(text),
+  'a database URL with a password': (text) =>
+    /\bpostgres(ql)?:\/\/[^\s"'`:@/]+:[^\s"'`@/]{6,}@/i.test(text),
+  'a Supabase service-role key': (text) =>
+    /\bsb_secret_[A-Za-z0-9_-]{16,}/.test(text) || serviceRoleJwt(text),
+  // the header and a body after it: a library that reads keys names the header alone
+  'a private key in PEM': (text) =>
+    /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----(?:\\r|\\n|\s)+[A-Za-z0-9+/=]{40,}/.test(text),
+  // 32 bytes of hex beside a name that says what they are: a hash or a topic has no such name
+  'a private key in hex': (text) =>
+    /(?:private|secret)[_-]?key["'`]?\s*[:=]\s*["'`]?(?:0x)?[0-9a-fA-F]{64}\b/i.test(text),
+  // a Solana keypair file: 64 bytes, as an array of numbers
+  'a Solana secret key': (text) =>
+    /\[\s*(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\s*,\s*){63}(?:25[0-5]|2[0-4]\d|1?\d?\d)\s*\]/.test(text),
+  'a Discord webhook': (text) =>
+    /discord(?:app)?\.com\/api\/webhooks\/\d{6,}\/[A-Za-z0-9_-]{20,}/i.test(text),
 };
+
+/**
+ * The files of a build a browser is sent: the bundle, and under `server/app` the pages rendered ahead
+ * of time and their payloads (`.html`, `.rsc`, `.body`, and the `.meta` beside them).
+ */
+export const SENT_FILES = /^(static\/|server\/app\/.*\.(html|rsc|body|meta)$)/;
 
 /** What `next dev` and the build cache write. Neither is served by `next start`. */
 const SKIP = new Set(['dev', 'cache', 'diagnostics', 'types']);
@@ -161,10 +202,10 @@ export function checkBuild(out) {
     if (STAGE_MARKERS.some((marker) => text.includes(marker))) stage += gzipSync(bytes).length;
   }
   for (const path of files(out)) {
-    if (!relative(out, path).startsWith('static/')) continue;
+    if (!SENT_FILES.test(relative(out, path).split('\\').join('/'))) continue;
     const text = readFileSync(path, 'latin1');
-    for (const [what, shape] of Object.entries(SECRET_SHAPES))
-      if (shape.test(text))
+    for (const [what, holds] of Object.entries(SECRET_SHAPES))
+      if (holds(text))
         problems.push(`${relative(out, path)} holds ${what}: a browser is sent this file`);
   }
   if (stage > STAGE_BUDGET)

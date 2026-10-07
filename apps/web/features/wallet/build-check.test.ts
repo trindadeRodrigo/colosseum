@@ -51,11 +51,28 @@ const CLEAN = {
 describe('what a browser is sent', () => {
   // made here, never a real key: each is the shape alone
   const key = 'k'.repeat(40);
+  const jwt = (claims: object) =>
+    [{ alg: 'HS256', typ: 'JWT' }, claims, 'signature-of-sixteen+']
+      .map((part) =>
+        typeof part === 'string' ? part : Buffer.from(JSON.stringify(part)).toString('base64url'),
+      )
+      .join('.')
+      .replace('+', 'x');
+  const keypair = `[${Array.from({ length: 64 }, (_, i) => (i * 37) % 256).join(',')}]`;
   it.each([
     ['a keyed Solana node', `fetch("https://mainnet.helius-rpc.com/?api-key=${key}")`],
     ['a keyed EVM node', `url:"https://base-mainnet.g.alchemy.com/v2/${key}"`],
     ['a provider key', `authorization:"Bearer sk-${key}"`],
     ['a database URL', `"postgresql://postgres:${key}@db.example:5432/postgres"`],
+    ['a Supabase service-role JWT', `key:"${jwt({ iss: 'supabase', role: 'service_role' })}"`],
+    ['a Supabase secret key', `key:"sb_secret_${key}"`],
+    [
+      'a PEM private key',
+      `"-----BEGIN PRIVATE KEY-----\\n${'MIIEvQIBADANBgkqhkiG9w0BAQEFAASC'.repeat(2)}"`,
+    ],
+    ['a hex private key', `PRIVATE_KEY="0x${'ab'.repeat(32)}"`],
+    ['a Solana secret key', `secretKey:new Uint8Array(${keypair})`],
+    ['a Discord webhook', `"https://discord.com/api/webhooks/123456789012345678/${key}"`],
   ])('may not hold %s', (_, text) => {
     const out = build({ ...CLEAN, 'static/chunks/env.js': text });
     const problems = checkBuild(out);
@@ -65,14 +82,29 @@ describe('what a browser is sent', () => {
     expect(problems[0]).not.toContain(key);
   });
 
-  it('may hold a public node, a public id and the words of the app', () => {
+  it('may hold a public node, a public id, a placeholder and what only looks like a key', () => {
     const out = build({
       ...CLEAN,
-      'static/chunks/env.js':
+      'static/chunks/env.js': [
         'rpc:"https://api.devnet.solana.com",app:"cm0publicprivyappid000000",t:"task-list ask-me"',
+        // a library's own example, and a template it fills in later
+        'docs:"https://rpc.example/?api-key=YOUR_API_KEY",u:"https://x.example/?api-key=${apiKey}"',
+        // an anon key is public by design; a PEM header alone is a parser's constant
+        `anon:"${jwt({ iss: 'supabase', role: 'anon' })}",h:"-----BEGIN PRIVATE KEY-----"`,
+        // a hash and a topic are 32 bytes of hex with no name that says "key"; a table is not 64 bytes
+        `topic:"0x${'cd'.repeat(32)}",table:[${Array.from({ length: 256 }, (_, i) => i).join(',')}]`,
+      ].join(';'),
     });
     expect(checkBuild(out)).toEqual([]);
-    expect(Object.keys(SECRET_SHAPES)).toHaveLength(4);
+    expect(Object.keys(SECRET_SHAPES)).toHaveLength(9);
+  });
+
+  it('reads the pages and payloads rendered ahead of time as it reads the bundle', () => {
+    for (const path of ['server/app/index.html', 'server/app/goal.rsc', 'server/app/plan.meta']) {
+      const problems = checkBuild(build({ ...CLEAN, [path]: `"sb_secret_${key}"` }));
+      expect(problems, path).toHaveLength(1);
+      expect(problems[0]).toContain(path);
+    }
   });
 
   it('is not read into what the server alone keeps', () => {

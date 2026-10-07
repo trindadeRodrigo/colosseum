@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { DISCLAIMER, type EnvLike, parseFlags } from '@colosseum/schemas';
 import cors from '@fastify/cors';
 import swagger from '@fastify/swagger';
@@ -15,7 +16,7 @@ import { bearingPlanInputs } from './plan-inputs';
 import { corsAllowlist, corsByPath } from './plugins/cors';
 import { hideServerErrors } from './plugins/errors';
 import { registerOpenWriteLimit, requireDeclared } from './plugins/limits';
-import { logForwardedHopsOnce, proxyTrust } from './plugins/proxy';
+import { logForwardedHops, proxyTrust } from './plugins/proxy';
 import { loggerOptions } from './redact';
 import { registerMonitorRoutes } from './routes/monitor';
 import { registerPlanRoutes } from './routes/plans';
@@ -61,6 +62,9 @@ export async function buildApp(
     logger: process.env.NODE_ENV !== 'test' ? loggerOptions({ ...process.env, ...env }) : false,
     // Whose address a request is counted against, behind a host's proxy (plugins/proxy.ts).
     trustProxy: proxyTrust(env),
+    // Not a counter: a request's id is in the answer to a failed request, and says nothing of how
+    // many requests the server has taken.
+    genReqId: () => randomUUID(),
   }).withTypeProvider<ZodTypeProvider>();
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
@@ -74,7 +78,7 @@ export async function buildApp(
   // After CORS, so a refusal still carries its headers and a browser can read it. The structurer's
   // open writes share the anonymous budget, by address (plugins/limits.ts).
   registerOpenWriteLimit(app, { limits: deps.v1?.limits, now: deps.v1?.now });
-  logForwardedHopsOnce(app);
+  logForwardedHops(app);
   await app.register(swagger, {
     openapi: {
       openapi: '3.1.0',
