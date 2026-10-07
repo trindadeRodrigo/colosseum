@@ -4717,7 +4717,30 @@
       "get": {
         "summary": "The signed-in person’s plans, with the goal each was built for and its buys",
         "tags": ["plans"],
-        "description": "The plans the person made in the app, and the plans made from a link that they bought, newest first. There is no paging yet: the answer holds the newest 50 plans, and of the person’s buys the newest 200, so a plan’s older buys can be missing from it. Each has the goal sheet it was built from, the plan’s card, its chain, its buys (an order is the person’s by the wallets of the verified token) and the vault those buys opened, by its number on chain. A plan another person made is never listed. `GET /v1/baskets/{id}` reads one whole; `GET /v1/orders/{id}` reads a buy and its steps.",
+        "description": "The plans the person made in the app, and the plans made from a link that they bought, newest first, a page at a time: at most `limit` plans (50 by default and at most), made before `before` when that is sent. `next` is the `before` of the following page, and null on the last. Every buy of a plan on the page is with it. Each has the goal sheet it was built from, the plan’s card, its chain, its buys (an order is the person’s by the wallets of the verified token) and the vault those buys opened, by its number on chain. A plan another person made is never listed. `GET /v1/baskets/{id}` reads one whole; `GET /v1/orders/{id}` reads a buy and its steps.",
+        "parameters": [
+          {
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            },
+            "in": "query",
+            "name": "before",
+            "required": false
+          }
+        ],
         "security": [
           {
             "accessToken": [],
@@ -5089,9 +5112,12 @@
                         ],
                         "additionalProperties": false
                       }
+                    },
+                    "next": {
+                      "type": ["string", "null"]
                     }
                   },
-                  "required": ["plans"],
+                  "required": ["plans", "next"],
                   "additionalProperties": false
                 }
               }

@@ -52,7 +52,21 @@ export type PersonPlan = z.infer<typeof PersonPlan>;
  * plan screen says of it (`card`, and `verdict` for an income goal), its chain, the buys of it and the
  * vault they opened. The portfolio joins a vault to its goal by `vault`.
  */
-export const PersonPlansResponse = z.object({ plans: z.array(PersonPlan) });
+export const PersonPlansResponse = z.object({
+  plans: z.array(PersonPlan),
+  /**
+   * What to send as `before` for the page after this one: the time the last plan here was made.
+   * Null on the last page.
+   */
+  next: z.string().nullable(),
+});
+
+/** The query of `GET /v1/me/plans`: a page of at most `limit` plans made before `before`. */
+export const PersonPlansQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(50),
+  before: z.string().datetime().optional(),
+});
+export type PersonPlansQuery = z.infer<typeof PersonPlansQuery>;
 export type PersonPlansResponse = z.infer<typeof PersonPlansResponse>;
 
 /** The path of GET /v1/orders/{id}. */
