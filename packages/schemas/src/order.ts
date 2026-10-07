@@ -181,6 +181,12 @@ export const OrderBase = z.object({
     .string()
     .regex(/^\d{1,20}$/)
     .optional(),
+  /**
+   * For an order that finishes another (`POST /v1/orders/{id}/continue`): the id of the buy whose
+   * swaps it makes, with the cash that buy already put in the vault. It deposits nothing
+   * (`depositRaw` is absent) and its steps spend only the vault's cash.
+   */
+  continues: z.string().min(1).optional(),
   legs: z.array(Leg),
   warnings: z.array(z.object({ code: z.string(), text: z.string() })),
   /** Granted only on the approval page. */
@@ -335,6 +341,11 @@ export const OrderErrorCode = z.enum([
   'CURRENCY_UNSUPPORTED',
   /** A switch to a chain none of the person's wallets signs on: an EVM wallet alone cannot sign on Solana. */
   'NO_WALLET_FOR_CHAIN',
+  /**
+   * A step's trade would now give less than the least the order stated. The order's terms are never
+   * changed after it is made: it is made again, at the price now.
+   */
+  'PRICE_MOVED',
 ]);
 export type OrderErrorCode = z.infer<typeof OrderErrorCode>;
 
