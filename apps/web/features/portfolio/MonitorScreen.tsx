@@ -307,7 +307,12 @@ export function MonitorScreen() {
       </div>
       {/* His "Disclaimer and activity": the disclaimer under the plans, beside what reached the chain. */}
       {vaults.length > 0 && (
-        <ActivityPanel groups={history.activity} empty={t.activity.noneVault} />
+        <ActivityPanel
+          groups={history.activity}
+          empty={t.activity.noneVault}
+          // one chain, named in the page's head: the lines do not repeat it
+          chainTags={grouped || !shownChain}
+        />
       )}
     </div>
   );

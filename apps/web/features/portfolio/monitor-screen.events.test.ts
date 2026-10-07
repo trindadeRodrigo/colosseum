@@ -668,6 +668,9 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     const activity = find(host, '[data-ui="activity-panel"]');
     const lines = [...activity.querySelectorAll('[data-ui="execution-list"] li')];
     expect(lines.length).toBe(doneOrder().legs.length);
+    // the page's head names the one chain: no line says it again
+    expect(find(host, 'header [data-ui="chain-badge"]').textContent).toBe('Solana');
+    expect(activity.querySelector('[data-ui="chain-badge"]')).toBeNull();
     // under the order they were steps of, and each time in the one format, with its zone
     const orders = [...activity.querySelectorAll('[data-ui="activity-order"] h3')];
     expect(orders.map((h) => h.textContent)).toEqual([
