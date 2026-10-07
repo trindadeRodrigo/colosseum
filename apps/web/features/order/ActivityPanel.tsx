@@ -17,8 +17,11 @@ export type ActivityGroup = { id: string; title: string; executions: readonly Ex
 export function ActivityPanel({
   groups,
   empty,
+  chainTags = true,
 }: {
   groups: readonly ActivityGroup[];
+  /** False where the page names the one chain of every line: the lines do not say it again. */
+  chainTags?: boolean;
   /** Said where there is nothing to list. */
   empty: string;
 }) {
@@ -40,6 +43,7 @@ export function ActivityPanel({
               <h3 className="text-caption text-muted-foreground">{group.title}</h3>
               <ExecutionList
                 executions={group.executions}
+                chainTags={chainTags}
                 className="border-y border-border"
                 formatTime={(at) => utc(lang, at)}
                 labels={{

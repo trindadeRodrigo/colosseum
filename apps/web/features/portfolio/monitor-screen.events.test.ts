@@ -793,6 +793,25 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     expect(find(card, 'a').getAttribute('href')).toBe('/goal');
   });
 
+  it('tags every activity line when one of them is on a chain the page’s head does not name', async () => {
+    // a Solana vault only, so the head says Solana; the order this browser placed ran on Robinhood Chain
+    api({
+      person: onSolana,
+      portfolio: () => bought(),
+      more: (path) => (path === `/v1/orders/${ORDER_ID}` ? json(doneOrder('robinhood')) : null),
+    });
+    signIn();
+    const host = await screen();
+    await settle();
+    expect(find(host, 'header [data-ui="chain-badge"]').textContent).toBe('Solana');
+    const lines = [
+      ...host.querySelectorAll('[data-ui="activity-panel"] [data-ui="execution-list"] li'),
+    ];
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines)
+      expect(line.querySelector('[data-ui="chain-badge"]')?.textContent).toBe('Robinhood Chain');
+  });
+
   it('lists what reached the chain from the orders this browser placed, each line with its link, beside the disclaimer', async () => {
     api({
       person: onSolana,
@@ -805,6 +824,9 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     const activity = find(host, '[data-ui="activity-panel"]');
     const lines = [...activity.querySelectorAll('[data-ui="execution-list"] li')];
     expect(lines.length).toBe(doneOrder().legs.length);
+    // the page's head names the one chain: no line says it again
+    expect(find(host, 'header [data-ui="chain-badge"]').textContent).toBe('Solana');
+    expect(activity.querySelector('[data-ui="chain-badge"]')).toBeNull();
     // under the order they were steps of, and each time in the one format, with its zone
     const orders = [...activity.querySelectorAll('[data-ui="activity-order"] h3')];
     expect(orders.map((h) => h.textContent)).toEqual([

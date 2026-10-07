@@ -415,7 +415,6 @@ export function GoalScreen() {
             sentence={goalSentence(sheet.fields, t, lang) ?? t.goal.card.unfinished}
             note={fits ? t.goal.card.draftSet : t.goal.card.draftOpen}
             action={{ label: t.goal.card.edit, href: `#${LIMITS}` }}
-            chain={chain ?? undefined}
           />
         ) : (
           <header className="flex flex-col gap-3 lg:col-span-5">
