@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { OrderRecord } from '../order/order-record';
 import { planOn } from '../order/test/fixtures';
 import { json } from '../wallet/test/fake-port';
-import { mergeRecords, readPersonPlans, recordsOfPlans } from './server-plans';
+import { MAX_PAGES, mergeRecords, readPersonPlans, recordsOfPlans } from './server-plans';
 
 // The server's list of a person's plans, as the portfolio reads it: tolerant of a server that has
 // none, and joined with what this browser kept without losing what the person approved here.
@@ -44,6 +44,34 @@ describe('the server’s list of plans', () => {
       '11111111-1111-4111-8111-111111111111',
       '22222222-2222-4222-8222-222222222222',
     ]);
+  });
+
+  it('follows the pages the server names, to a bound, and keeps what it read when one fails', async () => {
+    const asked: string[] = [];
+    const paged = (pages: number) => async (path: string) => {
+      asked.push(path);
+      const n = asked.length;
+      const id = `${String(n).padStart(8, '0')}-1111-4111-8111-111111111111`;
+      return json({
+        plans: [listed({ id })],
+        next: n < pages ? `2026-10-0${n}T00:00:00.000Z` : null,
+      });
+    };
+    expect(await readPersonPlans(paged(3))).toHaveLength(3);
+    expect(asked).toEqual([
+      '/v1/me/plans',
+      '/v1/me/plans?before=2026-10-01T00%3A00%3A00.000Z',
+      '/v1/me/plans?before=2026-10-02T00%3A00%3A00.000Z',
+    ]);
+    // a server that always names another page is read to the bound and no further
+    asked.length = 0;
+    expect(await readPersonPlans(paged(99))).toHaveLength(MAX_PAGES);
+    // a second page that fails leaves the first
+    asked.length = 0;
+    const once = paged(2);
+    const failing = async (path: string) =>
+      asked.length === 1 ? json({ error: 'no' }, 500) : once(path);
+    expect(await readPersonPlans(failing)).toHaveLength(1);
   });
 
   it('is empty for a server with no such route, a failed call, or another answer', async () => {

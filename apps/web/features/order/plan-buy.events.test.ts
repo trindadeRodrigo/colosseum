@@ -418,6 +418,34 @@ describe('the plan screen', () => {
     expect(recallOrder(ORDER_ID, USER)?.linked).toBeUndefined();
   });
 
+  it('asks for the plan once more with fresh tokens before it says there is none', async () => {
+    // the route reads a sign-in and needs none: tokens gone stale are answered as nobody is, with a
+    // 404 and no 401 to say why
+    const asked: (boolean | undefined)[] = [];
+    portStore.setApi(async (path, init) => {
+      if (path === '/v1/me') return json({ error: 'not this test' }, 503);
+      if (path !== `/v1/baskets/${PLAN_ID}`) return json({ error: 'not found' }, 404);
+      const fresh = (init as { freshSignIn?: boolean } | undefined)?.freshSignIn;
+      asked.push(fresh);
+      return fresh
+        ? json({ id: PLAN_ID, proposal: planOn().proposal, fromLink: false })
+        : json({ error: 'no plan with that id that you can read' }, 404);
+    });
+    await plan();
+    expect(asked).toEqual([undefined, true]);
+    await unmountAll();
+    // and a plan that is not there is asked for twice, no more
+    asked.length = 0;
+    window.sessionStorage.clear();
+    portStore.setApi(async (path, init) => {
+      if (path === `/v1/baskets/${PLAN_ID}`)
+        asked.push((init as { freshSignIn?: boolean } | undefined)?.freshSignIn);
+      return json({ error: 'not found' }, 404);
+    });
+    await plan();
+    expect(asked).toEqual([undefined, true]);
+  });
+
   it('shows no plan from a link the API answers for another id, or that is not a plan', async () => {
     for (const linked of [
       { id: 'another', proposal: planOn().proposal },

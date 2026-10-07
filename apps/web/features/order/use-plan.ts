@@ -46,7 +46,12 @@ export function usePlan(id: string): PlanState {
     // Not built in this tab: the API reads it back by its id, the person's own or one made from a link.
     let mine = true;
     setPlan(undefined);
-    void readStoredPlan(apiFetch, id).then((read) => {
+    // The route reads a sign-in and needs none, so tokens gone stale are answered as nobody is: a
+    // person's own plan then reads as not found. Asked once more with fresh tokens before that is
+    // believed.
+    const read = async () =>
+      (await readStoredPlan(apiFetch, id)) ?? (await readStoredPlan(apiFetch, id, true));
+    void read().then((read) => {
       if (!mine) return;
       if (!read) return setPlan(null);
       // The risk roll-up is not stored with a plan: the plan screen shows none for one read back.
