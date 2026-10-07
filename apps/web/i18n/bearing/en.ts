@@ -53,7 +53,6 @@ export const bearingEn = {
   },
   chain: {
     label: 'Chain',
-    notCollectedOn: (chain: string) => `not collected yet on ${chain}`,
     pageNotCollected: (chain: string) =>
       `Not collected yet on ${chain}: Bearing measures this page on Solana only for now.`,
     sideBySide: {
