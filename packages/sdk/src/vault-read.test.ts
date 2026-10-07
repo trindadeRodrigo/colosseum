@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { BASKET_VAULT_ABI } from '../../chain-evm/src/vault/generated/abi';
 import { base58Decode, base58Encode, hexEncode } from './bytes';
 import type { RpcCall } from './executor/chain-read';
 import { encodeArgs, parseType } from './guard/evm/abi';
@@ -21,6 +20,10 @@ import {
 // declares.
 
 const idl = JSON.parse(readFileSync(new URL('../../../idl/basket.json', import.meta.url), 'utf8'));
+/** The vault contract's ABI as committed (idl/evm), which the guard's own table is generated from. */
+const BASKET_VAULT_ABI = JSON.parse(
+  readFileSync(new URL('../../../idl/evm/BasketVault.json', import.meta.url), 'utf8'),
+) as { type: string; name?: string; inputs?: unknown[]; outputs?: unknown[] }[];
 const KEY = (n: number) => base58Encode(new Uint8Array(32).fill(n));
 const OWNER = KEY(9);
 const SOLANA = {
