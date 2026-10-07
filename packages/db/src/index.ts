@@ -21,3 +21,17 @@ export function createDb(
   return { db: drizzle(client, { schema: { ...schema, ...basketSchema } }), client };
 }
 export type Db = ReturnType<typeof createDb>['db'];
+
+let shared: ReturnType<typeof createDb> | undefined;
+/**
+ * The one database client of a process that serves requests: every part of the API reads through it,
+ * so the process holds one pool (`DB_POOL_MAX`) and not one for each part. A hosted pooler in session
+ * mode caps the clients of a whole project, and each pool counts in full. Opens no connection until
+ * the first query, and lives as long as the process: an app that closes does not end it, since
+ * another app of the same process may be reading through it. A script that runs and ends uses
+ * `createDb` and ends its own.
+ */
+export function sharedDb(): ReturnType<typeof createDb> {
+  shared ??= createDb();
+  return shared;
+}

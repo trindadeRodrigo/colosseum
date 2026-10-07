@@ -14,6 +14,7 @@ import { Refusal, refusalFromChainError } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { chainsHeld } from '../../orders/person';
 import { cacheVault, everyPersonPlan, vaultNames } from '../../orders/store';
+import { loggable } from '../../plugins/loggable';
 import { signedIn } from './orders';
 
 async function chainPortfolio(deps: OrderDeps, entry: ChainEntry, wallets: WalletAccount[]) {
@@ -85,7 +86,10 @@ export function registerPortfolioRoute(scope: FastifyInstance, deps: OrderDeps) 
         if (result.status === 'fulfilled') chains.push(result.value);
         else {
           if (!(result.reason instanceof ChainError) && !(result.reason instanceof Refusal))
-            req.log.error({ err: result.reason, chain: entry.chain }, 'portfolio read failed');
+            req.log.error(
+              { err: loggable(result.reason), chain: entry.chain },
+              'portfolio read failed',
+            );
           unavailable.push(unavailableOf(entry.chain, entry.config.name, result.reason));
         }
       }
