@@ -10,19 +10,7 @@ import { capFact } from './dex';
 import { FlowChart } from './Flow';
 import type { Fact } from './fact';
 import { REGIMES } from './format';
-import {
-  Card,
-  Count,
-  Fig,
-  Kpi,
-  Kpis,
-  Loading,
-  OnChain,
-  PageWait,
-  Reason,
-  useFmt,
-  useWords,
-} from './parts';
+import { Card, Count, Fig, Kpi, Kpis, Loading, PageWait, Reason, useFmt, useWords } from './parts';
 import { chunksFor, parseAmount, type SimPath, simPaths } from './sim';
 import { etLabel, regimeAt } from './time';
 import type { RecovBody, SheetBody, SplitBody } from './types';
@@ -215,7 +203,6 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
         <span className="inline-flex items-center gap-1.5">
           {p === best && <Status status="on-track">{t.best}</Status>}
           <b className="font-semibold whitespace-nowrap">{p.name}</b>
-          <OnChain />
         </span>
       ),
     },
@@ -267,7 +254,6 @@ function SimRun({ b, id, n }: { b: Base; id: string; n: number }) {
         <>
           <span className="inline-flex flex-wrap items-baseline gap-x-2">
             {words.regimes[g as keyof typeof words.regimes] ?? g}
-            <OnChain />
           </span>
           {g === r && (
             <span className="block font-mono text-b-meta font-normal text-muted-foreground">

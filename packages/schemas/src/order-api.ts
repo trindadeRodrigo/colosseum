@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { BasketCard, BasketSheet, Verdict } from './basket-sheet';
 import { BasketTx } from './basket-tx';
 import { ChainId } from './chain';
 import { Provenance } from './enums';
@@ -18,6 +19,55 @@ import { Price, VaultView } from './vault';
  */
 export const OrderDetail = OrderBase.extend({ attempts: z.array(Attempt) });
 export type OrderDetail = z.infer<typeof OrderDetail>;
+
+/** One plan of a person's, as `GET /v1/me/plans` lists it. */
+export const PersonPlan = z.object({
+  id: z.string().uuid(),
+  createdAt: z.string(),
+  /** Made from a link (an agent's): its vault is numbered from the plan and the buyer. */
+  fromLink: z.boolean(),
+  chain: ChainId,
+  /** The goal the plan was built for. */
+  sheet: BasketSheet,
+  card: BasketCard,
+  verdict: Verdict.nullable(),
+  /** A buy's deposit is confirmed on chain. */
+  bought: z.boolean(),
+  orders: z.array(
+    z.object({
+      id: z.string().uuid(),
+      createdAt: z.string(),
+      amountUsd: z.number(),
+      status: OrderBase.shape.status,
+      deposited: z.boolean(),
+    }),
+  ),
+  /** The vault the buys opened, by its chain and its number there; null while nothing was ordered. */
+  vault: z.object({ chain: ChainId, basketId: z.string().min(1) }).nullable(),
+});
+export type PersonPlan = z.infer<typeof PersonPlan>;
+
+/**
+ * The signed-in person's plans, newest first: each with the goal it was built for (`sheet`), what the
+ * plan screen says of it (`card`, and `verdict` for an income goal), its chain, the buys of it and the
+ * vault they opened. The portfolio joins a vault to its goal by `vault`.
+ */
+export const PersonPlansResponse = z.object({
+  plans: z.array(PersonPlan),
+  /**
+   * What to send as `before` for the page after this one: the time the last plan here was made.
+   * Null on the last page.
+   */
+  next: z.string().nullable(),
+});
+
+/** The query of `GET /v1/me/plans`: a page of at most `limit` plans made before `before`. */
+export const PersonPlansQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(50),
+  before: z.string().datetime().optional(),
+});
+export type PersonPlansQuery = z.infer<typeof PersonPlansQuery>;
+export type PersonPlansResponse = z.infer<typeof PersonPlansResponse>;
 
 /** The path of GET /v1/orders/{id}. */
 export const OrderRouteParams = z.object({ id: z.uuid() });

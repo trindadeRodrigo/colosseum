@@ -567,16 +567,16 @@ describe.each([
   ['solana', 'Solscan'],
   ['robinhood', 'Robinhood explorer'],
 ] as const)('the chain of an order on %s', (chain, explorer) => {
-  it('is badged over the review and its steps, and a Robinhood order never says USDC', async () => {
+  it('is badged once, over the review, and a Robinhood order never says USDC', async () => {
     api(orderOn(chain), chain);
     seed(recordOf(chain));
     const host = await screen();
     const badges = [...host.querySelectorAll('[data-ui="chain-badge"]')];
-    expect(badges.map((b) => b.getAttribute('data-chain'))).toEqual([chain, chain]);
-    expect(badges.map((b) => b.textContent)).toEqual([CHAIN_NAMES[chain], CHAIN_NAMES[chain]]);
-    // one over the page, one in the head of its steps
+    expect(badges.map((b) => b.getAttribute('data-chain'))).toEqual([chain]);
+    expect(badges.map((b) => b.textContent)).toEqual([CHAIN_NAMES[chain]]);
+    // over the page, and not again in the head of its steps (CHAIN-EVERYWHERE, as amended)
     expect(find(host, 'header [data-ui="chain-badge"]')).toBeTruthy();
-    expect(find(host, '[data-ui="card-header"] [data-ui="chain-badge"]')).toBeTruthy();
+    expect(host.querySelector('[data-ui="card-header"] [data-ui="chain-badge"]')).toBeNull();
     if (chain === 'robinhood') expect(host.textContent).not.toMatch(/usdc/i);
   });
 

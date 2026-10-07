@@ -396,12 +396,12 @@ export type PostBasketsProposeResponse = {
   };
 };
 
-/** GET /v1/baskets/{id}: params. A plan made from a link (`POST /v1/baskets/propose`), by its id */
+/** GET /v1/baskets/{id}: params. A stored plan by its id: one made from a link, or the caller’s own */
 export type GetBasketsByIdParams = {
   id: string;
 };
 
-/** GET /v1/baskets/{id}: response. A plan made from a link (`POST /v1/baskets/propose`), by its id */
+/** GET /v1/baskets/{id}: response. A stored plan by its id: one made from a link, or the caller’s own */
 export type GetBasketsByIdResponse = {
   id: string;
   proposal: {
@@ -523,6 +523,7 @@ export type GetBasketsByIdResponse = {
     }[];
     disclaimer: string;
   };
+  fromLink: boolean;
 };
 
 /** GET /v1/config: response. Feature flags and the chains this deployment runs on */
@@ -727,6 +728,96 @@ export type PutMeChainResponse = {
   chainOptions: ('solana' | 'base' | 'robinhood')[];
 };
 
+/** GET /v1/me/plans: query. The signed-in person’s plans, with the goal each was built for and its buys */
+export type GetMePlansQuery = {
+  limit?: number;
+  before?: string;
+};
+
+/** GET /v1/me/plans: response. The signed-in person’s plans, with the goal each was built for and its buys */
+export type GetMePlansResponse = {
+  plans: {
+    id: string;
+    createdAt: string;
+    fromLink: boolean;
+    chain: 'solana' | 'base' | 'robinhood';
+    sheet: {
+      basketType: 'standard';
+      goal: 'grow' | 'income' | 'protect';
+      amountUsd: number;
+      horizonMonths: number;
+      risk: 'low' | 'medium' | 'high';
+      themes: string[];
+      country: string;
+      chains: ('solana' | 'base' | 'robinhood')[];
+      incomeTargetUsdMonthly?: number;
+      rules: {
+        useHoldings: boolean;
+        glide: boolean;
+      };
+      language: 'pt' | 'en';
+      currency?: string;
+      obligations?: {
+        month: string;
+        amount: number;
+        currency: string;
+      }[];
+      sleeves?: (
+        | {
+            kind: 'goal';
+            shareBps: number;
+          }
+        | {
+            kind: 'theme';
+            shareBps: number;
+            theme: string;
+          }
+        | {
+            kind: 'safe_yield';
+            shareBps: number;
+          }
+      )[];
+      restoreSplit?: boolean;
+    };
+    card: {
+      moneyTodayUsd: number;
+      termMonths: number;
+      cashFlow: 'none' | 'monthly' | 'at_end';
+      expectedReturn: {
+        lowPct: number;
+        highPct: number;
+        basis: string;
+        lossInFallUsd: number;
+      };
+      exit: {
+        text: string;
+        costBps: number | null;
+      };
+    };
+    verdict: {
+      met: boolean;
+      gapUsdMonthly: number;
+      ways: {
+        change: string;
+        closesGap: boolean;
+      }[];
+    } | null;
+    bought: boolean;
+    orders: {
+      id: string;
+      createdAt: string;
+      amountUsd: number;
+      status: 'open' | 'partial' | 'done' | 'failed' | 'expired';
+      deposited: boolean;
+    }[];
+    vault: {
+      chain: 'solana' | 'base' | 'robinhood';
+      basketId: string;
+    } | null;
+  }[];
+  next: string | null;
+};
+
 /** POST /v1/orders: body. Plan an order from an intent. Nothing is built or signed */
 export type PostOrdersBody =
   | {
@@ -802,6 +893,7 @@ export type PostOrdersResponse = {
   summary: string;
   depositRaw?: string;
   basketId?: string;
+  continues?: string;
   legs: {
     id: string;
     orderId: string | null;
@@ -892,6 +984,98 @@ export type GetOrdersByIdResponse = {
   summary: string;
   depositRaw?: string;
   basketId?: string;
+  continues?: string;
+  legs: {
+    id: string;
+    orderId: string | null;
+    chain: 'solana' | 'base' | 'robinhood';
+    seq: number;
+    kind:
+      | 'approve'
+      | 'create_vault'
+      | 'deposit'
+      | 'swap'
+      | 'set_targets'
+      | 'accept_version'
+      | 'set_auto_follow'
+      | 'withdraw'
+      | 'publish'
+      | 'adopt_version'
+      | 'keeper_leg';
+    signer: 'owner' | 'keeper';
+    description: string;
+    cashRaw?: string;
+    trades: {
+      sell: string;
+      buy: string;
+      amountInRaw: string;
+    }[];
+    expected: {
+      inRaw: string;
+      outRaw: string;
+      minOutRaw: string;
+      costBps: number;
+    }[];
+    status: 'planned' | 'built' | 'sent' | 'confirmed' | 'failed' | 'expired' | 'skipped';
+    attempt: number;
+    txId: string | null;
+    explorerUrl: string | null;
+    validUntil: string | null;
+    error: {
+      code: string;
+      message: string;
+      retryable: boolean;
+    } | null;
+    trigger: 'manual' | 'index_update' | 'drift' | 'liquidity_breach';
+    provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+  }[];
+  warnings: {
+    code: string;
+    text: string;
+  }[];
+  needsConsent: ('auto_follow_on' | 'new_asset' | 'publish')[];
+  fees: {
+    kind: string;
+    bps: number;
+  }[];
+  preparedBy: 'app' | 'api' | 'mcp';
+  agentLabel?: string;
+  status: 'open' | 'partial' | 'done' | 'failed' | 'expired';
+  approvalUrl: string;
+  expiresAt: number;
+  createdAt: string;
+  disclaimer: string;
+  attempts: {
+    id: string;
+    legId: string;
+    n: number;
+    messageHash: string;
+    nonce: number | null;
+    status: 'built' | 'sent' | 'confirmed' | 'failed' | 'expired';
+    txId: string | null;
+    explorerUrl: string | null;
+    validUntil: string | null;
+    builtAt: string;
+  }[];
+};
+
+/** POST /v1/orders/{id}/continue: params. Finish a buy with the cash already in its vault. Nothing is deposited */
+export type PostOrdersByIdContinueParams = {
+  id: string;
+};
+
+/** POST /v1/orders/{id}/continue: response. Finish a buy with the cash already in its vault. Nothing is deposited */
+export type PostOrdersByIdContinueResponse = {
+  id: string;
+  type: 'buy' | 'rebalance' | 'follow' | 'publish' | 'withdraw' | 'settings';
+  owner: {
+    solana?: string;
+    evm?: string;
+  };
+  summary: string;
+  depositRaw?: string;
+  basketId?: string;
+  continues?: string;
   legs: {
     id: string;
     orderId: string | null;
@@ -1057,6 +1241,7 @@ export type PostOrdersByIdLegsByLegIdCancelResponse = {
   summary: string;
   depositRaw?: string;
   basketId?: string;
+  continues?: string;
   legs: {
     id: string;
     orderId: string | null;
@@ -1157,6 +1342,7 @@ export type PostOrdersByIdLegsByLegIdReportResponse = {
   summary: string;
   depositRaw?: string;
   basketId?: string;
+  continues?: string;
   legs: {
     id: string;
     orderId: string | null;
@@ -1485,8 +1671,13 @@ export interface ApiRoutes {
   };
   'GET /v1/me': { response: GetMeResponse };
   'PUT /v1/me/chain': { body: PutMeChainBody; response: PutMeChainResponse };
+  'GET /v1/me/plans': { query: GetMePlansQuery; response: GetMePlansResponse };
   'POST /v1/orders': { body: PostOrdersBody; response: PostOrdersResponse };
   'GET /v1/orders/{id}': { params: GetOrdersByIdParams; response: GetOrdersByIdResponse };
+  'POST /v1/orders/{id}/continue': {
+    params: PostOrdersByIdContinueParams;
+    response: PostOrdersByIdContinueResponse;
+  };
   'POST /v1/orders/{id}/legs/{legId}/build': {
     params: PostOrdersByIdLegsByLegIdBuildParams;
     response: PostOrdersByIdLegsByLegIdBuildResponse;

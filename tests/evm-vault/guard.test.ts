@@ -1,7 +1,13 @@
 import { callHash } from '@colosseum/chain-evm/vault';
 import { type BuiltTx, stampTx } from '@colosseum/schemas';
 import type { ApprovedStep, GuardDeployment } from '@colosseum/sdk';
-import { deploymentsOf, guardTransaction, isGuardRefusal } from '@colosseum/sdk';
+import {
+  deploymentsOf,
+  familyIdOf,
+  familyTextHash,
+  guardTransaction,
+  isGuardRefusal,
+} from '@colosseum/sdk';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import {
   ACCOUNTS,
@@ -50,7 +56,7 @@ describe.skipIf(!FORK_URL)('the guard, on what the EVM adapter builds', () => {
       step: { ...step, legId, chain: 'robinhood', owner } as ApprovedStep,
       tx: stampTx(tx, { legId, attemptId: `${legId}-a` }),
       deployment: deployment(),
-      consents: ['auto_follow_on', 'new_asset'],
+      consents: ['auto_follow_on', 'new_asset', 'publish'],
     });
   };
   const passes = (step: Parameters<typeof guard>[0], tx: BuiltTx) =>
@@ -224,5 +230,83 @@ describe.skipIf(!FORK_URL)('the guard, on what the EVM adapter builds', () => {
       { kind: 'withdraw', basketId: '1', withdrawals: [{ asset: id('tspy'), amountRaw: null }] },
       cash,
     );
+  });
+
+  it('passes a creator’s registry calls: a create, the next version, and taking back the one that waits', async () => {
+    const world = await start();
+    const { adapter } = world;
+    const text = {
+      slug: 'rh-guard',
+      name: 'RH guard',
+      copy: 'Three test tokens.',
+      kind: 'index' as const,
+    };
+    const component = (symbol: string, weightBps: number) => ({ asset: id(symbol), weightBps });
+    const recipe = (familyId: string, components: { asset: string; weightBps: number }[]) => ({
+      schemaVersion: 1 as const,
+      familyId,
+      chain: 'robinhood' as const,
+      onchainId: null,
+      creator: owner,
+      kind: 'community' as const,
+      version: 1,
+      effectiveAt: 0,
+      components: components.map((c) => ({ kind: 'asset' as const, ...c })),
+      metaHash: familyTextHash({ familyId, ...text }),
+      maxFeeBps: 0 as const,
+      flags: 0 as const,
+    });
+    const step = (
+      action: 'publish' | 'update' | 'cancel',
+      familyId: string,
+      components: { asset: string; weightBps: number }[],
+      shown = text,
+    ) => ({
+      kind: 'publish' as const,
+      basketId: '0',
+      action,
+      familyId,
+      components: action === 'cancel' ? [] : components,
+      text: action === 'cancel' ? null : shown,
+      version: action === 'publish' ? 1 : 2,
+    });
+
+    // a new family: the adapter builds `create`
+    const familyId = familyIdOf(text.slug);
+    const first = [component('tspy', 4000), component('tqqq', 3000), component('tgld', 3000)];
+    const create = await adapter.buildPublishRecipe({
+      creator: owner,
+      recipe: recipe(familyId, first),
+    });
+    passes(step('publish', familyId, first), create);
+    refused(step('publish', familyId, first, { ...text, copy: 'Other words.' }), create, 'recipe');
+    refused(step('publish', familyIdOf('another'), first), create, 'recipe');
+    refused(
+      step('publish', familyId, [
+        component('tspy', 5000),
+        component('tqqq', 2500),
+        component('tgld', 2500),
+      ]),
+      create,
+      'targets',
+    );
+    refused(step('update', familyId, first), create, 'function');
+
+    // A's next version: the adapter builds `publish`, held to the same text and the creator's id
+    const next = [component('tspy', 3500), component('tqqq', 3500), component('tnvda', 3000)];
+    const update = await adapter.buildPublishRecipe({
+      creator: owner,
+      recipe: recipe(world.familyA, next),
+    });
+    passes(step('update', world.familyA, next), update);
+    refused(step('update', world.familyB, next), update, 'recipe');
+
+    // B's version 3 waits: the adapter's cancel is held to B, and to no other family
+    const cancel = await adapter.buildCancelPending({
+      signer: owner,
+      recipeOnchainId: world.recipeB,
+    });
+    passes(step('cancel', world.familyB, []), cancel);
+    refused(step('cancel', world.familyA, []), cancel, 'recipe');
   });
 });

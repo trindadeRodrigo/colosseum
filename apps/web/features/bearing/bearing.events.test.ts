@@ -391,9 +391,8 @@ describe('the banner: live, stale with time, or the API down', () => {
     const region = find(host, '[data-ui="waiting"]');
     expect(region.getAttribute('aria-busy')).toBe('true');
     const kpis = [...region.querySelectorAll('[data-ui="bearing-kpi"]')];
-    // each counter names the chain it is read for
-    for (const k of kpis)
-      expect(k.querySelector('[data-ui="chain-badge"]')?.textContent).toBe('Solana');
+    // no counter names the chain: the page's switch does, once
+    for (const k of kpis) expect(k.querySelector('[data-ui="chain-badge"]')).toBeNull();
     expect(kpis.map((k) => k.firstElementChild?.textContent)).toEqual([
       'Pool TVL',
       'Pools',

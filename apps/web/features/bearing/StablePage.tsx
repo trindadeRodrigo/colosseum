@@ -28,7 +28,6 @@ import {
   Kpis,
   MultiSelect,
   NotOnChain,
-  OnChain,
   PageWait,
   Pie,
   Reason,
@@ -213,7 +212,6 @@ function StableView({ rows }: { rows: LendRow[] }) {
       cell: (x) => (
         <span className="inline-flex flex-wrap items-baseline gap-x-2">
           <span className={x.rs ? undefined : 'text-muted-foreground'}>{x.t}</span>
-          <OnChain />
         </span>
       ),
     },

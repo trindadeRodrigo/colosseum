@@ -19,11 +19,25 @@ import {
   type IntentRequest,
   type Leg,
   type Order,
+  type Principal,
   type Provenance,
   type Shelf,
   type VaultView,
 } from '@colosseum/schemas';
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, notInArray, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  lt,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { Refusal } from './errors';
 
 // The order tables (DESIGN-VAULT section 4), read and written through Drizzle. A leg row mirrors its
@@ -81,6 +95,17 @@ const toAttempt = (r: AttemptRow & { legId: string }): Attempt => ({
 
 const chainOrder = (chain: ChainId) => ChainId.options.indexOf(chain);
 
+/**
+ * Which order a stored order finishes. It is kept in the row's request column beside the request's own
+ * fields, written by `insertOrder` from the order the server made (continue.ts). It is no field of a
+ * request: the schema of `POST /v1/orders` has none by that name, so a caller's is dropped unread.
+ */
+const CONTINUES = 'continues';
+const continuesOf = (r: OrderRow): string | undefined => {
+  const value = (r.request as Record<string, unknown>)[CONTINUES];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+};
+
 function toOrder(r: OrderRow, legRows: LegRow[]): Order {
   // What the order deposits is on the step that deposits. The approval repeats it and is not counted.
   const deposit = legRows.find(
@@ -96,6 +121,7 @@ function toOrder(r: OrderRow, legRows: LegRow[]): Order {
     summary: r.summary,
     ...(deposit ? { depositRaw: deposit } : {}),
     ...(r.basketId ? { basketId: r.basketId } : {}),
+    ...(continuesOf(r) ? { continues: continuesOf(r) } : {}),
     legs: legRows
       .map(toLeg)
       .sort((a, b) => chainOrder(a.chain) - chainOrder(b.chain) || a.seq - b.seq),
@@ -113,44 +139,49 @@ function toOrder(r: OrderRow, legRows: LegRow[]): Order {
 }
 
 export async function insertOrder(db: Db, order: Order, request: IntentRequest): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx.insert(orders).values({
-      id: order.id,
-      type: order.type,
-      ownerSolana: order.owner.solana ?? null,
-      ownerEvm: order.owner.evm ?? null,
-      summary: order.summary,
-      request,
-      basketId: order.basketId ?? null,
-      warnings: order.warnings,
-      needsConsent: order.needsConsent,
-      fees: order.fees,
-      preparedBy: order.preparedBy,
-      agentLabel: order.agentLabel ?? null,
-      status: order.status,
-      expiresAt: new Date(order.expiresAt * 1000),
-      disclaimer: order.disclaimer,
-      createdAt: new Date(order.createdAt),
-    });
-    await tx.insert(legs).values(
-      order.legs.map((l) => ({
-        id: l.id,
-        orderId: order.id,
-        chainId: l.chain,
-        seq: l.seq,
-        kind: l.kind,
-        signer: l.signer,
-        description: l.description,
-        cashRaw: l.cashRaw ?? null,
-        trades: l.trades,
-        expected: l.expected,
-        status: l.status,
-        attempt: l.attempt,
-        trigger: l.trigger,
-        provenance: l.provenance,
-      })),
-    );
+  await db.transaction((tx) => insertOrderRows(tx, order, request));
+}
+
+async function insertOrderRows(tx: Tx, order: Order, request: IntentRequest): Promise<void> {
+  await tx.insert(orders).values({
+    id: order.id,
+    type: order.type,
+    ownerSolana: order.owner.solana ?? null,
+    ownerEvm: order.owner.evm ?? null,
+    summary: order.summary,
+    // With the order it finishes, where it finishes one: the order's word, not the request's.
+    request: (order.continues
+      ? { ...request, [CONTINUES]: order.continues }
+      : request) as IntentRequest,
+    basketId: order.basketId ?? null,
+    warnings: order.warnings,
+    needsConsent: order.needsConsent,
+    fees: order.fees,
+    preparedBy: order.preparedBy,
+    agentLabel: order.agentLabel ?? null,
+    status: order.status,
+    expiresAt: new Date(order.expiresAt * 1000),
+    disclaimer: order.disclaimer,
+    createdAt: new Date(order.createdAt),
   });
+  await tx.insert(legs).values(
+    order.legs.map((l) => ({
+      id: l.id,
+      orderId: order.id,
+      chainId: l.chain,
+      seq: l.seq,
+      kind: l.kind,
+      signer: l.signer,
+      description: l.description,
+      cashRaw: l.cashRaw ?? null,
+      trades: l.trades,
+      expected: l.expected,
+      status: l.status,
+      attempt: l.attempt,
+      trigger: l.trigger,
+      provenance: l.provenance,
+    })),
+  );
 }
 
 export async function loadOrder(db: Db, id: string): Promise<StoredOrder | null> {
@@ -174,6 +205,91 @@ export async function loadOrder(db: Db, id: string): Promise<StoredOrder | null>
     request: row.request,
     attempts: attemptRows.flatMap((a) => (a.legId ? [toAttempt({ ...a, legId: a.legId })] : [])),
   };
+}
+
+/** How long a request waits for an order's lock before it answers that the order is busy. */
+export const ORDER_LOCK_WAIT_MS = 2_000;
+
+/**
+ * Takes the one lock of an order, inside `tx`, until `tx` ends. Two things are decided about an order
+ * by reading and then writing: recording a build of one of its steps (is another order finishing it?)
+ * and finishing it with another order (has one been made? was a step built meanwhile?). Without the
+ * lock two requests at the same moment both read "no" and both write: two continuations of one
+ * order, or a step built for an order as it is being continued, and the vault's cash planned twice.
+ *
+ * What holds the lock is always a short transaction on its own connection: the re-check and the
+ * write, a handful of statements, and never a call to a chain's node, which is made before it. So a
+ * request holds one connection, for milliseconds, and many at once cannot take the pool. The wait
+ * for the lock is bounded (`lock_timeout`): past it the request answers 409, retryable, and holds
+ * nothing. The lock is the transaction's own (`pg_advisory_xact_lock`), so it also holds through a
+ * pooler that hands a connection out per transaction.
+ */
+async function lockOrder(tx: Tx, orderId: string): Promise<void> {
+  await tx.execute(sql.raw(`set local lock_timeout = ${ORDER_LOCK_WAIT_MS}`));
+  try {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`order:${orderId}`}, 0))`);
+  } catch (e) {
+    // 55P03, lock_not_available: the wait ran out.
+    const busy = [e, (e as { cause?: unknown })?.cause].some(
+      (x) => (x as { code?: string })?.code === '55P03',
+    );
+    if (!busy) throw e;
+    throw new Refusal(409, 'this order is being worked on by another request', {
+      fix: 'Try again in a moment.',
+      details: { retryable: true },
+    });
+  }
+  // The bound is this lock's alone: what follows in the transaction waits as it did before.
+  await tx.execute(sql.raw('set local lock_timeout = 0'));
+}
+
+/**
+ * Stores the order that finishes `firstId`, under that order's lock, unless the lock shows it must
+ * not be: another order already finishes it (answered as `existing`, and nothing is stored), or a
+ * step it would make again was built since the caller looked (`seen` are the attempts the caller
+ * has checked can no longer land): refused, since that transaction could spend the same cash.
+ */
+export async function insertContinuation(
+  db: Db,
+  order: Order,
+  request: IntentRequest,
+  first: { id: string; leftLegIds: string[]; seen: string[] },
+): Promise<{ existing: OrderRow | null }> {
+  return db.transaction(async (tx) => {
+    await lockOrder(tx, first.id);
+    const [existing] = await tx
+      .select()
+      .from(orders)
+      .where(sql`${orders.request}->>${CONTINUES} = ${first.id}`)
+      .orderBy(desc(orders.createdAt))
+      .limit(1);
+    if (existing) return { existing };
+    const built = first.leftLegIds.length
+      ? await tx
+          .select({ id: legAttempts.id })
+          .from(legAttempts)
+          .where(inArray(legAttempts.legId, first.leftLegIds))
+      : [];
+    if (built.some((attempt) => !first.seen.includes(attempt.id)))
+      throw new Refusal(409, 'a step of this order was built just now', {
+        fix: 'Report it, or wait until it can no longer land, then finish the buy.',
+        details: { retryable: true },
+      });
+    await insertOrderRows(tx, order, request);
+    return { existing: null };
+  });
+}
+
+/**
+ * The orders that finish this one (`continues`), newest first: at most a handful, since each is made
+ * only when the one before it stopped.
+ */
+export async function continuationsOf(db: Db, id: string): Promise<OrderRow[]> {
+  return db
+    .select()
+    .from(orders)
+    .where(sql`${orders.request}->>${CONTINUES} = ${id}`)
+    .orderBy(desc(orders.createdAt));
 }
 
 export async function loadProposal(db: Db, id: string): Promise<BasketProposal | null> {
@@ -237,20 +353,203 @@ export async function isLinkedProposal(db: Db, id: string): Promise<boolean> {
 }
 
 /**
- * A plan made from a link (`POST /v1/baskets/propose`), by its id: one marked `from_link`. A plan a
- * person made in the app is theirs, and is not answered here, even one stored with no user row.
+ * A stored plan as one caller may read it back, by its id: the person who made it (the row names
+ * them), or anybody for a plan made from a link (`fromLink`; the route decides whether those are
+ * served). Another person's plan is null here, as an id that names no plan is.
  */
-export async function loadLinkedProposal(db: Db, id: string): Promise<BasketProposal | null> {
+export async function loadReadablePlan(
+  db: Db,
+  id: string,
+  privyId: string | null,
+): Promise<{ proposal: BasketProposal; fromLink: boolean } | null> {
   const [row] = await db
-    .select({ proposal: proposals.proposal })
+    .select({ proposal: proposals.proposal, fromLink: proposals.fromLink, owner: users.privyId })
     .from(proposals)
-    .where(and(eq(proposals.id, id), eq(proposals.fromLink, true)));
+    .leftJoin(users, eq(users.id, proposals.userId))
+    .where(eq(proposals.id, id));
   if (!row) return null;
+  const mine = privyId !== null && row.owner === privyId;
+  if (!row.fromLink && !mine) return null;
+  const parsed = BasketProposal.safeParse(row.proposal);
+  if (!parsed.success)
+    throw new Refusal(409, 'the stored plan cannot be read: make the plan again');
+  return { proposal: parsed.data, fromLink: row.fromLink };
+}
+
+/**
+ * A stored plan as one caller may buy it, by its id: the person who made it, anybody for a plan made
+ * from a link, and, for a row that names no person and is not from a link (one stored before plans
+ * named their person), anybody holding its id, as it was. A plan that names another person is null
+ * here, as an id that names no plan is: its id does not buy it, and an order's steps never show its
+ * trades to a stranger.
+ */
+export async function loadBuyablePlan(
+  db: Db,
+  id: string,
+  privyId: string | null,
+): Promise<BasketProposal | null> {
+  if (!UUID.test(id)) return null;
+  const [row] = await db
+    .select({
+      proposal: proposals.proposal,
+      fromLink: proposals.fromLink,
+      userId: proposals.userId,
+      owner: users.privyId,
+    })
+    .from(proposals)
+    .leftJoin(users, eq(users.id, proposals.userId))
+    .where(eq(proposals.id, id));
+  if (!row) return null;
+  const mine = privyId !== null && row.owner === privyId;
+  if (!row.fromLink && row.userId !== null && !mine) return null;
   const parsed = BasketProposal.safeParse(row.proposal);
   if (!parsed.success)
     throw new Refusal(409, 'the stored plan cannot be read: make the plan again');
   return parsed.data;
 }
+
+/** A buy of a plan, as the list of a person's plans names it. */
+export type PlanOrder = {
+  id: string;
+  createdAt: string;
+  amountUsd: number;
+  status: Order['status'];
+  /** Its deposit is confirmed on chain: the vault holds what this order put in. */
+  deposited: boolean;
+};
+
+/** A plan of a person's, with the buys of it and the vault they opened. */
+export type PersonPlan = {
+  id: string;
+  createdAt: string;
+  fromLink: boolean;
+  proposal: BasketProposal;
+  orders: PlanOrder[];
+  /** The vault's number on chain, from the buys; null while nothing was ordered. */
+  basketId: string | null;
+};
+
+/** The most plans one answer lists. */
+export const PERSON_PLANS = { plans: 50 } as const;
+
+/**
+ * The plans a person made, and the plans made from a link that they bought, newest first, each with
+ * its buys: one page of them, of at most `limit`, made before `before` when that is given. `next` is
+ * the time to ask the following page with, or null when this is the last. A plan is the person's by
+ * its row; a buy is theirs by the wallets of the verified token, as an order is everywhere (`holds`).
+ * Another person's plan is never listed, bought or not: a buy that names one lists nothing of it. A
+ * stored plan that no longer reads is left out.
+ */
+export async function listPersonPlans(
+  db: Db,
+  principal: Principal,
+  page: { limit?: number; before?: Date } = {},
+): Promise<{ plans: PersonPlan[]; next: string | null }> {
+  const limit = Math.min(Math.max(1, page.limit ?? PERSON_PLANS.plans), PERSON_PLANS.plans);
+  const privyId = principal.userId ?? null;
+  const [user] = privyId
+    ? await db.select({ id: users.id }).from(users).where(eq(users.privyId, privyId))
+    : [];
+  const addresses = (family: 'solana' | 'evm') =>
+    principal.wallets.filter((w) => w.family === family).map((w) => w.address);
+  const [solana, evm] = [addresses('solana'), addresses('evm')];
+  const owned = [
+    ...(solana.length ? [inArray(orders.ownerSolana, solana)] : []),
+    ...(evm.length ? [inArray(orders.ownerEvm, evm)] : []),
+  ];
+  // An order is the caller's only when every address it names is theirs, as on its own route.
+  const theirs = (o: { ownerSolana: string | null; ownerEvm: string | null }) => {
+    const has = (family: 'solana' | 'evm', address: string | null) =>
+      address === null ||
+      principal.wallets.some((w) => w.family === family && w.address === address);
+    return has('solana', o.ownerSolana) && has('evm', o.ownerEvm);
+  };
+  const planId = sql<string | null>`${orders.request}->>'proposalId'`;
+  // Every plan the person's buys name, by its id alone: the page is cut from the plans, not the buys.
+  const named = owned.length
+    ? await db
+        .selectDistinct({ id: planId, ownerSolana: orders.ownerSolana, ownerEvm: orders.ownerEvm })
+        .from(orders)
+        .where(and(eq(orders.type, 'buy'), or(...owned)))
+    : [];
+  const bought = [
+    ...new Set(
+      named
+        .filter(theirs)
+        .map((o) => o.id)
+        .filter((id): id is string => id !== null && UUID.test(id)),
+    ),
+  ];
+  // The person's own plans, and of those bought the ones made from a link.
+  const whose = [
+    ...(user ? [eq(proposals.userId, user.id)] : []),
+    ...(bought.length ? [and(inArray(proposals.id, bought), eq(proposals.fromLink, true))] : []),
+  ];
+  if (whose.length === 0) return { plans: [], next: null };
+  const rows = await db
+    .select()
+    .from(proposals)
+    .where(and(or(...whose), ...(page.before ? [lt(proposals.createdAt, page.before)] : [])))
+    .orderBy(desc(proposals.createdAt), desc(proposals.id))
+    .limit(limit + 1);
+  const shown = rows.slice(0, limit);
+  const next = rows.length > limit ? (shown.at(-1)?.createdAt.toISOString() ?? null) : null;
+
+  const ids = shown.map((row) => row.id);
+  const buys =
+    owned.length && ids.length
+      ? (
+          await db
+            .select()
+            .from(orders)
+            .where(and(eq(orders.type, 'buy'), or(...owned), inArray(planId, ids)))
+            .orderBy(desc(orders.createdAt))
+        ).filter(theirs)
+      : [];
+  const confirmed = buys.length
+    ? await db
+        .select({ orderId: legs.orderId })
+        .from(legs)
+        .where(
+          and(
+            inArray(
+              legs.orderId,
+              buys.map((o) => o.id),
+            ),
+            inArray(legs.kind, ['create_vault', 'deposit']),
+            eq(legs.status, 'confirmed'),
+          ),
+        )
+    : [];
+  const deposited = new Set(confirmed.map((l) => l.orderId));
+  const planOf = (o: OrderRow) =>
+    o.request.type === 'buy' ? (o.request.proposalId ?? null) : null;
+
+  const plans = shown.flatMap((row) => {
+    const parsed = BasketProposal.safeParse(row.proposal);
+    if (!parsed.success) return [];
+    const of = buys.filter((o) => planOf(o) === row.id);
+    return [
+      {
+        id: row.id,
+        createdAt: row.createdAt.toISOString(),
+        fromLink: row.fromLink,
+        proposal: parsed.data,
+        orders: of.map((o) => ({
+          id: o.id,
+          createdAt: o.createdAt.toISOString(),
+          amountUsd: o.request.type === 'buy' ? o.request.amountUsd : 0,
+          status: o.status,
+          deposited: deposited.has(o.id),
+        })),
+        basketId: of.find((o) => o.basketId !== null)?.basketId ?? null,
+      },
+    ];
+  });
+  return { plans, next };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Stores a plan made for a person and answers its id, which `POST /v1/orders` buys by. The row names
@@ -480,6 +779,21 @@ export async function recordBuild(
   },
 ): Promise<Attempt> {
   return db.transaction(async (tx) => {
+    // Under the order's lock, with the route that finishes an order: an order that another finishes
+    // records no build, however far this one had got before that order was made.
+    // (A keeper's leg belongs to no order, and none finishes it.)
+    if (leg.orderId) await lockOrder(tx, leg.orderId);
+    const [finishedBy] = leg.orderId
+      ? await tx
+          .select({ id: orders.id })
+          .from(orders)
+          .where(sql`${orders.request}->>${CONTINUES} = ${leg.orderId}`)
+          .limit(1)
+      : [];
+    if (finishedBy)
+      throw new Refusal(409, 'another order finishes this one: its steps left are that order’s', {
+        fix: `Open order ${finishedBy.id}.`,
+      });
     const { exclusive } = a;
     if (exclusive) {
       // Held until this transaction ends. Every build of this wallet on this chain takes it first.
