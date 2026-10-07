@@ -11,7 +11,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ChainRegistry } from '../../orders/chains';
 import type { PlanInputs } from '../../orders/personalize';
-import { NO_SUCH_VAULT, tradesFor } from '../../orders/prepare';
+import { KEEPER_INVESTS, NO_SUCH_VAULT, tradesFor } from '../../orders/prepare';
 import { bearingPlanInputs } from '../../plan-inputs';
 import mockYields from '../../testing/fixtures/mock-yields.json';
 import { orderFlow } from '../../testing/flow';
@@ -37,6 +37,26 @@ const withMockYield: PlanInputs = async (q) => ({
     .filter((y) => q.assets.some((a) => a.id === y.assetId)),
 });
 
+/** While set: every vault reads as one with auto-follow on, as the keeper's chains will have them. */
+let autoFollow = false;
+const withAutoFollow = (inner: ChainRegistry): ChainRegistry => {
+  const dress = <T extends ReturnType<ChainRegistry['get']>>(e: T): T => ({
+    ...e,
+    adapter: new Proxy(e.adapter, {
+      get(target, key) {
+        const value = Reflect.get(target, key, target);
+        if (key === 'getVaults')
+          return async (owner: string) => {
+            const vaults = await target.getVaults(owner);
+            return autoFollow ? vaults.map((v) => ({ ...v, autoFollow: true })) : vaults;
+          };
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    }),
+  });
+  return { ...inner, get: (c) => dress(inner.get(c)), active: () => inner.active().map(dress) };
+};
+
 beforeAll(async () => {
   issuer = await testIssuer('add-money');
   data = await testDb();
@@ -45,6 +65,7 @@ beforeAll(async () => {
     issuer: issuer.issuer,
     db: data.db,
     planInputs: withMockYield,
+    wrap: withAutoFollow,
   }));
   undo.push(() => app.close());
 });
@@ -188,28 +209,69 @@ describe.each(['solana', 'robinhood'] as const)('several vaults on %s', (chain) 
 });
 
 describe('a vault that is not the caller’s to add to', () => {
-  it('another person’s vault is answered like one that does not exist, and nothing is made', async () => {
-    const { growVault } = await withTwoVaults('solana');
-    const thief = await someone('solana');
-    await fund(thief, undefined, 5_000);
-    const theirs = await addTo(thief, growVault, 100);
-    expect(theirs.statusCode).toBe(404);
-    expect(theirs.json().error).toBe(NO_SUCH_VAULT);
-    // the same answer as for an address nobody has a vault at
-    const nobody = await addTo(thief, { chain: 'solana', address: thief.solana }, 100);
-    expect(nobody.statusCode).toBe(404);
-    expect(nobody.json().error).toBe(theirs.json().error);
-    // naming the victim as the owner is refused before anything is read: the owner is the caller's
-    const claimed = await post(thief, '/v1/orders', {
-      type: 'buy',
-      owner: { solana: growVault.owner },
-      amountUsd: 100,
-      vault: { chain: 'solana', address: growVault.address },
-    });
-    expect(claimed.statusCode).toBe(403);
-    const orders = await get(thief, '/v1/orders');
-    if (orders.statusCode === 200) expect(orders.json().orders ?? []).toEqual([]);
-  });
+  it.each(['solana', 'robinhood'] as const)(
+    'on %s: another person’s vault is answered like one that does not exist, and nothing is made',
+    async (chain) => {
+      const { growVault } = await withTwoVaults(chain);
+      const thief = await someone(chain);
+      await fund(thief, undefined, 5_000);
+      const theirs = await addTo(thief, growVault, 100);
+      expect(theirs.statusCode).toBe(404);
+      expect(theirs.json().error).toBe(NO_SUCH_VAULT);
+      // the same answer as for an address nobody has a vault at
+      const wallet = thief.owner[chain === 'solana' ? 'solana' : 'evm'] as string;
+      const nobody = await addTo(thief, { chain, address: wallet }, 100);
+      expect(nobody.statusCode).toBe(404);
+      expect(nobody.json().error).toBe(theirs.json().error);
+      // naming the victim as the owner is refused before anything is read: the owner is the caller's
+      const claimed = await post(thief, '/v1/orders', {
+        type: 'buy',
+        owner: { [chain === 'solana' ? 'solana' : 'evm']: growVault.owner },
+        amountUsd: 100,
+        vault: { chain, address: growVault.address },
+      });
+      expect(claimed.statusCode).toBe(403);
+      const orders = await get(thief, '/v1/orders');
+      if (orders.statusCode === 200) expect(orders.json().orders ?? []).toEqual([]);
+    },
+  );
+
+  it.each(['solana', 'robinhood'] as const)(
+    'on %s: an add to a vault with auto-follow on only deposits, and its review says the keeper invests it',
+    async (chain) => {
+      const { who, growVault } = await withTwoVaults(chain);
+      autoFollow = true;
+      try {
+        const res = await addTo(who, growVault, 300);
+        expect(res.statusCode, res.body).toBe(200);
+        const placed = OrderDetail.parse(res.json());
+        expect(placed.legs.map((l) => l.kind).filter((k) => k !== 'approve')).toEqual(['deposit']);
+        expect(placed.legs.flatMap((l) => l.trades)).toEqual([]);
+        expect(placed.depositRaw).toBe(String(await raw(chain, 300)));
+        expect(placed.warnings).toContainEqual(KEEPER_INVESTS);
+        const done = await settleAll(who, placed);
+        expect(done.status).toBe('done');
+        // the funding read plans the same order: the deposit, and no trade's fee
+        const funding = FundingResponse.parse(
+          (
+            await get(
+              who,
+              `/v1/funding?amountUsd=300&vault=${growVault.address}&vaultChain=${chain}&wallet=${growVault.owner}`,
+            )
+          ).json(),
+        );
+        expect(funding.steps).toBe(placed.legs.length);
+      } finally {
+        autoFollow = false;
+      }
+      // every dollar of it is in the vault as cash, and nothing was bought
+      const after = (await vaultsOf(who, chain)).find((v) => v.address === growVault.address);
+      expect(BigInt(after?.cash.raw ?? '0') - BigInt(growVault.cash.raw)).toBe(
+        await raw(chain, 300),
+      );
+      expect(after?.positions.map((p) => p.raw)).toEqual(growVault.positions.map((p) => p.raw));
+    },
+  );
 
   it('a vault named on another chain than its own is not found', async () => {
     const { who, growVault } = await withTwoVaults('solana');
