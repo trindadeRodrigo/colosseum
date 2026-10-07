@@ -25,22 +25,22 @@ export function useVaultHistory(): VaultHistory {
   const port = useWalletPort();
   const apiFetch = useApiFetch();
   const { account } = useAccount();
-  const chain = account.status === 'ready' ? account.chain : null;
+  // Every chain's orders: a plan stays on its chain when the person switches (CHAIN-SWITCH).
+  const known = account.status === 'ready';
   const userId = port.userId;
-  const mock = chain ? onMock(port, chain) : false;
   const [records, setRecords] = useState<OrderRecord[]>([]);
   const [activity, setActivity] = useState<Execution[]>([]);
   const [deposited, setDeposited] = useState<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
-    setRecords(chain ? recallOrders(userId).filter((r) => r.chain === chain) : []);
-  }, [userId, chain]);
+    setRecords(known ? recallOrders(userId) : []);
+  }, [userId, known]);
 
   const ids = useMemo(() => records.map((r) => r.orderId).join('|'), [records]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: read again when the list of orders changes, by its ids
   useEffect(() => {
     let live = true;
-    if (!chain || records.length === 0) {
+    if (records.length === 0) {
       setActivity([]);
       setDeposited(new Set());
       return;
@@ -63,14 +63,19 @@ export function useVaultHistory(): VaultHistory {
       );
       setActivity(
         read
-          .flatMap((answer) => (answer.kind === 'read' ? activityOf(answer.order, t, mock) : []))
+          .flatMap((answer, i) => {
+            const chain = records[i]?.chain;
+            return answer.kind === 'read' && chain
+              ? activityOf(answer.order, t, onMock(port, chain))
+              : [];
+          })
           .sort((a, b) => b.at.localeCompare(a.at)),
       );
     });
     return () => {
       live = false;
     };
-  }, [ids, chain, mock, apiFetch, t]);
+  }, [ids, apiFetch, t]);
 
   return { records, activity, deposited };
 }

@@ -90,3 +90,24 @@ export function explorerUrlFor(chain: ChainId, txId: string | null, mock: boolea
     return null;
   }
 }
+
+/**
+ * A wallet's page on the explorer of the network this app signs for, from the same chain table as a
+ * transaction's link: Solscan names an account `/account/…`, the EVM explorers `/address/…`. Null on
+ * the mock, whose addresses are no network's, and on a network with no explorer.
+ */
+export function explorerAddressUrlFor(
+  chain: ChainId,
+  address: string,
+  mock: boolean,
+): string | null {
+  if (mock || !address) return null;
+  try {
+    const { config } = walletChains(publicWalletEnv())[chain];
+    if (!config.explorerTx?.includes('/tx/{txId}')) return null;
+    const page = config.family === 'solana' ? 'account' : 'address';
+    return config.explorerTx.replace('/tx/{txId}', `/${page}/${encodeURIComponent(address)}`);
+  } catch {
+    return null;
+  }
+}

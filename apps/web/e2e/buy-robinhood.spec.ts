@@ -2,8 +2,9 @@ import { expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
 import { throughBuySteps } from './buy-steps';
 
-// A person's buy on Robinhood Chain, end to end in a browser, on the mock chain: the stub runs its
-// mock as Robinhood Chain (E2E_CHAIN=robinhood sets STUB_CHAIN), so the order is what apps/api plans
+// A person's buy on Robinhood Chain, end to end in a browser, on the mock chain: they switch the bar to
+// Robinhood Chain before they sign in, see its shelf, and the plan they build is on it (CHAIN-SWITCH).
+// The stub runs its mock as Robinhood Chain (E2E_CHAIN=robinhood sets STUB_CHAIN), so the order is what apps/api plans
 // on an EVM chain: an approval of the deposit, then a create that deposits and trades. The executor
 // builds each step from the stub, holds it to the review with the real guard, has the throwaway wallet
 // sign it and reports it, until both steps confirm. Runs only with E2E_CHAIN=robinhood:
@@ -23,15 +24,30 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   page,
 }) => {
   await page.request.post(`${STUB}/__stub/reset`);
-  // the bar's "Sign in" opens the sign-in dialog over the goal (SIGN-IN-FLOW)
+  // signed out, the bar's switcher moves the shelf to Robinhood Chain, and the address names it
+  await page.goto('/shelf');
+  const switcher = page.locator('[data-ui="chain-switch"] > button');
+  await expect(switcher).toHaveAttribute('aria-label', en.chain.switch.current('Solana'), {
+    timeout: 60_000,
+  });
+  await switcher.click();
+  await page.locator('[data-ui="chain-switch-panel"] button[data-chain="robinhood"]').click();
+  await expect(switcher).toHaveAttribute('aria-label', en.chain.switch.current(NAME));
+  await expect(page).toHaveURL(/\/shelf\?chain=robinhood$/);
+  await expect(page.locator('main')).toContainText(en.shared.shelf.lead(NAME));
+
+  // the bar's "Sign in" opens the sign-in dialog over the goal (SIGN-IN-FLOW); nothing more is asked
   await page.goto('/goal');
   await page.locator('header a[href="/sign-in"]').click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
-  await dialog.getByRole('button', { name: NAME }).click();
-  await dialog.getByRole('button', { name: en.chain.pick.confirm(NAME) }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/goal$/);
+  // signed in, the bar's one account control is on the chain the switcher was on
+  await expect(page.locator('header [data-ui="account-menu-button"]')).toHaveAttribute(
+    'data-chain',
+    'robinhood',
+  );
 
   const goal = page.getByRole('textbox', { name: en.goal.composer.label, exact: true });
   await goal.fill('Grow $40 for three years, medium risk');

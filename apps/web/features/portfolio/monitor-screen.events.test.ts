@@ -120,7 +120,8 @@ describe('the monitor, for a person with a vault on their chain', () => {
       [...tr.children].map((cell) => cell.textContent?.replace(/\s+/g, ' ').trim()),
     );
     expect(rows.map((r) => [r[0], r[1], r[4], r[5], r[6]])).toEqual([
-      ['USDY', '600', '63.46%', '60.00%', '+3.46%'],
+      // each asset by the name the plan screen gives it
+      ['USDY (Ondo)', '600', '63.46%', '60.00%', '+3.46%'],
       ['PAXG', '0.05', '12.50%', '15.00%', '−2.50%'],
     ]);
     expect(rows[0]?.[2]).toContain('$1.10');
@@ -239,7 +240,7 @@ describe('the monitor, for a person with a vault on their chain', () => {
     signIn();
     const host = await screen();
     expect(text(host)).toContain(en.portfolio.vault.pending(2, 'Oct 6, 2026, 15:20 UTC'));
-    expect(text(host)).toContain(en.portfolio.vault.pendingAssets('SPYX'));
+    expect(text(host)).toContain(en.portfolio.vault.pendingAssets('SPYx'));
     expect(text(host)).toContain(en.portfolio.vault.unpriced(1));
     expect(text(host)).toContain(en.portfolio.vault.noPrice);
   });
@@ -250,10 +251,18 @@ describe('the monitor, for a person with a vault on their chain', () => {
     const host = await screen();
     const parts = find(host, '[data-ui="vault-parts"]');
     const items = [...parts.querySelectorAll('li')].map((li) => li.textContent);
+    // cash is a part like the others: named, with what the positions leave, by weight
     expect(items).toEqual([
-      `USDY63.46%${en.portfolio.vault.target('60.00%')}`,
+      `USDY (Ondo)63.46%${en.portfolio.vault.target('60.00%')}`,
+      `Cash (USDC)24.04%${en.portfolio.vault.target('25.00%')}`,
       `PAXG12.50%${en.portfolio.vault.target('15.00%')}`,
     ]);
+    // and counted in the title, with a segment of its own in the bar
+    expect(find(parts.closest('section') as HTMLElement, 'h3').textContent).toBe(
+      en.portfolio.vault.planTitle(3),
+    );
+    expect(parts.querySelectorAll('[aria-hidden="true"].flex > span')).toHaveLength(3);
+    expect(host.textContent).not.toMatch(/USDY63|SYRUPUSDC/);
     // the chips state the vault's facts, and the foot has the short disclaimer
     const chips = find(host, `ul[aria-label="${en.portfolio.vault.chips.label}"]`).textContent;
     expect(chips).toContain('version: 1');
@@ -296,7 +305,7 @@ describe('the monitor, when there is nothing to read or the API cannot say', () 
     expect(host.querySelector('[data-ui="disclaimer"]')).toBeNull();
   });
 
-  it('leads a person with no chain yet to where it is chosen, and asks the API nothing', async () => {
+  it('says it cannot tell the chain when the one a person starts on is not stored, and reads nothing', async () => {
     const server = api({
       person: {
         ...onSolana,
@@ -308,8 +317,9 @@ describe('the monitor, when there is nothing to read or the API cannot say', () 
     });
     signIn(EMBEDDED);
     const host = await screen();
-    expect(text(host)).toContain(en.portfolio.noChain);
-    expect(find(host, 'a').getAttribute('href')).toBe('/sign-in?next=/monitor');
+    // the double has no PUT /v1/me/chain: the chain they start on (CHAIN-SWITCH) is not stored
+    expect(text(host)).toContain(en.chain.unknown.body);
+    expect(text(host)).toContain(en.chain.unknown.retry);
     expect(server.to(PORTFOLIO_PATH)).toEqual([]);
   });
 
@@ -509,7 +519,8 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     const titles = [...host.querySelectorAll('[data-ui="vault"] section h3')].map(
       (h) => h.textContent,
     );
-    expect(titles).toContain(en.portfolio.vault.planTitle(2));
+    // two positions and the cash
+    expect(titles).toContain(en.portfolio.vault.planTitle(3));
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
 
@@ -545,6 +556,39 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     expect(status.getAttribute('data-status')).toBe('on-track');
     expect(status.textContent).toBe(`${en.portfolio.goalCard.builtMet} · October 2029`);
     expect(status.querySelector('svg')).not.toBeNull();
+  });
+
+  it('says a short income plan in figures: what it paid a month of what was asked, and the target in the goal', async () => {
+    const plan = planOn();
+    api({
+      person: onSolana,
+      portfolio: () =>
+        bought({
+          amountUsd: 40_000,
+          goal: {
+            sheet: { ...plan.proposal.sheet, goal: 'income', incomeTargetUsdMonthly: 300 },
+            card: plan.proposal.card,
+            verdict: { met: false, gapUsdMonthly: 228.23, ways: [] },
+            placedAt: '2026-10-01T00:00:00Z',
+          },
+        }),
+      more: orders(true),
+    });
+    signIn();
+    const host = await screen();
+    await settle();
+    const card = find(host, '[data-ui="goal-card"]');
+    const status = find(card, '[data-ui="status"]');
+    expect(status.getAttribute('data-status')).toBe('off-track');
+    expect(status.textContent).toBe(en.portfolio.goalCard.builtPaid('$71.77', '$300'));
+    expect(status.textContent).toBe(
+      'When this plan was built, it paid $71.77 a month of the $300 you asked for.',
+    );
+    // the old line, and the gap said a second time, are gone
+    expect(card.textContent).not.toContain(en.portfolio.goalCard.builtShort);
+    expect(card.textContent).not.toContain(en.plan.verdict.gap('$228.23'));
+    // the goal says what it asked for a month
+    expect(find(card, 'h3').textContent).toBe('Earn $300 a month from $40,000 for 36 months.');
   });
 
   it('says no status when what went in is not the amount the plan was built for', async () => {
@@ -781,4 +825,21 @@ describe('the chain of each vault', () => {
     );
     expect(host.querySelectorAll('[data-ui="chain-group"]')).toHaveLength(2);
   });
+});
+
+describe('the way from a vault to its own page (flow audit, 34)', () => {
+  it.each(['en', 'pt'] as const)(
+    'links each vault’s address to its page, named (%s)',
+    async (lang) => {
+      api({ person: onSolana });
+      signIn();
+      const host = await screen(lang);
+      const link = find<HTMLAnchorElement>(host, '[data-ui="vault-page-link"]');
+      expect(link.getAttribute('href')).toBe(`/vaults/solana/${VAULT}`);
+      expect(link.getAttribute('aria-label')).toBe(
+        dictionary(lang).portfolio.vault.page(link.textContent ?? ''),
+      );
+      expect(link.getAttribute('title')).toBe(VAULT);
+    },
+  );
 });

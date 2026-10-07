@@ -1,4 +1,5 @@
 import { API } from '../../lib/api';
+import type { BearingChain } from './chain';
 
 // The risk API as the Bearing pages read it: the `/risk/*` routes apps/api serves (apps/risk-api serves
 // the same routes alone). Every read resolves to an answer the page can show; none rejects. A failed
@@ -91,12 +92,17 @@ export async function inPool<I, O>(items: readonly I[], n: number, fn: (item: I)
 const enc = encodeURIComponent;
 const size = (n: number) => Math.max(1, Math.round(n));
 
-/** The routes the five pages read: the same paths Rodrigo's prototype reads. */
+/** The routes the five pages read: the same paths Rodrigo's prototype reads, and the chains side by side. */
 export const R = {
   methodology: () => '/risk/facts/methodology',
-  assets: (tau: number) => `/risk/assets?tau=${tau}`,
-  pools: () => '/risk/pools',
-  poolsOf: (asset: string) => `/risk/pools?asset=${enc(asset)}`,
+  // Solana's addresses are the prototype's, unchanged; another chain is named in them.
+  assets: (tau: number, chain: BearingChain = 'solana') =>
+    `/risk/assets?tau=${tau}${chain === 'solana' ? '' : `&chain=${chain}`}`,
+  pools: (chain: BearingChain = 'solana') =>
+    chain === 'solana' ? '/risk/pools' : `/risk/pools?chain=${chain}`,
+  poolsOf: (asset: string, chain: BearingChain = 'solana') =>
+    `/risk/pools?asset=${enc(asset)}${chain === 'solana' ? '' : `&chain=${chain}`}`,
+  chains: (tau: number) => `/risk/chains?tau=${tau}`,
   sheet: (asset: string, n: number) => `/risk/facts/assets/${enc(asset)}?sizeUsd=${size(n)}`,
   hist: (asset: string, tau: number) => `/risk/assets/${enc(asset)}/history?days=30&tau=${tau}`,
   lendList: () => '/risk/facts/lending',

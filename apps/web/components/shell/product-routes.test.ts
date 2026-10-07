@@ -372,7 +372,8 @@ describe('rule 3: no screen can reach a key', () => {
    */
   const PACKAGES = [
     '@colosseum/schemas',
-    'next/font/google',
+    // the three faces, from files committed with the app: nothing is fetched at build (app/fonts.ts)
+    'next/font/local',
     'next/headers',
     'next/link',
     'next/navigation',
@@ -522,7 +523,7 @@ describe('rule 3: no screen can reach a key', () => {
     for (const file of [
       'features/goal/GoalScreen.tsx',
       'features/account/SignInScreen.tsx',
-      'features/account/ChainPick.tsx',
+      'features/account/ChainSwitch.tsx',
       'features/account/AccountProvider.tsx',
       'features/wallet/SignIn.tsx',
       'components/shell/AppNav.tsx',
