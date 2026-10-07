@@ -42,10 +42,11 @@ import {
   recordOrderState,
   recordOutcome,
   recordRefusal,
+  recordSkipped,
   type StoredOrder,
   TakenElsewhere,
 } from './store';
-import { buildWithdraw } from './withdraw';
+import { buildWithdraw, SkippedStep } from './withdraw';
 
 // Building a leg and settling it (DESIGN-VAULT 3.3). The API builds unsigned transactions and relays
 // signed ones. It holds no key and signs nothing.
@@ -567,6 +568,15 @@ export async function buildLeg(
       await expectedOf(entry, leg.trades, owner, slippageOf(stored.request)),
     ]);
   } catch (e) {
+    // A step whose one token cannot move: skipped with its reason, so the rest can be signed.
+    if (e instanceof SkippedStep) {
+      await recordSkipped(deps.db, leg.id, {
+        code: e.code,
+        message: e.reason,
+        retryable: false,
+      });
+      throw e;
+    }
     const chain = e instanceof Refusal ? e.extra.details : undefined;
     if (e instanceof Refusal && chain?.chainCode)
       await recordRefusal(deps.db, leg.id, {

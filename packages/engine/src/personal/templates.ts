@@ -433,16 +433,16 @@ export const TEXT_TEMPLATES = {
     pt: 'Este plano não tem rendimento em dólar, e nenhum retorno é presumido para ações, cripto e ouro.',
   },
   EXIT_MEASURED: {
-    en: 'You can withdraw the tokens themselves to your own wallet at any time. Selling them to cash for you isn’t offered yet. Selling everything in the worst hours measured would cost about {costBps|pct}; that is measured for {shareBps|pct} of the plan.',
-    pt: 'Você pode sacar os próprios tokens para a sua carteira a qualquer momento. Vendê-los por dinheiro para você ainda não é oferecido. Vender tudo nas piores horas medidas custaria cerca de {costBps|pct}; isso está medido para {shareBps|pct} do plano.',
+    en: 'You can withdraw the tokens to your own wallet at any time. Selling everything in the worst hours measured would cost about {costBps|pct}; that is measured for {shareBps|pct} of the plan.',
+    pt: 'Você pode sacar os tokens para a sua carteira a qualquer momento. Vender tudo nas piores horas medidas custaria cerca de {costBps|pct}; isso está medido para {shareBps|pct} do plano.',
   },
   EXIT_MEASURED_ZERO: {
-    en: 'You can withdraw the tokens themselves to your own wallet at any time. Selling them to cash for you isn’t offered yet. In the worst hours measured, selling everything cost nothing: the sale price was at or above the reference price. That is measured for {shareBps|pct} of the plan.',
-    pt: 'Você pode sacar os próprios tokens para a sua carteira a qualquer momento. Vendê-los por dinheiro para você ainda não é oferecido. Nas piores horas medidas, vender tudo não custou nada: o preço de venda ficou igual ou acima do preço de referência. Isso está medido para {shareBps|pct} do plano.',
+    en: 'You can withdraw the tokens to your own wallet at any time. In the worst hours measured, selling everything cost nothing: the sale price was at or above the reference price. That is measured for {shareBps|pct} of the plan.',
+    pt: 'Você pode sacar os tokens para a sua carteira a qualquer momento. Nas piores horas medidas, vender tudo não custou nada: o preço de venda ficou igual ou acima do preço de referência. Isso está medido para {shareBps|pct} do plano.',
   },
   EXIT_NOT_MEASURED: {
-    en: 'You can withdraw the tokens themselves to your own wallet at any time. Selling them to cash for you isn’t offered yet. The cost of selling is not measured for this plan yet.',
-    pt: 'Você pode sacar os próprios tokens para a sua carteira a qualquer momento. Vendê-los por dinheiro para você ainda não é oferecido. O custo de vender ainda não está medido para este plano.',
+    en: 'You can withdraw the tokens to your own wallet at any time. The cost of selling is not measured for this plan yet.',
+    pt: 'Você pode sacar os tokens para a sua carteira a qualquer momento. O custo de vender ainda não está medido para este plano.',
   },
   WAY_AMOUNT: {
     en: 'You can add {addUsd|usd}, for {toUsd|usd} in all.',

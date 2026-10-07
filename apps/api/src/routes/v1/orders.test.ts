@@ -371,6 +371,7 @@ describe('sign-in', () => {
     { method: 'POST', url: legUrl(o, first(o).id, 'cancel') },
     { method: 'GET', url: '/v1/portfolio' },
     { method: 'GET', url: '/v1/me' },
+    { method: 'GET', url: '/v1/me/withdrawals' },
     { method: 'PUT', url: '/v1/me/chain', payload: { chain: 'solana' } },
     { method: 'GET', url: '/v1/funding' },
     { method: 'POST', url: '/v1/mock/fund', payload: { chain: 'solana', cashUsd: 1 } },

@@ -327,13 +327,25 @@ async function placeWithdraw(body: Body): Promise<OrderDetail> {
     type: 'withdraw',
     summary: `Withdraw from your vault on ${CHAIN_NAME} to your own wallet`,
     needsConsent: [],
-    steps: groups.map((withdrawals) => ({
-      kind: 'withdraw' as const,
-      description: 'Withdraw to your own wallet',
-      trades: [],
-      withdrawals,
-    })),
+    steps: [
+      // A vault with auto-follow on has it switched off first, as apps/api plans it.
+      ...(state.autoFollow
+        ? [{ kind: 'set_auto_follow' as const, description: 'Switch auto-follow off', trades: [] }]
+        : []),
+      ...groups.map((withdrawals) => ({
+        kind: 'withdraw' as const,
+        description: 'Withdraw to your own wallet',
+        trades: [],
+        withdrawals,
+      })),
+    ],
     build: async (leg, nonce) => {
+      if (leg.kind === 'set_auto_follow')
+        return adapter.buildSetAutoFollow({
+          vault: state.address,
+          on: false,
+          ...(nonce === undefined ? {} : { nonce }),
+        });
       const named = leg.withdrawals ?? [];
       const amounts = named.flatMap((x) =>
         x.amountRaw === null ? [] : [[x.asset, x.amountRaw] as const],

@@ -10,6 +10,7 @@ import {
   Hex32,
   RawAmount,
   SolanaAddress,
+  Sourced,
 } from './chain';
 import { ChainErrorCode } from './chain-error';
 import { Provenance } from './enums';
@@ -72,6 +73,12 @@ export const LegWithdrawal = z.object({
   asset: AssetId,
   amountRaw: RawAmount.nullable(),
   heldRaw: RawAmount,
+  /**
+   * What it was worth in dollars when the order was made, with where the price came from: the amount
+   * (all that was held, where no amount is named) at the chain's reference price then, cash at one
+   * dollar. Absent for a token with no price. A portfolio counts what was taken out from it.
+   */
+  valued: Sourced.extend({ usd: z.string().regex(/^\d+(\.\d+)?$/) }).optional(),
 });
 export type LegWithdrawal = z.infer<typeof LegWithdrawal>;
 

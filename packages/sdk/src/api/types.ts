@@ -820,6 +820,37 @@ export type GetMePlansResponse = {
   next: string | null;
 };
 
+/** GET /v1/me/withdrawals: response. What the signed-in person took out of their vaults */
+export type GetMeWithdrawalsResponse = {
+  withdrawals: {
+    orderId: string;
+    createdAt: string;
+    chain: 'solana' | 'base' | 'robinhood';
+    vault: string | string;
+    status: 'open' | 'partial' | 'done' | 'failed' | 'expired';
+    steps: {
+      legId: string;
+      status: 'planned' | 'built' | 'sent' | 'confirmed' | 'failed' | 'expired' | 'skipped';
+      txId: string | null;
+      explorerUrl: string | null;
+      at: string;
+      provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+      withdrawals: {
+        asset: string;
+        amountRaw: string | null;
+        heldRaw: string;
+        valued?: {
+          source: string;
+          method: string;
+          fetchedAt: string;
+          provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+          usd: string;
+        };
+      }[];
+    }[];
+  }[];
+};
+
 /** POST /v1/orders: body. Plan an order from an intent. Nothing is built or signed */
 export type PostOrdersBody =
   | {
@@ -927,6 +958,13 @@ export type PostOrdersResponse = {
       asset: string;
       amountRaw: string | null;
       heldRaw: string;
+      valued?: {
+        source: string;
+        method: string;
+        fetchedAt: string;
+        provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+        usd: string;
+      };
     }[];
     trades: {
       sell: string;
@@ -1022,6 +1060,13 @@ export type GetOrdersByIdResponse = {
       asset: string;
       amountRaw: string | null;
       heldRaw: string;
+      valued?: {
+        source: string;
+        method: string;
+        fetchedAt: string;
+        provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+        usd: string;
+      };
     }[];
     trades: {
       sell: string;
@@ -1192,6 +1237,13 @@ export type PostOrdersByIdLegsByLegIdCancelResponse = {
       asset: string;
       amountRaw: string | null;
       heldRaw: string;
+      valued?: {
+        source: string;
+        method: string;
+        fetchedAt: string;
+        provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+        usd: string;
+      };
     }[];
     trades: {
       sell: string;
@@ -1297,6 +1349,13 @@ export type PostOrdersByIdLegsByLegIdReportResponse = {
       asset: string;
       amountRaw: string | null;
       heldRaw: string;
+      valued?: {
+        source: string;
+        method: string;
+        fetchedAt: string;
+        provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+        usd: string;
+      };
     }[];
     trades: {
       sell: string;
@@ -1629,6 +1688,7 @@ export interface ApiRoutes {
   'GET /v1/me': { response: GetMeResponse };
   'PUT /v1/me/chain': { body: PutMeChainBody; response: PutMeChainResponse };
   'GET /v1/me/plans': { query: GetMePlansQuery; response: GetMePlansResponse };
+  'GET /v1/me/withdrawals': { response: GetMeWithdrawalsResponse };
   'POST /v1/orders': { body: PostOrdersBody; response: PostOrdersResponse };
   'GET /v1/orders/{id}': { params: GetOrdersByIdParams; response: GetOrdersByIdResponse };
   'POST /v1/orders/{id}/legs/{legId}/build': {

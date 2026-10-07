@@ -1,5 +1,6 @@
 import { mockAddress } from '@colosseum/chain-mock';
 import {
+  ChainError,
   type ChainId,
   chainFamily,
   type Leg,
@@ -7,13 +8,15 @@ import {
   parseChainConfigs,
   parseFlags,
 } from '@colosseum/schemas';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { type ChainEntry, type ChainRegistry, createChainRegistry } from './chains';
 import { Refusal } from './errors';
 import {
   buildWithdraw,
   planWithdraw,
   SELL_TO_CASH_NOT_OFFERED,
+  SkippedStep,
+  WHOLE_TOKEN_ONLY,
   type WithdrawRequest,
 } from './withdraw';
 
@@ -124,7 +127,7 @@ describe.each(CHAINS)('a withdrawal on %s', (chain) => {
     const plan = await planWithdraw(everything(w), { principal: w.me, chains: w.chains });
     expect(plan.owner).toBe(w.owner);
     expect(plan.vault).toBe(w.vault);
-    const taken = plan.steps.flatMap((s) => s.withdrawals);
+    const taken = plan.steps.flatMap((s) => s.withdrawals ?? []);
     expect(taken.map((t) => [t.asset, t.amountRaw])).toEqual([
       [w.cash, null],
       [w.spy, null],
@@ -215,10 +218,23 @@ describe.each(CHAINS)('a withdrawal on %s', (chain) => {
       ...everything(w),
       withdrawals: [{ asset: w.cash, amountRaw: usd(250) }],
     };
-    const plan = await planWithdraw(request, { principal: w.me, chains: w.chains });
+    const now = '2026-10-06T12:00:00.000Z';
+    const plan = await planWithdraw(request, { principal: w.me, chains: w.chains, now });
     expect(plan.steps).toHaveLength(1);
+    // valued as it is ordered: the dollar token at one dollar, and where that figure is from
     expect(plan.steps[0]?.withdrawals).toEqual([
-      { asset: w.cash, amountRaw: usd(250), heldRaw: usd(600) },
+      {
+        asset: w.cash,
+        amountRaw: usd(250),
+        heldRaw: usd(600),
+        valued: {
+          usd: '250.00',
+          source: w.entry.source,
+          method: expect.stringContaining('one dollar'),
+          fetchedAt: now,
+          provenance: w.entry.provenance,
+        },
+      },
     ]);
     expect(plan.steps[0]?.description).toContain('250 ');
     const step = plan.steps[0];
@@ -230,6 +246,37 @@ describe.each(CHAINS)('a withdrawal on %s', (chain) => {
     expect(await inVault(w, w.spy)).toBe(spy);
     expect((await holds(w, w.owner, w.cash)) - before).toBe(BigInt(usd(250)));
     expect(await holds(w, w.stranger, w.spy)).toBe(0n);
+  });
+
+  it('values a token at the chain’s reference price as it is ordered, to the cent and never above, and gives no value where there is no price', async () => {
+    const [price] = await w.entry.adapter.getPrices([w.spy]);
+    if (!price) throw new Error('no price');
+    const raw = (await inVault(w, w.spy)) / 3n;
+    const request: WithdrawRequest = {
+      ...everything(w),
+      withdrawals: [{ asset: w.spy, amountRaw: raw.toString() }],
+    };
+    const plan = await planWithdraw(request, { principal: w.me, chains: w.chains });
+    const valued = plan.steps.flatMap((s) => s.withdrawals ?? [])[0]?.valued;
+    const decimals = (await w.entry.adapter.listAssets()).find((a) => a.id === w.spy)?.decimals;
+    const exact = (Number(raw) / 10 ** (decimals ?? 0)) * Number(price.usdPerToken);
+    expect(valued?.usd).toMatch(/^\d+\.\d{2}$/);
+    expect(Number(valued?.usd)).toBeLessThanOrEqual(exact + 1e-9);
+    expect(Number(valued?.usd)).toBeGreaterThan(exact - 0.011);
+    expect(valued).toMatchObject({
+      source: price.source,
+      fetchedAt: price.fetchedAt,
+      provenance: price.provenance,
+    });
+
+    // a chain whose prices do not answer: the withdrawal is still planned, with no figure made up
+    vi.spyOn(w.entry.adapter, 'getPrices').mockRejectedValueOnce(
+      new ChainError('Unavailable', 'no prices'),
+    );
+    const blind = await planWithdraw(request, { principal: w.me, chains: w.chains });
+    expect(blind.steps.flatMap((s) => s.withdrawals ?? [])).toEqual([
+      { asset: w.spy, amountRaw: raw.toString(), heldRaw: (await inVault(w, w.spy)).toString() },
+    ]);
   });
 
   it('takes exactly the balance, and refuses one unit over it, and an amount of nothing', async () => {
@@ -274,14 +321,137 @@ describe.each(CHAINS)('a withdrawal on %s', (chain) => {
     expect(await inVault(w, w.cash)).toBe(BigInt(usd(400)));
   });
 
-  it('says, on a vault with auto-follow on, that the keeper trades what stays; not for everything', async () => {
-    await w.entry.mock?.send(
-      await w.entry.adapter.buildSetAutoFollow({ vault: w.vault, on: true }),
-    );
+  it('switches auto-follow off first on a vault that has it on, whatever is withdrawn, and the keeper no longer visits it', async () => {
+    const { adapter, mock } = w.entry;
+    await mock?.send(await adapter.buildSetAutoFollow({ vault: w.vault, on: true }));
+    expect(await adapter.listAutoFollowVaults()).toContain(w.vault);
     const ctx = { principal: w.me, chains: w.chains };
-    const part = await planWithdraw({ ...everything(w), withdrawals: [{ asset: w.spy }] }, ctx);
-    expect(part.warnings.map((x) => x.code)).toEqual(['AUTO_FOLLOW_ON']);
-    expect((await planWithdraw(everything(w), ctx)).warnings).toEqual([]);
+    for (const request of [
+      everything(w),
+      { ...everything(w), withdrawals: [{ asset: w.spy }] },
+      { ...everything(w), withdrawals: [{ asset: w.cash, amountRaw: usd(1) }] },
+    ] satisfies WithdrawRequest[]) {
+      const plan = await planWithdraw(request, ctx);
+      expect(plan.steps.map((s) => s.kind)).toEqual([
+        'set_auto_follow',
+        ...plan.steps.slice(1).map(() => 'withdraw'),
+      ]);
+      expect(plan.steps[0]?.withdrawals).toBeUndefined();
+      expect(plan.steps[0]?.description).toMatch(/automatic following stops for this vault/);
+    }
+    // built as a switch off, for the owner, and never on; once it lands the keeper's list drops the vault
+    const request = everything(w);
+    const [off, ...rest] = (await planWithdraw(request, ctx)).steps;
+    if (!off) throw new Error('no first step');
+    const tx = await buildWithdraw(request, legOf(off), w.entry, w.owner, undefined);
+    expect(tx.legKind).toBe('set_auto_follow');
+    expect(tx.signer).toBe(w.owner);
+    await mock?.send(tx);
+    expect((await adapter.getVault(w.vault))?.autoFollow).toBe(false);
+    expect(await adapter.listAutoFollowVaults()).not.toContain(w.vault);
+    for (const step of rest)
+      await mock?.send(await buildWithdraw(request, legOf(step), w.entry, w.owner, undefined));
+    expect(await inVault(w, w.cash)).toBe(0n);
+  });
+
+  it('plans no switch for a vault with auto-follow off', async () => {
+    const plan = await planWithdraw(everything(w), { principal: w.me, chains: w.chains });
+    expect(plan.steps.every((s) => s.kind === 'withdraw')).toBe(true);
+  });
+
+  it('a token that cannot move: its step is a skip with the reason, never a failed order', async () => {
+    // The stock token's account is frozen by its issuer, as a real adapter says it.
+    const frozen = new ChainError(
+      'BalanceUnreadable',
+      "the vault's account of it is frozen by its issuer",
+    );
+    const stuck: ChainEntry = {
+      ...w.entry,
+      adapter: {
+        ...w.entry.adapter,
+        buildWithdrawInKind: async (a) => {
+          if (a.assets?.includes(w.spy)) throw frozen;
+          return w.entry.adapter.buildWithdrawInKind(a);
+        },
+      },
+    };
+    const request: WithdrawRequest = {
+      ...everything(w),
+      withdrawals: [{ asset: w.spy }, { asset: w.cash }],
+    };
+    const plan = await planWithdraw(request, { principal: w.me, chains: w.chains });
+    if (chainFamily(chain) === 'solana') {
+      const [spy, cash] = plan.steps;
+      if (!spy || !cash) throw new Error('no steps');
+      const skip = await buildWithdraw(request, legOf(spy), stuck, w.owner, undefined).catch(
+        (e: unknown) => e,
+      );
+      expect(skip).toBeInstanceOf(SkippedStep);
+      expect((skip as SkippedStep).code).toBe('BalanceUnreadable');
+      expect((skip as SkippedStep).reason).toMatch(/frozen by its issuer/);
+      expect((skip as SkippedStep).status).toBe(409);
+      // the other token's step is built and lands
+      await w.entry.mock?.send(
+        await buildWithdraw(request, legOf(cash), stuck, w.owner, undefined),
+      );
+      expect(await inVault(w, w.cash)).toBe(0n);
+      expect(await inVault(w, w.spy)).toBeGreaterThan(0n);
+    } else {
+      // One transaction for both: it is refused as a whole, and nothing is skipped behind the person.
+      const [both] = plan.steps;
+      if (!both) throw new Error('no step');
+      const no = await buildWithdraw(request, legOf(both), stuck, w.owner, undefined).catch(
+        (e: unknown) => e,
+      );
+      expect(no).toBe(frozen);
+    }
+  });
+
+  it('a request that is wrong, or a chain that does not answer, is never a skip', async () => {
+    const down: ChainEntry = {
+      ...w.entry,
+      adapter: {
+        ...w.entry.adapter,
+        buildWithdrawInKind: async () => {
+          throw new ChainError('Unavailable', 'the node did not answer');
+        },
+      },
+    };
+    const request: WithdrawRequest = { ...everything(w), withdrawals: [{ asset: w.cash }] };
+    const plan = await planWithdraw(request, { principal: w.me, chains: w.chains });
+    const step = plan.steps[0];
+    if (!step) throw new Error('no step');
+    const e = await buildWithdraw(request, legOf(step), down, w.owner, undefined).catch(
+      (x: unknown) => x,
+    );
+    expect(e).not.toBeInstanceOf(SkippedStep);
+    expect((e as ChainError).code).toBe('Unavailable');
+  });
+
+  it('takes no part of a token the app does not list: all of it or none, with the screen’s sentence', async () => {
+    // The stock token as one the app's list does not have: its units are not known here.
+    const unlisted: ChainRegistry = {
+      ...w.chains,
+      get: (c) => {
+        const entry = w.chains.get(c);
+        return {
+          ...entry,
+          adapter: {
+            ...entry.adapter,
+            listAssets: async () =>
+              (await entry.adapter.listAssets()).filter((a) => a.id !== w.spy),
+          },
+        };
+      },
+    };
+    const ctx = { principal: w.me, chains: unlisted };
+    const part = await refusal(
+      planWithdraw({ ...everything(w), withdrawals: [{ asset: w.spy, amountRaw: '1' }] }, ctx),
+    );
+    expect(part.status).toBe(422);
+    expect(part.body().error).toBe(WHOLE_TOKEN_ONLY);
+    const whole = await planWithdraw({ ...everything(w), withdrawals: [{ asset: w.spy }] }, ctx);
+    expect(whole.steps.flatMap((s) => s.withdrawals ?? []).map((x) => x.amountRaw)).toEqual([null]);
   });
 
   it('two withdrawals racing: the first empties the vault, the second builds nothing and says so', async () => {

@@ -3,6 +3,8 @@ import {
   type AssetId,
   type BuiltTx,
   type Chain,
+  ChainError,
+  type ChainErrorCode,
   type ChainId,
   type IntentRequest,
   isAddressOf,
@@ -27,13 +29,100 @@ export type WithdrawRequest = Extract<IntentRequest, { type: 'withdraw' }>;
 export const SELL_TO_CASH_NOT_OFFERED =
   'Selling to cash before withdrawing isn’t offered yet; you can withdraw the tokens themselves';
 
-/** On a withdrawal of part of a vault that has auto-follow on. */
-export const AUTO_FOLLOW_ON = {
-  code: 'AUTO_FOLLOW_ON',
-  text: 'Auto-follow is on for this vault. After this withdrawal the keeper may trade what stays back toward your plan’s weights: it may buy again a token you took out. Switch auto-follow off first if you don’t want that.',
-} as const;
+/** Said to a person, as it is, for an amount of a token whose units the app does not list. */
+export const WHOLE_TOKEN_ONLY = 'All of it or none: this app doesn’t know this token’s units';
 
-type Context = { principal: Principal; chains: ChainRegistry };
+/**
+ * A step that cannot be built because its one token cannot move now: its account is frozen by its
+ * issuer, it carries a transfer hook this builder does not resolve, or the chain refuses it for that
+ * token alone. The step is marked skipped with this reason, and the order's other steps go on
+ * (DESIGN-VAULT section 5: one token that cannot move does not stop the others).
+ */
+export class SkippedStep extends Refusal {
+  constructor(
+    readonly code: ChainErrorCode,
+    readonly reason: string,
+  ) {
+    super(409, `this step is skipped: ${reason}`, {
+      fix: 'The rest of the withdrawal goes on. This token stays in the vault.',
+      details: { chainCode: code, retryable: false },
+    });
+  }
+}
+
+/** What a builder says when the request itself is wrong, or the chain cannot be asked: never a skip. */
+const NOT_A_SKIP: ReadonlySet<string> = new Set([
+  'BadInput',
+  'Unavailable',
+  'VaultNotFound',
+  'NotOwner',
+]);
+
+type Context = {
+  principal: Principal;
+  chains: ChainRegistry;
+  /** When the order is made, as an ISO instant: the time on the value of what is cash. */
+  now?: string;
+};
+
+/** A decimal string as a fraction of whole numbers. */
+function fraction(decimal: string): { num: bigint; den: bigint } {
+  const [whole = '0', places = ''] = decimal.split('.');
+  return { num: BigInt(`${whole}${places}`), den: 10n ** BigInt(places.length) };
+}
+
+/**
+ * What each withdrawal is worth in dollars as the order is made, to the cent, rounded down, with where
+ * the price came from: the amount it names, or all that is held, at the chain's reference price now
+ * (which already carries a stock token's multiplier); cash at one dollar, as the vault counts it. A
+ * token with no price is given no value, and a chain that cannot be asked gives none to any: a figure
+ * is never made up. The portfolio counts what was taken out from these.
+ */
+async function valuer(
+  entry: ChainEntry,
+  assets: Awaited<ReturnType<ChainEntry['adapter']['listAssets']>>,
+  taken: LegWithdrawal[],
+  now: string,
+): Promise<(w: LegWithdrawal) => LegWithdrawal['valued']> {
+  const listed = new Map(assets.map((a) => [a.id, a]));
+  const priced = taken
+    .map((w) => listed.get(w.asset))
+    .filter((a) => a !== undefined && a.cls !== 'cash' && a.priceKind !== 'none')
+    .map((a) => (a as (typeof assets)[number]).id);
+  const prices = priced.length
+    ? await entry.adapter.getPrices(priced).catch((e: unknown) => {
+        if (e instanceof ChainError) return [];
+        throw e;
+      })
+    : [];
+  const cents = (raw: bigint, decimals: number, usd: string) => {
+    const { num, den } = fraction(usd);
+    const c = (raw * num * 100n) / (den * 10n ** BigInt(decimals));
+    return `${c / 100n}.${(c % 100n).toString().padStart(2, '0')}`;
+  };
+  return (w) => {
+    const asset = listed.get(w.asset);
+    if (!asset) return undefined;
+    const raw = BigInt(w.amountRaw ?? w.heldRaw);
+    if (asset.cls === 'cash')
+      return {
+        usd: cents(raw, asset.decimals, '1'),
+        source: entry.source,
+        method: 'the amount of the dollar token, counted at one dollar as the vault counts it',
+        fetchedAt: now,
+        provenance: entry.provenance,
+      };
+    const price = prices.find((p) => p.asset === w.asset);
+    if (!price) return undefined;
+    return {
+      usd: cents(raw, asset.decimals, price.usdPerToken),
+      source: price.source,
+      method: `the amount at the reference price when the withdrawal was ordered (${price.method})`,
+      fetchedAt: price.fetchedAt,
+      provenance: price.provenance,
+    };
+  };
+}
 
 /** The one vault of the order, on its own chain, held to being the signed-in person's. */
 async function ownVault(
@@ -69,6 +158,7 @@ function held(
   req: WithdrawRequest,
   holdings: Map<AssetId, bigint>,
   name: (asset: AssetId, raw: bigint) => string,
+  listed: ReadonlySet<AssetId>,
 ): LegWithdrawal[] {
   if (!req.withdrawals) {
     if (!holdings.size)
@@ -92,6 +182,8 @@ function held(
         details: { retryable: false },
       });
     const amount = w.amountRaw == null ? null : BigInt(w.amountRaw);
+    // Part of a token is counted in its units, and the app knows the units of the tokens it lists.
+    if (amount !== null && !listed.has(w.asset)) throw new Refusal(422, WHOLE_TOKEN_ONLY);
     if (amount === 0n) throw new Refusal(422, `a withdrawal of no ${w.asset} is nothing to sign`);
     if (amount !== null && amount > has)
       throw new Refusal(
@@ -125,28 +217,34 @@ function namer(assets: { id: AssetId; symbol: string; decimals: number }[]) {
 
 export type WithdrawStep = {
   chain: ChainId;
-  kind: 'withdraw';
+  kind: 'withdraw' | 'set_auto_follow';
   description: string;
-  withdrawals: LegWithdrawal[];
+  /** What a `withdraw` step takes out. Absent on the step that switches auto-follow off. */
+  withdrawals?: LegWithdrawal[];
 };
 
 /**
  * The steps of a withdrawal, planned and not built. Solana's program takes one token per call, so a
  * step per token; an EVM vault takes them all in one transaction.
+ *
+ * A vault with auto-follow on has it switched off first, whatever is withdrawn: the keeper trades a
+ * vault toward its weights, so between the steps of a withdrawal, or after one that leaves something,
+ * it would sell what stayed to buy again what had just gone out (tests/keeper/withdrawal.test.ts). The
+ * owner switches it on again when they want it.
  */
 export async function planWithdraw(
   req: WithdrawRequest,
   ctx: Context,
-): Promise<{
-  entry: ChainEntry;
-  owner: Address;
-  vault: Address;
-  steps: WithdrawStep[];
-  warnings: { code: string; text: string }[];
-}> {
+): Promise<{ entry: ChainEntry; owner: Address; vault: Address; steps: WithdrawStep[] }> {
   const { entry, family, vault } = await ownVault(req, ctx);
-  const name = namer(await entry.adapter.listAssets());
-  const all = held(req, holdingsOf(vault), name);
+  const assets = await entry.adapter.listAssets();
+  const name = namer(assets);
+  const taken = held(req, holdingsOf(vault), name, new Set(assets.map((a) => a.id)));
+  const value = await valuer(entry, assets, taken, ctx.now ?? new Date().toISOString());
+  const all = taken.map((w) => {
+    const valued = value(w);
+    return valued ? { ...w, valued } : w;
+  });
   const what = (w: LegWithdrawal) =>
     w.amountRaw === null
       ? `all the ${name(w.asset, BigInt(w.heldRaw))} it holds`
@@ -157,14 +255,21 @@ export async function planWithdraw(
     description: `Withdraw ${withdrawals.map(what).join(', ')} from your vault to your own wallet, ${vault.owner}`,
     withdrawals,
   });
+  const off: WithdrawStep[] = vault.autoFollow
+    ? [
+        {
+          chain: entry.chain,
+          kind: 'set_auto_follow',
+          description:
+            'Switch auto-follow off: automatic following stops for this vault, so the keeper does not trade it while you withdraw or afterwards',
+        },
+      ]
+    : [];
   return {
     entry,
     owner: vault.owner,
     vault: vault.address,
-    steps: family === 'solana' ? all.map((w) => [w]).map(step) : [step(all)],
-    // Something stays in a vault the keeper trades: it is traded back toward the plan's weights
-    // (tests/keeper/withdrawal.test.ts). Said before the person signs.
-    warnings: vault.autoFollow && req.withdrawals ? [AUTO_FOLLOW_ON] : [],
+    steps: [...off, ...(family === 'solana' ? all.map((w) => [w]).map(step) : [step(all)])],
   };
 }
 
@@ -181,10 +286,18 @@ export async function buildWithdraw(
   nonce: number | undefined,
 ): Promise<BuiltTx> {
   const [address] = request.vaults;
-  if (leg.kind !== 'withdraw' || !leg.withdrawals || !address)
-    throw new Refusal(501, `a ${leg.kind} step of a withdrawal cannot be built`);
+  if (!address) throw new Refusal(501, 'a withdrawal names its vault');
   const vault = await entry.adapter.getVault(address);
   if (!vault || vault.owner !== owner) throw new Refusal(404, 'no vault of yours at that address');
+  // The first step of a withdrawal from a vault the keeper trades: auto-follow off, and never on.
+  if (leg.kind === 'set_auto_follow')
+    return entry.adapter.buildSetAutoFollow({
+      vault: vault.address,
+      on: false,
+      ...(nonce === undefined ? {} : { nonce }),
+    });
+  if (leg.kind !== 'withdraw' || !leg.withdrawals)
+    throw new Refusal(501, `a ${leg.kind} step of a withdrawal cannot be built`);
   const holdings = holdingsOf(vault);
   const name = namer(await entry.adapter.listAssets());
   const again = { fix: 'Make the withdrawal again.', details: { retryable: false } };
@@ -205,13 +318,22 @@ export async function buildWithdraw(
   const amounts = leg.withdrawals.flatMap((w) =>
     w.amountRaw === null ? [] : [[w.asset, w.amountRaw] as const],
   );
-  const txs = await entry.adapter.buildWithdrawInKind({
-    vault: vault.address,
-    ...(everything ? {} : { assets: leg.withdrawals.map((w) => w.asset) }),
-    // Some of a token where the step names an amount; the adapter refuses more than is there.
-    ...(amounts.length ? { amounts: Object.fromEntries(amounts) } : {}),
-    ...(nonce === undefined ? {} : { nonce }),
-  });
+  let txs: BuiltTx[];
+  try {
+    txs = await entry.adapter.buildWithdrawInKind({
+      vault: vault.address,
+      ...(everything ? {} : { assets: leg.withdrawals.map((w) => w.asset) }),
+      // Some of a token where the step names an amount; the adapter refuses more than is there.
+      ...(amounts.length ? { amounts: Object.fromEntries(amounts) } : {}),
+      ...(nonce === undefined ? {} : { nonce }),
+    });
+  } catch (e) {
+    // A step of one token that the chain will not move now is skipped, and says why: the vault holds
+    // it (checked above), so the refusal is the token's own. A step of several is refused as a whole.
+    if (e instanceof ChainError && leg.withdrawals.length === 1 && !NOT_A_SKIP.has(e.code))
+      throw new SkippedStep(e.code, e.message);
+    throw e;
+  }
   const [tx, ...rest] = txs;
   if (!tx || rest.length)
     throw new Refusal(409, 'this step cannot be built as one transaction now', again);

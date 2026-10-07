@@ -1,4 +1,4 @@
-import { OrderDetail } from '@colosseum/schemas';
+import { ChainError, OrderDetail, PersonWithdrawalsResponse } from '@colosseum/schemas';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ChainRegistry } from '../../orders/chains';
@@ -45,7 +45,7 @@ afterAll(async () => {
   for (const step of undo.reverse()) await step();
 });
 
-const { post, openVault, settleAll, read } = orderFlow({
+const { post, openVault, settleAll, read, build, land, report } = orderFlow({
   app: () => app,
   registry: () => registry,
   plans: () => plans,
@@ -116,10 +116,33 @@ describe.each(CHAINS)('POST /v1/orders, a withdrawal on %s', (chain) => {
     });
     expect(res.statusCode, res.body).toBe(200);
     const order = OrderDetail.parse(res.json());
-    expect(order.legs.map((l) => l.withdrawals)).toEqual([
+    expect(order.legs.map((l) => l.withdrawals)).toMatchObject([
       [{ asset: most.asset, amountRaw: part, heldRaw: most.raw }],
     ]);
     await settleAll(a, order);
+
+    // The person's withdrawals, from the server: this one, valued as it was ordered, and nobody else's.
+    const listed = await app.inject({ url: '/v1/me/withdrawals', headers: a.headers });
+    expect(listed.statusCode, listed.body).toBe(200);
+    const { withdrawals } = PersonWithdrawalsResponse.parse(listed.json());
+    expect(withdrawals).toHaveLength(1);
+    expect(withdrawals[0]).toMatchObject({ orderId: order.id, chain, vault: vault.address });
+    expect(withdrawals[0]?.steps).toMatchObject([
+      {
+        legId: order.legs[0]?.id,
+        status: 'confirmed',
+        withdrawals: [{ asset: most.asset, amountRaw: part }],
+      },
+    ]);
+    const [took] = withdrawals[0]?.steps[0]?.withdrawals ?? [];
+    expect(took?.valued?.usd).toMatch(/^\d+\.\d{2}$/);
+    expect(Number(took?.valued?.usd)).toBeGreaterThan(0);
+    expect(took?.valued?.source).toBeTruthy();
+    expect(withdrawals[0]?.steps[0]?.txId).toBeTruthy();
+    const b = await someone(chain);
+    const other = await app.inject({ url: '/v1/me/withdrawals', headers: b.headers });
+    expect(other.json()).toEqual({ withdrawals: [] });
+    expect((await app.inject({ url: '/v1/me/withdrawals' })).statusCode).toBe(401);
     const after = await vaultOf(a, chain);
     const left = [after.cash, ...after.positions].find((h) => h.asset === most.asset);
     expect(BigInt(left?.raw ?? '0')).toBe(BigInt(most.raw) - BigInt(part));
@@ -147,6 +170,23 @@ describe.each(CHAINS)('POST /v1/orders, a withdrawal on %s', (chain) => {
     expect(res.json().error).toBe(SELL_TO_CASH_NOT_OFFERED);
   });
 
+  it('switches auto-follow off as the first step where the vault has it on', async () => {
+    const a = await someone(chain);
+    await openVault(a);
+    const vault = await vaultOf(a, chain);
+    const { adapter, mock } = registry.get(chain);
+    await mock?.send(await adapter.buildSetAutoFollow({ vault: vault.address, on: true }));
+    const order = OrderDetail.parse((await withdraw(a, vault.address)).json());
+    expect(order.legs[0]?.kind).toBe('set_auto_follow');
+    expect(order.legs.slice(1).every((l) => l.kind === 'withdraw')).toBe(true);
+    expect(order.warnings).toEqual([]);
+    const done = await settleAll(a, order);
+    expect(done.status).toBe('done');
+    const after = await vaultOf(a, chain);
+    expect(after.autoFollow).toBe(false);
+    expect(await adapter.listAutoFollowVaults()).not.toContain(vault.address);
+  });
+
   it('two orders for the same vault: the second builds nothing once the first has emptied it', async () => {
     const a = await someone(chain);
     await openVault(a);
@@ -159,5 +199,86 @@ describe.each(CHAINS)('POST /v1/orders, a withdrawal on %s', (chain) => {
     const late = await post(a, `/v1/orders/${second.id}/legs/${leg.id}/build`);
     expect(late.statusCode).toBe(409);
     expect(late.json().error).toMatch(/nothing was built/);
+  });
+});
+
+describe('a withdrawal with a token that cannot move', () => {
+  it('skips that token’s step with its reason, signs the rest, and the order is done with the skip on it', async () => {
+    const a = await someone('solana');
+    await openVault(a);
+    const vault = await vaultOf(a, 'solana');
+    const stuck = vault.positions.find((p) => BigInt(p.raw) > 0n)?.asset;
+    if (!stuck) throw new Error('the vault holds no position');
+    // The same chain, with that one token frozen by its issuer, as the Solana adapter says it.
+    const { app: frozen } = await testApp({
+      issuer: issuer.issuer,
+      db: data.db,
+      wrap: (inner) => ({
+        ...inner,
+        get: (c) => {
+          const entry = inner.get(c);
+          return {
+            ...entry,
+            adapter: {
+              ...entry.adapter,
+              buildWithdrawInKind: async (args) => {
+                if (args.assets?.includes(stuck))
+                  throw new ChainError(
+                    'BalanceUnreadable',
+                    "the vault's account of it is frozen by its issuer",
+                  );
+                return entry.adapter.buildWithdrawInKind(args);
+              },
+            },
+          };
+        },
+      }),
+    });
+    undo.push(() => frozen.close());
+    const res = await post(
+      a,
+      '/v1/orders',
+      { type: 'withdraw', vaults: [vault.address], sellToCash: false },
+      frozen,
+    );
+    const order = OrderDetail.parse(res.json());
+    const leg = order.legs.find((l) => l.withdrawals?.[0]?.asset === stuck);
+    if (!leg) throw new Error('no step for the frozen token');
+    // In order, as a wallet signs them: the frozen token's step is refused and skipped, the others land.
+    let latest = order;
+    for (const step of order.legs) {
+      if (step.id !== leg.id) {
+        await build(a, order, step.id, frozen);
+        latest = await report(
+          a,
+          order,
+          step.id,
+          { txId: await land(a, order, step.id, frozen) },
+          frozen,
+        );
+        continue;
+      }
+      const built = await post(a, `/v1/orders/${order.id}/legs/${leg.id}/build`, undefined, frozen);
+      expect(built.statusCode).toBe(409);
+      expect(built.json().error).toMatch(/skipped: .*frozen by its issuer/);
+      latest = await read(a, order, frozen);
+      const skipped = latest.legs.find((l) => l.id === leg.id);
+      expect(skipped?.status).toBe('skipped');
+      expect(skipped?.error).toEqual({
+        code: 'BalanceUnreadable',
+        message: "the vault's account of it is frozen by its issuer",
+        retryable: false,
+      });
+    }
+    // the steps after it did not wait for it, and the order is done once they are
+    const done = await read(a, order, frozen);
+    expect(latest.legs.filter((l) => l.status === 'confirmed')).toHaveLength(order.legs.length - 1);
+    expect(done.status).toBe('done');
+    expect(done.legs.filter((l) => l.status === 'skipped').map((l) => l.id)).toEqual([leg.id]);
+    const after = await vaultOf(a, 'solana');
+    expect(BigInt(after.cash.raw)).toBe(0n);
+    expect(after.positions.find((p) => p.asset === stuck)?.raw).toBe(
+      vault.positions.find((p) => p.asset === stuck)?.raw,
+    );
   });
 });

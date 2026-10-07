@@ -19,6 +19,7 @@ import {
   type IntentRequest,
   type Leg,
   type Order,
+  type PersonWithdrawal,
   type Principal,
   type Provenance,
   type Shelf,
@@ -331,6 +332,79 @@ export type PersonPlan = {
 
 /** The most plans one answer lists. */
 export const PERSON_PLANS = { plans: 50 } as const;
+
+/** How many withdrawals `listPersonWithdrawals` answers with: the newest. */
+const PERSON_WITHDRAWALS = 50;
+
+/**
+ * The person's withdrawals, newest first, at most fifty: each with the vault it took from and its
+ * steps that take tokens out, where each stands and its transaction. An order is theirs by the
+ * wallets of the verified token, every address it names, as on its own route. The portfolio counts
+ * what was taken out from these, on any device: nothing of it is kept in a browser alone.
+ */
+export async function listPersonWithdrawals(
+  db: Db,
+  principal: Principal,
+): Promise<PersonWithdrawal[]> {
+  const addresses = (family: 'solana' | 'evm') =>
+    principal.wallets.filter((w) => w.family === family).map((w) => w.address);
+  const [solana, evm] = [addresses('solana'), addresses('evm')];
+  const owned = [
+    ...(solana.length ? [inArray(orders.ownerSolana, solana)] : []),
+    ...(evm.length ? [inArray(orders.ownerEvm, evm)] : []),
+  ];
+  if (!owned.length) return [];
+  const rows = (
+    await db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.type, 'withdraw'), or(...owned)))
+      .orderBy(desc(orders.createdAt))
+      .limit(PERSON_WITHDRAWALS)
+  ).filter(
+    (o) =>
+      (o.ownerSolana === null || solana.includes(o.ownerSolana)) &&
+      (o.ownerEvm === null || evm.includes(o.ownerEvm)),
+  );
+  if (!rows.length) return [];
+  const legRows = await db
+    .select()
+    .from(legs)
+    .where(
+      and(
+        eq(legs.kind, 'withdraw'),
+        inArray(
+          legs.orderId,
+          rows.map((o) => o.id),
+        ),
+      ),
+    )
+    .orderBy(asc(legs.seq));
+  return rows.flatMap((o) => {
+    const steps = legRows.filter((l) => l.orderId === o.id);
+    const vault = o.request.type === 'withdraw' ? o.request.vaults[0] : undefined;
+    const chain = steps[0]?.chainId;
+    if (!vault || !chain) return [];
+    return [
+      {
+        orderId: o.id,
+        createdAt: o.createdAt.toISOString(),
+        chain,
+        vault,
+        status: o.status,
+        steps: steps.map((l) => ({
+          legId: l.id,
+          status: l.status,
+          txId: l.txId,
+          explorerUrl: l.explorerUrl,
+          at: l.updatedAt.toISOString(),
+          provenance: l.provenance,
+          withdrawals: l.withdrawals ?? [],
+        })),
+      },
+    ];
+  });
+}
 
 /**
  * Every plan of a person's, page after page (`listPersonPlans`): what joins each of their vaults to
@@ -789,6 +863,17 @@ export async function recordBuild(
 /** Stores a refused build on the leg. The leg keeps its status: nothing was built and nothing failed onchain. */
 export async function recordRefusal(db: Db, legId: string, error: Leg['error']): Promise<void> {
   await db.update(legs).set({ error, updatedAt: new Date() }).where(eq(legs.id, legId));
+}
+
+/**
+ * A step that cannot be built is skipped, with the reason: the order's later steps no longer wait for
+ * it, and the order is done once the others are. Only a step nothing was sent for.
+ */
+export async function recordSkipped(db: Db, legId: string, error: Leg['error']): Promise<void> {
+  await db
+    .update(legs)
+    .set({ status: 'skipped', error, updatedAt: new Date() })
+    .where(and(eq(legs.id, legId), inArray(legs.status, ['planned', 'built', 'expired'])));
 }
 
 export type Outcome = {

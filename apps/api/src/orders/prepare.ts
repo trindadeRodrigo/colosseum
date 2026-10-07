@@ -630,7 +630,6 @@ export async function prepareOrder(req: IntentRequest, ctx: PrepareContext): Pro
         plan.steps,
         [],
         plan.entry.provenance,
-        plan.warnings,
       ),
       request: req,
     };

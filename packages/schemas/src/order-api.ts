@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { BasketCard, BasketSheet, Verdict } from './basket-sheet';
 import { BasketTx } from './basket-tx';
-import { ChainId } from './chain';
+import { Address, ChainId } from './chain';
 import { Provenance } from './enums';
 import { ChainMode } from './flags';
-import { Attempt, ConsentKind, OrderBase } from './order';
+import { Attempt, ConsentKind, LegStatus, LegWithdrawal, OrderBase } from './order';
 import { Price, VaultName, VaultView } from './vault';
 
 // The bodies of the order routes (DESIGN-VAULT 3.3), named once so the API, the SDK and the web share
@@ -68,6 +68,35 @@ export const PersonPlansQuery = z.object({
 });
 export type PersonPlansQuery = z.infer<typeof PersonPlansQuery>;
 export type PersonPlansResponse = z.infer<typeof PersonPlansResponse>;
+
+/**
+ * One withdrawal of the signed-in person, as `GET /v1/me/withdrawals` lists it: the vault it took
+ * from, and each step with what it took out, where it stands and its transaction.
+ */
+export const PersonWithdrawal = z.object({
+  orderId: z.string().uuid(),
+  createdAt: z.string(),
+  chain: ChainId,
+  vault: Address,
+  status: OrderBase.shape.status,
+  steps: z.array(
+    z.object({
+      legId: z.string().uuid(),
+      status: LegStatus,
+      txId: z.string().nullable(),
+      explorerUrl: z.string().nullable(),
+      /** When the step last changed: when it confirmed, for one that has. */
+      at: z.string(),
+      provenance: Provenance,
+      withdrawals: z.array(LegWithdrawal),
+    }),
+  ),
+});
+export type PersonWithdrawal = z.infer<typeof PersonWithdrawal>;
+
+/** The person's withdrawals, newest first, at most fifty. */
+export const PersonWithdrawalsResponse = z.object({ withdrawals: z.array(PersonWithdrawal) });
+export type PersonWithdrawalsResponse = z.infer<typeof PersonWithdrawalsResponse>;
 
 /** The path of GET /v1/orders/{id}. */
 export const OrderRouteParams = z.object({ id: z.uuid() });
