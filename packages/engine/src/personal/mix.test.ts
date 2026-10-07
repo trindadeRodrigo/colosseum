@@ -893,7 +893,8 @@ describe('a cent of rounding is not a limit', () => {
     ]);
     // Shares that come to whole cents leave nothing over, and the plan has no cash line.
     expect(at(1000).lines.map((l) => l.assetId)).toEqual(['robinhood:spy', 'robinhood:sgov']);
-  });
+    // 303 plans made and measured: about four seconds on a busy machine, past the default limit.
+  }, 60_000);
 
   it('whatever the cents of the amount, stocks sized at their issuer’s cap spill nothing', () => {
     // 50% with one issuer at low risk, 70% at medium: the share is the cap. Amounts no ceiling binds
