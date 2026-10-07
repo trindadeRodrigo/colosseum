@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
+import { inTheme } from './theme';
 
 // Bearing's analytics end to end (WEB-BEARING): the five pages and the methodology, against the e2e
 // stub, whose /risk routes answer from Rodrigo's recording of the risk API (tests/e2e/stub-risk.ts,
@@ -25,12 +26,7 @@ async function open(page: Page, path: string) {
 
 async function check(page: Page, name: string) {
   for (const theme of ['light', 'dark'] as const) {
-    await page.evaluate((t) => {
-      const html = document.documentElement;
-      html.classList.remove('light', 'dark', 'tf-auto');
-      html.classList.add(t);
-    }, theme);
-    await page.waitForTimeout(600);
+    await inTheme(page, theme);
     const result = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
       .analyze();

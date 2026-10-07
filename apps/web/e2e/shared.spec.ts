@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
 import { readyToInvest } from './invest';
+import { inTheme } from './theme';
 
 // Shared portfolios end to end in a browser, on the mock chain (WEB-4): sign in with the throwaway
 // wallet, publish a portfolio through the form, review it and sign it, find it on the shelf, open its
@@ -24,12 +25,7 @@ const REFERENCE = new URL('../../../.design/branding/working-brand/patterns/', i
 
 async function check(page: Page, name: string) {
   for (const theme of ['light', 'dark'] as const) {
-    await page.evaluate((t) => {
-      const html = document.documentElement;
-      html.classList.remove('light', 'dark', 'tf-auto');
-      html.classList.add(t);
-    }, theme);
-    await page.waitForTimeout(600);
+    await inTheme(page, theme);
     const result = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
       .analyze();

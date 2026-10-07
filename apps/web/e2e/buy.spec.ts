@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
 import { readyToInvest } from './invest';
+import { inTheme } from './theme';
 
 // A person's buy, end to end in a browser, on the mock chain: sign in with the throwaway wallet, read a
 // goal, build the plan, look at it, buy it, review every step and sign. The order screen's executor
@@ -28,17 +29,8 @@ const REFERENCE = new URL('../../../.design/branding/working-brand/patterns/', i
  * screenshot of each theme at 375 px and at 1280 px to set beside the guide's.
  */
 async function check(page: Page, name: string) {
-  // Colours ease from one theme to the other: with easing off, axe reads the theme it was given.
-  await page.addStyleTag({
-    content: '*,*::before,*::after{transition:none!important;animation:none!important}',
-  });
   for (const theme of ['light', 'dark'] as const) {
-    await page.evaluate((t) => {
-      const html = document.documentElement;
-      html.classList.remove('light', 'dark', 'tf-auto');
-      html.classList.add(t);
-    }, theme);
-    await page.waitForTimeout(100);
+    await inTheme(page, theme);
     const result = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
       .analyze();
@@ -121,12 +113,7 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
   );
   await expect(words.getByRole('heading', { level: 2 })).toHaveText(en.landing.closing.title);
   for (const theme of ['light', 'dark'] as const) {
-    await page.evaluate((t) => {
-      const html = document.documentElement;
-      html.classList.remove('light', 'dark', 'tf-auto');
-      html.classList.add(t);
-    }, theme);
-    await page.waitForTimeout(100);
+    await inTheme(page, theme);
     const read = await new AxeBuilder({ page })
       .include('#updates [data-ui="closing-words"]')
       .withRules(['color-contrast'])

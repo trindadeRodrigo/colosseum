@@ -236,6 +236,24 @@ export function recallOrders(userId: string | null): OrderRecord[] {
 }
 
 /**
+ * Forgets every order record in this browser, whoever it was kept for: "Sign out" pressed while the
+ * sign-in service could not say who is signed in (AccountProvider, `leave`). The orders stay on the
+ * server; what was signed for a step is kept apart, as below.
+ */
+export function forgetEveryOrder(): void {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (key?.startsWith('tf-order:')) keys.push(key);
+    }
+    for (const key of keys) window.localStorage.removeItem(key);
+  } catch {
+    // Nothing kept, nothing to forget.
+  }
+}
+
+/**
  * Forgets the order records this browser kept for a person: they signed out, or another person signed
  * in. The orders stay on the server. What was signed for a step is kept apart (run-order.ts) and is
  * not touched: it is what stops a step being signed twice. The trust acceptance stays too: it holds
