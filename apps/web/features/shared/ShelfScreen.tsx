@@ -95,6 +95,15 @@ export function ShelfScreen() {
             {t.shared.shelf.publish}
           </Link>
         )}
+        {/* Where publishing is not built, the shelf says so: a missing link explains nothing. */}
+        {person.kind === 'ready' && !person.publishable && chainName && (
+          <p
+            data-ui="no-publish"
+            className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground"
+          >
+            {t.shared.shelf.noPublish(chainName)}
+          </p>
+        )}
       </header>
 
       {load.kind === 'loading' ? (

@@ -21,7 +21,7 @@ import { usePortfolio } from './use-portfolio';
 import { useVaultHistory } from './use-vault-history';
 import { VaultGoalCard } from './VaultGoalCard';
 import { PlanParts, VaultPanel } from './VaultPanel';
-import { goalOfVault, putInto } from './vault-goal';
+import { familyOfVault, goalOfVault, putInto } from './vault-goal';
 
 // The monitor (/monitor): the person's vaults, read from the API each time the page opens (GET
 // /v1/portfolio). One serif line, then the chain, then a panel per vault with its chain's badge, then
@@ -53,7 +53,14 @@ export function MonitorScreen() {
   const vaults = chains.flatMap((entry) => entry.vaults);
   // The chains the person holds a vault on. On one, the page is that chain's; on more, it is grouped.
   const held = chains.filter((entry) => entry.vaults.length > 0);
-  const grouped = held.length > 1;
+  // The chain the bar is on was read and holds no vault, while another does: the page says so first,
+  // and names the chain of each vault below, so the bar and the page agree (the flow audit, 36).
+  const emptyHere =
+    outcome?.current === 'read' &&
+    chain !== null &&
+    held.length > 0 &&
+    !held.some((entry) => entry.chain === chain);
+  const grouped = held.length > 1 || emptyHere;
   const read = held.length === 1 ? held[0] : chains[0];
   const shownChain = read?.chain ?? chain;
   const nameOf = (id: ChainId) => port.network(id)?.name ?? t.chain.names[id];
@@ -67,6 +74,12 @@ export function MonitorScreen() {
       words.group.method(entry.vaults.length, nameOf(entry.chain)),
     );
 
+  // The answer has nothing of the chain the bar is on. "No wallet of this sign-in is on <chain>" is
+  // said only where there is none: where the account lists a wallet there, the chain was simply not
+  // read this time, and the page says that (the flow audit, finding 37).
+  const notHeld = outcome?.current === 'not-held' && chain !== null;
+  const hasWallet = account.status === 'ready' && chain !== null && account.options.includes(chain);
+
   /** One vault: his guide's "Goal card and plan" side by side, then what the vault holds. */
   const vaultBlock = (entry: PortfolioChain, vault: Vault) => (
     <div key={vault.address} data-ui="vault" className="flex flex-col gap-6">
@@ -76,6 +89,7 @@ export function MonitorScreen() {
           vault={vault}
           joined={goalOfVault(vault, history.records)}
           putIn={putInto(vault, history.records, history.deposited)}
+          followed={familyOfVault(vault, history.records)}
         />
         <PlanParts vault={vault} />
       </div>
@@ -168,7 +182,7 @@ export function MonitorScreen() {
         // Each chain that could not be read says so; the ones that were read are shown all the same.
         body = (
           <>
-            {(state.outcome.unavailable.length > 0 || state.outcome.current === 'not-held') && (
+            {(state.outcome.unavailable.length > 0 || notHeld) && (
               <ul data-ui="chains-out" className="flex flex-col gap-1.5">
                 {state.outcome.unavailable.map((u) => (
                   <li key={u.chain} data-chain={u.chain}>
@@ -179,9 +193,11 @@ export function MonitorScreen() {
                     </Status>
                   </li>
                 ))}
-                {state.outcome.current === 'not-held' && chain && (
+                {notHeld && chain && (
                   <li data-chain={chain}>
-                    <Status status="watch">{words.notHeld(nameOf(chain))}</Status>
+                    <Status status="watch">
+                      {(hasWallet ? words.chainOut : words.notHeld)(nameOf(chain))}
+                    </Status>
                   </li>
                 )}
               </ul>
@@ -200,7 +216,15 @@ export function MonitorScreen() {
               )
             ) : vaults.length === 0 ? null : grouped ? (
               <>
-                <AcrossChains totals={held.map(totalOf)} />
+                {emptyHere && (
+                  <p data-ui="chain-empty" data-chain={chain ?? undefined} className="text-body">
+                    {words.empty(chainName)}{' '}
+                    <Link href="/goal" className={link}>
+                      {words.startGoal}
+                    </Link>
+                  </p>
+                )}
+                {held.length > 1 && <AcrossChains totals={held.map(totalOf)} />}
                 {held.map(chainGroup)}
               </>
             ) : (

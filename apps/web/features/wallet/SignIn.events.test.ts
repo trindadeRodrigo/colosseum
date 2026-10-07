@@ -116,6 +116,10 @@ describe('the sign-in panel: two ways in, one button each', () => {
       const create = find(find(host, '[data-ui="create-new-passkey"]'), 'button');
       expect(create.getAttribute('data-variant')).toBe('secondary');
       expect(create.textContent).toContain(en.passkey.createNew);
+      // and what a new passkey is, said before one is made by mistake: a new, empty wallet
+      expect(find(host, '[data-ui="create-new-passkey"]').textContent).toContain(
+        en.passkey.createNewNote,
+      );
       expect(host.querySelectorAll('[data-variant="primary"]')).toHaveLength(1);
       await click(create);
       expect(signIn.mock.calls).toEqual([['passkey'], ['passkey', { create: true }]]);
@@ -344,7 +348,7 @@ describe('the sign-in panel: every failure is a sentence a person can act on', (
     ['wallet sign-in is not enabled for the app', THROWN.off, 'wallet', 'walletOff'],
     ['the provider asks for fewer requests', THROWN.tooMany, 'passkey', 'tooMany'],
     ['the provider cannot be reached', THROWN.offline, 'wallet', 'offline'],
-    ['something nobody foresaw is thrown', THROWN.strange, 'passkey', 'other'],
+    ['something nobody foresaw is thrown', THROWN.strange, 'passkey', 'passkeyNotAccepted'],
   ];
 
   describe.each(['en', 'pt'] as const)('in %s', (lang) => {

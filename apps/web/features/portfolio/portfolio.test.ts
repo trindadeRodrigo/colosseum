@@ -8,6 +8,7 @@ import { dollars, drift, share, tokens, utc } from './figures';
 import {
   addDecimals,
   chainTotal,
+  holdingsOf,
   PORTFOLIO_PATH,
   positionValueSource,
   readPortfolio,
@@ -272,13 +273,34 @@ describe('how the figures are written', () => {
     expect(dollars('pt', '1040').replace(/\s/g, ' ')).toBe('US$ 1.040,00');
   });
 
-  it('as shares and drifts with two decimals, and a true minus', () => {
-    expect(share('en', 6346)).toBe('63.46%');
-    expect(drift('en', 346)).toBe('+3.46%');
-    expect(drift('en', -250)).toBe('−2.50%');
+  it('as shares and differences with one decimal at most, and a true minus', () => {
+    expect(share('en', 6346)).toBe('63.5%');
+    // a plan's round share is said round: 24.99% beside 25.00% read as noise
+    expect(share('en', 2500)).toBe('25%');
+    expect(share('en', 2499)).toBe('25%');
+    expect(drift('en', 346)).toBe('+3.5%');
+    expect(drift('en', -250)).toBe('−2.5%');
     expect(drift('en', -250)).not.toContain('-');
-    expect(drift('en', 0)).toBe('0.00%');
-    expect(drift('pt', -250).replace(/\s/g, ' ')).toBe('−2,50%');
+    expect(drift('en', 0)).toBe('0%');
+    expect(drift('pt', -250).replace(/\s/g, ' ')).toBe('−2,5%');
+  });
+
+  it('counts cash among what a vault holds, so the shares add up to the whole', () => {
+    const rows = holdingsOf(vault());
+    expect(rows.map((row) => [row.asset, row.weightBps, row.targetBps, row.driftBps])).toEqual([
+      ['solana:usdy', 6346, 6000, 346],
+      ['solana:paxg', 1250, 1500, -250],
+      ['solana:usdc', 2404, 2500, -96],
+    ]);
+    expect(rows.reduce((sum, row) => sum + row.weightBps, 0)).toBe(10_000);
+    expect(rows.reduce((sum, row) => sum + row.targetBps, 0)).toBe(10_000);
+    expect(rows.at(-1)).toMatchObject({ cash: true, valueUsd: vault().cash.display });
+    // a vault with nothing in it has no share to give its cash, and cash is never counted twice
+    expect(holdingsOf(vault({ positions: [], valueUsd: '0' })).at(-1)?.weightBps).toBe(0);
+    const [usdy] = vault().positions;
+    if (!usdy) throw new Error('fixture');
+    const cashHeld = vault({ positions: [{ ...usdy, asset: vault().cash.asset }] });
+    expect(holdingsOf(cashHeld)).toHaveLength(1);
   });
 
   it('as token amounts, and instants in UTC that say so', () => {

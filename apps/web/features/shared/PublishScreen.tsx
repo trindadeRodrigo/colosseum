@@ -200,6 +200,8 @@ export function PublishScreen() {
     ...(!person.signable || person.off ? [t.shared.family.chainNotReady(chainName)] : []),
     ...(!owner ? [t.buy.blocked.wallet] : []),
   ];
+  const ofTheForm = new Set<string>(problems.map((k) => p.problems[k]));
+  const shown = tried ? blocked : blocked.filter((reason) => !ofTheForm.has(reason));
   const locale = LOCALE[lang];
   const symbolOf = (id: string) => assets.find((a) => a.id === id)?.symbol ?? id;
 
@@ -379,7 +381,7 @@ export function PublishScreen() {
                       </Select>
                     )}
                   </Field>
-                  <Field label={`${p.weight} ${i + 1}`}>
+                  <Field label={p.weightOf(i + 1)}>
                     {(control) => (
                       <Input
                         {...control}
@@ -428,16 +430,18 @@ export function PublishScreen() {
             busy={placing}
             busyLabel={p.reviewing}
             disabled={(tried && blocked.length > 0) || existing.kind === 'reading'}
-            aria-describedby={blocked.length > 0 ? reasonId : undefined}
+            aria-describedby={shown.length > 0 ? reasonId : undefined}
           >
             {p.review}
           </Button>
-          {blocked.length > 0 && (
+          {/* What the form itself lacks is said once the person has tried to go on, not before
+              anything is typed; what stands in the way besides the form is said at once. */}
+          {shown.length > 0 && (
             <ul
               id={reasonId}
               className="flex max-w-(--tf-measure-body) flex-col gap-1 text-body-sm"
             >
-              {blocked.map((reason) => (
+              {shown.map((reason) => (
                 <li key={reason}>{reason}</li>
               ))}
             </ul>

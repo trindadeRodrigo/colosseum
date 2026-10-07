@@ -134,7 +134,9 @@ describe('the sentence each failure gets', () => {
     expect(says(new Error('TypeError: cannot read properties of undefined'), 'wallet')).toBe(
       'other',
     );
-    expect(says('a string', 'passkey-use')).toBe('other');
+    // a passkey that was offered and not taken, for no reason the provider names, says that
+    expect(says('a string', 'passkey-use')).toBe('passkeyNotAccepted');
+    expect(says('a string', 'passkey-create')).toBe('other');
     expect(says(null, 'wallet')).toBe('other');
   });
 });

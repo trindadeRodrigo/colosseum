@@ -1,6 +1,6 @@
 import type { OrderRecord, PlacedGoal } from '../order/order-record';
 import { basketOfPlan } from '../order/readiness';
-import type { Vault } from './portfolio';
+import type { Vault as PortfolioVault } from './portfolio';
 
 // Which goal a vault was bought for. The API's portfolio names a vault by its plan's number on chain
 // (`basketId`) and does not join it to the plan; this browser keeps, with each order it placed, the
@@ -8,6 +8,9 @@ import type { Vault } from './portfolio';
 // API's own rule (`basketOfPlan`), so a vault is joined to the newest order of its plan that kept a
 // goal. A vault bought from another browser, or before goals were kept, is joined to nothing, and the
 // screen says so: no target is made up for it.
+
+/** What joins a vault to an order: its chain and its plan's number. */
+type Vault = Pick<PortfolioVault, 'chain' | 'basketId'>;
 
 export type VaultGoal = { goal: PlacedGoal; record: OrderRecord };
 
@@ -24,6 +27,16 @@ export const ordersOfVault = (vault: Vault, records: readonly OrderRecord[]): Or
 export function goalOfVault(vault: Vault, records: readonly OrderRecord[]): VaultGoal | null {
   for (const record of ordersOfVault(vault, records))
     if (record.goal) return { goal: record.goal, record };
+  return null;
+}
+
+/**
+ * The shared portfolio the vault was bought from in this browser, by its address on the shelf: the
+ * newest order of the vault that bought one. Null when none did.
+ */
+export function familyOfVault(vault: Vault, records: readonly OrderRecord[]): string | null {
+  for (const record of ordersOfVault(vault, records))
+    if (record.terms?.kind === 'family') return record.terms.slug;
   return null;
 }
 

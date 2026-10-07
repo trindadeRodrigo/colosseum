@@ -1,39 +1,46 @@
 'use client';
 import { ChainId, type Price, type VaultResponse } from '@colosseum/schemas';
 import Link from 'next/link';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/Card';
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
+import { ExplorerLink } from '../../components/ui/ExplorerLink';
 import { PAGE_TITLE } from '../../components/ui/heading';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { pinSourceOfPrice } from '../../components/ui/price-source';
 import { SkeletonSummary } from '../../components/ui/Skeleton';
-import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { dollars } from '../goal/sheet';
-import { formatBps, tokenName } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
-import { vaultValueSource } from '../portfolio/portfolio';
-import { useApiFetch } from '../wallet/WalletProvider';
+import { displayName } from '../order/plain';
+import { explorerAddressUrlFor, onMock } from '../order/readiness';
+import { dollars, drift, share, tokens } from '../portfolio/figures';
+import { type HoldingRow, holdingsOf, vaultValueSource } from '../portfolio/portfolio';
+import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { readVault } from './shared-api';
 
 // A vault, read-only, for anybody (DESIGN-VAULT section 11, the public vault page): its owner, what it
-// follows, its value, and each position with its weight, target, drift and price, as its chain holds
-// it now (GET /v1/vaults/{chain}/{address}). Every price carries its pin (STYLE.md rule 1); a vault on
-// the mock or a test network carries the plate.
+// follows, its value, and what it holds, cash included, each with its share now, planned share, the
+// difference and its price, as its chain holds it now (GET /v1/vaults/{chain}/{address}). Its figures
+// are written as the portfolio writes them (features/portfolio/figures.ts), so the two pages agree to
+// the digit. Every price carries its pin (STYLE.md rule 1); a vault on the mock or a test network says
+// so in its card's line. It leads back to the portfolio, and to the chain's explorer where there is one.
 
 type Load = { kind: 'loading' } | { kind: 'read'; read: VaultResponse } | { kind: CallFailure };
-type Row = VaultResponse['vault']['positions'][number];
 
 export function VaultScreen({ chain, address }: { chain: string; address: string }) {
   const t = useT();
   const lang = useLang();
   const v = t.shared.vault;
   const apiFetch = useApiFetch();
+  const port = useWalletPort();
+  // The vault is read once for an address, and again only when asked: the reader is kept in a ref,
+  // so a change of the sign-in around it does not ask the server again (the flow audit, 35).
+  const fetcher = useRef(apiFetch);
+  fetcher.current = apiFetch;
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [round, setRound] = useState(0);
   const titleId = useId();
@@ -44,13 +51,13 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
     if (!known.success) return setLoad({ kind: 'no-plan' });
     let mine = true;
     setLoad({ kind: 'loading' });
-    readVault(apiFetch, known.data, address).then((read) => {
+    readVault(fetcher.current, known.data, address).then((read) => {
       if (mine) setLoad(read.kind === 'read' ? { kind: 'read', read: read.value } : read);
     });
     return () => {
       mine = false;
     };
-  }, [apiFetch, chain, address, round]);
+  }, [chain, address, round]);
 
   if (load.kind === 'loading')
     return (
@@ -74,15 +81,15 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
             </Button>
           </>
         )}
-        <Link href="/shelf" className={buttonClass({ variant: 'secondary' })}>
-          {t.shared.family.backToShelf}
+        <Link href="/monitor" className={buttonClass({ variant: 'secondary' })}>
+          {v.back}
         </Link>
       </section>
     );
 
   const { read } = load;
   const { vault } = read;
-  const locale = LOCALE[lang];
+  const explorer = explorerAddressUrlFor(read.chain, vault.address, onMock(port, read.chain));
   const priceOf = (asset: string): Price | undefined => read.prices.find((p) => p.asset === asset);
   const follows = vault.recipeOnchainId;
   return (
@@ -93,7 +100,20 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
           {v.title}
         </h1>
         <p className="max-w-(--tf-measure-body) text-body-lg">{v.lead(read.name)}</p>
-        <p className="break-all font-mono text-source text-muted-foreground">{vault.address}</p>
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 break-all font-mono text-source text-muted-foreground">
+          <span>{vault.address}</span>
+          {explorer && (
+            <ExplorerLink
+              signature={vault.address}
+              href={explorer}
+              explorer={t.chain.explorers[read.chain]}
+              labels={{ tx: t.shell.address, view: t.shell.viewOn(t.chain.explorers[read.chain]) }}
+            />
+          )}
+        </p>
+        <Link href="/monitor" className={buttonClass({ variant: 'link' })}>
+          {v.back}
+        </Link>
       </header>
 
       <Card
@@ -111,7 +131,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
               {/* The value stands on the prices and the read of the vault: its pin says so
                   (STYLE.md rule 1), as the monitor's does. */}
               <ProvenancePin
-                value={dollars(Number(vault.valueUsd), lang)}
+                value={dollars(lang, vault.valueUsd)}
                 obs={vaultValueSource(
                   { ...read, vaults: [vault] },
                   vault,
@@ -135,27 +155,25 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                 v.followsNothing
               )}
             </dd>
-            <dt className="text-muted-foreground">{v.cash}</dt>
-            <dd className="tabular-nums">
-              {vault.cash.display}{' '}
-              <span className="text-caption text-muted-foreground">
-                {tokenName(vault.cash.asset)}
-              </span>
-            </dd>
           </dl>
-          <DataTable<Row>
+          <DataTable<HoldingRow>
             caption={read.name}
             captionHidden
-            rows={vault.positions}
+            rows={holdingsOf(vault)}
             rowKey={(r) => r.asset}
             columns={[
               {
                 key: 'asset',
                 header: v.columns.asset,
                 rowHeader: true,
-                cell: (r) => tokenName(r.asset),
+                cell: (r) => displayName(r.asset, t.plan),
               },
-              { key: 'held', header: v.columns.held, numeric: true, cell: (r) => r.display },
+              {
+                key: 'held',
+                header: v.columns.held,
+                numeric: true,
+                cell: (r) => tokens(lang, r.display),
+              },
               {
                 key: 'price',
                 header: v.columns.price,
@@ -164,7 +182,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                   const price = priceOf(r.asset);
                   return price ? (
                     <ProvenancePin
-                      value={dollars(Number(price.usdPerToken), lang)}
+                      value={dollars(lang, price.usdPerToken)}
                       obs={pinSourceOfPrice(price)}
                       labels={t.pin}
                     />
@@ -177,20 +195,19 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                 key: 'weight',
                 header: v.columns.weight,
                 numeric: true,
-                cell: (r) => formatBps(r.weightBps, locale),
+                cell: (r) => share(lang, r.weightBps),
               },
               {
                 key: 'target',
                 header: v.columns.target,
                 numeric: true,
-                cell: (r) => formatBps(r.targetBps, locale),
+                cell: (r) => share(lang, r.targetBps),
               },
               {
                 key: 'drift',
                 header: v.columns.drift,
                 numeric: true,
-                cell: (r) =>
-                  `${r.driftBps < 0 ? '−' : r.driftBps > 0 ? '+' : ''}${formatBps(Math.abs(r.driftBps), locale)}`,
+                cell: (r) => drift(lang, r.driftBps),
               },
             ]}
           />

@@ -57,6 +57,8 @@ export const pt: Dictionary = {
       body: 'Você não precisa anotar frase de recuperação. Eu uso a chave de acesso que este aparelho guarda para este site. A carteira que criamos para você só abre com essa chave.',
       continue: 'Continuar com uma chave de acesso',
       createNew: 'Criar uma chave de acesso nova',
+      createNewNote:
+        'Uma chave de acesso nova abre uma conta nova, com uma carteira nova e vazia. Ela não abre a carteira que você tinha.',
       waiting: 'Aguardando sua chave de acesso…',
       making: 'Criando sua carteira…',
     },
@@ -88,6 +90,8 @@ export const pt: Dictionary = {
       passkeyNotUsed:
         'Nenhuma chave de acesso foi usada. Se você criou uma em outro aparelho, use esse aparelho ou escolha “usar um celular” na janela. É novo aqui? Crie uma chave de acesso: ela abre uma conta nova, com uma carteira nova e vazia.',
       passkeyUnknown: 'Não reconheço essa chave de acesso. Crie uma nova ou conecte uma carteira.',
+      passkeyNotAccepted:
+        'Nenhuma chave de acesso deste site foi aceita. Tente de novo com a chave que você criou aqui, no aparelho que a tem.',
       passkeyNotRegistered:
         'Essa chave de acesso não está registrada aqui. Escolha outra ou crie uma.',
       accountsFull:
@@ -378,7 +382,8 @@ export const pt: Dictionary = {
   portfolio: {
     chainOut: (chain: string) => `${chain} está indisponível agora.`,
     chainOff: (chain: string) => `${chain} está indisponível no nosso servidor por enquanto.`,
-    notHeld: (chain: string) => `${chain} não está nesta conta.`,
+    notHeld: (chain: string) =>
+      `Nenhuma carteira desta conta está na ${chain}, então nada é lido lá.`,
     title: (vaults: number) =>
       vaults > 1 ? 'O que seus cofres guardam.' : 'O que seu cofre guarda.',
     lead: 'Lido de cada rede onde seus planos ficam, cada vez que você abre esta página. Nada aqui assina ou move coisa alguma.',
@@ -427,22 +432,25 @@ export const pt: Dictionary = {
       on: 'Ativado',
       off: 'Desativado',
       lossUsed: 'Perdas do agente, últimos 7 dias',
-      holdings: 'Posições',
-      chips: { label: 'O cofre', address: 'endereço', version: 'versão', follow: 'seguir' },
+      holdings: 'O que você tem',
+      details: 'Detalhes',
+      version: 'Versão do portfólio que ele segue',
+      followsNothing: 'Ele não segue nenhum portfólio compartilhado: você define as fatias.',
+      openPage: 'Abrir a página deste cofre',
       parts: 'As partes, por peso',
       planTitle: (parts: number) =>
         parts === 1 ? 'Seu plano · 1 parte' : `Seu plano · ${parts} partes`,
       tooMany: 'Mais partes do que uma barra mostra: cada uma está na tabela abaixo.',
-      target: (share: string) => `alvo ${share}`,
+      target: (share: string) => `planejado ${share}`,
       onlyCash: 'Só caixa por enquanto: nada foi comprado para este cofre ainda.',
       columns: {
         asset: 'Ativo',
         amount: 'Quantidade',
         price: 'Preço',
         value: 'Valor',
-        weight: 'Peso',
-        target: 'Alvo',
-        drift: 'Desvio',
+        weight: 'Fatia agora',
+        target: 'Planejado',
+        drift: 'Diferença',
       },
       noPrice: 'sem preço',
       unpriced: (n: number) =>
@@ -461,10 +469,13 @@ export const pt: Dictionary = {
       builtShort: 'Abaixo da renda quando o plano foi montado',
       builtPaid: (paid: string, asked: string) =>
         `Quando este plano foi montado, ele pagava ${paid} por mês dos ${asked} que você pediu.`,
-      noStatus: 'Ainda sem situação: o motor não dá uma para um cofre',
+      due: (date: string) => `Data do objetivo: ${date}`,
       unknown: (chain: string) => `Seu cofre na ${chain}.`,
       notJoined:
-        'Não sei para qual objetivo este cofre foi comprado: a compra foi feita em outro navegador, ou antes de este guardar objetivos. O que ele guarda está abaixo.',
+        'Este navegador não tem registro do objetivo para o qual este cofre foi comprado. O que ele guarda está abaixo.',
+      follows: (name: string) => `Seu cofre segue ${name}.`,
+      followsShared: 'Ele segue um portfólio compartilhado. O que ele guarda está abaixo.',
+      seeShared: 'Ver esse portfólio',
       putIn: (amount: string) => `você colocou ${amount}`,
       seePlan: 'Ver seu plano',
       seeOrder: 'Ver a ordem',
@@ -802,6 +813,8 @@ export const pt: Dictionary = {
       empty: (chain: string) => `Nenhum portfólio foi compartilhado na ${chain} ainda.`,
       emptyAll: 'Nenhum portfólio foi compartilhado ainda.',
       publish: 'Publicar um portfólio',
+      noPublish: (chain: string) =>
+        `Publicar um portfólio só existe na Solana por enquanto, então não é oferecido na ${chain}.`,
       card: {
         by: (creator: string) => `por ${creator}`,
         platform: 'Da tenonfi',
@@ -913,7 +926,8 @@ export const pt: Dictionary = {
       title: 'Seus cofres',
       none: 'Você ainda não tem um cofre nesta rede. Compre este portfólio para abrir um que o segue.',
       following: 'Segue este portfólio',
-      notFollowing: 'Segue outra coisa',
+      notFollowing: 'Segue outro portfólio',
+      ownPlan: 'Guarda o seu próprio plano',
       followWith: 'Seguir com este cofre',
       followNote:
         'Seu cofre assume os pesos deste portfólio. Nada é negociado nesse passo: você rebalanceia depois, ou o operador faz isso com o seguir automático ativado.',
@@ -953,6 +967,7 @@ export const pt: Dictionary = {
       assetsHint: 'De 3 a 12 ativos, cada um de 2% a 50%, em passos de 0,5%, somando 100%.',
       asset: 'Ativo',
       weight: 'Peso, em %',
+      weightOf: (n: number) => `Peso do ativo ${n} (%)`,
       add: 'Incluir um ativo',
       remove: (asset: string) => `Tirar ${asset}`,
       total: (sum: string) => `Total: ${sum}`,
@@ -999,12 +1014,13 @@ export const pt: Dictionary = {
         asset: 'Ativo',
         held: 'Quantidade',
         price: 'Preço',
-        weight: 'Peso',
-        target: 'Alvo',
-        drift: 'Desvio',
+        weight: 'Fatia agora',
+        target: 'Planejado',
+        drift: 'Diferença',
       },
       on: 'Ativado',
       off: 'Desativado',
+      back: 'Voltar ao seu portfólio',
     },
   },
 

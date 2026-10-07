@@ -8,7 +8,9 @@ import { parse } from '../../components/ui/test/html';
 import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
-import { recallOrder } from '../order/order-record';
+import { keepOrder, recallOrder } from '../order/order-record';
+import { basketOfPlan } from '../order/readiness';
+import { PLAN_ID, planOn, recordOf } from '../order/test/fixtures';
 import { EMBEDDED, fakePort, json, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
@@ -119,6 +121,22 @@ beforeEach(() => {
 });
 afterEach(unmountAll);
 
+describe('the shelf, where publishing is not built', () => {
+  it('says why it offers no publishing on Robinhood Chain, and offers it on Solana', async () => {
+    api({ family: null, chain: 'robinhood' });
+    const host = await show(createElement(ShelfScreen));
+    expect(find(host, '[data-ui="no-publish"]').textContent).toBe(
+      en.shared.shelf.noPublish('Robinhood Chain'),
+    );
+    expect(host.querySelector('a[href="/publish"]')).toBeNull();
+    await unmountAll();
+    api({ family: null });
+    const solana = await show(createElement(ShelfScreen));
+    expect(solana.querySelector('[data-ui="no-publish"]')).toBeNull();
+    expect(solana.querySelector('a[href="/publish"]')).not.toBeNull();
+  });
+});
+
 describe('the shelf', () => {
   it('asks for the person’s chain only, and shows a creator’s words as text, never markup', async () => {
     const calls = api({
@@ -187,6 +205,44 @@ describe('a portfolio’s page (gate GOLD-ONE-TAP)', () => {
     expect(find(host, '[data-ui="auto-follow-offer"]').getAttribute('data-offered')).toBe('true');
     expect(button(host, en.shared.vaults.autoOn)).toBeDefined();
     expect(host.textContent).not.toContain(en.shared.vaults.oneTap);
+  });
+
+  it('names a vault bought from a goal by that goal, and says it holds the person’s own plan', async () => {
+    const plan = planOn();
+    keepOrder(
+      recordOf('solana', {
+        userId: USER,
+        amountUsd: 40_000,
+        goal: {
+          sheet: plan.proposal.sheet,
+          card: plan.proposal.card,
+          verdict: null,
+          placedAt: '2026-10-01T00:00:00Z',
+        },
+      }),
+    );
+    api({
+      family: familyOf(FAMILY_ID),
+      vaults: [
+        vaultOf({ address: MY_VAULT, basketId: basketOfPlan(PLAN_ID), recipeOnchainId: null }),
+      ],
+    });
+    const host = await show(createElement(FamilyScreen, { slug: SLUG }));
+    const mine = find(host, '[data-ui="my-vault"]');
+    expect(find(mine, 'a').textContent).toBe('Grow $40,000 over 36 months.');
+    expect(mine.textContent).toContain(en.shared.vaults.ownPlan);
+    expect(mine.textContent).not.toContain('something else');
+  });
+
+  it('keeps the creator’s address and the routine check behind Details, and where the weights come from in view', async () => {
+    api({ family: familyOf(FAMILY_ID) });
+    const host = await show(createElement(FamilyScreen, { slug: SLUG }));
+    const checks = find<HTMLDetailsElement>(host, '[data-ui="family-checks"]');
+    expect(checks.open).toBe(false);
+    expect(checks.querySelector('[data-ui="creator"]')).not.toBeNull();
+    // the word on where the version and weights come from is not folded away
+    const source = find(host, '[data-ui="source-mark"]');
+    expect(checks.contains(source)).toBe(false);
   });
 
   it('offers no switch on one that holds an asset with no oracle, says why, and asks for the one tap', async () => {
@@ -364,6 +420,9 @@ describe('the publish form', () => {
   it('works out the family id from the address, holds the limits, and keeps its own text', async () => {
     const calls = api({ family: null, order: () => publishOrder() });
     const host = await show(createElement(PublishScreen));
+    // an empty form says nothing is wrong with it: the person has typed nothing yet
+    for (const problem of Object.values(en.shared.publish.problems))
+      expect(host.textContent, problem).not.toContain(problem);
     const field = (label: string) =>
       find<HTMLInputElement>(
         host,
@@ -377,13 +436,13 @@ describe('the publish form', () => {
     // the id the form shows is its own: familyIdOf(slug), never the server's
     expect(find(host, '[data-ui="family-id"]').textContent).toBe(FAMILY_ID);
     // weights that do not add up to 100% are refused before anything is sent
-    await type(field(`${en.shared.publish.weight} 1`), '50');
+    await type(field(en.shared.publish.weightOf(1)), '50');
     await click(button(host, en.shared.publish.review) as HTMLElement);
     await settle(50);
     expect(host.textContent).toContain(en.shared.publish.problems.sum);
     expect(calls.some((c) => c.path === '/v1/orders')).toBe(false);
 
-    await type(field(`${en.shared.publish.weight} 1`), '40');
+    await type(field(en.shared.publish.weightOf(1)), '40');
     await click(button(host, en.shared.publish.review) as HTMLElement);
     await settle(50);
     const body = calls.find((c) => c.path === '/v1/orders')?.body;
@@ -499,6 +558,29 @@ describe('a vault’s public page', () => {
     // no priced holding: the value stands on the chain's read of the vault, at its time
     const line = find(host, '[data-ui="pin-source"]').textContent ?? '';
     for (const part of ['Solana', en.portfolio.vault.valueMethod]) expect(line).toContain(part);
+    // written as the portfolio writes it: cents in full
+    expect(figure?.textContent).toContain('$1,234.50');
+  });
+
+  it('asks for the vault once, and for a vault that is not there says so with the way back', async () => {
+    let asked = 0;
+    portStore.setApi(async (path) => {
+      if (path === '/v1/me') return json(person);
+      if (path.startsWith('/v1/vaults/')) asked += 1;
+      return json({ error: 'not found' }, 404);
+    });
+    const host = await show(createElement(VaultScreen, { chain: 'solana', address: VAULT }));
+    await settle();
+    expect(find(host, 'h1').textContent).toBe(en.shared.vault.missing);
+    // a change of the sign-in around the page does not ask again
+    portStore.set(signedInPort(EMBEDDED, { userId: USER }));
+    portStore.setApi(async (path) => {
+      if (path.startsWith('/v1/vaults/')) asked += 1;
+      return json({ error: 'not found' }, 404);
+    });
+    for (let i = 0; i < 3; i += 1) await settle(50);
+    expect(asked).toBe(1);
+    expect(find(host, 'a').getAttribute('href')).toBe('/monitor');
   });
 });
 
@@ -557,7 +639,16 @@ describe('the chain, on the shelf and on a vault’s page', () => {
       });
       const host = await show(createElement(VaultScreen, { chain, address }));
       expect(badges(host)).toEqual([chain]);
-      expect(host.textContent).toContain(`5 ${name}`);
+      // cash is a holding like any other, named as the plan and the portfolio name it
+      const rows = [...find(host, 'table').querySelectorAll('tbody tr')].map((tr) =>
+        [...tr.children].map((cell) => cell.textContent?.trim()),
+      );
+      expect(rows.at(-1)?.slice(0, 2)).toEqual([`Cash (${name})`, '5']);
+      // and the page leads back to the portfolio
+      const back = [...host.querySelectorAll('a')].find(
+        (a) => a.textContent === en.shared.vault.back,
+      );
+      expect(back?.getAttribute('href')).toBe('/monitor');
       if (chain === 'robinhood') expect(host.textContent).not.toMatch(/usdc/i);
     },
   );

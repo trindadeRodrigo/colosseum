@@ -69,6 +69,9 @@ export const en = {
       continue: 'Continue with a passkey',
       /** After the prompt to use one was closed: makes one, and with it a new account. */
       createNew: 'Create a new passkey',
+      /** Under that button: what a new passkey is, before one is made by mistake. */
+      createNewNote:
+        'A new passkey opens a new account with a new, empty wallet. It doesn’t open the wallet you had.',
       waiting: 'Waiting for your passkey…',
       making: 'Making your wallet…',
     },
@@ -108,6 +111,8 @@ export const en = {
       passkeyNotUsed:
         'No passkey was used. If you made one on another device, use that device or choose “use a phone” in the prompt. New here? Create a passkey: it opens a new account with a new, empty wallet.',
       passkeyUnknown: 'I don’t know that passkey. Create a new one, or connect a wallet.',
+      passkeyNotAccepted:
+        'No passkey for this site was accepted. Try again with the passkey you made here, on the device that has it.',
       /** Privy's `passkey_not_registered`: the passkey picked was made for another site or app. */
       passkeyNotRegistered: 'That passkey isn’t registered here. Pick another, or create one.',
       /** Privy's `max_accounts_reached`. */
@@ -429,7 +434,8 @@ export const en = {
     /** A chain of the person's that this server has switched off: asking again will not help. */
     chainOff: (chain: string) => `${chain} is switched off on our server for now.`,
     /** The person's current chain, which no wallet of this sign-in signs on. */
-    notHeld: (chain: string) => `${chain} isn’t held in this sign-in.`,
+    notHeld: (chain: string) =>
+      `No wallet of this sign-in is on ${chain}, so nothing is read there.`,
     title: (vaults: number): string =>
       vaults > 1 ? 'What your vaults hold.' : 'What your vault holds.',
     lead: 'Read from each chain your plans live on, each time you open this page. Nothing here signs or moves anything.',
@@ -484,23 +490,26 @@ export const en = {
       off: 'Off',
       /** The vault's weekly loss counter, as a share of its value. */
       lossUsed: 'Keeper losses, last 7 days',
-      holdings: 'Holdings',
-      /** The vault's facts as chips, his case's limits line. */
-      chips: { label: 'The vault', address: 'address', version: 'version', follow: 'auto-follow' },
+      holdings: 'What you hold',
+      /** The fold over the vault's own facts: its address, the version it follows, auto-follow. */
+      details: 'Details',
+      version: 'Version of the portfolio it follows',
+      followsNothing: 'It follows no shared portfolio: you set its shares.',
+      openPage: 'Open this vault’s page',
       parts: 'Its parts, by weight',
       planTitle: (parts: number) =>
         parts === 1 ? 'Your plan · 1 part' : `Your plan · ${parts} parts`,
       tooMany: 'More parts than a bar can show: each one is in the table below.',
-      target: (share: string) => `target ${share}`,
+      target: (share: string) => `planned ${share}`,
       onlyCash: 'Only cash so far: nothing has been bought into this vault yet.',
       columns: {
         asset: 'Asset',
         amount: 'Amount',
         price: 'Price',
         value: 'Value',
-        weight: 'Weight',
-        target: 'Target',
-        drift: 'Drift',
+        weight: 'Share now',
+        target: 'Planned',
+        drift: 'Difference',
       },
       noPrice: 'no price',
       unpriced: (n: number) =>
@@ -523,10 +532,15 @@ export const en = {
       /** The income plan's verdict in figures: what it paid a month of what was asked. */
       builtPaid: (paid: string, asked: string) =>
         `When this plan was built, it paid ${paid} a month of the ${asked} you asked for.`,
-      noStatus: 'No status yet: the engine gives none for a vault',
+      /** Where no status is known, the one plain line: when the goal is due. */
+      due: (date: string) => `Goal date: ${date}`,
       unknown: (chain: string) => `Your vault on ${chain}.`,
       notJoined:
-        'I can’t tell which goal this vault was bought for: it was bought in another browser, or before this one kept goals. What it holds is below.',
+        'This browser has no record of the goal this vault was bought for. What it holds is below.',
+      /** A vault bought from a shared portfolio: what it follows, by name where this browser knows it. */
+      follows: (name: string) => `Your vault follows ${name}.`,
+      followsShared: 'It follows a shared portfolio. What it holds is below.',
+      seeShared: 'See that portfolio',
       putIn: (amount: string) => `you put in ${amount}`,
       seePlan: 'See your plan',
       seeOrder: 'See the order',
@@ -876,6 +890,9 @@ export const en = {
       empty: (chain: string) => `No portfolio is shared on ${chain} yet.`,
       emptyAll: 'No portfolio is shared yet.',
       publish: 'Publish a portfolio',
+      /** Why the shelf offers no publishing on a chain where it is not built. */
+      noPublish: (chain: string) =>
+        `Publishing a portfolio is built on Solana only for now, so it isn’t offered on ${chain}.`,
       card: {
         by: (creator: string) => `by ${creator}`,
         platform: 'From tenonfi',
@@ -986,7 +1003,9 @@ export const en = {
       title: 'Your vaults',
       none: 'You have no vault on this chain yet. Buy this portfolio to open one that follows it.',
       following: 'Follows this portfolio',
-      notFollowing: 'Follows something else',
+      notFollowing: 'Follows another portfolio',
+      /** A vault bought from a goal: it follows no shared portfolio. */
+      ownPlan: 'Holds your own plan',
       followWith: 'Follow with this vault',
       followNote:
         'Your vault takes this portfolio’s weights. Nothing is traded in that step: you rebalance after, or the keeper does with auto-follow on.',
@@ -1025,6 +1044,8 @@ export const en = {
       assetsHint: '3 to 12 assets, each from 2% to 50%, in steps of 0.5%, adding up to 100%.',
       asset: 'Asset',
       weight: 'Weight, in %',
+      /** The label of one row's weight: "Weight of asset 1 (%)". */
+      weightOf: (n: number) => `Weight of asset ${n} (%)`,
       add: 'Add an asset',
       remove: (asset: string) => `Remove ${asset}`,
       total: (sum: string) => `Total: ${sum}`,
@@ -1068,14 +1089,15 @@ export const en = {
       cash: 'Cash',
       columns: {
         asset: 'Asset',
-        held: 'Held',
+        held: 'Amount',
         price: 'Price',
-        weight: 'Weight',
-        target: 'Target',
-        drift: 'Drift',
+        weight: 'Share now',
+        target: 'Planned',
+        drift: 'Difference',
       },
       on: 'On',
       off: 'Off',
+      back: 'Back to your portfolio',
     },
   },
 

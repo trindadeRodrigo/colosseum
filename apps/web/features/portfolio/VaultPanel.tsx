@@ -1,7 +1,8 @@
 'use client';
-import { DISCLAIMER_SHORT } from '@colosseum/schemas';
+import Link from 'next/link';
 import { useId } from 'react';
-import { Card, CardBody, CardFooter, CardHeader, Stat, StatRow } from '../../components/ui/Card';
+import { buttonClass } from '../../components/ui/button-class';
+import { Card, CardBody, CardFooter, CardHeader } from '../../components/ui/Card';
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { type Column, DataTable } from '../../components/ui/DataTable';
 import { shorten } from '../../components/ui/format';
@@ -9,12 +10,12 @@ import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { pinSourceOfPrice } from '../../components/ui/price-source';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { tokenName } from '../order/amounts';
 import { displayName } from '../order/plain';
 import { dollars, drift, share, tokens, utc } from './figures';
 import {
+  type HoldingRow,
+  holdingsOf,
   type PortfolioChain,
-  type Position,
   positionValueSource,
   priceOf,
   unpriced,
@@ -23,12 +24,14 @@ import {
   worst,
 } from './portfolio';
 
-// One vault, as the monitor shows it (DESIGN-VAULT section 11, "Monitor"): what it is worth, its cash,
-// whether it follows its portfolio, what the keeper has lost of it this week, a version of the followed
-// portfolio still to come, and each holding with its price, value, weight, target and drift. Every
-// price and value carries its pin; a vault that is not on a live chain is a mocked card, with the
-// words "test network" under the plate when it is on one. Read only: nothing here signs, and the
-// switches of a vault (auto-follow, withdraw) are not offered on this page.
+// One vault, as the monitor shows it (DESIGN-VAULT section 11, "Monitor"): what it is worth, a version
+// of the followed portfolio still to come, and what it holds, cash included, each with its price, value,
+// share now, planned share and the difference, so the shares add up to the whole. Its own facts (the
+// address, the version it follows, auto-follow, what the keeper has lost of it this week) are behind
+// "Details": they are not what a person opens the page for (the flow audit, finding 31). Every price
+// and value carries its pin; a vault that is not on a live chain is a mocked card, and one on a test
+// network says "Test network". Read only: nothing here signs, and the switches of a vault
+// (auto-follow, withdraw) are not offered on this page.
 
 export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vault }) {
   const t = useT();
@@ -38,7 +41,8 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
   const live = vault.provenance === 'live';
   const missing = unpriced(vault);
 
-  const columns: Column<Position>[] = [
+  const page = `/vaults/${vault.chain}/${encodeURIComponent(vault.address)}`;
+  const columns: Column<HoldingRow>[] = [
     {
       key: 'asset',
       header: words.columns.asset,
@@ -60,6 +64,8 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
       numeric: true,
       cell: (row) => {
         const price = priceOf(chain, row.asset);
+        // cash is counted at one dollar, which the pin of its value says: it has no price to show
+        if (row.cash && !price) return '—';
         return price ? (
           <ProvenancePin
             value={dollars(lang, price.usdPerToken)}
@@ -80,6 +86,14 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
       numeric: true,
       cell: (row) => {
         const price = priceOf(chain, row.asset);
+        if (row.cash && !price)
+          return (
+            <ProvenancePin
+              value={dollars(lang, row.valueUsd ?? '0')}
+              obs={vaultValueSource(chain, vault, words.valueMethod)}
+              labels={t.pin}
+            />
+          );
         return row.valueUsd !== null && price ? (
           <ProvenancePin
             value={dollars(lang, row.valueUsd)}
@@ -129,30 +143,20 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
         meta={
           <span className="inline-flex flex-wrap items-center justify-end gap-2">
             <ChainBadge chain={vault.chain} />
-            <span className="font-mono" title={vault.address}>
+            {/* The address leads to the vault's own page, which anyone can read. */}
+            <Link
+              href={page}
+              title={vault.address}
+              className={`${buttonClass({ variant: 'link' })} font-mono`}
+            >
               <span className="sr-only">{words.address}: </span>
               {shorten(vault.address)}
-            </span>
+            </Link>
           </span>
         }
       />
       {/* Below the plate of a mocked card, so nothing in the body is narrowed by it. */}
       <CardBody density="dense" className="clear-right flex flex-col gap-3">
-        {/* The vault's facts as chips, as his case states its limits. */}
-        <ul aria-label={words.chips.label} className="flex flex-wrap gap-1.5">
-          {[
-            [words.chips.address, shorten(vault.address)],
-            [words.chips.version, String(vault.acceptedVersion)],
-            [words.chips.follow, (vault.autoFollow ? words.on : words.off).toLowerCase()],
-          ].map(([key, value]) => (
-            <li
-              key={key}
-              className="rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-[12px]"
-            >
-              {key}: {value}
-            </li>
-          ))}
-        </ul>
         {/* The value on a line of its own: with its pin and the plate it is wider than a cell of a
             phone's two columns. */}
         <dl data-ui="vault-value">
@@ -165,18 +169,6 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
             />
           </dd>
         </dl>
-        <StatRow>
-          <Stat label={words.cash}>
-            {tokens(lang, vault.cash.display)}{' '}
-            <span className="text-caption text-muted-foreground">
-              {tokenName(vault.cash.asset)}
-            </span>
-          </Stat>
-          <Stat label={words.autoFollow}>
-            <span className="font-sans">{vault.autoFollow ? words.on : words.off}</span>
-          </Stat>
-          <Stat label={words.lossUsed}>{share(lang, vault.lossUsedBps)}</Stat>
-        </StatRow>
         {missing > 0 && (
           <p className="text-body-sm text-muted-foreground">{words.unpriced(missing)}</p>
         )}
@@ -193,24 +185,54 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
         )}
       </CardBody>
       <CardBody density="dense">
-        {vault.positions.length > 0 ? (
-          <DataTable
-            caption={words.holdings}
-            columns={columns}
-            rows={vault.positions}
-            rowKey={(row) => row.asset}
-            dense
-          />
-        ) : (
-          <p className="text-body-sm">{words.onlyCash}</p>
-        )}
+        {vault.positions.length === 0 && <p className="pb-3 text-body-sm">{words.onlyCash}</p>}
+        <DataTable
+          caption={words.holdings}
+          columns={columns}
+          rows={holdingsOf(vault)}
+          rowKey={(row) => row.asset}
+          dense
+        />
+      </CardBody>
+      <CardBody density="dense">
+        <details data-ui="vault-details">
+          <summary className="w-fit cursor-pointer text-body-sm font-medium text-primary underline decoration-1 underline-offset-4 hover:decoration-2">
+            {words.details}
+          </summary>
+          <dl className="mt-3 grid gap-x-6 gap-y-1 text-body-sm sm:grid-cols-[auto_1fr]">
+            <dt className="text-muted-foreground">{words.address}</dt>
+            <dd className="break-all font-mono text-source">{vault.address}</dd>
+            {(vault.recipeOnchainId !== null || vault.acceptedVersion > 0) && (
+              <>
+                <dt className="text-muted-foreground">{words.version}</dt>
+                <dd className="tabular-nums">{vault.acceptedVersion}</dd>
+              </>
+            )}
+            <dt className="text-muted-foreground">{words.autoFollow}</dt>
+            <dd>{vault.autoFollow ? words.on : words.off}</dd>
+            {/* The keeper trades only a vault with auto-follow on: its losses are said only then. */}
+            {vault.autoFollow && (
+              <>
+                <dt className="text-muted-foreground">{words.lossUsed}</dt>
+                <dd className="tabular-nums">{share(lang, vault.lossUsedBps)}</dd>
+              </>
+            )}
+          </dl>
+          {vault.recipeOnchainId === null && !vault.autoFollow && (
+            <p className="mt-2 text-body-sm">{words.followsNothing}</p>
+          )}
+          <p className="mt-3">
+            <Link href={page} className={buttonClass({ variant: 'link' })}>
+              {words.openPage}
+            </Link>
+          </p>
+        </details>
       </CardBody>
       <CardFooter
         density="dense"
         className="flex flex-wrap justify-between gap-3 font-mono text-[11px] text-muted-foreground"
       >
         <span>{words.observed(utc(lang, vault.observedAt))}</span>
-        <span>{DISCLAIMER_SHORT[lang]}</span>
       </CardFooter>
     </Card>
   );
@@ -230,23 +252,15 @@ export function PlanParts({ vault }: { vault: Vault }) {
   const words = t.portfolio.vault;
   const heading = useId();
   const positions = [...vault.positions].sort((a, b) => b.weightBps - a.weightBps);
-  const held = positions.reduce((sum, p) => sum + p.weightBps, 0);
-  const targeted = positions.reduce((sum, p) => sum + p.targetBps, 0);
   // Cash is a part of the plan like any other: what the positions leave, named and counted.
-  const cash =
-    held < 10_000
-      ? [
-          {
-            asset: vault.cash.asset,
-            weightBps: 10_000 - held,
-            targetBps: Math.max(0, 10_000 - targeted),
-            fill: 'bg-muted border border-border',
-          },
-        ]
-      : [];
-  const parts = [...positions.map((p, i) => ({ ...p, fill: FILL[i] ?? '' })), ...cash].sort(
-    (a, b) => b.weightBps - a.weightBps,
-  );
+  const fills = new Map(positions.map((p, i) => [p.asset, FILL[i] ?? '']));
+  const parts = holdingsOf(vault)
+    .filter((row) => !row.cash || row.weightBps > 0)
+    .map((row) => ({
+      ...row,
+      fill: row.cash ? 'bg-muted border border-border' : (fills.get(row.asset) ?? ''),
+    }))
+    .sort((a, b) => b.weightBps - a.weightBps);
   return (
     <Card
       as="section"

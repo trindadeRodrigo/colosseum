@@ -25,10 +25,13 @@ import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { switchFailure } from '../account/ChainSwitch';
+import { dollars } from '../goal/sheet';
 import { formatBps, tokenName } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
-import { keepOrder } from '../order/order-record';
+import { keepOrder, type OrderRecord, recallOrders } from '../order/order-record';
+import { goalLine } from '../order/plain';
 import { networkFor } from '../order/readiness';
+import { goalOfVault } from '../portfolio/vault-goal';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { type ChainCheck, familyIdFor, isVaultOf, useChainRecipe } from './chain-recipe';
 import { isPlatformCreator } from './platform';
@@ -312,20 +315,35 @@ function RecipeSection({
               />
             </div>
           )}
-          <p className="flex flex-wrap items-baseline gap-x-2 text-body-sm text-muted-foreground">
-            <span>{t.shared.text.creator}</span>
-            <span data-ui="creator" className="break-all font-mono text-source text-foreground">
-              {read?.creator ?? recipe.creator}
-            </span>
-            {isPlatformCreator(
-              networkFor(recipe.chain, mock),
-              recipe.chain,
-              read?.creator ?? recipe.creator,
-            ) && (
-              <span className="font-medium text-foreground">{t.shared.shelf.card.platform}</span>
-            )}
-          </p>
-          <TextMark matches={check.state === 'read' ? check.textMatches : 'unchecked'} />
+          {/* Who published it, by address, and whether its words were checked: kept, behind a fold.
+              What a person must see stays outside it: words that match no version, and where the
+              version and weights come from (the flow audit, finding 41). */}
+          <details data-ui="family-checks">
+            <summary className="w-fit cursor-pointer text-body-sm font-medium text-primary underline decoration-1 underline-offset-4 hover:decoration-2">
+              {t.plan.details}
+            </summary>
+            <div className="mt-3 flex flex-col gap-2">
+              <p className="flex flex-wrap items-baseline gap-x-2 text-body-sm text-muted-foreground">
+                <span>{t.shared.text.creator}</span>
+                <span data-ui="creator" className="break-all font-mono text-source text-foreground">
+                  {read?.creator ?? recipe.creator}
+                </span>
+                {isPlatformCreator(
+                  networkFor(recipe.chain, mock),
+                  recipe.chain,
+                  read?.creator ?? recipe.creator,
+                ) && (
+                  <span className="font-medium text-foreground">
+                    {t.shared.shelf.card.platform}
+                  </span>
+                )}
+              </p>
+              {(check.state !== 'read' || check.textMatches === 'pending') && (
+                <TextMark matches={check.state === 'read' ? check.textMatches : 'unchecked'} />
+              )}
+            </div>
+          </details>
+          {check.state === 'read' && check.textMatches === null && <TextMark matches={null} />}
           <SourceMark check={check} chain={recipe.chain} />
           <Offer recipe={recipe} />
         </CardBody>
@@ -493,10 +511,14 @@ function VaultsPanel({
   person: Extract<SharedPerson, { kind: 'ready' }>;
 }) {
   const t = useT();
+  const lang = useLang();
   const v = t.shared.vaults;
   const router = useRouter();
   const apiFetch = useApiFetch();
   const [vaults, setVaults] = useState<VaultView[] | null | 'failed'>(null);
+  // The orders this browser placed: a vault bought from a goal is named by that goal.
+  const [records, setRecords] = useState<OrderRecord[]>([]);
+  useEffect(() => setRecords(recallOrders(person.userId)), [person.userId]);
   const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const titleId = useId();
@@ -599,6 +621,8 @@ function VaultsPanel({
             <ul className="flex flex-col divide-y divide-border">
               {vaults.map((vault) => {
                 const follows = vault.recipeOnchainId === followed.follow.recipeOnchainId;
+                // A vault bought from a goal goes by that goal, where this browser kept it.
+                const goal = goalOfVault(vault, records)?.goal.sheet;
                 const behind = follows && vault.acceptedVersion < followed.follow.version;
                 return (
                   <li
@@ -612,10 +636,18 @@ function VaultsPanel({
                         className={buttonClass({ variant: 'link' })}
                         title={vault.address}
                       >
-                        {v.address(shortAddress(vault.address))}
+                        {goal
+                          ? goalLine(goal, t, dollars(goal.amountUsd, lang), (usd) =>
+                              dollars(usd, lang),
+                            )
+                          : v.address(shortAddress(vault.address))}
                       </Link>
                       <span className="text-body-sm text-muted-foreground">
-                        {follows ? v.following : v.notFollowing}
+                        {follows
+                          ? v.following
+                          : vault.recipeOnchainId === null
+                            ? v.ownPlan
+                            : v.notFollowing}
                       </span>
                       {follows && (
                         <span className="text-body-sm text-muted-foreground">

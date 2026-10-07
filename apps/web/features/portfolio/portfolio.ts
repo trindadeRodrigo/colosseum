@@ -215,6 +215,36 @@ export function chainTotal(
   };
 }
 
+/** A row of what a vault holds: a position, or its cash. */
+export type HoldingRow = Position & { cash?: true };
+
+/**
+ * What a vault holds, cash included, so the shares add up to the whole (the flow audit, finding 28):
+ * its positions as the API answered them, then its cash as a row like any other. The cash's share is
+ * what the positions leave of the vault, and its planned share what their targets leave; its value is
+ * its amount, at one dollar, as the vault's own value counts it.
+ */
+export function holdingsOf(vault: Vault): HoldingRow[] {
+  if (vault.positions.some((position) => position.asset === vault.cash.asset))
+    return vault.positions;
+  const held = vault.positions.reduce((sum, p) => sum + p.weightBps, 0);
+  const targeted = vault.positions.reduce((sum, p) => sum + p.targetBps, 0);
+  const weightBps = Number(vault.valueUsd) > 0 ? Math.max(0, 10_000 - held) : 0;
+  const targetBps = Math.max(0, 10_000 - targeted);
+  return [
+    ...vault.positions,
+    {
+      ...vault.cash,
+      targetBps,
+      lastKeeperAt: null,
+      valueUsd: vault.cash.display,
+      weightBps,
+      driftBps: weightBps - targetBps,
+      cash: true,
+    },
+  ];
+}
+
 /** How many holdings the value leaves out, because the API had no price for them. */
 export const unpriced = (vault: Vault): number =>
   vault.positions.filter((position) => position.valueUsd === null).length;
