@@ -1161,7 +1161,7 @@ describe('a market the lists have no word for, named by the model as a filter (M
       {
         field: 'mix',
         template: 'matchedShare',
-        text: 'Li “seguradoras” como nomes filtrados por indústria: Insurance. Quanto dos US$ 2.000 para eles? Diga nada se não era isso que você quis dizer.',
+        text: 'Li “seguradoras” como nomes filtrados por indústria: Insurance. Quanto dos US$ 2.000 para eles? Diga nenhum se não era isso que você quis dizer.',
         read: { growthBps: WHOLE, dollarYieldBps: 0, goldBps: 0, cashBps: 0 },
       },
     ]);

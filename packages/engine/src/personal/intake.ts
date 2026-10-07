@@ -395,8 +395,17 @@ const leastShareBps = (
 ): number =>
   Math.max(
     params.minLineBps,
-    amountUsd ? Math.ceil((params.minLineUsd / amountUsd) * WHOLE_MIX_BPS) : 0,
+    // The basis point nearest the floor in dollars: the share "$5" itself comes to, so the least a
+    // person is told ("$5") is a share that is taken when they say it (the third review, Oct 7:
+    // rounded up, the line said $5.01 and $5.04 where the floor is $5).
+    amountUsd ? Math.round((params.minLineUsd / amountUsd) * WHOLE_MIX_BPS) : 0,
   );
+
+/** The least a holding can be in dollars, for a plan of this amount: what `SHARE_TOO_SMALL` says. */
+const leastShareUsd = (
+  amountUsd: number,
+  params: Pick<PersonalParameters, 'minLineBps' | 'minLineUsd'> = PERSONAL_PARAMS,
+): number => Math.max(params.minLineUsd, (params.minLineBps / WHOLE_MIX_BPS) * amountUsd);
 
 /** The share of the plan a split holds in themes, in basis points. */
 const themeBpsOf = (sleeves: readonly PlanSleeve[] | null | undefined): number =>
@@ -2643,9 +2652,7 @@ function intakeOf(
     value.amountUsd !== null &&
     questions.some((q) => q.field === 'mix' || q.field === 'sleeves')
   )
-    assume('SHARE_TOO_SMALL', {
-      least: (leastShareBps(value.amountUsd) / WHOLE_MIX_BPS) * value.amountUsd,
-    });
+    assume('SHARE_TOO_SMALL', { least: leastShareUsd(value.amountUsd) });
   // A refusal the text states that the model did not read: taken, and said in a line of its own
   // that names the person's words, so a clause read wrongly is seen and corrected. Not while it is
   // asked against a holding: the question names it.
@@ -2687,7 +2694,10 @@ function intakeOf(
       // Matched, not curated: said wherever the plan holds it, or still asks how much of it.
       if (r.kind === 'matched' && r.filter && r.slug && !themesNotHeld) {
         const inPlan = sleeves?.some((x) => x.kind === 'theme' && x.theme === r.slug) === true;
-        if (inPlan || themeAsk !== null || shareWaits)
+        // Not while the question that says the match is open (the third review, Oct 7): it asks
+        // whether that is what the person meant, so nothing says yet that the plan holds the names.
+        const matchAsked = matchedAsk !== null && !inPlan;
+        if ((inPlan || themeAsk !== null || shareWaits) && !matchAsked)
           assume('MARKET_MATCHED', {
             words: r.words,
             chain,

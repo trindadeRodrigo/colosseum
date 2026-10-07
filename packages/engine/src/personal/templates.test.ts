@@ -528,11 +528,11 @@ describe('intake templates', () => {
     expect(QUESTION_TEMPLATES.matchedShare).toEqual({
       // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
       en: 'I read “{market}” as {matched}. How much of the ${amount|amount} for them? Say none if that is not what you meant.',
-      pt: 'Li “{market}” como {matched}. Quanto dos US$ {amount|amount} para eles? Diga nada se não era isso que você quis dizer.',
+      pt: 'Li “{market}” como {matched}. Quanto dos US$ {amount|amount} para eles? Diga nenhum se não era isso que você quis dizer.',
     });
     expect(QUESTION_TEMPLATES.matchedShareNoAmount).toEqual({
       en: 'I read “{market}” as {matched}. How much of the money for them? Say none if that is not what you meant.',
-      pt: 'Li “{market}” como {matched}. Quanto do dinheiro para eles? Diga nada se não era isso que você quis dizer.',
+      pt: 'Li “{market}” como {matched}. Quanto do dinheiro para eles? Diga nenhum se não era isso que você quis dizer.',
     });
     const matched = (lang: 'en' | 'pt') =>
       render(MATCHED_NAME[lang], { by: FILTER_BY_WORDS[lang].keyword, value: 'GLP-1' }, lang);
@@ -552,7 +552,7 @@ describe('intake templates', () => {
         'pt',
       ),
     ).toBe(
-      'Li “remédios para obesidade” como nomes filtrados por palavra-chave: GLP-1. Quanto dos US$ 2.000 para eles? Diga nada se não era isso que você quis dizer.',
+      'Li “remédios para obesidade” como nomes filtrados por palavra-chave: GLP-1. Quanto dos US$ 2.000 para eles? Diga nenhum se não era isso que você quis dizer.',
     );
     expect(
       render(

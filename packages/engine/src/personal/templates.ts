@@ -1090,14 +1090,16 @@ export const QUESTION_TEMPLATES = {
   // GLP-1; "my future" for sector Consumer Discretionary, the review of Oct 7): the link between the
   // two is the model's alone, so it is never taken. One question says what it would be matched by,
   // and "none" leaves it out. `matched` is `MATCHED_NAME`, filled.
+  // In Portuguese "Diga nada" reads as "say nothing" (the third review, Oct 7): the way out is
+  // said as the answer it is, "nenhum", which `noneSaidIn` reads.
   matchedShare: {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
     en: 'I read “{market}” as {matched}. How much of the ${amount|amount} for them? Say none if that is not what you meant.',
-    pt: 'Li “{market}” como {matched}. Quanto dos US$ {amount|amount} para eles? Diga nada se não era isso que você quis dizer.',
+    pt: 'Li “{market}” como {matched}. Quanto dos US$ {amount|amount} para eles? Diga nenhum se não era isso que você quis dizer.',
   },
   matchedShareNoAmount: {
     en: 'I read “{market}” as {matched}. How much of the money for them? Say none if that is not what you meant.',
-    pt: 'Li “{market}” como {matched}. Quanto do dinheiro para eles? Diga nada se não era isso que você quis dizer.',
+    pt: 'Li “{market}” como {matched}. Quanto do dinheiro para eles? Diga nenhum se não era isso que você quis dizer.',
   },
   // Several things named to hold, and no share for each (the review of Oct 7): the question names
   // them, in the person's words, and "half each" answers it. `themes` is those words, joined.

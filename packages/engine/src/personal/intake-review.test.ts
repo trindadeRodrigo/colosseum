@@ -129,6 +129,9 @@ const intake = (text: string, r: unknown = reply(), over: Partial<IntakeInput> =
     ...over,
   });
 const fields = (r: { questions: { field: string }[] }) => r.questions.map((q) => q.field);
+/** The share of a sheet held in themes, in basis points. */
+const themeBps = (sheet: PersonalSheet | null) =>
+  (sheet?.sleeves ?? []).reduce((n, x) => (x.kind === 'theme' ? n + x.shareBps : n), 0);
 const pct = (growthPct: number, cashPct: number, dollarYieldPct = 0, goldPct = 0) => ({
   growthPct,
   dollarYieldPct,
@@ -3782,7 +3785,7 @@ describe('the second review (Oct 7): every sentence of its scripts, with a model
       {
         field: 'mix',
         template: 'matchedShare',
-        text: 'Li “meu futuro” como nomes filtrados por setor: Consumer Discretionary. Quanto dos US$ 5.000 para eles? Diga nada se não era isso que você quis dizer.',
+        text: 'Li “meu futuro” como nomes filtrados por setor: Consumer Discretionary. Quanto dos US$ 5.000 para eles? Diga nenhum se não era isso que você quis dizer.',
         read: STOCKS,
       },
     ]);
@@ -5731,5 +5734,110 @@ describe('the third review (Oct 7), B8: a yes or no answers only the question th
     expect(share.flags).toContain('mix_from_words');
     expect(share.sheet?.mix).toEqual(bps(5000, 5000));
     expect(said([first, 'none'], model, FORM, [{}]).flags).toContain('none_from_words');
+  });
+});
+
+describe('the third review (Oct 7), the words: what a line or a question says is what the plan does', () => {
+  const reads = (over: Record<string, unknown> = {}) =>
+    reply({ goal: null, amountUsd: null, horizonMonths: null, risk: null, ...over });
+  const form = (amountUsd: number): IntakeAnswers => ({
+    goal: 'grow',
+    amountUsd,
+    horizonMonths: 60,
+    risk: 'medium',
+  });
+  const AI = { markets: ['ai'] };
+  const GLP1 = { marketFilter: { by: 'keyword', value: 'GLP-1', words: 'obesity drugs' } };
+  const matched: Partial<IntakeInput> = {
+    matchOf: (f) => (attributeKey(f.value) === 'glp-1' ? { value: 'GLP-1', listed: 2 } : null),
+  };
+
+  it('`SHARE_TOO_SMALL` says the floor, $5, not $5.01 or $5.04, and a share of that floor is then taken', () => {
+    const LINE =
+      'The smallest part a plan of this size can hold is $5, so a smaller one was not taken.';
+    // The review's own (`p2.ts`), and other sizes: the floor in dollars holds up to $1,000.
+    for (const amountUsd of [300, 700, 130, 999]) {
+      const r = intake('Put $3 in AI.', reads(AI), { answers: form(amountUsd) });
+      expect(r.flags, String(amountUsd)).toContain('share_too_small');
+      expect(r.assumptions, String(amountUsd)).toEqual([LINE]);
+      expect(r.sheet, String(amountUsd)).toBeNull();
+      // What the line says is the least is taken when the person says it, with a model or none.
+      for (const model of [reads(AI), null]) {
+        const then = intake(conversationText('Put $3 in AI.', ['$5']), model, {
+          answers: form(amountUsd),
+        });
+        expect(then.questions, String(amountUsd)).toEqual([]);
+        expect(then.flags, String(amountUsd)).not.toContain('share_too_small');
+        expect(themeBps(then.sheet), String(amountUsd)).toBeGreaterThan(0);
+      }
+    }
+    // In Portuguese, and above $1,000 the floor is the share of the plan: $25 of $5,000.
+    const pt = intake('Quero investir US$ 3 em IA.', reads({ ...AI, language: 'pt' }), {
+      answers: form(700),
+    });
+    expect(pt.assumptions).toEqual([
+      'A menor parte que um plano deste tamanho pode ter é US$ 5, então uma parte menor não foi considerada.',
+    ]);
+    const large = intake('Put $20 in AI.', reads(AI), { answers: form(5000) });
+    expect(large.assumptions).toEqual([
+      'The smallest part a plan of this size can hold is $25, so a smaller one was not taken.',
+    ]);
+  });
+
+  it('while the question that says the match is open, no line says the plan holds the names; once held, one does', () => {
+    const HOLDS = /the plan holds the names matched|o plano fica com os nomes filtrados/;
+    for (const [text, pt] of [
+      ['Invest in obesity drugs.', false],
+      ['Put 30% in obesity drugs.', false],
+      ['I like obesity drugs.', false],
+      ['Quero investir em obesity drugs.', true],
+    ] as const) {
+      const r = reads({ ...GLP1, ...(pt ? { language: 'pt' } : {}) });
+      const open = intake(text, r, { answers: form(5000), ...matched });
+      expect(
+        open.questions.map((q) => q.template),
+        text,
+      ).toEqual(['matchedShare']);
+      expect(
+        open.assumptions.filter((x) => HOLDS.test(x)),
+        text,
+      ).toEqual([]);
+      // "half" answers it: the names are held, and the line says so.
+      const held = intake(conversationText(text, ['half']), r, { answers: form(5000), ...matched });
+      expect(held.sheet?.sleeves, text).toEqual([theme('matched-keyword-glp-1', 5000), safe(5000)]);
+      expect(
+        held.assumptions.filter((x) => HOLDS.test(x)),
+        text,
+      ).toHaveLength(1);
+      // With no model, and with a reply that names no filter, there is no match to say.
+      for (const other of [null, reads()]) {
+        const none = intake(text, other, { answers: form(5000), ...matched });
+        expect(
+          none.assumptions.filter((x) => HOLDS.test(x)),
+          text,
+        ).toEqual([]);
+      }
+    }
+  });
+
+  it('in Portuguese the matched question says its way out as "nenhum", and "nenhum" takes it', () => {
+    const r = reads({ ...GLP1, language: 'pt' });
+    const text = 'Quero investir em obesity drugs.';
+    const open = intake(text, r, { answers: form(2000), ...matched });
+    expect(open.questions[0]?.text).toBe(
+      'Li “obesity drugs” como nomes filtrados por palavra-chave: GLP-1. Quanto dos US$ 2.000 para eles? Diga nenhum se não era isso que você quis dizer.',
+    );
+    expect(open.questions[0]?.text).not.toMatch(/Diga nada/);
+    for (const word of ['nenhum', 'Nenhum.', 'nada', 'none']) {
+      const out = intake(conversationText(text, [word]), r, { answers: form(2000), ...matched });
+      expect(out.flags, word).toContain('none_from_words');
+      expect(out.sheet?.sleeves, word).toBeUndefined();
+      expect(out.questions, word).toEqual([]);
+    }
+    // With no amount yet, the same words.
+    const noAmount = intake(text, r, { answers: { goal: 'grow', horizonMonths: 60 }, ...matched });
+    expect(noAmount.questions.find((q) => q.field === 'mix')?.text).toBe(
+      'Li “obesity drugs” como nomes filtrados por palavra-chave: GLP-1. Quanto do dinheiro para eles? Diga nenhum se não era isso que você quis dizer.',
+    );
   });
 });
