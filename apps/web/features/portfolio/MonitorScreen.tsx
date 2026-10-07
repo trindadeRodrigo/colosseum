@@ -310,8 +310,15 @@ export function MonitorScreen() {
         <ActivityPanel
           groups={history.activity}
           empty={t.activity.noneVault}
-          // one chain, named in the page's head: the lines do not repeat it
-          chainTags={grouped || !shownChain}
+          // one chain, named in the page's head: the lines do not repeat it. The list holds every
+          // chain's orders, though: with a line on another chain, every line says its own.
+          chainTags={
+            grouped ||
+            !shownChain ||
+            history.activity.some((group) =>
+              group.executions.some((e) => e.chain != null && e.chain !== shownChain),
+            )
+          }
         />
       )}
     </div>
