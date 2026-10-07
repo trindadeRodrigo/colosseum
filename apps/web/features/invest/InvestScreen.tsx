@@ -56,8 +56,8 @@ import { type HeldMix, IntakeAnswers } from './intake';
 import { intakeConversation } from './intake-conversation';
 import { wayChange } from './ways';
 
-// Invest, as one screen (gate INVEST-TWO-PANE): the conversation on the left, the plan built beside it
-// on the right. On a phone it is one thread, with the plan as a line at the foot that opens.
+// Invest starts as a naturally sized conversation. A built plan joins the desktop workspace;
+// on a phone it opens from a disclosure, with the conversation and all other content inert behind it.
 //
 // Left: one box, the three example goals, then turns. The person's words; then what was understood,
 // said back from the sheet, and the one question that is still open, with quick replies. Once every
@@ -65,15 +65,16 @@ import { wayChange } from './ways';
 // on what the person confirmed). After that a change to a fact is the person's own word, and the plan
 // is built again at once.
 //
-// Right: the pane, in four states. Empty: the outline of a plan. The goal as facts, appearing as they
-// are learned, each one a button that asks about it again. The plan, showing how (`PlanPane`, the
-// block the plan's own page draws). And the invest step, in the same pane.
+// Only facts already learned appear inline during intake, each editable. Once built, the plan
+// (`PlanPane`, the plan page's own block) and invest step share the workspace beside the conversation.
 //
 // Someone signed out can talk and see a plan (POST /v1/baskets/propose asks for no sign-in). Investing
 // asks them to sign in, in the dialog, and the plan is built again as their own.
 
 /** The most of a person's own messages kept with the sheet: a conversation has no end at ten. */
 const MAX_WORDS = 200;
+const PANE_FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 type Plan = { id: string; proposal: BasketProposal; rollUp: RiskRollUp | null; own: boolean };
 /**
@@ -612,9 +613,8 @@ export function InvestScreen() {
       void buildFrom(valid, signedIn && built?.own === true);
   }, [planOn, chain, valid]);
 
-  // A new turn is brought into view, in the thread's own scroll.
+  // A new turn is brought into view without reserving a viewport-height conversation.
   const count = turns.length;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: when a turn is added
   useEffect(() => {
     const el = thread.current?.lastElementChild;
     if (count > 0 && el instanceof HTMLElement) el.scrollIntoView?.({ block: 'nearest' });
@@ -652,19 +652,35 @@ export function InvestScreen() {
 
   // On a phone the pane opens over the conversation as a dialog: focus goes into it, Escape and its
   // one button close it, and focus goes back to the line that opened it.
+  const paneElement = useRef<HTMLElement>(null);
   const closePane = useRef<HTMLDivElement>(null);
   const openPane = useRef<HTMLDivElement>(null);
   const wasOpen = useRef(false);
   useEffect(() => {
-    if (paneOpen) closePane.current?.querySelector('button')?.focus();
-    else if (wasOpen.current) openPane.current?.querySelector('button')?.focus();
+    if (paneOpen) {
+      const target = closePane.current?.querySelector('button');
+      if (!target?.closest('[inert]')) target?.focus();
+    } else if (wasOpen.current) {
+      const opener = openPane.current?.querySelector('button');
+      const desktop =
+        typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1024px)').matches;
+      const target =
+        (!desktop && opener) || thread.current?.parentElement?.querySelector('textarea');
+      if (!target?.closest('[inert]')) target?.focus();
+    }
     wasOpen.current = paneOpen;
   }, [paneOpen]);
 
-  // A development build only: who read each turn is shown under it. A production build has no way
-  // to turn this on.
+  // Inline reader diagnostics need explicit opt-in in development; production never shows them.
   const [debug, setDebug] = useState(false);
-  useEffect(() => setDebug(process.env.NODE_ENV === 'development'), []);
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+    try {
+      setDebug(window.localStorage.getItem('tf-debug') === '1');
+    } catch {
+      // Unavailable storage leaves diagnostic details hidden.
+    }
+  }, []);
 
   const lastTurn = turns[turns.length - 1];
   const open = lastTurn?.who === 'app' ? lastTurn : null;
@@ -743,7 +759,37 @@ export function InvestScreen() {
     plan && pickedName && built && built.candidates.length > 1
       ? t.plan.investIn(dollars(plan.proposal.sheet.amountUsd, lang), pickedName)
       : null;
-  const knownCount = FACTS.filter((fact) => known(fields, fact)).length;
+  const workspace = built !== null || build.kind === 'building';
+  const overlayOpen = workspace && paneOpen;
+  useEffect(() => {
+    if (!workspace) setPaneOpen(false);
+  }, [workspace]);
+  // Like the sign-in frame, the mobile pane contains focus and makes all ancestor siblings inert.
+  // Leave existing inert flags alone, so a nested sign-in modal keeps its own containment.
+  useEffect(() => {
+    if (!overlayOpen || !paneElement.current) return;
+    const behind: HTMLElement[] = [];
+    for (
+      let node: HTMLElement | null = paneElement.current;
+      node && node !== document.body;
+      node = node.parentElement
+    )
+      for (const sibling of node.parentElement?.children ?? [])
+        if (sibling !== node && sibling instanceof HTMLElement && !sibling.hasAttribute('inert'))
+          behind.push(sibling);
+    for (const element of behind) element.setAttribute('inert', '');
+    const desktop =
+      typeof window.matchMedia === 'function' ? window.matchMedia('(min-width: 1024px)') : null;
+    const closeOnDesktop = () => {
+      if (desktop?.matches) setPaneOpen(false);
+    };
+    closeOnDesktop();
+    desktop?.addEventListener('change', closeOnDesktop);
+    return () => {
+      desktop?.removeEventListener('change', closeOnDesktop);
+      for (const element of behind) element.removeAttribute('inert');
+    };
+  }, [overlayOpen]);
 
   /** The quick replies of a question this app asks itself. */
   const replies = (fact: Fact): QuickReply[] =>
@@ -841,27 +887,38 @@ export function InvestScreen() {
   return (
     <div
       data-ui="invest-screen"
-      className="flex flex-col gap-6 lg:grid lg:grid-cols-12 lg:items-start lg:gap-x-10"
+      data-layout={workspace ? 'plan' : 'intake'}
+      className={cn(
+        'flex min-w-0 flex-col gap-4',
+        workspace && 'lg:grid lg:grid-cols-12 lg:items-start lg:gap-6',
+      )}
     >
-      {/* Left: the conversation, held in view at the height of the window with its thread scrolling
-          inside it. The plan beside it has no scroll of its own: it scrolls with the page. */}
+      <header
+        inert={overlayOpen}
+        className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 lg:col-span-12"
+      >
+        <h1 className={`${PAGE_TITLE} max-w-none!`}>{t.goal.title}</h1>
+        {/* an empty conversation and an empty pane, by one press or by saying so */}
+        {turns.length > 0 && (
+          <span data-ui="invest-start-over">
+            <Button variant="link" disabled={build.kind === 'building'} onClick={startOver}>
+              {w.startOver}
+            </Button>
+          </span>
+        )}
+      </header>
+      {/* The conversation grows with its messages; the composer stays beside the latest turn. */}
       <section
         data-ui="invest-chat"
         aria-label={w.chat}
-        inert={paneOpen}
-        className="flex min-h-0 flex-col gap-4 lg:sticky lg:top-24 lg:col-span-5 lg:h-[calc(100dvh-13rem)] lg:min-h-[32rem]"
+        inert={overlayOpen}
+        className={cn(
+          'flex min-w-0 flex-col gap-4',
+          workspace
+            ? 'lg:sticky lg:top-24 lg:col-span-5 lg:max-h-[calc(100dvh-8rem)]'
+            : 'max-w-(--tf-measure-body)',
+        )}
       >
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <h1 className={PAGE_TITLE}>{t.goal.title}</h1>
-          {/* an empty conversation and an empty pane, by one press or by saying so */}
-          {turns.length > 0 && (
-            <span data-ui="invest-start-over">
-              <Button variant="link" disabled={build.kind === 'building'} onClick={startOver}>
-                {w.startOver}
-              </Button>
-            </span>
-          )}
-        </div>
         {/* Someone signed in whose wallets or chain are still being read is told, and not left
             waiting with no word: after a while, which side is slow and the two things they can do. */}
         {account.status === 'loading' && (slow || who !== '') && (
@@ -893,7 +950,10 @@ export function InvestScreen() {
           ref={thread}
           data-ui="invest-turns"
           aria-live="polite"
-          className={cn('flex min-h-0 flex-col gap-4 lg:flex-1 lg:overflow-y-auto lg:pr-2')}
+          className={cn(
+            'flex min-w-0 flex-col gap-4',
+            workspace && 'lg:min-h-0 lg:overflow-y-auto',
+          )}
         >
           {turns.map((turn) =>
             turn.who === 'person' ? (
@@ -1047,6 +1107,7 @@ export function InvestScreen() {
 
         {/* The quick replies of the question that is open: one press answers it. */}
         <Composer
+          className="shrink-0"
           label={w.box}
           labelHidden
           value={text}
@@ -1080,56 +1141,79 @@ export function InvestScreen() {
         )}
       </section>
 
-      {/* On a phone the plan is one line at the foot that opens. */}
-      <div
-        ref={openPane}
-        inert={paneOpen}
-        className="sticky bottom-0 z-10 -mx-1 border-t border-border bg-background px-1 py-3 lg:hidden"
-      >
-        <Button
-          variant="secondary"
-          className="w-full justify-between"
-          aria-expanded={paneOpen}
-          aria-controls={paneId}
-          onClick={() => setPaneOpen(true)}
+      {/* Once a plan is being built or exists, a phone opens it from this disclosure. */}
+      {workspace && (
+        <div
+          ref={openPane}
+          inert={overlayOpen}
+          className="sticky bottom-0 z-10 -mx-1 border-t border-border bg-background px-1 py-3 lg:hidden"
         >
-          <span data-ui="invest-summary" className="truncate">
-            {built
-              ? w.pane.open
-              : fields
-                ? w.pane.summaryFacts(knownCount, fields.goal === 'income' ? 5 : 4)
-                : w.pane.summaryEmpty}
-          </span>
-        </Button>
-      </div>
+          <Button
+            variant="secondary"
+            className="w-full justify-between"
+            aria-expanded={paneOpen}
+            aria-controls={paneId}
+            onClick={() => setPaneOpen(true)}
+          >
+            <span data-ui="invest-summary" className="truncate">
+              {built ? w.pane.open : w.pane.building}
+            </span>
+          </Button>
+        </div>
+      )}
 
-      {/* Right: the plan, built as the answers arrive. */}
+      {/* Known facts stay inline during intake; a built plan joins the desktop workspace. */}
       <aside
+        ref={paneElement}
         id={paneId}
         data-ui="invest-pane"
         data-state={state}
         aria-label={w.pane.label}
         // open over the conversation on a phone, it is a dialog; beside it, the page's aside
-        {...(paneOpen ? { role: 'dialog', 'aria-modal': true } : {})}
+        {...(overlayOpen ? { role: 'dialog', 'aria-modal': true } : {})}
         onKeyDown={(e) => {
-          if (paneOpen && e.key === 'Escape') setPaneOpen(false);
+          if (!overlayOpen) return;
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            setPaneOpen(false);
+          }
+          if (e.key !== 'Tab' || !paneElement.current) return;
+          const items = [
+            ...paneElement.current.querySelectorAll<HTMLElement>(PANE_FOCUSABLE),
+          ].filter((element) => !element.closest('[aria-hidden="true"], [hidden], [inert]'));
+          const first = items[0];
+          const last = items[items.length - 1];
+          if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last?.focus();
+          } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first?.focus();
+          }
         }}
         className={cn(
-          'min-h-0 flex-col gap-6 lg:col-span-7 lg:flex lg:border-l lg:border-border lg:pl-10',
-          paneOpen
+          'min-w-0 flex-col gap-4',
+          !workspace
+            ? fields
+              ? 'flex max-w-(--tf-measure-body)'
+              : 'hidden'
+            : 'lg:col-span-7 lg:flex',
+          overlayOpen
             ? 'fixed inset-0 z-40 flex overflow-y-auto bg-background p-4 pt-28 lg:static lg:z-auto lg:overflow-visible lg:p-0 lg:pt-0'
-            : 'hidden',
+            : workspace && 'hidden',
         )}
       >
-        <div ref={closePane} className="lg:hidden">
-          <Button variant="secondary" onClick={() => setPaneOpen(false)}>
-            {w.pane.close}
-          </Button>
-        </div>
-        {state === 'empty' && <EmptyPane />}
+        {workspace && (
+          <div ref={closePane} className="lg:hidden">
+            <Button variant="secondary" onClick={() => setPaneOpen(false)}>
+              {w.pane.close}
+            </Button>
+          </div>
+        )}
         {fields && (
           <Facts
             fields={fields}
+            compact={!workspace}
             skipped={sheet?.skipped ?? []}
             held={sheet?.intake ?? null}
             disabled={busy}
@@ -1266,31 +1350,6 @@ function mixWords(
   );
 }
 
-/** The pane before anything is said: the outline of a plan, drawn in hairlines, and what fills it. */
-function EmptyPane() {
-  const t = useT();
-  const w = t.talk.pane.empty;
-  return (
-    <div data-ui="pane-empty" className="flex flex-col gap-5">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-h4 font-semibold">{w.title}</h2>
-        <p className="max-w-(--tf-measure-body) text-body text-muted-foreground">{w.body}</p>
-      </div>
-      <div aria-hidden="true" className="flex flex-col gap-3">
-        <div className="grid grid-cols-4 gap-3">
-          {[0, 1, 2, 3].map((i) => (
-            <span key={i} className="h-12 border border-dashed border-border" />
-          ))}
-        </div>
-        <span className="h-3 border border-dashed border-border" />
-        {[0, 1, 2].map((i) => (
-          <span key={i} className="h-10 border border-dashed border-border" />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /**
  * The goal as facts, each appearing as it is learned. A fact is a button: pressed, it is asked about
  * again in the conversation. There is no country here, and none is asked (gate COUNTRY-REMOVED). A
@@ -1298,6 +1357,7 @@ function EmptyPane() {
  */
 function Facts({
   fields,
+  compact,
   skipped,
   held,
   disabled,
@@ -1306,6 +1366,7 @@ function Facts({
   visitor,
 }: {
   fields: SheetFields;
+  compact: boolean;
   skipped: readonly Fact[];
   /** What the guided intake read beyond the five facts: no date, a stated mix, themes. */
   held: Pick<IntakeState, 'mix' | 'themes' | 'horizonOpen'> | null;
@@ -1319,7 +1380,14 @@ function Facts({
   const t = useT();
   const lang = useLang();
   const w = t.talk.facts;
-  const shown = FACTS.filter((fact) => fact !== 'income' || fields.goal === 'income');
+  const shown = FACTS.filter(
+    (fact) =>
+      (fact !== 'income' || fields.goal === 'income') &&
+      (!compact ||
+        known(fields, fact) ||
+        (fact === 'horizon' && held?.horizonOpen) ||
+        (fact === 'income' && skipped.includes('income'))),
+  );
   const share = (bps: number) => formatBps(bps, LOCALE[lang]);
   // What the person said to hold, from the sheet: each part with its share, largest first.
   const mix = held?.mix ? mixWords(held.mix, w.mixPart, lang) : null;
@@ -1335,7 +1403,13 @@ function Facts({
     <section data-ui="pane-facts" aria-label={w.title} className="flex flex-col gap-2">
       <h2 className="text-[0.8125rem]/5 font-medium">{w.title}</h2>
       {/* As many cells as there are facts, in rows that end cleanly: an odd one out takes the row. */}
-      <ul className="grid grid-cols-2 gap-px border border-border bg-border sm:grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))]">
+      <ul
+        className={cn(
+          compact
+            ? 'flex flex-wrap gap-2'
+            : 'grid grid-cols-2 gap-px border border-border bg-border sm:grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))]',
+        )}
+      >
         {shown.map((fact) => {
           const set = known(fields, fact);
           const value = set
@@ -1350,7 +1424,12 @@ function Facts({
               key={fact}
               data-fact={fact}
               data-set={set}
-              className="bg-card max-sm:last:odd:col-span-2"
+              className={cn(
+                'bg-card',
+                compact
+                  ? 'min-w-0 max-w-full rounded-md border border-border [overflow-wrap:anywhere]'
+                  : 'max-sm:last:odd:col-span-2',
+              )}
             >
               <button
                 type="button"
@@ -1358,7 +1437,7 @@ function Facts({
                 onClick={() => {
                   if (!disabled) onChange(fact);
                 }}
-                className="flex h-full w-full flex-col items-start gap-0.5 px-3 py-2 text-left outline-none hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                className="flex h-full min-w-0 w-full flex-col items-start gap-0.5 px-3 py-2 text-left outline-none hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
               >
                 <span className="text-caption text-muted-foreground">
                   <span className="sr-only">{w.change} </span>
@@ -1382,7 +1461,12 @@ function Facts({
           <li
             key={extra.key}
             data-fact="held"
-            className="flex flex-col gap-0.5 bg-card px-3 py-2 max-sm:last:odd:col-span-2"
+            className={cn(
+              'flex flex-col gap-0.5 bg-card px-3 py-2',
+              compact
+                ? 'min-w-0 max-w-full rounded-md border border-border [overflow-wrap:anywhere]'
+                : 'max-sm:last:odd:col-span-2',
+            )}
           >
             <span className="text-caption text-muted-foreground">{extra.label}</span>
             <span className="text-body font-medium tabular-nums">{extra.value}</span>

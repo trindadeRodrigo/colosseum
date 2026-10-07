@@ -578,7 +578,7 @@ export const pt: Dictionary = {
       },
     },
     summary: {
-      title: 'Seu portfólio',
+      title: 'Seus cofres',
       worth: (chain: string) => `Seu cofre na ${chain} vale`,
       many: (vaults: number, chain: string) => `Você tem ${vaults} cofres na ${chain}.`,
       manyChains: (vaults: number, chains: string) => `Você tem ${vaults} cofres, na ${chains}.`,

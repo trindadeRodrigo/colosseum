@@ -669,7 +669,7 @@ export const en = {
     },
     /** On the home page, under the goal. */
     summary: {
-      title: 'Your portfolio',
+      title: 'Your vaults',
       worth: (chain: string) => `Your vault on ${chain} is worth`,
       many: (vaults: number, chain: string) => `You have ${vaults} vaults on ${chain}.`,
       /** Vaults on more than one chain: counted, never added up across them. */
