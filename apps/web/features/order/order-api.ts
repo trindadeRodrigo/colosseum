@@ -3,7 +3,8 @@ import {
   chainFamily,
   FundingResponse,
   OrderDetail,
-  type OrderErrorCode,
+  OrderError,
+  OrderErrorCode,
   TEST_FUNDS_LOW,
   TestFundsResponse,
 } from '@colosseum/schemas';
@@ -194,12 +195,14 @@ export async function continueOrder(
   }
   const body = await bodyOf(res);
   if (res.status === 409) {
-    const details = typeof body.details === 'object' && body.details !== null ? body.details : {};
+    // The refusal as the shared schema has it (`OrderError`): its sentence, its code, its details.
+    const refusal = OrderError.safeParse(body);
+    const said = refusal.success ? refusal.data : null;
     return {
       kind: 'refused',
-      sentence: typeof body.error === 'string' ? body.error : '',
-      retryable: (details as { retryable?: unknown }).retryable === true,
-      priceMoved: body.code === 'PRICE_MOVED',
+      sentence: said?.error ?? (typeof body.error === 'string' ? body.error : ''),
+      retryable: said?.details?.retryable === true,
+      priceMoved: said?.code === OrderErrorCode.enum.PRICE_MOVED,
     };
   }
   if (res.status === 404 || res.status === 405 || res.status === 501)
@@ -209,7 +212,7 @@ export async function continueOrder(
   if (!res.ok) return { kind: 'unreachable' };
   const order = OrderDetail.safeParse(body);
   // The answer must say which order it finishes, and be another order than that one.
-  if (!order.success || body.continues !== id || order.data.id === id)
+  if (!order.success || order.data.continues !== id || order.data.id === id)
     return { kind: 'unreadable' };
   const chain = first.legs[0]?.chain;
   const made = order.data;
@@ -221,7 +224,7 @@ export async function continueOrder(
     made.legs.some((leg) => leg.kind !== 'swap' || leg.chain !== chain)
   )
     return { kind: 'unreadable' };
-  return { kind: 'placed', order: { ...order.data, continues: id } };
+  return { kind: 'placed', order: { ...made, continues: id } };
 }
 
 /** GET /v1/orders/{id}: the order as it stands. */
@@ -239,14 +242,7 @@ export async function readOrder(
   if (!res.ok) return { kind: failureOf(res.status, body.code) };
   const order = OrderDetail.safeParse(body);
   return order.success && order.data.id === id
-    ? {
-        kind: 'read',
-        // Which order it finishes, where it finishes one: kept as the server said it.
-        order: {
-          ...order.data,
-          ...(typeof body.continues === 'string' ? { continues: body.continues } : {}),
-        },
-      }
+    ? { kind: 'read', order: order.data }
     : { kind: 'unreadable' };
 }
 

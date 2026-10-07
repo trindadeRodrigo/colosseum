@@ -116,7 +116,7 @@ export function leftOfPlan(
  * a buy of something else, or of more, is caught here and nothing is offered for signing.
  */
 export function checkContinuation(
-  order: Pick<OrderDetail, 'depositRaw' | 'legs'> & { continues?: unknown },
+  order: Pick<OrderDetail, 'depositRaw' | 'legs' | 'continues'>,
   first: { orderId: string; trades: readonly { sell: string; buy: string; amountInRaw: string }[] },
   units: ChainUnits | null,
   /**
