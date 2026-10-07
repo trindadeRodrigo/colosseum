@@ -188,6 +188,30 @@ describe('the plan screen', () => {
     expect(next?.getAttribute('href')).toBe(`/plan/${PLAN_ID}/buy`);
   });
 
+  it('a goal with no date says "no date set", draws no chart over the months it is built on, and shows none of them', async () => {
+    api();
+    const base = planOn();
+    rememberPlan({
+      ...base,
+      proposal: {
+        ...base.proposal,
+        sheet: {
+          ...base.proposal.sheet,
+          horizonMonths: 120,
+          horizonOpen: true,
+          rules: { useHoldings: true, glide: false },
+        },
+        card: { ...base.proposal.card, termMonths: null },
+      },
+    });
+    const host = await plan();
+    expect(find(host, 'h1').textContent).toBe('Grow $40,000, with no date set.');
+    // The limits are the page's heading now, not chips: the time frame's figure says it.
+    expect(host.textContent).toContain(en.goal.card.noDate);
+    expect(host.textContent).not.toMatch(/120 months|2036/);
+    expect(host.querySelector('[data-ui="plan-chart"]')).toBeNull();
+  });
+
   it('names every pin in the view’s language, the exit cost’s as well', async () => {
     api();
     rememberPlan(planOn());

@@ -46,7 +46,11 @@ export const BasketAssetBase = z.object({
   autoFollowEligible: z.boolean(),
   /** Creator cap, section 6. */
   maxWeightBps: Bps,
-  /** ISO two-letter codes. */
+  /**
+   * ISO two-letter codes where the asset may not be offered. Information only: the plan engine
+   * ignores it (gate COUNTRY-REMOVED, Rodrigo, Oct 6). Who may hold an asset is to be enforced at
+   * sign-up and in the terms of service.
+   */
   blockedCountries: z.array(z.string().regex(/^[A-Z]{2}$/)),
   /** The risk sheet this asset points to, under content/risk-sheets/. */
   sheet: z.string(),

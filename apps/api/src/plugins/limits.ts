@@ -28,7 +28,7 @@ export const LIMITS = {
     standard: null,
     /** Planning an order and building a transaction: each one asks the chain for quotes. */
     build: 30,
-    /** The sentence parser, which calls a model. No route is in this class yet. */
+    /** The guided intake, which calls a model (`POST /v1/baskets/intake`). */
     parse: 10,
   },
 } as const;

@@ -310,11 +310,15 @@ export async function loadProposal(db: Db, id: string): Promise<BasketProposal |
 }
 
 /** How many plans were made from a link since this time: what the daily cap counts. */
+/** A stored plan that is the plan itself, not one of its other candidates (`BasketProposal.candidate`). */
+const NOT_A_CANDIDATE = sql`(${proposals.proposal}->>'candidate') is null`;
+
 export async function countLinkedSince(db: Db, since: Date): Promise<number> {
   const [row] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(proposals)
-    .where(and(sql`${proposals.fromLink}`, gte(proposals.createdAt, since)));
+    // One call stores the plan and its other candidates (gate THREE-PLANS): it counts once.
+    .where(and(sql`${proposals.fromLink}`, gte(proposals.createdAt, since), NOT_A_CANDIDATE));
   return row?.n ?? 0;
 }
 
@@ -589,9 +593,18 @@ export async function listPersonPlans(
         .filter((id): id is string => id !== null && UUID.test(id)),
     ),
   ];
-  // The person's own plans, and of those bought the ones made from a link.
+  // The person's own plans, and of those bought the ones made from a link. A plan's other
+  // candidates (gate THREE-PLANS) are stored beside it so a buy can name one: they are the same goal
+  // made another way, not more plans, and one is listed only once the person bought it.
   const whose = [
-    ...(user ? [eq(proposals.userId, user.id)] : []),
+    ...(user
+      ? [
+          and(
+            eq(proposals.userId, user.id),
+            bought.length ? or(NOT_A_CANDIDATE, inArray(proposals.id, bought)) : NOT_A_CANDIDATE,
+          ),
+        ]
+      : []),
     ...(bought.length ? [and(inArray(proposals.id, bought), eq(proposals.fromLink, true))] : []),
   ];
   if (whose.length === 0) return { plans: [], next: null };
@@ -699,8 +712,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * it has; a plan identical to one another person stored at the same moment is not shared with them:
  * the answer says to try again, which makes a plan at another time.
  */
+/** The database, or a transaction on it. */
+type Executor = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
+
 export async function insertProposal(
-  db: Db,
+  db: Executor,
   proposal: BasketProposal,
   privyId: string | null,
   /** Made from a link (gate `AGENT-LINK`): stored with no person, and marked so. */

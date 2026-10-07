@@ -751,8 +751,10 @@ describe('a vault’s goal, once money is added', () => {
     const alone = goalOfVault(mine, [bought]);
     const after = goalOfVault(mine, [added, bought]);
     expect(after?.record.orderId).toBe('first');
-    expect(after && dueOf(after.goal).toISOString()).toBe(alone && dueOf(alone.goal).toISOString());
-    expect(after && dueOf(after.goal).toISOString()).toBe('2029-10-01T00:00:00.000Z');
+    expect(after && dueOf(after.goal)?.toISOString()).toBe(
+      alone && dueOf(alone.goal)?.toISOString(),
+    );
+    expect(after && dueOf(after.goal)?.toISOString()).toBe('2029-10-01T00:00:00.000Z');
   });
 
   it('counts the add in what was put in, and joins it to no other vault', () => {

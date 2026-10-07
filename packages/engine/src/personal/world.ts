@@ -13,11 +13,15 @@ import {
 import { z } from 'zod';
 import { pickPrimaryYield } from '../risk/index';
 import { CREDIT_LEG_TYPES, legTypesOf } from './leg-types';
+import { type MatchedList, matchedListOf, type SleeveList } from './matched-theme';
 import { BPS, byName, ceilCents, floorCents, shareOf, toCents, toUsd } from './money';
-import { PERSONAL_PARAMS } from './params';
+import { linesPerSet, PERSONAL_PARAMS } from './params';
 import { eligibleForGoal, sleeveOfClass } from './registry';
+import { StockAttributesFile } from './stock-attributes';
 import { reason } from './templates';
+import { ThemeList } from './theme-list';
 import {
+  type CandidateId,
   type ComposeContext,
   HeldPosition,
   PersonalInputError,
@@ -37,6 +41,13 @@ export type World = {
   sheet: PersonalSheet;
   lang: Language;
   P: PersonalParameters;
+  /** The candidate this plan is made as (gate THREE-PLANS), or null for the plain plan. */
+  candidate: CandidateId | null;
+  /**
+   * The cost a sale is counted at where nothing is measured: the person's table's `tau`, never a
+   * candidate's tighter one (a lower assumed cost would be less cautious, not more).
+   */
+  unmeasuredCost: number;
   shelf: Shelf;
   now: string;
   /** The amount, in cents. */
@@ -72,8 +83,8 @@ export type World = {
     liquiditySource: string | null;
   };
   liquidity: LiquidityProvider | undefined;
-  /** The month of the goal's date, YYYY-MM. */
-  goalMonth: string;
+  /** The month of the goal's date, YYYY-MM; null for a goal with no date (`horizonOpen`). */
+  goalMonth: string | null;
   /** The month the plan is made in, YYYY-MM. */
   nowMonth: string;
   /**
@@ -84,7 +95,18 @@ export type World = {
   /** The smallest line, the most with one issuer, and the most in one stock or crypto asset: cents. */
   minLine: number;
   stockCap: number;
-  /** The most cents with this token's issuer: by risk for stocks and crypto, the plan's cap for the rest. */
+  /**
+   * The most cents with one issuer at the plan's risk, whatever the plan holds with it: stocks,
+   * crypto, gold, dollar yield or a leg in another currency.
+   */
+  issuerCapAtRisk: number;
+  /** Why an issuer takes no more at the plan's risk. */
+  issuerWhyAtRisk(asset: BasketAsset): Reason;
+  /**
+   * The most cents with this token's issuer as its own classes are counted: by risk for stocks and
+   * crypto, and the plan's own cap for the rest, which counts dollar yield, gold and a leg in another
+   * currency only (gate SOLVER-CAPS). The rest are held to the cap by risk as well: `Book.issuerLimit`.
+   */
   issuerCapOf(asset: BasketAsset): number;
   /** Why an issuer takes no more, for this token's sleeve. */
   issuerWhy(asset: BasketAsset): Reason;
@@ -97,8 +119,15 @@ export type World = {
   isCredit(asset: BasketAsset): boolean;
   /** Whether a dollar-yield token is a rate leg and nothing else: what a safe-yield sleeve holds. */
   isRateOnly(asset: BasketAsset): boolean;
-  /** The most cents in credit and basis legs, by the person's credit tolerance, and its share. */
-  creditBudget: { cents: number; bps: number; stated: boolean };
+  /** Whether the limit on lines counts each set of the plan by itself (`linesPerSet` in ./params.ts). */
+  linesPerSet: boolean;
+  /** The same for a sentence: `set` or `plan` (the `lines` words of ./templates.ts). */
+  linesScope: 'set' | 'plan';
+  /**
+   * The most cents in credit and basis legs, by the person's credit tolerance, and its share. `byPlan`
+   * when a candidate holds less than the person allows: the limit is the plan's, not theirs.
+   */
+  creditBudget: { cents: number; bps: number; stated: boolean; byPlan: boolean; fromMix: boolean };
   flags: Set<string>;
   /** Every figure the plan was shaped by, whether or not its token ends up in the plan. */
   observations: Map<string, PersonalObservation>;
@@ -112,6 +141,16 @@ export type World = {
   ceilingOf(asset: BasketAsset): number;
   /** Why this token takes no more than that: the measured cost of selling, or its tier. */
   ceilingWhy(asset: BasketAsset): Reason;
+  /** The token's measured exit capacity at `tau`, in dollars, or null where nothing is measured. */
+  measuredUsdOf(asset: BasketAsset): number | null;
+  /**
+   * What a theme sleeve of this slug is filled from on the person's chain: the curated list of that
+   * slug (gate THEMES); for a slug that names a filter, the stocks it matches in the attributes given
+   * (gate THEME-MATCHED), which may be none. Null when there is neither.
+   */
+  themeListOf(slug: string): SleeveList | null;
+  /** The curated theme lists given for the person's chain, by slug: what the hash of the inputs pins. */
+  themeLists: ThemeList[];
   /**
    * What a line of this token says about where its limit came from: that it is a tier and not a
    * measurement, or that the measurement leaves out a time of the week. Nothing when it is measured
@@ -127,7 +166,7 @@ export type Withdrawal = { month: string; amount: number; currency: string; cent
 export const reportsRegimes = (p: LiquidityProvider): p is RegimeLiquidityProvider =>
   typeof (p as Partial<RegimeLiquidityProvider>).regimes === 'function';
 
-type Ceiling = { cents: number; why: Reason; notes: Reason[] };
+type Ceiling = { cents: number; why: Reason; notes: Reason[]; measuredUsd: number | null };
 
 const issues = (error: z.ZodError) =>
   error.issues.map((i) => ({ path: i.path.join('.'), message: i.message }));
@@ -170,21 +209,50 @@ export function monthAfter(iso: string, months: number): string {
   return `${String(y).padStart(year.length, '0')}-${String(m).padStart(month.length, '0')}`;
 }
 
+/**
+ * The table a candidate is made with (gate THREE-PLANS): Cover sets more aside and reads exits more
+ * cautiously, Spread fills dollar yield equally under a tighter issuer cap; each number moves only
+ * toward its aim, never past the table. Carry, and the plain plan, take the table as it is. The
+ * credit share of Cover is not here: it bounds the person's budget in `buildWorld`, so the plan says
+ * whose limit it is.
+ */
+export function tableFor(P: PersonalParameters, candidate: CandidateId | null): PersonalParameters {
+  if (candidate === 'cover') {
+    const c = P.candidates.cover;
+    return {
+      ...P,
+      setAsideMonths: Math.max(P.setAsideMonths, c.setAsideMonths),
+      tau: Math.min(P.tau, c.tau),
+      shareOfDepth: Math.min(P.shareOfDepth, c.shareOfDepth),
+    };
+  }
+  if (candidate === 'spread') {
+    const c = P.candidates.spread;
+    return {
+      ...P,
+      // One band holds every token, whatever their yields: they share equally.
+      yieldBand: c.equalFill ? 1 : P.yieldBand,
+      issuerCapBps: Math.min(P.issuerCapBps, c.issuerCapBps),
+    };
+  }
+  return P;
+}
+
 /** Validates everything `compose` is handed, and throws `PersonalInputError` on what it cannot use. */
-export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: ComposeContext): World {
+export function buildWorld(
+  sheetIn: PersonalSheet,
+  shelf: Shelf,
+  context: ComposeContext,
+  candidate: CandidateId | null = null,
+): World {
   const parsedSheet = PersonalSheet.safeParse(sheetIn);
   if (!parsedSheet.success) throw new PersonalInputError('InvalidSheet', issues(parsedSheet.error));
   const sheet = parsedSheet.data;
-  // A theme sleeve needs the curated lists of slice 4; it is refused until then, never ignored.
-  if (sheet.sleeves?.some((x) => x.kind === 'theme'))
-    throw new PersonalInputError('InvalidSheet', [
-      { path: 'sleeves', message: 'a theme sleeve is not built yet' },
-    ]);
 
   const parsedParams = PersonalParameters.safeParse(context.params ?? PERSONAL_PARAMS);
   if (!parsedParams.success)
     throw new PersonalInputError('InvalidParams', issues(parsedParams.error));
-  const P = parsedParams.data;
+  const P = tableFor(parsedParams.data, candidate);
   const row = P.sleeves[`${sheet.goal}:${sheet.risk}`];
   const capStock = P.capPerStockBps[sheet.risk];
   const capIssuer = P.capPerIssuerBps[sheet.risk];
@@ -207,6 +275,27 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
   const parsedYields = z.array(YieldRead).safeParse(context.yields ?? []);
   if (!parsedYields.success)
     throw new PersonalInputError('InvalidContext', issues(parsedYields.error));
+  // Theme lists: validated, and one per theme on a chain. A theme sleeve reads its list on the chain.
+  const parsedThemes = z.array(ThemeList).safeParse(context.themes ?? []);
+  if (!parsedThemes.success)
+    throw new PersonalInputError('InvalidContext', issues(parsedThemes.error));
+  const themeKeys = parsedThemes.data.map((t) => `${t.chain}:${t.slug}`);
+  if (new Set(themeKeys).size !== themeKeys.length)
+    throw new PersonalInputError('InvalidContext', [
+      { path: 'themes', message: 'a theme has two lists on one chain' },
+    ]);
+  // The stock attributes: validated as a whole. A matched theme sleeve reads them on the chain.
+  const givenStocks = context.stocks ?? null;
+  const parsedStocks = givenStocks === null ? null : StockAttributesFile.safeParse(givenStocks);
+  if (parsedStocks && !parsedStocks.success)
+    throw new PersonalInputError(
+      'InvalidContext',
+      issues(parsedStocks.error).map((i) => ({
+        ...i,
+        path: i.path ? `stocks.${i.path}` : 'stocks',
+      })),
+    );
+  const stocks = parsedStocks?.data ?? null;
   const parsedFx = z.array(FxRead).safeParse(context.fx ?? []);
   if (!parsedFx.success) throw new PersonalInputError('InvalidContext', issues(parsedFx.error));
   // In one order, each once; of two readings for one pair the latest counts, then the lowest value.
@@ -244,6 +333,14 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
       { path: 'assets', message: `the shelf lists no cash token on ${chain}` },
     ]);
   const tokens = listed.filter((a) => a.chain === chain && a.cls !== 'cash');
+  // A plan lives on one chain, and so do the attributes it reads: another chain's are refused.
+  if (stocks && stocks.chain !== chain)
+    throw new PersonalInputError('InvalidContext', [
+      {
+        path: 'stocks.chain',
+        message: `the stock attributes are of ${stocks.chain}, and the plan is on ${chain}`,
+      },
+    ]);
   const currency = sheet.currency ?? 'USD';
 
   const amount = toCents(sheet.amountUsd);
@@ -272,8 +369,8 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
       return reason('EXCLUDED', { asset: a.underlying }, lang);
     if (!eligibleForGoal(a, sheet.goal))
       return reason('NOT_FOR_GOAL', { asset: a.underlying, goal: sheet.goal }, lang);
-    if (a.blockedCountries.includes(sheet.country))
-      return reason('NOT_IN_COUNTRY', { asset: a.symbol, country: sheet.country }, lang);
+    // No country rule (gate COUNTRY-REMOVED, Rodrigo, Oct 6): `blockedCountries` is information
+    // only. Who may hold an asset is for sign-up and the terms of service, not the plan.
     return null;
   };
 
@@ -317,7 +414,7 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
         notes.push(reason('EXIT_PARTLY_MEASURED', { asset: a.symbol, when: when.join(',') }, lang));
       }
       const why = reason('EXIT_CEILING', { asset: a.symbol, maxUsd: toUsd(cents) }, lang);
-      made = { cents, why, notes };
+      made = { cents, why, notes, measuredUsd: measured.capacityUsd };
     } else {
       // Nothing measured: the tier on the asset list stands in, and the plan says that it does. A
       // token the provider has curves for and no figure is flagged as that, never passed in silence.
@@ -325,17 +422,30 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
       flags.add(`ceiling_from_tier:${a.id}`);
       if (covered) flags.add(`exit_capacity_thin:${a.id}`);
       const why = reason('TIER_CEILING', { asset: a.symbol, maxUsd: toUsd(cents) }, lang);
-      made = { cents, why, notes: [why] };
+      made = { cents, why, notes: [why], measuredUsd: null };
     }
     ceilings.set(a.id, made);
     return made;
   };
 
+  // In one order, names and all: the order a list is written in decides nothing.
+  const themeLists = byName(
+    parsedThemes.data.filter((t) => t.chain === chain),
+    (t) => t.slug,
+  ).map((t) => ({ ...t, members: byName(t.members, (m) => m.symbol) }));
+  // A matched list is made once for a slug, from the attributes: pure code picks its stocks.
+  const matchedLists = new Map<string, MatchedList | null>();
+  const matchedOf = (slug: string): MatchedList | null => {
+    if (!matchedLists.has(slug)) matchedLists.set(slug, matchedListOf(slug, stocks));
+    return matchedLists.get(slug) ?? null;
+  };
   const nowMonth = monthAfter(context.now, 0);
   const world: World = {
     sheet,
     lang,
     P,
+    candidate,
+    unmeasuredCost: Math.max(P.tau, parsedParams.data.tau),
     shelf,
     now: context.now,
     amount,
@@ -372,12 +482,15 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
       liquiditySource: context.liquiditySource?.trim() || null,
     },
     liquidity,
-    goalMonth: monthAfter(context.now, sheet.horizonMonths),
+    goalMonth: sheet.horizonOpen ? null : monthAfter(context.now, sheet.horizonMonths),
     nowMonth,
     withdrawals: [],
     // A vault's target is at least one basis point, so a line is too, whatever the table says.
     minLine: Math.max(toCents(P.minLineUsd), Math.ceil((amount * Math.max(1, P.minLineBps)) / BPS)),
     stockCap: shareOf(amount, capStock),
+    issuerCapAtRisk: shareOf(amount, capIssuer),
+    issuerWhyAtRisk: (a) =>
+      reason('ISSUER_CAP', { capBps: capIssuer, risk: sheet.risk, issuer: a.issuer }, lang),
     issuerCapOf: (a) =>
       sleeveOfClass(a.cls) === 'growth'
         ? shareOf(amount, capIssuer)
@@ -407,13 +520,22 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
       const types = legTypesOf(a.symbol)?.types ?? [];
       return types.length > 0 && types.every((t) => t === 'rate');
     },
+    linesPerSet: linesPerSet(sheet),
+    linesScope: linesPerSet(sheet) ? 'set' : 'plan',
     creditBudget: (() => {
       const tolerance = sheet.limits?.creditTolerance ?? P.defaultCreditTolerance;
-      const bps = P.creditShareBps[tolerance] ?? 0;
+      // A credit share the person stated in their mix is their budget (gate EXPLICIT-MIX).
+      const fromMix = sheet.mix?.creditBps !== undefined;
+      const theirs = sheet.mix?.creditBps ?? P.creditShareBps[tolerance] ?? 0;
+      const plans =
+        candidate === 'cover' ? shareOf(theirs, P.candidates.cover.creditOfLimitBps) : theirs;
+      const bps = Math.min(theirs, plans);
       return {
         cents: shareOf(amount, bps),
         bps,
-        stated: sheet.limits?.creditTolerance !== undefined,
+        stated: fromMix || sheet.limits?.creditTolerance !== undefined,
+        byPlan: plans < theirs,
+        fromMix,
       };
     })(),
     flags,
@@ -423,6 +545,9 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
     ceilingOf: (a) => ceiling(a).cents,
     ceilingWhy: (a) => ceiling(a).why,
     ceilingNotes: (a) => ceiling(a).notes,
+    measuredUsdOf: (a) => ceiling(a).measuredUsd,
+    themeListOf: (slug) => themeLists.find((t) => t.slug === slug) ?? matchedOf(slug),
+    themeLists,
   };
 
   // Withdrawals, in dollars. One before this month is past and counts for nothing, and the plan says
@@ -452,5 +577,7 @@ export function buildWorld(sheetIn: PersonalSheet, shelf: Shelf, context: Compos
         message: `a withdrawal in ${cur} needs an FX reading for USD${cur}`,
       })),
     );
+  // The world is at the sheet's own risk. A stated mix sets the limits (gate EXPLICIT-MIX), and which
+  // risk that is takes a plan to tell: `build` in ./compose.ts settles it and makes the world at it.
   return world;
 }

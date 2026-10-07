@@ -136,7 +136,8 @@ export function checkSheet(fields: SheetFields, chain: ChainId | null): SheetChe
     risk: fields.risk === '' ? undefined : fields.risk,
     // The shelf is not served yet, so no shared portfolio can be named on the sheet.
     themes: [],
-    country: fields.country,
+    // Optional since gate COUNTRY-REMOVED (Oct 6): the picker stays, and an empty one sends none.
+    ...(fields.country === '' ? {} : { country: fields.country }),
     // A placeholder while there is no chain: the fields are checked, and no sheet comes out.
     chains: [chain ?? 'solana'],
     ...(income === null ? {} : { incomeTargetUsdMonthly: income }),
@@ -177,8 +178,11 @@ export function dollars(amount: number, lang: Lang): string {
   }).format(amount);
 }
 
-/** The fields a plan cannot be built without. The monthly income may be left empty. */
-const NEEDED: readonly FieldKey[] = ['goal', 'amount', 'horizon', 'risk', 'country'];
+/**
+ * The fields a plan cannot be built without. The monthly income may be left empty, and so may the
+ * country: no plan is shaped by it (gate COUNTRY-REMOVED, Oct 6), so it is never named as missing.
+ */
+const NEEDED: readonly FieldKey[] = ['goal', 'amount', 'horizon', 'risk'];
 
 /** The fields a plan needs that the reader left empty and the person has not filled yet, in sheet order. */
 export function notFound(fields: SheetFields, read: SheetFields): FieldKey[] {
@@ -297,21 +301,6 @@ export function sheetGroups(
         }),
       ],
     },
-    {
-      legend: g.groups.shape,
-      fields: [
-        field('country', {
-          kind: 'select',
-          schemaKey: 'country',
-          width: '22ch',
-          options: [choose, ...countryOptions(LOCALE[lang])],
-          hint:
-            countryFromBrowser && fields.country === read.country
-              ? g.hints.countryFromBrowser
-              : g.hints.country,
-        }),
-      ],
-    },
   ];
   // What a first plan seldom changes, folded under "More limits" (the flow audit, finding 6).
   const more: SheetGroup[] = [
@@ -344,6 +333,23 @@ export function sheetGroups(
             { value: 'en', label: g.options.language.en },
             { value: 'pt', label: g.options.language.pt },
           ],
+        }),
+      ],
+    },
+    // The country shapes no plan (gate COUNTRY-REMOVED, Oct 6): it is not among what shapes the plan,
+    // it may be left empty, and its hint says the plan does not use it.
+    {
+      legend: g.groups.optional,
+      fields: [
+        field('country', {
+          kind: 'select',
+          schemaKey: 'country',
+          width: '22ch',
+          options: [choose, ...countryOptions(LOCALE[lang])],
+          hint:
+            countryFromBrowser && fields.country === read.country
+              ? g.hints.countryFromBrowser
+              : g.hints.country,
         }),
       ],
     },
@@ -399,7 +405,8 @@ export function goalFromSheet(sheet: BasketSheet, goalText: string, now = new Da
     income: sheet.incomeTargetUsdMonthly === undefined ? '' : String(sheet.incomeTargetUsdMonthly),
     horizon: String(sheet.horizonMonths),
     risk: sheet.risk,
-    country: sheet.country,
+    // The country is optional and shapes no plan (gate COUNTRY-REMOVED): empty when the sheet has none.
+    country: sheet.country ?? '',
     holdings: sheet.rules.useHoldings ? 'yes' : 'no',
     glide: sheet.rules.glide ? 'yes' : 'no',
     language: sheet.language,

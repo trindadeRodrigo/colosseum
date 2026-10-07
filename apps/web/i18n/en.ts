@@ -299,7 +299,13 @@ export const en = {
       editSheet: 'Edit limits',
       edited: 'edited',
     },
-    groups: { goal: 'Goal', time: 'Time and risk', shape: 'What shapes the plan', words: 'Words' },
+    groups: {
+      goal: 'Goal',
+      time: 'Time and risk',
+      shape: 'What shapes the plan',
+      words: 'Words',
+      optional: 'Optional',
+    },
     fields: {
       goal: 'What the money is for',
       income: 'Monthly income (dollars)',
@@ -314,10 +320,10 @@ export const en = {
     hints: {
       income: 'What you need each month. Leave it empty if you have no figure.',
       horizon: 'From 1 to 480.',
-      country: 'You state it. It decides which assets you may hold.',
+      country: 'You may leave it empty. The plan doesn’t use it.',
       /** The country's hint while it is the one this browser's language names, unchanged. */
       countryFromBrowser:
-        'Taken from this browser’s language. Change it if you live elsewhere: it decides which assets you may hold.',
+        'Taken from this browser’s language. You may change it or leave it empty: the plan doesn’t use it.',
       holdings: 'The plan fills gaps and avoids doubling up.',
       amount: 'What this plan starts with, from $10 to $1,000,000.',
       /** Before the hint of a field the reader left empty. */
@@ -384,6 +390,13 @@ export const en = {
       sentenceIncome: (income: string, amount: string, months: string) =>
         `Earn ${income} a month from ${amount} for ${months}.`,
       months: (n: number) => (n === 1 ? '1 month' : `${n} months`),
+      /** A goal with no date (gate GLIDE-OPT-IN): the months it is built over are never shown. */
+      sentenceOpen: {
+        grow: (amount: string) => `Grow ${amount}, with no date set.`,
+        income: (amount: string) => `Earn income from ${amount}, with no date set.`,
+        protect: (amount: string) => `Protect ${amount}, with no date set.`,
+      },
+      noDate: 'No date set',
       unfinished: 'Your goal, as read so far.',
       draftOpen: 'Draft: finish the limits',
       draftSet: 'Draft: limits set, no plan yet',

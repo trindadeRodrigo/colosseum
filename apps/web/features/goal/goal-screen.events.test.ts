@@ -109,11 +109,14 @@ async function read(host: HTMLElement, text = GOAL) {
   await settle();
 }
 
-/** Fills what today's reader leaves empty for a goal in dollars. */
+/**
+ * Fills what today's reader leaves empty that a plan needs, for a goal in dollars. Not the country: no
+ * plan is shaped by it (gate COUNTRY-REMOVED, Oct 6), so every test that builds after this builds
+ * without one.
+ */
 async function fill(host: HTMLElement) {
   await type(input(host, 'amount'), '40,000');
   await type(input(host, 'horizon'), '36');
-  await choose(host, 'country', 'BR');
 }
 
 /** The browser's languages, as navigator.languages says them. */
@@ -409,10 +412,10 @@ describe('reading a typed goal', () => {
     expect(input(host, 'horizon').value).toBe('');
     // and the screen says why a dollar amount was not found, and names what is left to fill
     expect(host.textContent).toContain(
-      en.goal.readerMissed('Amount (dollars), Time frame (months), and Country where you live'),
+      en.goal.readerMissed('Amount (dollars) and Time frame (months)'),
     );
-    // each field left empty says it was not found, before what it takes
-    for (const key of ['amount', 'horizon', 'country'] as const)
+    // each field left empty that a plan needs says it was not found, before what it takes
+    for (const key of ['amount', 'horizon'] as const)
       expect(find(host, `#${FIELD_ID[key]}`).closest('[data-ui="field"]')?.textContent).toContain(
         en.goal.hints.notFound,
       );
@@ -421,20 +424,61 @@ describe('reading a typed goal', () => {
     );
   });
 
-  it('shows the five limits a first plan needs and folds the rest under “More limits”', async () => {
+  // Gate COUNTRY-REMOVED (Rodrigo, Oct 6): the country shapes no plan. Until then this screen named
+  // "Country where you live" among what was left to fill, under "What shapes the plan", with the
+  // hint "It decides which assets you may hold".
+  it('does not ask for the country: it is optional, apart from what shapes the plan, and says the plan does not use it', async () => {
+    api({});
+    const host = await screen();
+    await read(host);
+    const country = find<HTMLSelectElement>(host, `#${FIELD_ID.country}`);
+    expect(country.value).toBe('');
+    // the note that names what is left to fill does not name it
+    const note = [...host.querySelectorAll('p')].find((p) =>
+      p.textContent?.includes('didn’t find these in your goal'),
+    );
+    expect(note?.textContent).toBe(
+      en.goal.readerMissed('Amount (dollars) and Time frame (months)'),
+    );
+    expect(note?.textContent).not.toContain(en.goal.fields.country);
+    const field = country.closest('[data-ui="field"]');
+    expect(field?.textContent).not.toContain(en.goal.hints.notFound);
+    expect(field?.textContent).toContain('You may leave it empty. The plan doesn’t use it.');
+    expect(host.textContent).not.toMatch(/decides which assets/);
+    // under its own legend, and not under "What shapes the plan"
+    const group = country.closest('fieldset');
+    expect(group?.querySelector('legend')?.textContent).toBe('Optional');
+    const shape = [...host.querySelectorAll('fieldset')].find(
+      (f) => f.querySelector('legend')?.textContent === en.goal.groups.shape,
+    );
+    expect(shape?.querySelector(`#${FIELD_ID.country}`)).toBeNull();
+    // and in Portuguese
+    await unmountAll();
+    api({});
+    const pt = await screen('pt');
+    await read(pt);
+    const said = find(pt, `#${FIELD_ID.country}`).closest('fieldset')?.textContent;
+    expect(said).toContain('Opcional');
+    expect(said).toContain('Pode deixar em branco. O plano não usa esse dado.');
+    expect(pt.textContent).not.toMatch(/Define quais ativos/);
+  });
+
+  it('shows the four limits a first plan needs and folds the rest, the optional country with it, under “More limits”', async () => {
     api({});
     const host = await screen();
     await read(host);
     const more = find<HTMLDetailsElement>(host, '[data-ui="sheet-more"]');
     expect(find(more, 'summary').textContent).toBe(en.goal.sheet.more);
     expect(more.open).toBe(false);
-    const folded = (['holdings', 'glide', 'language'] as const).map((key) => FIELD_ID[key]);
+    const folded = (['holdings', 'glide', 'language', 'country'] as const).map(
+      (key) => FIELD_ID[key],
+    );
     expect([...more.querySelectorAll('select, input')].map((el) => el.id)).toEqual(folded);
     const shown = [...find(host, '#limits').querySelectorAll('select, input')]
       .map((el) => el.id)
       .filter((id) => !folded.includes(id));
     expect(shown).toEqual(
-      (['goal', 'horizon', 'risk', 'country', 'amount'] as const).map((key) => FIELD_ID[key]),
+      (['goal', 'horizon', 'risk', 'amount'] as const).map((key) => FIELD_ID[key]),
     );
   });
 
@@ -493,7 +537,8 @@ describe('“Build my plan”', () => {
     portStore.set(signedInPort(PHANTOM));
     const host = await screen();
     await read(host);
-    // the reader left the amount, the time frame and the country empty
+    // the reader left the amount, the time frame and the country empty; the country is optional
+    // since gate COUNTRY-REMOVED (Oct 6), so it is not listed
     expect(buildButton(host).getAttribute('aria-disabled')).toBe('true');
     await click(buildButton(host));
     await click(buildButton(host));
@@ -504,15 +549,14 @@ describe('“Build my plan”', () => {
     const items = [...(summary(host)?.querySelectorAll('li') ?? [])].map((li) => li.textContent);
     expect(items).toEqual([
       `${en.goal.fields.horizon}: ${en.goal.errors.horizon} ${en.goal.sheet.goToField}`,
-      `${en.goal.fields.country}: ${en.goal.errors.country} ${en.goal.sheet.goToField}`,
       `${en.goal.fields.amount}: ${en.goal.errors.amountEmpty} ${en.goal.sheet.goToField}`,
     ]);
     // right after a reading, what the reader left empty is missing: it has not failed to fit
     expect(summary(host)?.textContent).toContain(
-      '3 things are still missing. Fill them in to build the plan.',
+      '2 things are still missing. Fill them in to build the plan.',
     );
     expect(summary(host)?.textContent).not.toContain('fit yet');
-    expect(host.textContent).toContain('Fill in the 3 fields above to continue.');
+    expect(host.textContent).toContain('Fill in the 2 fields above to continue.');
     expect(input(host, 'amount').getAttribute('aria-invalid')).toBe('true');
     // one field fixed is not all of them
     await type(input(host, 'amount'), '40,000');
@@ -520,7 +564,6 @@ describe('“Build my plan”', () => {
     expect(server.to(PERSONALIZE_PATH)).toEqual([]);
     // an amount the schema refuses does not pass either
     await type(input(host, 'horizon'), '36');
-    await choose(host, 'country', 'BR');
     await type(input(host, 'amount'), '5');
     await click(buildButton(host));
     expect(server.to(PERSONALIZE_PATH)).toEqual([]);
@@ -555,7 +598,6 @@ describe('“Build my plan”', () => {
             horizonMonths: 36,
             risk: 'medium',
             themes: [],
-            country: 'BR',
             chains: ['solana'],
             rules: { useHoldings: true, glide: true },
             language: 'en',
@@ -563,6 +605,22 @@ describe('“Build my plan”', () => {
         },
       },
     ]);
+  });
+
+  it('builds with no country, and carries one on the sheet only when the person chose it', async () => {
+    const server = api({ person: onSolana });
+    portStore.set(signedInPort(PHANTOM));
+    const host = await screen();
+    await read(host);
+    await fill(host);
+    // nothing is missing with the country left empty
+    expect(summary(host)).toBeNull();
+    expect(buildButton(host).getAttribute('aria-disabled')).toBeNull();
+    await choose(host, 'country', 'BR');
+    await click(buildButton(host));
+    await settle();
+    expect(server.to(PERSONALIZE_PATH)).toHaveLength(1);
+    expect(server.to(PERSONALIZE_PATH)[0]?.body).toMatchObject({ sheet: { country: 'BR' } });
   });
 
   it('gives someone who is not signed in the next step, not an error: a link to sign in where the build button is', async () => {
