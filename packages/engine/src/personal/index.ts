@@ -75,7 +75,7 @@ export {
   type SleeveList,
   shelfLabelsOf,
 } from './matched-theme';
-export { growthRoomBps, RISKS } from './mix';
+export { RISKS } from './mix';
 export { INTAKE_LIMITS, PERSONAL_PARAMS, PERSONAL_PARAMS_STATUS } from './params';
 export { matchedName, readBack, type TermSaid, type ThemeNames } from './readback';
 export {

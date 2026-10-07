@@ -14,7 +14,6 @@ import type { MarketFilterBy } from './market-filter';
 //   months  a count of months                 18 months       18 meses
 //   goal, risk, sleeve, chain, candidate, by  the word for it, from WORDS
 //   part     one of the person's sleeves: goal, safe_yield, or theme:<slug>
-//   inCountry                                 in Brazil       no Brasil
 //   regimes  times of the week, by their codes   at the weekend and on US holidays
 //   list     names joined by commas            AAPL, MSFT and NVDA   AAPL, MSFT e NVDA
 //            (no space after the comma that joins: a comma inside a name is followed by one)
@@ -27,7 +26,6 @@ export const INPUT_NAMES = [
   'amount',
   'themes',
   'holdings',
-  'country',
   'chain',
   'cannotHold',
   'mustKeep',
@@ -66,6 +64,13 @@ export const REASON_TEMPLATES = {
     ['mix'],
     'To hold {sleeveBps|pct} of the plan in stocks and crypto, the plan uses the limits for {risk|risk}: at most {stockCapBps|pct} in one stock or crypto asset, and {issuerCapBps|pct} with one issuer.',
     'Para ter {sleeveBps|pct} do plano em ações e cripto, o plano usa os limites de {risk|risk}: no máximo {stockCapBps|pct} em uma só ação ou cripto, e {issuerCapBps|pct} com um só emissor.',
+  ),
+  // Withdrawals come before the mix: what the next months owe is set aside first. Said on the lines
+  // of each class of the mix that holds less for it, and on the lines that hold what is set aside.
+  MIX_SET_ASIDE: rule(
+    ['obligations', 'mix'],
+    '{usd|usd} of the {askedBps|pct} you asked for in {sleeve|sleeve} is set aside for your withdrawals from {from|month} to {to|month} instead, which leaves {leftBps|pct} of the plan for {sleeve|sleeve}: what your withdrawals need in those months is set aside before the mix is held.',
+    '{usd|usd} dos {askedBps|pct} que você pediu em {sleeve|sleeve} ficam separados para os seus saques de {from|month} a {to|month}, o que deixa {leftBps|pct} do plano para {sleeve|sleeve}: o que os seus saques precisam nesses meses fica separado antes de a composição ser montada.',
   ),
   // The person's split of the plan (gate SLEEVES).
   SPLIT_GOAL: rule(
@@ -689,8 +694,8 @@ export const TEXT_TEMPLATES = {
     pt: '{plan|candidate} não aparece: ele guarda o mesmo que {other|candidate}.',
   },
   CANDIDATE_BREAKS_MIX: {
-    en: '{plan|candidate} is not shown: it would hold {heldBps|pct} of the plan in {sleeve|sleeve}, which is not the mix you asked for.',
-    pt: '{plan|candidate} não aparece: ele teria {heldBps|pct} do plano em {sleeve|sleeve}, o que não é a composição que você pediu.',
+    en: '{plan|candidate} is not shown: it would hold {heldBps|pct} of the plan in {sleeve|sleeve}, where the plan for the mix you asked for holds {mixBps|pct}.',
+    pt: '{plan|candidate} não aparece: ele teria {heldBps|pct} do plano em {sleeve|sleeve}, e o plano para a composição que você pediu tem {mixBps|pct}.',
   },
   CANDIDATE_DOMINATED: {
     en: '{plan|candidate} is not shown: {other|candidate} is as good on every line of the comparison, and better on one.',
@@ -709,7 +714,7 @@ export const TEXT_TEMPLATES = {
 export type TextId = keyof typeof TEXT_TEMPLATES;
 
 type Words = Record<
-  'goal' | 'risk' | 'sleeve' | 'chain' | 'inCountry' | 'regime' | 'candidate' | 'part',
+  'goal' | 'risk' | 'sleeve' | 'chain' | 'regime' | 'candidate' | 'part',
   Record<string, string>
 > & {
   /** What a market filter reads (gate THEME-MATCHED), by its name. */
@@ -762,32 +767,6 @@ export const WORDS: Record<Language, Words> = {
       us_holiday: 'on US holidays',
     },
     and: 'and',
-    // A country by its name. One this list does not hold is written by its code.
-    inCountry: {
-      AE: 'in the United Arab Emirates',
-      AR: 'in Argentina',
-      AU: 'in Australia',
-      BR: 'in Brazil',
-      CA: 'in Canada',
-      CH: 'in Switzerland',
-      CL: 'in Chile',
-      CO: 'in Colombia',
-      DE: 'in Germany',
-      ES: 'in Spain',
-      FR: 'in France',
-      GB: 'in the United Kingdom',
-      IE: 'in Ireland',
-      IT: 'in Italy',
-      JP: 'in Japan',
-      MX: 'in Mexico',
-      NL: 'in the Netherlands',
-      PE: 'in Peru',
-      PT: 'in Portugal',
-      PY: 'in Paraguay',
-      SG: 'in Singapore',
-      US: 'in the United States',
-      UY: 'in Uruguay',
-    },
   },
   pt: {
     goal: {
@@ -831,31 +810,6 @@ export const WORDS: Record<Language, Words> = {
       us_holiday: 'em feriados dos EUA',
     },
     and: 'e',
-    inCountry: {
-      AE: 'nos Emirados Árabes Unidos',
-      AR: 'na Argentina',
-      AU: 'na Austrália',
-      BR: 'no Brasil',
-      CA: 'no Canadá',
-      CH: 'na Suíça',
-      CL: 'no Chile',
-      CO: 'na Colômbia',
-      DE: 'na Alemanha',
-      ES: 'na Espanha',
-      FR: 'na França',
-      GB: 'no Reino Unido',
-      IE: 'na Irlanda',
-      IT: 'na Itália',
-      JP: 'no Japão',
-      MX: 'no México',
-      NL: 'nos Países Baixos',
-      PE: 'no Peru',
-      PT: 'em Portugal',
-      PY: 'no Paraguai',
-      SG: 'em Singapura',
-      US: 'nos Estados Unidos',
-      UY: 'no Uruguai',
-    },
   },
 };
 
@@ -922,8 +876,6 @@ const FORMATS: Record<string, (value: Value, lang: Language, key: string) => str
       : `${whole}${lang === 'pt' ? ',' : '.'}${String(part).padStart(2, '0')}`;
   },
   usdUp: (value, lang, key) => dollars(number(value, key), lang, true),
-  inCountry: (value, lang) =>
-    WORDS[lang].inCountry[String(value)] ?? `${lang === 'pt' ? 'em' : 'in'} ${value}`,
   pct: (value, lang, key) => {
     // Basis points over a hundred, with no trailing zeros: 8000 is 80, 1432 is 14.32.
     const text = String(Math.round(number(value, key)) / 100);

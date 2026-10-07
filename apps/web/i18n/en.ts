@@ -228,7 +228,13 @@ export const en = {
       editSheet: 'Edit limits',
       edited: 'edited',
     },
-    groups: { goal: 'Goal', time: 'Time and risk', shape: 'What shapes the plan', words: 'Words' },
+    groups: {
+      goal: 'Goal',
+      time: 'Time and risk',
+      shape: 'What shapes the plan',
+      words: 'Words',
+      optional: 'Optional',
+    },
     fields: {
       goal: 'What the money is for',
       income: 'Monthly income (dollars)',
@@ -243,7 +249,7 @@ export const en = {
     hints: {
       income: 'What you need each month. Leave it empty if you have no figure.',
       horizon: 'From 1 to 480.',
-      country: 'You state it. It decides which assets you may hold.',
+      country: 'You may leave it empty. The plan doesn’t use it.',
       holdings: 'The plan fills gaps and avoids doubling up.',
       amount: 'What this plan starts with, from $10 to $1,000,000.',
       /** Before the hint of a field the reader left empty. */

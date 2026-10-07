@@ -169,8 +169,11 @@ export function dollars(amount: number, lang: Lang): string {
   }).format(amount);
 }
 
-/** The fields a plan cannot be built without. The monthly income may be left empty. */
-const NEEDED: readonly FieldKey[] = ['goal', 'amount', 'horizon', 'risk', 'country'];
+/**
+ * The fields a plan cannot be built without. The monthly income may be left empty, and so may the
+ * country: no plan is shaped by it (gate COUNTRY-REMOVED, Oct 6), so it is never named as missing.
+ */
+const NEEDED: readonly FieldKey[] = ['goal', 'amount', 'horizon', 'risk'];
 
 /** The fields a plan needs that the reader left empty and the person has not filled yet, in sheet order. */
 export function notFound(fields: SheetFields, read: SheetFields): FieldKey[] {
@@ -276,13 +279,6 @@ export function sheetGroups(
     {
       legend: g.groups.shape,
       fields: [
-        field('country', {
-          kind: 'select',
-          schemaKey: 'country',
-          width: '22ch',
-          options: [choose, ...countryOptions(LOCALE[lang])],
-          hint: g.hints.country,
-        }),
         field('holdings', {
           kind: 'select',
           schemaKey: 'rules.useHoldings',
@@ -309,6 +305,20 @@ export function sheetGroups(
             { value: 'en', label: g.options.language.en },
             { value: 'pt', label: g.options.language.pt },
           ],
+        }),
+      ],
+    },
+    // The country shapes no plan (gate COUNTRY-REMOVED, Oct 6): it is not among what shapes the plan,
+    // it may be left empty, and its hint says the plan does not use it.
+    {
+      legend: g.groups.optional,
+      fields: [
+        field('country', {
+          kind: 'select',
+          schemaKey: 'country',
+          width: '22ch',
+          options: [choose, ...countryOptions(LOCALE[lang])],
+          hint: g.hints.country,
         }),
       ],
     },
