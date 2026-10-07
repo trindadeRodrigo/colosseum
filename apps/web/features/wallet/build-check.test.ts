@@ -8,6 +8,8 @@ import {
   checkBuild,
   DEV_ONLY,
   FORBIDDEN,
+  fingerprint,
+  KNOWN_BYTE_TABLES,
   REQUIRED,
   SECRET_SHAPES,
   STAGE_BUDGET,
@@ -93,12 +95,35 @@ describe('what a browser is sent', () => {
         `anon:"${jwt({ iss: 'supabase', role: 'anon' })}",h:"-----BEGIN PRIVATE KEY-----"`,
         // a hash and a topic are 32 bytes of hex with no name that says "key"; a table is not 64 bytes
         `topic:"0x${'cd'.repeat(32)}",table:[${Array.from({ length: 256 }, (_, i) => i).join(',')}]`,
-        // 64 bytes with no name that says what they are: a library's constant, as a real build ships
-        `perm:${keypair},next:1`,
       ].join(';'),
     });
     expect(checkBuild(out)).toEqual([]);
     expect(Object.keys(SECRET_SHAPES)).toHaveLength(9);
+  });
+
+  it('flags 64 bytes under any name, and lets through only a table listed by its fingerprint', () => {
+    // a key is not always called one: a plain name, a payer, an authority, no name at all
+    for (const text of [
+      `const k=${keypair};`,
+      `payer:${keypair}`,
+      `authority=Uint8Array.from(${keypair})`,
+      `f(${keypair})`,
+    ]) {
+      const problems = checkBuild(build({ ...CLEAN, 'static/chunks/env.js': text }));
+      expect(problems, text).toHaveLength(1);
+      // the finding gives the fingerprint to list it by, and none of the bytes
+      expect(problems[0]).toContain(`fingerprint ${fingerprint(keypair)}`);
+      expect(problems[0]).not.toContain(keypair.slice(1, 40));
+    }
+    // a library's table, once listed, is let through; the same bytes changed by one are not
+    KNOWN_BYTE_TABLES.set(fingerprint(keypair), 'a table made for this test');
+    try {
+      expect(checkBuild(build({ ...CLEAN, 'static/chunks/env.js': `t=${keypair}` }))).toEqual([]);
+      const other = keypair.replace(/\d+\]$/, '7]');
+      expect(checkBuild(build({ ...CLEAN, 'static/chunks/env.js': `t=${other}` }))).toHaveLength(1);
+    } finally {
+      KNOWN_BYTE_TABLES.delete(fingerprint(keypair));
+    }
   });
 
   it('reads the pages and payloads rendered ahead of time as it reads the bundle', () => {

@@ -10,6 +10,7 @@
 // skips for want of a build (components/ui/forbidden.test.ts), and starts the build to ask who may
 // frame each address (check-frames.mjs).
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -58,6 +59,17 @@ const serviceRoleJwt = (text) =>
       }
     },
   );
+/** A 64-byte array by the SHA-256 of its numbers, spaces dropped: 16 hex characters of it. */
+export const fingerprint = (array) =>
+  createHash('sha256').update(array.replace(/\s/g, '')).digest('hex').slice(0, 16);
+
+/**
+ * The 64-byte arrays a build may ship: a library's constant, by its fingerprint, with what it is. An
+ * entry is added only after the array was looked at where the library defines it. Anything else of
+ * that shape fails the build, whatever it is called.
+ */
+export const KNOWN_BYTE_TABLES = new Map([]);
+
 const BYTE = '(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)';
 const BYTES_64 = new RegExp(`\\[\\s*(?:${BYTE}\\s*,\\s*){63}${BYTE}\\s*\\]`, 'g');
 export const SECRET_SHAPES = {
@@ -76,12 +88,20 @@ export const SECRET_SHAPES = {
   // 32 bytes of hex beside a name that says what they are: a hash or a topic has no such name
   'a private key in hex': (text) =>
     /(?:private|secret)[_-]?key["'`]?\s*[:=]\s*["'`]?(?:0x)?[0-9a-fA-F]{64}\b/i.test(text),
-  // a Solana keypair: 64 bytes as an array of numbers, beside a name that says it is one. A bare
-  // table of 64 bytes is a library's constant (the first real build had one), and is not flagged.
-  'a Solana secret key': (text) =>
-    [...text.matchAll(BYTES_64)].some((m) =>
-      /secret|keypair|private/i.test(text.slice(Math.max(0, (m.index ?? 0) - 80), m.index)),
-    ),
+  // A Solana keypair: 64 bytes as an array of numbers, under any name or none (`const k = [...]`,
+  // `payer`, `authority`). A library's own table of 64 bytes is told apart by what it is, never by
+  // what it is called: each one a build ships is listed in KNOWN_BYTE_TABLES by its fingerprint.
+  'a Solana secret key': (text) => {
+    for (const m of text.matchAll(BYTES_64)) {
+      const print = fingerprint(m[0]);
+      if (KNOWN_BYTE_TABLES.has(print)) continue;
+      // the fingerprint, and the letters before it with every digit masked: enough to say which
+      // table it is and list it, and nothing of the bytes
+      const before = text.slice(Math.max(0, (m.index ?? 0) - 48), m.index).replace(/\d/g, '#');
+      return `fingerprint ${print}, after ${JSON.stringify(before)}`;
+    }
+    return false;
+  },
   'a Discord webhook': (text) =>
     /discord(?:app)?\.com\/api\/webhooks\/\d{6,}\/[A-Za-z0-9_-]{20,}/i.test(text),
 };
@@ -209,9 +229,13 @@ export function checkBuild(out) {
   for (const path of files(out)) {
     if (!SENT_FILES.test(relative(out, path).split('\\').join('/'))) continue;
     const text = readFileSync(path, 'latin1');
-    for (const [what, holds] of Object.entries(SECRET_SHAPES))
-      if (holds(text))
-        problems.push(`${relative(out, path)} holds ${what}: a browser is sent this file`);
+    for (const [what, holds] of Object.entries(SECRET_SHAPES)) {
+      const found = holds(text);
+      if (found)
+        problems.push(
+          `${relative(out, path)} holds ${what}${typeof found === 'string' ? ` (${found})` : ''}: a browser is sent this file`,
+        );
+    }
   }
   if (stage > STAGE_BUDGET)
     problems.push(
