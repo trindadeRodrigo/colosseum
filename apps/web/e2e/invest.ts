@@ -68,6 +68,11 @@ export async function planFromGoal(page: Page, goal: string) {
   // on a phone the plan is the line at the foot, which opens
   await page.getByRole('button', { name: en.talk.pane.open }).click();
   const pane = page.locator('[data-ui="invest-pane"]');
+  // The plans of the goal are side by side, none picked (gate THREE-PLANS): the first is chosen.
+  // One plan alone is opened as it is.
+  await expect(pane).toHaveAttribute('data-state', /^(choice|plan|invest)$/);
+  if ((await pane.getAttribute('data-state')) === 'choice')
+    await pane.locator('[data-ui="candidate-pick"] button').first().click();
   // signed in, the invest card is under the plan (`invest`); a visitor has the plan alone
   await expect(pane).toHaveAttribute('data-state', /^(plan|invest)$/);
   await expect(pane.locator('[data-ui="plan-pane"]')).toBeVisible();

@@ -587,6 +587,7 @@ export const pt: Dictionary = {
   },
 
   talk: {
+    pickWords: 'escolho|escolher|quero|fico com|vou de|vamos de|pego',
     chat: 'A conversa',
     you: 'Você',
     me: 'tenonfi',
@@ -609,6 +610,10 @@ export const pt: Dictionary = {
       full: 'Esta conversa já tem o tamanho que eu consigo ler. Toque em um limite do plano para mudar.',
       building: 'Montando seu plano com estes limites…',
       built: 'O plano está à direita. Revise e invista, ou mude o que quiser.',
+      builtChoice:
+        'Seus planos estão à direita, lado a lado. Compare e escolha um, ou mude o que quiser.',
+      picked: (name: string) =>
+        `${name}, então. Revise à direita e invista, ou veja os planos de novo.`,
       heldReady: 'Nada mudou. Diga sim e eu monto o plano com isso.',
       cantPick: {
         stock: (name: string) =>
@@ -688,6 +693,8 @@ export const pt: Dictionary = {
       summaryFacts: (known: number, of: number) => `Seu objetivo: ${known} de ${of} definidos`,
       ownPage: 'Abrir este plano na página dele',
       investTitle: 'Investir',
+      picked: (name: string) => `Você escolheu ${name}.`,
+      backToPlans: 'Ver os planos de novo',
       makeYours: 'Tornar este plano seu',
       stale: 'Este plano é de antes da sua mudança. Responda à pergunta e eu monto de novo.',
       backToPlan: 'Voltar ao plano',
@@ -885,6 +892,7 @@ export const pt: Dictionary = {
     buy: 'Comprar este plano',
     invest: (amount: string) => `Investir ${amount}`,
     investing: 'Abrindo os passos…',
+    investIn: (amount: string, name: string) => `Investir ${amount} em ${name}`,
     answer: {
       inFall: (share: string, what: string, loss: string) =>
         `${share} em ${what} · numa queda forte, cerca de −${loss}`,
@@ -894,6 +902,81 @@ export const pt: Dictionary = {
       range: (low: string, high: string) => `${low} a ${high} ao ano`,
       rangeAfter: 'projetado. Uma faixa, não uma promessa.',
       none: 'Ainda sem projeção: não há leitura de rendimento para este plano.',
+    },
+    choice: {
+      title: 'Seus planos',
+      lead: (plans: number, chain: string) =>
+        plans === 1
+          ? `Um plano dos seus limites, na ${chain}. Nada é comprado até você escolher, revisar cada passo e assinar.`
+          : `${plans} planos dos mesmos limites, na ${chain}, cada um feito de um jeito. Nenhum vem escolhido: compare e escolha um. Nada é comprado até você revisar cada passo e assinar.`,
+      names: { cover: 'Cobertura', spread: 'Diversificação', carry: 'Rendimento' },
+      aims: {
+        cover: 'Separa o máximo para os seus saques, e vende ao menor custo medido.',
+        spread: 'Espalha o dinheiro pelo maior número de emissores que os seus limites permitem.',
+        carry: 'Tem o maior rendimento observado dentro dos seus limites.',
+      },
+      see: (name: string) => `Tudo de ${name}`,
+      sample: { sandbox: 'Números de exemplo · rede de teste', mock: 'Números de exemplo' },
+      headline: {
+        paidOf: (paid: number, all: number) =>
+          `${paid} de ${all} meses de saques pagos às taxas observadas.`,
+        holds: 'O que ele tem',
+        parts: (n: number) => (n === 1 ? '1 parte' : `${n} partes`),
+        paid: 'Meses pagos',
+        worst: 'Pior caso',
+        worstMonths: (stress: string, paid: number, all: number) =>
+          `Se ${stress}, ${paid} de ${all} meses são pagos.`,
+        fall: (amount: string) => `Numa queda forte, cerca de ${amount} perdidos.`,
+        noFall: 'Numa queda forte, cerca de US$ 0 perdidos: nada aqui é ação, cripto ou ouro.',
+      },
+      picker: {
+        legend: 'Escolha um plano',
+        buy: (name: string) => `Escolher ${name}`,
+        none: 'Escolha um plano para investir nele.',
+      },
+      score: {
+        title: 'Como ele se compara',
+        covered: 'Meses de saques separados',
+        paidNow: 'Meses pagos às taxas observadas',
+        paidUnder: (stress: string) => `Meses pagos se ${stress}`,
+        of: (paid: number, all: number) => `${paid} de ${all}`,
+        short: (amount: string) => `faltam ${amount}`,
+        carry: 'Rendimento observado, ao ano',
+        exit: 'Custo de vender tudo no seu tamanho',
+        exitNone: 'não medido',
+        measured: (share: string) => `${share} dele medido`,
+        issuer: 'Maior emissor',
+        issuers: (n: number) => (n === 1 ? '1 emissor' : `${n} emissores`),
+        credit: 'Em crédito e base',
+        fx: 'Devido em outra moeda, sem ter nela',
+      },
+      stress: {
+        yields_fall: (fall: string) => `os rendimentos caírem ${fall}`,
+        credit_gate: (months: number) => `o crédito não puder ser vendido por ${months} meses`,
+        equity_fall: (fall: string) => `ações, cripto e ouro caírem ${fall}`,
+        fx_goal_up: (currency: string, move: string, months: number) =>
+          `o ${currency} subir ${move} sobre o dólar em ${months} meses`,
+        fx_goal_down: (currency: string, move: string, months: number) =>
+          `o ${currency} cair ${move} sobre o dólar em ${months} meses`,
+        other: 'um cenário de estresse se aplicar',
+      },
+      status: {
+        title: 'Seus saques',
+        met: 'Paga todos os saques, às taxas observadas e em cada cenário de estresse.',
+        notMet: 'Não paga todos os saques em cada cenário de estresse.',
+        observedOn: (date: string) => `Taxas observadas em ${date}.`,
+        needed: (needed: string, observed: string) =>
+          `Precisa de ${needed} ao ano no rendimento em dólar, e ${observed} é o observado.`,
+        neededNone: (observed: string) =>
+          `Não precisa de rendimento para pagá-los, e ${observed} é o observado.`,
+        neededOut: (observed: string) =>
+          `Nenhum rendimento até 100% ao ano paga todos os meses, e ${observed} é o observado.`,
+        ways: 'O que fecharia a diferença',
+      },
+      notShown: {
+        title: 'Não aparecem',
+        lead: 'Feitos dos mesmos limites, e deixados de fora, com o motivo.',
+      },
     },
     chainNotReady: (chain: string) =>
       `${chain} ainda não está pronta para compras: os cofres dela não estão implantados nesta rede. Seu plano fica guardado e pode ser comprado quando estiverem.`,

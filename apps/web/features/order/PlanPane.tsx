@@ -55,7 +55,7 @@ export type PlanPaneProps = {
   onWay?: (way: string) => void;
   /** The one button: a link to follow, or an action. Left out: no button (the pane hosts the step). */
   invest?:
-    | { href: string; onFollow?: () => void }
+    | { href: string; onFollow?: () => void; label?: string }
     /** `label`: the button's own words where it does not invest yet ("Make this plan yours"). */
     | { onPress: () => void; busy?: boolean; label?: string };
   /** The heading level of the block's own title: 2 on a page, 3 inside the Invest screen's pane. */
@@ -409,7 +409,7 @@ export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2
                 onClick={invest.onFollow}
                 className={buttonClass({ variant: 'primary' })}
               >
-                {t.plan.invest(amount)}
+                {invest.label ?? t.plan.invest(amount)}
               </Link>
             ) : (
               <Button

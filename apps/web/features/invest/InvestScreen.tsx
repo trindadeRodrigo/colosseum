@@ -1,5 +1,12 @@
 'use client';
-import type { BasketProposal, BasketSheet, RiskRollUp } from '@colosseum/schemas';
+import type {
+  BasketProposal,
+  BasketSheet,
+  PlanCandidate,
+  PlanCandidateId,
+  PlanCandidateNotShown,
+  RiskRollUp,
+} from '@colosseum/schemas';
 import Link from 'next/link';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
@@ -18,6 +25,7 @@ import { GOAL_DRAFT, GOAL_HANDOFF } from '../goal/draft';
 import { GOAL_TEXT } from '../goal/read-goal';
 import { dollars, type SheetFields } from '../goal/sheet';
 import { formatBps } from '../order/amounts';
+import { Candidates } from '../order/Candidates';
 import { Invest } from '../order/Invest';
 import type { InvestProgress } from '../order/invest-words';
 import { PlanPane } from '../order/PlanPane';
@@ -64,6 +72,16 @@ import { wayChange } from './ways';
 // asks them to sign in, in the dialog, and the plan is built again as their own.
 
 type Plan = { id: string; proposal: BasketProposal; rollUp: RiskRollUp | null; own: boolean };
+/**
+ * What one "Build my plan" answered: the candidates of the goal, in their fixed order, and those the
+ * engine left out. `one` is the plan a server that sends no candidates answers with.
+ */
+type Built = {
+  one: Omit<Plan, 'own'>;
+  candidates: PlanCandidate[];
+  notShown: PlanCandidateNotShown[];
+  own: boolean;
+};
 type Build = { kind: 'idle' } | { kind: 'building' } | Exclude<BuildOutcome, { kind: 'built' }>;
 
 type Turn =
@@ -74,7 +92,8 @@ type Turn =
       /** What to say, as keys; the sentences are the dictionary's, the figures the sheet's. */
       say: (
         | Say
-        | { key: 'building' | 'built' | 'signIn' | 'done' }
+        | { key: 'building' | 'built' | 'builtChoice' | 'signIn' | 'done' }
+        | { key: 'picked'; candidate: PlanCandidateId }
         | { key: 'failure' | 'progress'; text: string }
         | { key: 'stopped'; orderId: string }
       )[];
@@ -128,7 +147,27 @@ export function InvestScreen() {
   const [confirmed, setConfirmed] = useState(false);
   const [reading, setReading] = useState(false);
   const [build, setBuild] = useState<Build>({ kind: 'idle' });
-  const [plan, setPlan] = useState<Plan | null>(null);
+  const [built, setBuilt] = useState<Built | null>(null);
+  // Which candidate the person picked. None is picked for them (gate THREE-PLANS).
+  const [picked, setPicked] = useState<PlanCandidateId | null>(null);
+  // The plan on the pane in full: the one picked, or the only one there is to pick.
+  const plan: Plan | null = useMemo(() => {
+    if (!built) return null;
+    if (built.candidates.length === 0) return { ...built.one, own: built.own };
+    const chosen =
+      built.candidates.length === 1
+        ? built.candidates[0]
+        : built.candidates.find((c) => c.candidate === picked);
+    return chosen
+      ? { id: chosen.id, proposal: chosen.proposal, rollUp: chosen.rollUp, own: built.own }
+      : null;
+  }, [built, picked]);
+  const pickedName =
+    plan && built && built.candidates.length > 0
+      ? t.plan.choice.names[
+          (built.candidates.find((c) => c.id === plan.id) as PlanCandidate).candidate
+        ]
+      : null;
   const [paneOpen, setPaneOpen] = useState(false);
   const [text, setText] = useState('');
   const nextId = useRef(0);
@@ -183,7 +222,8 @@ export function InvestScreen() {
     const on = sheetToBuild.chains[0];
     if (on && port.network(on)?.on === false) {
       setBuild({ kind: 'idle' });
-      setPlan(null);
+      setBuilt(null);
+      setPicked(null);
       say({
         say: [{ key: 'failure', text: t.plan.chainOff(t.chain.names[on]) }],
         fields: null,
@@ -196,19 +236,31 @@ export function InvestScreen() {
     const outcome = await buildPlan(apiFetch, sheetToBuild, own ? PERSONALIZE_PATH : PROPOSE_PATH);
     if (wanted.current !== mine) return;
     if (outcome.kind === 'built') {
-      // The plan screen and the buy read the plan from the browser first, then the server.
+      const one = { id: outcome.id, proposal: outcome.proposal, rollUp: outcome.rollUp };
+      // The plan screen and the buy read a plan from the browser first, then the server: each
+      // candidate is its own stored plan, which is what a buy names.
       if (own && port.userId)
-        rememberPlan({
-          id: outcome.id,
-          userId: port.userId,
-          proposal: outcome.proposal,
-          rollUp: outcome.rollUp,
-        });
-      setPlan({ id: outcome.id, proposal: outcome.proposal, rollUp: outcome.rollUp, own });
+        for (const kept of [one, ...outcome.candidates])
+          rememberPlan({
+            id: kept.id,
+            userId: port.userId,
+            proposal: kept.proposal,
+            rollUp: kept.rollUp,
+          });
+      setBuilt({ one, candidates: outcome.candidates, notShown: outcome.notShown, own });
+      // Plans made from a change are new plans to compare: none is picked. The same plans made the
+      // person's own keep their pick.
+      if (!quiet) setPicked(null);
       setBuild({ kind: 'idle' });
       // A plan built again with nothing changed by the person (theirs now, after a sign-in) is not
       // announced a second time.
-      if (!quiet) say({ say: [{ key: 'built' }], fields: null, ask: null, retry: false });
+      if (!quiet)
+        say({
+          say: [{ key: outcome.candidates.length > 1 ? 'builtChoice' : 'built' }],
+          fields: null,
+          ask: null,
+          retry: false,
+        });
       // The person asked to invest before they were signed in: the card is on the pane now.
       if (own && wantsInvest.current) {
         wantsInvest.current = false;
@@ -217,7 +269,8 @@ export function InvestScreen() {
       return;
     }
     setBuild(outcome);
-    setPlan(null);
+    setBuilt(null);
+    setPicked(null);
     const sentence =
       outcome.kind === 'no-plan'
         ? w.failure.noPlan
@@ -249,6 +302,9 @@ export function InvestScreen() {
     if (reading) return;
     // "yes", "ok", "build": the go-ahead, once every fact is known and no plan was asked for yet
     if (input.kind === 'text' && toConfirm && isGoAhead(input.text)) return confirm(words);
+    // a candidate named, while the plans are side by side: it is picked, and nothing is read
+    const named = input.kind === 'text' && !stale ? candidateSaid(input.text) : null;
+    if (named) return pick(named, words);
     said(words);
     setReading(true);
     let reply: Reply;
@@ -397,7 +453,7 @@ export function InvestScreen() {
   const again = useRef(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: once, when the kept sheet is valid for the chain
   useEffect(() => {
-    if (!again.current || !valid || plan || build.kind !== 'idle') return;
+    if (!again.current || !valid || built || build.kind !== 'idle') return;
     again.current = false;
     void buildFrom(valid, signedIn, true);
   }, [valid]);
@@ -426,7 +482,8 @@ export function InvestScreen() {
       setTurns([]);
       setSheet(null);
       setConfirmed(false);
-      setPlan(null);
+      setBuilt(null);
+      setPicked(null);
       setBuild({ kind: 'idle' });
       return;
     }
@@ -434,7 +491,7 @@ export function InvestScreen() {
 
   // A visitor who signs in keeps the conversation, and the plan they were shown is built again as
   // their own, once their chain is known: its vault is theirs, and the server keeps it for them.
-  const visitorPlan = plan !== null && !plan.own;
+  const visitorPlan = built !== null && !built.own;
   const ready = account.status === 'ready' && who !== '';
   // biome-ignore lint/correctness/useExhaustiveDependencies: when the person is ready and the plan shown is a visitor's
   useEffect(() => {
@@ -444,11 +501,11 @@ export function InvestScreen() {
 
   // A plan lives on one chain (gate ONE-CHAIN). When the person moves to another, the plan on the
   // page is another chain's: it is built again for the chain they are on.
-  const planOn = plan?.proposal.sheet.chains[0] ?? null;
+  const planOn = built?.one.proposal.sheet.chains[0] ?? null;
   // biome-ignore lint/correctness/useExhaustiveDependencies: when the chain is no longer the plan's
   useEffect(() => {
     if (planOn && chain && planOn !== chain && valid && build.kind !== 'building')
-      void buildFrom(valid, signedIn && plan?.own === true);
+      void buildFrom(valid, signedIn && built?.own === true);
   }, [planOn, chain, valid]);
 
   // A new turn is brought into view, in the thread's own scroll.
@@ -504,13 +561,13 @@ export function InvestScreen() {
   const open = lastTurn?.who === 'app' ? lastTurn : null;
   const busy = reading || build.kind === 'building';
   // Every fact is known and no plan was asked for yet: "Build my plan" is the one reply.
-  const toConfirm = valid !== null && !confirmed && !plan;
+  const toConfirm = valid !== null && !confirmed && !built;
   const fields = sheet?.fields ?? null;
-  const planChain = plan?.proposal.sheet.chains[0] ?? chain;
+  const planChain = built?.one.proposal.sheet.chains[0] ?? chain;
   const chainName = planChain ? t.chain.names[planChain] : '';
   const network = planChain ? port.network(planChain) : null;
   const blocked =
-    plan && planChain
+    built && planChain
       ? network?.on === false
         ? t.plan.chainOff(chainName)
         : chainReady(planChain, onMock(port, planChain))
@@ -521,9 +578,59 @@ export function InvestScreen() {
   // pane under it, and the pane's last state is the plan and its one press.
   // The plan on the page is from before a change: a fact is asked about again, or the plan is being
   // built again. It is not invested in, by the card or by a button that names its old amount.
-  const stale = plan !== null && (build.kind === 'building' || asking !== null);
+  const stale = built !== null && (build.kind === 'building' || asking !== null);
   const canInvest = plan?.own === true && signedIn && blocked === null && !stale;
-  const state = canInvest ? 'invest' : plan ? 'plan' : fields ? 'facts' : 'empty';
+  // The pane's states: nothing yet; the goal as facts; the candidates side by side, none picked; the
+  // plan that was picked; and that plan with its invest card.
+  const state = canInvest
+    ? 'invest'
+    : plan
+      ? 'plan'
+      : built
+        ? 'choice'
+        : fields
+          ? 'facts'
+          : 'empty';
+  /** A candidate, by its name or its word in either language, said alone or after "choose". */
+  const candidateSaid = (typed: string): PlanCandidateId | null => {
+    if (!built || plan) return null;
+    const said = typed
+      .toLowerCase()
+      .replace(/[.!?…]+$/, '')
+      .trim();
+    const named = built.candidates.filter((c) =>
+      [c.candidate, t.plan.choice.names[c.candidate].toLowerCase()].some(
+        (name) => said === name || new RegExp(`^(${w.pickWords})\\s+${name}$`).test(said),
+      ),
+    );
+    return named.length === 1 ? (named[0] as PlanCandidate).candidate : null;
+  };
+  /**
+   * A way to close a gap, pressed. It is said as the person's own turn, in their words: what changes
+   * and to what, from the sheet's figure. Never the engine's sentence as if they typed it.
+   */
+  function closeGap(way: string) {
+    if (!built) return;
+    const change = wayChange(way, built.one.proposal.sheet);
+    void post(
+      change ? { kind: 'answer', ...change } : { kind: 'text', text: way },
+      change?.fact === 'amount'
+        ? w.ways.amount(factValue('amount', change.value, t, lang))
+        : change?.fact === 'income'
+          ? w.ways.income(factValue('income', change.value, t, lang))
+          : w.ways.other,
+    );
+  }
+  function pick(candidate: PlanCandidateId, words?: string) {
+    if (words) said(words);
+    setPicked(candidate);
+    say({ say: [{ key: 'picked', candidate }], fields: null, ask: null, retry: false });
+  }
+  // What the invest step is called once one of several plans is picked: "Invest $2,000 in Cover".
+  const investIn =
+    plan && pickedName && built && built.candidates.length > 1
+      ? t.plan.investIn(dollars(plan.proposal.sheet.amountUsd, lang), pickedName)
+      : null;
   const knownCount = FACTS.filter((fact) => known(fields, fact)).length;
 
   /** The quick replies of a question this app asks itself. */
@@ -584,6 +691,10 @@ export function InvestScreen() {
         return w.say.building;
       case 'built':
         return w.say.built;
+      case 'builtChoice':
+        return w.say.builtChoice;
+      case 'picked':
+        return w.say.picked(t.plan.choice.names[s.candidate]);
       case 'signIn':
         return w.say.signIn;
       case 'failure':
@@ -711,7 +822,7 @@ export function InvestScreen() {
                   !turn.say.some((x) => x.key === 'ready' || x.key === 'cantPick') &&
                   !turn.ask && (
                     <p className="text-body">
-                      {plan ? w.say.heldBuilt : valid ? w.say.heldReady : w.say.heldOpen}
+                      {built ? w.say.heldBuilt : valid ? w.say.heldReady : w.say.heldOpen}
                     </p>
                   )}
                 {/* The one question: in our server's words where it wrote it, else this app's. */}
@@ -816,7 +927,7 @@ export function InvestScreen() {
           onClick={() => setPaneOpen(true)}
         >
           <span data-ui="invest-summary" className="truncate">
-            {plan
+            {built
               ? w.pane.open
               : fields
                 ? w.pane.summaryFacts(knownCount, fields.goal === 'income' ? 5 : 4)
@@ -866,26 +977,37 @@ export function InvestScreen() {
             {w.pane.stale}
           </p>
         )}
+        {/* The candidates side by side, none picked or marked: one is picked here, or by its name. */}
+        {built && !plan && planChain && (
+          <Candidates
+            candidates={built.candidates}
+            notShown={built.notShown}
+            chain={planChain}
+            disabled={stale}
+            onPick={(candidate) =>
+              pick(candidate, t.plan.choice.picker.buy(t.plan.choice.names[candidate]))
+            }
+            onWay={closeGap}
+          />
+        )}
         {plan && planChain && (
           <div className="motion-safe:animate-seat flex flex-col gap-4">
+            {built && built.candidates.length > 1 && (
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                <p data-ui="pane-picked" className="text-body font-medium">
+                  {w.pane.picked(pickedName ?? '')}
+                </p>
+                <Button variant="link" onClick={() => setPicked(null)}>
+                  {w.pane.backToPlans}
+                </Button>
+              </div>
+            )}
             <PlanPane
               plan={plan}
               chain={planChain}
               blocked={blocked}
               level={2}
-              onWay={(way) => {
-                // The way is said as the person's own turn, in their words: what changes and to
-                // what, from the sheet's figure. Never the engine's sentence as if they typed it.
-                const change = wayChange(way, plan.proposal.sheet);
-                void post(
-                  change ? { kind: 'answer', ...change } : { kind: 'text', text: way },
-                  change?.fact === 'amount'
-                    ? w.ways.amount(factValue('amount', change.value, t, lang))
-                    : change?.fact === 'income'
-                      ? w.ways.income(factValue('income', change.value, t, lang))
-                      : w.ways.other,
-                );
-              }}
+              onWay={closeGap}
               // Its own button only while the card cannot be here. Signed out it leads to the
               // sign-in dialog. Signed in with a plan that is still a visitor's, it makes the plan
               // theirs. On a chain that is not ready it is off and says why. None while the plan
@@ -894,9 +1016,13 @@ export function InvestScreen() {
                 canInvest || stale
                   ? undefined
                   : signedIn && plan.own
-                    ? { onPress: invest }
+                    ? { onPress: invest, ...(investIn ? { label: investIn } : {}) }
                     : !signedIn
-                      ? { href: SIGN_IN, onFollow: invest }
+                      ? {
+                          href: SIGN_IN,
+                          onFollow: invest,
+                          ...(investIn ? { label: investIn } : {}),
+                        }
                       : valid
                         ? {
                             onPress: () => void buildFrom(valid, true, true),
@@ -919,9 +1045,15 @@ export function InvestScreen() {
         {plan && canInvest && (
           <section
             data-ui="invest-step"
-            aria-label={w.pane.investTitle}
+            aria-label={investIn ?? w.pane.investTitle}
             className="flex flex-col gap-4"
           >
+            {/* which of the plans the card under this buys */}
+            {investIn && (
+              <h2 data-ui="invest-in" className="text-[1.125rem]/7 font-medium">
+                {investIn}
+              </h2>
+            )}
             <Invest
               // a plan built again is another plan: its card starts over
               key={plan.id}
