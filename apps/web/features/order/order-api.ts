@@ -3,6 +3,7 @@ import {
   chainFamily,
   FundingResponse,
   OrderDetail,
+  OrderError,
   type OrderErrorCode,
   TEST_FUNDS_LOW,
   TestFundsResponse,
@@ -177,24 +178,65 @@ const NO_ORDER = 'not-an-order';
 const continuePath = (id: string) => `/v1/orders/${encodeURIComponent(id)}/continue`;
 
 /**
- * Whether this server finishes buys, by the status alone. The route takes an order's id, a uuid
- * (`OrderRouteParams`): asked with something that is not one, a server with the route refuses the
- * request as badly formed (400), and one without it has no such route (404). Anything else, a
- * sign-in it does not know included, is read as no: the button stays hidden.
+ * Whether this server finishes buys. The route takes an order's id, a uuid (`OrderRouteParams`):
+ * asked with something that is not one, a server with the route refuses the request as badly formed
+ * (400) and says why in `error`, as every refusal of its routes does; one without it has no such
+ * route (404). The status and that field together, and nothing of a 404's body: anything else, a
+ * sign-in it does not know included, is read as no, and the button stays hidden.
  */
 export async function continuesOrders(apiFetch: ApiFetch): Promise<boolean> {
   try {
     const res = await apiFetch(continuePath(NO_ORDER), { method: 'POST' });
-    return res.status === 400;
+    if (res.status !== 400) return false;
+    const said = (await bodyOf(res)).error;
+    return typeof said === 'string' && said.length > 0;
   } catch {
     return false;
   }
 }
 
+/**
+ * Why the server would not make the order that finishes another. The route's refusals carry no code,
+ * so each is known by its sentence (apps/api/src/orders/continue.ts, store.ts, legs.ts), and one this
+ * app does not know is `said`, shown in the server's words.
+ * - `other-order`: an order already finishes this one; `orderId` is that order, where the answer names it.
+ * - `working`: another request holds this order (the lock's wait ran out), or a step of it was built a
+ *   moment ago.
+ * - `in-flight`: a transaction built before for a step left can still land.
+ * - `nothing-left`, `cash-short`, `not-deposited`: there is nothing to finish, or nothing to finish it with.
+ * `PRICE_MOVED` is not among them: this route quotes anew and builds nothing, so it never answers it.
+ */
+export type FinishRefusal =
+  | 'other-order'
+  | 'working'
+  | 'in-flight'
+  | 'nothing-left'
+  | 'cash-short'
+  | 'not-deposited'
+  | 'said';
+
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+export function refusalOf(
+  sentence: string,
+  fix: string | undefined,
+): { why: FinishRefusal; orderId?: string } {
+  if (/another order finishes this one/i.test(sentence)) {
+    const named = UUID.exec(fix ?? '')?.[0] ?? UUID.exec(sentence)?.[0];
+    return { why: 'other-order', ...(named ? { orderId: named } : {}) };
+  }
+  if (/worked on by another request|was built just now/i.test(sentence)) return { why: 'working' };
+  if (/can still land/i.test(sentence)) return { why: 'in-flight' };
+  if (/nothing left to buy/i.test(sentence)) return { why: 'nothing-left' };
+  if (/in cash, less than/i.test(sentence)) return { why: 'cash-short' };
+  if (/not put its cash in the vault/i.test(sentence)) return { why: 'not-deposited' };
+  return { why: 'said' };
+}
+
 export type ContinueOutcome =
   | { kind: 'placed'; order: OrderDetail & { continues: string } }
-  /** 409: why not, in the server's sentence; `retryable` when asking again later may work. */
-  | { kind: 'refused'; sentence: string; retryable: boolean; priceMoved: boolean }
+  /** 409: why not (`refusalOf`), and the server's own sentence for a reason this app has no words for. */
+  | { kind: 'refused'; why: FinishRefusal; sentence: string; orderId?: string }
   | { kind: 'signed-out' | 'busy' | 'unreachable' | 'unreadable' | 'unavailable' };
 
 /**
@@ -215,13 +257,11 @@ export async function continueOrder(
   }
   const body = await bodyOf(res);
   if (res.status === 409) {
-    const details = typeof body.details === 'object' && body.details !== null ? body.details : {};
-    return {
-      kind: 'refused',
-      sentence: typeof body.error === 'string' ? body.error : '',
-      retryable: (details as { retryable?: unknown }).retryable === true,
-      priceMoved: body.code === 'PRICE_MOVED',
-    };
+    // The refusal as the shared schema has it (`OrderError`): its sentence, its code, its details.
+    const refusal = OrderError.safeParse(body);
+    const said = refusal.success ? refusal.data : null;
+    const sentence = said?.error ?? (typeof body.error === 'string' ? body.error : '');
+    return { kind: 'refused', sentence, ...refusalOf(sentence, said?.fix) };
   }
   if (res.status === 404 || res.status === 405 || res.status === 501)
     return { kind: 'unavailable' };
@@ -230,7 +270,7 @@ export async function continueOrder(
   if (!res.ok) return { kind: 'unreachable' };
   const order = OrderDetail.safeParse(body);
   // The answer must say which order it finishes, and be another order than that one.
-  if (!order.success || body.continues !== id || order.data.id === id)
+  if (!order.success || order.data.continues !== id || order.data.id === id)
     return { kind: 'unreadable' };
   const chain = first.legs[0]?.chain;
   const made = order.data;
@@ -242,7 +282,7 @@ export async function continueOrder(
     made.legs.some((leg) => leg.kind !== 'swap' || leg.chain !== chain)
   )
     return { kind: 'unreadable' };
-  return { kind: 'placed', order: { ...order.data, continues: id } };
+  return { kind: 'placed', order: { ...made, continues: id } };
 }
 
 /** GET /v1/orders/{id}: the order as it stands. */
@@ -260,14 +300,7 @@ export async function readOrder(
   if (!res.ok) return { kind: failureOf(res.status, body.code) };
   const order = OrderDetail.safeParse(body);
   return order.success && order.data.id === id
-    ? {
-        kind: 'read',
-        // Which order it finishes, where it finishes one: kept as the server said it.
-        order: {
-          ...order.data,
-          ...(typeof body.continues === 'string' ? { continues: body.continues } : {}),
-        },
-      }
+    ? { kind: 'read', order: order.data }
     : { kind: 'unreadable' };
 }
 

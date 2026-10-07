@@ -438,6 +438,8 @@ export const pt: Dictionary = {
     },
     vault: {
       title: 'Seu cofre',
+      unfinished:
+        'Uma compra parou depois do depósito, então este cofre tem mais caixa do que o plano prevê. O caixa está seguro aqui.',
       address: 'Endereço do cofre',
       page: (address: string) => `Abrir a página do cofre ${address}`,
       value: 'Valor',
@@ -1121,6 +1123,11 @@ export const pt: Dictionary = {
     review: {
       title: 'Revise cada passo',
       lead: 'Cada passo é montado na hora, conferido com o que você vê aqui, e só então assinado pela sua carteira. Um passo que não confere não é assinado.',
+      continuesLead:
+        'Esta ordem termina uma compra que parou: compra o que faltou com o caixa que já está no seu cofre e não deposita nada. Cada passo é montado na hora, conferido com o que você vê aqui e só então assinado pela sua carteira.',
+      fromVault: 'Do caixa do seu cofre',
+      unseen:
+        'Este aparelho não viu a revisão da primeira ordem. O que falta comprar é o que nosso servidor lista, e eu confiro com os ativos do seu plano.',
       deposit: 'Depósito',
       steps: 'Passos',
       expires: 'Assine antes de',
@@ -1233,13 +1240,21 @@ export const pt: Dictionary = {
       buyMore: 'Comprar mais',
       depositKept:
         'O que você depositou está no seu cofre, em caixa: nada se perdeu. Uma nova ordem depositaria de novo.',
+      stopped: (amount: string) =>
+        `Seus ${amount} estão seguros no seu cofre, em caixa. A etapa de compra não foi concluída.`,
       forSupport: 'Detalhes para o suporte',
       finish: 'Terminar a compra com o caixa do seu cofre',
       finishing: 'Criando a ordem…',
       finishNote:
         'Uma nova ordem para os passos que ficaram, ao preço de agora. Ela não deposita nada: você revisa e assina como antes.',
-      finishPriceMoved:
-        'O preço mudou enquanto a ordem era criada, então nada foi criado. Tente de novo.',
+      finishOther: 'Outra ordem já termina esta compra: o que falta comprar está nela.',
+      openThatOrder: 'Abrir essa ordem',
+      finishWorking: 'Outro pedido está trabalhando nesta ordem. Tente de novo em instantes.',
+      finishNothing: 'Não falta nada para comprar nesta ordem: todos os passos dela foram feitos.',
+      finishShort:
+        'Seu cofre agora tem menos caixa do que os passos que faltam gastariam: parte foi gasta ou retirada desde então. Nada foi criado. Adicione dinheiro ao cofre para o que ainda quer comprar.',
+      finishNotDeposited:
+        'O depósito desta ordem ainda não chegou, então não há caixa no cofre para terminar a compra. Assine os passos dela na ordem primeiro.',
       finishLater:
         'Um passo assinado antes ainda pode chegar. Olhe de novo em um minuto e tente outra vez.',
       finishRefused: (why: string) =>

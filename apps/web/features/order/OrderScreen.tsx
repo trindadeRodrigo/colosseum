@@ -1,5 +1,11 @@
 'use client';
-import type { ConsentKind, Leg, OrderDetail } from '@colosseum/schemas';
+import {
+  type ConsentKind,
+  chainFamily,
+  type Leg,
+  type OrderDetail,
+  type Trade,
+} from '@colosseum/schemas';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
@@ -18,6 +24,7 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { dollars } from '../goal/sheet';
 import { utc } from '../portfolio/figures';
+import { readPersonPlans, recordsOfPlans } from '../portfolio/server-plans';
 import { SharedReview } from '../shared/SharedReview';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { formatBps, formatRaw, shortfallBps, tokenName } from './amounts';
@@ -34,10 +41,16 @@ import {
   checkFamilyBuy,
   checkVaultAdd,
   type DepositCheck,
+  depositLanded,
+  leftOfApproved,
+  leftOfPlan,
   sharedShapeOk,
+  stoppedShort,
 } from './order-check';
-import { isBuy, keepOrder, type OrderRecord, recallOrder } from './order-record';
+import { isBuy, keepOrder, type OrderRecord, recallOrder, recallOrders } from './order-record';
 import { legsInOrder, type NextStep, type OutcomeView, outcomeView, stepOf } from './order-view';
+import { readStoredPlan } from './plan-store';
+import { targetsOfPlan } from './plan-terms';
 import { chainReady, explorerUrlFor, onMock } from './readiness';
 import { type RunOutcome, useOrderRunner } from './run-order';
 import { type ChainUnits, unitsFor } from './units';
@@ -53,6 +66,12 @@ type Load = { kind: 'loading' } | { kind: 'read'; order: OrderDetail } | { kind:
 
 /** Why an order is not offered for signing, or that it may be, with what it deposits. */
 type Check = DepositCheck | { ok: false; why: 'trades' | 'shape' };
+
+/**
+ * The order's cash is in the vault: its deposit landed, or it finishes another order and deposits
+ * nothing, so the cash it spends is what that one left there.
+ */
+const cashIn = (order: OrderDetail) => depositLanded(order) || order.continues !== undefined;
 
 /**
  * Before an order is offered for signing (order-check.ts): a buy of a plan deposits what was typed; a
@@ -94,7 +113,9 @@ export function OrderScreen({ id }: { id: string }) {
   // stopped after its deposit, and the button is not there until the answer is yes.
   const [canFinish, setCanFinish] = useState(false);
   const [finishing, setFinishing] = useState(false);
-  const [finishFailure, setFinishFailure] = useState<string | null>(null);
+  const [finishFailure, setFinishFailure] = useState<{ text: string; orderId?: string } | null>(
+    null,
+  );
   const titleId = useId();
   const reasonId = useId();
   const userId = port.userId;
@@ -117,11 +138,14 @@ export function OrderScreen({ id }: { id: string }) {
   }, [id, apiFetch, port.status, round]);
 
   // An order that stopped for good is the one case a buy may be finished from: only then is the
-  // server asked whether it can.
+  // server asked whether it can. Stopped as this page just saw it, or as the order itself says when
+  // the page is opened again, here or in another browser.
   const stopped =
     outcome?.status === 'refused' || outcome?.status === 'failed' || outcome?.status === 'expired';
+  const seen = live ?? (load.kind === 'read' ? load.order : null);
+  const short = seen !== null && stoppedShort(seen);
   useEffect(() => {
-    if (!stopped) return;
+    if (!stopped && !short) return;
     let mine = true;
     void continuesOrders(apiFetch).then((yes) => {
       if (mine) setCanFinish(yes);
@@ -129,7 +153,107 @@ export function OrderScreen({ id }: { id: string }) {
     return () => {
       mine = false;
     };
-  }, [stopped, apiFetch]);
+  }, [stopped, short, apiFetch]);
+
+  // An order this browser did not make, stopped after its deposit: its plan as the server stores it
+  // (the list of the person's plans, then the plan's lines), to finish the buy from here too. Nothing
+  // of the first order is offered for signing from it: an order is signed where it was reviewed.
+  const [served, setServed] = useState<OrderRecord | null | undefined>(undefined);
+  useEffect(() => {
+    if (record !== null || load.kind !== 'read' || !userId) return;
+    if (!cashIn(load.order) || !stoppedShort(load.order)) return setServed(null);
+    let mine = true;
+    setServed(undefined);
+    void (async () => {
+      const listed = recordsOfPlans(await readPersonPlans(apiFetch), userId).find(
+        (r) => r.orderId === id,
+      );
+      const plan = listed ? await readStoredPlan(apiFetch, listed.proposalId) : null;
+      if (mine)
+        setServed(
+          listed && plan && plan !== 'gone' ? { ...listed, lines: plan.proposal.lines } : null,
+        );
+    })();
+    return () => {
+      mine = false;
+    };
+  }, [record, load, userId, id, apiFetch]);
+
+  /**
+   * Makes the order that finishes `first` (the order of `from`) with the cash in its vault, held to
+   * `trades`, and opens its review. `first` is what the answer is held to for owner, vault and chain:
+   * the copy approved here, or the server's own in a browser that never reviewed it (`unseen`), which
+   * the new order's review then says.
+   */
+  async function finish(
+    from: OrderRecord,
+    first: Pick<OrderDetail, 'id' | 'owner' | 'basketId' | 'legs'>,
+    trades: Trade[],
+    unseen: boolean,
+  ) {
+    if (finishing) return;
+    const open = (orderId: string) => router.push(`/orders/${encodeURIComponent(orderId)}`);
+    // An order is finished by one order. Where this browser already has it, that order is opened
+    // and nothing is asked for: what the first one left is that order's, and its record, with what
+    // the person approved in it, stays as it is.
+    const mine = recallOrders(from.userId).find((r) => r.continues?.orderId === from.orderId);
+    if (mine) return open(mine.orderId);
+    setFinishing(true);
+    setFinishFailure(null);
+    const o = t.order.outcome;
+    const made = await continueOrder(apiFetch, first);
+    if (made.kind !== 'placed') {
+      setFinishing(false);
+      if (made.kind === 'unavailable') return setCanFinish(false);
+      if (made.kind === 'refused') {
+        // Each refusal this app knows in its own words, in the language of the page; one it does
+        // not, in the server's. An order that already finishes this one is linked.
+        const said = {
+          'other-order': o.finishOther,
+          working: o.finishWorking,
+          'in-flight': o.finishLater,
+          'nothing-left': o.finishNothing,
+          'cash-short': o.finishShort,
+          'not-deposited': o.finishNotDeposited,
+          said: o.finishRefused(made.sentence),
+        }[made.why];
+        return setFinishFailure({ text: said, ...(made.orderId ? { orderId: made.orderId } : {}) });
+      }
+      setFinishFailure({
+        text:
+          made.kind === 'busy'
+            ? t.shell.slowDown
+            : made.kind === 'signed-out'
+              ? t.buy.failure.signedOut
+              : made.kind === 'unreadable'
+                ? t.buy.failure.unreadable
+                : t.buy.failure.unreachable,
+      });
+      return;
+    }
+    // The server answers the same order while it can still be signed: one this browser kept (in
+    // another tab, a moment ago) is not written over.
+    if (recallOrder(made.order.id, from.userId)) return open(made.order.id);
+    // The new order's record: the same plan and vault, nothing approved yet, and what it is held to.
+    const kept = keepOrder({
+      orderId: made.order.id,
+      userId: from.userId,
+      proposalId: from.proposalId,
+      chain: from.chain,
+      amountUsd: from.amountUsd,
+      lines: from.lines,
+      approved: null,
+      ...(from.linked ? { linked: true as const } : {}),
+      // an add's order names its vault through its terms: the next one is held to the same vault
+      ...(from.terms ? { terms: from.terms } : {}),
+      continues: { orderId: from.orderId, trades, ...(unseen ? { unseen: true as const } : {}) },
+    });
+    if (!kept) {
+      setFinishing(false);
+      return setFinishFailure({ text: t.buy.failure.noStore });
+    }
+    open(made.order.id);
+  }
 
   // Leaving the page stops the run between steps; what was signed is still reported.
   useEffect(() => {
@@ -228,7 +352,94 @@ export function OrderScreen({ id }: { id: string }) {
       </section>
     );
   }
-  if (!record)
+  if (!record) {
+    const first = load.order;
+    // Made in another browser and stopped after its deposit: the cash is in the vault, and the buy
+    // can be finished from here. Anything else of it is signed where it was reviewed.
+    if (cashIn(first) && stoppedShort(first)) {
+      if (served === undefined)
+        return (
+          <Card>
+            <CardWait label={t.order.loading} skeleton={<SkeletonSummary />} />
+          </Card>
+        );
+      const units = served ? unitsFor(served.chain, onMock(port, served.chain)) : null;
+      const cash = units?.tokens[units.cash];
+      const targets =
+        served && units ? targetsOfPlan(served.lines, served.chain, units.cash) : null;
+      // What is left, as the server lists it, held to the plan's lines read from the server.
+      const trades = units && targets ? leftOfPlan(first, targets, units.cash) : null;
+      const offer =
+        canFinish &&
+        served &&
+        trades !== null &&
+        trades.length > 0 &&
+        chainFamily(served.chain) !== 'evm';
+      const put =
+        cash && first.depositRaw !== undefined
+          ? dollars(Number(first.depositRaw) / 10 ** cash.decimals, lang)
+          : null;
+      return (
+        <section
+          aria-labelledby={titleId}
+          data-ui="order-stopped-elsewhere"
+          className="flex flex-col items-start gap-4"
+        >
+          <h1 id={titleId} className={PAGE_TITLE}>
+            {t.order.title}
+          </h1>
+          <p data-ui="order-deposit-kept" className="max-w-(--tf-measure-body) text-body">
+            {put ? t.order.outcome.stopped(put) : t.order.outcome.depositKept}
+          </p>
+          {offer && (
+            <p data-ui="order-unseen" className="max-w-(--tf-measure-body) text-body-sm">
+              {t.order.outcome.finishNote} {t.order.review.unseen}
+            </p>
+          )}
+          <div data-ui="order-stopped" className="flex flex-wrap items-center gap-3">
+            {offer && (
+              <Button
+                variant="primary"
+                busy={finishing}
+                busyLabel={t.order.outcome.finishing}
+                onClick={() => finish(served, first, trades, true)}
+              >
+                {t.order.outcome.finish}
+              </Button>
+            )}
+            <Link
+              href="/monitor"
+              className={buttonClass({ variant: offer ? 'secondary' : 'primary' })}
+            >
+              {t.order.outcome.seePortfolio}
+            </Link>
+          </div>
+          {finishFailure && (
+            <p
+              role="alert"
+              className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm text-destructive"
+            >
+              <StatusMark status="off-track" size={12} className="mt-1.5" />
+              <span>
+                {finishFailure.text}
+                {finishFailure.orderId && (
+                  <>
+                    {' '}
+                    <Link
+                      href={`/orders/${encodeURIComponent(finishFailure.orderId)}`}
+                      data-ui="order-finish-other"
+                      className={buttonClass({ variant: 'link' })}
+                    >
+                      {t.order.outcome.openThatOrder}
+                    </Link>
+                  </>
+                )}
+              </span>
+            </p>
+          )}
+        </section>
+      );
+    }
     return (
       <Notice
         title={t.order.title}
@@ -237,6 +448,7 @@ export function OrderScreen({ id }: { id: string }) {
         label={t.plan.backToGoal}
       />
     );
+  }
 
   const shown = record.approved?.order ?? load.order;
   const now = live ?? load.order;
@@ -276,73 +488,31 @@ export function OrderScreen({ id }: { id: string }) {
   // The swaps the order left undone: what an order that finishes it would make, and is held to.
   // The trades are the approved order's own, step by step: of the API's later answer only where each
   // step stands is read, so an answer that changed a trade cannot widen what the next order may buy.
-  const standing = new Map(now.legs.map((leg) => [leg.id, leg.status]));
-  const left = legsInOrder(record.approved?.order ?? { legs: [] })
-    .filter((leg) => {
-      const status = standing.get(leg.id) ?? leg.status;
-      return leg.kind === 'swap' && status !== 'confirmed' && status !== 'skipped';
-    })
-    .flatMap((leg) => leg.trades);
+  // An order that finishes another and was never approved (it ran out of time on its review) has no
+  // approved copy: what it left is all it was held to, the trades kept when it was made.
+  const left = record.approved
+    ? leftOfApproved(record.approved.order, now)
+    : (record.continues?.trades ?? []);
   // A deposit that landed stays in the vault as cash, whatever became of the steps after it.
-  const deposited = now.legs.some(
-    (leg) => (leg.kind === 'create_vault' || leg.kind === 'deposit') && leg.status === 'confirmed',
-  );
+  const deposited = depositLanded(now);
 
-  // Stopped for good after the deposit landed, with swaps left: where the server can finish it, that
-  // is offered first (the flow audit, finding 24).
+  // Stopped for good with swaps left and their cash in the vault: after this order's deposit landed,
+  // or, for an order that finishes another, with the cash that one left. Said by the run that just
+  // stopped, or by the order itself when the page is opened again. Where the server can finish it,
+  // that is offered first (the flow audit, finding 24). Not on an EVM chain: the route refuses those.
+  const halted = !view && !running && stoppedShort(now);
   const stranded =
     !done &&
-    deposited &&
-    !terms &&
-    !record.continues &&
+    !running &&
+    (deposited || record.continues !== undefined) &&
+    // a buy of a plan, or money added to a vault: both deposit, then swap (order-check.ts)
+    (!terms || terms.kind === 'vault') &&
     left.length > 0 &&
-    view?.next.kind === 'new-order';
+    chainFamily(chain) !== 'evm' &&
+    (view?.next.kind === 'new-order' || halted);
+  // Opened again on an order that goes no further: there is nothing of it left to sign.
+  const over = stranded && halted;
   const offerFinish = stranded && canFinish;
-
-  async function finish() {
-    if (!record || finishing) return;
-    setFinishing(true);
-    setFinishFailure(null);
-    const o = t.order.outcome;
-    const made = await continueOrder(apiFetch, record.approved?.order ?? now);
-    if (made.kind !== 'placed') {
-      setFinishing(false);
-      if (made.kind === 'unavailable') return setCanFinish(false);
-      setFinishFailure(
-        made.kind === 'refused'
-          ? made.priceMoved
-            ? o.finishPriceMoved
-            : made.retryable
-              ? o.finishLater
-              : o.finishRefused(made.sentence)
-          : made.kind === 'busy'
-            ? t.shell.slowDown
-            : made.kind === 'signed-out'
-              ? t.buy.failure.signedOut
-              : made.kind === 'unreadable'
-                ? t.buy.failure.unreadable
-                : t.buy.failure.unreachable,
-      );
-      return;
-    }
-    // The new order's record: the same plan and vault, nothing approved yet, and what it is held to.
-    const kept = keepOrder({
-      orderId: made.order.id,
-      userId: record.userId,
-      proposalId: record.proposalId,
-      chain: record.chain,
-      amountUsd: record.amountUsd,
-      lines: record.lines,
-      approved: null,
-      ...(record.linked ? { linked: true as const } : {}),
-      continues: { orderId: record.orderId, trades: left },
-    });
-    if (!kept) {
-      setFinishing(false);
-      return setFinishFailure(t.buy.failure.noStore);
-    }
-    router.push(`/orders/${encodeURIComponent(made.order.id)}`);
-  }
 
   // The one primary button of the view: sign, carry on, approve a step again, or nothing.
   const next: NextStep | { kind: 'first' } =
@@ -374,7 +544,17 @@ export function OrderScreen({ id }: { id: string }) {
           {record.approved ? t.order.title : t.order.review.title}
         </h1>
         {!record.approved && (
-          <p className="max-w-(--tf-measure-body) text-body-lg">{t.order.review.lead}</p>
+          <p
+            data-ui={record.continues ? 'order-continues' : undefined}
+            className="max-w-(--tf-measure-body) text-body-lg"
+          >
+            {record.continues ? t.order.review.continuesLead : t.order.review.lead}
+          </p>
+        )}
+        {record.continues?.unseen && (
+          <p data-ui="order-unseen" className="max-w-(--tf-measure-body) text-body-sm">
+            {t.order.review.unseen}
+          </p>
         )}
       </header>
 
@@ -393,6 +573,7 @@ export function OrderScreen({ id }: { id: string }) {
             {buying && !record.continues && (
               <Stat label={t.order.review.deposit}>{depositShown}</Stat>
             )}
+            {record.continues && check.ok && <Stat label={t.order.review.fromVault}>{amount}</Stat>}
             <Stat label={t.order.review.steps}>{legs.length}</Stat>
             {!record.approved && (
               <Stat label={t.order.review.expires} className="max-[620px]:col-span-2">
@@ -471,6 +652,11 @@ export function OrderScreen({ id }: { id: string }) {
         {!running && done && !view && (
           <p className="text-body">{t.order.outcome.done(t.chain.names[chain])}</p>
         )}
+        {over && (
+          <p data-ui="order-deposit-kept" className="max-w-(--tf-measure-body) text-body">
+            {t.order.outcome.stopped(amount)}
+          </p>
+        )}
         {view && (
           <div className="flex max-w-(--tf-measure-body) flex-col gap-1">
             <p
@@ -483,7 +669,7 @@ export function OrderScreen({ id }: { id: string }) {
             </p>
             {!done && deposited && view.next.kind === 'new-order' && (
               <p data-ui="order-deposit-kept" className="text-body">
-                {t.order.outcome.depositKept}
+                {stranded ? t.order.outcome.stopped(amount) : t.order.outcome.depositKept}
               </p>
             )}
             {/* The check that failed and the guard's own words are for the team: behind a fold. */}
@@ -538,6 +724,7 @@ export function OrderScreen({ id }: { id: string }) {
         )}
         {check.ok &&
           !done &&
+          !over &&
           next.kind !== 'none' &&
           next.kind !== 'new-order' &&
           next.kind !== 'other-order' && (
@@ -563,7 +750,7 @@ export function OrderScreen({ id }: { id: string }) {
             {t.order.review.consentNeeded}
           </p>
         )}
-        {next.kind === 'new-order' && (
+        {(next.kind === 'new-order' || over) && (
           // With the deposit in the vault, that is where to look first, not at a second deposit.
           <div data-ui="order-stopped" className="flex flex-wrap items-center gap-3">
             {offerFinish && (
@@ -572,7 +759,15 @@ export function OrderScreen({ id }: { id: string }) {
                   variant="primary"
                   busy={finishing}
                   busyLabel={t.order.outcome.finishing}
-                  onClick={finish}
+                  onClick={() =>
+                    finish(
+                      record,
+                      record.approved?.order ?? now,
+                      left,
+                      // still not seen here, if it was not and nobody approved it on this device
+                      !record.approved && record.continues?.unseen === true,
+                    )
+                  }
                 >
                   {t.order.outcome.finish}
                 </Button>
@@ -605,7 +800,21 @@ export function OrderScreen({ id }: { id: string }) {
             className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm text-destructive"
           >
             <StatusMark status="off-track" size={12} className="mt-1.5" />
-            <span>{finishFailure}</span>
+            <span>
+              {finishFailure.text}
+              {finishFailure.orderId && (
+                <>
+                  {' '}
+                  <Link
+                    href={`/orders/${encodeURIComponent(finishFailure.orderId)}`}
+                    data-ui="order-finish-other"
+                    className={buttonClass({ variant: 'link' })}
+                  >
+                    {t.order.outcome.openThatOrder}
+                  </Link>
+                </>
+              )}
+            </span>
           </p>
         )}
         {/* The order is done: the next step is the portfolio it filled, and another buy beside it. */}
