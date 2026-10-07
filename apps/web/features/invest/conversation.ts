@@ -33,6 +33,10 @@ export type Sheet = {
   intake?: IntakeState;
   /** It was said that the intake did not answer and the rules read instead: not said twice. */
   simple?: boolean;
+  /** A person's allocation instruction that has not been applied or explicitly withdrawn. */
+  allocation?: { text: string; baseline: string | null; minimum: boolean };
+  /** A local explicit withdrawal; never sent as synthetic conversation words. */
+  allocationKeptThrough?: number;
 };
 
 /**
@@ -65,7 +69,10 @@ export type QuickReply = {
   posts: Send;
   label:
     | { kind: 'fact'; fact: Fact; value: string }
-    | { kind: 'word'; word: 'yes' | 'no' | 'noDate' | 'none' | 'all' | 'half' | 'growGoal' }
+    | {
+        kind: 'word';
+        word: 'yes' | 'no' | 'noDate' | 'none' | 'all' | 'half' | 'growGoal' | 'dropAllocation';
+      }
     /** A share of the money, in basis points. */
     | { kind: 'share'; bps: number }
     /** A choice our server offers, in its own words. */
@@ -77,6 +84,7 @@ export type Question = { text: string; replies: QuickReply[] };
 
 /** What the person sends: their own words, or an answer to the fact that was asked. */
 export type Send =
+  | { kind: 'dropAllocation' }
   /** `asked`: the question that is open on the screen, where it is one the person reopened. */
   | { kind: 'text'; text: string; asked?: Fact | null }
   | { kind: 'answer'; fact: Fact; value: string }
@@ -92,6 +100,8 @@ export type Send =
 
 /** What to say back, as a closed key with app-authored words or validated server read-back. */
 export type Say =
+  | { key: 'allocation'; text: string; conflict: boolean; bound?: string }
+  | { key: 'allocationDropped' }
   /** What was understood, said from the sheet. */
   | { key: 'understood' }
   /** The words said nothing this app could read into the sheet. */
@@ -139,6 +149,8 @@ export type Say =
   | { key: 'ready' };
 
 export type Reply = {
+  /** A validated server refusal of a requested allocation, ahead of local interpretation. */
+  allocationRejected?: boolean;
   sheet: Sheet;
   /** The facts still to settle before a plan can be built, in asking order. */
   open: Fact[];
@@ -161,6 +173,169 @@ export type Reply = {
 export interface Conversation {
   /** A turn: what the person sent, against what was known. */
   turn(input: Send, known: Sheet | null): Promise<Reply>;
+}
+
+/** Positive current-person instructions only; this never extracts weights or invents a mix. */
+export function allocationIntent(text: string, lang: Lang): boolean {
+  const asset =
+    /\b(stocks?|shares|equities|crypto|cash|gold|bonds?|allocation|ações|acoes|cripto|caixa|ouro|alocação|alocacao)\b/i;
+  if (!asset.test(text)) return false;
+  return text.split(/[.;]|\b(?:but|mas)\b/i).some((part) => {
+    if (!asset.test(part)) return false;
+    if (/^\s*(?:why|how|what|should|would|por que|como|devo)\b/i.test(part)) return false;
+    if (
+      /\b(?:stocks?|shares|equities)\s+(?:rose|fell|gained|lost)\b/i.test(part) &&
+      !/\b(?:i want|can you|please)\b/i.test(part)
+    )
+      return false;
+    if (/\bmy (?:adviser|advisor)\b/i.test(part) && !/\b(?:do that|make (?:this|it))\b/i.test(part))
+      return false;
+    if (/\b(?:não|nao) quero mais de\s*\d/i.test(part)) return true;
+    if (
+      /\b(should I|would .* sensible|what (?:are|happens)|used to|already (?:hold|have)|my (?:adviser|advisor) wants|já tenho|ja tenho|devo|o que|fora daqui|no meu banco)\b/i.test(
+        part,
+      ) &&
+      !/\b(do that|make (?:this|it)|faça isso|faca isso)\b/i.test(part)
+    )
+      return false;
+    if (
+      /\b(?:do(?:n't| not)|don't|não|nao)\s+(?:want|quero)\s+(?:to\s+)?(?:increase|add|more|aumentar|mais)\b/i.test(
+        part,
+      )
+    )
+      return false;
+    const affirmedPart = affirmed(part, lang);
+    return (
+      /\bmake (?:it|this)(?=\d|\b)/i.test(affirmedPart) ||
+      /\b(?:i (?:think i )?(?:want|would like)|we want|can you|could you|please|make (?:it|this)|do that|faça isso|faca isso|increase|decrease|replace|remove|add|put|reduce|more|less|quero|queremos|gostaria|pode|aumenta\w*|reduz\w*|troca\w*|coloca\w*|tira|põe|poe)\b/i.test(
+        affirmedPart,
+      ) ||
+      /\b(?:i want no|i (?:don't|do not) want (?:stocks?|gold)|não quero|nao quero|at (?:least|most)|no more than|pelo menos|no máximo|no maximo)\b/i.test(
+        part,
+      )
+    );
+  });
+}
+
+export function allocationOf(text: string, _sheet: Sheet) {
+  return {
+    text,
+    baseline: null,
+    minimum: allocationBound(text),
+  };
+}
+
+export function allocationBound(text: string): boolean {
+  return /\b(at\s+(?:least|most)|minimum|maximum|no more than|more than|pelo menos|mais de|no mínimo|no minimo|no máximo|no maximo)(?=\s|\d|$)/i.test(
+    text,
+  );
+}
+
+/** Preserve the pressed-answer context of a person word even when its reader fails. */
+export function withPersonWord(sheet: Sheet, text: string): Sheet {
+  if (sheet.words?.at(-1) === text) return sheet;
+  const words = sheet.words ?? [];
+  return {
+    ...sheet,
+    words: [...words, text],
+    ...(sheet.intake
+      ? {
+          intake: {
+            ...sheet.intake,
+            answersThen: [
+              ...words.slice(1).map((_, i) => sheet.intake?.answersThen[i] ?? {}),
+              { ...sheet.intake.answers },
+            ],
+          },
+        }
+      : {}),
+  };
+}
+
+/** Keep unapplied instructions distinct from a valid unchanged reading, including reader failure. */
+export function allocationConversation(
+  base: Conversation,
+  lang: Lang,
+  chain: ChainId | null,
+): Conversation {
+  return {
+    async turn(input, known) {
+      if (input.kind === 'dropAllocation') {
+        const intake = known?.intake;
+        const valid = intake?.sheet;
+        if (!known?.allocation || !intake || !valid || valid.chains[0] !== chain)
+          return {
+            sheet: known ?? { fields: EMPTY(lang), skipped: [] },
+            say: [{ key: 'notUnderstood' }],
+            open: [],
+            ask: null,
+            valid: null,
+          };
+        const { allocation: _, ...sheet } = known;
+        return {
+          sheet: {
+            ...sheet,
+            allocationKeptThrough: sheet.words?.length ?? 0,
+            intake: { ...intake, held: intake.mix },
+          },
+          say: [
+            { key: 'allocationDropped' },
+            ...(sheet.intake?.readBack
+              ? [{ key: 'said' as const, lines: sheet.intake.readBack }]
+              : []),
+          ],
+          open: [],
+          ask: null,
+          valid,
+        };
+      }
+      const requested =
+        input.kind === 'text' && known && allocationIntent(input.text, lang)
+          ? allocationOf(input.text.trim(), known)
+          : null;
+      const pending = known?.allocation?.minimum
+        ? known.allocation
+        : (requested ?? known?.allocation);
+      const reply = await base.turn(input, known);
+      if (!pending) return reply;
+      const conflict =
+        (reply.sheet.fields.goal === 'income' || reply.sheet.fields.goal === 'protect') &&
+        /\b(stocks?|shares|equities|ações|acoes)\b/i.test(pending.text);
+      const bound = pending.text.match(
+        /\b(?:at\s+(?:least|most)|no more than|pelo menos|no mínimo|no minimo|no máximo|no maximo)\s*\d+(?:[.,]\d+)?\s*%/i,
+      )?.[0];
+      // A missing reader cannot replace the current server sheet with a fallback-generated one.
+      const source = !reply.sheet.intake && known?.intake ? known : reply.sheet;
+      const sheet = input.kind === 'text' ? withPersonWord(source, input.text.trim()) : source;
+      return {
+        ...reply,
+        sheet: { ...sheet, allocation: pending },
+        valid: null,
+        say: [
+          ...reply.say.filter((s) => !['held', 'ready', 'understood', 'heard'].includes(s.key)),
+          { key: 'allocation', text: pending.text, conflict, ...(bound ? { bound } : {}) },
+        ],
+        offers: [
+          ...(conflict
+            ? [
+                {
+                  posts: { kind: 'answer' as const, fact: 'goal' as const, value: 'grow' },
+                  label: { kind: 'word' as const, word: 'growGoal' as const },
+                },
+              ]
+            : []),
+          ...(sheet.intake?.sheet?.chains[0] === chain
+            ? [
+                {
+                  posts: { kind: 'dropAllocation' as const },
+                  label: { kind: 'word' as const, word: 'dropAllocation' as const },
+                },
+              ]
+            : []),
+        ],
+      };
+    },
+  };
 }
 
 /**
@@ -334,6 +509,7 @@ export function typedAnswer(fact: Fact, text: string, lang: Lang): string | null
 
 /** The sheet as the API takes it, once every fact is known and it is valid for the chain; else null. */
 export function validOf(sheet: Sheet, chain: ChainId | null): BasketSheet | null {
+  if (sheet.allocation) return null;
   // Read by the guided intake: the sheet is our server's, sent back as it came, on the person's chain.
   if (sheet.intake)
     return sheet.intake.sheet && chain && sheet.intake.sheet.chains[0] === chain
@@ -458,6 +634,12 @@ export function readerConversation(
         if (fields.goal !== '' && fields.goal !== 'income') fields.income = '';
         return reply({ ...sheet, fields }, [{ key: 'set', fact: input.fact }], chain);
       }
+      if (input.kind === 'dropAllocation')
+        return reply(
+          known ?? { fields: EMPTY(lang), skipped: [] },
+          [{ key: 'notUnderstood' }],
+          chain,
+        );
       const text = input.text.trim();
       if (!known || FACTS.every((fact) => known.fields[fact] === '')) return first(text);
       // Words after the first: an answer to the open question, or facts said in passing ("make it

@@ -33,6 +33,10 @@ import { rememberPlan } from '../order/plan-store';
 import { chainReady, onMock } from '../order/readiness';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import {
+  allocationBound,
+  allocationConversation,
+  allocationIntent,
+  allocationOf,
   type Conversation,
   FACTS,
   type Fact,
@@ -50,6 +54,7 @@ import {
   type Send,
   type Sheet,
   validOf,
+  withPersonWord,
 } from './conversation';
 import { takeWay } from './handoff';
 import { type HeldMix, IntakeAnswers } from './intake';
@@ -231,7 +236,11 @@ export function InvestScreen() {
   const guided = account.status === 'ready' && who !== '';
   const conversation: Conversation = useMemo(() => {
     const rules = readerConversation(apiFetch, { lang, chain, examples: t.goal.examples.list });
-    return guided ? intakeConversation(apiFetch, { lang, chain, fallback: rules }) : rules;
+    return allocationConversation(
+      guided ? intakeConversation(apiFetch, { lang, chain, fallback: rules }) : rules,
+      lang,
+      chain,
+    );
   }, [apiFetch, lang, chain, t, guided]);
 
   // The app never says the same thing twice in a row: a turn that repeats the one before it, word
@@ -252,6 +261,7 @@ export function InvestScreen() {
 
   /** Builds the plan of a valid sheet: the person's own when signed in, a visitor's otherwise. */
   async function buildFrom(sheetToBuild: BasketSheet, own: boolean, quiet = false) {
+    if (sheet?.allocation) return;
     wanted.current += 1;
     const mine = wanted.current;
     // A chain our server has switched off: nothing is built there, and it is said.
@@ -349,6 +359,18 @@ export function InvestScreen() {
     if (named) return pick(named, words);
     // "start over", "clear it out": the conversation and the pane are emptied
     if (input.kind === 'text' && isStartOver(input.text)) return startOver();
+    if (input.kind === 'text' && from && allocationIntent(input.text, lang)) {
+      wanted.current += 1;
+      setPicked(null);
+      setBuild({ kind: 'idle' });
+      setConfirmed(false);
+      setSheet({
+        ...withPersonWord(from, input.text.trim()),
+        allocation: from.allocation?.minimum
+          ? from.allocation
+          : allocationOf(input.text.trim(), from),
+      });
+    }
     said(words);
     const mine = ++readRun.current;
     setReading(true);
@@ -534,6 +556,7 @@ export function InvestScreen() {
           fields: reply.sheet.fields,
           ask: reply.ask,
           question: reply.question ?? null,
+          ...(reply.offers ? { offers: reply.offers } : {}),
           retry: false,
         });
       })
@@ -556,7 +579,7 @@ export function InvestScreen() {
   const again = useRef(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: once, when the kept sheet is valid for the chain
   useEffect(() => {
-    if (!again.current || !valid || built || build.kind !== 'idle') return;
+    if (!again.current || !valid || sheet?.allocation || built || build.kind !== 'idle') return;
     again.current = false;
     void buildFrom(valid, signedIn, true);
   }, [valid]);
@@ -689,7 +712,7 @@ export function InvestScreen() {
   // The plans on the pane were made from another sheet than the one that is held now.
   const pending =
     built !== null && valid !== null && JSON.stringify(valid) !== JSON.stringify(built.sheet);
-  const toConfirm = valid !== null && !confirmed && (!built || pending);
+  const toConfirm = !sheet?.allocation && valid !== null && !confirmed && (!built || pending);
   const fields = sheet?.fields ?? null;
   const planChain = built?.one.proposal.sheet.chains[0] ?? chain;
   const chainName = planChain ? t.chain.names[planChain] : '';
@@ -706,7 +729,9 @@ export function InvestScreen() {
   // pane under it, and the pane's last state is the plan and its one press.
   // The plan on the page is from before a change: a fact is asked about again, or the plan is being
   // built again. It is not invested in, by the card or by a button that names its old amount.
-  const stale = built !== null && (build.kind === 'building' || asking !== null || pending);
+  const stale =
+    built !== null &&
+    (build.kind === 'building' || asking !== null || pending || sheet?.allocation !== undefined);
   const canInvest = plan?.own === true && signedIn && blocked === null && !stale;
   // The pane's states: nothing yet; the goal as facts; the candidates side by side, none picked; the
   // plan that was picked; and that plan with its invest card.
@@ -843,6 +868,10 @@ export function InvestScreen() {
         return w.say.riskBottom;
       case 'simple':
         return w.say.simple;
+      case 'allocation':
+        return w.say.allocation(s.text, s.conflict, s.bound);
+      case 'allocationDropped':
+        return w.say.allocationDropped;
       case 'heard':
         return [
           ...(s.themes.length > 0
@@ -1599,11 +1628,40 @@ export function restoreDraft(raw: string | null): { turns: Turn[]; sheet: Sheet 
   // Only this person-origin answer survives; a server's mix/sheet/read-back does not. Null is the
   // person's explicit "none", distinct from not having pressed an allocation answer.
   const held = heldMixOfDraft(state?.held);
+  const keptThrough = (sheet as Record<string, unknown>).allocationKeptThrough;
+  const resolved =
+    typeof keptThrough === 'number' &&
+    Number.isInteger(keptThrough) &&
+    keptThrough >= 0 &&
+    keptThrough <= said.length
+      ? keptThrough
+      : 0;
+  const storedPending = (sheet as Record<string, unknown>).allocation;
+  const request =
+    typeof storedPending === 'object' && storedPending !== null
+      ? (storedPending as Record<string, unknown>).text
+      : null;
+  const pending =
+    typeof request === 'string' &&
+    said.slice(resolved).includes(request) &&
+    allocationIntent(request, cleanFields.language)
+      ? request
+      : null;
   return {
     turns: read,
     sheet: {
       fields: cleanFields,
       skipped: skipped.filter(isFact),
+      ...(pending
+        ? {
+            allocation: {
+              text: pending,
+              baseline: null,
+              minimum: allocationBound(pending),
+            },
+          }
+        : {}),
+      ...(resolved ? { allocationKeptThrough: resolved } : {}),
       ...(Array.isArray(words) && said.length === words.length && said.length <= MAX_WORDS
         ? { words: said }
         : {}),

@@ -3,7 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { dictionary } from '../../i18n';
 import { READ_IN_DOLLARS } from '../goal/test/plan';
 import { json } from '../wallet/test/fake-port';
-import { readerConversation, type Sheet } from './conversation';
+import {
+  allocationConversation,
+  allocationIntent,
+  readerConversation,
+  type Sheet,
+} from './conversation';
 import { INTAKE_PATH } from './intake';
 import { intakeConversation, NO_DATE } from './intake-conversation';
 import { answer, DRAFT, SHEET } from './test/intake';
@@ -49,6 +54,240 @@ const ASK_RISK = {
   text: 'How much can it swing on the way?',
   options: ['low', 'medium', 'high'],
 };
+
+describe('unapplied allocation requests', () => {
+  it('drops against the current null mix without reviving an older pressed stock mix', async () => {
+    const income: BasketSheet = { ...SHEET, goal: 'income', incomeTargetUsdMonthly: 300 };
+    const s = server(
+      answer({ sheet: income, readBack: ['Current income goal, no stocks.'], mix: null }),
+    );
+    const t = allocationConversation(talk(s.api), 'en', 'solana');
+    const first = await t.turn(
+      { kind: 'text', text: 'Income from $2000, five years, high risk' },
+      null,
+    );
+    const pressed = await t.turn({ kind: 'hold', shareBps: 5000 }, first.sheet);
+    expect(pressed.sheet.intake?.held?.growthBps).toBe(5000);
+    expect(pressed.sheet.intake?.mix).toBeNull();
+    const pending = await t.turn({ kind: 'text', text: 'I want more stocks' }, pressed.sheet);
+    const dropped = await t.turn({ kind: 'dropAllocation' }, pending.sheet);
+    expect(dropped.sheet.intake?.held).toBeNull();
+    await t.turn({ kind: 'answer', fact: 'goal', value: 'grow' }, dropped.sheet);
+    expect(s.posted.at(-1)).toMatchObject({ answers: { goal: 'grow', mix: null } });
+  });
+
+  it('repeats a server rejection rather than calling the requested allocation held', async () => {
+    const income: BasketSheet = { ...SHEET, goal: 'income', incomeTargetUsdMonthly: 300 };
+    const rejection = 'Stocks are not held for an income goal.';
+    const s = server(answer({ sheet: income, readBack: ['The income goal.'] }), {
+      ...answer({ sheet: income, readBack: ['The income goal.'], assumptions: [rejection] }),
+      flags: ['mix_dropped_for_goal'],
+    });
+    const t = allocationConversation(talk(s.api), 'en', 'solana');
+    const first = await t.turn(
+      { kind: 'text', text: 'Income from $2000, five years, high risk' },
+      null,
+    );
+    const pending = await t.turn({ kind: 'text', text: 'I want more stocks' }, first.sheet);
+    expect(pending.valid).toBeNull();
+    expect(pending.say).toContainEqual({ key: 'said', lines: [rejection] });
+    expect(pending.say).not.toContainEqual({ key: 'held' });
+  });
+  it.each([404, 403, 500])(
+    'keeps funding paused and preserves answer snapshots when intake fails (%i)',
+    async (status) => {
+      const s = server(
+        answer({ sheet: SHEET, readBack: ['The current growth goal.'] }),
+        answer({ sheet: SHEET, readBack: ['The current growth goal.'] }),
+        () => json({}, status),
+        answer({ sheet: SHEET, readBack: ['The current growth goal.'] }),
+      );
+      const t = allocationConversation(talk(s.api), 'en', 'solana');
+      const first = await t.turn(
+        { kind: 'text', text: 'Grow $2000 for five years at high risk' },
+        null,
+      );
+      const pressed = await t.turn({ kind: 'answer', fact: 'risk', value: 'high' }, first.sheet);
+      const pending = await t.turn(
+        { kind: 'text', text: 'Increase stocks to at least40%' },
+        pressed.sheet,
+      );
+      expect(pending.valid).toBeNull();
+      expect(pending.sheet.intake?.sheet).toEqual(SHEET);
+      expect(pending.sheet.intake?.answersThen).toEqual([{ risk: 'high' }]);
+      const next = await t.turn({ kind: 'answer', fact: 'risk', value: 'low' }, pending.sheet);
+      expect(next.valid).toBeNull();
+      expect(s.posted.at(-1)).toMatchObject({
+        followUps: ['Increase stocks to at least40%'],
+        answersThen: [{ risk: 'high' }],
+        answers: { risk: 'low' },
+      });
+      const replayed = await t.turn({ kind: 'replay' }, next.sheet);
+      expect(replayed.valid).toBeNull();
+      expect(replayed.sheet.allocation?.minimum).toBe(true);
+    },
+  );
+
+  it('does not accept a changed but wrong allocation or lose the original minimum through a vague amendment', async () => {
+    const wrong = {
+      ...SHEET,
+      sleeves: [
+        { kind: 'theme' as const, theme: 'ai', shareBps: 2000 },
+        { kind: 'safe_yield' as const, shareBps: 8000 },
+      ],
+    };
+    const s = server(
+      answer({ sheet: SHEET, readBack: ['The original allocation.'] }),
+      answer({ sheet: wrong, readBack: ['Only 20% is in this theme.'] }),
+    );
+    const t = allocationConversation(talk(s.api), 'en', 'solana');
+    const first = await t.turn(
+      { kind: 'text', text: 'Grow $2000 for five years at high risk' },
+      null,
+    );
+    const exact = await t.turn({ kind: 'text', text: 'Increase stocks to60%' }, first.sheet);
+    expect(exact.valid).toBeNull();
+    expect(exact.sheet.allocation?.text).toBe('Increase stocks to60%');
+    const bounded = await t.turn({ kind: 'text', text: 'I want at least40% stocks' }, first.sheet);
+    const vague = await t.turn({ kind: 'text', text: 'I still want more stocks' }, bounded.sheet);
+    expect(vague.valid).toBeNull();
+    expect(vague.sheet.allocation).toEqual(bounded.sheet.allocation);
+  });
+
+  it('does not offer growth for an income cash amendment', async () => {
+    const income: BasketSheet = { ...SHEET, goal: 'income', incomeTargetUsdMonthly: 300 };
+    const s = server(answer({ sheet: income }));
+    const t = allocationConversation(talk(s.api), 'en', 'solana');
+    const first = await t.turn(
+      { kind: 'text', text: 'Income $300 monthly from $2000, high risk, five years' },
+      null,
+    );
+    const pending = await t.turn({ kind: 'text', text: 'I want more cash' }, first.sheet);
+    expect(pending.say).toContainEqual(
+      expect.objectContaining({ key: 'allocation', conflict: false }),
+    );
+    expect(pending.offers?.map((r) => r.posts)).not.toContainEqual({
+      kind: 'answer',
+      fact: 'goal',
+      value: 'grow',
+    });
+  });
+
+  it.each([
+    'i think i want way more stocks on them. like at least40%',
+    'acho que quero bem mais ações nesses planos, pelo menos40%',
+  ])('keeps the unchanged income reading paused: %s', async (text) => {
+    const income: BasketSheet = {
+      ...SHEET,
+      goal: 'income',
+      amountUsd: 1000,
+      incomeTargetUsdMonthly: 300,
+      horizonOpen: true,
+    };
+    const s = server(answer({ sheet: income, readBack: ['Income goal as read.'] }));
+    const t = allocationConversation(talk(s.api), 'en', 'solana');
+    const first = await t.turn(
+      { kind: 'text', text: 'Income $300 monthly from $1000, high risk, no date' },
+      null,
+    );
+    const pending = await t.turn({ kind: 'text', text }, first.sheet);
+    expect(pending.valid).toBeNull();
+    expect(pending.sheet.allocation).toMatchObject({ text, minimum: true });
+    expect(pending.say).toContainEqual(
+      expect.objectContaining({ key: 'allocation', text, conflict: true }),
+    );
+    expect(pending.say).not.toContainEqual({ key: 'held' });
+    expect(pending.offers?.map((r) => r.posts)).toContainEqual({
+      kind: 'answer',
+      fact: 'goal',
+      value: 'grow',
+    });
+    const chatter = await t.turn({ kind: 'text', text: 'thanks' }, pending.sheet);
+    expect(chatter.valid).toBeNull();
+    expect(chatter.sheet.allocation?.text).toBe(text);
+    const before = s.posted.length;
+    const dropped = await t.turn({ kind: 'dropAllocation' }, chatter.sheet);
+    expect(s.posted).toHaveLength(before);
+    expect(dropped.valid).toEqual(income);
+    expect(dropped.sheet.allocation).toBeUndefined();
+    expect(dropped.sheet.words).toEqual([first.sheet.words?.[0], text, 'thanks']);
+  });
+
+  it('does not resolve the minimum through growth, and retains pressed-answer chronology', async () => {
+    const income: BasketSheet = {
+      ...SHEET,
+      goal: 'income',
+      amountUsd: 1000,
+      incomeTargetUsdMonthly: 300,
+    };
+    const growth = { ...SHEET, amountUsd: 1000 };
+    const s = server(
+      answer({ sheet: income, readBack: ['Income read back.'] }),
+      answer({ sheet: income }),
+      answer({ sheet: growth, readBack: ['Growth read back, without a monthly income target.'] }),
+    );
+    const t = allocationConversation(talk(s.api), 'en', 'solana');
+    const first = await t.turn(
+      { kind: 'text', text: 'Income $300 monthly from $1000, high risk, five years' },
+      null,
+    );
+    const pending = await t.turn({ kind: 'text', text: 'I want at least40% stocks' }, first.sheet);
+    const changed = await t.turn({ kind: 'answer', fact: 'goal', value: 'grow' }, pending.sheet);
+    expect(changed.valid).toBeNull();
+    expect(changed.sheet.allocation?.minimum).toBe(true);
+    expect(changed.sheet.fields.goal).toBe('grow');
+    expect(changed.sheet.fields.income).toBe('');
+    expect(s.posted[2]).toMatchObject({
+      followUps: ['I want at least40% stocks'],
+      answersThen: [{}],
+      answers: { goal: 'grow' },
+    });
+    const dropped = await t.turn({ kind: 'dropAllocation' }, changed.sheet);
+    expect(dropped.valid).toEqual(growth);
+    expect(dropped.sheet.intake?.held).toBeNull();
+    expect(dropped.say).toContainEqual({
+      key: 'said',
+      lines: ['Growth read back, without a monthly income target.'],
+    });
+    await t.turn({ kind: 'text', text: 'thanks' }, dropped.sheet);
+    expect(s.posted.at(-1)).toMatchObject({
+      followUps: ['I want at least40% stocks', 'thanks'],
+      answers: { goal: 'grow', mix: null },
+    });
+  });
+
+  it.each([
+    'what are stocks?',
+    'Why does this plan have more stocks?',
+    'should I increase stocks?',
+    'would40% stocks be sensible?',
+    'I do not want to increase stocks',
+    'stocks fell40%',
+    'Stocks rose more than40% last year',
+    'My adviser says I should add more stocks',
+    '40% of my friends buy stocks',
+    'I already hold40% stocks at my broker',
+    'eu já tenho40% em ações fora daqui',
+    'increase my monthly income target40%',
+  ])('does not interpret an inquiry or unrelated fact as an amendment: %s', (text) => {
+    expect(allocationIntent(text, 'en')).toBe(false);
+  });
+  it.each([
+    'can you increase stocks to40%?',
+    'I want no stocks',
+    "I don't want gold",
+    "I don't want stocks",
+    'não quero ações',
+    'do not add stocks; replace them with cash',
+    'not40%, make it50% stocks',
+    'my adviser says40% stocks, do that',
+    'pode aumentar ações para40%',
+    'tira ações e põe em caixa',
+    'Não quero mais de40% em ações',
+  ])('recognizes a current instruction: %s', (text) => {
+    expect(allocationIntent(text, 'en')).toBe(true);
+  });
+});
 
 describe('a turn of the guided intake', () => {
   it('posts the goal, and asks our server’s first question in its words, with replies one press gives', async () => {
