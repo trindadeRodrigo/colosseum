@@ -2,7 +2,8 @@
 // Runs after `next build` (see "build" in package.json). The build fails if the output holds anything
 // that exists for development only: the throwaway wallet, the dev page, any route under /dev, or any
 // file of a development-only folder (DEV_ONLY below) in what a route was built from.
-// It holds the landing's 3D joint to its budget (STAGE_BUDGET).
+// It holds the landing's 3D joint to its budget (STAGE_BUDGET), and no file a browser is sent may hold
+// a key (SECRET_SHAPES).
 // It also looks for one string every build ships and one file every route is built from, so a change
 // in where Next writes its output makes this check fail instead of pass on nothing.
 // Last, it runs the design system's test of the built stylesheet and fonts, which a plain test run
@@ -31,6 +32,19 @@ export const REQUIRED = 'wallet-port:shipped';
  */
 export const STAGE_BUDGET = 180 * 1024;
 export const STAGE_MARKERS = ['WebGLRenderer', 'tf-joint-ink', 'tf-coins-ink'];
+
+/**
+ * What no file a browser is sent may hold (`static/`): a node's URL with its key in it, a model
+ * provider's key, a database URL with its password. A `NEXT_PUBLIC_` value is written into the
+ * bundle as it is, so a keyed RPC URL set as `NEXT_PUBLIC_CHAIN_READ_RPC_<CHAIN>` would be public:
+ * the read node of the web is a public one (features/wallet/README.md). The match is never printed.
+ */
+export const SECRET_SHAPES = {
+  'a URL with an api key in its query': /[?&]api[-_]?key=[A-Za-z0-9_-]{8,}/i,
+  'a keyed node URL': /(alchemy\.com\/v2|infura\.io\/v3|quiknode\.pro)\/[A-Za-z0-9_-]{16,}/i,
+  'a provider key': /\bsk-[A-Za-z0-9_-]{32,}/,
+  'a database URL with a password': /\bpostgres(ql)?:\/\/[^\s"'`:@/]+:[^\s"'`@/]{6,}@/i,
+};
 
 /** What `next dev` and the build cache write. Neither is served by `next start`. */
 const SKIP = new Set(['dev', 'cache', 'diagnostics', 'types']);
@@ -145,6 +159,13 @@ export function checkBuild(out) {
     const bytes = readFileSync(path);
     const text = bytes.toString('latin1');
     if (STAGE_MARKERS.some((marker) => text.includes(marker))) stage += gzipSync(bytes).length;
+  }
+  for (const path of files(out)) {
+    if (!relative(out, path).startsWith('static/')) continue;
+    const text = readFileSync(path, 'latin1');
+    for (const [what, shape] of Object.entries(SECRET_SHAPES))
+      if (shape.test(text))
+        problems.push(`${relative(out, path)} holds ${what}: a browser is sent this file`);
   }
   if (stage > STAGE_BUDGET)
     problems.push(
