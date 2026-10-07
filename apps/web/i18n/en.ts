@@ -1039,6 +1039,17 @@ export const en = {
       notChecked:
         'The name and description aren’t checked against what the creator published on the chain.',
     },
+    /** What a refusal of a buy or a follow of a shared portfolio says (features/shared/refusal.ts). */
+    refusal: {
+      versionChanged:
+        'This portfolio has a new version since you opened this page. Open it again to see what it holds now.',
+      reopen: 'Open the portfolio again',
+      reread: 'Read the portfolio again',
+      assetNamed: (asset: string) =>
+        `${asset} can’t be bought on this chain now, so this portfolio can’t be bought as it stands.`,
+      asset:
+        'One asset of this portfolio can’t be bought on this chain now, so the portfolio can’t be bought as it stands.',
+    },
     family: {
       loading: 'Reading this portfolio…',
       missing: 'I can’t find a shared portfolio with that name.',
