@@ -1862,8 +1862,8 @@ function intakeOf(
     at,
     end,
   }));
-  const saysMore = named.some((m) => {
-    const turn = turnOf(m.at);
+  // Each message that names one is read once, however many times it names it.
+  const saysMore = [...new Set(named.map((m) => turnOf(m.at)))].some((turn) => {
     const from = starts[turn] ?? 0;
     return saysMoreIn(
       text,

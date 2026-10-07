@@ -1038,7 +1038,10 @@ function clauseRead(text: string, at: number, holdings: Span[], listed: boolean)
   // The clause is read from the end of the sentence backwards. The last stretch is read first, and
   // a longer one only where the clause or the list it ends runs past it: what is read is the same
   // as from the whole sentence, and a long sentence costs no more than its clause.
-  for (let reach = INTAKE_LIMITS.clauseReachChars; ; reach *= 2) {
+  // Where the clauses of a sentence run long, the next one is read from as far back straight away.
+  if (reachRead?.text !== text) reachRead = { text, from: new Map() };
+  const reaches = reachRead.from;
+  for (let reach = reaches.get(start) ?? INTAKE_LIMITS.clauseReachChars; ; reach *= 2) {
     let begin = Math.max(start, at - reach);
     // Never from inside a word, nor from inside a holding.
     for (let moved = true; moved && begin > start; ) {
@@ -1053,9 +1056,13 @@ function clauseRead(text: string, at: number, holdings: Span[], listed: boolean)
       }
     }
     const clause = clauseFrom(text, begin, at, held, listed, leads, begin === start);
-    if (clause !== null) return clause;
+    if (clause !== null) {
+      if (reach > INTAKE_LIMITS.clauseReachChars) reaches.set(start, reach);
+      return clause;
+    }
   }
 }
+let reachRead: { text: string; from: Map<number, number> } | null = null;
 
 /**
  * The clause read from the words written from `begin` up to `at`; null where it, or the list it
@@ -2041,17 +2048,23 @@ export function saysMoreIn(
         s.at - end <= INTAKE_LIMITS.shareLeadChars &&
         !/[,;.!?\n]/u.test(text.slice(end, s.at)),
     );
-  for (const m of mentionsIn(text)) {
-    if (m.at < from || m.end > to || inside(m.at, m.end) || leadsIn(m.end)) continue;
+  // Only this message is read: a number or a word of another message is none of its own.
+  const figures = mentionsIn(text.slice(from, to)).map((m) => ({
+    ...m,
+    at: m.at + from,
+    end: m.end + from,
+  }));
+  for (const m of figures) {
+    if (inside(m.at, m.end) || leadsIn(m.end)) continue;
     if (m.kind === 'percent') return true;
     if (m.kind === 'amount' && m.money && !m.perMonth && m.value !== amountUsd) return true;
   }
   // A word for a class written right after what an ask names is part of its name ("AI stocks").
   const namesIt = (at: number) =>
     accounted.some((s) => s.end <= at && text.slice(s.end, at).trim() === '');
-  for (const m of text.matchAll(CLASS_WORD)) {
-    const [at, end] = [m.index, m.index + m[0].length];
-    if (at < from || end > to || inside(at, end) || namesIt(at)) continue;
+  for (const m of text.slice(from, to).matchAll(CLASS_WORD)) {
+    const [at, end] = [m.index + from, m.index + from + m[0].length];
+    if (inside(at, end) || namesIt(at)) continue;
     if (restSafe && SAFE_PARTS.includes(partOf(m[0]) ?? 'growth')) continue;
     // Something to hold, or that the person wonders about holding: one its clause rules out, or
     // says of someone else, is no other holding ("I don't want bonds, invest in big tech").
