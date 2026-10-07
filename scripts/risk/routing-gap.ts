@@ -124,12 +124,15 @@ console.log(
 );
 
 /**
- * `pnpm risk:routing-gap --router <capture file or folder> [more ...] [--quotes <file>] [--chunks <n>]`
+ * `pnpm risk:routing-gap --router <capture file or folder> [more ...] [--quotes <file>] [--chunks <n>] [--byreal]`
  * (PLAN-UNIVERSE RU.11). Each stored Jupiter quote against `routeTrade` on the pools of the capture nearest in time (a
  * file written by `pnpm risk:split-capture`; a folder means every capture in it), once with one hop and once with two.
  * Reads files only: no network, no database. The quotes are the collector's (RISK_HOME/quotes) unless `--quotes`
  * names a file. `--chunks` is the number of chunks both routes are cut in (the router's own when not given): it is
- * there to show how much of a measured gain depends on the chunk size.
+ * there to show how much of a measured gain depends on the chunk size. `--byreal` (PLAN-UNIVERSE RU.15; off unless
+ * given) routes the Byreal pools of the captures taken with `pnpm risk:split-capture --byreal`, as dollar pools of
+ * their stock beside the registry's; the report then gains one key, `byreal`. Without it those pools are passed over,
+ * so the same captures and quotes run with and without the flag are the measurement before and after.
  *
  * What is compared, and what is not:
  * - A capture taken without two hops is not used at all. Its two routes would be one route, and a gain of zero that
@@ -145,7 +148,10 @@ console.log(
 async function routerReport() {
   const lib = await import('./lib-routing-gap');
   const { buildSplit, loadCapture } = await import('./lib-split');
-  const { paths, quotesFile, chunks } = lib.parseRouterArgs(process.argv.slice(2));
+  const { paths, quotesFile, chunks, byreal = false } = lib.parseRouterArgs(process.argv.slice(2));
+  const byrealPools = new Set<string>();
+  const byrealNotBuilt: string[] = [];
+  let byrealCaptures = 0;
 
   // first pass: when each capture was taken. A capture holds a few thousand accounts, so none is kept in memory here.
   const captures: Array<{ file: string; fetchedAt: string; twoHop: boolean }> = [];
@@ -186,8 +192,21 @@ async function routerReport() {
     if (!own.length) continue;
     used++;
     const capture = loadCapture(cap.file);
-    const built = buildSplit(capture);
+    const built = buildSplit(capture, { byreal });
     poolsNotBuilt += built.failures.length;
+    if (byreal && capture.byreal) {
+      byrealCaptures++;
+      const routed = new Set(
+        [...built.byAsset.values()].flatMap((a) => a.pools.map((p) => p.pool)),
+      );
+      for (const p of capture.byreal.pools) {
+        if (routed.has(p)) byrealPools.add(p);
+        else
+          byrealNotBuilt.push(
+            `${capture.fetchedAt} ${built.failures.find((f) => f.startsWith(p)) ?? `${p}: not built`}`,
+          );
+      }
+    }
     twoHopDirectionsNotRouted += built.notRouted.length;
     for (const { quote } of own) {
       const g = lib.gapOf(quote, capture, built, chunks);
@@ -235,6 +254,17 @@ async function routerReport() {
     },
     windowMinutes: lib.PAIR_WINDOW_MS / 60_000,
     chunks,
+    ...(byreal
+      ? {
+          byreal: {
+            routed: true,
+            capturesWithByrealPools: byrealCaptures,
+            poolsRouted: byrealPools.size,
+            // a Byreal pool that a capture holds and that was not built there, with the capture's time and the reason
+            notBuilt: byrealNotBuilt,
+          },
+        }
+      : {}),
     summary: lib.summarize(rows),
     note: 'Both routes use the same frozen pools, the same SOL price and the same amount, cut in the same number of chunks, so the difference between them (gainBp) is the two hops alone. What a gap contains: our side counts a SOL pool’s dollars as the SOL at the capture’s SOL price, with no cost for the SOL to USDC step, while Jupiter’s side is USDC delivered (a sale) or tokens for USDC paid (a purchase). Where our route uses SOL pools our side is overstated, so the gap reads lower than it is, and it can read negative. Each gap also holds the price move between the quote and the capture, up to the window: pairing.secondsApart says how far apart they were, and quotes.first and quotes.last when the quotes were taken. The gain is two hops against one hop on the same pools at the same price, both counted our way: it is not a comparison with Jupiter, and Jupiter’s amount only scales it, by one part in ten thousand for each basis point of gap. chunks is the number of equal parts both routes are cut in (--chunks; the router’s own number when not given). A pool wins a whole chunk or none, so a stock-to-stock pool too small to take one chunk (the size ÷ chunks) at a better price wins nothing: run again with another --chunks to see how much of a gain depends on it. captures.first and captures.last are of the captures taken with two hops; one taken without them is under captures.notUsed and no quote is paired with it. A capture cut to some stocks measures two hops for those stocks only: a quote of another stock is under quotes.notCompared. Each figure of the summary is the median and the mean, with the smallest and the largest beside them. A sale routes the quote’s own amount of the stock, exact to a few raw units; xStocks have 8 decimals and the quotes are against USDC. In jupiterRoutes, sharePct is the part of the quote that trades the stock in pools of that label, found from the stored amounts; onwardHops are the other hops of a path.',
   };

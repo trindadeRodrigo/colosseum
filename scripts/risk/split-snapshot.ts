@@ -1,9 +1,12 @@
 import 'dotenv/config';
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { type ByrealPoolsFile, byrealForCapture } from './byreal/lib';
+import { listByrealChildAddresses, mintTransferFeeBps } from './byreal/read';
 import { multipleAccounts, RISK_HOME, SPLIT_DIR } from './lib-lending';
 import { rpcStats } from './lib-pools';
 import {
+  BYREAL_VENUE,
   buildSplit,
   loadCapture,
   nearestCollectorRows,
@@ -12,11 +15,13 @@ import {
   oneHopView,
   readSplitCapture,
   SOL,
+  SPLIT_BYREAL_METHOD_VERSION,
   type SplitCapture,
   selectSplitPools,
   type TwoHopRowOut,
   twoHopAssets,
   twoHopRowsOf,
+  withoutByreal,
 } from './lib-split';
 import solanaList from './universe/solana.json';
 
@@ -59,7 +64,20 @@ import solanaList from './universe/solana.json';
 // (the job's, or an earlier replay's), whatever names the folder. The default folder is the one the hourly job, the
 // cost breakdown and GET /risk/assets/:id/split share (the job's install makes data/risk/split a link to it), and
 // rows replayed there would be read as the job's, twice if replayed twice.
+//
+// RISK_SPLIT_BYREAL=<table.json> (PLAN-UNIVERSE RU.15; off unless set): the run also reads Byreal's pools of the
+// tracked stocks, taken from a table written by `pnpm risk:byreal-pools` as `pnpm risk:split-capture --byreal` takes
+// them (two batch reads, one read of the mints and one getProgramAccounts a pool, before the run's own read; no
+// oracle account). The `split-0.1` rows and the two-hop rows are computed without those pools, as with the setting
+// off; of the summary, `seconds` and the two-hop block's `rpcCalls` and `seconds` are of the wider read. Then each asset is routed again with its Byreal pools offered beside
+// the others, and those rows (`split-0.3`, the same shape as `split-0.1`) go to SPLIT_DIR/byreal/<day>.jsonl: a
+// folder, for the reason the two-hop rows have one. The summary gains one key, `byreal`. A Byreal pool that is not
+// built (a fee its own accounts do not give, arrays that do not add up to its liquidity exactly, an account not
+// read) is named there and routed nowhere. In a replay the setting only has to be set: the pools are the capture's
+// own, and a capture taken without them is an error. With the setting off a capture that holds them is replayed as
+// one that does not.
 const twoHop = process.env.RISK_SPLIT_TWO_HOP === '1';
+const byrealSetting = process.env.RISK_SPLIT_BYREAL || null;
 const replay = process.env.RISK_SPLIT_REPLAY;
 if (replay && !process.env.RISK_DATA_DIR)
   throw new Error(
@@ -67,12 +85,17 @@ if (replay && !process.env.RISK_DATA_DIR)
   );
 
 let t0 = 0;
+let byrealError: string | null = null;
 let capture: SplitCapture;
 if (replay) {
   const frozen = loadCapture(replay);
   if (twoHop && !frozen.twoHop)
     throw new Error(
       `RISK_SPLIT_TWO_HOP=1, but ${replay} was captured without two hops: capture it with --two-hop or unset the setting`,
+    );
+  if (byrealSetting && !frozen.byreal)
+    throw new Error(
+      `RISK_SPLIT_BYREAL is set, but ${replay} was captured without Byreal's pools: capture it with --byreal or unset the setting`,
     );
   capture = twoHop ? frozen : oneHopView(frozen);
 } else {
@@ -86,14 +109,39 @@ if (replay) {
   };
   const tracked = twoHop ? solanaList.assets.map((a) => a.address) : [];
   t0 = Date.now();
+  let sel = selectSplitPools(reg.pools, { twoHop, tracked: new Set(tracked) });
+  let children = cache.children;
+  let byrealMeta: SplitCapture['byreal'];
+  if (byrealSetting)
+    // Byreal's reads come first and must not cost the run its rows: if the table or a listing fails, the run goes on
+    // as with the setting off, and the summary says why
+    try {
+      const table = JSON.parse(readFileSync(byrealSetting, 'utf8')) as ByrealPoolsFile;
+      const added = await byrealForCapture(
+        { ...table, file: byrealSetting },
+        { only: null },
+        {
+          read: multipleAccounts,
+          transferFeeBps: mintTransferFeeBps,
+          listChildren: listByrealChildAddresses,
+          rpcCalls: () => rpcStats.calls,
+        },
+      );
+      sel = { ...sel, direct: [...sel.direct, ...added.pools] };
+      children = { ...children, ...added.children };
+      byrealMeta = added.meta;
+    } catch (e) {
+      byrealError = String(e).slice(0, 200);
+    }
   capture = await readSplitCapture(
-    selectSplitPools(reg.pools, { twoHop, tracked: new Set(tracked) }),
-    cache.children,
+    sel,
+    children,
     {
       twoHop,
       tracked,
       trackedSource: twoHop ? 'scripts/risk/universe/solana.json' : null,
       registry: { fetchedAt: reg.fetchedAt ?? null, methodVersion: reg.methodVersion ?? null },
+      ...(byrealMeta ? { byreal: byrealMeta } : {}),
     },
     {
       read: multipleAccounts,
@@ -109,6 +157,10 @@ if (replay) {
     },
   );
 }
+// everything below but the Byreal rows is computed on the capture without Byreal's pools: the same rows, the same
+// counts, whatever the setting and whatever the capture holds
+const whole = capture;
+capture = withoutByreal(whole);
 const built = buildSplit(capture);
 
 // the collector's routed row nearest in time, per asset, for the drift comparison
@@ -122,8 +174,13 @@ const jsonl = (rs: readonly object[]) => rs.map((r) => `${JSON.stringify(r)}\n`)
 mkdirSync(SPLIT_DIR, { recursive: true });
 const file = join(SPLIT_DIR, `${day}.jsonl`);
 const twoHopDayFile = join(SPLIT_DIR, 'two-hop', `${day}.jsonl`);
+const byrealDayFile = join(SPLIT_DIR, 'byreal', `${day}.jsonl`);
 if (replay)
-  for (const f of capture.twoHop ? [file, twoHopDayFile] : [file])
+  for (const f of [
+    file,
+    ...(capture.twoHop ? [twoHopDayFile] : []),
+    ...(byrealSetting ? [byrealDayFile] : []),
+  ])
     if (existsSync(f))
       throw new Error(
         `a replay never appends: ${f} exists. Name an empty folder with RISK_DATA_DIR, and not the hourly job's`,
@@ -171,6 +228,42 @@ if (capture.twoHop) {
   };
 }
 
+// the Byreal rows, last: every row a reader depends on is on disk by now
+let byrealSummary: Record<string, unknown> | null = null;
+if (byrealSetting && whole.byreal) {
+  const withByreal = buildSplit(whole, { byreal: true });
+  const routed = new Set(
+    [...withByreal.byAsset.values()].flatMap((a) => a.pools.map((p) => p.pool)),
+  );
+  const byrealRows = oneHopRows(withByreal, whole, { collector }).rows.map((r) => ({
+    ...r,
+    source: `${r.source}; Byreal's pools of the tracked stocks (${whole.byreal?.source})`,
+    method:
+      'routed_greedy_32_chunks with per-pool split, Byreal’s pools offered beside the registry’s (packages/risk/src/pools/route.ts, byreal-clmm.ts)',
+    methodVersion: SPLIT_BYREAL_METHOD_VERSION,
+  }));
+  if (byrealRows.length) {
+    mkdirSync(join(SPLIT_DIR, 'byreal'), { recursive: true });
+    appendFileSync(byrealDayFile, jsonl(byrealRows));
+  }
+  byrealSummary = {
+    file: byrealDayFile,
+    table: whole.byreal.table,
+    poolsRead: whole.byreal.pools.length,
+    poolsRouted: whole.byreal.pools.filter((p) => routed.has(p)).length,
+    // a pool read and not built, with the reason: it is routed nowhere
+    notBuilt: withByreal.failures.filter((f) => whole.byreal?.pools.some((p) => f.startsWith(p))),
+    leftOut: whole.byreal.leftOut,
+    rows: byrealRows.length,
+    rowsUsingByreal: byrealRows.filter((r) =>
+      r.legs.some((l) => whole.byreal?.pools.includes(l.pool)),
+    ).length,
+    accountsAdded: Object.keys(whole.accounts).length - Object.keys(capture.accounts).length,
+    rpcCallsBefore: whole.byreal.rpcCalls,
+    venue: BYREAL_VENUE,
+  };
+}
+
 console.log(
   JSON.stringify({
     file,
@@ -191,5 +284,7 @@ console.log(
         }
       : null,
     ...(twoHopSummary ? { twoHop: twoHopSummary } : {}),
+    ...(byrealSummary ? { byreal: byrealSummary } : {}),
+    ...(byrealError ? { byreal: { error: byrealError } } : {}),
   }),
 );
