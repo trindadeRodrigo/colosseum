@@ -123,11 +123,16 @@ export function recallPlan(id: string, userId: string | null): StoredPlan | null
  * or 403); null when it does not answer, or answers something that is not a plan.
  */
 export async function readStoredPlan(
-  apiFetch: (path: string) => Promise<Response>,
+  apiFetch: (path: string, init?: { freshSignIn?: boolean }) => Promise<Response>,
   id: string,
+  /** Ask with fresh tokens: the second try, after an answer that may have been given to nobody. */
+  freshSignIn = false,
 ): Promise<{ proposal: BasketProposal; fromLink: boolean } | 'gone' | null> {
   try {
-    const res = await apiFetch(`/v1/baskets/${encodeURIComponent(id)}`);
+    const res = await apiFetch(
+      `/v1/baskets/${encodeURIComponent(id)}`,
+      freshSignIn ? { freshSignIn } : undefined,
+    );
     // The server's word that there is no such plan for this person: a copy kept here is dropped.
     if (res.status === 404 || res.status === 403) return 'gone';
     if (!res.ok) return null;

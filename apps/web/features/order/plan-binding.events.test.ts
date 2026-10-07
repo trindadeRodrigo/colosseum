@@ -308,14 +308,34 @@ describe('an income plan and its gap (the flow audit, findings 11 and 14)', () =
     for (const status of [404, 403]) {
       rememberPlan(short());
       // a server that does not have this plan for this person, whatever this browser kept
-      portStore.setApi(async (path) =>
-        path === '/v1/me' ? json(person) : json({ error: 'no plan with that id' }, status),
-      );
+      const asked: boolean[] = [];
+      portStore.setApi(async (path, init) => {
+        if (path === '/v1/me') return json(person);
+        asked.push((init as { freshSignIn?: boolean } | undefined)?.freshSignIn === true);
+        return json({ error: 'no plan with that id' }, status);
+      });
       const host = await shown();
       expect(find(host, 'h1').textContent, String(status)).toBe(en.plan.missing.title);
       expect(recallPlan(PLAN_ID, USER)).toBeNull();
+      // believed only after it was asked once more, with fresh tokens
+      expect(asked, String(status)).toEqual([false, true]);
       await unmountAll();
     }
+  });
+
+  it('does not believe a first "gone" that fresh tokens take back: the copy stays, and the plan is shown', async () => {
+    const plan = short();
+    rememberPlan(plan);
+    // tokens gone stale are answered as nobody is; asked again with fresh ones, the plan is there
+    portStore.setApi(async (path, init) => {
+      if (path === '/v1/me') return json(person);
+      return (init as { freshSignIn?: boolean } | undefined)?.freshSignIn
+        ? json({ id: PLAN_ID, proposal: plan.proposal, fromLink: false })
+        : json({ error: 'no plan with that id' }, 404);
+    });
+    const host = await shown();
+    expect(find(host, 'h1').textContent).toBe('Earn $300 a month from $80,000 for 12 months.');
+    expect(recallPlan(PLAN_ID, USER)).not.toBeNull();
   });
 
   it('keeps the browser’s copy while the server does not answer', async () => {

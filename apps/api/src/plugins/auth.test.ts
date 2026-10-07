@@ -41,8 +41,26 @@ describe('a public route that reads a sign-in when one is sent', () => {
     const get = served();
     const a = await person(issuer, 'solana');
     const stranger = await person(other, 'solana');
+    const sub = 'did:privy:someone';
+    const linked = JSON.stringify([{ type: 'email', address: 'someone@example.invalid' }]);
+    // tokens of this issuer that have run out
+    const expired = {
+      authorization: `Bearer ${await issuer.sign(sub, { sid: 's' }, '-1h')}`,
+      'privy-id-token': await issuer.sign(sub, { linked_accounts: linked }, '-1h'),
+    };
+    // tokens signed by this issuer's key for another app (`aud`)
+    const elsewhere = { ...issuer.issuer, audience: 'another-app' };
+    const wrongAudience = {
+      authorization: `Bearer ${await issuer.sign(sub, { sid: 's', aud: elsewhere.audience })}`,
+      'privy-id-token': await issuer.sign(sub, {
+        linked_accounts: linked,
+        aud: elsewhere.audience,
+      }),
+    };
     const forged = [
       { authorization: 'Bearer not-a-token', 'privy-id-token': 'nor-this' },
+      expired,
+      wrongAudience,
       // another issuer's tokens, valid there
       stranger.headers,
       // the access token alone: no identity, so no wallets and nobody
