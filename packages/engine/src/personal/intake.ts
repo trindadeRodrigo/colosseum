@@ -12,6 +12,7 @@ import { draftFromRules } from './draft';
 import {
   amountInText,
   carvedOutAfter,
+  classKeptAfter,
   classMentionsIn,
   currenciesIn,
   evenSplitSaidIn,
@@ -66,6 +67,7 @@ import {
   ASSUMPTION_TEMPLATES,
   type AssumptionId,
   CLASS_WORDS,
+  CREDIT_WORDS,
   FILTER_BY_WORDS,
   QUESTION_TEMPLATES,
   type QuestionId,
@@ -121,6 +123,7 @@ export const QUESTION_FIELDS = [
   'amountUsd',
   'sleeves',
   'mix',
+  'limits',
   'incomeTargetUsdMonthly',
   'horizonMonths',
   'risk',
@@ -569,6 +572,11 @@ type Heard = {
    * for good, and never asked again.
    */
   leftOut: string[];
+  /**
+   * The answers to the question that asks whether to leave something out (`limits`): the classes it
+   * asked of, and whether the person said yes.
+   */
+  refusals: { classes: Refused[]; taken: boolean }[];
 };
 
 /** What a turn leaves open that the next message can answer in words. */
@@ -577,6 +585,8 @@ type Open = {
   shareOf: { key: string; words: string }[];
   /** The themes the `sleeves` question asks a share for each of, in the order written. */
   themes: { keys: string[]; slug: string; words: string }[];
+  /** What the `limits` question asks whether to leave out: a refusal one reader read alone. */
+  refusal: Refused[];
 };
 
 /**
@@ -658,7 +668,7 @@ export function runIntake(input: IntakeInput): IntakeResult {
   const first = Math.max(0, blocks.length - INTAKE_LIMITS.turnsRead);
   const turns = [blocks.slice(0, first + 1).join(TURN_BREAK), ...blocks.slice(first + 1)];
   let answers = input.answers ?? {};
-  const heard: Heard = { flags: [], leftOut: [] };
+  const heard: Heard = { flags: [], leftOut: [], refusals: [] };
   for (let n = 1; n < turns.length; n += 1) {
     const before = intakeOf(input, turns.slice(0, n), answers, heard);
     const message = turns[n] ?? '';
@@ -707,6 +717,16 @@ export function runIntake(input: IntakeInput): IntakeResult {
           heard.flags.push('none_from_words');
           continue;
         }
+      }
+    }
+    // The question that asks whether to leave something out (a refusal one reader read alone) is
+    // answered by a plain yes or no, where it is the one question asked.
+    const doubted = before.open.refusal;
+    if (doubted.length > 0 && before.result.questions.length === 1) {
+      const said = yesOrNoSaidIn(message);
+      if (said !== null) {
+        heard.refusals.push({ classes: doubted, taken: said === 'yes' });
+        continue;
       }
     }
     const themes = before.open.themes;
@@ -1094,6 +1114,15 @@ function intakeOf(
     const within = refusals.find((r) => r.what === m.what && r.at <= m.at && m.end <= r.end);
     return within ? within.stance === 'negated' : stanceOf(text, m.at, m.end) === 'stated';
   };
+  /**
+   * Whether a place the text names a class, after a refusal that ends at `from`, holds the class:
+   * its own clause must say so, since a class the refusal's clause only goes on to name carries the
+   * refusal on ("no stocks, including ETFs").
+   */
+  const keeps = (m: { what: Refused; at: number; end: number }, from: number): boolean => {
+    const within = refusals.find((r) => r.what === m.what && r.at <= m.at && m.end <= r.end);
+    return within ? within.stance === 'negated' : classKeptAfter(text, from, m.at, m.end);
+  };
   /** The last message that says the class may be held; `NO_TURN` where none does. */
   const allowedIn = (what: Refused): number =>
     Math.max(
@@ -1123,12 +1152,33 @@ function intakeOf(
       [...classes].flatMap((what) => {
         const from = statedOf(what).at(-1)?.end ?? 0;
         const with_ = (LEFT_OUT_WITH[what] ?? []).filter(
-          (other) => !classNamed.some((m) => m.what === other && m.at >= from && allows(m)),
+          (other) => !classNamed.some((m) => m.what === other && m.at >= from && keeps(m, from)),
         );
         return [what, ...with_];
       }),
     );
   const refusalOf = (what: Refused) => (what === 'credit' ? 'noCredit' : `cannotHold:${what}`);
+  // No reader decides alone (the third review, Oct 7). A refusal the model reads that the text check
+  // does not confirm was flagged and dropped: "Do not buy stocks for me." and "Nada de bolsa." gave
+  // a plan with stocks. It is asked once ("Do you want to leave out stocks?"): a yes takes it, a no
+  // leaves the class in and says so in a line. The form's own limits stand over the question.
+  const refusalAsked: Refused[] = [];
+  const refusalDeclined: Refused[] = [];
+  if (method === 'model' && answers.limits === undefined) {
+    const taken = leftOutOf(refused);
+    for (const what of replyRefused) {
+      if (taken.has(what)) continue;
+      const answer = heard.refusals.filter((r) => r.classes.includes(what)).at(-1);
+      if (answer === undefined) refusalAsked.push(what);
+      else if (answer.taken) {
+        refused.add(what);
+        flags.push(`refusal_confirmed:${what}`);
+      } else {
+        refusalDeclined.push(what);
+        flags.push(`refusal_declined:${what}`);
+      }
+    }
+  }
   {
     const leftOut = leftOutOf(refused);
     for (const what of replyRefused)
@@ -1145,7 +1195,9 @@ function intakeOf(
       const shown = written.find((x) => x.stance === 'wondered') ?? written[0];
       if (!shown) continue;
       flags.push(`refusal_${shown.stance}:${what}`);
-      if (shown.stance === 'wondered' || replyRefused.includes(what)) refusalsNotTaken.push(shown);
+      const asked = refusalAsked.includes(what) || refusalDeclined.includes(what);
+      if ((shown.stance === 'wondered' || replyRefused.includes(what)) && !asked)
+        refusalsNotTaken.push(shown);
     }
   }
 
@@ -1965,6 +2017,8 @@ function intakeOf(
         );
       case 'mix':
         return marketShareAsk !== null || mixAsk !== null || conflictAsk !== null;
+      case 'limits':
+        return refusalAsked.length > 0;
       case 'horizonMonths':
         return !horizonOpen && (value[field] === null || unclear.has(field));
       case 'sleeves':
@@ -1980,6 +2034,17 @@ function intakeOf(
     }
   };
 
+  /** What a yes to leaving `classes` out would leave out: each, and what goes with it. */
+  const wouldLeaveOut = (classes: readonly Refused[]): Refused[] => {
+    const order = [...Object.keys(CLASS_WORDS[language]), 'credit'];
+    return [...leftOutOf(new Set(classes))].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  };
+  /** The classes in the person's language, for a line that lists them. */
+  const classWords = (classes: readonly Refused[]): string =>
+    [
+      ...classes.filter((c) => c !== 'credit').map((c) => CLASS_WORDS[language][c] ?? c),
+      ...(classes.includes('credit') ? [CREDIT_WORDS[language]] : []),
+    ].join(',');
   /** "a", "a and b", "a, b and c": the person's words, joined in their language. */
   const listed = (words: readonly string[]): string =>
     words.length > 1
@@ -2017,18 +2082,22 @@ function intakeOf(
         : { id: 'marketShareNoAmount', params: { market: marketShareAsk } };
     if (field === 'goal' && mixConflict && mix && value.goal)
       return { id: 'goalMixConflict', params: { words: mixWords(mix), goal: value.goal } };
+    if (field === 'limits')
+      return { id: 'limits', params: { classes: classWords(wouldLeaveOut(refusalAsked)) } };
     return { id: field, params: {} };
   };
   // What a question starts from: what was read, and for the `mix` question the mix it is asked about,
   // or the share the text gives the market it is asked of. A refusal against a holding has no start.
   const startOf = (field: QuestionField): IntakeQuestion['read'] =>
-    field !== 'mix'
-      ? readOf(field, value)
-      : conflictAsk
-        ? undefined
-        : marketShareAsk === null
-          ? (mixAsk?.read ?? undefined)
-          : (shareRead ?? undefined);
+    field === 'limits'
+      ? wouldLeaveOut(refusalAsked)
+      : field !== 'mix'
+        ? readOf(field, value)
+        : conflictAsk
+          ? undefined
+          : marketShareAsk === null
+            ? (mixAsk?.read ?? undefined)
+            : (shareRead ?? undefined);
   const questions: IntakeQuestion[] = QUESTION_FIELDS.filter(needed).map((field) =>
     question(field, language, templateOf(field), startOf(field)),
   );
@@ -2133,6 +2202,9 @@ function intakeOf(
   if (input.homeChain)
     for (const words of waitsForShelf) assume('SHELF_UNREAD', { words, chain: input.homeChain });
   for (const { words } of refusalsNotTaken) assume('REFUSAL_NOT_TAKEN', { words });
+  // A refusal asked about that the person said no to: the class stays in, and that is said.
+  if (refusalDeclined.length > 0)
+    assume('REFUSAL_DECLINED', { classes: classWords(wouldLeaveOut(refusalDeclined)) });
   // A share that was not taken because no line of a plan can be that small: said while how much
   // is still asked, with the least a plan of this size can hold, so the question that comes back is
   // not a riddle.
@@ -2254,6 +2326,7 @@ function intakeOf(
           : []
         : shareAskedOf,
     themes: asks('sleeves') && splitAsk?.id === 'themeShares' ? splitAsk.themes : [],
+    refusal: asks('limits') ? refusalAsked : [],
   };
   return {
     result: {
@@ -2299,11 +2372,12 @@ function limitsOf(read: LimitsDraft): PersonalLimits | null {
 
 type Value = string | number;
 type Values = Record<
-  Exclude<QuestionField, 'chains' | 'sleeves' | 'mix'>,
+  Exclude<QuestionField, 'chains' | 'sleeves' | 'mix' | 'limits'>,
   string | number | string[] | null | undefined
 >;
 function readOf(field: QuestionField, value: Values): IntakeQuestion['read'] {
-  if (field === 'chains' || field === 'sleeves' || field === 'mix') return undefined;
+  if (field === 'chains' || field === 'sleeves' || field === 'mix' || field === 'limits')
+    return undefined;
   const v = value[field];
   return v === null || v === undefined ? undefined : v;
 }

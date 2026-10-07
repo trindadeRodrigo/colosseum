@@ -1866,6 +1866,32 @@ const PLAIN_ASK = new RegExp(
  */
 const plainAskBefore = (text: string, at: number, holdings: Span[]): boolean =>
   PLAIN_ASK.test(`${clauseBefore(text, at, holdings, true).replace(/\s+/g, ' ').trim()} `);
+// What goes with a refusal ("no stocks" is no stocks through a fund either) is left out with it,
+// unless the text then holds it. A class named after the refusal holds it only where its own clause
+// says so: the person asks for it in a plain form, it stands on the far side of a contrast from the
+// refusal ("no stocks, but ETFs"), or the clause goes on to say something of it ("ETFs are fine"). A
+// class the refusal's clause only goes on to name carries the refusal on, whatever joins it
+// ("including ETFs", "Same goes for ETFs.", "isso vale para ETFs"): the third review found those
+// read as "the funds are fine".
+const CONTRAST =
+  /(?<![\p{L}])(?:but|however|though|although|whereas|yet|except|mas|por[eé]m|contudo|todavia|exceto|salvo)(?![\p{L}])/iu;
+// A verb that says something of what was just named: "are fine", "would be ok", "são bem-vindos".
+const SAID_OF_IT_AFTER =
+  /^[^\S\n]*(?:is|are|was|were|would|will|can|could|may|might|should|seems?|sounds?|looks?|feels?|[eé]|s[aã]o|est[aá]|est[aã]o|seria|seriam|pode|podem|parece|parecem|fica|ficam)(?![\p{L}])/iu;
+/**
+ * Whether a class named from `at` up to `end`, after a refusal that ends at `from`, is said as
+ * something the plan may hold.
+ */
+export function classKeptAfter(text: string, from: number, at: number, end: number): boolean {
+  if (stanceOf(text, at, end) !== 'stated') return false;
+  const sentenceFrom = at - sentenceBefore(text, at).length;
+  return (
+    plainAskBefore(text, at, holdingsIn(text)) ||
+    (from >= sentenceFrom && CONTRAST.test(text.slice(from, at))) ||
+    SAID_OF_IT_AFTER.test(text.slice(end))
+  );
+}
+
 // A percent is a share of the money only in its plain forms too (the review of Oct 7: "I can lose
 // 30% and I am 70% sure" passed for a 70/30 split, and "70% of experts say" asked one). It opens its
 // clause or follows a word that asks for it or joins it to another share ("keep 30% safe", "70% safe
