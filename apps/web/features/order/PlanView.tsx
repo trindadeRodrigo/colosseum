@@ -90,6 +90,11 @@ export type PlanViewProps = {
 
 /** The wood ramp, in the order the holdings come. A fifth holding takes the first again. */
 const FILL = ['bg-leg-1', 'bg-leg-2', 'bg-leg-3', 'bg-leg-4'] as const;
+/**
+ * The smallest share whose part of the bar is a button: 12% of the narrowest bar (a 320px phone) is
+ * wider than the 24px a target needs. A smaller part is drawn only.
+ */
+const PRESSABLE_BPS = 1200;
 const fillOf = (i: number) => FILL[i % FILL.length] as string;
 
 const percent = (value: number, lang: Lang) =>
@@ -209,28 +214,43 @@ export function PlanView({
             {shown.length > 0 && (
               <div data-ui="plan-bar" className="flex flex-col gap-1.5">
                 <div className="grid h-11 gap-0.5" style={{ gridTemplateColumns: columns }}>
-                  {shown.map((h, i) => (
-                    <button
-                      key={keyOf(h)}
-                      type="button"
-                      data-part={keyOf(h)}
-                      data-lit={lit === keyOf(h) || undefined}
-                      aria-label={`${name(h.asset)}, ${share(h.shareBps)}`}
-                      aria-pressed={lit === keyOf(h)}
-                      onMouseEnter={() => setLit(keyOf(h))}
-                      onMouseLeave={() => setLit(null)}
-                      onFocus={() => setLit(keyOf(h))}
-                      onBlur={() => setLit(null)}
-                      onClick={() => setLit((now) => (now === keyOf(h) ? null : keyOf(h)))}
-                      className={cn(
-                        'motion-safe:animate-seat flex min-w-0 items-center justify-center overflow-hidden outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
-                        fillOf(i),
-                        lit !== null && lit !== keyOf(h) && 'opacity-40',
-                      )}
-                    >
-                      {h.shareBps >= 800 && <AssetMark asset={h.asset} />}
-                    </button>
-                  ))}
+                  {shown.map((h, i) => {
+                    const className = cn(
+                      'motion-safe:animate-seat flex min-w-0 items-center justify-center overflow-hidden outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                      fillOf(i),
+                      lit !== null && lit !== keyOf(h) && 'opacity-40',
+                    );
+                    // A part too narrow to press (under 24px on a phone) is drawn and not a
+                    // button: its row says the same, and lights it.
+                    if (h.shareBps < PRESSABLE_BPS)
+                      return (
+                        <span
+                          key={keyOf(h)}
+                          aria-hidden="true"
+                          data-part={keyOf(h)}
+                          data-lit={lit === keyOf(h) || undefined}
+                          className={className}
+                        />
+                      );
+                    return (
+                      <button
+                        key={keyOf(h)}
+                        type="button"
+                        data-part={keyOf(h)}
+                        data-lit={lit === keyOf(h) || undefined}
+                        aria-label={`${name(h.asset)}, ${share(h.shareBps)}`}
+                        aria-pressed={lit === keyOf(h)}
+                        onMouseEnter={() => setLit(keyOf(h))}
+                        onMouseLeave={() => setLit(null)}
+                        onFocus={() => setLit(keyOf(h))}
+                        onBlur={() => setLit(null)}
+                        onClick={() => setLit((now) => (now === keyOf(h) ? null : keyOf(h)))}
+                        className={className}
+                      >
+                        <AssetMark asset={h.asset} />
+                      </button>
+                    );
+                  })}
                 </div>
                 <div
                   aria-hidden="true"
@@ -263,6 +283,8 @@ export function PlanView({
                     key={keyOf(h)}
                     data-row={keyOf(h)}
                     data-lit={lit === keyOf(h) || undefined}
+                    onMouseEnter={() => setLit(keyOf(h))}
+                    onMouseLeave={() => setLit(null)}
                     className={cn('flex flex-col gap-1 py-2.5', lit === keyOf(h) && 'bg-muted')}
                   >
                     {/* One line: the mark, the name, the share as a bar and a figure, the dollars. */}
