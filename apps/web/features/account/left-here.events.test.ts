@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
 import { act, createElement, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AppNav } from '../../components/shell/AppNav';
 import { find, mount, unmountAll } from '../../components/ui/test/dom';
+import { dictionary, SIGNED_IN_COOKIE } from '../../i18n';
 import { OrderScreen } from '../order/OrderScreen';
-import { keepOrder } from '../order/order-record';
+import { keepOrder, recallOrder } from '../order/order-record';
 import { ORDER_ID, orderOn, recordOf, USER } from '../order/test/fixtures';
 import { VAULT, vaultOf } from '../shared/test/fixtures';
 import { VaultScreen } from '../shared/VaultScreen';
@@ -13,10 +15,12 @@ import { useSigningPort } from '../wallet/signing';
 import { EMBEDDED, fakePort, signedInPort } from '../wallet/test/fake-port';
 import {
   SIGN_OUT_RETRY_MS,
+  SIGN_OUT_WAIT_MS,
   useLeaveHere,
   useWalletPort,
   WalletProvider,
 } from '../wallet/WalletProvider';
+import { WAY_IN_MS } from './AccountProvider';
 import { withAccount } from './test/screen';
 
 // "Sign out" pressed while the sign-in service could not be reached leaves a mark (`tf-left`). From
@@ -221,7 +225,11 @@ describe('signed out here while the sign-in service could not be reached', () =>
     await later(0);
     expect(marked()).toBe(false);
     expect(seen.screen?.status).toBe('signed-out');
-    // they sign in again: their port, their order, their tokens on its read
+    // and what this browser kept under their id since the press (another tab of theirs) is gone:
+    // the id is known now, from the service
+    expect(recallOrder(ORDER_ID, USER)).toBeNull();
+    // they sign in again and make the order's record anew: their port, their order, their tokens
+    keepOrder(recordOf());
     await report(theirs(signOut));
     await later(0);
     await later(0);
@@ -252,4 +260,156 @@ describe('signed out here while the sign-in service could not be reached', () =>
     expect(seen.whole).toBe(loading);
     expect(marked()).toBe(true);
   });
+
+  it('leaves another person’s records alone when the service says the one it named is out', async () => {
+    window.localStorage.setItem('tf-left', '1');
+    const OTHERS = '44444444-4444-4444-8444-444444444444';
+    keepOrder(recordOf('solana', { orderId: OTHERS, userId: 'did:privy:other' }));
+    keepOrder(recordOf());
+    await page([]);
+    await later(0);
+    await report(theirs(vi.fn(async () => {})));
+    await report(fakePort());
+    await later(0);
+    expect(recallOrder(ORDER_ID, USER)).toBeNull();
+    expect(recallOrder(OTHERS, 'did:privy:other')).not.toBeNull();
+  });
+
+  it('is learnt at once by a tab left open on the person’s account, when another tab makes the press', async () => {
+    const signOut = vi.fn(() => new Promise<void>(() => {}));
+    keepOrder(recordOf());
+    const host = await page(screens());
+    await later(0);
+    await report(theirs(signOut));
+    await later(0);
+    await later(0);
+    // this tab is theirs, and open on their order
+    expect(seen.screen?.userId).toBe(USER);
+    expect(host.querySelector('[data-ui="order-screen"]')).not.toBeNull();
+    // the press, in another tab of this browser
+    await act(async () => {
+      window.localStorage.setItem('tf-left', '1');
+      window.dispatchEvent(new StorageEvent('storage', { key: 'tf-left', newValue: '1' }));
+    });
+    await later(0);
+    expect(seen.screen?.userId).toBeNull();
+    expect(seen.whole?.status).toBe('loading');
+    await expect(seen.whole?.sign('solana', [])).rejects.toThrow(/still loading/);
+    expect(host.querySelector('[data-ui="order-screen"]')).toBeNull();
+    expect(host.querySelector('[data-variant="primary"]')).toBeNull();
+    expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not let go of because another tab let go: this tab keeps the person back, and keeps trying, until its own service says they are out', async () => {
+    let refuse = true;
+    const signOut = vi.fn(async () => {
+      if (refuse) throw new Error('the sign-in service did not answer');
+    });
+    await page([]);
+    await later(0);
+    await report(theirs(signOut));
+    await act(async () => {
+      window.localStorage.setItem('tf-left', '1');
+      window.dispatchEvent(new StorageEvent('storage', { key: 'tf-left', newValue: '1' }));
+    });
+    await later(0);
+    expect(seen.screen?.userId).toBeNull();
+    expect(signOut).toHaveBeenCalledTimes(1);
+    // the other tab's service says they are out, and that tab clears the mark
+    await act(async () => {
+      window.localStorage.removeItem('tf-left');
+      window.dispatchEvent(new StorageEvent('storage', { key: 'tf-left', newValue: null }));
+    });
+    await later(0);
+    // this tab's service still names them: nothing is handed out, and its own sign-out is tried again
+    expect(seen.screen?.userId).toBeNull();
+    expect(seen.whole?.status).toBe('loading');
+    refuse = false;
+    await later(SIGN_OUT_RETRY_MS);
+    expect(signOut).toHaveBeenCalledTimes(2);
+    expect(seen.screen?.userId).toBeNull();
+    // let go only on this tab's own service saying they are out
+    await report(fakePort());
+    await later(0);
+    expect(seen.screen?.status).toBe('signed-out');
+    await report(theirs(signOut));
+    await later(0);
+    expect(seen.screen?.userId).toBe(USER);
+  });
+
+  it('takes nothing from the late answer of a sign-out whose wait ran out', async () => {
+    window.localStorage.setItem('tf-left', '1');
+    const answers: (() => void)[] = [];
+    const signOut = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          answers.push(resolve);
+        }),
+    );
+    await page([]);
+    await later(0);
+    await report(theirs(signOut));
+    await later(SIGN_OUT_WAIT_MS);
+    // counted as refused: its answer, when it comes, is not a sign-out done
+    await act(async () => answers[0]?.());
+    await later(0);
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(seen.screen?.userId).toBeNull();
+    expect(marked()).toBe(true);
+    // the next try comes at its own time, no sooner for the late answer
+    await later(SIGN_OUT_RETRY_MS - 1);
+    expect(signOut).toHaveBeenCalledTimes(1);
+    await later(1);
+    expect(signOut).toHaveBeenCalledTimes(2);
+  });
+
+  it('counts a sign-out that never answers as refused once its wait is over, and tries again', async () => {
+    window.localStorage.setItem('tf-left', '1');
+    const signOut = vi.fn(() => new Promise<void>(() => {}));
+    await page([]);
+    await later(0);
+    await report(theirs(signOut));
+    await later(SIGN_OUT_WAIT_MS - 1);
+    expect(signOut).toHaveBeenCalledTimes(1);
+    await later(1 + SIGN_OUT_RETRY_MS - 1);
+    expect(signOut).toHaveBeenCalledTimes(1);
+    await later(1);
+    expect(signOut).toHaveBeenCalledTimes(2);
+    // still nobody handed out, and the mark still there
+    expect(seen.screen?.userId).toBeNull();
+    expect(marked()).toBe(true);
+  });
+
+  it.each(['en', 'pt'] as const)(
+    'shows the bar’s way in through the window, never the account, and leaves the signed-in hint off, in %s',
+    async (lang) => {
+      const t = dictionary(lang);
+      // biome-ignore lint/suspicious/noDocumentCookie: the test starts from no hint, as the press left it
+      document.cookie = `${SIGNED_IN_COOKIE}=; max-age=0; path=/`;
+      window.localStorage.setItem('tf-left', '1');
+      const host = await mount(
+        createElement(
+          WalletProvider,
+          null,
+          createElement(Probe, { key: 'probe' }),
+          withAccount(lang, createElement(AppNav)),
+        ),
+      );
+      await later(0);
+      // the service loads with their session, ready, wallets and all
+      await report(theirs(vi.fn(() => new Promise<void>(() => {}))));
+      await later(WAY_IN_MS);
+      expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
+      expect(host.querySelector('[data-ui="account-address"]')).toBeNull();
+      expect(find(host, '[data-ui="account-control"] a[href="/sign-in"]').textContent).toBe(
+        t.shell.signIn,
+      );
+      // "Portfolio" is a signed-in person's link
+      expect(host.querySelector('a[href="/monitor"]')).toBeNull();
+      expect(document.cookie).not.toContain(`${SIGNED_IN_COOKIE}=1`);
+      await later(60_000);
+      expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
+      expect(document.cookie).not.toContain(`${SIGNED_IN_COOKIE}=1`);
+    },
+  );
 });

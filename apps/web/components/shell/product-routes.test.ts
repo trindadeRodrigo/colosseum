@@ -357,7 +357,7 @@ describe('rule 3: no screen can reach a key', () => {
     // "Try again" for a slow sign-in mounts the wallet provider again: a function that takes and
     // returns nothing, open to the account alone.
     'features/account/AccountProvider.tsx': {
-      'features/wallet/WalletProvider.tsx': ['useWalletRestart', 'useLeaveHere'],
+      'features/wallet/WalletProvider.tsx': ['useWalletRestart', 'useLeaveHere', 'useOustedPerson'],
     },
   };
 
