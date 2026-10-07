@@ -433,6 +433,23 @@ export type PersonPlan = {
 export const PERSON_PLANS = { plans: 50 } as const;
 
 /**
+ * Every plan of a person's, page after page (`listPersonPlans`): what joins each of their vaults to
+ * its plan, however many plans they made. It stops at 40 pages, 2,000 plans: a vault whose plan is
+ * older than that is answered with no plan, never with another's.
+ */
+export async function everyPersonPlan(db: Db, principal: Principal): Promise<PersonPlan[]> {
+  const all: PersonPlan[] = [];
+  let before: Date | undefined;
+  for (let pages = 0; pages < 40; pages += 1) {
+    const { plans, next } = await listPersonPlans(db, principal, { before });
+    all.push(...plans);
+    if (next === null) break;
+    before = new Date(next);
+  }
+  return all;
+}
+
+/**
  * The plans a person made, and the plans made from a link that they bought, newest first, each with
  * its buys: one page of them, of at most `limit`, made before `before` when that is given. `next` is
  * the time to ask the following page with, or null when this is the last. A plan is the person's by
@@ -506,7 +523,28 @@ export async function listPersonPlans(
             .orderBy(desc(orders.createdAt))
         ).filter(theirs)
       : [];
-  const confirmed = buys.length
+  // The buys that added to a vault by its address (add money) name no plan: they are found by the
+  // number of the vault a plan of this page opened, and joined to that plan below.
+  const numbers = [...new Set(buys.flatMap((o) => (o.basketId === null ? [] : [o.basketId])))];
+  const adds =
+    owned.length && numbers.length
+      ? (
+          await db
+            .select()
+            .from(orders)
+            .where(
+              and(
+                eq(orders.type, 'buy'),
+                or(...owned),
+                sql`${orders.request}->'vault' is not null`,
+                inArray(orders.basketId, numbers),
+              ),
+            )
+            .orderBy(desc(orders.createdAt))
+        ).filter(theirs)
+      : [];
+  const counted = [...buys, ...adds];
+  const confirmed = counted.length
     ? await db
         .select({ orderId: legs.orderId })
         .from(legs)
@@ -514,7 +552,7 @@ export async function listPersonPlans(
           and(
             inArray(
               legs.orderId,
-              buys.map((o) => o.id),
+              counted.map((o) => o.id),
             ),
             inArray(legs.kind, ['create_vault', 'deposit']),
             eq(legs.status, 'confirmed'),
@@ -528,7 +566,19 @@ export async function listPersonPlans(
   const plans = shown.flatMap((row) => {
     const parsed = BasketProposal.safeParse(row.proposal);
     if (!parsed.success) return [];
-    const of = buys.filter((o) => planOf(o) === row.id);
+    const named = buys.filter((o) => planOf(o) === row.id);
+    // The vault the plan's buys opened, and with them the buys that added to that vault by its
+    // address (add money): they name no plan, and are the plan's by its vault's number and chain.
+    const basketId = named.find((o) => o.basketId !== null)?.basketId ?? null;
+    const chain = parsed.data.sheet.chains[0] ?? parsed.data.recipes[0]?.chain;
+    const added = adds.filter(
+      (o) =>
+        basketId !== null &&
+        o.basketId === basketId &&
+        o.request.type === 'buy' &&
+        o.request.vault?.chain === chain,
+    );
+    const of = [...named, ...added].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     return [
       {
         id: row.id,
@@ -542,7 +592,7 @@ export async function listPersonPlans(
           status: o.status,
           deposited: deposited.has(o.id),
         })),
-        basketId: of.find((o) => o.basketId !== null)?.basketId ?? null,
+        basketId,
       },
     ];
   });
@@ -949,6 +999,36 @@ export async function recordOrderState(
 export function cutToCents(value: string): string {
   const [whole = '0', frac = ''] = value.split('.');
   return `${whole}.${frac.padEnd(2, '0').slice(0, 2)}`;
+}
+
+/** The names the owners of these vaults of one chain gave them, by address. A vault with none is left out. */
+export async function vaultNames(
+  db: Db,
+  chain: ChainId,
+  addresses: readonly string[],
+): Promise<Map<string, string>> {
+  if (!addresses.length) return new Map();
+  const rows = await db
+    .select({ address: vaults.address, name: vaults.name })
+    .from(vaults)
+    .where(and(eq(vaults.chainId, chain), inArray(vaults.address, [...addresses])));
+  return new Map(rows.flatMap((r) => (r.name === null ? [] : [[r.address, r.name]])));
+}
+
+/**
+ * Sets the name of a vault whose row is in the cache (the caller has just read it from its chain and
+ * written it there), or clears it with null. Nothing else of the row changes.
+ */
+export async function nameVault(
+  db: Db,
+  chain: ChainId,
+  address: string,
+  name: string | null,
+): Promise<void> {
+  await db
+    .update(vaults)
+    .set({ name })
+    .where(and(eq(vaults.chainId, chain), eq(vaults.address, address)));
 }
 
 /** Writes the last state read from a vault into the cache. The chain stays the truth. */

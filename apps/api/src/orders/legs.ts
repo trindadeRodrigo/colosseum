@@ -22,6 +22,7 @@ import {
   basketIdOfBuy,
   expectedOf,
   ORDER_POLICY,
+  sameVaultAddress,
   slippageOf,
   targetsOf,
   tradesFor,
@@ -143,7 +144,7 @@ async function buildFor(
   const { request, order } = stored;
   if (request.type === 'publish' || request.type === 'follow')
     return buildShared(deps, stored, leg, entry, owner, nonce);
-  if (request.type !== 'buy' || !(request.proposalId || request.family))
+  if (request.type !== 'buy' || !(request.proposalId || request.family || request.vault))
     throw new Refusal(501, `a ${request.type} order cannot be built yet`);
   const { adapter } = entry;
   // A buy of a shared portfolio reaches the vault numbered from the family's id.
@@ -159,6 +160,10 @@ async function buildFor(
     });
   // The vault the order was made for, as it was stored with it. An order made before the number was
   // stored works it out as it was worked out then.
+  // An order that adds to a vault the person named is that vault's and no plan's: its number was
+  // stored with it, and it is never worked out again from anything else.
+  if (request.vault && !stored.order.basketId)
+    throw new Refusal(409, 'this order names a vault and kept no number for it: make it again');
   const basketId =
     stored.order.basketId ??
     (family
@@ -182,6 +187,13 @@ async function buildFor(
   const vault = async () => {
     const found = await planVault(entry, owner, basketId);
     if (!found) throw new ChainError('VaultNotFound', 'the vault for this plan is not open yet');
+    // The vault the person named and the vault of the stored number are one: a step is never built
+    // for another, whatever the order row says.
+    if (request.vault && !sameVaultAddress(leg.chain, found.address, request.vault.address))
+      throw new Refusal(
+        409,
+        'this order adds to another vault than the one it named: make it again',
+      );
     return found.address;
   };
   switch (leg.kind) {
@@ -194,6 +206,9 @@ async function buildFor(
         ...(nonce === undefined ? {} : { nonce }),
       });
     case 'create_vault': {
+      // Adding to a vault opens none: a step that would is not this order's.
+      if (request.vault)
+        throw new Refusal(409, 'an order that adds to a vault opens no vault: make it again');
       if (request.family) {
         // A vault that follows the version the order holds to: it copies that version's weights, and
         // the trades are the ones planned for them. Once it is open the order's swaps buy what it
