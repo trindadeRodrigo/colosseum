@@ -136,3 +136,47 @@ export function tokenName(id: string): string {
   const bare = name.replace(/^t(?=[a-z])/, '');
   return SYMBOLS[name] ?? SYMBOLS[bare] ?? (name === 'gold' ? 'Gold' : name.toUpperCase());
 }
+
+/**
+ * An amount a person typed, in whole units, as raw units of a token with `decimals` places: digits
+ * with at most one separator, a point or a comma, and no more places than the token has. Never through
+ * a float. Null when it is not that, or is nothing.
+ */
+export function parseRaw(text: string, decimals: number): bigint | null {
+  const t = text.trim();
+  const m = /^(\d+)(?:[.,](\d+))?$/.exec(t);
+  if (!m) return null;
+  const fraction = m[2] ?? '';
+  if (fraction.length > decimals) return null;
+  const raw =
+    BigInt(m[1] ?? '0') * 10n ** BigInt(decimals) + BigInt(fraction.padEnd(decimals, '0') || '0');
+  return raw > 0n ? raw : null;
+}
+
+/** A decimal string as an exact fraction: `1.0057` is 10057 over 10000. Null when it is not one, or is nothing. */
+function fractionOf(decimal: string): { num: bigint; den: bigint } | null {
+  const m = /^(\d+)(?:\.(\d+))?$/.exec(decimal.trim());
+  if (!m) return null;
+  const places = (m[2] ?? '').length;
+  const num = BigInt(`${m[1]}${m[2] ?? ''}`);
+  return num > 0n ? { num, den: 10n ** BigInt(places) } : null;
+}
+
+/**
+ * A raw amount of a token as it is shown: times the token's multiplier, which a stock token's issuer
+ * sets (one whole token on the chain stands for `multiplier` shares), in the same smallest units,
+ * rounded down. With no multiplier that reads, the raw amount itself: never a figure made up.
+ */
+export function shownRaw(raw: bigint, multiplier: string): bigint {
+  const f = fractionOf(multiplier);
+  return f ? (raw * f.num) / f.den : raw;
+}
+
+/**
+ * The raw amount a shown amount stands for, rounded down: what is signed is never more than what the
+ * person typed, and so never more than the vault holds when the shown amount is no more than its own.
+ */
+export function rawOfShown(shown: bigint, multiplier: string): bigint {
+  const f = fractionOf(multiplier);
+  return f ? (shown * f.den) / f.num : shown;
+}

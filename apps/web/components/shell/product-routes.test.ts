@@ -121,6 +121,7 @@ describe('the routes of the app', () => {
       'app/(app)/vaults/[chain]/[address]/add/page.tsx',
       'app/(app)/vaults/[chain]/[address]/loading.tsx',
       'app/(app)/vaults/[chain]/[address]/page.tsx',
+      'app/(app)/vaults/[chain]/[address]/withdraw/page.tsx',
       'app/(embed)/embed/[chain]/[address]/page.tsx',
       'app/(embed)/embed/page.tsx',
       'app/(embed)/layout.tsx',
@@ -356,7 +357,7 @@ describe('rule 3: no screen can reach a key', () => {
     // "Try again" for a slow sign-in mounts the wallet provider again: a function that takes and
     // returns nothing, open to the account alone.
     'features/account/AccountProvider.tsx': {
-      'features/wallet/WalletProvider.tsx': ['useWalletRestart'],
+      'features/wallet/WalletProvider.tsx': ['useWalletRestart', 'useLeaveHere'],
     },
   };
 

@@ -13,9 +13,14 @@ import {
 import { remember } from '../../components/shell/remember';
 import { SIGNED_IN_COOKIE } from '../../i18n';
 import { forgetGoalDraft } from '../goal/draft';
-import { forgetOrders } from '../order/order-record';
+import { forgetEveryOrder, forgetOrders } from '../order/order-record';
 import { forgetPlans } from '../order/plan-store';
-import { useApiFetch, useWalletPort, useWalletRestart } from '../wallet/WalletProvider';
+import {
+  useApiFetch,
+  useLeaveHere,
+  useWalletPort,
+  useWalletRestart,
+} from '../wallet/WalletProvider';
 import { chainInAddress, FIRST_CHAIN, recallChain, rememberChain } from './chain-choice';
 import {
   fetchPerson,
@@ -66,6 +71,12 @@ export type Unknown = 'unreachable' | 'signed_out' | 'no_identity' | 'busy' | 'o
  * until the person presses "Try again", and each press waits twice as long as the one before.
  */
 export const SLOW_MS = 15_000;
+/**
+ * How long the bar waits for the sign-in service before it offers "Sign in" anyway to someone nobody
+ * knows to be signed in. A service that never loads (a blocker, a network that drops it) must not
+ * leave the bar with no way in.
+ */
+export const WAY_IN_MS = 4_000;
 const SLOWEST_MS = 120_000;
 
 /**
@@ -73,7 +84,10 @@ const SLOWEST_MS = 120_000;
  * wallets; `server`, ours has not said who this is (GET /v1/me, or the chain being stored).
  */
 export type Slow = {
-  side: 'wallets' | 'server';
+  /**
+   * `service`: nobody is known to be signed in, because the sign-in service has not loaded at all.
+   */
+  side: 'wallets' | 'server' | 'service';
   trying: boolean;
   /** "Try again" was not done: a step of an order is being signed, and is finished or cancelled first. */
   held: boolean;
@@ -88,6 +102,18 @@ export type AccountValue = {
   slow: Slow | null;
   /** Reads the wallets and the person again, with no reload of the page. */
   again(): void;
+  /**
+   * Signs out as far as this browser can when the sign-in service names nobody and cannot be asked:
+   * forgets the signed-in hint and what was kept for the person, and shows the visitor's way in.
+   * The wallet provider keeps back any port that names a person from then on, and signs them out at
+   * the service when it loads (WalletProvider, `useLeaveHere`).
+   */
+  leave(): void;
+  /**
+   * The sign-in service has not loaded after `WAY_IN_MS`, and nobody is known to be signed in: the
+   * bar offers "Sign in" as to a visitor, and the sign-in screen says the service has not answered.
+   */
+  stalled: boolean;
   /**
    * The person is the throwaway wallet of development: the API has no account for them, so their
    * chain is worked out here and kept only while the page is open. Shown with the sample glyph.
@@ -109,6 +135,12 @@ export type AccountValue = {
 
 const AccountContext = createContext<AccountValue | null>(null);
 
+/** The hint says someone was signed in here when the page was last open. False on the server. */
+function signedInHint(): boolean {
+  if (typeof document === 'undefined') return false;
+  return document.cookie.split(';').some((pair) => pair.trim() === `${SIGNED_IN_COOKIE}=1`);
+}
+
 type Read = { key: string; person: Person | null; why?: Unknown };
 
 /** Why the API did not say who is signed in, as far as a person can do something about it. */
@@ -122,6 +154,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const port = useWalletPort();
   const apiFetch = useApiFetch();
   const restart = useWalletRestart();
+  const leaveHere = useLeaveHere();
   const [read, setRead] = useState<Read | null>(null);
   const [round, setRound] = useState(0);
   // The chain someone signed out is looking at: the address's, else this browser's, else the first.
@@ -265,11 +298,38 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
   // Signed in and not ready: the wallets are loading, or our server has not answered. Once someone was
   // seen signed in, a wallet provider that loads again still counts, until it says they are out.
-  const seen = useRef(false);
+  // Someone who reloads is known before the provider says so, by the hint this app keeps while a
+  // person is signed in (`SIGNED_IN_COOKIE`): they are never shown "Sign in" while it loads.
+  const seen = useRef<boolean | null>(null);
+  if (seen.current === null) seen.current = signedInHint();
   if (port.userId !== null) seen.current = true;
   else if (port.status === 'signed-out') seen.current = false;
-  const waiting = account.status === 'loading' && (port.userId !== null || seen.current);
-  const side = port.status === 'ready' ? 'server' : 'wallets';
+  // And nobody known at all: the sign-in service has not loaded, so it has not said who is here.
+  const nobody = port.status === 'loading' && port.userId === null && !seen.current;
+  const waiting = account.status === 'loading';
+  const side = port.status === 'ready' ? 'server' : nobody ? 'service' : 'wallets';
+  const [stalled, setStalled] = useState(false);
+  useEffect(() => {
+    if (!nobody) return setStalled(false);
+    const timer = setTimeout(() => setStalled(true), WAY_IN_MS);
+    return () => clearTimeout(timer);
+  }, [nobody]);
+  // The way out for someone the hint says was signed in, when the sign-in service cannot be reached
+  // to sign them out: the hint and what this browser kept for them go, and they are a visitor, with
+  // the visitor's way in at once. What the service holds of their session is its own to end.
+  const [, setLeft] = useState(0);
+  const leave = useCallback(() => {
+    remember(SIGNED_IN_COOKIE, null);
+    leaveHere();
+    forgetGoalDraft();
+    forgetPlans();
+    // nobody is known, so every record goes, whoever it was kept for
+    forgetEveryOrder();
+    before.current = null;
+    seen.current = false;
+    setStalled(true);
+    setLeft((n) => n + 1);
+  }, [leaveHere]);
   const [tries, setTries] = useState(0);
   const [late, setLate] = useState(false);
   const [held, setHeld] = useState(false);
@@ -292,7 +352,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   // and our server is asked only once the new one has its wallets and tokens (there is no person to
   // ask about while it loads). Not while an order is being run: the press is refused, and says so.
   const again = useCallback(() => {
-    if ((side === 'wallets' || tries > 0) && !restart()) {
+    if ((side !== 'server' || tries > 0) && !restart()) {
       setHeld(true);
       return;
     }
@@ -310,10 +370,22 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     setBrowsing(current);
   }, [current]);
 
-  const chain = current ?? (account.status === 'signed-out' ? browsing : null);
+  // A visitor the sign-in service never answered for browses as one signed out: the chain is theirs
+  // to look at and to switch.
+  const chain = current ?? (account.status === 'signed-out' || stalled ? browsing : null);
   const value = useMemo(
-    () => ({ account, slow, again, mock: port.test, chain, choose, retry }),
-    [account, slow, again, port.test, chain, choose, retry],
+    () => ({
+      account,
+      slow,
+      again,
+      leave,
+      stalled,
+      mock: port.test,
+      chain,
+      choose,
+      retry,
+    }),
+    [account, slow, again, leave, stalled, port.test, chain, choose, retry],
   );
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;
 }

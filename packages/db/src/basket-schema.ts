@@ -430,6 +430,8 @@ export const legs = pgTable(
      * and the deposit of one order both hold it, so it is not summed over an order's rows.
      */
     cashRaw: raw('cash_raw'),
+    /** What a `withdraw` step takes out (`Leg.withdrawals`). Null on any other step. */
+    withdrawals: jsonb('withdrawals').$type<Leg['withdrawals']>(),
     trades: jsonb('trades').$type<Trade[]>().notNull(),
     expected: jsonb('expected').$type<Leg['expected']>(),
     status: text('status').$type<LegStatus>().notNull(),

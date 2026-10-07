@@ -820,6 +820,44 @@ export type GetMePlansResponse = {
   next: string | null;
 };
 
+/** GET /v1/me/withdrawals: query. What the signed-in person took out of their vaults */
+export type GetMeWithdrawalsQuery = {
+  limit?: number;
+  before?: string;
+};
+
+/** GET /v1/me/withdrawals: response. What the signed-in person took out of their vaults */
+export type GetMeWithdrawalsResponse = {
+  withdrawals: {
+    orderId: string;
+    createdAt: string;
+    chain: 'solana' | 'base' | 'robinhood';
+    vault: string | string;
+    status: 'open' | 'partial' | 'done' | 'failed' | 'expired';
+    steps: {
+      legId: string;
+      status: 'planned' | 'built' | 'sent' | 'confirmed' | 'failed' | 'expired' | 'skipped';
+      txId: string | null;
+      explorerUrl: string | null;
+      at: string;
+      provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+      withdrawals: {
+        asset: string;
+        amountRaw: string | null;
+        heldRaw: string;
+        valued?: {
+          source: string;
+          method: string;
+          fetchedAt: string;
+          provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+          usd: string;
+        };
+      }[];
+    }[];
+  }[];
+  next: string | null;
+};
+
 /** POST /v1/orders: body. Plan an order from an intent. Nothing is built or signed */
 export type PostOrdersBody =
   | {
@@ -881,6 +919,10 @@ export type PostOrdersBody =
       type: 'withdraw';
       vaults: (string | string)[];
       sellToCash: boolean;
+      withdrawals?: {
+        asset: string;
+        amountRaw?: string | null;
+      }[];
     }
   | {
       type: 'settings';
@@ -920,6 +962,18 @@ export type PostOrdersResponse = {
     signer: 'owner' | 'keeper';
     description: string;
     cashRaw?: string;
+    withdrawals?: {
+      asset: string;
+      amountRaw: string | null;
+      heldRaw: string;
+      valued?: {
+        source: string;
+        method: string;
+        fetchedAt: string;
+        provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+        usd: string;
+      };
+    }[];
     trades: {
       sell: string;
       buy: string;
@@ -1011,6 +1065,18 @@ export type GetOrdersByIdResponse = {
     signer: 'owner' | 'keeper';
     description: string;
     cashRaw?: string;
+    withdrawals?: {
+      asset: string;
+      amountRaw: string | null;
+      heldRaw: string;
+      valued?: {
+        source: string;
+        method: string;
+        fetchedAt: string;
+        provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+        usd: string;
+      };
+    }[];
     trades: {
       sell: string;
       buy: string;
@@ -1102,6 +1168,18 @@ export type PostOrdersByIdContinueResponse = {
     signer: 'owner' | 'keeper';
     description: string;
     cashRaw?: string;
+    withdrawals?: {
+      asset: string;
+      amountRaw: string | null;
+      heldRaw: string;
+      valued?: {
+        source: string;
+        method: string;
+        fetchedAt: string;
+        provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+        usd: string;
+      };
+    }[];
     trades: {
       sell: string;
       buy: string;
@@ -1268,6 +1346,18 @@ export type PostOrdersByIdLegsByLegIdCancelResponse = {
     signer: 'owner' | 'keeper';
     description: string;
     cashRaw?: string;
+    withdrawals?: {
+      asset: string;
+      amountRaw: string | null;
+      heldRaw: string;
+      valued?: {
+        source: string;
+        method: string;
+        fetchedAt: string;
+        provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+        usd: string;
+      };
+    }[];
     trades: {
       sell: string;
       buy: string;
@@ -1369,6 +1459,18 @@ export type PostOrdersByIdLegsByLegIdReportResponse = {
     signer: 'owner' | 'keeper';
     description: string;
     cashRaw?: string;
+    withdrawals?: {
+      asset: string;
+      amountRaw: string | null;
+      heldRaw: string;
+      valued?: {
+        source: string;
+        method: string;
+        fetchedAt: string;
+        provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+        usd: string;
+      };
+    }[];
     trades: {
       sell: string;
       buy: string;
@@ -2137,6 +2239,7 @@ export interface ApiRoutes {
   'GET /v1/me': { response: GetMeResponse };
   'PUT /v1/me/chain': { body: PutMeChainBody; response: PutMeChainResponse };
   'GET /v1/me/plans': { query: GetMePlansQuery; response: GetMePlansResponse };
+  'GET /v1/me/withdrawals': { query: GetMeWithdrawalsQuery; response: GetMeWithdrawalsResponse };
   'POST /v1/orders': { body: PostOrdersBody; response: PostOrdersResponse };
   'GET /v1/orders/{id}': { params: GetOrdersByIdParams; response: GetOrdersByIdResponse };
   'POST /v1/orders/{id}/continue': {

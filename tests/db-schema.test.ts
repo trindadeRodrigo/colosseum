@@ -49,7 +49,7 @@ describe('db schema', () => {
   });
 });
 
-// DESIGN-VAULT section 4, migration 0006; the two snapshot tables, migration 0017.
+// DESIGN-VAULT section 4, migration 0006; the two snapshot tables, migration 0018.
 const EXPECTED_VAULT = [
   'chains',
   'users',
