@@ -9,14 +9,15 @@ import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/C
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
 import { PAGE_TITLE } from '../../components/ui/heading';
+import { Icon } from '../../components/ui/Icon';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { pinSourceOfPrice } from '../../components/ui/price-source';
 import { SkeletonSummary } from '../../components/ui/Skeleton';
-import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { dollars } from '../goal/sheet';
-import { assetTicker, formatBps } from '../order/amounts';
+import { assetTicker } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
+import { explorerAddressUrlFor } from '../order/readiness';
+import { dollars, drift, share, tokens } from '../portfolio/figures';
 import { vaultValueSource } from '../portfolio/portfolio';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { readVault } from './shared-api';
@@ -78,14 +79,17 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
         <Link href="/shelf" className={buttonClass({ variant: 'secondary' })}>
           {t.shared.family.backToShelf}
         </Link>
+        <Link href="/monitor" className={buttonClass({ variant: 'link' })}>
+          {v.back}
+        </Link>
       </section>
     );
 
   const { read } = load;
   const { vault } = read;
-  const locale = LOCALE[lang];
   const priceOf = (asset: string): Price | undefined => read.prices.find((p) => p.asset === asset);
   const follows = vault.recipeOnchainId;
+  const explorer = explorerAddressUrlFor(read.chain, vault.address, read.provenance === 'mock');
   const mine = port.active(chainFamily(read.chain))?.address === vault.owner;
   const empty = [vault.cash, ...vault.positions].every((h) => /^0+$/.test(h.raw));
   return (
@@ -97,6 +101,24 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
         </h1>
         <p className="max-w-(--tf-measure-body) text-body-lg">{v.lead(read.name)}</p>
         <p className="break-all font-mono text-source text-muted-foreground">{vault.address}</p>
+        {/* the way back, and the vault on its chain's own explorer */}
+        <p className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <Link href="/monitor" className={buttonClass({ variant: 'link' })}>
+            {v.back}
+          </Link>
+          {explorer && (
+            <a
+              data-ui="vault-explorer"
+              href={explorer}
+              target="_blank"
+              rel="noopener"
+              className={buttonClass({ variant: 'link' })}
+            >
+              {v.explorer(t.chain.explorers[read.chain])}
+              <Icon name="ArrowUpRight" size={16} />
+            </a>
+          )}
+        </p>
         {/* The owner's way out, shown to the owner alone: a vault pays nobody else. */}
         {mine &&
           (empty ? (
@@ -130,7 +152,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
               {/* The value stands on the prices and the read of the vault: its pin says so
                   (STYLE.md rule 1), as the monitor's does. */}
               <ProvenancePin
-                value={dollars(Number(vault.valueUsd), lang)}
+                value={dollars(lang, vault.valueUsd)}
                 obs={vaultValueSource(
                   { ...read, vaults: [vault] },
                   vault,
@@ -156,7 +178,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
             </dd>
             <dt className="text-muted-foreground">{v.cash}</dt>
             <dd className="tabular-nums">
-              {vault.cash.display}{' '}
+              {tokens(lang, vault.cash.display)}{' '}
               <span className="text-caption text-muted-foreground">
                 {assetTicker(vault.cash.asset)}
               </span>
@@ -174,7 +196,12 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                 rowHeader: true,
                 cell: (r) => assetTicker(r.asset),
               },
-              { key: 'held', header: v.columns.held, numeric: true, cell: (r) => r.display },
+              {
+                key: 'held',
+                header: v.columns.held,
+                numeric: true,
+                cell: (r) => tokens(lang, r.display),
+              },
               {
                 key: 'price',
                 header: v.columns.price,
@@ -183,7 +210,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                   const price = priceOf(r.asset);
                   return price ? (
                     <ProvenancePin
-                      value={dollars(Number(price.usdPerToken), lang)}
+                      value={dollars(lang, price.usdPerToken)}
                       obs={pinSourceOfPrice(price)}
                       labels={t.pin}
                     />
@@ -196,20 +223,19 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                 key: 'weight',
                 header: v.columns.weight,
                 numeric: true,
-                cell: (r) => formatBps(r.weightBps, locale),
+                cell: (r) => share(lang, r.weightBps),
               },
               {
                 key: 'target',
                 header: v.columns.target,
                 numeric: true,
-                cell: (r) => formatBps(r.targetBps, locale),
+                cell: (r) => share(lang, r.targetBps),
               },
               {
                 key: 'drift',
                 header: v.columns.drift,
                 numeric: true,
-                cell: (r) =>
-                  `${r.driftBps < 0 ? '−' : r.driftBps > 0 ? '+' : ''}${formatBps(Math.abs(r.driftBps), locale)}`,
+                cell: (r) => drift(lang, r.driftBps),
               },
             ]}
           />

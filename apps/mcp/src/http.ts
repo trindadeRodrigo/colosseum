@@ -65,20 +65,35 @@ export function configOf(env: Record<string, string | undefined>): ServeConfig {
   };
 }
 
-/** A Node request as a web-standard one. */
-function requestOf(req: IncomingMessage, base: string): Request {
+/**
+ * The most a call's body may be. A tool call is a goal sheet in an envelope, and the API takes at most
+ * 32 KB of sheet (LINKED_PLANS); anything larger is not a call this server answers, and is not read.
+ */
+export const MAX_BODY_BYTES = 128 * 1024;
+
+/** The body, read whole; null once it is larger than the server takes. */
+async function bodyOf(req: IncomingMessage): Promise<Buffer | null> {
+  if (Number(req.headers['content-length'] ?? 0) > MAX_BODY_BYTES) return null;
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > MAX_BODY_BYTES) return null;
+    chunks.push(chunk as Buffer);
+  }
+  return Buffer.concat(chunks);
+}
+
+/** A Node request as a web-standard one, with the body already read. */
+function requestOf(req: IncomingMessage, base: string, body: Buffer | undefined): Request {
   const headers = new Headers();
   for (const [name, value] of Object.entries(req.headers))
     if (value !== undefined) headers.set(name, Array.isArray(value) ? value.join(', ') : value);
-  const method = req.method ?? 'GET';
-  const body = method === 'GET' || method === 'HEAD' ? undefined : Readable.toWeb(req);
   return new Request(new URL(req.url ?? '/', base), {
-    method,
+    method: req.method ?? 'GET',
     headers,
-    body: body as ReadableStream | undefined,
-    // A streamed body needs this in Node's fetch.
-    ...(body ? { duplex: 'half' } : {}),
-  } as RequestInit);
+    body: body ? new Uint8Array(body) : undefined,
+  });
 }
 
 async function write(res: ServerResponse, answer: Response): Promise<void> {
@@ -118,9 +133,16 @@ export function serveNode(mcp: McpHttpHandler, config: ServeConfig) {
           res,
           Response.json({ error: 'this origin may not call the server' }, { status: 403 }),
         );
+      const method = req.method ?? 'GET';
+      const body = method === 'GET' || method === 'HEAD' ? undefined : await bodyOf(req);
+      if (body === null) {
+        // Not read to its end: the answer goes out and the connection is closed.
+        res.setHeader('connection', 'close');
+        return write(res, Response.json({ error: 'the request is too large' }, { status: 413 }));
+      }
       return write(
         res,
-        await mcp.fetch(requestOf(req, `http://${req.headers.host ?? 'localhost'}`)),
+        await mcp.fetch(requestOf(req, `http://${req.headers.host ?? 'localhost'}`, body)),
       );
     };
     reply().catch(() => {

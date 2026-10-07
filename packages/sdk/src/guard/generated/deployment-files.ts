@@ -118,6 +118,7 @@ export const DEPLOYMENT_FILES: Readonly<Record<string, unknown>> = deepFreeze({
         factory: '0xa3309dc51b41e55fcd48b12377025cd2ba4d21a4',
         beacon: '0x4c6699623966be46a40844da3e79d7da3d8d3d96',
         routers: ['0xd290cfe0738e1ab9cea9dc138bbec024dc3bd127'],
+        registry: '0xe73c5df15452469873f610a26dac7fec68a23b14',
         cash: 'robinhood:tusdg',
         assets: {
           'robinhood:tusdg': {

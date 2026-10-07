@@ -53,6 +53,17 @@ export const DEADLINE_S = 900;
 /** The most trades one transaction makes (`Capabilities.maxTradesPerTx`). */
 export const MAX_TRADES = 8;
 
+/** A creator's shared portfolio's id in `IndexRegistry`: keccak256(abi.encode(creator, familyId)). */
+export function indexIdOf(creator: string, familyId: string): Hex {
+  const family = `0x${familyId.replace(/^0x/, '').toLowerCase()}` as Hex;
+  return keccak256(
+    encodeAbiParameters(parseAbiParameters('address, bytes32'), [
+      creator.toLowerCase() as Hex,
+      family,
+    ]),
+  );
+}
+
 const ZERO_WORD = `0x${'0'.repeat(64)}` as Hex;
 const ERC20 = parseAbi([
   'function approve(address spender, uint256 amount) returns (bool)',
@@ -719,10 +730,7 @@ export function createEvmVaultAdapter(options: EvmVaultAdapterOptions): EvmVault
         );
         const familyId = `0x${r.familyId}` as Hex;
         const metaHash = `0x${r.metaHash}` as Hex;
-        // The registry's id: keccak256(abi.encode(creator, familyId)).
-        const id = keccak256(
-          encodeAbiParameters(parseAbiParameters('address, bytes32'), [creator, familyId]),
-        );
+        const id = indexIdOf(creator, r.familyId);
         const exists =
           lower(await view<string>(registry, INDEX_REGISTRY_ABI, 'creatorOf', [id])) !==
           '0x0000000000000000000000000000000000000000';

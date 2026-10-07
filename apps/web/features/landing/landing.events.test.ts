@@ -11,7 +11,7 @@ import { dictionary, type Lang } from '../../i18n';
 import { inLanguage } from '../account/test/screen';
 import { GOAL_HANDOFF } from '../goal/draft';
 import { router } from '../wallet/test/mock-next';
-import { sceneModule } from './JointStage';
+import { FADE, sceneModule, shownAt } from './JointStage';
 import { Landing } from './Landing';
 
 const scene = vi.hoisted(() => ({
@@ -844,5 +844,31 @@ describe('the landing’s type (the design pass, Oct 6)', () => {
     const legs = [...host.querySelectorAll('[data-ui="case-leg"]')];
     expect(legs.length).toBe(7);
     for (const leg of legs) expect(leg.className).toContain('content-start');
+  });
+});
+
+describe('where the hero hands over to the showcase', () => {
+  afterEach(unmountAll);
+
+  it('has the joint whole until the stage is nearly through, and gone before the pin lets go', () => {
+    const vh = 836;
+    expect(shownAt(vh * 3, vh)).toBe(1);
+    expect(shownAt(vh * (1 + FADE), vh)).toBe(1);
+    expect(shownAt(vh * (1 + FADE / 2), vh)).toBeCloseTo(0.5);
+    // the stage's foot at the window's foot: the pin lets go here, and the showcase comes on screen
+    expect(shownAt(vh, vh)).toBe(0);
+    expect(shownAt(vh * 0.4, vh)).toBe(0);
+  });
+
+  it('lets the pin go at the foot of the stage: the layer keeps its own screen of height', async () => {
+    browser();
+    const host = await landing();
+    const layer = find(host, '[data-ui="joint-layer"]');
+    // a layer pulled up under the copy by a negative margin stays pinned a screen too long, and the
+    // showcase rises over the joint and cuts it
+    expect(layer.className).toContain('sticky');
+    expect(layer.className).not.toContain('-mb-');
+    expect(layer.nextElementSibling?.className).toContain('-mt-[100svh]');
+    expect(layer.nextElementSibling?.className).toContain('motion-reduce:mt-0');
   });
 });
