@@ -42,8 +42,9 @@ export const PERSONAL_PARAMS: PersonalParameters = {
 
   // The most of the plan in one stock or one crypto asset, by risk.
   capPerStockBps: { low: 1000, medium: 2000, high: 3500 },
-  // The most of the plan with one issuer, by risk, for stocks and crypto. Dollar yield, gold and cash
-  // take the 50% of gate SOLVER-CAPS instead (Rodrigo, Oct 5), which answered the open question here.
+  // The most of the plan with one issuer, by risk, whatever the plan holds with it: the stocks and
+  // crypto take what its dollar yield and gold leave of it. Dollar yield and gold also keep the 50% of
+  // gate SOLVER-CAPS, counting those only (Rodrigo, Oct 5), which answered the open question here.
   capPerIssuerBps: { low: 5000, medium: 7000, high: 10_000 },
 
   // Of a token's measured exit capacity, the share one plan may count on: the most dollars a line of

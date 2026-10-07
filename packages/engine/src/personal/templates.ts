@@ -14,6 +14,8 @@ import type { Language, Reason } from '@colosseum/schemas';
 //   goal, risk, sleeve, chain, candidate      the word for it, from WORDS
 //   part     one of the person's sleeves: goal, safe_yield, or theme:<slug>
 //   regimes  times of the week, by their codes   at the weekend and on US holidays
+//   raisers  what raised a mix's limits, by code  what you already hold   o que você já tem
+//   steps    how many risks up                    one step up     um nível acima
 //   list     names joined by commas            AAPL, MSFT and NVDA   AAPL, MSFT e NVDA
 
 /** The inputs a person gives. A reason names the ones that caused it. */
@@ -62,6 +64,19 @@ export const REASON_TEMPLATES = {
     ['mix'],
     'To hold {sleeveBps|pct} of the plan in stocks and crypto, the plan uses the limits for {risk|risk}: at most {stockCapBps|pct} in one stock or crypto asset, and {issuerCapBps|pct} with one issuer.',
     'Para ter {sleeveBps|pct} do plano em ações e cripto, o plano usa os limites de {risk|risk}: no máximo {stockCapBps|pct} em uma só ação ou cripto, e {issuerCapBps|pct} com um só emissor.',
+  ),
+  // The limits a read-back could state are the ones the mix takes on its own. Where the plan takes
+  // higher ones for what else the person's sheet carries, it says so, and names what raised them.
+  MIX_LIMITS_RAISED: rule(
+    ['mix'],
+    'On its own, this mix takes the limits for {alone|risk}. Because of {by|raisers}, the plan uses the limits {steps|steps}, for {risk|risk}: at lower limits it would hold less in stocks and crypto.',
+    'Sozinha, esta composição usa os limites de {alone|risk}. Por causa de {by|raisers}, o plano usa os limites {steps|steps}, de {risk|risk}: com limites mais baixos ele teria menos em ações e cripto.',
+  ),
+  // The cents a mix's shares leave over, each written in whole cents, where the mix has no cash.
+  MIX_ODD_CENTS: rule(
+    ['amount', 'mix'],
+    '{usd|usd} is left over once each share of your mix is written in whole cents, and stays in cash.',
+    '{usd|usd} sobram quando cada parcela da sua composição é escrita em centavos inteiros, e ficam em caixa.',
   ),
   // Withdrawals come before the mix: what the next months owe is set aside first. Said on the lines
   // of each class of the mix that holds less for it, and on the lines that hold what is set aside.
@@ -267,8 +282,8 @@ export const REASON_TEMPLATES = {
   ),
   NOT_WHOLE_ISSUER_PLAN: rule(
     [],
-    '{theme} cannot be held whole: more than {capBps|pct} of the plan would be with {issuer}, the most with one issuer.',
-    '{theme} não cabe inteiro: mais de {capBps|pct} do plano ficaria com {issuer}, o máximo com um só emissor.',
+    '{theme} cannot be held whole: more than {capBps|pct} of the plan would be in dollar yield, gold and other currencies with {issuer}, the most of those with one issuer.',
+    '{theme} não cabe inteiro: mais de {capBps|pct} do plano ficaria em rendimento em dólar, ouro e outras moedas com {issuer}, o máximo desses com um só emissor.',
   ),
   NOT_WHOLE_ISSUER: rule(
     ['risk'],
@@ -367,8 +382,8 @@ export const REASON_TEMPLATES = {
   ),
   ISSUER_CAP_PLAN: rule(
     [],
-    'No more than {capBps|pct} of the plan with one issuer: {issuer} is at that limit.',
-    'No máximo {capBps|pct} do plano com um só emissor: {issuer} está nesse limite.',
+    'No more than {capBps|pct} of the plan in dollar yield, gold and other currencies with one issuer: {issuer} is at that limit.',
+    'No máximo {capBps|pct} do plano em rendimento em dólar, ouro e outras moedas com um só emissor: {issuer} está nesse limite.',
   ),
   CREDIT_BUDGET: rule(
     ['credit'],
@@ -451,8 +466,8 @@ export const REASON_TEMPLATES = {
   ),
   OVERFLOW_ISSUER_PLAN: rule(
     [],
-    '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: no more than {capBps|pct} of the plan is with one issuer, and {issuer} is at that limit.',
-    '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: no máximo {capBps|pct} do plano fica com um só emissor, e {issuer} está nesse limite.',
+    '{usd|usd} meant for {assets|list} is held in dollar yield or cash instead: no more than {capBps|pct} of the plan is in dollar yield, gold and other currencies with one issuer, and {issuer} is at that limit.',
+    '{usd|usd} que iria para {assets|list} fica em rendimento em dólar ou caixa: no máximo {capBps|pct} do plano fica em rendimento em dólar, ouro e outras moedas com um só emissor, e {issuer} está nesse limite.',
   ),
   OVERFLOW_STOCK_CAP: rule(
     ['risk'],
@@ -677,7 +692,7 @@ export const TEXT_TEMPLATES = {
 export type TextId = keyof typeof TEXT_TEMPLATES;
 
 type Words = Record<
-  'goal' | 'risk' | 'sleeve' | 'chain' | 'regime' | 'candidate' | 'part',
+  'goal' | 'risk' | 'sleeve' | 'chain' | 'regime' | 'candidate' | 'part' | 'raiser' | 'steps',
   Record<string, string>
 > & { and: string };
 
@@ -707,6 +722,15 @@ export const WORDS: Record<Language, Words> = {
       weekend: 'at the weekend',
       us_holiday: 'on US holidays',
     },
+    // What a person adds to a mix that can raise the limits its plan takes, in the order written.
+    raiser: {
+      withdrawals: 'what is set aside for your withdrawals',
+      holdings: 'what you already hold',
+      cannotHold: 'what you cannot hold',
+      limits: 'your other limits',
+      date: 'your date',
+    },
+    steps: { 1: 'one step up', 2: 'two steps up' },
     and: 'and',
   },
   pt: {
@@ -736,6 +760,14 @@ export const WORDS: Record<Language, Words> = {
       weekend: 'no fim de semana',
       us_holiday: 'em feriados dos EUA',
     },
+    raiser: {
+      withdrawals: 'o que fica separado para os seus saques',
+      holdings: 'o que você já tem',
+      cannotHold: 'o que você não pode ter',
+      limits: 'os seus outros limites',
+      date: 'a sua data',
+    },
+    steps: { 1: 'um nível acima', 2: 'dois níveis acima' },
     and: 'e',
   },
 };
@@ -821,6 +853,23 @@ const FORMATS: Record<string, (value: Value, lang: Language, key: string) => str
       known.map((code) => WORDS[lang].regime[code] ?? code),
       lang,
     );
+  },
+  // What raised a mix's limits, by code, written in the order of the list above: "a, b and c".
+  raisers: (value, lang, key) => {
+    const given = String(value).split(',');
+    const known = Object.keys(WORDS[lang].raiser).filter((code) => given.includes(code));
+    if (known.length === 0 || known.length !== given.length)
+      throw new Error(`template value ${key} must be what raised the limits`);
+    return listed(
+      known.map((code) => WORDS[lang].raiser[code] ?? code),
+      lang,
+    );
+  },
+  // How many risks above: a count the table of words has, and no other.
+  steps: (value, lang, key) => {
+    const words = WORDS[lang].steps[String(number(value, key))];
+    if (!words) throw new Error(`template value ${key} must be a number of steps`);
+    return words;
   },
   // Names joined by commas, written as they came: "a, b and c".
   list: (value, lang, key) => {

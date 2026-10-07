@@ -174,6 +174,47 @@ describe('a split goal 50% / theme 50%', () => {
     expect(every([...namesHeld(plan).values()].reduce((n, x) => n + x, 0))).toBe(every(5000));
   });
 
+  it('THEME-FIRST holds where the goal follows a portfolio and holds gold with the same issuer', () => {
+    // MOCK table: a row of 60% stocks and 40% gold at medium risk, and lines for every name. A goal
+    // sleeve of 30% following The Seven, 20% safe yield, 50% in the AI theme: The Seven's $1,800 fits
+    // beside the $5,000 kept for the theme under Backed's 70%, and is booked whole. Then the goal's
+    // gold takes $1,200 with the same issuer. The theme was left $4,000 of room for its $5,000, and
+    // held the rest in dollar yield. The portfolio now gives way, as it does to the gold on a plan
+    // with no theme: it is held part by part, and the theme holds all of its share.
+    const params = {
+      ...PERSONAL_PARAMS,
+      maxLinesPerChain: 16,
+      sleeves: {
+        ...PERSONAL_PARAMS.sleeves,
+        'grow:medium': { growthBps: 6000, dollarYieldBps: 0, goldBps: 4000 },
+      },
+    };
+    const plan = run(
+      sheet({
+        themes: ['the-seven'],
+        rules: { useHoldings: true, glide: false },
+        sleeves: [
+          { kind: 'goal', shareBps: 3000 },
+          { kind: 'safe_yield', shareBps: 2000 },
+          { kind: 'theme', shareBps: 5000, theme: 'ai' },
+        ],
+      }),
+      ctxWith({ params }),
+    );
+    expect(every([...namesHeld(plan).values()].reduce((n, x) => n + x, 0))).toBe(every(5000));
+    expect(themeOf(plan)?.holds.every((h) => SYMBOLS.has(symbolOf(h.assetId)))).toBe(true);
+    expect(plan.lines.some((l) => l.viaIndex === 'the-seven')).toBe(false);
+    const rules = new Set(allReasons(plan).map((r) => r.rule));
+    for (const rule of ['OPENED', 'NOT_WHOLE_ISSUER', 'ISSUER_CAP_THEME'])
+      expect(rules).toContain(rule);
+    // Backed holds its 70% and no more: the theme's $5,000, the gold's $1,200, $800 of the goal's stocks.
+    const withBacked = plan.lines
+      .filter((l) => shelf.assets.find((a) => a.id === l.assetId)?.issuer === 'Backed (xStocks)')
+      .reduce((n, l) => n + every(l.amountUsd), 0);
+    expect(withBacked).toBe(every(7000));
+    expect(plan.lines.find((l) => l.assetId === 'solana:gldx')?.amountUsd).toBe(1200);
+  });
+
   it('the theme in Portuguese names it IA, with the reason in Portuguese', () => {
     const plan = run(themed({ language: 'pt', risk: 'high' }));
     const texts = plan.lines.find((l) => l.assetId === 'solana:nvdax')?.reasons.map((r) => r.text);
@@ -450,6 +491,28 @@ describe('what the person already holds counts in the theme sleeve, as in the go
     expect(line?.reasons.map((r) => r.rule)).toContain('THEME_HELD');
     // The holding explains the gap and no more: NVDAx and its $300 come to the others' level.
     expect(Math.abs(nvda + 300 - Math.min(...others))).toBeLessThanOrEqual(0.02);
+  });
+
+  it('a name the theme counts a holding of and that gets no line says so where it is left out', () => {
+    // At high risk six lines are left for the seven names, and MSFTx is the one with none. $300 of
+    // MSFT held: the theme counts it, and MSFTx would be bought that much less. Its line would say
+    // so, and it has no line: the sentence is said with why it is out (as the goal's names do).
+    const s = themed({ risk: 'high', rules: { useHoldings: true, glide: true } });
+    const plan = run(s, ctxWith({ holdings: [{ underlying: 'MSFT', valueUsd: 300 }] }));
+    expect(namesHeld(plan).has('MSFTx')).toBe(false);
+    expect(plan.removed.find((r) => r.ref === 'MSFTx')?.reasons.map((r) => r.text)).toEqual([
+      'MSFTx is left out: a plan holds at most 8 parts.',
+      'Less MSFT in AI: of the $300 of it you hold, $300 counts here, so the theme buys it only up to the total of each of its other names.',
+    ]);
+    // The same where what is left of a name is under the least a line can be: with a line for every
+    // name, $800 of NVDA held leaves $28.57 of NVDAx to buy.
+    const small = run(s, {
+      ...roomyLines(),
+      holdings: [{ underlying: 'NVDA', valueUsd: 800 }],
+    });
+    expect(removedWhy(small, 'NVDAx')).toEqual(['BELOW_MINIMUM', 'THEME_HELD']);
+    // Not held, the name with no line says that alone.
+    expect(removedWhy(run(s), 'MSFTx')).toEqual(['MAX_LINES']);
   });
 
   it('with holdings switched off, a holding changes nothing', () => {
