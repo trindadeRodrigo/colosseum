@@ -758,6 +758,23 @@ describe('whose history is answered', () => {
     }
   });
 
+  it('takes an EVM address in any case, as the rest of the API takes one', async () => {
+    const pat = await someone('passkey');
+    const address = vaultAddress('robinhood');
+    await seedMany(valued({ chain: 'robinhood', address, owner: pat.evm }, times, 2000));
+    const upper = `0x${address.slice(2).toUpperCase()}`;
+    expect(upper).not.toBe(address);
+    for (const asked of [address, upper, ` ${upper} `]) {
+      const answer = await read(pat, { ...window, address: asked });
+      expect(vaultsOn(answer, 'robinhood').map((v) => v.address)).toEqual([address]);
+      expect(vaultsOn(answer, 'solana')).toEqual([]);
+    }
+    // A Solana address is its own case: another case is another address, and names no vault.
+    const solana = await vaultWith(pat, times);
+    const other = await read(pat, { ...window, address: solana.toLowerCase() });
+    expect(other.chains.flatMap((c) => c.vaults)).toEqual([]);
+  });
+
   it('asks no chain anything: the answer is the database’s', async () => {
     const pat = await someone('passkey');
     const vault = await vaultWith(pat, times);

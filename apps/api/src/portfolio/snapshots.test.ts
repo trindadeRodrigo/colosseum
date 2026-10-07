@@ -116,6 +116,29 @@ describe('the vaults of a person on a chain', () => {
     expect((await newestSnapshot(data.db, scopeOf(ann), hers))?.address).toBe(hers);
   });
 
+  it('take an address as a query wrote it: an EVM one in any case, and nothing for text that is no address', async () => {
+    const pat = data.track(await person(issuer, 'robinhood'));
+    const principal: Principal = {
+      kind: 'user',
+      userId: pat.sub,
+      ip: '127.0.0.1',
+      wallets: [{ family: 'evm', address: pat.evm, kind: 'external' }],
+    };
+    const registry = createChainRegistry(parseFlags({}), parseChainConfigs({}), { seed: 'test' });
+    const [scoped] = personScope(registry, principal).chains;
+    if (!scoped) throw new Error('no chain');
+    const address = await seedVault(data.db, { chain: 'robinhood', owner: pat.evm });
+    const upper = `0x${address.slice(2).toUpperCase()}`;
+    expect(upper).not.toBe(address);
+    for (const asked of [address, upper, ` ${upper} `])
+      expect(
+        (await knownVaults(data.db, scoped, { now: NOW, address: asked })).map((v) => v.address),
+      ).toEqual([address]);
+    // Text the database would refuse to read at all (a NUL) never reaches it.
+    for (const asked of ['\u0000', 'not an address', '0x', "' or 1=1 --"])
+      expect(await knownVaults(data.db, scoped, { now: NOW, address: asked })).toEqual([]);
+  });
+
   it('hands a snapshot to the status rule as the rule reads it', async () => {
     const ann = data.track(await person(issuer, 'solana'));
     const address = vaultAddress('solana');

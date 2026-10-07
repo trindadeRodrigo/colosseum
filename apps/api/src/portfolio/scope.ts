@@ -1,4 +1,10 @@
-import type { Address, ChainId, ChainUnavailable, Principal } from '@colosseum/schemas';
+import {
+  type Address,
+  type ChainId,
+  type ChainUnavailable,
+  normalizeAddress,
+  type Principal,
+} from '@colosseum/schemas';
 import { type AnyColumn, and, eq, inArray, type SQL } from 'drizzle-orm';
 import type { ChainEntry, ChainRegistry } from '../orders/chains';
 import { chainsHeld } from '../orders/person';
@@ -73,6 +79,20 @@ export function ownedOn(
   );
   if (!mine) throw new Error('no scope');
   return mine;
+}
+
+/**
+ * The vault address a query named, in the form the chain's rows hold it: an EVM address is taken in
+ * any case and lower-cased, as the rest of the API takes one (`sameVaultAddress`). Null when it is not
+ * an address of the chain's family at all: the chain then answers nothing, and the text is never
+ * handed to the database.
+ */
+export function addressOn(scoped: ScopedChain, address: string): Address | null {
+  try {
+    return normalizeAddress(scoped.entry.config.family, address);
+  } catch {
+    return null;
+  }
 }
 
 /** What a chain's entry in an answer opens with. */

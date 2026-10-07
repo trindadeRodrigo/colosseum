@@ -5,12 +5,11 @@ import {
   type HistoryPoint,
   type HistorySeries,
   HistoryStep,
-  isAddressOf,
   type PortfolioHistoryQuery,
 } from '@colosseum/schemas';
 import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { Refusal } from '../orders/errors';
-import { ownedOn, type ScopedChain } from './scope';
+import { addressOn, ownedOn, type ScopedChain } from './scope';
 
 // A person's vaults over time (GET /v1/portfolio/history, PORT-2): the window one read covers, and the
 // query that answers it. The snapshot worker keeps a row a vault about every ten minutes
@@ -193,8 +192,11 @@ export async function chainHistory(
   scoped: ScopedChain,
   a: HistoryWindow & { address?: string },
 ): Promise<HistorySeries[]> {
-  if (a.address !== undefined && !isAddressOf(scoped.entry.config.family, a.address)) return [];
-  const rows = await lastOfEachStep(db, scoped, a);
+  // An address that is not one of the chain's family names no vault here, and is never handed to the
+  // database; an EVM address is taken in any case (`addressOn`).
+  const address = a.address === undefined ? undefined : addressOn(scoped, a.address);
+  if (address === null) return [];
+  const rows = await lastOfEachStep(db, scoped, { ...a, address });
   const byVault = new Map<string, StepRow[]>();
   for (const row of rows) {
     const sofar = byVault.get(row.address);

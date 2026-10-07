@@ -2,7 +2,7 @@ import { type Db, snapshotRuns, vaultSnapshots, vaults } from '@colosseum/db';
 import type { TrackSnapshot } from '@colosseum/schemas';
 import { and, desc, eq, gt, isNotNull, isNull } from 'drizzle-orm';
 import type { ChainEntry } from '../orders/chains';
-import { ownedOn, type ScopedChain } from './scope';
+import { addressOn, ownedOn, type ScopedChain } from './scope';
 
 // The reads of the snapshot worker's tables that the portfolio section's routes share (PORT-2). The
 // worker (apps/snapshot) writes `vault_snapshots` and `snapshot_runs`; the API only reads them, and
@@ -29,14 +29,16 @@ export const SNAPSHOT_LOOKBACK_DAYS = 7;
 /**
  * The person's vaults on one chain, each with its newest snapshot: every vault the cache names for
  * their wallets, and every vault of theirs the worker snapshotted in the last week. `address` narrows
- * it to one vault. Ordered by address.
+ * it to one vault, as a query wrote it (`addressOn`). Ordered by address.
  */
 export async function knownVaults(
   db: Db,
   scoped: ScopedChain,
   a: { now: Date; address?: string },
 ): Promise<KnownVault[]> {
-  const only = a.address;
+  // An address that is not one of the chain's family names no vault here.
+  const only = a.address === undefined ? undefined : addressOn(scoped, a.address);
+  if (only === null) return [];
   const cached = await db
     .select()
     .from(vaults)
