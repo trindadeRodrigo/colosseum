@@ -973,6 +973,7 @@ describe('a narrative reads to a shared portfolio, a curated label, a filter, or
     expect(stated.sheet?.mix?.growthBps).toBe(WHOLE);
     expect(stated.assumptions).toEqual([
       'To hold “All of it in stocks”, the plan uses the limits for high risk.',
+      'We count this as a plan that accepts more risk.',
       none('space stocks'),
       'Nothing moves toward cash as the date nears unless you ask for it.',
     ]);
@@ -1318,6 +1319,7 @@ describe('the share of a theme, and the risk', () => {
     expect(said[0]).toBe('You set a goal to grow with $2,000 over 5 years.');
     expect(said.filter((s) => /risk/.test(s))).toEqual([
       'To hold “semiconductors”, the plan uses the limits for high risk.',
+      'We count this as a plan that accepts more risk.',
     ]);
     expect(said.at(-1)).toBe('If this is right, confirm it and the plan is made from it.');
   });
@@ -1521,6 +1523,7 @@ describe('the share of a theme, and the risk', () => {
     ]);
     expect((result.readBack ?? []).filter((s) => /risk/.test(s))).toEqual([
       'You said medium risk, but to hold “semiconductors” the plan uses the limits for high risk.',
+      'We count this as a plan that accepts more risk.',
     ]);
     // An answer that is the risk the themes need changes nothing, and the plain line is said.
     const same = intake(text, reply({ markets: ['semiconductors'] }), {
@@ -1946,6 +1949,7 @@ describe('the read-back and the assumptions, in English and Portuguese', () => {
       '100% do plano para o tema IA.',
       'Uma parte do plano que cresceu fica como cresceu.',
       'Para manter “IA”, o plano usa os limites de risco alto.',
+      'Consideramos este um plano que aceita mais risco.',
       'Nada vai para caixa conforme a data se aproxima, a menos que você peça.',
       'Se estiver certo, confirme e o plano é feito a partir disso.',
     ]);
@@ -1957,6 +1961,7 @@ describe('the read-back and the assumptions, in English and Portuguese', () => {
       '100% of the plan for the theme AI.',
       'A part of the plan that has grown is left as it grew.',
       'To hold “AI”, the plan uses the limits for high risk.',
+      'We count this as a plan that accepts more risk.',
       'Nothing moves toward cash as the date nears unless you ask for it.',
       'If this is right, confirm it and the plan is made from it.',
     ]);

@@ -329,6 +329,13 @@ const WHOLE_MIX_BPS = 10_000;
 const LEFT_OUT_WITH: Partial<Record<Refused, HoldableClass[]>> = { stock: ['etf'] };
 
 const BPS_PER_PCT = WHOLE_MIX_BPS / 100;
+// The words right after a share that say it is kept safe: "80% safe and liquid", "keep 30% in cash",
+// "80% seguro e líquido". Nothing else after a percent is a part kept safe ("80% high risk").
+const KEPT_SAFE_AFTER =
+  /^\s+(?:(?:kept|held|in|em)\s+)?(?:safe(?:ly)?|secure|liquid|cash|segur[oa]s?|seguran[cç]a|l[ií]quid[oa]s?|caixa)(?:\s+(?:and|e)\s+(?:safe|secure|liquid|segur[oa]s?|l[ií]quid[oa]s?))?(?![\p{L}])/iu;
+// What may stand between two shares of one plain pair: marks, and the words that join or lead in.
+const JOINS_SHARES =
+  /^[\s,.;:]*(?:(?:and|e|plus|mais|then|with|com|keep|leave|put|invest|place|manter|mantenha|deixar|deixe|colocar|coloque|investir|invista|the|other|a|o|os|as|outros)(?![\p{L}])[\s,]*)*$/iu;
 
 type ShareSaidOf = Exclude<MarketShare, null>;
 /**
@@ -1995,8 +2002,9 @@ function intakeOf(
   // A market read to a shared portfolio is a stated holding too (EXPLICIT-MIX): one whose share of the
   // money is written ("invest in big tech", "put $1,000 in US stocks", "put 50% in big tech", "half in
   // the S&P") is held, that share in stocks and the rest in cash; one with no share said ("I like big
-  // tech") asks how much, once, and never the risk. Not beside a split, which says the shares itself,
-  // nor on a goal of income or to protect.
+  // tech") asks how much, once, and never the risk. Beside a split it is taken only where the split
+  // is the plain pair below (gate STATED-SHARE), and otherwise how much is asked; never on a goal of
+  // income or to protect.
   // A narrative the chain has nothing for is no stated holding (gate THEME-NONE-YET, Rodrigo, Oct 6):
   // no mix and no sleeve is made from it, and its share is never asked. That is said in one sentence
   // (below), and the rest of the intake goes on as if it had not been named: the risk is asked as for
@@ -2038,6 +2046,53 @@ function intakeOf(
       x.value * BPS_PER_PCT === twoParts?.safeBps &&
       (x.part === null || x.part === 'cash' || x.part === 'dollarYield'),
   );
+  // The two shares are taken only as a pair in its plain form (the independent review of this rule,
+  // Oct 7: "I used to keep 80% safe, 20% in stocks", "20% in stocks no way", "80% safe. Of the
+  // remaining money, put 20% in big tech", "80% high risk, 20% in stocks" and a later "Actually put
+  // the 20% in gold" were all taken). The safe part's figure is one, written once, that its own
+  // words say is kept safe, and its clause states it; between the two shares there is nothing but
+  // the words that join them; nothing follows the second up to the end of its sentence; and no
+  // later message says anything that is not the answer to a question.
+  const [safeShare] = safeShares.length === 1 ? safeShares : [];
+  const safeWords = safeShare ? KEPT_SAFE_AFTER.exec(text.slice(safeShare.end)) : null;
+  const sentenceEnd = (from: number) => {
+    const stop = /[.!?;](?=\s|$)|\n/u.exec(text.slice(from));
+    return stop ? from + stop.index : text.length;
+  };
+  const lastWordAt = (at: number) => {
+    const turn = turnOf(at);
+    return turns.every((_, t) => t <= turn || heard.answered.includes(t));
+  };
+  /** Whether the safe share and what is held, from its figure to the end of its words, are such a pair. */
+  const plainPair = (figureAt: number, wordsEnd: number): boolean => {
+    if (!safeShare || !safeWords) return false;
+    const safeEnd = safeShare.end + safeWords[0].length;
+    const [first, second] =
+      safeShare.at < figureAt
+        ? [{ end: safeEnd }, { at: figureAt, end: wordsEnd }]
+        : [{ end: wordsEnd }, { at: safeShare.at, end: safeEnd }];
+    return (
+      stanceOf(text, safeShare.at, safeEnd) === 'stated' &&
+      JOINS_SHARES.test(text.slice(first.end, second.at)) &&
+      text.slice(second.end, sentenceEnd(second.end)).trim() === '' &&
+      lastWordAt(Math.max(safeShare.at, figureAt))
+    );
+  };
+  /**
+   * The figure of the other part's share that leads into what is written at `at`: the last share
+   * written before it in its sentence, where that is the other part's. A share further back is
+   * another part's ("80% safe and liquid, 20% in big tech" gives big tech the 20%, never the 80%).
+   */
+  const figureBefore = (at: number, bps: number, shares = sharesWritten) => {
+    const last = shares.filter((x) => x.at < at && sentenceEnd(x.end) >= at).at(-1);
+    return last && last.value * BPS_PER_PCT === bps ? last : undefined;
+  };
+  // One narrative, written once: its share and the safe part's are the pair.
+  const [onlyNamed] = named.length === 1 ? named : [];
+  const namedFigure =
+    twoParts && onlyNamed && !onlyNamed.wondered
+      ? figureBefore(onlyNamed.at, twoParts.heldBps)
+      : undefined;
   // What the text gives the narratives it names, in all: the share of the part that is not kept safe.
   const narrativesBps = (() => {
     const of = [...held.map((r) => ({ shares: [r.share] })), ...themes];
@@ -2047,6 +2102,10 @@ function intakeOf(
   const safeBeside =
     twoParts !== null &&
     narrativesBps === twoParts.heldBps &&
+    onlyNamed !== undefined &&
+    namedFigure !== undefined &&
+    stanceOf(text, namedFigure.at, onlyNamed.end) === 'stated' &&
+    plainPair(namedFigure.at, onlyNamed.end) &&
     rest.pairs.length === 0 &&
     rest.ofMoney.every((pct) => pct * BPS_PER_PCT === twoParts.safeBps);
   const splitWritten =
@@ -2198,7 +2257,22 @@ function intakeOf(
       : null;
     marketShareAsk = besideSplit.words;
     shareAskedOf = held.map((r) => ({ key: keyOf(r), words: r.words }));
-    if (start?.success && !named.some((m) => m.wondered)) shareRead = start.data;
+    // The start is what a plain yes takes, so it is only what the text ties to the market: the other
+    // part's figure leads into the market's words in one sentence, stated, alone and as the last
+    // word (the review: "20% to grow. Big tech scares me" then "yes" held 20% in it).
+    const tied =
+      parts && onlyNamed && !onlyNamed.wondered
+        ? figureBefore(onlyNamed.at, parts.heldBps, sharesOfMoneyIn(text))
+        : undefined;
+    if (
+      start?.success &&
+      onlyNamed &&
+      tied &&
+      text.slice(onlyNamed.end, sentenceEnd(onlyNamed.end)).trim() === '' &&
+      stanceOf(text, tied.at, onlyNamed.end) === 'stated' &&
+      lastWordAt(onlyNamed.at)
+    )
+      shareRead = start.data;
     flags.push('market_beside_split');
   }
   // The same split with no narrative, where the other part's share is written for stocks or for gold
@@ -2217,7 +2291,7 @@ function intakeOf(
     sharesWritten.length === 2
   ) {
     const said = sharesWritten.find((x) => x.part === 'growth' || x.part === 'gold');
-    const [kept] = safeShares.filter((x) => x !== said);
+    const kept = safeShare !== said ? safeShare : undefined;
     const classes: Refused[] = said?.part === 'gold' ? ['gold'] : ['stock', 'crypto'];
     const turn = said ? turnOf(said.at) : 0;
     const from = starts[turn] ?? 0;
@@ -2226,6 +2300,7 @@ function intakeOf(
       kept &&
       said.value * BPS_PER_PCT === twoParts.heldBps &&
       stanceOf(text, said.at, said.partEnd) === 'stated' &&
+      plainPair(said.at, said.partEnd) &&
       !classes.some((c) => refused.has(c)) &&
       !saysMoreIn(
         text,
@@ -2757,6 +2832,7 @@ function intakeOf(
     if (riskSaid !== null && riskSaid !== limitsFor.risk)
       assume('MIX_LIMITS_OTHER_RISK', { said: riskSaid, words, risk: limitsFor.risk });
     else assume('MIX_LIMITS', { words, risk: limitsFor.risk });
+    if (limitsFor.risk !== 'low') assume('MIX_MORE_RISK');
   }
   if (input.homeChain)
     for (const words of waitsForShelf) assume('SHELF_UNREAD', { words, chain: input.homeChain });

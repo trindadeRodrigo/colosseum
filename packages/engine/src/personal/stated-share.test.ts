@@ -90,6 +90,14 @@ describe('a share written for what is held, beside the share kept safe', () => {
     expect(result.questions).toEqual([]);
     expect(result.sheet?.mix).toEqual(mixOf(7000));
     expect(result.sheet?.risk).not.toBe('low');
+    // Where the limits are above the ones for low risk, the person is told what that makes the plan.
+    expect(result.assumptions).toContain('We count this as a plan that accepts more risk.');
+    const low = intake(
+      `${GOAL} 80% safe and liquid, 20% in big tech.`,
+      reply({ markets: ['big_tech'], sleeves: split(80, 20) }),
+    );
+    expect(low.sheet?.risk).toBe('low');
+    expect(low.assumptions).not.toContain('We count this as a plan that accepts more risk.');
   });
 
   it('a market that reads to a curated list holds its share, with the rest kept safe', () => {
@@ -186,16 +194,18 @@ describe('a share written for what is held, beside the share kept safe', () => {
   });
 
   it('a market named beside the split, its share not written in a plain form: how much is asked, not the risk', () => {
-    for (const text of [
-      `${GOAL} 80% safe and liquid, 20% in a stock portfolio that follows big tech.`,
-      `${GOAL} 80% safe and liquid, 20% to grow. I like big tech.`,
-    ]) {
+    for (const [text, start] of [
+      // The share leads into the market in one sentence: it is where the form starts, so a plain
+      // yes holds what was written.
+      [`${GOAL} 80% safe and liquid, 20% in a stock portfolio that follows big tech.`, mixOf(2000)],
+      // No share is tied to the market: the form has no start.
+      [`${GOAL} 80% safe and liquid, 20% to grow. I like big tech.`, null],
+    ] as const) {
       const r = reply({ markets: ['big_tech'], sleeves: split(80, 20) });
       const asked = intake(text, r);
       expect(fields(asked), text).toEqual(['mix']);
       expect(asked.flags, text).toContain('market_beside_split');
-      // The other part's share is where the form starts, so a plain yes holds what was written.
-      expect(asked.questions[0]?.read, text).toEqual(mixOf(2000));
+      expect(asked.questions[0]?.read ?? null, text).toEqual(start);
       const answered = intake(text, r, { answers: { mix: mixOf(2000) } });
       expect(answered.questions, text).toEqual([]);
       expect(answered.sheet?.mix, text).toEqual(mixOf(2000));
@@ -215,7 +225,8 @@ describe('a share written for what is held, beside the share kept safe', () => {
     ];
     const asked = intake(text, r, { answers: { sleeves } });
     expect(fields(asked)).toEqual(['mix']);
-    expect(asked.questions[0]?.read).toEqual(mixOf(2000));
+    // The text ties no share to the market, so the form has no start for a plain yes to take.
+    expect(asked.questions[0]?.read ?? null).toBeNull();
     // A risk answered before changes nothing of that: the share is asked, and then held whole.
     const withRisk = intake(text, r, { answers: { sleeves, risk: 'low' } });
     expect(fields(withRisk)).toEqual(['mix']);
@@ -241,6 +252,90 @@ describe('a share written for what is held, beside the share kept safe', () => {
     );
     expect(fields(result)).toEqual(['mix']);
     expect(result.questions[0]?.read ?? null).toBeNull();
+  });
+
+  // The independent review of the first build (Oct 7, 325 sentences): each of these was taken.
+  const notTaken = (text: string, r: unknown) => {
+    const result = intake(text, r);
+    expect(result.sheet?.mix ?? null, text).toBeNull();
+    expect(
+      (result.sheet?.sleeves ?? []).some((x) => x.kind === 'theme'),
+      text,
+    ).toBe(false);
+    expect(result.flags, text).not.toContain('mix_from_split');
+    expect(result.flags, text).not.toContain('mix_from_market');
+    return result;
+  };
+  const stocks = reply({ sleeves: split(80, 20) });
+  const bigTech = reply({ markets: ['big_tech'], sleeves: split(80, 20) });
+
+  it('a later message that is no answer leaves the share untaken: the last word is not passed over', () => {
+    for (const later of [
+      'Actually put the 20% in gold.',
+      'Make that gold.',
+      'No, 20% is too much.',
+      'Wait, I am not sure about stocks.',
+      'Or should it be gold?',
+      'And some gold too.',
+      'Make that 30%.',
+      'Na verdade coloque os 20% em ouro.',
+      'Esquece as ações.',
+    ])
+      notTaken(`${GOAL} 80% safe and liquid, 20% in stocks.\n\n${later}`, stocks);
+  });
+
+  it('a share said of another time, turned down or judged is not what the person wants held', () => {
+    for (const said of [
+      'I used to keep 80% safe and liquid, 20% in stocks.',
+      '80% safe and liquid, 20% in stocks no way.',
+      '80% safe and liquid, 20% in stocks never.',
+      '80% safe and liquid, 20% in stocks scares me.',
+      '80% safe and liquid, 20% in stocks returns.',
+      '80% seguro e líquido, 20% em ações nem pensar.',
+      '80% safe and liquid, 20% in stocks I guess.',
+      '80% safe and liquid, 20% in stocks or is that too much?',
+    ])
+      notTaken(`${GOAL} ${said}`, stocks);
+    for (const said of [
+      'I used to keep 80% safe and liquid, 20% in big tech.',
+      '80% safe and liquid, 20% in big tech was my old plan.',
+      '80% safe and liquid, 20% in big tech no way.',
+    ])
+      notTaken(`${GOAL} ${said}`, bigTech);
+  });
+
+  it('a share of what is left is not a share of the money', () => {
+    notTaken(`${GOAL} 80% safe and liquid. Of the remaining money, put 20% in big tech.`, bigTech);
+    notTaken(`${GOAL} 80% safe and liquid. Of what is left, 20% in stocks.`, stocks);
+    notTaken(`${GOAL} 80% seguro e líquido. Do restante, coloque 20% em big tech.`, bigTech);
+  });
+
+  it('the part kept safe is one the text says is kept safe, whatever the model read', () => {
+    for (const first of ['80% high risk', '80% aggressive', '80% risky', '80% to my kids'])
+      notTaken(`${GOAL} ${first}, 20% in stocks.`, stocks);
+    for (const first of ['80% invested', '80% growth'])
+      notTaken(`${GOAL} ${first}, 20% in big tech.`, bigTech);
+  });
+
+  it('the start of the share question is only what the text ties to the market: a yes takes nothing else', () => {
+    const noStart = (text: string, r: unknown) => {
+      const asked = intake(text, r);
+      for (const q of asked.questions.filter((x) => x.field === 'mix'))
+        expect(q.read ?? null, text).toBeNull();
+      notTaken(`${text}\n\nyes`, r);
+    };
+    noStart(`${GOAL} 80% safe and liquid, 20% to grow. Big tech scares me.`, bigTech);
+    noStart(
+      `${GOAL} 80% safe and liquid, 20% to grow. I lost money in big tech last year.`,
+      bigTech,
+    );
+    noStart(`${GOAL} 80% safe and liquid, 20% to grow. Big tech fell 20% last year.`, bigTech);
+    noStart(`${GOAL} 80% safe and liquid, 20% in big tech and gold.`, bigTech);
+    noStart(`${GOAL} 80% safe and liquid, 20% in big tech.\n\nForget big tech.`, bigTech);
+    // A model that reads the two shares the wrong way round starts nothing.
+    const swapped = reply({ markets: ['big_tech'], sleeves: split(20, 80) });
+    const result = intake(`${GOAL} 80% safe and liquid, 20% in big tech.\n\nyes`, swapped);
+    expect(result.sheet?.mix?.growthBps ?? 0).not.toBe(8000);
   });
 
   it('with no model the share the text states is asked, never taken', () => {

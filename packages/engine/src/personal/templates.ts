@@ -1340,6 +1340,12 @@ export const ASSUMPTION_TEMPLATES = {
     en: 'You said {said|risk}, but to hold “{words}” the plan uses the limits for {risk|risk}.',
     pt: 'Você disse {said|risk}, mas para manter “{words}” o plano usa os limites de {risk|risk}.',
   },
+  // Said right after either line where those limits are the ones for medium or high risk (gate
+  // STATED-SHARE, Rodrigo, Oct 7): the person is told what holding their share makes of the plan.
+  MIX_MORE_RISK: {
+    en: 'We count this as a plan that accepts more risk.',
+    pt: 'Consideramos este um plano que aceita mais risco.',
+  },
   // A refusal the text writes that its clause does not state as the person's ("no stocks? not sure",
   // "maybe no stocks"), or that the model read as one and the clause says otherwise: not taken, and
   // said so, so it is never dropped in silence. `words` is the refusal as written.
