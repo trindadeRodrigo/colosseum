@@ -9,14 +9,26 @@ import { dictionary, type Lang } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
 import { dollars } from '../goal/sheet';
+import { recallOrder } from '../order/order-record';
 import { EMBEDDED, fakePort, json, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
 import { FamilyScreen } from './FamilyScreen';
 import { holdingsOf, kindShares, rate } from './product-figures';
 import { ShelfScreen } from './ShelfScreen';
-import { CREATOR, FAMILY_ID, FUNDED, familyOf, recipeOf, SLUG, USER } from './test/fixtures';
+import {
+  CREATOR,
+  FAMILY_ID,
+  FUNDED,
+  familyBuyOrder,
+  familyOf,
+  ORDER_ID,
+  recipeOf,
+  SLUG,
+  USER,
+} from './test/fixtures';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
+vi.mock('../wallet/signing', () => import('../wallet/test/mock-signing'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
 vi.mock('next/link', () => import('../wallet/test/mock-next'));
 
@@ -502,4 +514,71 @@ describe('a product’s page, when the portfolio gets a new version as the perso
     expect(orders().map((c) => c.body?.version)).toEqual([2, 3]);
     // the card waits a second of a still amount before it makes an order: this test waits for three
   }, 20_000);
+});
+
+describe('the product pane is the embedded buy’s source of terms', () => {
+  it.each([
+    { nextVersion: 3, lang: 'en' as const },
+    { nextVersion: 2, lang: 'pt' as const },
+  ])(
+    'keeps the displayed version and targets when a later read would answer $nextVersion ($lang)',
+    async ({ nextVersion, lang }) => {
+      let reads = 0;
+      api();
+      server.family = () => {
+        reads += 1;
+        return familyOf(FAMILY_ID, {
+          recipes: [
+            recipeOf({
+              active: {
+                version: reads === 1 ? 2 : nextVersion,
+                effectiveAt: 1_791_000_000,
+                components:
+                  reads === 1
+                    ? HELD
+                    : [
+                        { asset: 'solana:jlusdc', weightBps: 6000 },
+                        { asset: 'solana:syrupusdc', weightBps: 4000 },
+                      ],
+                metaHash: 'ab'.repeat(32),
+                status: 'active',
+              },
+              figures: FIGURES,
+            }),
+          ],
+        });
+      };
+      const order = familyBuyOrder(['5000000', '3000000', '2000000']);
+      order.legs.slice(1).forEach((leg, i) => {
+        const held = HELD[i];
+        if (!held) throw new Error('missing fixture holding');
+        leg.trades = leg.trades.map((trade) => ({ ...trade, buy: held.asset }));
+      });
+      server.order = () => json(order);
+      const host = await show(createElement(FamilyScreen, { slug: SLUG }), lang);
+      const pane = find(host, '[data-ui="plan-pane"]');
+      const field = find<HTMLInputElement>(
+        host,
+        '[data-ui="product-invest"] input[inputmode="decimal"]',
+      );
+      await type(field, '10');
+      for (let i = 0; i < 8; i += 1) await settle(250);
+      expect(reads).toBe(1);
+      expect(
+        asked.filter((call) => call.path === '/v1/orders').map((call) => call.body?.version),
+      ).toEqual([2]);
+      expect(recallOrder(ORDER_ID, USER)?.terms).toEqual({
+        kind: 'family',
+        slug: SLUG,
+        familyId: FAMILY_ID,
+        follow: { recipeOnchainId: recipeOf().onchainId, version: 2 },
+        targets: HELD,
+        source: 'api',
+      });
+      expect(pane.textContent).toContain(dictionary(lang).shared.family.versionN(2));
+      expect(find(pane, '[data-ui="plan-rows"]').textContent).toContain('SPYx');
+      expect(host.querySelector('[data-ui="product-version-changed"]')).toBeNull();
+    },
+    15_000,
+  );
 });

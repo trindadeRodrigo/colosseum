@@ -1,7 +1,7 @@
 'use client';
 import type { ChainId } from '@colosseum/schemas';
 import { AddMoneyScreen } from '../portfolio/AddMoneyScreen';
-import { FamilyBuyScreen } from '../shared/FamilyBuyScreen';
+import { FamilyBuyScreen, type FamilyBuySnapshot } from '../shared/FamilyBuyScreen';
 import { BuyScreen } from './BuyScreen';
 import type { InvestEmbedded } from './InvestCard';
 
@@ -16,7 +16,7 @@ export type InvestOf =
   /** A plan, by its id. */
   | { plan: string }
   /** A shared portfolio, by its slug: the buy opens a vault that follows it. */
-  | { family: string }
+  | { family: string; snapshot?: FamilyBuySnapshot }
   /** A vault of the person's own, which the amount is added to. */
   | { vault: { chain: ChainId; address: string } };
 
@@ -24,6 +24,7 @@ export type InvestProps = InvestEmbedded & { of: InvestOf };
 
 export function Invest({ of, ...embedded }: InvestProps) {
   if ('plan' in of) return <BuyScreen id={of.plan} embedded={embedded} />;
-  if ('family' in of) return <FamilyBuyScreen slug={of.family} embedded={embedded} />;
+  if ('family' in of)
+    return <FamilyBuyScreen slug={of.family} embedded={embedded} snapshot={of.snapshot} />;
   return <AddMoneyScreen chain={of.vault.chain} address={of.vault.address} embedded={embedded} />;
 }

@@ -13,6 +13,7 @@ import { useWalletPort } from '../wallet/WalletProvider';
 import { useAccount } from './AccountProvider';
 import { ChainName } from './ChainName';
 import { AFTER_SIGN_IN } from './next-path';
+import { SignInSilent } from './SignInSilent';
 
 // Sign-in as a product screen: the two ways in. Nobody is asked for a chain here (gate CHAIN-SWITCH): a
 // person who connected a wallet starts on its chain, one who made their wallets here on the chain they
@@ -42,7 +43,7 @@ export type SignInScreenProps = {
 export function SignInScreen({ next = AFTER_SIGN_IN, onDone, titleId }: SignInScreenProps) {
   const t = useT();
   const port = useWalletPort();
-  const { account, retry } = useAccount();
+  const { account, retry, stalled } = useAccount();
   const router = useRouter();
   // Signed in on this page, in this visit: only then does the screen move the person on by itself.
   const [arrived, setArrived] = useState(false);
@@ -212,6 +213,7 @@ export function SignInScreen({ next = AFTER_SIGN_IN, onDone, titleId }: SignInSc
             acted.current = false;
           }}
           onSignedIn={() => setArrived(true)}
+          silent={stalled ? <SignInSilent /> : undefined}
         />
       )}
       {stage === 'making' && <LatticeStatus label={t.signIn.passkey.making} />}

@@ -79,7 +79,8 @@ export function VaultGoalCard({
 
   const { goal, record } = joined;
   const { sheet, verdict, card } = goal;
-  const due = monthYear(lang, dueOf(goal));
+  const dueDate = dueOf(goal);
+  const due = dueDate ? monthYear(lang, dueDate) : t.goal.card.noDate;
   const builtFor = verdict && putIn === sheet.amountUsd ? verdict : null;
   const asked = sheet.incomeTargetUsdMonthly;
   return (

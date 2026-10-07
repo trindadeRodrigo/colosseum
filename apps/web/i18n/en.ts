@@ -36,6 +36,9 @@ export const en = {
         'You’re signed in, but the sign-in service hasn’t handed over your wallets yet. Nothing is lost.',
       server:
         'You’re signed in, but our server hasn’t said yet which chain your plan lives on. Nothing is lost.',
+      /** Nobody is known to be signed in: the sign-in service has not loaded at all. */
+      service:
+        'The sign-in service hasn’t answered yet, so I can’t tell whether you’re signed in. You can still look around.',
       again: 'Try again',
       trying: 'Trying again…',
       /** "Try again" pressed while a step of an order is being signed. */
@@ -110,6 +113,13 @@ export const en = {
       /** The name of the group of the two chains to choose from. */
       chains: 'The chain of your plan',
     },
+    /** The sign-in screen when the sign-in service has not loaded after a few seconds. */
+    silent: {
+      body: 'The sign-in service hasn’t answered yet, so I can’t sign you in right now.',
+      offline: 'This device looks offline. Check the connection, then try again.',
+      blocked:
+        'The sign-in service didn’t answer. A blocker can stop it, or this address may not be set up for sign-in.',
+    },
     off: {
       api: 'Sign-in is off for the moment: our server isn’t answering. I ask again every few seconds, and this page updates by itself.',
       setup:
@@ -153,6 +163,8 @@ export const en = {
         'That wallet is no longer in this browser. Pick one from the list, or use a passkey.',
       tooMany: 'Too many tries in a short time. Wait a minute, then try again.',
       offline: 'I couldn’t reach the sign-in service. Check your connection, then try again.',
+      originRefused:
+        'Sign-in isn’t set up for this address: the sign-in service takes no sign-in from it. There is nothing for you to fix. Use the site at its own address, or tell us.',
       expired: 'That took too long and ran out of time. Try again.',
       walletNotMade:
         'You’re signed in, but your wallet couldn’t be made. Nothing is lost. Try again.',
@@ -287,7 +299,13 @@ export const en = {
       editSheet: 'Edit limits',
       edited: 'edited',
     },
-    groups: { goal: 'Goal', time: 'Time and risk', shape: 'What shapes the plan', words: 'Words' },
+    groups: {
+      goal: 'Goal',
+      time: 'Time and risk',
+      shape: 'What shapes the plan',
+      words: 'Words',
+      optional: 'Optional',
+    },
     fields: {
       goal: 'What the money is for',
       income: 'Monthly income (dollars)',
@@ -302,10 +320,10 @@ export const en = {
     hints: {
       income: 'What you need each month. Leave it empty if you have no figure.',
       horizon: 'From 1 to 480.',
-      country: 'You state it. It decides which assets you may hold.',
+      country: 'You may leave it empty. The plan doesn’t use it.',
       /** The country's hint while it is the one this browser's language names, unchanged. */
       countryFromBrowser:
-        'Taken from this browser’s language. Change it if you live elsewhere: it decides which assets you may hold.',
+        'Taken from this browser’s language. You may change it or leave it empty: the plan doesn’t use it.',
       holdings: 'The plan fills gaps and avoids doubling up.',
       amount: 'What this plan starts with, from $10 to $1,000,000.',
       /** Before the hint of a field the reader left empty. */
@@ -372,6 +390,13 @@ export const en = {
       sentenceIncome: (income: string, amount: string, months: string) =>
         `Earn ${income} a month from ${amount} for ${months}.`,
       months: (n: number) => (n === 1 ? '1 month' : `${n} months`),
+      /** A goal with no date (gate GLIDE-OPT-IN): the months it is built over are never shown. */
+      sentenceOpen: {
+        grow: (amount: string) => `Grow ${amount}, with no date set.`,
+        income: (amount: string) => `Earn income from ${amount}, with no date set.`,
+        protect: (amount: string) => `Protect ${amount}, with no date set.`,
+      },
+      noDate: 'No date set',
       unfinished: 'Your goal, as read so far.',
       draftOpen: 'Draft: finish the limits',
       draftSet: 'Draft: limits set, no plan yet',
@@ -658,6 +683,11 @@ export const en = {
    * the plan on the right. The invest card's own words are `invest`.
    */
   talk: {
+    capacity:
+      'This conversation has reached its limit. Your earlier messages are kept. Start over to begin another.',
+    startOver: 'Start over',
+    /** The words that pick a plan by its name: "choose Cover", "I’ll take Spread". */
+    pickWords: "choose|pick|take|i choose|i pick|i[’']ll take|i want|go with|let[’']s go with",
     chat: 'The conversation',
     you: 'You',
     me: 'tenonfi',
@@ -679,8 +709,22 @@ export const en = {
       heldBuilt:
         'Your plan is built from that. Tap a limit to change it, or tell me what to change.',
       heldOpen: 'I still need one more thing.',
+      /** What our server read the person wants held, said before its question. */
+      heardThemes: (names: string) => `I have what you want held: ${names}.`,
+      heardMix: (mix: string) => `Held as you said: ${mix}.`,
+      noneYet: 'I don’t have a way to pick stocks by that yet.',
+      first: 'One thing I need first:',
+      /** The guided intake did not answer: said once, then the simple questions follow. */
+      simple: 'The assistant didn’t answer, so I’m reading this the simple way for now.',
+      notAnswer:
+        'I couldn’t take that as an answer to this. Pick one below, or say it another way.',
       building: 'Building your plan from these limits…',
       built: 'The plan is on the right. Review it and invest, or change anything.',
+      /** Several plans were made: they are side by side, and one is picked. */
+      builtChoice:
+        'Your plans are on the right, side by side. Compare them and choose one, or change anything.',
+      picked: (name: string) =>
+        `${name} it is. Review it on the right and invest, or see the plans again.`,
       /** Nothing changed and every fact is known: the plan is offered, in other words than before. */
       heldReady: 'Nothing changed. Say yes and I build the plan from this.',
       /** A single name to buy was asked for: said by our own name for it, never the typed words. */
@@ -721,9 +765,25 @@ export const en = {
       years: (n: number) => (n === 1 ? '1 year' : `${n} years`),
       aMonth: (amount: string) => `${amount} a month`,
       noIncome: 'No set amount',
+      growGoal: 'Make it a growth goal',
+      all: 'All of it',
+      half: 'Half',
+      none: 'None',
+      yes: 'Yes',
+      no: 'No',
       build: 'Yes, build it',
     },
     facts: {
+      /** What was read beyond the five facts, from the sheet. */
+      theme: 'Theme',
+      themeShare: (name: string, share: string) => `${name} · ${share}`,
+      mix: 'Held as you said',
+      mixPart: {
+        growth: (share: string) => `${share} stocks and crypto`,
+        dollarYield: (share: string) => `${share} dollar yield`,
+        gold: (share: string) => `${share} gold`,
+        cash: (share: string) => `${share} cash`,
+      },
       title: 'Your goal',
       goal: 'What it’s for',
       amount: 'Amount',
@@ -760,7 +820,19 @@ export const en = {
       summaryFacts: (known: number, of: number) => `Your goal: ${known} of ${of} set`,
       ownPage: 'Open this plan on its own page',
       investTitle: 'Invest',
+      picked: (name: string) => `You chose ${name}.`,
+      backToPlans: 'See the plans again',
+      /** Signed in, with a plan that was built for a visitor: it is built again as theirs. */
+      makeYours: 'Make this plan yours',
+      /** The plan shown is from before a change that is still being asked about. */
+      stale: 'This plan is from before your change. Answer the question and I build it again.',
       backToPlan: 'Back to the plan',
+    },
+    /** A way to close a gap, pressed: said as the person's own turn. */
+    ways: {
+      amount: (amount: string) => `Make it ${amount}`,
+      income: (income: string) => `Aim for ${income}`,
+      other: 'Change it that way',
     },
     failure: {
       unavailable:
@@ -913,6 +985,7 @@ export const en = {
       asked: (amount: string) => `asked: ${amount} a month`,
     },
     fall: {
+      putOpen: (amount: string) => `The whole bar is the ${amount} you put in.`,
       /** Under the bar of a bad fall: what the whole bar stands for. */
       put: (amount: string, months: string) =>
         `The whole bar is the ${amount} you put in, for ${months}.`,
@@ -969,6 +1042,8 @@ export const en = {
     /** The one button of a plan: it names the action and the amount. */
     invest: (amount: string) => `Invest ${amount}`,
     investing: 'Opening the steps…',
+    /** The invest step, once one of several plans is picked. */
+    investIn: (amount: string, name: string) => `Invest ${amount} in ${name}`,
     /** The answer of a plan with no income asked of it: the range it projects, with its pin. */
     answer: {
       /** A plan to grow or protect: what most of it is in, and what a bad fall could cost. */
@@ -981,6 +1056,91 @@ export const en = {
       range: (low: string, high: string) => `${low} to ${high} a year`,
       rangeAfter: 'projected. A range, not a promise.',
       none: 'No projection yet: there is no yield reading for this plan.',
+    },
+    choice: {
+      title: 'Your plans',
+      lead: (plans: number, chain: string) =>
+        plans === 1
+          ? `One plan from your limits, on ${chain}. Nothing is bought until you choose it, review every step and sign it.`
+          : `${plans} plans from the same limits, on ${chain}, each made a different way. None is picked for you: compare them and choose one. Nothing is bought until you review every step and sign it.`,
+      names: { cover: 'Cover', spread: 'Spread', carry: 'Carry' },
+      aims: {
+        cover: 'Sets the most aside for your withdrawals, and sells at the lowest measured cost.',
+        spread: 'Spreads the money across the most issuers your limits allow.',
+        carry: 'Holds the most yield observed inside your limits.',
+      },
+      see: (name: string) => `All of ${name}`,
+      /** Said once, quietly, on a candidate not live: no plate on the card. */
+      sample: { sandbox: 'Sample figures · test network', mock: 'Sample figures' },
+      /** The two or three figures a card leads with; the rest is in its Details. */
+      /** The figures a candidate leads with, each with its label over it. */
+      figures: {
+        yield: 'Yield observed, a year',
+        exit: 'Cost to sell it all',
+        fall: 'In a bad fall',
+        lost: (amount: string) => `about −${amount}`,
+        noLoss: 'no loss counted',
+      },
+      headline: {
+        paidOf: (paid: number, all: number) =>
+          `${paid} of ${all} months of withdrawals paid at the rates observed.`,
+        holds: 'What it holds',
+        parts: (n: number) => (n === 1 ? '1 part' : `${n} parts`),
+        paid: 'Months paid',
+        worst: 'Worst case',
+        worstMonths: (stress: string, paid: number, all: number) =>
+          `If ${stress}, ${paid} of ${all} months are paid.`,
+        fall: (amount: string) => `In a bad fall, about ${amount} lost.`,
+        noFall: 'In a bad fall, about $0 lost: nothing here is stocks, crypto or gold.',
+      },
+      picker: {
+        legend: 'Choose a plan',
+        buy: (name: string) => `Choose ${name}`,
+        none: 'Choose a plan to invest in it.',
+      },
+      score: {
+        title: 'How it compares',
+        covered: 'Months of withdrawals set aside',
+        paidNow: 'Months paid at the rates observed',
+        paidUnder: (stress: string) => `Months paid if ${stress}`,
+        of: (paid: number, all: number) => `${paid} of ${all}`,
+        short: (amount: string) => `${amount} short`,
+        carry: 'Yield observed, a year',
+        exit: 'Cost to sell it all at your size',
+        exitNone: 'not measured',
+        measured: (share: string) => `${share} of it measured`,
+        issuer: 'Largest issuer',
+        issuers: (n: number) => (n === 1 ? '1 issuer' : `${n} issuers`),
+        credit: 'In credit and basis',
+        fx: 'Owed in another currency, not held in it',
+      },
+      stress: {
+        yields_fall: (fall: string) => `yields fall by ${fall}`,
+        credit_gate: (months: number) => `credit can’t be sold for ${months} months`,
+        equity_fall: (fall: string) => `stocks, crypto and gold fall by ${fall}`,
+        fx_goal_up: (currency: string, move: string, months: number) =>
+          `the ${currency} gains ${move} on the dollar over ${months} months`,
+        fx_goal_down: (currency: string, move: string, months: number) =>
+          `the ${currency} loses ${move} on the dollar over ${months} months`,
+        other: 'a named stress applies',
+      },
+      status: {
+        title: 'Your withdrawals',
+        met: 'Pays every withdrawal, at the rates observed and under each stress.',
+        notMet: 'Does not pay every withdrawal under each stress.',
+        observedOn: (date: string) => `Rates observed on ${date}.`,
+        needed: (needed: string, observed: string) =>
+          `Needs ${needed} a year on its dollar yield, and ${observed} is observed.`,
+        neededNone: (observed: string) =>
+          `Needs no yield to pay them, and ${observed} is observed.`,
+        neededOut: (observed: string) =>
+          `No yield up to 100% a year pays every month, and ${observed} is observed.`,
+        ways: 'What would close the gap',
+      },
+      notShown: {
+        title: 'Not shown',
+        lead: 'Made from the same limits, and left out, with the reason.',
+      },
     },
     chainNotReady: (chain: string) =>
       `${chain} isn’t ready for buying yet: its vaults aren’t deployed on this network. Your plan is kept, and can be bought once they are.`,
@@ -1482,6 +1642,16 @@ export const en = {
     checkingFunds: 'Checking your wallet…',
     preparing: 'Reading prices for your order…',
     again: 'Read the prices again',
+    short: {
+      /** The shortfall is more than one send of test funds: what a send gives, said before the ask. */
+      cap: (most: string, times: number) =>
+        `Test funds send up to ${most} at a time, ${times} times a day, so one send won’t cover this amount.`,
+      sendAnyway: (most: string) => `Send ${most} anyway`,
+      instead: (amount: string) => `Invest ${amount} instead`,
+      covers: (amount: string) => `Your wallet covers ${amount} now.`,
+      typeLess: 'Or type a smaller amount.',
+      inGoal: 'To invest another amount, tap the amount in your goal and change it.',
+    },
     old: 'These prices are old: the order ran out before it was pressed. Read them again to invest.',
     updated: 'Prices updated. Read the steps again before you press.',
     updatedHold: 'The prices just changed: read them first.',

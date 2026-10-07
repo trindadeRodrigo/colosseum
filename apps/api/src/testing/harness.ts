@@ -27,6 +27,7 @@ import { inArray, or } from 'drizzle-orm';
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { buildApp } from '../app';
 import type { TestFundsSender } from '../faucet/test-funds';
+import type { IntakeModel } from '../llm';
 import { type ChainRegistry, createChainRegistry } from '../orders/chains';
 import type { PlanInputs } from '../orders/personalize';
 import { IDENTITY_TOKEN_HEADER, type TokenIssuer } from '../plugins/auth';
@@ -260,17 +261,22 @@ export async function testDb() {
     /**
      * A shared portfolio as the cache tables hold one: a family, its recipe on `chain`, and the
      * version in effect. Answers the slug a plan names it by, and a way to put another version in
-     * effect.
+     * effect. `named` gives it a slug and a name of the shelf ("the-seven", "The Seven") where a test
+     * needs one the person can name; it is deleted at the end like any other.
      */
-    async storeFamily(chain: ChainId, components: Component[]) {
+    async storeFamily(
+      chain: ChainId,
+      components: Component[],
+      named?: { slug: string; name: string },
+    ) {
       const familyId = randomUUID().replaceAll('-', '').padEnd(64, '0');
-      const slug = `test-${familyId.slice(0, 12)}`;
+      const slug = named?.slug ?? `test-${familyId.slice(0, 12)}`;
       families.push(familyId);
       await db.insert(indexFamilies).values({
         familyId,
         slug,
         nameKey: slug,
-        name: `Test ${slug}`,
+        name: named?.name ?? `Test ${slug}`,
         copy: '',
         creatorKind: 'platform',
         kind: 'index',
@@ -383,8 +389,12 @@ export async function testApp(a: {
   wrap?: (registry: ChainRegistry) => ChainRegistry;
   /** The figures a plan is made with. Default: the server's reader of the stored ones. */
   planInputs?: PlanInputs;
+  /** The guided intake's model. Default: none (no key in a test's environment). */
+  intakeModel?: IntakeModel | null;
   /** The test faucet's senders (POST /v1/testnet/fund). Default: none. */
   testFunds?: TestFundsSender[];
+  /** Where the app's log lines go, for a test that reads them. Default: no log. */
+  logTo?: { write(line: string): void };
 }) {
   const env = a.env ?? {};
   const registry = createChainRegistry(parseFlags(env), parseChainConfigs(env), {
@@ -393,6 +403,7 @@ export async function testApp(a: {
   });
   const app = await buildApp({
     env,
+    ...(a.logTo ? { logTo: a.logTo } : {}),
     v1: {
       auth: a.issuer,
       chains: a.wrap ? a.wrap(registry) : registry,
@@ -401,6 +412,7 @@ export async function testApp(a: {
       limits: a.limits ?? ROOMY,
       ...(a.linkedPlans ? { linkedPlans: a.linkedPlans } : {}),
       ...(a.planInputs ? { planInputs: a.planInputs } : {}),
+      ...(a.intakeModel !== undefined ? { intakeModel: a.intakeModel } : {}),
       ...(a.testFunds ? { testFunds: a.testFunds } : {}),
     },
   });

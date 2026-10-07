@@ -427,7 +427,7 @@ function RecipeSection({
                   </span>
                 </p>
               )}
-              {blocked || !followed ? (
+              {blocked || !followed || !followed.targets ? (
                 <>
                   <Button variant="primary" disabled aria-describedby={reasonId}>
                     {f.buy}
@@ -445,12 +445,26 @@ function RecipeSection({
                     value={amount}
                     disabled={pressed}
                   />
-                  {/* One invest step everywhere (gate INVEST-ONE-PRESS). A new version remounts it,
-                      so it reads the portfolio again before it makes another order. */}
+                  {/* One invest step everywhere (gate INVEST-ONE-PRESS), held to the recipe this
+                      pane shows. A new version remounts it with the new displayed terms. */}
                   <div className="w-full">
                     <Invest
                       key={`${recipe.active.version}:${active.version}`}
-                      of={{ family: family.slug }}
+                      of={{
+                        family: family.slug,
+                        snapshot: {
+                          family,
+                          recipe,
+                          terms: {
+                            kind: 'family',
+                            slug: family.slug,
+                            familyId: familyIdFor(family.slug),
+                            follow: followed.follow,
+                            targets: followed.targets,
+                            source: followed.source,
+                          },
+                        },
+                      }}
                       amount={amount}
                       onProgress={() => setPressed(true)}
                       onDone={() => setPressed(false)}

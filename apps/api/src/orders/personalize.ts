@@ -2,10 +2,14 @@ import { createHash } from 'node:crypto';
 import { rollUp } from '@colosseum/basket';
 import type { Db } from '@colosseum/db';
 import {
+  type ComposeContext,
+  candidates,
   compose,
   PersonalInputError,
   type PersonalProposal,
   type PersonalSheet,
+  type StockAttributesFile,
+  type ThemeList,
 } from '@colosseum/engine/personal';
 import {
   type AssetTier,
@@ -15,6 +19,10 @@ import {
   currencyOf,
   type LiquidityProvider,
   type ObservationRef,
+  type PlanCandidateId,
+  type PlanCandidateNotShown,
+  type PlanScorecard,
+  PlanStatus,
   type Provenance,
   type RiskRollUp,
   type Shelf,
@@ -31,9 +39,14 @@ import { Refusal, refusing } from './errors';
 
 /**
  * The figures a plan is shaped by besides the shelf, for the tokens of one chain: Bearing's measured
- * exit (gate EXIT-SOURCE) with where it comes from, and the yields. Either may be missing. Without a
- * measured exit a line's ceiling is its tier's and the plan says so (`ceiling_from_tier:<asset>`);
- * without a yield the card counts none for that token.
+ * exit (gate EXIT-SOURCE) with where it comes from, the yields, and the curated theme lists of the
+ * chain (gate THEMES), which a theme sleeve is made from. Any may be missing; a theme sleeve with no
+ * list holds no name and says so. Without a measured exit a line's ceiling is its tier's and the
+ * plan says so (`ceiling_from_tier:<asset>`); without a yield the card counts none for that token.
+ *
+ * `stocks` are the sourced attributes of the chain's tracked stocks (gate THEME-MATCHED): a theme
+ * sleeve whose slug names a filter holds the stocks that carry its value, picked by the engine's
+ * code, never by a model. Without them such a sleeve holds no stock and says so.
  */
 export type PlanInputs = (q: {
   db: Db;
@@ -44,6 +57,8 @@ export type PlanInputs = (q: {
 }) => Promise<{
   liquidity?: { provider: LiquidityProvider; source: string };
   yields?: YieldObservation[];
+  themes?: ThemeList[];
+  stocks?: StockAttributesFile;
   /**
    * A tier that stands in for a token's own where nothing is measured (a test-network token takes its
    * model's, model-exits.ts), with where it comes from: the line's fallback says it, labelled sandbox.
@@ -128,9 +143,26 @@ export function shelfVersionOf(
   return `${chain}:${createHash('sha256').update(content).digest('hex').slice(0, 16)}`;
 }
 
+/** The same shelf and figures for the intake's read-back and for the plan it builds. */
+export async function preparePersonalInputs(
+  chain: ChainId,
+  listed: BasketAsset[],
+  families: Shelf['families'],
+  provenance: Provenance,
+  loadInputs: PersonalizeContext['inputs'],
+): Promise<{ shelf: Shelf; figures: Awaited<ReturnType<PlanInputs>> }> {
+  const figures = await loadInputs(chain, listed, provenance);
+  const assets = withTiers(listed, figures.tiers, figures.issuers);
+  return {
+    figures,
+    shelf: { version: shelfVersionOf(chain, assets, families), assets, families },
+  };
+}
+
 /**
- * The plan in the shared shape. The limits leave the sheet (its lines already hold them), the sleeves
- * and the verdict's sentence beside the ways are not in the shape, and a figure that names no source
+ * The plan in the shared shape. The limits leave the sheet (its lines already hold them), the four
+ * sleeves and the verdict's sentence beside the ways are not in the shape, the person's split stays
+ * (`split`, so a stored plan can be rebalanced sleeve by sleeve), and a figure that names no source
  * or no time is not stated as one: the plan's flags already say it (`liquidity_unsourced`,
  * `liquidity_undated:<asset>`). The result is held to the shared schema, lines adding up to 10,000.
  */
@@ -153,17 +185,34 @@ export function sharedProposal(plan: PersonalProposal): BasketProposal {
   });
 }
 
+/** A candidate as the route stores and answers it, before it has an id. */
+export type MadeCandidate = {
+  candidate: PlanCandidateId;
+  proposal: BasketProposal;
+  rollUp: RiskRollUp;
+  scorecard: PlanScorecard;
+  status?: PlanStatus;
+};
+
 /**
  * A plan for this sheet on the person's chain, and its risk roll-up: concentration by issuer, chain
  * and class, and the exit figures, from the same shelf, measurements and time the plan was made with.
  * A plan not bought yet has no stored quote, so the roll-up's quoted exit is null. The sheet has been
  * validated by the route's schema, and `compose` validates it again before it computes anything. A
  * sheet for another chain than the person's is refused: a plan lives on the chain of their wallet.
+ *
+ * Beside it, the candidates of gate THREE-PLANS from the same figures: those shown, in their fixed
+ * order, each with its roll-up, scorecard and status; and those not shown, with why.
  */
 export async function personalize(
   sheet: PersonalSheet,
   ctx: PersonalizeContext,
-): Promise<{ proposal: BasketProposal; rollUp: RiskRollUp }> {
+): Promise<{
+  proposal: BasketProposal;
+  rollUp: RiskRollUp;
+  candidates: MadeCandidate[];
+  notShown: PlanCandidateNotShown[];
+}> {
   // Plans are in US dollars for now (gate USD-ONLY): a goal or a withdrawal in another currency is
   // refused before anything is read, rather than answered with a plan that cannot pay it.
   const other = [currencyOf(sheet), ...(sheet.obligations ?? []).map((o) => o.currency)].some(
@@ -188,18 +237,27 @@ export async function personalize(
   const entry = ctx.chains.get(chain);
   const listed = await refusing(() => entry.adapter.listAssets());
   const families = await ctx.loadFamilies(chain);
-  const figures = await ctx.inputs(chain, listed, entry.provenance);
-  const assets = withTiers(listed, figures.tiers, figures.issuers);
-  const shelf: Shelf = { version: shelfVersionOf(chain, assets, families), assets, families };
+  const { shelf, figures } = await preparePersonalInputs(
+    chain,
+    listed,
+    families,
+    entry.provenance,
+    ctx.inputs,
+  );
+  const context: ComposeContext = {
+    now: ctx.now,
+    ...(figures.yields ? { yields: figures.yields } : {}),
+    ...(figures.themes ? { themes: figures.themes } : {}),
+    ...(figures.stocks ? { stocks: figures.stocks } : {}),
+    ...(figures.liquidity
+      ? { liquidity: figures.liquidity.provider, liquiditySource: figures.liquidity.source }
+      : {}),
+  };
   let plan: PersonalProposal;
+  let made: ReturnType<typeof candidates>;
   try {
-    plan = compose(sheet, shelf, {
-      now: ctx.now,
-      ...(figures.yields ? { yields: figures.yields } : {}),
-      ...(figures.liquidity
-        ? { liquidity: figures.liquidity.provider, liquiditySource: figures.liquidity.source }
-        : {}),
-    });
+    plan = compose(sheet, shelf, context);
+    made = candidates(sheet, shelf, context);
   } catch (e) {
     // The sheet is the caller's to fix. A shelf, a figure or a parameter the engine cannot run on is
     // the server's, and fails as one.
@@ -218,10 +276,8 @@ export async function personalize(
       });
     throw e;
   }
-  const proposal = tiersSaid(sharedProposal(plan), figures.tiers, figures.issuers);
-  return {
-    proposal,
-    rollUp: rollUp(
+  const rolledUp = (proposal: BasketProposal) =>
+    rollUp(
       proposal.lines.map((l) => ({ asset: l.assetId, amountUsd: l.amountUsd })),
       {
         shelf,
@@ -229,6 +285,25 @@ export async function personalize(
         quotes: [],
         now: ctx.now,
       },
-    ),
+    );
+  // A tier or an issuer that stands in for a test-network token's own is said on every plan made.
+  const said = (p: PersonalProposal) =>
+    tiersSaid(sharedProposal(p), figures.tiers, figures.issuers);
+  const proposal = said(plan);
+  return {
+    proposal,
+    rollUp: rolledUp(proposal),
+    candidates: made.shown.map(({ id, plan: p }) => {
+      const shared = said(p);
+      if (!p.scorecard) throw new Error(`the ${id} candidate came with no scorecard`);
+      return {
+        candidate: id,
+        proposal: shared,
+        rollUp: rolledUp(shared),
+        scorecard: p.scorecard,
+        ...(p.status ? { status: PlanStatus.parse(p.status) } : {}),
+      };
+    }),
+    notShown: made.notShown.map((n) => ({ candidate: n.id, why: n.why })),
   };
 }

@@ -1,5 +1,6 @@
 import { STATUS_CODES } from 'node:http';
 import type { FastifyInstance } from 'fastify';
+import { loggable } from './loggable';
 
 // What a route outside /v1 answers when it throws (the /v1 scope has its own shape, routes/v1/index.ts).
 // Fastify's own handler sends the error's message, and an error nobody meant to send can carry what a
@@ -21,7 +22,7 @@ export function hideServerErrors(app: FastifyInstance): void {
       return reply.send(err);
     // Any 5xx: a 502 or a 503 a library threw names what it could not reach as readily as a 500 does.
     const code = typeof status === 'number' && status >= 500 && status < 600 ? status : 500;
-    req.log.error({ err }, 'a route failed');
+    req.log.error({ err: loggable(err) }, 'a route failed');
     return reply.code(code).send({
       statusCode: code,
       error: STATUS_CODES[code] ?? 'Internal Server Error',

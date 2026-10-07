@@ -61,7 +61,8 @@ export function cardOf(w: World, lines: BasketLine[]): Carded {
     yearlyLowUsd: yielding.length > 0 && read.length === 0 ? null : low,
     card: {
       moneyTodayUsd: sheet.amountUsd,
-      termMonths: sheet.horizonMonths,
+      // A goal with no date has no term: the months it is built over are a parameter (Oct 6).
+      termMonths: sheet.horizonOpen ? null : sheet.horizonMonths,
       // An income plan pays monthly from its dollar yield. With none, it pays nothing.
       cashFlow:
         yieldBps <= 0

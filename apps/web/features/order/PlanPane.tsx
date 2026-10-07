@@ -14,7 +14,7 @@ import { planProvenance } from '../goal/build-plan';
 import { dollars } from '../goal/sheet';
 import { formatBps } from './amounts';
 import { PlanChart } from './PlanChart';
-import { Meter, PlanView } from './PlanView';
+import { PlanView } from './PlanView';
 import { displayName, flagSentences, kindLabel, leftOut, reasonsOf } from './plain';
 import type { StoredPlan } from './plan-store';
 
@@ -54,7 +54,10 @@ export type PlanPaneProps = {
    */
   onWay?: (way: string) => void;
   /** The one button: a link to follow, or an action. Left out: no button (the pane hosts the step). */
-  invest?: { href: string; onFollow?: () => void } | { onPress: () => void; busy?: boolean };
+  invest?:
+    | { href: string; onFollow?: () => void; label?: string }
+    /** `label`: the button's own words where it does not invest yet ("Make this plan yours"). */
+    | { onPress: () => void; busy?: boolean; label?: string };
   /** The heading level of the block's own title: 2 on a page, 3 inside the Invest screen's pane. */
   level?: 2 | 3;
 };
@@ -105,6 +108,19 @@ export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2
   const asked = income ? (sheet.incomeTargetUsdMonthly ?? null) : null;
   const monthly = income && ranged;
   const fall = card.expectedReturn.lossInFallUsd;
+  // The income meter's two ends, as shares of what was asked. Whether the plan reaches the ask is
+  // the engine's verdict where it gave one, never this page's rounding: short of it, the solid part
+  // stops short of the end.
+  const perMonth = (pct: number) => (sheet.amountUsd * pct) / 1200;
+  const reached = verdict
+    ? verdict.met
+    : asked !== null && perMonth(card.expectedReturn.lowPct) >= asked;
+  const lowShare =
+    asked === null ? 0 : Math.min(reached ? 1 : 0.98, perMonth(card.expectedReturn.lowPct) / asked);
+  const highShare =
+    asked === null
+      ? 0
+      : Math.max(lowShare, Math.min(1, perMonth(card.expectedReturn.highPct) / asked));
   // What most of the plan is in: the largest kind where the plan came with its spread, else the
   // largest holding. Both are the engine's shares, as they are.
   const top = (() => {
@@ -206,13 +222,28 @@ export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2
       }
       under={
         <>
-          {/* Income, with an amount asked: what the plan pays against it, as a meter. The fill is
-              the high end of the estimate over what was asked, both figures shown beside it. */}
+          {/* Income, with an amount asked: what the plan pays against it. The whole bar is what
+              was asked. The solid part is the low end of the estimate, which is the end the
+              engine's verdict is measured on, so the bar is full only where the plan reaches the
+              ask; the lighter part runs on to the high end. */}
           {monthly && asked !== null && (
-            <div data-ui="plan-income-meter" className="flex flex-col gap-1.5">
-              <Meter
-                value={Math.round((sheet.amountUsd * card.expectedReturn.highPct) / 1200) / asked}
-              />
+            <div
+              data-ui="plan-income-meter"
+              data-reached={reached}
+              className="flex flex-col gap-1.5"
+            >
+              <span aria-hidden="true" className="flex h-2 w-full border border-border bg-muted">
+                <span
+                  data-ui="income-low"
+                  className="block h-full bg-primary motion-safe:transition-[width] motion-safe:duration-300"
+                  style={{ width: `${lowShare * 100}%` }}
+                />
+                <span
+                  data-ui="income-high"
+                  className="block h-full bg-leg-3 motion-safe:transition-[width] motion-safe:duration-300"
+                  style={{ width: `${(highShare - lowShare) * 100}%` }}
+                />
+              </span>
               <p className="flex flex-wrap justify-between gap-x-4 text-body-sm">
                 <span data-ui="plan-monthly">{aMonthPin}</span>
                 <span className="text-muted-foreground">
@@ -288,7 +319,10 @@ export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2
                 {fall > 0 ? t.plan.badFall.some(dollars(fall, lang)) : t.plan.badFall.none}
               </span>
               <span className="text-caption text-muted-foreground">
-                {t.plan.fall.put(amount, t.goal.card.months(sheet.horizonMonths))}
+                {/* a goal with no date shows none, never the months it is built over (GLIDE-OPT-IN) */}
+                {sheet.horizonOpen
+                  ? `${t.plan.fall.putOpen(amount)} ${t.goal.card.noDate}.`
+                  : t.plan.fall.put(amount, t.goal.card.months(sheet.horizonMonths))}
               </span>
             </figcaption>
           </figure>
@@ -375,7 +409,7 @@ export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2
                 onClick={invest.onFollow}
                 className={buttonClass({ variant: 'primary' })}
               >
-                {t.plan.invest(amount)}
+                {invest.label ?? t.plan.invest(amount)}
               </Link>
             ) : (
               <Button
@@ -384,7 +418,7 @@ export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2
                 busyLabel={t.plan.investing}
                 onClick={invest.onPress}
               >
-                {t.plan.invest(amount)}
+                {invest.label ?? t.plan.invest(amount)}
               </Button>
             )}
           </div>

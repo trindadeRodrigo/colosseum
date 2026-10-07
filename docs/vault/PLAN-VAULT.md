@@ -88,7 +88,7 @@ As in section 15 of the design. In short: Rodrigo owns the engine's numbers and 
 | Who runs the Solana sessions (deploy, config, rehearsals) | Thom and Rodrigo | Mon Oct 5 |
 | Which VM runs the keeper once it leaves a founder's machine | Thom | Mon Oct 5 |
 | Whether Vercel Hobby's non-commercial clause is acceptable for the hosted app | Thom | Mon Oct 5 |
-| Who fills the blocked countries per asset; until then the declared country skips no token | Thom and Rodrigo | Mon Oct 5, with the asset entries |
+| Where the legal restrictions on who may hold an asset are enforced: sign-up and the terms of service. Since Oct 6 the plan reads no country and skips no token for one (gate `COUNTRY-REMOVED`); `blockedCountries` stays on the asset as information | Thom and Rodrigo | Before the app is offered where an asset restricts its holders (stock tokens: US, CA, UK, CH and UAE persons) |
 | The short disclaimer ("Policy in your wallet, not a fund"), now that the assets sit in a vault the person owns | Rodrigo | Mon Oct 5, before the app is hosted |
 | The goal status for every kind of goal, and the odds (ENG-1) | Rodrigo | Wed Oct 7, with WEB-5 |
 | Where the Bearing data runs for the demo: a hosted collector or a dated snapshot | Rodrigo | Wed Oct 7 |

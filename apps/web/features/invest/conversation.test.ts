@@ -3,6 +3,7 @@ import { dictionary } from '../../i18n';
 import { READ_IN_DOLLARS } from '../goal/test/plan';
 import { json } from '../wallet/test/fake-port';
 import {
+  affirmed,
   FACTS,
   fitAnswer,
   isGoAhead,
@@ -12,7 +13,6 @@ import {
   QUICK,
   readerConversation,
   type Sheet,
-  silentCountry,
   validOf,
 } from './conversation';
 import { wayChange } from './ways';
@@ -28,7 +28,6 @@ const talk = (apiFetch = reader(), chain: 'solana' | null = 'solana') =>
     lang: 'en',
     chain,
     examples: en.goal.examples.list,
-    country: 'BR',
   });
 const facts = (sheet: Sheet) => Object.fromEntries(FACTS.map((f) => [f, sheet.fields[f]]));
 
@@ -242,8 +241,8 @@ describe('words that change nothing', () => {
     // on a first sentence too
     const first = await talk().turn({ kind: 'text', text: 'Forty thousand in bitcoin' }, null);
     expect(first.say).toContainEqual({ key: 'cantPick', pick: 'bitcoin' });
-    expect(pickOf('a plan for my daughter')).toBeNull();
-    expect(pickOf('something meaningful')).toBeNull();
+    expect(pickOf('a plan for my daughter', 'en')).toBeNull();
+    expect(pickOf('something meaningful', 'en')).toBeNull();
   });
 
   it('holds, and says so, when the words say only what is already held', async () => {
@@ -253,6 +252,122 @@ describe('words that change nothing', () => {
     expect(reply.sheet).toEqual(high);
   });
 
+  it.each([
+    ['en', 'I don’t want more risk'],
+    ['en', "I don't want more risk"],
+    ['en', 'no more risk please'],
+    ['en', 'not riskier'],
+    ['en', 'never less risk'],
+    ['en', 'I do not want something safer'],
+    ['pt', 'não quero mais risco'],
+    ['pt', 'nao quero mais risco'],
+    ['pt', 'sem mais risco'],
+    ['pt', 'nunca menos risco'],
+  ] as const)('takes no step from a risk that is refused (%s: "%s")', async (lang, text) => {
+    const medium = await at('medium');
+    const reply = await readerConversation(reader(), {
+      lang,
+      chain: 'solana',
+      examples: en.goal.examples.list,
+    }).turn({ kind: 'text', text }, medium);
+    expect(reply.sheet).toEqual(medium);
+    // answered in context: what is held, and nothing built again
+    expect(reply.say.map((s) => s.key)).toEqual(['held', 'ready']);
+  });
+
+  it.each([
+    ['en', 'not $5,000', 'amount'],
+    ['en', 'I don’t want ten years', 'horizon'],
+    ['en', "I don't want 10 years", 'horizon'],
+    ['en', 'not high risk', 'risk'],
+    ['en', 'no income', 'goal'],
+    ['pt', 'não quero 10 anos', 'horizon'],
+    ['pt', 'não R$ 5.000', 'amount'],
+    ['pt', 'sem risco alto', 'risk'],
+  ] as const)(
+    'takes no amount, time, risk or goal from words that refuse it (%s: "%s")',
+    async (lang, text, fact) => {
+      const medium = await at('medium');
+      const reply = await readerConversation(reader(), {
+        lang,
+        chain: 'solana',
+        examples: en.goal.examples.list,
+      }).turn({ kind: 'text', text }, medium);
+      expect(reply.sheet.fields[fact], text).toBe(medium.fields[fact]);
+      expect(reply.sheet).toEqual(medium);
+      expect(reply.say.map((s) => s.key)).toContain('held');
+    },
+  );
+
+  it('still takes what the same message asks for beside what it refuses', async () => {
+    const medium = await at('medium');
+    const reply = await talk().turn(
+      { kind: 'text', text: 'not $5,000, make it $8,000. I don’t want more risk' },
+      medium,
+    );
+    expect(reply.sheet.fields.amount).toBe('8000');
+    expect(reply.sheet.fields.risk).toBe('medium');
+    // an answer to the question that is open is refused the same way
+    const open = { ...medium, fields: { ...medium.fields, horizon: '' } };
+    const no = await talk().turn({ kind: 'text', text: 'not 10 years' }, open);
+    expect(no.sheet.fields.horizon).toBe('');
+    expect(no.say).toEqual([{ key: 'unfit', fact: 'horizon' }]);
+    // words that refuse nothing are read exactly as typed, figures and all
+    expect(affirmed('Grow $40,000.50 over 3 years, medium risk', 'en')).toBe(
+      'Grow $40,000.50 over 3 years, medium risk',
+    );
+    // "no" is "in the" in Portuguese
+    expect(affirmed('R$ 40.000 no longo prazo', 'pt')).toBe('R$ 40.000 no longo prazo');
+    expect(affirmed('no more risk', 'en')).toBe('');
+  });
+
+  it('does not take a refused fact from a first sentence either: it is left open and asked', async () => {
+    // a reader that took the risk from the words it was refused in
+    const api = reader({
+      ...READ_IN_DOLLARS,
+      candidate: { ...READ_IN_DOLLARS.candidate, riskBudget: 'high' },
+    });
+    const reply = await talk(api).turn(
+      { kind: 'text', text: 'Grow $40,000 over 3 years. Not high risk' },
+      null,
+    );
+    expect(reply.sheet.fields.amount).toBe('40000');
+    expect(reply.sheet.fields.risk).toBe('');
+    expect(reply.ask).toBe('risk');
+  });
+
+  it('does not read the Portuguese word for a goal as the company', async () => {
+    const pt = readerConversation(reader(), {
+      lang: 'pt',
+      chain: 'solana',
+      examples: en.goal.examples.list,
+    });
+    const first = await pt.turn(
+      { kind: 'text', text: 'Minha meta é fazer R$ 40.000 crescer' },
+      null,
+    );
+    expect(first.say.map((s) => s.key)).not.toContain('cantPick');
+    expect(pickOf('Minha meta é crescer', 'pt')).toBeNull();
+    expect(pickOf('buy Meta', 'en')).toBe('meta');
+    expect(pickOf('ações do Facebook', 'pt')).toBe('meta');
+  });
+
+  it('keeps a first sentence’s monthly figure while the goal is still open, and drops it for a goal that is not income', async () => {
+    // the reader guesses the goal: it is left open, and "$300 a month" is not thrown away
+    const first = await talk().turn({ kind: 'text', text: '$80,000 and $300 each month' }, null);
+    expect(first.sheet.fields.goal).toBe('');
+    expect(first.sheet.fields.income).toBe('300');
+    expect(first.ask).toBe('goal');
+    const income = await talk().turn(
+      { kind: 'answer', fact: 'goal', value: 'income' },
+      first.sheet,
+    );
+    expect(income.sheet.fields.income).toBe('300');
+    expect(income.open).not.toContain('income');
+    const grow = await talk().turn({ kind: 'answer', fact: 'goal', value: 'grow' }, first.sheet);
+    expect(grow.sheet.fields.income).toBe('');
+  });
+
   it('knows the few words that are a go-ahead, alone, in both languages', () => {
     for (const word of [
       'yes',
@@ -260,7 +375,6 @@ describe('words that change nothing', () => {
       'ok',
       'OK!',
       'go',
-      'so?',
       'build',
       'build it',
       'sim',
@@ -268,17 +382,35 @@ describe('words that change nothing', () => {
       'bora',
     ])
       expect(isGoAhead(word), word).toBe(true);
-    for (const words of ['yes but make it five years', 'no', 'grow', 'ok $50,000', ''])
+    for (const words of [
+      'yes but make it five years',
+      'no',
+      'grow',
+      'ok $50,000',
+      '',
+      // a filler is not a yes
+      'so?',
+      'so',
+      'and',
+      'then',
+      'next',
+      'please',
+      'e aí',
+      'então',
+    ])
       expect(isGoAhead(words), words).toBe(false);
   });
 });
 
 describe('what is never asked, and what the quick replies send', () => {
-  it('has no country among its facts, and sends one silently', () => {
+  it('has no country among its facts, and sends none (COUNTRY-REMOVED)', async () => {
     expect(FACTS).not.toContain('country');
-    expect(silentCountry(['pt-BR'])).toBe('BR');
-    expect(silentCountry(['en-US'])).toBe('US');
-    expect(silentCountry(['en'])).toBe('BR');
+    const whole = await talk().turn(
+      { kind: 'text', text: en.goal.examples.list[1] as string },
+      null,
+    );
+    expect(whole.sheet.fields.country).toBe('');
+    expect(whole.valid).not.toHaveProperty('country');
   });
 
   it('offers only replies the fact takes', () => {

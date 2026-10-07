@@ -1,5 +1,5 @@
 'use client';
-import { chainFamily, type SharedFamily } from '@colosseum/schemas';
+import { chainFamily, type SharedFamily, type SharedRecipe } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { CardWait } from '../../components/shell/Wait';
@@ -35,12 +35,29 @@ import { useSharedPerson } from './use-person';
 // and our server's, said to be unverified, where it could not (chain-recipe.ts). With `embedded`,
 // another screen gives the amount and mounts the card with its source line alone.
 
-export function FamilyBuyScreen({ slug, embedded }: { slug: string; embedded?: InvestEmbedded }) {
+/** The recipe and terms already shown by a product page; a buy must not replace them with a reread. */
+export type FamilyBuySnapshot = {
+  family: SharedFamily;
+  recipe: SharedRecipe;
+  terms: Extract<SharedTerms, { kind: 'family' }>;
+};
+
+export function FamilyBuyScreen({
+  slug,
+  embedded,
+  snapshot,
+}: {
+  slug: string;
+  embedded?: InvestEmbedded;
+  snapshot?: FamilyBuySnapshot;
+}) {
   const t = useT();
   const lang = useLang();
   const apiFetch = useApiFetch();
   const person = useSharedPerson();
-  const [family, setFamily] = useState<SharedFamily | null | 'failed'>(null);
+  const [loaded, setLoaded] = useState<SharedFamily | null | 'failed'>(null);
+  const shown = embedded ? snapshot : undefined;
+  const family = shown?.family ?? loaded;
   const [text, setText] = useState('100');
   const [locked, setLocked] = useState(false);
   const [round, setRound] = useState(0);
@@ -51,18 +68,21 @@ export function FamilyBuyScreen({ slug, embedded }: { slug: string; embedded?: I
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `round` reads the portfolio again
   useEffect(() => {
-    if (!chain) return;
+    if (!chain || shown) return;
     let mine = true;
     readFamily(apiFetch, slug, chain).then((read) => {
-      if (mine) setFamily(read.kind === 'read' ? read.value.family : 'failed');
+      if (mine) setLoaded(read.kind === 'read' ? read.value.family : 'failed');
     });
     return () => {
       mine = false;
     };
-  }, [apiFetch, slug, chain, round]);
+  }, [apiFetch, slug, chain, round, shown]);
 
-  const recipe =
-    family && family !== 'failed' && chain
+  const recipe = shown
+    ? shown.recipe.chain === chain
+      ? shown.recipe
+      : null
+    : family && family !== 'failed' && chain
       ? (family.recipes.find((r) => r.chain === chain) ?? null)
       : null;
   const mock = person.kind === 'ready' ? person.mock : false;
@@ -128,7 +148,7 @@ export function FamilyBuyScreen({ slug, embedded }: { slug: string; embedded?: I
       return { failure: t.shared.check.reading };
     if (person.kind !== 'ready' || !person.userId) return { failure: t.buy.failure.signedOut };
     // What the buy is held to: the version and weights shown, never the order the API answers.
-    const terms: SharedTerms = {
+    const terms: SharedTerms = shown?.terms ?? {
       kind: 'family',
       slug,
       // The vault's number is basketIdOfPlan(familyIdOf(slug)): this page's own, never the server's.
@@ -144,7 +164,7 @@ export function FamilyBuyScreen({ slug, embedded }: { slug: string; embedded?: I
         owner: { [chainFamily(chain)]: owner },
         amountUsd,
         family: slug,
-        version: followed.follow.version,
+        version: terms.follow.version,
       },
       { chain, owner, type: 'buy' },
     );
@@ -202,7 +222,7 @@ export function FamilyBuyScreen({ slug, embedded }: { slug: string; embedded?: I
       owner={owner}
       userId={person.userId}
       buyOf={{ family: slug }}
-      holdings={followed?.targets ?? null}
+      holdings={shown?.terms.targets ?? followed?.targets ?? null}
       blocked={blocked}
       place={place}
       onProgress={(progress) => {
@@ -212,6 +232,7 @@ export function FamilyBuyScreen({ slug, embedded }: { slug: string; embedded?: I
       onDone={embedded?.onDone}
       onStopped={embedded?.onStopped}
       onVersionChanged={embedded?.onVersionChanged}
+      onAmount={embedded ? embedded.onAmount : (next) => setText(String(next))}
     />
   );
   if (embedded)

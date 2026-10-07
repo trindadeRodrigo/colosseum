@@ -88,6 +88,16 @@ describe('a plan to grow', () => {
   });
 });
 
+describe('a goal with no date', () => {
+  it('shows no months it was built over under the bad-fall bar (GLIDE-OPT-IN)', async () => {
+    const host = await pane(of('grow', (p) => ({ sheet: { ...p.sheet, horizonOpen: true } })));
+    const fall = find(host, '[data-ui="plan-fall"]').textContent ?? '';
+    expect(fall).toContain(en.plan.fall.putOpen('$40,000'));
+    expect(fall).toContain(en.goal.card.noDate);
+    expect(fall).not.toMatch(/36|months/);
+  });
+});
+
 describe('a plan to protect', () => {
   it('leads with what most of it is kept in and the bad-fall figure, with the bar and no curve', async () => {
     const plan = of('protect');
@@ -116,35 +126,67 @@ describe('a plan for income', () => {
       verdict: { met, gapUsdMonthly: met ? 0 : 33.4, ways: [] },
     }));
 
-  it('shows what it pays a month against what was asked, as a meter with the pinned figure', async () => {
+  it('shows what it pays a month against what was asked: solid to the low end, lighter on to the high end', async () => {
     const host = await pane(income(false));
     expect(answer(host)).toBe(en.plan.verdict.gap('$33.40'));
     const meter = find(host, '[data-ui="plan-income-meter"]');
-    // $40,000 at 1% to 2% a year: $33 to $67 a month, against $100 asked; the fill is the high end
+    // $40,000 at 1% to 2% a year: $33 to $67 a month, against $100 asked
     expect(find(meter, '[data-ui="plan-monthly"]').textContent).toContain(
       en.plan.monthly.figure('$33', '$67'),
     );
     expect(meter.querySelector('[data-ui="plan-monthly"] [data-ui="pin"]')).not.toBeNull();
     expect(meter.textContent).toContain(en.plan.income.asked('$100'));
-    expect(width(meter.querySelector('[data-ui="meter"] span'))).toBe('67%');
+    // the low end, which the verdict is measured on, is the solid part; the rest runs to the high end
+    const low = Number.parseFloat(width(find(meter, '[data-ui="income-low"]')) ?? '');
+    const high = Number.parseFloat(width(find(meter, '[data-ui="income-high"]')) ?? '');
+    expect(low).toBeCloseTo(33.33, 1);
+    expect(low + high).toBeCloseTo(66.67, 1);
+    expect(meter.getAttribute('data-reached')).toBe('false');
     // an estimate, never what the plan pays
     expect(meter.textContent).toContain(en.plan.monthly.after);
     // the yield is not said again as a line of its own
     expect(host.querySelector('[data-ui="plan-yield"]')).toBeNull();
   });
 
-  it('never fills the meter past what was asked', async () => {
-    const plan = income(true);
+  it('never reads full under a headline that says there is a gap (the review’s case: $50 asked, $16.60 short)', async () => {
+    const plan = income(false);
     const host = await pane({
       ...plan,
       proposal: {
         ...plan.proposal,
         sheet: { ...plan.proposal.sheet, incomeTargetUsdMonthly: 50 },
+        verdict: { met: false, gapUsdMonthly: 16.6, ways: [] },
       },
     });
-    expect(width(host.querySelector('[data-ui="plan-income-meter"] [data-ui="meter"] span'))).toBe(
-      '100%',
-    );
+    expect(answer(host)).toBe(en.plan.verdict.gap('$16.60'));
+    const meter = find(host, '[data-ui="plan-income-meter"]');
+    // the high end ($67) is past the $50 asked; the solid part stops at the low end ($33)
+    const low = Number.parseFloat(width(find(meter, '[data-ui="income-low"]')) ?? '');
+    const high = Number.parseFloat(width(find(meter, '[data-ui="income-high"]')) ?? '');
+    expect(low).toBeCloseTo(66.67, 1);
+    expect(low + high).toBe(100);
+    expect(meter.getAttribute('data-reached')).toBe('false');
+  });
+
+  it('is solid to the end only where the engine says the income is met, whatever the page rounds to', async () => {
+    const plan = income(true);
+    const met = await pane({
+      ...plan,
+      proposal: { ...plan.proposal, sheet: { ...plan.proposal.sheet, incomeTargetUsdMonthly: 30 } },
+    });
+    expect(width(find(met, '[data-ui="income-low"]'))).toBe('100%');
+    expect(find(met, '[data-ui="plan-income-meter"]').getAttribute('data-reached')).toBe('true');
+    await unmountAll();
+    // the low end works out past the ask here, and the engine still says a gap: not solid to the end
+    const short = income(false);
+    const host = await pane({
+      ...short,
+      proposal: {
+        ...short.proposal,
+        sheet: { ...short.proposal.sheet, incomeTargetUsdMonthly: 30 },
+      },
+    });
+    expect(width(find(host, '[data-ui="income-low"]'))).toBe('98%');
   });
 
   it('draws what is paid out over the months as a projected band, on the yield’s pin', async () => {

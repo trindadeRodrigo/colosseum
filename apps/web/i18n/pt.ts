@@ -31,6 +31,8 @@ export const pt: Dictionary = {
         'Você entrou, mas o serviço de login ainda não entregou suas carteiras. Nada foi perdido.',
       server:
         'Você entrou, mas nosso servidor ainda não disse em qual rede fica o seu plano. Nada foi perdido.',
+      service:
+        'O serviço de login ainda não respondeu, então não sei dizer se você entrou. Você pode continuar olhando.',
       again: 'Tentar de novo',
       trying: 'Tentando de novo…',
       held: 'Um passo da sua ordem está sendo assinado. Conclua ou cancele esse passo primeiro e tente de novo.',
@@ -86,6 +88,12 @@ export const pt: Dictionary = {
         `${wallet} só funciona em redes indisponíveis no nosso servidor por enquanto, então não pode ser usada para entrar. Use outra carteira ou uma chave de acesso.`,
       chains: 'A rede do seu plano',
     },
+    silent: {
+      body: 'O serviço de login ainda não respondeu, então não consigo fazer seu login agora.',
+      offline: 'Este aparelho parece estar sem conexão. Confira a conexão e tente de novo.',
+      blocked:
+        'O serviço de login não respondeu. Um bloqueador pode impedir isso, ou este endereço pode não estar configurado para login.',
+    },
     off: {
       api: 'O login está indisponível no momento: nosso servidor não está respondendo. Eu tento de novo a cada poucos segundos, e esta página se atualiza sozinha.',
       setup:
@@ -123,6 +131,8 @@ export const pt: Dictionary = {
         'Essa carteira não está mais neste navegador. Escolha uma da lista ou use uma chave de acesso.',
       tooMany: 'Muitas tentativas em pouco tempo. Espere um minuto e tente de novo.',
       offline: 'Não consegui falar com o serviço de login. Verifique sua conexão e tente de novo.',
+      originRefused:
+        'O login não está configurado para este endereço: o serviço de login não aceita logins a partir dele. Não há nada para você corrigir. Use o site no endereço dele, ou nos avise.',
       expired: 'Isso demorou demais e o tempo acabou. Tente de novo.',
       walletNotMade:
         'Você entrou, mas sua carteira não pôde ser criada. Nada foi perdido. Tente de novo.',
@@ -245,6 +255,7 @@ export const pt: Dictionary = {
       time: 'Prazo e risco',
       shape: 'O que molda o plano',
       words: 'Palavras',
+      optional: 'Opcional',
     },
     fields: {
       goal: 'Para que é o dinheiro',
@@ -260,9 +271,9 @@ export const pt: Dictionary = {
     hints: {
       income: 'Quanto você precisa por mês. Deixe em branco se não tiver um número.',
       horizon: 'De 1 a 480.',
-      country: 'É você quem declara. Define quais ativos você pode ter.',
+      country: 'Pode deixar em branco. O plano não usa esse dado.',
       countryFromBrowser:
-        'Tirado do idioma deste navegador. Mude se você mora em outro país: ele define quais ativos você pode ter.',
+        'Tirado do idioma deste navegador. Pode mudar ou deixar em branco: o plano não usa esse dado.',
       holdings: 'O plano preenche lacunas e evita repetir o que você já tem.',
       amount: 'Com quanto o plano começa, de US$ 10 a US$ 1.000.000.',
       notFound: 'Não encontrei no seu objetivo: preencha.',
@@ -324,6 +335,12 @@ export const pt: Dictionary = {
       sentenceIncome: (income: string, amount: string, months: string) =>
         `Gerar ${income} por mês com ${amount} por ${months}.`,
       months: (n: number) => (n === 1 ? '1 mês' : `${n} meses`),
+      sentenceOpen: {
+        grow: (amount: string) => `Fazer ${amount} crescer, sem data definida.`,
+        income: (amount: string) => `Gerar renda com ${amount}, sem data definida.`,
+        protect: (amount: string) => `Proteger ${amount}, sem data definida.`,
+      },
+      noDate: 'Sem data definida',
       unfinished: 'Seu objetivo, como foi lido até aqui.',
       draftOpen: 'Rascunho: termine os limites',
       draftSet: 'Rascunho: limites definidos, ainda sem plano',
@@ -570,6 +587,10 @@ export const pt: Dictionary = {
   },
 
   talk: {
+    capacity:
+      'Esta conversa chegou ao limite. Suas mensagens anteriores foram mantidas. Recomece para iniciar outra.',
+    startOver: 'Começar de novo',
+    pickWords: 'escolho|escolher|quero|fico com|vou de|vamos de|pego',
     chat: 'A conversa',
     you: 'Você',
     me: 'tenonfi',
@@ -589,8 +610,19 @@ export const pt: Dictionary = {
       heldBuilt:
         'Seu plano foi montado com isso. Toque em um limite para mudar, ou me diga o que mudar.',
       heldOpen: 'Ainda preciso de mais uma coisa.',
+      heardThemes: (names: string) => `Anotei o que você quer manter: ${names}.`,
+      heardMix: (mix: string) => `Mantido como você disse: ${mix}.`,
+      noneYet: 'Ainda não tenho como escolher ações por esse critério.',
+      first: 'Preciso de uma coisa antes:',
+      simple: 'O assistente não respondeu, então por ora estou lendo do jeito simples.',
+      notAnswer:
+        'Não consegui usar isso como resposta. Escolha uma abaixo, ou diga de outro jeito.',
       building: 'Montando seu plano com estes limites…',
       built: 'O plano está à direita. Revise e invista, ou mude o que quiser.',
+      builtChoice:
+        'Seus planos estão à direita, lado a lado. Compare e escolha um, ou mude o que quiser.',
+      picked: (name: string) =>
+        `${name}, então. Revise à direita e invista, ou veja os planos de novo.`,
       heldReady: 'Nada mudou. Diga sim e eu monto o plano com isso.',
       cantPick: {
         stock: (name: string) =>
@@ -624,9 +656,24 @@ export const pt: Dictionary = {
       years: (n: number) => (n === 1 ? '1 ano' : `${n} anos`),
       aMonth: (amount: string) => `${amount} por mês`,
       noIncome: 'Sem valor definido',
+      growGoal: 'Mudar para um objetivo de crescimento',
+      all: 'Tudo',
+      half: 'Metade',
+      none: 'Nada',
+      yes: 'Sim',
+      no: 'Não',
       build: 'Sim, pode montar',
     },
     facts: {
+      theme: 'Tema',
+      themeShare: (name: string, share: string) => `${name} · ${share}`,
+      mix: 'Mantido como você disse',
+      mixPart: {
+        growth: (share: string) => `${share} em ações e cripto`,
+        dollarYield: (share: string) => `${share} em rendimento em dólar`,
+        gold: (share: string) => `${share} em ouro`,
+        cash: (share: string) => `${share} em caixa`,
+      },
       title: 'Seu objetivo',
       goal: 'Para que é',
       amount: 'Valor',
@@ -659,7 +706,16 @@ export const pt: Dictionary = {
       summaryFacts: (known: number, of: number) => `Seu objetivo: ${known} de ${of} definidos`,
       ownPage: 'Abrir este plano na página dele',
       investTitle: 'Investir',
+      picked: (name: string) => `Você escolheu ${name}.`,
+      backToPlans: 'Ver os planos de novo',
+      makeYours: 'Tornar este plano seu',
+      stale: 'Este plano é de antes da sua mudança. Responda à pergunta e eu monto de novo.',
       backToPlan: 'Voltar ao plano',
+    },
+    ways: {
+      amount: (amount: string) => `Mude para ${amount}`,
+      income: (income: string) => `Mire em ${income}`,
+      other: 'Mude desse jeito',
     },
     failure: {
       unavailable:
@@ -800,6 +856,7 @@ export const pt: Dictionary = {
       asked: (amount: string) => `pedido: ${amount} por mês`,
     },
     fall: {
+      putOpen: (amount: string) => `A barra inteira são os ${amount} que você coloca.`,
       put: (amount: string, months: string) =>
         `A barra inteira são os ${amount} que você coloca, por ${months}.`,
     },
@@ -848,6 +905,7 @@ export const pt: Dictionary = {
     buy: 'Comprar este plano',
     invest: (amount: string) => `Investir ${amount}`,
     investing: 'Abrindo os passos…',
+    investIn: (amount: string, name: string) => `Investir ${amount} em ${name}`,
     answer: {
       inFall: (share: string, what: string, loss: string) =>
         `${share} em ${what} · numa queda forte, cerca de −${loss}`,
@@ -857,6 +915,88 @@ export const pt: Dictionary = {
       range: (low: string, high: string) => `${low} a ${high} ao ano`,
       rangeAfter: 'projetado. Uma faixa, não uma promessa.',
       none: 'Ainda sem projeção: não há leitura de rendimento para este plano.',
+    },
+    choice: {
+      title: 'Seus planos',
+      lead: (plans: number, chain: string) =>
+        plans === 1
+          ? `Um plano dos seus limites, na ${chain}. Nada é comprado até você escolher, revisar cada passo e assinar.`
+          : `${plans} planos dos mesmos limites, na ${chain}, cada um feito de um jeito. Nenhum vem escolhido: compare e escolha um. Nada é comprado até você revisar cada passo e assinar.`,
+      names: { cover: 'Cobertura', spread: 'Diversificação', carry: 'Rendimento' },
+      aims: {
+        cover: 'Separa o máximo para os seus saques, e vende ao menor custo medido.',
+        spread: 'Espalha o dinheiro pelo maior número de emissores que os seus limites permitem.',
+        carry: 'Tem o maior rendimento observado dentro dos seus limites.',
+      },
+      see: (name: string) => `Tudo de ${name}`,
+      sample: { sandbox: 'Números de exemplo · rede de teste', mock: 'Números de exemplo' },
+      figures: {
+        yield: 'Rendimento observado, ao ano',
+        exit: 'Custo para vender tudo',
+        fall: 'Numa queda forte',
+        lost: (amount: string) => `cerca de −${amount}`,
+        noLoss: 'nenhuma perda contada',
+      },
+      headline: {
+        paidOf: (paid: number, all: number) =>
+          `${paid} de ${all} meses de saques pagos às taxas observadas.`,
+        holds: 'O que ele tem',
+        parts: (n: number) => (n === 1 ? '1 parte' : `${n} partes`),
+        paid: 'Meses pagos',
+        worst: 'Pior caso',
+        worstMonths: (stress: string, paid: number, all: number) =>
+          `Se ${stress}, ${paid} de ${all} meses são pagos.`,
+        fall: (amount: string) => `Numa queda forte, cerca de ${amount} perdidos.`,
+        noFall: 'Numa queda forte, cerca de US$ 0 perdidos: nada aqui é ação, cripto ou ouro.',
+      },
+      picker: {
+        legend: 'Escolha um plano',
+        buy: (name: string) => `Escolher ${name}`,
+        none: 'Escolha um plano para investir nele.',
+      },
+      score: {
+        title: 'Como ele se compara',
+        covered: 'Meses de saques separados',
+        paidNow: 'Meses pagos às taxas observadas',
+        paidUnder: (stress: string) => `Meses pagos se ${stress}`,
+        of: (paid: number, all: number) => `${paid} de ${all}`,
+        short: (amount: string) => `faltam ${amount}`,
+        carry: 'Rendimento observado, ao ano',
+        exit: 'Custo de vender tudo no seu tamanho',
+        exitNone: 'não medido',
+        measured: (share: string) => `${share} dele medido`,
+        issuer: 'Maior emissor',
+        issuers: (n: number) => (n === 1 ? '1 emissor' : `${n} emissores`),
+        credit: 'Em crédito e base',
+        fx: 'Devido em outra moeda, sem ter nela',
+      },
+      stress: {
+        yields_fall: (fall: string) => `os rendimentos caírem ${fall}`,
+        credit_gate: (months: number) => `o crédito não puder ser vendido por ${months} meses`,
+        equity_fall: (fall: string) => `ações, cripto e ouro caírem ${fall}`,
+        fx_goal_up: (currency: string, move: string, months: number) =>
+          `o ${currency} subir ${move} sobre o dólar em ${months} meses`,
+        fx_goal_down: (currency: string, move: string, months: number) =>
+          `o ${currency} cair ${move} sobre o dólar em ${months} meses`,
+        other: 'um cenário de estresse se aplicar',
+      },
+      status: {
+        title: 'Seus saques',
+        met: 'Paga todos os saques, às taxas observadas e em cada cenário de estresse.',
+        notMet: 'Não paga todos os saques em cada cenário de estresse.',
+        observedOn: (date: string) => `Taxas observadas em ${date}.`,
+        needed: (needed: string, observed: string) =>
+          `Precisa de ${needed} ao ano no rendimento em dólar, e ${observed} é o observado.`,
+        neededNone: (observed: string) =>
+          `Não precisa de rendimento para pagá-los, e ${observed} é o observado.`,
+        neededOut: (observed: string) =>
+          `Nenhum rendimento até 100% ao ano paga todos os meses, e ${observed} é o observado.`,
+        ways: 'O que fecharia a diferença',
+      },
+      notShown: {
+        title: 'Não aparecem',
+        lead: 'Feitos dos mesmos limites, e deixados de fora, com o motivo.',
+      },
     },
     chainNotReady: (chain: string) =>
       `${chain} ainda não está pronta para compras: os cofres dela não estão implantados nesta rede. Seu plano fica guardado e pode ser comprado quando estiverem.`,
@@ -1350,6 +1490,15 @@ export const pt: Dictionary = {
     checkingFunds: 'Conferindo sua carteira…',
     preparing: 'Lendo os preços da sua ordem…',
     again: 'Ler os preços de novo',
+    short: {
+      cap: (most: string, times: number) =>
+        `Os fundos de teste enviam até ${most} por vez, ${times} vezes por dia, então um envio não cobre este valor.`,
+      sendAnyway: (most: string) => `Enviar ${most} mesmo assim`,
+      instead: (amount: string) => `Investir ${amount} em vez disso`,
+      covers: (amount: string) => `Sua carteira cobre ${amount} agora.`,
+      typeLess: 'Ou digite um valor menor.',
+      inGoal: 'Para investir outro valor, toque no valor do seu objetivo e mude.',
+    },
     old: 'Estes preços estão velhos: a ordem venceu antes de ser confirmada. Leia de novo para investir.',
     updated: 'Preços atualizados. Leia os passos de novo antes de confirmar.',
     updatedHold: 'Os preços acabaram de mudar: leia primeiro.',

@@ -12,6 +12,7 @@ import type { InvestProps } from '../order/Invest';
 import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
 import { InvestScreen } from './InvestScreen';
+import { INTAKE_PATH } from './intake';
 
 // What the invest card tells the conversation. The card itself is tested where it lives
 // (features/order/invest.events.test.ts); here it is a double that hands over what it was given, so
@@ -52,6 +53,8 @@ beforeEach(() => {
       const sheet = (JSON.parse(String(init?.body)) as { sheet: BasketSheet }).sheet;
       return json({ id: 'plan-1', proposal: proposalFor(sheet, 'sandbox') });
     }
+    // an API with no guided intake: the rules reader reads the goal
+    if (path === INTAKE_PATH) return json({ error: 'Route not found' }, 404);
     return json({ error: 'down' }, 503);
   });
 });
