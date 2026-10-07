@@ -449,3 +449,61 @@ describe('a vault’s name', () => {
     ).toBeNull();
   });
 });
+
+describe('an add that stopped after its deposit, finished with the cash in the vault', () => {
+  const finish = (who: Person, id: string) => post(who, `/v1/orders/${id}/continue`);
+
+  it('is finished as any buy is: the swaps left, for the same vault, with no second deposit', async () => {
+    const { who, growVault } = await withTwoVaults('solana');
+    const res = await addTo(who, growVault, 500);
+    expect(res.statusCode, res.body).toBe(200);
+    const add = OrderDetail.parse(res.json());
+    const left = add.legs.filter((l) => l.kind === 'swap');
+    expect(left.length).toBeGreaterThan(0);
+    // the deposit lands, and no swap is signed
+    await settleAll(who, add, undefined, (leg) => leg.kind === 'swap');
+    const cashBefore = BigInt(
+      (await vaultsOf(who, 'solana')).find((v) => v.address === growVault.address)?.cash.raw ?? '0',
+    );
+
+    const answer = await finish(who, add.id);
+    expect(answer.statusCode, answer.body).toBe(200);
+    const next = OrderDetail.parse(answer.json());
+    expect(next).toMatchObject({
+      type: 'buy',
+      continues: add.id,
+      basketId: growVault.basketId,
+      owner: add.owner,
+    });
+    expect(next.depositRaw).toBeUndefined();
+    expect(next.legs.map((l) => l.kind)).toEqual(left.map(() => 'swap'));
+    expect(next.legs.map((l) => l.trades)).toEqual(left.map((l) => l.trades));
+    // signed to its end in the vault the add named, and what it spent was that vault's cash
+    const done = await settleAll(who, next);
+    expect(done.status).toBe('done');
+    const spent = next.legs
+      .flatMap((l) => l.trades)
+      .reduce((sum, t) => sum + BigInt(t.amountInRaw), 0n);
+    const after = (await vaultsOf(who, 'solana')).find((v) => v.address === growVault.address);
+    expect(BigInt(after?.cash.raw ?? '0')).toBe(cashBefore - spent);
+    // the person's other vault was not touched
+    expect((await vaultsOf(who, 'solana')).length).toBe(2);
+  });
+
+  it('has nothing to finish for an add that only deposits: a vault with auto-follow on', async () => {
+    const { who, growVault } = await withTwoVaults('solana');
+    autoFollow = true;
+    try {
+      const res = await addTo(who, growVault, 300);
+      expect(res.statusCode, res.body).toBe(200);
+      const add = OrderDetail.parse(res.json());
+      expect(add.legs.some((l) => l.kind === 'swap')).toBe(false);
+      await settleAll(who, add);
+      const answer = await finish(who, add.id);
+      expect(answer.statusCode).toBe(409);
+      expect(answer.json()).toMatchObject({ code: 'NOTHING_LEFT' });
+    } finally {
+      autoFollow = false;
+    }
+  });
+});

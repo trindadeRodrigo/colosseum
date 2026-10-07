@@ -494,10 +494,12 @@ async function assertNothingInFlight(
     throw new Refusal(
       409,
       'the transaction built earlier for this step has landed: read the order again',
+      { code: 'STEP_LANDED' },
     );
   }
   if (fate.state === 'open' && live(latest))
     throw new Refusal(409, 'the transaction built earlier for this step can still land', {
+      code: 'STEP_IN_FLIGHT',
       fix:
         latest.validUntil === null
           ? 'Report it, or cancel it, before building this step again.'
@@ -580,7 +582,9 @@ export async function buildLeg(
   const [finishedBy] = await continuationsOf(deps.db, order.id);
   if (finishedBy)
     throw new Refusal(409, 'another order finishes this one: its steps left are that order’s', {
+      code: 'ORDER_CONTINUED',
       fix: `Open order ${finishedBy.id}.`,
+      details: { continuedBy: finishedBy.id },
     });
   const waiting = order.legs.find((l) => l.chain === leg.chain && l.seq < leg.seq && !settled(l));
   if (waiting) throw new Refusal(409, 'an earlier step on this chain has not settled yet');
@@ -851,7 +855,9 @@ export async function cancelLeg(
     // Another step's transaction took the nonce: the attempt is closed, which is what was asked.
     if (status === null) return reload(deps, stored.order.id);
     await afterOutcome(deps, stored, status);
-    throw new Refusal(409, 'the transaction of this step has landed: read the order again');
+    throw new Refusal(409, 'the transaction of this step has landed: read the order again', {
+      code: 'STEP_LANDED',
+    });
   }
   if (fate.state === 'open' && attempt.validUntil !== null)
     throw new Refusal(409, 'the transaction of this step can still land until it expires', {

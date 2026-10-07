@@ -3,15 +3,16 @@ import type { OrderDetail } from '@colosseum/schemas';
 import { solanaVaultAddress } from '@colosseum/sdk';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { find, mount, settle, unmountAll } from '../../components/ui/test/dom';
+import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
 import { OrderScreen } from '../order/OrderScreen';
-import { keepOrder } from '../order/order-record';
+import { keepOrder, recallOrder } from '../order/order-record';
 import { assetsOn, ORDER_ID, orderOn, recordOf, USER } from '../order/test/fixtures';
 import type { SharedTerms } from '../shared/terms';
 import { EMBEDDED, json, SOLANA, signedInPort } from '../wallet/test/fake-port';
+import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
@@ -129,5 +130,78 @@ describe('the review of an add of money to a vault', () => {
     });
     expect(primary(other)).toBeNull();
     expect(find(other, '[role="alert"]').textContent).toContain(en.order.mismatch.trades);
+  });
+
+  it('offers to finish an add that stopped after its deposit, and holds the next order to the same vault', async () => {
+    const NEXT_ID = '99999999-9999-4999-8999-999999999999';
+    const add = addOrder();
+    const stopped = {
+      ...add,
+      legs: add.legs.map((l) =>
+        l.kind === 'swap'
+          ? { ...l, status: 'failed' as const }
+          : { ...l, status: 'confirmed' as const, txId: '5'.repeat(64) },
+      ),
+    } as OrderDetail;
+    const { depositRaw: _, ...rest } = add;
+    const next = {
+      ...rest,
+      id: NEXT_ID,
+      approvalUrl: `/orders/${NEXT_ID}`,
+      continues: ORDER_ID,
+      legs: add.legs
+        .filter((l) => l.kind === 'swap')
+        .map((l) => ({ ...l, orderId: NEXT_ID, seq: 0 })),
+    };
+    const person: Person = {
+      userId: USER,
+      wallets: EMBEDDED,
+      chain: 'solana',
+      chainSource: 'picked',
+      chainOptions: [],
+    };
+    portStore.setApi(async (path, init) => {
+      if (path === '/v1/me') return json(person);
+      if (path === `/v1/orders/${ORDER_ID}`) return json(stopped);
+      if (path === `/v1/orders/${NEXT_ID}`) return json(next);
+      if (path === `/v1/orders/${ORDER_ID}/continue`) return json(next);
+      if (init?.method === 'POST') return json({ error: 'params/id must be a uuid' }, 400);
+      return json({ error: 'not found' }, 404);
+    });
+    keepOrder(
+      recordOf('solana', {
+        proposalId: '',
+        lines: [],
+        terms,
+        approved: { order: add, consents: [], at: '2026-10-05T12:00:00Z' },
+      }),
+    );
+    router.push.mockClear();
+    const host = await mount(withAccount('en', createElement(OrderScreen, { id: ORDER_ID })));
+    await settle();
+    await settle();
+    const button = find(host, '[data-ui="order-stopped"] button');
+    expect(button.textContent).toContain(en.order.outcome.finish);
+    expect(host.querySelectorAll('[data-variant="primary"]')).toHaveLength(1);
+    await click(button);
+    await settle();
+    expect(router.push).toHaveBeenCalledWith(`/orders/${NEXT_ID}`);
+    const kept = recallOrder(NEXT_ID, USER);
+    // the same vault, through the same terms, and the trades the add left
+    expect(kept?.terms).toEqual(terms);
+    expect(kept?.continues).toEqual({
+      orderId: ORDER_ID,
+      trades: add.legs.flatMap((l) => l.trades),
+    });
+    // and its review can be signed: no deposit, the swap alone
+    await unmountAll();
+    const review = await mount(withAccount('en', createElement(OrderScreen, { id: NEXT_ID })));
+    await settle();
+    await settle();
+    expect(review.querySelector('[role="alert"]')).toBeNull();
+    expect(find(review, '[data-ui="order-continues"]').textContent).toBe(
+      en.order.review.continuesLead,
+    );
+    expect(review.querySelector('button[data-variant="primary"]')).not.toBeNull();
   });
 });
