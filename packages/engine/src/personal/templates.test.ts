@@ -341,6 +341,204 @@ describe('intake templates', () => {
       );
   });
 
+  // The second review of the intake (Oct 7): the questions and the lines its rules say. The words are
+  // Rodrigo's to set; these hold what is written, in both languages, so a change is a decision.
+  it('asks the split between the things named, the share and the rest, and a refusal against a holding, as written', () => {
+    expect(QUESTION_TEMPLATES.themeShares).toEqual({
+      en: 'How do you want to split the money between {themes}?',
+      pt: 'Como você quer dividir o dinheiro entre {themes}?',
+    });
+    expect(QUESTION_TEMPLATES.themeAndRest).toEqual({
+      en: 'How much of the money for {market}, and how do you want the rest held: kept safe and easy to take out, or seeking a return?',
+      pt: 'Quanto do dinheiro para {market}, e como você quer o restante: seguro e fácil de tirar, ou buscando retorno?',
+    });
+    expect(QUESTION_TEMPLATES.holdOrLeaveOut).toEqual({
+      en: 'You wrote “{refusal}” and also “{held}”. Which one stands? Say how much of the money goes to it, or none.',
+      pt: 'Você escreveu “{refusal}” e também “{held}”. Qual dos dois vale? Diga quanto do dinheiro vai para isso, ou nada.',
+    });
+    const q = (
+      id: keyof typeof QUESTION_TEMPLATES,
+      lang: 'en' | 'pt',
+      params: Record<string, string | number>,
+    ) => render(QUESTION_TEMPLATES[id][lang], params, lang);
+    expect(q('themeShares', 'en', { themes: 'AI and semiconductors' })).toBe(
+      'How do you want to split the money between AI and semiconductors?',
+    );
+    expect(q('themeShares', 'pt', { themes: 'IA e semicondutores' })).toBe(
+      'Como você quer dividir o dinheiro entre IA e semicondutores?',
+    );
+    expect(q('themeAndRest', 'en', { market: 'AI' })).toBe(
+      'How much of the money for AI, and how do you want the rest held: kept safe and easy to take out, or seeking a return?',
+    );
+    expect(q('themeAndRest', 'pt', { market: 'IA' })).toBe(
+      'Quanto do dinheiro para IA, e como você quer o restante: seguro e fácil de tirar, ou buscando retorno?',
+    );
+    expect(q('holdOrLeaveOut', 'en', { refusal: 'No stocks', held: 'all stocks' })).toBe(
+      'You wrote “No stocks” and also “all stocks”. Which one stands? Say how much of the money goes to it, or none.',
+    );
+    expect(q('holdOrLeaveOut', 'pt', { refusal: 'Sem ações', held: 'tudo em ações' })).toBe(
+      'Você escreveu “Sem ações” e também “tudo em ações”. Qual dos dois vale? Diga quanto do dinheiro vai para isso, ou nada.',
+    );
+    // A question that offers a way out says it: "none", "nada".
+    for (const lang of LANGUAGES)
+      expect(QUESTION_TEMPLATES.holdOrLeaveOut[lang]).toMatch(
+        lang === 'pt' ? /ou nada\.$/ : /or none\.$/,
+      );
+  });
+
+  it('asks the share of a filter only the model linked to the words by saying the match, with a way out', () => {
+    expect(QUESTION_TEMPLATES.matchedShare).toEqual({
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
+      en: 'I read “{market}” as {matched}. How much of the ${amount|amount} for them? Say none if that is not what you meant.',
+      pt: 'Li “{market}” como {matched}. Quanto dos US$ {amount|amount} para eles? Diga nada se não era isso que você quis dizer.',
+    });
+    expect(QUESTION_TEMPLATES.matchedShareNoAmount).toEqual({
+      en: 'I read “{market}” as {matched}. How much of the money for them? Say none if that is not what you meant.',
+      pt: 'Li “{market}” como {matched}. Quanto do dinheiro para eles? Diga nada se não era isso que você quis dizer.',
+    });
+    const matched = (lang: 'en' | 'pt') =>
+      render(MATCHED_NAME[lang], { by: FILTER_BY_WORDS[lang].keyword, value: 'GLP-1' }, lang);
+    expect(
+      render(
+        QUESTION_TEMPLATES.matchedShare.en,
+        { market: 'obesity drugs', matched: matched('en'), amount: 2000 },
+        'en',
+      ),
+    ).toBe(
+      'I read “obesity drugs” as names matched by keyword: GLP-1. How much of the $2,000 for them? Say none if that is not what you meant.',
+    );
+    expect(
+      render(
+        QUESTION_TEMPLATES.matchedShare.pt,
+        { market: 'remédios para obesidade', matched: matched('pt'), amount: 2000 },
+        'pt',
+      ),
+    ).toBe(
+      'Li “remédios para obesidade” como nomes filtrados por palavra-chave: GLP-1. Quanto dos US$ 2.000 para eles? Diga nada se não era isso que você quis dizer.',
+    );
+    expect(
+      render(
+        QUESTION_TEMPLATES.matchedShareNoAmount.en,
+        { market: 'obesity drugs', matched: matched('en') },
+        'en',
+      ),
+    ).toBe(
+      'I read “obesity drugs” as names matched by keyword: GLP-1. How much of the money for them? Say none if that is not what you meant.',
+    );
+    // It says the match as a reading, never as a curated theme, and never names a stock.
+    for (const lang of LANGUAGES)
+      for (const id of ['matchedShare', 'matchedShareNoAmount'] as const)
+        expect(QUESTION_TEMPLATES[id][lang], `${id}.${lang}`).not.toMatch(
+          /curated|curadoria|theme|tema/i,
+        );
+  });
+
+  it('says a refusal it took, one of a part, a name it cannot leave out and a share too small, as written', () => {
+    expect(ASSUMPTION_TEMPLATES.REFUSAL_TAKEN).toEqual({
+      en: 'I read “{words}” as leaving out {classes|list}. Say so if that is not what you meant.',
+      pt: 'Li “{words}” como deixar de fora {classes|list}. Diga se não era isso que você quis dizer.',
+    });
+    expect(ASSUMPTION_TEMPLATES.REFUSAL_TAKEN_CREDIT).toEqual({
+      en: 'I read “{words}” as no tokens that lend to borrowers or trade a spread. Say so if that is not what you meant.',
+      pt: 'Li “{words}” como nenhum token que empresta a tomadores ou opera um spread. Diga se não era isso que você quis dizer.',
+    });
+    expect(ASSUMPTION_TEMPLATES.REFUSAL_OF_A_PART).toEqual({
+      en: 'A plan can leave out a whole class, not a part of one, so “{words}” was not applied.',
+      pt: 'Um plano pode deixar de fora uma classe inteira, não uma parte dela, então “{words}” não foi aplicado.',
+    });
+    expect(ASSUMPTION_TEMPLATES.CANNOT_LEAVE_OUT).toEqual({
+      en: 'A plan cannot leave one company out of a list it holds, so “{words}” was not applied.',
+      pt: 'Um plano não deixa uma empresa de fora de uma lista que mantém, então “{words}” não foi aplicado.',
+    });
+    expect(ASSUMPTION_TEMPLATES.SHARE_TOO_SMALL).toEqual({
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
+      en: 'The smallest part a plan of this size can hold is ${least|amount}, so a smaller one was not taken.',
+      pt: 'A menor parte que um plano deste tamanho pode ter é US$ {least|amount}, então uma parte menor não foi considerada.',
+    });
+    const said = (
+      id: keyof typeof ASSUMPTION_TEMPLATES,
+      lang: 'en' | 'pt',
+      params: Record<string, string | number>,
+    ) => render(ASSUMPTION_TEMPLATES[id][lang], params, lang);
+    expect(
+      said('REFUSAL_TAKEN', 'en', { words: 'avoid stocks', classes: 'stocks,stock funds' }),
+    ).toBe(
+      'I read “avoid stocks” as leaving out stocks and stock funds. Say so if that is not what you meant.',
+    );
+    expect(
+      said('REFUSAL_TAKEN', 'pt', { words: 'sem ações', classes: 'ações,fundos de ações' }),
+    ).toBe(
+      'Li “sem ações” como deixar de fora ações e fundos de ações. Diga se não era isso que você quis dizer.',
+    );
+    expect(said('REFUSAL_TAKEN_CREDIT', 'en', { words: 'no loans' })).toBe(
+      'I read “no loans” as no tokens that lend to borrowers or trade a spread. Say so if that is not what you meant.',
+    );
+    expect(said('REFUSAL_TAKEN_CREDIT', 'pt', { words: 'sem crédito' })).toBe(
+      'Li “sem crédito” como nenhum token que empresta a tomadores ou opera um spread. Diga se não era isso que você quis dizer.',
+    );
+    expect(said('REFUSAL_OF_A_PART', 'en', { words: 'No stocks from China' })).toBe(
+      'A plan can leave out a whole class, not a part of one, so “No stocks from China” was not applied.',
+    );
+    expect(said('REFUSAL_OF_A_PART', 'pt', { words: 'Sem ações da China' })).toBe(
+      'Um plano pode deixar de fora uma classe inteira, não uma parte dela, então “Sem ações da China” não foi aplicado.',
+    );
+    expect(said('CANNOT_LEAVE_OUT', 'en', { words: 'no Tesla' })).toBe(
+      'A plan cannot leave one company out of a list it holds, so “no Tesla” was not applied.',
+    );
+    expect(said('CANNOT_LEAVE_OUT', 'pt', { words: 'sem Tesla' })).toBe(
+      'Um plano não deixa uma empresa de fora de uma lista que mantém, então “sem Tesla” não foi aplicado.',
+    );
+    expect(said('SHARE_TOO_SMALL', 'en', { least: 25 })).toBe(
+      'The smallest part a plan of this size can hold is $25, so a smaller one was not taken.',
+    );
+    expect(said('SHARE_TOO_SMALL', 'pt', { least: 25 })).toBe(
+      'A menor parte que um plano deste tamanho pode ter é US$ 25, então uma parte menor não foi considerada.',
+    );
+    // The line a refusal is said in where the model did not read it is the credit line of the
+    // read-back, word for word, so the person reads one thing in both places.
+    for (const lang of LANGUAGES) {
+      const credit = READBACK_TEMPLATES.NO_CREDIT[lang].replace(/\.$/, '');
+      expect(ASSUMPTION_TEMPLATES.REFUSAL_TAKEN_CREDIT[lang].toLowerCase(), lang).toContain(
+        credit.toLowerCase(),
+      );
+    }
+  });
+
+  // Product words follow the brand: goal, limits, plan, portfolio, exit plan, rebalance. The words
+  // these lines use for the product are "plan" and nothing else; none promises a return, and none
+  // names another product.
+  it('the lines of the second review say "plan" for the product, promise nothing and name no one', () => {
+    const lines = [
+      QUESTION_TEMPLATES.themeShares,
+      QUESTION_TEMPLATES.themeAndRest,
+      QUESTION_TEMPLATES.holdOrLeaveOut,
+      QUESTION_TEMPLATES.matchedShare,
+      QUESTION_TEMPLATES.matchedShareNoAmount,
+      ASSUMPTION_TEMPLATES.REFUSAL_TAKEN,
+      ASSUMPTION_TEMPLATES.REFUSAL_TAKEN_CREDIT,
+      ASSUMPTION_TEMPLATES.REFUSAL_OF_A_PART,
+      ASSUMPTION_TEMPLATES.CANNOT_LEAVE_OUT,
+      ASSUMPTION_TEMPLATES.SHARE_TOO_SMALL,
+    ];
+    for (const line of lines)
+      for (const lang of LANGUAGES) {
+        const text = line[lang];
+        expect(text, text).not.toMatch(
+          /\b(?:basket|index|fund of funds|strategy|product|account|wallet app|robo)\b|\b(?:cesta|estratégia|produto|conta)\b/i,
+        );
+        expect(text, text).not.toMatch(
+          /\b(?:return|returns|yield|gain|profit|guarantee|earn|beat|outperform)\w*\s+(?:of|de)\s+\d|\d+\s*%|guarantee|garant/i,
+        );
+        for (const pattern of [...BANNED[lang], ...BRAND_BANNED])
+          expect(text, text).not.toMatch(pattern);
+      }
+    // Where they name the product, the word is "plan" / "plano".
+    for (const id of ['REFUSAL_OF_A_PART', 'CANNOT_LEAVE_OUT', 'SHARE_TOO_SMALL'] as const) {
+      expect(ASSUMPTION_TEMPLATES[id].en).toMatch(/\bplan\b/);
+      expect(ASSUMPTION_TEMPLATES[id].pt).toMatch(/\bplano\b/);
+    }
+  });
+
   it('names a theme filled by a filter by what it was matched by, in both languages', () => {
     expect(placeholdersOf(MATCHED_NAME.pt)).toEqual(placeholdersOf(MATCHED_NAME.en));
     for (const lang of LANGUAGES) {
