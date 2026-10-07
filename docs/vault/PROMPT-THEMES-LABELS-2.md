@@ -70,7 +70,13 @@ Two independent reviewers looked at everything new on Oct 6 and 7. What they con
 
    Judgment calls inside it: Tesla is in Big Tech only to match The Seven (no filing supports it); Sandisk is in Semiconductors though classified as hardware; a company that only holds bitcoin (GameStop, Trump Media, Tesla) and STRC (a preferred stock) are out of Crypto economy; SpaceX is in Defense and in Space, and is classified as telecommunications, so no filter by industry finds it.
 2. **The alternative to the filter**: the model proposes a list, shown "inferred, not curated", and he or the person confirms it. Not built; it needs `/decide`, since it breaks "the model never picks assets".
-3. **The six rules of section 2.**
+3. **The rules the build and its reviews added**, each built and standing until he says otherwise (the open section of `docs/GATES.md`: `MIX-WITHDRAWALS`, `MIX-RISK`, `MIX-AS-WRITTEN`, `MATCH-RULES`):
+   - a field a stock's row marks unverified is never matched on; a fund and a preferred stock are matched by keyword only; a filter fills a sleeve only when the shelf lists at least two names for it;
+   - a narrative held as a theme sleeve takes the share the person wrote, and the rest goes to the safe-yield sleeve (gate EXPLICIT-MIX says "the rest in cash" for a portfolio);
+   - a narrative with nothing to hold no longer becomes "that share in generic stocks at high-risk limits", which is what the first build of EXPLICIT-MIX did;
+   - "no stocks" leaves out stock funds too; a refusal the text states is taken with or without a model;
+   - a holding is taken without a question only when the model read it and the text confirms it, and with no model it is asked once;
+   - withdrawals are set aside first under a stated mix, and the risk a mix takes is found by making the plan.
 4. **The classification names.** `content/stocks/` uses GICS names, which MSCI and S&P own; MSCI's document carries a notice against use in a database, as input to a language model, or commercially, without permission (DESIGN-VAULT section 17, item 30, on `themes/labels`). A licence, or a classification of our own or from the SIC code of each filing.
 5. **For Thom:** the web goal screen no longer asks the country (`eebe04bf` on `engine/plans`); the shared-type commits listed in the first prompt still wait for him.
 
