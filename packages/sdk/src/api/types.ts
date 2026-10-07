@@ -55,14 +55,53 @@ export type PostBasketsPersonalizeBody = {
   thread?: {
     text: string;
     reply: {
-      say: {
-        key: string;
-        fact?: string;
-        why?: string;
-        pick?: string;
-      }[];
-      ask: string | null;
-      open: string[];
+      say: (
+        | {
+            key: 'understood';
+          }
+        | {
+            key: 'notUnderstood';
+          }
+        | {
+            key: 'held';
+          }
+        | {
+            key: 'set';
+            fact: 'goal' | 'amount' | 'income' | 'horizon' | 'risk';
+          }
+        | {
+            key: 'failed';
+            why: 'too_short' | 'too_long' | 'busy' | 'unreachable' | 'unreadable';
+          }
+        | {
+            key: 'unfit';
+            fact: 'goal' | 'amount' | 'income' | 'horizon' | 'risk';
+          }
+        | {
+            key: 'cantPick';
+            pick:
+              | 'nvidia'
+              | 'apple'
+              | 'tesla'
+              | 'microsoft'
+              | 'amazon'
+              | 'google'
+              | 'meta'
+              | 'bitcoin'
+              | 'ether';
+          }
+        | {
+            key: 'riskTop';
+          }
+        | {
+            key: 'riskBottom';
+          }
+        | {
+            key: 'ready';
+          }
+      )[];
+      ask: ('goal' | 'amount' | 'income' | 'horizon' | 'risk') | null;
+      open: ('goal' | 'amount' | 'income' | 'horizon' | 'risk')[];
       facts: {
         goal?: 'grow' | 'income' | 'protect';
         amountUsd?: number;
@@ -574,14 +613,53 @@ export type GetBasketsByIdThreadResponse = {
         at: string;
         who: 'app';
         reply: {
-          say: {
-            key: string;
-            fact?: string;
-            why?: string;
-            pick?: string;
-          }[];
-          ask: string | null;
-          open: string[];
+          say: (
+            | {
+                key: 'understood';
+              }
+            | {
+                key: 'notUnderstood';
+              }
+            | {
+                key: 'held';
+              }
+            | {
+                key: 'set';
+                fact: 'goal' | 'amount' | 'income' | 'horizon' | 'risk';
+              }
+            | {
+                key: 'failed';
+                why: 'too_short' | 'too_long' | 'busy' | 'unreachable' | 'unreadable';
+              }
+            | {
+                key: 'unfit';
+                fact: 'goal' | 'amount' | 'income' | 'horizon' | 'risk';
+              }
+            | {
+                key: 'cantPick';
+                pick:
+                  | 'nvidia'
+                  | 'apple'
+                  | 'tesla'
+                  | 'microsoft'
+                  | 'amazon'
+                  | 'google'
+                  | 'meta'
+                  | 'bitcoin'
+                  | 'ether';
+              }
+            | {
+                key: 'riskTop';
+              }
+            | {
+                key: 'riskBottom';
+              }
+            | {
+                key: 'ready';
+              }
+          )[];
+          ask: ('goal' | 'amount' | 'income' | 'horizon' | 'risk') | null;
+          open: ('goal' | 'amount' | 'income' | 'horizon' | 'risk')[];
           facts: {
             goal?: 'grow' | 'income' | 'protect';
             amountUsd?: number;
@@ -643,14 +721,53 @@ export type PostBasketsByIdThreadParams = {
 export type PostBasketsByIdThreadBody = {
   text: string;
   reply: {
-    say: {
-      key: string;
-      fact?: string;
-      why?: string;
-      pick?: string;
-    }[];
-    ask: string | null;
-    open: string[];
+    say: (
+      | {
+          key: 'understood';
+        }
+      | {
+          key: 'notUnderstood';
+        }
+      | {
+          key: 'held';
+        }
+      | {
+          key: 'set';
+          fact: 'goal' | 'amount' | 'income' | 'horizon' | 'risk';
+        }
+      | {
+          key: 'failed';
+          why: 'too_short' | 'too_long' | 'busy' | 'unreachable' | 'unreadable';
+        }
+      | {
+          key: 'unfit';
+          fact: 'goal' | 'amount' | 'income' | 'horizon' | 'risk';
+        }
+      | {
+          key: 'cantPick';
+          pick:
+            | 'nvidia'
+            | 'apple'
+            | 'tesla'
+            | 'microsoft'
+            | 'amazon'
+            | 'google'
+            | 'meta'
+            | 'bitcoin'
+            | 'ether';
+        }
+      | {
+          key: 'riskTop';
+        }
+      | {
+          key: 'riskBottom';
+        }
+      | {
+          key: 'ready';
+        }
+    )[];
+    ask: ('goal' | 'amount' | 'income' | 'horizon' | 'risk') | null;
+    open: ('goal' | 'amount' | 'income' | 'horizon' | 'risk')[];
     facts: {
       goal?: 'grow' | 'income' | 'protect';
       amountUsd?: number;
@@ -677,14 +794,53 @@ export type PostBasketsByIdThreadResponse = {
         at: string;
         who: 'app';
         reply: {
-          say: {
-            key: string;
-            fact?: string;
-            why?: string;
-            pick?: string;
-          }[];
-          ask: string | null;
-          open: string[];
+          say: (
+            | {
+                key: 'understood';
+              }
+            | {
+                key: 'notUnderstood';
+              }
+            | {
+                key: 'held';
+              }
+            | {
+                key: 'set';
+                fact: 'goal' | 'amount' | 'income' | 'horizon' | 'risk';
+              }
+            | {
+                key: 'failed';
+                why: 'too_short' | 'too_long' | 'busy' | 'unreachable' | 'unreadable';
+              }
+            | {
+                key: 'unfit';
+                fact: 'goal' | 'amount' | 'income' | 'horizon' | 'risk';
+              }
+            | {
+                key: 'cantPick';
+                pick:
+                  | 'nvidia'
+                  | 'apple'
+                  | 'tesla'
+                  | 'microsoft'
+                  | 'amazon'
+                  | 'google'
+                  | 'meta'
+                  | 'bitcoin'
+                  | 'ether';
+              }
+            | {
+                key: 'riskTop';
+              }
+            | {
+                key: 'riskBottom';
+              }
+            | {
+                key: 'ready';
+              }
+          )[];
+          ask: ('goal' | 'amount' | 'income' | 'horizon' | 'risk') | null;
+          open: ('goal' | 'amount' | 'income' | 'horizon' | 'risk')[];
           facts: {
             goal?: 'grow' | 'income' | 'protect';
             amountUsd?: number;
