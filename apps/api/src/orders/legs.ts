@@ -498,6 +498,7 @@ async function assertNothingInFlight(
   }
   if (fate.state === 'open' && live(latest))
     throw new Refusal(409, 'the transaction built earlier for this step can still land', {
+      code: 'STEP_IN_FLIGHT',
       fix:
         latest.validUntil === null
           ? 'Report it, or cancel it, before building this step again.'
@@ -580,7 +581,9 @@ export async function buildLeg(
   const [finishedBy] = await continuationsOf(deps.db, order.id);
   if (finishedBy)
     throw new Refusal(409, 'another order finishes this one: its steps left are that order’s', {
+      code: 'ORDER_CONTINUED',
       fix: `Open order ${finishedBy.id}.`,
+      details: { continuedBy: finishedBy.id },
     });
   const waiting = order.legs.find((l) => l.chain === leg.chain && l.seq < leg.seq && !settled(l));
   if (waiting) throw new Refusal(409, 'an earlier step on this chain has not settled yet');

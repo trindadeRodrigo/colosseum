@@ -235,6 +235,7 @@ async function lockOrder(tx: Tx, orderId: string): Promise<void> {
     );
     if (!busy) throw e;
     throw new Refusal(409, 'this order is being worked on by another request', {
+      code: 'ORDER_BUSY',
       fix: 'Try again in a moment.',
       details: { retryable: true },
     });
@@ -272,6 +273,7 @@ export async function insertContinuation(
       : [];
     if (built.some((attempt) => !first.seen.includes(attempt.id)))
       throw new Refusal(409, 'a step of this order was built just now', {
+        code: 'STEP_IN_FLIGHT',
         fix: 'Report it, or wait until it can no longer land, then finish the buy.',
         details: { retryable: true },
       });
@@ -842,7 +844,9 @@ export async function recordBuild(
       : [];
     if (finishedBy)
       throw new Refusal(409, 'another order finishes this one: its steps left are that order’s', {
+        code: 'ORDER_CONTINUED',
         fix: `Open order ${finishedBy.id}.`,
+        details: { continuedBy: finishedBy.id },
       });
     const { exclusive } = a;
     if (exclusive) {

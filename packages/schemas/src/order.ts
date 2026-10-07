@@ -352,6 +352,21 @@ export const OrderErrorCode = z.enum([
    * changed after it is made: it is made again, at the price now.
    */
   'PRICE_MOVED',
+  // What `POST /v1/orders/{id}/continue` refuses with, and a build of a step for the same reasons.
+  /** Another order already finishes this one: `details.continuedBy` is its id, and it is the one to open. */
+  'ORDER_CONTINUED',
+  /** A transaction built for a step can still land, so the step is not made again yet. Retryable. */
+  'STEP_IN_FLIGHT',
+  /** Every step of the order is done: there is nothing to finish. */
+  'NOTHING_LEFT',
+  /** The vault holds less cash than the steps left would spend. */
+  'VAULT_CASH_SHORT',
+  /** The order's deposit has not landed: its own steps are signed first. */
+  'DEPOSIT_NOT_LANDED',
+  /** Another request is working on the order, and the wait for it ran out. Retryable. */
+  'ORDER_BUSY',
+  /** The order is not one this route finishes: a buy on a chain that trades inside its deposit, or not a buy with a vault. */
+  'CONTINUE_NOT_SUPPORTED',
 ]);
 export type OrderErrorCode = z.infer<typeof OrderErrorCode>;
 
@@ -377,6 +392,8 @@ export const OrderError = ApiError.extend({
        * one could land. Report that step or cancel it, then build again.
        */
       blocking: z.object({ orderId: z.string().min(1), legId: z.string().min(1) }).optional(),
+      /** With `ORDER_CONTINUED`: the id of the order that finishes this one. */
+      continuedBy: z.string().min(1).optional(),
     })
     .optional(),
 });

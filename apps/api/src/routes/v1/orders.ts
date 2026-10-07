@@ -228,7 +228,7 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
         tags,
         summary: 'Finish a buy with the cash already in its vault. Nothing is deposited',
         description:
-          'For a buy whose deposit landed and whose swaps did not all follow: a step was not signed, or could no longer be built at the terms the order stated (`PRICE_MOVED`; an order’s minimums are never changed after it is made). Answers a new order, for the same owner and the same vault, whose steps are the swaps the first one left, with the same amounts, quoted now and stating new minimums to review and approve. It has no `depositRaw` and names the order it finishes in `continues`; its steps spend only the cash the vault holds, and it is refused (409) when the vault holds less than they spend, when the first order’s deposit has not landed, when nothing is left, and while a step of it is built or on its way. An order is finished by one order: called again while that one is still open, it answers that same order, and after that it is refused (409, naming it), since what that order left is its own to finish by this route. From then on the first order builds nothing more. No body. The order is its owner’s alone: anybody else gets 404.',
+          'For a buy whose deposit landed and whose swaps did not all follow: a step was not signed, or could no longer be built at the terms the order stated (`PRICE_MOVED`; an order’s minimums are never changed after it is made). Answers a new order, for the same owner and the same vault, whose steps are the swaps the first one left, with the same amounts, quoted now and stating new minimums to review and approve. It has no `depositRaw` and names the order it finishes in `continues`; its steps spend only the cash the vault holds, and it is refused with 409 and a `code` to act on: `VAULT_CASH_SHORT` when the vault holds less than they spend, `DEPOSIT_NOT_LANDED` when the first order’s deposit has not landed, `NOTHING_LEFT` when every step is done, `STEP_IN_FLIGHT` (retryable) while a transaction built for a step left can still land, `ORDER_BUSY` (retryable) when another request holds the order past the wait, `CONTINUE_NOT_SUPPORTED` for an order this route does not finish (a buy on a chain that trades inside its deposit), and `ORDER_CONTINUED`, with the other order’s id in `details.continuedBy`, once another order finishes it. An order is finished by one order: called again while that one is still open, it answers that same order, and after that it is refused (409, naming it), since what that order left is its own to finish by this route. From then on the first order builds nothing more. No body. The order is its owner’s alone: anybody else gets 404.',
         params: OrderRouteParams,
         response: { 200: OrderDetail, default: OrderError },
       },
@@ -247,7 +247,9 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
         const again = open ? await loadOrder(deps.db, made.id) : null;
         if (again) return detail(again);
         throw new Refusal(409, 'another order finishes this one: what is left is that order’s', {
+          code: 'ORDER_CONTINUED',
           fix: `Finish order ${made.id}.`,
+          details: { continuedBy: made.id },
         });
       };
       const [made] = await continuationsOf(deps.db, stored.order.id);
