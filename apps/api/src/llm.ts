@@ -230,12 +230,19 @@ export function intakeUserMessage(
 }
 
 /** Claude Haiku 4.5 over Anthropic's Messages API, with structured outputs. */
-export function anthropicCall(apiKey: string): ReadCall {
-  const client = new Anthropic({ apiKey, timeout: INTAKE_TIMEOUT_MS, maxRetries: 0 });
+export function anthropicCall(
+  apiKey: string,
+  o: { model?: string; timeoutMs?: number } = {},
+): ReadCall {
+  const client = new Anthropic({
+    apiKey,
+    timeout: o.timeoutMs ?? INTAKE_TIMEOUT_MS,
+    maxRetries: 0,
+  });
   return async (text, nowMonth, language, vocabulary) => {
     try {
       const response = await client.messages.create({
-        model: INTAKE_MODEL_ID,
+        model: o.model ?? INTAKE_MODEL_ID,
         max_tokens: 1_024,
         temperature: 0,
         system: INTAKE_SYSTEM,
@@ -347,22 +354,57 @@ export function budgetedModel(
 
 /**
  * The model the server runs with: Anthropic's, when `ANTHROPIC_API_KEY` is set, with the budgets from
- * `INTAKE_MODEL_DAILY_CALLS` (everyone) and `INTAKE_MODEL_DAILY_CALLS_PER_PERSON` (one person). Null when no key is set: the intake reads with the rules parser alone.
+ * `INTAKE_MODEL_DAILY_CALLS` (everyone) and `INTAKE_MODEL_DAILY_CALLS_PER_PERSON` (one person), the
+ * model from `INTAKE_MODEL` and a call's time from `INTAKE_MODEL_TIMEOUT_MS` (`intakeSettings`). Null
+ * when no key is set: the intake reads with the rules parser alone.
  */
 export function intakeModelFromEnv(env: EnvLike, now?: () => Date): IntakeModel | null {
+  // Read with or without a key, so a value that cannot be read stops the start either way.
+  const settings = intakeSettings(env);
   // As written: keys are case-sensitive.
   const key = env.ANTHROPIC_API_KEY?.trim();
   if (!key) return null;
-  const count = (value: string | undefined, fallback: number) => {
-    const n = Number(value ?? fallback);
-    return Number.isInteger(n) && n >= 0 ? n : fallback;
-  };
-  return budgetedModel(anthropicCall(key), {
-    dailyCalls: count(env.INTAKE_MODEL_DAILY_CALLS, INTAKE_DAILY_CALLS),
-    dailyCallsPerPerson: count(
-      env.INTAKE_MODEL_DAILY_CALLS_PER_PERSON,
-      INTAKE_DAILY_CALLS_PER_PERSON,
-    ),
+  return budgetedModel(anthropicCall(key, settings), {
+    id: settings.model,
+    dailyCalls: settings.dailyCalls,
+    dailyCallsPerPerson: settings.dailyCallsPerPerson,
     now,
   });
+}
+
+/**
+ * The intake model's settings, from the environment, each with today's value as its default:
+ * `INTAKE_MODEL` (the model's id), `INTAKE_MODEL_TIMEOUT_MS` (one call's time, 500 to 60,000) and the
+ * two budgets of calls a day. A value that cannot be read throws, naming the variable and what it
+ * takes: the server does not start on a setting it would have to guess. The message never holds a
+ * value, and the key is not read here.
+ */
+export function intakeSettings(env: EnvLike): {
+  model: string;
+  timeoutMs: number;
+  dailyCalls: number;
+  dailyCallsPerPerson: number;
+} {
+  const whole = (name: string, fallback: number, min: number, max: number) => {
+    const raw = env[name]?.trim();
+    if (raw === undefined || raw === '') return fallback;
+    const n = Number(raw);
+    if (!/^\d+$/.test(raw) || !Number.isSafeInteger(n) || n < min || n > max)
+      throw new Error(`${name} must be a whole number from ${min} to ${max}`);
+    return n;
+  };
+  const model = env.INTAKE_MODEL?.trim() || INTAKE_MODEL_ID;
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:@-]{0,99}$/.test(model))
+    throw new Error('INTAKE_MODEL must be a model id: letters, digits, dots and dashes');
+  return {
+    model,
+    timeoutMs: whole('INTAKE_MODEL_TIMEOUT_MS', INTAKE_TIMEOUT_MS, 500, 60_000),
+    dailyCalls: whole('INTAKE_MODEL_DAILY_CALLS', INTAKE_DAILY_CALLS, 0, 10_000_000),
+    dailyCallsPerPerson: whole(
+      'INTAKE_MODEL_DAILY_CALLS_PER_PERSON',
+      INTAKE_DAILY_CALLS_PER_PERSON,
+      0,
+      10_000_000,
+    ),
+  };
 }

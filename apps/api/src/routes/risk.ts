@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   assets as assetsTable,
-  createDb,
   riskAssetSnapshots,
   riskDepthCurves,
   riskEvents,
@@ -13,6 +12,7 @@ import {
   riskPoolFlow,
   riskPoolSnapshots,
   riskPools,
+  sharedDb,
 } from '@colosseum/db';
 import {
   type AssetCurves,
@@ -79,7 +79,8 @@ const EVM_POOLS_NOT_IN_REGISTRY =
   'not collected on Robinhood Chain: its pools are not in the pool registry (PLAN-UNIVERSE RU.14, DU6)';
 
 export async function registerRiskRoutes(app: FastifyInstance) {
-  const { db } = createDb();
+  // The process's one pool (packages/db: `sharedDb`).
+  const { db } = sharedDb();
   const f = app.withTypeProvider<ZodTypeProvider>();
 
   async function resolveAsset(id: string) {
