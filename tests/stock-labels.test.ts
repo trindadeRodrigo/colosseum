@@ -211,23 +211,78 @@ describe('the stock labels (content/themes)', () => {
   });
 
   // Membership is a person's call (gate THEMES): a list is confirmed here, by name, with the decision
-  // that confirmed it, or it is proposed. Confirming a list means adding it to this table with its
-  // gate row, in the same change: a status flipped in a file alone fails.
-  const CONFIRMED: Record<string, string> = { 'solana/ai': 'THEME-AI-SOLANA' };
-  it('the confirmed lists are exactly the ones a recorded decision confirmed; every other is proposed', () => {
-    const gates = readFileSync(join(ROOT, 'docs/GATES.md'), 'utf8');
+  // that confirmed it and the members it confirmed, or it is proposed. Confirming a list, or changing
+  // a name on a confirmed one, means changing this table with its gate row, in the same change: a
+  // status flipped or a name changed in a file alone fails.
+  /** The decisions that confirmed lists, as docs/GATES.md records them: the day, and who confirmed. */
+  const DECISIONS: Record<string, { on: string; by: string }> = {
+    'THEME-AI-SOLANA': { on: '2026-10-05', by: 'Rodrigo' },
+    // "Confirm all" (Rodrigo, Oct 7): every list proposed on Oct 6, with the members it was proposed
+    // with, on Solana and Robinhood Chain.
+    'LABELS-CONFIRMED': { on: '2026-10-07', by: 'Rodrigo' },
+  };
+  /** Each confirmed list: the gate that confirmed it, and its members as confirmed. */
+  const CONFIRMED: Record<string, [gate: string, members: string]> = {
+    'solana/ai': ['THEME-AI-SOLANA', 'NVDAx MSFTx GOOGLx METAx AMZNx TSLAx AAPLx'],
+    'solana/ai-infrastructure': ['LABELS-CONFIRMED', 'NVDAx MSFTx AMZNx GOOGLx'],
+    'solana/big-tech': ['LABELS-CONFIRMED', 'AAPLx MSFTx GOOGLx AMZNx METAx NVDAx TSLAx'],
+    'solana/broad-market': ['LABELS-CONFIRMED', 'SPYx QQQx'],
+    'solana/cloud-software': ['LABELS-CONFIRMED', 'MSFTx AMZNx GOOGLx PLTRx'],
+    'solana/commodities': ['LABELS-CONFIRMED', 'GLDx'],
+    'solana/crypto-economy': ['LABELS-CONFIRMED', 'COINx CRCLx HOODx MSTRx'],
+    'solana/defense': ['LABELS-CONFIRMED', 'PLTRx SPCXx'],
+    'solana/ev-autonomy': ['LABELS-CONFIRMED', 'TSLAx GOOGLx'],
+    'solana/fintech': ['LABELS-CONFIRMED', 'HOODx COINx CRCLx'],
+    'solana/retail-favourites': ['LABELS-CONFIRMED', 'GMEx'],
+    'solana/semiconductors': ['LABELS-CONFIRMED', 'NVDAx'],
+    'solana/social-media': ['LABELS-CONFIRMED', 'METAx'],
+    'solana/space': ['LABELS-CONFIRMED', 'SPCXx'],
+    'robinhood/ai': ['LABELS-CONFIRMED', 'NVDA MSFT GOOGL META AMZN TSLA AAPL'],
+    'robinhood/ai-infrastructure': [
+      'LABELS-CONFIRMED',
+      'NVDA AMD INTC MU TSM DELL CRWV NBIS ORCL MSFT AMZN GOOGL',
+    ],
+    'robinhood/big-tech': ['LABELS-CONFIRMED', 'AAPL MSFT GOOGL AMZN META NVDA TSLA'],
+    'robinhood/broad-market': ['LABELS-CONFIRMED', 'SPY QQQ'],
+    'robinhood/cloud-software': ['LABELS-CONFIRMED', 'MSFT AMZN GOOGL ORCL PLTR'],
+    'robinhood/commodities': ['LABELS-CONFIRMED', 'GLD SLV USO USAR'],
+    'robinhood/crypto-economy': ['LABELS-CONFIRMED', 'COIN CRCL MSTR CLSK'],
+    'robinhood/defense': ['LABELS-CONFIRMED', 'PLTR RKLB SPCX'],
+    'robinhood/emerging-markets-asia': ['LABELS-CONFIRMED', 'TSM BABA EWY'],
+    'robinhood/ev-autonomy': ['LABELS-CONFIRMED', 'TSLA GOOGL'],
+    'robinhood/fintech': ['LABELS-CONFIRMED', 'COIN CRCL'],
+    'robinhood/health-care': ['LABELS-CONFIRMED', 'LLY HIMS'],
+    'robinhood/quantum-computing': ['LABELS-CONFIRMED', 'IONQ RGTI'],
+    'robinhood/retail-favourites': ['LABELS-CONFIRMED', 'GME AMC'],
+    'robinhood/semiconductors': ['LABELS-CONFIRMED', 'NVDA AMD INTC MU TSM ASML SNDK'],
+    'robinhood/social-media': ['LABELS-CONFIRMED', 'META RDDT DJT'],
+    'robinhood/space': ['LABELS-CONFIRMED', 'SPCX RKLB'],
+  };
+  it('the confirmed lists are exactly the ones a recorded decision confirmed, each with the members it confirmed; every other is proposed', () => {
+    const gates = readFileSync(join(ROOT, 'docs/GATES.md'), 'utf8').split('\n');
+    const rowOf = (gate: string) => gates.find((l) => l.startsWith(`| **${gate}** |`)) ?? '';
     const confirmed = labels.filter((l) => l.list.status === 'confirmed');
     expect(confirmed.map((l) => `${l.chain}/${l.list.slug}`).sort()).toEqual(
       Object.keys(CONFIRMED).sort(),
     );
     for (const { chain, file, list } of confirmed) {
-      expect(list.gate, `${chain}/${file}`).toBe(CONFIRMED[`${chain}/${list.slug}`]);
-      expect(gates, `${chain}/${file}`).toContain(`| **${list.gate}** |`);
+      const [gate = '', members = ''] = CONFIRMED[`${chain}/${list.slug}`] ?? [];
+      expect(list.gate, `${chain}/${file}`).toBe(gate);
+      // The decision is on record, names this label, and the file carries its day and who made it.
+      expect(rowOf(gate), `${chain}/${file}`).toContain(list.name.en);
+      expect({ on: list.decidedOn, by: list.curator }, `${chain}/${file}`).toEqual(DECISIONS[gate]);
+      expect(list.members.map((m) => m.symbol).join(' '), `${chain}/${file}`).toBe(members);
     }
     for (const { chain, file, list } of labels)
       if (list.status !== 'confirmed') {
         expect(list.status, `${chain}/${file}`).toBe('proposed');
         expect(list.gate, `${chain}/${file}`).toBeUndefined();
       }
+  });
+
+  // Gate LABELS-CONFIRMED covers Solana and Robinhood Chain, and gate CHAINS-NOW keeps this work to
+  // those two: there is no list for another chain.
+  it('the lists are of Solana and Robinhood Chain, and of no other chain', () => {
+    expect(sorted(labels.map((l) => l.chain))).toEqual([...CHAINS].sort());
   });
 });

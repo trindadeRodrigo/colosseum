@@ -13,18 +13,54 @@ afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 describe('loadThemeLists', () => {
   it('reads the lists of a chain from content/themes, and nothing for a chain with no folder', () => {
     const solana = loadThemeLists('solana');
-    // The Solana AI list is confirmed (gate THEME-AI-SOLANA). The stock labels beside it are proposed
-    // until a person confirms each (gate THEMES); tests/stock-labels.test.ts holds what they contain.
-    // Exactly one list is confirmed, as before the labels: a status flipped in a file fails here.
-    expect(
-      solana.filter((t) => t.status === 'confirmed').map((t) => [t.slug, t.members.length]),
-    ).toEqual([['ai', 7]]);
+    // The Solana AI list is confirmed by gate THEME-AI-SOLANA, and the stock labels of Solana and
+    // Robinhood Chain by gate LABELS-CONFIRMED (Rodrigo, Oct 7): tests/stock-labels.test.ts holds
+    // each by name, with its decision and its members. The confirmed lists the server hands in are
+    // exactly these, each with this many names: a status flipped in a file, or a name added to one
+    // or taken off it, fails here.
+    const confirmed = (lists: typeof solana) =>
+      lists.filter((t) => t.status === 'confirmed').map((t) => [t.slug, t.members.length]);
+    expect(confirmed(solana)).toEqual([
+      ['ai-infrastructure', 4],
+      ['ai', 7],
+      ['big-tech', 7],
+      ['broad-market', 2],
+      ['cloud-software', 4],
+      ['commodities', 1],
+      ['crypto-economy', 4],
+      ['defense', 2],
+      ['ev-autonomy', 2],
+      ['fintech', 3],
+      ['retail-favourites', 1],
+      ['semiconductors', 1],
+      ['social-media', 1],
+      ['space', 1],
+    ]);
     expect(solana.length).toBeGreaterThan(1);
     expect(solana.every((t) => t.chain === 'solana')).toBe(true);
     const robinhood = loadThemeLists('robinhood');
     expect(robinhood.length).toBeGreaterThan(1);
     expect(robinhood.every((t) => t.chain === 'robinhood')).toBe(true);
-    expect(robinhood.filter((t) => t.status === 'confirmed')).toEqual([]);
+    expect(confirmed(robinhood)).toEqual([
+      ['ai-infrastructure', 12],
+      ['ai', 7],
+      ['big-tech', 7],
+      ['broad-market', 2],
+      ['cloud-software', 5],
+      ['commodities', 4],
+      ['crypto-economy', 4],
+      ['defense', 3],
+      ['emerging-markets-asia', 3],
+      ['ev-autonomy', 2],
+      ['fintech', 2],
+      ['health-care', 2],
+      ['quantum-computing', 2],
+      ['retail-favourites', 2],
+      ['semiconductors', 7],
+      ['social-media', 3],
+      ['space', 2],
+    ]);
+    // Nothing for another chain (gate CHAINS-NOW).
     expect(loadThemeLists('base')).toEqual([]);
   });
 

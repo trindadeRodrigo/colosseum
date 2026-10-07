@@ -126,7 +126,9 @@ The examples answer those, so they run either way.
   the environment, else the local default. This mode reads no exchange rate, as the API reads none
   yet, so a withdrawal in reais has no plan here.
 
-Theme lists come from `content/themes/<chain>/` in both modes.
+Theme lists come from `content/themes/<chain>/` in both modes. Every list there is confirmed (Solana and
+Robinhood Chain, gate `LABELS-CONFIRMED`), so a market that has a list with a name on the shelf is read
+to its list.
 
 ## The two fixture shelves
 

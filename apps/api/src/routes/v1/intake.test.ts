@@ -130,10 +130,24 @@ const twoNames = {
     row.symbol === 'TSLAx' ? { ...row, keywords: [...row.keywords, 'data centers'] } : row,
   ),
 };
-const withMockStocks: PlanInputs = async (q) => ({
-  ...(await bearingPlanInputs(q)),
-  ...(q.chain === 'solana' ? { stocks: parseStockAttributes(twoNames, 'mock-stocks.json') } : {}),
-});
+// MOCK too: two of the chain's lists handed in as proposed. Every real list is confirmed (gate
+// LABELS-CONFIRMED, Oct 7), so the rule for one that is not (it fills nothing, and the filters of
+// the word list are read) is held on these.
+const PROPOSED = ['ai-infrastructure', 'semiconductors'];
+const withMockStocks: PlanInputs = async (q) => {
+  const figures = await bearingPlanInputs(q);
+  return {
+    ...figures,
+    ...(q.chain === 'solana' ? { stocks: parseStockAttributes(twoNames, 'mock-stocks.json') } : {}),
+    ...(figures.themes
+      ? {
+          themes: figures.themes.map((list) =>
+            PROPOSED.includes(list.slug) ? { ...list, status: 'proposed' as const } : list,
+          ),
+        }
+      : {}),
+  };
+};
 
 let issuer: TestIssuer;
 let data: Awaited<ReturnType<typeof testDb>>;
@@ -161,7 +175,7 @@ beforeAll(async () => {
   // No model configured: the server's own default with no key in the environment.
   ({ app: off } = await testApp({ issuer: issuer.issuer, db: data.db, now }));
   undo.push(() => off.close());
-  // No model, and the MOCK attributes above as the chain's.
+  // No model, and the MOCK attributes and the two MOCK proposed lists above as the chain's.
   ({ app: mocked } = await testApp({
     issuer: issuer.issuer,
     db: data.db,
@@ -563,9 +577,64 @@ describe('POST /v1/baskets/intake', () => {
     expect(ai.questions).toEqual([]);
     expect(ai.sheet?.sleeves).toEqual([{ kind: 'theme', theme: 'ai', shareBps: 10_000 }]);
     expect(ai.readBack?.join(' ')).toContain('100% of the plan for the theme AI.');
-    // AI infrastructure, on the MOCK attributes: its label is proposed, not confirmed, so the filter
-    // of the word list is read (keyword data centers), and the chain lists two names that carry it.
-    // Said as matched, not curated.
+    // AI infrastructure and semiconductors: their Solana lists are confirmed too (gate
+    // LABELS-CONFIRMED, Oct 7), so each reads to its list, as AI does, and no filter is read for it.
+    const centersText = 'I want to invest $2,000 in data centers for 5 years';
+    const chipsText = 'I want to invest $2,000 in semiconductors for 5 years';
+    const centers = await ask(centersText, ['yes']);
+    expect(centers.narratives).toEqual([
+      {
+        id: 'ai_infrastructure',
+        words: 'data centers',
+        kind: 'label',
+        slug: 'ai-infrastructure',
+        filter: null,
+        name: 'AI infrastructure',
+      },
+    ]);
+    expect(centers.flags).not.toContain('label_proposed:ai-infrastructure');
+    expect(centers.sheet?.sleeves).toEqual([
+      { kind: 'theme', theme: 'ai-infrastructure', shareBps: 10_000 },
+    ]);
+    expect(centers.readBack?.join(' ')).toContain(
+      '100% of the plan for the theme AI infrastructure.',
+    );
+    // Semiconductors: its Solana list names one stock, and the chain lists it. A list a person
+    // confirmed is held where a filter that matches one name is not (below): the name up to the most
+    // a plan holds in one stock at its risk, and the rest of the sleeve in dollar yield, then cash,
+    // each line saying which it is.
+    const chips = await ask(chipsText, ['yes']);
+    expect(chips.narratives).toEqual([
+      {
+        id: 'semiconductors',
+        words: 'semiconductors',
+        kind: 'label',
+        slug: 'semiconductors',
+        filter: null,
+        name: 'Semiconductors',
+      },
+    ]);
+    expect(chips.flags).not.toContain('label_proposed:semiconductors');
+    expect(chips.sheet?.sleeves).toEqual([
+      { kind: 'theme', theme: 'semiconductors', shareBps: 10_000 },
+    ]);
+    const oneName = await post(who, '/v1/baskets/personalize', { sheet: chips.sheet });
+    expect(oneName.statusCode, oneName.body).toBe(200);
+    const held = PersonalizeResponse.parse(oneName.json()).proposal;
+    const rulesOf = (line: (typeof held.lines)[number]) => line.reasons.map((r) => r.rule);
+    const names = held.lines.filter((l) => rulesOf(l).includes('THEME_MEMBER'));
+    expect(names.map(rulesOf)).toEqual([expect.arrayContaining(['SINGLE_STOCK_CAP'])]);
+    const rest = held.lines.filter((l) => rulesOf(l).includes('OVERFLOW_STOCK_CAP'));
+    expect(rest.length).toBeGreaterThan(0);
+    // The one name and the lines that say what was meant for it are the whole plan: no part of the
+    // sleeve is held without its reason.
+    expect([...names, ...rest].reduce((bps, l) => bps + l.weightBps, 0)).toBe(10_000);
+    expect(names[0]?.weightBps).toBeLessThan(10_000);
+    // A list that is only proposed fills nothing (gate THEMES), so the filters of the word list are
+    // read for its narrative. No real list is proposed any more: the rule is held on the MOCK lists
+    // and the MOCK attributes of `mocked`. There the AI infrastructure list is proposed, so the
+    // filter is read (keyword data centers), and the chain lists two names that carry it. Said as
+    // matched, not curated.
     const onMock = async (text: string, followUps: string[] = []) =>
       IntakeResponse.parse(
         (
@@ -577,7 +646,6 @@ describe('POST /v1/baskets/intake', () => {
           )
         ).json(),
       );
-    const centersText = 'I want to invest $2,000 in data centers for 5 years';
     expect((await onMock(centersText)).questions).toMatchObject([
       { field: 'mix', template: 'marketShare', read: WHOLE },
     ]);
@@ -603,9 +671,10 @@ describe('POST /v1/baskets/intake', () => {
     expect(
       proposal.lines.some((l) => l.reasons.some((r) => r.rule === 'THEME_MATCHED_MEMBER')),
     ).toBe(true);
-    // Semiconductors: its label is proposed too, and its filter matches one name alone on Solana.
-    // A filter is never used to pick one stock (Oct 7): nothing is held, and the line says why.
-    const one = await ask('I want to invest $2,000 in semiconductors for 5 years');
+    // Semiconductors, on the same MOCK lists: its list is proposed too, and its filter matches one
+    // name alone on the chain. A filter is never used to pick one stock (Oct 7): nothing is held, and
+    // the line says why.
+    const one = await onMock(chipsText);
     expect(one.narratives).toMatchObject([{ id: 'semiconductors', kind: 'none', slug: null }]);
     expect(one.flags).toEqual(
       expect.arrayContaining(['label_proposed:semiconductors', 'filter_one_name:semiconductors']),

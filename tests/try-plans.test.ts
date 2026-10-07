@@ -300,6 +300,58 @@ describe('what the playground hands the intake', () => {
     );
     expect(plain.intake.sheet).toMatchObject({ amountUsd: 2000, risk: 'medium' });
   });
+
+  // Gate THEMES: only a list a person confirmed fills a theme sleeve. Every list of the two chains
+  // is confirmed (gate LABELS-CONFIRMED, Oct 7), so the rule is held on a MOCK list: the chain's own
+  // AI list, handed in as proposed.
+  it.each(['solana', 'robinhood'] as const)(
+    'on %s, a split that names a theme whose list is only proposed is asked again, and no plan is made',
+    async (chain) => {
+      const read = fixturesSource();
+      const proposed: DataSource = {
+        ...read,
+        forChain: async (on) => {
+          const data = await read.forChain(on);
+          return {
+            ...data,
+            labels: data.labels.map((l) =>
+              l.slug === 'ai' ? { ...l, status: 'proposed' as const } : l,
+            ),
+            context: {
+              ...data.context,
+              themes: (data.context.themes ?? []).map((t) =>
+                t.slug === 'ai' ? { ...t, status: 'proposed' as const } : t,
+              ),
+            },
+          };
+        },
+      };
+      const sleeves = [
+        { kind: 'goal' as const, shareBps: 5000 },
+        { kind: 'theme' as const, shareBps: 5000, theme: 'ai' },
+      ];
+      const half = goalOf(
+        'Grow $10,000 over ten years. I want half of it in AI companies.',
+        { goal: 'grow', amountUsd: 10_000, horizonMonths: 120, risk: 'high', sleeves },
+        chain,
+      );
+      const asked = await run(half, proposed);
+      expect(asked.intake.sheet).toBeNull();
+      expect(asked.plain).toBeNull();
+      expect(asked.intake.questions.map((q) => q.field)).toEqual(['sleeves']);
+      expect(asked.intake.flags).toEqual(
+        expect.arrayContaining(['label_proposed:ai', 'answer_not_on_shelf:sleeves']),
+      );
+      // The same goal on the lists as they are, confirmed: the split is held, and the plan holds
+      // names of the list in its theme sleeve.
+      const held = await run(half);
+      expect(held.intake.questions).toEqual([]);
+      expect(held.intake.sheet?.sleeves).toEqual(sleeves);
+      expect(
+        held.made?.shown[0]?.plan.split?.some((s) => s.theme === 'ai' && s.holds.length > 0),
+      ).toBe(true);
+    },
+  );
 });
 
 describe('a model reply pasted in the file', () => {
@@ -682,9 +734,9 @@ describe('the two shelves side by side, with pnpm plan:compare', () => {
       expect(text).toBe(compareMarkdown(b, chain, NOW.toISOString()));
       expect(text).toContain('Every figure is MOCK');
       // The count at the foot is over the goals that have a plan: the vague goal has none on either
-      // shelf and is counted neither as changed nor as unchanged. Nor has "half in AI" on Robinhood
-      // Chain: its AI list is proposed, not confirmed, so a split that names it is asked again (gate
-      // THEMES), where Solana's confirmed list is held.
+      // shelf and is counted neither as changed nor as unchanged. "Half in AI" has one on both
+      // chains: the AI list is confirmed on Solana (gate THEME-AI-SOLANA) and on Robinhood Chain
+      // (gate LABELS-CONFIRMED, Oct 7), so a split that names it is held.
       const weights = (r: GoalRun) =>
         JSON.stringify([
           r.plain?.lines.map((l) => [l.assetId, l.weightBps]),
@@ -693,9 +745,12 @@ describe('the two shelves side by side, with pnpm plan:compare', () => {
       const planned = a.filter((g) => g.launch.run.made || g.extended.run.made);
       const unchanged = planned.filter((g) => weights(g.launch.run) === weights(g.extended.run));
       const unplanned = a.filter((g) => !g.launch.run.made && !g.extended.run.made);
-      expect(unplanned.map((g) => g.title)).toEqual(
-        chain === 'robinhood' ? ['Grow, half in AI', 'Something vague'] : ['Something vague'],
-      );
+      expect(unplanned.map((g) => g.title)).toEqual(['Something vague']);
+      const halfInAi = a.find((g) => g.title === 'Grow, half in AI');
+      for (const shelf of [halfInAi?.launch.run, halfInAi?.extended.run])
+        expect(
+          shelf?.made?.shown[0]?.plan.split?.some((s) => s.theme === 'ai' && s.holds.length > 0),
+        ).toBe(true);
       expect(planned.length).toBe(a.length - unplanned.length);
       expect(text).toContain(
         `Goals with a plan on either shelf: ${planned.length} of ${a.length}. Of those, no line changed in ${unchanged.length}.`,
