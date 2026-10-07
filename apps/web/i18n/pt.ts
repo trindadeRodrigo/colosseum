@@ -457,7 +457,7 @@ export const pt: Dictionary = {
       valueMethod: 'posições lidas do cofre, vezes seus preços; caixa a um dólar',
       takenOut: 'Sacado',
       takenOutMethod: (n: number) =>
-        `a soma ${n === 1 ? 'do token' : `dos ${n} tokens`} que seus saques confirmados tiraram deste cofre, cada um ao preço de referência de quando o saque foi pedido; caixa a um dólar`,
+        `${n === 1 ? '1 token sacado' : `${n} tokens sacados`}, cada um ao preço de referência do pedido`,
       takenUnvalued: (n: number) =>
         `${n === 1 ? 'Um token sacado não tinha' : `${n} tokens sacados não tinham`} preço na hora, e não ${n === 1 ? 'entra' : 'entram'} em soma.`,
       positionMethod: (method: string) => `${method}; vezes a quantidade que o cofre guarda`,

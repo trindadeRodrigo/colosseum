@@ -512,7 +512,7 @@ export const en = {
       valueMethod: 'holdings read from the vault, times their prices; cash at one dollar',
       takenOut: 'Taken out',
       takenOutMethod: (n: number) =>
-        `the sum of ${n === 1 ? 'the one token' : `the ${n} tokens`} your confirmed withdrawals took out of this vault, each at the reference price when the withdrawal was ordered; cash at one dollar`,
+        `${n === 1 ? '1 token' : `${n} tokens`} withdrawn, each at the reference price when ordered`,
       takenUnvalued: (n: number) =>
         `${n === 1 ? 'One token taken out had' : `${n} tokens taken out had`} no price then, and ${n === 1 ? 'is' : 'are'} not in a sum.`,
       /** The method line in the pin of one holding's value, after its price's own method. */

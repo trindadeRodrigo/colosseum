@@ -205,42 +205,45 @@ describe.each(CHAINS)('POST /v1/orders, a withdrawal on %s', (chain) => {
 describe('a withdrawal with a token that cannot move', () => {
   it('skips that token’s step with its reason, signs the rest, and the order is done with the skip on it', async () => {
     const a = await someone('solana');
-    await openVault(a);
-    const vault = await vaultOf(a, 'solana');
-    const stuck = vault.positions.find((p) => BigInt(p.raw) > 0n)?.asset;
-    if (!stuck) throw new Error('the vault holds no position');
-    // The same chain, with that one token frozen by its issuer, as the Solana adapter says it.
-    const { app: frozen } = await testApp({
+    // The same chain with one token frozen by its issuer, as the Solana adapter says it. The app has
+    // a chain of its own, so the vault is opened on it.
+    let stuck: string | undefined;
+    const { app: frozen, registry: chain } = await testApp({
       issuer: issuer.issuer,
       db: data.db,
       wrap: (inner) => ({
         ...inner,
         get: (c) => {
           const entry = inner.get(c);
-          return {
-            ...entry,
-            adapter: {
-              ...entry.adapter,
-              buildWithdrawInKind: async (args) => {
-                if (args.assets?.includes(stuck))
-                  throw new ChainError(
-                    'BalanceUnreadable',
-                    "the vault's account of it is frozen by its issuer",
-                  );
-                return entry.adapter.buildWithdrawInKind(args);
-              },
-            },
+          const buildWithdrawInKind: typeof entry.adapter.buildWithdrawInKind = async (args) => {
+            if (stuck && args.assets?.includes(stuck))
+              throw new ChainError(
+                'BalanceUnreadable',
+                "the vault's account of it is frozen by its issuer",
+              );
+            return entry.adapter.buildWithdrawInKind(args);
           };
+          return { ...entry, adapter: { ...entry.adapter, buildWithdrawInKind } };
         },
       }),
     });
     undo.push(() => frozen.close());
+    await openVault(a, frozen);
+    const vaultNow = async () => {
+      const [v] = await chain.get('solana').adapter.getVaults(walletOf(a));
+      if (!v) throw new Error('no vault');
+      return v;
+    };
+    const vault = await vaultNow();
+    stuck = vault.positions.find((p) => BigInt(p.raw) > 0n)?.asset;
+    if (!stuck) throw new Error('the vault holds no position');
     const res = await post(
       a,
       '/v1/orders',
       { type: 'withdraw', vaults: [vault.address], sellToCash: false },
       frozen,
     );
+    expect(res.statusCode, res.body).toBe(200);
     const order = OrderDetail.parse(res.json());
     const leg = order.legs.find((l) => l.withdrawals?.[0]?.asset === stuck);
     if (!leg) throw new Error('no step for the frozen token');
@@ -275,7 +278,7 @@ describe('a withdrawal with a token that cannot move', () => {
     expect(latest.legs.filter((l) => l.status === 'confirmed')).toHaveLength(order.legs.length - 1);
     expect(done.status).toBe('done');
     expect(done.legs.filter((l) => l.status === 'skipped').map((l) => l.id)).toEqual([leg.id]);
-    const after = await vaultOf(a, 'solana');
+    const after = await vaultNow();
     expect(BigInt(after.cash.raw)).toBe(0n);
     expect(after.positions.find((p) => p.asset === stuck)?.raw).toBe(
       vault.positions.find((p) => p.asset === stuck)?.raw,
