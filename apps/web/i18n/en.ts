@@ -413,6 +413,7 @@ export const en = {
     buy: (amount: string, when: string) => `Buy of ${amount} · ${when}`,
     order: (when: string) => `Order · ${when}`,
     follow: (when: string) => `Follow a shared portfolio · ${when}`,
+    withdraw: (when: string) => `Withdrawal · ${when}`,
     publish: (when: string) => `Publish a portfolio · ${when}`,
     noneVault:
       'Nothing from your buys has reached the chain yet. The keeper’s trades, and orders about a shared portfolio placed in another browser, are not listed here yet.',
@@ -547,6 +548,14 @@ export const en = {
       observed: (when: string) => `Read from the chain on ${when}.`,
       /** The method line in the pin of a vault's whole value. */
       valueMethod: 'holdings read from the vault, times their prices; cash at one dollar',
+      takenOut: 'Taken out, as ordered',
+      /** On an EVM chain a step that takes everything can pass over a token: the sum is what was ordered. */
+      takenOrdered:
+        'This counts what your withdrawals ordered. A token one of them couldn’t move is still in the holdings below.',
+      takenOutMethod: (n: number) =>
+        `${n === 1 ? '1 token' : `${n} tokens`} withdrawn, each at the reference price when ordered`,
+      takenUnvalued: (n: number) =>
+        `${n === 1 ? 'One token taken out had' : `${n} tokens taken out had`} no price then, and ${n === 1 ? 'is' : 'are'} not in a sum.`,
       /** The method line in the pin of one holding's value, after its price's own method. */
       positionMethod: (method: string) => `${method}; times the amount the vault holds`,
     },
@@ -567,6 +576,7 @@ export const en = {
       followsShared: 'It follows a shared portfolio. What it holds is below.',
       seeShared: 'See that portfolio',
       putIn: (amount: string) => `you put in ${amount}`,
+      tookOut: 'you took some out since',
       seePlan: 'See your plan',
       seeOrder: 'See the order',
       startGoal: 'Start with your goal',
@@ -785,7 +795,8 @@ export const en = {
       `In a bad fall, the engine counts a loss of about ${amount} on this plan.`,
     exitUnmeasured: 'Not measured yet, so no cost is shown.',
     exitCost: (cost: string) => `≤ ${cost}`,
-    inKind: 'You can also take the tokens themselves out of your vault at any time.',
+    inKind:
+      'You can take the tokens themselves out of your vault at any time. Selling them to cash for you isn’t offered yet.',
     risk: {
       /** On a plan read back from the server, which keeps the plan and not this summary. */
       notKept:
@@ -1189,6 +1200,9 @@ export const en = {
       owner: 'Owner',
       follows: 'Follows',
       followsNothing: 'Nothing: the owner sets its weights',
+      autoFollowOff:
+        'Auto-follow is off for this vault. To switch it on, open the shared portfolio it follows and choose auto-follow there.',
+      autoFollowWhere: 'Shared portfolios',
       version: (n: number) => `version ${n}`,
       autoFollow: 'Auto-follow',
       value: 'Value',
@@ -1203,6 +1217,74 @@ export const en = {
       },
       on: 'On',
       off: 'Off',
+    },
+  },
+
+  withdraw: {
+    meta: 'Withdraw',
+    title: 'Withdraw from your vault',
+    lead: (chain: string) =>
+      `The tokens leave your vault as they are and go to your own wallet on ${chain}. Nothing is sold.`,
+    loading: 'Reading your vault…',
+    failed: 'I couldn’t read your vaults: our server didn’t answer. Try again.',
+    notYours: 'This isn’t a vault of yours, so there is nothing to withdraw here.',
+    empty: 'This vault is empty: nothing is held in it now.',
+    back: 'Back to your portfolio',
+    action: 'Withdraw',
+    steps: {
+      label: 'Steps to withdraw',
+      names: { what: 'What', check: 'Review', confirm: 'Sign' },
+      done: 'done',
+      next: 'Continue',
+    },
+    what: {
+      legend: 'What do you want to take out?',
+      everything: 'Everything the vault holds',
+      some: 'Choose tokens and amounts',
+      take: (name: string) => `Withdraw ${name}`,
+      holds: (amount: string) => `The vault holds ${amount}.`,
+      amount: (symbol: string) => `Amount of ${symbol}`,
+      amountHint: 'Leave it empty to take all of it.',
+      wholeOnly: 'All of it or none: this app doesn’t know this token’s units.',
+      errors: {
+        amount: 'Enter an amount of this token, or leave it empty to take all of it.',
+        over: (held: string) => `The vault holds ${held}. Enter that much or less.`,
+        none: 'Choose at least one token to continue.',
+      },
+      summaryAll: 'Everything',
+      summarySome: (n: number) => (n === 1 ? '1 token' : `${n} tokens`),
+    },
+    check: {
+      leaves: 'What leaves the vault',
+      token: 'Token',
+      amount: 'Amount',
+      all: (held: string) => `All of it: ${held} now`,
+      to: 'Goes to',
+      own: 'Your own wallet',
+      from: 'From your vault',
+      onlyOwner:
+        'A vault pays only its owner. Your wallet is asked to sign only a withdrawal of exactly these tokens to this address.',
+      stays: 'Everything else stays in the vault.',
+      emptied: 'The vault will be empty afterwards.',
+      autoFollow:
+        'Automatic following stops for this vault. Auto-follow is on, and the first step switches it off, so our keeper doesn’t trade the vault while you withdraw or afterwards. To switch it on again, open the shared portfolio this vault follows; the vault’s page links there.',
+      noSale:
+        'Selling to cash before withdrawing isn’t offered yet; you can withdraw the tokens themselves.',
+      seen: 'Reviewed',
+      confirm: 'This is what I want to withdraw',
+    },
+    confirm: {
+      lead: 'Next you review each step of the order, then sign it in your wallet. The network fee is paid from your wallet.',
+      button: 'Review the steps to withdraw',
+      busy: 'Making your order…',
+      blocked: {
+        what: 'Choose what to withdraw first.',
+        check: 'Confirm what leaves first.',
+        owner: 'No wallet of yours is signed in on this chain.',
+        chain: (chain: string) => `${chain} isn’t ready for signing here yet.`,
+        vault:
+          'I couldn’t hold this vault to your wallet, so I’m not offering the withdrawal. Nothing was signed.',
+      },
     },
   },
 
@@ -1261,6 +1343,8 @@ export const en = {
         'This order spends your deposit on other weights than the portfolio you reviewed, so I won’t offer to sign it. Nothing was signed. Make a new order.',
       shape:
         'This order has steps the portfolio you reviewed doesn’t call for, so I won’t offer to sign it. Nothing was signed. Make a new order.',
+      withdraw:
+        'This order takes out other tokens or amounts than the ones you reviewed, so I won’t offer to sign it. Nothing was signed. Make a new withdrawal.',
     },
     shared: {
       publishTitle: 'What you publish',
@@ -1289,6 +1373,26 @@ export const en = {
       signPublish: 'Sign and publish',
       signFollow: 'Sign and follow',
       resume: 'Continue',
+      withdrawTitle: 'What you withdraw',
+      signWithdraw: 'Sign and withdraw',
+      /** One line of a withdraw step: what leaves, for the owner's own wallet. */
+      withdraws: (amount: string) => `${amount} to your own wallet`,
+      withdrawsAll: (held: string) => `All of it, ${held} when reviewed, to your own wallet`,
+      withdrawDone: 'What you withdrew is in your wallet now.',
+      autoFollowStops: 'Automatic following stops for this vault: the first step switches it off.',
+      /** A step whose token could not be moved: it stayed in the vault, and the others went on. */
+      skipped: (what: string) =>
+        `${what} stayed in the vault: it can’t be moved now. Its issuer may have frozen it, or it needs a wallet that handles its transfer rules.`,
+      doneStayed: (chain: string, what: string) =>
+        `Done on ${chain}, except ${what}: the vault still holds it. It wasn’t moved, and no step said so.`,
+      doneUnread: (chain: string) =>
+        `Done on ${chain}. I couldn’t read your vault again, so see your portfolio for anything that stayed.`,
+      stayed: (what: string) =>
+        `${what} stayed in the vault: the vault’s contract couldn’t move it now. You can try to withdraw it again later.`,
+      doneExcept: (chain: string, n: number) =>
+        n === 1
+          ? `Done on ${chain}, except one step that was skipped: what it would have moved stayed in the vault.`
+          : `Done on ${chain}, except ${n} steps that were skipped: what they would have moved stayed in the vault.`,
     },
     signAndBuy: (amount: string) => `Sign and buy ${amount}`,
     resume: (amount: string) => `Continue the buy of ${amount}`,

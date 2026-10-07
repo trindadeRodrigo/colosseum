@@ -216,17 +216,37 @@ export function checkVaultAdd(
 }
 
 /**
- * A follow or a publish moves no cash and trades nothing: no deposit, no cash on a step, no trade, and
- * only the steps its terms call for, each once. The guard holds each step's bytes to the terms; this
+ * A follow, a publish or a withdrawal deposits nothing and trades nothing: no deposit, no cash on a
+ * step, no trade, and only the steps its terms call for, each once. A withdrawal's steps take out the
+ * tokens and the amounts its review showed, and no other. The guard holds each step's bytes to the terms; this
  * holds the order's shape to them before anything is offered for signing.
  */
 export function sharedShapeOk(
   order: Pick<OrderDetail, 'depositRaw' | 'legs'>,
-  terms: Extract<SharedTerms, { kind: 'follow' | 'publish' }>,
+  terms: Extract<SharedTerms, { kind: 'follow' | 'publish' | 'withdraw' }>,
 ): boolean {
   if (order.depositRaw !== undefined || order.legs.length === 0) return false;
   if (order.legs.some((l) => l.cashRaw !== undefined || l.trades.length > 0)) return false;
   const kinds = order.legs.map((l) => l.kind);
+  if (terms.kind === 'withdraw') {
+    // Only withdrawals, of the tokens and the amounts the review showed, in its order, each once;
+    // before them, the switch that turns auto-follow off, exactly where the review said there is one.
+    const inOrder = order.legs.slice().sort((a, b) => a.seq - b.seq);
+    const first = inOrder[0]?.kind === 'set_auto_follow' ? inOrder[0] : null;
+    if ((first !== null) !== terms.autoFollowOff) return false;
+    const moving = first ? inOrder.slice(1) : inOrder;
+    const taken = moving.flatMap((l) => l.withdrawals ?? []);
+    return (
+      moving.length > 0 &&
+      first?.withdrawals === undefined &&
+      moving.every((l) => l.kind === 'withdraw' && l.withdrawals !== undefined) &&
+      taken.length === terms.items.length &&
+      taken.every(
+        (w, i) => w.asset === terms.items[i]?.asset && w.amountRaw === terms.items[i]?.amountRaw,
+      )
+    );
+  }
+  if (order.legs.some((l) => l.withdrawals !== undefined)) return false;
   if (terms.kind === 'publish') return kinds.length === 1 && kinds[0] === 'publish';
   const allowed = new Set(['accept_version', 'set_auto_follow']);
   return (

@@ -29,7 +29,7 @@ import { useVaultHistory } from './use-vault-history';
 import { VaultActions } from './VaultActions';
 import { VaultGoalCard } from './VaultGoalCard';
 import { PlanParts, VaultPanel } from './VaultPanel';
-import { familyOfVault, goalOfVault, ordersOfVault, putInto } from './vault-goal';
+import { familyOfVault, goalOfVault, ordersOfVault, putInto, takenOut } from './vault-goal';
 
 // The monitor (/monitor): the person's vaults, read from the API each time the page opens (GET
 // /v1/portfolio). One serif line, then the chain, then a panel per vault with its chain's badge, then
@@ -134,10 +134,15 @@ export function MonitorScreen() {
           joined={goalOfVault(vault, history.records)}
           putIn={putInto(vault, history.records, history.deposited)}
           followed={familyOfVault(vault, history.records)}
+          tookOut={takenOut(vault, history.withdrawals, words.vault.takenOutMethod) !== null}
         />
         <PlanParts vault={vault} />
       </div>
-      <VaultPanel chain={entry} vault={vault} />
+      <VaultPanel
+        chain={entry}
+        vault={vault}
+        taken={takenOut(vault, history.withdrawals, words.vault.takenOutMethod)}
+      />
     </div>
   );
 
