@@ -74,11 +74,16 @@ export function recallPlan(id: string, userId: string | null): StoredPlan | null
  * or answers something that is not a plan.
  */
 export async function readStoredPlan(
-  apiFetch: (path: string) => Promise<Response>,
+  apiFetch: (path: string, init?: { freshSignIn?: boolean }) => Promise<Response>,
   id: string,
+  /** Ask with fresh tokens: the second try, after an answer that may have been given to nobody. */
+  freshSignIn = false,
 ): Promise<{ proposal: BasketProposal; fromLink: boolean } | null> {
   try {
-    const res = await apiFetch(`/v1/baskets/${encodeURIComponent(id)}`);
+    const res = await apiFetch(
+      `/v1/baskets/${encodeURIComponent(id)}`,
+      freshSignIn ? { freshSignIn } : undefined,
+    );
     if (!res.ok) return null;
     const body = (await res.json()) as { id?: unknown; proposal?: unknown; fromLink?: unknown };
     if (body.id !== id) return null;
