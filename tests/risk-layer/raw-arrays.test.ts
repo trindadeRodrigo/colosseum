@@ -29,6 +29,7 @@ import {
   type RawSelection,
   runSummary,
   scrubbed,
+  secretsOf,
   selectRawArrayPools,
   withholdingUndecodable,
 } from '../../scripts/risk/raw-arrays/lib';
@@ -38,7 +39,7 @@ import solanaList from '../../scripts/risk/universe/solana.json';
 // reads, what becomes of each, and the bytes of a recording. On the collector's registry of 2026-10-01 as frozen under
 // fixtures/risk/universe, and on mainnet accounts frozen 2026-10-07T04:31:05Z by
 // `pnpm risk:split-capture --raw-arrays --only HOODx,STRCx` (fixtures/risk/raw-arrays): eleven pools the collector
-// does not record, seven on Raydium, two on Orca and one on Meteora, three against dollars, three against SOL, one
+// does not record, eight on Raydium, two on Orca and one on Meteora, three against dollars, three against SOL, one
 // against another stock and four against other tokens. No test calls the network.
 const c = loadCapture('fixtures/risk/raw-arrays/hoodx-strcx-20261007T0431.json.gz');
 const tracked = new Set(solanaList.assets.map((a) => a.address));
@@ -613,6 +614,33 @@ describe('raw arrays: one bad Raydium account does not stop the read', () => {
     });
   });
 
+  it('a Raydium pool account with no data is one the chain did not return: head_missing, and the read goes on', async () => {
+    // the shared reader would throw on it (an account of no bytes is not null to it)
+    await expect(
+      readSplitCapture(sel, c.children, meta, deps(fakeReader({ [DZND]: '' }))),
+    ).rejects.toThrow();
+    const w = withholdingUndecodable(fakeReader({ [DZND]: '' }), c.direct);
+    const cap = await readSplitCapture(sel, c.children, meta, deps(w.read));
+    expect(w.undecodable.size).toBe(0);
+    const outcomes = poolOutcomes(cap, c.direct, { undecodable: w.undecodable });
+    expect(outcomes.filter((o) => o.written)).toHaveLength(10);
+    expect(outcomes.find((o) => o.pool.address === DZND)).toMatchObject({
+      written: false,
+      reason: 'head_missing',
+    });
+    // an Orca and a Meteora pool account with no data are passed on as they came, and are head_missing as well
+    const others = withholdingUndecodable(fakeReader({ [P48D]: '', [DQ8F]: '' }), c.direct);
+    const cap2 = await readSplitCapture(sel, c.children, meta, deps(others.read));
+    expect(
+      poolOutcomes(cap2, c.direct)
+        .filter((o) => !o.written)
+        .map((o) => [o.pool.address, !o.written && o.reason]),
+    ).toEqual([
+      [P48D, 'head_missing'],
+      [DQ8F, 'head_missing'],
+    ]);
+  });
+
   it('with nothing wrong the wrapped reader reads what the plain one reads', async () => {
     const plain = await readSplitCapture(sel, c.children, meta, deps(fakeReader()));
     const w = withholdingUndecodable(fakeReader(), c.direct);
@@ -719,16 +747,43 @@ describe('raw arrays: the reader in batches', () => {
       outcomes.filter((o) => !o.written).every((o) => !o.written && o.reason === 'read_failed'),
     ).toBe(true);
   });
+  it('a batch that failed and then met the end of the run keeps what the RPC said', async () => {
+    let n = 0;
+    let late = false;
+    const read: AccountReader = async (keys) => {
+      if (++n === 2) {
+        late = true;
+        throw new Error('rpc getMultipleAccounts: {"code":-32005}');
+      }
+      return fakeReader()(keys);
+    };
+    const b = batchedReader(read, { size: 20, ...quiet, pastDeadline: () => late });
+    await readSplitCapture(sel, c.children, meta, deps(b.read));
+    // tried once and not again: no retry was made, and the reason is the RPC's, with why it was not read again
+    expect(n).toBe(2);
+    expect(b.stats).toEqual({ batches: 5, batchRetries: 0, batchesFailed: 4 });
+    expect([...new Set(b.failed.values())]).toEqual([
+      'rpc getMultipleAccounts: {"code":-32005}; the run was past its time before it was read again',
+      'the run was past its time before this batch was read',
+    ]);
+  });
 });
 
 describe('raw arrays: where the job may write', () => {
   const home = '/Users/x/.colosseum/risk';
   const raw = [`${home}/raw`];
+  // a disk: what each path is on it. Two paths with one number are one folder; a path not listed is not there yet.
+  const disk = (folders: Record<string, number>) => (path: string) =>
+    path in folders ? String(folders[path]) : null;
+  const nothing = disk({});
+  const refusal = (dir: string, on = nothing, homes = [home], raws = raw) =>
+    folderRefusal(dir, homes, raws, on);
+
   it('a folder of its own, anywhere but the collector’s home; inside the home only raw-arrays', () => {
-    expect(folderRefusal('/tmp/somewhere/raw-arrays', home, raw)).toBeNull();
-    expect(folderRefusal(`${home}/raw-arrays`, home, raw)).toBeNull();
-    expect(folderRefusal('', home, raw)).toBe('no folder is named');
-    expect(folderRefusal(home, home, raw)).toContain('the collector’s home'.replace('’', "'"));
+    expect(refusal('/tmp/somewhere/raw-arrays')).toBeNull();
+    expect(refusal(`${home}/raw-arrays`)).toBeNull();
+    expect(refusal('')).toBe('no folder is named');
+    expect(refusal(home)).toContain("is the collector's home");
     for (const dir of [
       `${home}/raw`,
       `${home}/raw/2026-10-07`,
@@ -737,13 +792,70 @@ describe('raw arrays: where the job may write', () => {
       `${home}/raw-arrays-2`,
       `${home}/data/split`,
     ])
-      expect(folderRefusal(dir, home, raw)).not.toBeNull();
+      expect(refusal(dir)).not.toBeNull();
     // a folder that holds the home would take the home's files for its own
-    expect(folderRefusal('/Users/x/.colosseum', home, raw)).toContain('holds');
-    expect(folderRefusal('/', home, raw)).not.toBeNull();
+    expect(refusal('/Users/x/.colosseum')).toContain('holds');
+    expect(refusal('/')).toContain('holds');
     // the API's variable can name another raw folder: refused as well
-    expect(folderRefusal('/data/raw/sub', home, [...raw, '/data/raw'])).toContain('raw folder');
-    expect(folderRefusal('/data/raw-arrays', home, [...raw, '/data/raw', ''])).toBeNull();
+    expect(refusal('/data/raw/sub', nothing, [home], [...raw, '/data/raw'])).toContain(
+      'raw folder',
+    );
+    expect(refusal('/data/raw-arrays', nothing, [home], [...raw, '/data/raw', ''])).toBeNull();
+  });
+
+  it('two names of one folder are one folder: a link, another letter case, another spelling of the volume', () => {
+    const on = disk({
+      '/': 1,
+      '/Users/x/.colosseum': 2,
+      [home]: 3,
+      [`${home}/raw`]: 4,
+      // the raw folder under three other names
+      '/big/collector-raw': 4,
+      [`${home}/RAW`]: 4,
+      '/System/Volumes/Data/Users/x/.colosseum/risk/raw': 4,
+      // the home under another name
+      '/System/Volumes/Data/Users/x/.colosseum/risk': 3,
+      '/link-to-home': 3,
+      // another folder of the home, linked from outside
+      [`${home}/pools`]: 5,
+      '/big/pools': 5,
+    });
+    for (const dir of [
+      '/big/collector-raw',
+      '/big/collector-raw/2026-10-07',
+      `${home}/RAW`,
+      '/System/Volumes/Data/Users/x/.colosseum/risk/raw',
+    ])
+      expect(refusal(dir, on)).toContain('raw folder');
+    expect(refusal('/System/Volumes/Data/Users/x/.colosseum/risk', on)).toContain(
+      "is the collector's home",
+    );
+    expect(refusal('/link-to-home', on)).toContain("is the collector's home");
+    expect(refusal('/link-to-home/pools', on)).toContain('not its raw-arrays folder');
+    // without the disk the same names are strangers: the rule needs the disk to see through them
+    expect(refusal('/big/collector-raw')).toBeNull();
+    // the one folder inside the home that is the job's, also when it is a link to another disk, and also by the name
+    // of where the link points
+    const linked = disk({
+      [home]: 3,
+      [`${home}/raw`]: 4,
+      [`${home}/raw-arrays`]: 9,
+      '/big/arrays': 9,
+    });
+    expect(refusal(`${home}/raw-arrays`, linked)).toBeNull();
+    expect(refusal(`${home}/raw-arrays/2026-10-07/05`, linked)).toBeNull();
+    expect(refusal('/big/arrays', linked)).toBeNull();
+    expect(refusal('/link-to-home/raw-arrays', on)).toBeNull();
+  });
+
+  it('a run pointed at another home still may not write into the live one', () => {
+    const rehearsal = '/tmp/rehearsal-home';
+    const homes = [rehearsal, home];
+    const raws = [`${rehearsal}/raw`, `${home}/raw`];
+    for (const dir of [`${home}/raw`, `${home}/pools`, home, `${rehearsal}/raw`, rehearsal])
+      expect(refusal(dir, nothing, homes, raws)).not.toBeNull();
+    expect(refusal(`${rehearsal}/raw-arrays`, nothing, homes, raws)).toBeNull();
+    expect(refusal('/tmp/elsewhere', nothing, homes, raws)).toBeNull();
   });
 });
 
@@ -756,6 +868,13 @@ describe('raw arrays: an error as it is logged', () => {
     expect(scrubbed(new Error('request to https://rpc.example.com/v1/key-123 failed'))).toBe(
       'request to <url> failed',
     );
+    // a provider that repeats the key alone, without the address around it
+    const address = 'https://rpc.example.com/v1/aaaaaaaaaaaa?id=bbbbbbbbbbbb';
+    expect(secretsOf(address)).toEqual([address, 'aaaaaaaaaaaa', 'bbbbbbbbbbbb']);
+    expect(
+      scrubbed(new Error('rpc: {"message":"aaaaaaaaaaaa is over its limit"}'), secretsOf(address)),
+    ).toBe('rpc: {"message":"<secret> is over its limit"}');
+    expect(secretsOf(undefined)).toEqual([]);
     const e = Object.assign(new Error('fetch failed'), { cause: { code: 'ENOTFOUND' } });
     expect(scrubbed(e, [undefined])).toBe('fetch failed (ENOTFOUND)');
     expect(scrubbed('x'.repeat(500))).toHaveLength(300);

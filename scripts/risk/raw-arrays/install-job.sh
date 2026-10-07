@@ -49,17 +49,34 @@ if [ -n "${COLOSSEUM_HOME+x}" ] && [ -z "$COLOSSEUM_HOME" ]; then
   exit 1
 fi
 HOME_DIR="${COLOSSEUM_HOME:-$DEFAULT_HOME}"
-HOME_DIR="${HOME_DIR%/}"
+# absolute, so the bundle built there can be started from another folder
+HOME_DIR="${HOME_DIR:a}"
 NODE_BIN="$(dirname "$(which node)")"
 LABEL="com.colosseum.risk-raw-arrays"
 NAME="raw-arrays"
 MINUTE=25
 
-# The same folder under another spelling is the same folder: links resolved, letter case folded (the volume does not
-# tell cases apart).
+# Two names of one folder are one folder. What the disk says a path is (its device and inode, links followed) decides
+# it where the path exists: a link, another letter case and another spelling of the volume
+# (/System/Volumes/Data/Users/...) all give the same answer. Where it does not exist yet, the name decides, with
+# links resolved and case folded.
+id_of() { stat -f '%d:%i' "$1" 2>/dev/null || stat -c '%d:%i' "$1" 2>/dev/null || true; }
 canon() { local p="${1:A}"; echo "${p:l}"; }
-HOME_CANON="$(canon "$HOME_DIR")"
-if [ "$HOME_CANON" = "$(canon "$DEFAULT_HOME")" ]; then
+same_folder() {
+  local a="$(id_of "$1")" b="$(id_of "$2")"
+  if [ -n "$a" ] && [ "$a" = "$b" ]; then return 0; fi
+  [ "$(canon "$1")" = "$(canon "$2")" ]
+}
+# $1 is $2 or inside it: $1 and each folder above it is tried
+inside() {
+  local p="$1"
+  while :; do
+    if same_folder "$p" "$2"; then return 0; fi
+    if [ "$p" = "${p:h}" ]; then return 1; fi
+    p="${p:h}"
+  done
+}
+if same_folder "$HOME_DIR" "$DEFAULT_HOME"; then
   REHEARSAL=0
   HOME_DIR="$DEFAULT_HOME"
   PLIST_DIR="$HOME/Library/LaunchAgents"
@@ -74,12 +91,20 @@ else
   # the plist carries the live job's label, so loading it would replace the running job: a rehearsal never loads
   LOAD=0
   for live in "$HOME/.colosseum" "$HOME/Library"; do
-    case "$HOME_CANON/" in
-      "$(canon "$live")/"*) echo "refusing: a rehearsal folder inside $live ($HOME_DIR)"; exit 1 ;;
-    esac
+    if inside "$HOME_DIR" "$live"; then
+      echo "refusing: a rehearsal folder inside $live ($HOME_DIR)"
+      exit 1
+    fi
   done
   echo "rehearsal: COLOSSEUM_HOME=$HOME_DIR is not the default; nothing is loaded"
 fi
+# The plist's command is one line of text, and sed writes these two paths into it: a space or a quote would cut the
+# command in two, and #, & or \ would be read by sed.
+case "$HOME_DIR$NODE_BIN" in
+  *[[:space:]\#\&\\\'\"]*)
+    echo "refusing: $HOME_DIR or $NODE_BIN holds a space, a quote, #, & or a backslash, which the plist cannot carry"
+    exit 1 ;;
+esac
 
 # The job needs the collectors' env file (for the RPC), registry and cache. A real install stops without them; a
 # rehearsal says so and goes on, since it only builds.
@@ -130,6 +155,18 @@ if [ -f "$DEFAULT_HOME/registry.json" ] && [ -f "$DEFAULT_HOME/cache.json" ]; th
 else
   echo "not proven to start: $DEFAULT_HOME/registry.json or cache.json is missing"
 fi
+# The plist is written beside its place, checked, and moved in only once it is whole: a re-install never leaves the
+# installed one empty.
+PLIST="$PLIST_DIR/$LABEL.plist"
+NEW_PLIST="$PLIST.new"
+trap 'rm -f "$NEW" "$NEW_PLIST"' EXIT
+MINUTES="    <dict><key>Minute</key><integer>$MINUTE</integer></dict>\n"
+sed -e "s#__LABEL__#$LABEL#g" -e "s#__NODE_BIN__#$NODE_BIN#g" -e "s#__HOME_DIR__#$HOME_DIR#g" \
+  -e "s#__SCRIPT__#risk-$NAME#g" -e "s#__MINUTES__#$MINUTES#" \
+  "$REPO/scripts/risk/collector/risk-job.plist" > "$NEW_PLIST"
+if grep -q '__[A-Z_]*__' "$NEW_PLIST"; then echo "the plist template has a slot this installer does not fill"; exit 1; fi
+if command -v plutil > /dev/null; then plutil -lint "$NEW_PLIST" > /dev/null || { echo "the new plist is not a plist"; exit 1; }; fi
+
 if [ -f "$OUT" ]; then
   BEFORE="$HOME_DIR/risk-$NAME.before-$(date +%Y%m%d-%H%M%S).mjs"
   cp -p "$OUT" "$BEFORE"
@@ -137,12 +174,7 @@ if [ -f "$OUT" ]; then
 fi
 mv -f "$NEW" "$OUT"
 echo "bundled $OUT ($(du -h "$OUT" | cut -f1))"
-
-PLIST="$PLIST_DIR/$LABEL.plist"
-MINUTES="    <dict><key>Minute</key><integer>$MINUTE</integer></dict>\n"
-sed -e "s#__LABEL__#$LABEL#g" -e "s#__NODE_BIN__#$NODE_BIN#g" -e "s#__HOME_DIR__#$HOME_DIR#g" \
-  -e "s#__SCRIPT__#risk-$NAME#g" -e "s#__MINUTES__#$MINUTES#" \
-  "$REPO/scripts/risk/collector/risk-job.plist" > "$PLIST"
+mv -f "$NEW_PLIST" "$PLIST"
 echo "wrote $PLIST"
 if [ "$LOAD" = 1 ]; then
   launchctl unload "$PLIST" 2>/dev/null || true

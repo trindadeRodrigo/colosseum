@@ -122,6 +122,9 @@ describe.skipIf(!hasZsh)('raw arrays: the installer', { timeout: 120_000 }, () =
         'a rehearsal folder inside',
       ],
       [['--no-load'], { COLOSSEUM_HOME: `${home}/Library/rehearsal` }, 'a rehearsal folder inside'],
+      // a path the plist's one line of command cannot carry
+      [['--no-load'], { COLOSSEUM_HOME: join(root, 'with space') }, 'which the plist cannot carry'],
+      [['--no-load'], { COLOSSEUM_HOME: join(root, 'with#hash') }, 'which the plist cannot carry'],
       [['--dry-run'], {}, 'usage:'],
     ] as Array<[string[], Record<string, string>, string]>) {
       const r = install(home, args, env);
@@ -129,6 +132,31 @@ describe.skipIf(!hasZsh)('raw arrays: the installer', { timeout: 120_000 }, () =
       expect(r.out).toContain(says);
     }
     expect(tree(home)).toEqual(before);
+    expect(launchctlCalls()).toEqual([]);
+    for (const made of ['with space', 'with#hash'])
+      expect(existsSync(join(root, made))).toBe(false);
+  });
+
+  it('a rehearsal folder named from where the command is run is taken whole: the bundle built there starts', () => {
+    const home = fakeHome('home-relative', true);
+    const r = spawnSync('zsh', [INSTALL, '--no-load'], {
+      encoding: 'utf8',
+      timeout: 60_000,
+      cwd: root,
+      env: {
+        ...process.env,
+        HOME: home,
+        PATH: `${stub}:${process.env.PATH}`,
+        COLOSSEUM_HOME: 'relative',
+      },
+    });
+    expect(r.status, `${r.stdout}${r.stderr}`).toBe(0);
+    // started once, from another folder, on the made-up home's registry and cache
+    expect(r.stdout).toContain('the new bundle starts (--plan)');
+    expect(tree(join(root, 'relative'))).toEqual([
+      'LaunchAgents/com.colosseum.risk-raw-arrays.plist',
+      'risk-raw-arrays.mjs',
+    ]);
     expect(launchctlCalls()).toEqual([]);
   });
 
@@ -171,8 +199,11 @@ describe.skipIf(!hasZsh)('raw arrays: the installer', { timeout: 120_000 }, () =
     expect(readFileSync(join(risk, 'env'), 'utf8')).toBe(ENV_FILE);
     expect(launchctlCalls()).toHaveLength(4);
     expect(new Set(launchctlCalls()).size).toBe(2);
-    // no half-built bundle is left behind
+    // no half-built bundle and no half-written plist is left behind
     expect(readdirSync(risk).some((f) => f.includes('.new.'))).toBe(false);
+    expect(readdirSync(join(home, 'Library', 'LaunchAgents'))).toEqual([
+      'com.colosseum.risk-raw-arrays.plist',
+    ]);
   });
 
   it('stops where the collectors are not installed, and says which file is missing', () => {

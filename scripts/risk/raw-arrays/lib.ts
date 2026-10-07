@@ -1,3 +1,4 @@
+import { basename, dirname } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import {
   buildPoolSim,
@@ -120,6 +121,16 @@ export function selectRawArrayPools(
   };
 }
 
+/**
+ * What of an RPC address must never be logged: the address as it is spelled, and each piece of its path and of its
+ * query long enough to be a key. A provider can repeat the key alone in an error, without the address around it.
+ */
+export function secretsOf(address: string | undefined): string[] {
+  if (!address) return [];
+  const pieces = address.split(/[/?&=#]/).filter((x) => x.length >= 8 && !x.includes('.'));
+  return [address, ...pieces];
+}
+
 /** An error as it may be logged: its message, with anything shaped like an address and every secret taken out. */
 export function scrubbed(e: unknown, secrets: ReadonlyArray<string | undefined> = []): string {
   const err = e as { message?: string; cause?: { code?: string } } | undefined;
@@ -168,9 +179,13 @@ export function batchedReader(
       let done = false;
       for (let a = 1; a <= attempts && !done; a++) {
         if (opts.pastDeadline?.()) {
-          why = 'the run was past its time before this batch was read';
+          // a batch that was tried and failed keeps what the RPC said; one never tried says only that
+          why = why
+            ? `${why}; the run was past its time before it was read again`
+            : 'the run was past its time before this batch was read';
           break;
         }
+        if (a > 1) stats.batchRetries++;
         try {
           const r = await read(batch);
           slot = r.slot;
@@ -181,10 +196,7 @@ export function batchedReader(
           done = true;
         } catch (e) {
           why = say(e);
-          if (a < attempts) {
-            stats.batchRetries++;
-            await sleep(opts.pauseMs ?? 1_000);
-          }
+          if (a < attempts) await sleep(opts.pauseMs ?? 1_000);
         }
       }
       if (!done) {
@@ -216,7 +228,12 @@ export function withholdingUndecodable(
     read: async (keys) => {
       const r = await read(keys);
       for (const [k, a] of r.accounts) {
-        if (!a?.data.length || !raydium.has(k)) continue;
+        if (!a || !raydium.has(k)) continue;
+        // an account with no data is one the chain did not return (head_missing), not one to decode
+        if (!a.data.length) {
+          r.accounts.set(k, null);
+          continue;
+        }
         try {
           decodeClmmPool(a.data);
         } catch (e) {
@@ -312,7 +329,7 @@ export type PoolOutcome =
 export const LIQUIDITY_CHECK_LIMIT = 1e-9;
 /**
  * The most slots between a pool's account and its arrays for the two to be written as one recording: about two
- * minutes. A run reads them 2 to 14 slots apart; a read stretched by a sleeping machine or a long backoff is past it.
+ * minutes. A run reads them within about 20 slots; a read stretched by a sleeping machine or a long backoff is past it.
  */
 export const MAX_SLOT_GAP = 300;
 
@@ -456,24 +473,52 @@ export const hourFolder = (fetchedAt: string): { day: string; hour: string } => 
 });
 
 /**
- * Why the job may not write into a folder, or null when it may. The paths are resolved by the caller (real paths, so
- * another spelling of the same folder is the same folder). The job writes only into a folder of its own: never the
- * collector's home, never its raw folder or another folder of that home, except the one the installed job is given
- * there (`raw-arrays`).
+ * Why the job may not write into a folder, or null when it may. The job writes only into a folder of its own: never
+ * a collector's raw folder or anything inside one, never a collector's home or another folder of it, except the one
+ * the installed job is given there (`raw-arrays`), and never a folder that holds a collector's home.
+ *
+ * Two folders are the same folder when the disk says so, not when their names match: `idOf` gives what a path is on
+ * the disk (its device and inode, following links), or null when nothing is there yet. A link to the raw folder,
+ * another letter case on a disk that does not tell cases apart and another spelling of the same volume are then all
+ * the raw folder. Where a folder is not there yet, its name is what is compared. `homes` are the collector's home of
+ * this run (RISK_HOME) and the default one, so a run pointed at a rehearsal home still may not write into the live one.
  */
 export function folderRefusal(
   dir: string,
-  home: string,
+  homes: readonly string[],
   collectorRaw: readonly string[],
+  idOf: (path: string) => string | null,
 ): string | null {
-  const inside = (a: string, b: string) => a === b || a.startsWith(b.endsWith('/') ? b : `${b}/`);
   if (!dir) return 'no folder is named';
+  // a folder and every folder above it, nearest first
+  const up = (path: string) => {
+    const out: Array<{ path: string; id: string | null }> = [];
+    for (let p = path; ; p = dirname(p)) {
+      out.push({ path: p, id: idOf(p) });
+      if (dirname(p) === p) break;
+    }
+    return out;
+  };
+  const chain = up(dir);
+  // where in `chain` a folder is: 0 when `dir` is that folder, above 0 when `dir` is inside it, -1 when it is neither
+  const at = (folder: string) => {
+    const id = idOf(folder);
+    return chain.findIndex((c) => c.path === folder || (id !== null && c.id === id));
+  };
   for (const raw of collectorRaw)
-    if (raw && inside(dir, raw)) return `${dir} is the collector's raw folder, or inside it`;
-  if (dir === home) return `${dir} is the collector's home`;
-  if (inside(dir, home) && !inside(dir, `${home}/raw-arrays`))
-    return `${dir} is inside the collector's home and is not its raw-arrays folder`;
-  if (inside(home, dir)) return `${dir} holds the collector's home`;
+    if (raw && at(raw) >= 0) return `${dir} is the collector's raw folder, or inside it`;
+  for (const home of homes) {
+    if (!home) continue;
+    const i = at(home);
+    if (i === 0) return `${dir} is the collector's home`;
+    if (i > 0 && basename((chain[i - 1] as { path: string }).path) !== 'raw-arrays')
+      return `${dir} is inside the collector's home and is not its raw-arrays folder`;
+    if (
+      i < 0 &&
+      up(home).some((c) => c.path === dir || (chain[0]?.id != null && c.id === chain[0].id))
+    )
+      return `${dir} holds the collector's home`;
+  }
   return null;
 }
 

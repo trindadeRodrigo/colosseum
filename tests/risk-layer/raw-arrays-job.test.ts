@@ -8,6 +8,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
@@ -71,7 +72,10 @@ const server = createServer((req, res) => {
     }
     const value = params[0].map((k) => {
       const data = k in patch ? patch[k] : c.accounts[k];
-      return data ? { owner: '11111111111111111111111111111111', data: [data, 'base64'] } : null;
+      // null: the chain has no such account. "": it has one, with no data
+      return data === null || data === undefined
+        ? null
+        : { owner: '11111111111111111111111111111111', data: [data, 'base64'] };
     });
     answer({ result: { context: { slot: 1000 + calls }, value } });
   });
@@ -182,7 +186,7 @@ const lines = (dir: string) =>
 describe('raw arrays: one run of the job', { timeout: 60_000 }, () => {
   it('writes one file per pool into its own folder, leaves one line, and only reads the collector’s home', async () => {
     const dir = join(root, 'run-whole');
-    const capture = join(root, 'whole.json.gz');
+    const capture = join(root, 'captures', 'whole.json.gz');
     const before = homeState();
     calls = 0;
     const r = await job({
@@ -245,13 +249,23 @@ describe('raw arrays: one run of the job', { timeout: 60_000 }, () => {
       files: 11,
       compared: 11,
       different: [],
+      readSidecar: true,
       same: true,
     });
+    expect(existsSync(`${capture}.read.json`)).toBe(true);
+    // every figure of the row says where it is from
+    expect(row).toMatchObject({
+      provenance: 'live',
+      methodVersion: 'raw-arrays-0.1',
+      tvlUsdSource: 'the pool collector’s registry, as of registry.fetchedAt',
+    });
+    expect(row.source).toBeTruthy();
+    expect(row.method).toBeTruthy();
   });
 
   it('the check sees a file that is not what the chain returned, even when it decodes the same', async () => {
     const dir = join(root, 'run-tamper');
-    const capture = join(root, 'tamper.json.gz');
+    const capture = join(root, 'captures', 'tamper.json.gz');
     const r = await job({
       SOLANA_RPC_URL: url,
       RISK_RAW_ARRAYS_DIR: dir,
@@ -287,6 +301,16 @@ describe('raw arrays: one run of the job', { timeout: 60_000 }, () => {
     expect(mock.rows[0]?.different).toEqual([
       { pool: DZND, what: 'source, method, methodVersion or provenance' },
     ]);
+    // a slot that is not the read's own, and a list dated otherwise
+    const slot = await tampered((x) => {
+      x.slot = (x.slot as number) + 1;
+    });
+    expect(slot.code).toBe(1);
+    expect(slot.rows[0]?.different).toMatchObject([{ pool: DZND }]);
+    const listed = await tampered((x) => {
+      x.childrenListedAt = '1999-01-01T00:00:00.000Z';
+    });
+    expect(listed.rows[0]?.different).toEqual([{ pool: DZND, what: 'childrenListedAt' }]);
     // the collector's keys out of order
     const keys = await tampered((x) => {
       const { venue, pool, ...rest } = x;
@@ -304,9 +328,12 @@ describe('raw arrays: one run of the job', { timeout: 60_000 }, () => {
 
   it('a pool with no account, one that does not decode and the ones a setting leaves out are each listed, and the rest written', async () => {
     const dir = join(root, 'run-partial');
-    const capture = join(root, 'partial.json.gz');
+    const capture = join(root, 'captures', 'partial.json.gz');
+    // a Raydium pool account the chain answers with no data at all (the shared reader would stop the run on it)
+    const EMPTY = 'DppCVaAGq5VA9gGK32u21JNqBf5d7jqH7RGDEvj39gQY'; // STRCx/USDC, Raydium CLMM
     patch = {
       [P48D]: null,
+      [EMPTY]: '',
       [DZND]: Buffer.from((captureBytes(c, DZND) as Uint8Array).subarray(0, 40)).toString('base64'),
     };
     const r = await job({
@@ -324,26 +351,29 @@ describe('raw arrays: one run of the job', { timeout: 60_000 }, () => {
       leftToCollector: 1,
       leftOutBySetting: 4,
       read: 7,
-      written: 5,
-      notWritten: 2,
+      written: 4,
+      notWritten: 3,
     });
     expect(row.accounted).toBe(true);
     expect(row.notWritten.map((n) => [n.pool, n.reason]).sort()).toEqual([
       [P48D, 'head_missing'],
+      [EMPTY, 'head_missing'],
       [DZND, 'decode_failed'],
     ]);
     expect(row.notWritten.find((n) => n.pool === DZND)?.detail).toBeTruthy();
     const others = c.direct.filter((p) => p.exitPath === 'other').map((p) => p.address);
     expect(row.leftOutBySetting.map((p) => p.pool).sort()).toEqual(others.sort());
     const files = readdirSync(row.folder).map((f) => f.slice(0, -'.json.gz'.length));
-    expect(files).toHaveLength(5);
-    for (const a of [P48D, DZND, ...others]) expect(files).not.toContain(a);
-    expect((await check(dir, capture)).rows[0]).toMatchObject({
-      pools: 7,
-      files: 5,
-      compared: 5,
-      same: true,
-    });
+    expect(files).toHaveLength(4);
+    for (const a of [P48D, EMPTY, DZND, ...others]) expect(files).not.toContain(a);
+    // the check gives each pool the outcome the run gave it
+    const checked = (await check(dir, capture)).rows[0] as Row;
+    expect(checked).toMatchObject({ pools: 7, files: 4, compared: 4, same: true });
+    expect(checked.notWritten.map((n) => n.reason).sort()).toEqual([
+      'decode_failed',
+      'head_missing',
+      'head_missing',
+    ]);
   });
 
   it('set to read every pool, the collector’s pool is read too, and still reported as the collector’s', async () => {
@@ -386,11 +416,13 @@ describe('raw arrays: one run of the job', { timeout: 60_000 }, () => {
     expect((a.rows[0] as Row).rpc).toMatchObject({ batches: 5, batchRetries: 1, batchesFailed: 0 });
     // refused every time: its pools are read_failed, the others written, and the run says it failed
     const never = join(root, 'run-refused');
+    const refused = join(root, 'captures', 'refused.json.gz');
     errorsFor = new Map([[key, 99]]);
     const b = await job({
       SOLANA_RPC_URL: url,
       RISK_RAW_ARRAYS_DIR: never,
       RISK_RAW_ARRAYS_BATCH: '20',
+      RISK_RAW_ARRAYS_CAPTURE: refused,
     });
     errorsFor = new Map();
     expect(b.code).toBe(1);
@@ -409,6 +441,12 @@ describe('raw arrays: one run of the job', { timeout: 60_000 }, () => {
     for (const n of row.notWritten) expect(files).not.toContain(n.pool);
     expect(files).toHaveLength(row.pools?.written as number);
     expect(b.out).not.toContain('127.0.0.1');
+    // the check, given what the read knew, finds the run as it was: the same pools unread, nothing different
+    const checked = (await check(never, refused)).rows[0] as Row;
+    expect(checked).toMatchObject({ readSidecar: true, different: [], same: true });
+    expect(checked.notWritten.map((n) => [n.pool, n.reason]).sort()).toEqual(
+      row.notWritten.map((n) => [n.pool, n.reason]).sort(),
+    );
   });
 
   it('an RPC that refuses everything: no file, every pool read_failed, and a line that carries no address', async () => {
@@ -572,6 +610,123 @@ describe('raw arrays: one run of the job', { timeout: 60_000 }, () => {
       pools: 11,
     });
     expect(readdirSync(dir)).toEqual(['runs.jsonl']);
+  });
+
+  it('a run that cannot read the collector’s registry or cache still leaves its line in its own folder', async () => {
+    // a second stand-in home: its cache as a read finds it while the collector is writing it, and no registry at all
+    const half = join(root, 'home-half-cache');
+    mkdirSync(half);
+    writeFileSync(join(half, 'registry.json'), readFileSync(join(home, 'registry.json')));
+    writeFileSync(join(half, 'cache.json'), '{"children":{');
+    const dir = join(root, 'run-half-cache');
+    calls = 0;
+    const r = await job({ SOLANA_RPC_URL: url, RISK_RAW_ARRAYS_DIR: dir, RISK_HOME: half });
+    expect(r.code).toBe(1);
+    const row = r.rows[0] as Row;
+    // read again three times, two seconds apart, before it gives up
+    expect(row.error).toMatch(/cache\.json is not readable as JSON after 4 tries/);
+    expect(row.stage).toBe('inputs');
+    expect(row.pools).toBeNull();
+    expect((row.seconds as { total: number }).total).toBeGreaterThan(5);
+    expect(calls).toBe(0);
+    expect(lines(dir)).toEqual([row]);
+    expect(readdirSync(dir)).toEqual(['runs.jsonl']);
+    const bare = join(root, 'home-no-registry');
+    mkdirSync(bare);
+    const dir2 = join(root, 'run-no-registry');
+    const r2 = await job({ SOLANA_RPC_URL: url, RISK_RAW_ARRAYS_DIR: dir2, RISK_HOME: bare });
+    expect(r2.code).toBe(1);
+    expect(r2.rows[0]?.error).toContain('registry.json');
+    expect(lines(dir2)).toEqual([r2.rows[0]]);
+    expect(readdirSync(bare)).toEqual([]);
+  });
+
+  it('a run log that someone emptied is still this job’s: the run goes on and writes its line', async () => {
+    const dir = join(root, 'run-emptied-log');
+    mkdirSync(dir);
+    writeFileSync(join(dir, 'runs.jsonl'), '');
+    const r = await job({ SOLANA_RPC_URL: url, RISK_RAW_ARRAYS_DIR: dir });
+    expect(r.code).toBe(0);
+    expect(lines(dir)).toEqual([r.rows[0]]);
+    // and a second run finds its own first line there
+    const again = await job({ SOLANA_RPC_URL: url, RISK_RAW_ARRAYS_DIR: dir });
+    expect(again.code).toBe(0);
+    expect(lines(dir)).toHaveLength(2);
+  });
+
+  it('a file that cannot be written is listed with what the disk said, and the others are written', async () => {
+    const dir = join(root, 'run-write-failed');
+    // something stands where the file goes, in this hour's folder and the next (the run names the hour itself)
+    for (const at of [Date.now(), Date.now() + 3_600_000]) {
+      const h = hourOf(at);
+      mkdirSync(join(dir, h.day, h.hour, `${DZND}.json.gz`), { recursive: true });
+    }
+    const r = await job({ SOLANA_RPC_URL: url, RISK_RAW_ARRAYS_DIR: dir });
+    expect(r.code).toBe(1);
+    const row = r.rows[0] as Row;
+    expect(row.pools).toMatchObject({ read: 11, written: 10, notWritten: 1 });
+    expect(row.notWritten).toMatchObject([{ pool: DZND, reason: 'write_failed' }]);
+    expect(row.notWritten[0]?.detail).toBeTruthy();
+    const files = readdirSync(row.folder);
+    expect(files.filter((f) => f.endsWith('.tmp'))).toEqual([]);
+    expect(statSync(join(row.folder, `${DZND}.json.gz`)).isDirectory()).toBe(true);
+    expect(lines(dir)).toEqual([row]);
+  });
+
+  it('a folder is the collector’s by what the disk says it is: a link to it, and the live home whatever home this run reads', async () => {
+    const before = homeState();
+    // a link to the collector's raw folder, from outside its home
+    const link = join(root, 'link-to-raw');
+    symlinkSync(join(home, 'raw'), link);
+    for (const dir of [link, join(link, 'mine')]) {
+      const r = await job({ SOLANA_RPC_URL: url, RISK_RAW_ARRAYS_DIR: dir });
+      expect(r.code).toBe(1);
+      expect(r.rows[0]?.error).toContain('raw folder');
+    }
+    // a home whose raw folder is itself a link to another disk: the place it points at is the raw folder too
+    const linked = join(root, 'home-linked-raw');
+    const big = join(root, 'big-disk', 'collector-raw');
+    mkdirSync(linked);
+    mkdirSync(big, { recursive: true });
+    for (const f of ['registry.json', 'cache.json'])
+      writeFileSync(join(linked, f), readFileSync(join(home, f)));
+    symlinkSync(big, join(linked, 'raw'));
+    for (const dir of [join(linked, 'raw'), big, join(big, 'sub')]) {
+      const r = await job({ SOLANA_RPC_URL: url, RISK_RAW_ARRAYS_DIR: dir, RISK_HOME: linked });
+      expect(r.code).toBe(1);
+      expect(r.rows[0]?.error).toContain('raw folder');
+    }
+    expect(readdirSync(big)).toEqual([]);
+    // the live home of the person who runs it (HOME/.colosseum/risk) is refused whatever RISK_HOME says
+    const person = join(root, 'person');
+    mkdirSync(join(person, '.colosseum', 'risk', 'raw'), { recursive: true });
+    for (const sub of ['raw', 'pools', '']) {
+      const r = await job({
+        SOLANA_RPC_URL: url,
+        RISK_RAW_ARRAYS_DIR: join(person, '.colosseum', 'risk', sub),
+        HOME: person,
+      });
+      expect(r.code).toBe(1);
+      expect(r.rows[0]?.error).toContain('a folder of its own');
+    }
+    expect(readdirSync(join(person, '.colosseum', 'risk'))).toEqual(['raw']);
+    expect(readdirSync(join(person, '.colosseum', 'risk', 'raw'))).toEqual([]);
+    expect(homeState()).toEqual(before);
+  });
+
+  it('a capture asked into the collector’s home is refused, and costs the run nothing', async () => {
+    const before = homeState();
+    const dir = join(root, 'run-capture-refused');
+    const r = await job({
+      SOLANA_RPC_URL: url,
+      RISK_RAW_ARRAYS_DIR: dir,
+      RISK_RAW_ARRAYS_CAPTURE: join(home, 'capture.json.gz'),
+    });
+    expect(r.code).toBe(0);
+    const row = r.rows[0] as Row;
+    expect(row.pools).toMatchObject({ written: 11 });
+    expect((row.capture as { error: string }).error).toContain("is the collector's home");
+    expect(homeState()).toEqual(before);
   });
 
   it('--plan reads the registry and the cache, prints what a run would read, and touches nothing', async () => {

@@ -25,6 +25,12 @@ import {
 //    mid, fee rate and liquidity check, and the same answer to every sale and purchase of a grid of sizes.
 // The two are needed: the decoders sort ticks and skip what is no array, so a file with its arrays in another order
 // builds the same simulator and is still not what the chain returned. Exit code 1 on any difference.
+// A capture does not hold everything a run knew: which accounts no call answered, the slot each account came at,
+// the pool accounts withheld, when the collector made each list. The job saves those beside the capture
+// (<capture>.read.json). With that file the check gives each pool the outcome the run gave it, so a run in which the
+// RPC refused a batch checks out as it was, and each file's two slots and its `childrenListedAt` are compared with
+// the read's own. Without it (a capture frozen by `pnpm risk:split-capture`) a pool with an account missing is taken
+// for one the chain does not have, and the two slots are only held to a run's bounds; `readSidecar` says which.
 const [dir, captureFile] = process.argv.slice(2);
 if (!dir || !captureFile) throw new Error('usage: check.ts <folder of the run> <capture.json.gz>');
 
@@ -48,6 +54,16 @@ const KEYS = [
 const SIZES = [1, 1e3, 1e5, 1e7, 1e9, 1e11, 1e13];
 
 const c = loadCapture(captureFile);
+const sidecarFile = `${captureFile}.read.json`;
+const read = existsSync(sidecarFile)
+  ? (JSON.parse(readFileSync(sidecarFile, 'utf8')) as {
+      slots: Array<[string, number]>;
+      failed: Array<[string, string]>;
+      undecodable: Array<[string, string]>;
+      childrenAt: Record<string, string>;
+    })
+  : null;
+const slots = read ? new Map(read.slots) : null;
 const { day, hour } = hourFolder(c.fetchedAt);
 const hourDir = join(dir, day, hour);
 const onDisk = new Set(
@@ -63,7 +79,18 @@ const stored = (k: string) => c.accounts[k] || '';
 const different: Array<{ pool: string; what: string }> = [];
 let compared = 0;
 let swaps = 0;
-const outcomes = poolOutcomes(c, c.direct);
+const outcomes = poolOutcomes(
+  c,
+  c.direct,
+  read
+    ? {
+        slots: slots as Map<string, number>,
+        failed: new Map(read.failed),
+        undecodable: new Map(read.undecodable),
+        childrenAt: read.childrenAt,
+      }
+    : {},
+);
 for (const o of outcomes) {
   const p = o.pool;
   const file = join(hourDir, `${p.address}.json.gz`);
@@ -100,10 +127,16 @@ for (const o of outcomes) {
     raw.provenance !== 'live'
   )
     say('source, method, methodVersion or provenance');
-  // each pool's two slots are its own batches': whole numbers of this run, no further apart than a run allows
+  // each pool's two slots are its own calls': the pool account's, and the highest among the arrays that came back
   const slot = raw.slot as number;
   const slotHead = raw.slotHead as number;
-  if (
+  if (slots && read) {
+    const kids = (c.children[p.address] ?? []).filter((k) => stored(k));
+    const own = kids.flatMap((k) => (slots.has(k) ? [slots.get(k) as number] : []));
+    if (slotHead !== slots.get(p.address) || slot !== Math.max(...own))
+      say(`slots: ${slotHead} and ${slot}, not the read's own`);
+    if (raw.childrenListedAt !== (read.childrenAt[p.address] ?? null)) say('childrenListedAt');
+  } else if (
     !Number.isInteger(slot) ||
     !Number.isInteger(slotHead) ||
     slot <= 0 ||
@@ -132,7 +165,8 @@ for (const o of outcomes) {
     (c.children[p.address] ?? [])
       .map((k) => captureBytes(c, k))
       .filter((d): d is Uint8Array => !!d?.length),
-    cfgKey ? captureBytes(c, cfgKey) : undefined,
+    // a fee config returned with no data is one that was not returned
+    cfgKey && stored(cfgKey) ? captureBytes(c, cfgKey) : undefined,
   );
   compared++;
   if (!Object.is(fromFile.sim.midRaw, fromCapture.sim.midRaw)) say('mid');
@@ -162,6 +196,7 @@ console.log(
       .map((o) => ({ pool: o.pool.address, reason: o.written ? null : o.reason })),
     unexpectedFiles,
     different,
+    readSidecar: !!read,
     same: !different.length && !unexpectedFiles.length,
   }),
 );

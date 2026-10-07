@@ -21,7 +21,7 @@ The source has no default folder: a hand run names one, and stops if it does not
 3. **The read.** `getMultipleAccounts`, 100 accounts a call, one call at a time, through the shared `rpc()` and its backoff: the pool accounts, then the Raydium fee configs and the arrays (`readSplitCapture` of `scripts/risk/lib-split.ts`). A call that fails is made again, three times in all; a call that still fails costs only the pools with an account in it. No call starts after two minutes.
 4. **One outcome per pool.** A file, or a line in the run's row with the reason there is none.
 5. **The files.** `<folder>/<YYYY-MM-DD>/<HH>/<pool>.json.gz`, UTC, each written beside and renamed. A second run in the same hour replaces the first's files.
-6. **The run's row.** Printed to the job's log, then appended to `<folder>/runs.jsonl`. A run that stops, or is ended by a signal, leaves a row too, with how far it got.
+6. **The run's row.** Printed to the job's log, then appended to `<folder>/runs.jsonl`. A run that stops, or is ended by a signal, leaves a row too, with how far it got. A run that is given no folder, or one it may not write into, is in the log only.
 
 ## A file
 
@@ -48,7 +48,7 @@ Every pool of the tracked stocks is in exactly one place in the run's row: writt
 
 | Reason | Meaning | The run exits |
 |---|---|---|
-| `head_missing` | The chain returned no pool account | 0 |
+| `head_missing` | The chain returned no pool account, or one with no data | 0 |
 | `no_arrays_in_cache` | The collector's cache lists no account for the pool yet | 0 |
 | `no_array_read` | None of the accounts that came back is a tick or bin array of the pool | 0 |
 | `decode_failed` | The pool account or an array does not decode with `packages/risk/src/pools`; the decoder's words are kept | 0 |
@@ -72,15 +72,17 @@ The row also says, for each of the collector's own pools, the hours since the co
 
 | Variable | Default | What it does |
 |---|---|---|
-| `RISK_RAW_ARRAYS_DIR` | none in the source; `<home>/raw-arrays` in an installed bundle | The job's folder. The API reads the same variable, with `~/.colosseum/risk/raw-arrays` as its default |
+| `RISK_RAW_ARRAYS_DIR` | none in the source; always `<home>/raw-arrays` in an installed bundle | The job's folder. The API reads the same variable, with `~/.colosseum/risk/raw-arrays` as its default |
 | `RISK_RAW_ARRAYS_ALL` | off | `1`: also record the pools the collector writes itself. Where both folders hold a pool's hour the API reads the collector's file, and this job's if that one does not read |
 | `RISK_RAW_ARRAYS_SKIP` | none | Exit paths to leave out, for example `other,via_xstock` |
 | `RISK_RAW_ARRAYS_BATCH` | 100 | Accounts in one call |
-| `RISK_RAW_ARRAYS_CAPTURE` | none | Also saves what the run read as a split capture, for the check |
+| `RISK_RAW_ARRAYS_CAPTURE` | none | Also saves what the run read as a split capture, and what the read knew beside it (`<file>.read.json`), for the check. Refused inside the collector's home |
 | `RISK_HOME` | `~/.colosseum/risk` | Where the collector's registry and cache are read |
 | `SOLANA_RPC_URL` | none | Required: the job stops without it instead of using the public endpoint |
 
-The first three are put inside the bundle by the installer, from its own environment, so the collector's installer (which rewrites the shared env file) cannot lose them. A line in the env file still wins.
+The installer puts the folder inside the bundle, always `<home>/raw-arrays`: it does not read `RISK_RAW_ARRAYS_DIR`. `RISK_RAW_ARRAYS_ALL` and `RISK_RAW_ARRAYS_SKIP` are put inside the bundle from the installer's own environment, so the collector's installer (which rewrites the shared env file) cannot lose them. A line in the env file still wins over the bundle, for all three, and is the only way to move the folder; the API must then be given the same `RISK_RAW_ARRAYS_DIR`.
+
+The job writes only into a folder of its own. It refuses the collector's raw folder and anything inside it, the collector's home and every other folder of it, a folder that holds the home, and a folder whose `runs.jsonl` begins with another job's line, under whatever name the folder is given (a link, another letter case, another spelling of the volume). Trim `runs.jsonl` by whole lines, or delete it.
 
 ## Installing (a person's)
 
@@ -91,7 +93,15 @@ RISK_RAW_ARRAYS_ALL=1 pnpm risk:raw-arrays-install-job    # all 260
 
 It bundles `job.ts` with its dependencies and the list of 18 into `~/.colosseum/risk/risk-raw-arrays.mjs`, proves the new bundle starts before it replaces the one that was there (kept beside it as `risk-raw-arrays.before-<time>.mjs`), writes `~/Library/LaunchAgents/com.colosseum.risk-raw-arrays.plist` from the collector's plist template (read, not edited) and loads that one agent at minute 25. It does not write the env file. Run it again after a code change, and after a new list of tracked stocks: the list is inside the bundle.
 
-After the first firing, `tail -1 ~/.colosseum/risk/raw-arrays/runs.jsonl` shows the run: `pools`, `notWritten`, `rpc`, `seconds` and `bytes`.
+Around the install, as gate `PRICE-JOB` asks of a new job, so that nothing running is shown to have been disturbed:
+
+```sh
+stat -f '%Sm %N' ~/.colosseum/risk/*.log ~/.colosseum/cron.log   # before, and again an hour after: every log has moved on
+launchctl list | grep com.colosseum                               # after: ten labels, the new one among them
+tail -1 ~/.colosseum/risk/raw-arrays/runs.jsonl                   # after minute 25: pools, notWritten, rpc, seconds, bytes
+```
+
+Install it, and install it again, at another minute than 25: the job may be running then.
 
 Remove it with `launchctl unload ~/Library/LaunchAgents/com.colosseum.risk-raw-arrays.plist` and then delete that plist: a plist left in the folder is loaded again at the next login.
 
@@ -104,7 +114,7 @@ Remove it with `launchctl unload ~/Library/LaunchAgents/com.colosseum.risk-raw-a
 | `check.ts` | `pnpm risk:raw-arrays-check`: a run's files against the run's capture, as bytes and as the API's reader sees them |
 | `install-job.sh` | The installer, with its rehearsal mode |
 
-The tests are `tests/risk-layer/raw-arrays.test.ts` and `tests/risk-layer/raw-arrays-job.test.ts`; none calls the network. The second runs the job as a process against a server on the same machine that answers from frozen accounts. The fixture is `fixtures/risk/raw-arrays/hoodx-strcx-20261007T0431.json.gz`, eleven pools frozen by:
+The tests are `tests/risk-layer/raw-arrays.test.ts`, `tests/risk-layer/raw-arrays-job.test.ts` and `tests/risk-layer/raw-arrays-install.test.ts`; none calls the network. The second runs the job as a process against a server on the same machine that answers from frozen accounts. The third runs the installer under a made-up HOME with a stand-in for `launchctl`; the installer is zsh, so those four tests run where zsh is (the Macs the job is installed on) and are skipped on GitHub's Linux runner. The fixture is `fixtures/risk/raw-arrays/hoodx-strcx-20261007T0431.json.gz`, eleven pools frozen by:
 
 ```sh
 pnpm risk:split-capture fixtures/risk/raw-arrays/<name>.json.gz --raw-arrays --only HOODx,STRCx

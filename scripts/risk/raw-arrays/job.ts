@@ -1,17 +1,20 @@
 import 'dotenv/config';
 import {
   appendFileSync,
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
-  realpathSync,
+  readSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { multipleAccounts, RISK_HOME } from '../lib-lending';
 import { rpcStats } from '../lib-pools';
 import { readSplitCapture, saveCapture } from '../lib-split';
@@ -31,6 +34,7 @@ import {
   type RawSelection,
   runSummary,
   scrubbed,
+  secretsOf,
   selectRawArrayPools,
   withholdingUndecodable,
 } from './lib';
@@ -40,9 +44,9 @@ import {
 // itself, as raw bytes, in the collector's file format, into a folder of its own:
 //   <RISK_RAW_ARRAYS_DIR>/<YYYY-MM-DD>/<HH>/<pool>.json.gz
 //   <RISK_RAW_ARRAYS_DIR>/runs.jsonl                               one line per run
-// It reads the collector's registry and cache under RISK_HOME and never writes there: no collector file is touched,
-// and the job is installed beside the others by scripts/risk/raw-arrays/install-job.sh, which loads this one agent
-// and reloads none (gate PRICE-JOB). The tracked stocks are scripts/risk/universe/solana.json, put inside the bundle
+// It reads the collector's registry and cache under RISK_HOME and writes none of the collector's files or folders.
+// It is installed beside the other jobs by scripts/risk/raw-arrays/install-job.sh, which loads this one agent and
+// reloads none (gate PRICE-JOB). The tracked stocks are scripts/risk/universe/solana.json, put inside the bundle
 // when it is built, because a launchd agent cannot read ~/Documents: a new list needs a new install.
 //
 // RISK_RAW_ARRAYS_DIR has no default here. The installer writes the folder of its own home into the bundle it
@@ -53,28 +57,31 @@ import {
 // backoff. No getProgramAccounts: which arrays a pool has comes from the collector's cache (it lists each pool again
 // about hourly, and at once when its own liquidity check fails), so a list here is as old as the collector's.
 //
-// Settings: RISK_RAW_ARRAYS_ALL=1 also reads the pools the collector writes itself (it writes each of them only in
-// the runs where it lists the pool again, about half the hours; where both folders hold a pool's hour the API reads
-// the collector's file, and this job's if that one does not read). RISK_RAW_ARRAYS_SKIP=other,via_xstock leaves out pools by exit path (none by
-// default). RISK_RAW_ARRAYS_BATCH=<1..100> is the accounts in one call (100). RISK_RAW_ARRAYS_CAPTURE=<file> also
-// saves what the run read as a split capture, for `pnpm risk:raw-arrays-check`. `--plan` prints what a run would
-// read, from the registry and the cache, and stops: no network, nothing written.
+// Settings:
+//   RISK_RAW_ARRAYS_ALL=1          also read the pools the collector writes itself. It writes each of them only in
+//                                  the runs where it lists the pool again, about half the hours. Where both folders
+//                                  hold a pool's hour the API reads the collector's file, and this job's if that one
+//                                  does not read.
+//   RISK_RAW_ARRAYS_SKIP=other,…   leave out pools by exit path (none by default).
+//   RISK_RAW_ARRAYS_BATCH=<1..100> the accounts in one call (100).
+//   RISK_RAW_ARRAYS_CAPTURE=<file> also save what the run read as a split capture, with what the read knew beside it
+//                                  (<file>.read.json), for `pnpm risk:raw-arrays-check`.
+// `--plan` prints what a run would read, from the registry and the cache, and stops: no network, nothing written.
 const KIND = 'raw-arrays-run';
 /** No call is started after this long: the batches still to read are then not read, and their pools say so. */
 const READ_BUDGET_MS = 120_000;
 const plan = process.argv.includes('--plan');
 const started = Date.now();
-const say = (e: unknown) => scrubbed(e, [process.env.SOLANA_RPC_URL]);
+const say = (e: unknown) => scrubbed(e, secretsOf(process.env.SOLANA_RPC_URL));
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-// A path as the disk spells it: the real path of its nearest folder that exists, then what is left. Two spellings of
-// one folder (a link, another letter case) are then one string.
-const real = (p: string): string => {
-  const abs = resolve(p);
-  if (existsSync(abs)) return realpathSync.native(abs);
-  const up = dirname(abs);
-  return up === abs ? abs : join(real(up), basename(abs));
-};
+// what every row says of itself: where its figures are from. Each tvlUsd is the registry's, as old as the registry.
+const PROVENANCE = {
+  source: RAW_ARRAYS_SOURCE,
+  method: RAW_ARRAYS_METHOD,
+  methodVersion: RAW_ARRAYS_METHOD_VERSION,
+  provenance: 'live',
+  tvlUsdSource: 'the pool collector’s registry, as of registry.fetchedAt',
+} as const;
 
 // The collector rewrites cache.json in place at the end of each of its runs: a read that falls inside that write sees
 // half a file. That is a parse error, tried again; a missing file is not.
@@ -89,6 +96,54 @@ async function readJson<T>(file: string, attempts: number): Promise<T> {
       await sleep(2_000);
     }
   }
+}
+
+// What a path is on the disk: its device and inode, following links; null when nothing is there. Two names of one
+// folder (a link, another letter case, another spelling of the volume) give the same answer.
+const idOf = (path: string): string | null => {
+  try {
+    const s = statSync(path);
+    return `${s.dev}:${s.ino}`;
+  } catch {
+    return null;
+  }
+};
+// The collector's homes: this run's and the default one, so a run pointed at another home still may not write into
+// the live one. The collector writes <home>/raw whatever RISK_RAW_DIR says (that variable is the API's): both are
+// refused.
+const HOMES = [resolve(RISK_HOME), join(homedir(), '.colosseum', 'risk')];
+const RAWS = [
+  ...HOMES.map((h) => join(h, 'raw')),
+  process.env.RISK_RAW_DIR ? resolve(process.env.RISK_RAW_DIR) : '',
+];
+const refusalOf = (folder: string) => folderRefusal(resolve(folder), HOMES, RAWS, idOf);
+
+/**
+ * The folder this run may write into, decided before anything is read or created. It is refused when no folder is
+ * named, when it is one of the collector's (`folderRefusal`), and when it already holds another job's run log.
+ */
+function ownFolder(): string {
+  const named = process.env.RISK_RAW_ARRAYS_DIR;
+  if (!named)
+    throw new Error(
+      'RISK_RAW_ARRAYS_DIR is not set: name the folder this run writes into (the installed job has its own)',
+    );
+  const dir = resolve(named);
+  const refusal = refusalOf(dir);
+  if (refusal) throw new Error(`${refusal}: this job writes only into a folder of its own`);
+  // A run log that begins with another job's line is not this job's folder, whatever its name. An empty one proves
+  // nothing (a log someone emptied, a first line the disk had no room for) and is this job's to write.
+  const log = join(dir, 'runs.jsonl');
+  if (existsSync(log)) {
+    const head = Buffer.alloc(200);
+    const fd = openSync(log, 'r');
+    const n = readSync(fd, head, 0, head.length, 0);
+    closeSync(fd);
+    const first = head.subarray(0, n).toString('utf8');
+    if (first.trim() && !first.includes(`"kind":"${KIND}"`))
+      throw new Error(`${dir} holds a runs.jsonl that is not this job's: not a folder of its own`);
+  }
+  return dir;
 }
 
 /**
@@ -146,10 +201,11 @@ function failureRow(error: string) {
     ...(state.sel ? failedRunPools(state.sel, state.stage) : { pools: null }),
     rpc: { ...rpcStats },
     seconds: { total: (Date.now() - started) / 1000 },
-    methodVersion: RAW_ARRAYS_METHOD_VERSION,
+    ...PROVENANCE,
   };
 }
-// The row is printed first (the job's log), then appended to the job's own file when its folder may be written.
+// The row is printed first (the job's log), then appended to the job's own file once its folder is known to be its
+// own. A run refused its folder, or given none, is in the log only.
 function leave(row: object) {
   console.log(JSON.stringify(row));
   if (!state.dir) return;
@@ -171,11 +227,14 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const)
   });
 
 async function run() {
-  const reg = JSON.parse(readFileSync(join(RISK_HOME, 'registry.json'), 'utf8')) as {
+  // the folder first: whatever fails after this leaves its line there
+  if (!plan) state.dir = ownFolder();
+
+  const reg = await readJson<{
     fetchedAt?: string;
     methodVersion?: string;
     pools: Parameters<typeof selectRawArrayPools>[0];
-  };
+  }>(join(RISK_HOME, 'registry.json'), 4);
   const cache = await readJson<{
     children: Record<string, string[]>;
     childrenAt?: Record<string, string>;
@@ -195,30 +254,17 @@ async function run() {
   };
   if (plan) {
     console.log(
-      JSON.stringify({ kind: 'raw-arrays-plan', ...inputs, ...planOf(sel, cache.children) }),
+      JSON.stringify({
+        kind: 'raw-arrays-plan',
+        ...inputs,
+        ...planOf(sel, cache.children),
+        ...PROVENANCE,
+        source: 'the pool collector’s registry.json and cache.json (no chain read)',
+      }),
     );
     return;
   }
-
-  // Where this run may write, decided before anything is created. The collector writes <RISK_HOME>/raw whatever
-  // RISK_RAW_DIR says (that variable is the API's), so both are refused.
-  const named = process.env.RISK_RAW_ARRAYS_DIR;
-  if (!named)
-    throw new Error(
-      'RISK_RAW_ARRAYS_DIR is not set: name the folder this run writes into (the installed job has its own)',
-    );
-  const dir = real(named);
-  const home = real(RISK_HOME);
-  const refusal = folderRefusal(dir, home, [
-    join(home, 'raw'),
-    process.env.RISK_RAW_DIR ? real(process.env.RISK_RAW_DIR) : '',
-  ]);
-  if (refusal) throw new Error(`${refusal}: this job writes only into a folder of its own`);
-  // a folder that already holds another job's run log is not this job's, whatever its name
-  const log = join(dir, 'runs.jsonl');
-  if (existsSync(log) && !readFileSync(log, 'utf8').slice(0, 200).includes(`"kind":"${KIND}"`))
-    throw new Error(`${dir} holds a runs.jsonl that is not this job's: not a folder of its own`);
-  state.dir = dir;
+  const dir = state.dir as string;
   state.inputs = inputs;
   state.sel = sel;
   // the shared rpc() falls back to the public endpoint when this is not set, and says nothing
@@ -245,12 +291,31 @@ async function run() {
       rpcCalls: () => rpcStats.calls,
     },
   );
-  // asked for by hand, for the check; a file that cannot be written must not cost the run its recordings
+  // Asked for by hand, for the check: the capture, and beside it what the read knew that a capture does not hold
+  // (each account's slot, the accounts no call answered, the pool accounts withheld, when the lists were made). A
+  // file that cannot be written, or a place this job may not write, must not cost the run its recordings.
   let captureSaved: { file: string } | { error: string } | null = null;
-  if (process.env.RISK_RAW_ARRAYS_CAPTURE)
+  const captureFile = process.env.RISK_RAW_ARRAYS_CAPTURE;
+  if (captureFile)
     try {
-      saveCapture(process.env.RISK_RAW_ARRAYS_CAPTURE, capture);
-      captureSaved = { file: process.env.RISK_RAW_ARRAYS_CAPTURE };
+      const refusal = refusalOf(dirname(resolve(captureFile)));
+      if (refusal) throw new Error(refusal);
+      saveCapture(captureFile, capture);
+      writeFileSync(
+        `${captureFile}.read.json`,
+        JSON.stringify({
+          slots: [...batched.slots],
+          failed: [...batched.failed],
+          undecodable: [...reader.undecodable],
+          childrenAt: Object.fromEntries(
+            sel.read.flatMap((p) => {
+              const t = cache.childrenAt?.[p.address];
+              return t ? [[p.address, t]] : [];
+            }),
+          ),
+        }),
+      );
+      captureSaved = { file: captureFile };
     } catch (e) {
       captureSaved = { error: say(e) };
     }
@@ -295,7 +360,7 @@ async function run() {
   let collector: Record<string, unknown>;
   try {
     const seen = collectorFiles(
-      join(home, 'raw'),
+      join(resolve(RISK_HOME), 'raw'),
       new Set(sel.collector.map((p) => p.address)),
       at,
       72,
@@ -334,10 +399,7 @@ async function run() {
     ...(captureSaved ? { capture: captureSaved } : {}),
     rpc: { ...rpcStats, ...batched.stats, batchSize: size },
     seconds: { read: capture.rpc.seconds, total: (Date.now() - started) / 1000 },
-    source: RAW_ARRAYS_SOURCE,
-    method: RAW_ARRAYS_METHOD,
-    methodVersion: RAW_ARRAYS_METHOD_VERSION,
-    provenance: 'live',
+    ...PROVENANCE,
   };
   state.finished = true;
   leave(row);
