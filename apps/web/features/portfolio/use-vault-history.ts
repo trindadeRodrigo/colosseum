@@ -92,7 +92,9 @@ export function useVaultHistory(): VaultHistory {
         new Set(
           read.flatMap((answer, i) => {
             const record = records[i];
-            if (answer.kind !== 'read' || !record || !isBuy(record) || record.terms) return [];
+            if (answer.kind !== 'read' || !record || !isBuy(record)) return [];
+            // a buy of a plan, or money added to a vault: the two the server finishes
+            if (record.terms && record.terms.kind !== 'vault') return [];
             if (continued.has(record.orderId) || !stoppedShort(answer.order)) return [];
             return record.continues || depositLanded(answer.order) ? [record.orderId] : [];
           }),

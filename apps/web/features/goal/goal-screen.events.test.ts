@@ -1111,7 +1111,7 @@ describe.each(['solana', 'robinhood'] as const)('the chain of a goal on %s', (ch
       b.textContent,
     ]);
 
-  it('is badged on the sheet, on the goal’s card, and on the plan it built', async () => {
+  it('is named in the sheet, where it is changed, and once on the plan it built: not on the goal’s card', async () => {
     api({
       person,
       plan: (body) =>
@@ -1123,7 +1123,8 @@ describe.each(['solana', 'robinhood'] as const)('the chain of a goal on %s', (ch
     await fill(host);
     const named = [[chain, CHAIN_NAMES[chain]]];
     expect(badged(host.querySelector('[data-ui="sheet-facts"]'))).toEqual(named);
-    expect(badged(host.querySelector('[data-ui="goal-card"]'))).toEqual(named);
+    expect(find(host, '[data-ui="goal-card"]')).toBeTruthy();
+    expect(badged(host.querySelector('[data-ui="goal-card"]'))).toEqual([]);
     await click(buildButton(host));
     await settle();
     const done = [...host.querySelectorAll('[data-ui="card"]')].find((card) =>

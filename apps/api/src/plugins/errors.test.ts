@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import { describe, expect, it } from 'vitest';
 import { hideServerErrors } from './errors';
 import { OPEN_WRITES, registerLimits, registerOpenWriteLimit } from './limits';
-import { logForwardedHopsOnce, proxyTrust, trustedHops } from './proxy';
+import { logForwardedHops, proxyTrust, trustedHops } from './proxy';
 
 // What a route outside /v1 answers when it throws, and whose address a request is counted against.
 
@@ -15,6 +15,15 @@ describe('an error nobody meant to send', () => {
     });
     made.get('/busy', async () => {
       throw Object.assign(new Error('the node is not answering'), { statusCode: 503 });
+    });
+    made.get('/gateway', async () => {
+      throw Object.assign(
+        new Error('HTTP request failed. URL: https://node.example/v2/a-key-in-the-path'),
+        { statusCode: 502 },
+      );
+    });
+    made.get('/gone', async () => {
+      throw Object.assign(new Error('that was here once'), { statusCode: 410 });
     });
     made.get('/risk/assets', async () => {
       throw new Error('the risk layer’s own words');
@@ -34,10 +43,25 @@ describe('an error nobody meant to send', () => {
     expect(res.body).not.toMatch(/ENOTFOUND|hunter2|db\.internal/);
   });
 
-  it('leaves an error with a status of its own as it was', async () => {
+  it('hides the message of every 5xx under its own status: a 502 that names a URL, a 503', async () => {
     const made = app();
+    const gateway = await made.inject({ url: '/gateway' });
+    expect(gateway.statusCode).toBe(502);
+    expect(gateway.json()).toEqual({
+      statusCode: 502,
+      error: 'Bad Gateway',
+      message: expect.stringMatching(/^the server failed on this request \(.+\)$/),
+    });
+    expect(gateway.body).not.toMatch(/node\.example|a-key-in-the-path|URL/);
     const busy = await made.inject({ url: '/busy' });
-    expect([busy.statusCode, busy.json().message]).toEqual([503, 'the node is not answering']);
+    expect([busy.statusCode, busy.json().error]).toEqual([503, 'Service Unavailable']);
+    expect(busy.body).not.toContain('the node is not answering');
+  });
+
+  it('leaves a 4xx as it was: it is the caller’s to read', async () => {
+    const made = app();
+    const gone = await made.inject({ url: '/gone' });
+    expect([gone.statusCode, gone.json().message]).toEqual([410, 'that was here once']);
     const bad = await made.inject({ method: 'POST', url: '/echo', payload: {} });
     expect(bad.statusCode).toBe(400);
     expect(bad.json().message).toContain("must have required property 'n'");
@@ -159,19 +183,49 @@ describe('the structurer’s writes outside /v1', () => {
 });
 
 describe('the number of proxies a host puts in front', () => {
-  it('is logged once, as a count, from the first forwarded request, and never an address', async () => {
+  const logged = () => {
     const lines: string[] = [];
     const made = Fastify({
       logger: { level: 'info', stream: { write: (line: string) => void lines.push(line) } },
     });
-    logForwardedHopsOnce(made);
+    logForwardedHops(made);
     made.get('/x', async () => 'ok');
-    await made.inject({ url: '/x' });
-    await made.inject({ url: '/x', headers: { 'x-forwarded-for': '203.0.113.7, 10.0.0.2' } });
-    await made.inject({ url: '/x', headers: { 'x-forwarded-for': '203.0.113.8' } });
-    const said = lines.filter((line) => line.includes('forwarded hops seen'));
-    expect(said).toHaveLength(1);
-    expect(JSON.parse(said[0] as string).msg).toBe('forwarded hops seen: 2');
-    expect(said[0]).not.toMatch(/203\.0\.113|10\.0\.0/);
+    const from = (forwarded?: string) =>
+      made.inject({ url: '/x', headers: forwarded ? { 'x-forwarded-for': forwarded } : {} });
+    const said = () =>
+      lines
+        .filter((line) => line.includes('forwarded hops seen'))
+        .map((line) => JSON.parse(line).msg as string);
+    return { from, said, lines };
+  };
+
+  it('is logged for each count seen, once, as a count and never an address', async () => {
+    const { from, said, lines } = logged();
+    await from();
+    await from('203.0.113.7, 10.0.0.2');
+    await from('203.0.113.8, 10.0.0.2');
+    await from('203.0.113.8');
+    expect(said().map((line) => line.split(' (')[0])).toEqual([
+      'forwarded hops seen: 2',
+      'forwarded hops seen: 1',
+    ]);
+    expect(lines.join('')).not.toMatch(/203\.0\.113|10\.0\.0/);
+  });
+
+  it('is not fixed by a caller who writes entries of their own first: the plain request after is logged, and the line says to take the lowest', async () => {
+    const { from, said } = logged();
+    // the first forwarded request is a caller's, padded with five addresses of its own
+    await from('1.1.1.1, 2.2.2.2, 3.3.3.3, 4.4.4.4, 5.5.5.5, 203.0.113.7');
+    await from('203.0.113.9');
+    expect(said()).toEqual([
+      'forwarded hops seen: 6 (lowest so far: 6; set TRUST_PROXY_HOPS to the lowest, a caller can add entries)',
+      'forwarded hops seen: 1 (lowest so far: 1; set TRUST_PROXY_HOPS to the lowest, a caller can add entries)',
+    ]);
+  });
+
+  it('stops at a handful of counts, so a caller cannot fill the log', async () => {
+    const { from, said } = logged();
+    for (let n = 1; n <= 30; n++) await from(Array.from({ length: n }, () => '9.9.9.9').join(', '));
+    expect(said()).toHaveLength(8);
   });
 });

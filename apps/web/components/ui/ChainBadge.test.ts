@@ -73,4 +73,29 @@ describe('ChainBadge', () => {
     expect(text(one(row, ui('chain-badge')))).toBe('Robinhood Chain');
     expect(text(one(row, ui('explorer-name')))).toBe('Robinhood explorer');
   });
+
+  it('is left off an activity row where the page already names the one chain', () => {
+    const row = render(
+      createElement(ExecutionList, {
+        chainTags: false,
+        executions: [
+          {
+            id: 'a',
+            verb: 'Approve',
+            detail: '',
+            status: 'confirmed',
+            at: '2026-10-05T12:00:00Z',
+            signature: '0xab',
+            explorerUrl: 'https://explorer.testnet.chain.robinhood.com/tx/0xab',
+            explorer: 'Robinhood explorer',
+            chain: 'robinhood',
+            provenance: 'sandbox',
+          },
+        ],
+      }),
+    );
+    expect(all(row, ui('chain-badge'))).toEqual([]);
+    // the explorer's name stays: it is the link's, not the chain's tag
+    expect(text(one(row, ui('explorer-name')))).toBe('Robinhood explorer');
+  });
 });

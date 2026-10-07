@@ -83,14 +83,18 @@ export function leftOfApproved(approved: Pick<OrderDetail, 'legs'>, now: Standin
  * The same for an order this browser never reviewed: there is no approved copy, so the swaps left are
  * the server's, and each is held to the plan's lines as the server stores them. Every one sells cash
  * for a token the plan holds, no token twice, and together they spend no more than the order
- * deposited. Null when one does not: nothing is offered then.
+ * deposited (where it deposited: an order that finishes another did not). Null when one does not:
+ * nothing is offered then.
  */
 export function leftOfPlan(
   order: Pick<OrderDetail, 'depositRaw' | 'legs'> & Standing,
   targets: readonly Target[],
   cash: string,
 ): Trade[] | null {
-  if (order.depositRaw === undefined || !RAW.test(order.depositRaw)) return null;
+  // An order that finishes another deposited nothing itself: there is no deposit to hold it under,
+  // and the server refuses one that spends more cash than the vault holds.
+  const deposit = order.depositRaw;
+  if (deposit !== undefined && !RAW.test(deposit)) return null;
   const trades = order.legs
     .slice()
     .sort((a, b) => a.seq - b.seq)
@@ -105,7 +109,7 @@ export function leftOfPlan(
     bought.add(trade.buy);
     spent += BigInt(trade.amountInRaw);
   }
-  return spent > BigInt(order.depositRaw) ? null : trades;
+  return deposit !== undefined && spent > BigInt(deposit) ? null : trades;
 }
 
 /**
@@ -179,6 +183,38 @@ export function checkFamilyBuy(
   return same ? deposit : { ok: false, why: 'trades' };
 }
 
+/** The steps an add of money to a vault is made of. */
+const ADD_KINDS: readonly string[] = ['approve', 'deposit', 'swap'];
+
+/**
+ * More money into a vault the person has (add money): the deposit as for a plan, into the vault they
+ * chose and no new one, once, and each trade the share its targets give: every trade buys a target with
+ * the cash token, for exactly the share of the deposit that target's weight gives, and no target is
+ * left out. The targets are the ones this app read from the chain itself where it could
+ * (features/portfolio/chain-vault.ts): the guard holds every step's bytes to the vault of that number
+ * and the person's own wallet, and a swap to the tokens the deployment lists, but not to the vault's
+ * targets, so this is where an add's trades are held to them.
+ */
+export function checkVaultAdd(
+  order: Pick<OrderDetail, 'depositRaw' | 'legs' | 'basketId'>,
+  amountUsd: number,
+  units: ChainUnits | null,
+  terms: Extract<SharedTerms, { kind: 'vault' }>,
+): DepositCheck | { ok: false; why: 'trades' | 'shape' } {
+  // An add is an approval where the chain needs one, the deposit, and the swaps; with auto-follow on,
+  // no swap. Any other step beside them (a new vault, a withdrawal, a change of targets or of a
+  // setting) is not an add, whatever else the order does right.
+  const kinds = order.legs.map((l) => l.kind);
+  const allowed: readonly string[] = terms.keeper ? ['approve', 'deposit'] : ADD_KINDS;
+  const count = (kind: string) => kinds.filter((k) => k === kind).length;
+  if (kinds.some((k) => !allowed.includes(k)) || count('deposit') !== 1 || count('approve') > 1)
+    return { ok: false, why: 'shape' };
+  // An order that states the vault's number states the one of the vault chosen.
+  if (order.basketId !== undefined && order.basketId !== terms.basketId)
+    return { ok: false, why: 'shape' };
+  return checkFamilyBuy(order, amountUsd, units, terms.targets);
+}
+
 /**
  * A follow or a publish moves no cash and trades nothing: no deposit, no cash on a step, no trade, and
  * only the steps its terms call for, each once. The guard holds each step's bytes to the terms; this
@@ -186,7 +222,7 @@ export function checkFamilyBuy(
  */
 export function sharedShapeOk(
   order: Pick<OrderDetail, 'depositRaw' | 'legs'>,
-  terms: Exclude<SharedTerms, { kind: 'family' }>,
+  terms: Extract<SharedTerms, { kind: 'follow' | 'publish' }>,
 ): boolean {
   if (order.depositRaw !== undefined || order.legs.length === 0) return false;
   if (order.legs.some((l) => l.cashRaw !== undefined || l.trades.length > 0)) return false;

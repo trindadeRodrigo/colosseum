@@ -518,7 +518,7 @@ describe('what the executor answers', () => {
       });
       return calls;
     }
-    const stop = async () => {
+    const stop = async (lang: Lang = 'en') => {
       seed();
       run.answer = async () => ({
         status: 'failed',
@@ -526,7 +526,7 @@ describe('what the executor answers', () => {
         legId: LEG_SWAP,
         error: null,
       });
-      const host = await screen();
+      const host = await screen(lang);
       await click(primary(host));
       await settle();
       await settle();
@@ -610,26 +610,82 @@ describe('what the executor answers', () => {
       );
     });
 
-    it('says why in a sentence when the server refuses, and makes no record', async () => {
-      for (const [body, sentence] of [
-        [{ error: 'x', code: 'PRICE_MOVED' }, en.order.outcome.finishPriceMoved],
-        [{ error: 'x', details: { retryable: true } }, en.order.outcome.finishLater],
+    describe.each(['en', 'pt'] as const)('a refusal by the server, in %s', (lang) => {
+      const t = dictionary(lang);
+      const o = t.order.outcome;
+      const OTHER = '77777777-7777-4777-8777-777777777777';
+      const UNKNOWN = 'the vault of this order is not open';
+      // each as the server words it (apps/api/src/orders: continue.ts, store.ts, legs.ts)
+      it.each([
         [
-          { error: 'this order has nothing left to buy' },
-          en.order.outcome.finishRefused('this order has nothing left to buy'),
+          'another order finishes it',
+          {
+            error: 'another order finishes this one: what is left is that order’s',
+            fix: `Finish order ${OTHER}.`,
+          },
+          o.finishOther,
         ],
-      ] as const) {
+        [
+          'the wait for the order ran out',
+          {
+            error: 'this order is being worked on by another request',
+            details: { retryable: true },
+          },
+          o.finishWorking,
+        ],
+        [
+          'a step was built a moment ago',
+          { error: 'a step of this order was built just now', details: { retryable: true } },
+          o.finishWorking,
+        ],
+        [
+          'a transaction can still land',
+          {
+            error: 'the transaction built earlier for this step can still land',
+            details: { retryable: true },
+          },
+          o.finishLater,
+        ],
+        ['nothing is left', { error: 'this order has nothing left to buy' }, o.finishNothing],
+        [
+          'the cash in the vault is short',
+          {
+            error:
+              'the vault holds 1000000 raw USDC in cash, less than the 6000000 the steps left would spend',
+          },
+          o.finishShort,
+        ],
+        [
+          'the deposit has not landed',
+          { error: 'this order has not put its cash in the vault yet' },
+          o.finishNotDeposited,
+        ],
+        ['one this app has no words for', { error: UNKNOWN }, o.finishRefused(UNKNOWN)],
+      ])('is said in this app’s words and makes no record: %s', async (_, body, sentence) => {
         server({ route: true, made: () => json(body, 409) });
         router.push.mockClear();
-        const host = await stop();
-        await click(finishButton(host) as HTMLElement);
+        const host = await stop(lang);
+        await click(
+          [...host.querySelectorAll<HTMLElement>('button')].find((b) =>
+            b.textContent?.startsWith(o.finish),
+          ) as HTMLElement,
+        );
         await settle();
-        expect(host.textContent).toContain(sentence);
+        const said = find(host, '[role="alert"]');
+        expect(said.textContent).toContain(sentence);
+        // the server's English is shown only for a refusal this app does not know
+        if (body.error !== UNKNOWN) expect(said.textContent).not.toContain(body.error);
+        // the order that already finishes this one is a link, not an id to copy
+        const link = said.querySelector('[data-ui="order-finish-other"]');
+        if (sentence === o.finishOther)
+          expect([link?.textContent, link?.getAttribute('href')]).toEqual([
+            o.openThatOrder,
+            `/orders/${OTHER}`,
+          ]);
+        else expect(link).toBeNull();
         expect(router.push).not.toHaveBeenCalled();
         expect(recallOrder(NEXT_ID, USER)).toBeNull();
-        await unmountAll();
-        window.localStorage.clear();
-      }
+      });
     });
 
     it('does not take an answer that names another order, the same one, another owner or vault, a deposit or a step that is not a swap', async () => {
@@ -884,6 +940,45 @@ describe('what the executor answers', () => {
         expect(recallOrder(NEXT_ID, USER)?.approved?.at).toBe('2026-10-05T12:00:00Z');
       });
 
+      it('finishes a finishing order that ran out of time before anyone approved it, held to the trades it was made with', async () => {
+        const THIRD_ID = '88888888-8888-4888-8888-888888888888';
+        const next = continuation() as unknown as OrderDetail;
+        const posts: string[] = [];
+        portStore.setApi(async (path, init) => {
+          const method = init?.method ?? 'GET';
+          if (method === 'POST') posts.push(path);
+          if (path === '/v1/me') return json(person('solana'));
+          // never signed: its steps are as planned, and its time is over
+          if (path === `/v1/orders/${NEXT_ID}`) return json({ ...next, status: 'expired' });
+          if (path === `/v1/orders/${NEXT_ID}/continue`)
+            return json({ ...continuation(), id: THIRD_ID, continues: NEXT_ID });
+          if (method === 'POST') return json({ error: 'params/id must be a uuid' }, 400);
+          return json({ error: 'not found' }, 404);
+        });
+        // kept when it was made, and never approved
+        window.localStorage.setItem(
+          `tf-order:${NEXT_ID}`,
+          JSON.stringify({ ...keptNext(), approved: null }),
+        );
+        router.push.mockClear();
+        const host = await screen('en', NEXT_ID);
+        await settle();
+        // no dead end: nothing of the expired order to sign, and Finish is the one primary
+        const primaries = [...host.querySelectorAll<HTMLElement>('[data-variant="primary"]')];
+        expect(primaries.map(label)).toEqual([en.order.outcome.finish]);
+        await click(primaries[0] as HTMLElement);
+        await settle();
+        expect(posts.filter((p) => !p.includes('not-an-order'))).toEqual([
+          `/v1/orders/${NEXT_ID}/continue`,
+        ]);
+        expect(router.push).toHaveBeenCalledWith(`/orders/${THIRD_ID}`);
+        expect(recallOrder(THIRD_ID, USER)?.continues).toEqual({
+          orderId: NEXT_ID,
+          trades: left(),
+        });
+        expect(run.calls).toHaveLength(0);
+      });
+
       it('finishes the finishing order when that one stopped too, held to what it left, by its own id', async () => {
         const THIRD_ID = '88888888-8888-4888-8888-888888888888';
         const next = continuation() as unknown as OrderDetail;
@@ -1013,6 +1108,54 @@ describe('what the executor answers', () => {
           expect(review.querySelector('button[data-variant="primary"]')).not.toBeNull();
         },
       );
+
+      it('finishes a finishing order that stopped too: it deposited nothing, and its cash is what the first left', async () => {
+        const next = continuation() as unknown as OrderDetail;
+        const THIRD_ID = '88888888-8888-4888-8888-888888888888';
+        // the server alone knows it, listed among the plan's orders; it is opened by its own id
+        portStore.setApi(async (path, init) => {
+          const method = init?.method ?? 'GET';
+          if (path === '/v1/me') return json(person('solana'));
+          if (path === `/v1/orders/${NEXT_ID}`) return json({ ...next, status: 'expired' });
+          if (path === '/v1/me/plans')
+            return json({
+              plans: [
+                listed({
+                  orders: [
+                    {
+                      id: NEXT_ID,
+                      createdAt: '2026-10-02T00:00:00.000Z',
+                      amountUsd: 10,
+                      status: 'expired',
+                      deposited: false,
+                    },
+                  ],
+                }),
+              ],
+            });
+          if (path === `/v1/baskets/${PLAN_ID}`)
+            return json({ id: PLAN_ID, proposal: plan, fromLink: false });
+          if (path === `/v1/orders/${NEXT_ID}/continue`)
+            return json({ ...continuation(), id: THIRD_ID, continues: NEXT_ID });
+          if (method === 'POST') return json({ error: 'params/id must be a uuid' }, 400);
+          return json({ error: 'not found' }, 404);
+        });
+        router.push.mockClear();
+        const host = await screen('en', NEXT_ID);
+        await settle();
+        await settle();
+        expect(host.textContent).not.toContain(en.order.elsewhere);
+        const primaries = [...host.querySelectorAll<HTMLElement>('[data-variant="primary"]')];
+        expect(primaries.map(label)).toEqual([en.order.outcome.finish]);
+        await click(primaries[0] as HTMLElement);
+        await settle();
+        expect(router.push).toHaveBeenCalledWith(`/orders/${THIRD_ID}`);
+        expect(recallOrder(THIRD_ID, USER)?.continues).toEqual({
+          orderId: NEXT_ID,
+          trades: next.legs.flatMap((leg) => leg.trades),
+          unseen: true,
+        });
+      });
 
       it('offers no finish when what the server lists as left is not the plan’s: another token, a token twice, or more than was deposited', async () => {
         const first = stoppedOrder();

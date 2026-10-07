@@ -4,7 +4,7 @@ import {
   FundingResponse,
   OrderDetail,
   OrderError,
-  OrderErrorCode,
+  type OrderErrorCode,
   TEST_FUNDS_LOW,
   TestFundsResponse,
 } from '@colosseum/schemas';
@@ -14,7 +14,7 @@ import type { ApiFetch } from '../account/person';
 //
 //   GET  /v1/funding?amountUsd=&proposalId=&wallet=   what the wallet is missing for this buy, cash and gas
 //   POST /v1/orders { type: 'buy', owner, amountUsd, proposalId }   the order, its steps planned, nothing built
-//   POST /v1/testnet/fund { amountUsd, proposalId | family, wallet }   test network only: what is missing, sent
+//   POST /v1/testnet/fund { amountUsd, proposalId | family | vault, wallet }   test network only: what is missing, sent
 //
 // Every answer is read with the shared schema. What the server says in a refusal is written for a
 // developer: the screen has a sentence of its own for each thing the person can do about it.
@@ -59,16 +59,33 @@ const bodyOf = async (res: Response): Promise<Record<string, unknown>> => {
 };
 
 /**
- * What the wallet is missing for a buy of this plan, or of this shared portfolio (by its slug), and
+ * What a buy is of: a plan, a shared portfolio (by its slug), or a vault the person has, which the buy
+ * adds to (its address and its chain, as GET /v1/funding and POST /v1/testnet/fund name it).
+ */
+export type BuyOf =
+  | { proposalId: string }
+  | { family: string }
+  | { vault: string; vaultChain: ChainId };
+
+/** Where the screen that adds money to a vault lives. */
+export const addMoneyPath = (chain: ChainId, address: string) =>
+  `/vaults/${chain}/${encodeURIComponent(address)}/add`;
+
+/**
+ * What the wallet is missing for a buy of this plan, of this shared portfolio or into this vault, and
  * amount, read from the wallet on its chain.
  */
 export async function readFunding(
   apiFetch: ApiFetch,
-  ask: ({ proposalId: string } | { family: string }) & { amountUsd: number; wallet: string },
+  ask: BuyOf & { amountUsd: number; wallet: string },
 ): Promise<FundingOutcome> {
   const query = new URLSearchParams({
     amountUsd: String(ask.amountUsd),
-    ...('family' in ask ? { family: ask.family } : { proposalId: ask.proposalId }),
+    ...('vault' in ask
+      ? { vault: ask.vault, vaultChain: ask.vaultChain }
+      : 'family' in ask
+        ? { family: ask.family }
+        : { proposalId: ask.proposalId }),
     wallet: ask.wallet,
   });
   let res: Response;
@@ -94,13 +111,18 @@ const CODES: readonly OrderErrorCode[] = [
 ];
 
 /**
- * POST /v1/orders: a buy of this plan for this amount, owned by the wallet of the plan's chain. The
- * order that comes back is the one the review screen shows; it is checked here only for being an order
- * of this plan's chain and this owner. What it may sign is the guard's, later, from that same object.
+ * POST /v1/orders: a buy of this plan for this amount, owned by the wallet of the plan's chain, or, with
+ * `vault`, that amount added to a vault of that wallet's on the chain. The order that comes back is the
+ * one the review screen shows; it is checked here only for being an order of this chain and this owner.
+ * What it may sign is the guard's, later, from that same object.
  */
 export async function placeOrder(
   apiFetch: ApiFetch,
-  ask: { proposalId: string; amountUsd: number; chain: ChainId; owner: string },
+  ask: ({ proposalId: string } | { vault: string }) & {
+    amountUsd: number;
+    chain: ChainId;
+    owner: string;
+  },
 ): Promise<OrderOutcome> {
   const family = chainFamily(ask.chain);
   let res: Response;
@@ -112,7 +134,9 @@ export async function placeOrder(
         type: 'buy',
         owner: { [family]: ask.owner },
         amountUsd: ask.amountUsd,
-        proposalId: ask.proposalId,
+        ...('vault' in ask
+          ? { vault: { chain: ask.chain, address: ask.vault } }
+          : { proposalId: ask.proposalId }),
       }),
     });
   } catch {
@@ -171,10 +195,48 @@ export async function continuesOrders(apiFetch: ApiFetch): Promise<boolean> {
   }
 }
 
+/**
+ * Why the server would not make the order that finishes another. The route's refusals carry no code,
+ * so each is known by its sentence (apps/api/src/orders/continue.ts, store.ts, legs.ts), and one this
+ * app does not know is `said`, shown in the server's words.
+ * - `other-order`: an order already finishes this one; `orderId` is that order, where the answer names it.
+ * - `working`: another request holds this order (the lock's wait ran out), or a step of it was built a
+ *   moment ago.
+ * - `in-flight`: a transaction built before for a step left can still land.
+ * - `nothing-left`, `cash-short`, `not-deposited`: there is nothing to finish, or nothing to finish it with.
+ * `PRICE_MOVED` is not among them: this route quotes anew and builds nothing, so it never answers it.
+ */
+export type FinishRefusal =
+  | 'other-order'
+  | 'working'
+  | 'in-flight'
+  | 'nothing-left'
+  | 'cash-short'
+  | 'not-deposited'
+  | 'said';
+
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+export function refusalOf(
+  sentence: string,
+  fix: string | undefined,
+): { why: FinishRefusal; orderId?: string } {
+  if (/another order finishes this one/i.test(sentence)) {
+    const named = UUID.exec(fix ?? '')?.[0] ?? UUID.exec(sentence)?.[0];
+    return { why: 'other-order', ...(named ? { orderId: named } : {}) };
+  }
+  if (/worked on by another request|was built just now/i.test(sentence)) return { why: 'working' };
+  if (/can still land/i.test(sentence)) return { why: 'in-flight' };
+  if (/nothing left to buy/i.test(sentence)) return { why: 'nothing-left' };
+  if (/in cash, less than/i.test(sentence)) return { why: 'cash-short' };
+  if (/not put its cash in the vault/i.test(sentence)) return { why: 'not-deposited' };
+  return { why: 'said' };
+}
+
 export type ContinueOutcome =
   | { kind: 'placed'; order: OrderDetail & { continues: string } }
-  /** 409: why not, in the server's sentence; `retryable` when asking again later may work. */
-  | { kind: 'refused'; sentence: string; retryable: boolean; priceMoved: boolean }
+  /** 409: why not (`refusalOf`), and the server's own sentence for a reason this app has no words for. */
+  | { kind: 'refused'; why: FinishRefusal; sentence: string; orderId?: string }
   | { kind: 'signed-out' | 'busy' | 'unreachable' | 'unreadable' | 'unavailable' };
 
 /**
@@ -198,12 +260,8 @@ export async function continueOrder(
     // The refusal as the shared schema has it (`OrderError`): its sentence, its code, its details.
     const refusal = OrderError.safeParse(body);
     const said = refusal.success ? refusal.data : null;
-    return {
-      kind: 'refused',
-      sentence: said?.error ?? (typeof body.error === 'string' ? body.error : ''),
-      retryable: said?.details?.retryable === true,
-      priceMoved: said?.code === OrderErrorCode.enum.PRICE_MOVED,
-    };
+    const sentence = said?.error ?? (typeof body.error === 'string' ? body.error : '');
+    return { kind: 'refused', sentence, ...refusalOf(sentence, said?.fix) };
   }
   if (res.status === 404 || res.status === 405 || res.status === 501)
     return { kind: 'unavailable' };
@@ -284,7 +342,7 @@ export type TestFundsOutcome =
  */
 export async function requestTestFunds(
   apiFetch: ApiFetch,
-  ask: ({ proposalId: string } | { family: string }) & { amountUsd: number; wallet: string },
+  ask: BuyOf & { amountUsd: number; wallet: string },
 ): Promise<TestFundsOutcome> {
   let res: Response;
   try {
