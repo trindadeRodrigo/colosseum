@@ -1288,6 +1288,57 @@ export const en = {
     },
   },
 
+  invest: {
+    label: 'Invest',
+    buying: 'What you’re buying',
+    columns: { holding: 'Holding', share: 'Share', amount: 'Amount' },
+    cash: 'Kept as cash',
+    press: (amount: string) => `Invest ${amount}`,
+    checkingFunds: 'Checking your wallet…',
+    preparing: 'Reading prices for your order…',
+    again: 'Read the prices again',
+    fee: {
+      none: 'We charge no fee on this order. The network fee is paid from your wallet.',
+      some: (list: string) =>
+        `Fees on this order: ${list}. The network fee is paid from your wallet.`,
+    },
+    signs: {
+      passkey: (n: number) =>
+        n === 1
+          ? 'One press signs the one step with your passkey wallet. No other window opens.'
+          : `One press signs the ${n} steps with your passkey wallet, one after another. No other window opens, and you can stop between steps.`,
+      wallet: (n: number) =>
+        n === 1
+          ? 'Your wallet asks you to confirm the one step in its own window.'
+          : `Your wallet asks you to confirm each of the ${n} steps in its own window.`,
+    },
+    stop: 'Stop after this step',
+    stopping: 'Stopping once this step is finished. What is already signed is still sent.',
+    progress: {
+      depositing: 'Depositing',
+      deposited: 'Deposit confirmed',
+      depositingAndBuying: (names: string) => `Depositing and buying ${names}`,
+      depositedAndBought: (names: string) => `Deposit confirmed, ${names} bought`,
+      approving: 'Allowing the deposit',
+      approved: 'Deposit allowed',
+      buying: (names: string) => `Buying ${names}`,
+      bought: (names: string) => `${names} bought`,
+      confirmed: (what: string) => `${what}, confirmed`,
+      line: (did: string | null, doing: string, n: number, of: number) =>
+        `${did ? `${did} · ` : ''}${doing} · ${n} of ${of}`,
+    },
+    things: {
+      deposit: 'the deposit',
+      approval: 'the permission for the deposit',
+      step: 'a step',
+    },
+    stopped: {
+      nothing: 'Nothing has landed yet: no step is confirmed.',
+      all: (landed: string) => `What landed: ${landed}.`,
+      some: (landed: string, not: string) => `What landed: ${landed}. What didn’t: ${not}.`,
+    },
+  },
+
   order: {
     title: 'Your order',
     loading: 'Reading your order…',

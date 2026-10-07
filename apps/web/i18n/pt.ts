@@ -1188,6 +1188,56 @@ export const pt: Dictionary = {
     },
   },
 
+  invest: {
+    label: 'Investir',
+    buying: 'O que você está comprando',
+    columns: { holding: 'Ativo', share: 'Parte', amount: 'Valor' },
+    cash: 'Fica em dinheiro',
+    press: (amount: string) => `Investir ${amount}`,
+    checkingFunds: 'Conferindo sua carteira…',
+    preparing: 'Lendo os preços da sua ordem…',
+    again: 'Ler os preços de novo',
+    fee: {
+      none: 'Não cobramos taxa nesta ordem. A taxa da rede sai da sua carteira.',
+      some: (list: string) => `Taxas desta ordem: ${list}. A taxa da rede sai da sua carteira.`,
+    },
+    signs: {
+      passkey: (n: number) =>
+        n === 1
+          ? 'Um toque assina o único passo com sua carteira de chave de acesso. Nenhuma outra janela abre.'
+          : `Um toque assina os ${n} passos com sua carteira de chave de acesso, um depois do outro. Nenhuma outra janela abre, e você pode parar entre os passos.`,
+      wallet: (n: number) =>
+        n === 1
+          ? 'Sua carteira pede que você confirme o único passo na janela dela.'
+          : `Sua carteira pede que você confirme cada um dos ${n} passos na janela dela.`,
+    },
+    stop: 'Parar depois deste passo',
+    stopping: 'Parando quando este passo terminar. O que já foi assinado ainda é enviado.',
+    progress: {
+      depositing: 'Depositando',
+      deposited: 'Depósito confirmado',
+      depositingAndBuying: (names: string) => `Depositando e comprando ${names}`,
+      depositedAndBought: (names: string) => `Depósito confirmado, ${names} comprado`,
+      approving: 'Autorizando o depósito',
+      approved: 'Depósito autorizado',
+      buying: (names: string) => `Comprando ${names}`,
+      bought: (names: string) => `${names} comprado`,
+      confirmed: (what: string) => `${what}, confirmado`,
+      line: (did: string | null, doing: string, n: number, of: number) =>
+        `${did ? `${did} · ` : ''}${doing} · ${n} de ${of}`,
+    },
+    things: {
+      deposit: 'o depósito',
+      approval: 'a autorização do depósito',
+      step: 'um passo',
+    },
+    stopped: {
+      nothing: 'Nada chegou à rede ainda: nenhum passo está confirmado.',
+      all: (landed: string) => `O que chegou: ${landed}.`,
+      some: (landed: string, not: string) => `O que chegou: ${landed}. O que não chegou: ${not}.`,
+    },
+  },
+
   order: {
     title: 'Sua ordem',
     loading: 'Lendo sua ordem…',
