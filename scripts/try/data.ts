@@ -60,6 +60,14 @@ export type ChainData = {
   sources: string[];
   /** What the shelf lists on this chain and leaves out of every plan. */
   heldOut: LeftOffPlans[];
+  /**
+   * False where the source could not read what the chain lists. Neither source here can say so: the
+   * fixtures are a shelf in memory, and the database mode takes its tokens from the mock chain's own
+   * list, so a failure there throws. Left out: read. A source that reads a live chain sets it, and
+   * the intake then resolves nothing on the chain and makes no sheet from a goal that names
+   * something only the shelf can settle.
+   */
+  shelfKnown?: boolean;
 };
 
 export type DataSource = {

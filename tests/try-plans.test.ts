@@ -1,22 +1,39 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { riskForMix, riskForSleeves } from '@colosseum/engine/personal';
 import { DISCLAIMER } from '@colosseum/schemas';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   extendedHeldOut,
   extendedShelf,
   launchShelf,
 } from '../packages/engine/src/personal/testing';
 import { cashBps, compareGoals, compareMarkdown, parseCompareArgs } from '../scripts/try/compare';
-import { fixturesSource } from '../scripts/try/data';
+import { type DataSource, fixturesSource } from '../scripts/try/data';
 import { toJson } from '../scripts/try/json';
 import { parseArgs } from '../scripts/try/main';
-import { monthsOf, PromptFileError, parsePromptFile } from '../scripts/try/prompt-file';
+import {
+  monthsOf,
+  PromptFileError,
+  type PromptGoal,
+  parsePromptFile,
+} from '../scripts/try/prompt-file';
 import { incomeOf, incomeWords, renderReport, summary } from '../scripts/try/report';
 import { type GoalRun, runGoal } from '../scripts/try/run';
 
 // The plan playground (scripts/try, try/README.md): the prompt file format, and a smoke run of
 // try/prompts/examples.md on the fixtures with the model off.
+
+// The engine's two rules for the limits a holding takes, watched as the playground calls them. The
+// calls go through to the engine unchanged; the tests read what it was handed and what it answered.
+vi.mock('@colosseum/engine/personal', async (original) => {
+  const actual = await original<typeof import('@colosseum/engine/personal')>();
+  return {
+    ...actual,
+    riskForMix: vi.fn(actual.riskForMix),
+    riskForSleeves: vi.fn(actual.riskForSleeves),
+  };
+});
 
 const EXAMPLES = join(__dirname, '../try/prompts/examples.md');
 const NOW = new Date('2026-10-06T12:00:00.000Z');
@@ -186,6 +203,102 @@ describe('the prompt file', () => {
     expect(() => parseArgs(['f.md', '--data', 'live'], clock)).toThrow(/fixtures or db/);
     expect(() => parseArgs(['f.md', '--now', 'tomorrow'], clock)).toThrow(/ISO time/);
     expect(() => parseArgs([], clock)).toThrow(/usage/);
+  });
+});
+
+// What the playground hands the intake beside the labels and the matches (the second review, Oct
+// 7), as the API's route does. The fixtures are MOCK data. The engine's rule for a mix does not
+// depend on the amount on this branch, so the amount is held by what the engine was handed.
+describe('what the playground hands the intake', () => {
+  const goalOf = (text: string, answers: PromptGoal['answers'], chain = 'solana'): PromptGoal => ({
+    title: text,
+    line: 1,
+    text,
+    chain: chain as PromptGoal['chain'],
+    answers,
+    holdings: [],
+    answersText: '',
+  });
+  const run = (goal: PromptGoal, data: DataSource = fixturesSource()) =>
+    runGoal(goal, { data, model: null, now: NOW });
+  const lastOf = <T extends (...args: never[]) => unknown>(rule: T) => ({
+    handed: vi.mocked(rule).mock.calls.at(-1)?.[0],
+    answered: vi.mocked(rule).mock.results.at(-1)?.value,
+  });
+  const mix = { growthBps: 10_000, dollarYieldBps: 0, goldBps: 0, cashBps: 0 };
+
+  it('asks the engine the risk of a mix at the amount of the person, and at a fixed one until it is known', async () => {
+    vi.mocked(riskForMix).mockClear();
+    const known = await run(
+      goalOf('Grow my savings.', { goal: 'grow', amountUsd: 2000, horizonMonths: 60, mix }),
+    );
+    expect(known.intake.sheet).toMatchObject({ amountUsd: 2000, mix });
+    expect(lastOf(riskForMix).handed).toMatchObject({ amountUsd: 2000, mix, chains: ['solana'] });
+    expect(known.intake.sheet?.risk).toBe(lastOf(riskForMix).answered);
+    // The plan is then made at the risk the read-back named.
+    expect(known.plain?.sheet.risk).toBe(known.intake.sheet?.risk);
+    vi.mocked(riskForMix).mockClear();
+    const unknown = await run(goalOf('Grow my savings.', { goal: 'grow', horizonMonths: 60, mix }));
+    expect(unknown.intake.questions.map((q) => q.field)).toEqual(['amountUsd']);
+    expect(lastOf(riskForMix).handed).toMatchObject({ amountUsd: 10_000, mix });
+  });
+
+  it('a sheet held in themes takes the risk the engine finds for it, at the amount of the person', async () => {
+    vi.mocked(riskForSleeves).mockClear();
+    // With no model what the text states is asked once; the form's answer holds it.
+    const themed = await run(
+      goalOf('I want to invest $2,000 in AI for 5 years', {
+        goal: 'grow',
+        amountUsd: 2000,
+        horizonMonths: 60,
+        mix,
+      }),
+    );
+    const sleeves = [{ kind: 'theme', theme: 'ai', shareBps: 10_000 }];
+    expect(themed.intake.sheet?.sleeves).toEqual(sleeves);
+    expect(lastOf(riskForSleeves).handed).toMatchObject({
+      amountUsd: 2000,
+      sleeves,
+      chains: ['solana'],
+    });
+    expect(themed.intake.flags).toContain('risk_from_themes');
+    expect(themed.intake.sheet?.risk).toBe(lastOf(riskForSleeves).answered);
+    expect(themed.intake.assumptions).toContain(
+      `To hold “AI”, the plan uses the limits for ${themed.intake.sheet?.risk} risk.`,
+    );
+    // And the plan made from that sheet holds the theme at that risk.
+    expect(themed.error).toBeNull();
+    expect(themed.plain?.sheet.risk).toBe(themed.intake.sheet?.risk);
+  });
+
+  it('with a shelf the source could not read, resolves nothing on the chain, makes no sheet and no plan, and says so', async () => {
+    // Neither source of the playground can fail to read a shelf; a source that can says so.
+    const read = fixturesSource();
+    const unread: DataSource = {
+      ...read,
+      forChain: async (chain) => ({ ...(await read.forChain(chain)), shelfKnown: false }),
+    };
+    const answers = { goal: 'grow', amountUsd: 2000, horizonMonths: 60, risk: 'medium' } as const;
+    const themed = await run(goalOf('I want to invest $2,000 in AI for 5 years', answers), unread);
+    expect(themed.intake.sheet).toBeNull();
+    expect(themed.plain).toBeNull();
+    expect(themed.intake.narratives).toEqual([]);
+    expect(themed.intake.flags).toEqual(
+      expect.arrayContaining(['shelf_unread', 'market_unresolved:ai']),
+    );
+    expect(themed.intake.assumptions).toEqual([
+      'What is listed on Solana could not be read just now, so nothing is held for “AI” yet.',
+    ]);
+    // The same goal on a shelf that was read is asked how much, as any goal with no model.
+    expect(
+      (await run(goalOf('I want to invest $2,000 in AI for 5 years', answers))).intake.flags,
+    ).not.toContain('shelf_unread');
+    // And a goal that names nothing only the shelf can settle is read as before.
+    const plain = await run(
+      goalOf('I want to grow $2,000 over 5 years at medium risk', answers),
+      unread,
+    );
+    expect(plain.intake.sheet).toMatchObject({ amountUsd: 2000, risk: 'medium' });
   });
 });
 

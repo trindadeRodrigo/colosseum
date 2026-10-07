@@ -1,6 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { mockAssets } from '@colosseum/chain-mock';
-import { attributeVocabularyOf, parseStockAttributes } from '@colosseum/engine/personal';
+import {
+  attributeVocabularyOf,
+  parseStockAttributes,
+  riskForMix,
+  riskForSleeves,
+} from '@colosseum/engine/personal';
+import { ChainError } from '@colosseum/schemas';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { budgetedModel, type IntakeModel, type ReadCall } from '../../llm';
@@ -28,6 +34,17 @@ import { IntakeResponse } from './intake';
 // `mock` in every answer. No test reaches Anthropic.
 
 vi.setConfig({ testTimeout: 60_000 });
+
+// The engine's two rules for the limits a holding takes, watched as the route calls them. The calls
+// go through to the engine unchanged; the tests read what it was handed and what it answered.
+vi.mock('@colosseum/engine/personal', async (original) => {
+  const actual = await original<typeof import('@colosseum/engine/personal')>();
+  return {
+    ...actual,
+    riskForMix: vi.fn(actual.riskForMix),
+    riskForSleeves: vi.fn(actual.riskForSleeves),
+  };
+});
 
 const fixture = (name: string) =>
   JSON.parse(
@@ -608,6 +625,112 @@ describe('POST /v1/baskets/intake', () => {
     expect(none.questions.map((q) => q.field)).toEqual(['risk']);
     expect(none.draft.sleeves).toBeNull();
     expect(none.mix).toBeNull();
+  });
+
+  // The wiring of the second review (Oct 7): what the route hands the intake beside the labels and
+  // the matches. The engine's rule for a mix does not depend on the amount on this branch, so the
+  // amount is held by what the engine was handed, not by a risk that differs.
+  it('asks the engine the risk of a mix and of theme sleeves at the amount of the person, and at a fixed one until it is known', async () => {
+    const who = await someone('solana');
+    const ask = async (body: Record<string, unknown>) =>
+      IntakeResponse.parse((await post(who, PATH, body)).json());
+    const mix = { growthBps: 10_000, dollarYieldBps: 0, goldBps: 0, cashBps: 0 };
+    const lastOf = <T extends (...args: never[]) => unknown>(rule: T) => ({
+      handed: vi.mocked(rule).mock.calls.at(-1)?.[0],
+      answered: vi.mocked(rule).mock.results.at(-1)?.value,
+    });
+    // A mix, with the amount: the engine is asked at the person's $2,000, and its answer is the
+    // sheet's risk and the one the read-back names.
+    vi.mocked(riskForMix).mockClear();
+    const known = await ask({
+      text: 'Grow my savings.',
+      answers: { goal: 'grow', amountUsd: 2000, horizonMonths: 60, mix },
+    });
+    expect(known.sheet).toMatchObject({ amountUsd: 2000, mix });
+    expect(lastOf(riskForMix).handed).toMatchObject({ amountUsd: 2000, mix, chains: ['solana'] });
+    expect(known.sheet?.risk).toBe(lastOf(riskForMix).answered);
+    expect(known.assumptions.join(' ')).toContain(`the limits for ${known.sheet?.risk} risk.`);
+    // Before the amount is known a fixed figure stands in, and the amount is still asked.
+    vi.mocked(riskForMix).mockClear();
+    const unknown = await ask({
+      text: 'Grow my savings.',
+      answers: { goal: 'grow', horizonMonths: 60, mix },
+    });
+    expect(unknown.questions.map((q) => q.field)).toEqual(['amountUsd']);
+    expect(lastOf(riskForMix).handed).toMatchObject({ amountUsd: 10_000, mix });
+    // A sheet held in themes: the engine's own rule, at the person's amount, not the intake's
+    // estimate on the issuer caps.
+    vi.mocked(riskForSleeves).mockClear();
+    const ai = await ask({
+      text: 'I want to invest $2,000 in AI for 5 years',
+      answers: { goal: 'grow', amountUsd: 2000, horizonMonths: 60 },
+      followUps: ['yes'],
+    });
+    const sleeves = [{ kind: 'theme', theme: 'ai', shareBps: 10_000 }];
+    expect(ai.sheet?.sleeves).toEqual(sleeves);
+    expect(lastOf(riskForSleeves).handed).toMatchObject({
+      amountUsd: 2000,
+      sleeves,
+      chains: ['solana'],
+    });
+    expect(ai.flags).toContain('risk_from_themes');
+    expect(ai.sheet?.risk).toBe(lastOf(riskForSleeves).answered);
+    expect(ai.assumptions).toContain(
+      `To hold “AI”, the plan uses the limits for ${ai.sheet?.risk} risk.`,
+    );
+    // And the plan route builds that sheet at that risk.
+    const built = await post(who, '/v1/baskets/personalize', { sheet: ai.sheet });
+    expect(built.statusCode, built.body).toBe(200);
+    expect(PersonalizeResponse.parse(built.json()).proposal.sheet.risk).toBe(ai.sheet?.risk);
+  });
+
+  it('where what the chain lists cannot be read, resolves nothing on it, makes no sheet from a goal that names a theme, and says so', async () => {
+    // The chain's adapter does not answer: the route cannot read its tokens.
+    const dark = await testApp({
+      issuer: issuer.issuer,
+      db: data.db,
+      now,
+      wrap: (inner) => {
+        const unread = (entry: ReturnType<ChainRegistry['get']>) => ({
+          ...entry,
+          adapter: {
+            ...entry.adapter,
+            listAssets: async () => {
+              throw new ChainError('Unavailable', 'the node did not answer');
+            },
+          },
+        });
+        return {
+          ...inner,
+          get: (chain) => unread(inner.get(chain)),
+          active: () => inner.active().map(unread),
+        };
+      },
+    });
+    try {
+      const who = await someone('solana');
+      const answers = { goal: 'grow', amountUsd: 2000, horizonMonths: 60, risk: 'medium' };
+      const ask = async (text: string) =>
+        IntakeResponse.parse((await post(who, PATH, { text, answers }, dark.app)).json());
+      const themed = await ask('I want to invest $2,000 in AI for 5 years');
+      expect(themed.sheet).toBeNull();
+      expect(themed.readBack).toBeNull();
+      expect(themed.narratives).toEqual([]);
+      expect(themed.flags).toEqual(
+        expect.arrayContaining(['shelf_unread', 'market_unresolved:ai']),
+      );
+      expect(themed.assumptions).toEqual([
+        'What is listed on Solana could not be read just now, so nothing is held for “AI” yet.',
+      ]);
+      // Nothing is said of what the chain has: nobody looked.
+      expect(themed.assumptions.join(' ')).not.toMatch(/no stock|only one stock/);
+      // A goal that names nothing only the shelf can settle is read as before.
+      const plain = await ask('I want to grow $2,000 over 5 years at medium risk');
+      expect(plain.flags).not.toContain('shelf_unread');
+      expect(plain.sheet).toMatchObject({ amountUsd: 2000, risk: 'medium', themes: [] });
+    } finally {
+      await dark.app.close();
+    }
   });
 
   it('reads a share or a mix said in words on a later turn as the answer to "how much" (EXPLICIT-MIX, the review of Oct 6)', async () => {

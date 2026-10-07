@@ -10,6 +10,8 @@ import {
   type PersonalProposal,
   type QuestionField,
   riskForMix,
+  riskForMixEstimate,
+  riskForSleeves,
   runIntake,
   type ShelfLabel,
   type ShelfPortfolio,
@@ -77,6 +79,12 @@ export type RunOptions = {
   who?: string;
 };
 
+/**
+ * The amount the engine is asked the risk of a mix or of theme sleeves at, while the person has not
+ * given theirs yet. Not a figure of the plan: once the amount is known, the person's own is used.
+ */
+const RISK_PROBE_USD = 10_000;
+
 export async function runGoal(goal: PromptGoal, opts: RunOptions): Promise<GoalRun> {
   const nowIso = opts.now.toISOString();
   const nowMonth = nowIso.slice(0, 7);
@@ -101,6 +109,25 @@ export async function runGoal(goal: PromptGoal, opts: RunOptions): Promise<GoalR
           vocabulary,
         )
       : { reply: null, why: 'model_not_configured' };
+  // What the read-back's risk is found on: this chain's shelf and figures, at the time of the run.
+  const shelfNow: ComposeContext = { ...data.context, now: nowIso };
+  /**
+   * The sheet the engine is asked the risk of: what is held, the shared portfolios read and the
+   * chain, with no date, withdrawal or holding in the way. The amount is the person's where the
+   * intake knows it (the engine's rule depends on it); before they have given one, a fixed
+   * `RISK_PROBE_USD` stands in.
+   */
+  const probe = (themes: string[], amountUsd: number | undefined) => ({
+    basketType: 'standard' as const,
+    goal: 'grow' as const,
+    amountUsd: amountUsd ?? RISK_PROBE_USD,
+    horizonMonths: 120,
+    risk: 'low' as const,
+    themes,
+    chains: [goal.chain],
+    rules: { useHoldings: false, glide: false },
+    language: 'en' as const,
+  });
   const intake = runIntake({
     text: goal.text,
     nowMonth,
@@ -113,25 +140,27 @@ export async function runGoal(goal: PromptGoal, opts: RunOptions): Promise<GoalR
     // pure code over the lists and the sourced attributes, as the API's route hands them.
     labels: data.labels,
     matchOf: (filter) => filterMatchOf(filter, data.stocks, data.shelf.assets),
+    // What the chain lists could not be read: nothing is resolved on it (never so with the two
+    // sources here; see `ChainData.shelfKnown`).
+    ...(data.shelfKnown === false ? { shelfKnown: false } : {}),
     // The read-back names the limits the engine will take for a stated mix: its own rule, on this
-    // chain's shelf and the portfolios read (gate EXPLICIT-MIX).
-    riskOfMix: (mix, themes) =>
-      riskForMix(
-        {
-          basketType: 'standard',
-          goal: 'grow',
-          amountUsd: 10_000,
-          horizonMonths: 120,
-          risk: 'low',
-          themes,
-          chains: [goal.chain],
-          rules: { useHoldings: false, glide: false },
-          language: 'en',
-          mix,
-        },
-        data.shelf,
-        { ...data.context, now: nowIso },
-      ),
+    // chain's shelf and the portfolios read, at the person's amount where the intake knows it
+    // (gate EXPLICIT-MIX).
+    riskOfMix: (mix, themes, amountUsd) =>
+      riskForMix({ ...probe(themes, amountUsd), mix }, data.shelf, shelfNow),
+    // And the limits a sheet held in themes takes, by the same engine: the lowest risk at which
+    // the plan holds the most in its theme sleeves' names. Where the engine cannot make the plan of
+    // such a sheet, the intake's estimate on the caps stands.
+    riskOfSleeves: (sleeves, themes, amountUsd) => {
+      try {
+        return riskForSleeves({ ...probe(themes, amountUsd), sleeves }, data.shelf, shelfNow);
+      } catch (err) {
+        if (!(err instanceof PersonalInputError)) throw err;
+        return riskForMixEstimate({
+          growthBps: sleeves.reduce((n, x) => (x.kind === 'theme' ? n + x.shareBps : n), 0),
+        });
+      }
+    },
   });
   const pasted = goal.reply !== undefined && read.reply !== null;
   const byModel = read.reply !== null && opts.model !== null && !pasted;

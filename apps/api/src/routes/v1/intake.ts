@@ -1,5 +1,6 @@
 import {
   attributeVocabularyOf,
+  type ComposeContext,
   conversationText,
   Disagreement,
   filterMatchOf,
@@ -7,9 +8,12 @@ import {
   IntakeNarrative,
   IntakeQuestion,
   LimitsDraft,
+  PersonalInputError,
   PersonalMix,
   PersonalSheet,
   riskForMix,
+  riskForMixEstimate,
+  riskForSleeves,
   runIntake,
   shelfLabelsOf,
 } from '@colosseum/engine/personal';
@@ -117,7 +121,8 @@ const INTAKE_DESCRIPTION = [
   'A market the lists have no word for ("obesity drugs") may come from the model as one attribute and its value with the person\'s own words (`marketFilter`): it must be a valid filter of a bounded length and its words must be written in the text, or it is dropped (`no_cue:marketFilter`, `model_invalid:marketFilter`) and nothing is asked. It is taken as a narrative only where those words write its value ("defense stocks" for Aerospace & Defense); where they do not ("obesity drugs" for keyword GLP-1, "my future" for a sector), the link is the model\'s alone (`filter_not_written`): it is never taken, and is asked once by a question that says the match (template `matchedShare`: "I read “obesity drugs” as names matched by keyword: GLP-1. How much of the $2,000 for them? Say none if that is not what you meant."), with the share the person wrote as its `read`. With no model only the fixed words are read. The model never names a company, a ticker, a portfolio or a label.',
   'A market read to a shared portfolio whose share of the money is written in a plain form ("invest in big tech", "put $500 in US stocks", "put 50% in big tech", "half in the S&P") is held as a mix (that share in stocks, the rest in cash) and the risk is not asked, and one with no share said ("I like big tech") asks once how much of the money (question field `mix`), never the risk. A market read to a label or a filter is held as a theme sleeve of the sheet by the same rule (`sleeves`: `{ kind: "theme", theme, shareBps }`, the slug a label\'s, or `matched-` with the attribute and the value, as `matched-industry-aerospace-defense`): the whole plan, or a written sum or percent ("30% in AI", "half in semiconductors") with the rest in the safe-yield sleeve, one sleeve for each narrative with a share; the risk is never asked and follows what is held, said once. A mix and sleeves are not combined by guessing. Where one theme alone has no share written, or stands beside a stated mix that says another share, how much is asked once (`mix`), and an answered `mix` of stocks and cash is that theme\'s share. Where several themes do not each have a written share, the split is asked once by a question that names them (`sleeves`, template `themeShares`: "How do you want to split the money between AI and semiconductors?"); where the text says where the rest goes and that is not cash or kept safe ("30% in AI and the rest in stocks"), or carves a sum out of the share, the share and the rest are asked (`rest_said`, template `themeAndRest`); and where a theme stands beside a shared portfolio the text also names or beside a written split, the split is asked (`sleeves`). Answered `sleeves` may carry a theme sleeve, whose slug must be a usable label or a filter that matches (else `answer_not_on_shelf:sleeves`, asked again), and a split that holds a theme is what is held, over a mix the text states. On a goal of income or to protect a theme is not held, as a market\'s share is not read there, and that is said.',
   'A later message is read as the answer to the question about what is held that the messages before it left open, as an answer on the form is, and an answer on the form wins: a share or a mix ("70-30", "half", "a third", "all of it", "$500", "all of it in stocks") answers the `mix` question (flag `mix_from_words`); "none", "zero", "0%" or "nothing for AI" answers it too, leaves what was asked about out for good, and the question does not come back (`none_from_words`, `market_left_out:<id>`); "half each", "50-50", "60/40" or a share for each by name answers the question that names several themes (`sleeves_from_words`). A plain yes ("yes", "that\'s right", "sim", "isso") takes that question\'s `read`, the share the text states, where it has one (`mix_confirmed`), and a plain no leaves out what it asks about; both only where it is the one question asked. A bare number ("5"), a time ("5 years"), a hedge ("maybe 20%") or a bound ("20% at most") is no answer: the same question stays.',
-  'While the person has no chain, nothing is resolved and nothing is said of what a chain has (flags `market_unresolved:` with the id).',
+  'While the person has no chain, nothing is resolved and nothing is said of what a chain has (flags `market_unresolved:` with the id). The same where what their chain lists cannot be read just now (the chain is off, or its node does not answer): the goal is still read, no sheet is made from a goal that names a market, a theme or a portfolio, and one line says so (`shelf_unread`: "What is listed on Solana could not be read just now, so nothing is held for “AI” yet.").',
+  "The limits a mix or a sheet held in themes takes are the engine's own, found on the shelf and the figures of the person's chain at their amount (at a fixed $10,000 until the amount is known): for themes, the lowest risk at which the plan holds the most in their names.",
   'The text may be in any language: the questions and the read-back are in English or Portuguese (any other language is answered in English), and a value the English and Portuguese checks cannot find in the text is asked, never taken.',
   'With no model (none configured, down, out of the daily budget for everyone or for this person), the rules parser fills the draft and every field it read is asked once. A refusal the text states and "no date" are read the same and taken; a mix or a narrative the text check reads is asked once and never taken. `reader` says which read it; a failed call is not cached, so a later turn may be read by the model and the draft can change.',
   '`questions` holds one question per field still open or unclear, in the person\'s language, from fixed templates. Once none is left, `sheet` is the validated sheet on the chain of the person\'s wallet and `readBack` says it back sentence by sentence, from templates, never from the model, with the time frame the way the person said it (in years, in months, or as a date: "over 5 years", "by January 2031").',
@@ -125,6 +130,12 @@ const INTAKE_DESCRIPTION = [
 ].join(' ');
 
 const monthOf = (date: Date) => date.toISOString().slice(0, 7);
+
+/**
+ * The amount the engine is asked the risk of a mix or of theme sleeves at, while the person has not
+ * given theirs yet. Not a figure of the plan: once the amount is known, the person's own is used.
+ */
+const RISK_PROBE_USD = 10_000;
 
 /**
  * What the person's chain can hold for a narrative, read the way `POST /v1/baskets/personalize` reads
@@ -194,7 +205,39 @@ export function registerIntakeRoute(
       const read: { reply: unknown; why?: string } = model
         ? await model.read(text, nowMonth, language, principal.userId ?? principal.ip, vocabulary)
         : { reply: null, why: 'model_not_configured' };
-      const now = deps.now().toISOString();
+      // What the read-back's risk is found on: this chain's shelf and figures, as the plan route
+      // reads them, at the time of this request.
+      const context: ComposeContext | null = held
+        ? {
+            now: deps.now().toISOString(),
+            ...(held.figures.yields ? { yields: held.figures.yields } : {}),
+            ...(held.figures.themes ? { themes: held.figures.themes } : {}),
+            ...(stocks ? { stocks } : {}),
+            ...(held.figures.liquidity
+              ? {
+                  liquidity: held.figures.liquidity.provider,
+                  liquiditySource: held.figures.liquidity.source,
+                }
+              : {}),
+          }
+        : null;
+      /**
+       * The sheet the engine is asked the risk of: what is held, the shared portfolios read and the
+       * chain, with no date, withdrawal or holding in the way. The amount is the person's where the
+       * intake knows it (the engine's rule depends on it); before they have given one, a fixed
+       * `RISK_PROBE_USD` stands in, and the read-back is made again once the amount is known.
+       */
+      const probe = (themes: string[], amountUsd: number | undefined) => ({
+        basketType: 'standard' as const,
+        goal: 'grow' as const,
+        amountUsd: amountUsd ?? RISK_PROBE_USD,
+        horizonMonths: 120,
+        risk: 'low' as const,
+        themes,
+        chains: chain ? [chain] : [],
+        rules: { useHoldings: false, glide: false },
+        language: 'en' as const,
+      });
       const result = runIntake({
         text,
         nowMonth,
@@ -203,7 +246,11 @@ export function registerIntakeRoute(
         answers,
         homeChain: chain,
         portfolios,
-        ...(held && chain
+        // The person has a chain and what it lists could not be read (the chain is off, or its
+        // adapter refused): nothing is resolved on it and no sheet is made from a goal that names
+        // something only the shelf can settle; one line says so.
+        ...(chain && !held ? { shelfKnown: false } : {}),
+        ...(held && context
           ? {
               // The curated labels of the chain and what a filter matches there (gates THEMES,
               // THEME-MATCHED): pure code over the lists and the sourced attributes.
@@ -211,34 +258,28 @@ export function registerIntakeRoute(
               matchOf: (filter) => filterMatchOf(filter, stocks, held.shelf.assets),
               // The limits a stated mix takes, by the engine's own rule on this chain's shelf and
               // figures, so the read-back names the risk the plan will take (gate EXPLICIT-MIX).
-              riskOfMix: (mix, themes) =>
-                riskForMix(
-                  {
-                    basketType: 'standard',
-                    goal: 'grow',
-                    amountUsd: 10_000,
-                    horizonMonths: 120,
-                    risk: 'low',
-                    themes,
-                    chains: [chain],
-                    rules: { useHoldings: false, glide: false },
-                    language: 'en',
-                    mix,
-                  },
-                  held.shelf,
-                  {
-                    now,
-                    ...(held.figures.yields ? { yields: held.figures.yields } : {}),
-                    ...(held.figures.themes ? { themes: held.figures.themes } : {}),
-                    ...(stocks ? { stocks } : {}),
-                    ...(held.figures.liquidity
-                      ? {
-                          liquidity: held.figures.liquidity.provider,
-                          liquiditySource: held.figures.liquidity.source,
-                        }
-                      : {}),
-                  },
-                ),
+              riskOfMix: (mix, themes, amountUsd) =>
+                riskForMix({ ...probe(themes, amountUsd), mix }, held.shelf, context),
+              // And the limits a sheet held in themes takes, by the same engine: the lowest risk at
+              // which the plan holds the most in its theme sleeves' names. Where the engine cannot
+              // make the plan of such a sheet, the intake's estimate on the caps stands.
+              riskOfSleeves: (sleeves, themes, amountUsd) => {
+                try {
+                  return riskForSleeves(
+                    { ...probe(themes, amountUsd), sleeves },
+                    held.shelf,
+                    context,
+                  );
+                } catch (err) {
+                  if (!(err instanceof PersonalInputError)) throw err;
+                  return riskForMixEstimate({
+                    growthBps: sleeves.reduce(
+                      (n, x) => (x.kind === 'theme' ? n + x.shareBps : n),
+                      0,
+                    ),
+                  });
+                }
+              },
             }
           : {}),
       });
