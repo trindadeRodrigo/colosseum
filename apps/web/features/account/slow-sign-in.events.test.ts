@@ -247,13 +247,13 @@ describe('a sign-in that is slow', () => {
     },
   );
 
-  it('is not said to someone who is not known to be signed in, however long the wallet loads', async () => {
+  it('gives someone not known to be signed in the visitor’s way in, never the account control (bar-never-empty.events.test.ts)', async () => {
     server();
     portStore.set(fakePort({ status: 'loading' }));
     const host = await page('en');
     await later(10 * SLOW_MS);
-    expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
     expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
+    expect(host.querySelector('header a[href="/sign-in"]')).not.toBeNull();
   });
 
   it('is not said to someone who was ready in time', async () => {

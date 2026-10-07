@@ -36,6 +36,9 @@ export const en = {
         'You’re signed in, but the sign-in service hasn’t handed over your wallets yet. Nothing is lost.',
       server:
         'You’re signed in, but our server hasn’t said yet which chain your plan lives on. Nothing is lost.',
+      /** Nobody is known to be signed in: the sign-in service has not loaded at all. */
+      service:
+        'The sign-in service hasn’t answered yet, so I can’t tell whether you’re signed in. You can still look around.',
       again: 'Try again',
       trying: 'Trying again…',
       /** "Try again" pressed while a step of an order is being signed. */
@@ -109,6 +112,13 @@ export const en = {
         `${wallet} works only on chains switched off on our server for now, so it can’t be used to sign in. Use another wallet, or a passkey.`,
       /** The name of the group of the two chains to choose from. */
       chains: 'The chain of your plan',
+    },
+    /** The sign-in screen when the sign-in service has not loaded after a few seconds. */
+    silent: {
+      body: 'The sign-in service hasn’t answered yet, so I can’t sign you in right now.',
+      offline: 'This device looks offline. Check the connection, then try again.',
+      blocked:
+        'A content blocker or the browser’s shields can stop it. If one is on for this site, allow auth.privy.io, then try again.',
     },
     off: {
       api: 'Sign-in is off for the moment: our server isn’t answering. I ask again every few seconds, and this page updates by itself.',

@@ -31,6 +31,8 @@ export const pt: Dictionary = {
         'Você entrou, mas o serviço de login ainda não entregou suas carteiras. Nada foi perdido.',
       server:
         'Você entrou, mas nosso servidor ainda não disse em qual rede fica o seu plano. Nada foi perdido.',
+      service:
+        'O serviço de login ainda não respondeu, então não sei dizer se você entrou. Você pode continuar olhando.',
       again: 'Tentar de novo',
       trying: 'Tentando de novo…',
       held: 'Um passo da sua ordem está sendo assinado. Conclua ou cancele esse passo primeiro e tente de novo.',
@@ -85,6 +87,12 @@ export const pt: Dictionary = {
       off: (wallet: string) =>
         `${wallet} só funciona em redes indisponíveis no nosso servidor por enquanto, então não pode ser usada para entrar. Use outra carteira ou uma chave de acesso.`,
       chains: 'A rede do seu plano',
+    },
+    silent: {
+      body: 'O serviço de login ainda não respondeu, então não consigo fazer seu login agora.',
+      offline: 'Este aparelho parece estar sem conexão. Confira a conexão e tente de novo.',
+      blocked:
+        'Um bloqueador de conteúdo ou a proteção do navegador pode impedir isso. Se houver um ativo neste site, libere auth.privy.io e tente de novo.',
     },
     off: {
       api: 'O login está indisponível no momento: nosso servidor não está respondendo. Eu tento de novo a cada poucos segundos, e esta página se atualiza sozinha.',
