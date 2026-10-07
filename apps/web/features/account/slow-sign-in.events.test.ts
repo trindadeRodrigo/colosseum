@@ -7,6 +7,9 @@ import { dictionary, type Lang } from '../../i18n';
 import { GOAL_DRAFT } from '../goal/draft';
 import { GoalScreen } from '../goal/GoalScreen';
 import { READ_IN_DOLLARS } from '../goal/test/plan';
+import { keepOrder, recallOrder } from '../order/order-record';
+import { recallPlan, rememberPlan } from '../order/plan-store';
+import { ORDER_ID, PLAN_ID, planOn, recordOf, USER } from '../order/test/fixtures';
 import { EMBEDDED, fakePort, json, signedInPort } from '../wallet/test/fake-port';
 import { portStore, restarts } from '../wallet/test/mock-provider';
 import { SLOW_MS } from './AccountProvider';
@@ -77,7 +80,7 @@ const TRYING = `${SAID} [data-ui="sign-in-trying"]`;
 beforeEach(() => {
   vi.useFakeTimers();
   window.sessionStorage.clear();
-  window.localStorage.removeItem('tf-chain');
+  window.localStorage.clear();
   restarts.count = 0;
   restarts.refuse = false;
   portStore.set(fakePort());
@@ -221,17 +224,26 @@ describe('a sign-in that is slow', () => {
     'forgets the goal on the page and its draft when the wallets come back with %s',
     async (_, port) => {
       server();
+      // a plan and an order's record this browser kept for the person
+      rememberPlan(planOn());
+      keepOrder(recordOf());
       portStore.set(walletsLoading());
       const host = await page('en');
       await later(SLOW_MS);
       await click(find(host, AGAIN));
-      // kept while nobody is known to have left
+      // kept while nobody is known to have left: the provider loads again and names nobody
+      await act(async () => portStore.set(fakePort({ status: 'loading' })));
       expect(find<HTMLTextAreaElement>(host, 'textarea').value).toContain('forty thousand');
+      expect(recallOrder(ORDER_ID, USER)?.orderId).toBe(ORDER_ID);
+      expect(recallPlan(PLAN_ID, USER)).not.toBeNull();
       await act(async () => portStore.set(port()));
       await later(0);
       expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe('');
       expect(host.querySelector('[data-ui="sheet-facts"]')).toBeNull();
       expect(window.sessionStorage.getItem(GOAL_DRAFT) ?? '').not.toContain('forty thousand');
+      // and so are the plans and the order records kept for the person who was here
+      expect(recallOrder(ORDER_ID, USER)).toBeNull();
+      expect(recallPlan(PLAN_ID, USER)).toBeNull();
     },
   );
 

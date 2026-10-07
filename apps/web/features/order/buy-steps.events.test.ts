@@ -13,7 +13,7 @@ import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { BuyScreen } from './BuyScreen';
 import { rememberPlan } from './plan-store';
-import { PLAN_ID, planOn, USER } from './test/fixtures';
+import { PLAN_ID, planOn, serverKeepsPlans, USER } from './test/fixtures';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -85,27 +85,29 @@ function api(
     chainOptions: [],
   };
   let funded = o.funded ?? false;
-  portStore.setApi(async (path, init) => {
-    const method = init?.method ?? 'GET';
-    calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-    if (path === '/v1/me') return json(person);
-    if (path.startsWith('/v1/funding?'))
-      return json(funding({ funded, faucet: o.faucet ?? false, provenance: o.provenance }));
-    if (path === '/v1/testnet/fund' && method === 'POST') {
-      if (o.fund) return o.fund();
-      funded = true;
-      return json({
-        chain: 'solana',
-        provenance: 'sandbox',
-        wallet: SOLANA,
-        cash: { symbol: 'tUSDC', decimals: 6, raw: '40400000000' },
-        gas: { symbol: 'SOL', decimals: 9, raw: '12625000' },
-        txIds: ['devnet-signature'],
-        left: 2,
-      });
-    }
-    return json({ error: 'not found' }, 404);
-  });
+  portStore.setApi(
+    serverKeepsPlans(async (path, init) => {
+      const method = init?.method ?? 'GET';
+      calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      if (path === '/v1/me') return json(person);
+      if (path.startsWith('/v1/funding?'))
+        return json(funding({ funded, faucet: o.faucet ?? false, provenance: o.provenance }));
+      if (path === '/v1/testnet/fund' && method === 'POST') {
+        if (o.fund) return o.fund();
+        funded = true;
+        return json({
+          chain: 'solana',
+          provenance: 'sandbox',
+          wallet: SOLANA,
+          cash: { symbol: 'tUSDC', decimals: 6, raw: '40400000000' },
+          gas: { symbol: 'SOL', decimals: 9, raw: '12625000' },
+          txIds: ['devnet-signature'],
+          left: 2,
+        });
+      }
+      return json({ error: 'not found' }, 404);
+    }),
+  );
   return { calls, to: (prefix: string) => calls.filter((c) => c.path.startsWith(prefix)) };
 }
 
@@ -169,6 +171,29 @@ describe('the amount', () => {
     await type(input, '200');
     expect(next(host, 'amount').getAttribute('aria-disabled')).toBeNull();
   });
+
+  it('reads a lone mark as the page’s language does: three decimals are no amount of money', async () => {
+    api();
+    const host = await buy();
+    const input = find<HTMLInputElement>(host, 'input[inputmode="decimal"]');
+    // in English "10.555" is not ten thousand: it is refused, not read as $10,555
+    await type(input, '10.555');
+    expect(next(host, 'amount').getAttribute('aria-disabled')).toBe('true');
+    expect(host.textContent).toContain(en.buy.blocked.amount);
+    for (const fine of ['10.55', '10,555', '1,000.5']) {
+      await type(input, fine);
+      expect(next(host, 'amount').getAttribute('aria-disabled'), fine).toBeNull();
+    }
+  });
+
+  it('says plainly that the plan was built for another amount when the amount is changed', async () => {
+    api();
+    const host = await buy();
+    expect(host.textContent).not.toContain(en.buy.amount.other('$40,000'));
+    await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '100');
+    expect(host.textContent).toContain(en.buy.amount.other('$40,000'));
+    expect(host.textContent).not.toContain(en.buy.amount.hint('$40,000'));
+  });
 });
 
 describe('the steps', () => {
@@ -182,7 +207,7 @@ describe('the steps', () => {
       // a funded wallet: the funds are done before the step is opened
       '2Funds, done',
       '3Trust',
-      '4Sign',
+      '4Review',
     ]);
     const current = () =>
       progress.querySelector('[aria-current="step"]')?.getAttribute('data-step');
@@ -295,7 +320,7 @@ describe('the funds', () => {
     const host = await buy();
     const line = find(host, '[data-ui="funding-line"]');
     expect(line.textContent).toBe(
-      `${en.buy.funding.needs('40,000 tUSDC', '0.0101 SOL')} ${en.buy.funding.haveNone}`,
+      `${en.buy.funding.needs('40,000 USDC', '0.0101 SOL')} ${en.buy.funding.haveNone}`,
     );
     const details = find<HTMLDetailsElement>(host, 'details[data-ui="funding-details"]');
     expect(details.open).toBe(false);
@@ -323,10 +348,25 @@ describe('the funds', () => {
     await settle();
     expect(server.to('/v1/funding').length).toBeGreaterThan(reads);
     expect(find(host, '[data-ui="test-funds-sent"]').textContent).toBe(
-      en.buy.funding.testSent('40,400 tUSDC and 0.012625 SOL'),
+      en.buy.funding.testSent('40,400 USDC and 0.012625 SOL'),
     );
     expect(find(host, '[data-ui="funding-line"]').textContent).toContain(en.buy.funding.ok);
     expect(next(host, 'funds').getAttribute('aria-disabled')).toBeNull();
+  });
+
+  it('offers one way to fill the wallet at a time, and names the cash as the plan does', async () => {
+    api({ funded: false, faucet: true });
+    portStore.set(signedInPort(EMBEDDED, { userId: USER, test: true }, 'mock'));
+    const host = await buy();
+    await click(next(host, 'amount'));
+    expect(button(host, en.buy.funding.testFunds)).toBeDefined();
+    expect(button(host, en.buy.funding.mockFund)).toBeUndefined();
+    // the source line of the details names the token as every screen does, at the one time format
+    const sources = [...find(host, '[data-ui="funding-details"]').querySelectorAll('ul li')].map(
+      (li) => li.textContent ?? '',
+    );
+    expect(sources[0]).toMatch(/^USDC · /);
+    expect(sources[0]).toMatch(/[A-Z][a-z]{2} \d{1,2}, \d{4}, \d{2}:\d{2} UTC/);
   });
 
   it('hides the button where the server has no faucet key, and shows the address to fund', async () => {
@@ -379,8 +419,80 @@ describe('the funds', () => {
   });
 });
 
+describe('a notice accepted before', () => {
+  it('is not a step again: three steps, and the notice is still there to read at the review', async () => {
+    api({ funded: true });
+    window.localStorage.setItem(
+      `tf-trust:${USER}`,
+      JSON.stringify({ textVersion: TRUST_STATUS.textVersion }),
+    );
+    const host = await buy();
+    const progress = find(host, 'ol[data-ui="buy-progress"]');
+    expect([...progress.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
+      '1Amount',
+      '2Funds, done',
+      '3Review',
+    ]);
+    expect(host.querySelector('[data-ui="buy-step"][data-step="trust"]')).toBeNull();
+    await click(next(host, 'amount'));
+    await click(next(host, 'funds'));
+    expect(opened(host)).toEqual(['review']);
+    const kept = find<HTMLDetailsElement>(panel(host, 'review'), '[data-ui="trust-kept"]');
+    expect(kept.open).toBe(false);
+    expect(kept.textContent).toContain(en.trust.accepted);
+    expect(kept.querySelector('input[type="checkbox"]')).toBeNull();
+  });
+});
+
+describe('the first deposit', () => {
+  const reviewButton = (host: HTMLElement) =>
+    find(panel(host, 'review'), ':scope > div > [data-variant="primary"]');
+
+  it('cannot reach an order without the notice: the step is there, and the review holds until it is ticked', async () => {
+    const server = api({ funded: true });
+    const host = await buy();
+    expect(step(host, 'trust')).toBeTruthy();
+    // the review step can be opened from its heading, and its button still refuses
+    await click(head(host, 'review'));
+    expect(reviewButton(host).getAttribute('aria-disabled')).toBe('true');
+    expect(panel(host, 'review').textContent).toContain(en.buy.blocked.trust);
+    await click(reviewButton(host));
+    await settle();
+    expect(server.to('/v1/orders')).toEqual([]);
+    expect(window.localStorage.getItem(`tf-trust:${USER}`)).toBeNull();
+    // ticked, it lets go
+    await click(head(host, 'trust'));
+    await click(find(panel(host, 'trust'), 'input[type="checkbox"]'));
+    await click(head(host, 'review'));
+    expect(reviewButton(host).getAttribute('aria-disabled')).toBeNull();
+  });
+
+  it('asks again where the acceptance is not this person’s, not this text’s, or not in this browser', async () => {
+    const stored = (who: string, textVersion: string) =>
+      window.localStorage.setItem(`tf-trust:${who}`, JSON.stringify({ textVersion }));
+    for (const seed of [
+      // another person accepted in this browser
+      () => stored('did:privy:someone-else', TRUST_STATUS.textVersion),
+      // this person accepted an earlier text
+      () => stored(USER, 'an-earlier-text'),
+      // a new device: nothing is stored
+      () => undefined,
+    ]) {
+      window.localStorage.clear();
+      rememberPlan(planOn());
+      seed();
+      api({ funded: true });
+      const host = await buy();
+      expect(step(host, 'trust')).toBeTruthy();
+      await click(head(host, 'review'));
+      expect(reviewButton(host).getAttribute('aria-disabled')).toBe('true');
+      await unmountAll();
+    }
+  });
+});
+
 describe('what you’re trusting', () => {
-  it('says the four points in short, keeps every item of the notice behind "Read the full list"', async () => {
+  it('says in short only what applies to a plan’s own vault, and keeps every item of the notice behind "Read the full list"', async () => {
     api({ funded: true });
     const host = await buy();
     const notice = find(host, '[data-ui="trust-notice"]');
@@ -390,7 +502,7 @@ describe('what you’re trusting', () => {
     expect(short).toEqual([
       en.trust.short.unaudited,
       en.trust.short.keys,
-      en.trust.short.keeper('0.75%', '1%'),
+      // no keeper line: a plan's vault follows nothing, so the keeper does not trade it
       en.trust.short.issuers,
     ]);
     const full = find<HTMLDetailsElement>(notice, 'details[data-ui="trust-full"]');

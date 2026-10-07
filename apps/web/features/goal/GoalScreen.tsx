@@ -46,6 +46,12 @@ import {
 const LIMITS = 'limits';
 const STORE = GOAL_DRAFT;
 const SIGN_IN = '/sign-in?next=/goal';
+/** The fields the reader may answer with a start of its own, by their name in the draft and here. */
+const ASSUMABLE = [
+  ['goal', 'goal'],
+  ['risk', 'risk'],
+  ['horizonMonths', 'horizon'],
+] as const;
 
 type Build = { kind: 'idle' } | { kind: 'solving' } | BuildOutcome;
 
@@ -60,7 +66,7 @@ export function GoalScreen() {
   const [readFailure, setReadFailure] = useState<ReadFailure | null>(null);
   const [sheet, setSheet] = useState<ReadSheet | null>(null);
   const [build, setBuild] = useState<Build>({ kind: 'idle' });
-  const composer = useRef<HTMLDivElement>(null);
+  const builtCard = useRef<HTMLDivElement>(null);
   const outcomeId = useId();
   const hintId = useId();
   // Which request for a plan is still wanted. An answer is shown only for the limits it was asked
@@ -177,7 +183,7 @@ export function GoalScreen() {
       setSheet({
         goalText: typed.trim(),
         source: {
-          method: t.goal.examples.source,
+          method: 'example',
           fetchedAt: new Date().toISOString(),
           provenance: 'live',
         },
@@ -198,13 +204,15 @@ export function GoalScreen() {
       const fields = fieldsOfDraft(draft, lang);
       setSheet({
         goalText: typed,
-        source: filled.filled
-          ? { ...reading.source, method: `${reading.source.method} · ${t.goal.filledFromWords}` }
-          : reading.source,
+        source: reading.source,
         firstReader: reading.firstReader,
         read: fields,
         fields,
         countryFromBrowser,
+        // What the reader answered with a start of its own, and the words did not say either.
+        assumed: ASSUMABLE.filter(
+          ([word, key]) => reading.guessed.has(word) && words[word] == null && fields[key] !== '',
+        ).map(([, key]) => key),
       });
     } catch (e) {
       // The text stays in the box, and a sheet read before stays as it was.
@@ -250,11 +258,19 @@ export function GoalScreen() {
     if (outcome.kind === 'no-chain') retry();
   }
 
+  /** A chip is a goal said in one click: it fills the box and is read at once. */
   function fillWith(example: string) {
     setText(example);
-    // The chip fills the box and hands it over: the person reads it, changes it, and sends it.
-    composer.current?.querySelector('textarea')?.focus();
+    void read(example);
   }
+
+  // The plan lands below the limits: the page goes to it, and so does the keyboard.
+  const builtId = build.kind === 'built' ? build.id : null;
+  useEffect(() => {
+    if (builtId === null) return;
+    builtCard.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+    builtCard.current?.focus({ preventScroll: true });
+  }, [builtId]);
 
   const network = chain ? port.network(chain) : null;
   const chainName = chain ? (network?.name ?? t.chain.names[chain]) : '';
@@ -334,7 +350,6 @@ export function GoalScreen() {
 
   // What stands between valid limits and a plan, besides the fields: who is asking, and on which chain.
   const blocked = [
-    ...(account.status === 'signed-out' ? [t.goal.blocked.signedOut] : []),
     ...(account.status === 'no-wallet' ? [t.chain.noWallet] : []),
     ...(account.status === 'unknown'
       ? [account.why === 'unreachable' ? t.goal.blocked.chainUnknown : unknownWhy]
@@ -366,15 +381,14 @@ export function GoalScreen() {
 
   // A built plan is named by its own chain and labelled by its own figures, not by this page's.
   const plan = build.kind === 'built' ? build.proposal : null;
-  // The first reader was made for goals in reais: the note names what it left empty, for the person
-  // to fill in.
+  // What the reading left empty, named in one line for the person to fill in.
   const missed = sheet ? notFound(sheet.fields, sheet.read).map((key) => t.goal.fields[key]) : [];
   const readerNote =
     missed.length > 0
       ? t.goal.readerMissed(
           new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(missed),
         )
-      : t.goal.readerNote;
+      : null;
   const planLabel = plan ? planProvenance(plan) : 'live';
   const planChain = plan?.sheet.chains[0];
   const planChainName = planChain
@@ -392,6 +406,7 @@ export function GoalScreen() {
           dictionary(sheet.fields.language),
           lang,
           sheet.countryFromBrowser,
+          sheet.assumed,
         )
       : null;
 
@@ -427,7 +442,6 @@ export function GoalScreen() {
         )}
 
         <div
-          ref={composer}
           className={cn('flex max-w-(--tf-measure-docs) flex-col gap-3', !sheet && 'lg:col-span-7')}
         >
           <Composer
@@ -478,7 +492,7 @@ export function GoalScreen() {
         </div>
       </div>
 
-      {sheet?.firstReader && (
+      {readerNote && (
         <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">{readerNote}</p>
       )}
 
@@ -488,9 +502,15 @@ export function GoalScreen() {
           level={2}
           className="scroll-mt-6"
           goalText={sheet.goalText}
-          source={sheet.source}
           facts={[chainFact]}
           groups={drawn.groups}
+          more={{ label: t.goal.sheet.more, groups: drawn.more }}
+          // A visitor's next step is to sign in: a button where the build button is, not an error.
+          next={
+            account.status === 'signed-out'
+              ? { label: t.goal.sheet.signInToBuild, href: SIGN_IN }
+              : undefined
+          }
           capital={drawn.amount}
           state={
             build.kind === 'solving' ? 'solving' : build.kind === 'no-plan' ? 'no-plan' : 'idle'
@@ -541,37 +561,43 @@ export function GoalScreen() {
           </Card>
         )}
         {plan && (
-          <Card
-            as="section"
-            aria-labelledby={outcomeId}
-            // A plan built on anything that is not live says so, whatever else it says: the plate,
-            // and for a test network the words too.
-            mock={planLabel !== 'live'}
-            mockLabels={{
-              announce: t.shell.mockAnnounce,
-              note: planLabel === 'sandbox' ? t.shell.testNetwork : undefined,
-            }}
+          <div
+            ref={builtCard}
+            tabIndex={-1}
+            data-ui="built-plan"
+            className="scroll-mt-6 outline-none"
           >
-            <CardHeader
-              title={t.goal.built.done.title}
-              level={2}
-              id={outcomeId}
-              meta={planChain ? <ChainBadge chain={planChain} /> : undefined}
-            />
-            <CardBody>
-              <p className="max-w-(--tf-measure-body) text-body">
-                {t.goal.built.done.body(plan.lines.length, planChainName)}
-              </p>
-              {build.kind === 'built' && (
-                <Link
-                  href={`/plan/${encodeURIComponent(build.id)}`}
-                  className={buttonClass({ variant: 'link' })}
-                >
-                  {t.goal.built.done.see}
-                </Link>
-              )}
-            </CardBody>
-          </Card>
+            <Card
+              as="section"
+              aria-labelledby={outcomeId}
+              // A plan built on anything that is not live says so, whatever else it says: the plate,
+              // and for a test network the words too.
+              mock={planLabel !== 'live'}
+              mockLabels={{
+                announce: planLabel === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
+              }}
+            >
+              <CardHeader
+                title={t.goal.built.done.title}
+                level={2}
+                id={outcomeId}
+                meta={planChain ? <ChainBadge chain={planChain} /> : undefined}
+              />
+              <CardBody>
+                <p className="max-w-(--tf-measure-body) text-body">
+                  {t.goal.built.done.body(plan.lines.length, planChainName)}
+                </p>
+                {build.kind === 'built' && (
+                  <Link
+                    href={`/plan/${encodeURIComponent(build.id)}`}
+                    className={buttonClass({ variant: 'link' })}
+                  >
+                    {t.goal.built.done.see}
+                  </Link>
+                )}
+              </CardBody>
+            </Card>
+          </div>
         )}
         {buildSentence && (
           <p

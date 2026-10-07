@@ -52,6 +52,8 @@ export const en = {
     language: 'Language',
     /** Beside a figure or a name that comes from a test network, after the MOCK plate. */
     testNetwork: 'test network',
+    /** A card whose figures are read from a test network says only that: they are not samples. */
+    testNetworkLine: 'Test network',
     /** When the server answers that it is being asked too often. */
     slowDown: 'Our server asked me to slow down. Wait a minute, then try again.',
     /** A sample card's one quiet line (MOCK-QUIET). */
@@ -82,6 +84,9 @@ export const en = {
       continue: 'Continue with a passkey',
       /** After the prompt to use one was closed: makes one, and with it a new account. */
       createNew: 'Create a new passkey',
+      /** Under that button: what a new passkey is, before one is made by mistake. */
+      createNewNote:
+        'New here? A new passkey opens a new account with a new, empty wallet. It doesn’t open a wallet you already have.',
       waiting: 'Waiting for your passkey…',
       making: 'Making your wallet…',
     },
@@ -119,10 +124,15 @@ export const en = {
         'The passkey wasn’t created: the prompt was closed or ran out of time. Nothing was saved. Try again when you’re ready.',
       /** The prompt to use a passkey was closed: nothing is made unless the person asks (SIGN-IN-FLOW). */
       passkeyNotUsed:
-        'No passkey was used. If you made one on another device, use that device or choose “use a phone” in the prompt. New here? Create a passkey: it opens a new account with a new, empty wallet.',
-      passkeyUnknown: 'I don’t know that passkey. Create a new one, or connect a wallet.',
+        'No passkey was used. If you made one on another device, use that device or choose “use a phone” in the prompt.',
+      passkeyUnknown:
+        'I don’t know that passkey: no account here was opened with it. Try the one you signed up with.',
+      /** A passkey sign-in that failed with nothing more said: no passkey was taken. */
+      passkeyNotAccepted:
+        'No passkey for this site was accepted, so you aren’t signed in. Try again with the passkey you signed up with, on the device that has it.',
       /** Privy's `passkey_not_registered`: the passkey picked was made for another site or app. */
-      passkeyNotRegistered: 'That passkey isn’t registered here. Pick another, or create one.',
+      passkeyNotRegistered:
+        'That passkey isn’t registered here: it was made for another site or app. Pick the one you signed up with here.',
       /** Privy's `max_accounts_reached`. */
       accountsFull:
         'This app can’t take new accounts right now. Use a passkey or wallet you’ve signed in with before, or come back later.',
@@ -237,13 +247,11 @@ export const en = {
       list: [
         'Grow $2,000 for ten years, high risk',
         'Protect $50,000 for 18 months, low risk',
-        '$80,000 for $300 a month of income',
+        '$80,000 for $300 a month of income, 5 years, low risk',
       ],
       /** The sheet's source line, for an example sent as it is: its limits are the app's own. */
-      source: 'this example’s own limits',
     },
     /** Beside the reader on the sheet's source line, when the words of the goal filled what it left empty. */
-    filledFromWords: 'filled from your words',
     readFailure: {
       unreachable:
         'I couldn’t reach our server to read that. Your text is still here. Try again in a moment.',
@@ -252,11 +260,9 @@ export const en = {
       unreadable: 'I got an answer I couldn’t read. Your text is still here. Try again.',
     },
     /** Under the sheet's title, while the only reader is the one made for goals in reais. */
-    readerNote:
-      'Today’s reader was made for goals in reais, so it can miss a dollar amount or a date. Check each field: what it didn’t find is left empty for you.',
-    /** The same note, naming what the reader left empty: "Amount (dollars), Time frame (months)". */
+    /** What the reading left empty, by name: "Amount (dollars) and Time frame (months)". */
     readerMissed: (fields: string) =>
-      `Today’s reader was made for goals in reais, so it didn’t find these in your goal: ${fields}. Fill them in below. Nothing is built until every field fits.`,
+      `I didn’t find these in your goal: ${fields}. Fill them in below.`,
     sheet: {
       title: 'How I read your goal',
       parser: 'parser',
@@ -267,6 +273,10 @@ export const en = {
       missingOther: '{n} things are still missing. Fill them in to build the plan.',
       goToField: 'Go to field',
       build: 'Build my plan',
+      /** The next step for a visitor, in the build button's place: not an error. */
+      signInToBuild: 'Sign in to build my plan',
+      /** The fold over the limits a first plan seldom needs. */
+      more: 'More limits',
       building: 'Building your plan…',
       fixOne: 'Fix the field above to continue.',
       fixOther: 'Fix the {n} fields above to continue.',
@@ -300,6 +310,8 @@ export const en = {
       amount: 'What this plan starts with, from $10 to $1,000,000.',
       /** Before the hint of a field the reader left empty. */
       notFound: 'Not found in your goal: fill it in.',
+      /** A field the goal did not say, filled with a starting value the person can change. */
+      assumed: 'Not said in your goal: I assumed this. Change it if it’s wrong.',
     },
     captions: {
       income: 'An income plan holds no stock tokens.',
@@ -334,7 +346,6 @@ export const en = {
       unknown: 'Not known yet',
     },
     blocked: {
-      signedOut: 'Sign in to build: a plan is built for the chain of your wallet.',
       chainNotChosen: 'Choose a chain from the bar at the top first.',
       chainUnknown:
         'I can’t tell yet which chain your plan lives on, so I can’t build for it. Ask again, above.',
@@ -398,7 +409,11 @@ export const en = {
     unknownStatus: 'status unknown',
     notRetried: '(not retried)',
     signature: 'transaction id',
-    noneYet: 'Nothing has reached the chain from this order yet.',
+    /** The heading of one order's lines on the portfolio: "Buy of $80,000 · Oct 5, 2026, 15:00 UTC". */
+    buy: (amount: string, when: string) => `Buy of ${amount} · ${when}`,
+    order: (when: string) => `Order · ${when}`,
+    follow: (when: string) => `Follow a shared portfolio · ${when}`,
+    publish: (when: string) => `Publish a portfolio · ${when}`,
     noneVault:
       'Nothing from your buys has reached the chain yet. The keeper’s trades, and orders about a shared portfolio placed in another browser, are not listed here yet.',
   },
@@ -439,7 +454,8 @@ export const en = {
     /** A chain of the person's that this server has switched off: asking again will not help. */
     chainOff: (chain: string) => `${chain} is switched off on our server for now.`,
     /** The person's current chain, which no wallet of this sign-in signs on. */
-    notHeld: (chain: string) => `${chain} isn’t held in this sign-in.`,
+    notHeld: (chain: string) =>
+      `No wallet of this sign-in is on ${chain}, so nothing is read there.`,
     title: (vaults: number): string =>
       vaults > 1 ? 'What your vaults hold.' : 'What your vault holds.',
     lead: 'Read from each chain your plans live on, each time you open this page. Nothing here signs or moves anything.',
@@ -496,23 +512,26 @@ export const en = {
       off: 'Off',
       /** The vault's weekly loss counter, as a share of its value. */
       lossUsed: 'Keeper losses, last 7 days',
-      holdings: 'Holdings',
-      /** The vault's facts as chips, his case's limits line. */
-      chips: { label: 'The vault', address: 'address', version: 'version', follow: 'auto-follow' },
+      holdings: 'What you hold',
+      /** The fold over the vault's own facts: its address, the version it follows, auto-follow. */
+      details: 'Details',
+      version: 'Version of the portfolio it follows',
+      followsNothing: 'It follows no shared portfolio: you set its shares.',
+      openPage: 'Open this vault’s page',
       parts: 'Its parts, by weight',
       planTitle: (parts: number) =>
         parts === 1 ? 'Your plan · 1 part' : `Your plan · ${parts} parts`,
       tooMany: 'More parts than a bar can show: each one is in the table below.',
-      target: (share: string) => `target ${share}`,
+      target: (share: string) => `planned ${share}`,
       onlyCash: 'Only cash so far: nothing has been bought into this vault yet.',
       columns: {
         asset: 'Asset',
         amount: 'Amount',
         price: 'Price',
         value: 'Value',
-        weight: 'Weight',
-        target: 'Target',
-        drift: 'Drift',
+        weight: 'Share now',
+        target: 'Planned',
+        drift: 'Difference',
       },
       noPrice: 'no price',
       unpriced: (n: number) =>
@@ -535,10 +554,15 @@ export const en = {
       /** The income plan's verdict in figures: what it paid a month of what was asked. */
       builtPaid: (paid: string, asked: string) =>
         `When this plan was built, it paid ${paid} a month of the ${asked} you asked for.`,
-      noStatus: 'No status yet: the engine gives none for a vault',
+      /** Where no status is known, the one plain line: when the goal is due. */
+      due: (date: string) => `Goal date: ${date}`,
       unknown: (chain: string) => `Your vault on ${chain}.`,
       notJoined:
         'This vault has no goal I can read: it was bought from a shared portfolio, which has none, or before plans kept their goal. What it holds is below.',
+      /** A vault bought from a shared portfolio: what it follows, by name where this browser knows it. */
+      follows: (name: string) => `Your vault follows ${name}.`,
+      followsShared: 'It follows a shared portfolio. What it holds is below.',
+      seeShared: 'See that portfolio',
       putIn: (amount: string) => `you put in ${amount}`,
       seePlan: 'See your plan',
       seeOrder: 'See the order',
@@ -563,6 +587,7 @@ export const en = {
     missing: {
       title: 'I can’t find this plan for you.',
       body: 'It isn’t a plan made with this sign-in, or it is no longer kept. Build one from your goal: your limits are kept.',
+      again: 'Build it again',
     },
     backToGoal: 'Back to your goal',
     /** A plan on a chain no wallet of the person's signs on. */
@@ -625,7 +650,8 @@ export const en = {
       noQuote: 'There’s no recent price quote for selling all of it yet.',
       withdrawalsShort: 'Not every withdrawal is paid on time with what is set aside.',
       notLive: 'Some figures come from a test network or sample data, not from live markets.',
-      other: 'The engine noted one more thing about this plan.',
+      /** A flag this app has no sentence for yet: said plainly, once, never as its code. */
+      other: 'The plan carries one more note we can’t describe yet.',
       simple: {
         exit_not_measured: 'No part of this plan has a measured selling cost yet.',
         exit_partly_measured: 'Only part of this plan has a measured selling cost.',
@@ -656,16 +682,6 @@ export const en = {
     shortRange: (low: string, high: string) => `about ${low} to ${high}`,
     sub: (risk: string, chain: string) => `${risk} · on ${chain} · nothing bought yet`,
     riskWord: { low: 'Low risk', medium: 'Medium risk', high: 'High risk' },
-    chips: {
-      label: 'Your limits',
-      goal: 'goal',
-      amount: 'amount',
-      horizon: 'horizon',
-      risk: 'risk',
-      /** The risk as the chip says it after "risk:", which in Portuguese agrees with "risco". */
-      riskValue: { low: 'low', medium: 'medium', high: 'high' },
-      chain: 'chain',
-    },
     kpi: {
       amount: 'you put in',
       horizon: 'for',
@@ -721,6 +737,17 @@ export const en = {
     verdict: {
       met: 'The income you asked for is met by this plan, on the engine’s numbers.',
       gap: (gap: string) => `This plan falls short of the income you asked for by ${gap} a month.`,
+      /** Above the ways the engine found to close the gap, each its own sentence. */
+      ways: 'To close the gap:',
+      change: 'Change my limits',
+    },
+    /** What an income plan pays a month, from its projected range a year. */
+    monthly: {
+      /** The figure itself, which carries the pin of the plan's yield reading. */
+      figure: (low: string, high: string) =>
+        low === high ? `About ${low} a month` : `About ${low} to ${high} a month`,
+      /** After it: an estimate, not a promise. */
+      after: 'if the projected range holds. An estimate, not a promise.',
     },
     buy: 'Buy this plan',
     chainNotReady: (chain: string) =>
@@ -775,18 +802,21 @@ export const en = {
     amount: {
       label: 'Amount (dollars)',
       hint: (planned: string) => `Your plan was built for ${planned}. From $10 to $1,000,000.`,
+      /** Under an amount that is not the plan's: its limits were set in dollars at that amount. */
+      other: (planned: string) =>
+        `Your plan was built for ${planned}, and its limits were worked out at that amount. To buy another amount, build the plan again for it.`,
     },
     /** The four steps of a buy, one open at a time. */
     steps: {
       label: 'Steps to buy',
-      names: { amount: 'Amount', funds: 'Funds', trust: 'Trust', review: 'Sign' },
+      names: { amount: 'Amount', funds: 'Funds', trust: 'Trust', review: 'Review' },
       /** Read after a step's name by a screen reader. */
       done: 'done',
       next: 'Continue',
       funds: { ready: 'Ready', short: 'Something is missing', reading: 'Reading…' },
       trust: { accepted: 'Accepted', open: 'Not accepted yet' },
       reviewLead: (amount: string, chain: string) =>
-        `You’re buying ${amount} of your plan on ${chain}. Next you review every step, then sign each one in your wallet.`,
+        `You’re buying ${amount} on ${chain}. Next you review every step, then sign each one in your wallet.`,
       /** The one line over the card when its figures are not live. */
       note: {
         testNetwork: (chain: string) => `Test network · ${chain} · not live`,
@@ -998,7 +1028,6 @@ export const en = {
       lead: (chain: string) =>
         `A vault of yours on ${chain} follows this portfolio, at the version shown, with auto-follow off. Nothing is bought until you review every step and sign it.`,
       amountHint: 'In dollars, at least $10.',
-      review: (amount: string) => `Review the buy of ${amount}`,
       blocked: {
         terms: 'I couldn’t read this portfolio, so there is nothing to follow yet.',
         missing: 'The chain doesn’t hold this portfolio, so it can’t be followed.',
@@ -1009,7 +1038,9 @@ export const en = {
       title: 'Your vaults',
       none: 'You have no vault on this chain yet. Buy this portfolio to open one that follows it.',
       following: 'Follows this portfolio',
-      notFollowing: 'Follows something else',
+      notFollowing: 'Follows another portfolio',
+      /** A vault bought from a goal: it follows no shared portfolio. */
+      ownPlan: 'Holds your own plan',
       followWith: 'Follow with this vault',
       followNote:
         'Your vault takes this portfolio’s weights. Nothing is traded in that step: you rebalance after, or the keeper does with auto-follow on.',
@@ -1097,11 +1128,11 @@ export const en = {
       cash: 'Cash',
       columns: {
         asset: 'Asset',
-        held: 'Held',
+        held: 'Amount',
         price: 'Price',
-        weight: 'Weight',
-        target: 'Target',
-        drift: 'Drift',
+        weight: 'Share now',
+        target: 'Planned',
+        drift: 'Difference',
       },
       on: 'On',
       off: 'Off',
@@ -1127,9 +1158,11 @@ export const en = {
       steps: 'Steps',
       expires: 'Sign before',
       spend: (amount: string, asset: string) => `Spend ${amount} on ${asset}`,
-      atLeast: (amount: string, asset: string) =>
-        `receive at least ${amount} of ${asset}, in its smallest units`,
+      /** Where this app has no units for the token: how far under the quote the step may land. */
+      atMostUnder: (pct: string) => `at most ${pct} under the quote`,
       atLeastWhole: (amount: string) => `receive at least ${amount}`,
+      /** The most a token costs at that minimum: what is spent over the least received. */
+      atMostEach: (price: string) => `at most ${price} each`,
       under: (pct: string) => `${pct} under the quote`,
       noTrades: 'No trade in this step.',
       warnings: 'Our server warns',
@@ -1187,6 +1220,9 @@ export const en = {
     kind: {
       approve: 'Allow the deposit',
       create_vault: 'Open your vault and deposit',
+      /** The same step where it also buys (Robinhood Chain): the buys are named, not hidden. */
+      create_vault_buy: 'Open your vault, deposit and buy',
+      deposit_buy: 'Deposit and buy',
       deposit: 'Deposit',
       swap: 'Buy',
       set_targets: 'Set your vault’s targets',
@@ -1224,7 +1260,23 @@ export const en = {
     },
     outcome: {
       done: (chain: string) =>
-        `Every step is confirmed on ${chain}, as our server reports it. Each step’s transaction is linked beside it.`,
+        `Every step is confirmed on ${chain}. Each step’s transaction is linked beside it.`,
+      seePortfolio: 'See your portfolio',
+      buyMore: 'Buy more',
+      /** After a step failed or was refused once the deposit had landed. */
+      depositKept:
+        'What you deposited is in your vault, as cash: nothing is lost. A new order would deposit again.',
+      /** The fold over the check that failed and the guard's own words, to quote to the team. */
+      forSupport: 'Details for support',
+      /** Finishing a buy that stopped after its deposit, where the server can (finding 24). */
+      finish: 'Finish buying with the cash in your vault',
+      finishing: 'Making the order…',
+      finishNote:
+        'A new order for the steps that were left, at the price now. It deposits nothing: you review and sign it as before.',
+      finishPriceMoved:
+        'The price moved while the order was being made, so nothing was made. Try again.',
+      finishLater: 'A step signed before can still land. Look again in a minute, then try again.',
+      finishRefused: (why: string) => `I couldn’t make that order. Our server said: ${why}.`,
       refused: (step: number) =>
         `I didn’t sign step ${step}: the transaction our server built for it isn’t the step you approved. Nothing was signed for it.`,
       refusedOrder:

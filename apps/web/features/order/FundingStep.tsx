@@ -3,11 +3,11 @@ import type { FundingFigure } from '@colosseum/schemas';
 import { Wait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { DataTable } from '../../components/ui/DataTable';
-import { utcMinute } from '../../components/ui/ExecutionList';
 import { SkeletonRows } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
+import { utc } from '../portfolio/figures';
 import { formatRaw } from './amounts';
 import type { FundingOutcome, TestFundsOutcome } from './order-api';
 import type { TokenUnits, unitsFor } from './units';
@@ -217,7 +217,8 @@ export function FundingStep({
             {t.buy.funding.testFunds}
           </Button>
         )}
-        {mock && read && !read.ok && (
+        {/* One way to fill the wallet at a time: test funds where the server sends them. */}
+        {mock && !offered && read && !read.ok && (
           <Button
             variant="secondary"
             busy={mockBusy}
@@ -272,9 +273,9 @@ export function FundingStep({
               {rows.map((r) => (
                 <li key={r.key}>
                   {[
-                    r.figure.symbol,
+                    r.units?.symbol ?? r.figure.symbol,
                     r.figure.source,
-                    utcMinute(r.figure.fetchedAt),
+                    utc(lang, r.figure.fetchedAt),
                     r.figure.method,
                   ].join(' · ')}
                 </li>

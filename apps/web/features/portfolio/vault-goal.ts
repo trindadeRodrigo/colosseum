@@ -1,6 +1,6 @@
 import type { OrderRecord, PlacedGoal } from '../order/order-record';
 import { basketOfPlan } from '../order/readiness';
-import type { Vault } from './portfolio';
+import type { Vault as PortfolioVault } from './portfolio';
 
 // Which goal a vault was bought for. The API's portfolio names a vault by its plan's number on chain
 // (`basketId`) and does not join it to the plan. The join is the server's list of the person's plans
@@ -10,6 +10,9 @@ import type { Vault } from './portfolio';
 // vault is joined to the newest order of its plan that has a goal. One the server's list does not
 // name and this browser did not place (a buy of a shared portfolio, which has no goal) is joined to
 // nothing, and the screen says so: no target is made up for it.
+
+/** What joins a vault to an order: its chain and its plan's number. */
+type Vault = Pick<PortfolioVault, 'chain' | 'basketId'>;
 
 export type VaultGoal = { goal: PlacedGoal; record: OrderRecord };
 
@@ -27,6 +30,16 @@ export const ordersOfVault = (vault: Vault, records: readonly OrderRecord[]): Or
 export function goalOfVault(vault: Vault, records: readonly OrderRecord[]): VaultGoal | null {
   for (const record of ordersOfVault(vault, records))
     if (record.goal) return { goal: record.goal, record };
+  return null;
+}
+
+/**
+ * The shared portfolio the vault was bought from in this browser, by its address on the shelf: the
+ * newest order of the vault that bought one. Null when none did.
+ */
+export function familyOfVault(vault: Vault, records: readonly OrderRecord[]): string | null {
+  for (const record of ordersOfVault(vault, records))
+    if (record.terms?.kind === 'family') return record.terms.slug;
   return null;
 }
 

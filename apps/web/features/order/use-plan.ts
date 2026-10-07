@@ -3,7 +3,13 @@ import type { ChainId } from '@colosseum/schemas';
 import { useEffect, useState } from 'react';
 import { useAccount } from '../account/AccountProvider';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
-import { readStoredPlan, recallPlan, rememberPlan, type StoredPlan } from './plan-store';
+import {
+  forgetPlan,
+  readStoredPlan,
+  recallPlan,
+  rememberPlan,
+  type StoredPlan,
+} from './plan-store';
 import { chainReady, onMock } from './readiness';
 
 // What the plan screen and the buy screen stand on: the person, the plan with this id as this tab kept
@@ -41,18 +47,28 @@ export function usePlan(id: string): PlanState {
   const apiFetch = useApiFetch();
   const userId = port.userId;
   useEffect(() => {
+    // One read path: the browser's copy first, so the screen opens at once with its risk roll-up,
+    // then the server's (`readStoredPlan`), which is the last word. A plan it says is gone, or
+    // another person's, is dropped and not shown; when it does not answer, the copy stands.
     const kept = recallPlan(id, userId);
-    if (kept || !userId) return setPlan(kept);
-    // Not built in this tab: the API reads it back by its id, the person's own or one made from a link.
+    if (!userId) return setPlan(kept);
     let mine = true;
-    setPlan(undefined);
+    setPlan(kept ?? undefined);
     // The route reads a sign-in and needs none, so tokens gone stale are answered as nobody is: a
-    // person's own plan then reads as not found. Asked once more with fresh tokens before that is
-    // believed.
-    const read = async () =>
-      (await readStoredPlan(apiFetch, id)) ?? (await readStoredPlan(apiFetch, id, true));
+    // person's own plan then reads as gone. Asked once more with fresh tokens before that is
+    // believed, and before the copy kept here is dropped.
+    const read = async () => {
+      const first = await readStoredPlan(apiFetch, id);
+      return first === 'gone' ? readStoredPlan(apiFetch, id, true) : first;
+    };
     void read().then((read) => {
       if (!mine) return;
+      if (read === 'gone') {
+        forgetPlan(id);
+        return setPlan(null);
+      }
+      // the copy kept here stands while the server has the plan, or says nothing
+      if (kept) return;
       if (!read) return setPlan(null);
       // The risk roll-up is not stored with a plan: the plan screen shows none for one read back.
       const stored: StoredPlan = {

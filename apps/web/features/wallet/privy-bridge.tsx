@@ -169,11 +169,12 @@ const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  * The calls that make wallets go one at a time across every mount of the driver (`carry`, which the
  * wallet provider keeps): the provider can be mounted again ("Try again" for a slow sign-in,
  * WalletProvider's `restart`) while a call of the driver before it is still open, and the same wallet
- * is never asked for twice at once. A driver that starts waits for the call before it to end, this
- * long at most: a call Privy dropped with the provider it belonged to never ends, and must not hold
- * the person's wallets for ever.
+ * is never asked for twice at once. A driver that starts waits for a call of the driver before it to
+ * end, this long at most: a call Privy dropped with the provider it belonged to never ends, and must
+ * not hold the person's wallets for ever. Between two attempts of one driver there is no such limit:
+ * the second always waits for the first.
  */
-export const OPEN_CALL_WAIT_MS = 30_000;
+export const OPEN_CALL_WAIT_MS = 90_000;
 
 function PrivyDriver({
   onPort,
@@ -184,6 +185,9 @@ function PrivyDriver({
   // Mounted with no provider above to keep it (a test of the bridge alone): this driver's own.
   const [own] = useState(() => ({ making: Promise.resolve() }));
   const line = carry ?? own;
+  // The last job in the line is this driver's own: only one left by a driver before it is waited
+  // for with a limit.
+  const mine = useRef<Promise<void> | null>(null);
   const privy = usePrivy();
   const evm = useWallets();
   const solana = useSolanaWallets();
@@ -361,7 +365,12 @@ function PrivyDriver({
     };
     // One job at a time, whatever starts the next and whichever mount it is of: a wallet is never
     // asked for twice at once.
-    line.making = Promise.race([line.making, pause(OPEN_CALL_WAIT_MS)]).then(run);
+    const before =
+      line.making === mine.current
+        ? line.making
+        : Promise.race([line.making, pause(OPEN_CALL_WAIT_MS)]);
+    line.making = before.then(run);
+    mine.current = line.making;
   }, [job, work, line]);
 
   // Whoever waits in ensureWallets() hears how it ended.

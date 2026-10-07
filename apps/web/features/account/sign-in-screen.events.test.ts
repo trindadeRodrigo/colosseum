@@ -547,9 +547,36 @@ describe('the goal a person typed, kept in the tab', () => {
     await screen();
     await settle();
     expect(window.sessionStorage.getItem('tf-goal')).toBe(DRAFT);
+    // and with it the plans this browser kept for them: the server has them for the next sign-in
+    window.localStorage.setItem('tf-plan:some-plan', '{}');
+    window.localStorage.setItem('tf-plans', '["some-plan"]');
+    // their order records go too; another person's stay, and so does the trust acceptance
+    const me = signedInPort(PHANTOM).userId as string;
+    const order = (userId: string) =>
+      JSON.stringify({
+        orderId: 'o',
+        userId,
+        proposalId: 'p',
+        chain: 'solana',
+        amountUsd: 10,
+        lines: [],
+        approved: null,
+      });
+    window.localStorage.setItem('tf-order:mine', order(me).replace('"o"', '"mine"'));
+    window.localStorage.setItem(
+      'tf-order:theirs',
+      order('someone-else').replace('"o"', '"theirs"'),
+    );
+    window.localStorage.setItem(`tf-trust:${me}`, '{"textVersion":"x"}');
     await act(async () => portStore.set(fakePort({ found: FOUND })));
     await settle();
     expect(window.sessionStorage.getItem('tf-goal')).toBeNull();
+    expect(window.localStorage.getItem('tf-plan:some-plan')).toBeNull();
+    expect(window.localStorage.getItem('tf-plans')).toBeNull();
+    expect(window.localStorage.getItem('tf-order:mine')).toBeNull();
+    expect(window.localStorage.getItem('tf-order:theirs')).not.toBeNull();
+    expect(window.localStorage.getItem(`tf-trust:${me}`)).not.toBeNull();
+    window.localStorage.clear();
   });
 
   it('is kept when someone who typed it signed out goes on to sign in', async () => {

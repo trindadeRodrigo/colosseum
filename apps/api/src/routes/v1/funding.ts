@@ -117,12 +117,16 @@ export async function readFunding(
   principal: Principal,
   query: FundingQuery,
 ): Promise<{ entry: ChainEntry; read: FundingResponse }> {
-  const { amountUsd, proposalId, family: slug } = query;
-  // A plan is bought on its own chain; anything else is asked about on the current chain.
+  const { amountUsd, proposalId, family: slug, vault, vaultChain } = query;
+  // A plan is bought on its own chain, and a vault is added to on its own; anything else is asked
+  // about on the current chain.
   const plan = amountUsd !== undefined && proposalId !== undefined;
-  const chain = plan
-    ? await planChain(deps, proposalId, principal)
-    : await homeChain(deps.db, principal);
+  const chain =
+    vault !== undefined && vaultChain !== undefined
+      ? vaultChain
+      : plan
+        ? await planChain(deps, proposalId, principal)
+        : await homeChain(deps.db, principal);
   const entry = deps.chains.get(chain);
   const { family } = entry.config;
   // Which of the person's wallets of this family holds their plans. On the family of their current
@@ -136,7 +140,10 @@ export async function readFunding(
   const wallet = walletOf(principal, family, outside, query.wallet);
 
   let need: FundingNeed = { cashRaw: '0', legs: 0, newVault: false, newAccounts: 0 };
-  if (amountUsd !== undefined && (proposalId !== undefined || slug !== undefined))
+  if (
+    amountUsd !== undefined &&
+    (proposalId !== undefined || slug !== undefined || vault !== undefined)
+  )
     // Planned by the function an order is planned with, so the steps counted are the order's.
     need = (
       await planBuy(
@@ -144,7 +151,11 @@ export async function readFunding(
           type: 'buy',
           owner: { [family]: wallet },
           amountUsd,
-          ...(slug !== undefined ? { family: slug } : { proposalId }),
+          ...(vault !== undefined
+            ? { vault: { chain, address: vault } }
+            : slug !== undefined
+              ? { family: slug }
+              : { proposalId }),
         },
         {
           principal,

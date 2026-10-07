@@ -17,8 +17,14 @@ export function TrustNotice({
   accepted,
   checked,
   onCheck,
+  keeper: keeperTrades = true,
 }: {
   chain: ChainId;
+  /**
+   * The keeper may trade the vault this is shown for. False for a plan's own vault, which follows
+   * nothing: the keeper's limits are then left out of the short points, and stay in the full list.
+   */
+  keeper?: boolean;
   /** Accepted before, in this browser, for this version of the text: nothing to tick. */
   accepted: boolean;
   /** Ticked now. It is kept as accepted when the order is made. */
@@ -40,7 +46,7 @@ export function TrustNotice({
   const short = [
     ...(TRUST_STATUS.audited ? [] : [t.trust.short.unaudited]),
     t.trust.short.keys,
-    limits ? t.trust.short.keeper(...limits) : t.trust.short.keeperUnset,
+    ...(keeperTrades ? [limits ? t.trust.short.keeper(...limits) : t.trust.short.keeperUnset] : []),
     ...(TRUST_STATUS.issuersCanFreeze ? [t.trust.short.issuers] : []),
   ];
   const items = [

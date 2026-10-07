@@ -13,6 +13,8 @@ import {
 import { remember } from '../../components/shell/remember';
 import { SIGNED_IN_COOKIE } from '../../i18n';
 import { forgetGoalDraft } from '../goal/draft';
+import { forgetOrders } from '../order/order-record';
+import { forgetPlans } from '../order/plan-store';
 import { useApiFetch, useWalletPort, useWalletRestart } from '../wallet/WalletProvider';
 import { chainInAddress, FIRST_CHAIN, recallChain, rememberChain } from './chain-choice';
 import {
@@ -156,8 +158,16 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const out = port.status === 'signed-out';
   const before = useRef(who);
   useEffect(() => {
+    // Loading again and naming nobody: nothing of the person's is forgotten, their order's record
+    // least of all ("Try again" pressed on an order's page).
     if (who === null && !out) return;
-    if (before.current !== null && before.current !== who) forgetGoalDraft();
+    if (before.current !== null && before.current !== who) {
+      forgetGoalDraft();
+      // and the plans and order records this browser kept for them: the server has them, for when
+      // they sign in again. The trust acceptance stays: it holds no figure (order-record.ts).
+      forgetPlans();
+      forgetOrders(before.current);
+    }
     before.current = who;
   }, [who, out]);
 
