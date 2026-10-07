@@ -65,7 +65,8 @@ describe('a turn of the guided intake', () => {
     ]);
     // what was read is the server's draft; nothing is whole, so there is no sheet to build from
     expect(reply.sheet.fields).toMatchObject({ goal: 'grow', amount: '', risk: '' });
-    expect(reply.say).toEqual([{ key: 'understood' }]);
+    // what was understood is said before the question
+    expect(reply.say).toEqual([{ key: 'understood' }, { key: 'first' }]);
     expect(reply.valid).toBeNull();
     expect(reply.sheet.words).toEqual([GOAL]);
   });
@@ -611,5 +612,99 @@ describe('what Thom’s conversation of Oct 7 showed', () => {
       null,
     );
     expect(rules.reader).toEqual({ by: 'server rules', why: 'model_not_configured' });
+  });
+
+  it('says before the question what our server read the person wants held, from its fields and never from the typed words', async () => {
+    const ASK_GOAL = {
+      field: 'goal',
+      template: 'goal',
+      text: 'What is this money for: to grow it, to earn an income from it, or to protect it?',
+      options: ['grow', 'income', 'protect'],
+    };
+    const typed = 'i want to invest on the 5 biggest stoks on solana by liquidity';
+    // a theme the server read to a label, and a mix
+    const read = await talk(
+      server(
+        answer({
+          questions: [ASK_GOAL],
+          narratives: [
+            { id: 'ai', words: 'AI', kind: 'label', slug: 'ai', filter: null, name: 'AI' },
+          ],
+          mix: { growthBps: 10_000, dollarYieldBps: 0, goldBps: 0, cashBps: 0 },
+        }),
+      ).api,
+    ).turn({ kind: 'text', text: typed }, null);
+    expect(read.say).toEqual([
+      {
+        key: 'heard',
+        themes: ['AI'],
+        mix: { growthBps: 10_000, dollarYieldBps: 0, goldBps: 0, cashBps: 0 },
+      },
+      { key: 'first' },
+    ]);
+    expect(JSON.stringify(read.say)).not.toMatch(/biggest|stoks|liquidity/);
+    // nothing on the chain fits what was named: said only because the server says so
+    const none = await talk(
+      server(
+        answer({
+          questions: [ASK_GOAL],
+          narratives: [
+            { id: null, words: 'x', kind: 'none', slug: null, filter: null, name: null },
+          ],
+        }),
+      ).api,
+    ).turn({ kind: 'text', text: typed }, null);
+    expect(none.say).toEqual([{ key: 'noneYet' }, { key: 'first' }]);
+    // the server read nothing of it: the question alone, and no claim about what cannot be done
+    const bare = await talk(server(answer({ questions: [ASK_GOAL] })).api).turn(
+      { kind: 'text', text: typed },
+      null,
+    );
+    expect(bare.say).toEqual([{ key: 'first' }]);
+    expect(bare.question?.text).toBe(ASK_GOAL.text);
+  });
+
+  it('offers the change of goal that would hold what was asked for, only where our server’s code says the goal is why', async () => {
+    const income = { ...SHEET, goal: 'income', incomeTargetUsdMonthly: 300 };
+    const lines = [
+      'A plan for a goal of income holds no stocks or crypto, so “100% stocks and crypto” is not held.',
+    ];
+    const dropped = {
+      ...answer({ sheet: income, readBack: lines }),
+      flags: ['mix_dropped_for_goal'],
+    };
+    const s = server(dropped, answer({ sheet: SHEET, readBack: ['You want to grow $2,000.'] }));
+    const reply = await talk(s.api).turn({ kind: 'text', text: 'income, all in stocks' }, null);
+    expect(reply.offers).toEqual([
+      {
+        posts: { kind: 'answer', fact: 'goal', value: 'grow' },
+        label: { kind: 'word', word: 'growGoal' },
+      },
+    ]);
+    // pressed: the goal is answered as growth, and the monthly income goes with the old goal
+    const pressed = { ...reply.sheet };
+    await talk(s.api).turn({ kind: 'answer', fact: 'income', value: '300' }, pressed);
+    const grown = await talk(s.api).turn(
+      { kind: 'answer', fact: 'goal', value: 'grow' },
+      {
+        ...pressed,
+        intake: {
+          ...(pressed.intake as NonNullable<Sheet['intake']>),
+          answers: { incomeTargetUsdMonthly: 300 },
+        },
+      },
+    );
+    expect(s.posted.at(-1)?.answers).toEqual({ goal: 'grow' });
+    expect(grown.offers).toBeUndefined();
+    // the same sentence with no code, a code about something else, or a goal that is already growth:
+    // nothing is offered that the server did not imply
+    for (const other of [
+      answer({ sheet: income, readBack: lines }),
+      { ...answer({ sheet: income, readBack: lines }), flags: ['share_too_small'] },
+      { ...answer({ sheet: SHEET, readBack: lines }), flags: ['mix_dropped_for_goal'] },
+    ]) {
+      const none = await talk(server(other).api).turn({ kind: 'text', text: 'x y z' }, null);
+      expect(none.offers).toBeUndefined();
+    }
   });
 });

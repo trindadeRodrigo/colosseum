@@ -140,6 +140,10 @@ export type IntakeReading = {
   assumptions: string[];
   mix: HeldMix | null;
   themes: HeldTheme[];
+  /** Our server's codes for what it did with the text (`mix_dropped_for_goal`, …). */
+  flags: string[];
+  /** The text names something to hold that nothing on the person's chain fits (THEME-NONE-YET). */
+  noneYet: boolean;
 };
 
 /** The themes the sheet holds, by the name the server gave each: a sleeve's share from the sheet. */
@@ -183,6 +187,8 @@ function answerOf(body: unknown): IntakeReading | null {
     sheet: confirmed,
     readBack: whole ? (readBack as string[]) : null,
     assumptions,
+    flags: Array.isArray(a.flags) ? a.flags.filter(isText) : [],
+    noneYet: (read as Narrative[]).some((n) => n.kind === 'none'),
     mix,
     themes: themesOf(read as Narrative[], confirmed),
   };

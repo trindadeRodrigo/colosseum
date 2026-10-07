@@ -16,10 +16,14 @@ import { InvestScreen } from './InvestScreen';
 
 // what the invest card is given: which plan it buys
 const card = vi.hoisted(() => ({
-  props: null as { of?: { plan?: string }; amount?: number } | null,
+  props: null as {
+    of?: { plan?: string };
+    amount?: number;
+    onAmount?: (amount: number) => void;
+  } | null,
 }));
 vi.mock('../order/Invest', () => ({
-  Invest: (props: { of?: { plan?: string }; amount?: number }) => {
+  Invest: (props: NonNullable<typeof card.props>) => {
     card.props = props;
     return createElement('div', { 'data-ui': 'invest-card' });
   },
@@ -189,6 +193,25 @@ describe('the plans, once made', () => {
     expect(server.to(PERSONALIZE_PATH)).toHaveLength(2);
     expect(pane(host).getAttribute('data-state')).toBe('choice');
     expect(pane(host).querySelector('[data-ui="invest-card"]')).toBeNull();
+  });
+
+  it('changes the amount and makes the plans again when the card says the wallet covers less', async () => {
+    const { host, server } = await built();
+    await click(choose(host, 'cover'));
+    await settle();
+    await act(async () => card.props?.onAmount?.(12_900));
+    await settle();
+    await settle();
+    // said as the person's own turn, and the plans are made again for the new amount
+    expect(
+      [...host.querySelectorAll('[data-ui="invest-turns"] > li[data-who="person"]')].at(-1)
+        ?.textContent,
+    ).toContain(en.talk.ways.amount('$12,900'));
+    const sent = server.to(PERSONALIZE_PATH).map((c) => (c.body as { sheet: BasketSheet }).sheet);
+    expect(sent.map((sheet) => sheet.amountUsd)).toEqual([50_000, 12_900]);
+    expect(find(pane(host), '[data-ui="pane-facts"] [data-fact="amount"]').textContent).toContain(
+      '$12,900',
+    );
   });
 
   it('names the candidates the engine did not offer with its reason, and opens the only one there is', async () => {

@@ -608,6 +608,10 @@ export const pt: Dictionary = {
       heldBuilt:
         'Seu plano foi montado com isso. Toque em um limite para mudar, ou me diga o que mudar.',
       heldOpen: 'Ainda preciso de mais uma coisa.',
+      heardThemes: (names: string) => `Anotei o que você quer manter: ${names}.`,
+      heardMix: (mix: string) => `Mantido como você disse: ${mix}.`,
+      noneYet: 'Ainda não tenho como escolher ações por esse critério.',
+      first: 'Preciso de uma coisa antes:',
       simple: 'O assistente não respondeu, então por ora estou lendo do jeito simples.',
       notAnswer:
         'Não consegui usar isso como resposta. Escolha uma abaixo, ou diga de outro jeito.',
@@ -650,6 +654,7 @@ export const pt: Dictionary = {
       years: (n: number) => (n === 1 ? '1 ano' : `${n} anos`),
       aMonth: (amount: string) => `${amount} por mês`,
       noIncome: 'Sem valor definido',
+      growGoal: 'Mudar para um objetivo de crescimento',
       all: 'Tudo',
       half: 'Metade',
       none: 'Nada',

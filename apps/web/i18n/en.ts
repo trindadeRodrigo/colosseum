@@ -707,6 +707,11 @@ export const en = {
       heldBuilt:
         'Your plan is built from that. Tap a limit to change it, or tell me what to change.',
       heldOpen: 'I still need one more thing.',
+      /** What our server read the person wants held, said before its question. */
+      heardThemes: (names: string) => `I have what you want held: ${names}.`,
+      heardMix: (mix: string) => `Held as you said: ${mix}.`,
+      noneYet: 'I don’t have a way to pick stocks by that yet.',
+      first: 'One thing I need first:',
       /** The guided intake did not answer: said once, then the simple questions follow. */
       simple: 'The assistant didn’t answer, so I’m reading this the simple way for now.',
       notAnswer:
@@ -758,6 +763,7 @@ export const en = {
       years: (n: number) => (n === 1 ? '1 year' : `${n} years`),
       aMonth: (amount: string) => `${amount} a month`,
       noIncome: 'No set amount',
+      growGoal: 'Make it a growth goal',
       all: 'All of it',
       half: 'Half',
       none: 'None',

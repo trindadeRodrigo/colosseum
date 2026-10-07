@@ -309,6 +309,55 @@ describe('what Thom’s conversation of Oct 7 showed', () => {
     expect(server.to(PERSONALIZE_PATH)).toHaveLength(2);
   });
 
+  it('offers "Make it a growth goal" under the read-back that says stocks are not held for an income goal', async () => {
+    const income = { ...SHEET, goal: 'income', incomeTargetUsdMonthly: 300 };
+    const line =
+      'A plan for a goal of income holds no stocks or crypto, so “100% stocks and crypto” is not held.';
+    const server = api(
+      {
+        ...whole(income, [line, 'If this is right, confirm it.']),
+        flags: ['mix_dropped_for_goal'],
+      },
+      whole(SHEET, ['You want to grow $2,000 over 5 years.', 'If this is right, confirm it.']),
+    );
+    const host = await screen();
+    await say(host, 'income of $300 a month from $2,000, 100% stocks and crypto');
+    expect(turns(host).at(-1)).toContain(line);
+    // the way out is one press, beside the confirm
+    expect(replies(host)).toEqual([en.talk.replies.growGoal, en.talk.replies.build]);
+    await click(reply(host, en.talk.replies.growGoal));
+    await settle();
+    await settle();
+    expect(server.to(INTAKE_PATH)[1]?.body).toMatchObject({ answers: { goal: 'grow' } });
+    expect(fact(host, 'goal').textContent).toContain(en.goal.options.goal.grow);
+    expect(replies(host)).toEqual([en.talk.replies.build]);
+    expect(server.to(PERSONALIZE_PATH)).toEqual([]);
+  });
+
+  it('says what was understood before our server’s question, in this app’s words over the server’s fields', async () => {
+    const ASK_GOAL = {
+      field: 'goal',
+      template: 'goal',
+      text: 'What is this money for: to grow it, to earn an income from it, or to protect it?',
+      options: ['grow', 'income', 'protect'],
+    };
+    api(
+      answer({
+        questions: [ASK_GOAL],
+        narratives: [
+          { id: 'ai', words: 'AI', kind: 'label', slug: 'ai', filter: null, name: 'AI' },
+        ],
+      }),
+    );
+    const host = await screen();
+    await say(host, 'i want to invest on the 5 biggest stoks on solana by liquidity');
+    const last = turns(host).at(-1) ?? '';
+    expect(last).toContain(en.talk.say.heardThemes('AI'));
+    expect(last).toContain(en.talk.say.first);
+    expect(last.indexOf(en.talk.say.heardThemes('AI'))).toBeLessThan(last.indexOf(ASK_GOAL.text));
+    expect(last).not.toMatch(/biggest|stoks/);
+  });
+
   it('never shows an empty reply, and says a turn that failed', async () => {
     const server = api(answer({}), answer({ draft: { goal: 'grow' } }));
     const host = await screen();

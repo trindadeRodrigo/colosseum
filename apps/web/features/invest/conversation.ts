@@ -70,7 +70,7 @@ export type QuickReply = {
   posts: Send;
   label:
     | { kind: 'fact'; fact: Fact; value: string }
-    | { kind: 'word'; word: 'yes' | 'no' | 'noDate' | 'none' | 'all' | 'half' }
+    | { kind: 'word'; word: 'yes' | 'no' | 'noDate' | 'none' | 'all' | 'half' | 'growGoal' }
     /** A share of the money, in basis points. */
     | { kind: 'share'; bps: number }
     /** A choice our server offers, in its own words. */
@@ -125,6 +125,15 @@ export type Say =
    * said back. Shown as given. Never kept in the tab's storage, and never a model's words.
    */
   | { key: 'said'; lines: string[] }
+  /**
+   * What our server read of what the person wants held, before its question: the themes by the names
+   * it gives them, and a stated mix. From its own fields, never from the typed words.
+   */
+  | { key: 'heard'; themes: string[]; mix: HeldMix | null }
+  /** Our server found nothing on the person's chain for something they named (THEME-NONE-YET). */
+  | { key: 'noneYet' }
+  /** Before a question, where something is still needed. */
+  | { key: 'first' }
   /** The guided intake did not answer: this turn was read by the rules instead. Said once. */
   | { key: 'simple' }
   /** The words were not an answer our server could take to the question that is open. */
@@ -141,6 +150,11 @@ export type Reply = {
   ask: Fact | null;
   /** The question in our server's words, where it wrote one; else the screen's own for `ask`. */
   question?: Question | null;
+  /**
+   * Ways out our server's reading implies, beside the confirm: where it says something asked for is
+   * not held for this goal, the change of goal that would hold it. Never one it did not imply.
+   */
+  offers?: QuickReply[];
   /** Who read this turn, for the people building this: shown in development only. */
   reader?: { by: 'model' | 'server rules' | 'app rules'; why: string | null };
   /** The sheet as the API takes it, once it is whole and valid: what a plan is built from. */

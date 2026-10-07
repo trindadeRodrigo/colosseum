@@ -108,6 +108,8 @@ type Turn =
       ask: Fact | null;
       /** The question in our server's words, with its replies. Never kept in the tab's storage. */
       question?: Question | null;
+      /** Ways out our server's reading implies, offered beside the confirm. */
+      offers?: QuickReply[];
       /** Who read the turn: shown to the people building this, never to anyone else. */
       reader?: Reply['reader'];
       retry: boolean;
@@ -373,6 +375,7 @@ export function InvestScreen() {
       fields: reply.sheet.fields,
       ask: reply.ask,
       question: reply.question ?? null,
+      ...(reply.offers ? { offers: reply.offers } : {}),
       reader: reply.reader,
       retry: false,
     });
@@ -748,6 +751,21 @@ export function InvestScreen() {
         return w.say.riskBottom;
       case 'simple':
         return w.say.simple;
+      case 'heard':
+        return [
+          ...(s.themes.length > 0
+            ? [
+                w.say.heardThemes(
+                  new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(s.themes),
+                ),
+              ]
+            : []),
+          ...(s.mix ? [w.say.heardMix(mixWords(s.mix, w.facts.mixPart, lang))] : []),
+        ].join(' ');
+      case 'noneYet':
+        return w.say.noneYet;
+      case 'first':
+        return w.say.first;
       case 'notAnswer':
         return w.say.notAnswer;
       case 'said':
@@ -927,7 +945,11 @@ export function InvestScreen() {
                 {/* The replies of the turn that is open, right under it: one press answers. */}
                 {turn === open &&
                   !busy &&
-                  (turn.ask || turn.question || toConfirm || (turn.retry && valid)) && (
+                  (turn.ask ||
+                    turn.question ||
+                    toConfirm ||
+                    (turn.offers ?? []).length > 0 ||
+                    (turn.retry && valid)) && (
                     <div data-ui="invest-replies" className="mt-1 flex flex-wrap gap-2">
                       {(turn.question
                         ? turn.question.replies
@@ -943,6 +965,18 @@ export function InvestScreen() {
                           {replyLabel(r)}
                         </Button>
                       ))}
+                      {/* a way out our server's reading implies, beside the confirm */}
+                      {!turn.ask &&
+                        !turn.question &&
+                        (turn.offers ?? []).map((r) => (
+                          <Button
+                            key={JSON.stringify(r.posts)}
+                            variant="chip"
+                            onClick={() => post(r.posts, replyLabel(r))}
+                          >
+                            {replyLabel(r)}
+                          </Button>
+                        ))}
                       {toConfirm && !turn.ask && !turn.question && (
                         <Button variant="primary" onClick={() => confirm()}>
                           {w.replies.build}
@@ -1147,6 +1181,14 @@ export function InvestScreen() {
               of={{ plan: plan.id }}
               amount={plan.proposal.sheet.amountUsd}
               onProgress={onProgress}
+              // "Invest $12,900 instead", where the wallet covers less: the amount is changed as the
+              // person's own turn, and the plans are made again for it
+              onAmount={(next) =>
+                void post(
+                  { kind: 'answer', fact: 'amount', value: String(next) },
+                  w.ways.amount(dollars(next, lang)),
+                )
+              }
               onDone={onDone}
               onStopped={onStopped}
             />
@@ -1154,6 +1196,27 @@ export function InvestScreen() {
         )}
       </aside>
     </div>
+  );
+}
+
+/** A mix as words, from the sheet: each part with its share, the largest first. */
+function mixWords(
+  mix: NonNullable<IntakeState['mix']>,
+  part: Dictionary['talk']['facts']['mixPart'],
+  lang: Lang,
+): string {
+  return new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(
+    (
+      [
+        ['growth', mix.growthBps],
+        ['dollarYield', mix.dollarYieldBps],
+        ['gold', mix.goldBps],
+        ['cash', mix.cashBps],
+      ] as const
+    )
+      .filter(([, bps]) => bps > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, bps]) => part[name](formatBps(bps, LOCALE[lang]))),
   );
 }
 
@@ -1213,21 +1276,7 @@ function Facts({
   const shown = FACTS.filter((fact) => fact !== 'income' || fields.goal === 'income');
   const share = (bps: number) => formatBps(bps, LOCALE[lang]);
   // What the person said to hold, from the sheet: each part with its share, largest first.
-  const mix = held?.mix
-    ? new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(
-        (
-          [
-            ['growth', held.mix.growthBps],
-            ['dollarYield', held.mix.dollarYieldBps],
-            ['gold', held.mix.goldBps],
-            ['cash', held.mix.cashBps],
-          ] as const
-        )
-          .filter(([, bps]) => bps > 0)
-          .sort((a, b) => b[1] - a[1])
-          .map(([part, bps]) => w.mixPart[part](share(bps))),
-      )
-    : null;
+  const mix = held?.mix ? mixWords(held.mix, w.mixPart, lang) : null;
   const extras = [
     ...(held?.themes ?? []).map((theme) => ({
       key: `theme:${theme.name}`,

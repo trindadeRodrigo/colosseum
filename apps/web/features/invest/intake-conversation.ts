@@ -106,8 +106,11 @@ function answersOf(fields: SheetFields): IntakeAnswers {
 /** An answer to a fact, as the route takes it: the answers with it set. */
 function withAnswer(answers: IntakeAnswers, fact: Fact, value: string): IntakeAnswers {
   const next = { ...answers };
-  if (fact === 'goal') next.goal = value as BasketSheet['goal'];
-  else if (fact === 'risk') next.risk = value as BasketSheet['risk'];
+  if (fact === 'goal') {
+    next.goal = value as BasketSheet['goal'];
+    // a monthly income is an income goal's: another goal does not carry one
+    if (value !== 'income') delete next.incomeTargetUsdMonthly;
+  } else if (fact === 'risk') next.risk = value as BasketSheet['risk'];
   else if (fact === 'amount') next.amountUsd = Number(value);
   else if (fact === 'income') next.incomeTargetUsdMonthly = Number(value);
   else {
@@ -421,10 +424,23 @@ export function intakeConversation(
           ? [{ key: 'said', lines: reading.readBack }]
           : [
               ...(again ? [{ key: 'notAnswer' as const }] : []),
+              // What was understood so far is said before the question, from our server's own
+              // fields: the facts, what it read the person wants held, what nothing fits.
               ...(found && !again ? [{ key: 'understood' as const }] : []),
+              ...(!again && (reading.themes.length > 0 || reading.mix)
+                ? [
+                    {
+                      key: 'heard' as const,
+                      themes: reading.themes.map((theme) => theme.name),
+                      mix: reading.mix,
+                    },
+                  ]
+                : []),
+              ...(!again && reading.noneYet ? [{ key: 'noneYet' as const }] : []),
               ...(reading.assumptions.length > 0
                 ? [{ key: 'said' as const, lines: reading.assumptions }]
                 : []),
+              ...(question && !again ? [{ key: 'first' as const }] : []),
             ];
       // Never an empty turn: with nothing to say and nothing to ask, what is held is said.
       if (say.length === 0 && question === null) say = [{ key: found ? 'held' : 'notUnderstood' }];
@@ -435,6 +451,22 @@ export function intakeConversation(
         ask: first ? (FACT_OF[first.field] ?? null) : null,
         question,
         valid,
+        // Our server says, by its code, that stocks or a theme asked for are not held because of
+        // the goal: making it a goal to grow is the change that would hold them.
+        ...(reading.flags.some(
+          (f) => f === 'mix_dropped_for_goal' || f === 'themes_dropped_for_goal',
+        ) &&
+        fields.goal !== '' &&
+        fields.goal !== 'grow'
+          ? {
+              offers: [
+                {
+                  posts: { kind: 'answer', fact: 'goal', value: 'grow' },
+                  label: { kind: 'word', word: 'growGoal' },
+                },
+              ],
+            }
+          : {}),
         reader: {
           by: reading.reader.method === 'model' ? 'model' : 'server rules',
           why: reading.reader.why,
