@@ -103,6 +103,108 @@ describe('the caps on dollar yield (C5, C8)', () => {
   });
 });
 
+describe('one issuer by risk, whatever the plan holds with it (review 2 of Oct 6, finding 1)', () => {
+  const tokens = new Map(shelf.assets.map((a) => [a.id, a]));
+  /** What a plan holds with one issuer, over every class but the plan's own cash, in basis points. */
+  const withIssuer = (plan: PersonalProposal, issuer: string) =>
+    plan.lines
+      .filter((l) => {
+        const a = tokens.get(l.assetId);
+        return a !== undefined && a.cls !== 'cash' && a.issuer === issuer;
+      })
+      .reduce((n, l) => n + l.weightBps, 0);
+  const noGlide = { useHoldings: true, glide: false };
+  /** The starting table with another row for a goal to grow at medium risk. */
+  const withRow = (growthBps: number, dollarYieldBps: number, goldBps: number): ComposeContext =>
+    fixtureContext({
+      params: {
+        ...PERSONAL_PARAMS,
+        sleeves: {
+          ...PERSONAL_PARAMS.sleeves,
+          'grow:medium': { growthBps, dollarYieldBps, goldBps },
+        },
+      },
+    });
+
+  it('what stocks could not take is not put back with their issuer past its limit: Robinhood Chain', () => {
+    // Every token of Robinhood Chain but its cash has one issuer. A goal to grow at low risk: 30% in
+    // SGOV and 10% in gold come first, and the stocks take what is left of the issuer's 50%. The $5,000
+    // the stocks could not take went on to SGOV, and the plan held 60% with the issuer it called "at
+    // that limit". It stays in cash, and the sentence is so.
+    const low = run(sheet({ chains: ['robinhood'], risk: 'low', rules: noGlide }));
+    expect(low.lines.map((l) => [l.assetId, l.weightBps])).toEqual([
+      ['robinhood:spy', 1000],
+      ['robinhood:sgov', 3000],
+      ['robinhood:gld', 1000],
+      ['robinhood:usdg', 5000],
+    ]);
+    expect(withIssuer(low, 'Robinhood')).toBe(5000);
+    expect(rulesOn(low, 'robinhood:usdg')).toEqual(
+      expect.arrayContaining(['OVERFLOW_ISSUER', 'ISSUER_CAP', 'UNPLACED']),
+    );
+    expect(line(low, 'robinhood:usdg')?.reasons.find((r) => r.rule === 'ISSUER_CAP')?.text).toBe(
+      'No more than 50% of the plan with one issuer at low risk: Robinhood is at that limit.',
+    );
+    // At medium risk: 70% with the issuer, where the plan held 95% and said 70%.
+    const medium = run(sheet({ chains: ['robinhood'], risk: 'medium', rules: noGlide }));
+    expect(withIssuer(medium, 'Robinhood')).toBe(7000);
+    expect(line(medium, 'robinhood:usdg')?.weightBps).toBe(3000);
+    // On Solana the dollar-yield tokens have issuers of their own, and take what the stocks could not.
+    const solana = run(sheet({ risk: 'low', rules: noGlide }));
+    expect(withIssuer(solana, 'Backed (xStocks)')).toBe(5000);
+    expect(line(solana, 'solana:usdc')).toBeUndefined();
+  });
+
+  it('a portfolio held whole gives way to what is placed after it, and its lines say why', () => {
+    // The Seven at 60% of the plan fits one issuer at medium risk, which may hold 70%, and it is
+    // booked before the gold. With 20% in gold of the same issuer that is 80%: the portfolio is held
+    // part by part, each stock cut alike, as stocks placed after the gold are.
+    for (const [chain, row, issuer, other] of [
+      ['solana', withRow(6000, 0, 2000), 'Backed (xStocks)', 'solana:gldx'],
+      ['robinhood', withRow(6000, 2000, 0), 'Robinhood', 'robinhood:sgov'],
+    ] as const) {
+      const plan = run(sheet({ chains: [chain], themes: ['the-seven'], rules: noGlide }), row);
+      expect(withIssuer(plan, issuer), chain).toBe(7000);
+      expect(line(plan, other)?.weightBps, chain).toBe(2000);
+      const nvda = plan.lines.find((l) => tokens.get(l.assetId)?.underlying === 'NVDA');
+      expect(
+        nvda?.reasons.map((r) => r.rule),
+        chain,
+      ).toEqual(expect.arrayContaining(['OPENED', 'NOT_WHOLE_ISSUER', 'ISSUER_CAP']));
+      expect(nvda?.reasons.find((r) => r.rule === 'NOT_WHOLE_ISSUER')?.text, chain).toBe(
+        `The Seven cannot be held whole: more than 70% of the plan would be with ${issuer}, the most with one issuer at medium risk.`,
+      );
+      expect(plan.recipes.flatMap((r) => r.components).every((c) => c.kind === 'asset')).toBe(true);
+    }
+  });
+
+  it('and is held whole where its issuer has room for it beside the rest', () => {
+    // 50% in The Seven and 20% in SGOV on Robinhood Chain: 70% with the one issuer, its limit.
+    const plan = run(
+      sheet({ chains: ['robinhood'], themes: ['the-seven'], rules: noGlide }),
+      withRow(5000, 2000, 0),
+    );
+    expect(withIssuer(plan, 'Robinhood')).toBe(7000);
+    expect(plan.recipes.flatMap((r) => r.components).map((c) => [c.kind, c.weightBps])).toEqual([
+      ['index', 5000],
+      ['asset', 2000],
+    ]);
+  });
+
+  it('the plan’s own cap names what it counts: dollar yield, gold and other currencies', () => {
+    const plan = run();
+    expect(
+      line(plan, 'solana:jlusdc')?.reasons.find((r) => r.rule === 'ISSUER_CAP_PLAN')?.text,
+    ).toBe(
+      'No more than 50% of the plan in dollar yield, gold and other currencies with one issuer: Jupiter Lend is at that limit.',
+    );
+    const pt = run(sheet({ ...income, language: 'pt' }));
+    expect(line(pt, 'solana:jlusdc')?.reasons.find((r) => r.rule === 'ISSUER_CAP_PLAN')?.text).toBe(
+      'No máximo 50% do plano em rendimento em dólar, ouro e outras moedas com um só emissor: Jupiter Lend está nesse limite.',
+    );
+  });
+});
+
 describe('lines go to tokens that can take money', () => {
   it('a token with no room takes no line: the one after it does, and a token with no line is named', () => {
     const one = { ...PERSONAL_PARAMS, maxLinesPerChain: 1 };
