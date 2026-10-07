@@ -44,7 +44,6 @@ import {
   recordRefusal,
   type StoredOrder,
   TakenElsewhere,
-  withOrderLock,
 } from './store';
 
 // Building a leg and settling it (DESIGN-VAULT 3.3). The API builds unsigned transactions and relays
@@ -547,19 +546,6 @@ export async function buildLeg(
   /** The signed-in person's user id: a plan made from a link numbers its vault with it. */
   buyer?: string,
 ): Promise<BuildLegResponse> {
-  // One at a time for an order, with the route that finishes it (store.ts, `withOrderLock`): the
-  // checks below and the attempt they end in are one step to anything else that reads the order.
-  return withOrderLock(deps.db, read.order.id, async () =>
-    buildLegLocked(deps, (await loadOrder(deps.db, read.order.id)) ?? read, legId, buyer),
-  );
-}
-
-async function buildLegLocked(
-  deps: OrderDeps,
-  read: StoredOrder,
-  legId: string,
-  buyer?: string,
-): Promise<BuildLegResponse> {
   // A leg that was sent is tracked first, so what follows sees what the chain says now.
   const stored = await refreshOrder(deps, read);
   const { order } = stored;
@@ -573,7 +559,9 @@ async function buildLegLocked(
   if (leg.status === 'confirmed' || leg.status === 'skipped')
     throw new Refusal(409, 'this step is already done');
   // An order that another finishes (continue.ts) builds nothing more: what it left is that order's,
-  // at the terms that one states, and the vault's cash is spent once.
+  // at the terms that one states, and the vault's cash is spent once. Asked here before any work is
+  // done, and again under the order's lock when the build is recorded (`recordBuild`), which is the
+  // one that holds against a continuation made in between.
   const [finishedBy] = await continuationsOf(deps.db, order.id);
   if (finishedBy)
     throw new Refusal(409, 'another order finishes this one: its steps left are that order’s', {

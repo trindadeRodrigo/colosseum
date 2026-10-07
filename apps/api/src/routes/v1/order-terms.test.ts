@@ -361,3 +361,84 @@ describe('a buy that stopped after its deposit, finished with the cash in the va
     expect(OrderError.parse(res.json()).error).toMatch(/trades in the same step that deposits/);
   });
 });
+
+describe('many requests at once', () => {
+  // The database client holds ten connections (postgres.js's default; packages/db). A lock that kept
+  // one for each waiting request, with the work on another, stopped everything at ten requests.
+  const MORE_THAN_THE_POOL = 15;
+  const within = async <T>(ms: number, work: Promise<T>): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`no answer within ${ms} ms`)), ms);
+    });
+    try {
+      return await Promise.race([work, late]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  it('all answer when more steps are built at once than the pool has connections, on as many orders', async () => {
+    const a = await someone();
+    await fund(a, undefined, 50_000);
+    const placed = [];
+    for (let i = 0; i < MORE_THAN_THE_POOL; i++)
+      placed.push(await order(a, { amountUsd: 100 + i }));
+    const answers = await within(
+      30_000,
+      Promise.all(placed.map((o) => post(a, legUrl(o, o.legs[0]?.id ?? '', 'build')))),
+    );
+    // one wallet, one vault: the first to be recorded opens it, and each of the rest is answered,
+    // built or refused, never left waiting
+    expect(answers).toHaveLength(MORE_THAN_THE_POOL);
+    for (const res of answers) expect([200, 409]).toContain(res.statusCode);
+    expect(answers.some((res) => res.statusCode === 200)).toBe(true);
+    // and the pool is whole afterwards: a read that needs the database answers
+    expect((await within(10_000, get(a, `/v1/orders/${placed[0]?.id}`))).statusCode).toBe(200);
+  });
+
+  it('all answer when one step is built by more requests at once than the pool has connections', async () => {
+    const a = await someone();
+    await fund(a, undefined, 5_000);
+    const placed = await order(a, { amountUsd: 900 });
+    const step = placed.legs[0]?.id ?? '';
+    const answers = await within(
+      30_000,
+      Promise.all(
+        Array.from({ length: MORE_THAN_THE_POOL }, () => post(a, legUrl(placed, step, 'build'))),
+      ),
+    );
+    expect(answers.filter((res) => res.statusCode === 200)).toHaveLength(1);
+    expect(answers.filter((res) => res.statusCode === 409)).toHaveLength(MORE_THAN_THE_POOL - 1);
+    expect((await read(a, placed)).attempts).toHaveLength(1);
+    expect((await within(10_000, get(a, `/v1/orders/${placed.id}`))).statusCode).toBe(200);
+  });
+
+  it('all answer when a buy is finished by more requests at once than the pool has connections', async () => {
+    const a = await someone();
+    await fund(a, undefined, 5_000);
+    const placed = await order(a, { amountUsd: 900 });
+    await settleAll(a, placed, undefined, (leg) => leg.kind === 'swap');
+    const answers = await within(
+      30_000,
+      Promise.all(
+        Array.from({ length: MORE_THAN_THE_POOL }, () =>
+          post(a, `/v1/orders/${placed.id}/continue`),
+        ),
+      ),
+    );
+    // every one is answered: with the one order, or told the order is busy and to try again
+    for (const res of answers) expect([200, 409]).toContain(res.statusCode);
+    const ids = new Set(
+      answers
+        .filter((res) => res.statusCode === 200)
+        .map((res) => OrderDetail.parse(res.json()).id),
+    );
+    expect(ids.size).toBe(1);
+    const rows = await data.db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(sql`${orders.request}->>'continues' = ${placed.id}`);
+    expect(rows).toHaveLength(1);
+  });
+});

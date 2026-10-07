@@ -139,47 +139,49 @@ function toOrder(r: OrderRow, legRows: LegRow[]): Order {
 }
 
 export async function insertOrder(db: Db, order: Order, request: IntentRequest): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx.insert(orders).values({
-      id: order.id,
-      type: order.type,
-      ownerSolana: order.owner.solana ?? null,
-      ownerEvm: order.owner.evm ?? null,
-      summary: order.summary,
-      // With the order it finishes, where it finishes one: the order's word, not the request's.
-      request: (order.continues
-        ? { ...request, [CONTINUES]: order.continues }
-        : request) as IntentRequest,
-      basketId: order.basketId ?? null,
-      warnings: order.warnings,
-      needsConsent: order.needsConsent,
-      fees: order.fees,
-      preparedBy: order.preparedBy,
-      agentLabel: order.agentLabel ?? null,
-      status: order.status,
-      expiresAt: new Date(order.expiresAt * 1000),
-      disclaimer: order.disclaimer,
-      createdAt: new Date(order.createdAt),
-    });
-    await tx.insert(legs).values(
-      order.legs.map((l) => ({
-        id: l.id,
-        orderId: order.id,
-        chainId: l.chain,
-        seq: l.seq,
-        kind: l.kind,
-        signer: l.signer,
-        description: l.description,
-        cashRaw: l.cashRaw ?? null,
-        trades: l.trades,
-        expected: l.expected,
-        status: l.status,
-        attempt: l.attempt,
-        trigger: l.trigger,
-        provenance: l.provenance,
-      })),
-    );
+  await db.transaction((tx) => insertOrderRows(tx, order, request));
+}
+
+async function insertOrderRows(tx: Tx, order: Order, request: IntentRequest): Promise<void> {
+  await tx.insert(orders).values({
+    id: order.id,
+    type: order.type,
+    ownerSolana: order.owner.solana ?? null,
+    ownerEvm: order.owner.evm ?? null,
+    summary: order.summary,
+    // With the order it finishes, where it finishes one: the order's word, not the request's.
+    request: (order.continues
+      ? { ...request, [CONTINUES]: order.continues }
+      : request) as IntentRequest,
+    basketId: order.basketId ?? null,
+    warnings: order.warnings,
+    needsConsent: order.needsConsent,
+    fees: order.fees,
+    preparedBy: order.preparedBy,
+    agentLabel: order.agentLabel ?? null,
+    status: order.status,
+    expiresAt: new Date(order.expiresAt * 1000),
+    disclaimer: order.disclaimer,
+    createdAt: new Date(order.createdAt),
   });
+  await tx.insert(legs).values(
+    order.legs.map((l) => ({
+      id: l.id,
+      orderId: order.id,
+      chainId: l.chain,
+      seq: l.seq,
+      kind: l.kind,
+      signer: l.signer,
+      description: l.description,
+      cashRaw: l.cashRaw ?? null,
+      trades: l.trades,
+      expected: l.expected,
+      status: l.status,
+      attempt: l.attempt,
+      trigger: l.trigger,
+      provenance: l.provenance,
+    })),
+  );
 }
 
 export async function loadOrder(db: Db, id: string): Promise<StoredOrder | null> {
@@ -205,24 +207,76 @@ export async function loadOrder(db: Db, id: string): Promise<StoredOrder | null>
   };
 }
 
+/** How long a request waits for an order's lock before it answers that the order is busy. */
+export const ORDER_LOCK_WAIT_MS = 2_000;
+
 /**
- * Runs `work` while holding the one lock of an order, and answers what it answers. Two things are
- * decided about an order by reading and then writing: building a step of it (is another order
- * finishing it? can an earlier transaction still land?) and finishing it with another order (has one
- * been made? is a step's transaction still open?). Without the lock two requests at the same moment
- * both read "no" and both write: two continuations of one order, or a step built for an order as it
- * is being continued, and the vault's cash planned twice. The lock is the database's, by the order's
- * id, held by a transaction of its own until `work` is done; `work` reads and writes on other
- * connections, and reads the order again once it holds the lock.
+ * Takes the one lock of an order, inside `tx`, until `tx` ends. Two things are decided about an order
+ * by reading and then writing: recording a build of one of its steps (is another order finishing it?)
+ * and finishing it with another order (has one been made? was a step built meanwhile?). Without the
+ * lock two requests at the same moment both read "no" and both write: two continuations of one
+ * order, or a step built for an order as it is being continued, and the vault's cash planned twice.
+ *
+ * What holds the lock is always a short transaction on its own connection: the re-check and the
+ * write, a handful of statements, and never a call to a chain's node, which is made before it. So a
+ * request holds one connection, for milliseconds, and many at once cannot take the pool. The wait
+ * for the lock is bounded (`lock_timeout`): past it the request answers 409, retryable, and holds
+ * nothing. The lock is the transaction's own (`pg_advisory_xact_lock`), so it also holds through a
+ * pooler that hands a connection out per transaction.
  */
-export async function withOrderLock<T>(
-  db: Db,
-  orderId: string,
-  work: () => Promise<T>,
-): Promise<T> {
-  return db.transaction(async (tx) => {
+async function lockOrder(tx: Tx, orderId: string): Promise<void> {
+  await tx.execute(sql.raw(`set local lock_timeout = ${ORDER_LOCK_WAIT_MS}`));
+  try {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`order:${orderId}`}, 0))`);
-    return work();
+  } catch (e) {
+    // 55P03, lock_not_available: the wait ran out.
+    const busy = [e, (e as { cause?: unknown })?.cause].some(
+      (x) => (x as { code?: string })?.code === '55P03',
+    );
+    if (!busy) throw e;
+    throw new Refusal(409, 'this order is being worked on by another request', {
+      fix: 'Try again in a moment.',
+      details: { retryable: true },
+    });
+  }
+  // The bound is this lock's alone: what follows in the transaction waits as it did before.
+  await tx.execute(sql.raw('set local lock_timeout = 0'));
+}
+
+/**
+ * Stores the order that finishes `firstId`, under that order's lock, unless the lock shows it must
+ * not be: another order already finishes it (answered as `existing`, and nothing is stored), or a
+ * step it would make again was built since the caller looked (`seen` are the attempts the caller
+ * has checked can no longer land): refused, since that transaction could spend the same cash.
+ */
+export async function insertContinuation(
+  db: Db,
+  order: Order,
+  request: IntentRequest,
+  first: { id: string; leftLegIds: string[]; seen: string[] },
+): Promise<{ existing: OrderRow | null }> {
+  return db.transaction(async (tx) => {
+    await lockOrder(tx, first.id);
+    const [existing] = await tx
+      .select()
+      .from(orders)
+      .where(sql`${orders.request}->>${CONTINUES} = ${first.id}`)
+      .orderBy(desc(orders.createdAt))
+      .limit(1);
+    if (existing) return { existing };
+    const built = first.leftLegIds.length
+      ? await tx
+          .select({ id: legAttempts.id })
+          .from(legAttempts)
+          .where(inArray(legAttempts.legId, first.leftLegIds))
+      : [];
+    if (built.some((attempt) => !first.seen.includes(attempt.id)))
+      throw new Refusal(409, 'a step of this order was built just now', {
+        fix: 'Report it, or wait until it can no longer land, then finish the buy.',
+        details: { retryable: true },
+      });
+    await insertOrderRows(tx, order, request);
+    return { existing: null };
   });
 }
 
@@ -714,6 +768,21 @@ export async function recordBuild(
   },
 ): Promise<Attempt> {
   return db.transaction(async (tx) => {
+    // Under the order's lock, with the route that finishes an order: an order that another finishes
+    // records no build, however far this one had got before that order was made.
+    // (A keeper's leg belongs to no order, and none finishes it.)
+    if (leg.orderId) await lockOrder(tx, leg.orderId);
+    const [finishedBy] = leg.orderId
+      ? await tx
+          .select({ id: orders.id })
+          .from(orders)
+          .where(sql`${orders.request}->>${CONTINUES} = ${leg.orderId}`)
+          .limit(1)
+      : [];
+    if (finishedBy)
+      throw new Refusal(409, 'another order finishes this one: its steps left are that order’s', {
+        fix: `Open order ${finishedBy.id}.`,
+      });
     const { exclusive } = a;
     if (exclusive) {
       // Held until this transaction ends. Every build of this wallet on this chain takes it first.
