@@ -11,7 +11,15 @@ import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
 import { keepOrder, type OrderRecord } from '../order/order-record';
 import { basketOfPlan } from '../order/readiness';
-import { doneOrder, ORDER_ID, orderOn, PLAN_ID, planOn, recordOf } from '../order/test/fixtures';
+import {
+  doneOrder,
+  LEG_SWAP,
+  ORDER_ID,
+  orderOn,
+  PLAN_ID,
+  planOn,
+  recordOf,
+} from '../order/test/fixtures';
 import { EMBEDDED, fakePort, json, PHANTOM, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
 import { utc } from './figures';
@@ -579,6 +587,152 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
   /** The order, as the API says it stands: signed and confirmed, or not signed yet. */
   const orders = (done: boolean) => (path: string) =>
     path === `/v1/orders/${ORDER_ID}` ? json(done ? doneOrder() : orderOn()) : null;
+
+  describe('a vault left with cash by a buy that stopped after its deposit (finding 24)', () => {
+    const NEXT_ID = '99999999-9999-4999-8999-999999999999';
+    /** The buy as the API says it stands: the deposit landed, the swap failed. */
+    const stoppedOrder = () => {
+      const landed = doneOrder();
+      return {
+        ...landed,
+        status: 'open' as const,
+        legs: landed.legs.map((leg) =>
+          leg.id === LEG_SWAP ? { ...leg, status: 'failed' as const, txId: null } : leg,
+        ),
+      };
+    };
+    /** The vault of that plan, most of it still cash: 57.5% against the plan's 25%. */
+    const cashHeavy = (over: object = {}) => {
+      const base = vault({ basketId: basketOfPlan(PLAN_ID) });
+      return json(
+        portfolioBody(
+          chainOf([
+            {
+              ...base,
+              positions: base.positions.map((p, i) =>
+                i === 0 ? { ...p, weightBps: 3000, driftBps: -3000 } : p,
+              ),
+              ...over,
+            },
+          ]),
+        ),
+      );
+    };
+    const note = (host: HTMLElement) => host.querySelector('[data-ui="vault-unfinished"]');
+
+    it.each(['en', 'pt'] as const)(
+      'says so over the vault and leads to the order that finishes the buy, in %s',
+      async (lang) => {
+        const t = dictionary(lang);
+        api({
+          person: onSolana,
+          portfolio: () => {
+            bought();
+            return cashHeavy();
+          },
+          more: (path) => (path === `/v1/orders/${ORDER_ID}` ? json(stoppedOrder()) : null),
+        });
+        signIn();
+        const host = await screen(lang);
+        await settle();
+        await settle();
+        const said = find(host, '[data-ui="vault"] [data-ui="vault-unfinished"]');
+        expect(said.textContent).toContain(t.portfolio.vault.unfinished);
+        const link = find(said, 'a');
+        expect([link.textContent, link.getAttribute('href')]).toEqual([
+          t.order.outcome.finish,
+          `/orders/${ORDER_ID}`,
+        ]);
+        // the portfolio still signs nothing: a link to the order's page, and not the page's primary
+        expect(primary(host)).toBeNull();
+      },
+    );
+
+    it('says nothing when the buy is done, when it can still go on, or when the cash is near the plan', async () => {
+      for (const [order, heavy] of [
+        [doneOrder(), true],
+        [orderOn(), true],
+        [stoppedOrder(), false],
+      ] as const) {
+        api({
+          person: onSolana,
+          portfolio: () => {
+            const plain = bought();
+            return heavy ? cashHeavy() : plain;
+          },
+          more: (path) => (path === `/v1/orders/${ORDER_ID}` ? json(order) : null),
+        });
+        signIn();
+        const host = await screen();
+        await settle();
+        await settle();
+        expect(host.querySelector('[data-ui="vault"]')).not.toBeNull();
+        expect(note(host)).toBeNull();
+        await unmountAll();
+        window.localStorage.clear();
+      }
+    });
+
+    it('leaves a buy alone once an order was made to finish it: what is left is that order’s', async () => {
+      const trades = orderOn().legs.flatMap((leg) => leg.trades);
+      api({
+        person: onSolana,
+        portfolio: () => {
+          bought();
+          keepOrder(
+            recordOf('solana', {
+              orderId: NEXT_ID,
+              userId: onSolana.userId,
+              continues: { orderId: ORDER_ID, trades },
+            }),
+          );
+          return cashHeavy();
+        },
+        more: (path) =>
+          path === `/v1/orders/${ORDER_ID}`
+            ? json(stoppedOrder())
+            : path === `/v1/orders/${NEXT_ID}`
+              ? json({ ...orderOn(), id: NEXT_ID })
+              : null,
+      });
+      signIn();
+      const host = await screen();
+      await settle();
+      await settle();
+      expect(host.querySelector('[data-ui="vault"]')).not.toBeNull();
+      expect(note(host)).toBeNull();
+    });
+
+    it('offers that order instead when it stopped too', async () => {
+      const trades = orderOn().legs.flatMap((leg) => leg.trades);
+      const next = stoppedOrder();
+      api({
+        person: onSolana,
+        portfolio: () => {
+          bought();
+          keepOrder(
+            recordOf('solana', {
+              orderId: NEXT_ID,
+              userId: onSolana.userId,
+              continues: { orderId: ORDER_ID, trades },
+            }),
+          );
+          return cashHeavy();
+        },
+        more: (path) =>
+          path === `/v1/orders/${ORDER_ID}`
+            ? json(stoppedOrder())
+            : path === `/v1/orders/${NEXT_ID}`
+              ? json({ ...next, id: NEXT_ID, legs: next.legs.filter((l) => l.kind === 'swap') })
+              : null,
+      });
+      signIn();
+      const host = await screen();
+      await settle();
+      await settle();
+      expect(find(note(host) as HTMLElement, 'a').getAttribute('href')).toBe(`/orders/${NEXT_ID}`);
+    });
+  });
 
   it('opens with the goal its plan was built for, its date, its value, and no made-up status', async () => {
     api({ person: onSolana, portfolio: () => bought(), more: orders(true) });

@@ -6,6 +6,7 @@ import { dollars } from '../goal/sheet';
 import type { ActivityGroup } from '../order/ActivityPanel';
 import { activityOf, activityOfWithdrawals } from '../order/activity';
 import { readOrder } from '../order/order-api';
+import { depositLanded, stoppedShort } from '../order/order-check';
 import { isBuy, type OrderRecord, recallOrders } from '../order/order-record';
 import { onMock } from '../order/readiness';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
@@ -26,6 +27,12 @@ export type VaultHistory = {
   activity: ActivityGroup[];
   /** The orders whose deposit is confirmed on chain, as the API last said: only these were put in. */
   deposited: ReadonlySet<string>;
+  /**
+   * The orders that stopped with their cash left in the vault: a buy whose deposit landed and whose
+   * buying did not finish, or the order made to finish one, itself stopped. Not one that another
+   * order was made to finish: what it left is that order's. Its page offers to finish the buy.
+   */
+  stopped: ReadonlySet<string>;
   /** The person's withdrawals, as the server lists them: what was taken out is counted from these. */
   withdrawals: readonly ServerWithdrawal[];
 };
@@ -43,6 +50,7 @@ export function useVaultHistory(): VaultHistory {
   // Each group with when its order was made: the server's withdrawals are sorted in among them.
   const [activity, setActivity] = useState<(ActivityGroup & { at: string })[]>([]);
   const [deposited, setDeposited] = useState<ReadonlySet<string>>(new Set());
+  const [stopped, setStopped] = useState<ReadonlySet<string>>(new Set());
   const [withdrawals, setWithdrawals] = useState<readonly ServerWithdrawal[]>([]);
 
   useEffect(() => {
@@ -70,6 +78,7 @@ export function useVaultHistory(): VaultHistory {
     if (records.length === 0) {
       setActivity([]);
       setDeposited(new Set());
+      setStopped(new Set());
       return;
     }
     Promise.all(records.map((r) => readOrder(apiFetch, r.orderId))).then((read) => {
@@ -86,6 +95,19 @@ export function useVaultHistory(): VaultHistory {
               ? [answer.order.id]
               : [],
           ),
+        ),
+      );
+      const continued = new Set(records.flatMap((r) => (r.continues ? [r.continues.orderId] : [])));
+      setStopped(
+        new Set(
+          read.flatMap((answer, i) => {
+            const record = records[i];
+            if (answer.kind !== 'read' || !record || !isBuy(record)) return [];
+            // a buy of a plan, or money added to a vault: the two the server finishes
+            if (record.terms && record.terms.kind !== 'vault') return [];
+            if (continued.has(record.orderId) || !stoppedShort(answer.order)) return [];
+            return record.continues || depositLanded(answer.order) ? [record.orderId] : [];
+          }),
         ),
       );
       setActivity(
@@ -138,5 +160,5 @@ export function useVaultHistory(): VaultHistory {
     return [...activity, ...taken].sort((a, b) => b.at.localeCompare(a.at));
   }, [activity, withdrawals, t, lang, port]);
 
-  return { records, activity: groups, deposited, withdrawals };
+  return { records, activity: groups, deposited, stopped, withdrawals };
 }

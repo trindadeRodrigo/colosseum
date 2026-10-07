@@ -584,6 +584,34 @@ describe('a withdrawal on the order screen', () => {
     } as OrderDetail;
   };
 
+  it('a withdrawal that stopped offers no Finish: that is for a buy with its cash in the vault', async () => {
+    // one step landed, the next failed for good: nothing was deposited, and there is nothing to buy
+    const answered = asReviewed();
+    const stoppedOrder = {
+      ...answered,
+      status: 'failed',
+      legs: answered.legs.map((l, i) =>
+        i === 0
+          ? { ...l, status: 'confirmed', txId: 'sig' }
+          : {
+              ...l,
+              status: 'failed',
+              error: { code: 'Unknown', message: 'it failed on chain', retryable: false },
+            },
+      ),
+    } as OrderDetail;
+    const server = api({ order: () => stoppedOrder });
+    seed(PART);
+    const host = await screen();
+    await settle();
+    expect(host.textContent).not.toContain(en.order.outcome.finish);
+    expect(host.querySelector('[data-ui="order-stopped"] [data-variant="primary"]')).toBeNull();
+    expect(host.querySelector('[data-ui="order-deposit-kept"]')).toBeNull();
+    expect(server.calls.filter((c) => c.path.endsWith('/continue'))).toEqual([]);
+    // and it is not called done
+    expect(host.textContent).not.toContain(en.order.outcome.done('Solana'));
+  });
+
   it('a token a confirmed step left behind: the vault is read again and the order is done except for it', async () => {
     // as an EVM vault's withdrawAll does: the step confirmed, and the vault still holds the token
     const server = api({ order: confirmed });

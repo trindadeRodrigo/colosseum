@@ -503,6 +503,9 @@ export const en = {
     },
     vault: {
       title: 'Your vault',
+      /** Over a vault left with cash by a buy that stopped after its deposit. */
+      unfinished:
+        'A buy stopped after its deposit, so more of this vault is cash than its plan holds. The cash is safe here.',
       address: 'Vault address',
       /** The link from a vault's panel to its own page. */
       page: (address: string) => `Open the page of vault ${address}`,
@@ -1300,6 +1303,13 @@ export const en = {
     review: {
       title: 'Review every step',
       lead: 'Each step is built fresh when its turn comes, checked against what you see here, and only then signed by your wallet. A step that doesn’t match is not signed.',
+      /** An order that finishes another with the cash in its vault. */
+      continuesLead:
+        'This order finishes a buy that stopped: it buys what was left with the cash already in your vault, and deposits nothing. Each step is built fresh, checked against what you see here, and only then signed by your wallet.',
+      fromVault: 'From your vault’s cash',
+      /** The first order was reviewed in another browser. */
+      unseen:
+        'This device didn’t see the first order’s review. What is left to buy is as our server lists it, and I hold it to the assets of your plan.',
       deposit: 'Deposit',
       steps: 'Steps',
       expires: 'Sign before',
@@ -1438,6 +1448,9 @@ export const en = {
       /** After a step failed or was refused once the deposit had landed. */
       depositKept:
         'What you deposited is in your vault, as cash: nothing is lost. A new order would deposit again.',
+      /** A buy that stopped with its cash in the vault and swaps left, where it can be finished. */
+      stopped: (amount: string) =>
+        `Your ${amount} is safe in your vault as cash. The buying step didn’t go through.`,
       /** The fold over the check that failed and the guard's own words, to quote to the team. */
       forSupport: 'Details for support',
       /** Finishing a buy that stopped after its deposit, where the server can (finding 24). */
@@ -1445,8 +1458,15 @@ export const en = {
       finishing: 'Making the order…',
       finishNote:
         'A new order for the steps that were left, at the price now. It deposits nothing: you review and sign it as before.',
-      finishPriceMoved:
-        'The price moved while the order was being made, so nothing was made. Try again.',
+      /** The server's refusals of that order, each in this app's words. */
+      finishOther: 'Another order already finishes this buy: what’s left to buy is in that order.',
+      openThatOrder: 'Open that order',
+      finishWorking: 'Another request is working on this order. Try again in a moment.',
+      finishNothing: 'Nothing is left to buy in this order: every step it had is done.',
+      finishShort:
+        'Your vault now holds less cash than the steps left would spend: some was spent or withdrawn since. Nothing was made. Add money to the vault for what you still want to buy.',
+      finishNotDeposited:
+        'This order’s deposit hasn’t landed yet, so there is no cash in the vault to finish with. Sign its steps in order first.',
       finishLater: 'A step signed before can still land. Look again in a minute, then try again.',
       finishRefused: (why: string) => `I couldn’t make that order. Our server said: ${why}.`,
       refused: (step: number) =>
