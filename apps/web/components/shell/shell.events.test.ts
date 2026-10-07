@@ -55,6 +55,60 @@ beforeEach(() => {
 });
 afterEach(unmountAll);
 
+describe('a link drawn as a button', () => {
+  const page = (href: string, attrs: Record<string, string> = {}) =>
+    mount(
+      inShell(
+        'en',
+        'auto',
+        createElement('a', { 'data-ui': 'button', href, ...attrs }, 'See your portfolio'),
+      ),
+    );
+  const clickOn = (el: Element, init: MouseEventInit = {}) => {
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true, ...init });
+    // what the shell decided is read as the click leaves the document; then the test stops the
+    // browser's own navigation, which would go and fetch the address
+    let routed = false;
+    window.addEventListener(
+      'click',
+      (e) => {
+        routed = e.defaultPrevented;
+        e.preventDefault();
+      },
+      { once: true },
+    );
+    el.dispatchEvent(event);
+    return { defaultPrevented: routed };
+  };
+
+  it('goes through the router to a page of this app, with no reload of the whole page', async () => {
+    router.push.mockClear();
+    const host = await page('/monitor');
+    const event = clickOn(find(host, 'main a'));
+    expect(event.defaultPrevented).toBe(true);
+    expect(router.push).toHaveBeenCalledWith('/monitor');
+  });
+
+  it('is left to the browser with a key held, to a fragment, another site or a new tab', async () => {
+    router.push.mockClear();
+    const held = await page('/monitor');
+    expect(clickOn(find(held, 'main a'), { metaKey: true }).defaultPrevented).toBe(false);
+    expect(clickOn(find(held, 'main a'), { button: 1 }).defaultPrevented).toBe(false);
+    await unmountAll();
+    for (const [href, attrs] of [
+      ['#limits', {}],
+      ['https://solscan.io/tx/x', {}],
+      ['//elsewhere.example/x', {}],
+      ['/monitor', { target: '_blank' }],
+    ] as const) {
+      const host = await page(href, attrs);
+      expect(clickOn(find(host, 'main a')).defaultPrevented, href).toBe(false);
+      await unmountAll();
+    }
+    expect(router.push).not.toHaveBeenCalled();
+  });
+});
+
 describe('the frame', () => {
   it('is a bar, the page and a foot, with a way past the bar for a keyboard', async () => {
     const host = await shell();

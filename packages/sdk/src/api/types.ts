@@ -941,6 +941,7 @@ export type PostOrdersResponse = {
   summary: string;
   depositRaw?: string;
   basketId?: string;
+  continues?: string;
   legs: {
     id: string;
     orderId: string | null;
@@ -1043,6 +1044,110 @@ export type GetOrdersByIdResponse = {
   summary: string;
   depositRaw?: string;
   basketId?: string;
+  continues?: string;
+  legs: {
+    id: string;
+    orderId: string | null;
+    chain: 'solana' | 'base' | 'robinhood';
+    seq: number;
+    kind:
+      | 'approve'
+      | 'create_vault'
+      | 'deposit'
+      | 'swap'
+      | 'set_targets'
+      | 'accept_version'
+      | 'set_auto_follow'
+      | 'withdraw'
+      | 'publish'
+      | 'adopt_version'
+      | 'keeper_leg';
+    signer: 'owner' | 'keeper';
+    description: string;
+    cashRaw?: string;
+    withdrawals?: {
+      asset: string;
+      amountRaw: string | null;
+      heldRaw: string;
+      valued?: {
+        source: string;
+        method: string;
+        fetchedAt: string;
+        provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+        usd: string;
+      };
+    }[];
+    trades: {
+      sell: string;
+      buy: string;
+      amountInRaw: string;
+    }[];
+    expected: {
+      inRaw: string;
+      outRaw: string;
+      minOutRaw: string;
+      costBps: number;
+    }[];
+    status: 'planned' | 'built' | 'sent' | 'confirmed' | 'failed' | 'expired' | 'skipped';
+    attempt: number;
+    txId: string | null;
+    explorerUrl: string | null;
+    validUntil: string | null;
+    error: {
+      code: string;
+      message: string;
+      retryable: boolean;
+    } | null;
+    trigger: 'manual' | 'index_update' | 'drift' | 'liquidity_breach';
+    provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+  }[];
+  warnings: {
+    code: string;
+    text: string;
+  }[];
+  needsConsent: ('auto_follow_on' | 'new_asset' | 'publish')[];
+  fees: {
+    kind: string;
+    bps: number;
+  }[];
+  preparedBy: 'app' | 'api' | 'mcp';
+  agentLabel?: string;
+  status: 'open' | 'partial' | 'done' | 'failed' | 'expired';
+  approvalUrl: string;
+  expiresAt: number;
+  createdAt: string;
+  disclaimer: string;
+  attempts: {
+    id: string;
+    legId: string;
+    n: number;
+    messageHash: string;
+    nonce: number | null;
+    status: 'built' | 'sent' | 'confirmed' | 'failed' | 'expired';
+    txId: string | null;
+    explorerUrl: string | null;
+    validUntil: string | null;
+    builtAt: string;
+  }[];
+};
+
+/** POST /v1/orders/{id}/continue: params. Finish a buy with the cash already in its vault. Nothing is deposited */
+export type PostOrdersByIdContinueParams = {
+  id: string;
+};
+
+/** POST /v1/orders/{id}/continue: response. Finish a buy with the cash already in its vault. Nothing is deposited */
+export type PostOrdersByIdContinueResponse = {
+  id: string;
+  type: 'buy' | 'rebalance' | 'follow' | 'publish' | 'withdraw' | 'settings';
+  owner: {
+    solana?: string;
+    evm?: string;
+  };
+  summary: string;
+  depositRaw?: string;
+  basketId?: string;
+  continues?: string;
   legs: {
     id: string;
     orderId: string | null;
@@ -1220,6 +1325,7 @@ export type PostOrdersByIdLegsByLegIdCancelResponse = {
   summary: string;
   depositRaw?: string;
   basketId?: string;
+  continues?: string;
   legs: {
     id: string;
     orderId: string | null;
@@ -1332,6 +1438,7 @@ export type PostOrdersByIdLegsByLegIdReportResponse = {
   summary: string;
   depositRaw?: string;
   basketId?: string;
+  continues?: string;
   legs: {
     id: string;
     orderId: string | null;
@@ -1698,6 +1805,10 @@ export interface ApiRoutes {
   'GET /v1/me/withdrawals': { query: GetMeWithdrawalsQuery; response: GetMeWithdrawalsResponse };
   'POST /v1/orders': { body: PostOrdersBody; response: PostOrdersResponse };
   'GET /v1/orders/{id}': { params: GetOrdersByIdParams; response: GetOrdersByIdResponse };
+  'POST /v1/orders/{id}/continue': {
+    params: PostOrdersByIdContinueParams;
+    response: PostOrdersByIdContinueResponse;
+  };
   'POST /v1/orders/{id}/legs/{legId}/build': {
     params: PostOrdersByIdLegsByLegIdBuildParams;
     response: PostOrdersByIdLegsByLegIdBuildResponse;

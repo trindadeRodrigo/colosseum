@@ -15,7 +15,7 @@ import { SkeletonSummary } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { assetTicker, formatRaw, parseRaw, rawOfShown, shownRaw } from '../order/amounts';
+import { formatRaw, parseRaw, rawOfShown, shownRaw, tokenName } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
 import { keepOrder } from '../order/order-record';
 import { chainReady, onMock } from '../order/readiness';
@@ -115,7 +115,7 @@ export function WithdrawScreen({ chain: chainText, address }: { chain: string; a
   const mock = onMock(port, chain);
   const chainName = t.chain.names[chain];
   const units = unitsFor(chain, mock);
-  const symbol = (asset: string) => units?.tokens[asset]?.symbol ?? assetTicker(asset);
+  const symbol = (asset: string) => units?.tokens[asset]?.symbol ?? tokenName(asset);
   // Every amount here is the figure the portfolio and the wallet show: the raw amount times the
   // token's multiplier (a stock token's issuer sets one), in the units this repository committed.
   const multiplierOf = (asset: string) =>
@@ -125,7 +125,7 @@ export function WithdrawScreen({ chain: chainText, address }: { chain: string; a
     const shown = shownRaw(BigInt(raw), multiplierOf(asset)).toString();
     // To the token's last place: an amount typed back as it is shown is the amount that was shown.
     const figure = u ? formatRaw(shown, u.decimals, LOCALE[lang], u.decimals) : null;
-    return u && figure !== null ? `${figure} ${u.symbol}` : `${raw} ${assetTicker(asset)}`;
+    return u && figure !== null ? `${figure} ${u.symbol}` : `${raw} ${tokenName(asset)}`;
   };
 
   // What the person chose, as raw amounts: null for all of a token. An amount that is not one of this

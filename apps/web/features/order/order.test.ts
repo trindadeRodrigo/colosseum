@@ -51,7 +51,9 @@ describe('amounts', () => {
 
   it('says how far under the quote a minimum is, rounded up', () => {
     expect(shortfallBps('1000000', '990000')).toBe(100);
-    expect(shortfallBps('3', '2')).toBe(3334);
+    expect(shortfallBps('3', '2')).toBe(3333);
+    // a 1% minimum cut down to a raw unit is a hair over 1%: it is said as 1%, not 1.01%
+    expect(shortfallBps('39960400', '39560795')).toBe(100);
     expect(shortfallBps('100', '100')).toBe(0);
     expect(shortfallBps('0', '0')).toBeNull();
     expect(formatBps(75, 'en')).toBe('0.75%');
@@ -342,15 +344,15 @@ describe('an order holds the amount the person typed, in committed units', () =>
 
   it('reads the cash token from the deploy record, the same one the guard derives from', () => {
     expect(units?.cash).toBe(deploymentsOf('testnet').solana?.cash);
-    expect(units?.tokens[units.cash]).toEqual({ symbol: 'tUSDC', decimals: 6 });
-    expect(units?.tokens['solana:spyx']).toEqual({ symbol: 'tSPYx', decimals: 8 });
+    expect(units?.tokens[units.cash]).toEqual({ symbol: 'USDC', decimals: 6 });
+    expect(units?.tokens['solana:spyx']).toEqual({ symbol: 'SPYx', decimals: 8 });
     expect(unitsFor('solana', true)?.cash).toBe(deploymentsOf('mock').solana?.cash);
     expect(unitsFor('robinhood', true)?.cash).toBe(deploymentsOf('mock').robinhood?.cash);
     // Robinhood Chain's test network: the units of its committed deployment, the names of its record
     const robinhood = unitsFor('robinhood', false);
     expect(robinhood?.cash).toBe(deploymentsOf('testnet').robinhood?.cash);
     expect(robinhood?.tokens[robinhood.cash]).toEqual({ symbol: 'tUSDG', decimals: 6 });
-    expect(robinhood?.tokens['robinhood:tspy']).toEqual({ symbol: 'tSPY', decimals: 18 });
+    expect(robinhood?.tokens['robinhood:tspy']).toEqual({ symbol: 'SPY', decimals: 18 });
     expect(unitsFor('base', false)).toBeNull();
     // the mock's dollar goes by the name of the chain it stands in for: never USDC on Robinhood Chain
     const mock = unitsFor('robinhood', true);
@@ -448,7 +450,7 @@ describe('what reached the chain, line by line', () => {
     const detail = activityOf(mocked, en, true)
       .map((line) => line.detail)
       .join(' ');
-    expect(detail).toContain('tUSDG → TSPY');
+    expect(detail).toContain('tUSDG → SPY');
     expect(detail).not.toMatch(/usdc/i);
   });
 
@@ -457,7 +459,7 @@ describe('what reached the chain, line by line', () => {
       activityOf(order, en, mock)
         .map((line) => line.detail)
         .join(' ');
-    expect(detail(doneOrder('solana'), false)).toContain('tUSDC → tSPYx');
+    expect(detail(doneOrder('solana'), false)).toContain('USDC → SPYx');
     const order = doneOrder('solana');
     const onMock = {
       ...order,

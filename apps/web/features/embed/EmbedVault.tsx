@@ -10,9 +10,9 @@ import { useWaitPhase } from '../../components/ui/wait';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { API } from '../../lib/api';
+import { tokenName } from '../order/amounts';
 import { dollars, share } from '../portfolio/figures';
 import {
-  assetName,
   type PortfolioChain,
   positionValueSource,
   priceOf,
@@ -122,8 +122,8 @@ export function EmbedVault({
           vault.provenance === 'live'
             ? undefined
             : {
-                line: t.shell.mockAnnounce,
-                note: vault.provenance === 'sandbox' ? t.shell.testNetwork : undefined,
+                line:
+                  vault.provenance === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
               }
         }
       >
@@ -148,7 +148,7 @@ export function EmbedVault({
                 className="flex items-center justify-between gap-[0.75em] border-t border-border py-[0.6em]"
               >
                 <span>
-                  {assetName(p.asset)} · {share(lang, p.weightBps)}
+                  {tokenName(p.asset)} · {share(lang, p.weightBps)}
                 </span>
                 {p.valueUsd !== null && price ? (
                   <ProvenancePin

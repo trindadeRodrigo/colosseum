@@ -48,7 +48,7 @@ const MY_VAULT = solanaVaultAddress('529j92ASeopFHuLLueGdyaUy4BsZ7UWqrgoVWn2iK1Q
 const CASH = 'solana:usdc';
 const SPYX = 'solana:spyx';
 const holding = (asset: string, raw: string) => ({ asset, raw, multiplier: '1', display: raw });
-/** 600 tUSDC and 2.5 tSPYx. */
+/** 600 USDC and 2.5 SPYx. */
 const holdingVault = (over: Partial<VaultView> = {}) =>
   vaultOf({
     address: MY_VAULT,
@@ -205,8 +205,8 @@ describe('the withdraw screen', () => {
     await click(primary(host, 'what'));
     const review = panel(host, 'check');
     expect([...review.querySelectorAll('tbody tr')].map((r) => r.textContent)).toEqual([
-      `tUSDC${w.check.all('600 tUSDC')}`,
-      `tSPYx${w.check.all('2.5 tSPYx')}`,
+      `USDC${w.check.all('600 USDC')}`,
+      `SPYx${w.check.all('2.5 SPYx')}`,
     ]);
     // where it goes: the owner's own wallet, in full, and nowhere else
     expect(find(review, '[data-ui="withdraw-to"]').textContent).toBe(SOLANA);
@@ -247,12 +247,12 @@ describe('the withdraw screen', () => {
     expect(primary(host, 'what').getAttribute('aria-disabled')).toBe('true');
     expect(host.textContent).toContain(w.what.errors.none);
     await click(find(pick(host, CASH), 'input[type="checkbox"]'));
-    expect(pick(host, CASH).textContent).toContain(w.what.holds('600 tUSDC'));
+    expect(pick(host, CASH).textContent).toContain(w.what.holds('600 USDC'));
     await type(find<HTMLInputElement>(pick(host, CASH), 'input[inputmode="decimal"]'), '250.5');
     await click(primary(host, 'what'));
     const review = panel(host, 'check');
     expect([...review.querySelectorAll('tbody tr')].map((r) => r.textContent)).toEqual([
-      'tUSDC250.5 tUSDC',
+      'USDC250.5 USDC',
     ]);
     expect(review.textContent).toContain(w.check.stays);
     expect(review.querySelector('[data-ui="withdraw-keeper"]')).toBeNull();
@@ -282,8 +282,8 @@ describe('the withdraw screen', () => {
     await click(find(pick(host, CASH), 'input[type="checkbox"]'));
     const input = find<HTMLInputElement>(pick(host, CASH), 'input[inputmode="decimal"]');
     for (const [typed, error] of [
-      ['600.000001', w.what.errors.over('600 tUSDC')],
-      ['601', w.what.errors.over('600 tUSDC')],
+      ['600.000001', w.what.errors.over('600 USDC')],
+      ['601', w.what.errors.over('600 USDC')],
       ['abc', w.what.errors.amount],
       ['0', w.what.errors.amount],
       ['1.0000001', w.what.errors.amount],
@@ -295,7 +295,7 @@ describe('the withdraw screen', () => {
     await type(input, '600');
     expect(primary(host, 'what').getAttribute('aria-disabled')).toBeNull();
     await click(primary(host, 'what'));
-    expect(panel(host, 'check').querySelector('tbody tr')?.textContent).toBe('tUSDC600 tUSDC');
+    expect(panel(host, 'check').querySelector('tbody tr')?.textContent).toBe('USDC600 USDC');
     // the stock token stays, so the vault is not emptied
     expect(panel(host, 'check').textContent).toContain(w.check.stays);
   });
@@ -345,7 +345,7 @@ describe('the withdraw screen', () => {
   });
 
   it('shows a stock token as the portfolio does, with its multiplier, and signs exact raw units, rounded down', async () => {
-    // tSPYx: one token on the chain stands for 1.0057 shares. 2.5 tokens held are shown as 2.51425.
+    // SPYx: one token on the chain stands for 1.0057 shares. 2.5 tokens held are shown as 2.51425.
     const server = api({
       vault: holdingVault({
         positions: [
@@ -366,17 +366,15 @@ describe('the withdraw screen', () => {
     const host = await show();
     await click(radio(host, w.what.some));
     await click(find(pick(host, SPYX), 'input[type="checkbox"]'));
-    expect(pick(host, SPYX).textContent).toContain(w.what.holds('2.51425 tSPYx'));
+    expect(pick(host, SPYX).textContent).toContain(w.what.holds('2.51425 SPYx'));
     const input = find<HTMLInputElement>(pick(host, SPYX), 'input[inputmode="decimal"]');
     // more than is shown is refused, by a unit of the shown figure
     await type(input, '2.51425001');
-    expect(pick(host, SPYX).textContent).toContain(w.what.errors.over('2.51425 tSPYx'));
+    expect(pick(host, SPYX).textContent).toContain(w.what.errors.over('2.51425 SPYx'));
     // one share: 1 / 1.0057 of a token, rounded down, so never more than was typed
     await type(input, '1');
     await click(primary(host, 'what'));
-    expect(panel(host, 'check').querySelector('tbody tr')?.textContent).toBe(
-      'tSPYx0.99999999 tSPYx',
-    );
+    expect(panel(host, 'check').querySelector('tbody tr')?.textContent).toBe('SPYx0.99999999 SPYx');
     await click(find(panel(host, 'check'), 'input[type="checkbox"]'));
     await click(primary(host, 'check'));
     await click(primary(host, 'confirm'));
@@ -411,7 +409,7 @@ describe('the withdraw screen', () => {
     await click(radio(host, w.what.some));
     await click(find(pick(host, SPYX), 'input[type="checkbox"]'));
     // 250000001 raw is shown as 2.51425001 (rounded down from 2.514250010057)
-    expect(pick(host, SPYX).textContent).toContain(w.what.holds('2.51425001 tSPYx'));
+    expect(pick(host, SPYX).textContent).toContain(w.what.holds('2.51425001 SPYx'));
     await type(
       find<HTMLInputElement>(pick(host, SPYX), 'input[inputmode="decimal"]'),
       '2.51425001',
@@ -419,9 +417,7 @@ describe('the withdraw screen', () => {
     expect(primary(host, 'what').getAttribute('aria-disabled')).toBeNull();
     await click(primary(host, 'what'));
     // the cash stays, so the vault is not emptied; the stock token leaves in full
-    expect(panel(host, 'check').querySelector('tbody tr')?.textContent).toBe(
-      'tSPYx2.51425001 tSPYx',
-    );
+    expect(panel(host, 'check').querySelector('tbody tr')?.textContent).toBe('SPYx2.51425001 SPYx');
   });
 
   it('offers nothing for a vault it cannot hold to the person’s wallet', async () => {
@@ -492,13 +488,13 @@ describe('a withdrawal on the order screen', () => {
     const host = await screen();
     const review = find(host, `[aria-label="${en.order.shared.withdrawTitle}"]`);
     expect([...review.querySelectorAll('tbody tr')].map((r) => r.textContent)).toEqual([
-      'tUSDC250 tUSDC',
-      `tSPYx${w.check.all('2.5 tSPYx')}`,
+      'USDC250 USDC',
+      `SPYx${w.check.all('2.5 SPYx')}`,
     ]);
     expect(find(review, '[data-ui="withdraw-to"]').textContent).toBe(SOLANA);
     expect(
       [...host.querySelectorAll('[data-ui="order-withdrawal"]')].map((l) => l.textContent),
-    ).toEqual([en.order.shared.withdraws('250 tUSDC'), en.order.shared.withdrawsAll('2.5 tSPYx')]);
+    ).toEqual([en.order.shared.withdraws('250 USDC'), en.order.shared.withdrawsAll('2.5 SPYx')]);
     expect(host.textContent).not.toContain(en.order.review.deposit);
     expect(sign(host)?.textContent).toContain(en.order.shared.signWithdraw);
     await click(sign(host) as HTMLElement);
@@ -571,7 +567,7 @@ describe('a withdrawal on the order screen', () => {
     seed(PART);
     const host = await screen();
     expect(find(host, '[data-ui="order-skipped"]').textContent).toBe(
-      en.order.shared.skipped('tSPYx'),
+      en.order.shared.skipped('SPYx'),
     );
     expect(host.textContent).toContain(en.order.shared.doneExcept('Solana', 1));
     expect(host.textContent).not.toContain(en.order.outcome.done('Solana'));
@@ -595,10 +591,10 @@ describe('a withdrawal on the order screen', () => {
     const host = await screen();
     await settle();
     expect(server.calls.filter((c) => c.path.startsWith('/v1/vaults/solana/'))).toHaveLength(1);
-    expect(host.textContent).toContain(en.order.shared.doneStayed('Solana', 'tSPYx'));
+    expect(host.textContent).toContain(en.order.shared.doneStayed('Solana', 'SPYx'));
     expect(host.textContent).not.toContain(en.order.outcome.done('Solana'));
     expect(find(host, '[data-ui="withdraw-stayed"]').textContent).toBe(
-      en.order.shared.stayed('tSPYx'),
+      en.order.shared.stayed('SPYx'),
     );
   });
 

@@ -26,7 +26,7 @@ export const MIN_USD = 10;
 export const MAX_USD = 1_000_000;
 
 export type StepId = 'amount' | 'funds' | 'trust' | 'review';
-const STEPS: readonly StepId[] = ['amount', 'funds', 'trust', 'review'];
+const ALL_STEPS: readonly StepId[] = ['amount', 'funds', 'trust', 'review'];
 
 export type BuyStepsProps = {
   chain: ChainId;
@@ -46,7 +46,13 @@ export type BuyStepsProps = {
   buyOf: { proposalId: string } | { family: string };
   /** Read the wallet again. */
   onReadAgain: () => void;
-  trust: { accepted: boolean; checked: boolean; onCheck: (yes: boolean) => void };
+  trust: {
+    accepted: boolean;
+    checked: boolean;
+    onCheck: (yes: boolean) => void;
+    /** The keeper may trade the vault this buy opens. Left out: it may. */
+    keeper?: boolean;
+  };
   order: {
     /** Names the action and the amount. */
     label: string;
@@ -82,6 +88,9 @@ export function BuySteps({
   const [testBusy, setTestBusy] = useState(false);
   const [testOutcome, setTestOutcome] = useState<TestFundsOutcome | null>(null);
 
+  // The notice was accepted before, in this browser, for this text: the step is not opened again
+  // only to press Continue (the flow audit, finding 20). The order screen still links the notice.
+  const STEPS = trust.accepted ? ALL_STEPS.filter((step) => step !== 'trust') : ALL_STEPS;
   const read = funding.kind === 'read' ? funding.funding : null;
   const done: Record<StepId, boolean> = {
     amount: confirmed && amount.value !== null,
@@ -204,6 +213,7 @@ export function BuySteps({
           accepted={trust.accepted}
           checked={trust.checked}
           onCheck={trust.onCheck}
+          keeper={trust.keeper}
         />
         {continueButton('trust')}
       </div>
@@ -216,6 +226,23 @@ export function BuySteps({
             chainName,
           )}
         </p>
+        {/* Accepted before: the notice is not a step again, and is still here to read. */}
+        {trust.accepted && (
+          <details data-ui="trust-kept">
+            <summary className="w-fit cursor-pointer text-body-sm font-medium text-primary underline decoration-1 underline-offset-4 hover:decoration-2">
+              {t.trust.short.title}
+            </summary>
+            <div className="mt-3">
+              <TrustNotice
+                chain={chain}
+                accepted
+                checked={false}
+                onCheck={trust.onCheck}
+                keeper={trust.keeper}
+              />
+            </div>
+          </details>
+        )}
         <Button
           variant="primary"
           busy={order.busy}

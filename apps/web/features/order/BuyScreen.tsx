@@ -48,7 +48,7 @@ export function BuyScreen({ id }: { id: string }) {
   const chain = ready?.chain ?? null;
   const owner = chain ? (port.active(chainFamily(chain))?.address ?? null) : null;
   const typed = text ?? (plan ? startingAmount(plan) : '');
-  const parsed = parseNumber(typed);
+  const parsed = parseNumber(typed, lang);
   const amount =
     parsed !== null && !Number.isNaN(parsed) && parsed >= MIN_USD && parsed <= MAX_USD
       ? parsed
@@ -82,7 +82,8 @@ export function BuyScreen({ id }: { id: string }) {
   }
 
   const chainName = t.chain.names[chain];
-  const accepted = trustAccepted(port.userId, TRUST_STATUS.textVersion);
+  // A plan's own vault follows nothing, so the keeper's limits are not among its short points.
+  const accepted = trustAccepted(port.userId, TRUST_STATUS.textVersion, false);
   const read = funding.kind === 'read' ? funding.funding : null;
   const blocked = [
     ...(!ready.buyable ? [t.plan.chainNotReady(chainName)] : []),
@@ -110,7 +111,7 @@ export function BuyScreen({ id }: { id: string }) {
       if (outcome.kind === 'code') setFailureCode(outcome.code);
       return;
     }
-    if (!accepted && port.userId) acceptTrust(port.userId, TRUST_STATUS.textVersion);
+    if (!accepted && port.userId) acceptTrust(port.userId, TRUST_STATUS.textVersion, false);
     const kept = keepOrder({
       orderId: outcome.order.id,
       userId: port.userId ?? '',
@@ -170,14 +171,19 @@ export function BuyScreen({ id }: { id: string }) {
         amount={{
           text: typed,
           onText: setText,
-          hint: t.buy.amount.hint(dollars(plan.proposal.sheet.amountUsd, lang)),
+          // The plan's limits are in dollars at its own amount: another amount is said plainly.
+          hint: (amount !== null && amount !== plan.proposal.sheet.amountUsd
+            ? t.buy.amount.other
+            : t.buy.amount.hint)(dollars(plan.proposal.sheet.amountUsd, lang)),
           value: amount,
         }}
         funding={funding}
         owner={owner}
         buyOf={{ proposalId: plan.id }}
         onReadAgain={() => setRound((n) => n + 1)}
-        trust={{ accepted, checked: ticked, onCheck: setTicked }}
+        // A plan's vault follows nothing: the keeper does not trade it, so its limits are not
+        // among the short points (they stay in the full list).
+        trust={{ accepted, checked: ticked, onCheck: setTicked, keeper: false }}
         order={{
           label: t.buy.review(
             amount === null ? dollars(plan.proposal.sheet.amountUsd, lang) : dollars(amount, lang),

@@ -8,7 +8,7 @@ import type {
 } from '@colosseum/schemas';
 import type { Execution } from '../../components/ui/ExecutionList';
 import type { Dictionary } from '../../i18n';
-import { assetTicker } from './amounts';
+import { tokenName } from './amounts';
 import { explorerUrlFor } from './readiness';
 import { unitsFor } from './units';
 
@@ -30,7 +30,7 @@ const STATUS: Partial<Record<LegStatus, ExecutionStatus>> = {
  */
 function takenWords(taken: readonly LegWithdrawal[], chain: ChainId, mock: boolean): string {
   const tokens = unitsFor(chain, mock)?.tokens;
-  return taken.map((w) => tokens?.[w.asset]?.symbol ?? assetTicker(w.asset)).join(', ');
+  return taken.map((w) => tokens?.[w.asset]?.symbol ?? tokenName(w.asset)).join(', ');
 }
 
 /**
@@ -80,7 +80,7 @@ export function activityOf(
       );
       // a token by the symbol this repository committed for it, as the review names it
       const tokens = unitsFor(leg.chain, mock)?.tokens;
-      const name = (asset: string) => tokens?.[asset]?.symbol ?? assetTicker(asset);
+      const name = (asset: string) => tokens?.[asset]?.symbol ?? tokenName(asset);
       return {
         id: leg.id,
         verb: t.order.kind[leg.kind],

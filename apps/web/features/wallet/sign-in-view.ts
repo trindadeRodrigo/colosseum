@@ -46,7 +46,9 @@ export function signInFailure(error: unknown, attempt: SignInAttempt): SignInFai
   if (code === 'rejected') return passkey ? cancelled : 'walletRefused';
   if (code === 'expired') return 'expired';
   if (code === 'not_connected' && !passkey) return 'walletSilent';
-  return 'other';
+  // A passkey that was offered and not taken, for a reason the provider does not name: said as that,
+  // not as a failure nobody can explain (the flow audit, finding 39).
+  return attempt === 'passkey-use' ? 'passkeyNotAccepted' : 'other';
 }
 
 /**

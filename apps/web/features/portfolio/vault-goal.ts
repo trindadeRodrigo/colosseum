@@ -1,7 +1,7 @@
 import type { PinSource } from '../../components/ui/provenance';
 import type { OrderRecord, PlacedGoal } from '../order/order-record';
 import { basketOfPlan } from '../order/readiness';
-import { addDecimals, type Vault, worst } from './portfolio';
+import { addDecimals, type Vault as PortfolioVault, worst } from './portfolio';
 import type { ServerWithdrawal } from './server-withdrawals';
 
 // Which goal a vault was bought for. The API's portfolio names a vault by its plan's number on chain
@@ -14,6 +14,9 @@ import type { ServerWithdrawal } from './server-withdrawals';
 // nothing, and the screen says so: no target is made up for it. What was taken out of a vault is the
 // server's list of the person's withdrawals (`GET /v1/me/withdrawals`, server-withdrawals.ts), joined
 // by the vault's own address.
+
+/** What joins a vault to an order: its chain and its plan's number. */
+type Vault = Pick<PortfolioVault, 'chain' | 'basketId'>;
 
 export type VaultGoal = { goal: PlacedGoal; record: OrderRecord };
 
@@ -31,6 +34,16 @@ export const ordersOfVault = (vault: Vault, records: readonly OrderRecord[]): Or
 export function goalOfVault(vault: Vault, records: readonly OrderRecord[]): VaultGoal | null {
   for (const record of ordersOfVault(vault, records))
     if (record.goal) return { goal: record.goal, record };
+  return null;
+}
+
+/**
+ * The shared portfolio the vault was bought from in this browser, by its address on the shelf: the
+ * newest order of the vault that bought one. Null when none did.
+ */
+export function familyOfVault(vault: Vault, records: readonly OrderRecord[]): string | null {
+  for (const record of ordersOfVault(vault, records))
+    if (record.terms?.kind === 'family') return record.terms.slug;
   return null;
 }
 
@@ -54,7 +67,7 @@ export function putInto(
  * the screen says how many. Null when nothing confirmed left the vault.
  */
 export function takenOut(
-  vault: Vault,
+  vault: Pick<PortfolioVault, 'chain' | 'address' | 'provenance'>,
   withdrawals: readonly ServerWithdrawal[],
   method: (count: number) => string,
 ): TakenOut | null {

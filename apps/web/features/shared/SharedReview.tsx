@@ -4,7 +4,7 @@ import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { DataTable } from '../../components/ui/DataTable';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { assetTicker, formatBps, formatRaw, shownRaw } from '../order/amounts';
+import { formatBps, formatRaw, shownRaw, tokenName } from '../order/amounts';
 import { onMock } from '../order/readiness';
 import { unitsFor } from '../order/units';
 import { useWalletPort } from '../wallet/WalletProvider';
@@ -32,7 +32,7 @@ export function SharedReview({ terms, chain }: { terms: SharedTerms; chain: Chai
           key: 'asset',
           header: t.plan.columns.asset,
           rowHeader: true,
-          cell: (r) => assetTicker(r.asset),
+          cell: (r) => tokenName(r.asset),
         },
         {
           key: 'share',
@@ -79,7 +79,7 @@ export function SharedReview({ terms, chain }: { terms: SharedTerms; chain: Chai
       const multiplier = terms.items.find((i) => i.asset === asset)?.multiplier ?? '1';
       const shown = shownRaw(BigInt(raw), multiplier).toString();
       const figure = u ? formatRaw(shown, u.decimals, LOCALE[lang], u.decimals) : null;
-      return u && figure !== null ? `${figure} ${u.symbol}` : `${raw} ${assetTicker(asset)}`;
+      return u && figure !== null ? `${figure} ${u.symbol}` : `${raw} ${tokenName(asset)}`;
     };
     const w = t.withdraw.check;
     return (
@@ -95,7 +95,7 @@ export function SharedReview({ terms, chain }: { terms: SharedTerms; chain: Chai
                 key: 'asset',
                 header: w.token,
                 rowHeader: true,
-                cell: (r) => units?.tokens[r.asset]?.symbol ?? assetTicker(r.asset),
+                cell: (r) => units?.tokens[r.asset]?.symbol ?? tokenName(r.asset),
               },
               {
                 key: 'amount',

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { BasketAsset } from './basket-asset';
 import type { BuiltTx } from './basket-tx';
 import { Address, AssetId, BasketId, Bps, type ChainId, RawAmount } from './chain';
+import { ChainError } from './chain-error';
 import type { Provenance } from './enums';
 import { Recipe, Target, Targets } from './recipe';
 import {
@@ -66,6 +67,50 @@ export const ApproveArgs = z.strictObject({
 });
 export type ApproveArgs = z.infer<typeof ApproveArgs>;
 
+/**
+ * The least each trade of a step may give, one per trade and in the trades' order, as the order stated
+ * them when it was made. Given, a builder writes these into the transaction and works out none of its
+ * own: the person approved these terms, and a later quote does not change them. It still quotes, and
+ * refuses with `PriceMoved` when a trade would now give less than its minimum, so nothing is built that
+ * can only revert. Left out (a caller with no order: the keeper's own builds, a script), the builder
+ * sets each minimum from its quote and `slippageBps`.
+ */
+const StatedMinimums = z.array(RawAmount).optional();
+
+/**
+ * The stated minimum of trade `i`, for a builder: null when none were stated, so the builder sets its
+ * own. Throws `BadInput` when there is not one per trade, and `PriceMoved` when the trade, quoted now
+ * at `quotedOutRaw`, would give less than what was stated.
+ */
+export function statedMinimum(
+  minimums: readonly string[] | undefined,
+  trades: readonly Trade[],
+  i: number,
+  quotedOutRaw: bigint,
+): bigint | null {
+  if (minimums === undefined) return null;
+  const trade = trades[i];
+  const stated = minimums[i];
+  if (minimums.length !== trades.length || trade === undefined || stated === undefined)
+    throw new ChainError(
+      'BadInput',
+      `${minimums.length} minimums were stated for ${trades.length} trades: one for each`,
+    );
+  const least = BigInt(stated);
+  // A minimum of nothing accepts any price: no order states one, and none is built with one.
+  if (least <= 0n)
+    throw new ChainError(
+      'BadInput',
+      `a minimum of nothing was stated for ${trade.amountInRaw} raw ${trade.sell}: a trade accepts some least amount`,
+    );
+  if (quotedOutRaw < least)
+    throw new ChainError(
+      'PriceMoved',
+      `the price has moved since the order was made: ${trade.amountInRaw} raw ${trade.sell} now buys ${quotedOutRaw} raw ${trade.buy}, under the ${least} the order accepts at least`,
+    );
+  return least;
+}
+
 export const CreateVaultArgs = z.object({
   owner: Address,
   basketId: BasketId,
@@ -77,6 +122,7 @@ export const CreateVaultArgs = z.object({
   depositRaw: RawAmount.optional(),
   trades: z.array(Trade).optional(),
   slippageBps: Bps,
+  minimums: StatedMinimums,
   nonce: RebuildNonce,
 });
 export type CreateVaultArgs = z.infer<typeof CreateVaultArgs>;
@@ -86,6 +132,7 @@ export const DepositArgs = z.object({
   amountRaw: RawAmount,
   trades: z.array(Trade).optional(),
   slippageBps: Bps,
+  minimums: StatedMinimums,
   nonce: RebuildNonce,
 });
 export type DepositArgs = z.infer<typeof DepositArgs>;
@@ -94,6 +141,7 @@ export const OwnerSwapArgs = z.object({
   vault: Address,
   trades: z.array(Trade).min(1),
   slippageBps: Bps,
+  minimums: StatedMinimums,
   nonce: RebuildNonce,
 });
 export type OwnerSwapArgs = z.infer<typeof OwnerSwapArgs>;

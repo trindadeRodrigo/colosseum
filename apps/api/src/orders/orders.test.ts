@@ -837,6 +837,7 @@ describe('the /v1 route table', () => {
       '/v1/mock/orders/{id}/legs/{legId}/land',
       '/v1/orders',
       '/v1/orders/{id}',
+      '/v1/orders/{id}/continue',
       '/v1/orders/{id}/legs/{legId}/build',
       '/v1/orders/{id}/legs/{legId}/cancel',
       '/v1/orders/{id}/legs/{legId}/report',
@@ -912,6 +913,7 @@ describe('no /v1 route can make the server sign', () => {
     expect(files.map((f) => relative(src, f)).sort()).toEqual([
       'faucet/test-funds.ts',
       'orders/chains.ts',
+      'orders/continue.ts',
       'orders/errors.ts',
       'orders/families.ts',
       'orders/legs.ts',
