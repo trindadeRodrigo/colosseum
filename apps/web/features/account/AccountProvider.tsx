@@ -18,6 +18,7 @@ import { forgetPlans } from '../order/plan-store';
 import {
   useApiFetch,
   useLeaveHere,
+  useOustedPerson,
   useWalletPort,
   useWalletRestart,
 } from '../wallet/WalletProvider';
@@ -155,6 +156,12 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const apiFetch = useApiFetch();
   const restart = useWalletRestart();
   const leaveHere = useLeaveHere();
+  // Someone who signed out here while the service was silent, now out at the service too: what this
+  // browser kept under their id since the press (another tab of theirs may have) goes with them.
+  const ousted = useOustedPerson();
+  useEffect(() => {
+    if (ousted) forgetOrders(ousted.userId);
+  }, [ousted]);
   const [read, setRead] = useState<Read | null>(null);
   const [round, setRound] = useState(0);
   // The chain someone signed out is looking at: the address's, else this browser's, else the first.
