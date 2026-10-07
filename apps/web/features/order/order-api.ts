@@ -3,6 +3,7 @@ import {
   chainFamily,
   FundingResponse,
   OrderDetail,
+  OrderError,
   type OrderErrorCode,
   TEST_FUNDS_LOW,
   TestFundsResponse,
@@ -218,7 +219,7 @@ export type FinishRefusal =
   | 'landed'
   | 'said';
 
-const REFUSALS: Partial<Record<string, FinishRefusal>> = {
+const REFUSALS: Partial<Record<OrderErrorCode, FinishRefusal>> = {
   ORDER_CONTINUED: 'other-order',
   ORDER_BUSY: 'working',
   STEP_IN_FLIGHT: 'in-flight',
@@ -229,18 +230,18 @@ const REFUSALS: Partial<Record<string, FinishRefusal>> = {
   STEP_LANDED: 'landed',
 };
 
-/** The refusal's reason from its code, and for `ORDER_CONTINUED` the order that finishes this one. */
-export function refusalOf(body: Record<string, unknown>): { why: FinishRefusal; orderId?: string } {
-  const why = (typeof body.code === 'string' ? REFUSALS[body.code] : undefined) ?? 'said';
-  const details =
-    typeof body.details === 'object' && body.details !== null
-      ? (body.details as Record<string, unknown>)
-      : {};
-  const by = details.continuedBy;
-  return {
-    why,
-    ...(why === 'other-order' && typeof by === 'string' && by ? { orderId: by } : {}),
-  };
+/**
+ * The refusal's reason from its code, and for `ORDER_CONTINUED` the order that finishes this one, as
+ * the shared schema has them (`OrderError`). A body that is not one, or a code this build does not
+ * know, is `said`.
+ */
+export function refusalOf(body: unknown): { why: FinishRefusal; orderId?: string } {
+  const refusal = OrderError.safeParse(body);
+  if (!refusal.success) return { why: 'said' };
+  const { code, details } = refusal.data;
+  const why = (code ? REFUSALS[code] : undefined) ?? 'said';
+  const by = details?.continuedBy;
+  return { why, ...(why === 'other-order' && by ? { orderId: by } : {}) };
 }
 
 export type ContinueOutcome =
