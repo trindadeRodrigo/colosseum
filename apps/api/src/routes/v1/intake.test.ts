@@ -38,7 +38,10 @@ const recorded = fixture('intake-replies.json') as {
   replies: Record<string, unknown>;
   conversations: Record<string, { messages: string[]; replies: unknown[] }>;
   narratives: { cases: Record<string, { text: string; reply: unknown }> };
+  refusals: { cases: Record<string, { text: string; reply: unknown }> };
 };
+// A goal that writes a refusal, with a reply that reads the goal and misses the refusal. MOCK.
+const noStocks = recorded.refusals.cases['no-stocks-missed'] as { text: string; reply: unknown };
 // A goal that names a market the fixed lists have no word for, with the filter the model names for it
 // (gate THEME-MATCHED). MOCK, like every reply here.
 const obesityDrugs = recorded.narratives.cases['obesity-drugs'] as { text: string; reply: unknown };
@@ -61,6 +64,7 @@ const inWords = (['pair', 'half', 'mix'] as const).map(
 const replyByText = new Map<string, unknown>([
   ...evalSet.goals.map((g): [string, unknown] => [g.text, recorded.replies[g.id]]),
   [obesityDrugs.text, obesityDrugs.reply],
+  [noStocks.text, noStocks.reply],
   ...[chat, bigTech, ...inWords].flatMap((c) =>
     c.replies.map((r, i): [string, unknown] => [c.messages.slice(0, i + 1).join('\n\n'), r]),
   ),
@@ -586,6 +590,86 @@ describe('POST /v1/baskets/intake', () => {
       expect(body.sheet, sentence).toMatchObject({ risk: 'medium', themes: [] });
       expect(body.sheet?.mix, sentence).toBeUndefined();
     }
+  });
+
+  it('a refusal the text writes is carried to the sheet and said back, with no model and where the model misses it', async () => {
+    const who = await someone('solana');
+    const limits = { cannotHold: { classes: ['stock'] } };
+    // No model configured: the rules reader reads the goal, and code reads the refusal.
+    const first = await post(who, PATH, { text: noStocks.text }, off);
+    expect(first.statusCode, first.body).toBe(200);
+    const asked = IntakeResponse.parse(first.json());
+    expect(asked.reader).toMatchObject({ method: 'rules', why: 'model_not_configured' });
+    // Read at once, and not asked: the refusal is no question.
+    expect(asked.limits).toEqual({ creditTolerance: null, cannotHoldClasses: ['stock'] });
+    expect(asked.questions.map((q) => q.field)).toEqual([
+      'goal',
+      'amountUsd',
+      'horizonMonths',
+      'risk',
+    ]);
+    const answers = { goal: 'grow', amountUsd: 20_000, horizonMonths: 36, risk: 'low' };
+    const res = await post(who, PATH, { text: noStocks.text, answers }, off);
+    expect(res.statusCode, res.body).toBe(200);
+    const byRules = IntakeResponse.parse(res.json());
+    expect(byRules.questions).toEqual([]);
+    expect(byRules.mix).toBeNull();
+    expect(byRules.sheet).toMatchObject({ goal: 'grow', amountUsd: 20_000, risk: 'low', limits });
+    expect(byRules.sheet?.mix).toBeUndefined();
+    expect(byRules.readBack).toEqual([
+      'You set a goal to grow with $20,000 over 3 years, at low risk.',
+      'The plan lives on Solana, the chain of your wallet.',
+      'Tokens you already hold count toward the plan.',
+      'You left out stocks.',
+      'Nothing moves toward cash as the date nears unless you ask for it.',
+      'If this is right, confirm it and the plan is made from it.',
+    ]);
+    // With a model whose reply misses the refusal: the text's is taken, and the disagreement flagged.
+    const read = await post(who, PATH, { text: noStocks.text, answers: { risk: 'low' } });
+    expect(read.statusCode, read.body).toBe(200);
+    const byModel = IntakeResponse.parse(read.json());
+    expect(byModel.reader).toMatchObject({ method: 'model', provenance: 'mock' });
+    expect(byModel.flags).toContain('disagrees_with_rules:cannotHold:stock');
+    expect(byModel.sheet).toMatchObject({ limits });
+    expect(byModel.readBack).toContain('You left out stocks.');
+    expect(byModel.sheet).toEqual(byRules.sheet);
+    // "Sem crédito", with no model.
+    const pt = IntakeResponse.parse(
+      (
+        await post(
+          who,
+          PATH,
+          {
+            text: 'Quero fazer US$ 20.000 crescer por 3 anos, sem crédito.',
+            language: 'pt',
+            answers,
+          },
+          off,
+        )
+      ).json(),
+    );
+    expect(pt.sheet).toMatchObject({ limits: { creditTolerance: 'none' } });
+    expect(pt.readBack).toContain('Nenhum token que empresta a tomadores ou opera um spread.');
+    // A refusal the person is not sure of is not taken, and that is said.
+    const unsure = IntakeResponse.parse(
+      (
+        await post(
+          who,
+          PATH,
+          { text: 'I want to grow $20,000 for 3 years at low risk. No stocks? Not sure.', answers },
+          off,
+        )
+      ).json(),
+    );
+    expect(unsure.limits).toEqual({ creditTolerance: null, cannotHoldClasses: null });
+    expect(unsure.flags).toContain('refusal_wondered:stock');
+    expect(unsure.sheet?.limits).toBeUndefined();
+    expect(unsure.readBack).toContain(
+      'I did not read “No stocks” as something to leave out. Say so if you want it left out.',
+    );
+    // The confirm takes the sheet with its limits as it is.
+    const plan = await post(who, '/v1/baskets/personalize', { sheet: byRules.sheet });
+    expect(plan.statusCode, plan.body).toBe(200);
   });
 
   it('with no chain yet, a market the text names is not resolved, and nothing is said of it', async () => {

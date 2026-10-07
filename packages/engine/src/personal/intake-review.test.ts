@@ -15,6 +15,8 @@ import {
   marketsIn,
   mixIn,
   mixSaidIn,
+  refusalsIn,
+  refusalsSaidIn,
   shareSaidIn,
   timeFramesIn,
 } from './intake-text';
@@ -31,7 +33,8 @@ import type { PersonalSheet } from './types';
 // intake: 1 (it read the opposite of what was written), 4 (an answered risk was replaced without a
 // word), 6 (a stated holding the text check could not read fell through to the risk question) and 9
 // (the model could pick a portfolio), with the two that came with them: a time frame is said back the
-// way the person said it, and a share said in words on a later turn is read as the answer it is.
+// way the person said it, and a share said in words on a later turn is read as the answer it is. And
+// the one the playground found after them: with no model, a refusal the text writes was lost.
 //
 // Every sentence of the review's lists is a case here, with the reading it must have. The principle:
 // a holding is taken from the text only where its clause states it as what the person wants held. A
@@ -169,6 +172,13 @@ describe('finding 1: nothing is built from the opposite of what is written', () 
     expect(rules.mix).toBeNull();
     expect(fields(rules)).not.toContain('mix');
     expect(rules.flags.filter((f) => /mix/.test(f))).toEqual([]);
+    // And the refusal is not lost with it: read by code, carried to the sheet and said back (the
+    // cases below hold the rule).
+    const answered = intake(text, null, {
+      answers: { goal: 'grow', amountUsd: 20_000, horizonMonths: 36, risk: 'low' },
+    });
+    expect(answered.sheet?.limits).toEqual({ cannotHold: { classes: ['stock'] } });
+    expect(answered.readBack).toContain('You left out stocks.');
   });
 
   it('"so" before an English word is "so"; before a Portuguese one, with no accent, it is "só"', () => {
@@ -463,6 +473,382 @@ describe('finding 1: nothing is built from the opposite of what is written', () 
     }
     expect(mixIn('all in cash')?.mix).toEqual(bps(0, 10_000));
     expect(mixIn('only credit')?.mix.creditBps).toBe(10_000);
+  });
+});
+
+// Found by running the playground on this branch with no model: finding 1 stopped "so no stocks
+// please" from becoming a plan all in stocks, and the person still got the stocks they refused. A
+// refusal lowers what the plan may hold, so it is taken from the text where its clause states it,
+// with or without a model, and said back for the person to confirm. It is taken, not asked.
+describe('a refusal the text writes is never lost: it is taken from the text, with or without a model', () => {
+  const GOAL = 'I want to grow $20,000 for 3 years at low risk. ';
+  const ANSWERS: IntakeAnswers = {
+    goal: 'grow',
+    amountUsd: 20_000,
+    horizonMonths: 36,
+    risk: 'low',
+  };
+  // A reply as a model gives it for this goal; `cannotHold` and `noCredit` are what each case sets.
+  const model = (over: Record<string, unknown> = {}) =>
+    reply({ amountUsd: 20_000, horizonMonths: 36, risk: 'low', ...over });
+  const NONE = { creditTolerance: null, cannotHoldClasses: null };
+
+  it('the playground case: with no model, "I am retired so no stocks please" leaves stocks out, and the read-back says so', () => {
+    const text = `${GOAL}I am retired so no stocks please.`;
+    // Read before any answer, and not asked: what the rules reader read is asked, the refusal is not.
+    const first = intake(text, null);
+    expect(first.method).toBe('rules');
+    expect(first.limits).toEqual({ creditTolerance: null, cannotHoldClasses: ['stock'] });
+    expect(fields(first)).toEqual(['goal', 'amountUsd', 'horizonMonths', 'risk']);
+    // With the goal, the amount, the date and the risk answered: the sheet carries it.
+    const done = intake(text, null, { answers: ANSWERS });
+    expect(done.questions).toEqual([]);
+    const sheet = done.sheet as PersonalSheet;
+    expect(sheet.limits).toEqual({ cannotHold: { classes: ['stock'] } });
+    expect(sheet.mix).toBeUndefined();
+    expect(done.readBack).toEqual([
+      'You set a goal to grow with $20,000 over 3 years, at low risk.',
+      'The plan lives on Solana, the chain of your wallet.',
+      'Tokens you already hold count toward the plan.',
+      'You left out stocks.',
+      'Nothing moves toward cash as the date nears unless you ask for it.',
+      'If this is right, confirm it and the plan is made from it.',
+    ]);
+    // It is the sheet a faithful model gives for the same words.
+    const byModel = intake(text, model({ cannotHold: ['stock'] }), { answers: { risk: 'low' } });
+    expect(byModel.sheet).toEqual(sheet);
+    expect(byModel.flags.filter((f) => /cannotHold|refusal/.test(f))).toEqual([]);
+  });
+
+  it('"sem ações", "no credit" and their like are taken the same way, with no model', () => {
+    const pt = intake(
+      'Quero fazer US$ 20.000 crescer por 3 anos com risco baixo, sem ações.',
+      null,
+      {
+        answers: ANSWERS,
+        language: 'pt',
+      },
+    );
+    expect(pt.limits).toEqual({ creditTolerance: null, cannotHoldClasses: ['stock'] });
+    expect(pt.sheet?.limits).toEqual({ cannotHold: { classes: ['stock'] } });
+    expect(pt.readBack).toContain('Você deixou de fora ações.');
+    const credit = intake(`${GOAL}No credit.`, null, { answers: ANSWERS });
+    expect(credit.limits).toEqual({ creditTolerance: 'none', cannotHoldClasses: null });
+    expect(credit.sheet?.limits).toEqual({ creditTolerance: 'none' });
+    expect(credit.readBack).toContain('No tokens that lend to borrowers or trade a spread.');
+    const semCredito = intake('Quero fazer US$ 20.000 crescer por 3 anos, sem crédito.', null, {
+      answers: ANSWERS,
+      language: 'pt',
+    });
+    expect(semCredito.sheet?.limits).toEqual({ creditTolerance: 'none' });
+    expect(semCredito.readBack).toContain(
+      'Nenhum token que empresta a tomadores ou opera um spread.',
+    );
+    // Several at once, each in its own words.
+    const several = intake(`${GOAL}No stocks, no crypto and no lending.`, null, {
+      answers: ANSWERS,
+    });
+    expect(several.sheet?.limits).toEqual({
+      creditTolerance: 'none',
+      cannotHold: { classes: ['crypto', 'stock'] },
+    });
+    expect(several.readBack).toEqual(
+      expect.arrayContaining([
+        'You left out crypto and stocks.',
+        'No tokens that lend to borrowers or trade a spread.',
+      ]),
+    );
+    for (const [words, limits] of [
+      ['no stocks', { cannotHold: { classes: ['stock'] } }],
+      ['without crypto', { cannotHold: { classes: ['crypto'] } }],
+      ['zero stocks', { cannotHold: { classes: ['stock'] } }],
+      ['avoid crypto', { cannotHold: { classes: ['crypto'] } }],
+      ['no gold', { cannotHold: { classes: ['gold'] } }],
+      ['no stocks or crypto', { cannotHold: { classes: ['crypto', 'stock'] } }],
+      ['no stocks at all', { cannotHold: { classes: ['stock'] } }],
+      ['no stocks in my plan', { cannotHold: { classes: ['stock'] } }],
+      ['no exposure to crypto', { cannotHold: { classes: ['crypto'] } }],
+      ['avoid all stocks', { cannotHold: { classes: ['stock'] } }],
+      ['não quero ações', { cannotHold: { classes: ['stock'] } }],
+      ['não quero investir em ações', { cannotHold: { classes: ['stock'] } }],
+      ['não quero nada de ações', { cannotHold: { classes: ['stock'] } }],
+      ['nada de cripto', { cannotHold: { classes: ['crypto'] } }],
+      ['no lending', { creditTolerance: 'none' }],
+      ['sem empréstimos', { creditTolerance: 'none' }],
+    ] as const) {
+      const result = intake(`${GOAL}Also: ${words}.`, null, { answers: ANSWERS });
+      expect(result.sheet?.limits, words).toEqual(limits);
+    }
+    // A refusal stops at its own clause, and a negation before it in another clause leaves it stated.
+    for (const sentence of [
+      "I don't like risk and no stocks please.",
+      "I'm not rich so no stocks.",
+      'Not sure about bonds, but no stocks.',
+      'Should I avoid stocks? Yes, no stocks.',
+      'No stocks, right?',
+      'My wife and I want no stocks.',
+      'I want to have no stocks.',
+    ]) {
+      const result = intake(GOAL + sentence, null, { answers: ANSWERS });
+      expect(result.sheet?.limits, sentence).toEqual({ cannotHold: { classes: ['stock'] } });
+    }
+    // A stated holding beside a refusal of another class is still held.
+    const both = intake(
+      'I want to grow $20,000 for 3 years. No crypto, all of it in stocks.',
+      null,
+      {
+        answers: { goal: 'grow', amountUsd: 20_000, horizonMonths: 36 },
+      },
+    );
+    expect(both.sheet).toMatchObject({
+      limits: { cannotHold: { classes: ['crypto'] } },
+      mix: ALL_STOCKS,
+    });
+  });
+
+  // What the clause says of each. `negated`: the "no" is of another word, or the refusal is itself
+  // negated. `aside`: said of what the person holds, of someone else, of another time, or of another
+  // thing. `wondered`: a question or a maybe.
+  const NOT_REFUSALS: [string, 'negated' | 'aside' | 'wondered'][] = [
+    ['I have no problem with stocks.', 'negated'],
+    ['No doubt about stocks.', 'negated'],
+    ["I can't do without stocks.", 'negated'],
+    ['Not without stocks.', 'negated'],
+    ["I wouldn't say no to stocks.", 'negated'],
+    ['No limit on stocks.', 'negated'],
+    ['Não quero ficar sem ações.', 'negated'],
+    ['Sem dúvida ações.', 'negated'],
+    ['My brother holds no stocks.', 'aside'],
+    ['They say no stocks.', 'aside'],
+    ['I have no stocks yet.', 'aside'],
+    ['I currently hold no stocks.', 'aside'],
+    ['My portfolio has no stocks.', 'aside'],
+    ['I used to avoid stocks.', 'aside'],
+    ['No stock market crash scares me.', 'aside'],
+    ['I want no more stocks.', 'aside'],
+    // A refusal of a part of the class is no refusal of the class: a sheet leaves out a class.
+    ['No tech stocks.', 'aside'],
+    ['No meme stocks.', 'aside'],
+    ['No stocks from China.', 'aside'],
+    ['No stocks except Apple.', 'aside'],
+    ['Sem ações de tecnologia.', 'aside'],
+    ['No stocks? Not sure.', 'wondered'],
+    ['Maybe no stocks.', 'wondered'],
+    ['Should I avoid stocks?', 'wondered'],
+    ['No stocks, not sure.', 'wondered'],
+    ['Talvez sem ações.', 'wondered'],
+  ];
+
+  it('a refusal its clause negates, says of something else or only wonders about is not taken', () => {
+    for (const [sentence, stance] of NOT_REFUSALS) {
+      const result = intake(GOAL + sentence, null, { answers: ANSWERS });
+      expect(result.limits, sentence).toEqual(NONE);
+      expect(result.questions, sentence).toEqual([]);
+      expect(result.sheet?.limits, sentence).toBeUndefined();
+      expect((result.readBack ?? []).join(' '), sentence).not.toMatch(
+        /You left out|deixou de fora/,
+      );
+      expect(
+        result.flags.filter((f) => f.startsWith('refusal_')),
+        sentence,
+      ).toEqual([`refusal_${stance}:stock`]);
+      // How each is read, and that the words are written all the same.
+      expect(
+        refusalsSaidIn(sentence).map((r) => [r.what, r.stance]),
+        sentence,
+      ).toEqual([['stock', stance]]);
+      expect(refusalsIn(sentence).classes, sentence).toEqual(['stock']);
+      // One the person is not sure of is said back, so it is never dropped in silence. One they
+      // do not mean is not.
+      const said = result.assumptions.filter((a) => /^I did not read|^Não li/.test(a));
+      expect(said.length, sentence).toBe(stance === 'wondered' ? 1 : 0);
+    }
+    // Credit, by the same rule.
+    for (const [sentence, stance] of [
+      ['I have no credit card debt.', 'aside'],
+      ['I have no loans.', 'aside'],
+      ['No credit? Not sure.', 'wondered'],
+    ] as const) {
+      const result = intake(GOAL + sentence, null, { answers: ANSWERS });
+      expect(result.limits, sentence).toEqual(NONE);
+      expect(result.flags, sentence).toContain(`refusal_${stance}:credit`);
+    }
+    // Words that write no refusal at all: nothing is read and nothing is flagged.
+    for (const sentence of [
+      "I don't mind stocks.",
+      'No rush, stocks are fine.',
+      'No. Stocks are fine.',
+      'I have no deadline. Stocks are fine.',
+      'No more than 30% in stocks.',
+    ]) {
+      const result = intake(GOAL + sentence, null, { answers: ANSWERS });
+      expect(result.limits, sentence).toEqual(NONE);
+      expect(
+        result.flags.filter((f) => f.startsWith('refusal_')),
+        sentence,
+      ).toEqual([]);
+    }
+  });
+
+  it('a class word inside the words of a narrative rules out the narrative, and leaves out no class', () => {
+    // "No defense stocks", "no US stocks", "no crypto stocks": finding 1 reads the narrative as ruled
+    // out, so it is not asked. It is no refusal of every stock, nor of crypto.
+    for (const [sentence, classes] of [
+      ['No defense stocks.', ['stock']],
+      ['No US stocks.', ['stock']],
+      ['No crypto stocks.', ['crypto', 'stock']],
+      ['Sem ações americanas.', ['stock']],
+      ['No bitcoin miners.', ['crypto']],
+    ] as const) {
+      expect(
+        refusalsSaidIn(sentence).map((r) => [r.what, r.stance]),
+        sentence,
+      ).toEqual(classes.map((c) => [c, 'aside']));
+      expect(marketsIn(sentence), sentence).toEqual([]);
+      for (const r of [model(), null]) {
+        const result = intake(GOAL + sentence, r, { answers: ANSWERS });
+        expect(result.limits, sentence).toEqual(NONE);
+        expect(result.narratives, sentence).toEqual([]);
+        expect(result.questions, sentence).toEqual([]);
+        expect(result.sheet?.limits, sentence).toBeUndefined();
+      }
+    }
+    // "No commodities" is the class and the narrative at once: the class is left out.
+    const commodities = intake(`${GOAL}No commodities.`, null, { answers: ANSWERS });
+    expect(commodities.sheet?.limits).toEqual({ cannotHold: { classes: ['commodity'] } });
+    expect(commodities.narratives).toEqual([]);
+  });
+
+  it('a refusal the person is not sure of is said back in their words, in both languages', () => {
+    const en = intake(`${GOAL}No stocks? Not sure.`, null, { answers: ANSWERS });
+    expect(en.readBack).toEqual([
+      'You set a goal to grow with $20,000 over 3 years, at low risk.',
+      'The plan lives on Solana, the chain of your wallet.',
+      'Tokens you already hold count toward the plan.',
+      'I did not read “No stocks” as something to leave out. Say so if you want it left out.',
+      'Nothing moves toward cash as the date nears unless you ask for it.',
+      'If this is right, confirm it and the plan is made from it.',
+    ]);
+    const pt = intake('Quero fazer US$ 20.000 crescer por 3 anos. Talvez sem ações.', null, {
+      answers: ANSWERS,
+      language: 'pt',
+    });
+    expect(pt.assumptions).toContain(
+      'Não li “sem ações” como algo a deixar de fora. Diga se quiser que fique de fora.',
+    );
+    // Said the same once the person does say it: the refusal is then taken, and the line is gone.
+    const sure = intake(`${GOAL}No stocks? Not sure. Actually yes, no stocks.`, null, {
+      answers: ANSWERS,
+    });
+    expect(sure.sheet?.limits).toEqual({ cannotHold: { classes: ['stock'] } });
+    expect(sure.assumptions.join(' ')).not.toMatch(/I did not read/);
+    // On the form, the limits the person enters are theirs, over what was read.
+    const form = intake(`${GOAL}No stocks? Not sure.`, null, {
+      answers: { ...ANSWERS, limits: { cannotHold: { classes: ['stock'] } } },
+    });
+    expect(form.sheet?.limits).toEqual({ cannotHold: { classes: ['stock'] } });
+  });
+
+  it('a model reply that misses a written refusal: the text is taken, and the disagreement flagged', () => {
+    const text = `${GOAL}I am retired so no stocks please.`;
+    // The model reads the goal and gives no refusal at all.
+    const missed = intake(text, model({ cannotHold: [], noCredit: false }), {
+      answers: { risk: 'low' },
+    });
+    expect(missed.method).toBe('model');
+    expect(missed.limits).toEqual({ creditTolerance: null, cannotHoldClasses: ['stock'] });
+    expect(missed.flags).toContain('disagrees_with_rules:cannotHold:stock');
+    expect(missed.questions).toEqual([]);
+    expect(missed.sheet?.limits).toEqual({ cannotHold: { classes: ['stock'] } });
+    expect(missed.readBack).toContain('You left out stocks.');
+    // It reads one of two, or credit and not the class.
+    const half = intake(
+      `${GOAL}No stocks, no crypto and no lending.`,
+      model({ cannotHold: ['crypto'] }),
+      {
+        answers: { risk: 'low' },
+      },
+    );
+    expect(half.sheet?.limits).toEqual({
+      creditTolerance: 'none',
+      cannotHold: { classes: ['crypto', 'stock'] },
+    });
+    expect(half.flags).toEqual(
+      expect.arrayContaining([
+        'disagrees_with_rules:cannotHold:stock',
+        'disagrees_with_rules:noCredit',
+      ]),
+    );
+    expect(half.flags).not.toContain('disagrees_with_rules:cannotHold:crypto');
+    // A reply that agrees is flagged for nothing.
+    const agreed = intake(text, model({ cannotHold: ['stock'] }), { answers: { risk: 'low' } });
+    expect(agreed.flags.filter((f) => /cannotHold|noCredit|refusal_/.test(f))).toEqual([]);
+    expect(agreed.sheet?.limits).toEqual({ cannotHold: { classes: ['stock'] } });
+  });
+
+  it('the model adds none: what it gives that the text does not state is not taken, and never in silence', () => {
+    // Not written at all: dropped and flagged, as before.
+    const unwritten = intake(GOAL, model({ cannotHold: ['gold'], noCredit: true }));
+    expect(unwritten.limits).toEqual(NONE);
+    expect(unwritten.flags).toEqual(
+      expect.arrayContaining(['not_in_text:cannotHold:gold', 'not_in_text:noCredit']),
+    );
+    expect(unwritten.sheet?.limits).toBeUndefined();
+    // Written, and the clause says otherwise: the text's reading stands, and because a reader took
+    // it for a refusal it is said back for the person to settle.
+    for (const [sentence, stance, words] of [
+      ['No stocks? Not sure.', 'wondered', 'No stocks'],
+      ['My brother holds no stocks.', 'aside', 'no stocks'],
+      ["I can't do without stocks.", 'negated', 'without stocks'],
+    ] as const) {
+      const result = intake(GOAL + sentence, model({ cannotHold: ['stock'] }), {
+        answers: { risk: 'low' },
+      });
+      expect(result.limits, sentence).toEqual(NONE);
+      expect(result.sheet?.limits, sentence).toBeUndefined();
+      expect(result.flags, sentence).toContain(`refusal_${stance}:stock`);
+      expect(result.flags, sentence).not.toContain('not_in_text:cannotHold:stock');
+      expect(result.assumptions, sentence).toContain(
+        `I did not read “${words}” as something to leave out. Say so if you want it left out.`,
+      );
+    }
+    // The model's mix is never offered as the start of a question where the text refuses its class.
+    const erring = intake(`${GOAL}I am retired so no stocks please.`, model({ mix: pct(100, 0) }));
+    expect(erring.questions.find((q) => q.field === 'mix')?.read).toBeUndefined();
+    expect(erring.limits.cannotHoldClasses).toEqual(['stock']);
+  });
+
+  it('the same refusals are read whoever reads the rest: every goal of the evaluation set', () => {
+    for (const g of evalSet.goals) {
+      const expected = g.expectLimits as {
+        creditTolerance: string | null;
+        cannotHoldClasses: string[] | null;
+      };
+      // With no model the intake reads what the set expects of the model's reply.
+      const rules = runIntake({
+        text: g.text,
+        nowMonth: NOW,
+        reply: null,
+        homeChain: 'solana',
+        portfolios,
+      });
+      expect(rules.limits.cannotHoldClasses, g.id).toEqual(expected.cannotHoldClasses);
+      expect(rules.limits.creditTolerance, g.id).toEqual(expected.creditTolerance);
+      // And every refusal of the set is one its clause states.
+      const said = refusalsSaidIn(g.text).filter((r) => r.stance === 'stated');
+      const classes = [
+        ...new Set(said.flatMap((r) => (r.what === 'credit' ? [] : [r.what]))),
+      ].sort();
+      expect(classes.length > 0 ? classes : null, g.id).toEqual(expected.cannotHoldClasses);
+      expect(said.some((r) => r.what === 'credit') ? 'none' : null, g.id).toEqual(
+        expected.creditTolerance,
+      );
+    }
+    // The set holds refusals of each kind: the check above is not idle.
+    const kinds = evalSet.goals.map((g) => JSON.stringify(g.expectLimits));
+    expect(kinds.some((k) => /"stock"/.test(k))).toBe(true);
+    expect(kinds.some((k) => /"crypto"/.test(k))).toBe(true);
+    expect(kinds.some((k) => /"creditTolerance":"none"/.test(k))).toBe(true);
   });
 });
 

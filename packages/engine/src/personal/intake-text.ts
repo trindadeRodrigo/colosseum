@@ -380,27 +380,23 @@ const MAX_YIELD =
 /** Whether the text asks for the highest yield possible. */
 export const maxYieldAskedIn = (text: string): boolean => MAX_YIELD.test(text);
 
-// A refusal written in the text: "no stocks", "sem ações", "without crypto", "no credit".
+// A refusal written in the text: "no stocks", "sem ações", "without crypto", "no credit". What leads
+// into it, then at most two words ("no US stocks", "sem nenhuma ação"), then what is refused.
 const NEG = String.raw`(?:\bno\b|\bnot?\s+(?:any|in)\b|\bwithout\b|\bzero\b|\bsem\b|\bnada de\b|\bn[aã]o\s+quero\b|\bfora\b|\bexclud\w*\b|\bavoid\w*\b|\bevit\w*\b)`;
-const near = (things: string) => new RegExp(`${NEG}\\s+(?:\\p{L}+\\s+){0,2}?${things}`, 'iu');
-const REFUSALS: [HoldableClass, RegExp][] = [
-  ['stock', near(String.raw`(?:stocks?|shares|equit(?:y|ies)|a[cç][oõ]es|a[cç][aã]o)\b`)],
-  ['crypto', near(String.raw`(?:crypto\w*|cripto\w*|bitcoin|btc)\b`)],
-  ['gold', near(String.raw`(?:gold|ouro)\b`)],
-  ['etf', near(String.raw`(?:etfs?|funds|fundos)\b`)],
-  ['commodity', near(String.raw`(?:commodit(?:y|ies))\b`)],
+/** What a person can rule out: a class the plan may hold, or credit (tokens that lend or trade a spread). */
+export type Refused = HoldableClass | 'credit';
+const REFUSED: [Refused, string][] = [
+  ['stock', '(?:stocks?|shares|equit(?:y|ies)|a[cç][oõ]es|a[cç][aã]o)'],
+  ['crypto', String.raw`(?:crypto\w*|cripto\w*|bitcoin|btc)`],
+  ['gold', '(?:gold|ouro)'],
+  ['etf', '(?:etfs?|funds|fundos)'],
+  ['commodity', '(?:commodit(?:y|ies))'],
+  ['credit', '(?:credit|lending|loans?|borrowers|cr[eé]dito|empr[eé]stimos?|tomadores)'],
 ];
-const NO_CREDIT = near(
-  String.raw`(?:credit|lending|loans?|borrowers|cr[eé]dito|empr[eé]stimos?|tomadores)\b`,
-);
-
-/** The refusals the text writes: the classes it rules out, and whether it rules out credit. */
-export function refusalsIn(text: string): { classes: HoldableClass[]; noCredit: boolean } {
-  return {
-    classes: REFUSALS.filter(([, pattern]) => pattern.test(text)).map(([cls]) => cls),
-    noCredit: NO_CREDIT.test(text),
-  };
-}
+const REFUSALS: [Refused, RegExp][] = REFUSED.map(([what, things]) => [
+  what,
+  new RegExp(`(?<lead>${NEG})\\s+(?<between>(?:\\p{L}+\\s+){0,2}?)(?<cls>${things})\\b`, 'giu'),
+]);
 
 // Words that say a goal or a risk. The model's reading of either is taken only where the text holds
 // one of its words; otherwise it is a suggestion the person confirms.
@@ -898,6 +894,132 @@ function stanceIn(
  */
 export const stanceOf = (text: string, at: number, end: number): Stance =>
   stanceIn(text, at, end, holdingsIn(text), true);
+
+// ---------------------------------------------------------------------------------------------------
+// How a clause says a refusal (found by the playground run of Oct 6). "No stocks" lowers what the
+// plan may hold, so it is taken from the text where the clause states it, with or without a model: a
+// refusal that is lost gives the person what they refused. It is not taken where the clause says
+// something else: the "no" is of another word ("I have no problem with stocks"), the refusal is
+// itself negated ("I can't do without stocks", "não quero ficar sem ações"), it is said of what the
+// person holds, of someone else or of another time ("I have no stocks yet", "my brother holds no
+// stocks"), it is of a part of the class ("no US stocks", "no stocks from China"), or it is only
+// wondered about ("no stocks? not sure", "maybe no stocks").
+
+// The "no" is of this word, not of what follows: "no problem with stocks", "sem dúvida ações".
+const NO_OF_ANOTHER_WORD =
+  /(?<![\p{L}])(?:doubts?|problems?|issues?|objections?|worr(?:y|ies)|qualms|trouble|fear|limits?|caps?|restrictions?|rush|hurry|d[uú]vidas?|problemas?|medo|receio|limites?|restri[cç][aã]o|restri[cç][oõ]es|obje[cç][aã]o|obje[cç][oõ]es|pressa)(?![\p{L}])/iu;
+// A second negation inside the refusal turns it round: "não quero ficar sem ações".
+const TURNED_ROUND = /(?<![\p{L}])(?:without|sem)(?![\p{L}])/iu;
+// Between the lead and what is refused, the words that leave it a refusal of the whole class: "no
+// exposure to stocks", "sem nenhuma ação", "não quero investir em ações", "avoid all crypto"; and
+// another thing refused in the same breath ("no stocks or crypto"). Any other word makes it a refusal
+// of a part ("no US stocks", "no tech stocks", "no more stocks", "not only stocks") or another clause
+// ("sem pressa quero ações", "moro fora e quero ações"): no refusal of the class. A sheet leaves out
+// a class, not a part of one.
+const OF_THE_WHOLE = new RegExp(
+  `^(?:any|the|a|an|of|in|to|into|on|all|every|kinds?|sorts?|types?|exposure|interest|positions?|holdings?|investments?|allocation|money|nenhum[a]?s?|de|d[oa]s?|em|n[oa]s?|o|as|os|ter|comprar|investir|aplicar|colocar|nada|qualquer|tipos?|exposi[cç][aã]o|interesse|posi[cç][aã]o|investimentos?|dinheiro|tod[oa]s?|or|and|nor|e|ou|nem|${REFUSED.map(([, things]) => things).join('|')})$`,
+  'iu',
+);
+// What follows names a part of the class: "no stocks from China", "no stocks except Apple", "no
+// stocks in tech", "sem ações de tecnologia". "No stocks in my plan" and "no stocks of any kind" are
+// of the whole.
+const OF_A_KIND_AFTER =
+  /^\s+(?:from\s+(?!now|today|here|this)|except|excluding|other\s+than|like(?![\p{L}])|such\s+as|that(?![\p{L}])|which|whose|of\s+(?!any|all|every)|in\s+(?!my|our|the\s+(?:plan|portfolio|mix)|this|it(?![\p{L}])|there|here|any)|de\s+(?!nenhum|qualquer|forma|jeito|modo|maneira)|d[ao]s?\s|que(?![\p{L}])|como(?![\p{L}])|exceto|menos(?![\p{L}])|tirando)/iu;
+// What follows makes it another thing: "no stock market crash", "no gold standard", "no credit card".
+const ANOTHER_THING: Partial<Record<Refused, RegExp>> = {
+  stock:
+    /^\s+market\s+(?:crash|crashes|fall|falls|drop|drops|dip|dips|downturn|correction|bubble|news|timing|hours)(?![\p{L}])/iu,
+  gold: /^\s+(?:standard|medals?|cards?|rush)(?![\p{L}])/iu,
+  credit: /^\s+(?:cards?|scores?|history|checks?|ratings?|limits?|reports?|sharks?)(?![\p{L}])/iu,
+};
+// What the person holds, not what they refuse: "I have no stocks yet", "I hold no crypto", "my
+// portfolio has no gold", "there are no stocks in it". "I want to have no stocks" is a refusal.
+const HOLDS_NONE =
+  /(?<![\p{L}])(?:(?:i|we|eu|n[oó]s)(?:['’]ve)?(?:\s+(?:currently|already|still|now|also|really))?\s+(?:have|hold|own|got|have\s+got|had|held|owned|keep|tenho|temos|possuo|tinha)|(?:my|our|meu|minha|nosso|nossa)\s+\p{L}+\s+(?:has|holds|have|hold|had|tem|possui)|there\s+(?:is|are|was|were)|there['’]s)(?:\s+(?:got|currently|still|now|right\s+now))?\s*$/iu;
+// With "I have no ...", what is held in a class: "I have no exposure to stocks".
+const HELD_IN =
+  /^(?:(?:exposure|positions?|holdings?|money|investments?|allocation)\s+(?:to|in|on)\s*)?$/iu;
+// A hedge right after it, where the clause ends there: "no stocks maybe", "no stocks, not sure".
+const HEDGED_AFTER =
+  /^\s*,?\s*(?:maybe|perhaps|i\s+guess|i\s+suppose|not\s+sure|talvez|acho|n[aã]o\s+sei)\s*(?:$|[,.;!?\n])/iu;
+// A lead that agrees with a negation before it and does not turn it round: "não quero ter nada de
+// ações", "I don't want bonds nor stocks", "nem ações nem cripto".
+const AGREES = /^(?:nada\s+de|nenhum[a]?|nem|neither|nor)$/iu;
+
+/** A refusal the text writes: what it rules out, the words it is written in, and how its clause says it. */
+export type RefusalSaid = { what: Refused; words: string; at: number; end: number; stance: Stance };
+
+/** How the clause of a refusal written from `at` up to `end` says it. */
+function refusalStance(
+  text: string,
+  what: Refused,
+  lead: string,
+  between: string,
+  cls: string,
+  at: number,
+  end: number,
+  narratives: Span[],
+): Stance {
+  const after = text.slice(end);
+  if (NO_OF_ANOTHER_WORD.test(between) || TURNED_ROUND.test(between)) return 'negated';
+  const words = between.split(/\s+/).filter(Boolean);
+  if (!words.every((word) => OF_THE_WHOLE.test(word))) return 'aside';
+  if (ANOTHER_THING[what]?.test(after) || OF_A_KIND_AFTER.test(after)) return 'aside';
+  // Inside the words of a narrative the class word names the narrative ("no crypto stocks", "sem
+  // ações americanas"): a narrative the person rules out is not asked, and no class is left out.
+  const clsAt = end - cls.length;
+  if (narratives.some((n) => n.at <= clsAt && end <= n.end && n.end - n.at > cls.length))
+    return 'aside';
+  // Words that say the goal has no date ("no hard cap", "I don't have a term") negate no refusal.
+  const clause = clauseBefore(text, at, [], false).replace(
+    new RegExp(OPEN_ENDED.source, 'giu'),
+    ' ',
+  );
+  if (HOLDS_NONE.test(clause) && HELD_IN.test(between.trim())) return 'aside';
+  if (HELD_ALREADY.test(clause) || OF_ANOTHER.test(clause) || IN_THE_PAST.test(clause))
+    return 'aside';
+  if (WONDERS.test(clause) || ASKED_AFTER.test(after) || HEDGED_AFTER.test(after))
+    return 'wondered';
+  if (RULED_OUT.test(clause) && !AGREES.test(lead.trim().replace(/\s+/g, ' '))) return 'negated';
+  return 'stated';
+}
+
+/**
+ * Every refusal the text writes, in the order written, each with how its clause says it (`Stance`):
+ * `stated` is what the person rules out; any other is written and is no refusal of theirs, or one
+ * they are not sure of.
+ */
+export function refusalsSaidIn(text: string): RefusalSaid[] {
+  const out: RefusalSaid[] = [];
+  const narratives = narrativeSpansIn(text);
+  for (const [what, pattern] of REFUSALS)
+    for (const m of text.matchAll(pattern)) {
+      const end = m.index + m[0].length;
+      const { lead = '', between = '', cls = '' } = m.groups ?? {};
+      out.push({
+        what,
+        words: m[0].replace(/\s+/g, ' '),
+        at: m.index,
+        end,
+        stance: refusalStance(text, what, lead, between, cls, m.index, end, narratives),
+      });
+    }
+  return out.sort((a, b) => a.at - b.at || a.end - b.end);
+}
+
+/**
+ * The refusals the text writes, however their clause says them: the classes, and whether credit is
+ * among them. What the person rules out is `refusalsSaidIn`, the ones their clause states.
+ */
+export function refusalsIn(text: string): { classes: HoldableClass[]; noCredit: boolean } {
+  const said = refusalsSaidIn(text);
+  return {
+    classes: REFUSED.flatMap(([what]) =>
+      what !== 'credit' && said.some((r) => r.what === what) ? [what] : [],
+    ),
+    noCredit: said.some((r) => r.what === 'credit'),
+  };
+}
 
 // ---------------------------------------------------------------------------------------------------
 // The mix, read from the text.

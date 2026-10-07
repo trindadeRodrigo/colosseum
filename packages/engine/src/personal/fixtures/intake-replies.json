@@ -879,5 +879,33 @@
         }
       ]
     }
+  },
+  "refusals": {
+    "about": "MOCK. Goals that write a refusal (\"no stocks please\"), each with a reply written by hand in the shape the intake asks the model for. In `no-stocks-missed` the reply reads the goal and gives no `cannotHold`, as a model that misses the refusal would: the intake takes it from the text all the same, and flags the disagreement. Not recorded from a live model.",
+    "cases": {
+      "no-stocks-missed": {
+        "text": "I want to grow $20,000 for 3 years at low risk. I am retired so no stocks please.",
+        "reply": {
+          "goal": "grow",
+          "amountUsd": 20000,
+          "incomeTargetUsdMonthly": null,
+          "horizonMonths": 36,
+          "risk": "low",
+          "currency": null,
+          "chain": null,
+          "portfolios": [],
+          "language": "en",
+          "noCredit": false,
+          "cannotHold": [],
+          "unclear": [],
+          "openEnded": false,
+          "mayNeedInMonths": null,
+          "sleeves": null,
+          "markets": [],
+          "mix": null,
+          "marketFilter": null
+        }
+      }
+    }
   }
 }
