@@ -60,7 +60,7 @@ describe('a plan with more than four holdings', () => {
     for (const none of yields.slice(2)) expect(none).toBeNull();
     for (const r of rows.slice(2)) expect(r.textContent).not.toMatch(/0\.00%|—/);
     // a fifth holding takes the first colour of the ramp again
-    const parts = [...host.querySelectorAll('[data-ui="plan-bar"] button')];
+    const parts = [...host.querySelectorAll('[data-ui="plan-bar"] [data-part]')];
     expect(parts.map((p) => p.className.match(/bg-leg-\d/)?.[0])).toEqual([
       'bg-leg-1',
       'bg-leg-2',

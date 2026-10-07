@@ -173,12 +173,15 @@ describe('the allocation, as the picture', () => {
   it('draws one bar with a part per holding by its share, each with its mark, name and share', async () => {
     const host = await pane(of('grow'));
     const bar = find(host, '[data-ui="plan-bar"]');
-    const parts = [...bar.querySelectorAll('button[data-part]')];
+    const parts = [...bar.querySelectorAll('[data-part]')];
     expect(parts.map((p) => p.getAttribute('aria-label'))).toEqual([
       'SPYx, 60%',
       'GLDx, 35%',
-      'Cash (USDC), 5%',
+      null,
     ]);
+    // a part too narrow to press is drawn and is no button: 5% of a phone's bar is under 24px
+    expect(parts.map((p) => p.tagName)).toEqual(['BUTTON', 'BUTTON', 'SPAN']);
+    expect(parts[2]?.getAttribute('aria-hidden')).toBe('true');
     expect((bar.firstElementChild as HTMLElement).style.gridTemplateColumns).toBe(
       '6000fr 3500fr 500fr',
     );
@@ -207,6 +210,13 @@ describe('the allocation, as the picture', () => {
     expect(row().getAttribute('data-lit')).toBeNull();
     await fire(part, new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));
     expect(row().getAttribute('data-lit')).toBe('true');
+    await fire(part, new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
+    // and a row lights its part, which is how a part too small to press is found
+    const cash = find(host, '[data-ui="plan-rows"] [data-row^="solana:usdc"]');
+    await fire(cash, new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));
+    expect(
+      find(host, '[data-ui="plan-bar"] [data-part^="solana:usdc"]').getAttribute('data-lit'),
+    ).toBe('true');
   });
 
   it('has one line a holding, with the reason closed under "Why this share"', async () => {

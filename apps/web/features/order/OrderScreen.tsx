@@ -24,6 +24,7 @@ import { type Dictionary, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
 import { dollars } from '../goal/sheet';
+import { useVaultNow, type VaultNow } from '../portfolio/chain-vault';
 import { utc } from '../portfolio/figures';
 import { readPersonPlans, recordsOfPlans } from '../portfolio/server-plans';
 import { SharedReview } from '../shared/SharedReview';
@@ -62,7 +63,7 @@ import { legsInOrder, type NextStep, type OutcomeView, outcomeView, stepOf } fro
 import { readStoredPlan } from './plan-store';
 import { targetsOfPlan } from './plan-terms';
 import { chainReady, explorerUrlFor, onMock } from './readiness';
-import { type RunOutcome, useOrderRunner } from './run-order';
+import { planNumberOf, type RunOutcome, useOrderRunner } from './run-order';
 import { TrustNotice } from './TrustNotice';
 import { type ChainUnits, unitsFor } from './units';
 import { useStayed } from './withdraw-stayed';
@@ -217,6 +218,28 @@ export function OrderScreen({
     };
   }, [record, load, userId, id, apiFetch]);
 
+  // The vault as it stands on its chain, read from this app's own node, for the two offers our server's
+  // word is not enough for: an order that finishes another from a browser that never reviewed the
+  // first (not offered for more cash than the vault holds), and an add of money (not offered once the
+  // vault's auto-follow is on: the keeper buys with the cash). Asked only for those, once the order
+  // is known to have stopped; `unknown` where there is no node, and then nothing changes.
+  const stood = record ?? served ?? null;
+  const signer = stood ? port.active(chainFamily(stood.chain)) : null;
+  const numbered =
+    !stood || !seen
+      ? null
+      : stood.terms
+        ? stood.terms.kind === 'vault'
+          ? stood.terms.basketId
+          : null
+        : planNumberOf(seen.basketId, stood);
+  const asked =
+    short && signer && numbered !== null && (record === null || record?.terms?.kind === 'vault')
+      ? { owner: signer.address, basketId: numbered }
+      : null;
+  const read = useVaultNow(stood?.chain ?? null, stood ? onMock(port, stood.chain) : false, asked);
+  const vaultNow: VaultNow = asked ? read : { state: 'unknown' };
+
   /**
    * Makes the order that finishes `first` (the order of `from`) with the cash in its vault, held to
    * `trades`, and opens its review. `first` is what the answer is held to for owner, vault and chain:
@@ -243,6 +266,8 @@ export function OrderScreen({
     if (made.kind !== 'placed') {
       setFinishing(false);
       if (made.kind === 'unavailable') return setCanFinish(false);
+      // A step had landed and the server has settled it: the order as it now stands is the answer.
+      if (made.kind === 'refused' && made.why === 'landed') return setRound((n) => n + 1);
       if (made.kind === 'refused') {
         // Each refusal this app knows in its own words, in the language of the page; one it does
         // not, in the server's. An order that already finishes this one is linked.
@@ -253,6 +278,8 @@ export function OrderScreen({
           'nothing-left': o.finishNothing,
           'cash-short': o.finishShort,
           'not-deposited': o.finishNotDeposited,
+          unsupported: o.finishUnsupported,
+          landed: '',
           said: o.finishRefused(made.sentence),
         }[made.why];
         return setFinishFailure({ text: said, ...(made.orderId ? { orderId: made.orderId } : {}) });
@@ -449,12 +476,17 @@ export function OrderScreen({
         served && units ? targetsOfPlan(served.lines, served.chain, units.cash) : null;
       // What is left, as the server lists it, held to the plan's lines read from the server.
       const trades = units && targets ? leftOfPlan(first, targets, units.cash) : null;
+      // Not for more cash than the vault holds, as this app reads it from the chain where it can.
+      const spend = (trades ?? []).reduce((sum, trade) => sum + BigInt(trade.amountInRaw), 0n);
+      const cashShort = vaultNow.state === 'read' && spend > vaultNow.cashRaw;
       const offer =
         canFinish &&
         served &&
         trades !== null &&
         trades.length > 0 &&
-        chainFamily(served.chain) !== 'evm';
+        chainFamily(served.chain) !== 'evm' &&
+        vaultNow.state !== 'reading' &&
+        !cashShort;
       const put =
         cash && first.depositRaw !== undefined
           ? dollars(Number(first.depositRaw) / 10 ** cash.decimals, lang)
@@ -471,6 +503,11 @@ export function OrderScreen({
           <p data-ui="order-deposit-kept" className="max-w-(--tf-measure-body) text-body">
             {put ? t.order.outcome.stopped(put) : t.order.outcome.depositKept}
           </p>
+          {cashShort && trades !== null && trades.length > 0 && (
+            <p data-ui="order-cash-short" className="max-w-(--tf-measure-body) text-body-sm">
+              {t.order.outcome.finishShort}
+            </p>
+          )}
           {offer && (
             <p data-ui="order-unseen" className="max-w-(--tf-measure-body) text-body-sm">
               {t.order.outcome.finishNote} {t.order.review.unseen}
@@ -617,7 +654,11 @@ export function OrderScreen({
     (view?.next.kind === 'new-order' || halted);
   // Opened again on an order that goes no further: there is nothing of it left to sign.
   const over = stranded && halted;
-  const offerFinish = stranded && canFinish;
+  // An add into a vault whose auto-follow is on now, as the chain says: the keeper buys the vault's
+  // assets with that cash, so no order is made for it.
+  const keeperBuys =
+    stranded && terms?.kind === 'vault' && vaultNow.state === 'read' && vaultNow.autoFollow;
+  const offerFinish = stranded && canFinish && vaultNow.state !== 'reading' && !keeperBuys;
 
   // The one primary button of the view: sign, carry on, approve a step again, or nothing.
   const next: NextStep | { kind: 'first' } =
@@ -1047,6 +1088,11 @@ export function OrderScreen({
               </Link>
             )}
           </div>
+        )}
+        {keeperBuys && (
+          <p data-ui="order-keeper-buys" className="max-w-(--tf-measure-body) text-body-sm">
+            {t.order.outcome.keeperBuys}
+          </p>
         )}
         {offerFinish && (
           <p data-ui="order-finish-note" className="max-w-(--tf-measure-body) text-body-sm">

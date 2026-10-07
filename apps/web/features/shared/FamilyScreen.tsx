@@ -38,6 +38,7 @@ import { useApiFetch } from '../wallet/WalletProvider';
 import { type ChainCheck, familyIdFor, isVaultOf, useChainRecipe } from './chain-recipe';
 import { isPlatformCreator } from './platform';
 import { holdingsOf, kindShares } from './product-figures';
+import { sharedRefusal } from './refusal';
 import { Offer } from './ShelfScreen';
 import { SourceMark } from './SourceMark';
 import { placeShared, readFamily, readPortfolio, readVersions } from './shared-api';
@@ -206,6 +207,7 @@ export function FamilyScreen({ slug }: { slug: string }) {
             setChanged(true);
             setRound((n) => n + 1);
           }}
+          onReread={() => setRound((n) => n + 1)}
         />
       ))}
       {person.kind === 'ready' && <VaultsElsewhere family={family} chain={person.chain} />}
@@ -224,6 +226,7 @@ function RecipeSection({
   person,
   changed,
   onVersionChanged,
+  onReread,
 }: {
   family: SharedFamily;
   recipe: SharedRecipe;
@@ -231,6 +234,7 @@ function RecipeSection({
   /** A buy was refused for a newer version, and the page read the portfolio again. */
   changed: boolean;
   onVersionChanged: () => void;
+  onReread: () => void;
 }) {
   const t = useT();
   const lang = useLang();
@@ -474,7 +478,13 @@ function RecipeSection({
       />
 
       {person.kind === 'ready' && own && followed && !blocked && (
-        <VaultsPanel family={family} recipe={recipe} followed={followed} person={person} />
+        <VaultsPanel
+          family={family}
+          recipe={recipe}
+          followed={followed}
+          person={person}
+          onReread={onReread}
+        />
       )}
     </div>
   );
@@ -599,11 +609,14 @@ function VaultsPanel({
   recipe,
   followed,
   person,
+  onReread,
 }: {
   family: SharedFamily;
   recipe: SharedRecipe;
   followed: Followed;
   person: Extract<SharedPerson, { kind: 'ready' }>;
+  /** Reads the portfolio again from our server, and with it the chain. */
+  onReread: () => void;
 }) {
   const t = useT();
   const lang = useLang();
@@ -616,6 +629,8 @@ function VaultsPanel({
   useEffect(() => setRecords(recallOrders(person.userId)), [person.userId]);
   const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  // Our server said the portfolio is another version now: reading it again is offered.
+  const [changed, setChanged] = useState(false);
   const titleId = useId();
 
   useEffect(() => {
@@ -667,12 +682,19 @@ function VaultsPanel({
     );
     if (placed.kind !== 'placed') {
       setBusy(null);
+      // A refusal with a code is said in this app's own words for a portfolio (refusal.ts): a follow
+      // of a version that is no longer the one in effect says so, and offers to read it again.
+      const refused =
+        placed.kind === 'said' || placed.kind === 'code' ? sharedRefusal(placed, t) : null;
+      setChanged(refused?.changed === true);
       setFailure(
-        placed.kind === 'said'
-          ? t.shared.publish.failure.said(placed.error)
-          : placed.kind === 'busy'
-            ? t.shell.slowDown
-            : t.shared.publish.failure.unreachable,
+        refused
+          ? refused.sentence
+          : placed.kind === 'said'
+            ? t.shared.publish.failure.said(placed.error)
+            : placed.kind === 'busy'
+              ? t.shell.slowDown
+              : t.shared.publish.failure.unreachable,
       );
       return;
     }
@@ -798,6 +820,18 @@ function VaultsPanel({
               <StatusMark status="off-track" size={12} className="mt-1.5" />
               <span>{failure}</span>
             </p>
+          )}
+          {failure && changed && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setFailure(null);
+                setChanged(false);
+                onReread();
+              }}
+            >
+              {t.shared.refusal.reread}
+            </Button>
           )}
         </CardBody>
       )}

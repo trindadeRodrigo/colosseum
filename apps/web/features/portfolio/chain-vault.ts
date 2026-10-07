@@ -4,8 +4,10 @@ import {
   type ChainVault,
   evmVaultAddress,
   type GuardDeployment,
+  type RpcCall,
   readEvmVault,
   readSolanaVault,
+  readSolanaVaultCash,
   vaultOf,
 } from '@colosseum/sdk';
 import { useEffect, useState } from 'react';
@@ -126,4 +128,84 @@ export function useChainVault(
     };
   }, [chain, mock, owner, basketId, address]);
   return check;
+}
+
+// A vault as it stands on its chain right now, read from this app's own node and not from our server,
+// for the offer to finish a stopped buy with the cash in it (features/order/OrderScreen.tsx): whether
+// auto-follow is on (then the keeper buys with the cash, and no order is made for it), and how much
+// cash it holds (an order that finishes another in a browser that never reviewed the first is not
+// offered for more than that). The vault is the one this app derives from the person's wallet and the
+// plan's number.
+//
+// Solana only: the route that finishes a buy refuses an EVM chain. Where there is no node, no
+// deployment, or the read fails, the answer is `unknown`, and the offer stands on what it stood on
+// before: our server's refusals, and the person's review of the new order.
+
+export type VaultNow =
+  | { state: 'reading' }
+  | { state: 'unknown' }
+  | { state: 'read'; autoFollow: boolean; cashRaw: bigint };
+
+type SolanaAt = Parameters<typeof readSolanaVaultCash>[1] & Parameters<typeof readSolanaVault>[1];
+
+/** The read itself: null when the chain has no such vault. Throws when the node does not answer it. */
+export async function readVaultNow(
+  node: RpcCall,
+  deployment: SolanaAt,
+  at: { owner: string; basketId: string },
+): Promise<{ autoFollow: boolean; cashRaw: bigint } | null> {
+  const [vault, cashRaw] = await Promise.all([
+    readSolanaVault(node, deployment, at),
+    readSolanaVaultCash(node, deployment, at),
+  ]);
+  return vault ? { autoFollow: vault.autoFollow, cashRaw } : null;
+}
+
+/**
+ * How long the read may take. A node that never answers must not hide the offer for as long as its
+ * request hangs (`rpcAt` has no limit of its own): past this the answer is `unknown`.
+ */
+export const VAULT_READ_WAIT_MS = 5_000;
+
+/** Reads it once per chain, owner and number, and only when `at` is given. */
+export function useVaultNow(
+  chain: ChainId | null,
+  mock: boolean,
+  at: { owner: string; basketId: string } | null,
+): VaultNow {
+  const [now, setNow] = useState<VaultNow>({ state: 'reading' });
+  const owner = at?.owner ?? null;
+  const basketId = at?.basketId ?? null;
+  useEffect(() => {
+    let mine = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const say = (next: VaultNow) => {
+      if (mine) setNow(next);
+    };
+    const deployment = chain ? deploymentsFor(chain, mock)?.[chain] : undefined;
+    const node = chain && !mock ? chainNode(chain) : undefined;
+    if (!chain || !owner || !basketId) say({ state: 'reading' });
+    else if (deployment?.family !== 'solana' || !node) say({ state: 'unknown' });
+    else {
+      say({ state: 'reading' });
+      // Whichever comes first: the read, its failure, or the end of the wait. A late answer is not
+      // taken: the offer was already made, or not, on `unknown`.
+      let settled = false;
+      const once = (next: VaultNow) => {
+        if (settled) return;
+        settled = true;
+        say(next);
+      };
+      timer = setTimeout(() => once({ state: 'unknown' }), VAULT_READ_WAIT_MS);
+      readVaultNow(node, deployment, { owner, basketId }).then(
+        (read) => once(read ? { state: 'read', ...read } : { state: 'unknown' }),
+        () => once({ state: 'unknown' }),
+      );
+    }
+    return () => {
+      mine = false;
+      clearTimeout(timer);
+    };
+  }, [chain, mock, owner, basketId]);
+  return now;
 }

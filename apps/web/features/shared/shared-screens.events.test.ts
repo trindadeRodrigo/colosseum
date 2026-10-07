@@ -445,7 +445,9 @@ describe('a shared portfolio that changed under the buy', () => {
     const reads = () => calls.filter((c) => c.path.startsWith(`/v1/indexes/${SLUG}`));
     expect(posted()).toHaveLength(1);
     expect(changed).toHaveBeenCalledTimes(1);
-    expect(find(host, '[role="alert"]').textContent).toBe(en.buy.failure.VERSION_CHANGED);
+    // the portfolio's own sentence, never the plan's ("Build the plan again from your goal")
+    expect(find(host, '[role="alert"]').textContent).toBe(en.shared.refusal.versionChanged);
+    expect(host.textContent).not.toContain(en.buy.failure.VERSION_CHANGED);
     // the portfolio is read again, and nothing is ordered by itself however long the card is left
     expect(reads().length).toBeGreaterThan(1);
     await settle(1500);
@@ -456,6 +458,84 @@ describe('a shared portfolio that changed under the buy', () => {
     await settle(50);
     expect(posted()).toHaveLength(2);
   });
+});
+
+describe('a refusal of a shared portfolio’s buy, on the card', () => {
+  /** The buy page for $10, with our server refusing the order the card asks for. */
+  const refusedBuy = async (lang: 'en' | 'pt', refusal: () => Response) => {
+    const words = dictionary(lang);
+    const calls = api({ family: familyOf(FAMILY_ID), order: refusal, funded: true });
+    const host = await mount(withAccount(lang, createElement(FamilyBuyScreen, { slug: SLUG })));
+    for (let i = 0; i < 4; i += 1) await settle(50);
+    await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
+    await settle(400);
+    await settle(1050);
+    await settle(50);
+    return { host, words, calls };
+  };
+
+  it.each(['en', 'pt'] as const)(
+    'says that the portfolio has a new version, in its own words, and leads back to it (%s)',
+    async (lang) => {
+      const { host, words, calls } = await refusedBuy(lang, () =>
+        json({ error: 'version 2 is no longer the one in effect', code: 'VERSION_CHANGED' }, 409),
+      );
+      expect(find(host, '[role="alert"]').textContent).toBe(words.shared.refusal.versionChanged);
+      expect(host.textContent).not.toContain('no longer the one in effect');
+      expect(host.textContent).not.toContain(words.buy.failure.VERSION_CHANGED);
+      const reopen = find(host, 'a[data-ui="family-reopen"]');
+      expect([reopen.textContent, reopen.getAttribute('href')]).toEqual([
+        words.shared.refusal.reopen,
+        `/indexes/${SLUG}`,
+      ]);
+      expect(calls.filter((c) => c.path.startsWith(`/v1/indexes/${SLUG}`)).length).toBeGreaterThan(
+        1,
+      );
+    },
+  );
+
+  it.each(['en', 'pt'] as const)(
+    'says which asset can no longer be bought, and that the portfolio cannot be bought as it stands (%s)',
+    async (lang) => {
+      const { host, words } = await refusedBuy(lang, () =>
+        json({ error: 'solana:spyx cannot be bought on Solana', code: 'ASSET_NOT_ELIGIBLE' }, 422),
+      );
+      expect(find(host, '[role="alert"]').textContent).toBe(
+        words.shared.refusal.assetNamed('SPYx'),
+      );
+      expect(host.textContent).not.toContain(words.buy.failure.ASSET_NOT_ELIGIBLE);
+      expect(host.querySelector('[data-ui="family-reopen"]')).toBeNull();
+    },
+  );
+});
+
+describe('a follow our server refuses', () => {
+  it.each(['en', 'pt'] as const)(
+    'for a version that is no longer in effect: says so in its own words, and reads the portfolio again when asked (%s)',
+    async (lang) => {
+      const words = dictionary(lang);
+      const calls = api({
+        family: familyOf(FAMILY_ID),
+        vaults: [vaultOf({ address: MY_VAULT, acceptedVersion: 1 })],
+        order: () =>
+          json({ error: 'version 2 is not the one in effect', code: 'VERSION_CHANGED' }, 409),
+      });
+      const host = await mount(withAccount(lang, createElement(FamilyScreen, { slug: SLUG })));
+      for (let i = 0; i < 4; i += 1) await settle(50);
+      const prompt = find(host, '[data-ui="follow-prompt"]');
+      await click(button(prompt, words.shared.prompt.accept(2)) as HTMLElement);
+      await settle(50);
+      expect(find(host, '[role="alert"]').textContent).toBe(words.shared.refusal.versionChanged);
+      expect(host.textContent).not.toContain('not the one in effect');
+      expect(router.push).not.toHaveBeenCalled();
+      const reads = () => calls.filter((c) => c.path.startsWith(`/v1/indexes/${SLUG}`)).length;
+      const before = reads();
+      await click(button(host, words.shared.refusal.reread) as HTMLElement);
+      for (let i = 0; i < 4; i += 1) await settle(50);
+      expect(reads()).toBeGreaterThan(before);
+      expect(host.querySelector('[role="alert"]')).toBeNull();
+    },
+  );
 });
 
 describe('the trust notice on a buy the keeper may trade', () => {
