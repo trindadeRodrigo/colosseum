@@ -95,7 +95,18 @@ export type World = {
   /** The smallest line, the most with one issuer, and the most in one stock or crypto asset: cents. */
   minLine: number;
   stockCap: number;
-  /** The most cents with this token's issuer: by risk for stocks and crypto, the plan's cap for the rest. */
+  /**
+   * The most cents with one issuer at the plan's risk, whatever the plan holds with it: stocks,
+   * crypto, gold, dollar yield or a leg in another currency.
+   */
+  issuerCapAtRisk: number;
+  /** Why an issuer takes no more at the plan's risk. */
+  issuerWhyAtRisk(asset: BasketAsset): Reason;
+  /**
+   * The most cents with this token's issuer as its own classes are counted: by risk for stocks and
+   * crypto, and the plan's own cap for the rest, which counts dollar yield, gold and a leg in another
+   * currency only (gate SOLVER-CAPS). The rest are held to the cap by risk as well: `Book.issuerLimit`.
+   */
   issuerCapOf(asset: BasketAsset): number;
   /** Why an issuer takes no more, for this token's sleeve. */
   issuerWhy(asset: BasketAsset): Reason;
@@ -473,6 +484,9 @@ export function buildWorld(
     // A vault's target is at least one basis point, so a line is too, whatever the table says.
     minLine: Math.max(toCents(P.minLineUsd), Math.ceil((amount * Math.max(1, P.minLineBps)) / BPS)),
     stockCap: shareOf(amount, capStock),
+    issuerCapAtRisk: shareOf(amount, capIssuer),
+    issuerWhyAtRisk: (a) =>
+      reason('ISSUER_CAP', { capBps: capIssuer, risk: sheet.risk, issuer: a.issuer }, lang),
     issuerCapOf: (a) =>
       sleeveOfClass(a.cls) === 'growth'
         ? shareOf(amount, capIssuer)

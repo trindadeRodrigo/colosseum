@@ -359,19 +359,36 @@ describe('the limits admit the mix as placement places it (review of Oct 6, find
     expect(rules(plan)).toContain('OVERFLOW_STOCK_CAP');
   });
 
-  it('a date keeps the limits the mix takes: it moves money out of stocks whatever the risk', () => {
-    // 70% in stocks takes the limits of medium risk. A date a year out leaves 10% in stocks. The
-    // limits stay the ones the read-back stated for the mix, and the line says what the date did.
-    const plan = run(sheet({ horizonMonths: 12, mix: mix({ growthBps: 7000, cashBps: 3000 }) }));
-    expect(plan.sheet.risk).toBe('medium');
+  it('a date that moves money out of stocks leaves the plan the limits of what is left', () => {
+    // 70% in stocks takes the limits of medium risk. A date a year out leaves 10% in stocks, and the
+    // limits of low risk hold that whole: the plan takes those, and its line names the share they
+    // are taken for. This test pinned medium until the second review of Oct 6: the rule was then
+    // "the mix alone, and up from there", so a date never lowered the limits. It is now the lowest
+    // risk at which the plan holds the most, whatever moved the money.
+    const s = sheet({ horizonMonths: 12, mix: mix({ growthBps: 7000, cashBps: 3000 }) });
+    const plan = run(s);
+    expect(plan.sheet.risk).toBe('low');
     expect(heldIn(plan).growth).toBe(1000);
     expect(said(plan, 'solana:spyx').map((r) => r.rule)).toEqual(
       expect.arrayContaining(['MIX_LIMITS', 'GLIDE']),
     );
+    expect(said(plan, 'solana:spyx').find((r) => r.rule === 'MIX_LIMITS')?.params).toEqual({
+      sleeveBps: 1000,
+      risk: 'low',
+      stockCapBps: 1000,
+      issuerCapBps: 5000,
+    });
+    // The mix on its own takes medium. The plan is under it, so it says of no limit that it was raised.
+    expect(riskForMix({ ...s, rules: noGlide }, shelf, ctx)).toBe('medium');
+    expect(rules(plan)).not.toContain('MIX_LIMITS_RAISED');
+    expect(plan.flags.some((f) => f.startsWith('limits_raised:'))).toBe(false);
   });
 
-  it('the mix alone takes one risk at any amount, and it is the risk the plan takes', () => {
-    // What a read-back asks before the amount is known: the mix, the portfolios and the chain.
+  it('takes the risk of the plan as it is held, at each amount', () => {
+    // This test pinned one risk for a mix at any amount until the second review of Oct 6: the mix was
+    // tried alone at a size where no ceiling binds, and the plan went up from there. The risk is now
+    // read from the plan itself, so it follows what the plan can hold at its size. At $1,000.01 and at
+    // $10,000 the risks are the ones that test had.
     const cases: [string[], PersonalMix, RiskLevel][] = [
       [['the-seven'], mix({ growthBps: 10_000 }), 'high'],
       [[], mix({ growthBps: 7000, cashBps: 3000 }), 'medium'],
@@ -379,17 +396,262 @@ describe('the limits admit the mix as placement places it (review of Oct 6, find
       [[], mix({ growthBps: 5000, goldBps: 3000, cashBps: 2000 }), 'high'],
       [[], mix({ growthBps: 5000, dollarYieldBps: 5000 }), 'low'],
     ];
+    const RISKS: RiskLevel[] = ['low', 'medium', 'high'];
+    const at = (themes: string[], m: PersonalMix, amountUsd: number) => {
+      const s = sheet({ amountUsd, themes, rules: { useHoldings: false, glide: false }, mix: m });
+      const plan = run(s);
+      expect(riskForMix(s, shelf, ctx), `${themes} at ${amountUsd}`).toBe(plan.sheet.risk);
+      // What the plan holds in stocks under the caps of each risk, in cents.
+      const held = RISKS.map((risk) =>
+        Math.round(
+          100 *
+            (compose(s, shelf, {
+              ...ctx,
+              params: withCapsOf(PERSONAL_PARAMS, risk),
+            }).sleeves.find((x) => x.sleeve === 'growth')?.amountUsd ?? 0),
+        ),
+      );
+      return { risk: plan.sheet.risk, held };
+    };
     for (const [themes, m, risk] of cases)
-      for (const amountUsd of [10, 1000.01, 10_000, 1_000_000]) {
-        const s = sheet({
-          amountUsd,
-          themes,
-          rules: { useHoldings: false, glide: false },
-          mix: m,
-        });
-        expect(riskForMix(s, shelf, ctx), `${themes} at ${amountUsd}`).toBe(risk);
-        expect(compose(s, shelf, ctx).sheet.risk, `${themes} at ${amountUsd}`).toBe(risk);
-      }
+      for (const amountUsd of [1000.01, 10_000])
+        expect(at(themes, m, amountUsd).risk, `${themes} at ${amountUsd}`).toBe(risk);
+    // $1,000,000 all in The Seven: the ceilings of its names hold 24.32% of the plan from medium
+    // risk up, and 20% at low. Medium holds as much as high does, so medium is taken.
+    const large = at(['the-seven'], mix({ growthBps: 10_000 }), 1_000_000);
+    expect(large.held).toEqual([20_000_000, 24_320_000, 24_320_000]);
+    expect(large.risk).toBe('medium');
+    // $10: a seventh of it is under the least a line can be at any risk. Nothing is held, at the lowest.
+    const small = at(['the-seven'], mix({ growthBps: 10_000 }), 10);
+    expect(small.held).toEqual([0, 0, 0]);
+    expect(small.risk).toBe('low');
+  });
+});
+
+describe('the risk is the lowest at which the plan holds the most (review 2 of Oct 6, findings 1 and 2)', () => {
+  const tokens = new Map(shelf.assets.map((a) => [a.id, a]));
+  /** What a plan holds with one issuer, over every class but the plan's own cash, in basis points. */
+  const withIssuer = (plan: PersonalProposal, issuer: string) =>
+    plan.lines
+      .filter((l) => {
+        const a = tokens.get(l.assetId);
+        return a !== undefined && a.cls !== 'cash' && a.issuer === issuer;
+      })
+      .reduce((n, l) => n + l.weightBps, 0);
+  const limits = (plan: PersonalProposal) =>
+    allReasons(plan).find((r) => r.rule === 'MIX_LIMITS')?.params;
+  /** What this sheet holds in stocks and crypto under the caps of one risk, in basis points. */
+  const under = (s: PersonalSheet, risk: RiskLevel) =>
+    sleeveBps(
+      compose(s, shelf, { ...ctx, params: withCapsOf(PERSONAL_PARAMS, risk) }),
+      shelf,
+      'growth',
+    );
+
+  it('a portfolio held whole counts with its issuer as any stocks do: half in gold on Solana', () => {
+    // The gold token and the stock tokens of Solana have one issuer. Half in gold beside half in
+    // stocks is all of the plan with it, whether the stocks are The 500, opened, or The Seven, held
+    // whole: the limits of high risk. A portfolio held whole was booked before the gold and never
+    // counted beside it: the plan took low and said "50% with one issuer" with that issuer at 100%.
+    for (const themes of [[], ['the-seven']]) {
+      const s = sheet({ themes, rules: noGlide, mix: mix({ growthBps: 5000, goldBps: 5000 }) });
+      const plan = run(s);
+      expect(plan.sheet.risk, String(themes)).toBe('high');
+      expect(heldIn(plan)).toEqual({ growth: 5000, dollarYield: 0, gold: 5000, cash: 0 });
+      expect(withIssuer(plan, 'Backed (xStocks)')).toBe(10_000);
+      expect(limits(plan)).toMatchObject({ risk: 'high', issuerCapBps: 10_000 });
+      expect([under(s, 'low'), under(s, 'medium'), under(s, 'high')]).toEqual([0, 2000, 5000]);
+    }
+    // At the risk whose limits have the room, The Seven is still held whole.
+    expect(
+      rules(
+        run(
+          sheet({
+            themes: ['the-seven'],
+            rules: noGlide,
+            mix: mix({ growthBps: 5000, goldBps: 5000 }),
+          }),
+        ),
+      ),
+    ).toContain('FOLLOWS');
+  });
+
+  it('and so with what is set aside on Robinhood Chain, whether the portfolio is held whole or opened', () => {
+    // Half in stocks and half in cash, $300 a month for 8 months. $1,800 is set aside in SGOV, of the
+    // issuer of every stock there, so the stocks have 32% of the plan at low risk and their 50% at
+    // medium. The Seven and Sand to Server, held whole, took low with 68% at that issuer.
+    for (const themes of [[], ['the-seven'], ['sand-to-server']]) {
+      const s = sheet({
+        chains: ['robinhood'],
+        themes,
+        rules: noGlide,
+        obligations: monthly(300, 8),
+        mix: mix({ growthBps: 5000, cashBps: 5000 }),
+      });
+      const plan = run(s);
+      expect(plan.sheet.risk, String(themes)).toBe('medium');
+      expect(heldIn(plan)).toEqual({ growth: 5000, dollarYield: 1800, gold: 0, cash: 3200 });
+      expect(withIssuer(plan, 'Robinhood')).toBe(6800);
+      expect(limits(plan)).toMatchObject({ risk: 'medium', issuerCapBps: 7000 });
+      expect(under(s, 'low')).toBe(3200);
+    }
+  });
+
+  it('a cap on one asset that moves money to names with no room for it counts: Home Team, $60,000', () => {
+    // At medium risk JitoSOL is held to 20%. What is over moves to the other four names, and two of
+    // them stop at their own ceiling of $10,000: 93.32% is held, and the plan says a ceiling kept the
+    // rest out, never a cap by risk. The rule read only what a cap by risk was said to keep out, and
+    // stayed at medium. At high risk JitoSOL takes 35% and all of it is held.
+    const s = sheet({
+      amountUsd: 60_000,
+      themes: ['home-team'],
+      rules: noGlide,
+      mix: mix({ growthBps: 10_000 }),
+    });
+    const plan = run(s);
+    expect(plan.sheet.risk).toBe('high');
+    expect(heldIn(plan)).toEqual({ growth: 10_000, dollarYield: 0, gold: 0, cash: 0 });
+    expect([under(s, 'low'), under(s, 'medium'), under(s, 'high')]).toEqual([5000, 9332, 10_000]);
+    const atMedium = compose(s, shelf, { ...ctx, params: withCapsOf(PERSONAL_PARAMS, 'medium') });
+    expect(rules(atMedium)).toContain('OVERFLOW_CEILING');
+    expect(rules(atMedium)).not.toContain('OVERFLOW_STOCK_CAP');
+    expect(rules(atMedium)).not.toContain('OVERFLOW_ISSUER');
+    // At $10,000 no ceiling is in the way, and the limits of medium risk hold all of it.
+    expect(run({ ...s, amountUsd: 10_000 }).sheet.risk).toBe('medium');
+  });
+
+  it('and so does the number of lines: The Seven with Home Team, all in stocks, $5,000', () => {
+    // Twelve names and eight lines. At low risk each line holds 10% at the most and 60% is held; at
+    // medium and at high, 70%. The plan said "a plan holds at most 8 parts" and stayed at low.
+    const s = sheet({
+      amountUsd: 5000,
+      themes: ['the-seven', 'home-team'],
+      rules: noGlide,
+      mix: mix({ growthBps: 10_000 }),
+    });
+    const plan = run(s);
+    expect([under(s, 'low'), under(s, 'medium'), under(s, 'high')]).toEqual([6000, 7000, 7000]);
+    // Medium holds as much as high: the lower of the two is taken.
+    expect(plan.sheet.risk).toBe('medium');
+    expect(heldIn(plan).growth).toBe(7000);
+    expect(rules(plan)).toContain('OVERFLOW_MAX_LINES');
+  });
+
+  it('a higher risk that holds more is taken, however little more: Sand to Server, $20,000', () => {
+    // 70% in stocks on Robinhood Chain. A ceiling of $1,500 on three of the names keeps some out at
+    // any risk: 68.93% is held at medium and 69.1% at high, where NVDA may take more of the rest.
+    const s = sheet({
+      chains: ['robinhood'],
+      amountUsd: 20_000,
+      themes: ['sand-to-server'],
+      rules: noGlide,
+      mix: mix({ growthBps: 7000, cashBps: 3000 }),
+    });
+    expect([under(s, 'low'), under(s, 'medium'), under(s, 'high')]).toEqual([5000, 6893, 6910]);
+    expect(run(s).sheet.risk).toBe('high');
+  });
+});
+
+describe('where the limits are above the ones the mix takes on its own, the plan says so (review 2 of Oct 6, finding 4)', () => {
+  /** The mix on its own, as a read-back asks before the rest of the sheet is known. */
+  const alone = (s: PersonalSheet): PersonalSheet => {
+    const { obligations: _o, limits: _l, ...rest } = s;
+    return { ...rest, rules: { useHoldings: false, glide: false } };
+  };
+  const raised = (plan: PersonalProposal) =>
+    allReasons(plan).filter((r) => r.rule === 'MIX_LIMITS_RAISED');
+  const raisedFlags = (plan: PersonalProposal) =>
+    plan.flags.filter((f) => f.startsWith('limits_raised:'));
+
+  it('withdrawals: what is set aside sits with the issuer of the stocks', () => {
+    const s = sheet({
+      chains: ['robinhood'],
+      rules: noGlide,
+      obligations: monthly(300, 8),
+      mix: mix({ growthBps: 5000, cashBps: 5000 }),
+    });
+    expect(riskForMix(alone(s), shelf, ctx)).toBe('low');
+    const plan = run(s);
+    expect(plan.sheet.risk).toBe('medium');
+    expect(raisedFlags(plan)).toEqual(['limits_raised:low:withdrawals']);
+    // Said on every line of stocks and crypto, beside the limits themselves, and nowhere else.
+    for (const l of plan.lines)
+      expect(
+        l.reasons.some((r) => r.rule === 'MIX_LIMITS_RAISED'),
+        l.assetId,
+      ).toBe(l.assetId === 'robinhood:spy');
+    expect(raised(plan)[0]?.text).toBe(
+      'On its own, this mix takes the limits for low risk. Because of what is set aside for your withdrawals, the plan uses the limits one step up, for medium risk: at lower limits it would hold less in stocks and crypto.',
+    );
+    expect(raised(run({ ...s, language: 'pt' }))[0]?.text).toBe(
+      'Sozinha, esta composição usa os limites de risco baixo. Por causa de o que fica separado para os seus saques, o plano usa os limites um nível acima, de risco médio: com limites mais baixos ele teria menos em ações e cripto.',
+    );
+    // Every candidate shown takes the plan's limits, and says the same of them.
+    for (const c of candidates(s, shelf, ctx).shown) {
+      expect(violations(c.plan, shelf, ctx), c.id).toEqual([]);
+      expect(raisedFlags(c.plan), c.id).toEqual(['limits_raised:low:withdrawals']);
+    }
+  });
+
+  it('what the person holds, and what they cannot hold', () => {
+    const s = sheet({
+      themes: ['the-seven'],
+      rules: noGlide,
+      mix: mix({ growthBps: 7000, cashBps: 3000 }),
+    });
+    expect(riskForMix(alone(s), shelf, ctx)).toBe('medium');
+    expect(raised(run(s))).toEqual([]);
+    // Six of the seven already held: the plan buys the seventh alone, over medium's cap on one stock.
+    const holding = fixtureContext({
+      holdings: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA'].map((underlying) => ({
+        underlying,
+        valueUsd: 20_000,
+      })),
+    });
+    const held = run(s, holding);
+    expect(held.sheet.risk).toBe('high');
+    expect(raised(held)[0]?.params).toEqual({
+      alone: 'medium',
+      risk: 'high',
+      by: 'holdings',
+      steps: 1,
+    });
+    expect(raisedFlags(held)).toEqual(['limits_raised:medium:holdings']);
+    // Four of the seven ruled out: three names for 70%, over medium's 20% a name.
+    const without = run({
+      ...s,
+      limits: { cannotHold: { underlyings: ['TSLA', 'META', 'AMZN', 'AAPL'] } },
+    });
+    expect(without.sheet.risk).toBe('high');
+    expect(raised(without)[0]?.text).toBe(
+      'On its own, this mix takes the limits for medium risk. Because of what you cannot hold, the plan uses the limits one step up, for high risk: at lower limits it would hold less in stocks and crypto.',
+    );
+    expect(raisedFlags(without)).toEqual(['limits_raised:medium:cannotHold']);
+  });
+
+  it('says nothing where the rest of the sheet leaves the limits as they are, or lower', () => {
+    // Withdrawals the mix has the cash for, on a chain where cash and stocks have other issuers.
+    const same = run(
+      sheet({
+        rules: noGlide,
+        obligations: monthly(300, 8),
+        mix: mix({ growthBps: 7000, cashBps: 3000 }),
+      }),
+    );
+    expect(same.sheet.risk).toBe('medium');
+    expect(raised(same)).toEqual([]);
+    expect(raisedFlags(same)).toEqual([]);
+    // A date that halves the stocks: the limits of low risk hold what is left of them.
+    const dated = sheet({
+      chains: ['robinhood'],
+      horizonMonths: 36,
+      rules: { useHoldings: true, glide: true },
+      mix: mix({ growthBps: 4000, cashBps: 6000 }),
+    });
+    expect(riskForMix(alone(dated), shelf, ctx)).toBe('low');
+    const lower = run(dated);
+    expect(lower.sheet.risk).toBe('low');
+    expect(raised(lower)).toEqual([]);
   });
 });
 
@@ -415,7 +677,9 @@ describe('a mix with withdrawals (review of Oct 6, finding 2)', () => {
     ).toEqual([
       'You asked for all of it in stocks and crypto.',
       '$1,800 of the 100% you asked for in stocks and crypto is set aside for your withdrawals from October 2026 to March 2027 instead, which leaves 82% of the plan for stocks and crypto: what your withdrawals need in those months is set aside before the mix is held.',
-      'To hold 100% of the plan in stocks and crypto, the plan uses the limits for high risk: at most 35% in one stock or crypto asset, and 100% with one issuer.',
+      // The share the limits are taken for is the one the plan sets out to hold: what the sentence
+      // before it says the withdrawals leave. It said 100% until the second review of Oct 6.
+      'To hold 82% of the plan in stocks and crypto, the plan uses the limits for high risk: at most 35% in one stock or crypto asset, and 100% with one issuer.',
     ]);
     const cash = said(plan, 'solana:usdc');
     expect(cash.map((r) => r.rule)).toEqual([
@@ -545,6 +809,147 @@ describe('a mix with withdrawals (review of Oct 6, finding 2)', () => {
   });
 });
 
+describe('a floor beside what is set aside: what dollar yield is short of still adds up (the stress of Oct 7)', () => {
+  // Robinhood Chain lists one dollar-yield token, SGOV: a rate leg, which takes 40% of a plan. All in
+  // dollar yield, with a withdrawal this month and money that may be needed soon, SGOV holds what is
+  // set aside and has no room for the sleeve's own money. So the sentences of the sleeve are on no
+  // dollar-yield line: they are on the cash line, where its money stays.
+  //
+  // The measure looked for the floor's sentence on dollar-yield lines only, so it held dollar yield to
+  // the whole share of the mix; and it counted the cash part of what is set aside twice, as what
+  // dollar yield gave (`MIX_SET_ASIDE`) and again as what stays in cash (`SET_ASIDE_CASH`). The two
+  // errors cancel but for the difference between them: a stress over generated tables found plans
+  // where that is more than the rounding allowed (seeds 15, 22, 23 and 24). These are plans of the
+  // same kind with the repo's own table, where the difference is 6 to 12 points of the plan.
+  const withdrawing = (usd: number, over: Partial<PersonalSheet>) =>
+    sheet({
+      chains: ['robinhood'],
+      rules: noGlide,
+      obligations: [{ month: monthAfter(NOW, 0), amount: usd, currency: 'USD' }],
+      mix: mix({ dollarYieldBps: 10_000 }),
+      ...over,
+    });
+  const mayNeedIn = (months: number) => ({ limits: { mayNeedInMonths: months } });
+  const onCash = (plan: PersonalProposal, rule: string) =>
+    said(plan, 'robinhood:usdg').find((r) => r.rule === rule)?.params;
+
+  it('$4,500 to withdraw, money that may be needed in 3 months: three sentences on the cash line say where the other 60% is', () => {
+    const plan = run(withdrawing(4500, mayNeedIn(3)));
+    expect(heldIn(plan)).toEqual({ growth: 0, dollarYield: 4000, gold: 0, cash: 6000 });
+    // SGOV holds what is set aside, up to its cap, and says nothing of the sleeve.
+    expect(said(plan, 'robinhood:sgov').map((r) => r.rule)).toEqual([
+      'SET_ASIDE',
+      'WITHDRAWAL',
+      'MIX_SET_ASIDE',
+      'ASSET_CAP',
+      'TIER_CEILING',
+    ]);
+    // $500 of what is set aside is held as cash, out of the dollar yield asked for. 11% is the floor
+    // for money that may be needed: 20% of the 55% left once $4,500 is set aside. And SGOV has no room
+    // for the other $4,400. 5, 11 and 44 points: the 60 that dollar yield is short of.
+    expect(onCash(plan, 'MIX_SET_ASIDE')).toMatchObject({
+      sleeve: 'dollarYield',
+      usd: 500,
+      askedBps: 10_000,
+      leftBps: 9500,
+    });
+    expect(onCash(plan, 'CASH_MAY_NEED')).toEqual({ floorBps: 1100, months: 3 });
+    expect(onCash(plan, 'UNPLACED')).toEqual({ usd: 4400 });
+    // The same $500 once more, as what stays in cash: it is not another $500.
+    expect(onCash(plan, 'SET_ASIDE_CASH')).toMatchObject({ usd: 500 });
+  });
+
+  it('$4,000 to withdraw: all of it is in the rate leg, and the floor is the one thing no dollar-yield line says', () => {
+    const plan = run(withdrawing(4000, mayNeedIn(3)));
+    expect(heldIn(plan)).toEqual({ growth: 0, dollarYield: 4000, gold: 0, cash: 6000 });
+    expect(rules(plan)).not.toContain('MIX_SET_ASIDE');
+    expect(rules(plan)).not.toContain('SET_ASIDE_CASH');
+    // 20% of the 60% left is 12 points, and the other 48 have no room: 60.
+    expect(onCash(plan, 'CASH_MAY_NEED')).toEqual({ floorBps: 1200, months: 3 });
+    expect(onCash(plan, 'UNPLACED')).toEqual({ usd: 4800 });
+  });
+
+  it('the same where the date is the reason for cash, and in a plan for income', () => {
+    const dated = run(
+      withdrawing(4500, { horizonMonths: 3, rules: { useHoldings: true, glide: true } }),
+    );
+    expect(heldIn(dated)).toEqual({ growth: 0, dollarYield: 4000, gold: 0, cash: 6000 });
+    expect(onCash(dated, 'CASH_NEAR_DATE')).toEqual({ floorBps: 1100, months: 3 });
+    expect(onCash(dated, 'UNPLACED')).toEqual({ usd: 4400 });
+    const income = run(withdrawing(4500, { goal: 'income', ...mayNeedIn(3) }));
+    expect(heldIn(income)).toEqual({ growth: 0, dollarYield: 4000, gold: 0, cash: 6000 });
+  });
+});
+
+describe('what only a name’s own line says is still said where the name ends with no line (the stress of Oct 7)', () => {
+  it('a holding: $10, 60% in The Seven and 40% in gold, 60 cents of NVDA held, and NVDA says why it had less', () => {
+    // A seventh of $6 is under the least a line can be, and so is $4 of gold: the plan holds dollar
+    // yield and cash. The 60 cents of NVDA cut what the plan set out to buy of it from 86 cents to 31,
+    // and the other names and the gold had the difference between them. No line of any of them is
+    // there to say so, and the sentence went with the line: the plan said nothing of the holding, and
+    // the stocks were 24 points short of what its sentences added up to. Seed 23 of the stress found
+    // the same on a generated table, behind the plan that stopped it first.
+    const s = sheet({
+      amountUsd: 10,
+      themes: ['the-seven'],
+      rules: noGlide,
+      mix: mix({ growthBps: 6000, goldBps: 4000 }),
+    });
+    const plan = run(s, fixtureContext({ holdings: [{ underlying: 'NVDA', valueUsd: 0.6 }] }));
+    expect(heldIn(plan)).toEqual({ growth: 0, dollarYield: 5000, gold: 0, cash: 5000 });
+    expect(plan.removed.find((r) => r.ref === 'NVDA')?.reasons.map((r) => r.text)).toEqual([
+      'NVDA is left out: $0.31 is too small to be a part of your plan.',
+      'Less NVDA: you already hold $0.60 of it.',
+    ]);
+    // Without the holding the sentences add up by themselves: seven names at 86 or 85 cents.
+    const without = run(s);
+    expect(without.removed.find((r) => r.ref === 'NVDA')?.reasons.map((r) => r.rule)).toEqual([
+      'BELOW_MINIMUM',
+    ]);
+  });
+
+  it('the coverage check: a line it moves whole to cash is named, with what was moved', () => {
+    // MOCK table: the least a line can be is 5.5% of the plan, and a rate leg may hold 60% of it. On
+    // Robinhood Chain, 40% in The Seven and 60% in dollar yield, $6,000 to withdraw this month. SGOV
+    // holds all that is set aside; nothing measures it, so its sale is counted at a cost and falls $60
+    // short. That comes out of the largest stock line, which would be left under the least a line can
+    // be: all $572.80 of it goes to cash. The line is gone, and the sentence that says so was on it.
+    // Not found by the stress: it is the same loss as the holding's, and with the repo's own table no
+    // line is that near the least one where the plan has no cash to spare.
+    const table = {
+      ...PERSONAL_PARAMS,
+      minLineBps: 550,
+      capPerAssetBps: {
+        bySymbol: {},
+        byLegType: { ...PERSONAL_PARAMS.capPerAssetBps.byLegType, rate: 6000 },
+      },
+      issuerCapBps: 6000,
+    };
+    const context = fixtureContext({ params: table });
+    const s = sheet({
+      chains: ['robinhood'],
+      themes: ['the-seven'],
+      rules: noGlide,
+      obligations: [{ month: monthAfter(NOW, 0), amount: 6000, currency: 'USD' }],
+      mix: mix({ growthBps: 4000, dollarYieldBps: 6000 }),
+    });
+    const plan = run(s, context);
+    expect(plan.flags).toContain('coverage_moved');
+    expect(heldIn(plan)).toEqual({ growth: 3427, dollarYield: 6000, gold: 0, cash: 573 });
+    expect(plan.lines.some((l) => l.assetId === 'robinhood:nvda')).toBe(false);
+    expect(plan.removed.map((r) => [r.ref, r.reasons.map((x) => [x.rule, x.params])])).toEqual([
+      ['NVDA', [['COVERAGE_MOVED_UNCOUNTED', { usd: 572.8, month: '2026-10' }]]],
+    ]);
+    // With the repo's least line (0.5%) the same plan keeps the line, which says what it gave.
+    const usual = fixtureContext({ params: { ...table, minLineBps: PERSONAL_PARAMS.minLineBps } });
+    const kept = run(s, usual);
+    expect(
+      said(kept, 'robinhood:nvda').find((r) => r.rule === 'COVERAGE_MOVED_UNCOUNTED'),
+    ).toMatchObject({ params: { usd: 60, month: '2026-10' } });
+    expect(kept.removed).toEqual([]);
+  });
+});
+
 describe('a candidate that would change a share the mix states is not made', () => {
   it('only credit: Spread would hold 60% in dollar yield where the plan holds 90%', () => {
     const all = candidates(
@@ -593,6 +998,44 @@ describe('a cent of rounding is not a limit', () => {
       expect(rules(plan)).not.toContain(rule);
     expect(plan.flags).not.toContain('unplaced');
   });
+
+  it('where the mix has no cash, the odd cents stay in cash and say what they are: no limit kept them out', () => {
+    // Robinhood Chain, 60% in stocks and 40% in dollar yield: SGOV may hold 40% of a plan, so the
+    // dollar yield sits at its cap. The odd cents of the split were sent on to dollar yield, and at 240
+    // of these 300 amounts the plan said "$0.01 stays in cash: no token you can hold has room for it
+    // at this size", with the flag `unplaced` (the second review of Oct 6).
+    const at = (amountUsd: number, language: 'en' | 'pt' = 'en') =>
+      run(
+        sheet({
+          chains: ['robinhood'],
+          amountUsd,
+          language,
+          rules: noGlide,
+          mix: mix({ growthBps: 6000, dollarYieldBps: 4000 }),
+        }),
+      );
+    for (let i = 0; i < 300; i += 1) {
+      const plan = at((100_000 + i * 37) / 100);
+      expect(plan.flags, String(i)).not.toContain('unplaced');
+      for (const rule of ['UNPLACED', 'YIELD_TOO_SMALL', 'OVERFLOW_ISSUER', 'OVERFLOW_ISSUER_PLAN'])
+        expect(rules(plan), `${i} ${rule}`).not.toContain(rule);
+    }
+    const odd = at(1000.37);
+    expect(odd.lines.map((l) => [l.assetId, l.amountUsd])).toEqual([
+      ['robinhood:spy', 600.22],
+      ['robinhood:sgov', 400.14],
+      ['robinhood:usdg', 0.01],
+    ]);
+    expect(said(odd, 'robinhood:usdg').map((r) => r.text)).toEqual([
+      '$0.01 is left over once each share of your mix is written in whole cents, and stays in cash.',
+    ]);
+    expect(said(at(1000.37, 'pt'), 'robinhood:usdg').map((r) => r.text)).toEqual([
+      'US$ 0,01 sobram quando cada parcela da sua composição é escrita em centavos inteiros, e ficam em caixa.',
+    ]);
+    // Shares that come to whole cents leave nothing over, and the plan has no cash line.
+    expect(at(1000).lines.map((l) => l.assetId)).toEqual(['robinhood:spy', 'robinhood:sgov']);
+    // 303 plans made and measured: about four seconds on a busy machine, past the default limit.
+  }, 60_000);
 
   it('whatever the cents of the amount, stocks sized at their issuer’s cap spill nothing', () => {
     // 50% with one issuer at low risk, 70% at medium: the share is the cap. Amounts no ceiling binds
@@ -643,10 +1086,10 @@ describe('self-check: the measure sees what it measures (review of Oct 6, findin
       );
     };
     expect(tampered(plan, relabel('low'))).toContain(
-      'the mix alone needs the limits of medium risk, and the plan took low',
+      'the plan took the limits of low risk and holds 5666.66 in stocks and crypto, where at medium risk it holds 6000',
     );
     expect(tampered(plan, relabel('high'))).toContain(
-      'at medium risk no cap keeps stocks out of this plan, and it took high',
+      'the plan took the limits of high risk, and at medium risk it holds as much in stocks and crypto (6000 against 6000)',
     );
   });
 
@@ -666,6 +1109,105 @@ describe('self-check: the measure sees what it measures (review of Oct 6, findin
       'cash holds 5000 bps, over the 4000 of the mix, and no line of it says why',
     );
     expect(allReasons(plan).some((r) => r.rule === 'TIER_CEILING')).toBe(true);
+  });
+
+  it('the reasons of a class that holds less account for the money missing: one that is there is not enough', () => {
+    // Home Team, all in stocks, $60,000, under the caps of medium risk: the plan says $2,000 meant for
+    // KMNO and $2,000 meant for MET are kept out by their ceilings, and holds 93.32% in stocks.
+    const medium = { ...ctx, params: withCapsOf(PERSONAL_PARAMS, 'medium') };
+    const home = sheet({
+      amountUsd: 60_000,
+      themes: ['home-team'],
+      rules: noGlide,
+      mix: mix({ growthBps: 10_000 }),
+    });
+    const plan = compose(home, shelf, medium);
+    expect(violations(plan, shelf, medium)).toEqual([]);
+    expect(sleeveBps(plan, shelf, 'growth')).toBe(9332);
+    // The same plan with 15 points more moved from JitoSOL to cash, its own bookkeeping kept in step
+    // and no sentence added: the two sentences about ceilings are still there, and say $4,000.
+    const copy = structuredClone(plan);
+    const [from, to] = ['solana:jitosol', 'solana:usdc'].map((id) =>
+      copy.lines.find((l) => l.assetId === id),
+    );
+    if (!from || !to) throw new Error('no such line');
+    const [moveBps, moveUsd] = [1500, 9000];
+    from.weightBps -= moveBps;
+    from.amountUsd -= moveUsd;
+    to.weightBps += moveBps;
+    to.amountUsd += moveUsd;
+    for (const x of copy.sleeves) {
+      const sign = x.sleeve === 'growth' ? -1 : x.sleeve === 'cash' ? 1 : 0;
+      x.weightBps += sign * moveBps;
+      x.amountUsd += sign * moveUsd;
+    }
+    for (const r of copy.recipes)
+      for (const c of r.components)
+        if (c.kind === 'asset' && c.asset === 'solana:jitosol') c.weightBps -= moveBps;
+    for (const r of from.reasons)
+      if (r.rule === 'NO_RETURN_ASSUMED') r.params.lossUsd = (from.amountUsd * 2000) / 10_000;
+    copy.card.expectedReturn.lossInFallUsd -= (moveUsd * 2000) / 10_000;
+    expect(violations(copy, shelf, medium)).toContain(
+      'growth holds 7832 bps where its share is 10000, and its lines account for 668 of the 2168 missing',
+    );
+  });
+
+  it('an issuer over the cap of the plan’s risk is seen, whatever it holds of that issuer', () => {
+    // Half in stocks and 30% in gold on Solana: 80% with one issuer, at the limits of high risk. The
+    // same lines called a plan at medium risk are 10 points over what one issuer may hold there. No
+    // class alone is over a cap of its own: 50% in stocks is under medium's 70%, and 30% in gold is
+    // under the plan's 50% for dollar yield and gold.
+    const plan = run(
+      sheet({ rules: noGlide, mix: mix({ growthBps: 5000, goldBps: 3000, cashBps: 2000 }) }),
+    );
+    expect(plan.sheet.risk).toBe('high');
+    const called = tampered(plan, (copy) => {
+      copy.sheet.risk = 'medium';
+      copy.flags = copy.flags.map((f) =>
+        f.startsWith('limits_from_mix:') ? 'limits_from_mix:medium' : f,
+      );
+    });
+    expect(called).toContain(
+      'Backed (xStocks) holds 8000 of the plan, over the 7000 one issuer may hold at medium risk',
+    );
+  });
+
+  it('limits above the ones the mix takes on its own are held to their sentence and their flag', () => {
+    const plan = run(
+      sheet({
+        chains: ['robinhood'],
+        rules: noGlide,
+        obligations: monthly(300, 8),
+        mix: mix({ growthBps: 5000, cashBps: 5000 }),
+      }),
+    );
+    const silent = tampered(plan, (copy) => {
+      for (const l of copy.lines)
+        l.reasons = l.reasons.filter((r) => r.rule !== 'MIX_LIMITS_RAISED');
+      copy.flags = copy.flags.filter((f) => !f.startsWith('limits_raised:'));
+    });
+    expect(silent).toEqual(
+      expect.arrayContaining([
+        'the limits are above the ones the mix takes on its own (low risk) because of withdrawals, and the plan says []',
+        "the flag for limits above the mix's own is [], not limits_raised:low:withdrawals",
+      ]),
+    );
+    // A plan that names another cause than the one that raised them.
+    const other = tampered(plan, (copy) => {
+      for (const r of copy.lines.flatMap((l) => l.reasons))
+        if (r.rule === 'MIX_LIMITS_RAISED') r.params.by = 'holdings';
+    });
+    expect(other.some((v) => v.startsWith('the limits are above the ones the mix takes'))).toBe(
+      true,
+    );
+    // And one that says its limits were raised when they were not.
+    const plain = run(sheet({ rules: noGlide, mix: mix({ growthBps: 7000, cashBps: 3000 }) }));
+    const claimed = tampered(plain, (copy) => {
+      copy.flags = [...copy.flags, 'limits_raised:low:withdrawals'].sort();
+    });
+    expect(claimed).toContain(
+      'the plan says its limits are above the ones the mix takes on its own, and they are not: medium risk alone, medium with all of the sheet',
+    );
   });
 
   it('dollar yield and cash are measured too, each against its own share', () => {
@@ -706,6 +1248,58 @@ describe('self-check: the measure sees what it measures (review of Oct 6, findin
         'growth holds 8200 bps of the 10000 asked, and no line of it says why',
         "stocks, crypto and gold give 0 bps to what is set aside; the mix's dollar yield and cash leave 1800 to find",
       ]),
+    );
+  });
+
+  it('what is set aside and held as cash is counted once: a sentence that understates what stays in cash is seen', () => {
+    // All in dollar yield on Robinhood Chain, $4,500 to withdraw this month, money that may be needed
+    // in 12 months. SGOV holds $4,000 of what is set aside; the other $500 is in cash, out of the
+    // dollar yield asked for; the floor for cash is 2.75% (5% of the 55% left); $5,225 has no room.
+    const plan = run(
+      sheet({
+        chains: ['robinhood'],
+        rules: noGlide,
+        obligations: [{ month: monthAfter(NOW, 0), amount: 4500, currency: 'USD' }],
+        limits: { mayNeedInMonths: 12 },
+        mix: mix({ dollarYieldBps: 10_000 }),
+      }),
+    );
+    expect(allReasons(plan).find((r) => r.rule === 'UNPLACED')?.params).toEqual({ usd: 5225 });
+    // The same plan saying $5,000 has no room. Counting the $500 twice (as what dollar yield gave and
+    // as what stays in cash) made up for the $225 that no sentence then accounts for.
+    const understated = tampered(plan, (copy) => {
+      for (const r of copy.lines.flatMap((l) => l.reasons))
+        if (r.rule === 'UNPLACED') r.params.usd = 5000;
+    });
+    expect(understated).toEqual([
+      'dollarYield holds 4000 bps where its share is 9725, and its lines account for 5500 of the 5725 missing',
+    ]);
+  });
+
+  it('a floor beside withdrawals is worked out too: its sentence being there is not enough', () => {
+    // 60% stocks and 40% dollar yield on Solana, $300 a month to withdraw, the money needed in 18
+    // months. $1,800 is set aside in cash, out of the dollar yield; the date keeps 40% of the 82% left
+    // in dollar yield, which takes 10.8 points from the stocks: they hold 49.2%.
+    const plan = run(
+      sheet({
+        horizonMonths: 18,
+        rules: { useHoldings: true, glide: true },
+        obligations: monthly(300, 8),
+        mix: mix({ growthBps: 6000, dollarYieldBps: 4000 }),
+      }),
+    );
+    expect(heldIn(plan)).toEqual({ growth: 4920, dollarYield: 3280, gold: 0, cash: 1800 });
+    // Ten points more moved from the stocks to cash with no word: the sentence about the date is
+    // still on the line, and it accounts for the 10.8 points the date took and no more.
+    const moved = tampered(plan, (copy) => {
+      const stock = copy.lines.find((l) => l.assetId === 'solana:spyx');
+      const cash = copy.lines.find((l) => l.assetId === 'solana:usdc');
+      if (!stock || !cash) throw new Error('no such line');
+      stock.weightBps -= 1000;
+      cash.weightBps += 1000;
+    });
+    expect(moved).toContain(
+      'growth holds 3920 bps where its share is 4920, and its lines account for 0 of the 1000 missing',
     );
   });
 });
@@ -800,6 +1394,98 @@ describe('properties: any mix', () => {
       ),
       { numRuns: 120 },
     );
+  }, 240_000);
+
+  it('over one or two shared portfolios, held whole or opened, on each chain, with and without withdrawals and holdings', () => {
+    // The second review of Oct 6: a portfolio held whole was booked before the rest of the plan and
+    // never counted beside it, and a cap that moved money to names with no room for it was not seen.
+    // Here the three things the rule must give are read off the plans themselves, beside the measure:
+    // no issuer over the cap of the plan's risk, whatever it holds; no lower risk at which the plan
+    // holds as much in stocks and crypto; and no higher risk at which it holds more.
+    const portfolios: [ChainId, string[]][] = [
+      ['solana', ['the-seven']],
+      ['solana', ['home-team']],
+      ['solana', ['crypto-in-a-suit']],
+      ['solana', ['the-seven', 'home-team']],
+      ['solana', ['crypto-in-a-suit', 'home-team']],
+      ['solana', ['the-500', 'the-seven']],
+      ['robinhood', ['the-seven']],
+      ['robinhood', ['sand-to-server']],
+      ['robinhood', ['crypto-in-a-suit']],
+      ['robinhood', ['the-seven', 'crypto-in-a-suit']],
+      ['robinhood', ['sand-to-server', 'the-500']],
+      ['base', ['the-seven']],
+      ['base', ['chips-and-agents']],
+      ['base', ['home-team']],
+      ['base', ['the-seven', 'home-team']],
+      ['base', ['home-team', 'chips-and-agents']],
+    ];
+    const tokens = new Map(shelf.assets.map((a) => [a.id, a]));
+    const names = [
+      ...new Set(shelf.assets.filter((a) => a.cls !== 'cash').map((a) => a.underlying)),
+    ];
+    const RISKS: RiskLevel[] = ['low', 'medium', 'high'];
+    const cents = (usd: number) => Math.round(usd * 100);
+    const stocks = (plan: PersonalProposal) =>
+      cents(plan.sleeves.find((x) => x.sleeve === 'growth')?.amountUsd ?? 0);
+    let whole = 0;
+    let opened = 0;
+    fc.assert(
+      fc.property(
+        mixes,
+        fc.constantFrom(...portfolios),
+        fc.constantFrom(2000, 10_000, 60_000, 250_000),
+        withdrawals,
+        fc.array(
+          fc.record({
+            underlying: fc.constantFrom(...names),
+            valueUsd: fc.integer({ min: 100, max: 50_000 }),
+          }),
+          { maxLength: 3 },
+        ),
+        (m, [chain, themes], amountUsd, list, holdings) => {
+          const s = sheet({
+            chains: [chain],
+            themes,
+            amountUsd,
+            mix: m,
+            rules: noGlide,
+            ...(list.length > 0 ? { obligations: owed(amountUsd, list) } : {}),
+          });
+          const context = fixtureContext({ holdings });
+          const plan = compose(s, shelf, context);
+          expect(violations(plan, shelf, context)).toEqual([]);
+          if (allReasons(plan).some((r) => r.rule === 'FOLLOWS')) whole += 1;
+          if (allReasons(plan).some((r) => r.rule === 'OPENED')) opened += 1;
+          // One issuer by risk, over everything the plan holds with it but its own cash.
+          const cap = Math.floor(
+            (cents(amountUsd) * (PERSONAL_PARAMS.capPerIssuerBps[plan.sheet.risk] ?? 0)) / 10_000,
+          );
+          const withIssuer = new Map<string, number>();
+          for (const l of plan.lines) {
+            const a = tokens.get(l.assetId);
+            if (!a || a.cls === 'cash') continue;
+            withIssuer.set(a.issuer, (withIssuer.get(a.issuer) ?? 0) + cents(l.amountUsd));
+          }
+          for (const [issuer, held] of withIssuer) expect(held, issuer).toBeLessThanOrEqual(cap);
+          // The risk: the lowest at which the plan holds the most, a cent for each line aside.
+          const held = RISKS.map((risk) =>
+            stocks(compose(s, shelf, { ...context, params: withCapsOf(PERSONAL_PARAMS, risk) })),
+          );
+          const most = Math.max(...held);
+          const rounding = PERSONAL_PARAMS.maxLinesPerChain;
+          const due =
+            m.growthBps === 0 ? 'low' : RISKS[held.findIndex((c) => c + rounding >= most)];
+          expect(plan.sheet.risk).toBe(due);
+          expect(riskForMix(s, shelf, context)).toBe(due);
+          if (m.growthBps > 0) expect(stocks(plan)).toBe(held[RISKS.indexOf(plan.sheet.risk)]);
+        },
+      ),
+      { numRuns: 150 },
+    );
+    // Both ways of holding a portfolio came up.
+    expect(whole).toBeGreaterThan(5);
+    expect(opened).toBeGreaterThan(5);
   }, 240_000);
 
   it('with withdrawals, each candidate shown keeps every rule and holds the shares the plan for the mix holds', () => {
