@@ -809,6 +809,78 @@ describe('a mix with withdrawals (review of Oct 6, finding 2)', () => {
   });
 });
 
+describe('a floor beside what is set aside: what dollar yield is short of still adds up (the stress of Oct 7)', () => {
+  // Robinhood Chain lists one dollar-yield token, SGOV: a rate leg, which takes 40% of a plan. All in
+  // dollar yield, with a withdrawal this month and money that may be needed soon, SGOV holds what is
+  // set aside and has no room for the sleeve's own money. So the sentences of the sleeve are on no
+  // dollar-yield line: they are on the cash line, where its money stays.
+  //
+  // The measure looked for the floor's sentence on dollar-yield lines only, so it held dollar yield to
+  // the whole share of the mix; and it counted the cash part of what is set aside twice, as what
+  // dollar yield gave (`MIX_SET_ASIDE`) and again as what stays in cash (`SET_ASIDE_CASH`). The two
+  // errors cancel but for the difference between them: a stress over generated tables found plans
+  // where that is more than the rounding allowed (seeds 15, 22, 23 and 24). These are plans of the
+  // same kind with the repo's own table, where the difference is 6 to 12 points of the plan.
+  const withdrawing = (usd: number, over: Partial<PersonalSheet>) =>
+    sheet({
+      chains: ['robinhood'],
+      rules: noGlide,
+      obligations: [{ month: monthAfter(NOW, 0), amount: usd, currency: 'USD' }],
+      mix: mix({ dollarYieldBps: 10_000 }),
+      ...over,
+    });
+  const mayNeedIn = (months: number) => ({ limits: { mayNeedInMonths: months } });
+  const onCash = (plan: PersonalProposal, rule: string) =>
+    said(plan, 'robinhood:usdg').find((r) => r.rule === rule)?.params;
+
+  it('$4,500 to withdraw, money that may be needed in 3 months: three sentences on the cash line say where the other 60% is', () => {
+    const plan = run(withdrawing(4500, mayNeedIn(3)));
+    expect(heldIn(plan)).toEqual({ growth: 0, dollarYield: 4000, gold: 0, cash: 6000 });
+    // SGOV holds what is set aside, up to its cap, and says nothing of the sleeve.
+    expect(said(plan, 'robinhood:sgov').map((r) => r.rule)).toEqual([
+      'SET_ASIDE',
+      'WITHDRAWAL',
+      'MIX_SET_ASIDE',
+      'ASSET_CAP',
+      'TIER_CEILING',
+    ]);
+    // $500 of what is set aside is held as cash, out of the dollar yield asked for. 11% is the floor
+    // for money that may be needed: 20% of the 55% left once $4,500 is set aside. And SGOV has no room
+    // for the other $4,400. 5, 11 and 44 points: the 60 that dollar yield is short of.
+    expect(onCash(plan, 'MIX_SET_ASIDE')).toMatchObject({
+      sleeve: 'dollarYield',
+      usd: 500,
+      askedBps: 10_000,
+      leftBps: 9500,
+    });
+    expect(onCash(plan, 'CASH_MAY_NEED')).toEqual({ floorBps: 1100, months: 3 });
+    expect(onCash(plan, 'UNPLACED')).toEqual({ usd: 4400 });
+    // The same $500 once more, as what stays in cash: it is not another $500.
+    expect(onCash(plan, 'SET_ASIDE_CASH')).toMatchObject({ usd: 500 });
+  });
+
+  it('$4,000 to withdraw: all of it is in the rate leg, and the floor is the one thing no dollar-yield line says', () => {
+    const plan = run(withdrawing(4000, mayNeedIn(3)));
+    expect(heldIn(plan)).toEqual({ growth: 0, dollarYield: 4000, gold: 0, cash: 6000 });
+    expect(rules(plan)).not.toContain('MIX_SET_ASIDE');
+    expect(rules(plan)).not.toContain('SET_ASIDE_CASH');
+    // 20% of the 60% left is 12 points, and the other 48 have no room: 60.
+    expect(onCash(plan, 'CASH_MAY_NEED')).toEqual({ floorBps: 1200, months: 3 });
+    expect(onCash(plan, 'UNPLACED')).toEqual({ usd: 4800 });
+  });
+
+  it('the same where the date is the reason for cash, and in a plan for income', () => {
+    const dated = run(
+      withdrawing(4500, { horizonMonths: 3, rules: { useHoldings: true, glide: true } }),
+    );
+    expect(heldIn(dated)).toEqual({ growth: 0, dollarYield: 4000, gold: 0, cash: 6000 });
+    expect(onCash(dated, 'CASH_NEAR_DATE')).toEqual({ floorBps: 1100, months: 3 });
+    expect(onCash(dated, 'UNPLACED')).toEqual({ usd: 4400 });
+    const income = run(withdrawing(4500, { goal: 'income', ...mayNeedIn(3) }));
+    expect(heldIn(income)).toEqual({ growth: 0, dollarYield: 4000, gold: 0, cash: 6000 });
+  });
+});
+
 describe('a candidate that would change a share the mix states is not made', () => {
   it('only credit: Spread would hold 60% in dollar yield where the plan holds 90%', () => {
     const all = candidates(
@@ -1107,6 +1179,58 @@ describe('self-check: the measure sees what it measures (review of Oct 6, findin
         'growth holds 8200 bps of the 10000 asked, and no line of it says why',
         "stocks, crypto and gold give 0 bps to what is set aside; the mix's dollar yield and cash leave 1800 to find",
       ]),
+    );
+  });
+
+  it('what is set aside and held as cash is counted once: a sentence that understates what stays in cash is seen', () => {
+    // All in dollar yield on Robinhood Chain, $4,500 to withdraw this month, money that may be needed
+    // in 12 months. SGOV holds $4,000 of what is set aside; the other $500 is in cash, out of the
+    // dollar yield asked for; the floor for cash is 2.75% (5% of the 55% left); $5,225 has no room.
+    const plan = run(
+      sheet({
+        chains: ['robinhood'],
+        rules: noGlide,
+        obligations: [{ month: monthAfter(NOW, 0), amount: 4500, currency: 'USD' }],
+        limits: { mayNeedInMonths: 12 },
+        mix: mix({ dollarYieldBps: 10_000 }),
+      }),
+    );
+    expect(allReasons(plan).find((r) => r.rule === 'UNPLACED')?.params).toEqual({ usd: 5225 });
+    // The same plan saying $5,000 has no room. Counting the $500 twice (as what dollar yield gave and
+    // as what stays in cash) made up for the $225 that no sentence then accounts for.
+    const understated = tampered(plan, (copy) => {
+      for (const r of copy.lines.flatMap((l) => l.reasons))
+        if (r.rule === 'UNPLACED') r.params.usd = 5000;
+    });
+    expect(understated).toEqual([
+      'dollarYield holds 4000 bps where its share is 9725, and its lines account for 5500 of the 5725 missing',
+    ]);
+  });
+
+  it('a floor beside withdrawals is worked out too: its sentence being there is not enough', () => {
+    // 60% stocks and 40% dollar yield on Solana, $300 a month to withdraw, the money needed in 18
+    // months. $1,800 is set aside in cash, out of the dollar yield; the date keeps 40% of the 82% left
+    // in dollar yield, which takes 10.8 points from the stocks: they hold 49.2%.
+    const plan = run(
+      sheet({
+        horizonMonths: 18,
+        rules: { useHoldings: true, glide: true },
+        obligations: monthly(300, 8),
+        mix: mix({ growthBps: 6000, dollarYieldBps: 4000 }),
+      }),
+    );
+    expect(heldIn(plan)).toEqual({ growth: 4920, dollarYield: 3280, gold: 0, cash: 1800 });
+    // Ten points more moved from the stocks to cash with no word: the sentence about the date is
+    // still on the line, and it accounts for the 10.8 points the date took and no more.
+    const moved = tampered(plan, (copy) => {
+      const stock = copy.lines.find((l) => l.assetId === 'solana:spyx');
+      const cash = copy.lines.find((l) => l.assetId === 'solana:usdc');
+      if (!stock || !cash) throw new Error('no such line');
+      stock.weightBps -= 1000;
+      cash.weightBps += 1000;
+    });
+    expect(moved).toContain(
+      'growth holds 3920 bps where its share is 4920, and its lines account for 0 of the 1000 missing',
     );
   });
 });
