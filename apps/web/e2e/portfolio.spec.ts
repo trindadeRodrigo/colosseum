@@ -78,9 +78,9 @@ test.describe('the portfolio section on the stub', () => {
     // the card's one link opens the plan's own page, inside the section, still signed in
     await grow.getByRole('link', { name: w.overview.card.open }).click();
     await expect(page).toHaveURL(new RegExp(`/portfolio/plan/solana/${GROW}$`));
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(w.plan.title);
+    // the page is headed by the goal its card stated (e2e/portfolio-plan.spec.ts has the rest)
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Grow $2,000 over 36 months.');
     await expect(page.locator('#portfolio-nav [aria-current="page"]')).toHaveCount(0);
-    await check(page, 'a plan’s page, not built yet');
   });
 
   test('the methodology: every line of the rule, plain text, the disclaimer once, axe clean', async ({
