@@ -1213,7 +1213,7 @@ The roll-up states the share of the plan that is measured.
 | Web | Vercel Hobby, one fixed origin | Terms say non-commercial (section 17) |
 | API | Render free web service | Sleeps after 15 idle minutes and takes about a minute to wake. UptimeRobot's free plan pings `/health` every 5 minutes **[C 12]** |
 | MCP | Render, its own web service (gate `MCP-TOOLS`) | Stateless; calls the API through the SDK, with no key of its own (`apps/mcp/README.md`) |
-| Postgres | Supabase free | 500 MB. The free direct connection is IPv6 only; use the shared pooler in session mode, port 5432 **[C 12]**. Data API off |
+| Postgres | Supabase free | 500 MB. The free direct connection is IPv6 only; use the shared pooler in session mode, port 5432 **[C 12]**. The client's pool is set from the environment (`packages/db/src/pool.ts`): `DB_POOL_MAX`, and `DB_PGBOUNCER=transaction` for a pooler in transaction mode (port 6543), where the driver prepares no statements. The API's locks are transaction-scoped, so they hold in either mode. Data API off |
 | Keeper | `keeper --loop`, run locally while testing; a small VM at deploy | A gas-only key, kept away from coding agents. It only has to work Mon to Fri, 14:30 to 20:00 UTC |
 | EVM collector | An hourly loop on the same machine | No chain keys; its own database role |
 | Solana collectors | Rodrigo's Mac | Unchanged |
