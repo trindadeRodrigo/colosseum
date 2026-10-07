@@ -137,7 +137,8 @@ describe('the conversation, turn by turn', () => {
       ['person', `${en.invest.you}: ${en.goal.examples.list[1]}`],
       [
         'app',
-        `${en.invest.me}${en.invest.say.understood('Protect it, $50,000, 18 months, and Low risk')}${en.invest.say.ready}`,
+        // what was understood, the next step, and the reply that takes it, right under it
+        `${en.invest.me}${en.invest.say.understood('Protect it, $50,000, 18 months, and Low risk')}${en.invest.say.ready}${en.invest.replies.build}`,
       ],
     ]);
     // the page's own example: no reader is asked, and no plan is built before the person says so
@@ -227,6 +228,185 @@ describe('the conversation, turn by turn', () => {
     expect(turns(host).at(-1)?.[1]).toContain(en.invest.say.incomeSkipped);
     expect(fact(host, 'income').textContent).toContain(en.invest.facts.noIncome);
     expect(replies(host)).toEqual([en.invest.replies.build]);
+  });
+});
+
+describe('once the goal is whole: the next step is said, and is right there (Thom, Oct 7)', () => {
+  const INCOME = '$80,000 for $300 a month of income, 5 years, low risk';
+
+  it('ends the reply with the next step, with the way to take it in the thread and at the foot of the facts, also while the sign-in service is still loading', async () => {
+    const server = api();
+    // a visitor whose wallet library has not settled: they can still talk and see a plan
+    portStore.set(fakePort({ status: 'loading' }));
+    const host = await screen();
+    await say(host, INCOME);
+    const last = turns(host).at(-1)?.[1] ?? '';
+    expect(last).toContain(
+      en.invest.say.understood('Earn income, $80,000, $300 a month, 5 years, and Low risk'),
+    );
+    expect(last).toContain(en.invest.say.ready);
+    // in the thread: one primary, under the question
+    const inThread = find(host, '[data-ui="invest-turns"] [data-ui="invest-replies"] button');
+    expect(inThread.textContent).toBe(en.invest.replies.build);
+    expect(inThread.getAttribute('data-variant')).toBe('primary');
+    // and at the foot of the facts, with a quiet word that no account is needed
+    const foot = find(pane(host), '[data-ui="pane-build"]');
+    expect(find(foot, 'button').textContent).toBe(en.invest.facts.build);
+    expect(foot.textContent).toContain(en.invest.facts.noAccount);
+    expect(server.to(PROPOSE_PATH)).toEqual([]);
+    await click(find(foot, 'button'));
+    await settle();
+    await settle();
+    expect(server.to(PROPOSE_PATH)).toHaveLength(1);
+    expect(pane(host).getAttribute('data-state')).toBe('plan');
+    // built: the way to build is gone from both places
+    expect(pane(host).querySelector('[data-ui="pane-build"]')).toBeNull();
+  });
+
+  it.each(['yes', 'ok', 'go', 'so?', 'build', 'sim', 'Yes.'])(
+    'builds when the person types "%s"',
+    async (word) => {
+      const server = api();
+      const host = await screen();
+      await say(host, INCOME);
+      await say(host, word);
+      await settle();
+      expect(server.to(PROPOSE_PATH)).toHaveLength(1);
+      expect(
+        turns(host).some(([who, text]) => who === 'person' && text === `${en.invest.you}: ${word}`),
+      ).toBe(true);
+      expect(pane(host).getAttribute('data-state')).toBe('plan');
+    },
+  );
+
+  it('says no account is needed only to someone who is not signed in', async () => {
+    api({ person });
+    portStore.set(signedInPort(EMBEDDED, { userId: USER }));
+    const host = await screen();
+    await settle();
+    await say(host, INCOME);
+    const foot = find(pane(host), '[data-ui="pane-build"]');
+    expect(foot.textContent).not.toContain(en.invest.facts.noAccount);
+  });
+});
+
+describe('words that change nothing are answered in context (Thom, Oct 7)', () => {
+  const INCOME = '$80,000 for $300 a month of income, 5 years, low risk';
+  const NOISE = [
+    'what is the weather like',
+    'hmm',
+    'you are useless',
+    '<b>hi</b>',
+    'tell me a joke',
+  ];
+
+  it('says what is held and the next step, and never asks for the whole goal again', async () => {
+    const server = api();
+    const host = await screen();
+    await say(host, INCOME);
+    for (const noise of NOISE) {
+      await say(host, noise);
+      const last = turns(host).at(-1)?.[1] ?? '';
+      expect(last, noise).toContain(
+        en.invest.say.held('Earn income, $80,000, $300 a month, 5 years, and Low risk'),
+      );
+      expect(last, noise).toContain(en.invest.say.ready);
+      expect(last, noise).not.toContain(en.invest.say.notUnderstood);
+      // nothing typed is echoed into a sentence of ours
+      expect(last, noise).not.toContain(noise);
+      expect(replies(host)).toEqual([en.invest.replies.build]);
+    }
+    // the reader was not asked again, and nothing was built
+    expect(server.to('/goals')).toEqual([]);
+    expect(server.to(PROPOSE_PATH)).toEqual([]);
+    expect(fact(host, 'amount').textContent).toContain('$80,000');
+  });
+
+  it('with the plan built, says the plan stands and how to change it, and builds nothing again', async () => {
+    const server = api();
+    const host = await screen();
+    await say(host, INCOME);
+    await say(host, 'ok');
+    await settle();
+    expect(server.to(PROPOSE_PATH)).toHaveLength(1);
+    await say(host, 'is that a lot?');
+    await settle();
+    const last = turns(host).at(-1)?.[1] ?? '';
+    expect(last).toContain(en.invest.say.heldBuilt);
+    expect(last).not.toContain(en.invest.say.notUnderstood);
+    expect(server.to(PROPOSE_PATH)).toHaveLength(1);
+    expect(pane(host).getAttribute('data-state')).toBe('plan');
+  });
+
+  it('with a question open, asks it again with its replies', async () => {
+    api();
+    const host = await screen();
+    await say(host, 'Grow $40,000');
+    await say(host, 'whatever you think');
+    const last = turns(host).at(-1)?.[1] ?? '';
+    expect(last).toContain(en.invest.say.unfit.horizon);
+    expect(last).toContain(en.invest.ask.horizon);
+    expect(last).not.toContain(en.invest.say.notUnderstood);
+    expect(replies(host)).toEqual(['1 year', '3 years', '5 years', '10 years']);
+  });
+});
+
+describe('a tap on a fact (Thom, Oct 7)', () => {
+  const INCOME = '$80,000 for $300 a month of income, 5 years, low risk';
+
+  it('reads naturally as the person’s turn, asks its question, and offers the choices of a closed set', async () => {
+    api();
+    const host = await screen();
+    await say(host, INCOME);
+    await click(find(fact(host, 'goal'), 'button'));
+    await settle();
+    expect(turns(host).at(-2)).toEqual([
+      'person',
+      `${en.invest.you}: ${en.invest.facts.changeSay.goal}`,
+    ]);
+    expect(turns(host).at(-1)?.[1]).toContain(en.invest.ask.goal);
+    expect(replies(host)).toEqual(['Grow it', 'Earn income', 'Protect it']);
+    // the facts are named in plain words
+    expect(fact(host, 'goal').textContent).toContain(en.invest.facts.goal);
+    expect(en.invest.facts.goal).toBe('What it’s for');
+    // words that are not one of the choices: the choices again, never the whole-goal error
+    await say(host, 'bananas');
+    const last = turns(host).at(-1)?.[1] ?? '';
+    expect(last).toContain(en.invest.say.unfit.goal);
+    expect(last).not.toContain(en.invest.say.notUnderstood);
+    expect(replies(host)).toEqual(['Grow it', 'Earn income', 'Protect it']);
+    await answer(host, 'Protect it');
+    expect(fact(host, 'goal').textContent).toContain('Protect it');
+  });
+
+  it('takes a typed answer for an amount or a time, with a few to press as well', async () => {
+    api();
+    const host = await screen();
+    await say(host, INCOME);
+    await click(find(fact(host, 'amount'), 'button'));
+    await settle();
+    expect(turns(host).at(-2)?.[1]).toContain(en.invest.facts.changeSay.amount);
+    expect(turns(host).at(-1)?.[1]).toContain(en.invest.ask.amount);
+    await say(host, '120,000');
+    expect(fact(host, 'amount').textContent).toContain('$120,000');
+  });
+
+  it('lays the facts out with no empty cell, and says each tap in Portuguese too', async () => {
+    api();
+    const pt = dictionary('pt');
+    const host = await screen('pt');
+    await say(host, 'US$ 80.000 para ter US$ 300 por mês de renda, 5 anos, risco baixo');
+    // five facts: as many cells as facts, and none a filler
+    const cells = [...pane(host).querySelectorAll('[data-ui="pane-facts"] li')];
+    expect(cells).toHaveLength(5);
+    expect(cells.every((li) => li.querySelector('button') !== null)).toBe(true);
+    await click(find(fact(host, 'risk'), 'button'));
+    await settle();
+    expect(turns(host).at(-2)).toEqual([
+      'person',
+      `${pt.invest.you}: ${pt.invest.facts.changeSay.risk}`,
+    ]);
+    expect(replies(host)).toEqual(Object.values(pt.goal.options.risk));
   });
 });
 

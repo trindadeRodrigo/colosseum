@@ -29,7 +29,8 @@ export type Sheet = {
 
 /** What the person sends: their own words, or an answer to the fact that was asked. */
 export type Send =
-  | { kind: 'text'; text: string }
+  /** `asked`: the question that is open on the screen, where it is one the person reopened. */
+  | { kind: 'text'; text: string; asked?: Fact | null }
   | { kind: 'answer'; fact: Fact; value: string }
   /** A tap on a fact in the plan pane: the person wants to change it. */
   | { kind: 'reopen'; fact: Fact };
@@ -40,6 +41,11 @@ export type Say =
   | { key: 'understood' }
   /** The words said nothing this app could read into the sheet. */
   | { key: 'notUnderstood' }
+  /**
+   * Words that change nothing while a goal is held (a question, small talk, anything off the
+   * subject): what is held is said back, with what can be done next. Never the whole goal asked again.
+   */
+  | { key: 'held' }
   /** The fact was set by the answer. */
   | { key: 'set'; fact: Fact }
   /** The reader could not be reached, or could not read the text. */
@@ -63,6 +69,16 @@ export type Reply = {
 export interface Conversation {
   /** A turn: what the person sent, against what was known. */
   turn(input: Send, known: Sheet | null): Promise<Reply>;
+}
+
+/**
+ * "Yes", "ok", "go", "build", "sim": the person's go-ahead once every fact is known. Only these few
+ * words, alone; anything longer is read as words about the goal.
+ */
+export function isGoAhead(text: string): boolean {
+  return /^(y|yes|yep|yeah|ok|okay|k|go|go ahead|so|and|then|next|sure|do it|please|build|build it|build my plan|build the plan|s|sim|pode|pode sim|vai|bora|claro|isso|monta|montar|monte|e ai|e aí|então)[\s.!?…]*$/i.test(
+    text.trim(),
+  );
 }
 
 /** The quick replies of each question, as values the sheet takes. The screen has the words. */
@@ -262,7 +278,9 @@ export function readerConversation(
       // Words after the first: an answer to the open question, or facts said in passing ("make it
       // five years, low risk"). Words that say none are not sent to the reader again: it would start
       // the goal over.
-      const open = openFacts(known)[0];
+      // The question the words answer: the one the person reopened, else the first still open.
+      const reopened = input.asked ?? undefined;
+      const open = reopened ?? openFacts(known)[0];
       const words = fieldsOfWords(preRead(text));
       const answered = open ? typedAnswer(open, text, lang) : null;
       const said: Partial<SheetFields> = {
@@ -272,8 +290,10 @@ export function readerConversation(
       if (Object.keys(said).length === 0)
         return reply(
           known,
-          [{ key: open ? 'unfit' : 'notUnderstood', fact: open ?? 'goal' }],
+          [open ? { key: 'unfit', fact: open } : { key: 'held' }],
           chain,
+          // a reopened fact stays the question until it is answered
+          reopened,
         );
       const fields = { ...known.fields, ...said };
       if (fields.goal !== 'income') fields.income = '';

@@ -673,15 +673,20 @@ export const en = {
         'I couldn’t read a goal in that. Say how much, for how long, and what it’s for.',
       set: (label: string, value: string) => `${label}: ${value}.`,
       incomeSkipped: 'No set amount a month, then.',
-      ready: 'That’s all I need. Nothing is bought when I build the plan.',
+      ready: 'That’s all I need. Shall I build your plan? Nothing is bought when I do.',
+      /** Words that changed nothing while a goal is held: what is held, then what can be done. */
+      held: (facts: string) => `I still have: ${facts}.`,
+      heldBuilt:
+        'Your plan is built from that. Tap a limit to change it, or tell me what to change.',
+      heldOpen: 'I still need one more thing.',
       building: 'Building your plan from these limits…',
       built: 'The plan is ready. Tap any limit to change it and I build it again.',
       unfit: {
-        goal: 'Choose one: grow it, earn income, or protect it.',
+        goal: 'I can do income, growth or protecting it. Which one?',
         amount: 'I need an amount in dollars, from $10 to $1,000,000.',
         income: 'I need an amount in dollars a month, or no set amount.',
         horizon: 'I need a time frame, from 1 month to 40 years.',
-        risk: 'Choose one: low, medium or high.',
+        risk: 'I can do low, medium or high risk. Which one?',
       },
       signIn: 'Sign in to invest. Your goal and this plan stay here.',
     },
@@ -698,18 +703,30 @@ export const en = {
       years: (n: number) => (n === 1 ? '1 year' : `${n} years`),
       aMonth: (amount: string) => `${amount} a month`,
       noIncome: 'No set amount',
-      build: 'Build my plan',
+      build: 'Yes, build it',
     },
     facts: {
       title: 'Your goal',
-      goal: 'For',
+      goal: 'What it’s for',
       amount: 'Amount',
       income: 'Income a month',
-      horizon: 'Time',
+      horizon: 'For how long',
       risk: 'Risk',
       open: 'Not said yet',
       noIncome: 'No set amount',
-      change: (fact: string) => `Change ${fact}`.trim(),
+      /** Before a fact's name, for a screen reader: the fact is a button. */
+      change: 'Change',
+      /** What the person is taken to have said by tapping a fact. */
+      changeSay: {
+        goal: 'Change what it’s for',
+        amount: 'Change the amount',
+        income: 'Change the income a month',
+        horizon: 'Change how long',
+        risk: 'Change the risk',
+      },
+      /** At the foot of the facts, once every one is known. */
+      build: 'Build my plan',
+      noAccount: 'Building and seeing the plan needs no account.',
     },
     pane: {
       label: 'Your plan',

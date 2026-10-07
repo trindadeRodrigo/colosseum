@@ -11,6 +11,7 @@ import { LatticeStatus } from '../../components/ui/Lattice';
 import { type Dictionary, type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
+import { FIRST_CHAIN } from '../account/chain-choice';
 import { SlowSignIn } from '../account/SlowSignIn';
 import { type BuildOutcome, buildPlan, PERSONALIZE_PATH, PROPOSE_PATH } from '../goal/build-plan';
 import { GOAL_DRAFT, GOAL_HANDOFF } from '../goal/draft';
@@ -25,6 +26,7 @@ import {
   type Conversation,
   FACTS,
   type Fact,
+  isGoAhead,
   QUICK,
   type Reply,
   readerConversation,
@@ -98,7 +100,11 @@ export function InvestScreen() {
   const lang = useLang();
   const port = useWalletPort();
   const apiFetch = useApiFetch();
-  const { account, chain, slow, retry } = useAccount();
+  const { account, chain: accountChain, slow, retry } = useAccount();
+  // The chain a plan is built on: the person's, or the one a visitor is looking at. Someone not known
+  // to be signed in always has one, also while the wallet library is still loading: a visitor can
+  // talk and see a plan whatever the sign-in service is doing.
+  const chain = accountChain ?? (port.userId ? null : FIRST_CHAIN);
   const w = t.invest;
   const [turns, setTurns] = useState<Turn[]>([]);
   const [sheet, setSheet] = useState<Sheet | null>(null);
@@ -201,6 +207,8 @@ export function InvestScreen() {
   /** One turn: what the person sent, then what the conversation answers. */
   async function post(input: Send, words: string, from: Sheet | null = sheet, sure = confirmed) {
     if (reading) return;
+    // "yes", "ok", "build": the go-ahead, once every fact is known and no plan was asked for yet
+    if (input.kind === 'text' && toConfirm && isGoAhead(input.text)) return confirm(words);
     said(words);
     setReading(true);
     let reply: Reply;
@@ -209,13 +217,16 @@ export function InvestScreen() {
     } finally {
       setReading(false);
     }
+    // Words that changed nothing build nothing again.
+    const changed = !reply.say.some((x) => x.key === 'held' || x.key === 'unfit');
     setSheet(reply.sheet);
     // The limits on the page are no longer the ones a plan was built for.
-    wanted.current += 1;
+    if (changed) wanted.current += 1;
     if (!reply.valid) setBuild({ kind: 'idle' });
-    const rebuild = reply.valid !== null && sure;
+    const rebuild = reply.valid !== null && sure && changed;
     say({
-      say: reply.say.filter((s) => !(rebuild && s.key === 'ready')),
+      // once a plan was asked for, "shall I build it?" is not asked again
+      say: reply.say.filter((s) => !(sure && s.key === 'ready')),
       fields: reply.sheet.fields,
       ask: reply.ask,
       retry: false,
@@ -223,9 +234,9 @@ export function InvestScreen() {
     if (rebuild && reply.valid) void buildFrom(reply.valid, signedIn);
   }
 
-  function confirm() {
+  function confirm(words: string = w.replies.build) {
     if (!valid) return;
-    said(w.replies.build);
+    said(words);
     setConfirmed(true);
     void buildFrom(valid, signedIn);
   }
@@ -404,6 +415,8 @@ export function InvestScreen() {
         return at ? w.say.understood(saidBack(at, t, lang)) : '';
       case 'notUnderstood':
         return w.say.notUnderstood;
+      case 'held':
+        return at ? w.say.held(saidBack(at, t, lang)) : '';
       case 'set':
         return s.fact === 'income' && !known(at, 'income')
           ? w.say.incomeSkipped
@@ -500,7 +513,45 @@ export function InvestScreen() {
                     {line(s, turn.fields)}
                   </p>
                 ))}
+                {/* Words that changed nothing: what can be done next is said, in context. */}
+                {turn.say.some((x) => x.key === 'held') &&
+                  !turn.say.some((x) => x.key === 'ready') &&
+                  !turn.ask && (
+                    <p className="text-body">
+                      {plan ? w.say.heldBuilt : valid ? w.say.ready : w.say.heldOpen}
+                    </p>
+                  )}
                 {turn.ask && <p className="text-body font-medium">{w.ask[turn.ask]}</p>}
+                {/* The replies of the turn that is open, right under it: one press answers. */}
+                {turn === open && !busy && (turn.ask || toConfirm || (turn.retry && valid)) && (
+                  <div data-ui="invest-replies" className="mt-1 flex flex-wrap gap-2">
+                    {turn.ask &&
+                      replies(turn.ask).map((r) => (
+                        <Button
+                          key={r.value}
+                          variant="chip"
+                          onClick={() =>
+                            post(
+                              { kind: 'answer', fact: turn.ask as Fact, value: r.value },
+                              r.label,
+                            )
+                          }
+                        >
+                          {r.label}
+                        </Button>
+                      ))}
+                    {toConfirm && !turn.ask && (
+                      <Button variant="primary" onClick={() => confirm()}>
+                        {w.replies.build}
+                      </Button>
+                    )}
+                    {turn.retry && valid && !toConfirm && (
+                      <Button variant="secondary" onClick={() => buildFrom(valid, signedIn)}>
+                        {w.failure.again}
+                      </Button>
+                    )}
+                  </div>
+                )}
               </li>
             ),
           )}
@@ -512,33 +563,6 @@ export function InvestScreen() {
         </ol>
 
         {/* The quick replies of the question that is open: one press answers it. */}
-        {!busy && (open?.ask || toConfirm || (open?.retry && valid)) && (
-          <div data-ui="invest-replies" className="flex flex-wrap gap-2">
-            {open?.ask &&
-              replies(open.ask).map((r) => (
-                <Button
-                  key={r.value}
-                  variant="chip"
-                  onClick={() =>
-                    post({ kind: 'answer', fact: open.ask as Fact, value: r.value }, r.label)
-                  }
-                >
-                  {r.label}
-                </Button>
-              ))}
-            {toConfirm && (
-              <Button variant="primary" onClick={confirm}>
-                {w.replies.build}
-              </Button>
-            )}
-            {open?.retry && valid && !toConfirm && (
-              <Button variant="secondary" onClick={() => buildFrom(valid, signedIn)}>
-                {w.failure.again}
-              </Button>
-            )}
-          </div>
-        )}
-
         <Composer
           label={w.box}
           labelHidden
@@ -546,7 +570,7 @@ export function InvestScreen() {
           onChange={setText}
           onSubmit={(typed) => {
             setText('');
-            void post({ kind: 'text', text: typed }, typed.trim());
+            void post({ kind: 'text', text: typed, asked: asking }, typed.trim());
           }}
           placeholder={turns.length === 0 ? t.goal.composer.placeholder : w.placeholder}
           maxLength={GOAL_TEXT.max}
@@ -616,7 +640,9 @@ export function InvestScreen() {
             fields={fields}
             skipped={sheet?.skipped ?? []}
             disabled={busy || investing}
-            onChange={(fact) => post({ kind: 'reopen', fact }, w.facts.change(w.facts[fact]))}
+            onChange={(fact) => post({ kind: 'reopen', fact }, w.facts.changeSay[fact])}
+            build={toConfirm && !busy ? () => confirm() : null}
+            visitor={!signedIn}
           />
         )}
         {build.kind === 'building' && <LatticeStatus label={w.pane.building} />}
@@ -698,11 +724,17 @@ function Facts({
   skipped,
   disabled,
   onChange,
+  build,
+  visitor,
 }: {
   fields: SheetFields;
   skipped: readonly Fact[];
   disabled: boolean;
   onChange: (fact: Fact) => void;
+  /** Every fact is known and no plan was asked for yet: the way to ask is here too. */
+  build: (() => void) | null;
+  /** Not signed in: said once, quietly, that this needs no account. */
+  visitor: boolean;
 }) {
   const t = useT();
   const lang = useLang();
@@ -711,7 +743,8 @@ function Facts({
   return (
     <section data-ui="pane-facts" aria-label={w.title} className="flex flex-col gap-2">
       <h2 className="text-[0.8125rem]/5 font-medium">{w.title}</h2>
-      <ul className="grid grid-cols-2 gap-px border border-border bg-border sm:grid-cols-4">
+      {/* As many cells as there are facts, in rows that end cleanly: an odd one out takes the row. */}
+      <ul className="grid grid-cols-2 gap-px border border-border bg-border sm:grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))]">
         {shown.map((fact) => {
           const set = known(fields, fact);
           const value = set
@@ -720,7 +753,12 @@ function Facts({
               ? w.noIncome
               : w.open;
           return (
-            <li key={fact} data-fact={fact} data-set={set} className="bg-card">
+            <li
+              key={fact}
+              data-fact={fact}
+              data-set={set}
+              className="bg-card max-sm:last:odd:col-span-2"
+            >
               <button
                 type="button"
                 aria-disabled={disabled || undefined}
@@ -730,7 +768,7 @@ function Facts({
                 className="flex h-full w-full flex-col items-start gap-0.5 px-3 py-2 text-left outline-none hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
               >
                 <span className="text-caption text-muted-foreground">
-                  <span className="sr-only">{w.change('')} </span>
+                  <span className="sr-only">{w.change} </span>
                   {w[fact]}
                 </span>
                 <span
@@ -747,6 +785,14 @@ function Facts({
           );
         })}
       </ul>
+      {build && (
+        <div data-ui="pane-build" className="mt-2 flex flex-col items-start gap-1.5">
+          <Button variant="secondary" onClick={build}>
+            {w.build}
+          </Button>
+          {visitor && <p className="text-caption text-muted-foreground">{w.noAccount}</p>}
+        </div>
+      )}
     </section>
   );
 }

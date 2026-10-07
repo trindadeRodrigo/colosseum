@@ -5,6 +5,7 @@ import { json } from '../wallet/test/fake-port';
 import {
   FACTS,
   fitAnswer,
+  isGoAhead,
   openFacts,
   QUICK,
   readerConversation,
@@ -160,6 +161,40 @@ describe('the turns after', () => {
     ).sheet;
     expect(validOf(whole, null)).toBeNull();
     expect(validOf(whole, 'solana')).not.toBeNull();
+  });
+});
+
+describe('words that change nothing', () => {
+  it('are answered as held once a goal is known, and as not understood only before one is', async () => {
+    const whole = (
+      await talk().turn({ kind: 'text', text: en.goal.examples.list[0] as string }, null)
+    ).sheet;
+    const api = reader();
+    const reply = await talk(api).turn({ kind: 'text', text: 'what is the weather like' }, whole);
+    expect(reply.say.map((s) => s.key)).toEqual(['held', 'ready']);
+    expect(reply.sheet).toEqual(whole);
+    expect(api).not.toHaveBeenCalled();
+    const first = await talk().turn({ kind: 'text', text: 'hello there' }, null);
+    expect(first.say.map((s) => s.key)).toEqual(['notUnderstood']);
+  });
+
+  it('knows the few words that are a go-ahead, alone, in both languages', () => {
+    for (const word of [
+      'yes',
+      'Yes.',
+      'ok',
+      'OK!',
+      'go',
+      'so?',
+      'build',
+      'build it',
+      'sim',
+      'pode',
+      'bora',
+    ])
+      expect(isGoAhead(word), word).toBe(true);
+    for (const words of ['yes but make it five years', 'no', 'grow', 'ok $50,000', ''])
+      expect(isGoAhead(words), words).toBe(false);
   });
 });
 
