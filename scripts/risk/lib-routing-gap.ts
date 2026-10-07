@@ -1,5 +1,5 @@
 import { ROUTE_CHUNKS, type RouteLeg, type RoutePool, routeTrade } from '@colosseum/risk';
-import { type BuiltSplit, type SplitCapture, twoHopWholeFor } from './lib-split';
+import { type BuiltSplit, readWholeIn, type SplitCapture, twoHopWholeFor } from './lib-split';
 
 // PLAN-UNIVERSE RU.11 — the router's own gap to Jupiter (`pnpm risk:routing-gap --router`): each stored Jupiter quote
 // against `routeTrade` on the pools of the capture nearest in time, once with one hop and once with two. Both routes
@@ -226,6 +226,7 @@ export type GapSkipped = {
     | 'asset_not_in_capture'
     | 'asset_outside_the_capture_selection'
     | 'two_hop_pools_not_read'
+    | 'asset_pools_not_read_whole'
     | 'side_not_sell_or_buy'
     | 'quote_has_no_amount'
     | 'our_route_returns_nothing';
@@ -300,6 +301,10 @@ export function gapOf(
   // nothing: the two-hop route of this pair was not measured. A via token that is not tracked is the rule, and stays.
   if (built.notRouted.some((n) => n.assetMint === q.assetMint && n.reason !== 'via_not_tracked'))
     return { skipped: 'two_hop_pools_not_read', asset: q.asset };
+  // One of the stock's own dollar or SOL pools came back without an array or its fee config: it is still routed, as
+  // the snapshot always has, with depth or a fee it does not have. That is no figure to set against Jupiter.
+  if (!readWholeIn(capture, a.pools))
+    return { skipped: 'asset_pools_not_read_whole', asset: q.asset };
   if (q.side !== 'sell' && q.side !== 'buy')
     return { skipped: 'side_not_sell_or_buy', asset: q.asset };
   const sell = q.side === 'sell';

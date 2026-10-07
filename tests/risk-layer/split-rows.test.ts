@@ -549,6 +549,64 @@ describe('what one run reads', () => {
   });
 });
 
+describe('a stock-to-stock pool that does not decode', () => {
+  it('does not stop the read: its fee config is not asked for, and the pool is listed when the pools are built', async () => {
+    const pair = cap.twoHopPools.find((p) => p.venue === 'raydium_clmm');
+    if (!pair) throw new Error('the fixture has no Raydium stock-to-stock pool');
+    const frozen = frozenReader();
+    const cut = (keys: string[]) =>
+      frozen.read(keys).then((r) => {
+        const a = r.accounts.get(pair.address);
+        // the account comes back cut short: its decoder throws
+        if (a) r.accounts.set(pair.address, { ...a, data: a.data.slice(0, 40) });
+        return r;
+      });
+    const sel = selectSplitPools(registryPools, { twoHop: true, tracked: new Set(cap.tracked) });
+    const live = await readSplitCapture(
+      sel,
+      cacheChildren,
+      { twoHop: true, tracked: cap.tracked, trackedSource: null, registry: cap.registry },
+      {
+        read: cut,
+        solUsd: async () => cap.solUsd,
+        now: () => new Date(cap.fetchedAt),
+        rpcCalls: () => frozen.asked.length,
+      },
+    );
+    // every other account is there, and the unchanged rows are the ones the run always wrote
+    const b = buildSplit(live);
+    expect(b.failures.length).toBe(1);
+    expect(b.failures[0]).toMatch(new RegExp(`^${pair.address}: `));
+    expect(b.notRouted.filter((n) => n.pool === pair.address).map((n) => n.reason)).toEqual([
+      'pool_not_built',
+      'pool_not_built',
+    ]);
+    expect(oneHopRows(b, live).rows.map((r) => `${JSON.stringify(r)}\n`)).toEqual(old.lines);
+    // a dollar pool that does not decode still stops the read, as it always has
+    const direct = cap.direct.find((p) => p.venue === 'raydium_clmm');
+    if (!direct) throw new Error('the fixture has no Raydium dollar pool');
+    const frozen2 = frozenReader();
+    await expect(
+      readSplitCapture(
+        sel,
+        cacheChildren,
+        { twoHop: true, tracked: cap.tracked, trackedSource: null, registry: cap.registry },
+        {
+          read: (keys) =>
+            frozen2.read(keys).then((r) => {
+              const a = r.accounts.get(direct.address);
+              if (a) r.accounts.set(direct.address, { ...a, data: a.data.slice(0, 40) });
+              return r;
+            }),
+          solUsd: async () => cap.solUsd,
+          now: () => new Date(cap.fetchedAt),
+          rpcCalls: () => frozen2.asked.length,
+        },
+      ),
+    ).rejects.toThrow();
+  });
+});
+
 describe('a capture seen as a one-hop run', () => {
   it('holds nothing of the stock-to-stock pools, and keeps the read as it was made', () => {
     expect(one.twoHop).toBe(false);

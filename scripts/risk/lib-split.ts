@@ -154,11 +154,20 @@ export async function readSplitCapture(
   const calls0 = deps.rpcCalls();
   const pools = [...sel.direct, ...sel.twoHop];
   const heads = await deps.read(pools.map((p) => p.address));
+  // A stock-to-stock pool whose account does not decode is listed when the pools are built: it must not stop the
+  // read before the rows every reader depends on. A dollar or SOL pool that does not decode throws, as it always has.
+  const stockPairs = new Set(sel.twoHop.map((p) => p.address));
   const cfgKeys = pools
     .filter((p) => p.venue === 'raydium_clmm')
     .map((p) => {
       const h = heads.accounts.get(p.address)?.data;
-      return h ? decodeClmmPool(h).ammConfig : null;
+      if (!h) return null;
+      if (!stockPairs.has(p.address)) return decodeClmmPool(h).ammConfig;
+      try {
+        return decodeClmmPool(h).ammConfig;
+      } catch {
+        return null;
+      }
     })
     .filter((k): k is string => !!k);
   const children: Record<string, string[]> = {};
@@ -286,6 +295,22 @@ const simFromCapture = (c: SplitCapture, p: RegPool, head: Uint8Array): BuiltPoo
 };
 
 /**
+ * Whether every one of these dollar and SOL pools was read whole in the capture: its tick or bin arrays and, for a
+ * Raydium CLMM pool, its fee config. A pool read with a gap is still built and still in the `split-0.1` rows, as it
+ * always was; this is what decides that its stock is no second hop, and that a comparison with Jupiter leaves it out.
+ * Only the capture's own pools are judged: every pool `buildSplit` builds is one of them.
+ */
+export function readWholeIn(c: SplitCapture, pools: readonly RoutePool[]): boolean {
+  const row = new Map(c.direct.map((p) => [p.address, p]));
+  return pools.every((rp) => {
+    const p = row.get(rp.pool);
+    if (!p) return true;
+    const head = captureBytes(c, rp.pool);
+    return !!head && readGap(c, p, head) === null;
+  });
+}
+
+/**
  * One capture as router inputs: no I/O, no clock, no environment.
  *
  * The dollar and SOL pools are built as the snapshot has built them since `split-0.1`: same order, same failures,
@@ -360,17 +385,11 @@ export function buildSplit(c: SplitCapture): BuiltSplit {
   const tracked = new Set(c.tracked);
   // A tracked stock is a second hop only when every pool built for it above was read whole. The pools themselves are
   // not touched: this decides who may be a via token, nothing else. (Their accounts decoded above, so nothing throws.)
-  const row = new Map(c.direct.map((p) => [p.address, p]));
-  const readWhole = (rp: RoutePool) => {
-    const p = row.get(rp.pool);
-    const head = captureBytes(c, rp.pool);
-    return !!p && !!head && readGap(c, p, head) === null;
-  };
   const viaWithGap = new Set<string>();
   for (const mint of c.tracked) {
     const own = byAsset.get(mint)?.pools;
     if (!own?.length) continue;
-    if (own.every(readWhole)) via.set(mint, own);
+    if (readWholeIn(c, own)) via.set(mint, own);
     else viaWithGap.add(mint);
   }
   for (const p of c.twoHopPools) {
@@ -565,7 +584,11 @@ export type TwoHopRowOut = {
   legs: RouteLeg[];
   viaTrades: ViaTrade[] | null;
   oneHop: { outUsd: number; costPct: number; poolsUsed: number };
-  /** Basis points of the size that two hops save: positive when the two-hop route is cheaper. */
+  /**
+   * Basis points of the size that two hops save: positive when the two-hop route is cheaper. At a size that empties
+   * every dollar and SOL pool (most stocks at $1,000,000 and above) it is not liquidity: a chunk no pool can fill
+   * stops being charged to a dollar pool, and the figure rises.
+   */
   gainBp: number;
   solUsd: number | null;
   source: string;

@@ -318,6 +318,22 @@ describe('the frozen quotes against the frozen pools', () => {
     expect(isGap(gapOf(qqq, untracked, u))).toBe(true);
   });
 
+  it('a stock whose own dollar pool was read with a hole is not set against Jupiter', () => {
+    const qqq = fixtureQuote('QQQx', 'sell', 100000);
+    // QQQx's largest dollar pool comes back without its tick arrays: it is still built, as one range with no end
+    const pool = [...whole.direct]
+      .filter((p) => p.assetSymbol === 'QQQx' && p.venue === 'raydium_clmm')
+      .sort((x, y) => y.tvlUsd - x.tvlUsd)[0];
+    if (!pool) throw new Error('the fixture has no Raydium dollar pool of QQQx');
+    const holed: SplitCapture = { ...whole, children: { ...whole.children, [pool.address]: [] } };
+    const b = buildSplit(holed);
+    expect(b.failures).toEqual([]);
+    expect(b.byAsset.get(qqq.assetMint)?.pools.some((p) => p.pool === pool.address)).toBe(true);
+    expect(gapOf(qqq, holed, b)).toEqual({ skipped: 'asset_pools_not_read_whole', asset: 'QQQx' });
+    // the same quote on the capture as it was read is compared
+    expect(isGap(gapOf(qqq, whole, built))).toBe(true);
+  });
+
   it('reads the selection by the capture’s own symbol for the mint, not by the name on the quote', () => {
     const spy = fixtureQuote('SPYx', 'sell', 1000);
     const qqq = fixtureQuote('QQQx', 'sell', 1000);
