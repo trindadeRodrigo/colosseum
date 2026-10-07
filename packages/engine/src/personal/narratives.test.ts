@@ -374,9 +374,11 @@ describe('the words of a narrative, read by code', () => {
     expect(
       marketsIn('invest in chip makers', ['Chips & Agents', 'Makers']).map((m) => m.market),
     ).toEqual(['semiconductors']);
-    const named = intake('Invest $2,000 in semiconductors for 5 years', reply(), {
-      portfolios: [...portfolios, { slug: 'semis', name: 'Semiconductors' }],
-    });
+    const named = intake(
+      'Invest $2,000 in semiconductors for 5 years',
+      reply({ markets: ['semiconductors'] }),
+      { portfolios: [...portfolios, { slug: 'semis', name: 'Semiconductors' }] },
+    );
     expect(named.narratives.map((n) => [n.id, n.kind, n.slug])).toEqual([
       ['semiconductors', 'label', 'semiconductors'],
     ]);
@@ -852,13 +854,14 @@ describe('a narrative reads to a shared portfolio, a curated label, a filter, or
   });
 
   it('a filter matches only what the attributes write as the same value', () => {
-    const wrong = intake('Invest $2,000 in defense stocks for 5 years', reply(), {
+    const defense = reply({ markets: ['defense'] });
+    const wrong = intake('Invest $2,000 in defense stocks for 5 years', defense, {
       // A caller that answers with another value than the one asked for is not believed.
       matchOf: () => ({ value: 'Airlines', listed: 9 }),
     });
     expect(wrong.narratives[0]?.kind).toBe('none');
     expect(wrong.flags).toContain('filter_no_match:defense');
-    const none = intake('Invest $2,000 in defense stocks for 5 years', reply(), {
+    const none = intake('Invest $2,000 in defense stocks for 5 years', defense, {
       matchOf: () => null,
     });
     expect(none.narratives[0]?.kind).toBe('none');
@@ -879,9 +882,9 @@ describe('a narrative reads to a shared portfolio, a curated label, a filter, or
       [...LABELS].sort((a, b) => a.name.pt.localeCompare(b.name.pt)),
     ];
     for (const [text, answers] of texts) {
-      const said = orders.map((labels) =>
-        JSON.stringify(intake(text, reply(), { labels, answers })),
-      );
+      // The reply names the markets the text asks for, as a model does (with one, both readers).
+      const r = reply({ markets: marketsIn(text).map((m) => m.market) });
+      const said = orders.map((labels) => JSON.stringify(intake(text, r, { labels, answers })));
       expect(new Set(said).size, text).toBe(1);
       expect(JSON.parse(said[0] as string).sheet, text).not.toBeNull();
     }
@@ -1159,16 +1162,30 @@ describe('a market the lists have no word for, named by the model as a filter (M
     expect(free.narratives).toEqual([]);
     expect(free.flags.filter((f) => f.includes('marketFilter'))).toEqual([]);
     expect(fields(free)).not.toContain('mix');
-    // A narrative of the fixed lists is read all the same.
-    const fixed = intake('Invest $2,000 in semiconductors for 5 years', null, {
-      answers: { goal: 'grow', amountUsd: 2000, horizonMonths: 60 },
-    });
+    // A narrative of the fixed lists is read all the same. With no model it is asked once, with the
+    // share the text gives it as the form's start, and never taken (the second review, Oct 7).
+    const answers: IntakeAnswers = { goal: 'grow', amountUsd: 2000, horizonMonths: 60 };
+    const fixed = intake('Invest $2,000 in semiconductors for 5 years', null, { answers });
     expect(fixed.method).toBe('rules');
     expect(fixed.narratives.map((n) => [n.id, n.kind, n.slug])).toEqual([
       ['semiconductors', 'label', 'semiconductors'],
     ]);
-    expect(fixed.questions).toEqual([]);
-    expect(fixed.sheet?.sleeves).toEqual([theme('semiconductors')]);
+    const whole = { growthBps: WHOLE, dollarYieldBps: 0, goldBps: 0, cashBps: 0 };
+    expect(fixed.questions).toEqual([
+      {
+        field: 'mix',
+        template: 'marketShare',
+        text: 'How much of the $2,000 for semiconductors?',
+        read: whole,
+      },
+    ]);
+    expect(fixed.flags).toContain('from_rules:market');
+    expect(fixed.sheet).toBeNull();
+    const held = intake('Invest $2,000 in semiconductors for 5 years', null, {
+      answers: { ...answers, mix: whole },
+    });
+    expect(held.questions).toEqual([]);
+    expect(held.sheet?.sleeves).toEqual([theme('semiconductors')]);
   });
 
   it('a market the model names that the text has no word for is asked; one the text rules out is dropped', () => {
@@ -1342,10 +1359,12 @@ describe('the share of a theme, and the risk', () => {
   });
 
   it('several themes whose shares are not all written: the split is asked once, never the risk', () => {
+    // The question names the themes, in the person's words (the second review, Oct 7): until then
+    // it was the split between a safe part and a part that seeks a return, which names neither.
     const SPLIT = {
       field: 'sleeves',
-      template: 'sleeves',
-      text: 'How do you want to split the money: how much kept safe and easy to take out, and how much to seek a return?',
+      template: 'themeShares',
+      text: 'How do you want to split the money between semiconductors and AI?',
     };
     const r = reply({ markets: ['semiconductors', 'ai'] });
     // Sums that come to more than the money.
@@ -1553,7 +1572,10 @@ describe('a mix and sleeves are never combined by guessing: asked once instead',
 
   it('a theme beside a mix the text states that says another share: how much, once', () => {
     const text = 'Invest $2,000 in semiconductors for 5 years, 70% stocks and 30% cash';
-    const asked = intake(text, reply({ markets: ['semiconductors'] }));
+    // The replies read the mix the text states, as a model does: with one, a mix needs both readers
+    // (the second review, Oct 7). One the model does not read is not seen at all (the last case).
+    const mix = { growthPct: 70, dollarYieldPct: 0, goldPct: 0, cashPct: 30, creditPct: null };
+    const asked = intake(text, reply({ markets: ['semiconductors'], mix }));
     expect(asked.questions).toEqual([
       { field: 'mix', template: 'marketShare', text: 'How much of the $2,000 for semiconductors?' },
     ]);
@@ -1561,7 +1583,7 @@ describe('a mix and sleeves are never combined by guessing: asked once instead',
     expect(asked.flags).not.toContain('risk_from_mix');
     expect(asked.assumptions.filter((s) => /limits for/.test(s))).toEqual([]);
     expect(asked.sheet).toBeNull();
-    const answered = intake(text, reply({ markets: ['semiconductors'] }), {
+    const answered = intake(text, reply({ markets: ['semiconductors'], mix }), {
       answers: { mix: { growthBps: 7000, dollarYieldBps: 0, goldBps: 0, cashBps: 3000 } },
     });
     expect(answered.questions).toEqual([]);
@@ -1569,7 +1591,7 @@ describe('a mix and sleeves are never combined by guessing: asked once instead',
     expect(answered.sheet?.mix).toBeUndefined();
     // Answered as a split that holds the theme: the split is what is held, and the mix the text
     // states beside it is not applied.
-    const bySleeves = intake(text, reply({ markets: ['semiconductors'] }), {
+    const bySleeves = intake(text, reply({ markets: ['semiconductors'], mix }), {
       answers: { sleeves: [theme('semiconductors', 7000), safe(3000)] },
     });
     expect(bySleeves.questions).toEqual([]);
@@ -1580,14 +1602,14 @@ describe('a mix and sleeves are never combined by guessing: asked once instead',
     // Two themes beside such a mix: only a split can say each share, so the split is asked.
     const two = intake(
       'Invest $2,000 in semiconductors and AI for 5 years, 70% stocks and 30% cash',
-      reply({ markets: ['semiconductors', 'ai'] }),
+      reply({ markets: ['semiconductors', 'ai'], mix }),
     );
     expect(fields(two)).toEqual(['sleeves']);
     expect(two.flags).toEqual(expect.arrayContaining(['theme_beside_mix', 'theme_shares_unclear']));
     expect(two.sheet).toBeNull();
     const twoAnswered = intake(
       'Invest $2,000 in semiconductors and AI for 5 years, 70% stocks and 30% cash',
-      reply({ markets: ['semiconductors', 'ai'] }),
+      reply({ markets: ['semiconductors', 'ai'], mix }),
       { answers: { sleeves: [theme('semiconductors', 4000), theme('ai', 3000), safe(3000)] } },
     );
     expect(twoAnswered.questions).toEqual([]);
@@ -1597,6 +1619,14 @@ describe('a mix and sleeves are never combined by guessing: asked once instead',
       safe(3000),
     ]);
     expect(twoAnswered.sheet?.mix).toBeUndefined();
+    // A mix the model does not read is not seen, and its percents are no split either: the theme
+    // is held by the share the text gives it, and nothing is asked of the mix.
+    const unread = intake(text, reply({ markets: ['semiconductors'] }));
+    expect(unread.flags).toContain('text_only:mix');
+    expect(unread.flags).not.toContain('theme_beside_mix');
+    expect(unread.questions).toEqual([]);
+    expect(unread.sheet?.sleeves).toEqual([theme('semiconductors')]);
+    expect(unread.sheet?.mix).toBeUndefined();
   });
 
   it('a mix that says the same as the theme is no second mechanism: the sleeves are made', () => {
@@ -1656,7 +1686,13 @@ describe('a theme on a goal of income or to protect (gate PROTECT-NO-STOCKS)', (
     // To protect, with a matched theme: the same, and nothing is said to be matched.
     const protect = intake(
       'Protect $10,000 for 2 years at low risk, in defense stocks',
-      reply({ goal: 'protect', amountUsd: 10_000, horizonMonths: 24, risk: 'low' }),
+      reply({
+        goal: 'protect',
+        amountUsd: 10_000,
+        horizonMonths: 24,
+        risk: 'low',
+        markets: ['defense'],
+      }),
       // The rules parser reads this goal and risk another way, so both are confirmed by the person.
       { answers: { goal: 'protect', risk: 'low' } },
     );
@@ -2203,7 +2239,7 @@ describe('whatever the text, the shelf and the answers', () => {
     { growthBps: WHOLE, dollarYieldBps: 0, goldBps: 0, cashBps: 0 },
   ];
 
-  it('never throws, never holds what the shelf has not, never a mix with sleeves, never asks the risk with a share, never holds or asks what the chain has nothing for, never loses a refusal', () => {
+  it('never throws, never holds what the shelf has not, never a mix with sleeves, never asks the risk with a share, never holds or asks what the chain has nothing for, never loses a refusal, never takes a holding one reader alone read', () => {
     let state = 20_261_006;
     const next = () => {
       state = (state * 1_103_515_245 + 12_345) % 2_147_483_648;
@@ -2215,6 +2251,9 @@ describe('whatever the text, the shelf and the answers', () => {
     let noneOnly = 0;
     let otherRisk = 0;
     let refusals = 0;
+    let withdrawn = 0;
+    let textOnly = 0;
+    let fromRules = 0;
     for (let run = 0; run < 400; run += 1) {
       const opener = pick(openers);
       const words = [pick(named), pick(named)].slice(0, Math.floor(next() * 3));
@@ -2235,13 +2274,29 @@ describe('whatever the text, the shelf and the answers', () => {
           Object.entries(ATTRIBUTES).some(
             ([key, m]) => m.listed > 0 && matchedSlug(filterOf(key, m.value)) === slug,
           ));
+      // What a faithful reader names: the markets the text asks for and the mix it states. The
+      // replies name them most of the time, and sometimes do not, or name a mix the text has not:
+      // with a model a holding needs both readers (the second review, Oct 7).
+      const stated = mixIn(text)?.mix;
       const r =
         next() < 0.7
           ? reply({
               ...opener.reply,
+              markets: pick([
+                marketsIn(text).map((m) => m.market),
+                marketsIn(text).map((m) => m.market),
+                [],
+              ]),
               mix: pick([
                 null,
-                null,
+                stated
+                  ? {
+                      growthPct: stated.growthBps / 100,
+                      dollarYieldPct: stated.dollarYieldBps / 100,
+                      goldPct: stated.goldBps / 100,
+                      cashPct: stated.cashBps / 100,
+                    }
+                  : null,
                 { growthPct: 100, dollarYieldPct: 0, goldPct: 0, cashPct: 0 },
               ]),
               marketFilter: pick([
@@ -2310,15 +2365,36 @@ describe('whatever the text, the shelf and the answers', () => {
         // A refusal the text states is read on every turn, with or without a model, and nothing
         // else is: a ruled-out narrative ("No defense stocks.") and "no problem with stocks" leave
         // out no class. Stocks refused are no stocks through a fund either: both classes.
+        // It is never lost in silence. Since Oct 7 a refusal against a holding of the same class
+        // is asked, never both in one sheet: where the person's own answer then holds the stocks
+        // (a mix with stocks, a split with a theme), the refusal is taken back, flagged, and said
+        // back in their words.
         const refuses = text.includes('No stocks please.');
         if (refuses) refusals += 1;
+        const takenBack = result.flags.includes('refusal_withdrawn:stock');
+        if (takenBack) {
+          withdrawn += 1;
+          expect(refuses, where).toBe(true);
+          expect(
+            (answers.mix?.growthBps ?? 0) > 0 ||
+              (answers.sleeves ?? []).some((s) => s.kind === 'theme'),
+            where,
+          ).toBe(true);
+          expect(
+            result.assumptions.some(
+              (s) => /“No stocks”/.test(s) && /leave out|deixar de fora/.test(s),
+            ),
+            where,
+          ).toBe(true);
+        }
+        const leftOut = refuses && !takenBack;
         expect(result.limits, where).toEqual({
           creditTolerance: null,
-          cannotHoldClasses: refuses ? ['etf', 'stock'] : null,
+          cannotHoldClasses: leftOut ? ['etf', 'stock'] : null,
         });
         if (result.sheet) {
           expect(result.sheet.limits, where).toEqual(
-            refuses ? { cannotHold: { classes: ['etf', 'stock'] } } : undefined,
+            leftOut ? { cannotHold: { classes: ['etf', 'stock'] } } : undefined,
           );
           expect(
             (result.readBack ?? []).some((s) =>
@@ -2327,7 +2403,51 @@ describe('whatever the text, the shelf and the answers', () => {
               ),
             ),
             where,
-          ).toBe(refuses);
+          ).toBe(leftOut);
+          // Never a sheet with both: stocks left out, and a theme of stocks held.
+          if (leftOut)
+            expect(
+              (result.sheet.sleeves ?? []).filter((s) => s.kind === 'theme'),
+              where,
+            ).toEqual([]);
+        }
+        // With a model a holding needs both readers: a narrative of the fixed words is read only
+        // where the reply names it too, and a mix is held with no answer only where the reply reads
+        // one. What the text check alone finds is flagged, and neither held, asked nor said.
+        const named = (r as { markets?: string[] } | null)?.markets ?? [];
+        // The reply's filter names a market too, by the person's words for it.
+        const filterWords =
+          (r as { marketFilter?: { words: string } | null } | null)?.marketFilter?.words ?? null;
+        const byFilter = (words: string) =>
+          filterWords !== null &&
+          (words.toLowerCase().includes(filterWords.toLowerCase()) ||
+            filterWords.toLowerCase().includes(words.toLowerCase()));
+        if (r) {
+          for (const n of result.narratives)
+            if (n.id !== null && !byFilter(n.words)) expect(named, where).toContain(n.id);
+          if (result.mix && !('mix' in answers) && !result.flags.includes('mix_from_market'))
+            expect((r as { mix: unknown }).mix, where).not.toBeNull();
+          for (const flag of result.flags.filter((f) => f.startsWith('text_only:market:'))) {
+            textOnly += 1;
+            const id = flag.slice('text_only:market:'.length);
+            expect(named, where).not.toContain(id);
+            expect(
+              result.narratives.map((n) => n.id),
+              where,
+            ).not.toContain(id);
+          }
+        }
+        // With no model a holding the text states is asked once, never taken: a mix or a theme is
+        // in the sheet only by the person's answer, on the form or in the words of a later message.
+        const themeHeld = (result.sheet?.sleeves ?? []).some((s) => s.kind === 'theme');
+        if (!r && result.sheet && (result.sheet.mix || themeHeld)) {
+          fromRules += 1;
+          expect(
+            'mix' in answers ||
+              answers.sleeves !== undefined ||
+              result.flags.some((f) => f === 'mix_from_words' || f === 'sleeves_from_words'),
+            where,
+          ).toBe(true);
         }
         // A share is asked only of a narrative the chain holds something for, and where every
         // narrative named has nothing there, none of them makes a mix or a sleeve (THEME-NONE-YET).
@@ -2425,6 +2545,9 @@ describe('whatever the text, the shelf and the answers', () => {
     expect(noneOnly).toBeGreaterThan(20);
     expect(otherRisk).toBeGreaterThan(0);
     expect(refusals).toBeGreaterThan(20);
+    expect(withdrawn).toBeGreaterThan(0);
+    expect(textOnly).toBeGreaterThan(20);
+    expect(fromRules).toBeGreaterThan(20);
     // Thousands of generated goals in one test: it gets the time of a property test, so a busy
     // machine does not fail it at the default five seconds.
   }, 60_000);

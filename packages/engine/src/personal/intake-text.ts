@@ -881,6 +881,8 @@ const WONDERS =
   /(?<![\p{L}])(?:maybe|perhaps|possibly|might|i\s+could|thinking\s+(?:of|about)|considering|wondering|not\s+sure|unsure|undecided|(?:do\s+not|don['’]?t)\s+know|can['’]?t\s+decide|should\s+i|shall\s+i|can\s+i|could\s+i|may\s+i|would\s+it|is\s+it|does\s+it|do\s+you|what\s+if|how\s+about|what\s+about|why\s+not|talvez|quem\s+sabe|pensando\s+em|considerando|ser[aá]\s+que|devo|posso|e\s+se|que\s+tal|por\s+que\s+n[aã]o|vale\s+a\s+pena|n[aã]o\s+sei|em\s+d[uú]vida)(?![\p{L}])/iu;
 // A question that ends where the holding's clause ends: "Should I put all of it in stocks?".
 const ASKED_AFTER = /^[^,;.!?\n]*\?/u;
+// And one the person answers "no" to themself, right after it: "stocks only? no thanks".
+const ANSWERED_NO = /^[^,;.!?\n]*\?\s*(?:no|nope|nah|n[aã]o)(?![\p{L}])/iu;
 // A judgement against it, right after it: "Putting everything in gold is too risky for me".
 const JUDGED_AFTER =
   /^\s*(?:(?:is|are|was|would\s+be|seems?|sounds?|feels?|looks?|[eé]|seria|parece)\s+(?:\p{L}+\s+){0,2}?(?:too|not|risky|crazy|scary|dangerous|a\s+mistake|a\s+bad\s+idea|bad|wrong|out\s+of\s+the\s+question|arriscado|loucura|perigoso|um\s+erro|uma\s+m[aá]\s+ideia|demais)|(?:is|are|was)n['’]?t|n[aã]o\s+[eé])(?![\p{L}])/iu;
@@ -925,6 +927,7 @@ function stanceIn(
     ' ',
   );
   if (HELD_ALREADY.test(clause) || HELD_ELSEWHERE.test(after)) return 'aside';
+  if (ANSWERED_NO.test(after)) return 'negated';
   if (WONDERS.test(clause) || ASKED_AFTER.test(after)) return 'wondered';
   if (RULED_OUT.test(clause) || SET_ASIDE.test(clause) || JUDGED_AFTER.test(after))
     return 'negated';
@@ -1004,10 +1007,25 @@ const HEDGED_AFTER =
 // ações", "I don't want bonds nor stocks", "nem ações nem cripto".
 const AGREES = /^(?:nada\s+de|nenhum[a]?|nem|neither|nor)$/iu;
 
-/** A refusal the text writes: what it rules out, the words it is written in, and how its clause says it. */
-export type RefusalSaid = { what: Refused; words: string; at: number; end: number; stance: Stance };
+/**
+ * A refusal the text writes: what it rules out, the words it is written in, and how its clause says
+ * it. `part`: the refusal with the part it names, as written, where the clause states a refusal of a
+ * part of the class ("No stocks from China"). A plan leaves out a class, never a part of one, so it
+ * is not taken (`aside`), and a caller can say so.
+ */
+export type RefusalSaid = {
+  what: Refused;
+  words: string;
+  at: number;
+  end: number;
+  stance: Stance;
+  part?: string;
+};
 
-/** How the clause of a refusal written from `at` up to `end` says it. */
+/**
+ * How the clause of a refusal written from `at` up to `end` says it. `ofAPart` false reads it as if
+ * what follows named no part of the class.
+ */
 function refusalStance(
   text: string,
   what: Refused,
@@ -1017,6 +1035,7 @@ function refusalStance(
   at: number,
   end: number,
   narratives: Span[],
+  ofAPart = true,
 ): Stance {
   const after = text.slice(end);
   if (NO_OF_ANOTHER_WORD.test(between) || TURNED_ROUND.test(between)) return 'negated';
@@ -1024,7 +1043,7 @@ function refusalStance(
   const whole = (word: string) =>
     OF_THE_WHOLE.test(word) || (ALL_OF_IT.test(word) && AVOIDS.test(lead));
   if (!AND_NEITHER.test(words.at(-1) ?? '') && !words.every(whole)) return 'aside';
-  if (ANOTHER_THING[what]?.test(after) || OF_A_KIND_AFTER.test(after)) return 'aside';
+  if (ANOTHER_THING[what]?.test(after) || (ofAPart && OF_A_KIND_AFTER.test(after))) return 'aside';
   // Inside the words of a narrative the class word names the narrative ("no crypto stocks", "sem
   // ações americanas"): a narrative the person rules out is not asked, and no class is left out.
   const clsAt = end - cls.length;
@@ -1063,7 +1082,18 @@ export function refusalsSaidIn(text: string): RefusalSaid[] {
       const { lead = '', between = '', cls = '' } = m.groups ?? {};
       let end = at + m[0].length;
       const stance = refusalStance(text, what, lead, between, cls, at, end, narratives);
-      add({ what, words: m[0].replace(/\s+/g, ' '), at, end, stance }, cls.length);
+      // A refusal its clause states, of a part of the class: the words up to where the clause ends.
+      const ofAPart =
+        stance === 'aside' &&
+        OF_A_KIND_AFTER.test(text.slice(end)) &&
+        refusalStance(text, what, lead, between, cls, at, end, narratives, false) === 'stated';
+      const part = ofAPart
+        ? `${m[0]}${/^[^,.;!?\n]*/u.exec(text.slice(end))?.[0] ?? ''}`.replace(/\s+/g, ' ').trim()
+        : undefined;
+      add(
+        { what, words: m[0].replace(/\s+/g, ' '), at, end, stance, ...(part ? { part } : {}) },
+        cls.length,
+      );
       // The list the refusal leads: what is said of the first is said of each ("no stocks, crypto
       // or gold" rules out the three).
       for (;;) {
@@ -1105,6 +1135,29 @@ export function refusalsIn(text: string): { classes: HoldableClass[]; noCredit: 
     ),
     noCredit: said.some((r) => r.what === 'credit'),
   };
+}
+
+const CLASS_NAMED: [Refused, RegExp][] = REFUSED.map(([what, things]) => [
+  what,
+  new RegExp(`(?<![\\p{L}])${things}(?![\\p{L}])`, 'giu'),
+]);
+
+/**
+ * Every place the text names a class a person can rule out, in the order written: "stocks",
+ * "crypto", "gold", "ETFs", "credit". Where two names share words the longer is the one read ("stock
+ * funds" is the funds), and a class word inside a narrative's words names the narrative ("crypto
+ * stocks", "ações americanas"). The last word on a class is found among these (the review of Oct 7).
+ */
+export function classMentionsIn(text: string): { what: Refused; at: number; end: number }[] {
+  const found = CLASS_NAMED.flatMap(([what, pattern]) =>
+    [...text.matchAll(pattern)].map((m) => ({ what, at: m.index, end: m.index + m[0].length })),
+  );
+  const longer = [...found, ...narrativeSpansIn(text)];
+  return found
+    .filter(
+      (m) => !longer.some((x) => x.at <= m.at && m.end <= x.end && x.end - x.at > m.end - m.at),
+    )
+    .sort((a, b) => a.at - b.at);
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -1277,30 +1330,50 @@ function mixAllIn(text: string): MixSpan[] {
 }
 
 /**
- * A mix the text writes, the words it is written in, and how its clause says it. `part`: said of a
- * part of the money, not of the plan ("the other 30% all in stocks").
+ * A mix the text writes, the words it is written in, where, and how its clause says it. `part`: said
+ * of a part of the money, not of the plan ("the other 30% all in stocks"). `classes`: the classes a
+ * person can rule out that its words name ("all of it in stocks" names stocks), so a refusal of one
+ * can be held against it.
  */
-export type MixSaid = { mix: MixRead; words: string; stance: Stance | 'part' };
+export type MixSaid = {
+  mix: MixRead;
+  words: string;
+  stance: Stance | 'part';
+  at: number;
+  end: number;
+  classes: Refused[];
+};
 
-/**
- * The mix the text writes and how it says it; null when it writes none, or writes one this file
- * cannot read one way only (shares that are not the whole, two parts with no shares, a percent of the
- * money that is in no part). Every share is written: nothing is filled in. Where the text writes more
- * than one, the one it states is given, else one it wonders about, else the first.
- */
-export function mixSaidIn(text: string): MixSaid | null {
+// The classes a mix's words name, among those a person can rule out. "Bolsa" and "the stock market"
+// are stocks here, as a part of a mix reads them.
+const MIX_CLASS_NAMED: [Refused, RegExp][] = [
+  [
+    'stock',
+    /(?<![\p{L}])(?:stock market|stocks?|equit(?:y|ies)|shares|a[cç][oõ]es|a[cç][aã]o|bolsa)(?![\p{L}])/iu,
+  ],
+  ['crypto', /(?<![\p{L}])(?:crypto\p{L}*|cripto\p{L}*|bitcoin)(?![\p{L}])/iu],
+  ['gold', /(?<![\p{L}])(?:gold|ouro)(?![\p{L}])/iu],
+  ['credit', /(?<![\p{L}])(?:credit|cr[eé]dito|high[- ]yield)(?![\p{L}])/iu],
+];
+
+/** The mix one text writes, `unread` where it writes one this file cannot read one way only. */
+function mixReadIn(text: string): MixSaid | 'unread' | null {
   const percents = mixInPercents(text);
-  if (percents === 'unread') return null;
+  if (percents === 'unread') return 'unread';
   const spans = percents ? [percents] : [...mixInTwoParts(text), ...mixAllIn(text)];
   const holdings = holdingsIn(text);
   const said = spans.map((s): MixSaid => {
     const stance = stanceIn(text, s.at, s.end, holdings, false);
     const ofAPart =
       s.whole && stance === 'stated' && OF_A_PART.test(clauseBefore(text, s.at, holdings, false));
+    const words = text.slice(s.at, s.end);
     return {
       mix: s.mix,
-      words: text.slice(s.at, s.end).trim(),
+      words: words.trim(),
       stance: ofAPart ? 'part' : stance,
+      at: s.at,
+      end: s.end,
+      classes: MIX_CLASS_NAMED.flatMap(([what, pattern]) => (pattern.test(words) ? [what] : [])),
     };
   });
   return (
@@ -1309,6 +1382,51 @@ export function mixSaidIn(text: string): MixSaid | null {
     said[0] ??
     null
   );
+}
+
+/**
+ * The mix the text writes and how it says it; null when it writes none, or writes one this file
+ * cannot read one way only (shares that are not the whole, two parts with no shares, a percent of the
+ * money that is in no part). Every share is written: nothing is filled in. Where the text writes more
+ * than one, the one it states is given, else one it wonders about, else the first.
+ */
+export function mixSaidIn(text: string): MixSaid | null {
+  const read = mixReadIn(text);
+  return read === 'unread' ? null : read;
+}
+
+/** What separates two messages of a conversation in the text the intake reads. */
+export const TURN_BREAK = '\n\n';
+
+/**
+ * The mix a conversation writes, message by message: the last word wins (the review of Oct 7). The
+ * last message that says a mix of its own decides, whatever an earlier one said: "all of it in
+ * stocks" then "Sorry, I meant 60% stocks and 40% cash" is 60 and 40, and then "not all in stocks"
+ * is none. A message that says one of someone else or of another time decides nothing. Where no
+ * message says one alone, the messages are read as one text ("70% in stocks" then "and the rest in
+ * cash"). `turn` is the message it is written in; `at` and `end` are places in the messages joined
+ * by `TURN_BREAK`.
+ */
+export function mixSaidInTurns(turns: readonly string[]): (MixSaid & { turn: number }) | null {
+  const starts: number[] = [];
+  let offset = 0;
+  for (const turn of turns) {
+    starts.push(offset);
+    offset += turn.length + TURN_BREAK.length;
+  }
+  for (let t = turns.length - 1; t >= 0; t -= 1) {
+    const read = mixReadIn(turns[t] ?? '');
+    // The last word on the mix cannot be read alone: the messages are read together, below.
+    if (read === 'unread') break;
+    const start = starts[t] ?? 0;
+    if (read && read.stance !== 'aside')
+      return { ...read, at: read.at + start, end: read.end + start, turn: t };
+  }
+  const whole = mixSaidIn(turns.join(TURN_BREAK));
+  if (!whole) return null;
+  let turn = 0;
+  for (const [t, start] of starts.entries()) if (start < whole.end) turn = t;
+  return { ...whole, turn };
 }
 
 /**
@@ -1432,14 +1550,37 @@ const AMOUNT_BEFORE = new RegExp(
   'iu',
 );
 const OF_THE_MONEY = String.raw`(?:\s+(?:of\s+(?:it|the\s+money|my\s+money)|d[oe]\s+(?:dinheiro|valor|total)))?`;
+// "30% in AI", and "60% AI" as a person writes a list of shares.
 const PERCENT_BEFORE = new RegExp(
-  String.raw`(?<![\d.,])(?<pct>\d{1,3})\s*(?:%|percent|por cento)${OF_THE_MONEY}\s+${INTO}$`,
+  String.raw`(?<![\d.,])(?<pct>\d{1,3})\s*(?:%|percent|por cento)${OF_THE_MONEY}\s+(?:${INTO})?$`,
   'iu',
 );
 const HALF_BEFORE = new RegExp(
   String.raw`(?<![\p{L}])(?:half|metade)${OF_THE_MONEY}\s+${INTO}$`,
   'iu',
 );
+// A share is taken only in its plain forms (the review of Oct 7): the figure opens its clause, or
+// follows a word that asks for it ("put 30% in AI", "I want half in AI", "and 20% in AI", "coloque 20%
+// em IA"). After any other word the figure is not read as a share of this money: "I can lose 30% in
+// AI", "my salary went up 20% in software", "at least 30% in big tech", "up to 30% in". A list of what
+// is read, not of what is not: a form that is missing here is asked, never taken.
+const ASKS_FOR = String.raw`put|invest|place|allocate|keep|hold`;
+const PLAIN_LEAD = new RegExp(
+  String.raw`(?:^|[,;:(]|(?<![\p{L}])(?:${ASKS_FOR}|want|like|to\s+have|with|and|plus|then|the\s+other|make\s+(?:it|that)|coloc(?:ar|o|a)|coloque|invest(?:ir|e)|invist[ao]|aplic(?:ar|o|a)|aplique|bot(?:ar|o|a|e)|ponh[ao]|p[oô]r|quero|queria|com|e|mais|ent[aã]o|a\s+outra))\s*$`,
+  'iu',
+);
+// What a person did or does, not what they ask for: "I put $500 in AI last year", "we hold 30% in".
+const THEY_DID = new RegExp(
+  String.raw`(?<![\p{L}])(?:i|we|eu|n[oó]s)\s+(?:${ASKS_FOR}|coloco|invisto|aplico|boto)\s*$`,
+  'iu',
+);
+const plainBefore = (before: string) => PLAIN_LEAD.test(before) && !THEY_DID.test(before);
+// The verb a sum follows, as a request: "put", "invest", never "invested" or "investing".
+const REQUESTS = new RegExp(
+  String.raw`^(?:${ASKS_FOR}|aplicar|investir|colocar|botar)(?![\p{L}])`,
+  'iu',
+);
+const THEY = /(?<![\p{L}])(?:i|we|eu|n[oó]s)\s+$/iu;
 
 /** A share of the money said of a market: the whole, a sum in dollars, or a percent of it. */
 export type MarketShare =
@@ -1458,15 +1599,105 @@ export function marketShareIn(text: string, at: number, end?: number): MarketSha
   const before = sentenceBefore(text, at);
   const amount = AMOUNT_BEFORE.exec(before);
   if (amount) {
+    // A sum the person put in before ("I put $500 in AI last year") is no share of this money.
+    if (!REQUESTS.test(amount[0]) || THEY.test(before.slice(0, amount.index))) return null;
     const m = mentionsIn(amount.groups?.amt ?? '').find((x) => x.kind === 'amount' && !x.perMonth);
     if (m && (m.currency === null || m.currency === 'USD'))
       return { kind: 'amount', value: m.value };
   }
   const percent = PERCENT_BEFORE.exec(before);
-  if (percent) return { kind: 'percent', value: Number(percent.groups?.pct) };
-  if (HALF_BEFORE.test(before)) return { kind: 'percent', value: HALF_PCT };
+  if (percent)
+    return plainBefore(before.slice(0, percent.index))
+      ? { kind: 'percent', value: Number(percent.groups?.pct) }
+      : null;
+  const half = HALF_BEFORE.exec(before);
+  if (half)
+    return plainBefore(before.slice(0, half.index)) ? { kind: 'percent', value: HALF_PCT } : null;
   if (!WHOLE_BEFORE.test(before)) return null;
   return end !== undefined && AND_ANOTHER.test(text.slice(end)) ? null : { kind: 'whole' };
+}
+
+// Where the rest of the money goes, said beside a share: "30% in AI and the rest in stocks", "keep
+// the rest in bitcoin", "e o resto em ouro". The words, then at most a few that lead into what holds
+// it. "The rest can take up to 3 months to get out" names nothing that holds it.
+const THE_REST_GOES =
+  /(?<![\p{L}])(?:the\s+rest|the\s+remainder|the\s+remaining|what(?:['’]s|\s+is)\s+left|the\s+other\s+(?:half|\d{1,3}\s*%)|o\s+resto|o\s+restante|a\s+outra\s+metade|os\s+outros\s+\d{1,3}\s*%)(?:\s+(?:of\s+it|of\s+the\s+money|do\s+dinheiro))?(?:\s+(?:stays?|goes|kept|is|should\s+be|fica|vai|deve\s+ficar))?\s+(?:(?:in|into|to|em|no|na|nos|nas|para)\s+)?(?:the\s+|something\s+|algo\s+)?(?<held>\p{L}+(?:[- ]\p{L}+)?)/giu;
+// A half or a percent that leads into a part of a mix, beside a narrative's share: "half in stocks
+// and half in AI", "metade em ações".
+const HALF_OF_A_PART = new RegExp(
+  String.raw`(?<![\p{L}])(?:half|metade)\s+(?:(?:in|em|no|na)\s+)?(?:the\s+)?${partNamed('cls')}`,
+  'giu',
+);
+const KEPT_SAFE = /^(?:cash|caixa|safe|safely|seguro|segura|seguran[cç]a|liquid|l[ií]quido)$/iu;
+// What the safe-yield sleeve holds: dollar yield from a rate alone, or cash.
+const SAFE_PARTS: readonly MixPart[] = ['cash', 'dollarYield'];
+
+/**
+ * Where the text says the rest of the money goes, beside a share it gives a narrative (the review of
+ * Oct 7): `safe` where it is cash or kept safe ("30% in AI and the rest in cash"), which the
+ * safe-yield sleeve holds; `other` where it is anything else ("the rest in stocks", "half in stocks
+ * and half in AI", "o resto em ouro"), which no sleeve holds by guessing: the split is asked. Null:
+ * the text does not say.
+ */
+export function restOfMoneyIn(text: string): 'safe' | 'other' | null {
+  const narratives = narrativeSpansIn(text);
+  const held: ('safe' | 'other')[] = [];
+  for (const m of text.matchAll(THE_REST_GOES)) {
+    const words = m.groups?.held ?? '';
+    const [first = ''] = words.split(/[- ]/);
+    const part = partOf(words) ?? partOf(first);
+    if (KEPT_SAFE.test(first) || (part && SAFE_PARTS.includes(part))) held.push('safe');
+    else if (part) held.push('other');
+  }
+  for (const m of text.matchAll(HALF_OF_A_PART)) {
+    const word = m.groups?.cls ?? '';
+    const part = partNamedAt(text, word, m.index + m[0].length - word.length, narratives);
+    if (part) held.push(SAFE_PARTS.includes(part) ? 'safe' : 'other');
+  }
+  return held.includes('other') ? 'other' : held.includes('safe') ? 'safe' : null;
+}
+
+// What is carved out of a share, right after the narrative: "all of it in AI except $1,000 that I
+// need in cash", "tudo em IA menos US$ 1.000".
+const CARVED_OUT =
+  /^[^.;!?\n]*?(?<![\p{L}])(?:except(?:\s+for)?|but\s+not|minus|less|apart\s+from|other\s+than|save\s+for|exceto|menos|tirando|fora)\s+(?:(?:us\$|r\$|\$)\s*)?\d/iu;
+/** Whether the text carves a sum or a share out of what it gives the narrative that ends at `end`. */
+export const carvedOutAfter = (text: string, end: number): boolean =>
+  CARVED_OUT.test(text.slice(end));
+
+// A name the person rules out that is no class and no narrative: "no Tesla", "without Tesla", "I do
+// not want Tesla or Meta". A plan leaves out a class, never one name of a list it holds, so this is
+// said and not applied (the review of Oct 7). The name is written with a capital, after the refusal.
+const NAME_AFTER = new RegExp(
+  String.raw`(?<lead>${NEG})\s+(?<name>\p{L}[\p{L}\d]*(?:\s+(?:or|and|nor|ou|e|nem)\s+\p{L}[\p{L}\d]*)*)`,
+  'giu',
+);
+const CAPITAL = /^\p{Lu}[\p{L}\d]+$/u;
+
+/**
+ * The names the text rules out that a plan cannot leave out: written with a capital after a refusal,
+ * and no class a person can rule out, no part of a mix and no narrative. The words as written ("no
+ * Tesla", "do not want Tesla or Meta").
+ */
+export function namesRuledOutIn(text: string): { words: string; at: number }[] {
+  const known = [
+    ...narrativeSpansIn(text),
+    ...classMentionsIn(text),
+    ...[...text.matchAll(CLASS_WORD)].map((m) => ({ at: m.index, end: m.index + m[0].length })),
+  ];
+  const out: { words: string; at: number }[] = [];
+  for (const m of text.matchAll(NAME_AFTER)) {
+    const { lead = '', name = '' } = m.groups ?? {};
+    const nameAt = m.index + m[0].length - name.length;
+    const names = name.split(/\s+(?:or|and|nor|ou|e|nem)\s+/iu);
+    // Every item a name of its own: a capital, and no word the intake reads as something else.
+    if (!names.every((word) => CAPITAL.test(word))) continue;
+    if (known.some((k) => k.at < m.index + m[0].length && nameAt < k.end)) continue;
+    // "Never" and "no" that open a sentence before a capitalised word rule nothing out by name.
+    if (/^(?:never|neither|nor|nunca|nem)$/iu.test(lead.trim())) continue;
+    out.push({ words: m[0].replace(/\s+/g, ' '), at: m.index });
+  }
+  return out;
 }
 
 /**
@@ -1496,9 +1727,43 @@ const PAIR_SAID = saidAlone(
 );
 const PERCENT_SAID = saidAlone(String.raw`(?<pct>\d{1,3})\s*(?:%|percent|por cento)`);
 const HALF_SAID = saidAlone(String.raw`half(?:\s+and\s+half)?|metade(?:\s+e\s+metade)?`);
+// "A third", "a quarter", "um terço": one part of that many, in the order of this list from three up.
+const ONE_PART_OF = ['third|ter[cç]o', 'quarter|fourth|quarto'].map((words) =>
+  saidAlone(String.raw`(?:a|one|um|uma)\s+(?:${words})`),
+);
+const HALVES = 2;
 const WHOLE_SAID = saidAlone(
   String.raw`all(?:\s+of\s+it)?|everything|the\s+whole\s+(?:thing|amount|lot)|tudo|todo|inteiro`,
 );
+
+// "None" as the whole of a message, in answer to "how much": "none", "zero", "0%", "nothing". A
+// quantity, never a bare "no": that may answer another question asked with this one.
+const NONE_SAID = saidAlone(
+  String.raw`none(?:\s+of\s+it)?|nothing|zero|nada|nenhum[a]?|(?:\$\s*)?0(?:\s*(?:%|percent|por cento|dollars|d[oó]lares))?`,
+);
+// And said of what was asked about: "nothing for AI", "none in big tech", "nada para IA".
+const NONE_FOR =
+  /^\s*(?:none|nothing|zero|no\s+money|nada|nenhum[a]?|0\s*%?)\s+(?:of\s+it\s+)?(?:for|in|on|to|into|para|em|no|na|nos|nas)\s+(?:the\s+|a\s+|o\s+|os\s+|as\s+)?$/iu;
+
+/**
+ * Whether a message says "none" in answer to how much of the money goes to something: alone ("none",
+ * "zero", "0%"), or of one of `named`, the words the question asked about ("nothing for AI, I just
+ * mentioned my job"). A negation of its own ("I do not want AI") is read with the rest of the text.
+ */
+export function noneSaidIn(message: string, named: readonly string[] = []): boolean {
+  if (NONE_SAID.test(message)) return true;
+  return named.some((words) =>
+    phraseIn(message, words).some((m) => NONE_FOR.test(message.slice(0, m.at))),
+  );
+}
+
+// An even split as the whole of a message, in answer to how the money is split between the things
+// named: "half each", "50-50", "equally", "meio a meio", "metade para cada".
+const EVEN_SAID = saidAlone(
+  String.raw`half\s+each|half\s+and\s+half|50\s*%?\s*(?:-|\/|e|and)\s*50\s*%?|fifty[- ]fifty|equally|evenly|equal\s+(?:parts|shares)|split\s+(?:it\s+)?(?:evenly|equally)|(?:the\s+)?same\s+(?:for|in)\s+(?:each|both)|meio\s+a\s+meio|metade\s+(?:para\s+|em\s+)?cada(?:\s+um[a]?)?|metade\s+e\s+metade|igualmente|(?:em\s+)?partes\s+iguais`,
+);
+/** Whether a message says only that the money is split evenly between what was named. */
+export const evenSplitSaidIn = (message: string): boolean => EVEN_SAID.test(message);
 
 /** A share as a message alone says it: the two of a pair, a percent, a sum, or the whole. */
 export type ShareSaid =
@@ -1509,8 +1774,8 @@ export type ShareSaid =
 
 /**
  * The share a message says when it says nothing else: "70-30" (a pair that is the whole), "half",
- * "50%", "$500", "all of it". Null for any other message: what it means depends on what was asked,
- * and a caller that knows the question reads it.
+ * "a third", "50%", "$500", "all of it". Null for any other message: what it means depends on what
+ * was asked, and a caller that knows the question reads it.
  */
 export function shareSaidIn(message: string): ShareSaid | null {
   const pair = PAIR_SAID.exec(message);
@@ -1521,11 +1786,15 @@ export function shareSaidIn(message: string): ShareSaid | null {
   if (percent && pct > 0 && pct <= HALF_PCT * 2)
     return pct === HALF_PCT * 2 ? { kind: 'whole' } : { kind: 'percent', value: pct };
   if (HALF_SAID.test(message)) return { kind: 'percent', value: HALF_PCT };
+  const parts = ONE_PART_OF.findIndex((pattern) => pattern.test(message));
+  if (parts >= 0) return { kind: 'percent', value: (HALF_PCT * HALVES) / (parts + HALVES + 1) };
   if (WHOLE_SAID.test(message)) return { kind: 'whole' };
   const sums = mentionsIn(message).filter((m) => m.kind === 'amount' && !m.perMonth);
   const [sum] = sums;
   const alone = saidAlone(String.raw`\S+(?:\s+(?:k|mil|thousand|dollars|d[oó]lares|bucks|usd))*`);
-  if (sum && sums.length === 1 && (sum.currency === null || sum.currency === 'USD'))
+  // A sum is one written in dollars. A bare number ("5") may be dollars, a percent or years: it is
+  // not read, and the question stays (the review of Oct 7).
+  if (sum && sums.length === 1 && sum.currency === 'USD')
     return alone.test(message) && /\d/.test(message) ? { kind: 'amount', value: sum.value } : null;
   return null;
 }

@@ -27,7 +27,7 @@ import {
   type ShelfLabel,
 } from './market-filter';
 import { launchShelf } from './testing';
-import type { PersonalSheet } from './types';
+import type { PersonalMix, PersonalSheet } from './types';
 
 // The independent review of Oct 6 (gates COUNTRY-REMOVED and EXPLICIT-MIX), the findings on the
 // intake: 1 (it read the opposite of what was written), 4 (an answered risk was replaced without a
@@ -119,6 +119,21 @@ const theme = (slug: string, shareBps = 10_000) => ({
   shareBps,
 });
 const safe = (shareBps: number) => ({ kind: 'safe_yield' as const, shareBps });
+
+/**
+ * With no model a holding the text states is asked once, with its reading as the form's start, and
+ * never taken (the second review, Oct 7). `asked` is the turn that asks it, `question` what it asks,
+ * and `done` the turn after the person confirms that reading on the form.
+ */
+const confirmed = (text: string, answers: IntakeAnswers = {}, over: Partial<IntakeInput> = {}) => {
+  const asked = intake(text, null, { ...over, answers });
+  const question = asked.questions.find((q) => q.field === 'mix');
+  const done = intake(text, null, {
+    ...over,
+    answers: { ...answers, mix: question?.read as PersonalMix },
+  });
+  return { asked, question, done };
+};
 
 // The goal the review's scripts put before each sentence.
 const LEAD = 'I want to grow $5,000 over 5 years at medium risk. ';
@@ -595,15 +610,18 @@ describe('a refusal the text writes is never lost: it is taken from the text, wi
       const result = intake(GOAL + sentence, null, { answers: ANSWERS });
       expect(result.sheet?.limits, sentence).toEqual({ cannotHold: { classes: ['etf', 'stock'] } });
     }
-    // A stated holding beside a refusal of another class is still held.
-    const both = intake(
-      'I want to grow $20,000 for 3 years. No crypto, all of it in stocks.',
-      null,
-      {
-        answers: { goal: 'grow', amountUsd: 20_000, horizonMonths: 36 },
-      },
-    );
-    expect(both.sheet).toMatchObject({
+    // A stated holding beside a refusal of another class is still held. With no model the holding
+    // is asked once, its reading the start (Oct 7), and the refusal is taken either way.
+    const both = confirmed('I want to grow $20,000 for 3 years. No crypto, all of it in stocks.', {
+      goal: 'grow',
+      amountUsd: 20_000,
+      horizonMonths: 36,
+    });
+    expect(both.asked.sheet).toBeNull();
+    expect(both.asked.limits.cannotHoldClasses).toEqual(['crypto']);
+    expect(both.question).toMatchObject({ template: 'mix', read: ALL_STOCKS });
+    expect(both.asked.flags).toContain('mix_asked:rules');
+    expect(both.done.sheet).toMatchObject({
       limits: { cannotHold: { classes: ['crypto'] } },
       mix: ALL_STOCKS,
     });
@@ -1222,10 +1240,14 @@ describe('finding 4: a risk the person gave is never replaced in silence', () =>
     expect(limitsOf(written)).toEqual([
       'You said low risk, but to hold “all of it in stocks” the plan uses the limits for high risk.',
     ]);
-    // With no model, the risk answered on the form.
-    const rules = intake('I want to grow $2,000 over 5 years. I want all of it in stocks', null, {
-      answers: { goal: 'grow', amountUsd: 2000, horizonMonths: 60, risk: 'medium' },
-    });
+    // With no model, the risk answered on the form, and the mix confirmed on it (with no model a
+    // mix the text states is asked once, with it as the start: Oct 7).
+    const rules = confirmed('I want to grow $2,000 over 5 years. I want all of it in stocks', {
+      goal: 'grow',
+      amountUsd: 2000,
+      horizonMonths: 60,
+      risk: 'medium',
+    }).done;
     expect(rules.questions).toEqual([]);
     expect(rules.sheet?.risk).toBe('high');
     expect(limitsOf(rules)).toEqual([
@@ -1390,11 +1412,22 @@ describe('finding 6: a stated holding the text check cannot read is asked, never
       expect(byModel.questions, words).toEqual([]);
       expect(byModel.sheet?.mix, words).toEqual(mix);
       expect(byModel.sheet?.risk, words).toBe(riskForMixEstimate(mix));
-      // With no model the same mix is read, and the risk is not among what is asked.
+      // With no model the same mix is read, and the risk is not among what is asked. It is asked
+      // once, with that reading as the form's start, and never taken (Oct 7): confirmed, it is held.
       const byRules = intake(text, null);
-      expect(byRules.mix, words).toEqual(mix);
+      expect(byRules.mix, words).toBeNull();
+      expect(byRules.sheet, words).toBeNull();
+      expect(
+        byRules.questions.find((q) => q.field === 'mix'),
+        words,
+      ).toMatchObject({ template: 'mix', read: mix });
+      expect(byRules.flags, words).toContain('mix_asked:rules');
       expect(fields(byRules), words).not.toContain('risk');
-      expect(fields(byRules), words).not.toContain('mix');
+      expect(fields(byRules), words).not.toContain('sleeves');
+      const held = intake(text, null, { answers: { mix } });
+      expect(held.mix, words).toEqual(mix);
+      expect(fields(held), words).not.toContain('risk');
+      expect(fields(held), words).not.toContain('mix');
     }
   });
 
@@ -1408,13 +1441,25 @@ describe('finding 6: a stated holding the text check cannot read is asked, never
     ] as const) {
       const text = `I want to grow $2,000 over 5 years. ${words}.`;
       for (const r of [reply({ amountUsd: 2000, risk: null, markets: [market] }), null]) {
-        const result = intake(
-          text,
-          r,
-          r === null ? { answers: { ...ANSWERED, amountUsd: 2000 } } : {},
-        );
         const where = `${words} ${r === null ? 'rules' : 'model'}`;
-        expect(result.flags, where).toContain('mix_from_market');
+        const answers: IntakeAnswers = r === null ? { ...ANSWERED, amountUsd: 2000 } : {};
+        const first = intake(text, r, { answers });
+        const share = bps(growthBps, 10_000 - growthBps);
+        // With a model both readers read it: held with no question. With no model the share the
+        // text states is asked once, with it as the form's start, and held once confirmed (Oct 7).
+        if (r === null) {
+          expect(first.flags, where).toContain('from_rules:market');
+          expect(first.flags, where).not.toContain('mix_from_market');
+          expect(first.sheet, where).toBeNull();
+          expect(first.questions, where).toHaveLength(1);
+          expect(first.questions[0], where).toMatchObject({
+            field: 'mix',
+            template: 'marketShare',
+            read: share,
+          });
+        } else expect(first.flags, where).toContain('mix_from_market');
+        const result =
+          r === null ? intake(text, r, { answers: { ...answers, mix: share } }) : first;
         // The percent is the market's: no split is read from it, and none is asked.
         expect(result.questions, where).toEqual([]);
         expect(result.sheet?.mix, where).toEqual(bps(growthBps, 10_000 - growthBps));
@@ -1508,11 +1553,23 @@ describe('finding 6: a stated holding the text check cannot read is asked, never
       theme('semiconductors', 2000),
       safe(5000),
     ]);
-    const rules = intake('I want to grow $2,000 over 5 years. 30% in AI.', null, {
-      answers: { ...ANSWERED, amountUsd: 2000 },
+    // With no model the share the text states is asked once, with it as the start, and held once
+    // confirmed (Oct 7).
+    const rules = confirmed('I want to grow $2,000 over 5 years. 30% in AI.', {
+      ...ANSWERED,
+      amountUsd: 2000,
     });
-    expect(rules.questions).toEqual([]);
-    expect(rules.sheet?.sleeves).toEqual([theme('ai', 3000), safe(7000)]);
+    expect(rules.asked.questions).toEqual([
+      {
+        field: 'mix',
+        template: 'marketShare',
+        text: 'How much of the $2,000 for AI?',
+        read: bps(3000, 7000),
+      },
+    ]);
+    expect(rules.asked.sheet).toBeNull();
+    expect(rules.done.questions).toEqual([]);
+    expect(rules.done.sheet?.sleeves).toEqual([theme('ai', 3000), safe(7000)]);
     // The whole in percent is the whole plan, and shares over the whole are asked.
     const whole = intake('I want to grow $2,000 over 5 years. 100% in AI.', r(['ai']));
     expect(whole.sheet?.sleeves).toEqual([theme('ai')]);

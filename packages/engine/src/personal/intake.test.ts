@@ -905,10 +905,23 @@ describe('a stated mix and a named market (gate EXPLICIT-MIX)', () => {
     const byModel = intake(joined, chatReply);
     expect(byModel.sheet?.mix?.growthBps).toBe(10_000);
     expect(byModel.sheet?.themes).toEqual(['the-seven']);
+    // With no model the mix the text states is asked once, with it as the form's start, and never
+    // taken (the second review, Oct 7); the market is where the plan starts from, and the risk is
+    // never asked. Confirmed, the mix holds.
     const byRules = intake(joined, null);
-    expect(byRules.mix?.growthBps).toBe(10_000);
+    expect(byRules.mix).toBeNull();
+    expect(byRules.questions.find((q) => q.field === 'mix')).toMatchObject({
+      template: 'mix',
+      read: { growthBps: 10_000, dollarYieldBps: 0, goldBps: 0, cashBps: 0 },
+    });
     expect(byRules.draft.themes).toEqual(['the-seven']);
     expect(byRules.questions.map((q) => q.field)).not.toContain('risk');
+    const confirmed = intake(joined, null, {
+      answers: { mix: { growthBps: 10_000, dollarYieldBps: 0, goldBps: 0, cashBps: 0 } },
+    });
+    expect(confirmed.mix?.growthBps).toBe(10_000);
+    expect(confirmed.draft.themes).toEqual(['the-seven']);
+    expect(confirmed.questions.map((q) => q.field)).not.toContain('risk');
   });
 
   it('a soft time frame with this exact text is 60 months and no glide', () => {
@@ -929,8 +942,22 @@ describe('a stated mix and a named market (gate EXPLICIT-MIX)', () => {
       horizonMonths: 120,
       mix: { growthPct: 70, dollarYieldPct: 0, goldPct: 0, cashPct: 30, creditPct: null },
     });
-    for (const result of [intake(text, r), intake(text, null, { answers: { goal: 'grow' } })]) {
-      expect(result.mix).toEqual({ growthBps: 7000, dollarYieldBps: 0, goldBps: 0, cashBps: 3000 });
+    const mix = { growthBps: 7000, dollarYieldBps: 0, goldBps: 0, cashBps: 3000 };
+    // With no model the mix is asked once, with it as the form's start (the second review, Oct 7),
+    // and neither the risk nor a split is asked beside it: here it is confirmed on the form.
+    const asked = intake(text, null, { answers: { goal: 'grow' } });
+    expect(asked.mix).toBeNull();
+    expect(asked.questions.find((q) => q.field === 'mix')).toMatchObject({
+      template: 'mix',
+      read: mix,
+    });
+    expect(asked.questions.map((q) => q.field)).not.toContain('risk');
+    expect(asked.questions.map((q) => q.field)).not.toContain('sleeves');
+    for (const result of [
+      intake(text, r),
+      intake(text, null, { answers: { goal: 'grow', mix } }),
+    ]) {
+      expect(result.mix).toEqual(mix);
       expect(result.questions.map((q) => q.field)).not.toContain('risk');
       expect(result.questions.map((q) => q.field)).not.toContain('sleeves');
     }
@@ -1079,14 +1106,35 @@ describe('a stated mix and a named market (gate EXPLICIT-MIX)', () => {
     expect(ai.assumptions).toContain(
       'There is no stock for “AI” on Solana at the moment, and we will be adding more soon. The nearest today is The Seven, which you can choose.',
     );
+    // The model names the market too: with a model a narrative needs both readers (Oct 7).
     const sp = intake(
+      'I want to grow $2,000 in the S&P 500 over 5 years, all of it in stocks',
+      reply({
+        goal: 'grow',
+        amountUsd: 2000,
+        horizonMonths: 60,
+        markets: ['us_market'],
+        mix: ALL_STOCKS,
+      }),
+    );
+    expect(sp.sheet?.themes).toEqual(['the-500']);
+    // One the model does not name is not read from the fixed words alone.
+    const textOnly = intake(
       'I want to grow $2,000 in the S&P 500 over 5 years, all of it in stocks',
       reply({ goal: 'grow', amountUsd: 2000, horizonMonths: 60, mix: ALL_STOCKS }),
     );
-    expect(sp.sheet?.themes).toEqual(['the-500']);
+    expect(textOnly.sheet?.themes).toEqual([]);
+    expect(textOnly.flags).toContain('text_only:market:us_market');
+    // (The reply reads the mix the text states, as a model does: with one, a mix needs both readers.)
     const unnamed = intake(
       'I want to grow $2,000 over 5 years, all of it in stocks',
-      reply({ goal: 'grow', amountUsd: 2000, horizonMonths: 60, markets: ['big_tech'] }),
+      reply({
+        goal: 'grow',
+        amountUsd: 2000,
+        horizonMonths: 60,
+        markets: ['big_tech'],
+        mix: ALL_STOCKS,
+      }),
     );
     expect(unnamed.flags).toContain('no_cue:market:big_tech');
     expect(unnamed.questions.map((q) => q.field)).toEqual(['themes']);

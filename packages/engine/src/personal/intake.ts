@@ -11,7 +11,10 @@ import { z } from 'zod';
 import { draftFromRules } from './draft';
 import {
   amountInText,
+  carvedOutAfter,
+  classMentionsIn,
   currenciesIn,
+  evenSplitSaidIn,
   exitTimesIn,
   glideAskedIn,
   goalCuesIn,
@@ -19,24 +22,29 @@ import {
   looseRiskWordsIn,
   MARKET_IDS,
   type Market,
+  type MarketMention,
   type MarketShare,
   marketMentionsIn,
   marketShareIn,
   maxYieldAskedIn,
   mentionsIn,
   mixIn,
-  mixSaidIn,
+  mixSaidInTurns,
   NARRATIVES,
+  namesRuledOutIn,
+  noneSaidIn,
   openEndedIn,
   otherLanguageIn,
   phraseIn,
   type RefusalSaid,
   type Refused,
   refusalsSaidIn,
+  restOfMoneyIn,
   riskCuesIn,
   shareSaidIn,
   splitIn,
   stanceOf,
+  TURN_BREAK,
   timeFramesIn,
   withoutMarketShares,
 } from './intake-text';
@@ -53,6 +61,7 @@ import { matchedName, readBack, type TermSaid } from './readback';
 import {
   ASSUMPTION_TEMPLATES,
   type AssumptionId,
+  CLASS_WORDS,
   FILTER_BY_WORDS,
   QUESTION_TEMPLATES,
   type QuestionId,
@@ -82,6 +91,22 @@ import {
 // may still mean is asked once, and nothing is built from the opposite (the review of Oct 6). The
 // questions come from fixed templates, one per field, and the read-back the person confirms is drawn
 // from the validated sheet. The engine runs only on the sheet the person confirms.
+//
+// A list of the ways a clause turns a holding down cannot be finished (the review of Oct 7: most of
+// its new sentences were still read as stated). So the rule is not the list:
+//   - With a model, a holding needs both readers. A mix, a narrative or a share of the money for one
+//     is taken with no question only where the model's reply reads it and the text check confirms it.
+//     Words the text check finds that the model did not read are not taken, not asked and not said
+//     (`text_only:mix`, `text_only:market:<id>`): the model decides whether something was named, the
+//     code whether that may be taken.
+//   - With no model, a holding read from the text is asked once, its reading the start, never taken.
+//     A question has a way out ("none"), and does not come back once answered.
+//   - The last word wins: across the messages, what a later one says of a narrative, of a class of a
+//     mix or of a refusal decides over an earlier one.
+//   - A refusal the text states is taken, with or without a model. One the model did not read is
+//     said in a line of its own, and a refusal and a holding of the same class are asked, never both
+//     in one sheet.
+//   - A share is taken only in its plain forms, and a filter is never used to pick one stock.
 //
 // With no model (none configured, down, out of budget) the rules parser fills the draft and the same
 // questions are asked. Nothing fails.
@@ -487,7 +512,8 @@ function mixAnswered(
   const ofAMarket = asked.template !== 'mix';
   let growthBps: number | null = null;
   if (share?.kind === 'pair') growthBps = share.first * BPS_PER_PCT;
-  if (share?.kind === 'percent') growthBps = share.value * BPS_PER_PCT;
+  // "A third" is a third of the whole, to the nearest basis point.
+  if (share?.kind === 'percent') growthBps = Math.round(share.value * BPS_PER_PCT);
   // "All of it" and a sum answer "how much for it", and say nothing of how the whole is held.
   if (share?.kind === 'whole' && ofAMarket) growthBps = WHOLE_MIX_BPS;
   if (share?.kind === 'amount' && ofAMarket) growthBps = bpsOf(share, amountUsd);
@@ -500,17 +526,89 @@ function mixAnswered(
   return mix !== null && parsed.success ? parsed.data : null;
 }
 
+/** What the person's later messages said in words, read as answers to the questions before them. */
+type Heard = {
+  /** How each was read: `mix_from_words`, `sleeves_from_words`, `none_from_words`. */
+  flags: string[];
+  /**
+   * The narratives a message answered "none" for, by id (`marketFilter` for the model's): left out
+   * for good, and never asked again.
+   */
+  leftOut: string[];
+};
+
+/** What a turn leaves open that the next message can answer in words. */
+type Open = {
+  /** The narratives the `mix` question asks a share of the money for. None: it asks of the mix. */
+  shareOf: { key: string; words: string }[];
+  /** The themes the `sleeves` question asks a share for each of, in the order written. */
+  themes: { keys: string[]; slug: string; words: string }[];
+};
+
+/**
+ * The split a message says in answer to the question that names several themes ("How do you want to
+ * split the money between AI and semiconductors?"): an even one ("half each", "50-50", "equally"), a
+ * pair in the order asked ("60/40"), or a share for each by its name that come to the whole ("60% in
+ * AI and 40% in semiconductors", "all of it in AI", which leaves the other out). Null where the
+ * message says none of these: nothing is filled in.
+ */
+function sharesAnswered(
+  message: string,
+  themes: Open['themes'],
+  amountUsd: number | null,
+): PlanSleeve[] | null {
+  const sleevesOf = (bps: (number | null)[]): PlanSleeve[] | null => {
+    const sleeves = themes.flatMap((t, i): PlanSleeve[] => {
+      const shareBps = bps[i] ?? null;
+      return shareBps === null ? [] : [{ kind: 'theme', theme: t.slug, shareBps }];
+    });
+    const whole = sleeves.reduce((n, x) => n + x.shareBps, 0) === WHOLE_MIX_BPS;
+    return whole && PlanSleeves.safeParse(sleeves).success ? sleeves : null;
+  };
+  if (evenSplitSaidIn(message)) {
+    const each = Math.floor(WHOLE_MIX_BPS / themes.length);
+    const left = WHOLE_MIX_BPS - each * themes.length;
+    return sleevesOf(themes.map((_, i) => (i === 0 ? each + left : each)));
+  }
+  const said = shareSaidIn(message);
+  const [, second] = themes;
+  if (said?.kind === 'pair' && second && themes.length === 1 + 1)
+    return sleevesOf([said.first * BPS_PER_PCT, said.second * BPS_PER_PCT]);
+  // Each by its name: the fixed words of its narrative, or the person's own words for it.
+  const mentions = marketMentionsIn(message).filter((m) => m.skipped === null && !m.wondered);
+  const shares = themes.map((t): MarketShare => {
+    const spans = [
+      ...mentions.filter((m) => t.keys.includes(m.market)),
+      ...phraseIn(message, t.words),
+    ];
+    return (
+      spans
+        .map((m) => marketShareIn(message, m.at, m.end))
+        .filter((x) => x !== null)
+        .at(-1) ?? null
+    );
+  });
+  return sleevesOf(shares.map((share) => (share === null ? null : bpsOf(share, amountUsd))));
+}
+
 /**
  * The draft, the questions, and the sheet with its read-back once nothing is left to ask.
  *
  * The person's later messages are read with the first (`conversationText` joins them with a blank
- * line), by the same reader and the same checks. A reply of a few words ("70-30", "half", "all of it")
- * names no market and no question: read with the rest it was lost, or taken for a split of its own. So
- * each message after the first is read as the answer to the `mix` question the messages before it
- * left open, where they left one open and the message says a share or a mix, as an answer on the form
- * is (flag `mix_from_words`). An answer on the form wins. A `mix` question that is there only because
- * the model read a mix is not counted: the reply at hand is the model's reading of the whole
- * conversation, this message included, so that question may never have been asked.
+ * line), by the same reader and the same checks, and the last word wins: what a later message says of
+ * a narrative, of a mix or of a refusal decides over an earlier one. A reply of a few words ("70-30",
+ * "half", "all of it", "none", "half each") names no market and no question: read with the rest it
+ * was lost, or taken for a split of its own. So each message after the first is also read as the
+ * answer to the question about what is held that the messages before it left open, as an answer on
+ * the form is:
+ *   - a share or a mix answers the `mix` question (flag `mix_from_words`);
+ *   - "none" ("zero", "0%", "nothing for AI") answers it too: what was asked about is left out for
+ *     good, and the question does not come back (`none_from_words`);
+ *   - "half each", "60/40" or a share for each by name answers the question that names several
+ *     themes (`sleeves_from_words`).
+ * An answer on the form wins. A `mix` question that is there only because the model read a mix is
+ * not counted: the reply at hand is the model's reading of the whole conversation, this message
+ * included, so that question may never have been asked.
  */
 export function runIntake(input: IntakeInput): IntakeResult {
   const blocks = input.text
@@ -519,27 +617,85 @@ export function runIntake(input: IntakeInput): IntakeResult {
     .filter(Boolean);
   // Only the last few messages are read this way: a long text in many paragraphs is one message.
   const first = Math.max(0, blocks.length - INTAKE_LIMITS.turnsRead);
-  const turns = [blocks.slice(0, first + 1).join('\n\n'), ...blocks.slice(first + 1)];
+  const turns = [blocks.slice(0, first + 1).join(TURN_BREAK), ...blocks.slice(first + 1)];
   let answers = input.answers ?? {};
-  const inWords: string[] = [];
-  for (let n = 1; n < turns.length && !('mix' in answers); n += 1) {
-    const before = intakeOf({ ...input, text: turns.slice(0, n).join('\n\n') }, answers, []);
-    const asked = before.questions.find((q) => q.field === 'mix');
-    if (!asked || before.flags.includes('mix_asked:model')) continue;
-    const amountUsd = answers.amountUsd ?? before.draft.amountUsd;
-    const mix = mixAnswered(turns[n] ?? '', asked, amountUsd);
-    if (mix) {
-      answers = { ...answers, mix };
-      inWords.push('mix_from_words');
+  const heard: Heard = { flags: [], leftOut: [] };
+  for (let n = 1; n < turns.length; n += 1) {
+    const before = intakeOf(input, turns.slice(0, n), answers, heard);
+    const message = turns[n] ?? '';
+    const amountUsd = answers.amountUsd ?? before.result.draft.amountUsd;
+    const asked = before.result.questions.find((q) => q.field === 'mix');
+    if (asked && !('mix' in answers) && !before.result.flags.includes('mix_asked:model')) {
+      const of = before.open.shareOf;
+      if (
+        noneSaidIn(
+          message,
+          of.map((x) => x.words),
+        )
+      ) {
+        // "None" of the money for what was asked about leaves it out; asked of the mix, no mix.
+        if (of.length > 0) heard.leftOut.push(...of.map((x) => x.key));
+        else answers = { ...answers, mix: null };
+        heard.flags.push('none_from_words');
+        continue;
+      }
+      const mix = mixAnswered(message, asked, amountUsd);
+      if (mix) {
+        answers = { ...answers, mix };
+        heard.flags.push('mix_from_words');
+        continue;
+      }
+    }
+    const themes = before.open.themes;
+    if (themes.length > 0 && !('sleeves' in answers)) {
+      if (noneSaidIn(message)) {
+        heard.leftOut.push(...themes.flatMap((t) => t.keys));
+        heard.flags.push('none_from_words');
+        continue;
+      }
+      const none = themes.filter((t) => noneSaidIn(message, [t.words]));
+      if (none.length > 0) {
+        heard.leftOut.push(...none.flatMap((t) => t.keys));
+        heard.flags.push('none_from_words');
+        continue;
+      }
+      const sleeves = sharesAnswered(message, themes, amountUsd);
+      if (sleeves) {
+        answers = { ...answers, sleeves };
+        heard.flags.push('sleeves_from_words');
+      }
     }
   }
-  return intakeOf(input, answers, inWords);
+  return intakeOf(input, turns, answers, heard).result;
 }
 
-/** The intake of a text, with the answers the person gave on the form or, for the mix, in words. */
-function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[]): IntakeResult {
-  const { text, nowMonth, portfolios } = input;
-  const flags: string[] = [...inWords];
+/**
+ * The intake of a conversation, message by message, with the answers the person gave on the form or
+ * in words, and what the next message can answer in words.
+ */
+function intakeOf(
+  input: IntakeInput,
+  turns: readonly string[],
+  answers: IntakeAnswers,
+  heard: Heard,
+): { result: IntakeResult; open: Open } {
+  const { nowMonth, portfolios } = input;
+  const text = turns.join(TURN_BREAK);
+  // Where each message starts in the text, and which message a place in it is written in.
+  const starts: number[] = [];
+  let offset = 0;
+  for (const turn of turns) {
+    starts.push(offset);
+    offset += turn.length + TURN_BREAK.length;
+  }
+  const turnOf = (at: number): number => {
+    let found = 0;
+    for (const [t, start] of starts.entries()) if (start <= at) found = t;
+    return found;
+  };
+  // Before the first message: no message says it.
+  const NO_TURN = -1;
+  const flags: string[] = [...new Set(heard.flags)];
   const unclear = new Set<QuestionField>();
   const rules = draftFromRules(text, nowMonth, input.language).draft;
   const draft: BasketSheetDraft = { ...EMPTY_DRAFT };
@@ -797,72 +953,184 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
   // no stocks") or only wonders about ("no stocks? not sure") is not taken (`refusal_<how>:<what>`).
   // The model's reply is a check, both ways: what it gives that the text does not write is dropped
   // (`not_in_text:`), and what the text states that it missed is taken all the same
-  // (`disagrees_with_rules:`).
+  // (`disagrees_with_rules:`), and said in a line of its own that names the person's words.
+  //
+  // The last word wins (the review of Oct 7). A later message that names the class as something to
+  // hold, or as no problem ("No stocks." then "I changed my mind, stocks are fine"), takes the
+  // refusal back (`refusal_withdrawn:<what>`), and that is said, never done in silence. With a model
+  // both readers must agree it was taken back: a refusal the model still reads stands.
   const refusals = refusalsSaidIn(text);
-  const refused = new Set(refusals.filter((x) => x.stance === 'stated').map((x) => x.what));
-  // What a stated refusal leaves out: itself, and what goes with it (`LEFT_OUT_WITH`). "No stocks" is
-  // no stocks through a fund either. What goes with it is no disagreement with the model, either way.
-  const leftOut = new Set<Refused>(
-    [...refused].flatMap((what) => [what, ...(LEFT_OUT_WITH[what] ?? [])]),
-  );
-  const refusalOf = (what: Refused) => (what === 'credit' ? 'noCredit' : `cannotHold:${what}`);
-  for (const what of replyRefused)
-    if (!leftOut.has(what) && !refusals.some((x) => x.what === what))
-      flags.push(`not_in_text:${refusalOf(what)}`);
-  if (method === 'model')
-    for (const what of refused)
-      if (!replyRefused.includes(what)) flags.push(`disagrees_with_rules:${refusalOf(what)}`);
-  // Written, and not taken. Where the person is not sure, or the model read it as their refusal, it
-  // is said back with the read-back: nothing a reader took for a refusal is dropped in silence.
+  const classNamed = classMentionsIn(text);
+  const statedOf = (what: Refused) =>
+    refusals.filter((r) => r.what === what && r.stance === 'stated');
+  /** The last message that states a refusal of the class; `NO_TURN` where none does. */
+  const refusedIn = (what: Refused): number =>
+    Math.max(NO_TURN, ...statedOf(what).map((r) => turnOf(r.at)));
+  /** Whether a place the text names the class says it as something to hold, or as no problem. */
+  const allows = (m: { what: Refused; at: number; end: number }): boolean => {
+    const within = refusals.find((r) => r.what === m.what && r.at <= m.at && m.end <= r.end);
+    return within ? within.stance === 'negated' : stanceOf(text, m.at, m.end) === 'stated';
+  };
+  /** The last message that says the class may be held; `NO_TURN` where none does. */
+  const allowedIn = (what: Refused): number =>
+    Math.max(
+      NO_TURN,
+      ...classNamed.filter((m) => m.what === what && allows(m)).map((m) => turnOf(m.at)),
+    );
+  const stated = [...new Set(refusals.filter((x) => x.stance === 'stated').map((x) => x.what))];
+  const takenBack = (what: Refused) =>
+    allowedIn(what) > refusedIn(what) && !(method === 'model' && replyRefused.includes(what));
+  const refused = new Set(stated.filter((what) => !takenBack(what)));
+  // Written as the person's refusal, and not taken: said back with the read-back, so that nothing a
+  // reader took for a refusal is dropped in silence.
   const refusalsNotTaken: RefusalSaid[] = [];
-  for (const what of new Set(refusals.map((x) => x.what))) {
-    if (leftOut.has(what)) continue;
-    const written = refusals.filter((x) => x.what === what);
-    const shown = written.find((x) => x.stance === 'wondered') ?? written[0];
-    if (!shown) continue;
-    flags.push(`refusal_${shown.stance}:${what}`);
-    if (shown.stance === 'wondered' || replyRefused.includes(what)) refusalsNotTaken.push(shown);
+  /** A refusal the text states that is not applied: a later word, or an answer, holds the class. */
+  const withdraw = (what: Refused) => {
+    const last = statedOf(what).at(-1);
+    refused.delete(what);
+    flags.push(`refusal_withdrawn:${what}`);
+    if (last && !refusalsNotTaken.includes(last)) refusalsNotTaken.push(last);
+  };
+  for (const what of stated) if (takenBack(what)) withdraw(what);
+  // What a stated refusal leaves out: itself, and what goes with it (`LEFT_OUT_WITH`). "No stocks" is
+  // no stocks through a fund either, unless the text then names the funds as something to hold ("no
+  // stocks, but ETFs are fine"). What goes with it is no disagreement with the model, either way.
+  const leftOutOf = (classes: Set<Refused>) =>
+    new Set<Refused>(
+      [...classes].flatMap((what) => {
+        const from = statedOf(what).at(-1)?.end ?? 0;
+        const with_ = (LEFT_OUT_WITH[what] ?? []).filter(
+          (other) => !classNamed.some((m) => m.what === other && m.at >= from && allows(m)),
+        );
+        return [what, ...with_];
+      }),
+    );
+  const refusalOf = (what: Refused) => (what === 'credit' ? 'noCredit' : `cannotHold:${what}`);
+  {
+    const leftOut = leftOutOf(refused);
+    for (const what of replyRefused)
+      if (!leftOut.has(what) && !refusals.some((x) => x.what === what))
+        flags.push(`not_in_text:${refusalOf(what)}`);
+    if (method === 'model')
+      for (const what of refused)
+        if (!replyRefused.includes(what)) flags.push(`disagrees_with_rules:${refusalOf(what)}`);
+    // Written, and no refusal of theirs. Where the person is not sure, or the model read it as their
+    // refusal, it is said back.
+    for (const what of new Set(refusals.map((x) => x.what))) {
+      if (leftOut.has(what) || stated.includes(what)) continue;
+      const written = refusals.filter((x) => x.what === what);
+      const shown = written.find((x) => x.stance === 'wondered') ?? written[0];
+      if (!shown) continue;
+      flags.push(`refusal_${shown.stance}:${what}`);
+      if (shown.stance === 'wondered' || replyRefused.includes(what)) refusalsNotTaken.push(shown);
+    }
   }
-  const classesRefused = [...leftOut].filter((x): x is HoldableClass => x !== 'credit').sort();
-  limits.cannotHoldClasses = classesRefused.length > 0 ? classesRefused : null;
-  if (leftOut.has('credit')) limits.creditTolerance = 'none';
 
-  // What the person wants held (gate EXPLICIT-MIX, Rodrigo, Oct 6). A mix is taken only as written,
+  // What the person wants held (gate EXPLICIT-MIX, Rodrigo, Oct 6). A mix is read only as written,
   // and only where its clause states it as what the person wants held: code reads it from the text in
   // English or Portuguese ("all of it in stocks", "70% stocks and 30% cash", "só crédito"). One its
   // clause rules out or says of something else is no mix ("I wouldn't put all of it in stocks", "so no
   // stocks please"): nothing is built from the opposite of what is written. One the person only
   // wonders about ("Should I put all of it in stocks?"), or says of a part of the money ("the other
-  // 30% all in stocks"), is asked (below). Where the model and the text both read one and differ, the
-  // text's is taken and the difference flagged.
-  const mixSaid = mixSaidIn(text);
-  const written = mixSaid?.stance === 'stated' ? mixSaid : null;
-  if (mixSaid && !written) flags.push(`mix_${mixSaid.stance}`);
+  // 30% all in stocks"), is asked (below).
+  //
+  // The last word wins: the last message that says a mix decides, and a mix whose class a later
+  // message rules out is no mix ("all of it in stocks", then "no stocks").
+  //
+  // With a model a mix needs both readers (the review of Oct 7): it is taken where the model's reply
+  // reads one and the text states one, the text's where they differ, and the difference flagged. One
+  // the text states that the model did not read is not taken, not asked and not said
+  // (`text_only:mix`): "I have all my money in stocks and want to diversify" is no plan in stocks.
+  // With no model the mix the text states is asked once, with it as the form's start, never taken.
+  const mixSaid = mixSaidInTurns(turns);
+  const refusedLater =
+    mixSaid?.stance === 'stated' &&
+    mixSaid.classes.some((c) => refused.has(c) && refusedIn(c) > mixSaid.turn);
+  let written = mixSaid?.stance === 'stated' && !refusedLater ? mixSaid : null;
+  if (mixSaid && !written) flags.push(refusedLater ? 'mix_refused_later' : `mix_${mixSaid.stance}`);
+  // Where the text's mix is not read, its shares are no split of the plan either (below).
+  let unreadMix: { at: number; end: number } | null = null;
+  if (method === 'model' && written && !replyMix) {
+    flags.push('text_only:mix');
+    unreadMix = { at: written.at, end: written.end };
+    written = null;
+  }
+  // The mix both readers read, which may be taken; and the one the text states with no model, asked.
   let mixRead: PersonalMix | null = null;
+  let mixOfRules: PersonalMix | null = null;
   if (written) {
     const parsed = PersonalMix.safeParse(written.mix);
-    if (parsed.success) {
+    if (parsed.success && method === 'model') {
       mixRead = parsed.data;
       if (replyMix && !sameMix(replyMix, parsed.data)) flags.push('disagrees_with_rules:mix');
-    }
+    } else if (parsed.success) mixOfRules = parsed.data;
   }
   if (replyMix && !mixRead) flags.push('no_cue:mix');
   // Markets, industries and trends ("big tech", "the S&P", "semiconductors", "defense stocks"): the
   // narrative's words must be in the text, as an ask. One the model names that the text has no word
   // for is dropped and asked; one the text names only to rule it out, or in passing, is dropped. Words
   // inside a shared portfolio's name ("Chips & Agents") name the portfolio, not a market.
+  //
+  // The last word wins: a narrative a later message only rules out is not asked for, whatever an
+  // earlier one said ("…in AI", then "Actually, no AI"). Within one message any ask stands.
   const portfolioNames = [...portfolios.map((p) => p.name), ...namedPortfolios];
   const mentions = marketMentionsIn(text, portfolioNames);
-  const asked = mentions.filter((m) => m.skipped === null);
+  /** The asks that stand: those written after the last message that only rules the thing out. */
+  const standing = <T extends { at: number }>(
+    all: readonly T[],
+    says: (m: T) => 'asked' | 'negated' | null,
+  ): T[] => {
+    const asking = new Set(all.filter((m) => says(m) === 'asked').map((m) => turnOf(m.at)));
+    const cut = Math.max(
+      NO_TURN,
+      ...all
+        .filter((m) => says(m) === 'negated' && !asking.has(turnOf(m.at)))
+        .map((m) => turnOf(m.at)),
+    );
+    return all.filter((m) => says(m) === 'asked' && turnOf(m.at) > cut);
+  };
+  const saysMarket = (m: MarketMention) =>
+    m.skipped === null ? 'asked' : m.skipped === 'negated' ? 'negated' : null;
+  let asked = MARKET_IDS.flatMap((id) =>
+    standing(
+      mentions.filter((m) => m.market === id),
+      saysMarket,
+    ),
+  ).sort((a, b) => a.at - b.at);
   for (const m of replyMarkets ?? []) {
     if (asked.some((w) => w.market === m)) continue;
-    const skipped = mentions.find((w) => w.market === m)?.skipped;
+    const all = mentions.filter((w) => w.market === m);
+    const skipped = all.some((w) => w.skipped === 'negated')
+      ? 'negated'
+      : all.find((w) => w.skipped)?.skipped;
     if (skipped) flags.push(`market_${skipped}:${m}`);
     else {
       flags.push(`no_cue:market:${m}`);
       unclear.add('themes');
     }
   }
+  // With a model a narrative needs both readers (the review of Oct 7): the fixed words the text check
+  // finds are an ask only where the model's reply names that market too, by its id or as the words
+  // of its filter. Words the model did not read are not taken, not asked and not said
+  // (`text_only:market:<id>`): "I have a cloud of doubt", "after chips and salsa" and "my car needs
+  // an oil change" name no market.
+  if (method === 'model') {
+    const filterWords = replyFilter ? phraseIn(text, replyFilter.words) : [];
+    const namedByModel = (id: Market) =>
+      (replyMarkets ?? []).includes(id) ||
+      mentions.some(
+        (m) => m.market === id && filterWords.some((s) => m.at < s.end && s.at < m.end),
+      );
+    for (const id of MARKET_IDS)
+      if (asked.some((m) => m.market === id) && !namedByModel(id))
+        flags.push(`text_only:market:${id}`);
+    asked = asked.filter((m) => namedByModel(m.market));
+  }
+  // What the person answered "none" for, in words: left out for good.
+  for (const id of MARKET_IDS)
+    if (asked.some((m) => m.market === id) && heard.leftOut.includes(id))
+      flags.push(`market_left_out:${id}`);
+  asked = asked.filter((m) => !heard.leftOut.includes(m.market));
   // A market the fixed lists have no word for, named by the model as a filter over the sourced
   // attributes (gate THEME-MATCHED). The filter is held to its schema, and the person's words must be
   // written in the text, as an ask, where no fixed list already reads them and they are no part of a
@@ -874,30 +1142,40 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
     const { words, ...filter } = replyFilter;
     const spans = phraseIn(text, words);
     const read = [...mentions, ...portfolioNames.flatMap((name) => phraseIn(text, name))];
-    const free = spans.filter((s) => !read.some((m) => m.at < s.end && s.at < m.end));
-    const asks = free.flatMap((s): Named[] => {
-      const stance = stanceOf(text, s.at, s.end);
-      return stance === 'negated' || stance === 'aside'
-        ? []
-        : [{ ...s, wondered: stance === 'wondered' }];
-    });
+    const free = spans
+      .filter((s) => !read.some((m) => m.at < s.end && s.at < m.end))
+      .map((s) => ({ ...s, stance: stanceOf(text, s.at, s.end) }));
+    const asks = standing(free, (s) =>
+      s.stance === 'negated' ? 'negated' : s.stance === 'aside' ? null : 'asked',
+    ).map(({ stance, ...s }): Named => ({ ...s, wondered: stance === 'wondered' }));
     if (matchedSlug(filter) === null) flags.push('model_invalid:marketFilter');
     else if (spans.length === 0) flags.push('no_cue:marketFilter');
     else if (free.length === 0) flags.push('market_covers:marketFilter');
     else if (asks.length === 0) flags.push('market_negated:marketFilter');
+    else if (heard.leftOut.includes('marketFilter')) flags.push('market_left_out:marketFilter');
     else filterAsked = { filter, spans: asks };
   }
   const named: Named[] = [...asked, ...(filterAsked?.spans ?? [])];
   // The split, once what is said of the narratives is set apart: "30%" in "30% in AI" and "half" in
-  // "half in big tech" are those narratives' shares, not a split of the plan.
-  const rest = splitIn(
-    withoutMarketShares(
-      text,
-      named.map((m) => m.at),
-    ),
+  // "half in big tech" are those narratives' shares, not a split of the plan. Nor are the shares of
+  // a mix the text states and the model did not read: they are not asked about either.
+  const shares = withoutMarketShares(
+    text,
+    named.map((m) => m.at),
   );
-  // With no model, a split the rules parser cannot read ("70-30", "70%") is asked.
-  if (input.reply === null && (rest.pairs.length > 0 || rest.percents.length > 0))
+  const rest = splitIn(
+    unreadMix
+      ? `${shares.slice(0, unreadMix.at)}${' '.repeat(unreadMix.end - unreadMix.at)}${shares.slice(unreadMix.end)}`
+      : shares,
+  );
+  // With no model, a split the rules parser cannot read ("70-30", "70%") is asked. Not the percents
+  // of a mix the text states: those are the mix's, which is asked by its own question.
+  // Nor "0%", which splits nothing: it answers "how much" with none.
+  if (
+    input.reply === null &&
+    !mixOfRules &&
+    (rest.pairs.length > 0 || rest.percents.some((pct) => pct > 0))
+  )
     unclear.add('sleeves');
 
   // What each narrative reads to on the person's chain, in this order: its shared portfolio, where it
@@ -1008,23 +1286,9 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
         ...resolve(null, filterAsked.filter),
       });
   }
-  // A shared portfolio is where the plan starts from, as before.
-  for (const { kind, slug } of reads)
-    if (kind === 'portfolio' && slug && !(draft.themes ?? []).includes(slug))
-      draft.themes = [...(draft.themes ?? []), slug];
-  // The narratives a theme sleeve holds: one per label or filter, however many words name it.
-  const themed = reads
-    .filter((r) => r.kind === 'label' || r.kind === 'matched')
-    .sort((a, b) => a.at - b.at);
-  const themes: { slug: string; words: string; shares: MarketShare[] }[] = [];
-  for (const r of themed) {
-    const same = themes.find((t) => t.slug === r.slug);
-    if (same) same.shares.push(r.share);
-    else if (r.slug) themes.push({ slug: r.slug, words: r.words, shares: [r.share] });
-  }
   // What an answer's theme sleeve names must be on the shelf too: a curated label that holds a stock
-  // on the person's chain, or a filter that matches one there. Otherwise the answer is refused and
-  // the split asked again, as a portfolio answered off the shelf is.
+  // on the person's chain, or a filter that matches there. Otherwise the answer is refused and the
+  // split asked again, as a portfolio answered off the shelf is.
   let sleevesAnswered = answers.sleeves;
   let sleevesRefused = false;
   if (sleevesAnswered && resolvable) {
@@ -1038,6 +1302,85 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
       flags.push('answer_not_on_shelf:sleeves');
       sleevesAnswered = undefined;
     }
+  }
+
+  // A refusal and a holding of the same class in one conversation, once the last word is taken, is a
+  // conflict (the review of Oct 7): "No stocks in my IRA, so here I want all stocks" gave a sheet
+  // with both. A mix whose words name a class the text also rules out, or a narrative (stocks) where
+  // stocks are ruled out: one question, by the `mix` field, and never a sheet with both. An answer
+  // settles it: a share for the holding takes the refusal back (said, never in silence); "none"
+  // leaves the holding out, and the refusal stands.
+  const growsSoFar =
+    (answers.goal ?? draft.goal) !== 'income' && (answers.goal ?? draft.goal) !== 'protect';
+  const holdable = reads.filter((r) => r.kind !== 'none').sort((a, b) => a.at - b.at);
+  const keyOf = (r: Read): string => r.id ?? 'marketFilter';
+  const answeredTheme = (sleevesAnswered ?? []).some((x) => x.kind === 'theme');
+  const mixClass = written?.classes.find((c) => refused.has(c));
+  const mixRefusal = mixClass ? statedOf(mixClass).at(-1) : undefined;
+  const stockRefusal = refused.has('stock') ? statedOf('stock').at(-1) : undefined;
+  type Conflict = { what: Refused; refusal: RefusalSaid; held: string[]; of: 'mix' | 'market' };
+  const conflict: Conflict | null =
+    written && mixClass && mixRefusal
+      ? { what: mixClass, refusal: mixRefusal, held: [written.words], of: 'mix' }
+      : stockRefusal && holdable.length > 0 && growsSoFar
+        ? { what: 'stock', refusal: stockRefusal, held: holdable.map((r) => r.words), of: 'market' }
+        : null;
+  // The share of a mix that holds the class a refusal names.
+  const partOf = (m: PersonalMix, what: Refused): number =>
+    what === 'gold'
+      ? m.goldBps
+      : what === 'credit'
+        ? (m.creditBps ?? 0)
+        : what === 'commodity'
+          ? 0
+          : m.growthBps;
+  let conflictAsk: Conflict | null = null;
+  // The narratives the person answered "none" for on the form: left out, as the words leave them.
+  let noneHeld = false;
+  if (conflict) {
+    flags.push(`refusal_conflict:${conflict.what}`);
+    const m = answers.mix;
+    if (answeredTheme || (m && partOf(m, conflict.what) > 0)) withdraw(conflict.what);
+    else if ('mix' in answers || sleevesAnswered !== undefined) noneHeld = conflict.of === 'market';
+    else conflictAsk = conflict;
+  } else {
+    // An answered split that holds a theme is the person's later word on stocks.
+    if (stockRefusal && answeredTheme) withdraw('stock');
+    if ('mix' in answers && answers.mix === null && holdable.length > 0) noneHeld = true;
+  }
+  // While the question is open neither side of it is taken: the mix is not held, and neither is the
+  // narrative.
+  if (conflictAsk?.of === 'mix') {
+    mixRead = null;
+    mixOfRules = null;
+  }
+  const inPlay = conflictAsk?.of === 'market' ? reads.filter((r) => r.kind === 'none') : reads;
+  // What the refusals that stand leave out: the sheet's limits.
+  const leftOut = leftOutOf(refused);
+  const classesRefused = [...leftOut].filter((x): x is HoldableClass => x !== 'credit').sort();
+  limits.cannotHoldClasses = classesRefused.length > 0 ? classesRefused : null;
+  if (leftOut.has('credit')) limits.creditTolerance = 'none';
+
+  // A shared portfolio is where the plan starts from, as before. Not one the person answered "none"
+  // of the money for.
+  for (const r of inPlay) {
+    if (r.kind !== 'portfolio' || !r.slug) continue;
+    if (noneHeld) flags.push(`market_left_out:${keyOf(r)}`);
+    else if (!(draft.themes ?? []).includes(r.slug))
+      draft.themes = [...(draft.themes ?? []), r.slug];
+  }
+  // The narratives a theme sleeve holds: one per label or filter, however many words name it.
+  const themed = inPlay
+    .filter((r) => r.kind === 'label' || r.kind === 'matched')
+    .sort((a, b) => a.at - b.at);
+  const themes: { keys: string[]; slug: string; words: string; shares: MarketShare[] }[] = [];
+  for (const r of themed) {
+    const same = themes.find((t) => t.slug === r.slug);
+    if (same) {
+      same.shares.push(r.share);
+      same.keys.push(keyOf(r));
+    } else if (r.slug)
+      themes.push({ keys: [keyOf(r)], slug: r.slug, words: r.words, shares: [r.share] });
   }
 
   // "70% ... and the other half" is more than the whole: the split is asked, never guessed.
@@ -1086,19 +1429,33 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
   // any goal.
   let marketMix: { mix: PersonalMix; words: string } | null = null;
   let marketShareAsk: string | null = null;
+  // What the text reads the asked share as, where it reads one: the form's start.
+  let shareRead: PersonalMix | null = null;
+  // The narratives the `mix` question asks a share of the money for.
+  let shareAskedOf: Open['shareOf'] = [];
   // A share written as a sum waits for the amount it is a share of: nothing is asked of it meanwhile.
   let shareWaits = false;
+  // The mix the text states, taken or not: what is read beside it is read the same either way.
+  const mixSeen = mixRead ?? mixOfRules;
   const splitWritten =
     rest.ofMoney.length > 0 ||
     rest.pairs.length > 0 ||
     draft.sleeves !== null ||
     sleevesAnswered !== undefined;
   const toGrow = value.goal !== 'income' && value.goal !== 'protect';
-  const held = reads.filter((r) => r.kind === 'portfolio');
+  const held = inPlay.filter((r) => r.kind === 'portfolio');
+  // A share is taken only in its plain forms (the review of Oct 7). Where the text also says where
+  // the rest goes and that is not cash or kept safe ("30% in AI and the rest in stocks", "half in
+  // stocks and half in AI"), or carves a sum out of the share ("all of it in AI except $1,000"), the
+  // rest is not put in the safe part by guessing: the split is asked once (`rest_said`).
+  const restSaid = restOfMoneyIn(text);
+  const carved = named.some((m) => carvedOutAfter(text, m.end));
+  const restNotPlain = (partial: boolean) =>
+    (partial && (restSaid === 'other' || rest.half)) || carved;
   // Not where a theme sleeve is in play: the two are not combined (below).
   if (
     themes.length === 0 &&
-    !mixRead &&
+    !mixSeen &&
     !('mix' in answers) &&
     !splitWritten &&
     held.length > 0 &&
@@ -1122,13 +1479,22 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
               cashBps: WHOLE_MIX_BPS - growthBps,
             })
           : null;
-      if (parsed?.success) {
+      if (parsed?.success && method === 'model' && !restNotPlain(growthBps < WHOLE_MIX_BPS)) {
         marketMix = { mix: parsed.data, words: first.words };
         flags.push('mix_from_market');
       } else {
-        // No share said, or shares that come to more than the money: how much is asked.
+        // How much is asked: no share said, or shares that come to more than the money; a share
+        // with the rest said or a sum carved out; or, with no model, a share the text states, which
+        // is asked once with its reading as the start and never taken.
         marketShareAsk = first.words;
-        flags.push('market_share_unclear');
+        shareAskedOf = held.map((r) => ({ key: keyOf(r), words: r.words }));
+        if (!parsed?.success) flags.push('market_share_unclear');
+        else if (restNotPlain(growthBps < WHOLE_MIX_BPS))
+          flags.push('rest_said', 'market_share_unclear');
+        else {
+          shareRead = parsed.data;
+          flags.push('from_rules:market');
+        }
       }
     }
   }
@@ -1142,12 +1508,21 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
   // question is asked instead, by the field whose answer can settle it:
   //   - one theme alone, with no shared portfolio and no written split beside it: how much of the
   //     money (`mix`), as for a market. The answered share of stocks is the theme's;
-  //   - anything else: the split (`sleeves`). Only a split says a share for each part.
+  //   - anything else: the split (`sleeves`). Only a split says a share for each part. Asked of
+  //     several themes alone, the question names them ("How do you want to split the money between
+  //     AI and semiconductors?"), and "half each" answers it; asked of one theme whose rest the
+  //     text says, it asks the share and the rest.
   // A mix that says the same as the themes' shares ("invest in semiconductors, all of it in stocks")
   // is no second mechanism: the sleeves are made. On a goal of income or to protect a narrative's
-  // share is not read, as a market's is not: the theme is not held, and that is said.
+  // share is not read, as a market's is not: the theme is not held, and that is said. With no model
+  // the shares the text states are asked once, never taken.
   let themeSleeves: PlanSleeve[] | null = null;
   let themeAsk: 'mix' | 'sleeves' | null = null;
+  // The question the split is asked by, where it is asked to settle themes alone.
+  let splitAsk:
+    | { id: 'themeShares'; themes: Open['themes'] }
+    | { id: 'themeAndRest'; market: string }
+    | null = null;
   const themesNotHeld = themes.length > 0 && !toGrow;
   if (themesNotHeld) flags.push('themes_dropped_for_goal');
   else if (sleevesAnswered !== undefined) {
@@ -1178,26 +1553,54 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
         flags.push('sleeves_from_mix_answer');
       } else for (const t of themes) flags.push(`theme_not_held:${t.slug}`);
     } else {
-      const besideSplit = splitWritten && !mixRead;
+      const besideSplit = splitWritten && !mixSeen;
       const made = portfolioToo || besideSplit ? null : themeSleevesOf(themes, value.amountUsd);
+      const alone = only && themes.length === 1 && !portfolioToo && !besideSplit ? only : null;
+      // What is asked of the themes, and why: the share of one alone, or the split.
+      let ask: { how: 'share' | 'split'; why: string[] } | null = null;
       if (made === 'wait') shareWaits = true;
-      else if (made && sameAsMix(made, mixRead)) {
-        themeSleeves = made;
-        draft.sleeves = made;
-        flags.push('sleeves_from_market');
+      else if (made && sameAsMix(made, mixSeen)) {
+        const themeBps = themeBpsOf(made);
+        if (restNotPlain(themeBps < WHOLE_MIX_BPS))
+          ask = { how: 'split', why: ['rest_said', 'theme_shares_unclear'] };
+        else if (method === 'model') {
+          themeSleeves = made;
+          draft.sleeves = made;
+          flags.push('sleeves_from_market');
+        } else if (alone) {
+          // With no model: asked once, with what the text says as the form's start.
+          ask = { how: 'share', why: ['from_rules:market'] };
+          shareRead = {
+            growthBps: themeBps,
+            dollarYieldBps: 0,
+            goldBps: 0,
+            cashBps: WHOLE_MIX_BPS - themeBps,
+          };
+        } else ask = { how: 'split', why: ['from_rules:market', 'theme_shares_unclear'] };
       } else {
         if (besideSplit) flags.push('theme_beside_split');
         if (portfolioToo) flags.push('theme_beside_portfolio');
-        if (mixRead) flags.push('theme_beside_mix');
-        if (only && themes.length === 1 && !portfolioToo && !besideSplit) {
-          themeAsk = 'mix';
-          marketShareAsk = only.words;
-          flags.push('market_share_unclear');
-        } else {
-          themeAsk = 'sleeves';
-          unclear.add('sleeves');
-          flags.push('theme_shares_unclear');
-        }
+        if (mixSeen) flags.push('theme_beside_mix');
+        ask = alone
+          ? { how: 'share', why: ['market_share_unclear'] }
+          : { how: 'split', why: ['theme_shares_unclear'] };
+      }
+      if (ask?.how === 'share' && alone) {
+        themeAsk = 'mix';
+        marketShareAsk = alone.words;
+        shareAskedOf = themes.flatMap((t) => t.keys.map((key) => ({ key, words: t.words })));
+        flags.push(...ask.why);
+      } else if (ask) {
+        themeAsk = 'sleeves';
+        unclear.add('sleeves');
+        flags.push(...ask.why);
+        if (!portfolioToo && !besideSplit)
+          splitAsk = alone
+            ? { id: 'themeAndRest', market: alone.words }
+            : {
+                id: 'themeShares',
+                themes: themes.map(({ keys, slug, words }) => ({ keys, slug, words })),
+              };
       }
     }
   }
@@ -1205,16 +1608,17 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
   // beside it is not applied (a sheet holds one or the other), and that is flagged.
   const sleevesWin =
     sleevesAnswered !== undefined && themeBpsOf(sleevesAnswered) > 0 && !('mix' in answers);
-  if (sleevesWin && mixRead) flags.push('mix_dropped_for_sleeves');
+  if (sleevesWin && mixSeen) flags.push('mix_dropped_for_sleeves');
   // A holding the person may mean and the text does not state is asked once, by the `mix` question:
   // never dropped, never guessed, and the risk is not asked in its place. That is a mix they only
-  // wonder about, a mix said of a part of the money, or a mix the model reads that the text's words
-  // cannot confirm (`no_cue:mix`), with that reading as the form's start. Not where something stated
-  // is already held or asked. Nor for a model's mix where the text gives a share to a narrative it
-  // names ("all of it in AI"): that share is the narrative's, whatever the narrative reads to. Nor
-  // where the text rules out the very mix the model read ("I wouldn't put all of it in stocks"). And
-  // where the text refuses a class the model's mix holds ("no stocks please"), the question is asked
-  // with no start: the form never opens on the opposite of what is written.
+  // wonder about, a mix said of a part of the money, a mix the model reads that the text's words
+  // cannot confirm (`no_cue:mix`), with that reading as the form's start, and, with no model, a mix
+  // the text states, with it as the start. Not where something stated is already held or asked. Nor
+  // for a model's mix where the text gives a share to a narrative it names ("all of it in AI"): that
+  // share is the narrative's, whatever the narrative reads to. Nor where the text rules out the very
+  // mix the model read ("I wouldn't put all of it in stocks"). And where the text refuses a class the
+  // model's mix holds ("no stocks please"), the question is asked with no start: the form never
+  // opens on the opposite of what is written.
   const shareOfANarrative = named.some(
     (m) => !m.wondered && marketShareIn(text, m.at, m.end) !== null,
   );
@@ -1224,7 +1628,10 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
     ((replyMix.growthBps > 0 && (refused.has('stock') || refused.has('crypto'))) ||
       (replyMix.goldBps > 0 && refused.has('gold')) ||
       ((replyMix.creditBps ?? 0) > 0 && refused.has('credit')));
-  let mixAsk: { read: PersonalMix | null; why: 'wondered' | 'part' | 'model' } | null = null;
+  let mixAsk: {
+    read: PersonalMix | null;
+    why: 'wondered' | 'part' | 'model' | 'rules';
+  } | null = null;
   const nothingStated =
     !mixRead &&
     marketMix === null &&
@@ -1233,8 +1640,14 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
     themeAsk === null &&
     !shareWaits &&
     !('mix' in answers) &&
-    sleevesAnswered === undefined;
-  if (nothingStated && mixSaid && (mixSaid.stance === 'wondered' || mixSaid.stance === 'part')) {
+    sleevesAnswered === undefined &&
+    conflictAsk === null;
+  if (nothingStated && mixOfRules) mixAsk = { read: mixOfRules, why: 'rules' };
+  else if (
+    nothingStated &&
+    mixSaid &&
+    (mixSaid.stance === 'wondered' || mixSaid.stance === 'part')
+  ) {
     const read = mixSaid.stance === 'wondered' ? PersonalMix.safeParse(mixSaid.mix) : null;
     mixAsk = { read: read?.success ? read.data : null, why: mixSaid.stance };
   } else if (
@@ -1245,14 +1658,15 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
   )
     mixAsk = { read: againstRefusal ? null : replyMix, why: 'model' };
   if (mixAsk) flags.push(`mix_asked:${mixAsk.why}`);
-  // While what is held is open (a theme's share, a sum that waits for the amount, a mix that is asked)
-  // or the person has no chain to read a narrative on, neither a mix read beside it nor the risk is
-  // settled: the risk is not asked meanwhile, as for a market.
+  // While what is held is open (a theme's share, a sum that waits for the amount, a mix that is asked,
+  // a refusal against a holding) or the person has no chain to read a narrative on, neither a mix
+  // read beside it nor the risk is settled: the risk is not asked meanwhile, as for a market.
   const heldOpen =
     themeAsk !== null ||
     shareWaits ||
     mixAsk !== null ||
-    (!resolvable && named.length > 0 && !mixRead && !('mix' in answers) && !splitWritten && toGrow);
+    conflictAsk !== null ||
+    (!resolvable && named.length > 0 && !mixSeen && !('mix' in answers) && !splitWritten && toGrow);
   let mix: PersonalMix | null =
     themeSleeves || sleevesWin
       ? null
@@ -1261,7 +1675,7 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
         : (mixRead ?? marketMix?.mix ?? null);
   // The words a mix is said in: the person's, where the mix held is the one they wrote.
   const mixWords = (m: PersonalMix) =>
-    written && mixRead && sameMix(m, mixRead)
+    written && mixSeen && sameMix(m, mixSeen)
       ? written.words
       : marketMix && sameMix(m, marketMix.mix)
         ? marketMix.words
@@ -1320,6 +1734,9 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
     // to settle a theme.
     if ((mix && answers.sleeves === undefined && themeAsk !== 'sleeves') || themeSleeves)
       unclear.delete('sleeves');
+    // Nor beside the mix the text states where that is what is asked: its percents are the mix's.
+    if ((mixAsk?.why === 'rules' || conflictAsk) && answers.sleeves === undefined)
+      unclear.delete('sleeves');
   }
   const keptSafe = sleeves?.some((x) => x.kind === 'safe_yield') === true && sleeves.length > 1;
   // An answer naming a portfolio is held to the shelf too, where the shelf could be read.
@@ -1351,7 +1768,7 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
           (value[field] === null || unclear.has(field))
         );
       case 'mix':
-        return marketShareAsk !== null || mixAsk !== null;
+        return marketShareAsk !== null || mixAsk !== null || conflictAsk !== null;
       case 'horizonMonths':
         return !horizonOpen && (value[field] === null || unclear.has(field));
       case 'sleeves':
@@ -1367,11 +1784,28 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
     }
   };
 
+  /** "a", "a and b", "a, b and c": the person's words, joined in their language. */
+  const listed = (words: readonly string[]): string =>
+    words.length > 1
+      ? `${words.slice(0, -1).join(', ')} ${WORDS[language].and} ${words.at(-1)}`
+      : (words[0] ?? '');
   const templateOf = (field: QuestionField): { id: QuestionId; params: Record<string, Value> } => {
     if (field === 'amountUsd' && otherCurrency)
       return { id: 'amountOtherCurrency', params: { ...otherCurrency } };
     if (field === 'sleeves' && mismatch) return { id: 'sleevesMismatch', params: { ...mismatch } };
+    if (field === 'sleeves' && splitAsk?.id === 'themeShares')
+      return {
+        id: 'themeShares',
+        params: { themes: listed(splitAsk.themes.map((t) => t.words)) },
+      };
+    if (field === 'sleeves' && splitAsk?.id === 'themeAndRest')
+      return { id: 'themeAndRest', params: { market: splitAsk.market } };
     if (field === 'risk' && keptSafe) return { id: 'riskGoalPart', params: {} };
+    if (field === 'mix' && conflictAsk)
+      return {
+        id: 'holdOrLeaveOut',
+        params: { refusal: conflictAsk.refusal.words, held: listed(conflictAsk.held) },
+      };
     if (field === 'mix' && marketShareAsk !== null)
       return value.amountUsd !== null
         ? { id: 'marketShare', params: { amount: value.amountUsd, market: marketShareAsk } }
@@ -1380,13 +1814,16 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
       return { id: 'goalMixConflict', params: { words: mixWords(mix), goal: value.goal } };
     return { id: field, params: {} };
   };
-  // What a question starts from: what was read, and for the `mix` question the mix it is asked about.
+  // What a question starts from: what was read, and for the `mix` question the mix it is asked about,
+  // or the share the text gives the market it is asked of. A refusal against a holding has no start.
   const startOf = (field: QuestionField): IntakeQuestion['read'] =>
     field !== 'mix'
       ? readOf(field, value)
-      : marketShareAsk === null
-        ? (mixAsk?.read ?? undefined)
-        : undefined;
+      : conflictAsk
+        ? undefined
+        : marketShareAsk === null
+          ? (mixAsk?.read ?? undefined)
+          : (shareRead ?? undefined);
   const questions: IntakeQuestion[] = QUESTION_FIELDS.filter(needed).map((field) =>
     question(field, language, templateOf(field), startOf(field)),
   );
@@ -1491,6 +1928,36 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
   if (input.homeChain)
     for (const words of waitsForShelf) assume('SHELF_UNREAD', { words, chain: input.homeChain });
   for (const { words } of refusalsNotTaken) assume('REFUSAL_NOT_TAKEN', { words });
+  // A refusal the text states that the model did not read: taken, and said in a line of its own
+  // that names the person's words, so a clause read wrongly is seen and corrected. Not while it is
+  // asked against a holding: the question names it.
+  if (method === 'model')
+    for (const what of stated) {
+      const last = statedOf(what).at(-1);
+      if (!last || !refused.has(what) || replyRefused.includes(what)) continue;
+      if (conflictAsk?.what === what) continue;
+      if (what === 'credit') assume('REFUSAL_TAKEN_CREDIT', { words: last.words });
+      else {
+        const order = Object.keys(CLASS_WORDS[language]);
+        const classes = [...leftOutOf(new Set([what]))]
+          .sort((a, b) => order.indexOf(a) - order.indexOf(b))
+          .map((c) => CLASS_WORDS[language][c] ?? c);
+        assume('REFUSAL_TAKEN', { words: last.words, classes: classes.join(',') });
+      }
+    }
+  // A refusal of a part of a class, and a name ruled out of a list the plan holds: a plan leaves out
+  // a class, so neither is applied, and that is said.
+  for (const part of new Set(
+    refusals.flatMap((r) => (r.part && !leftOut.has(r.what) ? [r.part] : [])),
+  )) {
+    flags.push('part_refused');
+    assume('REFUSAL_OF_A_PART', { words: part });
+  }
+  if (holdable.length > 0 || (value.themes ?? []).length > 0)
+    for (const { words } of namesRuledOutIn(text)) {
+      flags.push('cannot_leave_out');
+      assume('CANNOT_LEAVE_OUT', { words });
+    }
   if (mixDropped) assume('MIX_DROPPED', mixDropped);
   if (themesNotHeld && value.goal)
     for (const { words } of themes) assume('MIX_DROPPED', { words, goal: value.goal });
@@ -1559,19 +2026,35 @@ function intakeOf(input: IntakeInput, answers: IntakeAnswers, inWords: string[])
             ? themeName(slug)
             : null,
     }));
+  // What the next message can answer in words: the narratives the `mix` question asks a share of the
+  // money for, and the themes the split is asked between.
+  const asks = (field: QuestionField) => questions.some((q) => q.field === field);
+  const open: Open = {
+    shareOf: !asks('mix')
+      ? []
+      : conflictAsk
+        ? conflictAsk.of === 'market'
+          ? holdable.map((r) => ({ key: keyOf(r), words: r.words }))
+          : []
+        : shareAskedOf,
+    themes: asks('sleeves') && splitAsk?.id === 'themeShares' ? splitAsk.themes : [],
+  };
   return {
-    method,
-    language,
-    draft,
-    limits,
-    questions,
-    flags,
-    disagreements,
-    sheet,
-    readBack: said ? [...said.slice(0, -1), ...assumptions, ...said.slice(-1)] : null,
-    assumptions,
-    mix,
-    narratives,
+    result: {
+      method,
+      language,
+      draft,
+      limits,
+      questions,
+      flags: [...new Set(flags)],
+      disagreements,
+      sheet,
+      readBack: said ? [...said.slice(0, -1), ...assumptions, ...said.slice(-1)] : null,
+      assumptions,
+      mix,
+      narratives,
+    },
+    open,
   };
 }
 
