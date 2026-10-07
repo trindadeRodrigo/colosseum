@@ -57,11 +57,6 @@ export type IntakeState = {
   held?: HeldMix | null;
   /** The read-back our server last gave, to say only what is new of the next one. */
   readBack?: string[];
-  /**
-   * Where the last read-back stood: how many of the person's messages it had read, and what its
-   * sheet held. A conversation longer than the route takes is sent from here on (intake.ts, `base`).
-   */
-  absorbed?: { upTo: number; answers: Record<string, unknown> };
 };
 
 /** A quick reply: what it sends, and what it is said by. The screen has the words. */
@@ -95,7 +90,7 @@ export type Send =
    */
   | { kind: 'hold'; shareBps: number | null };
 
-/** What to say back, as a key the screen has words for. Never a sentence, never a figure. */
+/** What to say back, as a closed key with app-authored words or validated server read-back. */
 export type Say =
   /** What was understood, said from the sheet. */
   | { key: 'understood' }
@@ -110,6 +105,8 @@ export type Say =
   | { key: 'set'; fact: Fact }
   /** The reader could not be reached, or could not read the text. */
   | { key: 'failed'; why: ReadFailure }
+  /** App-authored failure copy from the page dictionary; never model or person-origin text. */
+  | { key: 'failure'; text: string }
   /** An answer that is not one the fact takes: "abc" for an amount, an amount under $10. */
   | { key: 'unfit'; fact: Fact }
   /**

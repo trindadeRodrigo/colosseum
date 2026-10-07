@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 import type { BasketSheet } from '@colosseum/schemas';
-import { createElement } from 'react';
+import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, press, settle, type, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
+import { ChainSwitch } from '../account/ChainSwitch';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
 import { PERSONALIZE_PATH, PROPOSE_PATH } from '../goal/build-plan';
@@ -13,6 +14,7 @@ import { EMBEDDED, fakePort, json, signedInPort } from '../wallet/test/fake-port
 import { portStore } from '../wallet/test/mock-provider';
 import { InvestScreen, restoreDraft } from './InvestScreen';
 import { INTAKE_PATH } from './intake';
+import * as guidedReader from './intake-conversation';
 import { answer, SHEET } from './test/intake';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
@@ -126,6 +128,26 @@ beforeEach(() => {
 afterEach(unmountAll);
 
 describe('signed in: the guided intake reads the conversation', () => {
+  it('renders the capacity explanation without accepting the excessive turn, and Start over clears it', async () => {
+    const server = api(answer({ sheet: SHEET, readBack: ['Your accepted goal'] }));
+    const host = await screen();
+    await say(host, 'x'.repeat(2000));
+    for (let i = 0; i < 9; i++) await say(host, 'y'.repeat(2000));
+    await say(host, 'z'.repeat(1980));
+    expect(server.to(INTAKE_PATH)).toHaveLength(11);
+    const storedBefore = JSON.parse(window.sessionStorage.getItem(GOAL_DRAFT) as string);
+    await say(host, 'This turn exceeds capacity');
+    expect(server.to(INTAKE_PATH)).toHaveLength(11);
+    expect(host.querySelector('[data-ui="invest-turns"]')?.textContent).toContain(en.talk.capacity);
+    const storedAfter = JSON.parse(window.sessionStorage.getItem(GOAL_DRAFT) as string);
+    expect(storedAfter.sheet).toEqual(storedBefore.sheet);
+    expect(storedAfter.sheet.words).not.toContain('This turn exceeds capacity');
+    await click(find(host, '[data-ui="invest-start-over"] button'));
+    expect(host.textContent).not.toContain(en.talk.capacity);
+    expect(turns(host)).toHaveLength(0);
+    expect(window.sessionStorage.getItem(GOAL_DRAFT)).toBeNull();
+  });
+
   it('asks our server’s questions one at a time in its words, answers by a press, and says back what it understood', async () => {
     const server = api(
       answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT, ASK_RISK] }),
@@ -446,5 +468,270 @@ describe('signed out: the rules reader', () => {
     expect(server.to(INTAKE_PATH)).toEqual([]);
     expect(server.to('/goals')).toHaveLength(1);
     expect(question(host)).toBe(en.talk.ask.goal);
+  });
+});
+
+describe('conversation response ownership', () => {
+  function delayed(fallback = false) {
+    let current = person;
+    const pending: Array<(response: Response) => void> = [];
+    const chainRequests: string[] = [];
+    portStore.setApi(async (path, init) => {
+      if (path === '/v1/me') return json(current);
+      if (path === '/v1/me/chain') {
+        current = { ...current, chain: JSON.parse(String(init?.body)).chain };
+        chainRequests.push(current.chain as string);
+        return json(current);
+      }
+      if (path === INTAKE_PATH && fallback) return json({}, 404);
+      if (path === (fallback ? '/goals' : INTAKE_PATH))
+        return new Promise<Response>((finish) => pending.push(finish));
+      return json({}, 404);
+    });
+    return {
+      pending,
+      chainRequests,
+      switchPerson: async (id: string | null) => {
+        current = { ...current, userId: id ?? USER };
+        await act(async () =>
+          portStore.set(id ? signedInPort(EMBEDDED, { userId: id }) : fakePort()),
+        );
+        await settle();
+      },
+      finish: async (index: number, response: Response) => {
+        await act(async () => pending[index]?.(response));
+        await settle();
+      },
+    };
+  }
+
+  it.each([false, true])(
+    'discards a late %s reader after A→B, and cannot release B’s pending read',
+    async (fallback) => {
+      const server = delayed(fallback);
+      const host = await screen();
+      await say(host, 'Grow $2,000 over 5 years, high risk');
+      expect(server.pending).toHaveLength(1);
+      await server.switchPerson('did:privy:other');
+      await say(host, 'Grow $40,000 over 10 years, high risk');
+      expect(server.pending).toHaveLength(2);
+      await server.finish(
+        0,
+        json(
+          fallback
+            ? READ_IN_DOLLARS
+            : answer({ sheet: SHEET, readBack: ['Earlier account private goal'] }),
+        ),
+      );
+      expect(host.textContent).not.toContain('Earlier account private goal');
+      expect(pane(host).textContent).not.toContain('$40,000');
+      // The old finally must leave the second request busy: Enter cannot send a third turn.
+      await say(host, 'Do not send this while the new read is busy');
+      expect(server.pending).toHaveLength(2);
+      await server.finish(
+        1,
+        json(
+          fallback
+            ? READ_IN_DOLLARS
+            : answer({ sheet: SHEET, readBack: ['New account read-back'] }),
+        ),
+      );
+      expect(host.textContent).toContain(fallback ? '$40,000' : 'New account read-back');
+    },
+  );
+
+  it('discards obsolete catch and finally updates when the reader throws', async () => {
+    const original = guidedReader.intakeConversation;
+    const reader = vi.spyOn(guidedReader, 'intakeConversation').mockImplementation((...args) => {
+      const actual = original(...args);
+      return {
+        turn: async (input, sheet) => {
+          const result = await actual.turn(input, sheet);
+          if (input.kind === 'text' && input.text === 'Old throwing goal')
+            throw new Error('obsolete turn');
+          return result;
+        },
+      };
+    });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const server = delayed();
+      const host = await screen();
+      await say(host, 'Old throwing goal');
+      await server.switchPerson('did:privy:other');
+      await say(host, 'Grow $2,000 over 5 years, high risk');
+      await server.finish(0, json(answer({ sheet: SHEET, readBack: ['Obsolete reply'] })));
+      expect(log).not.toHaveBeenCalled();
+      expect(host.textContent).not.toContain('Obsolete reply');
+      await say(host, 'Still busy');
+      expect(server.pending).toHaveLength(2);
+      await server.finish(1, json(answer({ sheet: SHEET, readBack: ['Current reply'] })));
+      expect(host.textContent).toContain('Current reply');
+    } finally {
+      reader.mockRestore();
+      log.mockRestore();
+    }
+  });
+
+  it('ignores a late failure after sign-out', async () => {
+    const server = delayed();
+    const host = await screen();
+    await say(host, 'Grow $2,000 over 5 years, high risk');
+    await server.switchPerson(null);
+    await server.finish(0, json({ error: 'old failure' }, 422));
+    expect(host.querySelectorAll('[data-ui="invest-turns"] > li')).toHaveLength(0);
+  });
+
+  it('discarding a visitor’s late response does not erase their existing words on sign-in', async () => {
+    portStore.set(fakePort());
+    const server = delayed(true);
+    const host = await screen();
+    await say(host, 'Visitor’s goal stays');
+    expect(server.pending).toHaveLength(1);
+    await server.switchPerson(USER);
+    await server.finish(0, json(READ_IN_DOLLARS));
+    expect(host.textContent).toContain('Visitor’s goal stays');
+    expect(host.textContent).not.toContain('$40,000');
+  });
+
+  it('can reset while a read is pending, and its old finally does not release a new read', async () => {
+    const server = delayed();
+    const host = await screen();
+    await say(host, 'Old goal');
+    await click(find(host, '[data-ui="invest-start-over"] button'));
+    await say(host, 'Fresh goal');
+    expect(server.pending).toHaveLength(2);
+    await server.finish(0, json(answer({ sheet: SHEET, readBack: ['Old goal private reply'] })));
+    expect(host.textContent).not.toContain('Old goal private reply');
+    await say(host, 'Still busy');
+    expect(server.pending).toHaveLength(2);
+    await server.finish(1, json(answer({ sheet: SHEET, readBack: ['Fresh goal reply'] })));
+    expect(host.textContent).toContain('Fresh goal reply');
+  });
+
+  it('drops a pending read after switching chains', async () => {
+    const server = delayed();
+    const host = await mount(
+      withAccount('en', [
+        createElement(ChainSwitch, { key: 'chain' }),
+        createElement(InvestScreen, { key: 'screen' }),
+      ]),
+    );
+    await settle();
+    await settle();
+    await say(host, 'Grow $2,000 over 5 years, high risk');
+    await click(find(host, '[data-ui="chain-switch"] > button'));
+    await click(find(host, '[data-ui="chain-switch-panel"] button[data-chain="robinhood"]'));
+    await settle();
+    expect(server.chainRequests).toEqual(['robinhood']);
+    expect(server.pending).toHaveLength(1);
+    await server.finish(0, json(answer({ sheet: SHEET, readBack: ['Old Solana reply'] })));
+    expect(host.textContent).not.toContain('Old Solana reply');
+  });
+
+  it('ignores a restored replay after the account changes', async () => {
+    const seed = api(answer({ sheet: SHEET, readBack: ['Old goal'] }));
+    const host = await screen();
+    await say(host, 'Grow $2,000 over 5 years, high risk');
+    expect(seed.to(INTAKE_PATH)).toHaveLength(1);
+    expect(window.sessionStorage.getItem(GOAL_DRAFT)).not.toBeNull();
+    await unmountAll();
+    const server = delayed();
+    const restored = await screen();
+    expect(server.pending).toHaveLength(1);
+    await server.switchPerson('did:privy:other');
+    await say(restored, 'New goal');
+    await server.finish(
+      0,
+      json(answer({ sheet: SHEET, readBack: ['Restored old private reply'] })),
+    );
+    expect(restored.textContent).not.toContain('Restored old private reply');
+    await say(restored, 'Still reading');
+    expect(server.pending).toHaveLength(2);
+    await server.finish(1, json(answer({ sheet: SHEET, readBack: ['New reply'] })));
+    expect(restored.textContent).toContain('New reply');
+    // No late update after unmount can overwrite the stored draft for the new screen.
+    await say(restored, 'Last pending turn');
+    expect(server.pending).toHaveLength(3);
+    const saved = window.sessionStorage.getItem(GOAL_DRAFT);
+    await unmountAll();
+    await server.finish(2, json(answer({ sheet: SHEET, readBack: ['Unmounted reply'] })));
+    expect(window.sessionStorage.getItem(GOAL_DRAFT)).toBe(saved);
+  });
+});
+
+describe('pressed allocation survives the tab round-trip', () => {
+  it.each([5000, null])(
+    'preserves the person’s %s allocation press through storage, reload and replay',
+    async (share) => {
+      const half = { growthBps: 5000, dollarYieldBps: 0, goldBps: 0, cashBps: 5000 };
+      const server = api(
+        answer({
+          draft: { goal: 'grow' },
+          questions: [{ field: 'mix', template: 'mix', text: 'How much in stocks?' }],
+        }),
+        answer({ sheet: SHEET, mix: share === null ? null : half, readBack: ['Your allocation'] }),
+        answer({
+          sheet: SHEET,
+          mix: share === null ? null : half,
+          readBack: ['Allocation read again'],
+        }),
+      );
+      const host = await screen();
+      await say(host, 'I want to grow my savings');
+      const choices = find(host, '[data-ui="invest-replies"]').querySelectorAll('button');
+      await click(choices[share === null ? 4 : 2] as HTMLElement);
+      await settle();
+      const held = share === null ? null : half;
+      expect(server.to(INTAKE_PATH)[1]?.body?.answers).toEqual({ mix: held });
+      const stored = JSON.parse(window.sessionStorage.getItem(GOAL_DRAFT) as string);
+      expect(stored.sheet.intake).toHaveProperty('held', held);
+      stored.sheet.intake.sheet = { ...SHEET, amountUsd: 999999 };
+      stored.sheet.intake.readBack = ['Arbitrary server words'];
+      const cleaned = restoreDraft(JSON.stringify(stored));
+      expect(cleaned?.sheet.intake).toHaveProperty('held', held);
+      expect(cleaned?.sheet.intake?.sheet).toBeNull();
+      expect(cleaned?.sheet.intake?.readBack).toBeUndefined();
+      await unmountAll();
+      window.sessionStorage.setItem(GOAL_DRAFT, JSON.stringify(stored));
+      const next = await screen();
+      expect(server.to(INTAKE_PATH)[2]?.body?.answers).toEqual({ mix: held });
+      expect(next.textContent).not.toContain('Arbitrary server words');
+      expect(next.textContent).not.toContain('999,999');
+    },
+  );
+
+  it('does not restore invalid allocation shares or mistake absent held for explicit none', () => {
+    const raw = {
+      v: 2,
+      turns: [{ who: 'person', text: 'grow' }],
+      sheet: {
+        fields: {
+          goal: 'grow',
+          amount: '2000',
+          income: '',
+          horizon: '60',
+          risk: 'high',
+          country: '',
+          holdings: 'yes',
+          glide: 'no',
+          language: 'en',
+        },
+        skipped: [],
+        words: ['grow'],
+        intake: { answers: {}, answersThen: [] },
+      },
+    };
+    for (const held of [
+      undefined,
+      { growthBps: -1, dollarYieldBps: 0, goldBps: 0, cashBps: 10001 },
+      { growthBps: 0.5, dollarYieldBps: 0, goldBps: 0, cashBps: 9999.5 },
+      { growthBps: 5000, dollarYieldBps: 0, goldBps: 0, cashBps: 0 },
+    ]) {
+      const restored = restoreDraft(
+        JSON.stringify({ ...raw, sheet: { ...raw.sheet, intake: { ...raw.sheet.intake, held } } }),
+      );
+      expect(restored?.sheet.intake).not.toHaveProperty('held');
+    }
   });
 });

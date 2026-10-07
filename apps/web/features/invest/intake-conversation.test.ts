@@ -350,66 +350,117 @@ describe('where the guided intake cannot read', () => {
     expect(s.posted).toEqual([]);
   });
 
-  it('has no end at ten messages: past that, what the last read-back held is sent in place of the messages it read', async () => {
+  it('keeps every message and answers snapshot past ten turns, without turning a read-back into form answers', async () => {
     const held = {
       ...SHEET,
       limits: { cannotHold: { classes: ['gold'] } },
-      sleeves: [
-        { kind: 'theme', theme: 'ai', shareBps: 3000 },
-        { kind: 'safe_yield', shareBps: 7000 },
-      ],
+      sleeves: [{ kind: 'safe_yield', shareBps: 10000 }],
     };
-    const whole = answer({ sheet: held, readBack: ['You want to grow $2,000.'] });
-    const open = answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT] });
-    // the read-back comes at the sixth message; everything else asks on
-    const s = server(open, open, open, open, open, whole, open);
+    const s = server(answer({ sheet: held, readBack: ['You left out gold.'] }));
     const t = talk(s.api);
     let reply = await t.turn({ kind: 'text', text: GOAL }, null);
-    const said: string[] = [];
+    reply = await t.turn({ kind: 'answer', fact: 'amount', value: '2000' }, reply.sheet);
     for (let i = 1; i < 30; i++) {
       reply = await t.turn({ kind: 'text', text: `and another thing, number ${i}` }, reply.sheet);
-      said.push(...reply.say.map((x) => x.key));
-      const body = s.posted.at(-1) as { followUps: string[]; answersThen: unknown[] };
-      // never more than the route takes, and one set of answers for each message sent
-      expect(body.followUps.length, String(i)).toBeLessThanOrEqual(10);
-      expect(body.answersThen, String(i)).toHaveLength(body.followUps.length);
-      expect(body.followUps.at(-1)).toBe(`and another thing, number ${i}`);
+      const body = s.posted.at(-1) as {
+        followUps: string[];
+        answersThen: unknown[];
+        answers: unknown;
+      };
+      expect(body.followUps).toEqual(
+        Array.from({ length: i }, (_, at) => `and another thing, number ${at + 1}`),
+      );
+      expect(body.answersThen).toEqual(Array.from({ length: i }, () => ({ amountUsd: 2000 })));
+      expect(body.answers).toEqual({ amountUsd: 2000 });
     }
-    // thirty turns, every one read, and never a word about a limit
-    expect(s.posted).toHaveLength(30);
-    expect(said).not.toContain('full');
-    expect(JSON.stringify(dictionary('en').talk.say)).not.toMatch(/as long as I can read/);
-    // the sixth message had the read-back: once the conversation is past ten, the request starts
-    // after it, with what its sheet held as answers
-    const last = s.posted.at(-1) as { text: string; followUps: string[]; answers: unknown };
-    expect(last.text).toBe(GOAL);
-    expect(last.followUps[0]).toBe('and another thing, number 20');
-    expect(s.posted[11]).toMatchObject({
-      followUps: [6, 7, 8, 9, 10, 11].map((i) => `and another thing, number ${i}`),
-      answers: {
-        goal: 'grow',
-        amountUsd: 2000,
-        horizonMonths: 60,
-        risk: 'high',
-        limits: held.limits,
-        sleeves: held.sleeves,
-      },
-    });
-    // every message is still kept with the sheet, and stays on the screen
     expect(reply.sheet.words).toHaveLength(30);
+    expect(s.posted).toHaveLength(31);
   });
 
-  it('keeps the last ten of a stretch with no read-back in it, and says nothing of it', async () => {
-    const open = answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT] });
-    const s = server(open);
+  it('retains the complete stretch without a read-back too', async () => {
+    const s = server(answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT] }));
     const t = talk(s.api);
     let reply = await t.turn({ kind: 'text', text: GOAL }, null);
     for (let i = 1; i <= 14; i++)
       reply = await t.turn({ kind: 'text', text: `message ${i}` }, reply.sheet);
-    const last = s.posted.at(-1) as { followUps: string[]; answers?: unknown };
-    expect(last.followUps).toEqual([5, 6, 7, 8, 9, 10, 11, 12, 13, 14].map((i) => `message ${i}`));
-    expect(last.answers).toBeUndefined();
-    expect(reply.say.map((x) => x.key)).not.toContain('full');
+    expect(s.posted.at(-1)).toMatchObject({
+      followUps: Array.from({ length: 14 }, (_, i) => `message ${i + 1}`),
+    });
+    expect(s.posted.at(-1)).not.toHaveProperty('answers');
+  });
+
+  it('stops at the count bound without accepting the new text, and still lets a pressed fact be edited', async () => {
+    const s = server(answer({ sheet: SHEET, readBack: ['Your goal'] }));
+    const t = talk(s.api);
+    let reply = await t.turn({ kind: 'text', text: GOAL }, null);
+    for (let i = 1; i < 200; i++)
+      reply = await t.turn({ kind: 'text', text: `message ${i}` }, reply.sheet);
+    const before = reply.sheet;
+    const blocked = await t.turn({ kind: 'text', text: 'do not lose my earlier limits' }, before);
+    expect(s.posted).toHaveLength(200);
+    expect(blocked.sheet).toEqual(before);
+    expect(blocked.say).toEqual([{ key: 'failure', text: en.talk.capacity }]);
+    const edited = await t.turn({ kind: 'answer', fact: 'amount', value: '3000' }, blocked.sheet);
+    expect(s.posted).toHaveLength(201);
+    expect(s.posted.at(-1)).toMatchObject({
+      answers: { amountUsd: 3000 },
+      followUps: before.words?.slice(1),
+    });
+    expect(edited.sheet.words).toEqual(before.words);
+  });
+
+  it('keeps prior accepted state when the joined text exceeds the budget, in both languages', async () => {
+    for (const lang of ['en', 'pt'] as const) {
+      const s = server(answer({ sheet: SHEET, readBack: ['Your goal'] }));
+      const t = intakeConversation(s.api, {
+        lang,
+        chain: 'solana',
+        fallback: {
+          turn: async () => {
+            throw Error('No fallback on capacity');
+          },
+        },
+      });
+      let reply = await t.turn({ kind: 'text', text: 'x'.repeat(2000) }, null);
+      for (let i = 0; i < 9; i++)
+        reply = await t.turn({ kind: 'text', text: 'y'.repeat(2000) }, reply.sheet);
+      reply = await t.turn({ kind: 'text', text: 'z'.repeat(1980) }, reply.sheet);
+      expect(s.posted).toHaveLength(11); // joined text is exactly22,000 including20 separators
+      const before = reply.sheet;
+      const blocked = await t.turn({ kind: 'text', text: 'one more' }, before);
+      expect(s.posted).toHaveLength(11);
+      expect(blocked.sheet).toEqual(before);
+      expect(blocked.say).toEqual([{ key: 'failure', text: dictionary(lang).talk.capacity }]);
+    }
+  });
+
+  it('keeps prior state if an API deployed with the old ten-follow-up bound refuses the next turn', async () => {
+    const posted: Body[] = [];
+    const api = async (_path: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as Body;
+      posted.push(body);
+      return Array.isArray(body.followUps) && body.followUps.length > 10
+        ? json({ error: 'old route bound' }, 400)
+        : json(answer({ sheet: SHEET, readBack: ['Your goal'] }));
+    };
+    const t = intakeConversation(api, {
+      lang: 'en',
+      chain: 'solana',
+      fallback: {
+        turn: async () => {
+          throw Error('No fallback for a refusal');
+        },
+      },
+    });
+    let r = await t.turn({ kind: 'text', text: GOAL }, null);
+    for (let i = 0; i < 10; i++)
+      r = await t.turn({ kind: 'text', text: `Accepted detail ${i}` }, r.sheet);
+    const before = r.sheet;
+    const refused = await t.turn({ kind: 'text', text: 'New exclusion' }, before);
+    expect(posted.at(-1)?.followUps).toHaveLength(11);
+    expect(refused.sheet).toEqual(before);
+    expect(refused.say).toEqual([{ key: 'failed', why: 'unreadable' }]);
+    expect(refused.valid).toEqual(before.intake?.sheet);
   });
 
   it('lets the words decide a fact they speak of, over an answer pressed earlier for it', async () => {

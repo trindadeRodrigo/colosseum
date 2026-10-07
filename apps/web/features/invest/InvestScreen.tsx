@@ -52,7 +52,7 @@ import {
   validOf,
 } from './conversation';
 import { takeWay } from './handoff';
-import { IntakeAnswers } from './intake';
+import { type HeldMix, IntakeAnswers } from './intake';
 import { intakeConversation } from './intake-conversation';
 import { wayChange } from './ways';
 
@@ -189,6 +189,31 @@ export function InvestScreen() {
   // While the wallet loads again and names nobody, nobody is known to have left.
   const whoNow = port.status === 'loading' && port.userId === null ? null : who;
   const signedIn = account.status !== 'signed-out' && who !== '';
+  // A conversation response belongs to the person and chain that requested it. Invalidate during
+  // the render that changes either, before an old promise can write between render and effects.
+  // A temporary unnamed wallet while loading does not mean somebody signed out.
+  const readRun = useRef(0);
+  const readContext = useRef({ who, chain });
+  const readAlive = useRef(true);
+  if (
+    whoNow !== null &&
+    (readContext.current.who !== whoNow || readContext.current.chain !== chain)
+  ) {
+    readContext.current = { who: whoNow, chain };
+    readRun.current += 1;
+  }
+  const readingNow = (run: number) => readAlive.current && readRun.current === run;
+  useEffect(() => {
+    readAlive.current = true;
+    return () => {
+      readAlive.current = false;
+      readRun.current += 1;
+    };
+  }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a chain change releases the old reader even when the identity has not changed
+  useEffect(() => {
+    if (whoNow !== null) setReading(false);
+  }, [whoNow, chain]);
 
   // The sheet a plan is built from: whole, valid for the chain, and with no question open. It follows
   // the chain, which a sign-in that is still being read does not have yet.
@@ -324,11 +349,13 @@ export function InvestScreen() {
     // "start over", "clear it out": the conversation and the pane are emptied
     if (input.kind === 'text' && isStartOver(input.text)) return startOver();
     said(words);
+    const mine = ++readRun.current;
     setReading(true);
     let reply: Reply;
     try {
       reply = await conversation.turn(input, from);
     } catch (error) {
+      if (!readingNow(mine)) return;
       // A turn that fails says so: never an empty reply, and what was held stands.
       console.error('[invest] the turn was not read', error);
       say({
@@ -340,8 +367,9 @@ export function InvestScreen() {
       });
       return;
     } finally {
-      setReading(false);
+      if (readingNow(mine)) setReading(false);
     }
+    if (!readingNow(mine)) return;
     // Who read it, for the people building this (the console, and a line in development).
     if (reply.reader) console.info('[invest] read by', reply.reader.by, reply.reader.why ?? '');
     // Words that changed nothing build nothing again.
@@ -384,6 +412,10 @@ export function InvestScreen() {
 
   /** "Start over": the conversation, the goal and the plans on the pane are emptied. */
   function startOver() {
+    readRun.current += 1;
+    setReading(false);
+    replay.current = false;
+    again.current = false;
     wanted.current += 1;
     wantsInvest.current = false;
     setTurns([]);
@@ -488,12 +520,13 @@ export function InvestScreen() {
   useEffect(() => {
     if (!replay.current || !guided || !sheet?.intake) return;
     replay.current = false;
+    const run = ++readRun.current;
     let mine = true;
     setReading(true);
     void conversation
       .turn({ kind: 'replay' }, sheet)
       .then((reply) => {
-        if (!mine) return;
+        if (!mine || !readingNow(run)) return;
         setSheet(reply.sheet);
         say({
           say: reply.say,
@@ -503,11 +536,22 @@ export function InvestScreen() {
           retry: false,
         });
       })
-      .finally(() => setReading(false));
+      .catch(() => {
+        if (!mine || !readingNow(run)) return;
+        say({
+          say: [{ key: 'failed', why: 'unreadable' }],
+          fields: sheet.fields,
+          ask: null,
+          retry: false,
+        });
+      })
+      .finally(() => {
+        if (mine && readingNow(run)) setReading(false);
+      });
     return () => {
       mine = false;
     };
-  }, [guided, restored]);
+  }, [guided, restored, whoNow, chain]);
   const again = useRef(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: once, when the kept sheet is valid for the chain
   useEffect(() => {
@@ -535,6 +579,8 @@ export function InvestScreen() {
     if (whoNow === null || before === who) return;
     last.current = who;
     if (before !== '') {
+      replay.current = false;
+      again.current = false;
       wanted.current += 1;
       wantsInvest.current = false;
       setTurns([]);
@@ -810,7 +856,7 @@ export function InvestScreen() {
           {/* an empty conversation and an empty pane, by one press or by saying so */}
           {turns.length > 0 && (
             <span data-ui="invest-start-over">
-              <Button variant="link" disabled={busy} onClick={startOver}>
+              <Button variant="link" disabled={build.kind === 'building'} onClick={startOver}>
                 {w.startOver}
               </Button>
             </span>
@@ -1465,6 +1511,9 @@ export function restoreDraft(raw: string | null): { turns: Turn[]; sheet: Sheet 
   > | null;
   const answers = state ? IntakeAnswers.safeParse(state.answers) : null;
   const then = state ? IntakeAnswers.array().safeParse(state.answersThen) : null;
+  // Only this person-origin answer survives; a server's mix/sheet/read-back does not. Null is the
+  // person's explicit "none", distinct from not having pressed an allocation answer.
+  const held = heldMixOfDraft(state?.held);
   return {
     turns: read,
     sheet: {
@@ -1478,6 +1527,7 @@ export function restoreDraft(raw: string | null): { turns: Turn[]; sheet: Sheet 
             intake: {
               answers: answers.data,
               answersThen: then.data.slice(0, MAX_WORDS),
+              ...(held !== undefined ? { held } : {}),
               sheet: null,
               question: null,
               mix: null,
@@ -1488,4 +1538,23 @@ export function restoreDraft(raw: string | null): { turns: Turn[]; sheet: Sheet 
         : {}),
     },
   };
+}
+
+function heldMixOfDraft(value: unknown): HeldMix | null | undefined {
+  if (value === null) return null;
+  if (typeof value !== 'object' || value === null) return undefined;
+  const raw = value as Record<string, unknown>;
+  const keys = ['growthBps', 'dollarYieldBps', 'goldBps', 'cashBps'] as const;
+  if (
+    !keys.every(
+      (key) =>
+        typeof raw[key] === 'number' &&
+        Number.isInteger(raw[key]) &&
+        raw[key] >= 0 &&
+        raw[key] <= 10_000,
+    )
+  )
+    return undefined;
+  const held = Object.fromEntries(keys.map((key) => [key, raw[key]])) as HeldMix;
+  return keys.reduce((sum, key) => sum + held[key], 0) === 10_000 ? held : undefined;
 }

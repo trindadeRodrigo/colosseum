@@ -19,7 +19,13 @@ import { GOAL_TEXT } from '../goal/read-goal';
 
 export const INTAKE_PATH = '/v1/baskets/intake';
 /** The most later messages the route takes (`IntakeRequest.followUps`). */
-export const MAX_FOLLOW_UPS = 10;
+export const MAX_FOLLOW_UPS = 199;
+/** The full text read by the engine, including the blank lines between messages. */
+export const INTAKE_TEXT_BUDGET = 22_000;
+
+export const withinIntakeCapacity = (text: string, followUps: readonly string[]) =>
+  followUps.length <= MAX_FOLLOW_UPS &&
+  [text, ...followUps].map((word) => word.trim()).join('\n\n').length <= INTAKE_TEXT_BUDGET;
 
 /** The fields a question can be about (the engine's `QUESTION_FIELDS`). */
 export const QUESTION_FIELDS = [
@@ -197,7 +203,7 @@ function answerOf(body: unknown): IntakeReading | null {
 export type IntakeOutcome =
   | { kind: 'read'; reading: IntakeReading }
   /** The text is outside what the reader takes: it is not sent. */
-  | { kind: 'too_short' | 'too_long' }
+  | { kind: 'too_short' | 'too_long' | 'capacity' }
   /** The route is not there, or this person may not use it: another reader reads the goal. */
   | { kind: 'unavailable' | 'signed-out' | 'no-identity' }
   /** The server refused what was sent (400): an answer it does not take. */
@@ -214,36 +220,7 @@ export type IntakeRequest = {
   answersThen: IntakeAnswers[];
   /** The answer to what is held, by a press: a mix, or null for none. Left out: not answered. */
   mix?: HeldMix | null;
-  /**
-   * What our server's own sheet already held when earlier messages were left out of the request: its
-   * fields, as it sent them, under the answers. Nothing in it is this app's or the person's typing.
-   */
-  base?: Record<string, unknown>;
 };
-
-/** The fields of a confirmed sheet that the route takes back as answers. */
-const BASE_KEYS = [
-  'goal',
-  'amountUsd',
-  'incomeTargetUsdMonthly',
-  'horizonMonths',
-  'horizonOpen',
-  'risk',
-  'currency',
-  'themes',
-  'obligations',
-  'sleeves',
-  'limits',
-  'mix',
-] as const;
-
-/** What a confirmed sheet holds, as answers: sent in place of the messages it was read from. */
-export function baseOf(sheet: BasketSheet): Record<string, unknown> {
-  const from = sheet as unknown as Record<string, unknown>;
-  return Object.fromEntries(
-    BASE_KEYS.filter((key) => from[key] !== undefined).map((key) => [key, from[key]]),
-  );
-}
 
 export async function readIntake(apiFetch: ApiFetch, ask: IntakeRequest): Promise<IntakeOutcome> {
   const text = ask.text.trim();
@@ -251,10 +228,18 @@ export async function readIntake(apiFetch: ApiFetch, ask: IntakeRequest): Promis
   if (text.length > GOAL_TEXT.max) return { kind: 'too_long' };
   // Only answers the sheet's schema takes are sent: a tap can hold nothing else.
   const answers = IntakeAnswers.safeParse(ask.answers);
-  const then = IntakeAnswers.array().safeParse(ask.answersThen);
+  const then = IntakeAnswers.array().max(MAX_FOLLOW_UPS).safeParse(ask.answersThen);
+  if (!withinIntakeCapacity(text, ask.followUps)) return { kind: 'capacity' };
+  if (ask.followUps.some((word) => word.trim().length === 0 || word.trim().length > GOAL_TEXT.max))
+    return { kind: 'too_long' };
   // a mix is sent only as one: four shares that add up to the whole, or none
   const held = ask.mix === undefined ? undefined : mixOf(ask.mix);
-  if (!answers.success || !then.success || (ask.mix !== undefined && held === undefined))
+  if (
+    !answers.success ||
+    !then.success ||
+    ask.answersThen.length !== ask.followUps.length ||
+    (ask.mix !== undefined && held === undefined)
+  )
     return { kind: 'refused' };
   let res: Response;
   try {
@@ -265,10 +250,9 @@ export async function readIntake(apiFetch: ApiFetch, ask: IntakeRequest): Promis
         text,
         language: ask.language,
         ...(ask.followUps.length > 0 ? { followUps: ask.followUps, answersThen: then.data } : {}),
-        ...(Object.keys(answers.data).length > 0 || held !== undefined || ask.base
+        ...(Object.keys(answers.data).length > 0 || held !== undefined
           ? {
               answers: {
-                ...ask.base,
                 ...answers.data,
                 ...(held !== undefined ? { mix: held } : {}),
               },

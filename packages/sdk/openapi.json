@@ -44,7 +44,7 @@
                     "enum": ["pt", "en"]
                   },
                   "followUps": {
-                    "maxItems": 10,
+                    "maxItems": 199,
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -285,7 +285,7 @@
                     "additionalProperties": false
                   },
                   "answersThen": {
-                    "maxItems": 10,
+                    "maxItems": 199,
                     "type": "array",
                     "items": {
                       "type": "object",
@@ -521,10 +521,12 @@
                     }
                   }
                 },
-                "required": ["text"]
+                "required": ["text"],
+                "description": "At most 200 chronological messages and 22,000 characters in their trimmed text joined by blank lines. Each message is at most 2,000 characters. When answersThen is provided, it has one entry per follow-up."
               }
             }
-          }
+          },
+          "description": "At most 200 chronological messages and 22,000 characters in their trimmed text joined by blank lines. Each message is at most 2,000 characters. When answersThen is provided, it has one entry per follow-up."
         },
         "security": [
           {

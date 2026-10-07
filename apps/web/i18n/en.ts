@@ -683,6 +683,8 @@ export const en = {
    * the plan on the right. The invest card's own words are `invest`.
    */
   talk: {
+    capacity:
+      'This conversation has reached its limit. Your earlier messages are kept. Start over to begin another.',
     startOver: 'Start over',
     /** The words that pick a plan by its name: "choose Cover", "I’ll take Spread". */
     pickWords: "choose|pick|take|i choose|i pick|i[’']ll take|i want|go with|let[’']s go with",

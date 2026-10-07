@@ -587,6 +587,8 @@ export const pt: Dictionary = {
   },
 
   talk: {
+    capacity:
+      'Esta conversa chegou ao limite. Suas mensagens anteriores foram mantidas. Recomece para iniciar outra.',
     startOver: 'Começar de novo',
     pickWords: 'escolho|escolher|quero|fico com|vou de|vamos de|pego',
     chat: 'A conversa',

@@ -44,28 +44,52 @@ import { signedIn } from './orders';
 /** What a goal's text may be: the bounds of the first reader (`PostGoalsRequest`), kept. */
 export const GOAL_TEXT = { min: 3, max: 2000 } as const;
 
-export const IntakeRequest = z.object({
-  text: z.string().trim().min(GOAL_TEXT.min).max(GOAL_TEXT.max),
-  /** The language of the page, when the text does not settle it. */
-  language: Language.optional(),
-  /**
-   * The person's later messages, in their own words, in order ("70-30, I want to grow it", "half").
-   * Each turn reads `text` with these through the same reader and checks (Oct 6), and a message that
-   * says only a share or a mix is read as the answer to the `mix` question the ones before it left
-   * open.
-   */
-  followUps: z.array(z.string().trim().min(1).max(GOAL_TEXT.max)).max(10).optional(),
-  /** The person's answers to earlier questions, by field, from a form. */
-  answers: IntakeAnswers.optional(),
-  /**
-   * The form's answers as they stood when each of `followUps` was sent, one for each, in order (the
-   * third review, Oct 7). A plain yes or no names no question: it is applied only to the question
-   * that was the one open when it was said, with the form as it stood then. Left out, the form is
-   * counted as empty at each message, so a yes or no answers only a question that was the one open
-   * whatever the form says.
-   */
-  answersThen: z.array(IntakeAnswers).max(10).optional(),
-});
+export const INTAKE_TEXT_BUDGET = 22_000;
+export const INTAKE_FOLLOW_UPS = 199;
+
+export const IntakeRequest = z
+  .object({
+    text: z.string().trim().min(GOAL_TEXT.min).max(GOAL_TEXT.max),
+    /** The language of the page, when the text does not settle it. */
+    language: Language.optional(),
+    /**
+     * The person's later messages, in their own words, in order ("70-30, I want to grow it", "half").
+     * Each turn reads `text` with these through the same reader and checks (Oct 6), and a message that
+     * says only a share or a mix is read as the answer to the `mix` question the ones before it left
+     * open.
+     */
+    followUps: z
+      .array(z.string().trim().min(1).max(GOAL_TEXT.max))
+      .max(INTAKE_FOLLOW_UPS)
+      .optional(),
+    /** The person's answers to earlier questions, by field, from a form. */
+    answers: IntakeAnswers.optional(),
+    /**
+     * The form's answers as they stood when each of `followUps` was sent, one for each, in order (the
+     * third review, Oct 7). A plain yes or no names no question: it is applied only to the question
+     * that was the one open when it was said, with the form as it stood then. Left out, the form is
+     * counted as empty at each message, so a yes or no answers only a question that was the one open
+     * whatever the form says.
+     */
+    answersThen: z.array(IntakeAnswers).max(INTAKE_FOLLOW_UPS).optional(),
+  })
+  .superRefine((body, ctx) => {
+    if (conversationText(body.text, body.followUps).length > INTAKE_TEXT_BUDGET)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['followUps'],
+        message: 'the conversation exceeds 22,000 characters',
+      });
+    if (body.answersThen !== undefined && body.answersThen.length !== (body.followUps?.length ?? 0))
+      ctx.addIssue({
+        code: 'custom',
+        path: ['answersThen'],
+        message: 'send one answersThen entry per follow-up',
+      });
+  })
+  .describe(
+    'At most 200 chronological messages and 22,000 characters in their trimmed text joined by blank lines. Each message is at most 2,000 characters. When answersThen is provided, it has one entry per follow-up.',
+  );
 export type IntakeRequest = z.infer<typeof IntakeRequest>;
 
 export const IntakeResponse = z.object({

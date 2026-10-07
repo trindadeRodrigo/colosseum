@@ -1105,6 +1105,10 @@ describe('POST /v1/baskets/intake', () => {
       { text: 'Grow $5,000', answers: { amountUsd: 5 } },
       { text: 'Grow $5,000', answers: { weights: { nvda: 5000 } } },
       { text: 'Grow $5,000', language: 'fr' },
+      { text: 'Grow $5,000', followUps: Array.from({ length: 200 }, () => 'another detail') },
+      { text: 'Grow $5,000', answersThen: Array.from({ length: 200 }, () => ({})) },
+      { text: 'Grow $5,000', followUps: ['yes'], answersThen: [] },
+      { text: 'x'.repeat(2000), followUps: Array.from({ length: 11 }, () => 'x'.repeat(2000)) },
     ]) {
       const res = await post(who, PATH, bad);
       expect(res.statusCode, JSON.stringify(bad)).toBe(400);

@@ -1,5 +1,5 @@
 import type { BasketSheet, ChainId } from '@colosseum/schemas';
-import type { Lang } from '../../i18n';
+import { dictionary, type Lang } from '../../i18n';
 import type { ApiFetch } from '../account/person';
 import { preRead } from '../goal/pre-read';
 import { fieldsOfDraft, type SheetFields } from '../goal/sheet';
@@ -21,13 +21,12 @@ import {
   typedAnswer,
 } from './conversation';
 import {
-  baseOf,
   type IntakeAnswers,
   type IntakeQuestion,
   type IntakeReading,
-  MAX_FOLLOW_UPS,
   type QuestionField,
   readIntake,
+  withinIntakeCapacity,
 } from './intake';
 
 // The guided intake behind the Invest screen's `Conversation` (gate GUIDED-INTAKE): our server reads
@@ -304,37 +303,30 @@ export function intakeConversation(
       }
       if (words.length === 0) return local(held, [{ key: 'held' }], state);
 
-      // A conversation has no end at ten messages. The route takes ten later ones: past that, the
-      // messages our server had already read into its last read-back are left out of the request
-      // (they stay on the screen), and what that sheet held goes in their place as answers. A
-      // stretch longer than ten with no read-back in it keeps its last ten.
+      // Keep exact person-origin chronology and pressed answers. A server read-back is never
+      // promoted into form answers: doing that would make an old limit outrank a newer refusal.
       const later = words.slice(1);
-      const long = later.length > MAX_FOLLOW_UPS;
-      const from = long
-        ? Math.max((state.absorbed?.upTo ?? 1) - 1, later.length - MAX_FOLLOW_UPS)
-        : 0;
-      const spokenNow = input.kind === 'text' ? spokenOf(input.text, lang) : new Set<string>();
-      const base =
-        long && state.absorbed && from >= state.absorbed.upTo - 1
-          ? Object.fromEntries(
-              // a fact the newest message speaks of is the message's to decide
-              Object.entries(state.absorbed.answers).filter(
-                ([key]) =>
-                  !spokenNow.has(key) &&
-                  !(spokenNow.has('mix') && (key === 'sleeves' || key === 'themes')),
-              ),
-            )
-          : undefined;
+      if (!withinIntakeCapacity(words[0] as string, later))
+        return local(
+          held,
+          [{ key: 'failure', text: dictionary(lang).talk.capacity }],
+          held.intake ?? NEW,
+        );
       const outcome = await readIntake(apiFetch, {
         text: words[0] as string,
         language: lang,
-        followUps: later.slice(from),
+        followUps: later,
         // one for each later message that is sent
-        answersThen: later.map((_, i) => state.answersThen[i] ?? {}).slice(from),
+        answersThen: later.map((_, i) => state.answersThen[i] ?? {}),
         answers: state.answers,
         ...(state.held !== undefined ? { mix: state.held } : {}),
-        ...(base ? { base } : {}),
       });
+      if (outcome.kind === 'capacity')
+        return local(
+          held,
+          [{ key: 'failure', text: dictionary(lang).talk.capacity }],
+          held.intake ?? NEW,
+        );
       if (
         outcome.kind === 'unavailable' ||
         outcome.kind === 'signed-out' ||
@@ -382,12 +374,6 @@ export function intakeConversation(
         answersThen: state.answersThen,
         ...(state.held !== undefined ? { held: state.held } : {}),
         ...(reading.readBack ? { readBack: reading.readBack } : {}),
-        // where this read-back stands, or the last one did
-        ...(reading.sheet
-          ? { absorbed: { upTo: words.length, answers: baseOf(reading.sheet) } }
-          : state.absorbed
-            ? { absorbed: state.absorbed }
-            : {}),
         sheet: reading.sheet,
         question,
         mix: reading.mix,
