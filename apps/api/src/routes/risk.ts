@@ -32,7 +32,13 @@ import {
   regimesIn,
   weekendRatio,
 } from '@colosseum/risk';
-import { AssetFacts, DISCLAIMER, LendingPoolFacts, PlanFacts } from '@colosseum/schemas';
+import {
+  AssetFacts,
+  DISCLAIMER,
+  finiteFacts,
+  LendingPoolFacts,
+  PlanFacts,
+} from '@colosseum/schemas';
 import { and, desc, eq, gte, inArray, like, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -261,7 +267,8 @@ export async function registerRiskRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const sheet = await loadAssetFacts(db, req.params.id, req.query);
       if (!sheet) return reply.code(404).send({ error: `unknown asset ${req.params.id}` });
-      return { ...sheet, disclaimer: DISCLAIMER.en };
+      // No figure goes out that is not a finite number (schemas: `finiteFacts`).
+      return { ...finiteFacts(sheet), disclaimer: DISCLAIMER.en };
     },
   );
 
@@ -355,7 +362,7 @@ export async function registerRiskRoutes(app: FastifyInstance) {
         .limit(1);
       if (!row) return reply.code(404).send({ error: `no fact sheet for ${req.params.account}` });
       return {
-        ...(row.sheet as LendingPoolFacts),
+        ...finiteFacts(row.sheet as LendingPoolFacts),
         reportAt: row.reportAt.toISOString(),
         disclaimer: DISCLAIMER.en,
       };
@@ -387,7 +394,8 @@ export async function registerRiskRoutes(app: FastifyInstance) {
         withdrawals: req.body.withdrawals,
         windowDays: req.body.windowDays,
       });
-      return { ...sheet, disclaimer: DISCLAIMER.en };
+      // No figure goes out that is not a finite number (schemas: `finiteFacts`).
+      return { ...finiteFacts(sheet), disclaimer: DISCLAIMER.en };
     },
   );
 
