@@ -8,7 +8,7 @@ import { BearingProvider } from './BearingProvider';
 import { BearingShell } from './BearingShell';
 import { DexPage } from './DexPage';
 import { LendingPage } from './LendingPage';
-import { NOW } from './test/cases';
+import { inPortuguese, NOW } from './test/cases';
 import { snapshotReader } from './test/snapshot';
 
 // Bearing per chain, as a person uses it: the toggle at the top, the address that names the chain, the
@@ -41,10 +41,26 @@ async function until(host: HTMLElement, done: (h: HTMLElement) => boolean) {
     });
   if (!done(host)) throw new Error('the page never got there');
 }
-const badges = (host: HTMLElement) =>
-  [...host.querySelectorAll('[data-ui="bearing-kpi"] [data-ui="chain-badge"]')].map(
-    (b) => b.textContent,
+/** Whether the page has come, every figure of its own read for this chain. */
+const reads = (host: HTMLElement, chain: ChainId) => {
+  const figs = [...host.querySelectorAll('[data-ui="bearing-fig"]')].filter(
+    (f) => !f.closest('[data-ui="bearing-chains"]'),
   );
+  return (
+    host.querySelector('[data-ui="waiting"]') == null &&
+    host.querySelectorAll('[data-ui="bearing-kpi"]').length === 5 &&
+    figs.length > 0 &&
+    figs.every((f) => f.getAttribute('data-chain') === chain)
+  );
+};
+/**
+ * The chain tags on the page outside the chains side by side. The page is of one chain and its switch
+ * says which (gate CHAIN-EVERYWHERE, as amended): no counter, card or row repeats it.
+ */
+const tags = (host: HTMLElement) =>
+  [...host.querySelectorAll('[data-ui="chain-badge"]')]
+    .filter((b) => !b.closest('[data-ui="bearing-chains"]'))
+    .map((b) => b.textContent);
 const onStocks = (reader = snapshotReader(), barChain?: ChainId | null) =>
   createElement(
     BearingProvider,
@@ -56,11 +72,12 @@ describe('the chain toggle', () => {
   it('starts on Solana, names it in the address, and reads Solana’s routes as before', async () => {
     const reader = snapshotReader();
     const host = await mount(onStocks(reader));
-    await until(host, (h) => badges(h).length === 5);
+    await until(host, (h) => reads(h, 'solana'));
     const pressed = find(host, '[data-ui="bearing-chain"] button[aria-pressed="true"]');
     expect(pressed.textContent).toBe('Solana');
     expect(router.replace).toHaveBeenCalledWith('/analytics/stocks?chain=solana');
-    expect(badges(host)).toEqual(Array(5).fill('Solana'));
+    expect(host.querySelectorAll('[data-ui="bearing-kpi"]').length).toBe(5);
+    expect(tags(host)).toEqual([]);
     expect(reader.read).toContain('/risk/assets?tau=0.01');
     expect(reader.read.some((p) => p.includes('chain=robinhood'))).toBe(false);
   });
@@ -68,25 +85,28 @@ describe('the chain toggle', () => {
   it('moves every figure to Robinhood Chain, names it in the address and remembers it', async () => {
     const reader = snapshotReader();
     const host = await mount(onStocks(reader));
-    await until(host, (h) => badges(h).length === 5);
+    await until(host, (h) => reads(h, 'solana'));
     const rh = [...host.querySelectorAll('[data-ui="bearing-chain"] button')].find(
       (b) => b.textContent === 'Robinhood Chain',
     ) as HTMLButtonElement;
     await click(rh);
     expect(router.replace).toHaveBeenLastCalledWith('/analytics/stocks?chain=robinhood');
     expect(localStorage.getItem('tf-chain')).toBe('robinhood');
-    await until(host, (h) => badges(h).length === 5 && badges(h)[0] === 'Robinhood Chain');
+    await until(host, (h) => reads(h, 'robinhood'));
     expect(reader.read).toContain('/risk/assets?tau=0.01&chain=robinhood');
-    expect(badges(host)).toEqual(Array(5).fill('Robinhood Chain'));
-    // its pools are not in the registry: the pool TVL says so, by the chain's name, with no figure
+    expect(host.querySelectorAll('[data-ui="bearing-kpi"]').length).toBe(5);
+    expect(tags(host)).toEqual([]);
+    // its pools are not in the registry: the pool TVL says so quietly, with no figure and no chain's
+    // name (the switch says it), and "TVL by pool" says it once
     const tvl = host.querySelector('[data-ui="bearing-kpi"]');
-    expect(tvl?.textContent).toContain('not collected yet on Robinhood Chain');
+    expect(tvl?.querySelector('[data-ui="bearing-reason"]')?.textContent).toBe('not collected yet');
+    expect(find(host, '[data-ui="bearing-pie"]').textContent).toBe('TVL by poolnot collected yet');
+    for (const r of host.querySelectorAll('[data-ui="bearing-reason"]'))
+      expect(r.textContent).not.toContain('Robinhood Chain');
     expect(tvl?.querySelector('[data-ui="bearing-fig"]')).toBeNull();
-    // its stocks, each row naming its chain; read by address, never by a Solana symbol
+    // its stocks; read by address, never by a Solana symbol
     const rows = [...host.querySelectorAll('section[aria-labelledby="bearing-table"] tbody tr')];
     expect(rows.map((r) => r.querySelector('th a')?.textContent)).toEqual(['NVDA']);
-    for (const r of rows)
-      expect(r.querySelector('[data-ui="chain-badge"]')?.textContent).toBe('Robinhood Chain');
     expect(reader.read).toContain(
       '/risk/assets/0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC/history?days=30&tau=0.01',
     );
@@ -96,17 +116,33 @@ describe('the chain toggle', () => {
         expect(f.getAttribute('data-chain')).toBe('robinhood');
   });
 
+  it('says the same in Portuguese: no tag, and what is missing names no chain', async () => {
+    window.history.replaceState(null, '', '/analytics/stocks?chain=robinhood');
+    const host = await mount(inPortuguese(onStocks()));
+    await until(host, (h) => reads(h, 'robinhood'));
+    expect(find(host, '[data-ui="bearing-chain"] button[aria-pressed="true"]').textContent).toBe(
+      'Robinhood Chain',
+    );
+    expect(tags(host)).toEqual([]);
+    const tvl = host.querySelector('[data-ui="bearing-kpi"]');
+    expect(tvl?.querySelector('[data-ui="bearing-reason"]')?.textContent).toBe(
+      'ainda não coletado',
+    );
+    for (const r of host.querySelectorAll('[data-ui="bearing-reason"]'))
+      expect(r.textContent).not.toContain('Robinhood Chain');
+  });
+
   it('opens on the chain the address names', async () => {
     window.history.replaceState(null, '', '/analytics/stocks?chain=robinhood');
     const host = await mount(onStocks());
-    await until(host, (h) => badges(h)[0] === 'Robinhood Chain');
+    await until(host, (h) => reads(h, 'robinhood'));
     expect(router.replace).not.toHaveBeenCalled();
   });
 
   it('with none named, opens on the chain this browser was last on, and names it', async () => {
     localStorage.setItem('tf-chain', 'robinhood');
     const host = await mount(onStocks());
-    await until(host, (h) => badges(h)[0] === 'Robinhood Chain');
+    await until(host, (h) => reads(h, 'robinhood'));
     expect(router.replace).toHaveBeenCalledWith('/analytics/stocks?chain=robinhood');
   });
 
@@ -118,9 +154,9 @@ describe('the chain toggle', () => {
       return onStocks(snapshotReader(), bar);
     }
     const host = await mount(createElement(Bar));
-    await until(host, (h) => badges(h)[0] === 'Solana');
+    await until(host, (h) => reads(h, 'solana'));
     await act(async () => switchTo('robinhood'));
-    await until(host, (h) => badges(h)[0] === 'Robinhood Chain');
+    await until(host, (h) => reads(h, 'robinhood'));
     expect(router.replace).toHaveBeenLastCalledWith('/analytics/stocks?chain=robinhood');
     expect(localStorage.getItem('tf-chain')).toBe('robinhood');
   });
@@ -150,8 +186,8 @@ describe('the account settling under the bar', () => {
     const reader = snapshotReader();
     const host = await mount(createElement(Settling, { search: '?chain=solana', reader }));
     await act(async () => settle('robinhood'));
-    await until(host, (h) => badges(h).length === 5);
-    expect(badges(host)[0]).toBe('Solana');
+    await until(host, (h) => reads(h, 'solana'));
+    expect(reads(host, 'solana')).toBe(true);
     expect(router.replace).not.toHaveBeenCalled();
     expect(reader.read.some((p) => p.includes('chain=robinhood'))).toBe(false);
   });
@@ -164,7 +200,7 @@ describe('the account settling under the bar', () => {
     });
     expect(reader.read.filter((p) => p.startsWith('/risk/assets'))).toEqual([]);
     await act(async () => settle('robinhood'));
-    await until(host, (h) => badges(h)[0] === 'Robinhood Chain');
+    await until(host, (h) => reads(h, 'robinhood'));
     expect(reader.read.filter((p) => p.startsWith('/risk/assets?'))).toEqual([
       '/risk/assets?tau=0.01&chain=robinhood',
     ]);
@@ -176,9 +212,9 @@ describe('the account settling under the bar', () => {
       createElement(Settling, { search: '?chain=solana', reader: snapshotReader() }),
     );
     await act(async () => settle('solana'));
-    await until(host, (h) => badges(h)[0] === 'Solana');
+    await until(host, (h) => reads(h, 'solana'));
     await act(async () => settle('robinhood'));
-    await until(host, (h) => badges(h)[0] === 'Robinhood Chain');
+    await until(host, (h) => reads(h, 'robinhood'));
     expect(router.replace).toHaveBeenLastCalledWith('/analytics/stocks?chain=robinhood');
   });
 });
@@ -211,7 +247,9 @@ describe('the chains side by side', () => {
       'Robinhood Chain',
     ]);
     const rh = rows[1] as Element;
-    expect(rh.textContent).toContain('not collected yet on Robinhood Chain');
+    // the row is headed by its chain, so a figure it lacks does not name it again
+    expect(rh.textContent).toContain('not collected yet');
+    expect(rh.textContent?.split('Robinhood Chain').length).toBe(2);
     // figures of the Robinhood row carry Robinhood Chain in their pins, on a page read for Solana
     const figs = [...rh.querySelectorAll('[data-ui="bearing-fig"]')];
     expect(figs.length).toBe(2);

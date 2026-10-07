@@ -1,5 +1,12 @@
 import { PersonalSheet } from '@colosseum/engine/personal';
-import { BasketProposal, type ChainId, OrderError, RiskRollUp } from '@colosseum/schemas';
+import {
+  BasketProposal,
+  type ChainId,
+  OrderError,
+  PersonPlansQuery,
+  PersonPlansResponse,
+  RiskRollUp,
+} from '@colosseum/schemas';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -11,8 +18,9 @@ import {
   countLinkedSince,
   forgetUnboughtLinked,
   insertProposal,
+  listPersonPlans,
   loadFamilies,
-  loadLinkedProposal,
+  loadReadablePlan,
 } from '../../orders/store';
 import { signedIn } from './orders';
 
@@ -33,10 +41,15 @@ export const PersonalizeResponse = z.object({
 });
 export type PersonalizeResponse = z.infer<typeof PersonalizeResponse>;
 
-/** A plan made from a link, read back by its id: what the plan screen opens on from the link. */
+/**
+ * A stored plan read back by its id: what the plan screen opens on from a link, or in a tab that did
+ * not build it. `fromLink` says which: a plan made from a link keeps its rules (its vault is numbered
+ * from the plan and the buyer).
+ */
 export const LinkedPlanResponse = z.object({
   id: z.string().uuid(),
   proposal: BasketProposal,
+  fromLink: z.boolean(),
 });
 export type LinkedPlanResponse = z.infer<typeof LinkedPlanResponse>;
 
@@ -155,21 +168,72 @@ export function registerBasketRoutes(
   f.get(
     '/v1/baskets/:id',
     {
-      config: { auth: 'public', limit: 'standard' },
+      // Open to anybody for a plan from a link; a sign-in, when one is sent, opens the caller's own.
+      config: { auth: 'public', limit: 'standard', optionalSignIn: true },
       schema: {
         tags: ['plans'],
-        summary: 'A plan made from a link (`POST /v1/baskets/propose`), by its id',
+        summary: 'A stored plan by its id: one made from a link, or the caller’s own',
         description:
-          'Answers a plan stored with no person, which is what `POST /v1/baskets/propose` makes, while the agent surface is on. A plan a person made in the app is theirs and answers 404 here, as an id that names no plan does.',
+          'Answers a plan made from a link (`POST /v1/baskets/propose`, stored with no person) to anybody holding its id, while the agent surface is on; and a plan a person made in the app (`POST /v1/baskets/personalize`) to that person, signed in, whether the agent surface is on or not. `fromLink` says which it is. Another person’s plan answers 404, as an id that names no plan does, with or without a sign-in.',
         params: BasketIdParams,
         response: { 200: LinkedPlanResponse, default: OrderError },
       },
     },
-    async (req): Promise<LinkedPlanResponse> => {
-      surfaced();
-      const proposal = await loadLinkedProposal(deps.db, req.params.id);
-      if (!proposal) throw new Refusal(404, 'no plan made from a link has that id');
-      return { id: req.params.id, proposal };
+    async (req, reply): Promise<LinkedPlanResponse> => {
+      // Before the lookup, so the 404 carries them too: the answer depends on who asks, and nothing
+      // between a person and the server keeps it for the next caller.
+      reply.header('cache-control', 'private, no-store');
+      reply.header('vary', 'Authorization');
+      const plan = await loadReadablePlan(deps.db, req.params.id, req.principal?.userId ?? null);
+      // One answer, in the same words, for no plan, another person's plan, and a plan from a link
+      // while those are switched off: the answer says nothing of what an id names.
+      if (!plan || (plan.fromLink && !flags.agentSurface))
+        throw new Refusal(404, 'no plan with that id that you can read');
+      return { id: req.params.id, proposal: plan.proposal, fromLink: plan.fromLink };
+    },
+  );
+
+  f.get(
+    '/v1/me/plans',
+    {
+      config: { auth: 'user', limit: 'standard' },
+      schema: {
+        tags: ['plans'],
+        summary: 'The signed-in person’s plans, with the goal each was built for and its buys',
+        description:
+          'The plans the person made in the app, and the plans made from a link that they bought, newest first, a page at a time: at most `limit` plans (50 by default and at most), made before `before` when that is sent. `next` is the `before` of the following page, and null on the last. Every buy of a plan on the page is with it. Each has the goal sheet it was built from, the plan’s card, its chain, its buys (an order is the person’s by the wallets of the verified token) and the vault those buys opened, by its number on chain. A plan another person made is never listed. `GET /v1/baskets/{id}` reads one whole; `GET /v1/orders/{id}` reads a buy and its steps.',
+        querystring: PersonPlansQuery,
+        response: { 200: PersonPlansResponse, default: OrderError },
+      },
+    },
+    async (req, reply): Promise<PersonPlansResponse> => {
+      reply.header('cache-control', 'private, no-store');
+      const { plans, next } = await listPersonPlans(deps.db, signedIn(req), {
+        limit: req.query.limit,
+        ...(req.query.before ? { before: new Date(req.query.before) } : {}),
+      });
+      return {
+        next,
+        plans: plans.flatMap((plan) => {
+          const { sheet, card, verdict, recipes } = plan.proposal;
+          const chain = sheet.chains[0] ?? recipes[0]?.chain;
+          if (!chain) return [];
+          return [
+            {
+              id: plan.id,
+              createdAt: plan.createdAt,
+              fromLink: plan.fromLink,
+              chain,
+              sheet,
+              card,
+              verdict: verdict ?? null,
+              bought: plan.orders.some((o) => o.deposited),
+              orders: plan.orders,
+              vault: plan.basketId === null ? null : { chain, basketId: plan.basketId },
+            },
+          ];
+        }),
+      };
     },
   );
 }

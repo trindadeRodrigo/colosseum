@@ -283,7 +283,7 @@ export function OrderScreen({ id }: { id: string }) {
           note: testNetwork ? t.shell.testNetwork : undefined,
         }}
       >
-        <CardHeader title={t.order.stepsTitle} level={2} meta={<ChainBadge chain={chain} />} />
+        <CardHeader title={t.order.stepsTitle} level={2} />
         <CardBody className="flex flex-col gap-4">
           <StatRow>
             {buying && <Stat label={t.order.review.deposit}>{depositShown}</Stat>}

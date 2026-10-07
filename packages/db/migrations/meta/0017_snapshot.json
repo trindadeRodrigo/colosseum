@@ -1,6 +1,6 @@
 {
-  "id": "9efeceba-2f02-4ca6-b959-5a4fec41eae3",
-  "prevId": "e2e2fdf5-e826-415a-9783-0c14bc06c75e",
+  "id": "1c60026a-0380-4a7d-80ba-b90bd05d7ecb",
+  "prevId": "9efeceba-2f02-4ca6-b959-5a4fec41eae3",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5177,6 +5177,12 @@
         "cash_raw": {
           "name": "cash_raw",
           "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "withdrawals": {
+          "name": "withdrawals",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
