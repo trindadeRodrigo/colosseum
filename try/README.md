@@ -109,8 +109,11 @@ intake does. Without it, the rules parser reads it. The page says which read eac
 did not. The command never reads `.env` and never prints the key: export it in your shell if you want
 the model.
 
-With the rules parser, the goal, the time frame and the risk it reads are always asked once, and it
-reads no refusals ("no stocks" goes under `limits`). The examples answer those, so they run either way.
+With the rules parser, the goal, the time frame and the risk it reads are always asked once. A refusal
+("no stocks", "no credit") is read from the text by code either way, and becomes the plan's limits; a
+`limits` entry in the answers stands over it. A mix or a narrative the text states is asked once with
+no model, never taken: answer it (`mix`, `sleeves`), or say "yes" in a later paragraph of the goal.
+The examples answer those, so they run either way.
 
 ## The two data modes
 
