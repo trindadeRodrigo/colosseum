@@ -664,6 +664,7 @@ export type GetIndexesBySlugResponse = {
       figures?: {
         holdings: {
           asset: string;
+          cls: ('stock' | 'etf' | 'gold' | 'commodity' | 'dollar_yield' | 'crypto' | 'cash') | null;
           yield: {
             source: string;
             method: string;
@@ -1689,6 +1690,7 @@ export type GetShelfResponse = {
       figures?: {
         holdings: {
           asset: string;
+          cls: ('stock' | 'etf' | 'gold' | 'commodity' | 'dollar_yield' | 'crypto' | 'cash') | null;
           yield: {
             source: string;
             method: string;

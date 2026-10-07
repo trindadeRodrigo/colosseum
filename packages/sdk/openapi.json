@@ -3872,6 +3872,25 @@
                                           "type": "string",
                                           "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
                                         },
+                                        "cls": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "enum": [
+                                                "stock",
+                                                "etf",
+                                                "gold",
+                                                "commodity",
+                                                "dollar_yield",
+                                                "crypto",
+                                                "cash"
+                                              ]
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
                                         "yield": {
                                           "anyOf": [
                                             {
@@ -3989,7 +4008,7 @@
                                           ]
                                         }
                                       },
-                                      "required": ["asset", "yield", "exit"],
+                                      "required": ["asset", "cls", "yield", "exit"],
                                       "additionalProperties": false
                                     }
                                   },
@@ -10857,6 +10876,25 @@
                                             "type": "string",
                                             "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
                                           },
+                                          "cls": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string",
+                                                "enum": [
+                                                  "stock",
+                                                  "etf",
+                                                  "gold",
+                                                  "commodity",
+                                                  "dollar_yield",
+                                                  "crypto",
+                                                  "cash"
+                                                ]
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          },
                                           "yield": {
                                             "anyOf": [
                                               {
@@ -10974,7 +11012,7 @@
                                             ]
                                           }
                                         },
-                                        "required": ["asset", "yield", "exit"],
+                                        "required": ["asset", "cls", "yield", "exit"],
                                         "additionalProperties": false
                                       }
                                     },

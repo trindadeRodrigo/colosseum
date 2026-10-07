@@ -11,8 +11,12 @@ import { figuresOf, YIELD_METHOD } from './figures';
 // holding at a time, null where there is none, and the whole's yield added up from them.
 
 const NOW = '2026-10-07T12:00:00.000Z';
-const asset = (id: string) => ({ id }) as BasketAsset;
-const assets = [asset('solana:spyx'), asset('solana:jlusdc'), asset('solana:syrupusdc')];
+const asset = (id: string, cls: BasketAsset['cls']) => ({ id, cls }) as BasketAsset;
+const assets = [
+  asset('solana:spyx', 'etf'),
+  asset('solana:jlusdc', 'dollar_yield'),
+  asset('solana:syrupusdc', 'dollar_yield'),
+];
 const reading = (
   assetId: string,
   quoted: number,
@@ -72,6 +76,7 @@ describe('the figures of a shared portfolio’s holdings', () => {
       NOW,
     );
     expect(figures.holdings.map((h) => h.asset)).toEqual(components.map((c) => c.asset));
+    expect(figures.holdings.map((h) => h.cls)).toEqual(['etf', 'dollar_yield', 'dollar_yield']);
     const [stock, lending] = figures.holdings;
     expect(stock?.yield).toBeNull();
     expect(stock?.exit).toMatchObject({
@@ -134,7 +139,12 @@ describe('the figures of a shared portfolio’s holdings', () => {
     expect(figures.holdings[0]?.exit).toMatchObject({ provenance: 'mock', fetchedAt: NOW });
     // nothing read at all: every figure is absent
     expect(figuresOf(components, assets, {}, NOW)).toEqual({
-      holdings: components.map((c) => ({ asset: c.asset, yield: null, exit: null })),
+      holdings: components.map((c, i) => ({
+        asset: c.asset,
+        cls: assets[i]?.cls,
+        yield: null,
+        exit: null,
+      })),
       yield: null,
     });
   });
@@ -147,5 +157,6 @@ describe('the figures of a shared portfolio’s holdings', () => {
       NOW,
     );
     expect(figures.holdings[0]?.exit).toBeNull();
+    expect(figures.holdings[0]?.cls).toBeNull();
   });
 });

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AssetClass } from './basket-asset';
 import { Address, AssetId, ChainId, Hex32, Sourced } from './chain';
 import { Provenance } from './enums';
 import { Target } from './recipe';
@@ -56,6 +57,8 @@ export type AutoFollowOffer = z.infer<typeof AutoFollowOffer>;
  */
 export const HoldingFigures = z.object({
   asset: AssetId,
+  /** What kind of asset it is, as the chain's list has it; null for a token that list does not have. */
+  cls: AssetClass.nullable(),
   /** The token's yield a year, as fractions (0.045 is 4.5%): as quoted, and after the haircut. */
   yield: Sourced.extend({
     quoted: z.number(),

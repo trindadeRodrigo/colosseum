@@ -33,7 +33,7 @@ export function figuresOf(
   inputs: Inputs,
   now: string,
 ): RecipeFigures {
-  const listed = new Set(assets.map((a) => a.id));
+  const listed = new Map(assets.map((a) => [a.id, a]));
   const tau = PERSONAL_PARAMS.tau;
   const holdings = components.map((c): HoldingFigures => {
     const y = inputs.yields?.find((o) => o.assetId === c.asset);
@@ -43,6 +43,7 @@ export function figuresOf(
       : null;
     return {
       asset: c.asset,
+      cls: listed.get(c.asset)?.cls ?? null,
       yield: y
         ? {
             quoted: y.quotedYield,
