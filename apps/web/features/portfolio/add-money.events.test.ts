@@ -8,17 +8,29 @@ import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
 import { checkVaultAdd } from '../order/order-check';
 import { isBuy, recallOrder } from '../order/order-record';
+import { basketOfPlan } from '../order/readiness';
 import { planTermsOf } from '../order/run-order';
-import { assetsOn, ORDER_ID, orderOn, USER } from '../order/test/fixtures';
+import {
+  assetsOn,
+  ORDER_ID,
+  orderOn,
+  PLAN_ID,
+  planOn,
+  recordOf,
+  USER,
+} from '../order/test/fixtures';
 import { unitsFor } from '../order/units';
 import { readTerms, type SharedTerms } from '../shared/terms';
-import { EMBEDDED, json, SOLANA, signedInPort } from '../wallet/test/fake-port';
+import { VaultScreen } from '../shared/VaultScreen';
+import { EMBEDDED, fakePort, json, SOLANA, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { AddMoneyScreen, targetsOfVault } from './AddMoneyScreen';
+import { MonitorScreen } from './MonitorScreen';
 import { PORTFOLIO_PATH } from './portfolio';
 import { chainOf, portfolioBody, SECOND_VAULT, VAULT, vault } from './test/portfolio';
 import { VaultActions } from './VaultActions';
+import { dueOf, goalOfVault, putInto } from './vault-goal';
 import { ownVault, readName, sameAddress } from './vault-name';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
@@ -204,6 +216,17 @@ function api(
         ),
       );
     if (path.startsWith('/v1/funding?')) return json(funding);
+    // the vault's public page: the same answer for anybody
+    if (path === `/v1/vaults/solana/${VAULT}`)
+      return json({
+        chain: 'solana',
+        name: 'Solana devnet',
+        mode: 'live',
+        provenance: 'sandbox',
+        vault: vault(),
+        prices: [],
+        disclaimer: 'd',
+      });
     if (path === '/v1/orders' && method === 'POST') return json(addOrder({ basketId: '8' }));
     if (path.endsWith('/name') && method === 'PUT')
       return o.rename
@@ -380,5 +403,118 @@ describe('a vault’s actions', () => {
     expect(find(host, '[data-ui="vault-name"]').textContent).toBe(
       en.portfolio.actions.unnamed('Solana'),
     );
+  });
+});
+
+describe('the monitor, with the vaults’ actions', () => {
+  const monitor = async () => {
+    const host = await mount(withAccount('en', createElement(MonitorScreen)));
+    await settle();
+    await settle();
+    return host;
+  };
+
+  it('offers each vault its own actions, a new plan always, and one total for the chain’s vaults', async () => {
+    api();
+    const host = await monitor();
+    const blocks = [...host.querySelectorAll('[data-ui="vault"]')];
+    expect(blocks).toHaveLength(2);
+    expect(blocks.map((b) => find(b, '[data-ui="vault-add-money"]').getAttribute('href'))).toEqual([
+      `/vaults/solana/${VAULT}/add`,
+      `/vaults/solana/${SECOND_VAULT}/add`,
+    ]);
+    for (const block of blocks) expect(find(block, '[data-action="rename"]')).toBeTruthy();
+    const fresh = find(host, '[data-ui="new-plan"]');
+    expect([fresh.textContent, fresh.getAttribute('href')]).toEqual([
+      en.portfolio.actions.newPlan,
+      '/goal',
+    ]);
+    // two vaults of $1,040 on the one chain: their sum, said as that chain's, with its pin
+    const total = find(host, '[data-ui="chain-total"]');
+    expect(total.textContent).toContain(en.portfolio.group.worth(2, 'Solana'));
+    expect(total.textContent).toContain('$2,080.00');
+    expect(find(total, '[data-ui="pin"]')).toBeTruthy();
+    expect(host.querySelector('[data-ui="across-chains"]')).toBeNull();
+  });
+
+  it('adds nothing up for one vault, and still offers a new plan', async () => {
+    api({ vaults: [vault()] });
+    const host = await monitor();
+    expect(host.querySelector('[data-ui="chain-total"]')).toBeNull();
+    expect(host.querySelectorAll('[data-ui="vault-actions"]')).toHaveLength(1);
+    expect(find(host, '[data-ui="new-plan"]').getAttribute('href')).toBe('/goal');
+  });
+});
+
+describe('a vault’s own page, which anybody can open', () => {
+  const page = async () => {
+    const host = await mount(
+      withAccount('en', createElement(VaultScreen, { chain: 'solana', address: VAULT })),
+    );
+    for (let i = 0; i < 4; i += 1) await settle(50);
+    return host;
+  };
+
+  it('offers its owner the actions', async () => {
+    api({ vaults: [vault({ name: 'Rent' })] });
+    const host = await page();
+    expect(find(host, '[data-ui="vault-name"]').textContent).toBe('Rent');
+    expect(find(host, '[data-ui="vault-add-money"]').getAttribute('href')).toBe(
+      `/vaults/solana/${VAULT}/add`,
+    );
+  });
+
+  it('offers a visitor none, and shows them no name', async () => {
+    // signed in, with a vault of their own that is not this one
+    api({ vaults: [vault({ address: SECOND_VAULT, basketId: '8', name: 'Mine' })] });
+    const host = await page();
+    expect(find(host, 'h1').textContent).toBe(en.shared.vault.title);
+    expect(host.querySelector('[data-ui="vault-actions"]')).toBeNull();
+    expect(host.querySelector('[data-ui="vault-add-money"]')).toBeNull();
+    expect(host.textContent).not.toContain('Mine');
+  });
+
+  it('offers a signed-out reader none, and asks the server for no portfolio', async () => {
+    const server = api({ vaults: [vault({ name: 'Rent' })] });
+    portStore.set(fakePort());
+    const host = await page();
+    expect(find(host, 'h1').textContent).toBe(en.shared.vault.title);
+    expect(host.querySelector('[data-ui="vault-actions"]')).toBeNull();
+    expect(host.textContent).not.toContain('Rent');
+    expect(server.to(PORTFOLIO_PATH)).toEqual([]);
+  });
+});
+
+describe('a vault’s goal, once money is added', () => {
+  const goal = (placedAt: string) => ({
+    sheet: planOn().proposal.sheet,
+    card: planOn().proposal.card,
+    verdict: null,
+    placedAt,
+  });
+  const mine = vault({ basketId: basketOfPlan(PLAN_ID) });
+  const bought = recordOf('solana', { orderId: 'first', goal: goal('2026-10-01T00:00:00.000Z') });
+  // the add as this browser keeps it: no plan beside it, the vault's number in its terms
+  const added = recordOf('solana', {
+    orderId: 'second',
+    proposalId: '',
+    lines: [],
+    amountUsd: 50,
+    terms: { ...terms, basketId: mine.basketId },
+    // the goal the server's list gives the add, dated when the add was made
+    goal: goal('2027-03-01T00:00:00.000Z'),
+  });
+
+  it('counts its date from the first buy: an add never moves it', () => {
+    const alone = goalOfVault(mine, [bought]);
+    const after = goalOfVault(mine, [added, bought]);
+    expect(after?.record.orderId).toBe('first');
+    expect(after && dueOf(after.goal).toISOString()).toBe(alone && dueOf(alone.goal).toISOString());
+    expect(after && dueOf(after.goal).toISOString()).toBe('2029-10-01T00:00:00.000Z');
+  });
+
+  it('counts the add in what was put in, and joins it to no other vault', () => {
+    expect(putInto(mine, [added, bought], new Set(['first', 'second']))).toBe(60);
+    expect(putInto(vault({ basketId: '999' }), [added, bought], new Set(['second']))).toBeNull();
   });
 });

@@ -327,7 +327,10 @@ describe('the monitor, for a person with a vault on their chain', () => {
     signIn();
     const host = await screen();
     expect(primary(host)).toBeNull();
-    expect(host.querySelectorAll('button:not([aria-label^="Source for"])')).toHaveLength(0);
+    // the one button is the vault's "Rename", which signs nothing (VaultActions)
+    expect(
+      host.querySelectorAll('button:not([aria-label^="Source for"]):not([data-action="rename"])'),
+    ).toHaveLength(0);
     expect(text(host)).not.toMatch(/\bsign\b|withdraw|rebalance now/i);
   });
 });

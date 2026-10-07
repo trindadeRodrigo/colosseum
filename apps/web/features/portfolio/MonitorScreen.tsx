@@ -19,6 +19,7 @@ import { dollars } from './figures';
 import { addDecimals, chainTotal, type PortfolioChain, sumSource, type Vault } from './portfolio';
 import { usePortfolio } from './use-portfolio';
 import { useVaultHistory } from './use-vault-history';
+import { VaultActions } from './VaultActions';
 import { VaultGoalCard } from './VaultGoalCard';
 import { PlanParts, VaultPanel } from './VaultPanel';
 import { familyOfVault, goalOfVault, putInto } from './vault-goal';
@@ -83,6 +84,13 @@ export function MonitorScreen() {
   /** One vault: his guide's "Goal card and plan" side by side, then what the vault holds. */
   const vaultBlock = (entry: PortfolioChain, vault: Vault) => (
     <div key={vault.address} data-ui="vault" className="flex flex-col gap-6">
+      <VaultActions
+        chain={entry}
+        vault={vault}
+        joined={goalOfVault(vault, history.records)}
+        onRenamed={again}
+        level={grouped ? 3 : 2}
+      />
       <div className="grid items-start gap-6 min-[980px]:grid-cols-2">
         <VaultGoalCard
           chain={entry}
@@ -97,10 +105,20 @@ export function MonitorScreen() {
     </div>
   );
 
+  /** What a chain's vaults are worth together: one chain's own sum, never one across chains. */
+  const chainWorth = (entry: PortfolioChain) => {
+    const total = totalOf(entry);
+    return (
+      <p key={`total-${entry.chain}`} data-ui="chain-total" className="text-body">
+        {words.group.worth(entry.vaults.length, nameOf(entry.chain))}{' '}
+        <ProvenancePin value={dollars(lang, total.valueUsd)} obs={total.obs} labels={t.pin} />
+      </p>
+    );
+  };
+
   /** A chain's vaults under its heading, with what they are worth together on that chain. */
   const chainGroup = (entry: PortfolioChain) => {
     const name = nameOf(entry.chain);
-    const total = totalOf(entry);
     return (
       <section
         key={entry.chain}
@@ -117,10 +135,7 @@ export function MonitorScreen() {
             <span>{name}</span>
             <ChainMark provenance={entry.provenance} labels={marks} announce={false} />
           </h2>
-          <p data-ui="chain-total" className="text-body">
-            {words.group.worth(entry.vaults.length, name)}{' '}
-            <ProvenancePin value={dollars(lang, total.valueUsd)} obs={total.obs} labels={t.pin} />
-          </p>
+          {chainWorth(entry)}
         </header>
         {entry.vaults.map((vault) => vaultBlock(entry, vault))}
       </section>
@@ -228,7 +243,11 @@ export function MonitorScreen() {
                 {held.map(chainGroup)}
               </>
             ) : (
-              held.flatMap((entry) => entry.vaults.map((vault) => vaultBlock(entry, vault)))
+              held.flatMap((entry) => [
+                // Several vaults on the one chain: what they are worth together, on that chain.
+                ...(entry.vaults.length > 1 ? [chainWorth(entry)] : []),
+                ...entry.vaults.map((vault) => vaultBlock(entry, vault)),
+              ])
             )}
           </>
         );
@@ -289,6 +308,16 @@ export function MonitorScreen() {
           {words.title(vaults.length)}
         </h1>
         <p className="max-w-(--tf-measure-body) text-body-lg text-foreground">{words.lead}</p>
+        {/* Another plan is always on offer: each plan bought opens a vault of its own. */}
+        {vaults.length > 0 && (
+          <Link
+            data-ui="new-plan"
+            href="/goal"
+            className={buttonClass({ variant: 'secondary', size: 'dense' })}
+          >
+            {words.actions.newPlan}
+          </Link>
+        )}
         {shownChain && !grouped && (
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-sm">
             <span className="text-caption text-muted-foreground">{words.chain}</span>

@@ -22,15 +22,22 @@ export const ordersOfVault = (vault: Vault, records: readonly OrderRecord[]): Or
     (r) =>
       r.chain === vault.chain &&
       (r.basketId ??
+        // more money into the vault: the order names the vault's number itself
+        (r.terms?.kind === 'vault' ? r.terms.basketId : undefined) ??
         r.approved?.order.basketId ??
         basketOfPlan(r.proposalId, r.linked ? r.userId : null)) === vault.basketId,
   );
 
-/** The goal of the newest of those orders that kept one, or null. */
+/**
+ * The goal of the first of those orders that kept one, or null. The first: the goal's date counts from
+ * the buy that opened the vault, and more money added later never moves it.
+ */
 export function goalOfVault(vault: Vault, records: readonly OrderRecord[]): VaultGoal | null {
+  let first: VaultGoal | null = null;
   for (const record of ordersOfVault(vault, records))
-    if (record.goal) return { goal: record.goal, record };
-  return null;
+    if (record.goal && (!first || record.goal.placedAt < first.goal.placedAt))
+      first = { goal: record.goal, record };
+  return first;
 }
 
 /**

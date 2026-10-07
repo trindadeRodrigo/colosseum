@@ -27,6 +27,7 @@ export function VaultActions({
   vault,
   joined,
   onRenamed,
+  level = 3,
 }: {
   chain: PortfolioChain;
   vault: Vault;
@@ -34,6 +35,8 @@ export function VaultActions({
   joined: VaultGoal | null;
   /** The name changed on the server: read the portfolio again. */
   onRenamed?: () => void;
+  /** The heading level of the name: under a chain's heading it is one lower than under the page's. */
+  level?: 2 | 3;
 }) {
   const t = useT();
   const lang = useLang();
@@ -56,6 +59,7 @@ export function VaultActions({
       )
     : words.unnamed(chainName);
   const typed = readName(text);
+  const Name = level === 2 ? 'h2' : 'h3';
 
   function open() {
     setText(name ?? '');
@@ -95,14 +99,14 @@ export function VaultActions({
     >
       <div className="flex w-full flex-wrap items-center justify-between gap-x-6 gap-y-2">
         {/* The person's own words, as text: never markup, never a link. */}
-        <h3
+        <Name
           id={heading}
           data-ui="vault-name"
           data-named={name !== null}
           className="min-w-0 text-h4 font-semibold [overflow-wrap:anywhere]"
         >
           {name ?? fallback}
-        </h3>
+        </Name>
         <p className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <Link
             data-ui="vault-add-money"
@@ -178,16 +182,13 @@ export function VaultActions({
  */
 export function OwnVaultActions({ chain, address }: { chain: string; address: string }) {
   const { state, again } = usePortfolio();
-  const history = useVaultHistory();
   if (state.kind !== 'answered' || state.outcome.kind !== 'read') return null;
   const own = ownVault(state.outcome.chains, chain, address);
-  if (!own) return null;
-  return (
-    <VaultActions
-      chain={own.entry}
-      vault={own.vault}
-      joined={goalOfVault(own.vault, history.records)}
-      onRenamed={again}
-    />
-  );
+  return own ? <OwnActions chain={own.entry} vault={own.vault} onRenamed={again} /> : null;
+}
+
+/** Only for the owner: their orders are read to name the vault by its goal. */
+function OwnActions(props: { chain: PortfolioChain; vault: Vault; onRenamed: () => void }) {
+  const history = useVaultHistory();
+  return <VaultActions {...props} joined={goalOfVault(props.vault, history.records)} level={2} />;
 }

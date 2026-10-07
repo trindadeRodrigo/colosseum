@@ -19,6 +19,7 @@ import { displayName } from '../order/plain';
 import { explorerAddressUrlFor } from '../order/readiness';
 import { dollars, drift, share, tokens } from '../portfolio/figures';
 import { type HoldingRow, holdingsOf, vaultValueSource } from '../portfolio/portfolio';
+import { OwnVaultActions } from '../portfolio/VaultActions';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { readVault } from './shared-api';
 
@@ -122,6 +123,9 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
           )}
         </p>
       </header>
+
+      {/* For the vault's owner alone: add money, and its name. */}
+      <OwnVaultActions chain={read.chain} address={vault.address} />
 
       <Card
         as="section"
