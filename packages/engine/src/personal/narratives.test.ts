@@ -987,19 +987,40 @@ describe('a narrative reads to a shared portfolio, a curated label, a filter, or
 });
 
 describe('a market the lists have no word for, named by the model as a filter (MOCK replies)', () => {
-  it('a filter whose words are written, and that matches: a theme sleeve, said as matched', () => {
+  // The second review (Oct 7): any words of the text with any value filled a sleeve ("my future" with
+  // sector Consumer Discretionary). The text check is the filter's second reader only where the
+  // person's words write the value it must carry. Where they do not, the link is the model's alone.
+  it('a filter for words that do not write its value: asked once by a question that says the match, held once answered, said as matched', () => {
     const { text, reply: r } = recordedCase('obesity-drugs');
-    const result = intake(text, r);
-    expect(result.narratives).toEqual([
+    const asked = intake(text, r);
+    const narrative = {
+      id: null,
+      words: 'obesity drugs',
+      kind: 'matched',
+      slug: 'matched-keyword-glp-1',
+      filter: { by: 'keyword', value: 'GLP-1' },
+      name: 'names matched by keyword: GLP-1',
+    };
+    expect(asked.narratives).toEqual([narrative]);
+    expect(asked.sheet).toBeNull();
+    expect(asked.flags).toContain('filter_not_written');
+    expect(asked.flags).not.toContain('sleeves_from_market');
+    expect(asked.questions).toEqual([
       {
-        id: null,
-        words: 'obesity drugs',
-        kind: 'matched',
-        slug: 'matched-keyword-glp-1',
-        filter: { by: 'keyword', value: 'GLP-1' },
-        name: 'names matched by keyword: GLP-1',
+        field: 'mix',
+        template: 'matchedShare',
+        text: 'I read “obesity drugs” as names matched by keyword: GLP-1. How much of the $2,000 for them? Say none if that is not what you meant.',
       },
     ]);
+    // "None" leaves it out for good; a share answers it.
+    const none = intake(`${text}\n\nnone`, r);
+    expect(none.narratives).toEqual([]);
+    expect(none.flags).toEqual(
+      expect.arrayContaining(['none_from_words', 'market_left_out:marketFilter']),
+    );
+    expect(fields(none)).toEqual(['risk']);
+    const result = intake(`${text}\n\nall of it`, r);
+    expect(result.narratives).toEqual([narrative]);
     expect(result.questions).toEqual([]);
     expect(result.sheet?.sleeves).toEqual([theme('matched-keyword-glp-1')]);
     expect(result.sheet?.risk).toBe('high');
@@ -1007,6 +1028,40 @@ describe('a market the lists have no word for, named by the model as a filter (M
       'No curated list covers “obesity drugs” on Solana, so the plan holds the names matched by keyword: GLP-1. Matched from the sourced attributes of each, not a curated theme.',
     );
     expect(result.readBack).toContain('100% of the plan for names matched by keyword: GLP-1.');
+  });
+
+  it('a filter for words that write its value has both readers: held with no question', () => {
+    for (const [words, filter, slug] of [
+      ['insurance companies', { by: 'industry', value: 'Insurance' }, 'matched-industry-insurance'],
+      ['insurers', { by: 'industry', value: 'insurance' }, 'matched-industry-insurance'],
+      ['GLP-1 makers', { by: 'keyword', value: 'GLP-1' }, 'matched-keyword-glp-1'],
+    ] as const) {
+      const result = intake(
+        `Invest $2,000 in ${words} for 5 years`,
+        reply({ marketFilter: { ...filter, words } }),
+      );
+      expect(result.flags, words).not.toContain('filter_not_written');
+      expect(result.flags, words).toContain('sleeves_from_market');
+      expect(result.questions, words).toEqual([]);
+      expect(result.sheet?.sleeves, words).toEqual([theme(slug)]);
+    }
+    // And one that does not, whatever the words: the model's free association is never taken.
+    for (const [words, filter] of [
+      ['my future', { by: 'industry', value: 'Software' }],
+      ['something good', { by: 'sector', value: 'Health Care' }],
+      ['the long run', { by: 'keyword', value: 'cloud' }],
+    ] as const) {
+      const result = intake(
+        `Invest $2,000 in ${words} for 5 years`,
+        reply({ marketFilter: { ...filter, words } }),
+      );
+      expect(result.sheet, words).toBeNull();
+      expect(result.flags, words).toContain('filter_not_written');
+      expect(
+        result.questions.map((q) => q.template),
+        words,
+      ).toEqual(['matchedShare']);
+    }
   });
 
   it('words that are not written in the text: dropped, flagged, and nothing asked about it', () => {
@@ -1097,7 +1152,16 @@ describe('a market the lists have no word for, named by the model as a filter (M
 
   it('in Portuguese: the value as the attributes write it, the words as the person wrote them', () => {
     const { text, reply: r } = recordedCase('insurers-in-portuguese');
-    const result = intake(text, r);
+    // "Seguradoras" does not write "Insurance": the link is the model's, so it is asked once.
+    expect(intake(text, r).questions).toEqual([
+      {
+        field: 'mix',
+        template: 'matchedShare',
+        text: 'Li “seguradoras” como nomes filtrados por indústria: Insurance. Quanto dos US$ 2.000 para eles? Diga nada se não era isso que você quis dizer.',
+      },
+    ]);
+    const result = intake(`${text}\n\ntudo`, r);
+    expect(result.questions).toEqual([]);
     expect(result.narratives).toEqual([
       {
         id: null,

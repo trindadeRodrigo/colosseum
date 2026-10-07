@@ -36,17 +36,20 @@ import {
   openEndedIn,
   otherLanguageIn,
   phraseIn,
+  portfolioSaidAt,
   type RefusalSaid,
   type Refused,
   refusalsSaidIn,
   restOfMoneyIn,
   riskCuesIn,
+  risksRuledOutIn,
   shareSaidIn,
   splitIn,
   stanceOf,
   TURN_BREAK,
   timeFramesIn,
   withoutMarketShares,
+  wordsWrite,
 } from './intake-text';
 import {
   attributeKey,
@@ -347,6 +350,21 @@ function themeSleevesOf(
   return PlanSleeves.safeParse(sleeves).success ? sleeves : null;
 }
 
+/**
+ * The least share of the plan a holding can be, in basis points (the review of Oct 7: "$20" for AI
+ * in a plan of $5,000 gave a sheet with 0.4% in it, which no line of a plan can be): the table's
+ * floor for a line, and its floor in dollars over the amount where the amount is known. A share
+ * under it is no share a plan can hold: it is not taken, and how much is asked again.
+ */
+const leastShareBps = (
+  amountUsd: number | null,
+  params: Pick<PersonalParameters, 'minLineBps' | 'minLineUsd'> = PERSONAL_PARAMS,
+): number =>
+  Math.max(
+    params.minLineBps,
+    amountUsd ? Math.ceil((params.minLineUsd / amountUsd) * WHOLE_MIX_BPS) : 0,
+  );
+
 /** The share of the plan a split holds in themes, in basis points. */
 const themeBpsOf = (sleeves: readonly PlanSleeve[] | null | undefined): number =>
   (sleeves ?? []).reduce((n, s) => (s.kind === 'theme' ? n + s.shareBps : n), 0);
@@ -506,7 +524,7 @@ function mixAnswered(
   message: string,
   asked: IntakeQuestion,
   amountUsd: number | null,
-): PersonalMix | null {
+): PersonalMix | 'too_small' | null {
   const stated = mixIn(message);
   const share = stated ? null : shareSaidIn(message);
   const ofAMarket = asked.template !== 'mix';
@@ -517,6 +535,9 @@ function mixAnswered(
   // "All of it" and a sum answer "how much for it", and say nothing of how the whole is held.
   if (share?.kind === 'whole' && ofAMarket) growthBps = WHOLE_MIX_BPS;
   if (share?.kind === 'amount' && ofAMarket) growthBps = bpsOf(share, amountUsd);
+  // A share for it that no line of a plan can be is no answer: the question stays.
+  if (ofAMarket && growthBps !== null && growthBps > 0 && growthBps < leastShareBps(amountUsd))
+    return 'too_small';
   const mix =
     stated?.mix ??
     (growthBps === null
@@ -528,7 +549,10 @@ function mixAnswered(
 
 /** What the person's later messages said in words, read as answers to the questions before them. */
 type Heard = {
-  /** How each was read: `mix_from_words`, `sleeves_from_words`, `none_from_words`. */
+  /**
+   * How each was read: `mix_from_words`, `sleeves_from_words`, `none_from_words`; and
+   * `share_too_small` for a share that was not taken because no line of a plan can be that small.
+   */
   flags: string[];
   /**
    * The narratives a message answered "none" for, by id (`marketFilter` for the model's): left out
@@ -563,7 +587,9 @@ function sharesAnswered(
       return shareBps === null ? [] : [{ kind: 'theme', theme: t.slug, shareBps }];
     });
     const whole = sleeves.reduce((n, x) => n + x.shareBps, 0) === WHOLE_MIX_BPS;
-    return whole && PlanSleeves.safeParse(sleeves).success ? sleeves : null;
+    const least = leastShareBps(amountUsd);
+    const held = sleeves.every((x) => x.shareBps >= least);
+    return whole && held && PlanSleeves.safeParse(sleeves).success ? sleeves : null;
   };
   if (evenSplitSaidIn(message)) {
     const each = Math.floor(WHOLE_MIX_BPS / themes.length);
@@ -640,6 +666,10 @@ export function runIntake(input: IntakeInput): IntakeResult {
         continue;
       }
       const mix = mixAnswered(message, asked, amountUsd);
+      if (mix === 'too_small') {
+        heard.flags.push('share_too_small');
+        continue;
+      }
       if (mix) {
         answers = { ...answers, mix };
         heard.flags.push('mix_from_words');
@@ -725,6 +755,13 @@ function intakeOf(
 
   if (input.reply === null) {
     Object.assign(draft, rules);
+    // A risk the text writes only under a negation ("I can't take high risk") is not the person's:
+    // the rules parser's reading of it is no start for the question.
+    if (rules.risk !== null && risksRuledOutIn(text).includes(rules.risk)) {
+      flags.push(`risk_negated:${rules.risk}`);
+      rules.risk = null;
+      draft.risk = null;
+    }
     // A text in another language than en or pt (EXPLICIT-MIX): the rules parser reads only those two,
     // and its guess of one is not the text's. The intake speaks English; the chat translates.
     if (otherLanguageIn(text)) {
@@ -781,7 +818,9 @@ function intakeOf(
             ? `not_in_text:${field}`
             : where === 'wrong_role'
               ? `wrong_role:${field}`
-              : `other_currency:${field}`,
+              : where === 'not_a_sum'
+                ? `not_a_sum:${field}`
+                : `other_currency:${field}`,
         );
         unclear.add(field);
         if (where === 'other_currency' && field === 'amountUsd') {
@@ -809,10 +848,31 @@ function intakeOf(
     }
     // A time frame must be written in the text, as one. A time to get the money out ("can take up to
     // 3 months to get out") is a limit on liquidity, never the time frame: it is dropped, not asked.
+    //
+    // Where the text writes more than one (the review of Oct 7: "over 5 years ... and in 2 years I
+    // buy a car" gave a plan of 2 years), the last word wins: the last message that writes a time
+    // frame decides. One that writes several, or a reply that gives another message's, is no reading
+    // of one time frame: the date is asked once.
     const horizons = horizonsIn(text, nowMonth);
+    const lastWritten = turns
+      .map((turn) => horizonsIn(turn, nowMonth))
+      .filter((written) => written.length > 0)
+      .at(-1);
     if (r.horizonMonths !== null) {
-      if (horizons.includes(r.horizonMonths)) draft.horizonMonths = r.horizonMonths;
-      else if (exits.some((e) => e.months === r.horizonMonths)) flags.push('exit_time_not_horizon');
+      if (horizons.includes(r.horizonMonths)) {
+        const [last, ...more] = lastWritten ?? [];
+        if (more.length > 0) {
+          // Several in one message: nothing says which is the plan's, so the question has no start.
+          flags.push('horizon_several');
+          unclear.add('horizonMonths');
+        } else if (last !== undefined && last !== r.horizonMonths) {
+          // The reply gives an earlier message's: the last one written is the start.
+          flags.push('horizon_not_last');
+          unclear.add('horizonMonths');
+          draft.horizonMonths = last;
+        } else draft.horizonMonths = r.horizonMonths;
+      } else if (exits.some((e) => e.months === r.horizonMonths))
+        flags.push('exit_time_not_horizon');
       else {
         flags.push('not_in_text:horizonMonths');
         unclear.add('horizonMonths');
@@ -834,8 +894,9 @@ function intakeOf(
     }
     // The person's split: each share written in the text, the two the whole. "Half and half" is
     // written as halves.
+    // A share is one in its plain forms: "I can lose 30% and I am 70% sure" writes no split.
     if (r.sleeves !== null) {
-      const written = new Set([...split.percents, ...split.pairs.flat()]);
+      const written = new Set([...split.ofMoney, ...split.pairs.flat()]);
       const whole = r.sleeves.reduce((n, x) => n + x.sharePct, 0) === 100;
       const kinds = new Set(r.sleeves.map((x) => x.kind)).size === r.sleeves.length;
       const each = r.sleeves.every(
@@ -869,15 +930,39 @@ function intakeOf(
     // model reads what the person named, it picks nothing. One the text does not write is dropped and
     // flagged, and nothing is asked about it. One that is written must be on the shelf of the
     // person's chain, or it is asked.
+    //
+    // And its name must be said as a holding, as a narrative's words must (the review of Oct 7: "the
+    // seven of us are saving" started a plan from The Seven). One its clause rules out or says of
+    // something else is dropped and flagged (`portfolio_negated`, `portfolio_aside`); one the person
+    // only wonders about is asked; words that nothing says name the portfolio are not read
+    // (`no_cue:portfolios`).
     if (r.portfolios !== null && r.portfolios.length > 0) {
-      const writtenAs = (name: string) => {
+      const saidAs = (name: string) => {
         const onShelf = portfolios.find((p) => p.slug === portfolioSlug(name, portfolios));
-        return [name, onShelf?.name, onShelf?.slug].some(
-          (words) => words !== undefined && phraseIn(text, words).length > 0,
+        const said = [name, onShelf?.name, onShelf?.slug]
+          .flatMap((words) => (words === undefined ? [] : phraseIn(text, words)))
+          .map((m) =>
+            portfolioSaidAt(
+              text,
+              m.at,
+              m.end,
+              m.words === (onShelf?.name ?? name) || m.words === onShelf?.slug,
+            ),
+          );
+        return (
+          (['held', 'wondered', 'negated', 'aside'] as const).find((how) => said.includes(how)) ??
+          null
         );
       };
-      namedPortfolios = r.portfolios.filter(writtenAs);
-      if (namedPortfolios.length < r.portfolios.length) flags.push('no_cue:portfolios');
+      const said = r.portfolios.map((name) => ({ name, how: saidAs(name) }));
+      namedPortfolios = said.flatMap((p) => (p.how === 'held' ? [p.name] : []));
+      for (const { how } of said) {
+        if (how === null) flags.push('no_cue:portfolios');
+        else if (how === 'wondered') {
+          flags.push('portfolio_wondered');
+          unclear.add('themes');
+        } else if (how !== 'held') flags.push(`portfolio_${how}`);
+      }
       const slugs = namedPortfolios.map((name) => portfolioSlug(name, portfolios));
       const found = [...new Set(slugs.filter((s): s is string => s !== null))];
       // Where the shelf could not be read, a name it does not show is not said to be off it.
@@ -909,8 +994,13 @@ function intakeOf(
       flags.push('no_cue:goal');
       unclear.add('goal');
     }
+    // One the text writes only under a negation ("I can't take high risk") is the opposite of what
+    // is written (the review of Oct 7): it is asked with no start.
     if (draft.risk !== null && !riskCuesIn(text).includes(draft.risk)) {
-      flags.push('no_cue:risk');
+      if (risksRuledOutIn(text).includes(draft.risk)) {
+        flags.push(`risk_negated:${draft.risk}`);
+        draft.risk = null;
+      } else flags.push('no_cue:risk');
       unclear.add('risk');
     }
 
@@ -1048,11 +1138,8 @@ function intakeOf(
     mixSaid.classes.some((c) => refused.has(c) && refusedIn(c) > mixSaid.turn);
   let written = mixSaid?.stance === 'stated' && !refusedLater ? mixSaid : null;
   if (mixSaid && !written) flags.push(refusedLater ? 'mix_refused_later' : `mix_${mixSaid.stance}`);
-  // Where the text's mix is not read, its shares are no split of the plan either (below).
-  let unreadMix: { at: number; end: number } | null = null;
   if (method === 'model' && written && !replyMix) {
     flags.push('text_only:mix');
-    unreadMix = { at: written.at, end: written.end };
     written = null;
   }
   // The mix both readers read, which may be taken; and the one the text states with no model, asked.
@@ -1137,7 +1224,13 @@ function intakeOf(
   // shared portfolio's name. Otherwise it is dropped and flagged, and nothing is asked about it. With
   // no model there is none.
   type Named = { words: string; at: number; end: number; wondered: boolean };
-  let filterAsked: { filter: MarketFilter; spans: Named[] } | null = null;
+  //
+  // The filter is the model's reading, and the text check is its second reader only where the
+  // person's words write the value it must carry ("defense stocks" for Aerospace & Defense). Where
+  // they do not ("obesity drugs" for GLP-1; "my future" for Consumer Discretionary, the review of
+  // Oct 7), the link between the two is the model's alone (`written` false): it is never taken, and
+  // is asked once by a question that says what it would be matched by.
+  let filterAsked: { filter: MarketFilter; spans: Named[]; written: boolean } | null = null;
   if (replyFilter) {
     const { words, ...filter } = replyFilter;
     const spans = phraseIn(text, words);
@@ -1153,28 +1246,29 @@ function intakeOf(
     else if (free.length === 0) flags.push('market_covers:marketFilter');
     else if (asks.length === 0) flags.push('market_negated:marketFilter');
     else if (heard.leftOut.includes('marketFilter')) flags.push('market_left_out:marketFilter');
-    else filterAsked = { filter, spans: asks };
+    else filterAsked = { filter, spans: asks, written: wordsWrite(words, filter.value) };
   }
   const named: Named[] = [...asked, ...(filterAsked?.spans ?? [])];
   // The split, once what is said of the narratives is set apart: "30%" in "30% in AI" and "half" in
   // "half in big tech" are those narratives' shares, not a split of the plan. Nor are the shares of
-  // a mix the text states and the model did not read: they are not asked about either.
+  // a mix the text writes, however its clause says it and whoever read it ("100% stocks is too much
+  // for me"): they are the mix's, and are not asked about as a split.
   const shares = withoutMarketShares(
     text,
     named.map((m) => m.at),
   );
   const rest = splitIn(
-    unreadMix
-      ? `${shares.slice(0, unreadMix.at)}${' '.repeat(unreadMix.end - unreadMix.at)}${shares.slice(unreadMix.end)}`
+    mixSaid
+      ? `${shares.slice(0, mixSaid.at)}${' '.repeat(mixSaid.end - mixSaid.at)}${shares.slice(mixSaid.end)}`
       : shares,
   );
-  // With no model, a split the rules parser cannot read ("70-30", "70%") is asked. Not the percents
-  // of a mix the text states: those are the mix's, which is asked by its own question.
-  // Nor "0%", which splits nothing: it answers "how much" with none.
+  // With no model, a split the rules parser cannot read ("70-30", "70% safe") is asked: a pair, or
+  // a percent written as a share of the money. Not "0%", which splits nothing: it answers "how
+  // much" with none.
   if (
     input.reply === null &&
     !mixOfRules &&
-    (rest.pairs.length > 0 || rest.percents.some((pct) => pct > 0))
+    (rest.pairs.length > 0 || rest.ofMoney.some((pct) => pct > 0))
   )
     unclear.add('sleeves');
 
@@ -1216,6 +1310,8 @@ function intakeOf(
     filter: MarketFilter | null;
     /** For `none`: a filter matched one name alone there, which is no theme. */
     one: boolean;
+    /** For a filter the model named: whether the person's words write its value. */
+    written: boolean;
   };
   const resolve = (
     id: Market | null,
@@ -1248,11 +1344,25 @@ function intakeOf(
     return { kind: 'none', slug: null, filter: null, one };
   };
   // A share is read where the narrative is stated; one the person only wonders about has none yet.
-  const shareOf = (spans: Named[]): MarketShare =>
-    spans
-      .map((s) => (s.wondered ? null : marketShareIn(text, s.at, s.end)))
-      .filter((s) => s !== null)
-      .at(-1) ?? null;
+  // The last word wins for a share too (the review of Oct 7: "invest $5,000 in AI", then "Scrap the
+  // AI idea", still held AI where the reply named it): the last message that names the narrative
+  // says its share. Where that message names it and gives no share in a plain form, the share an
+  // earlier one gave no longer stands (`share_not_last:<id>`), and how much is asked once.
+  const shareOf = (key: string, spans: Named[]): MarketShare => {
+    const said = spans.map((s) => ({
+      turn: turnOf(s.at),
+      share: s.wondered ? null : marketShareIn(text, s.at, s.end),
+    }));
+    const last = Math.max(...said.map((x) => x.turn));
+    const share =
+      said
+        .filter((x) => x.turn === last)
+        .map((x) => x.share)
+        .filter((x) => x !== null)
+        .at(-1) ?? null;
+    if (share === null && said.some((x) => x.share !== null)) flags.push(`share_not_last:${key}`);
+    return share;
+  };
   // In the order of the fixed lists, then the model's filter. While the person has no chain nothing
   // is resolved, and nothing is said of what their chain has: the chain is asked first. The same
   // where the caller could not read what the chain lists (`shelfKnown`): no sentence then says the
@@ -1272,7 +1382,8 @@ function intakeOf(
           id,
           words: first.words,
           at: first.at,
-          share: shareOf(spans),
+          share: shareOf(id, spans),
+          written: true,
           ...resolve(id, null),
         });
     }
@@ -1282,7 +1393,8 @@ function intakeOf(
         id: null,
         words: first.words,
         at: first.at,
-        share: shareOf(filterAsked.spans),
+        share: shareOf('marketFilter', filterAsked.spans),
+        written: filterAsked.written,
         ...resolve(null, filterAsked.filter),
       });
   }
@@ -1373,14 +1485,30 @@ function intakeOf(
   const themed = inPlay
     .filter((r) => r.kind === 'label' || r.kind === 'matched')
     .sort((a, b) => a.at - b.at);
-  const themes: { keys: string[]; slug: string; words: string; shares: MarketShare[] }[] = [];
+  type Themed = {
+    keys: string[];
+    slug: string;
+    words: string;
+    shares: MarketShare[];
+    /** The filter of a theme only the model linked to the person's words; null for any other. */
+    unwritten: MarketFilter | null;
+  };
+  const themes: Themed[] = [];
   for (const r of themed) {
     const same = themes.find((t) => t.slug === r.slug);
     if (same) {
       same.shares.push(r.share);
       same.keys.push(keyOf(r));
+      // A fixed word that reads to the same names confirms them.
+      if (r.written) same.unwritten = null;
     } else if (r.slug)
-      themes.push({ keys: [keyOf(r)], slug: r.slug, words: r.words, shares: [r.share] });
+      themes.push({
+        keys: [keyOf(r)],
+        slug: r.slug,
+        words: r.words,
+        shares: [r.share],
+        unwritten: r.written ? null : r.filter,
+      });
   }
 
   // "70% ... and the other half" is more than the whole: the split is asked, never guessed.
@@ -1470,8 +1598,11 @@ function intakeOf(
     if (bps === 'wait') shareWaits = true;
     else if (first) {
       const [growthBps = 0] = bps ?? [];
+      // A share no line of a plan can be is no share: how much is asked (`share_too_small`).
+      const tooSmall = growthBps > 0 && growthBps < leastShareBps(value.amountUsd);
+      if (tooSmall) flags.push('share_too_small');
       const parsed =
-        growthBps > 0 && growthBps <= WHOLE_MIX_BPS
+        growthBps > 0 && growthBps <= WHOLE_MIX_BPS && !tooSmall
           ? PersonalMix.safeParse({
               growthBps,
               dollarYieldBps: 0,
@@ -1518,6 +1649,9 @@ function intakeOf(
   // the shares the text states are asked once, never taken.
   let themeSleeves: PlanSleeve[] | null = null;
   let themeAsk: 'mix' | 'sleeves' | null = null;
+  // The filter of the one theme whose share is asked, where only the model linked it to the
+  // person's words: the question says what it would be matched by.
+  let matchedAsk: MarketFilter | null = null;
   // The question the split is asked by, where it is asked to settle themes alone.
   let splitAsk:
     | { id: 'themeShares'; themes: Open['themes'] }
@@ -1554,8 +1688,18 @@ function intakeOf(
       } else for (const t of themes) flags.push(`theme_not_held:${t.slug}`);
     } else {
       const besideSplit = splitWritten && !mixSeen;
-      const made = portfolioToo || besideSplit ? null : themeSleevesOf(themes, value.amountUsd);
+      const sleevesMade =
+        portfolioToo || besideSplit ? null : themeSleevesOf(themes, value.amountUsd);
+      // A share no line of a plan can be is no share: how much is asked (`share_too_small`).
+      const least = leastShareBps(value.amountUsd);
+      const tooSmall =
+        Array.isArray(sleevesMade) &&
+        sleevesMade.some((x) => x.kind === 'theme' && x.shareBps < least);
+      if (tooSmall) flags.push('share_too_small');
+      const made = tooSmall ? null : sleevesMade;
       const alone = only && themes.length === 1 && !portfolioToo && !besideSplit ? only : null;
+      // A theme only the model linked to the person's words is one reader's: never taken.
+      const unwritten = themes.some((t) => t.unwritten !== null);
       // What is asked of the themes, and why: the share of one alone, or the split.
       let ask: { how: 'share' | 'split'; why: string[] } | null = null;
       if (made === 'wait') shareWaits = true;
@@ -1563,11 +1707,16 @@ function intakeOf(
         const themeBps = themeBpsOf(made);
         if (restNotPlain(themeBps < WHOLE_MIX_BPS))
           ask = { how: 'split', why: ['rest_said', 'theme_shares_unclear'] };
-        else if (method === 'model') {
+        else if (method === 'model' && !unwritten) {
           themeSleeves = made;
           draft.sleeves = made;
           flags.push('sleeves_from_market');
-        } else if (alone) {
+        } else if (alone?.unwritten) {
+          // The model's own link: asked once, with no start, by a question that says the match.
+          ask = { how: 'share', why: ['filter_not_written'] };
+        } else if (unwritten)
+          ask = { how: 'split', why: ['filter_not_written', 'theme_shares_unclear'] };
+        else if (alone) {
           // With no model: asked once, with what the text says as the form's start.
           ask = { how: 'share', why: ['from_rules:market'] };
           shareRead = {
@@ -1588,8 +1737,9 @@ function intakeOf(
       if (ask?.how === 'share' && alone) {
         themeAsk = 'mix';
         marketShareAsk = alone.words;
+        matchedAsk = alone.unwritten;
         shareAskedOf = themes.flatMap((t) => t.keys.map((key) => ({ key, words: t.words })));
-        flags.push(...ask.why);
+        flags.push(...ask.why, ...(alone.unwritten ? ['filter_not_written'] : []));
       } else if (ask) {
         themeAsk = 'sleeves';
         unclear.add('sleeves');
@@ -1806,6 +1956,15 @@ function intakeOf(
         id: 'holdOrLeaveOut',
         params: { refusal: conflictAsk.refusal.words, held: listed(conflictAsk.held) },
       };
+    if (field === 'mix' && marketShareAsk !== null && matchedAsk) {
+      const matched = matchedName(matchedAsk.by, matchedAsk.value, language);
+      return value.amountUsd !== null
+        ? {
+            id: 'matchedShare',
+            params: { amount: value.amountUsd, market: marketShareAsk, matched },
+          }
+        : { id: 'matchedShareNoAmount', params: { market: marketShareAsk, matched } };
+    }
     if (field === 'mix' && marketShareAsk !== null)
       return value.amountUsd !== null
         ? { id: 'marketShare', params: { amount: value.amountUsd, market: marketShareAsk } }
@@ -1928,6 +2087,17 @@ function intakeOf(
   if (input.homeChain)
     for (const words of waitsForShelf) assume('SHELF_UNREAD', { words, chain: input.homeChain });
   for (const { words } of refusalsNotTaken) assume('REFUSAL_NOT_TAKEN', { words });
+  // A share that was not taken because no line of a plan can be that small: said while how much
+  // is still asked, with the least a plan of this size can hold, so the question that comes back is
+  // not a riddle.
+  if (
+    flags.includes('share_too_small') &&
+    value.amountUsd !== null &&
+    questions.some((q) => q.field === 'mix' || q.field === 'sleeves')
+  )
+    assume('SHARE_TOO_SMALL', {
+      least: (leastShareBps(value.amountUsd) / WHOLE_MIX_BPS) * value.amountUsd,
+    });
   // A refusal the text states that the model did not read: taken, and said in a line of its own
   // that names the person's words, so a clause read wrongly is seen and corrected. Not while it is
   // asked against a holding: the question names it.

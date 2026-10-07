@@ -755,6 +755,19 @@ export const QUESTION_TEMPLATES = {
     en: 'How much of the money for {market}?',
     pt: 'Quanto do dinheiro para {market}?',
   },
+  // A filter the model names for words that do not write its value ("obesity drugs" for keyword
+  // GLP-1; "my future" for sector Consumer Discretionary, the review of Oct 7): the link between the
+  // two is the model's alone, so it is never taken. One question says what it would be matched by,
+  // and "none" leaves it out. `matched` is `MATCHED_NAME`, filled.
+  matchedShare: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
+    en: 'I read “{market}” as {matched}. How much of the ${amount|amount} for them? Say none if that is not what you meant.',
+    pt: 'Li “{market}” como {matched}. Quanto dos US$ {amount|amount} para eles? Diga nada se não era isso que você quis dizer.',
+  },
+  matchedShareNoAmount: {
+    en: 'I read “{market}” as {matched}. How much of the money for them? Say none if that is not what you meant.',
+    pt: 'Li “{market}” como {matched}. Quanto do dinheiro para eles? Diga nada se não era isso que você quis dizer.',
+  },
   // Several things named to hold, and no share for each (the review of Oct 7): the question names
   // them, in the person's words, and "half each" answers it. `themes` is those words, joined.
   themeShares: {
@@ -1014,6 +1027,15 @@ export const ASSUMPTION_TEMPLATES = {
   CANNOT_LEAVE_OUT: {
     en: 'A plan cannot leave one company out of a list it holds, so “{words}” was not applied.',
     pt: 'Um plano não deixa uma empresa de fora de uma lista que mantém, então “{words}” não foi aplicado.',
+  },
+  // A share smaller than the least a line of the plan can be (the parameter table's `minLineUsd`
+  // and `minLineBps`; the review of Oct 7: "$20" of $5,000 gave a sheet with 0.4% in a theme): a plan
+  // could not hold it, so it is not taken, and how much is asked again. `least` is that floor in
+  // dollars for the amount of the plan.
+  SHARE_TOO_SMALL: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
+    en: 'The smallest part a plan of this size can hold is ${least|amount}, so a smaller one was not taken.',
+    pt: 'A menor parte que um plano deste tamanho pode ter é US$ {least|amount}, então uma parte menor não foi considerada.',
   },
   MIX_DROPPED: {
     en: 'A plan for {goal|goal} holds no stocks or crypto, so “{words}” is not held.',

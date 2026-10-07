@@ -213,4 +213,11 @@ export const INTAKE_LIMITS = {
    * list and may hold one.
    */
   filterMinListed: 2,
+  /**
+   * How the person's words are held to the value a filter the model names must carry (Oct 7): a
+   * word counts from this many letters, and two words are one where they share a stem this long
+   * ("insurers" and "insurance"). Shorter words must be the same word, or its plural.
+   */
+  nameWordChars: 3,
+  sameStemChars: 5,
 } as const;

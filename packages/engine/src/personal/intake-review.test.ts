@@ -9,6 +9,7 @@ import {
   type ShelfPortfolio,
 } from './intake';
 import {
+  amountInText,
   type Market,
   marketMentionsIn,
   marketShareIn,
@@ -17,7 +18,10 @@ import {
   mixSaidIn,
   refusalsIn,
   refusalsSaidIn,
+  riskCuesIn,
+  risksRuledOutIn,
   shareSaidIn,
+  splitIn,
   timeFramesIn,
 } from './intake-text';
 import {
@@ -26,6 +30,7 @@ import {
   type MarketFilter,
   type ShelfLabel,
 } from './market-filter';
+import { PERSONAL_PARAMS } from './params';
 import { launchShelf } from './testing';
 import type { PersonalMix, PersonalSheet } from './types';
 
@@ -2795,4 +2800,1032 @@ describe('the second review (Oct 7): every sentence of its scripts, with a model
       );
     }
   });
+
+  // b4: a share or a sum attached to the wrong thing, two narratives, a narrative beside a mix or a
+  // split. The narratives a reply names where it names what the text asks for; what is held or asked
+  // with that reply, and with no model (`outcome`); and a line that is said on both, where one is.
+  // With the reply of the review's script, which names none, nothing is held, asked or said.
+  const TESLA = (words: string) =>
+    `A plan cannot leave one company out of a list it holds, so “${words}” was not applied.`;
+  const B4: [string, Market[], string, string, string?][] = [
+    [
+      'Half in stocks and half in AI',
+      ['ai'],
+      'ask sleeves/themeAndRest',
+      'ask sleeves/themeAndRest',
+    ],
+    [
+      '30% in AI and the rest in stocks',
+      ['ai'],
+      'ask sleeves/themeAndRest',
+      'ask sleeves/themeAndRest',
+    ],
+    ['$1,000 in AI and the rest in stocks', ['ai'], 'ask mix/marketShare', 'ask mix/marketShare'],
+    [
+      'Put half in AI and the other half in gold',
+      ['ai'],
+      'ask sleeves/themeAndRest',
+      'ask sleeves/themeAndRest',
+    ],
+    [
+      'Put 20% in AI and keep the rest in bitcoin',
+      ['ai'],
+      'ask sleeves/themeAndRest',
+      'ask sleeves/themeAndRest',
+    ],
+    [
+      'I put $500 in AI last year, now I want to invest the $5,000',
+      ['ai'],
+      'ask mix/marketShare',
+      'ask mix/marketShare',
+    ],
+    ['I can lose 30% in AI and be fine', ['ai'], 'ask mix/marketShare', 'ask mix/marketShare'],
+    ['70% of experts say invest in AI', ['ai'], 'ask mix/marketShare', 'ask mix/marketShare'],
+    [
+      'My salary went up 20% in software this year',
+      ['cloud_software'],
+      'ask mix/marketShare',
+      'ask mix/marketShare',
+    ],
+    [
+      'All of it in AI except $1,000 that I need in cash',
+      ['ai'],
+      'ask sleeves/themeAndRest',
+      'ask sleeves/themeAndRest',
+    ],
+    ['No more than 20% in AI', [], 'none', 'none'],
+    ['At least 30% in big tech', ['big_tech'], 'ask mix/marketShare', 'ask mix/marketShare'],
+    ['Up to 30% in big tech', ['big_tech'], 'ask mix/marketShare', 'ask mix/marketShare'],
+    [
+      'At most 10% in semiconductors',
+      ['semiconductors'],
+      'ask mix/marketShare',
+      'ask mix/marketShare',
+    ],
+    [
+      'Invest in AI but no Tesla',
+      ['ai'],
+      'hold ai@10000',
+      'ask mix/marketShare start 10000/0/0/0',
+      TESLA('no Tesla'),
+    ],
+    [
+      'Invest in AI, but I do not want Tesla or Meta in it',
+      ['ai'],
+      'hold ai@10000',
+      'ask mix/marketShare start 10000/0/0/0',
+      TESLA('do not want Tesla or Meta'),
+    ],
+    [
+      'Invest in big tech without Tesla',
+      ['big_tech'],
+      'hold mix 10000/0/0/0 from the-seven',
+      'ask mix/marketShare start 10000/0/0/0',
+      TESLA('without Tesla'),
+    ],
+    // Both have a list on this shelf, as on the chain the review ran it on a second time.
+    [
+      'Invest in AI and defense',
+      ['ai', 'defense'],
+      'ask sleeves/themeShares',
+      'ask sleeves/themeShares',
+    ],
+    ['Invest in AI and big tech', ['big_tech', 'ai'], 'ask sleeves/sleeves', 'ask sleeves/sleeves'],
+    [
+      'half in AI and half in semiconductors',
+      ['ai', 'semiconductors'],
+      'hold ai@5000+semiconductors@5000',
+      'ask sleeves/themeShares',
+    ],
+    [
+      'half in semiconductors and half in AI',
+      ['ai', 'semiconductors'],
+      'hold semiconductors@5000+ai@5000',
+      'ask sleeves/themeShares',
+    ],
+    ['all in stocks, mostly AI', ['ai'], 'ask mix/marketShare', 'ask mix/marketShare'],
+    [
+      '70% stocks and 30% cash, with the stocks in AI',
+      ['ai'],
+      'ask mix/marketShare',
+      'ask mix/marketShare',
+    ],
+    [
+      'Put 50% in AI, 30% in gold and 20% in cash',
+      ['ai'],
+      'ask sleeves/sleeves',
+      'ask sleeves/sleeves',
+    ],
+    [
+      'I want 60% in the S&P 500, 20% in gold and 20% in AI',
+      ['us_market', 'ai'],
+      'ask sleeves/sleeves',
+      'ask sleeves/sleeves',
+    ],
+    [
+      'Invest in AI. Actually no, make it semiconductors.',
+      ['ai', 'semiconductors'],
+      'ask sleeves/themeShares',
+      'ask sleeves/themeShares',
+    ],
+    // A limit, held here so that it is seen: within one message the later sentence takes AI back in
+    // words the text check does not read, so a reply that still names AI holds it.
+    [
+      'Invest in AI. On second thought, forget AI, just all in stocks.',
+      ['ai'],
+      'hold ai@10000',
+      'ask mix/marketShare start 10000/0/0/0',
+    ],
+    [
+      'Invest in AI or maybe semiconductors, you choose',
+      ['ai', 'semiconductors'],
+      'ask sleeves/themeShares',
+      'ask sleeves/themeShares',
+    ],
+    [
+      'Either AI or big tech, whichever is better',
+      ['big_tech', 'ai'],
+      'ask sleeves/sleeves',
+      'ask sleeves/sleeves',
+    ],
+    [
+      'Invest in whatever is hot: AI, EVs, quantum computing',
+      ['ai', 'quantum', 'ev_autonomy'],
+      'ask mix/marketShare',
+      'ask mix/marketShare',
+    ],
+    [
+      'Invest everything in AI stocks, I can afford to lose all of it',
+      ['ai'],
+      'hold ai@10000',
+      'ask mix/marketShare start 10000/0/0/0',
+    ],
+    ['Tudo em IA', ['ai'], 'hold ai@10000', 'ask mix/marketShare start 10000/0/0/0'],
+    [
+      'Metade em IA e metade em ações',
+      ['ai'],
+      'ask sleeves/themeAndRest',
+      'ask sleeves/themeAndRest',
+    ],
+    ['30% em IA e o resto em ouro', ['ai'], 'ask sleeves/themeAndRest', 'ask sleeves/themeAndRest'],
+    [
+      'Coloque 20% em semicondutores e o resto na bolsa',
+      ['semiconductors'],
+      'ask sleeves/themeAndRest',
+      'ask sleeves/themeAndRest',
+    ],
+  ];
+
+  it('b4, rule 5: a share is taken only in its plain forms; the rest, a sum carved out, a bound, a past sum or a loss is asked, never taken', () => {
+    // 35 sentences; the review ran "Invest in AI and defense" twice, and its other run is below.
+    expect(B4).toHaveLength(35);
+    for (const [sentence, markets, named, noModel, said] of B4) {
+      // The reply of the review's script reads nothing: nothing is held, asked or said.
+      const script = read(sentence, NOTHING_READ);
+      expect(outcome(script), sentence).toBe('none');
+      expect(script.narratives, sentence).toEqual([]);
+      expect(script.questions, sentence).toEqual([]);
+      expect(saidOfAHolding(script), sentence).toEqual([]);
+      // A reply that names what the text asks for, and no model.
+      const byReply = read(sentence, reply({ ...NOTHING_READ, markets }));
+      expect(outcome(byReply), `${sentence} (a reply that names it)`).toBe(named);
+      const rules = read(sentence, null);
+      expect(outcome(rules), `${sentence} (no model)`).toBe(noModel);
+      // With no model nothing is ever held: a share the text states is the start of one question.
+      expect(heldBy(rules), sentence).toEqual(NOTHING_HELD);
+      for (const result of [byReply, rules])
+        expect(
+          result.assumptions.filter((s) => /cannot leave one company out/.test(s)),
+          sentence,
+        ).toEqual(said ? [said] : []);
+    }
+  });
+
+  it('b4, the review\'s second run of "Invest in AI and defense": a list carries what leads it, and two things named after one verb share the whole', () => {
+    const sentence = 'Invest in AI and defense';
+    // "Defense" alone is read only after a word that puts money there: as an item of the list too.
+    expect(
+      marketMentionsIn(sentence).map((m) => [
+        m.market,
+        m.skipped,
+        marketShareIn(sentence, m.at, m.end),
+      ]),
+    ).toEqual([
+      ['ai', null, null],
+      ['defense', null, null],
+    ]);
+    for (const [text, ids] of [
+      ['AI, space or defense', ['ai', 'space', 'defense']],
+      ['invest in health care and AI', ['health_care', 'ai']],
+      ['Invest in AI, big tech and social media', ['ai', 'big_tech', 'social_media']],
+      ['investir em IA e defesa', ['ai', 'defense']],
+    ] as const)
+      expect(
+        marketMentionsIn(text).map((m) => m.market),
+        text,
+      ).toEqual(ids);
+    // What is said of the first is said of each; and the word alone is still no narrative.
+    expect(marketMentionsIn('I work in AI and defense').map((m) => m.skipped)).toEqual([
+      'aside',
+      'aside',
+    ]);
+    expect(
+      marketMentionsIn("I don't want to invest in AI or defense").map((m) => m.skipped),
+    ).toEqual(['negated', 'negated']);
+    for (const text of ['The defense rested', 'In defense of my plan', 'the space of two years'])
+      expect(marketMentionsIn(text), text).toEqual([]);
+    // Where both have a list, the question names both, and "half each" answers it.
+    const both = reply({ ...NOTHING_READ, markets: ['ai', 'defense'] });
+    const asked = read(sentence, both);
+    expect(asked.questions).toEqual([
+      {
+        field: 'sleeves',
+        template: 'themeShares',
+        text: 'How do you want to split the money between AI and defense?',
+      },
+    ]);
+    expect(outcome(read(turns(sentence, 'half each'), both))).toBe(
+      'hold ai@5000+matched-industry-aerospace-defense@5000',
+    );
+    // Where the chain has nothing for defense (the review's first run), that is said, and AI is not
+    // given the whole by guessing: how much is asked.
+    for (const r of [both, null]) {
+      const none = intake(sentence, r, { matchOf: () => null, answers: FORM });
+      expect(outcome(none)).toBe('ask mix/marketShare');
+      expect(none.questions[0]?.text).toBe('How much of the $5,000 for AI?');
+      expect(none.assumptions).toContain(
+        'There is no stock for “defense” on Solana at the moment. We will be adding more soon.',
+      );
+    }
+    // A reply that names one of the two reads the other as the text check alone does: not at all.
+    const one = read(sentence, reply({ ...NOTHING_READ, markets: ['ai'] }));
+    expect(outcome(one)).toBe('ask mix/marketShare');
+    expect(one.flags).toContain('text_only:market:defense');
+  });
+
+  // b5: a later message that corrects an earlier one, and answers in words to the intake's own
+  // questions. The messages; what the review's reply read beside the goal; the narrative a reply
+  // names where it also names what the first message asks for; then what is held or asked with the
+  // review's reply, with that reply, and with no model.
+  const A_JOB = `${GOAL}I use AI at work every day.`;
+  const LIKES_AI = `${GOAL}I like AI.`;
+  const LIKES_BIG_TECH = `${GOAL}I like big tech.`;
+  const AI_FIRST = 'I want to invest $5,000 in AI for 5 years';
+  const STOCKS_FIRST = 'I want to grow $5,000 over 5 years, all of it in stocks';
+  const NO_STOCKS = 'I want to grow $5,000 over 5 years at medium risk. No stocks.';
+  const B5: [string[], Record<string, unknown>, Market[], string, string | null, string][] = [
+    [
+      [AI_FIRST, 'Actually, no AI. Just put all of it in stocks.'],
+      { mix: pct(100, 0) },
+      ['ai'],
+      'hold mix 10000/0/0/0',
+      'hold mix 10000/0/0/0',
+      'hold mix 10000/0/0/0',
+    ],
+    [
+      [AI_FIRST, 'Scrap the AI idea, I want medium risk and nothing fancy'],
+      { risk: 'medium' },
+      ['ai'],
+      'none',
+      'ask mix/marketShare',
+      'ask mix/marketShare',
+    ],
+    [
+      [STOCKS_FIRST, 'On reflection that is too much. Medium risk please.'],
+      { risk: 'medium' },
+      [],
+      'none',
+      null,
+      'ask mix/mix start 10000/0/0/0',
+    ],
+    [
+      [STOCKS_FIRST, 'Sorry, I meant 60% stocks and 40% cash'],
+      { mix: pct(60, 40) },
+      [],
+      'hold mix 6000/0/0/4000',
+      null,
+      'hold mix 6000/0/0/4000',
+    ],
+    [
+      [NO_STOCKS, 'I changed my mind, stocks are fine'],
+      { risk: 'medium' },
+      [],
+      'none',
+      null,
+      'none',
+    ],
+    [
+      [NO_STOCKS, 'Ignore what I said about stocks, include them'],
+      { risk: 'medium' },
+      [],
+      'none',
+      null,
+      'none',
+    ],
+    [[A_JOB, 'none'], {}, ['ai'], 'none', 'none', 'none'],
+    [[A_JOB, 'zero'], {}, ['ai'], 'none', 'none', 'none'],
+    [[A_JOB, '0%'], {}, ['ai'], 'none', 'none', 'none'],
+    [[A_JOB, 'Nothing for AI, I just mentioned my job'], {}, ['ai'], 'none', 'none', 'none'],
+    [[A_JOB, 'I do not want AI'], {}, ['ai'], 'none', 'none', 'none'],
+    [
+      [LIKES_AI, 'a third'],
+      {},
+      ['ai'],
+      'none',
+      'hold ai@3333+safe_yield@6667',
+      'hold ai@3333+safe_yield@6667',
+    ],
+    [
+      [LIKES_AI, '20%'],
+      {},
+      ['ai'],
+      'none',
+      'hold ai@2000+safe_yield@8000',
+      'hold ai@2000+safe_yield@8000',
+    ],
+    [
+      [LIKES_AI, 'not sure, maybe 20%'],
+      {},
+      ['ai'],
+      'none',
+      'ask mix/marketShare',
+      'ask mix/marketShare',
+    ],
+    [[LIKES_AI, '20% at most'], {}, ['ai'], 'none', 'ask mix/marketShare', 'ask mix/marketShare'],
+    [[LIKES_AI, '$20'], {}, ['ai'], 'none', 'ask mix/marketShare', 'ask mix/marketShare'],
+    [[LIKES_AI, '5'], {}, ['ai'], 'none', 'ask mix/marketShare', 'ask mix/marketShare'],
+    [[LIKES_AI, '5 years'], {}, ['ai'], 'none', 'ask mix/marketShare', 'ask mix/marketShare'],
+    [
+      [LIKES_BIG_TECH, 'all of it'],
+      {},
+      ['big_tech'],
+      'none',
+      'hold mix 10000/0/0/0 from the-seven',
+      'hold mix 10000/0/0/0 from the-seven',
+    ],
+    [
+      [LIKES_BIG_TECH, 'everything except $1,000'],
+      {},
+      ['big_tech'],
+      'none',
+      'ask mix/marketShare',
+      'ask mix/marketShare',
+    ],
+  ];
+
+  it('b5, rules 2, 3 and 5: a later message corrects an earlier one, and answers the open question only where it says a share plainly', () => {
+    expect(B5).toHaveLength(20);
+    for (const [messages, readBeside, markets, script, named, noModel] of B5) {
+      const text = turns(...messages);
+      const where = messages[1] ?? '';
+      expect(outcome(read(text, goal(readBeside), {})), `${where} (the review's reply)`).toBe(
+        script,
+      );
+      if (named !== null)
+        expect(
+          outcome(read(text, goal({ ...readBeside, markets }), {})),
+          `${where} (a reply that names it)`,
+        ).toBe(named);
+      expect(outcome(read(text, null)), `${where} (no model)`).toBe(noModel);
+    }
+    // Where the question stays, it is the one that was asked, with no start: never the split, and
+    // never a share read from words that hedge it or bound it.
+    for (const words of ['not sure, maybe 20%', '20% at most', '$20', '5', '5 years'])
+      for (const r of [goal({ markets: ['ai'] }), null]) {
+        const again = read(turns(LIKES_AI, words), r);
+        expect(askedOfAHolding(again), words).toEqual([
+          { field: 'mix', template: 'marketShare', text: 'How much of the $5,000 for AI?' },
+        ]);
+        expect(again.flags, words).not.toContain('mix_from_words');
+      }
+  });
+
+  it('rule 3, "Scrap the AI idea": the last message that names a narrative says its share, and where it says none the earlier share no longer stands', () => {
+    const scrapped = turns(AI_FIRST, 'Scrap the AI idea, I want medium risk and nothing fancy');
+    // Whoever still names AI: it is not held on the first message's "invest $5,000 in AI". How much
+    // is asked once, with no start, and "none" answers it.
+    for (const r of [goal({ risk: 'medium', markets: ['ai'] }), null]) {
+      const asked = read(scrapped, r);
+      expect(heldBy(asked)).toEqual(NOTHING_HELD);
+      expect(asked.flags).toEqual(
+        expect.arrayContaining(['share_not_last:ai', 'market_share_unclear']),
+      );
+      expect(askedOfAHolding(asked)).toEqual([
+        { field: 'mix', template: 'marketShare', text: 'How much of the $5,000 for AI?' },
+      ]);
+      const none = read(turns(scrapped, 'none'), r);
+      expect(outcome(none)).toBe('none');
+      expect(none.sheet).toMatchObject({ risk: 'medium' });
+    }
+    // A later message that gives a share in a plain form is the last word on it.
+    expect(outcome(read(turns(AI_FIRST, 'Make it 30% in AI'), goal({ markets: ['ai'] }), {}))).toBe(
+      'hold ai@3000+safe_yield@7000',
+    );
+    // One that only says it of the person names no holding, and leaves the first message's stand.
+    expect(
+      outcome(read(turns(AI_FIRST, 'I work in AI by the way'), goal({ markets: ['ai'] }), {})),
+    ).toBe('hold ai@10000');
+    // Within one message a second sentence about it takes nothing back.
+    expect(outcome(read(`${AI_FIRST}. AI is the future.`, goal({ markets: ['ai'] }), {}))).toBe(
+      'hold ai@10000',
+    );
+  });
+
+  it('rule 5, "$20": a share no line of a plan can be is not taken, and the line says the least a plan of that size can hold', () => {
+    const LEAST =
+      'The smallest part a plan of this size can hold is $25, so a smaller one was not taken.';
+    // In answer to "How much of the $5,000 for AI?", on both paths; and for a shared portfolio.
+    for (const [first, r] of [
+      [LIKES_AI, goal({ markets: ['ai'] })],
+      [LIKES_AI, null],
+      [LIKES_BIG_TECH, goal({ markets: ['big_tech'] })],
+    ] as const) {
+      const small = read(turns(first, '$20'), r);
+      expect(heldBy(small)).toEqual(NOTHING_HELD);
+      expect(small.flags).toContain('share_too_small');
+      expect(small.flags).not.toContain('mix_from_words');
+      expect(small.assumptions).toContain(LEAST);
+      expect(askedOfAHolding(small)).toHaveLength(1);
+      expect(askedOfAHolding(small)[0]).toMatchObject({ field: 'mix', template: 'marketShare' });
+    }
+    // The floor is the table's: the least a line can be, in dollars and as a share of the amount.
+    expect(PERSONAL_PARAMS).toMatchObject({ minLineUsd: 5, minLineBps: 50 });
+    expect(outcome(read(turns(LIKES_AI, '$25'), goal({ markets: ['ai'] }), {}))).toBe(
+      'hold ai@50+safe_yield@9950',
+    );
+    expect(outcome(read(turns(LIKES_AI, '$20', '$500'), goal({ markets: ['ai'] }), {}))).toBe(
+      'hold ai@1000+safe_yield@9000',
+    );
+    // A sum the first message writes is held to the same floor, for a theme and a shared portfolio.
+    for (const [text, r] of [
+      [`${GOAL}Put $10 in AI.`, goal({ markets: ['ai'] })],
+      [`${GOAL}Put $10 in AI.`, null],
+      [`${GOAL}Put $10 in big tech.`, goal({ markets: ['big_tech'] })],
+    ] as const) {
+      const small = read(text, r);
+      expect(outcome(small), text).toBe('ask mix/marketShare');
+      expect(small.flags, text).toContain('share_too_small');
+      expect(small.assumptions, text).toContain(LEAST);
+    }
+  });
+
+  it('rule 5, the plain forms: the whole, a sum, a percent and a half are a share where the ask opens its clause or follows the person own words of wanting', () => {
+    const shares = (text: string) =>
+      marketMentionsIn(text)
+        .filter((m) => m.skipped === null)
+        .map((m) => marketShareIn(text, m.at, m.end));
+    const WHOLE_OF_IT = { kind: 'whole' };
+    for (const [text, share] of [
+      ['invest in big tech', WHOLE_OF_IT],
+      ['I want to invest in big tech', WHOLE_OF_IT],
+      ["I'd like to invest in big tech", WHOLE_OF_IT],
+      ['I have $5,000 to invest in big tech', WHOLE_OF_IT],
+      ['I have 2k that I want to invest in the big tech industry', WHOLE_OF_IT],
+      ['please put it all in AI', WHOLE_OF_IT],
+      ['Quero investir em IA', WHOLE_OF_IT],
+      ['Tenho US$ 5.000 para investir em IA', WHOLE_OF_IT],
+      ['Looking to invest $5,000 in AI', { kind: 'amount', value: 5000 }],
+      ["let's put half in AI", { kind: 'percent', value: 50 }],
+      ['I will put 30% in AI', { kind: 'percent', value: 30 }],
+      ['Vou colocar metade em IA', { kind: 'percent', value: 50 }],
+      ['I want growth and 30% in AI', { kind: 'percent', value: 30 }],
+    ] as const)
+      expect(shares(text), text).toEqual([share]);
+    // After any other word the same figure is no share of this money: what a person fears, did,
+    // was told, could lose or would cap.
+    for (const text of [
+      "I'm afraid to invest in big tech",
+      'I regret investing in AI',
+      'It is too late to put 30% in AI',
+      'I can lose 30% in AI',
+      'at least 30% in big tech',
+      'I put $500 in AI last year',
+      'we hold 30% in AI',
+      'My advisor says put half in AI',
+      '70% of experts say invest in AI',
+    ])
+      expect(shares(text), text).toEqual([null]);
+    // A list is as plain as what leads it, and two things after one share take it to neither.
+    expect(shares('Put 30% in big tech and 20% in the S&P 500')).toEqual([
+      { kind: 'percent', value: 30 },
+      { kind: 'percent', value: 20 },
+    ]);
+    expect(shares("I'm afraid to put 30% in big tech and 20% in the S&P 500")).toEqual([
+      null,
+      null,
+    ]);
+    expect(shares('put 30% in AI and semiconductors')).toEqual([null, null]);
+    // b7 again, with a reply that errs and names the market each sentence turns down: with both
+    // readers wrong, it is asked once with no start, and never the whole plan.
+    for (const [sentence, id] of B7)
+      for (const r of [reply({ ...NOTHING_READ, markets: [id] }), null]) {
+        const result = read(sentence, r);
+        expect(heldBy(result), sentence).toEqual(NOTHING_HELD);
+        expect(outcome(result), sentence).toBe('ask mix/marketShare');
+        expect(result.flags, sentence).not.toContain('from_rules:market');
+      }
+    // And b2: named by a reply that errs, its words are asked once or said, never held.
+    for (const [sentence, id] of B2)
+      if (id)
+        expect(heldBy(read(sentence, reply({ ...NOTHING_READ, markets: [id] }))), sentence).toEqual(
+          NOTHING_HELD,
+        );
+  });
+
+  it('rule 5, a percent of the money: one that says where it goes; a percent of something else is no share of a split', () => {
+    for (const [text, ofMoney] of [
+      ['70% safe and 30% to grow', [70, 30]],
+      ['keep 30% in cash', [30]],
+      ['I want 70% of it in a safe liquid investment', [70]],
+      ['70% safe, 30% high risk', [70, 30]],
+      ['70% seguro e 30% para crescer', [70, 30]],
+      ['I can lose 30% and I am 70% sure', []],
+      ['70% of experts say invest in AI', []],
+      ['20% of my salary goes to rent', []],
+      ['maybe 20%', []],
+      ['20% at most', []],
+      ['I can take a 20% fall', []],
+    ] as const)
+      expect(splitIn(text).ofMoney, text).toEqual(ofMoney);
+    // A pair is a split whatever is around it.
+    expect(splitIn('its 70-30').pairs).toEqual([[70, 30]]);
+    // With no model a percent that is no share asks no split, and the percents of a mix the text
+    // rules out are the mix's.
+    for (const sentence of [
+      'I can lose 30% and I am 70% sure.',
+      '70% of experts say this is a good time.',
+      '100% stocks is too much for me.',
+      "I can't stomach 80% stocks and 20% cash.",
+    ])
+      expect(read(`${GOAL}${sentence}`, null).questions, sentence).toEqual([]);
+    expect(fields(read(`${GOAL}Keep 30% safe and 70% to grow.`, null))).toEqual(['sleeves']);
+  });
+
+  // b6: hostile or mistaken replies, and what a reply can decide that code does not check. Each
+  // case: the text, what the reply gives beside the goal, the amount and the time, what is held or
+  // asked of a holding (`outcome`), every field that is asked, the flags that say why, and the one
+  // line that is said of it, where one is.
+  const T1 = 'I want to invest $5,000 in my future over 5 years';
+  const T2 = 'I want to grow $5,000 over 5 years at medium risk';
+  const SAFE = 'I want to put $5,000 in something safe for 5 years';
+  const filter = (by: string, value: string, words: string) => ({
+    marketFilter: { by, value, words },
+  });
+  const ONE = (words: string) =>
+    `There is only one stock for “${words}” on Solana at the moment, and a theme is not made of one. We will be adding more soon.`;
+  const NO_STOCK = (words: string) =>
+    `There is no stock for “${words}” on Solana at the moment. We will be adding more soon.`;
+  const ONE_NAME = ['filter_one_name:marketFilter', 'market_not_on_shelf:marketFilter'];
+  const NO_MATCH = ['filter_no_match:marketFilter', 'market_not_on_shelf:marketFilter'];
+  const MEDIUM = { risk: 'medium' };
+  const B6: [string, Record<string, unknown>, string, string[], string[], string?][] = [
+    // A filter whose words are not in the text; then any words of the text, with a value that
+    // selects one stock: a filter is never used to pick one (rule 6).
+    [
+      T2,
+      { ...MEDIUM, ...filter('industry', 'Automobiles', 'cars') },
+      'none',
+      [],
+      ['no_cue:marketFilter'],
+    ],
+    [
+      T1,
+      filter('industry', 'Automobiles', 'my future'),
+      'none',
+      ['risk'],
+      ONE_NAME,
+      ONE('my future'),
+    ],
+    [
+      T1,
+      filter('industry', 'Hotels, Restaurants & Leisure', 'my future'),
+      'none',
+      ['risk'],
+      NO_MATCH,
+      NO_STOCK('my future'),
+    ],
+    [
+      T1,
+      filter('sub_industry', 'Automobile Manufacturers', 'future'),
+      'none',
+      ['risk'],
+      ['market_negated:marketFilter'],
+    ],
+    // Two names in a broad sector, for words that do not write it: the model's own link. Never
+    // taken; one question that says the match.
+    [
+      T1,
+      filter('sector', 'Consumer Discretionary', 'my future'),
+      'ask mix/matchedShare',
+      ['mix'],
+      ['filter_not_written'],
+    ],
+    [
+      T2,
+      { ...MEDIUM, ...filter('industry', 'Automobiles', 'grow') },
+      'none',
+      [],
+      ONE_NAME,
+      ONE('grow'),
+    ],
+    [
+      T2,
+      { ...MEDIUM, ...filter('industry', 'Automobiles', 'medium risk') },
+      'none',
+      [],
+      ONE_NAME,
+      ONE('medium risk'),
+    ],
+    [
+      SAFE,
+      { goal: 'protect', ...filter('industry', 'Automobiles', 'something safe') },
+      'none',
+      ['goal', 'risk'],
+      ONE_NAME,
+      ONE('something safe'),
+    ],
+    [
+      SAFE,
+      { goal: 'grow', ...filter('industry', 'Automobiles', 'something safe') },
+      'none',
+      ['goal', 'risk'],
+      ONE_NAME,
+      ONE('something safe'),
+    ],
+    [
+      'I want to invest $5,000 in something safe for 5 years',
+      filter('industry', 'Automobiles', 'something safe'),
+      'none',
+      ['risk'],
+      ONE_NAME,
+      ONE('something safe'),
+    ],
+    // Words a fixed list reads: the list reads them, and the model's filter is dropped.
+    [
+      'Invest $5,000 in index funds for 5 years',
+      filter('industry', 'Automobiles', 'index funds'),
+      'hold matched-keyword-index-fund@10000',
+      [],
+      ['market_covers:marketFilter'],
+    ],
+    // A ticker or a company as the value.
+    [
+      'I want to invest $5,000 in Tesla over 5 years',
+      filter('keyword', 'TSLAx', 'Tesla'),
+      'none',
+      ['risk'],
+      NO_MATCH,
+      NO_STOCK('Tesla'),
+    ],
+    [
+      'I want to invest $5,000 in Tesla over 5 years',
+      filter('keyword', 'Tesla', 'Tesla'),
+      'none',
+      ['risk'],
+      NO_MATCH,
+      NO_STOCK('Tesla'),
+    ],
+    [
+      'I want to invest $5,000 in Tesla over 5 years',
+      filter('industry', 'Automobiles', 'Tesla'),
+      'none',
+      ['risk'],
+      ONE_NAME,
+      ONE('Tesla'),
+    ],
+    [
+      'I want to invest $5,000 in Nvidia over 5 years',
+      filter('industry', 'Semiconductors & Semiconductor Equipment', 'Nvidia'),
+      'none',
+      ['risk'],
+      ONE_NAME,
+      ONE('Nvidia'),
+    ],
+    [
+      'I want to invest $5,000 in McDonalds over 5 years',
+      filter('industry', 'Hotels, Restaurants & Leisure', 'McDonalds'),
+      'none',
+      ['risk'],
+      NO_MATCH,
+      NO_STOCK('McDonalds'),
+    ],
+    [
+      'I want to invest $5,000 in Strategy over 5 years',
+      filter('keyword', 'bitcoin treasury', 'Strategy'),
+      'none',
+      ['risk'],
+      ONE_NAME,
+      ONE('Strategy'),
+    ],
+    // An invented market id, a market the text does not name, a portfolio never written.
+    [T2, { ...MEDIUM, markets: ['robots'] }, 'none', [], ['model_invalid:markets']],
+    [T2, { ...MEDIUM, markets: ['ai'] }, 'ask themes/themes', ['themes'], ['no_cue:market:ai']],
+    [T2, { ...MEDIUM, portfolios: ['The Seven'] }, 'none', [], ['no_cue:portfolios']],
+    // The words of a portfolio's name, said of something else.
+    [
+      `${T2}, the seven of us are saving`,
+      { ...MEDIUM, portfolios: ['The Seven'] },
+      'none',
+      [],
+      ['no_cue:portfolios'],
+    ],
+    [
+      `${T2}. My kids are the 500 reasons I save.`,
+      { ...MEDIUM, portfolios: ['The 500'] },
+      'none',
+      [],
+      ['no_cue:portfolios'],
+    ],
+    // A risk word under a negation.
+    [
+      "I want to grow $5,000 over 5 years. I can't take high risk.",
+      { risk: 'high' },
+      'none',
+      ['risk'],
+      ['risk_negated:high'],
+    ],
+    [
+      'I want to grow $5,000 over 5 years. Not low risk, I want more than that.',
+      { risk: 'low' },
+      'none',
+      ['risk'],
+      ['risk_negated:low'],
+    ],
+    [
+      'I want to grow $5,000 over 5 years. I am not aggressive.',
+      { risk: 'high' },
+      'none',
+      ['risk'],
+      ['risk_negated:high'],
+    ],
+    // A figure that is in the text in another sense.
+    [
+      'I am 35 and want to grow $5,000 over 5 years at medium risk',
+      { ...MEDIUM, amountUsd: 35 },
+      'none',
+      ['amountUsd'],
+      ['not_a_sum:amountUsd'],
+    ],
+    [
+      `${T2}, and in 2 years I buy a car`,
+      { ...MEDIUM, horizonMonths: 24 },
+      'none',
+      ['horizonMonths'],
+      ['horizon_several'],
+    ],
+    // A mix the text does not write, and a split from percents of another sense.
+    [
+      T2,
+      { ...MEDIUM, mix: pct(100, 0) },
+      'ask mix/mix start 10000/0/0/0',
+      ['mix'],
+      ['no_cue:mix', 'mix_asked:model'],
+    ],
+    [
+      'I can lose 30% and I am 70% sure. Grow $5,000 over 5 years at medium risk.',
+      {
+        ...MEDIUM,
+        sleeves: [
+          { kind: 'goal', sharePct: 70 },
+          { kind: 'safe_yield', sharePct: 30 },
+        ],
+      },
+      'ask sleeves/sleeves',
+      ['sleeves'],
+      ['not_in_text:sleeves'],
+    ],
+  ];
+
+  it('b6: what a hostile or mistaken reply gives is held to the text; nothing it adds is taken', () => {
+    // The review's script has 29 cases.
+    expect(B6).toHaveLength(29);
+    for (const [text, hostile, held, asked, flags, said] of B6) {
+      const where = `${text} ${JSON.stringify(hostile)}`;
+      const result = read(text, goal(hostile), {});
+      expect(outcome(result), where).toBe(held);
+      expect(fields(result), where).toEqual(asked);
+      expect(result.flags, where).toEqual(expect.arrayContaining(flags));
+      // The one line said of what the reply named, and no line that says a holding where none is.
+      expect(
+        result.assumptions.filter((s) => /no stock|only one stock/.test(s)),
+        where,
+      ).toEqual(said ? [said] : []);
+      if (!held.startsWith('hold')) expect(heldBy(result), where).toEqual(NOTHING_HELD);
+      // What the sheet does hold, where there is one, is the text's: the amount, the time, the risk.
+      if (result.sheet)
+        expect(result.sheet, where).toMatchObject({
+          amountUsd: 5000,
+          horizonMonths: 60,
+          risk: held.startsWith('hold') ? 'high' : 'medium',
+        });
+    }
+    // With no model none of these texts holds or asks anything of a holding, but the one whose
+    // words a fixed list reads: asked once, with its reading as the start.
+    for (const text of new Set(B6.map(([text]) => text))) {
+      const rules = read(text, null);
+      expect(heldBy(rules), text).toEqual(NOTHING_HELD);
+      expect(outcome(rules), text).toBe(
+        /index funds/.test(text) ? 'ask mix/marketShare start 10000/0/0/0' : 'none',
+      );
+    }
+  });
+
+  it('b6, a filter the model names for words that do not write its value: the question says the match, and nothing is held until it is answered', () => {
+    const r = goal(filter('sector', 'Consumer Discretionary', 'my future'));
+    const asked = read(T1, r, {});
+    expect(asked.sheet).toBeNull();
+    expect(asked.flags).not.toContain('sleeves_from_market');
+    expect(asked.questions).toEqual([
+      {
+        field: 'mix',
+        template: 'matchedShare',
+        text: 'I read “my future” as names matched by sector: Consumer Discretionary. How much of the $5,000 for them? Say none if that is not what you meant.',
+      },
+    ]);
+    const none = read(turns(T1, 'none'), r, {});
+    expect(none.narratives).toEqual([]);
+    expect(none.flags).toContain('market_left_out:marketFilter');
+    expect(outcome(none)).toBe('none');
+    // The person's own answer is the second reader: then it is held, and said as matched.
+    const half = read(turns(T1, 'half'), r, {});
+    expect(outcome(half)).toBe('hold matched-sector-consumer-discretionary@5000+safe_yield@5000');
+    expect(half.readBack).toContain(
+      '50% of the plan for names matched by sector: Consumer Discretionary.',
+    );
+    // Words that write the value have both readers, and need no question.
+    const written = read(
+      'I want to invest $5,000 in consumer discretionary names over 5 years',
+      goal(filter('sector', 'Consumer Discretionary', 'consumer discretionary names')),
+      {},
+    );
+    expect(outcome(written)).toBe('hold matched-sector-consumer-discretionary@10000');
+    expect(written.flags).not.toContain('filter_not_written');
+  });
+
+  it('b6, a portfolio name must be said as a holding: after a word that picks it, as the shelf writes it, or alone', () => {
+    const named = (text: string, portfolio = 'The Seven') =>
+      read(text, goal({ ...MEDIUM, portfolios: [portfolio] }), {});
+    for (const text of [
+      `${T2}, starting from The Seven`,
+      `${T2}, starting from the seven`,
+      `${T2}. Put it in the seven.`,
+      `${T2}. I like The Seven.`,
+      turns(T2, 'the seven'),
+      turns(T2, 'ok, the seven please'),
+    ]) {
+      expect(outcome(named(text)), text).toBe('hold from the-seven');
+      expect(named(text).readBack, text).toContain('The plan starts from The Seven.');
+    }
+    // Words that nothing says name the portfolio are not read: dropped, flagged, nothing asked.
+    for (const [text, portfolio] of [
+      [`${T2}, the seven of us are saving`, 'The Seven'],
+      [`${T2}. My kids are the 500 reasons I save.`, 'The 500'],
+      [`${T2}. The seven years I worked abroad taught me patience.`, 'The Seven'],
+    ] as const) {
+      const result = named(text, portfolio);
+      expect(result.flags, text).toContain('no_cue:portfolios');
+      expect(result.questions, text).toEqual([]);
+      expect(result.sheet?.themes, text).toEqual([]);
+      expect((result.readBack ?? []).join(' '), text).not.toMatch(/starts from/);
+    }
+    // One its clause rules out, or says of someone else, is dropped and flagged by how.
+    for (const [sentence, flag] of [
+      ['I do not want The Seven.', 'portfolio_negated'],
+      ['Anything but The Seven.', 'portfolio_negated'],
+      ['My brother holds The Seven.', 'portfolio_aside'],
+    ] as const) {
+      const result = named(`${T2}. ${sentence}`);
+      expect(result.flags, sentence).toContain(flag);
+      expect(result.questions, sentence).toEqual([]);
+      expect(result.sheet?.themes, sentence).toEqual([]);
+    }
+    // One the person only wonders about is asked once, by the portfolio question, with no start.
+    const wondered = named(`${T2}. Should I start from The Seven?`);
+    expect(wondered.flags).toContain('portfolio_wondered');
+    expect(wondered.questions).toEqual([
+      {
+        field: 'themes',
+        template: 'themes',
+        text: 'Which shared portfolio, if any, do you want to start from?',
+      },
+    ]);
+  });
+
+  it('b6, a risk word under a negation is no word for that risk: the risk is asked with no start, on both paths', () => {
+    for (const [sentence, ruledOut, cues] of [
+      ["I can't take high risk.", ['high'], []],
+      ['Not low risk, I want more than that.', ['low'], []],
+      ['I am not aggressive.', ['high'], []],
+      ['No high risk for me.', ['high'], []],
+      ['Não quero risco alto.', ['high'], []],
+      ['I want low risk, not high.', ['high'], ['low']],
+      // A negation of something else is not of the risk; nor is one in another clause.
+      ['No stocks and low risk please.', [], ['low']],
+      ["I don't want to lose money so low risk.", [], ['low']],
+      ['High risk is fine.', [], ['high']],
+    ] as const) {
+      expect(riskCuesIn(sentence), sentence).toEqual(cues);
+      expect(risksRuledOutIn(sentence), sentence).toEqual(ruledOut);
+    }
+    for (const [sentence, risk] of [
+      ["I can't take high risk.", 'high'],
+      ['Not low risk, I want more than that.', 'low'],
+      ['I am not aggressive.', 'high'],
+    ] as const) {
+      // A reply that gives the risk the text rules out, and the rules parser, which reads it too.
+      for (const r of [goal({ risk }), null]) {
+        const result = read(`${GOAL}${sentence}`, r, {
+          goal: 'grow',
+          amountUsd: 5000,
+          horizonMonths: 60,
+        });
+        expect(result.sheet, sentence).toBeNull();
+        expect(result.flags, sentence).toContain(`risk_negated:${risk}`);
+        expect(result.questions, sentence).toEqual([
+          {
+            field: 'risk',
+            template: 'risk',
+            text: 'How much risk can you take: low, medium or high?',
+            options: ['low', 'medium', 'high'],
+          },
+        ]);
+      }
+    }
+    // The risk the person does say beside it is theirs.
+    const said = read(`${GOAL}I want low risk, not high.`, goal({ risk: 'low' }), {});
+    expect(said.sheet?.risk).toBe('low');
+    expect(read(`${GOAL}I want low risk, not high.`, goal({ risk: 'high' }), {}).flags).toContain(
+      'risk_negated:high',
+    );
+  });
+
+  it('b6, a number said of the person, or bare beside a sum written as money, is no amount', () => {
+    for (const [text, value, how] of [
+      ['I am 35 and want to grow $5,000', 35, 'not_a_sum'],
+      ['I am 35 and want to grow $5,000', 5000, 'dollars'],
+      ['I am 35 and want to invest 5000', 35, 'not_a_sum'],
+      ['I am 35 and want to invest 5000', 5000, 'dollars'],
+      ["I'm 40 with 20000 saved", 40, 'not_a_sum'],
+      ['My 25 clients keep me busy, I want to grow $5,000', 25, 'not_a_sum'],
+      // A bare number is still the sum where the text writes no other as money, and a rate a
+      // month is marked by its own words.
+      ['Grow 3,000 for 2 years', 3000, 'dollars'],
+      ['I have 5000 and want $200 a month', 5000, 'dollars'],
+      ['Guardar 3 mil dólares', 3000, 'dollars'],
+    ] as const)
+      expect(amountInText(text, value), `${text}: ${value}`).toBe(how);
+    const age = read(
+      'I am 35 and want to grow $5,000 over 5 years at medium risk',
+      goal({ ...MEDIUM, amountUsd: 35 }),
+      {},
+    );
+    expect(age.sheet).toBeNull();
+    expect(age.draft.amountUsd).toBeNull();
+    expect(age.flags).toContain('not_a_sum:amountUsd');
+    expect(age.questions).toEqual([
+      { field: 'amountUsd', template: 'amountUsd', text: 'How much do you put in, in dollars?' },
+    ]);
+    // The reply that reads the sum the text writes is taken as before.
+    expect(
+      read('I am 35 and want to grow $5,000 over 5 years at medium risk', goal(MEDIUM), {}).sheet,
+    ).toMatchObject({ amountUsd: 5000 });
+  });
+
+  it('b6, a text that writes two time frames in one message: the date is asked; across messages the last one decides', () => {
+    const car = `${T2}, and in 2 years I buy a car`;
+    // Whichever of the two the reply gives: asked once, with no start.
+    for (const horizonMonths of [24, 60]) {
+      const asked = read(car, goal({ ...MEDIUM, horizonMonths }), {});
+      expect(asked.sheet, String(horizonMonths)).toBeNull();
+      expect(asked.flags, String(horizonMonths)).toContain('horizon_several');
+      expect(asked.questions, String(horizonMonths)).toEqual([
+        {
+          field: 'horizonMonths',
+          template: 'horizonMonths',
+          text: 'Is there a date by which you need this money? If not, say so and the plan has none.',
+        },
+      ]);
+    }
+    expect(
+      read(car, goal({ ...MEDIUM, horizonMonths: 24 }), { horizonMonths: 60 }).sheet,
+    ).toMatchObject({
+      horizonMonths: 60,
+    });
+    // One time frame, an age beside it, or the same one said twice is no doubt.
+    for (const text of [T2, `I am 35 years old. ${T2}`, turns(T2, 'yes, 60 months')])
+      expect(
+        read(text, goal(MEDIUM), {}).flags.filter((f) => f.startsWith('horizon_')),
+        text,
+      ).toEqual([]);
+    // A reply that gives an earlier message's time frame is not the last word: asked, with the
+    // last one written as the start.
+    const earlier = read(
+      turns(T2, 'Make it for 3 years'),
+      goal({ ...MEDIUM, horizonMonths: 60 }),
+      {},
+    );
+    expect(earlier.flags).toContain('horizon_not_last');
+    expect(earlier.questions.find((q) => q.field === 'horizonMonths')?.read).toBe(36);
+  });
+
 });
