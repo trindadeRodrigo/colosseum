@@ -14,9 +14,9 @@ import {
   type PoolRow,
 } from '../pool-liquidity';
 import {
-  RECORDED_SOURCE,
   type Recorded,
   type RecordedStore,
+  recordedSources,
   recordedStore,
 } from '../pool-recorded';
 
@@ -272,7 +272,10 @@ export const PoolLiquidityResponse = z.object({
   quote: z.string().nullable(),
   midPrice: z.number().nullable(),
   priceUnit: z.literal('quote per asset'),
-  /** live: read now over RPC; recorded: the collector's newest hourly recording (fetchedAt says when). */
+  /**
+   * live: read now over RPC; recorded: the pool's newest recording, the collector's or the raw-arrays job's
+   * (source says whose, fetchedAt says when).
+   */
   basis: z.enum(['live', 'recorded']),
   fetchedAt: z.string().nullable(),
   slot: z.number().nullable(),
@@ -328,8 +331,22 @@ const bandMethod = (bands: number, rangePct: number) =>
   `${bands} equal-width bands across mid × (1 ± ${rangePct}), the band holding the price split at it; concentrated liquidity: L between initialized ticks from cumulative liquidityNet, token0 = L·(1/√a − 1/√b) above the price, token1 = L·(√b − √a) below, over the tick arrays read; bins: each bin's X and Y amounts at its price (the active bin's asset above the price, its quote below)`;
 const USD_LIVE =
   'USD: asset × mid × quote USD, quote × quote USD (USDC/USDT at par, SOL from Jupiter Price v3, as the collector’s curves)';
+/** The one USD rule of every recorded answer, whichever job wrote the recording: see `noQuotePrice`. */
 const USD_RECORDED =
-  'USD: USDC/USDT at par; any other quote implied from the asset’s routed reference price at that hour (risk_asset_snapshots.ref_mid_usd ÷ the pool mid, the newest within 2 h before the recording)';
+  'USD: USDC/USDT at par; a quote with no measured way to dollars (the pool’s exit_path is other) has no USD price; any other quote implied from the asset’s routed reference price at that hour (risk_asset_snapshots.ref_mid_usd ÷ the pool mid, the newest within 2 h before the recording)';
+/** For the descriptions: the two sets of pools that have recordings, and the pools with no USD figure in either. */
+const RECORDED_SETS =
+  'Recorded, at most once a pool and hour: by the collector, the Raydium and Orca pools among the pools that hold the top 80% of registry TVL, each in the runs where it lists the pool’s arrays again (about half the hours); by the raw-arrays job, every hour it runs, the other concentrated-liquidity pools of the tracked stocks.';
+const RECORDED_NO_USD =
+  'On the recorded basis a pool whose quote has no measured way to dollars (exit_path other) has no USD figure (usdNullReason no_quote_price), whichever job recorded it.';
+/**
+ * The rule is the pool's, not the recording's: a pool against a token the registry knows no measured way to dollars
+ * from (exit_path other) has no quote price on the recorded basis, in a collector recording as in one of the
+ * raw-arrays job. Implying that token's price from the asset's reference price and the pool's own mid would take
+ * for granted that the pool trades at the reference price, with nothing measured to check it against. The live
+ * basis prices no such token either. USDC and USDT are at par before this is asked.
+ */
+const noQuotePrice = (p: { exitPath: string }) => p.exitPath === 'other';
 
 export async function registerPoolLiquidityRoute(
   app: FastifyInstance,
@@ -364,9 +381,12 @@ export async function registerPoolLiquidityRoute(
     }
     return best;
   };
-  /** A recording decoded, with the quote priced at par or from the asset's reference price at that hour. */
+  /**
+   * A recording decoded, with the quote priced at par, not priced at all (`noQuotePrice`) or priced from the
+   * asset's reference price at that hour, in that order.
+   */
   function decodeRecorded(
-    p: PoolRow & { quoteMint: string },
+    p: PoolRow & { quoteMint: string; exitPath: string },
     rec: Recorded,
     bands: number,
     rangePct: number,
@@ -380,6 +400,7 @@ export async function registerPoolLiquidityRoute(
         quoteUsd: 1,
         quoteUsdSource: 'stable_par',
       };
+    if (noQuotePrice(p)) return { d: bare, quoteUsd: null, quoteUsdSource: null };
     const q = refUsd != null && bare.midPrice > 0 ? refUsd / bare.midPrice : null;
     return {
       d:
@@ -396,8 +417,8 @@ export async function registerPoolLiquidityRoute(
     {
       schema: {
         summary:
-          'Liquidity distribution of one registry pool around its current price: asset above the price, quote below, by price band (read live and kept 60 s, or the collector’s newest hourly recording when a live read is not possible)',
-        description: `Concentrated-liquidity pools: active liquidity per band from cumulative liquidityNet, as token amounts. Bin pools: the bins' amounts. Constant-product pools: distribution null, reason not_applicable. basis=auto (default) reads live and falls back to the newest recording when the live read is gated (DA3), has no RPC or fails; basis=live never falls back; basis=recorded reads only the recording. The answer's basis and fetchedAt say which.\n\n${DISCLAIMER.en}`,
+          'Liquidity distribution of one registry pool around its current price: asset above the price, quote below, by price band (read live and kept 60 s, or the pool’s newest recording when a live read is not possible)',
+        description: `Concentrated-liquidity pools: active liquidity per band from cumulative liquidityNet, as token amounts. Bin pools: the bins' amounts. Constant-product pools: distribution null, reason not_applicable. basis=auto (default) reads live and falls back to the newest recording when the live read is gated (DA3), has no RPC or fails; basis=live never falls back; basis=recorded reads only the recording. The answer's basis and fetchedAt say which, and its source whose recording it is. ${RECORDED_SETS} ${RECORDED_NO_USD} The token amounts are given all the same.\n\n${DISCLAIMER.en}`,
         params: z.object({ address: z.string() }),
         querystring: z.object({
           bands: z.coerce.number().int().min(2).max(200).default(60),
@@ -454,7 +475,7 @@ export async function registerPoolLiquidityRoute(
           quoteUsd: r.quoteUsd,
           quoteUsdSource: r.quoteUsdSource,
           usdNullReason: d && r.quoteUsd === null ? 'no_quote_price' : null,
-          source: RECORDED_SOURCE,
+          source: rec.source,
           method: d
             ? `${bandMethod(bands, rangePct)}, over every array in the recording; ${USD_RECORDED}; liquidity is L at the band's middle (null for bins)`
             : 'no price bands in this pool’s recording (not_applicable)',
@@ -511,8 +532,8 @@ export async function registerPoolLiquidityRoute(
     {
       schema: {
         summary:
-          'One pool’s liquidity value hour by hour, from the collector’s hourly recordings (no RPC): asset side, quote side and their sum in USD',
-        description: `For the concentrated-liquidity pools the collector records (the top 80% of registry TVL). Value = the token amounts held by the pool's liquidity within mid × (1 ± ${VALUE_RANGE_PCT}), over every tick or bin array in the recording, in USD; uncollected fees and a full-range position's far tails are not counted. Pools without recordings: reason not_collected; constant-product pools: not_applicable.\n\n${DISCLAIMER.en}`,
+          'One pool’s liquidity value hour by hour, from its recordings (no RPC): asset side, quote side and their sum in USD',
+        description: `For the concentrated-liquidity pools that are recorded. ${RECORDED_SETS} ${RECORDED_NO_USD} Value = the token amounts held by the pool's liquidity within mid × (1 ± ${VALUE_RANGE_PCT}), over every tick or bin array in the recording, in USD; uncollected fees and a full-range position's far tails are not counted. Pools without recordings: reason not_collected; constant-product pools: not_applicable.\n\n${DISCLAIMER.en}`,
         params: z.object({ address: z.string() }),
         querystring: z.object({
           hours: z.coerce
@@ -539,7 +560,11 @@ export async function registerPoolLiquidityRoute(
           ? await refMids(p.assetMint, since, now())
           : [];
       const points = [];
+      // whose recordings the points are: the answer's source names those jobs and no other
+      const of = { collector: false, arrays: false };
       for (const rec of CHILD_OFFSETS[p.venue] ? store.since(p.address, since) : []) {
+        if (rec.by === 'raw-arrays') of.arrays = true;
+        else of.collector = true;
         const at = Date.parse(rec.fetchedAt);
         const r = decodeRecorded(
           p,
@@ -576,7 +601,7 @@ export async function registerPoolLiquidityRoute(
           : points.length
             ? null
             : ('not_collected' as const),
-        source: RECORDED_SOURCE,
+        source: recordedSources(of.collector, of.arrays),
         method: `per hourly recording: the token amounts held by the pool's liquidity within mid × (1 ± ${VALUE_RANGE_PCT}), ${bandMethod(2, VALUE_RANGE_PCT)}; ${USD_RECORDED}; valueUsd = asset side + quote side; uncollected fees are not counted`,
         methodVersion: POOL_LIQUIDITY_METHOD_VERSION,
         provenance: 'live' as const,
@@ -590,8 +615,8 @@ export async function registerPoolLiquidityRoute(
     {
       schema: {
         summary:
-          'The pools the collector records hourly (pool head and every tick or bin array), with the first and last recording',
-        description: DISCLAIMER.en,
+          'The pools recorded, by the collector or by the raw-arrays job (pool head and every tick or bin array), with the first and last recording',
+        description: `${RECORDED_SETS}\n\n${DISCLAIMER.en}`,
         response: {
           200: z.object({
             pools: z.array(
@@ -612,6 +637,8 @@ export async function registerPoolLiquidityRoute(
       },
     },
     async () => {
+      // the store's list is made once for each refresh of its index and is the same one until the next: it is read
+      // here, never changed (`filter` and `map` make lists of their own before the sort)
       const list = store.pools();
       const rows = list.length
         ? await db
@@ -625,13 +652,9 @@ export async function registerPoolLiquidityRoute(
             )
         : [];
       const by = new Map(rows.map((r) => [r.address, r]));
-      const hourOf = (f: string) => {
-        const m = /(\d{4}-\d{2}-\d{2})[/\\](\d{2})[/\\]/.exec(f);
-        return m ? `${m[1]}T${m[2]}:00:00.000Z` : null;
-      };
+      const listed = list.filter((x) => by.has(x.pool));
       return {
-        pools: list
-          .filter((x) => by.has(x.pool))
+        pools: listed
           .map((x) => {
             const r = by.get(x.pool) as (typeof rows)[number];
             return {
@@ -639,13 +662,17 @@ export async function registerPoolLiquidityRoute(
               venue: r.venue,
               asset: r.assetSymbol,
               quote: r.quoteSymbol,
-              hours: x.files.length,
-              from: hourOf(x.files[0] ?? ''),
-              to: hourOf(x.files[x.files.length - 1] ?? ''),
+              hours: x.hours,
+              from: x.from,
+              to: x.to,
             };
           })
           .sort((a, b) => a.asset.localeCompare(b.asset)),
-        source: RECORDED_SOURCE,
+        // by the files of the pools listed: a list of pools only the raw-arrays job records does not name the collector
+        source: recordedSources(
+          listed.some((x) => x.hours > x.ofArrays),
+          listed.some((x) => x.ofArrays > 0),
+        ),
         disclaimer: DISCLAIMER.en,
       };
     },
