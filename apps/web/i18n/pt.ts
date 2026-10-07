@@ -1165,7 +1165,8 @@ export const pt: Dictionary = {
         'O preço mudou enquanto a ordem era criada, então nada foi criado. Tente de novo.',
       finishLater:
         'Um passo assinado antes ainda pode chegar. Olhe de novo em um minuto e tente outra vez.',
-      finishRefused: (why: string) => `Não consegui criar essa ordem. Nosso servidor disse: ${why}.`,
+      finishRefused: (why: string) =>
+        `Não consegui criar essa ordem. Nosso servidor disse: ${why}.`,
       refused: (step: number) =>
         `Não assinei o passo ${step}: a transação que nosso servidor montou para ele não é o passo que você aprovou. Nada foi assinado para ele.`,
       refusedOrder:
