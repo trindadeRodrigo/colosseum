@@ -5,6 +5,7 @@ import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { AccountBlock, AccountMenu } from '../../features/account/AccountMenu';
 import { useAccount } from '../../features/account/AccountProvider';
 import { ChainSwitch } from '../../features/account/ChainSwitch';
+import { SlowSignIn } from '../../features/account/SlowSignIn';
 import { useWalletPort } from '../../features/wallet/WalletProvider';
 import { useT } from '../../i18n/I18nProvider';
 import { buttonClass } from '../ui/button-class';
@@ -79,7 +80,7 @@ export function AppNav() {
 function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
   const t = useT();
   const port = useWalletPort();
-  const { slow } = useAccount();
+  const { slow, stalled, leave } = useAccount();
   const [busy, setBusy] = useState(false);
   const [stillIn, setStillIn] = useState(false);
   const [said, setSaid] = useState('');
@@ -97,6 +98,12 @@ function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
   }, [signedOut, t]);
 
   async function signOut() {
+    // The sign-in service names nobody (it has not loaded) and there is nobody to sign out there:
+    // the person leaves as far as this browser can, and gets the visitor's way in.
+    if (port.userId === null) {
+      leave();
+      return;
+    }
     setBusy(true);
     setStillIn(false);
     setSaid('');
@@ -117,8 +124,14 @@ function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
   // Signed in, even while the wallet still loads (their wallets are being made, or could not be):
   // known by then, and always with the way out, which is in the menu.
   // Someone told their sign-in is slow keeps the control while the wallet is read again.
-  const unknown = port.status === 'loading' && port.userId === null && !slow;
-  const signedIn = !signedOut && !unknown;
+  const nobody = port.status === 'loading' && port.userId === null;
+  // The sign-in service has not loaded, and nobody is known to be signed in: after a short wait the
+  // bar gives the visitor's controls anyway, so there is always a way in (the sign-in screen says
+  // what is wrong if the service still has not answered).
+  const waitedOut = nobody && stalled && (!slow || slow.side === 'service');
+  const unknown = nobody && !slow && !stalled;
+  const visitor = signedOut || waitedOut;
+  const signedIn = !visitor && !unknown;
   const action = (
     <div data-ui="account-control" className="relative ml-2 flex items-center gap-2">
       <span role="status" data-ui="account-said" className="sr-only">
@@ -127,8 +140,18 @@ function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
       {/* Before the wallet has loaded there is nothing to say: an empty box of the same height. */}
       {unknown ? (
         <span aria-hidden="true" className="h-10 min-w-20" />
-      ) : signedOut ? (
+      ) : visitor ? (
         <>
+          {/* Still not loaded after a quarter of a minute: said beside the way in, which stays. */}
+          {waitedOut && slow && (
+            <span
+              role="status"
+              data-ui="account-slow"
+              className="text-caption whitespace-nowrap text-muted-foreground max-[1023px]:sr-only"
+            >
+              {t.shell.slow.title}
+            </span>
+          )}
           <ChainSwitch />
           {onSignIn ? (
             // On the sign-in page (a direct link; elsewhere "Sign in" opens the sign-in dialog) the
@@ -159,6 +182,12 @@ function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
     </div>
   );
   // The phone's sheet opens with the same block: the chain switch, the address, "Sign out".
-  const sheetHead = signedIn && <AccountBlock out={out} className="flex flex-col gap-2" />;
+  // For a visitor the sign-in service never answered for, what is slow and the way to try again.
+  const sheetHead =
+    waitedOut && slow ? (
+      <SlowSignIn className="flex flex-col gap-1" />
+    ) : (
+      signedIn && <AccountBlock out={out} className="flex flex-col gap-2" />
+    );
   return { action, sheetHead };
 }

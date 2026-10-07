@@ -1,6 +1,6 @@
 'use client';
 import type { ChainId } from '@colosseum/schemas';
-import { useEffect, useId, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { LatticeStatus } from '../../components/ui/Lattice';
@@ -39,12 +39,17 @@ export type SignInProps = {
   /** It did not work, and the panel says why. */
   onFailed?: () => void;
   onSignedIn?: () => void;
+  /**
+   * What stands in place of "Loading sign-in…" once the sign-in service has taken too long to load:
+   * the sentence that says so, with the way to try again (features/account/SignInSilent.tsx).
+   */
+  silent?: ReactNode;
 };
 
 /** The button of a card, at its foot, as wide as the card: the two cards' on one line. */
 const BUTTONS = 'mt-auto grid w-full grid-cols-1 gap-3';
 
-export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
+export function SignIn({ onAttempt, onFailed, onSignedIn, silent }: SignInProps) {
   const t = useT();
   const port = useWalletPort();
   const [busy, setBusy] = useState<Busy>(null);
@@ -126,8 +131,8 @@ export function SignIn({ onAttempt, onFailed, onSignedIn }: SignInProps) {
 
   if (port.status !== 'signed-out')
     return (
-      <div data-ui="sign-in" data-state="loading">
-        <LatticeStatus label={t.signIn.loading} />
+      <div data-ui="sign-in" data-state={silent ? 'silent' : 'loading'}>
+        {silent ?? <LatticeStatus label={t.signIn.loading} />}
       </div>
     );
 
