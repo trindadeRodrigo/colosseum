@@ -75,6 +75,13 @@ const make = async (who: Person, amountUsd: number) => {
   expect(res.statusCode, res.body).toBe(200);
   return PersonalizeResponse.parse(res.json());
 };
+/** As a person's approval does: the order's first step is built. Nothing is sent. */
+const approve = async (who: Person, o: { id: string; legs: { id: string; seq: number }[] }) => {
+  const first = [...o.legs].sort((a, b) => a.seq - b.seq)[0];
+  if (!first) throw new Error('no step');
+  const res = await post(who, `/v1/orders/${o.id}/legs/${first.id}/build`);
+  expect(res.statusCode, res.body).toBe(200);
+};
 const plansOf = async (who: Person, on?: FastifyInstance) => {
   const res = await get(who, '/v1/me/plans', on);
   expect(res.statusCode, res.body).toBe(200);
@@ -174,15 +181,9 @@ describe('a person’s plans', () => {
     const { id } = await make(who, 4_107);
     await fund(who, undefined, 9_000);
     const placed = await order(who, { proposalId: id, amountUsd: 4_107 });
-    // ordered, and nothing on chain yet
+    // ordered and not approved: no buy yet, and nothing on chain
     const before = (await plansOf(who))[0];
-    expect(before?.orders).toHaveLength(1);
-    expect(before?.orders[0]).toMatchObject({
-      id: placed.id,
-      amountUsd: 4_107,
-      status: placed.status,
-      deposited: false,
-    });
+    expect(before?.orders).toEqual([]);
     expect(before?.bought).toBe(false);
     await settleAll(who, placed);
     const after = (await plansOf(who))[0];
@@ -194,38 +195,20 @@ describe('a person’s plans', () => {
     expect(after?.vault).toEqual({ chain: 'solana', basketId: vaults[0]?.basketId });
   });
 
-  it('leave out an order nobody signed in its time: it is no buy, and lists no plan from a link', async () => {
+  it('leave out an order nobody approved: it is no buy, whether its time has run out or not', async () => {
     // The invest screen makes an order to show its prices; a person who looks and leaves bought nothing.
-    let clock = Date.now();
-    const timed = await testApp({
-      issuer: issuer.issuer,
-      db: data.db,
-      env: { AGENT_SURFACE: 'on' },
-      planInputs: withMockYield,
-      now: () => new Date(clock),
-    });
-    undo.push(() => timed.app.close());
     const who = await someone();
     const { id } = await make(who, 4_109);
-    await fund(who, timed.app, 9_000);
-    const looked = await order(who, { proposalId: id, amountUsd: 4_109 }, timed.app);
-    // within its time it is the plan's open order
-    expect((await plansOf(who, timed.app))[0]?.orders.map((o) => o.id)).toEqual([looked.id]);
-    // past it, with no step ever built: the plan stays, the order is gone from its buys
-    clock += 16 * 60 * 1000;
-    const after = (await plansOf(who, timed.app))[0];
-    expect(after).toMatchObject({ id, bought: false });
-    expect(after?.orders).toEqual([]);
-    // one that was signed for, even once, stays whatever became of it
-    const begun = await order(who, { proposalId: id, amountUsd: 4_109 }, timed.app);
-    const [first] = begun.legs;
-    if (!first) throw new Error('no step');
-    expect(
-      (await post(who, `/v1/orders/${begun.id}/legs/${first.id}/build`, undefined, timed.app))
-        .statusCode,
-    ).toBe(200);
-    clock += 16 * 60 * 1000;
-    expect((await plansOf(who, timed.app))[0]?.orders.map((o) => o.id)).toEqual([begun.id]);
+    await fund(who, undefined, 9_000);
+    const looked = await order(who, { proposalId: id, amountUsd: 4_109 });
+    const before = (await plansOf(who))[0];
+    expect(before).toMatchObject({ id, bought: false });
+    expect(before?.orders).toEqual([]);
+    // approved: its first step is built, and from then on it is the plan's buy, whatever becomes of it
+    await approve(who, looked);
+    expect((await plansOf(who))[0]?.orders).toMatchObject([
+      { id: looked.id, amountUsd: 4_109, deposited: false },
+    ]);
   });
 
   it('list a plan from a link once the person bought it, newest first, and never a stranger’s plan they bought', async () => {
@@ -237,7 +220,10 @@ describe('a person’s plans', () => {
     // a link not bought is not the person's
     expect((await plansOf(who)).map((p) => p.id)).toEqual([own.id]);
     await fund(who, undefined, 20_000);
-    await order(who, { proposalId: linked.id, amountUsd: 4_109 });
+    const looked = await order(who, { proposalId: linked.id, amountUsd: 4_109 });
+    // an order nobody approved buys nothing: the link is still not the person's
+    expect((await plansOf(who)).map((p) => p.id)).toEqual([own.id]);
+    await approve(who, looked);
     const listed = await plansOf(who);
     expect(listed.map((p) => [p.id, p.fromLink])).toEqual([
       [linked.id, true],
@@ -253,8 +239,8 @@ describe('a person’s plans', () => {
     const made = [await make(who, 4_121), await make(who, 4_122), await make(who, 4_123)];
     await fund(who, undefined, 20_000);
     // two buys of the oldest plan: both are with it, on whatever page it is
-    await order(who, { proposalId: made[0]?.id, amountUsd: 4_121 });
-    await order(who, { proposalId: made[0]?.id, amountUsd: 100 });
+    await approve(who, await order(who, { proposalId: made[0]?.id, amountUsd: 4_121 }));
+    await approve(who, await order(who, { proposalId: made[0]?.id, amountUsd: 100 }));
     const page = async (query: string) => {
       const res = await get(who, `/v1/me/plans${query}`);
       expect(res.statusCode, res.body).toBe(200);

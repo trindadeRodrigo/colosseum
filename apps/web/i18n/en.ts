@@ -1170,6 +1170,17 @@ export const en = {
       notChecked:
         'The name and description aren’t checked against what the creator published on the chain.',
     },
+    /** What a refusal of a buy or a follow of a shared portfolio says (features/shared/refusal.ts). */
+    refusal: {
+      versionChanged:
+        'This portfolio has a new version since you opened this page. Open it again to see what it holds now.',
+      reopen: 'Open the portfolio again',
+      reread: 'Read the portfolio again',
+      assetNamed: (asset: string) =>
+        `${asset} can’t be bought on this chain now, so this portfolio can’t be bought as it stands.`,
+      asset:
+        'One asset of this portfolio can’t be bought on this chain now, so the portfolio can’t be bought as it stands.',
+    },
     family: {
       loading: 'Reading this portfolio…',
       missing: 'I can’t find a shared portfolio with that name.',
@@ -1440,6 +1451,9 @@ export const en = {
     checkingFunds: 'Checking your wallet…',
     preparing: 'Reading prices for your order…',
     again: 'Read the prices again',
+    old: 'These prices are old: the order ran out before it was pressed. Read them again to invest.',
+    updated: 'Prices updated. Read the steps again before you press.',
+    updatedHold: 'The prices just changed: read them first.',
     fee: {
       none: 'We charge no fee on this order. The network fee is paid from your wallet.',
       some: (list: string) =>
@@ -1659,6 +1673,10 @@ export const en = {
       finishNothing: 'Nothing is left to buy in this order: every step it had is done.',
       finishShort:
         'Your vault now holds less cash than the steps left would spend: some was spent or withdrawn since. Nothing was made. Add money to the vault for what you still want to buy.',
+      finishUnsupported: 'This order isn’t one that can be finished this way. Make a new order.',
+      /** A stopped add into a vault whose auto-follow is on now: no order is made for the cash. */
+      keeperBuys:
+        'Auto-follow is on for this vault now, so our keeper buys the vault’s assets with this cash when it next rebalances the vault. There is nothing more to sign.',
       finishNotDeposited:
         'This order’s deposit hasn’t landed yet, so there is no cash in the vault to finish with. Sign its steps in order first.',
       finishLater: 'A step signed before can still land. Look again in a minute, then try again.',

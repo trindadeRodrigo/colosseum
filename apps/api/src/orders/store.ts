@@ -553,8 +553,7 @@ export async function everyPersonPlan(db: Db, principal: Principal): Promise<Per
 export async function listPersonPlans(
   db: Db,
   principal: Principal,
-  /** `now`: the time an order's own is held to. Default: this moment. */
-  page: { limit?: number; before?: Date; now?: Date } = {},
+  page: { limit?: number; before?: Date } = {},
 ): Promise<{ plans: PersonPlan[]; next: string | null }> {
   const limit = Math.min(Math.max(1, page.limit ?? PERSON_PLANS.plans), PERSON_PLANS.plans);
   const privyId = principal.userId ?? null;
@@ -576,25 +575,41 @@ export async function listPersonPlans(
     return has('solana', o.ownerSolana) && has('evm', o.ownerEvm);
   };
   const planId = sql<string | null>`${orders.request}->>'proposalId'`;
-  const at = page.now ?? new Date();
   // Every plan the person's buys name, by its id alone: the page is cut from the plans, not the buys.
   const named = owned.length
     ? await db
-        .selectDistinct({ id: planId, ownerSolana: orders.ownerSolana, ownerEvm: orders.ownerEvm })
+        .select({
+          orderId: orders.id,
+          id: planId,
+          ownerSolana: orders.ownerSolana,
+          ownerEvm: orders.ownerEvm,
+        })
         .from(orders)
-        .where(
-          and(
-            eq(orders.type, 'buy'),
-            or(...owned),
-            // an order nobody signed in its time is no buy (below): it lists no plan either
-            sql`(${orders.expiresAt} >= ${at} or exists (select 1 from ${legs} where ${legs.orderId} = ${orders.id} and ${legs.attempt} > 0))`,
-          ),
-        )
+        .where(and(eq(orders.type, 'buy'), or(...owned)))
     : [];
+  // A buy is an order somebody approved (below): one with no step ever built lists no plan either.
+  const approved = named.length
+    ? new Set(
+        (
+          await db
+            .selectDistinct({ orderId: legs.orderId })
+            .from(legs)
+            .where(
+              and(
+                inArray(
+                  legs.orderId,
+                  named.map((o) => o.orderId),
+                ),
+                gt(legs.attempt, 0),
+              ),
+            )
+        ).map((l) => l.orderId),
+      )
+    : new Set<string>();
   const bought = [
     ...new Set(
       named
-        .filter(theirs)
+        .filter((o) => theirs(o) && approved.has(o.orderId))
         .map((o) => o.id)
         .filter((id): id is string => id !== null && UUID.test(id)),
     ),
@@ -662,9 +677,10 @@ export async function listPersonPlans(
         )
     : [];
   const deposited = new Set(confirmed.map((l) => l.orderId));
-  // An order nobody signed in its time is no buy: the invest screen makes one to show its prices,
-  // and a person who looks and leaves bought nothing. One whose time has run out with no step ever
-  // built is left out of the plan's buys; the plan, and the vault's number, stay as they are.
+  // A buy is an order somebody approved: the invest screen makes an order to show its prices, and
+  // a person who looks and leaves bought nothing. Approving one builds its first step at once, so an
+  // order with no step ever built is left out of the plan's buys, whether its time has run out or
+  // not; the plan, and the vault's number, stay as they are.
   const built = counted.length
     ? await db
         .selectDistinct({ orderId: legs.orderId })
@@ -680,7 +696,6 @@ export async function listPersonPlans(
         )
     : [];
   const begun = new Set(built.map((l) => l.orderId));
-  const lapsed = (o: OrderRow) => !begun.has(o.id) && o.expiresAt.getTime() < at.getTime();
   const planOf = (o: OrderRow) =>
     o.request.type === 'buy' ? (o.request.proposalId ?? null) : null;
 
@@ -700,7 +715,7 @@ export async function listPersonPlans(
         o.request.vault?.chain === chain,
     );
     const of = [...named, ...added]
-      .filter((o) => !lapsed(o))
+      .filter((o) => begun.has(o.id))
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     return [
       {

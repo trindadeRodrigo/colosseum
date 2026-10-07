@@ -1047,6 +1047,16 @@ export const pt: Dictionary = {
       notChecked:
         'O nome e a descrição não foram conferidos com o que quem criou publicou na rede.',
     },
+    refusal: {
+      versionChanged:
+        'Este portfólio tem uma versão nova desde que você abriu esta página. Abra de novo para ver o que ele guarda agora.',
+      reopen: 'Abrir o portfólio de novo',
+      reread: 'Ler o portfólio de novo',
+      assetNamed: (asset: string) =>
+        `${asset} não pode ser comprado nesta rede agora, então este portfólio não pode ser comprado como está.`,
+      asset:
+        'Um ativo deste portfólio não pode ser comprado nesta rede agora, então o portfólio não pode ser comprado como está.',
+    },
     family: {
       loading: 'Lendo este portfólio…',
       missing: 'Não encontro um portfólio compartilhado com esse nome.',
@@ -1315,6 +1325,9 @@ export const pt: Dictionary = {
     checkingFunds: 'Conferindo sua carteira…',
     preparing: 'Lendo os preços da sua ordem…',
     again: 'Ler os preços de novo',
+    old: 'Estes preços estão velhos: a ordem venceu antes de ser confirmada. Leia de novo para investir.',
+    updated: 'Preços atualizados. Leia os passos de novo antes de confirmar.',
+    updatedHold: 'Os preços acabaram de mudar: leia primeiro.',
     fee: {
       none: 'Não cobramos taxa nesta ordem. A taxa da rede sai da sua carteira.',
       some: (list: string) => `Taxas desta ordem: ${list}. A taxa da rede sai da sua carteira.`,
@@ -1522,6 +1535,9 @@ export const pt: Dictionary = {
       finishNothing: 'Não falta nada para comprar nesta ordem: todos os passos dela foram feitos.',
       finishShort:
         'Seu cofre agora tem menos caixa do que os passos que faltam gastariam: parte foi gasta ou retirada desde então. Nada foi criado. Adicione dinheiro ao cofre para o que ainda quer comprar.',
+      finishUnsupported: 'Esta ordem não pode ser terminada dessa forma. Faça uma nova ordem.',
+      keeperBuys:
+        'Seguir automático está ativado neste cofre agora, então nosso operador compra os ativos do cofre com este caixa quando rebalancear o cofre de novo. Não há mais nada para assinar.',
       finishNotDeposited:
         'O depósito desta ordem ainda não chegou, então não há caixa no cofre para terminar a compra. Assine os passos dela na ordem primeiro.',
       finishLater:
