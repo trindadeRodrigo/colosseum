@@ -325,6 +325,13 @@ export const PortfolioPlan = z.object({
   /** The plan's number on the chain. */
   basketId: BasketId,
   plan: VaultPlan.nullable(),
+  /**
+   * The shared portfolio the vault was opened to follow, as the join holds it (`plan.familyId`), named
+   * from the server's own row. Null for a plan made to measure, for a vault with no plan, and where
+   * the server holds no row for the family. It says what the vault was opened as; `follows` says what
+   * the chain shows it following now, and the two can differ.
+   */
+  openedFor: z.object({ familyId: z.string(), slug: z.string(), name: z.string() }).nullable(),
   putIn: PlanPutIn.nullable(),
   newest: PlanNewest.nullable(),
   status: TrackStatus,

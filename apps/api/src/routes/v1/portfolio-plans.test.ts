@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { familyIdOf } from '@colosseum/basket';
 import {
   baskets,
   createDb,
@@ -15,6 +16,7 @@ import {
   type ChainId,
   DISCLAIMER,
   type ObservationRef,
+  OrderDetail,
   PortfolioPlansResponse,
   TRACK_RULE,
 } from '@colosseum/schemas';
@@ -22,8 +24,9 @@ import { and, asc, eq, inArray, max, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ChainEntry, ChainRegistry } from '../../orders/chains';
+import { type JoinedPlan, joinVault } from '../../orders/plan-join';
 import { basketIdOf } from '../../orders/prepare';
-import { dollarsOf, PUT_IN_METHOD } from '../../portfolio/plans';
+import { dollarsOf, openedForOf, PUT_IN_METHOD } from '../../portfolio/plans';
 import { chainOf, orderFlow, walletOf } from '../../testing/flow';
 import {
   type HomeChain,
@@ -46,8 +49,9 @@ import {
 } from '../../testing/portfolio-world';
 
 // GET /v1/portfolio/plans (PORT-2), through HTTP on the mock chains and the real database: one entry
-// for each vault of the signed-in person, with its plan, what was put in, its newest snapshot, its
-// status and the shared portfolio it follows. The orders are real ones, taken through the API. The
+// for each vault of the signed-in person, with its plan, the shared portfolio it was opened to follow,
+// what was put in, its newest snapshot, its status and the shared portfolio the chain shows it
+// following. The orders are real ones, taken through the API. The
 // snapshots and the passes of the worker are made up (testing/portfolio-world.ts): the worker is
 // another app.
 //
@@ -129,7 +133,7 @@ afterAll(async () => {
   for (const step of undo.reverse()) await step();
 });
 
-const { get, fund, order, build, land, report, settleAll } = orderFlow({
+const { get, post, fund, order, build, land, report, settleAll } = orderFlow({
   app: () => app,
   registry: () => registry,
   plans: () => plans,
@@ -226,6 +230,19 @@ async function bought(who: Person, amountUsd: number, proposalId?: string) {
   return { placed, vault };
 }
 
+/**
+ * A shared portfolio as the harness stores one: its family's row. Its recipe on `chain` is stored
+ * under the id `test:<family id>`.
+ */
+async function storedFamily(chain: HomeChain) {
+  const { slug } = await data.storeFamily(chain, [
+    { kind: 'asset', asset: `${chain}:spy`, weightBps: 10_000 },
+  ]);
+  const [family] = await data.db.select().from(indexFamilies).where(eq(indexFamilies.slug, slug));
+  if (!family) throw new Error('the family was not stored');
+  return family;
+}
+
 /** A made-up snapshot at a vault's own address, owner and number, this long before the clock. */
 const snapshotOf = (
   vault: { chainId: ChainId; address: string; owner: string; onchainBasketId: string },
@@ -279,6 +296,8 @@ describe('what a person put into a vault', () => {
         name: null,
         basketId: basketIdOf(own.id),
         provenance: 'mock',
+        // A plan made to measure was opened to follow no shared portfolio.
+        openedFor: null,
         // Nobody has snapshotted the vault: it is in the cache, and that is all.
         newest: null,
         follows: null,
@@ -549,6 +568,7 @@ describe('the newest snapshot and the status', () => {
         name: 'House fund',
         basketId: '4242',
         plan: null,
+        openedFor: null,
         putIn: null,
         newest: null,
         status: expect.objectContaining({
@@ -794,6 +814,7 @@ describe('the newest snapshot and the status', () => {
       name: null,
       basketId: '77',
       plan: null,
+      openedFor: null,
       putIn: null,
       newest: { observedAt: ago(10 * MINUTE).toISOString(), valueUsd: '1000.00' },
       status: { status: 'on_track', rule: TRACK_RULE },
@@ -825,21 +846,8 @@ describe('the newest snapshot and the status', () => {
 
 describe('the shared portfolio a vault follows', () => {
   it('is named where the server holds its family on that chain, and is the id and version alone where it does not', async () => {
-    const component = (chain: HomeChain) => [
-      { kind: 'asset' as const, asset: `${chain}:spy`, weightBps: 10_000 },
-    ];
-    const familyOf = async (chain: HomeChain) => {
-      const { slug } = await data.storeFamily(chain, component(chain));
-      const [family] = await data.db
-        .select()
-        .from(indexFamilies)
-        .where(eq(indexFamilies.slug, slug));
-      if (!family) throw new Error('the family was not stored');
-      return family;
-    };
-    // The harness stores a family's recipe under the id `test:<family id>` on its chain.
-    const here = await familyOf('solana');
-    const elsewhere = await familyOf('robinhood');
+    const here = await storedFamily('solana');
+    const elsewhere = await storedFamily('robinhood');
 
     const a = await someone();
     const seed = async (before: number, over: Partial<Parameters<typeof seedSnapshot>[1]>) => {
@@ -891,6 +899,219 @@ describe('the shared portfolio a vault follows', () => {
     });
     expect(entryAt(read, left).follows).toBeNull();
     expect(entryAt(read, unread).follows).toBeNull();
+  });
+});
+
+describe('the shared portfolio a vault was opened to follow', () => {
+  /** A shared portfolio published through the API on Solana's mock, by a person of its own. */
+  async function published() {
+    const creator = await someone();
+    const id = randomUUID().replaceAll('-', '');
+    const slug = `t-${id.slice(0, 16)}`;
+    // A name folds to letters, so the run's id is spelled in them.
+    const letters = id.replace(/[0-9]/g, (d) => 'abcdefghij'[Number(d)] ?? 'a').slice(0, 12);
+    const name = `Test ${letters}`;
+    data.trackFamily(familyIdOf(slug));
+    await fund(creator);
+    const res = await post(creator, '/v1/orders', {
+      type: 'publish',
+      creator: { solana: creator.solana },
+      family: slug,
+      name,
+      copy: 'Three test tokens.',
+      recipes: [
+        {
+          chain: 'solana',
+          components: [
+            { kind: 'asset', asset: 'solana:spy', weightBps: 4000 },
+            { kind: 'asset', asset: 'solana:nvda', weightBps: 3000 },
+            { kind: 'asset', asset: 'solana:tsla', weightBps: 3000 },
+          ],
+        },
+      ],
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    await settleAll(creator, OrderDetail.parse(res.json()));
+    return { familyId: familyIdOf(slug), slug, name };
+  }
+
+  /** A vault in the cache, joined to a plan of the person's as the goal join writes one. */
+  async function joined(
+    who: Person,
+    chain: HomeChain,
+    plan: Parameters<typeof joinVault>[1]['plan'],
+  ) {
+    const address = await seedVault(data.db, {
+      chain,
+      owner: chain === 'solana' ? who.solana : who.evm,
+    });
+    const planId = await joinVault(data.db, {
+      chain,
+      address,
+      privyId: who.sub,
+      plan,
+      placedAt: NOW,
+    });
+    if (!planId) throw new Error('the vault was not joined');
+    return { address, planId };
+  }
+
+  it('is named from the server’s own row for a vault bought as a follow, though its snapshot shows it following none, and to nobody else', async () => {
+    const family = await published();
+    const buyer = await someone();
+    await fund(buyer);
+    const res = await post(buyer, '/v1/orders', {
+      type: 'buy',
+      owner: buyer.owner,
+      amountUsd: 100,
+      family: family.slug,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const placed = OrderDetail.parse(res.json());
+    expect((await settleAll(buyer, placed)).status).toBe('done');
+    const [vault] = await cached(buyer);
+    if (!vault) throw new Error('the cache has no vault for this buy');
+    // As the snapshot worker's mock reads it: the vault is made again there, with no portfolio.
+    await snapshotOf(vault, 10 * MINUTE, { basketId: vault.basketId });
+
+    const read = await plansFor(buyer);
+    expect(read.plans).toHaveLength(1);
+    const [entry] = read.plans;
+    expect(entry?.plan).toEqual({
+      kind: 'follow',
+      placedAt: placed.createdAt,
+      familyId: family.familyId,
+    });
+    // The id, the slug and the name as the server stored them when the portfolio was published.
+    expect(entry?.openedFor).toEqual(family);
+    expect(entry).toMatchObject({
+      address: vault.address,
+      newest: { ageSeconds: 600 },
+      // What the chain shows is the snapshot's to say, and this one shows no portfolio.
+      follows: null,
+      putIn: { usd: '100.00', orders: 1, deposits: [{ orderId: placed.id }] },
+    });
+
+    // The two can differ. At a newer read the vault follows another shared portfolio the server
+    // holds: `follows` names that one, and what the vault was opened for is as it was.
+    const other = await storedFamily('solana');
+    await snapshotOf(vault, 5 * MINUTE, {
+      basketId: vault.basketId,
+      recipeOnchainId: `test:${other.familyId}`,
+      acceptedVersion: 3,
+    });
+    const later = entryAt(await plansFor(buyer), vault.address);
+    expect(later.openedFor).toEqual(family);
+    expect(later.follows).toEqual({
+      recipeOnchainId: `test:${other.familyId}`,
+      acceptedVersion: 3,
+      autoFollow: false,
+      familyId: other.familyId,
+      slug: other.slug,
+      name: other.name,
+    });
+
+    // Somebody else, with wallets of their own, is answered nothing of it.
+    const secrets = [family.familyId, family.slug, family.name];
+    const stranger = await someone();
+    for (const query of ['', `?address=${vault.address}`]) {
+      const theirs = await plansFor(stranger, query);
+      expect([query, theirs.plans]).toEqual([query, []]);
+      for (const secret of secrets)
+        expect([query, secret, theirs.body.includes(secret)]).toEqual([query, secret, false]);
+    }
+    // Another sign-in that holds the same wallet is answered the vault and what the chain shows of
+    // it. The plan is not theirs, and neither is what it was opened for.
+    const sub = `did:privy:test-${randomUUID()}`;
+    const twin: Person = data.track({
+      ...buyer,
+      sub,
+      headers: await signIn(issuer, sub, [
+        { family: 'solana', address: buyer.solana, client: 'phantom' },
+      ]),
+    });
+    const seen = await plansFor(twin);
+    expect(seen.plans).toHaveLength(1);
+    expect(seen.plans[0]).toMatchObject({
+      address: vault.address,
+      plan: null,
+      openedFor: null,
+      follows: { familyId: other.familyId },
+    });
+    for (const secret of secrets)
+      expect([secret, seen.body.includes(secret)]).toEqual([secret, false]);
+  });
+
+  it('is named only for a plan that follows one, each vault with its own', async () => {
+    const [one, two] = [await storedFamily('solana'), await storedFamily('solana')];
+    const far = await storedFamily('robinhood');
+    const a = await someone('passkey');
+    const named = ({ familyId, slug, name }: typeof one) => ({ familyId, slug, name });
+    const first = await joined(a, 'solana', { kind: 'follow', familyId: one.familyId });
+    const second = await joined(a, 'solana', { kind: 'follow', familyId: two.familyId });
+    // And on the person's other chain, a vault opened to follow a shared portfolio stored there.
+    const there = await joined(a, 'robinhood', { kind: 'follow', familyId: far.familyId });
+    const measured = await joined(a, 'solana', { kind: 'personal', proposalId: plans.solana });
+    // A row no route writes: a plan made to measure that carries a family's id all the same. It is
+    // a plan made to measure, and follows nothing.
+    const carrying = await joined(a, 'solana', { kind: 'personal', proposalId: plans.solana });
+    await data.db
+      .update(baskets)
+      .set({ familyId: two.familyId })
+      .where(eq(baskets.id, carrying.planId));
+    const unjoined = await seedVault(data.db, { chain: 'solana', owner: a.solana });
+
+    const read = await plansFor(a);
+    expect(read.plans).toHaveLength(6);
+    const of = (address: string) => {
+      const { plan, openedFor } = entryAt(read, address);
+      return { kind: plan?.kind ?? null, familyId: plan?.familyId ?? null, openedFor };
+    };
+    expect(of(first.address)).toEqual({
+      kind: 'follow',
+      familyId: one.familyId,
+      openedFor: named(one),
+    });
+    expect(of(second.address)).toEqual({
+      kind: 'follow',
+      familyId: two.familyId,
+      openedFor: named(two),
+    });
+    expect(of(there.address)).toEqual({
+      kind: 'follow',
+      familyId: far.familyId,
+      openedFor: named(far),
+    });
+    expect(of(measured.address)).toEqual({ kind: 'personal', familyId: null, openedFor: null });
+    expect(of(carrying.address)).toEqual({
+      kind: 'personal',
+      familyId: two.familyId,
+      openedFor: null,
+    });
+    expect(of(unjoined)).toEqual({ kind: null, familyId: null, openedFor: null });
+  });
+
+  it('is not named where the server holds no row for it, and never guessed', async () => {
+    const held = await storedFamily('solana');
+    const follow = (familyId?: string): JoinedPlan => ({
+      planId: randomUUID(),
+      plan: { kind: 'follow', placedAt: NOW.toISOString(), ...(familyId ? { familyId } : {}) },
+    });
+    // The join's own foreign key keeps a plan's family in the table, so no vault's plan names one
+    // that is gone: the plans here are made up, and asked of the real table.
+    const gone = randomUUID().replaceAll('-', '').padEnd(64, '0');
+    const answered = await openedForOf(
+      data.db,
+      new Map([
+        ['held', follow(held.familyId)],
+        ['gone', follow(gone)],
+        ['unnamed', follow()],
+      ]),
+    );
+    expect([...answered]).toEqual([
+      ['held', { familyId: held.familyId, slug: held.slug, name: held.name }],
+    ]);
+    expect(await openedForOf(data.db, new Map())).toEqual(new Map());
   });
 });
 
