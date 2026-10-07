@@ -333,19 +333,22 @@ export type PersonPlan = {
 /** The most plans one answer lists. */
 export const PERSON_PLANS = { plans: 50 } as const;
 
-/** How many withdrawals `listPersonWithdrawals` answers with: the newest. */
+/** The most withdrawals one page of `listPersonWithdrawals` holds. */
 const PERSON_WITHDRAWALS = 50;
 
 /**
- * The person's withdrawals, newest first, at most fifty: each with the vault it took from and its
- * steps that take tokens out, where each stands and its transaction. An order is theirs by the
+ * The person's withdrawals, newest first, a page of at most `limit`, ordered before `before` when that
+ * is given; `next` is the time to ask the following page with, or null when this is the last. Each
+ * has the vault it took from and its steps that take tokens out, where each stands and its transaction. An order is theirs by the
  * wallets of the verified token, every address it names, as on its own route. The portfolio counts
  * what was taken out from these, on any device: nothing of it is kept in a browser alone.
  */
 export async function listPersonWithdrawals(
   db: Db,
   principal: Principal,
-): Promise<PersonWithdrawal[]> {
+  page: { limit?: number; before?: Date } = {},
+): Promise<{ withdrawals: PersonWithdrawal[]; next: string | null }> {
+  const limit = Math.min(Math.max(1, page.limit ?? PERSON_WITHDRAWALS), PERSON_WITHDRAWALS);
   const addresses = (family: 'solana' | 'evm') =>
     principal.wallets.filter((w) => w.family === family).map((w) => w.address);
   const [solana, evm] = [addresses('solana'), addresses('evm')];
@@ -353,20 +356,30 @@ export async function listPersonWithdrawals(
     ...(solana.length ? [inArray(orders.ownerSolana, solana)] : []),
     ...(evm.length ? [inArray(orders.ownerEvm, evm)] : []),
   ];
-  if (!owned.length) return [];
-  const rows = (
-    await db
-      .select()
-      .from(orders)
-      .where(and(eq(orders.type, 'withdraw'), or(...owned)))
-      .orderBy(desc(orders.createdAt))
-      .limit(PERSON_WITHDRAWALS)
-  ).filter(
+  if (!owned.length) return { withdrawals: [], next: null };
+  // One more than the page, to know whether another follows.
+  const found = await db
+    .select()
+    .from(orders)
+    .where(
+      and(
+        eq(orders.type, 'withdraw'),
+        or(...owned),
+        ...(page.before ? [lt(orders.createdAt, page.before)] : []),
+      ),
+    )
+    .orderBy(desc(orders.createdAt), desc(orders.id))
+    .limit(limit + 1);
+  const paged = found.slice(0, limit);
+  const next =
+    found.length > limit ? (paged[paged.length - 1]?.createdAt.toISOString() ?? null) : null;
+  // An order is the caller's only when every address it names is theirs, as on its own route.
+  const rows = paged.filter(
     (o) =>
       (o.ownerSolana === null || solana.includes(o.ownerSolana)) &&
       (o.ownerEvm === null || evm.includes(o.ownerEvm)),
   );
-  if (!rows.length) return [];
+  if (!rows.length) return { withdrawals: [], next };
   const legRows = await db
     .select()
     .from(legs)
@@ -380,7 +393,7 @@ export async function listPersonWithdrawals(
       ),
     )
     .orderBy(asc(legs.seq));
-  return rows.flatMap((o) => {
+  const withdrawals = rows.flatMap((o): PersonWithdrawal[] => {
     const steps = legRows.filter((l) => l.orderId === o.id);
     const vault = o.request.type === 'withdraw' ? o.request.vaults[0] : undefined;
     const chain = steps[0]?.chainId;
@@ -404,6 +417,7 @@ export async function listPersonWithdrawals(
       },
     ];
   });
+  return { withdrawals, next };
 }
 
 /**

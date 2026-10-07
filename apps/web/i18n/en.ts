@@ -1083,6 +1083,9 @@ export const en = {
       owner: 'Owner',
       follows: 'Follows',
       followsNothing: 'Nothing: the owner sets its weights',
+      autoFollowOff:
+        'Auto-follow is off for this vault. To switch it on, open the shared portfolio it follows and choose auto-follow there.',
+      autoFollowWhere: 'Shared portfolios',
       version: (n: number) => `version ${n}`,
       autoFollow: 'Auto-follow',
       value: 'Value',
@@ -1147,7 +1150,7 @@ export const en = {
       stays: 'Everything else stays in the vault.',
       emptied: 'The vault will be empty afterwards.',
       autoFollow:
-        'Automatic following stops for this vault. Auto-follow is on, and the first step switches it off, so our keeper doesn’t trade the vault while you withdraw or afterwards. Switch it on again when you want it.',
+        'Automatic following stops for this vault. Auto-follow is on, and the first step switches it off, so our keeper doesn’t trade the vault while you withdraw or afterwards. To switch it on again, open the shared portfolio this vault follows; the vault’s page links there.',
       noSale:
         'Selling to cash before withdrawing isn’t offered yet; you can withdraw the tokens themselves.',
       seen: 'Reviewed',
@@ -1250,6 +1253,12 @@ export const en = {
       /** A step whose token could not be moved: it stayed in the vault, and the others went on. */
       skipped: (what: string) =>
         `${what} stayed in the vault: it can’t be moved now. Its issuer may have frozen it, or it needs a wallet that handles its transfer rules.`,
+      doneStayed: (chain: string, what: string) =>
+        `Done on ${chain}, except ${what}: the vault still holds it. It wasn’t moved, and no step said so.`,
+      doneUnread: (chain: string) =>
+        `Done on ${chain}. I couldn’t read your vault again, so see your portfolio for anything that stayed.`,
+      stayed: (what: string) =>
+        `${what} stayed in the vault: the vault’s contract couldn’t move it now. You can try to withdraw it again later.`,
       doneExcept: (chain: string, n: number) =>
         n === 1
           ? `Done on ${chain}, except one step that was skipped: what it would have moved stayed in the vault.`

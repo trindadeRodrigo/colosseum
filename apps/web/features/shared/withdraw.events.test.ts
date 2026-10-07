@@ -578,6 +578,52 @@ describe('a withdrawal on the order screen', () => {
     expect(host.querySelectorAll('[data-ui="order-step"][data-status="skipped"]')).toHaveLength(1);
   });
 
+  /** The reviewed order with every step confirmed on chain. */
+  const confirmed = () => {
+    const answered = asReviewed();
+    return {
+      ...answered,
+      status: 'done',
+      legs: answered.legs.map((l) => ({ ...l, status: 'confirmed', txId: 'sig' })),
+    } as OrderDetail;
+  };
+
+  it('a token a confirmed step left behind: the vault is read again and the order is done except for it', async () => {
+    // as an EVM vault's withdrawAll does: the step confirmed, and the vault still holds the token
+    const server = api({ order: confirmed });
+    seed(PART);
+    const host = await screen();
+    await settle();
+    expect(server.calls.filter((c) => c.path.startsWith('/v1/vaults/solana/'))).toHaveLength(1);
+    expect(host.textContent).toContain(en.order.shared.doneStayed('Solana', 'tSPYx'));
+    expect(host.textContent).not.toContain(en.order.outcome.done('Solana'));
+    expect(find(host, '[data-ui="withdraw-stayed"]').textContent).toBe(
+      en.order.shared.stayed('tSPYx'),
+    );
+  });
+
+  it('is plainly done only once the vault, read again, holds none of what was to leave whole', async () => {
+    api({
+      order: confirmed,
+      // part of the cash was taken: what is left of it is no token left behind
+      vault: holdingVault({ positions: [] }),
+    });
+    seed(PART);
+    const host = await screen();
+    await settle();
+    expect(host.textContent).toContain(en.order.outcome.done('Solana'));
+    expect(host.querySelector('[data-ui="withdraw-stayed"]')).toBeNull();
+  });
+
+  it('never says plainly done when the vault cannot be read again', async () => {
+    api({ order: confirmed, vault: null });
+    seed(PART);
+    const host = await screen();
+    await settle();
+    expect(host.textContent).toContain(en.order.shared.doneUnread('Solana'));
+    expect(host.textContent).not.toContain(en.order.outcome.done('Solana'));
+  });
+
   it.each([
     [
       'a larger amount',

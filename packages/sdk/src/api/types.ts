@@ -820,6 +820,12 @@ export type GetMePlansResponse = {
   next: string | null;
 };
 
+/** GET /v1/me/withdrawals: query. What the signed-in person took out of their vaults */
+export type GetMeWithdrawalsQuery = {
+  limit?: number;
+  before?: string;
+};
+
 /** GET /v1/me/withdrawals: response. What the signed-in person took out of their vaults */
 export type GetMeWithdrawalsResponse = {
   withdrawals: {
@@ -849,6 +855,7 @@ export type GetMeWithdrawalsResponse = {
       }[];
     }[];
   }[];
+  next: string | null;
 };
 
 /** POST /v1/orders: body. Plan an order from an intent. Nothing is built or signed */
@@ -1688,7 +1695,7 @@ export interface ApiRoutes {
   'GET /v1/me': { response: GetMeResponse };
   'PUT /v1/me/chain': { body: PutMeChainBody; response: PutMeChainResponse };
   'GET /v1/me/plans': { query: GetMePlansQuery; response: GetMePlansResponse };
-  'GET /v1/me/withdrawals': { response: GetMeWithdrawalsResponse };
+  'GET /v1/me/withdrawals': { query: GetMeWithdrawalsQuery; response: GetMeWithdrawalsResponse };
   'POST /v1/orders': { body: PostOrdersBody; response: PostOrdersResponse };
   'GET /v1/orders/{id}': { params: GetOrdersByIdParams; response: GetOrdersByIdResponse };
   'POST /v1/orders/{id}/legs/{legId}/build': {

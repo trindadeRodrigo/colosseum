@@ -5273,7 +5273,30 @@
       "get": {
         "summary": "What the signed-in person took out of their vaults",
         "tags": ["person"],
-        "description": "The person’s withdrawals, newest first, at most fifty: each with its vault and chain, and each step that takes tokens out with where it stands (`confirmed` once it landed, `skipped` when its token could not move), its transaction, and what it took. Each token carries `valued`: its dollar value at the reference price when the withdrawal was ordered, with where that price came from; a token with no price carries none. Only the withdrawals of the wallets of the verified identity token are listed. A portfolio counts what was taken out from these, so it reads the same on every device.",
+        "description": "The person’s withdrawals, newest first, a page at a time: at most `limit` (50 by default and at most), ordered before `before` when that is sent; `next` is the `before` of the following page, and null on the last. Each comes with its vault and chain, and each step that takes tokens out with where it stands (`confirmed` once it landed, `skipped` when its token could not move), its transaction, and what it took. Each token carries `valued`: its dollar value at the reference price when the withdrawal was ordered, with where that price came from; a token with no price carries none. Only the withdrawals of the wallets of the verified identity token are listed. A portfolio counts what was taken out from these, so it reads the same on every device.",
+        "parameters": [
+          {
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            },
+            "in": "query",
+            "name": "before",
+            "required": false
+          }
+        ],
         "security": [
           {
             "accessToken": [],
@@ -5445,9 +5468,12 @@
                         "required": ["orderId", "createdAt", "chain", "vault", "status", "steps"],
                         "additionalProperties": false
                       }
+                    },
+                    "next": {
+                      "type": ["string", "null"]
                     }
                   },
-                  "required": ["withdrawals"],
+                  "required": ["withdrawals", "next"],
                   "additionalProperties": false
                 }
               }

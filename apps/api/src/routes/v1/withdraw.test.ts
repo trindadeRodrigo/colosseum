@@ -141,8 +141,27 @@ describe.each(CHAINS)('POST /v1/orders, a withdrawal on %s', (chain) => {
     expect(withdrawals[0]?.steps[0]?.txId).toBeTruthy();
     const b = await someone(chain);
     const other = await app.inject({ url: '/v1/me/withdrawals', headers: b.headers });
-    expect(other.json()).toEqual({ withdrawals: [] });
+    expect(other.json()).toEqual({ withdrawals: [], next: null });
     expect((await app.inject({ url: '/v1/me/withdrawals' })).statusCode).toBe(401);
+
+    // A page at a time, newest first, as the plans are: `next` leads to the older one, then to none.
+    const second = OrderDetail.parse(
+      (
+        await withdraw(a, vault.address, { withdrawals: [{ asset: most.asset, amountRaw: '1' }] })
+      ).json(),
+    );
+    const pageOf = async (query: string) =>
+      PersonWithdrawalsResponse.parse(
+        (await app.inject({ url: `/v1/me/withdrawals?${query}`, headers: a.headers })).json(),
+      );
+    const newest = await pageOf('limit=1');
+    expect(newest.withdrawals.map((x) => x.orderId)).toEqual([second.id]);
+    expect(newest.next).toBe(newest.withdrawals[0]?.createdAt);
+    const older = await pageOf(`limit=1&before=${encodeURIComponent(newest.next ?? '')}`);
+    expect(older.withdrawals.map((x) => x.orderId)).toEqual([order.id]);
+    expect(older.next).toBeNull();
+    const bad = await app.inject({ url: '/v1/me/withdrawals?limit=51', headers: a.headers });
+    expect(bad.statusCode).toBe(400);
     const after = await vaultOf(a, chain);
     const left = [after.cash, ...after.positions].find((h) => h.asset === most.asset);
     expect(BigInt(left?.raw ?? '0')).toBe(BigInt(most.raw) - BigInt(part));

@@ -1013,6 +1013,9 @@ export const pt: Dictionary = {
       owner: 'Dono',
       follows: 'Segue',
       followsNothing: 'Nada: quem é dono define os pesos',
+      autoFollowOff:
+        'O seguir automático está desativado neste cofre. Para ativar, abra o portfólio compartilhado que ele segue e escolha o seguir automático lá.',
+      autoFollowWhere: 'Portfólios compartilhados',
       version: (n: number) => `versão ${n}`,
       autoFollow: 'Seguir automático',
       value: 'Valor',
@@ -1077,7 +1080,7 @@ export const pt: Dictionary = {
       stays: 'Todo o resto fica no cofre.',
       emptied: 'O cofre ficará vazio depois.',
       autoFollow:
-        'O seguir automático para neste cofre. Ele está ativado, e o primeiro passo o desativa, para que nosso operador não negocie o cofre enquanto você saca nem depois. Ative de novo quando quiser.',
+        'O seguir automático para neste cofre. Ele está ativado, e o primeiro passo o desativa, para que nosso operador não negocie o cofre enquanto você saca nem depois. Para ativar de novo, abra o portfólio compartilhado que este cofre segue; a página do cofre leva até lá.',
       noSale:
         'Vender por dinheiro antes de sacar ainda não é oferecido; você pode sacar os próprios tokens.',
       seen: 'Revisado',
@@ -1178,6 +1181,12 @@ export const pt: Dictionary = {
       autoFollowStops: 'O seguir automático para neste cofre: o primeiro passo o desativa.',
       skipped: (what: string) =>
         `${what} ficou no cofre: não pode ser movido agora. O emissor pode tê-lo congelado, ou ele precisa de uma carteira que trate suas regras de transferência.`,
+      doneStayed: (chain: string, what: string) =>
+        `Feito em ${chain}, exceto ${what}: o cofre ainda guarda. Não foi movido, e nenhum passo avisou.`,
+      doneUnread: (chain: string) =>
+        `Feito em ${chain}. Não consegui ler seu cofre de novo; veja no portfólio se algo ficou.`,
+      stayed: (what: string) =>
+        `${what} ficou no cofre: o contrato do cofre não conseguiu mover agora. Você pode tentar sacar de novo depois.`,
       doneExcept: (chain: string, n: number) =>
         n === 1
           ? `Feito em ${chain}, exceto um passo que foi pulado: o que ele moveria ficou no cofre.`

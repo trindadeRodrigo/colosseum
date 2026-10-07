@@ -28,6 +28,7 @@ import { legsInOrder, type NextStep, type OutcomeView, outcomeView, stepOf } fro
 import { chainReady, explorerUrlFor, onMock } from './readiness';
 import { type RunOutcome, useOrderRunner } from './run-order';
 import { type ChainUnits, unitsFor } from './units';
+import { useStayed } from './withdraw-stayed';
 
 // The order: the review of every step, then signing it, then each step's status as it lands. The
 // review shows the order as the API made it; when the person presses the button that order, exactly as
@@ -75,6 +76,13 @@ export function OrderScreen({ id }: { id: string }) {
   const titleId = useId();
   const reasonId = useId();
   const userId = port.userId;
+  // A withdrawal that is done is held to the vault: what a confirmed step left behind is said.
+  const stayed = useStayed(
+    apiFetch,
+    live ?? (load.kind === 'read' ? load.order : null),
+    record?.terms,
+    record?.chain,
+  );
 
   useEffect(() => {
     setRecord(recallOrder(id, userId));
@@ -222,10 +230,27 @@ export function OrderScreen({ id }: { id: string }) {
   const done = now.status === 'done';
   // Done with a step skipped (a token that could not move) says so: never plainly done.
   const skippedSteps = now.legs.filter((l) => l.status === 'skipped').length;
+  // A token a confirmed step was to take whole and the vault still holds (withdraw-stayed.ts).
+  const stayedNames =
+    stayed.kind === 'read'
+      ? stayed.assets.map((asset) => units?.tokens[asset]?.symbol ?? assetTicker(asset))
+      : [];
+  const plainlyDone =
+    skippedSteps === 0 &&
+    (stayed.kind === 'none' || (stayed.kind === 'read' && stayed.assets.length === 0));
   const doneSentence =
     skippedSteps > 0
       ? t.order.shared.doneExcept(t.chain.names[chain], skippedSteps)
-      : t.order.outcome.done(t.chain.names[chain]);
+      : stayedNames.length > 0
+        ? t.order.shared.doneStayed(
+            t.chain.names[chain],
+            new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(stayedNames),
+          )
+        : stayed.kind === 'reading'
+          ? t.withdraw.loading
+          : stayed.kind === 'unread'
+            ? t.order.shared.doneUnread(t.chain.names[chain])
+            : t.order.outcome.done(t.chain.names[chain]);
   const view: OutcomeView | null = outcome ? outcomeView(outcome, t, chain) : null;
   const needed = shown.needsConsent;
   const consentMissing = !record.approved && needed.some((kind) => !consents.includes(kind));
@@ -383,8 +408,10 @@ export function OrderScreen({ id }: { id: string }) {
               }
             >
               {view.alarm && <StatusMark status="off-track" size={12} className="mt-1.5" />}
-              {/* An order with a skipped step is never said to be plainly done. */}
-              <span>{done && skippedSteps > 0 ? doneSentence : view.sentence}</span>
+              {/* An order with a skipped step, or a token left behind, is never said to be plainly done. */}
+              <span data-ui={done ? 'order-done' : undefined}>
+                {done && !plainlyDone ? doneSentence : view.sentence}
+              </span>
             </p>
             {view.check && (
               <p className="font-mono text-source text-muted-foreground">{view.check}</p>
@@ -417,6 +444,13 @@ export function OrderScreen({ id }: { id: string }) {
           <div data-ui="withdraw-done" className="flex flex-col items-start gap-3">
             {skippedSteps < now.legs.length && (
               <p className="max-w-(--tf-measure-body) text-body">{t.order.shared.withdrawDone}</p>
+            )}
+            {stayedNames.length > 0 && (
+              <p data-ui="withdraw-stayed" className="max-w-(--tf-measure-body) text-body">
+                {t.order.shared.stayed(
+                  new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(stayedNames),
+                )}
+              </p>
             )}
             <Link href="/monitor" className={buttonClass({ variant: 'secondary' })}>
               {t.withdraw.back}

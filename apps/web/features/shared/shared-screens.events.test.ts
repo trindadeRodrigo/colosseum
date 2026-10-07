@@ -546,6 +546,48 @@ describe('a vault’s public page', () => {
   });
 });
 
+describe('auto-follow on a vault’s page, after a withdrawal switched it off', () => {
+  const page = async (over: Parameters<typeof vaultOf>[0]) => {
+    portStore.setApi(async (path) => {
+      if (path === '/v1/me') return json(person);
+      if (path === `/v1/vaults/solana/${VAULT}`)
+        return json({
+          chain: 'solana',
+          name: 'Solana',
+          mode: 'live',
+          provenance: 'sandbox',
+          vault: { ...vaultOf(over), provenance: 'sandbox' },
+          prices: [],
+          disclaimer: 'd',
+        });
+      return json({ error: 'not found' }, 404);
+    });
+    return show(createElement(VaultScreen, { chain: 'solana', address: VAULT }));
+  };
+
+  it('tells the owner where to switch it on again, with the way there', async () => {
+    const host = await page({ autoFollow: false });
+    const line = find(host, '[data-ui="vault-auto-follow-off"]');
+    expect(line.textContent).toContain(en.shared.vault.autoFollowOff);
+    expect(find(line, 'a').getAttribute('href')).toBe('/shelf');
+  });
+
+  it('says nothing of it while auto-follow is on, for a vault that follows nothing, or to anybody else', async () => {
+    for (const over of [
+      { autoFollow: true },
+      { autoFollow: false, recipeOnchainId: null },
+      { autoFollow: false, owner: 'Stranger1111111111111111111111111111111111' },
+    ]) {
+      const host = await page(over);
+      expect(
+        host.querySelector('[data-ui="vault-auto-follow-off"]'),
+        JSON.stringify(over),
+      ).toBeNull();
+      await unmountAll();
+    }
+  });
+});
+
 describe('the chain, on the shelf and on a vault’s page', () => {
   const badges = (el: Element) =>
     [...el.querySelectorAll('[data-ui="chain-badge"]')].map((b) => b.getAttribute('data-chain'));

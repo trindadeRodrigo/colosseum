@@ -94,8 +94,19 @@ export const PersonWithdrawal = z.object({
 });
 export type PersonWithdrawal = z.infer<typeof PersonWithdrawal>;
 
-/** The person's withdrawals, newest first, at most fifty. */
-export const PersonWithdrawalsResponse = z.object({ withdrawals: z.array(PersonWithdrawal) });
+/** A page of the person's withdrawals, newest first, paged as `GET /v1/me/plans` is. */
+export const PersonWithdrawalsResponse = z.object({
+  withdrawals: z.array(PersonWithdrawal),
+  /**
+   * What to send as `before` for the page after this one: the time the last withdrawal here was
+   * ordered. Null on the last page.
+   */
+  next: z.string().nullable(),
+});
+
+/** The query of `GET /v1/me/withdrawals`: at most `limit` withdrawals ordered before `before`. */
+export const PersonWithdrawalsQuery = PersonPlansQuery;
+export type PersonWithdrawalsQuery = PersonPlansQuery;
 export type PersonWithdrawalsResponse = z.infer<typeof PersonWithdrawalsResponse>;
 
 /** The path of GET /v1/orders/{id}. */

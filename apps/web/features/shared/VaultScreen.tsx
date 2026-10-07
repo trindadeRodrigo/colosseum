@@ -134,6 +134,16 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
               {t.withdraw.action}
             </Link>
           ))}
+        {/* Auto-follow is switched on where the vault's portfolio is: its page offers the switch. A
+            withdrawal switches it off, and this is the way back. */}
+        {mine && follows && !vault.autoFollow && (
+          <p data-ui="vault-auto-follow-off" className="max-w-(--tf-measure-body) text-body-sm">
+            {v.autoFollowOff}{' '}
+            <Link href="/shelf" className={buttonClass({ variant: 'link' })}>
+              {v.autoFollowWhere}
+            </Link>
+          </p>
+        )}
       </header>
 
       <Card
