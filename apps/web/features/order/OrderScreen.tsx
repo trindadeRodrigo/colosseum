@@ -40,7 +40,7 @@ import {
   sharedShapeOk,
   stoppedShort,
 } from './order-check';
-import { isBuy, keepOrder, type OrderRecord, recallOrder } from './order-record';
+import { isBuy, keepOrder, type OrderRecord, recallOrder, recallOrders } from './order-record';
 import { legsInOrder, type NextStep, type OutcomeView, outcomeView, stepOf } from './order-view';
 import { readStoredPlan } from './plan-store';
 import { targetsOfPlan } from './plan-terms';
@@ -176,6 +176,12 @@ export function OrderScreen({ id }: { id: string }) {
     unseen: boolean,
   ) {
     if (finishing) return;
+    const open = (orderId: string) => router.push(`/orders/${encodeURIComponent(orderId)}`);
+    // An order is finished by one order. Where this browser already has it, that order is opened
+    // and nothing is asked for: what the first one left is that order's, and its record, with what
+    // the person approved in it, stays as it is.
+    const mine = recallOrders(from.userId).find((r) => r.continues?.orderId === from.orderId);
+    if (mine) return open(mine.orderId);
     setFinishing(true);
     setFinishFailure(null);
     const o = t.order.outcome;
@@ -200,6 +206,9 @@ export function OrderScreen({ id }: { id: string }) {
       );
       return;
     }
+    // The server answers the same order while it can still be signed: one this browser kept (in
+    // another tab, a moment ago) is not written over.
+    if (recallOrder(made.order.id, from.userId)) return open(made.order.id);
     // The new order's record: the same plan and vault, nothing approved yet, and what it is held to.
     const kept = keepOrder({
       orderId: made.order.id,
@@ -216,7 +225,7 @@ export function OrderScreen({ id }: { id: string }) {
       setFinishing(false);
       return setFinishFailure(t.buy.failure.noStore);
     }
-    router.push(`/orders/${encodeURIComponent(made.order.id)}`);
+    open(made.order.id);
   }
 
   // Leaving the page stops the run between steps; what was signed is still reported.

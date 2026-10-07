@@ -840,6 +840,88 @@ describe('what the executor answers', () => {
       expect(host.textContent).not.toContain(en.order.outcome.stopped('$10'));
     });
 
+    describe('one order finishes another: no second one beside it', () => {
+      const left = () => orderOn().legs.flatMap((leg) => leg.trades);
+      /** The order that finishes the first, as this browser keeps it once the person approved it. */
+      const keptNext = () => ({
+        ...recordOf(),
+        orderId: NEXT_ID,
+        continues: { orderId: ORDER_ID, trades: left() },
+        approved: {
+          order: continuation() as unknown as OrderDetail,
+          consents: [],
+          at: '2026-10-05T12:00:00Z',
+        },
+      });
+
+      it('opens the order already made to finish this one, and asks the server for nothing', async () => {
+        const calls = server({ route: true, made: () => json(continuation()) });
+        window.localStorage.setItem(`tf-order:${NEXT_ID}`, JSON.stringify(keptNext()));
+        router.push.mockClear();
+        const host = await stop();
+        await click(finishButton(host) as HTMLElement);
+        await settle();
+        expect(calls.some((c) => c.path === `/v1/orders/${ORDER_ID}/continue`)).toBe(false);
+        expect(router.push).toHaveBeenCalledWith(`/orders/${NEXT_ID}`);
+        // what the person approved in it is still there
+        expect(recallOrder(NEXT_ID, USER)?.approved?.at).toBe('2026-10-05T12:00:00Z');
+      });
+
+      it('does not write over that order’s record when it was kept while the server answered', async () => {
+        server({
+          route: true,
+          made: () => {
+            // another tab kept and approved it in the meantime
+            window.localStorage.setItem(`tf-order:${NEXT_ID}`, JSON.stringify(keptNext()));
+            return json(continuation());
+          },
+        });
+        router.push.mockClear();
+        const host = await stop();
+        await click(finishButton(host) as HTMLElement);
+        await settle();
+        expect(router.push).toHaveBeenCalledWith(`/orders/${NEXT_ID}`);
+        expect(recallOrder(NEXT_ID, USER)?.approved?.at).toBe('2026-10-05T12:00:00Z');
+      });
+
+      it('finishes the finishing order when that one stopped too, held to what it left, by its own id', async () => {
+        const THIRD_ID = '88888888-8888-4888-8888-888888888888';
+        const next = continuation() as unknown as OrderDetail;
+        const stoppedNext: OrderDetail = {
+          ...next,
+          legs: next.legs.map((leg) => ({ ...leg, status: 'failed' as const })),
+        };
+        const third = { ...continuation(), id: THIRD_ID, continues: NEXT_ID };
+        const posts: string[] = [];
+        portStore.setApi(async (path, init) => {
+          const method = init?.method ?? 'GET';
+          if (method === 'POST') posts.push(path);
+          if (path === '/v1/me') return json(person('solana'));
+          if (path === `/v1/orders/${NEXT_ID}`) return json(stoppedNext);
+          if (path === `/v1/orders/${NEXT_ID}/continue`) return json(third);
+          if (method === 'POST') return json({ error: 'params/id must be a uuid' }, 400);
+          return json({ error: 'not found' }, 404);
+        });
+        window.localStorage.setItem(`tf-order:${NEXT_ID}`, JSON.stringify(keptNext()));
+        router.push.mockClear();
+        const host = await screen('en', NEXT_ID);
+        await settle();
+        const primaries = [...host.querySelectorAll<HTMLElement>('[data-variant="primary"]')];
+        expect(primaries.map(label)).toEqual([en.order.outcome.finish]);
+        await click(primaries[0] as HTMLElement);
+        await settle();
+        // the stopped order is finished by its own id, never the first one's again
+        expect(posts.filter((p) => !p.includes('not-an-order'))).toEqual([
+          `/v1/orders/${NEXT_ID}/continue`,
+        ]);
+        expect(router.push).toHaveBeenCalledWith(`/orders/${THIRD_ID}`);
+        expect(recallOrder(THIRD_ID, USER)?.continues).toEqual({
+          orderId: NEXT_ID,
+          trades: left(),
+        });
+      });
+    });
+
     describe('from a browser that did not make the order', () => {
       const plan = planOn().proposal;
       const listed = (over: object = {}) => ({
