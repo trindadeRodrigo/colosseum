@@ -50,6 +50,7 @@ import {
   timeFramesIn,
   withoutMarketShares,
   wordsWrite,
+  yesOrNoSaidIn,
 } from './intake-text';
 import {
   attributeKey,
@@ -557,8 +558,9 @@ function mixAnswered(
 /** What the person's later messages said in words, read as answers to the questions before them. */
 type Heard = {
   /**
-   * How each was read: `mix_from_words`, `sleeves_from_words`, `none_from_words`; and
-   * `share_too_small` for a share that was not taken because no line of a plan can be that small.
+   * How each was read: `mix_from_words`, `sleeves_from_words`, `none_from_words`, `mix_confirmed`
+   * (a plain yes to a question's start); and `share_too_small` for a share that was not taken
+   * because no line of a plan can be that small.
    */
   flags: string[];
   /**
@@ -637,6 +639,9 @@ function sharesAnswered(
  *   - a share or a mix answers the `mix` question (flag `mix_from_words`);
  *   - "none" ("zero", "0%", "nothing for AI") answers it too: what was asked about is left out for
  *     good, and the question does not come back (`none_from_words`);
+ *   - a plain yes ("yes", "that's right", "sim", "isso") takes the question's start, the share the
+ *     text states, where it has one (`mix_confirmed`), and a plain no leaves out what was asked
+ *     about; both only where it is the one question asked;
  *   - "half each", "60/40" or a share for each by name answers the question that names several
  *     themes (`sleeves_from_words`).
  * An answer on the form wins. A `mix` question that is there only because the model read a mix is
@@ -681,6 +686,26 @@ export function runIntake(input: IntakeInput): IntakeResult {
         answers = { ...answers, mix };
         heard.flags.push('mix_from_words');
         continue;
+      }
+      // A plain yes or no says no share of its own. It answers this question only where it is the
+      // one question asked (with another open, nothing says which the word answers), and not the
+      // one that asks which of two things stands. A yes takes the question's start, the share the
+      // text states (`mix_confirmed`); with no start it is no answer. A no leaves out what was asked
+      // about, as "none" does.
+      const said = before.result.questions.length === 1 ? yesOrNoSaidIn(message) : null;
+      const start = PersonalMix.safeParse(asked.read);
+      if (said !== null && asked.template !== 'holdOrLeaveOut') {
+        if (said === 'yes' && start.success) {
+          answers = { ...answers, mix: start.data };
+          heard.flags.push('mix_confirmed');
+          continue;
+        }
+        if (said === 'no' && (of.length > 0 || start.success)) {
+          if (of.length > 0) heard.leftOut.push(...of.map((x) => x.key));
+          else answers = { ...answers, mix: null };
+          heard.flags.push('none_from_words');
+          continue;
+        }
       }
     }
     const themes = before.open.themes;
@@ -1220,10 +1245,12 @@ function intakeOf(
         flags.push(`text_only:market:${id}`);
     asked = asked.filter((m) => namedByModel(m.market));
   }
-  // What the person answered "none" for, in words: left out for good.
+  // What the person answered "none" for, in words: left out for good. A share the text gave it
+  // ("Put 30% in AI", then "none") stays that narrative's, and is no split of the plan.
   for (const id of MARKET_IDS)
     if (asked.some((m) => m.market === id) && heard.leftOut.includes(id))
       flags.push(`market_left_out:${id}`);
+  const leftOutAt = asked.filter((m) => heard.leftOut.includes(m.market)).map((m) => m.at);
   asked = asked.filter((m) => !heard.leftOut.includes(m.market));
   // A market the fixed lists have no word for, named by the model as a filter over the sourced
   // attributes (gate THEME-MATCHED). The filter is held to its schema, and the person's words must be
@@ -1236,7 +1263,8 @@ function intakeOf(
   // person's words write the value it must carry ("defense stocks" for Aerospace & Defense). Where
   // they do not ("obesity drugs" for GLP-1; "my future" for Consumer Discretionary, the review of
   // Oct 7), the link between the two is the model's alone (`written` false): it is never taken, and
-  // is asked once by a question that says what it would be matched by.
+  // is asked once by a question that says what it would be matched by, with the share the person
+  // wrote as its start.
   let filterAsked: { filter: MarketFilter; spans: Named[]; written: boolean } | null = null;
   if (replyFilter) {
     const { words, ...filter } = replyFilter;
@@ -1252,18 +1280,17 @@ function intakeOf(
     else if (spans.length === 0) flags.push('no_cue:marketFilter');
     else if (free.length === 0) flags.push('market_covers:marketFilter');
     else if (asks.length === 0) flags.push('market_negated:marketFilter');
-    else if (heard.leftOut.includes('marketFilter')) flags.push('market_left_out:marketFilter');
-    else filterAsked = { filter, spans: asks, written: wordsWrite(words, filter.value) };
+    else if (heard.leftOut.includes('marketFilter')) {
+      flags.push('market_left_out:marketFilter');
+      leftOutAt.push(...asks.map((m) => m.at));
+    } else filterAsked = { filter, spans: asks, written: wordsWrite(words, filter.value) };
   }
   const named: Named[] = [...asked, ...(filterAsked?.spans ?? [])];
   // The split, once what is said of the narratives is set apart: "30%" in "30% in AI" and "half" in
   // "half in big tech" are those narratives' shares, not a split of the plan. Nor are the shares of
   // a mix the text writes, however its clause says it and whoever read it ("100% stocks is too much
   // for me"): they are the mix's, and are not asked about as a split.
-  const shares = withoutMarketShares(
-    text,
-    named.map((m) => m.at),
-  );
+  const shares = withoutMarketShares(text, [...named.map((m) => m.at), ...leftOutAt]);
   const rest = splitIn(
     mixSaid
       ? `${shares.slice(0, mixSaid.at)}${' '.repeat(mixSaid.end - mixSaid.at)}${shares.slice(mixSaid.end)}`
@@ -1719,8 +1746,15 @@ function intakeOf(
           draft.sleeves = made;
           flags.push('sleeves_from_market');
         } else if (alone?.unwritten) {
-          // The model's own link: asked once, with no start, by a question that says the match.
+          // The model's own link: asked once by a question that says the match, with the share the
+          // person wrote as its start, so that a plain yes holds what they wrote.
           ask = { how: 'share', why: ['filter_not_written'] };
+          shareRead = {
+            growthBps: themeBps,
+            dollarYieldBps: 0,
+            goldBps: 0,
+            cashBps: WHOLE_MIX_BPS - themeBps,
+          };
         } else if (unwritten)
           ask = { how: 'split', why: ['filter_not_written', 'theme_shares_unclear'] };
         else if (alone) {

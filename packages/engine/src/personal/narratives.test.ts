@@ -1010,8 +1010,12 @@ describe('a market the lists have no word for, named by the model as a filter (M
         field: 'mix',
         template: 'matchedShare',
         text: 'I read “obesity drugs” as names matched by keyword: GLP-1. How much of the $2,000 for them? Say none if that is not what you meant.',
+        // "I have $2,000 to invest in obesity drugs": the whole, as the start.
+        read: { growthBps: WHOLE, dollarYieldBps: 0, goldBps: 0, cashBps: 0 },
       },
     ]);
+    // A plain yes holds what the person wrote.
+    expect(intake(`${text}\n\nyes`, r).sheet?.sleeves).toEqual([theme('matched-keyword-glp-1')]);
     // "None" leaves it out for good; a share answers it.
     const none = intake(`${text}\n\nnone`, r);
     expect(none.narratives).toEqual([]);
@@ -1158,7 +1162,11 @@ describe('a market the lists have no word for, named by the model as a filter (M
         field: 'mix',
         template: 'matchedShare',
         text: 'Li “seguradoras” como nomes filtrados por indústria: Insurance. Quanto dos US$ 2.000 para eles? Diga nada se não era isso que você quis dizer.',
+        read: { growthBps: WHOLE, dollarYieldBps: 0, goldBps: 0, cashBps: 0 },
       },
+    ]);
+    expect(intake(`${text}\n\nsim`, r).sheet?.sleeves).toEqual([
+      theme('matched-industry-insurance'),
     ]);
     const result = intake(`${text}\n\ntudo`, r);
     expect(result.questions).toEqual([]);

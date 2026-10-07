@@ -1989,6 +1989,25 @@ export function noneSaidIn(message: string, named: readonly string[] = []): bool
   );
 }
 
+// A plain yes or no as the whole of a message: "yes", "that's right", "ok", "sim", "isso"; "no",
+// "that's not what I meant", "não". It says no share of its own, so it is read only against a
+// question that has a start: a yes takes the start, a no leaves it.
+const POLITE = String.raw`(?:[\s,.!]+(?:please|thanks|thank\s+you|por\s+favor|obrigad[oa]))*[\s.!]*$`;
+const YES_SAID = new RegExp(
+  String.raw`^\s*(?:yes|yeah|yep|yup|ok(?:ay)?|sure|right|correct|exactly|confirm(?:ed)?|that(?:['’]s|\s+is)\s+(?:right|correct|it|what\s+i\s+meant)|sim|isso(?:\s+mesmo)?|[eé]\s+isso(?:\s+mesmo)?|correto|certo|exato|exatamente|confirmo)${POLITE}`,
+  'iu',
+);
+const NO_SAID = new RegExp(
+  String.raw`^\s*(?:no|nope|nah|n[aã]o)(?:[\s,.]+(?:that(?:['’]s|\s+is)\s+not\s+(?:it|right|what\s+i\s+meant)|n[aã]o\s+(?:[eé]|era)\s+isso))?${POLITE}`,
+  'iu',
+);
+/**
+ * Whether a message says only yes, or only no: an answer to a question that has a start to say yes
+ * or no to, and no share or mix of its own. Null for any other message.
+ */
+export const yesOrNoSaidIn = (message: string): 'yes' | 'no' | null =>
+  YES_SAID.test(message) ? 'yes' : NO_SAID.test(message) ? 'no' : null;
+
 // An even split as the whole of a message, in answer to how the money is split between the things
 // named: "half each", "50-50", "equally", "meio a meio", "metade para cada".
 const EVEN_SAID = saidAlone(

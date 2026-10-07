@@ -23,6 +23,7 @@ import {
   shareSaidIn,
   splitIn,
   timeFramesIn,
+  yesOrNoSaidIn,
 } from './intake-text';
 import {
   attributeKey,
@@ -3435,11 +3436,11 @@ describe('the second review (Oct 7): every sentence of its scripts, with a model
       ['market_negated:marketFilter'],
     ],
     // Two names in a broad sector, for words that do not write it: the model's own link. Never
-    // taken; one question that says the match.
+    // taken; one question that says the match, with the share the person wrote as its start.
     [
       T1,
       filter('sector', 'Consumer Discretionary', 'my future'),
-      'ask mix/matchedShare',
+      'ask mix/matchedShare start 10000/0/0/0',
       ['mix'],
       ['filter_not_written'],
     ],
@@ -3653,28 +3654,91 @@ describe('the second review (Oct 7): every sentence of its scripts, with a model
     }
   });
 
-  it('b6, a filter the model names for words that do not write its value: the question says the match, and nothing is held until it is answered', () => {
+  it('b6, a filter the model names for words that do not write its value: the question says the match, with the share the person wrote as its start, and nothing is held until it is answered', () => {
     const r = goal(filter('sector', 'Consumer Discretionary', 'my future'));
     const asked = read(T1, r, {});
     expect(asked.sheet).toBeNull();
     expect(asked.flags).not.toContain('sleeves_from_market');
+    // "Invest $5,000 in my future" of $5,000 is the whole: that is the start, not what is held.
     expect(asked.questions).toEqual([
       {
         field: 'mix',
         template: 'matchedShare',
         text: 'I read “my future” as names matched by sector: Consumer Discretionary. How much of the $5,000 for them? Say none if that is not what you meant.',
+        read: STOCKS,
       },
     ]);
-    const none = read(turns(T1, 'none'), r, {});
-    expect(none.narratives).toEqual([]);
-    expect(none.flags).toContain('market_left_out:marketFilter');
-    expect(outcome(none)).toBe('none');
-    // The person's own answer is the second reader: then it is held, and said as matched.
+    // "None", or a plain no, leaves it out for good.
+    for (const words of ['none', 'no', 'No.', "no, that's not what I meant", 'não']) {
+      const none = read(turns(T1, words), r, {});
+      expect(none.narratives, words).toEqual([]);
+      expect(none.flags, words).toEqual(
+        expect.arrayContaining(['none_from_words', 'market_left_out:marketFilter']),
+      );
+      expect(outcome(none), words).toBe('none');
+      expect(fields(none), words).toEqual(['risk']);
+    }
+    // A plain yes holds what the person wrote; the person's own answer is the second reader.
+    for (const words of ['yes', 'Yes, please', "that's right", 'ok', 'sim', 'isso', 'isso mesmo']) {
+      const yes = read(turns(T1, words), r, {});
+      expect(outcome(yes), words).toBe('hold matched-sector-consumer-discretionary@10000');
+      expect(yes.flags, words).toContain('mix_confirmed');
+      expect(yes.questions, words).toEqual([]);
+      expect(yes.readBack, words).toContain(
+        '100% of the plan for names matched by sector: Consumer Discretionary.',
+      );
+    }
+    // A share in the answer replaces the one in the text.
     const half = read(turns(T1, 'half'), r, {});
     expect(outcome(half)).toBe('hold matched-sector-consumer-discretionary@5000+safe_yield@5000');
     expect(half.readBack).toContain(
       '50% of the plan for names matched by sector: Consumer Discretionary.',
     );
+    expect(outcome(read(turns(T1, 'yes, 30%'), r, {}))).toBe(
+      'hold matched-sector-consumer-discretionary@3000+safe_yield@7000',
+    );
+    // A share that is a part of the money is the start too; with no share written there is none,
+    // and then a plain yes answers nothing (the question stays), while a no still leaves it out.
+    const part = `${GOAL}Put $1,000 in my future.`;
+    expect(outcome(read(part, r, {}))).toBe('ask mix/matchedShare start 2000/0/0/8000');
+    expect(outcome(read(turns(part, 'yes'), r, {}))).toBe(
+      'hold matched-sector-consumer-discretionary@2000+safe_yield@8000',
+    );
+    const bare = `${GOAL}I care about my future.`;
+    expect(outcome(read(bare, r, {}))).toBe('ask mix/matchedShare');
+    expect(outcome(read(turns(bare, 'yes'), r, {}))).toBe('ask mix/matchedShare');
+    expect(outcome(read(turns(bare, 'no'), r, {}))).toBe('none');
+    // In Portuguese, the question and the answers.
+    const pt = read(
+      'Quero investir US$ 5.000 no meu futuro por 5 anos',
+      goal({ language: 'pt', ...filter('sector', 'Consumer Discretionary', 'meu futuro') }),
+      {},
+    );
+    expect(pt.questions).toEqual([
+      {
+        field: 'mix',
+        template: 'matchedShare',
+        text: 'Li “meu futuro” como nomes filtrados por setor: Consumer Discretionary. Quanto dos US$ 5.000 para eles? Diga nada se não era isso que você quis dizer.',
+        read: STOCKS,
+      },
+    ]);
+    for (const [words, held] of [
+      ['sim', 'hold matched-sector-consumer-discretionary@10000'],
+      ['isso', 'hold matched-sector-consumer-discretionary@10000'],
+      ['metade', 'hold matched-sector-consumer-discretionary@5000+safe_yield@5000'],
+      ['não', 'none'],
+      ['nada', 'none'],
+    ] as const)
+      expect(
+        outcome(
+          read(
+            turns('Quero investir US$ 5.000 no meu futuro por 5 anos', words),
+            goal({ language: 'pt', ...filter('sector', 'Consumer Discretionary', 'meu futuro') }),
+            {},
+          ),
+        ),
+        words,
+      ).toBe(held);
     // Words that write the value have both readers, and need no question.
     const written = read(
       'I want to invest $5,000 in consumer discretionary names over 5 years',
@@ -3683,6 +3747,64 @@ describe('the second review (Oct 7): every sentence of its scripts, with a model
     );
     expect(outcome(written)).toBe('hold matched-sector-consumer-discretionary@10000');
     expect(written.flags).not.toContain('filter_not_written');
+  });
+
+  it('a plain yes or no answers the one question asked about what is held: yes takes its start, no leaves it out', () => {
+    // The same rule for every question with a start. With no model, a stated mix:
+    const mix = 'I want to grow $5,000 over 5 years, all of it in stocks';
+    expect(outcome(read(mix, null))).toBe('ask mix/mix start 10000/0/0/0');
+    const yes = read(turns(mix, 'yes'), null);
+    expect(outcome(yes)).toBe('hold mix 10000/0/0/0');
+    expect(yes.flags).toContain('mix_confirmed');
+    const no = read(turns(mix, 'no'), null);
+    expect(outcome(no)).toBe('none');
+    expect(no.questions).toEqual([]);
+    // A narrative's share the text states, with no model; the share stays the narrative's once it
+    // is left out, and asks no split of the plan.
+    const share = `${GOAL}Put 30% in AI.`;
+    expect(outcome(read(turns(share, 'sim'), null))).toBe('hold ai@3000+safe_yield@7000');
+    for (const words of ['no', 'none']) {
+      const left = read(turns(share, words), null);
+      expect(outcome(left), words).toBe('none');
+      expect(left.questions, words).toEqual([]);
+      expect(left.flags, words).toContain('market_left_out:ai');
+    }
+    // A mix the person wondered about, with a model.
+    expect(
+      outcome(read(turns(`${GOAL}Should I put all of it in stocks?`, "that's right"), goal(), {})),
+    ).toBe('hold mix 10000/0/0/0');
+    // A question with no start has nothing to say yes to: it stays.
+    const liked = turns(`${GOAL}I like AI.`, 'yes');
+    expect(outcome(read(liked, goal({ markets: ['ai'] }), {}))).toBe('ask mix/marketShare');
+    // The question that asks which of two things stands is not a yes or no question.
+    for (const words of ['yes', 'no'])
+      expect(
+        outcome(read(turns('No stocks in my IRA, so here I want all stocks', words), null)),
+        words,
+      ).toBe('ask mix/holdOrLeaveOut');
+    // With another question open, nothing says which one the word answers: it is not taken.
+    for (const words of ['yes', 'no']) {
+      const two = read(turns(mix, words), null, { goal: 'grow', amountUsd: 5000 });
+      expect(fields(two), words).toEqual(['mix', 'horizonMonths']);
+      expect(two.flags, words).not.toContain('mix_confirmed');
+      expect(two.flags, words).not.toContain('none_from_words');
+    }
+    // And what is no plain yes or no is read as before.
+    for (const [words, said] of [
+      ['yes', 'yes'],
+      ['Yes!', 'yes'],
+      ["that's right, thanks", 'yes'],
+      ['sim, por favor', 'yes'],
+      ['é isso', 'yes'],
+      ['no', 'no'],
+      ['não, não era isso', 'no'],
+      ['yes, half', null],
+      ['yes but only 20%', null],
+      ['no stocks', null],
+      ['not sure', null],
+      ['none', null],
+    ] as const)
+      expect(yesOrNoSaidIn(words), words).toBe(said);
   });
 
   it('b6, a portfolio name must be said as a holding: after a word that picks it, as the shelf writes it, or alone', () => {
