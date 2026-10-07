@@ -53,7 +53,6 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
   await goal.fill('Grow $40 for three years, medium risk');
   await goal.press('Enter');
   await page.getByLabel(en.goal.fields.amount, { exact: true }).fill('40');
-  await page.getByLabel(en.goal.fields.country, { exact: true }).selectOption('BR');
   await page.getByRole('button', { name: en.goal.sheet.build }).click();
   await page.getByRole('link', { name: en.goal.built.done.see }).click();
   await expect(page).toHaveURL(/\/plan\/[^/]+$/);
