@@ -38,6 +38,7 @@ import {
   twoHopAssets,
   twoHopRowsOf,
 } from '../../scripts/risk/lib-split';
+import { selectRawArrayPools } from '../../scripts/risk/raw-arrays/lib';
 
 // PLAN-UNIVERSE RU.11 — the split snapshot on top of pure functions. On the mainnet accounts frozen
 // 2026-10-06T21:21:16Z by `pnpm risk:split-capture --two-hop --only QQQx` (fixtures/risk/route): the dollar and SOL
@@ -1469,6 +1470,38 @@ describe('pnpm risk:split-capture (answers frozen, no network)', () => {
   );
 
   it(
+    '--raw-arrays --only AMZNx <file>: the pools the raw-arrays job reads for that stock, with no two hops',
+    () => {
+      const out = join(tmp, 'raw-arrays-amznx.json.gz');
+      const r = capture('capture-raw-arrays', ['--raw-arrays', '--only', 'AMZNx', out]);
+      expect(r.status, r.stderr).toBe(0);
+      expect(readdirSync(cwd)).toEqual([]);
+      expect(r.summary).toMatchObject({
+        file: out,
+        twoHop: false,
+        rawArrays: true,
+        only: ['AMZNx'],
+      });
+      const got = loadCapture(out);
+      // the job's own selection on the same registry (PLAN-UNIVERSE RU.12), kept to the stock named
+      const want = selectRawArrayPools(registryPools, {
+        tracked: new Set(cap.tracked),
+      }).read.filter((p) => p.assetSymbol === 'AMZNx');
+      expect(want.length).toBeGreaterThan(0);
+      expect(addresses(got.direct)).toEqual(addresses(want));
+      expect([got.twoHop, got.twoHopPools, got.only]).toEqual([false, [], ['AMZNx']]);
+      expect(r.requests[0]?.keys).toEqual(addresses(want));
+      // the setting that stands for --two-hop cannot be combined with it either
+      const both = capture('capture-raw-arrays-two-hop', ['--raw-arrays', out], {
+        RISK_SPLIT_TWO_HOP: '1',
+      });
+      expect(both.status).not.toBe(0);
+      expect(both.requests).toEqual([]);
+    },
+    TIMEOUT,
+  );
+
+  it(
     '--only with no value, or no file beside it, stops with the usage line before anything is read or written',
     () => {
       const out = join(tmp, 'never-written.json.gz');
@@ -1481,13 +1514,15 @@ describe('pnpm risk:split-capture (answers frozen, no network)', () => {
         // --only twice, and an option it does not know, are mistakes in the command
         [out, '--only', 'QQQx', '--only', 'SPYx'],
         [out, '--two-hops'],
+        // the raw-arrays pools are not a two-hop run
+        [out, '--raw-arrays', '--two-hop'],
         [],
       ]) {
         const r = capture('capture-usage', args);
         expect(r.status).not.toBe(0);
         expect(r.status).not.toBe(98);
         expect(r.stderr).toContain(
-          'usage: split-capture.ts <out.json.gz> [--two-hop] [--only SYMBOL,…] (RISK_SPLIT_TWO_HOP=1 in place of --two-hop)',
+          'usage: split-capture.ts <out.json.gz> [--two-hop | --raw-arrays] [--only SYMBOL,…] (RISK_SPLIT_TWO_HOP=1 in place of --two-hop)',
         );
         expect(r.requests).toEqual([]);
         expect(existsSync(out)).toBe(false);
