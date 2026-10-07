@@ -14,12 +14,13 @@ const record = EvmDeploymentRecord.parse(
 );
 
 describe("the guard's Robinhood Chain test network", () => {
-  it('is the record: chain id, factory, beacon, router, cash and every token with its decimals', () => {
+  it('is the record: chain id, factory, beacon, registry, router, cash and every token with its decimals', () => {
     const guard = deploymentsOf('testnet').robinhood;
     if (guard?.family !== 'evm') throw new Error('the guard has no EVM entry for robinhood');
     expect(guard.evmChainId).toBe(record.evmChainId);
     expect(guard.factory.toLowerCase()).toBe(record.contracts.factory);
     expect(guard.beacon.toLowerCase()).toBe(record.contracts.beacon);
+    expect(guard.registry?.toLowerCase()).toBe(record.contracts.registry);
     expect(guard.routers.map((r) => r.toLowerCase())).toEqual(record.routers.map((r) => r.address));
     expect(guard.cash).toBe(record.cash.id);
     expect(
