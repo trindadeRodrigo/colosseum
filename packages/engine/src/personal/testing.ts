@@ -1252,7 +1252,8 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
         if (share !== null) {
           const accounted = sum(counted.map((r) => takes(r) ?? 0));
           say(
-            held >= share - accounted - slack,
+            // Each sentence states its amount to the cent or to the basis point: one point for each.
+            held >= share - accounted - slack - counted.length,
             `${sleeve} holds ${held} bps where its share is ${share}, and its lines account for ${Math.round(accounted)} of the ${share - held} missing`,
           );
         }
