@@ -285,6 +285,11 @@
                                     "type": "string",
                                     "maxLength": 48,
                                     "pattern": "^[A-Za-z][A-Za-z0-9]*(?:[._][A-Za-z0-9]+)*$"
+                                  },
+                                  "pick": {
+                                    "type": "string",
+                                    "maxLength": 48,
+                                    "pattern": "^[A-Za-z][A-Za-z0-9]*(?:[._][A-Za-z0-9]+)*$"
                                   }
                                 },
                                 "required": ["key"],
@@ -325,9 +330,16 @@
                                   "maximum": 1000000
                                 },
                                 "incomeTargetUsdMonthly": {
-                                  "type": "number",
-                                  "exclusiveMinimum": 0,
-                                  "maximum": 1000000
+                                  "anyOf": [
+                                    {
+                                      "type": "number",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 1000000
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
                                 },
                                 "horizonMonths": {
                                   "type": "integer",
@@ -3038,6 +3050,11 @@
                                           "type": "string",
                                           "maxLength": 48,
                                           "pattern": "^[A-Za-z][A-Za-z0-9]*(?:[._][A-Za-z0-9]+)*$"
+                                        },
+                                        "pick": {
+                                          "type": "string",
+                                          "maxLength": 48,
+                                          "pattern": "^[A-Za-z][A-Za-z0-9]*(?:[._][A-Za-z0-9]+)*$"
                                         }
                                       },
                                       "required": ["key"],
@@ -3078,9 +3095,16 @@
                                         "maximum": 1000000
                                       },
                                       "incomeTargetUsdMonthly": {
-                                        "type": "number",
-                                        "exclusiveMinimum": 0,
-                                        "maximum": 1000000
+                                        "anyOf": [
+                                          {
+                                            "type": "number",
+                                            "exclusiveMinimum": 0,
+                                            "maximum": 1000000
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
                                       },
                                       "horizonMonths": {
                                         "type": "integer",
@@ -3436,6 +3460,11 @@
                               "type": "string",
                               "maxLength": 48,
                               "pattern": "^[A-Za-z][A-Za-z0-9]*(?:[._][A-Za-z0-9]+)*$"
+                            },
+                            "pick": {
+                              "type": "string",
+                              "maxLength": 48,
+                              "pattern": "^[A-Za-z][A-Za-z0-9]*(?:[._][A-Za-z0-9]+)*$"
                             }
                           },
                           "required": ["key"],
@@ -3476,9 +3505,16 @@
                             "maximum": 1000000
                           },
                           "incomeTargetUsdMonthly": {
-                            "type": "number",
-                            "exclusiveMinimum": 0,
-                            "maximum": 1000000
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "exclusiveMinimum": 0,
+                                "maximum": 1000000
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "horizonMonths": {
                             "type": "integer",
@@ -3607,6 +3643,11 @@
                                           "type": "string",
                                           "maxLength": 48,
                                           "pattern": "^[A-Za-z][A-Za-z0-9]*(?:[._][A-Za-z0-9]+)*$"
+                                        },
+                                        "pick": {
+                                          "type": "string",
+                                          "maxLength": 48,
+                                          "pattern": "^[A-Za-z][A-Za-z0-9]*(?:[._][A-Za-z0-9]+)*$"
                                         }
                                       },
                                       "required": ["key"],
@@ -3647,9 +3688,16 @@
                                         "maximum": 1000000
                                       },
                                       "incomeTargetUsdMonthly": {
-                                        "type": "number",
-                                        "exclusiveMinimum": 0,
-                                        "maximum": 1000000
+                                        "anyOf": [
+                                          {
+                                            "type": "number",
+                                            "exclusiveMinimum": 0,
+                                            "maximum": 1000000
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
                                       },
                                       "horizonMonths": {
                                         "type": "integer",

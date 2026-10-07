@@ -34,8 +34,9 @@ export const THREAD_LIMITS = {
  * allowed), and the marks that reorder text on the screen (bidi overrides and isolates), which can
  * make a sentence read as another.
  */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: the control characters are what is refused
-const NOT_PLAIN = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F؜‎‏‪-‮⁦-⁩]/;
+const NOT_PLAIN =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: the control characters are what is refused
+  /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u061C\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
 
 /** A person's words: plain text of a bounded length, with something in it. */
 export const ThreadText = z
@@ -58,7 +59,8 @@ export const ThreadKey = z
 export const ThreadFacts = z.strictObject({
   goal: BasketSheet.shape.goal.optional(),
   amountUsd: z.number().positive().max(1_000_000).optional(),
-  incomeTargetUsdMonthly: z.number().positive().max(1_000_000).optional(),
+  /** Null: asked and declined, so it is not asked again. */
+  incomeTargetUsdMonthly: z.number().positive().max(1_000_000).nullable().optional(),
   horizonMonths: z.number().int().min(1).max(480).optional(),
   risk: BasketSheet.shape.risk.optional(),
   chain: ChainId.optional(),
@@ -75,6 +77,8 @@ export const ThreadReply = z.strictObject({
         fact: ThreadKey.optional(),
         /** A reason by its key (`failed`). */
         why: ThreadKey.optional(),
+        /** What the person asked for by name, as the screen's own key for it (`cantPick`). */
+        pick: ThreadKey.optional(),
       }),
     )
     .max(THREAD_LIMITS.sayMax),

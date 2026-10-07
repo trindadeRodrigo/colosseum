@@ -96,8 +96,8 @@ export async function appendTurn(
 
 /**
  * Stores the turns of a thread started before the plan was made (signed out, in the tab), once: only
- * while the plan's thread holds no turn of a person's. A plan made again from the same sheet is the
- * same plan, and its thread is not written a second time.
+ * while the plan's thread holds no turn of a person's. Sent again for the same plan, it is not written
+ * a second time.
  */
 export async function attachThread(
   db: Db,

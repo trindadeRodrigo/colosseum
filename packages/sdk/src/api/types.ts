@@ -59,13 +59,14 @@ export type PostBasketsPersonalizeBody = {
         key: string;
         fact?: string;
         why?: string;
+        pick?: string;
       }[];
       ask: string | null;
       open: string[];
       facts: {
         goal?: 'grow' | 'income' | 'protect';
         amountUsd?: number;
-        incomeTargetUsdMonthly?: number;
+        incomeTargetUsdMonthly?: number | null;
         horizonMonths?: number;
         risk?: 'low' | 'medium' | 'high';
         chain?: 'solana' | 'base' | 'robinhood';
@@ -576,13 +577,14 @@ export type GetBasketsByIdThreadResponse = {
             key: string;
             fact?: string;
             why?: string;
+            pick?: string;
           }[];
           ask: string | null;
           open: string[];
           facts: {
             goal?: 'grow' | 'income' | 'protect';
             amountUsd?: number;
-            incomeTargetUsdMonthly?: number;
+            incomeTargetUsdMonthly?: number | null;
             horizonMonths?: number;
             risk?: 'low' | 'medium' | 'high';
             chain?: 'solana' | 'base' | 'robinhood';
@@ -638,13 +640,14 @@ export type PostBasketsByIdThreadBody = {
       key: string;
       fact?: string;
       why?: string;
+      pick?: string;
     }[];
     ask: string | null;
     open: string[];
     facts: {
       goal?: 'grow' | 'income' | 'protect';
       amountUsd?: number;
-      incomeTargetUsdMonthly?: number;
+      incomeTargetUsdMonthly?: number | null;
       horizonMonths?: number;
       risk?: 'low' | 'medium' | 'high';
       chain?: 'solana' | 'base' | 'robinhood';
@@ -671,13 +674,14 @@ export type PostBasketsByIdThreadResponse = {
             key: string;
             fact?: string;
             why?: string;
+            pick?: string;
           }[];
           ask: string | null;
           open: string[];
           facts: {
             goal?: 'grow' | 'income' | 'protect';
             amountUsd?: number;
-            incomeTargetUsdMonthly?: number;
+            incomeTargetUsdMonthly?: number | null;
             horizonMonths?: number;
             risk?: 'low' | 'medium' | 'high';
             chain?: 'solana' | 'base' | 'robinhood';

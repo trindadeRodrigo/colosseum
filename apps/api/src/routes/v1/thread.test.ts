@@ -196,7 +196,7 @@ describe('a plan’s thread', () => {
       ['no words', { text: '   ', reply: reply() }],
       ['too many words', { text: 'x'.repeat(THREAD_LIMITS.textMax + 1), reply: reply() }],
       ['a control character', { text: 'bell\u0007', reply: reply() }],
-      ['a direction override', { text: 'pay ‮evil', reply: reply() }],
+      ['a direction override', { text: 'pay \u202eevil', reply: reply() }],
       [
         'a sentence for a key',
         { text: 'hi', reply: reply({ say: [{ key: 'You will earn 8% a year' }] }) },
@@ -259,26 +259,26 @@ describe('a thread begun before the plan was the person’s own', () => {
     ]);
   });
 
-  it('is stored once: the same plan made again keeps the thread it has', async () => {
+  it('is stored once for a plan, and a plan made again is another plan with the conversation that led to it', async () => {
     const who = await someone();
     const first = await make(who, 6_108, { thread: started });
     await say(who, first.id, { text: 'and later, this', reply: reply() });
-    const kept = [
-      'person: I want to grow 6,107 dollars',
-      'app',
-      'person: five years',
-      'app',
-      'plan_built',
-      'person: and later, this',
-      'app',
-    ];
-    // the same sheet is the same plan; the conversation sent again adds nothing to it
+    const led = ['person: I want to grow 6,107 dollars', 'app', 'person: five years', 'app'];
+    const kept = [...led, 'plan_built', 'person: and later, this', 'app'];
+    // a plan made again is a new plan: it takes the conversation sent with it, and the first plan's
+    // thread is not written to
     const again = await make(who, 6_108, {
       thread: [...started, { text: 'a third', reply: reply() }],
     });
-    expect(again.id).toBe(first.id);
+    expect(again.id).not.toBe(first.id);
+    expect(lines(await thread(who, again.id))).toEqual([
+      ...led,
+      'person: a third',
+      'app',
+      'plan_built',
+    ]);
     expect(lines(await thread(who, first.id))).toEqual(kept);
-    // and the store itself writes a thread that has a person's turn no second time
+    // and the store writes a thread that has a person's turn no second time
     await attachThread(data.db, first.id, ThreadStart.parse(started));
     expect(lines(await thread(who, first.id))).toEqual(kept);
   });
@@ -289,7 +289,7 @@ describe('a thread begun before the plan was the person’s own', () => {
       sheet: sheet({ amountUsd: 6_109 }),
       thread: [
         { text: 'fine', reply: reply() },
-        { text: 'bad ‮', reply: reply() },
+        { text: 'bad \u202e', reply: reply() },
       ],
     });
     expect(bad.statusCode).toBe(400);

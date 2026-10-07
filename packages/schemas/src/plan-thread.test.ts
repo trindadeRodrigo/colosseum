@@ -39,9 +39,9 @@ describe('a person’s words', () => {
       'escape\u001b[31m',
       'a carriage\rreturn',
       // the marks that reorder what is read: an override, an isolate, a mark
-      'pay ‮evil‬',
-      'pay ⁦evil⁩',
-      'left‏right',
+      'pay \u202eevil\u202c',
+      'pay \u2066evil\u2069',
+      'left\u200fright',
       'c1 \u0085 control',
     ])
       expect(ThreadText.safeParse(text).success, JSON.stringify(text).slice(0, 24)).toBe(false);
@@ -52,6 +52,17 @@ describe('the app’s reply', () => {
   it('is keys and the sheet’s own facts', () => {
     expect(ThreadReply.parse(reply)).toEqual(reply);
     expect(ThreadReply.safeParse({ say: [], ask: null, open: [], facts: {} }).success).toBe(true);
+    // a stock asked for by name is said back by the screen's key for it, and an income target the
+    // person declined to give is null: asked, and not asked again
+    const more = {
+      ...reply,
+      say: [{ key: 'cantPick', pick: 'nvidia' }],
+      facts: { goal: 'income', incomeTargetUsdMonthly: null },
+    };
+    expect(ThreadReply.parse(more)).toEqual(more);
+    expect(
+      ThreadReply.safeParse({ ...reply, say: [{ key: 'cantPick', pick: 'Buy NVDA now' }] }).success,
+    ).toBe(false);
   });
 
   it('has no room for a sentence or a figure with its unit: a key has no space and no sign', () => {
