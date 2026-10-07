@@ -208,7 +208,36 @@ export type IntakeRequest = {
   answersThen: IntakeAnswers[];
   /** The answer to what is held, by a press: a mix, or null for none. Left out: not answered. */
   mix?: HeldMix | null;
+  /**
+   * What our server's own sheet already held when earlier messages were left out of the request: its
+   * fields, as it sent them, under the answers. Nothing in it is this app's or the person's typing.
+   */
+  base?: Record<string, unknown>;
 };
+
+/** The fields of a confirmed sheet that the route takes back as answers. */
+const BASE_KEYS = [
+  'goal',
+  'amountUsd',
+  'incomeTargetUsdMonthly',
+  'horizonMonths',
+  'horizonOpen',
+  'risk',
+  'currency',
+  'themes',
+  'obligations',
+  'sleeves',
+  'limits',
+  'mix',
+] as const;
+
+/** What a confirmed sheet holds, as answers: sent in place of the messages it was read from. */
+export function baseOf(sheet: BasketSheet): Record<string, unknown> {
+  const from = sheet as unknown as Record<string, unknown>;
+  return Object.fromEntries(
+    BASE_KEYS.filter((key) => from[key] !== undefined).map((key) => [key, from[key]]),
+  );
+}
 
 export async function readIntake(apiFetch: ApiFetch, ask: IntakeRequest): Promise<IntakeOutcome> {
   const text = ask.text.trim();
@@ -230,8 +259,14 @@ export async function readIntake(apiFetch: ApiFetch, ask: IntakeRequest): Promis
         text,
         language: ask.language,
         ...(ask.followUps.length > 0 ? { followUps: ask.followUps, answersThen: then.data } : {}),
-        ...(Object.keys(answers.data).length > 0 || held !== undefined
-          ? { answers: { ...answers.data, ...(held !== undefined ? { mix: held } : {}) } }
+        ...(Object.keys(answers.data).length > 0 || held !== undefined || ask.base
+          ? {
+              answers: {
+                ...ask.base,
+                ...answers.data,
+                ...(held !== undefined ? { mix: held } : {}),
+              },
+            }
           : {}),
       }),
     });

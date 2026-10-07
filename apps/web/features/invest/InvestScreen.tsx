@@ -52,7 +52,7 @@ import {
   validOf,
 } from './conversation';
 import { takeWay } from './handoff';
-import { IntakeAnswers, MAX_FOLLOW_UPS } from './intake';
+import { IntakeAnswers } from './intake';
 import { intakeConversation } from './intake-conversation';
 import { wayChange } from './ways';
 
@@ -71,6 +71,9 @@ import { wayChange } from './ways';
 //
 // Someone signed out can talk and see a plan (POST /v1/baskets/propose asks for no sign-in). Investing
 // asks them to sign in, in the dialog, and the plan is built again as their own.
+
+/** The most of a person's own messages kept with the sheet: a conversation has no end at ten. */
+const MAX_WORDS = 200;
 
 type Plan = { id: string; proposal: BasketProposal; rollUp: RiskRollUp | null; own: boolean };
 /**
@@ -340,12 +343,12 @@ export function InvestScreen() {
     // Who read it, for the people building this (the console, and a line in development).
     if (reply.reader) console.info('[invest] read by', reply.reader.by, reply.reader.why ?? '');
     // Words that changed nothing build nothing again.
-    const changed = !reply.say.some((x) => ['held', 'unfit', 'failed', 'full'].includes(x.key));
+    const changed = !reply.say.some((x) => ['held', 'unfit', 'failed'].includes(x.key));
     // The person's own messages are kept with the sheet: a reader that reads the whole conversation
     // (the guided intake, once they sign in) is sent them again.
     const kept =
       input.kind === 'text' && !reply.sheet.intake && !reply.say.some((x) => x.key === 'failed')
-        ? [...(from?.words ?? []), input.text.trim()].slice(0, MAX_FOLLOW_UPS + 1)
+        ? [...(from?.words ?? []), input.text.trim()].slice(-MAX_WORDS)
         : null;
     setSheet(kept ? { ...reply.sheet, words: kept } : reply.sheet);
     // The limits on the page are no longer the ones a plan was built for.
@@ -609,17 +612,10 @@ export function InvestScreen() {
     wasOpen.current = paneOpen;
   }, [paneOpen]);
 
-  // A development build, or a browser where `tf-debug` is set by hand: who read each turn is shown.
+  // A development build only: who read each turn is shown under it. A production build has no way
+  // to turn this on.
   const [debug, setDebug] = useState(false);
-  useEffect(() => {
-    let flag = false;
-    try {
-      flag = window.localStorage.getItem('tf-debug') === '1';
-    } catch {
-      // no storage: no flag
-    }
-    setDebug(process.env.NODE_ENV === 'development' || flag);
-  }, []);
+  useEffect(() => setDebug(process.env.NODE_ENV === 'development'), []);
 
   const lastTurn = turns[turns.length - 1];
   const open = lastTurn?.who === 'app' ? lastTurn : null;
@@ -750,8 +746,6 @@ export function InvestScreen() {
         return w.say.riskTop;
       case 'riskBottom':
         return w.say.riskBottom;
-      case 'full':
-        return w.say.full;
       case 'simple':
         return w.say.simple;
       case 'notAnswer':
@@ -783,14 +777,15 @@ export function InvestScreen() {
   return (
     <div
       data-ui="invest-screen"
-      className="flex flex-col gap-6 lg:grid lg:h-[calc(100dvh-13rem)] lg:min-h-[32rem] lg:grid-cols-12 lg:gap-x-10"
+      className="flex flex-col gap-6 lg:grid lg:grid-cols-12 lg:items-start lg:gap-x-10"
     >
-      {/* Left: the conversation. It scrolls on its own beside the plan. */}
+      {/* Left: the conversation, held in view at the height of the window with its thread scrolling
+          inside it. The plan beside it has no scroll of its own: it scrolls with the page. */}
       <section
         data-ui="invest-chat"
         aria-label={w.chat}
         inert={paneOpen}
-        className="flex min-h-0 flex-col gap-4 lg:col-span-5"
+        className="flex min-h-0 flex-col gap-4 lg:sticky lg:top-24 lg:col-span-5 lg:h-[calc(100dvh-13rem)] lg:min-h-[32rem]"
       >
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <h1 className={PAGE_TITLE}>{t.goal.title}</h1>
@@ -1040,9 +1035,9 @@ export function InvestScreen() {
           if (paneOpen && e.key === 'Escape') setPaneOpen(false);
         }}
         className={cn(
-          'min-h-0 flex-col gap-6 lg:col-span-7 lg:flex lg:overflow-y-auto lg:border-l lg:border-border lg:pl-10',
+          'min-h-0 flex-col gap-6 lg:col-span-7 lg:flex lg:border-l lg:border-border lg:pl-10',
           paneOpen
-            ? 'fixed inset-0 z-40 flex overflow-y-auto bg-background p-4 pt-28 lg:static lg:z-auto lg:p-0 lg:pt-0'
+            ? 'fixed inset-0 z-40 flex overflow-y-auto bg-background p-4 pt-28 lg:static lg:z-auto lg:overflow-visible lg:p-0 lg:pt-0'
             : 'hidden',
         )}
       >
@@ -1426,14 +1421,14 @@ export function restoreDraft(raw: string | null): { turns: Turn[]; sheet: Sheet 
     sheet: {
       fields: cleanFields,
       skipped: skipped.filter(isFact),
-      ...(Array.isArray(words) && said.length === words.length && said.length <= MAX_FOLLOW_UPS + 1
+      ...(Array.isArray(words) && said.length === words.length && said.length <= MAX_WORDS
         ? { words: said }
         : {}),
       ...(answers?.success && then?.success && said.length > 0
         ? {
             intake: {
               answers: answers.data,
-              answersThen: then.data.slice(0, MAX_FOLLOW_UPS),
+              answersThen: then.data.slice(0, MAX_WORDS),
               sheet: null,
               question: null,
               mix: null,

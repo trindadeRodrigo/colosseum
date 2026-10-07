@@ -57,6 +57,11 @@ export type IntakeState = {
   held?: HeldMix | null;
   /** The read-back our server last gave, to say only what is new of the next one. */
   readBack?: string[];
+  /**
+   * Where the last read-back stood: how many of the person's messages it had read, and what its
+   * sheet held. A conversation longer than the route takes is sent from here on (intake.ts, `base`).
+   */
+  absorbed?: { upTo: number; answers: Record<string, unknown> };
 };
 
 /** A quick reply: what it sends, and what it is said by. The screen has the words. */
@@ -120,8 +125,6 @@ export type Say =
    * said back. Shown as given. Never kept in the tab's storage, and never a model's words.
    */
   | { key: 'said'; lines: string[] }
-  /** The conversation has as many messages as a reader takes: a fact is changed by a tap. */
-  | { key: 'full' }
   /** The guided intake did not answer: this turn was read by the rules instead. Said once. */
   | { key: 'simple' }
   /** The words were not an answer our server could take to the question that is open. */

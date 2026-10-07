@@ -1,8 +1,10 @@
 import type { BasketSheet, ChainId } from '@colosseum/schemas';
 import type { Lang } from '../../i18n';
 import type { ApiFetch } from '../account/person';
+import { preRead } from '../goal/pre-read';
 import { fieldsOfDraft, type SheetFields } from '../goal/sheet';
 import {
+  affirmed,
   type Conversation,
   EMPTY,
   FACTS,
@@ -19,6 +21,7 @@ import {
   typedAnswer,
 } from './conversation';
 import {
+  baseOf,
   type IntakeAnswers,
   type IntakeQuestion,
   type IntakeReading,
@@ -49,6 +52,31 @@ const FIELD_OF: Record<Fact, QuestionField> = {
 const FACT_OF = Object.fromEntries(
   (Object.keys(FIELD_OF) as Fact[]).map((fact) => [FIELD_OF[fact], fact]),
 ) as Partial<Record<QuestionField, Fact>>;
+
+/**
+ * What a message speaks of, as the keys of the answers it then decides: read by this app's own rules
+ * over the words (never sent anywhere), and `mix` where it names what to hold or a share.
+ */
+function spokenOf(text: string, lang: Lang): Set<string> {
+  const words = preRead(affirmed(text, lang) || text);
+  const keys = new Set<string>();
+  if (words.goal) keys.add('goal');
+  if (words.amountUsd != null) keys.add('amountUsd');
+  if (words.incomeTargetUsdMonthly != null) keys.add('incomeTargetUsdMonthly');
+  if (words.horizonMonths != null) {
+    keys.add('horizonMonths');
+    keys.add('horizonOpen');
+  }
+  if (words.risk || /\b(risk|risco|safer|riskier|segur\w+|arriscad\w+)\b/i.test(text))
+    keys.add('risk');
+  if (
+    /%|\b(stocks?|shares|equit\w+|crypto|cash|gold|bonds?|yield|ações|acoes|cripto|caixa|ouro|renda fixa)\b/i.test(
+      text,
+    )
+  )
+    keys.add('mix');
+  return keys;
+}
 
 /** The quick reply that says the goal has no date. */
 export const NO_DATE = 'open';
@@ -252,23 +280,57 @@ export function intakeConversation(
         const bare = asked && /^[^\p{L}]*$/u.test(text) ? typedAnswer(asked, text, lang) : null;
         if (asked && bare !== null)
           state = { ...state, answers: withAnswer(state.answers, asked, bare) };
-        else if (words.length === 0) words = [text];
-        else if (words.length > MAX_FOLLOW_UPS) return local(held, [{ key: 'full' }], state);
         else {
-          words = [...words, text];
-          state = { ...state, answersThen: [...state.answersThen, state.answers] };
+          // What the words speak of is the words' to decide: an answer pressed earlier for the
+          // same fact no longer stands over them ("High" pressed, then "make it low risk").
+          const spoken = spokenOf(text, lang);
+          const answers = Object.fromEntries(
+            Object.entries(state.answers).filter(([key]) => !spoken.has(key)),
+          ) as IntakeAnswers;
+          const { held: pressed, ...rest } = state;
+          state = spoken.has('mix') ? { ...rest, answers } : { ...rest, answers, held: pressed };
+          if (state.held === undefined) delete state.held;
+          if (words.length === 0) words = [text];
+          else {
+            words = [...words, text];
+            // one for each later message, also for those a rules reader's turns left none for
+            const then = words.slice(1, -1).map((_, i) => state.answersThen[i] ?? {});
+            state = { ...state, answersThen: [...then, state.answers] };
+          }
         }
       }
       if (words.length === 0) return local(held, [{ key: 'held' }], state);
 
+      // A conversation has no end at ten messages. The route takes ten later ones: past that, the
+      // messages our server had already read into its last read-back are left out of the request
+      // (they stay on the screen), and what that sheet held goes in their place as answers. A
+      // stretch longer than ten with no read-back in it keeps its last ten.
+      const later = words.slice(1);
+      const long = later.length > MAX_FOLLOW_UPS;
+      const from = long
+        ? Math.max((state.absorbed?.upTo ?? 1) - 1, later.length - MAX_FOLLOW_UPS)
+        : 0;
+      const spokenNow = input.kind === 'text' ? spokenOf(input.text, lang) : new Set<string>();
+      const base =
+        long && state.absorbed && from >= state.absorbed.upTo - 1
+          ? Object.fromEntries(
+              // a fact the newest message speaks of is the message's to decide
+              Object.entries(state.absorbed.answers).filter(
+                ([key]) =>
+                  !spokenNow.has(key) &&
+                  !(spokenNow.has('mix') && (key === 'sleeves' || key === 'themes')),
+              ),
+            )
+          : undefined;
       const outcome = await readIntake(apiFetch, {
         text: words[0] as string,
         language: lang,
-        followUps: words.slice(1),
-        // one for each later message
-        answersThen: words.slice(1).map((_, i) => state.answersThen[i] ?? {}),
+        followUps: later.slice(from),
+        // one for each later message that is sent
+        answersThen: later.map((_, i) => state.answersThen[i] ?? {}).slice(from),
         answers: state.answers,
         ...(state.held !== undefined ? { mix: state.held } : {}),
+        ...(base ? { base } : {}),
       });
       if (
         outcome.kind === 'unavailable' ||
@@ -317,6 +379,12 @@ export function intakeConversation(
         answersThen: state.answersThen,
         ...(state.held !== undefined ? { held: state.held } : {}),
         ...(reading.readBack ? { readBack: reading.readBack } : {}),
+        // where this read-back stands, or the last one did
+        ...(reading.sheet
+          ? { absorbed: { upTo: words.length, answers: baseOf(reading.sheet) } }
+          : state.absorbed
+            ? { absorbed: state.absorbed }
+            : {}),
         sheet: reading.sheet,
         question,
         mix: reading.mix,

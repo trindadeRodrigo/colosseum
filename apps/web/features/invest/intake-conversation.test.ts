@@ -97,7 +97,7 @@ describe('a turn of the guided intake', () => {
     const a = await t.turn({ kind: 'text', text: GOAL }, null);
     const b = await t.turn({ kind: 'text', text: 'put 30% in AI' }, a.sheet);
     const c = await t.turn({ kind: 'answer', fact: 'risk', value: 'high' }, b.sheet);
-    await t.turn({ kind: 'text', text: 'make it safer' }, c.sheet);
+    await t.turn({ kind: 'text', text: 'and it is for my daughter' }, c.sheet);
     expect(s.posted[1]).toEqual({
       text: GOAL,
       language: 'en',
@@ -107,7 +107,7 @@ describe('a turn of the guided intake', () => {
     expect(s.posted[3]).toEqual({
       text: GOAL,
       language: 'en',
-      followUps: ['put 30% in AI', 'make it safer'],
+      followUps: ['put 30% in AI', 'and it is for my daughter'],
       // the first was said before the risk was answered, the second after
       answersThen: [{}, { risk: 'high' }],
       answers: { risk: 'high' },
@@ -349,21 +349,86 @@ describe('where the guided intake cannot read', () => {
     expect(s.posted).toEqual([]);
   });
 
-  it('stops at the number of messages the route takes, and says a tap is the way on', async () => {
+  it('has no end at ten messages: past that, what the last read-back held is sent in place of the messages it read', async () => {
+    const held = {
+      ...SHEET,
+      limits: { cannotHold: { classes: ['gold'] } },
+      sleeves: [
+        { kind: 'theme', theme: 'ai', shareBps: 3000 },
+        { kind: 'safe_yield', shareBps: 7000 },
+      ],
+    };
+    const whole = answer({ sheet: held, readBack: ['You want to grow $2,000.'] });
+    const open = answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT] });
+    // the read-back comes at the sixth message; everything else asks on
+    const s = server(open, open, open, open, open, whole, open);
+    const t = talk(s.api);
+    let reply = await t.turn({ kind: 'text', text: GOAL }, null);
+    const said: string[] = [];
+    for (let i = 1; i < 30; i++) {
+      reply = await t.turn({ kind: 'text', text: `and another thing, number ${i}` }, reply.sheet);
+      said.push(...reply.say.map((x) => x.key));
+      const body = s.posted.at(-1) as { followUps: string[]; answersThen: unknown[] };
+      // never more than the route takes, and one set of answers for each message sent
+      expect(body.followUps.length, String(i)).toBeLessThanOrEqual(10);
+      expect(body.answersThen, String(i)).toHaveLength(body.followUps.length);
+      expect(body.followUps.at(-1)).toBe(`and another thing, number ${i}`);
+    }
+    // thirty turns, every one read, and never a word about a limit
+    expect(s.posted).toHaveLength(30);
+    expect(said).not.toContain('full');
+    expect(JSON.stringify(dictionary('en').talk.say)).not.toMatch(/as long as I can read/);
+    // the sixth message had the read-back: once the conversation is past ten, the request starts
+    // after it, with what its sheet held as answers
+    const last = s.posted.at(-1) as { text: string; followUps: string[]; answers: unknown };
+    expect(last.text).toBe(GOAL);
+    expect(last.followUps[0]).toBe('and another thing, number 20');
+    expect(s.posted[11]).toMatchObject({
+      followUps: [6, 7, 8, 9, 10, 11].map((i) => `and another thing, number ${i}`),
+      answers: {
+        goal: 'grow',
+        amountUsd: 2000,
+        horizonMonths: 60,
+        risk: 'high',
+        limits: held.limits,
+        sleeves: held.sleeves,
+      },
+    });
+    // every message is still kept with the sheet, and stays on the screen
+    expect(reply.sheet.words).toHaveLength(30);
+  });
+
+  it('keeps the last ten of a stretch with no read-back in it, and says nothing of it', async () => {
     const open = answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT] });
     const s = server(open);
     const t = talk(s.api);
-    let sheet: Sheet = (await t.turn({ kind: 'text', text: GOAL }, null)).sheet;
-    for (let i = 0; i < 10; i++)
-      sheet = (await t.turn({ kind: 'text', text: `more ${i}` }, sheet)).sheet;
-    expect(s.posted).toHaveLength(11);
-    expect(s.posted.at(-1)?.followUps).toHaveLength(10);
-    const full = await t.turn({ kind: 'text', text: 'one more' }, sheet);
-    expect(full.say).toEqual([{ key: 'full' }]);
-    expect(s.posted).toHaveLength(11);
-    // an answer by a tap still goes through
-    await t.turn({ kind: 'answer', fact: 'amount', value: '1000' }, full.sheet);
-    expect(s.posted).toHaveLength(12);
+    let reply = await t.turn({ kind: 'text', text: GOAL }, null);
+    for (let i = 1; i <= 14; i++)
+      reply = await t.turn({ kind: 'text', text: `message ${i}` }, reply.sheet);
+    const last = s.posted.at(-1) as { followUps: string[]; answers?: unknown };
+    expect(last.followUps).toEqual([5, 6, 7, 8, 9, 10, 11, 12, 13, 14].map((i) => `message ${i}`));
+    expect(last.answers).toBeUndefined();
+    expect(reply.say.map((x) => x.key)).not.toContain('full');
+  });
+
+  it('lets the words decide a fact they speak of, over an answer pressed earlier for it', async () => {
+    const open = answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT] });
+    const s = server(open);
+    const t = talk(s.api);
+    const a = await t.turn({ kind: 'text', text: GOAL }, null);
+    const b = await t.turn({ kind: 'answer', fact: 'risk', value: 'high' }, a.sheet);
+    const c = await t.turn({ kind: 'answer', fact: 'amount', value: '1000' }, b.sheet);
+    await t.turn({ kind: 'text', text: 'make it low risk' }, c.sheet);
+    // the amount pressed still stands; the risk is the message's to say
+    expect(s.posted.at(-1)).toMatchObject({
+      followUps: ['make it low risk'],
+      answers: { amountUsd: 1000 },
+    });
+    expect((s.posted.at(-1) as { answers: object }).answers).not.toHaveProperty('risk');
+    // and a share pressed for what is held gives way to words that name what to hold
+    const d = await t.turn({ kind: 'hold', shareBps: 5000 }, c.sheet);
+    await t.turn({ kind: 'text', text: 'all in stocks' }, d.sheet);
+    expect((s.posted.at(-1) as { answers: object }).answers).not.toHaveProperty('mix');
   });
 });
 

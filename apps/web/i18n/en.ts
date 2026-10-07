@@ -711,8 +711,6 @@ export const en = {
       simple: 'The assistant didn’t answer, so I’m reading this the simple way for now.',
       notAnswer:
         'I couldn’t take that as an answer to this. Pick one below, or say it another way.',
-      /** As many messages as a reader takes: the way on is a tap, or a new conversation. */
-      full: 'This conversation is as long as I can read. Tap a limit on the plan to change it.',
       building: 'Building your plan from these limits…',
       built: 'The plan is on the right. Review it and invest, or change anything.',
       /** Several plans were made: they are side by side, and one is picked. */
@@ -1067,6 +1065,14 @@ export const en = {
       /** Said once, quietly, on a candidate not live: no plate on the card. */
       sample: { sandbox: 'Sample figures · test network', mock: 'Sample figures' },
       /** The two or three figures a card leads with; the rest is in its Details. */
+      /** The figures a candidate leads with, each with its label over it. */
+      figures: {
+        yield: 'Yield observed, a year',
+        exit: 'Cost to sell it all',
+        fall: 'In a bad fall',
+        lost: (amount: string) => `about −${amount}`,
+        noLoss: 'no loss counted',
+      },
       headline: {
         paidOf: (paid: number, all: number) =>
           `${paid} of ${all} months of withdrawals paid at the rates observed.`,

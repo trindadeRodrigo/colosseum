@@ -366,19 +366,25 @@ describe('what Thom’s conversation of Oct 7 showed', () => {
     }
   });
 
-  it('shows who read each turn only to the people building this', async () => {
+  it('shows who read each turn in a development build only: a production build has no way to turn it on', async () => {
     api(answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT], method: 'rules' }));
-    const host = await screen();
-    await say(host, 'grow it');
-    expect(host.querySelector('[data-ui="invest-reader"]')).toBeNull();
-    await unmountAll();
-    window.sessionStorage.clear();
+    // a flag in the browser changes nothing
     window.localStorage.setItem('tf-debug', '1');
-    const debug = await screen();
-    await say(debug, 'grow it');
-    expect(find(debug, '[data-ui="invest-reader"]').textContent).toBe(
+    for (const mode of ['production', 'test']) {
+      vi.stubEnv('NODE_ENV', mode);
+      const host = await screen();
+      await say(host, 'grow it');
+      expect(host.querySelector('[data-ui="invest-reader"]'), mode).toBeNull();
+      await unmountAll();
+      window.sessionStorage.clear();
+    }
+    vi.stubEnv('NODE_ENV', 'development');
+    const dev = await screen();
+    await say(dev, 'grow it');
+    expect(find(dev, '[data-ui="invest-reader"]').textContent).toBe(
       '[server rules: model_not_configured]',
     );
+    vi.unstubAllEnvs();
   });
 });
 

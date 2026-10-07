@@ -611,7 +611,6 @@ export const pt: Dictionary = {
       simple: 'O assistente não respondeu, então por ora estou lendo do jeito simples.',
       notAnswer:
         'Não consegui usar isso como resposta. Escolha uma abaixo, ou diga de outro jeito.',
-      full: 'Esta conversa já tem o tamanho que eu consigo ler. Toque em um limite do plano para mudar.',
       building: 'Montando seu plano com estes limites…',
       built: 'O plano está à direita. Revise e invista, ou mude o que quiser.',
       builtChoice:
@@ -924,6 +923,13 @@ export const pt: Dictionary = {
       },
       see: (name: string) => `Tudo de ${name}`,
       sample: { sandbox: 'Números de exemplo · rede de teste', mock: 'Números de exemplo' },
+      figures: {
+        yield: 'Rendimento observado, ao ano',
+        exit: 'Custo para vender tudo',
+        fall: 'Numa queda forte',
+        lost: (amount: string) => `cerca de −${amount}`,
+        noLoss: 'nenhuma perda contada',
+      },
       headline: {
         paidOf: (paid: number, all: number) =>
           `${paid} de ${all} meses de saques pagos às taxas observadas.`,

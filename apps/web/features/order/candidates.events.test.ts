@@ -78,12 +78,26 @@ describe('the candidates, side by side', () => {
   it('gives each its headline from the engine’s figures, its bar as a picture, and its scorecard on pins', async () => {
     const host = await shown();
     const [cover, , carry] = cards(host) as [HTMLElement, HTMLElement, HTMLElement];
-    // what most of it is in, and its own bad-fall figure
-    expect(find(cover, '[data-ui="candidate-headline"]').textContent).toBe(
-      en.plan.answer.inFall('60%', 'stocks', '$1,000'),
+    // three figures in a row, the engine's own: the yield and the selling cost on their pins, and
+    // what a bad fall would cost
+    const figure = (card: HTMLElement, key: string) =>
+      find(card, `[data-ui="candidate-figures"] [data-figure="${key}"]`);
+    expect(
+      [...cover.querySelectorAll('[data-ui="candidate-figures"] [data-figure]')].map((d) =>
+        d.getAttribute('data-figure'),
+      ),
+    ).toEqual(['yield', 'exit', 'fall']);
+    expect(figure(cover, 'yield').textContent).toContain('2%');
+    expect(figure(cover, 'yield').querySelector('[data-ui="pin"]')).not.toBeNull();
+    expect(figure(cover, 'exit').textContent).toContain('0.1%');
+    expect(figure(cover, 'exit').querySelector('[data-ui="pin"]')).not.toBeNull();
+    expect(figure(cover, 'fall').textContent).toBe(
+      `${words.figures.fall}${words.figures.lost('$1,000')}`,
     );
-    expect(find(carry, '[data-ui="candidate-headline"]').textContent).toBe(
-      en.plan.answer.inFall('60%', 'stocks', '$3,000'),
+    expect(figure(carry, 'fall').textContent).toContain('−$3,000');
+    // one row a candidate: the name, the aim and the button are not squeezed into columns
+    expect(find(host, '[data-ui="plan-candidates"] > div.grid').className).not.toMatch(
+      /(^|\s)(sm|md|lg|xl|2xl):grid-cols/,
     );
     const bar = find(cover, '[data-ui="candidate-bar"] [role="img"]');
     expect(bar.getAttribute('aria-label')).toMatch(/, 60%; .*, 40%$/);
@@ -142,12 +156,15 @@ describe('the candidates, side by side', () => {
       },
     });
     const cover = cards(host)[0] as HTMLElement;
-    const headline = find(cover, '[data-ui="candidate-headline"]');
-    expect(headline.textContent).toContain(words.headline.paidOf(30, 36));
-    expect(headline.textContent).toContain(
-      words.headline.worstMonths(words.stress.yields_fall('2%'), 24, 36),
+    // the months paid is a figure of its own, on the yield's pin, and the stress is in the scorecard
+    const paid = find(cover, '[data-ui="candidate-figures"] [data-figure="paid"]');
+    expect(paid.textContent).toContain(words.score.of(30, 36));
+    expect(paid.querySelector('[data-ui="pin"]')).not.toBeNull();
+    expect(find(cover, '[data-ui="candidate-score"]').textContent).toContain(
+      words.score.paidUnder(words.stress.yields_fall('2%')),
     );
-    expect(headline.querySelector('[data-ui="pin"]')).not.toBeNull();
+    // with a gap to close, what closes it is in view, not behind a fold
+    expect(find<HTMLDetailsElement>(cover, '[data-ui="candidate-details"]').open).toBe(true);
     // the way is the engine's own sentence, on each candidate that has it
     const ways = [...host.querySelectorAll('[data-ui="candidate-ways"] button')];
     expect(ways).toHaveLength(2);
