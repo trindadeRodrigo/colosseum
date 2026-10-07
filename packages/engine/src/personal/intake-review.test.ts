@@ -719,6 +719,104 @@ describe('a refusal the text writes is never lost: it is taken from the text, wi
     expect(commodities.narratives).toEqual([]);
   });
 
+  // The ways a person says a refusal that the check did not read at all: with a model its correct
+  // `cannotHold` was dropped as not written (`not_in_text`), and with none nothing read it.
+  const SAID_OTHERWISE: [string, ('stock' | 'crypto' | 'gold')[], boolean][] = [
+    ["I don't want stocks.", ['stock'], false],
+    ["I don't want any stocks.", ['stock'], false],
+    ['I do not want any crypto.', ['crypto'], false],
+    ['I do not want to hold stocks.', ['stock'], false],
+    ["I don't want to invest in stocks.", ['stock'], false],
+    ["I don't want to be in stocks.", ['stock'], false],
+    ["I don't want stocks or crypto.", ['crypto', 'stock'], false],
+    ["I won't touch crypto.", ['crypto'], false],
+    ["I can't hold stocks.", ['stock'], false],
+    ['I am not allowed to own stocks.', ['stock'], false],
+    ['Never crypto.', ['crypto'], false],
+    ['Keep me out of stocks.', ['stock'], false],
+    ['I want to stay away from crypto.', ['crypto'], false],
+    ['Neither stocks nor crypto.', ['crypto', 'stock'], false],
+    ["I don't want bonds nor stocks.", ['stock'], false],
+    ['Nem ações nem cripto.', ['crypto', 'stock'], false],
+    ['Não quero ter nenhuma ação.', ['stock'], false],
+    ['Quero ficar longe de cripto.', ['crypto'], false],
+    ['Não posso ter ações.', ['stock'], false],
+    ["I don't want any lending.", [], true],
+  ];
+
+  it('reads the ways a person says a refusal: not wanting it, not being able to hold it, keeping out of it', () => {
+    for (const [sentence, classes, noCredit] of SAID_OTHERWISE) {
+      const limits = {
+        ...(noCredit ? { creditTolerance: 'none' } : {}),
+        ...(classes.length > 0 ? { cannotHold: { classes } } : {}),
+      };
+      // With no model.
+      const rules = intake(GOAL + sentence, null, { answers: ANSWERS });
+      expect(rules.sheet?.limits, sentence).toEqual(limits);
+      // With a model that reads it: kept, and no longer dropped as not written.
+      const read = intake(GOAL + sentence, model({ cannotHold: classes, noCredit }), {
+        answers: { risk: 'low' },
+      });
+      expect(read.sheet?.limits, sentence).toEqual(limits);
+      expect(
+        read.flags.filter((f) => /not_in_text|refusal_|cannotHold|noCredit/.test(f)),
+        sentence,
+      ).toEqual([]);
+      // With a model that misses it: taken all the same.
+      const missed = intake(GOAL + sentence, model(), { answers: { risk: 'low' } });
+      expect(missed.sheet?.limits, sentence).toEqual(limits);
+    }
+  });
+
+  it('and what only looks like one: how much, how held, of another time, or the opposite', () => {
+    for (const [sentence, stance] of [
+      ["I don't want only stocks.", 'aside'],
+      ["I don't want too many stocks.", 'aside'],
+      ["I don't want more stocks.", 'aside'],
+      ["I don't want to be all in stocks.", 'aside'],
+      ["I can't have everything in crypto.", 'aside'],
+      ["I don't want to miss stocks.", 'aside'],
+      ['I never had stocks.', 'aside'],
+      ['I never said no stocks.', 'aside'],
+      ["I'm not in stocks yet.", 'aside'],
+      ['Não tenho nenhuma ação.', 'aside'],
+      ['Estou sem ações.', 'aside'],
+      ['Nem todas as ações.', 'aside'],
+      ["I don't want US stocks.", 'aside'],
+      ['My brother never wants stocks.', 'aside'],
+      ["I don't want to be without stocks.", 'negated'],
+      ['Never without stocks.', 'negated'],
+      ['Should I stay away from stocks?', 'wondered'],
+      ["Maybe I don't want stocks.", 'wondered'],
+    ] as const) {
+      const what = /crypto/.test(sentence) ? 'crypto' : 'stock';
+      for (const r of [null, model()]) {
+        const result = intake(GOAL + sentence, r, { answers: ANSWERS });
+        expect(result.limits, sentence).toEqual(NONE);
+        expect(result.sheet?.limits, sentence).toBeUndefined();
+        expect(result.flags, sentence).toContain(`refusal_${stance}:${what}`);
+      }
+    }
+    // Words that write no refusal at all, and a mix its clause rules out (finding 1) is no refusal
+    // of the class either.
+    for (const sentence of [
+      "I don't have stocks.",
+      "I don't own stocks.",
+      "I don't like stocks.",
+      "I can't wait to buy stocks.",
+      "I can't decide about stocks.",
+      "I don't want all of it in stocks.",
+      "I wouldn't put all of it in stocks.",
+      'I cannot be all in stocks.',
+      "I don't want to sell my stocks.",
+      "I don't want to invest in big tech.",
+    ]) {
+      expect(refusalsSaidIn(sentence), sentence).toEqual([]);
+      const result = intake(GOAL + sentence, null, { answers: ANSWERS });
+      expect(result.limits, sentence).toEqual(NONE);
+    }
+  });
+
   it('a refusal the person is not sure of is said back in their words, in both languages', () => {
     const en = intake(`${GOAL}No stocks? Not sure.`, null, { answers: ANSWERS });
     expect(en.readBack).toEqual([

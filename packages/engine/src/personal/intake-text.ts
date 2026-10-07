@@ -381,8 +381,35 @@ const MAX_YIELD =
 export const maxYieldAskedIn = (text: string): boolean => MAX_YIELD.test(text);
 
 // A refusal written in the text: "no stocks", "sem ações", "without crypto", "no credit". What leads
-// into it, then at most two words ("no US stocks", "sem nenhuma ação"), then what is refused.
-const NEG = String.raw`(?:\bno\b|\bnot?\s+(?:any|in)\b|\bwithout\b|\bzero\b|\bsem\b|\bnada de\b|\bn[aã]o\s+quero\b|\bfora\b|\bexclud\w*\b|\bavoid\w*\b|\bevit\w*\b)`;
+// into it, then at most two words ("no US stocks", "sem nenhuma ação"), then what is refused. The
+// leads are the ways a person says it: a bare negation ("no", "without", "sem", "nem", "never"), not
+// wanting it ("I don't want any stocks", "não quero"), not being able to hold it ("I can't hold
+// stocks", "não posso ter"), and keeping out of it ("stay away from crypto", "longe de"). Where two
+// start at the same word the longer is tried first.
+const NEG = `(?:${[
+  String.raw`\b(?:do\s+not|don['’]?t|does\s+not|doesn['’]?t|will\s+not|won['’]?t|would\s+not|wouldn['’]?t|never)\s+want(?:\s+to\s+(?:hold|own|buy|have|touch|invest|be|put\s+(?:money|anything)))?\b`,
+  String.raw`\b(?:cannot|can['’]?t|must\s+not|mustn['’]?t|may\s+not|not\s+allowed\s+to|not\s+permitted\s+to)\s+(?:hold|own|buy|have|touch|trade|invest)\b`,
+  String.raw`\b(?:will\s+not|won['’]?t|do\s+not|don['’]?t|never)\s+touch\b`,
+  String.raw`\b(?:keep|keeping|stay|staying|steer|steering)\s+(?:(?:me|us|it|my\s+money|the\s+money)\s+)?(?:out\s+of|away\s+from|clear\s+of)\b`,
+  String.raw`\bnothing\s+in\b`,
+  String.raw`\bnever\b`,
+  String.raw`\bneither\b`,
+  String.raw`\bnor\b`,
+  String.raw`\bno\b`,
+  String.raw`\bnot?\s+(?:any|in)\b`,
+  String.raw`\bwithout\b`,
+  String.raw`\bzero\b`,
+  String.raw`\bexclud\w*\b`,
+  String.raw`\bavoid\w*\b`,
+  String.raw`\bn[aã]o\s+(?:quero|queria|aceito|posso\s+(?:ter|comprar|investir))\b`,
+  String.raw`\bsem\b`,
+  String.raw`\bnada de\b`,
+  String.raw`\bnem\b`,
+  String.raw`\bnenhum[a]?\b`,
+  String.raw`\blonge\s+d[eoa]s?\b`,
+  String.raw`\bfora\b`,
+  String.raw`\bevit\w*\b`,
+].join('|')})`;
 /** What a person can rule out: a class the plan may hold, or credit (tokens that lend or trade a spread). */
 export type Refused = HoldableClass | 'credit';
 const REFUSED: [Refused, string][] = [
@@ -917,9 +944,13 @@ const TURNED_ROUND = /(?<![\p{L}])(?:without|sem)(?![\p{L}])/iu;
 // ("sem pressa quero ações", "moro fora e quero ações"): no refusal of the class. A sheet leaves out
 // a class, not a part of one.
 const OF_THE_WHOLE = new RegExp(
-  `^(?:any|the|a|an|of|in|to|into|on|all|every|kinds?|sorts?|types?|exposure|interest|positions?|holdings?|investments?|allocation|money|nenhum[a]?s?|de|d[oa]s?|em|n[oa]s?|o|as|os|ter|comprar|investir|aplicar|colocar|nada|qualquer|tipos?|exposi[cç][aã]o|interesse|posi[cç][aã]o|investimentos?|dinheiro|tod[oa]s?|or|and|nor|e|ou|nem|${REFUSED.map(([, things]) => things).join('|')})$`,
+  `^(?:any|the|a|an|of|in|to|into|on|kinds?|sorts?|types?|exposure|interest|positions?|holdings?|investments?|allocation|money|invest|investing|buy|buying|hold|holding|own|owning|nenhum[a]?s?|de|d[oa]s?|em|n[oa]s?|o|as|os|ter|comprar|investir|aplicar|colocar|pensar|nada|qualquer|tipos?|exposi[cç][aã]o|interesse|posi[cç][aã]o|investimentos?|dinheiro|or|and|nor|e|ou|nem|${REFUSED.map(([, things]) => things).join('|')})$`,
   'iu',
 );
+// "All" is of the whole after a word that avoids ("avoid all stocks", "evitar todas as ações"), and of
+// how much after any other ("I don't want to be all in stocks", "nem todas as ações").
+const ALL_OF_IT = /^(?:all|every|tod[oa]s?)$/iu;
+const AVOIDS = /^(?:avoid|exclud|evit)/iu;
 // What follows names a part of the class: "no stocks from China", "no stocks except Apple", "no
 // stocks in tech", "sem ações de tecnologia". "No stocks in my plan" and "no stocks of any kind" are
 // of the whole.
@@ -932,10 +963,18 @@ const ANOTHER_THING: Partial<Record<Refused, RegExp>> = {
   gold: /^\s+(?:standard|medals?|cards?|rush)(?![\p{L}])/iu,
   credit: /^\s+(?:cards?|scores?|history|checks?|ratings?|limits?|reports?|sharks?)(?![\p{L}])/iu,
 };
-// What the person holds, not what they refuse: "I have no stocks yet", "I hold no crypto", "my
-// portfolio has no gold", "there are no stocks in it". "I want to have no stocks" is a refusal.
+// What the person holds, not what they refuse: "I have no stocks yet", "I hold no crypto", "I'm not in
+// stocks", "my portfolio has no gold", "there are no stocks in it", "não tenho nenhuma ação", "estou
+// sem ações". "I want to have no stocks" is a refusal.
 const HOLDS_NONE =
-  /(?<![\p{L}])(?:(?:i|we|eu|n[oó]s)(?:['’]ve)?(?:\s+(?:currently|already|still|now|also|really))?\s+(?:have|hold|own|got|have\s+got|had|held|owned|keep|tenho|temos|possuo|tinha)|(?:my|our|meu|minha|nosso|nossa)\s+\p{L}+\s+(?:has|holds|have|hold|had|tem|possui)|there\s+(?:is|are|was|were)|there['’]s)(?:\s+(?:got|currently|still|now|right\s+now))?\s*$/iu;
+  /(?<![\p{L}])(?:(?:i|we)(?:['’]ve)?(?:\s+(?:currently|already|still|now|also|really))?\s+(?:have|hold|own|got|have\s+got|had|held|owned|keep)|(?:n[aã]o\s+|ainda\s+|j[aá]\s+)*(?:tenho|temos|possuo|tinha|t[ií]nhamos|estou|estamos|fiquei)|(?:my|our|meu|minha|nosso|nossa)\s+\p{L}+\s+(?:has|holds|have|hold|had|tem|possui)|there\s+(?:is|are|was|were)|there['’]s)(?:\s+(?:got|currently|still|now|right\s+now|ainda))?\s*$/iu;
+// "I'm not in stocks (yet)" says where the money is, not where it may go.
+const IS_NOT_IN =
+  /(?<![\p{L}])(?:i['’]?m|i\s+am|we['’]?re|we\s+are)(?:\s+(?:currently|still|now))?\s*$/iu;
+const NOT_IN = /^not\s+in$/iu;
+// A join that carries a refusal on to the next thing whatever came first: "I don't want bonds nor
+// stocks", "no bonds or stocks", "sem títulos nem ações".
+const AND_NEITHER = /^(?:or|nor|ou|nem)$/iu;
 // With "I have no ...", what is held in a class: "I have no exposure to stocks".
 const HELD_IN =
   /^(?:(?:exposure|positions?|holdings?|money|investments?|allocation)\s+(?:to|in|on)\s*)?$/iu;
@@ -963,7 +1002,9 @@ function refusalStance(
   const after = text.slice(end);
   if (NO_OF_ANOTHER_WORD.test(between) || TURNED_ROUND.test(between)) return 'negated';
   const words = between.split(/\s+/).filter(Boolean);
-  if (!words.every((word) => OF_THE_WHOLE.test(word))) return 'aside';
+  const whole = (word: string) =>
+    OF_THE_WHOLE.test(word) || (ALL_OF_IT.test(word) && AVOIDS.test(lead));
+  if (!AND_NEITHER.test(words.at(-1) ?? '') && !words.every(whole)) return 'aside';
   if (ANOTHER_THING[what]?.test(after) || OF_A_KIND_AFTER.test(after)) return 'aside';
   // Inside the words of a narrative the class word names the narrative ("no crypto stocks", "sem
   // ações americanas"): a narrative the person rules out is not asked, and no class is left out.
@@ -976,6 +1017,7 @@ function refusalStance(
     ' ',
   );
   if (HOLDS_NONE.test(clause) && HELD_IN.test(between.trim())) return 'aside';
+  if (IS_NOT_IN.test(clause) && NOT_IN.test(lead.trim().replace(/\s+/g, ' '))) return 'aside';
   if (HELD_ALREADY.test(clause) || OF_ANOTHER.test(clause) || IN_THE_PAST.test(clause))
     return 'aside';
   if (WONDERS.test(clause) || ASKED_AFTER.test(after) || HEDGED_AFTER.test(after))
