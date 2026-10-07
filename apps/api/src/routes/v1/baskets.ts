@@ -3,6 +3,7 @@ import {
   BasketProposal,
   type ChainId,
   OrderError,
+  PersonPlansQuery,
   PersonPlansResponse,
   RiskRollUp,
 } from '@colosseum/schemas';
@@ -179,13 +180,15 @@ export function registerBasketRoutes(
       },
     },
     async (req, reply): Promise<LinkedPlanResponse> => {
+      // Before the lookup, so the 404 carries them too: the answer depends on who asks, and nothing
+      // between a person and the server keeps it for the next caller.
+      reply.header('cache-control', 'private, no-store');
+      reply.header('vary', 'Authorization');
       const plan = await loadReadablePlan(deps.db, req.params.id, req.principal?.userId ?? null);
       // One answer, in the same words, for no plan, another person's plan, and a plan from a link
       // while those are switched off: the answer says nothing of what an id names.
       if (!plan || (plan.fromLink && !flags.agentSurface))
         throw new Refusal(404, 'no plan with that id that you can read');
-      // A person's own plan is theirs: no cache between them and us keeps it for the next caller.
-      reply.header('cache-control', 'private, no-store');
       return { id: req.params.id, proposal: plan.proposal, fromLink: plan.fromLink };
     },
   );
@@ -198,14 +201,19 @@ export function registerBasketRoutes(
         tags: ['plans'],
         summary: 'The signed-in person’s plans, with the goal each was built for and its buys',
         description:
-          'The plans the person made in the app, and the plans made from a link that they bought, newest first. There is no paging yet: the answer holds the newest 50 plans, and of the person’s buys the newest 200, so a plan’s older buys can be missing from it. Each has the goal sheet it was built from, the plan’s card, its chain, its buys (an order is the person’s by the wallets of the verified token) and the vault those buys opened, by its number on chain. A plan another person made is never listed. `GET /v1/baskets/{id}` reads one whole; `GET /v1/orders/{id}` reads a buy and its steps.',
+          'The plans the person made in the app, and the plans made from a link that they bought, newest first, a page at a time: at most `limit` plans (50 by default and at most), made before `before` when that is sent. `next` is the `before` of the following page, and null on the last. Every buy of a plan on the page is with it. Each has the goal sheet it was built from, the plan’s card, its chain, its buys (an order is the person’s by the wallets of the verified token) and the vault those buys opened, by its number on chain. A plan another person made is never listed. `GET /v1/baskets/{id}` reads one whole; `GET /v1/orders/{id}` reads a buy and its steps.',
+        querystring: PersonPlansQuery,
         response: { 200: PersonPlansResponse, default: OrderError },
       },
     },
     async (req, reply): Promise<PersonPlansResponse> => {
-      const plans = await listPersonPlans(deps.db, signedIn(req));
       reply.header('cache-control', 'private, no-store');
+      const { plans, next } = await listPersonPlans(deps.db, signedIn(req), {
+        limit: req.query.limit,
+        ...(req.query.before ? { before: new Date(req.query.before) } : {}),
+      });
       return {
+        next,
         plans: plans.flatMap((plan) => {
           const { sheet, card, verdict, recipes } = plan.proposal;
           const chain = sheet.chains[0] ?? recipes[0]?.chain;

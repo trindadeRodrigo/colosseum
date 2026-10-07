@@ -101,6 +101,12 @@ describe('a plan read back by its id', () => {
       await get(who, `/v1/baskets/${crypto.randomUUID()}`),
     ];
     expect(answers.map((a) => a.statusCode)).toEqual([404, 404, 404]);
+    // a 404 is as private as a plan: what it says depends on who asked
+    for (const answer of answers)
+      expect([answer.headers['cache-control'], answer.headers.vary]).toEqual([
+        'private, no-store',
+        expect.stringContaining('Authorization'),
+      ]);
     expect(new Set(answers.map((a) => OrderError.parse(a.json()).error)).size).toBe(1);
     // a token that is not one reads nothing either
     const forged = await app.inject({
@@ -206,6 +212,40 @@ describe('a person’s plans', () => {
     // and the stranger's own list shows their plan with no buy
     const theirs = await make(stranger, 4_110);
     expect((await plansOf(stranger)).find((p) => p.id === theirs.id)?.orders).toEqual([]);
+  });
+
+  it('pages through the plans, newest first, each with every buy of it, and ends', async () => {
+    const who = await someone();
+    const made = [await make(who, 4_121), await make(who, 4_122), await make(who, 4_123)];
+    await fund(who, undefined, 20_000);
+    // two buys of the oldest plan: both are with it, on whatever page it is
+    await order(who, { proposalId: made[0]?.id, amountUsd: 4_121 });
+    await order(who, { proposalId: made[0]?.id, amountUsd: 100 });
+    const page = async (query: string) => {
+      const res = await get(who, `/v1/me/plans${query}`);
+      expect(res.statusCode, res.body).toBe(200);
+      return PersonPlansResponse.parse(res.json());
+    };
+    const seen: string[] = [];
+    let before: string | null = null;
+    for (let i = 0; i < 5; i++) {
+      const { plans, next } = await page(
+        `?limit=1${before ? `&before=${encodeURIComponent(before)}` : ''}`,
+      );
+      expect(plans).toHaveLength(1);
+      seen.push(plans[0]?.id ?? '');
+      if (plans[0]?.id === made[0]?.id) expect(plans[0]?.orders).toHaveLength(2);
+      before = next;
+      if (next === null) break;
+    }
+    expect(seen).toEqual([made[2]?.id, made[1]?.id, made[0]?.id]);
+    expect(before).toBeNull();
+    // one page holds them all by default, and says it is the last
+    const whole = await page('');
+    expect([whole.plans.map((p) => p.id), whole.next]).toEqual([seen, null]);
+    // a limit or a time that is not one is refused, not guessed
+    for (const bad of ['?limit=0', '?limit=51', '?before=yesterday'])
+      expect((await get(who, `/v1/me/plans${bad}`)).statusCode, bad).toBe(400);
   });
 
   it('answers the list to its person alone', async () => {

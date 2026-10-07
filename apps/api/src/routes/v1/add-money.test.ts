@@ -154,7 +154,7 @@ describe.each(['solana', 'robinhood'] as const)('several vaults on %s', (chain) 
   });
 
   it('adding money deposits into the vault named, buys to its targets, and leaves the other alone', async () => {
-    const { who, grow, growVault, protectVault } = await withTwoVaults(chain);
+    const { who, grow, protect, growVault, protectVault } = await withTwoVaults(chain);
     const res = await addTo(who, growVault, 500);
     expect(res.statusCode, res.body).toBe(200);
     const placed = OrderDetail.parse(res.json());
@@ -191,6 +191,9 @@ describe.each(['solana', 'robinhood'] as const)('several vaults on %s', (chain) 
         [500, true],
       ].sort(),
     );
+    // newest first, and under no other plan: the other vault's plan lists its one buy
+    expect(plan?.orders.map((o) => o.amountUsd)).toEqual([500, 1_000]);
+    expect(plans.find((p) => p.id === protect.id)?.orders.map((o) => o.amountUsd)).toEqual([2_000]);
   });
 
   it('says what the wallet is missing for an add, with no new vault to pay for', async () => {
@@ -205,6 +208,41 @@ describe.each(['solana', 'robinhood'] as const)('several vaults on %s', (chain) 
     expect(read.wallet).toBe(growVault.owner);
     expect(read.newVault).toBe(false);
     expect(BigInt(read.cash.needRaw)).toBe(await raw(chain, 300));
+  });
+});
+
+describe('a person with more plans than one page of the list holds', () => {
+  it('still has each vault joined to its plan, and the add counted under it on the page it is on', async () => {
+    const { who, grow, growVault } = await withTwoVaults('solana');
+    // 51 plans made after the two that were bought: those two are past the first page of fifty
+    for (let batch = 0; batch < 3; batch += 1)
+      await Promise.all(
+        Array.from({ length: 17 }, (_, i) =>
+          make(who, 'solana', { amountUsd: 6_000 + batch * 100 + i }),
+        ),
+      );
+    const first = PersonPlansResponse.parse((await get(who, '/v1/me/plans')).json());
+    expect(first.plans).toHaveLength(50);
+    expect(first.plans.map((p) => p.id)).not.toContain(grow.id);
+    expect(first.next).not.toBeNull();
+
+    // the portfolio reads every page: both vaults keep their plan
+    const vaults = await vaultsOf(who, 'solana');
+    expect(vaults.map((v) => v.planId).every((id) => id !== null && id !== undefined)).toBe(true);
+    expect(vaults.find((v) => v.address === growVault.address)?.planId).toBe(grow.id);
+
+    // and an add is listed under its vault's plan, on the page that plan is on
+    const added = await addTo(who, growVault, 200);
+    expect(added.statusCode, added.body).toBe(200);
+    const second = PersonPlansResponse.parse(
+      (await get(who, `/v1/me/plans?before=${encodeURIComponent(first.next as string)}`)).json(),
+    );
+    expect(second.plans.find((p) => p.id === grow.id)?.orders.map((o) => o.amountUsd)).toEqual([
+      200, 1_000,
+    ]);
+    // no plan of the first page took the add for its own
+    const again = PersonPlansResponse.parse((await get(who, '/v1/me/plans')).json());
+    expect(again.plans.flatMap((p) => p.orders)).toEqual([]);
   });
 });
 
