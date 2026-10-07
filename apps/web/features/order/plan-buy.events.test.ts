@@ -26,7 +26,7 @@ import { BuyScreen } from './BuyScreen';
 import { recallOrder, trustAccepted } from './order-record';
 import { PlanScreen } from './PlanScreen';
 import { rememberPlan } from './plan-store';
-import { ORDER_ID, orderOn, PLAN_ID, planOn, USER } from './test/fixtures';
+import { ORDER_ID, orderOn, PLAN_ID, planOn, serverKeepsPlans, USER } from './test/fixtures';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -96,16 +96,18 @@ function api(
     chainOptions: [],
   };
   let funded = o.funded ?? true;
-  portStore.setApi(async (path, init) => {
-    const method = init?.method ?? 'GET';
-    calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-    if (path === '/v1/me') return json(person);
-    if (path.startsWith('/v1/funding?'))
-      return json(o.say ? o.say(funding(funded)) : funding(funded));
-    if (path === '/v1/orders' && method === 'POST') return o.order ? o.order() : json(orderOn());
-    if (path === `/v1/baskets/${PLAN_ID}` && o.linked !== undefined) return json(o.linked);
-    return json({ error: 'not found' }, 404);
-  });
+  portStore.setApi(
+    serverKeepsPlans(async (path, init) => {
+      const method = init?.method ?? 'GET';
+      calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      if (path === '/v1/me') return json(person);
+      if (path.startsWith('/v1/funding?'))
+        return json(o.say ? o.say(funding(funded)) : funding(funded));
+      if (path === '/v1/orders' && method === 'POST') return o.order ? o.order() : json(orderOn());
+      if (path === `/v1/baskets/${PLAN_ID}` && o.linked !== undefined) return json(o.linked);
+      return json({ error: 'not found' }, 404);
+    }),
+  );
   return {
     calls,
     to: (prefix: string) => calls.filter((c) => c.path.startsWith(prefix)),

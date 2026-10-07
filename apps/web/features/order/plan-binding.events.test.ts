@@ -1,20 +1,20 @@
 // @vitest-environment happy-dom
-import type { BasketLine } from '@colosseum/schemas';
+import { type BasketLine, DISCLAIMER, DISCLAIMER_SHORT } from '@colosseum/schemas';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buttonClass } from '../../components/ui/button-class';
 import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
-import { withAccount } from '../account/test/screen';
+import { inShell, withAccount } from '../account/test/screen';
 import { GOAL_DRAFT } from '../goal/draft';
 import { restoreGoal } from '../goal/sheet';
 import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
 import { PlanScreen } from './PlanScreen';
 import { bindingReason, leftOut, planSummary, reasonsOf } from './plain';
-import { PLANS_KEPT, recallPlan, rememberPlan, type StoredPlan } from './plan-store';
-import { PLAN_ID, planOn, USER } from './test/fixtures';
+import { forgetPlans, PLANS_KEPT, recallPlan, rememberPlan, type StoredPlan } from './plan-store';
+import { PLAN_ID, planOn, serverKeepsPlans, USER } from './test/fixtures';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -111,8 +111,10 @@ beforeEach(() => {
   window.sessionStorage.clear();
   window.localStorage.clear();
   portStore.set(signedInPort(EMBEDDED, { userId: USER }));
-  portStore.setApi(async (path) =>
-    path === '/v1/me' ? json(person) : json({ error: 'not found' }, 404),
+  portStore.setApi(
+    serverKeepsPlans(async (path) =>
+      path === '/v1/me' ? json(person) : json({ error: 'not found' }, 404),
+    ),
   );
 });
 afterEach(unmountAll);
@@ -264,6 +266,23 @@ describe('an income plan and its gap (the flow audit, findings 11 and 14)', () =
     expect(verdict.querySelector('a')).toBeNull();
   });
 
+  it.each(['en', 'pt'] as const)(
+    'keeps the full disclaimer on the plan’s page, in the shell’s foot, with the short line gone (%s)',
+    async (lang) => {
+      rememberPlan(short());
+      const host = await mount(inShell(lang, 'auto', createElement(PlanScreen, { id: PLAN_ID })));
+      await settle();
+      await settle();
+      expect(find(host, 'main [data-ui="plan-screen"]')).toBeTruthy();
+      expect(host.textContent).not.toContain(DISCLAIMER_SHORT[lang]);
+      expect(host.querySelector('main [data-ui="disclaimer"]')).toBeNull();
+      const all = [...host.querySelectorAll('[data-ui="disclaimer"]')];
+      expect(all).toHaveLength(1);
+      expect(all[0]?.closest('[data-ui="app-foot"]')).not.toBeNull();
+      expect(find(all[0] as HTMLElement, 'p[lang]').textContent).toBe(DISCLAIMER[lang]);
+    },
+  );
+
   it('finds the plan again in another tab of the same browser, and only for the person who built it', async () => {
     rememberPlan(short());
     // another tab: nothing of this one's session
@@ -273,6 +292,39 @@ describe('an income plan and its gap (the flow audit, findings 11 and 14)', () =
     expect(find(await shown(), 'h1').textContent).toBe(
       'Earn $300 a month from $80,000 for 12 months.',
     );
+  });
+
+  it('takes the server’s word over the browser’s copy: a plan it says is gone is dropped and not shown', async () => {
+    for (const status of [404, 403]) {
+      rememberPlan(short());
+      // a server that does not have this plan for this person, whatever this browser kept
+      portStore.setApi(async (path) =>
+        path === '/v1/me' ? json(person) : json({ error: 'no plan with that id' }, status),
+      );
+      const host = await shown();
+      expect(find(host, 'h1').textContent, String(status)).toBe(en.plan.missing.title);
+      expect(recallPlan(PLAN_ID, USER)).toBeNull();
+      await unmountAll();
+    }
+  });
+
+  it('keeps the browser’s copy while the server does not answer', async () => {
+    rememberPlan(short());
+    portStore.setApi(async (path) =>
+      path === '/v1/me' ? json(person) : json({ error: 'down' }, 503),
+    );
+    const host = await shown();
+    expect(find(host, 'h1').textContent).toBe('Earn $300 a month from $80,000 for 12 months.');
+    expect(recallPlan(PLAN_ID, USER)).not.toBeNull();
+  });
+
+  it('forgets every plan this browser kept when the person signs out', () => {
+    rememberPlan(short());
+    rememberPlan({ ...short(), id: 'another-plan' });
+    forgetPlans();
+    expect(recallPlan(PLAN_ID, USER)).toBeNull();
+    expect(recallPlan('another-plan', USER)).toBeNull();
+    expect(Object.keys(window.localStorage).filter((key) => key.startsWith('tf-plan'))).toEqual([]);
   });
 
   it('keeps the newest few plans, and drops the oldest', () => {

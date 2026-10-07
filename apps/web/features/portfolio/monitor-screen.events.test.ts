@@ -615,9 +615,7 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     const card = find(host, '[data-ui="goal-card"]');
     expect(find(card, 'h3').textContent).toBe('Grow $40,000 over 36 months.');
     expect(card.textContent).not.toContain(en.portfolio.goalCard.notJoined);
-    expect(find(card, '[data-ui="goal-no-status"]').textContent).toBe(
-      en.portfolio.goalCard.due('October 2029'),
-    );
+    expect(find(card, '[data-ui="goal-no-status"]').textContent).toBe('Goal date: October 2029');
     expect(card.textContent).toContain(en.portfolio.goalCard.putIn('$40,000'));
     const link = find(card, 'a');
     expect([link.textContent, link.getAttribute('href')]).toEqual([
@@ -972,6 +970,12 @@ describe('the chain of each vault', () => {
     expect(find(host, '[data-ui="chains-out"] [data-chain="solana"]').textContent).toBe(
       en.portfolio.chainOut('Solana'),
     );
+    // and it can be asked again
+    expect(
+      [...host.querySelectorAll('button')].some((b) =>
+        b.textContent?.startsWith(en.portfolio.again),
+      ),
+    ).toBe(true);
     await unmountAll();
     // no wallet of theirs signs on Solana: that is what is said
     api({

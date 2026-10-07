@@ -217,7 +217,10 @@ export function MonitorScreen() {
                 )}
               </ul>
             )}
-            {state.outcome.unavailable.some((u) => u.retryable) && <div>{readAgain}</div>}
+            {/* a chain that may answer next time, or one a wallet is on that was not read, is asked again */}
+            {(state.outcome.unavailable.some((u) => u.retryable) || (notHeld && hasWallet)) && (
+              <div>{readAgain}</div>
+            )}
             {/* "No vault on <chain> yet" is said only of a chain that was read, and only when every
                 chain of theirs was: a chain that could not be read may hold one. */}
             {vaults.length === 0 &&

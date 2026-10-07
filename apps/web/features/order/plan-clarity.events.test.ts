@@ -11,7 +11,7 @@ import { portStore } from '../wallet/test/mock-provider';
 import { PlanScreen } from './PlanScreen';
 import { displayName, flagSentence, flagSentences, kindLabel } from './plain';
 import { rememberPlan, type StoredPlan } from './plan-store';
-import { PLAN_ID, planOn, USER } from './test/fixtures';
+import { PLAN_ID, planOn, serverKeepsPlans, USER } from './test/fixtures';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -138,8 +138,10 @@ const shown = async (lang: Lang = 'en') => {
 beforeEach(() => {
   window.sessionStorage.clear();
   portStore.set(signedInPort(EMBEDDED, { userId: USER }));
-  portStore.setApi(async (path) =>
-    path === '/v1/me' ? json(person) : json({ error: 'not found' }, 404),
+  portStore.setApi(
+    serverKeepsPlans(async (path) =>
+      path === '/v1/me' ? json(person) : json({ error: 'not found' }, 404),
+    ),
   );
 });
 afterEach(unmountAll);
@@ -260,10 +262,12 @@ describe('the plan in plain words', () => {
   it('never says USDC on a Robinhood plan: its dollar is tUSDG, in the summary and the legs', async () => {
     const plan = planOn('robinhood', 'sandbox');
     rememberPlan(plan);
-    portStore.setApi(async (path) =>
-      path === '/v1/me'
-        ? json({ ...person, chain: 'robinhood' })
-        : json({ error: 'not found' }, 404),
+    portStore.setApi(
+      serverKeepsPlans(async (path) =>
+        path === '/v1/me'
+          ? json({ ...person, chain: 'robinhood' })
+          : json({ error: 'not found' }, 404),
+      ),
     );
     const host = await shown();
     expect(find(host, '[data-ui="plan-summary"]').textContent).toContain('Cash (tUSDG)');

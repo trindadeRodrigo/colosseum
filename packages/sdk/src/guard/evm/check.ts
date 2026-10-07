@@ -1,15 +1,16 @@
 import { hexDecode, hexEncode, utf8Encode } from '../../bytes';
 import { sha256 } from '../../hash';
 import { type Context, isRawAmount, isUnlimited, reading, sameWeights, tradesOf } from '../context';
+import { familyTextHash } from '../meta';
 import { GuardRefusal } from '../refusal';
 import type { ApprovedTrade, EvmDeployment, Withdrawal } from '../types';
 import { type AbiValue, decodeArgs, parseSignature } from './abi';
-import { evmVaultAddress, planIdOf } from './addresses';
+import { evmIndexId, evmVaultAddress, planIdOf } from './addresses';
 import type { InterfaceTable } from './table';
 
-// An EVM transaction against the step. It is one call, with no value, to one of three contracts and no
-// other: the cash token for an approval, the factory for a create, the person's own vault for
-// everything else. The vault's address is derived here. The function is the step's, its arguments are
+// An EVM transaction against the step. It is one call, with no value, to one of four contracts and no
+// other: the cash token for an approval, the factory for a create, the registry for a publish, the
+// person's own vault for everything else. The vault's address is derived here. The function is the step's, its arguments are
 // the step's, and a `multicall` is opened and every call inside it is held to the same rule. A call
 // that trades carries a deadline, and it is held to this guard's own clock.
 
@@ -45,6 +46,9 @@ const FN = {
   acceptVersion: ['BasketVault', 'acceptVersion(bytes32,uint32)'],
   setAutoFollow: ['BasketVault', 'setAutoFollow(bool)'],
   multicall: ['BasketVault', 'multicall(bytes[])'],
+  createIndex: ['IndexRegistry', `create(bytes32,${WEIGHTS},bytes32,uint16,uint8)`],
+  publishVersion: ['IndexRegistry', `publish(bytes32,${WEIGHTS},bytes32)`],
+  cancelPending: ['IndexRegistry', 'cancel(bytes32)'],
 } as const;
 type FnName = keyof typeof FN;
 export const GUARDED_EVM_FUNCTIONS: readonly (readonly [string, string])[] = Object.values(FN);
@@ -68,11 +72,6 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
   const { step, tx, need } = ctx;
   const { legId, owner } = step;
   const unsupported = (message: string) => new GuardRefusal('unsupported', message, legId);
-  // IndexRegistry's `create`, `publish` and `cancel` are read here once its interface is final (EVM-3).
-  if (step.kind === 'publish')
-    throw unsupported(
-      "a shared portfolio is published on an EVM chain once IndexRegistry's interface is final",
-    );
 
   const selectorIf = (name: FnName): string | undefined => table[FN[name][0]]?.[FN[name][1]];
   /** The selector of a function this step cannot do without. */
@@ -140,11 +139,72 @@ export function checkEvm(ctx: Context, deployment: EvmDeployment, table: Interfa
     `the transaction states ${call.gas ?? 'no'} gas and a fee of ${tx.preview.feeNativeRaw}, above the ${maxGas} gas or the ${maxFee} allowed`,
   );
 
+  const selector = `0x${hexEncode(call.data.slice(0, 4))}`;
+  const body = call.data.slice(4);
+
+  if (step.kind === 'publish') {
+    // The creator's own shared portfolio of this family, through the deployment's registry: its id is
+    // derived from the owner and the family, never named. The text hash is worked out here from the
+    // text the creator saw, never a hash handed over.
+    const registry = deployment.registry?.toLowerCase();
+    if (!registry) throw unsupported('the deployment names no registry: nothing is published here');
+    const fn: FnName =
+      step.action === 'publish'
+        ? 'createIndex'
+        : step.action === 'update'
+          ? 'publishVersion'
+          : 'cancelPending';
+    const wanted = selectorOf(fn);
+    need(
+      'target',
+      call.to === registry,
+      `a shared portfolio is published through the registry, and this call is to ${call.to}`,
+    );
+    const right = selector === wanted;
+    need('function', right, `the call is ${named(selector)}, and the step is to ${step.action}`);
+    if (!right) return;
+    const args = argsOf(fn, body);
+    const id = reading('the family', legId, () => evmIndexId(owner, step.familyId));
+    if (fn === 'cancelPending') {
+      need('recipe', args[0] === id, "the bytes cancel another creator's or family's version");
+      return;
+    }
+    const [named32, weights, metaHash, maxFeeBps, flags] = args as [
+      string,
+      AbiValue[],
+      string,
+      bigint | undefined,
+      bigint | undefined,
+    ];
+    need(
+      'recipe',
+      fn === 'createIndex' ? named32 === `0x${step.familyId.toLowerCase()}` : named32 === id,
+      'the bytes publish another family, or for another creator',
+    );
+    need(
+      'targets',
+      sameWeights(
+        step.components.map((t) => ({ key: token(t.asset), bps: t.weightBps })),
+        weightsIn(weights),
+      ),
+      "the assets and weights in the bytes are not the version's",
+    );
+    // Only the four fields shown, under the step's own family: a family id inside the text is not read.
+    const t = step.text;
+    const textHash = t
+      ? `0x${familyTextHash({ familyId: step.familyId, slug: t.slug, name: t.name, copy: t.copy, kind: t.kind })}`
+      : '';
+    need('recipe', metaHash === textHash, "the bytes publish another family's text");
+    if (fn === 'createIndex') {
+      need('limits', maxFeeBps === 0n, `the bytes set a fee cap of ${maxFeeBps}`);
+      need('limits', flags === 0n, `the bytes set the flags ${flags}`);
+    }
+    return;
+  }
+
   const vault = reading('the owner', legId, () =>
     evmVaultAddress(deployment, owner, step.basketId),
   );
-  const selector = `0x${hexEncode(call.data.slice(0, 4))}`;
-  const body = call.data.slice(4);
 
   const checkSwap = (swap: AbiValue[], trade: ApprovedTrade) => {
     const [router, tokenIn, tokenOut, amountIn, minOut] = swap as [

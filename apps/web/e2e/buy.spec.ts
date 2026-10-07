@@ -287,10 +287,11 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   const steps = page.locator('[data-ui="order-step"]');
   // a vault opened with the deposit, then one swap per asset: the mock trades separately
   await expect(steps).toHaveCount(4);
-  // a token by its name, and never an amount in its smallest units: the mock's tokens have no
-  // committed units, so the step says how far under the quote it may land
-  await expect(steps.nth(1)).toContainText(/on SPY · at most [\d.]+% under the quote/);
-  await expect(steps.nth(1)).not.toContainText('smallest');
+  // a token by its name, its minimum in whole tokens with the price that means, never raw units
+  await expect(steps.nth(1)).toContainText(
+    /on SPY · receive at least [\d.,]+ SPY \(at most \$[\d.,]+ each\)/,
+  );
+  await expect(page.locator('main')).not.toContainText('smallest units');
   await check(page, 'review');
 
   await page.getByRole('button', { name: en.order.signAndBuy('$40') }).click();

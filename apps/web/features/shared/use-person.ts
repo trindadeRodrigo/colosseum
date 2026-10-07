@@ -1,7 +1,7 @@
 'use client';
 import { type ChainId, chainFamily } from '@colosseum/schemas';
 import { useAccount } from '../account/AccountProvider';
-import { chainReady, onMock } from '../order/readiness';
+import { chainReady, deploymentsFor, onMock, publishableOn } from '../order/readiness';
 import { useWalletPort } from '../wallet/WalletProvider';
 
 // Who is looking at a shared-portfolio screen, and on which chain (gate ONE-CHAIN): a signed-in person
@@ -24,7 +24,7 @@ export type SharedPerson =
       signable: boolean;
       /** Our server has the chain switched off. */
       off: boolean;
-      /** A portfolio can be published from here: Solana only, until the guard signs an EVM publish (AGT-4). */
+      /** A portfolio can be published from here: on EVM, only where the deployment names its registry. */
       publishable: boolean;
     };
 
@@ -45,7 +45,7 @@ export function useSharedPerson(): SharedPerson {
     mock,
     signable: chainReady(chain, mock),
     off: port.network(chain)?.on === false,
-    publishable: chainFamily(chain) === 'solana',
+    publishable: publishableOn(deploymentsFor(chain, mock)?.[chain]),
   };
 }
 

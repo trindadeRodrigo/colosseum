@@ -117,9 +117,15 @@ describe('the sign-in panel: two ways in, one button each', () => {
       expect(create.getAttribute('data-variant')).toBe('secondary');
       expect(create.textContent).toContain(en.passkey.createNew);
       // and what a new passkey is, said before one is made by mistake: a new, empty wallet
-      expect(find(host, '[data-ui="create-new-passkey"]').textContent).toContain(
-        en.passkey.createNewNote,
-      );
+      const offer = find(host, '[data-ui="create-new-passkey"]');
+      expect(offer.textContent).toContain(en.passkey.createNewNote);
+      expect(
+        find(offer, 'p').compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      // no sentence of a failed passkey sends someone who has an account to make a new one
+      for (const key of ['passkeyNotUsed', 'passkeyUnknown', 'passkeyNotRegistered'] as const)
+        for (const words of [en, dictionary('pt').signIn])
+          expect(words.failure[key]).not.toMatch(/create|crie/i);
       expect(host.querySelectorAll('[data-variant="primary"]')).toHaveLength(1);
       await click(create);
       expect(signIn.mock.calls).toEqual([['passkey'], ['passkey', { create: true }]]);
@@ -129,12 +135,12 @@ describe('the sign-in panel: two ways in, one button each', () => {
     },
   );
 
-  it('says a closed prompt in words that point to another device, a phone, and a new account', () => {
+  it('says a closed prompt in words that point to another device and a phone, and never to a new passkey', () => {
     for (const lang of ['en', 'pt'] as const) {
       const sentence = dictionary(lang).signIn.failure.passkeyNotUsed;
       expect(sentence).toMatch(lang === 'en' ? /another device/ : /outro aparelho/);
       expect(sentence).toMatch(lang === 'en' ? /use a phone/ : /usar um celular/);
-      expect(sentence).toMatch(lang === 'en' ? /new account/ : /conta nova/);
+      expect(sentence).not.toMatch(/create|crie/i);
     }
   });
 
@@ -349,6 +355,7 @@ describe('the sign-in panel: every failure is a sentence a person can act on', (
     ['the provider asks for fewer requests', THROWN.tooMany, 'passkey', 'tooMany'],
     ['the provider cannot be reached', THROWN.offline, 'wallet', 'offline'],
     ['something nobody foresaw is thrown', THROWN.strange, 'passkey', 'passkeyNotAccepted'],
+    ['something nobody foresaw is thrown by a wallet', THROWN.strange, 'wallet', 'other'],
   ];
 
   describe.each(['en', 'pt'] as const)('in %s', (lang) => {

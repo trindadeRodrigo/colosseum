@@ -219,6 +219,12 @@ function RecipeSection({
   const mock = own ? person.mock : recipe.provenance === 'mock';
   const check = useChainRecipe(recipe.chain, mock, family, recipe);
   const followed = followedOf(recipe, check);
+  // A check that found something wrong is not folded away: the read failed, the chain has no such
+  // portfolio, it differs from what our server said, or its words match no version on the chain.
+  const alarm =
+    check.state === 'failed' ||
+    check.state === 'missing' ||
+    (check.state === 'read' && (check.differs || check.textMatches === null));
   const reasonId = useId();
   const locale = LOCALE[lang];
   const read = check.state === 'read' ? check.recipe : null;
@@ -318,7 +324,7 @@ function RecipeSection({
           {/* Who published it, by address, and whether its words were checked: kept, behind a fold.
               What a person must see stays outside it: words that match no version, and where the
               version and weights come from (the flow audit, finding 41). */}
-          <details data-ui="family-checks">
+          <details data-ui="family-checks" open={alarm || undefined}>
             <summary className="w-fit cursor-pointer text-body-sm font-medium text-primary underline decoration-1 underline-offset-4 hover:decoration-2">
               {t.plan.details}
             </summary>

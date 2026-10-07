@@ -547,9 +547,14 @@ describe('the goal a person typed, kept in the tab', () => {
     await screen();
     await settle();
     expect(window.sessionStorage.getItem('tf-goal')).toBe(DRAFT);
+    // and with it the plans this browser kept for them: the server has them for the next sign-in
+    window.localStorage.setItem('tf-plan:some-plan', '{}');
+    window.localStorage.setItem('tf-plans', '["some-plan"]');
     await act(async () => portStore.set(fakePort({ found: FOUND })));
     await settle();
     expect(window.sessionStorage.getItem('tf-goal')).toBeNull();
+    expect(window.localStorage.getItem('tf-plan:some-plan')).toBeNull();
+    expect(window.localStorage.getItem('tf-plans')).toBeNull();
   });
 
   it('is kept when someone who typed it signed out goes on to sign in', async () => {

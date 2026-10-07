@@ -93,7 +93,11 @@ export function useVaultHistory(): VaultHistory {
                     at: answer.order.createdAt,
                     title: isBuy(record)
                       ? t.activity.buy(dollars(record.amountUsd, lang), when)
-                      : t.activity.order(when),
+                      : record.terms?.kind === 'follow'
+                        ? t.activity.follow(when)
+                        : record.terms?.kind === 'publish'
+                          ? t.activity.publish(when)
+                          : t.activity.order(when),
                     executions,
                   },
                 ];

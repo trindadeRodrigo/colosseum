@@ -3,7 +3,14 @@ import type { ChainId } from '@colosseum/schemas';
 import { useEffect, useState } from 'react';
 import { useAccount } from '../account/AccountProvider';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
-import { readStoredPlan, recallPlan, rememberPlan, type StoredPlan } from './plan-store';
+import {
+  forgetPlan,
+  planStanding,
+  readStoredPlan,
+  recallPlan,
+  rememberPlan,
+  type StoredPlan,
+} from './plan-store';
 import { chainReady, onMock } from './readiness';
 
 // What the plan screen and the buy screen stand on: the person, the plan with this id as this tab kept
@@ -42,9 +49,23 @@ export function usePlan(id: string): PlanState {
   const userId = port.userId;
   useEffect(() => {
     const kept = recallPlan(id, userId);
-    if (kept || !userId) return setPlan(kept);
-    // Not built in this tab: the API reads it back by its id, the person's own or one made from a link.
+    if (!userId) return setPlan(kept);
     let mine = true;
+    if (kept) {
+      // The browser's copy opens the screen at once, with its risk roll-up. The server is the last
+      // word: a plan it says is gone, or another person's, is dropped and not shown. When it does
+      // not answer, the copy stands.
+      setPlan(kept);
+      void planStanding(apiFetch, id).then((standing) => {
+        if (!mine || standing !== 'gone') return;
+        forgetPlan(id);
+        setPlan(null);
+      });
+      return () => {
+        mine = false;
+      };
+    }
+    // Not built in this browser: the API reads it back by its id, the person's own or one made from a link.
     setPlan(undefined);
     void readStoredPlan(apiFetch, id).then((read) => {
       if (!mine) return;

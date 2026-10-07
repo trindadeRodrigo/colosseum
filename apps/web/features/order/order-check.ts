@@ -49,6 +49,50 @@ export function checkDeposit(
 }
 
 /**
+ * An order that finishes another with the cash already in its vault: it deposits nothing, opens
+ * nothing, and only buys. It says which order it finishes; it has no `depositRaw` and no cash on a
+ * step; every step is a swap; and its trades are, one for one, trades the first order left undone
+ * (the same token, the same amount of cash), none of them twice. A server that answered a deposit, or
+ * a buy of something else, or of more, is caught here and nothing is offered for signing.
+ */
+export function checkContinuation(
+  order: Pick<OrderDetail, 'depositRaw' | 'legs'> & { continues?: unknown },
+  first: { orderId: string; trades: readonly { sell: string; buy: string; amountInRaw: string }[] },
+  units: ChainUnits | null,
+  /**
+   * The order as the server just answered it, not yet approved: it must say which order it finishes.
+   * The approved copy this browser kept was held to that when it was reviewed.
+   */
+  fresh = true,
+): DepositCheck | { ok: false; why: 'trades' | 'shape' } {
+  const cash = units?.tokens[units.cash];
+  if (!units || !cash) return { ok: false, why: 'units' };
+  if (order.depositRaw !== undefined) return { ok: false, why: 'shape' };
+  if (
+    fresh ? order.continues !== first.orderId : (order.continues ?? first.orderId) !== first.orderId
+  )
+    return { ok: false, why: 'shape' };
+  if (
+    order.legs.length === 0 ||
+    order.legs.some((l) => l.kind !== 'swap' || l.cashRaw !== undefined)
+  )
+    return { ok: false, why: 'shape' };
+  const left = first.trades.map((t) => `${t.sell}>${t.buy}:${t.amountInRaw}`);
+  let spent = 0n;
+  for (const trade of order.legs.flatMap((l) => l.trades)) {
+    if (trade.sell !== units.cash || !RAW.test(trade.amountInRaw))
+      return { ok: false, why: 'trades' };
+    const at = left.indexOf(`${trade.sell}>${trade.buy}:${trade.amountInRaw}`);
+    if (at < 0) return { ok: false, why: 'trades' };
+    left.splice(at, 1);
+    spent += BigInt(trade.amountInRaw);
+  }
+  if (order.legs.every((l) => l.trades.length === 0)) return { ok: false, why: 'shape' };
+  // What it spends of the vault's cash, for the button's amount: nothing is deposited.
+  return { ok: true, depositRaw: spent, decimals: cash.decimals };
+}
+
+/**
  * A buy of a shared portfolio (WEB-4): the deposit as for a plan, and each trade the share of the
  * deposit that the portfolio's weight gives, in the order its screen read them (`tradesOf`). An API that
  * planned other weights than the version read from the chain is caught here.

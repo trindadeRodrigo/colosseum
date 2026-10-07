@@ -13,7 +13,7 @@ import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { BuyScreen } from './BuyScreen';
 import { rememberPlan } from './plan-store';
-import { PLAN_ID, planOn, USER } from './test/fixtures';
+import { PLAN_ID, planOn, serverKeepsPlans, USER } from './test/fixtures';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -85,27 +85,29 @@ function api(
     chainOptions: [],
   };
   let funded = o.funded ?? false;
-  portStore.setApi(async (path, init) => {
-    const method = init?.method ?? 'GET';
-    calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-    if (path === '/v1/me') return json(person);
-    if (path.startsWith('/v1/funding?'))
-      return json(funding({ funded, faucet: o.faucet ?? false, provenance: o.provenance }));
-    if (path === '/v1/testnet/fund' && method === 'POST') {
-      if (o.fund) return o.fund();
-      funded = true;
-      return json({
-        chain: 'solana',
-        provenance: 'sandbox',
-        wallet: SOLANA,
-        cash: { symbol: 'tUSDC', decimals: 6, raw: '40400000000' },
-        gas: { symbol: 'SOL', decimals: 9, raw: '12625000' },
-        txIds: ['devnet-signature'],
-        left: 2,
-      });
-    }
-    return json({ error: 'not found' }, 404);
-  });
+  portStore.setApi(
+    serverKeepsPlans(async (path, init) => {
+      const method = init?.method ?? 'GET';
+      calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      if (path === '/v1/me') return json(person);
+      if (path.startsWith('/v1/funding?'))
+        return json(funding({ funded, faucet: o.faucet ?? false, provenance: o.provenance }));
+      if (path === '/v1/testnet/fund' && method === 'POST') {
+        if (o.fund) return o.fund();
+        funded = true;
+        return json({
+          chain: 'solana',
+          provenance: 'sandbox',
+          wallet: SOLANA,
+          cash: { symbol: 'tUSDC', decimals: 6, raw: '40400000000' },
+          gas: { symbol: 'SOL', decimals: 9, raw: '12625000' },
+          txIds: ['devnet-signature'],
+          left: 2,
+        });
+      }
+      return json({ error: 'not found' }, 404);
+    }),
+  );
   return { calls, to: (prefix: string) => calls.filter((c) => c.path.startsWith(prefix)) };
 }
 
@@ -408,6 +410,53 @@ describe('a notice accepted before', () => {
     expect(kept.open).toBe(false);
     expect(kept.textContent).toContain(en.trust.accepted);
     expect(kept.querySelector('input[type="checkbox"]')).toBeNull();
+  });
+});
+
+describe('the first deposit', () => {
+  const reviewButton = (host: HTMLElement) =>
+    find(panel(host, 'review'), ':scope > div > [data-variant="primary"]');
+
+  it('cannot reach an order without the notice: the step is there, and the review holds until it is ticked', async () => {
+    const server = api({ funded: true });
+    const host = await buy();
+    expect(step(host, 'trust')).toBeTruthy();
+    // the review step can be opened from its heading, and its button still refuses
+    await click(head(host, 'review'));
+    expect(reviewButton(host).getAttribute('aria-disabled')).toBe('true');
+    expect(panel(host, 'review').textContent).toContain(en.buy.blocked.trust);
+    await click(reviewButton(host));
+    await settle();
+    expect(server.to('/v1/orders')).toEqual([]);
+    expect(window.localStorage.getItem(`tf-trust:${USER}`)).toBeNull();
+    // ticked, it lets go
+    await click(head(host, 'trust'));
+    await click(find(panel(host, 'trust'), 'input[type="checkbox"]'));
+    await click(head(host, 'review'));
+    expect(reviewButton(host).getAttribute('aria-disabled')).toBeNull();
+  });
+
+  it('asks again where the acceptance is not this person’s, not this text’s, or not in this browser', async () => {
+    const stored = (who: string, textVersion: string) =>
+      window.localStorage.setItem(`tf-trust:${who}`, JSON.stringify({ textVersion }));
+    for (const seed of [
+      // another person accepted in this browser
+      () => stored('did:privy:someone-else', TRUST_STATUS.textVersion),
+      // this person accepted an earlier text
+      () => stored(USER, 'an-earlier-text'),
+      // a new device: nothing is stored
+      () => undefined,
+    ]) {
+      window.localStorage.clear();
+      rememberPlan(planOn());
+      seed();
+      api({ funded: true });
+      const host = await buy();
+      expect(step(host, 'trust')).toBeTruthy();
+      await click(head(host, 'review'));
+      expect(reviewButton(host).getAttribute('aria-disabled')).toBe('true');
+      await unmountAll();
+    }
   });
 });
 

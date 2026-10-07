@@ -58,7 +58,7 @@ export const pt: Dictionary = {
       continue: 'Continuar com uma chave de acesso',
       createNew: 'Criar uma chave de acesso nova',
       createNewNote:
-        'Uma chave de acesso nova abre uma conta nova, com uma carteira nova e vazia. Ela não abre a carteira que você tinha.',
+        'É sua primeira vez? Uma chave de acesso nova abre uma conta nova, com uma carteira nova e vazia. Ela não abre uma carteira que você já tem.',
       waiting: 'Aguardando sua chave de acesso…',
       making: 'Criando sua carteira…',
     },
@@ -88,12 +88,13 @@ export const pt: Dictionary = {
       passkeyNotCreated:
         'A chave de acesso não foi criada: a janela foi fechada ou o tempo acabou. Nada foi salvo. Tente de novo quando quiser.',
       passkeyNotUsed:
-        'Nenhuma chave de acesso foi usada. Se você criou uma em outro aparelho, use esse aparelho ou escolha “usar um celular” na janela. É novo aqui? Crie uma chave de acesso: ela abre uma conta nova, com uma carteira nova e vazia.',
-      passkeyUnknown: 'Não reconheço essa chave de acesso. Crie uma nova ou conecte uma carteira.',
+        'Nenhuma chave de acesso foi usada. Se você criou uma em outro aparelho, use esse aparelho ou escolha “usar um celular” na janela.',
+      passkeyUnknown:
+        'Não reconheço essa chave de acesso: nenhuma conta aqui foi aberta com ela. Tente a chave com que você se cadastrou.',
       passkeyNotAccepted:
-        'Nenhuma chave de acesso deste site foi aceita. Tente de novo com a chave que você criou aqui, no aparelho que a tem.',
+        'Nenhuma chave de acesso deste site foi aceita, então você não entrou. Tente de novo com a chave com que você se cadastrou, no aparelho que a tem.',
       passkeyNotRegistered:
-        'Essa chave de acesso não está registrada aqui. Escolha outra ou crie uma.',
+        'Essa chave de acesso não está registrada aqui: ela foi criada para outro site ou aplicativo. Escolha a chave com que você se cadastrou aqui.',
       accountsFull:
         'Este app não está aceitando contas novas agora. Use uma chave de acesso ou carteira com que você já entrou, ou volte mais tarde.',
       notInvited:
@@ -351,6 +352,8 @@ export const pt: Dictionary = {
     signature: 'id da transação',
     buy: (amount: string, when: string) => `Compra de ${amount} · ${when}`,
     order: (when: string) => `Ordem · ${when}`,
+    follow: (when: string) => `Seguir um portfólio compartilhado · ${when}`,
+    publish: (when: string) => `Publicar um portfólio · ${when}`,
     noneVault:
       'Nada das suas compras chegou à rede ainda. As operações do agente, e as ordens sobre um portfólio compartilhado feitas em outro navegador, ainda não aparecem aqui.',
   },
@@ -473,7 +476,7 @@ export const pt: Dictionary = {
       due: (date: string) => `Data do objetivo: ${date}`,
       unknown: (chain: string) => `Seu cofre na ${chain}.`,
       notJoined:
-        'Não tenho registro do objetivo para o qual este cofre foi comprado. O que ele guarda está abaixo.',
+        'Este cofre não tem um objetivo que eu consiga ler: foi comprado a partir de um portfólio compartilhado, que não tem, ou antes de os planos guardarem seu objetivo. O que ele guarda está abaixo.',
       follows: (name: string) => `Seu cofre segue ${name}.`,
       followsShared: 'Ele segue um portfólio compartilhado. O que ele guarda está abaixo.',
       seeShared: 'Ver esse portfólio',
@@ -952,6 +955,8 @@ export const pt: Dictionary = {
         mock: 'Rede de exemplo: não há rede para ler, então estas são palavras do nosso servidor, não conferidas.',
         'no-node': (chain: string) =>
           `Não conferido na ${chain}: este app não tem um nó próprio para ler. Estas são palavras do nosso servidor.`,
+        'no-reader': (chain: string) =>
+          `Não conferido na ${chain}: este app ainda não lê o registro da ${chain}. Estas são palavras do nosso servidor.`,
         'no-deployment': (chain: string) =>
           `Não conferido na ${chain}: este app não tem registro dos tokens nesta rede. Estas são palavras do nosso servidor.`,
         'family-id':
@@ -1048,7 +1053,7 @@ export const pt: Dictionary = {
         weight: 'Cada peso vai de 2% a 50%, em passos de 0,5%.',
         sum: 'Os pesos somam 100%.',
         twice: 'Um ativo aparece uma vez só.',
-        chain: 'Por enquanto, publicar só funciona na Solana.',
+        chain: 'Publicar ainda não está aberto nesta rede.',
       },
       failure: {
         said: (error: string) => `Nosso servidor recusou: ${error}.`,
@@ -1110,6 +1115,7 @@ export const pt: Dictionary = {
       spend: (amount: string, asset: string) => `Gastar ${amount} em ${asset}`,
       atMostUnder: (pct: string) => `no máximo ${pct} abaixo da cotação`,
       atLeastWhole: (amount: string) => `receber pelo menos ${amount}`,
+      atMostEach: (price: string) => `no máximo ${price} cada`,
       under: (pct: string) => `${pct} abaixo da cotação`,
       noTrades: 'Nenhuma negociação neste passo.',
       warnings: 'Nosso servidor avisa',
@@ -1172,6 +1178,7 @@ export const pt: Dictionary = {
       approve: 'Autorizar o depósito',
       create_vault: 'Abrir seu cofre e depositar',
       create_vault_buy: 'Abrir seu cofre, depositar e comprar',
+      deposit_buy: 'Depositar e comprar',
       deposit: 'Depositar',
       swap: 'Comprar',
       set_targets: 'Definir as metas do seu cofre',
@@ -1215,6 +1222,16 @@ export const pt: Dictionary = {
       depositKept:
         'O que você depositou está no seu cofre, em caixa: nada se perdeu. Uma nova ordem depositaria de novo.',
       forSupport: 'Detalhes para o suporte',
+      finish: 'Terminar a compra com o caixa do seu cofre',
+      finishing: 'Criando a ordem…',
+      finishNote:
+        'Uma nova ordem para os passos que ficaram, ao preço de agora. Ela não deposita nada: você revisa e assina como antes.',
+      finishPriceMoved:
+        'O preço mudou enquanto a ordem era criada, então nada foi criado. Tente de novo.',
+      finishLater:
+        'Um passo assinado antes ainda pode chegar. Olhe de novo em um minuto e tente outra vez.',
+      finishRefused: (why: string) =>
+        `Não consegui criar essa ordem. Nosso servidor disse: ${why}.`,
       refused: (step: number) =>
         `Não assinei o passo ${step}: a transação que nosso servidor montou para ele não é o passo que você aprovou. Nada foi assinado para ele.`,
       refusedOrder:

@@ -306,52 +306,58 @@ export function PlanScreen({ id }: { id: string }) {
 
       {/* What the engine noted and how the plan is spread, closed until asked for: every code of the
           engine said in a sentence (features/order/plain.ts), none shown as it is written. */}
-      <details data-ui="plan-details" className="border border-border px-6 py-4">
-        <summary className="cursor-pointer text-body font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
-          {t.plan.details}
-        </summary>
-        <div className="mt-4 flex flex-col gap-6">
-          <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
-            {t.plan.basis(card.expectedReturn.basis)}
-          </p>
-          {notes.length > 0 && (
-            <ul className="flex max-w-(--tf-measure-body) list-disc flex-col gap-1 pl-5 text-body-sm">
-              {notes.map((note) => (
-                <li key={note}>{note}</li>
-              ))}
-            </ul>
-          )}
-          {out.length > 0 && (
-            <div data-ui="plan-left-out" className="flex flex-col gap-1">
-              <h3 className="text-[0.8125rem]/5 font-medium">{t.plan.leftOut}</h3>
+      {(notes.length > 0 ||
+        out.length > 0 ||
+        plan.rollUp ||
+        plan.readBack ||
+        card.expectedReturn.basis) && (
+        <details data-ui="plan-details" className="border border-border px-6 py-4">
+          <summary className="cursor-pointer text-body font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+            {t.plan.details}
+          </summary>
+          <div className="mt-4 flex flex-col gap-6">
+            <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
+              {t.plan.basis(card.expectedReturn.basis)}
+            </p>
+            {notes.length > 0 && (
               <ul className="flex max-w-(--tf-measure-body) list-disc flex-col gap-1 pl-5 text-body-sm">
-                {out.map((sentence) => (
-                  <li key={sentence}>{sentence}</li>
+                {notes.map((note) => (
+                  <li key={note}>{note}</li>
                 ))}
               </ul>
-            </div>
-          )}
-          {plan.rollUp && (
-            <RiskPanel
-              rollUp={plan.rollUp}
-              t={t}
-              share={share}
-              notLive={notLive}
-              sandbox={label === 'sandbox'}
-            />
-          )}
-          {/* Read back from the server, which keeps the plan and not its risk summary: said, not
-              left out in silence. */}
-          {!plan.rollUp && plan.readBack && (
-            <p
-              data-ui="plan-risk-not-kept"
-              className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground"
-            >
-              {t.plan.risk.notKept}
-            </p>
-          )}
-        </div>
-      </details>
+            )}
+            {out.length > 0 && (
+              <div data-ui="plan-left-out" className="flex flex-col gap-1">
+                <h3 className="text-[0.8125rem]/5 font-medium">{t.plan.leftOut}</h3>
+                <ul className="flex max-w-(--tf-measure-body) list-disc flex-col gap-1 pl-5 text-body-sm">
+                  {out.map((sentence) => (
+                    <li key={sentence}>{sentence}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {plan.rollUp && (
+              <RiskPanel
+                rollUp={plan.rollUp}
+                t={t}
+                share={share}
+                notLive={notLive}
+                sandbox={label === 'sandbox'}
+              />
+            )}
+            {/* Read back from the server, which keeps the plan and not its risk summary: said, not
+                left out in silence. */}
+            {!plan.rollUp && plan.readBack && (
+              <p
+                data-ui="plan-risk-not-kept"
+                className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground"
+              >
+                {t.plan.risk.notKept}
+              </p>
+            )}
+          </div>
+        </details>
+      )}
 
       <div className="flex flex-col items-start gap-2">
         {blocked ? (

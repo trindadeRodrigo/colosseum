@@ -2,10 +2,11 @@ import { BasketProposal, RiskRollUp } from '@colosseum/schemas';
 
 // The plan a goal built, kept for the plan screen and the buy screen: what "Build my plan" answered,
 // kept in the browser under its id, so the screens open at once and another tab finds it (the flow
-// audit, finding 14). The few newest are kept. What is kept is a cache: a browser that did not build
-// the plan (another device, a sign-in again) reads it from the API, which answers a plan to the person
-// who made it and a plan made from a link to anybody (`readStoredPlan`). It is one person's: it is
-// read back only for the person who built it, and a plan that does not parse is not shown.
+// audit, finding 14). The browser is a cache, of the few newest, and never the last word: the API is
+// asked for the plan each time (`readStoredPlan`, use-plan.ts), which answers a plan to the person who
+// made it and a plan made from a link to anybody, and a plan the API says is gone, or another
+// person's, is dropped from the cache and not shown. It is cleared when the person signs out. A plan
+// that does not parse is not shown.
 
 export type StoredPlan = {
   /** The stored plan's id, which a buy names (`proposalId`). */
@@ -51,6 +52,56 @@ export function rememberPlan(plan: StoredPlan): void {
     store.setItem(INDEX, JSON.stringify(ids));
   } catch {
     // No storage in this browser: the plan screen then asks for the plan to be built again.
+  }
+}
+
+/** Drops one plan from the cache: the server said it is gone, or not this person's. */
+export function forgetPlan(id: string): void {
+  try {
+    window.sessionStorage.removeItem(KEY(id));
+    const store = window.localStorage;
+    store.removeItem(KEY(id));
+    const read: unknown = JSON.parse(store.getItem(INDEX) ?? '[]');
+    if (Array.isArray(read)) store.setItem(INDEX, JSON.stringify(read.filter((x) => x !== id)));
+  } catch {
+    // Nothing kept, nothing to drop.
+  }
+}
+
+/** Empties the cache: the person signed out, or another signed in. The plans stay on the server. */
+export function forgetPlans(): void {
+  try {
+    for (const store of [window.localStorage, window.sessionStorage]) {
+      const keys: string[] = [];
+      for (let i = 0; i < store.length; i += 1) {
+        const key = store.key(i);
+        if (key?.startsWith(PREFIX)) keys.push(key);
+      }
+      for (const key of keys) store.removeItem(key);
+    }
+    window.localStorage.removeItem(INDEX);
+  } catch {
+    // As above.
+  }
+}
+
+/**
+ * Where a cached plan stands on the server, which is the last word on it (`GET /v1/baskets/{id}`):
+ * `there` when it answers the plan, `gone` when it says there is none this person can read (404, or
+ * 403), `unknown` when it did not answer or answered anything else, and then the cache stands.
+ */
+export async function planStanding(
+  apiFetch: (path: string) => Promise<Response>,
+  id: string,
+): Promise<'there' | 'gone' | 'unknown'> {
+  try {
+    const res = await apiFetch(`/v1/baskets/${encodeURIComponent(id)}`);
+    if (res.status === 404 || res.status === 403) return 'gone';
+    if (!res.ok) return 'unknown';
+    const body = (await res.json()) as { id?: unknown };
+    return body.id === id ? 'there' : 'unknown';
+  } catch {
+    return 'unknown';
   }
 }
 

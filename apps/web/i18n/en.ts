@@ -71,7 +71,7 @@ export const en = {
       createNew: 'Create a new passkey',
       /** Under that button: what a new passkey is, before one is made by mistake. */
       createNewNote:
-        'A new passkey opens a new account with a new, empty wallet. It doesn’t open the wallet you had.',
+        'New here? A new passkey opens a new account with a new, empty wallet. It doesn’t open a wallet you already have.',
       waiting: 'Waiting for your passkey…',
       making: 'Making your wallet…',
     },
@@ -109,12 +109,15 @@ export const en = {
         'The passkey wasn’t created: the prompt was closed or ran out of time. Nothing was saved. Try again when you’re ready.',
       /** The prompt to use a passkey was closed: nothing is made unless the person asks (SIGN-IN-FLOW). */
       passkeyNotUsed:
-        'No passkey was used. If you made one on another device, use that device or choose “use a phone” in the prompt. New here? Create a passkey: it opens a new account with a new, empty wallet.',
-      passkeyUnknown: 'I don’t know that passkey. Create a new one, or connect a wallet.',
+        'No passkey was used. If you made one on another device, use that device or choose “use a phone” in the prompt.',
+      passkeyUnknown:
+        'I don’t know that passkey: no account here was opened with it. Try the one you signed up with.',
+      /** A passkey sign-in that failed with nothing more said: no passkey was taken. */
       passkeyNotAccepted:
-        'No passkey for this site was accepted. Try again with the passkey you made here, on the device that has it.',
+        'No passkey for this site was accepted, so you aren’t signed in. Try again with the passkey you signed up with, on the device that has it.',
       /** Privy's `passkey_not_registered`: the passkey picked was made for another site or app. */
-      passkeyNotRegistered: 'That passkey isn’t registered here. Pick another, or create one.',
+      passkeyNotRegistered:
+        'That passkey isn’t registered here: it was made for another site or app. Pick the one you signed up with here.',
       /** Privy's `max_accounts_reached`. */
       accountsFull:
         'This app can’t take new accounts right now. Use a passkey or wallet you’ve signed in with before, or come back later.',
@@ -394,6 +397,8 @@ export const en = {
     /** The heading of one order's lines on the portfolio: "Buy of $80,000 · Oct 5, 2026, 15:00 UTC". */
     buy: (amount: string, when: string) => `Buy of ${amount} · ${when}`,
     order: (when: string) => `Order · ${when}`,
+    follow: (when: string) => `Follow a shared portfolio · ${when}`,
+    publish: (when: string) => `Publish a portfolio · ${when}`,
     noneVault:
       'Nothing from your buys has reached the chain yet. The keeper’s trades, and orders about a shared portfolio placed in another browser, are not listed here yet.',
   },
@@ -537,7 +542,8 @@ export const en = {
       /** Where no status is known, the one plain line: when the goal is due. */
       due: (date: string) => `Goal date: ${date}`,
       unknown: (chain: string) => `Your vault on ${chain}.`,
-      notJoined: 'I have no record of the goal this vault was bought for. What it holds is below.',
+      notJoined:
+        'This vault has no goal I can read: it was bought from a shared portfolio, which has none, or before plans kept their goal. What it holds is below.',
       /** A vault bought from a shared portfolio: what it follows, by name where this browser knows it. */
       follows: (name: string) => `Your vault follows ${name}.`,
       followsShared: 'It follows a shared portfolio. What it holds is below.',
@@ -1038,6 +1044,8 @@ export const en = {
         mock: 'Sample chain: there is no chain to read, so these are our server’s words, not checked.',
         'no-node': (chain: string) =>
           `Not checked against ${chain}: this app has no node of its own to read it from. These are our server’s words.`,
+        'no-reader': (chain: string) =>
+          `Not checked against ${chain}: this app doesn’t read ${chain}’s registry yet. These are our server’s words.`,
         'no-deployment': (chain: string) =>
           `Not checked against ${chain}: this app has no record of the tokens on this network. These are our server’s words.`,
         'family-id':
@@ -1135,7 +1143,7 @@ export const en = {
         weight: 'Each weight is from 2% to 50%, in steps of 0.5%.',
         sum: 'The weights add up to 100%.',
         twice: 'An asset appears once.',
-        chain: 'Publishing is built on Solana only for now.',
+        chain: 'Publishing isn’t open on this chain yet.',
       },
       failure: {
         said: (error: string) => `Our server said no: ${error}.`,
@@ -1197,6 +1205,8 @@ export const en = {
       /** Where this app has no units for the token: how far under the quote the step may land. */
       atMostUnder: (pct: string) => `at most ${pct} under the quote`,
       atLeastWhole: (amount: string) => `receive at least ${amount}`,
+      /** The most a token costs at that minimum: what is spent over the least received. */
+      atMostEach: (price: string) => `at most ${price} each`,
       under: (pct: string) => `${pct} under the quote`,
       noTrades: 'No trade in this step.',
       warnings: 'Our server warns',
@@ -1260,6 +1270,7 @@ export const en = {
       create_vault: 'Open your vault and deposit',
       /** The same step where it also buys (Robinhood Chain): the buys are named, not hidden. */
       create_vault_buy: 'Open your vault, deposit and buy',
+      deposit_buy: 'Deposit and buy',
       deposit: 'Deposit',
       swap: 'Buy',
       set_targets: 'Set your vault’s targets',
@@ -1305,6 +1316,15 @@ export const en = {
         'What you deposited is in your vault, as cash: nothing is lost. A new order would deposit again.',
       /** The fold over the check that failed and the guard's own words, to quote to the team. */
       forSupport: 'Details for support',
+      /** Finishing a buy that stopped after its deposit, where the server can (finding 24). */
+      finish: 'Finish buying with the cash in your vault',
+      finishing: 'Making the order…',
+      finishNote:
+        'A new order for the steps that were left, at the price now. It deposits nothing: you review and sign it as before.',
+      finishPriceMoved:
+        'The price moved while the order was being made, so nothing was made. Try again.',
+      finishLater: 'A step signed before can still land. Look again in a minute, then try again.',
+      finishRefused: (why: string) => `I couldn’t make that order. Our server said: ${why}.`,
       refused: (step: number) =>
         `I didn’t sign step ${step}: the transaction our server built for it isn’t the step you approved. Nothing was signed for it.`,
       refusedOrder:
