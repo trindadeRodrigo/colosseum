@@ -1461,6 +1461,8 @@ export type PostTestnetFundBody = {
   amountUsd: number;
   proposalId?: string;
   family?: string;
+  vault?: string | string;
+  vaultChain?: 'solana' | 'base' | 'robinhood';
 };
 
 /** POST /v1/testnet/fund: response. Test network only: send the signed-in wallet the test tokens and gas a buy is missing */

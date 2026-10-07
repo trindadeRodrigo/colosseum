@@ -9293,6 +9293,22 @@
                   "family": {
                     "type": "string",
                     "pattern": "^[a-z0-9][a-z0-9-]*$"
+                  },
+                  "vault": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-f]{40}$"
+                      }
+                    ]
+                  },
+                  "vaultChain": {
+                    "type": "string",
+                    "enum": ["solana", "base", "robinhood"]
                   }
                 },
                 "required": ["amountUsd"],
