@@ -52,7 +52,6 @@ export const bearingPt: BearingDictionary = {
   },
   chain: {
     label: 'Rede',
-    notCollectedOn: (chain: string) => `ainda não coletado na ${chain}`,
     pageNotCollected: (chain: string) =>
       `Ainda não coletado na ${chain}: por enquanto o Bearing mede esta página só na Solana.`,
     sideBySide: {

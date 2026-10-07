@@ -222,7 +222,7 @@ describe('the MCP tools against the API, held to its OpenAPI document', () => {
     expect(missing.isError).toBe(true);
     expect(failureOf(missing)).toMatchObject({
       status: 404,
-      error: 'no plan made from a link has that id',
+      error: 'no plan with that id that you can read',
     });
   });
 

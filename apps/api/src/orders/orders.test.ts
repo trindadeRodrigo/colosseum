@@ -831,6 +831,7 @@ describe('the /v1 route table', () => {
       '/v1/indexes/{slug}/versions',
       '/v1/me',
       '/v1/me/chain',
+      '/v1/me/plans',
       '/v1/mock/fund',
       '/v1/mock/orders/{id}/legs/{legId}/land',
       '/v1/orders',
@@ -851,8 +852,21 @@ describe('the /v1 route table', () => {
     const bare = Fastify();
     bare.setValidatorCompiler(validatorCompiler);
     bare.setSerializerCompiler(serializerCompiler);
-    await registerV1Routes(bare, { CHAIN_MODE_SOLANA: 'off', CHAIN_MODE_ROBINHOOD: 'off' });
+    // Which routes read a sign-in without needing one (`config.optionalSignIn`, plugins/auth.ts).
+    const optional: string[] = [];
+    bare.addHook('onRoute', (route) => {
+      if (route.config?.optionalSignIn && route.method !== 'HEAD')
+        optional.push(`${route.method} ${route.url} ${route.config.auth}`);
+    });
+    await registerV1Routes(bare, {
+      CHAIN_MODE_SOLANA: 'off',
+      CHAIN_MODE_ROBINHOOD: 'off',
+      AGENT_SURFACE: 'on',
+    });
     await bare.ready();
+    // Exactly one, and a public one: the read of a plan by its id. Another route that starts reading
+    // tokens it does not need is a change to who the API takes a caller for, and is made on purpose.
+    expect(optional).toEqual(['GET /v1/baskets/:id public']);
     const routes = bare.printRoutes({ commonPrefix: false });
     expect(routes).toContain('/v1/orders');
     expect(routes).not.toContain('mock');

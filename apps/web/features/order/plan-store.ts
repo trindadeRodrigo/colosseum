@@ -1,9 +1,11 @@
 import { BasketProposal, RiskRollUp } from '@colosseum/schemas';
 
-// The plan a goal built, kept for the plan screen and the buy screen. The API has no route that reads
-// a stored plan back by its id, so the plan is what "Build my plan" answered, kept in the tab under its
-// id. It is one person's: it is read back only for the person who built it, and a plan that does not
-// parse is not shown.
+// The plan a goal built, kept for the plan screen and the buy screen: what "Build my plan" answered,
+// kept in the tab under its id, so the screens open at once. The tab is a cache. A tab that did not
+// build the plan (a new one, another device, a sign-in again) reads it from the API, which answers a
+// plan to the person who made it and a plan made from a link to anybody (`readStoredPlan`). It is one
+// person's: it is read back only for the person who built it, and a plan that does not parse is not
+// shown.
 
 export type StoredPlan = {
   /** The stored plan's id, which a buy names (`proposalId`). */
@@ -18,6 +20,11 @@ export type StoredPlan = {
    * read back from the API by its id, and said so on the plan screen.
    */
   fromLink?: boolean;
+  /**
+   * Read back from the API in a tab that did not build it. The API keeps the plan and not its risk
+   * roll-up, so there is none, and the plan screen says so.
+   */
+  readBack?: boolean;
 };
 
 const KEY = (id: string) => `tf-plan:${id}`;
@@ -52,6 +59,7 @@ export function recallPlan(id: string, userId: string | null): StoredPlan | null
       proposal: proposal.data,
       rollUp: rollUp?.success ? rollUp.data : null,
       ...(read.fromLink === true ? { fromLink: true } : {}),
+      ...(read.readBack === true ? { readBack: true } : {}),
     };
   } catch {
     return null;
@@ -59,21 +67,28 @@ export function recallPlan(id: string, userId: string | null): StoredPlan | null
 }
 
 /**
- * A plan made from a link, read from the API by its id (`GET /v1/baskets/{id}`): what an agent proposed
- * for a person it could not sign in as. Null when the API has none by that id, does not answer, or
- * answers something that is not a plan.
+ * A stored plan read from the API by its id (`GET /v1/baskets/{id}`): the signed-in person's own, or
+ * one made from a link (what an agent proposed for a person it could not sign in as), which the
+ * answer says (`fromLink`). An answer that does not say is from a server that served only plans from
+ * a link, and is read as one. Null when the API has none by that id for this person, does not answer,
+ * or answers something that is not a plan.
  */
-export async function readLinkedPlan(
-  apiFetch: (path: string) => Promise<Response>,
+export async function readStoredPlan(
+  apiFetch: (path: string, init?: { freshSignIn?: boolean }) => Promise<Response>,
   id: string,
-): Promise<BasketProposal | null> {
+  /** Ask with fresh tokens: the second try, after an answer that may have been given to nobody. */
+  freshSignIn = false,
+): Promise<{ proposal: BasketProposal; fromLink: boolean } | null> {
   try {
-    const res = await apiFetch(`/v1/baskets/${encodeURIComponent(id)}`);
+    const res = await apiFetch(
+      `/v1/baskets/${encodeURIComponent(id)}`,
+      freshSignIn ? { freshSignIn } : undefined,
+    );
     if (!res.ok) return null;
-    const body = (await res.json()) as { id?: unknown; proposal?: unknown };
+    const body = (await res.json()) as { id?: unknown; proposal?: unknown; fromLink?: unknown };
     if (body.id !== id) return null;
     const proposal = BasketProposal.safeParse(body.proposal);
-    return proposal.success ? proposal.data : null;
+    return proposal.success ? { proposal: proposal.data, fromLink: body.fromLink !== false } : null;
   } catch {
     return null;
   }

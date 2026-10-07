@@ -278,8 +278,8 @@ async function toReview(page: Page, o: { fund?: 'mock' | 'test' } = {}) {
 
   await expect(page).toHaveURL(/\/orders\/[^/]+$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.order.review.title);
-  // the review names the chain over the page and over its steps
-  await expect(page.locator('main [data-ui="chain-badge"]')).toHaveText(['Solana', 'Solana']);
+  // the review names the chain once, over the page
+  await expect(page.locator('main [data-ui="chain-badge"]')).toHaveText(['Solana']);
 }
 
 test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', async ({ page }) => {
@@ -348,6 +348,9 @@ test('the buy’s steps by keyboard, in Portuguese, at 375 and 1440 px', async (
     .locator('[data-ui="language-switch"]')
     .getByRole('button', { name: 'Português' })
     .click();
+  // The page has arrived in Portuguese, all of it: its language, and its title, which comes last.
+  await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR');
+  await expect(page).toHaveTitle(new RegExp(`^${pt.buy.title}`));
   const amount = page.getByLabel(pt.buy.amount.label, { exact: true });
   await expect(amount).toHaveValue('40');
   // Enter in the amount continues, and the focus moves to the step it opens

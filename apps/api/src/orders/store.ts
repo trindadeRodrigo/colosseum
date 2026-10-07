@@ -19,11 +19,25 @@ import {
   type IntentRequest,
   type Leg,
   type Order,
+  type Principal,
   type Provenance,
   type Shelf,
   type VaultView,
 } from '@colosseum/schemas';
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, notInArray, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  lt,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { Refusal } from './errors';
 
 // The order tables (DESIGN-VAULT section 4), read and written through Drizzle. A leg row mirrors its
@@ -237,20 +251,203 @@ export async function isLinkedProposal(db: Db, id: string): Promise<boolean> {
 }
 
 /**
- * A plan made from a link (`POST /v1/baskets/propose`), by its id: one marked `from_link`. A plan a
- * person made in the app is theirs, and is not answered here, even one stored with no user row.
+ * A stored plan as one caller may read it back, by its id: the person who made it (the row names
+ * them), or anybody for a plan made from a link (`fromLink`; the route decides whether those are
+ * served). Another person's plan is null here, as an id that names no plan is.
  */
-export async function loadLinkedProposal(db: Db, id: string): Promise<BasketProposal | null> {
+export async function loadReadablePlan(
+  db: Db,
+  id: string,
+  privyId: string | null,
+): Promise<{ proposal: BasketProposal; fromLink: boolean } | null> {
   const [row] = await db
-    .select({ proposal: proposals.proposal })
+    .select({ proposal: proposals.proposal, fromLink: proposals.fromLink, owner: users.privyId })
     .from(proposals)
-    .where(and(eq(proposals.id, id), eq(proposals.fromLink, true)));
+    .leftJoin(users, eq(users.id, proposals.userId))
+    .where(eq(proposals.id, id));
   if (!row) return null;
+  const mine = privyId !== null && row.owner === privyId;
+  if (!row.fromLink && !mine) return null;
+  const parsed = BasketProposal.safeParse(row.proposal);
+  if (!parsed.success)
+    throw new Refusal(409, 'the stored plan cannot be read: make the plan again');
+  return { proposal: parsed.data, fromLink: row.fromLink };
+}
+
+/**
+ * A stored plan as one caller may buy it, by its id: the person who made it, anybody for a plan made
+ * from a link, and, for a row that names no person and is not from a link (one stored before plans
+ * named their person), anybody holding its id, as it was. A plan that names another person is null
+ * here, as an id that names no plan is: its id does not buy it, and an order's steps never show its
+ * trades to a stranger.
+ */
+export async function loadBuyablePlan(
+  db: Db,
+  id: string,
+  privyId: string | null,
+): Promise<BasketProposal | null> {
+  if (!UUID.test(id)) return null;
+  const [row] = await db
+    .select({
+      proposal: proposals.proposal,
+      fromLink: proposals.fromLink,
+      userId: proposals.userId,
+      owner: users.privyId,
+    })
+    .from(proposals)
+    .leftJoin(users, eq(users.id, proposals.userId))
+    .where(eq(proposals.id, id));
+  if (!row) return null;
+  const mine = privyId !== null && row.owner === privyId;
+  if (!row.fromLink && row.userId !== null && !mine) return null;
   const parsed = BasketProposal.safeParse(row.proposal);
   if (!parsed.success)
     throw new Refusal(409, 'the stored plan cannot be read: make the plan again');
   return parsed.data;
 }
+
+/** A buy of a plan, as the list of a person's plans names it. */
+export type PlanOrder = {
+  id: string;
+  createdAt: string;
+  amountUsd: number;
+  status: Order['status'];
+  /** Its deposit is confirmed on chain: the vault holds what this order put in. */
+  deposited: boolean;
+};
+
+/** A plan of a person's, with the buys of it and the vault they opened. */
+export type PersonPlan = {
+  id: string;
+  createdAt: string;
+  fromLink: boolean;
+  proposal: BasketProposal;
+  orders: PlanOrder[];
+  /** The vault's number on chain, from the buys; null while nothing was ordered. */
+  basketId: string | null;
+};
+
+/** The most plans one answer lists. */
+export const PERSON_PLANS = { plans: 50 } as const;
+
+/**
+ * The plans a person made, and the plans made from a link that they bought, newest first, each with
+ * its buys: one page of them, of at most `limit`, made before `before` when that is given. `next` is
+ * the time to ask the following page with, or null when this is the last. A plan is the person's by
+ * its row; a buy is theirs by the wallets of the verified token, as an order is everywhere (`holds`).
+ * Another person's plan is never listed, bought or not: a buy that names one lists nothing of it. A
+ * stored plan that no longer reads is left out.
+ */
+export async function listPersonPlans(
+  db: Db,
+  principal: Principal,
+  page: { limit?: number; before?: Date } = {},
+): Promise<{ plans: PersonPlan[]; next: string | null }> {
+  const limit = Math.min(Math.max(1, page.limit ?? PERSON_PLANS.plans), PERSON_PLANS.plans);
+  const privyId = principal.userId ?? null;
+  const [user] = privyId
+    ? await db.select({ id: users.id }).from(users).where(eq(users.privyId, privyId))
+    : [];
+  const addresses = (family: 'solana' | 'evm') =>
+    principal.wallets.filter((w) => w.family === family).map((w) => w.address);
+  const [solana, evm] = [addresses('solana'), addresses('evm')];
+  const owned = [
+    ...(solana.length ? [inArray(orders.ownerSolana, solana)] : []),
+    ...(evm.length ? [inArray(orders.ownerEvm, evm)] : []),
+  ];
+  // An order is the caller's only when every address it names is theirs, as on its own route.
+  const theirs = (o: { ownerSolana: string | null; ownerEvm: string | null }) => {
+    const has = (family: 'solana' | 'evm', address: string | null) =>
+      address === null ||
+      principal.wallets.some((w) => w.family === family && w.address === address);
+    return has('solana', o.ownerSolana) && has('evm', o.ownerEvm);
+  };
+  const planId = sql<string | null>`${orders.request}->>'proposalId'`;
+  // Every plan the person's buys name, by its id alone: the page is cut from the plans, not the buys.
+  const named = owned.length
+    ? await db
+        .selectDistinct({ id: planId, ownerSolana: orders.ownerSolana, ownerEvm: orders.ownerEvm })
+        .from(orders)
+        .where(and(eq(orders.type, 'buy'), or(...owned)))
+    : [];
+  const bought = [
+    ...new Set(
+      named
+        .filter(theirs)
+        .map((o) => o.id)
+        .filter((id): id is string => id !== null && UUID.test(id)),
+    ),
+  ];
+  // The person's own plans, and of those bought the ones made from a link.
+  const whose = [
+    ...(user ? [eq(proposals.userId, user.id)] : []),
+    ...(bought.length ? [and(inArray(proposals.id, bought), eq(proposals.fromLink, true))] : []),
+  ];
+  if (whose.length === 0) return { plans: [], next: null };
+  const rows = await db
+    .select()
+    .from(proposals)
+    .where(and(or(...whose), ...(page.before ? [lt(proposals.createdAt, page.before)] : [])))
+    .orderBy(desc(proposals.createdAt), desc(proposals.id))
+    .limit(limit + 1);
+  const shown = rows.slice(0, limit);
+  const next = rows.length > limit ? (shown.at(-1)?.createdAt.toISOString() ?? null) : null;
+
+  const ids = shown.map((row) => row.id);
+  const buys =
+    owned.length && ids.length
+      ? (
+          await db
+            .select()
+            .from(orders)
+            .where(and(eq(orders.type, 'buy'), or(...owned), inArray(planId, ids)))
+            .orderBy(desc(orders.createdAt))
+        ).filter(theirs)
+      : [];
+  const confirmed = buys.length
+    ? await db
+        .select({ orderId: legs.orderId })
+        .from(legs)
+        .where(
+          and(
+            inArray(
+              legs.orderId,
+              buys.map((o) => o.id),
+            ),
+            inArray(legs.kind, ['create_vault', 'deposit']),
+            eq(legs.status, 'confirmed'),
+          ),
+        )
+    : [];
+  const deposited = new Set(confirmed.map((l) => l.orderId));
+  const planOf = (o: OrderRow) =>
+    o.request.type === 'buy' ? (o.request.proposalId ?? null) : null;
+
+  const plans = shown.flatMap((row) => {
+    const parsed = BasketProposal.safeParse(row.proposal);
+    if (!parsed.success) return [];
+    const of = buys.filter((o) => planOf(o) === row.id);
+    return [
+      {
+        id: row.id,
+        createdAt: row.createdAt.toISOString(),
+        fromLink: row.fromLink,
+        proposal: parsed.data,
+        orders: of.map((o) => ({
+          id: o.id,
+          createdAt: o.createdAt.toISOString(),
+          amountUsd: o.request.type === 'buy' ? o.request.amountUsd : 0,
+          status: o.status,
+          deposited: deposited.has(o.id),
+        })),
+        basketId: of.find((o) => o.basketId !== null)?.basketId ?? null,
+      },
+    ];
+  });
+  return { plans, next };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Stores a plan made for a person and answers its id, which `POST /v1/orders` buys by. The row names
