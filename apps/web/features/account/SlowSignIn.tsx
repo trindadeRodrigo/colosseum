@@ -32,7 +32,7 @@ export function SlowSignIn({
             {t.shell.slow.again}
           </Button>
         )}
-        {onSignOut && (
+        {onSignOut && slow.side !== 'service' && (
           <Button variant="link" data-act="sign-in-leave" onClick={onSignOut}>
             {t.shell.signOut}
           </Button>

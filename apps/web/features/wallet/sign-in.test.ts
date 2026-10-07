@@ -63,6 +63,12 @@ describe('what a failed sign-in is called', () => {
       'passkey_unsupported',
     ]);
     expect(read(privy('too_many_requests', 'Too many requests'))).toEqual(['unknown', 'too_many']);
+    // Privy's 403 from an address its app does not list (seen on localhost, Oct 7)
+    expect(read(privy('invalid_origin', 'Origin not allowed'))).toEqual([
+      'unsupported',
+      'origin_refused',
+    ]);
+    expect(read(new Error('Origin not allowed'))).toEqual(['unsupported', 'origin_refused']);
     expect(read(Object.assign(new Error('HTTP 429'), { status: 429 }))).toEqual([
       'unknown',
       'too_many',
@@ -129,6 +135,10 @@ describe('the sentence each failure gets', () => {
       'passkeyUnsupported',
     );
     expect(says(privy('too_many_requests', 'x'), 'wallet')).toBe('tooMany');
+    for (const attempt of ['passkey-use', 'passkey-create', 'wallet'] as const)
+      expect(says(privy('invalid_origin', 'Origin not allowed'), attempt)).toBe('originRefused');
+    // a new passkey would fail the same way: it is not offered
+    expect(offersNewPasskey('originRefused')).toBe(false);
     expect(says(new TypeError('Failed to fetch'), 'wallet')).toBe('offline');
     expect(says(new Error('Blockhash not found'), 'wallet')).toBe('expired');
     expect(says(new Error('TypeError: cannot read properties of undefined'), 'wallet')).toBe(

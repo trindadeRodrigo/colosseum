@@ -31,6 +31,8 @@ export const pt: Dictionary = {
         'Você entrou, mas o serviço de login ainda não entregou suas carteiras. Nada foi perdido.',
       server:
         'Você entrou, mas nosso servidor ainda não disse em qual rede fica o seu plano. Nada foi perdido.',
+      service:
+        'O serviço de login ainda não respondeu, então não sei dizer se você entrou. Você pode continuar olhando.',
       again: 'Tentar de novo',
       trying: 'Tentando de novo…',
       held: 'Um passo da sua ordem está sendo assinado. Conclua ou cancele esse passo primeiro e tente de novo.',
@@ -86,6 +88,12 @@ export const pt: Dictionary = {
         `${wallet} só funciona em redes indisponíveis no nosso servidor por enquanto, então não pode ser usada para entrar. Use outra carteira ou uma chave de acesso.`,
       chains: 'A rede do seu plano',
     },
+    silent: {
+      body: 'O serviço de login ainda não respondeu, então não consigo fazer seu login agora.',
+      offline: 'Este aparelho parece estar sem conexão. Confira a conexão e tente de novo.',
+      blocked:
+        'O serviço de login não respondeu. Um bloqueador pode impedir isso, ou este endereço pode não estar configurado para login.',
+    },
     off: {
       api: 'O login está indisponível no momento: nosso servidor não está respondendo. Eu tento de novo a cada poucos segundos, e esta página se atualiza sozinha.',
       setup:
@@ -123,6 +131,8 @@ export const pt: Dictionary = {
         'Essa carteira não está mais neste navegador. Escolha uma da lista ou use uma chave de acesso.',
       tooMany: 'Muitas tentativas em pouco tempo. Espere um minuto e tente de novo.',
       offline: 'Não consegui falar com o serviço de login. Verifique sua conexão e tente de novo.',
+      originRefused:
+        'O login não está configurado para este endereço: o serviço de login não aceita logins a partir dele. Não há nada para você corrigir. Use o site no endereço dele, ou nos avise.',
       expired: 'Isso demorou demais e o tempo acabou. Tente de novo.',
       walletNotMade:
         'Você entrou, mas sua carteira não pôde ser criada. Nada foi perdido. Tente de novo.',

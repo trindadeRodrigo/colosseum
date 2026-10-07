@@ -34,4 +34,11 @@ const restart = () => {
   return true;
 };
 export const useWalletRestart = () => restart;
+/** How often this browser was marked signed out without the service (WalletProvider's `leaveHere`). */
+export const left = { count: 0 };
+const leaveHere = () => {
+  left.count += 1;
+};
+export const useLeaveHere = () => leaveHere;
+export const useOustedPerson = () => null;
 export const WalletProvider = ({ children }: { children: ReactNode }) => children;
