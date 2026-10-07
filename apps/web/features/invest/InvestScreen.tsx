@@ -1399,6 +1399,7 @@ function Facts({
     })),
     ...(mix ? [{ key: 'mix', label: w.mix, value: mix }] : []),
   ];
+  if (compact && shown.length === 0 && extras.length === 0 && !build) return null;
   return (
     <section data-ui="pane-facts" aria-label={w.title} className="flex flex-col gap-2">
       <h2 className="text-[0.8125rem]/5 font-medium">{w.title}</h2>

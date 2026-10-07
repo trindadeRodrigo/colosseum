@@ -128,6 +128,25 @@ beforeEach(() => {
 afterEach(unmountAll);
 
 describe('signed in: the guided intake reads the conversation', () => {
+  it('keeps a vague reader response in the conversation without an empty facts heading', async () => {
+    const asked = {
+      field: 'goal',
+      template: 'goal',
+      text: 'What would you like these stocks to do for you?',
+      options: ['grow', 'income', 'protect'],
+    };
+    const server = api(answer({ questions: [asked] }));
+    const host = await screen();
+    await say(host, 'i want cool stocks');
+    expect(server.to(INTAKE_PATH)).toHaveLength(1);
+    expect(question(host)).toBe(asked.text);
+    expect(turns(host).join(' ')).toContain('i want cool stocks');
+    expect(host.querySelector('[data-ui="pane-facts"]')).toBeNull();
+    expect(find(host, '[data-ui="invest-screen"]').getAttribute('data-layout')).toBe('intake');
+    expect(host.querySelector('[data-ui="invest-summary"]')).toBeNull();
+    expect(server.to(PERSONALIZE_PATH)).toEqual([]);
+  });
+
   it('renders the capacity explanation without accepting the excessive turn, and Start over clears it', async () => {
     const server = api(answer({ sheet: SHEET, readBack: ['Your accepted goal'] }));
     const host = await screen();
