@@ -1,0 +1,865 @@
+{
+  "chain": "solana",
+  "version": 1,
+  "readOn": "2026-10-06",
+  "note": "One row per tracked stock on Solana: the 18 stocks of gate UNIVERSE (docs/risk/PLAN-UNIVERSE.md section 2) and the stock tokens of the launch shelf. Sector, industry and sub-industry are GICS-style names. A field listed under a row's \"unverified\" was not read on a source.",
+  "stocks": [
+    {
+      "symbol": "AAPLx",
+      "underlying": "AAPL",
+      "kind": "common",
+      "company": "Apple Inc.",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Technology Hardware, Storage & Peripherals",
+      "subIndustry": "Technology Hardware, Storage & Peripherals",
+      "keywords": [
+        "smartphones",
+        "personal computers",
+        "tablets",
+        "wearables",
+        "digital content",
+        "payment services"
+      ],
+      "tracks": null,
+      "sets": ["shelf", "universe"],
+      "sources": [
+        {
+          "url": "https://assets.backed.fi/products/apple-xstock",
+          "title": "Apple xStock - Backed Assets (issuer's product page: AAPLx tracks Apple Inc.)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+          "title": "Apple Inc. Form 10-K for the fiscal year ended September 27, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": []
+    },
+    {
+      "symbol": "AMZNx",
+      "underlying": "AMZN",
+      "kind": "common",
+      "company": "Amazon.com, Inc.",
+      "headquarters": "United States",
+      "sector": "Consumer Discretionary",
+      "industry": "Broadline Retail",
+      "subIndustry": "Broadline Retail",
+      "keywords": [
+        "online stores",
+        "e-commerce",
+        "cloud",
+        "advertising",
+        "third-party sellers",
+        "subscription services",
+        "devices"
+      ],
+      "tracks": null,
+      "sets": ["shelf", "universe"],
+      "sources": [
+        {
+          "url": "https://assets.backed.fi/products/amazon-xstock",
+          "title": "Amazon xStock - Backed Assets (issuer's product page: AMZNx tracks Amazon.com, Inc.)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1018724/000101872426000004/amzn-20251231.htm",
+          "title": "Amazon.com, Inc. Form 10-K for the fiscal year ended December 31, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": []
+    },
+    {
+      "symbol": "COINx",
+      "underlying": "COIN",
+      "kind": "common",
+      "company": "Coinbase Global, Inc.",
+      "headquarters": "United States",
+      "sector": "Financials",
+      "industry": "Capital Markets",
+      "subIndustry": "Financial Exchanges & Data",
+      "keywords": [
+        "crypto exchange",
+        "crypto trading",
+        "custody",
+        "stablecoins",
+        "derivatives",
+        "prime brokerage",
+        "staking"
+      ],
+      "tracks": null,
+      "sets": ["shelf", "universe"],
+      "sources": [
+        {
+          "url": "https://assets.backed.fi/products/coinbase-xstock",
+          "title": "Coinbase xStock - Backed Assets (issuer's product page: COINx tracks Coinbase Global, Inc.)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1679788/000167978826000015/coin-20251231.htm",
+          "title": "Coinbase Global, Inc. Form 10-K for the fiscal year ended December 31, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Class A common stock. The filing says the company is remote-first and maintains no headquarters; the cover-page address (New York, NY) is given at the SEC's request. Incorporated in Texas."
+    },
+    {
+      "symbol": "CRCLx",
+      "underlying": "CRCL",
+      "kind": "common",
+      "company": "Circle Internet Group, Inc.",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Software",
+      "subIndustry": "Application Software",
+      "keywords": ["stablecoins", "reserve income", "payments network", "developer infrastructure"],
+      "tracks": null,
+      "sets": ["shelf", "universe"],
+      "sources": [
+        {
+          "url": "https://assets.backed.fi/products/circle-xstock",
+          "title": "Circle xStock - Backed Assets (issuer's product page: CRCLx tracks Circle Internet Group)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1876042/000187604226000062/crcl-20251231.htm",
+          "title": "Circle Internet Group, Inc. Form 10-K for the fiscal year ended December 31, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ishares.com/us/products/239771/ishares-expanded-tech-software-sector-etf/latest-holdings.csv",
+          "title": "iShares Expanded Tech-Software Sector ETF (IGV) holdings as of Oct 05, 2026 (lists CRCL with Sector: Information Technology)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ishares.com/us/products/239771/ishares-north-american-techsoftware-etf",
+          "title": "iShares Expanded Tech-Software Sector ETF | IGV (fund page: tracks an index of North American companies in the software industry; exposure breakdown by sub-industry as of Oct 05, 2026)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/us/en/intermediary/etfs/state-street-spdr-sp-software-services-etf-xsw",
+          "title": "XSW: State Street SPDR S&P Software & Services ETF (fund page: the GICS sub-industries its index draws from)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/us/en/intermediary/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xsw.xlsx",
+          "title": "State Street SPDR S&P Software & Services ETF daily holdings as of 05-Oct-2026 (lists CIRCLE INTERNET GROUP INC, CRCL)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": ["subIndustry"],
+      "note": "Class A common stock on the NYSE. Not in the S&P 500. Sector read on iShares' IGV holdings list (Information Technology, not Financials); industry Software follows from that fund's published breakdown, where every Information Technology holding is Application Software or Systems Software; which of the two was not read on a published page, so the sub-industry is an assignment, not a reading."
+    },
+    {
+      "symbol": "GLDx",
+      "underlying": "GLD",
+      "kind": "fund",
+      "company": "SPDR Gold Trust",
+      "headquarters": null,
+      "sector": null,
+      "industry": null,
+      "subIndustry": null,
+      "keywords": ["gold bullion", "gold", "allocated gold", "investment trust"],
+      "tracks": "the price of gold bullion, less the trust's expenses",
+      "sets": ["shelf", "universe"],
+      "sources": [
+        {
+          "url": "https://assets.backed.fi/products/gold-xstock",
+          "title": "Gold xStock - Backed Assets (issuer's product page: GLDx tracks SPDR Gold Shares)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1222333/000143774925036305/gld20250930_10k.htm",
+          "title": "SPDR Gold Trust Form 10-K for the fiscal year ended September 30, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1222333/000143774926025680/gld20260630_10q.htm",
+          "title": "SPDR Gold Trust Form 10-Q for the quarter ended June 30, 2026 (cover page; investment objective)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/us/en/intermediary/etfs/spdr-gold-shares-gld",
+          "title": "GLD: SPDR Gold Shares (State Street fund page: investment objective, sponsor, marketing agent)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "An investment trust that holds gold, not an index fund; its shares are named SPDR Gold Shares; the sponsor is World Gold Trust Services, LLC."
+    },
+    {
+      "symbol": "GMEx",
+      "underlying": "GME",
+      "kind": "common",
+      "company": "GameStop Corp.",
+      "headquarters": "United States",
+      "sector": "Consumer Discretionary",
+      "industry": "Specialty Retail",
+      "subIndustry": "Computer & Electronics Retail",
+      "keywords": [
+        "video games",
+        "gaming consoles",
+        "pre-owned games",
+        "collectibles",
+        "trading cards",
+        "retail stores",
+        "e-commerce"
+      ],
+      "tracks": null,
+      "sets": ["universe"],
+      "sources": [
+        {
+          "url": "https://assets.backed.fi/products/gamestop-xstock",
+          "title": "Gamestop xStock - Backed Assets (issuer's product page: GMEx tracks GameStop Corp.)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1326380/000132638026000013/gme-20260131.htm",
+          "title": "GameStop Corp. Form 10-K for the fiscal year ended January 31, 2026 (cover page, Item 1. Business, risk factors, Item 7)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_400_companies",
+          "title": "List of S&P 400 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ishares.com/us/products/239724/ishares-core-sp-total-us-stock-market-etf/latest-holdings.csv",
+          "title": "iShares Core S&P Total U.S. Stock Market ETF (ITOT) holdings as of Oct 05, 2026 (lists GME with Sector: Consumer Discretionary)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Class A common stock. The filing says the business model is expanding beyond retail into capital allocation, and that the company holds bitcoin as a treasury reserve asset."
+    },
+    {
+      "symbol": "GOOGLx",
+      "underlying": "GOOGL",
+      "kind": "common",
+      "company": "Alphabet Inc.",
+      "headquarters": "United States",
+      "sector": "Communication Services",
+      "industry": "Interactive Media & Services",
+      "subIndustry": "Interactive Media & Services",
+      "keywords": [
+        "search",
+        "advertising",
+        "cloud",
+        "ai models",
+        "autonomous driving",
+        "consumer subscriptions"
+      ],
+      "tracks": null,
+      "sets": ["shelf", "universe"],
+      "sources": [
+        {
+          "url": "https://assets.backed.fi/products/alphabet-xstock",
+          "title": "Alphabet xStock - Backed Assets (issuer's product page: GOOGLx tracks Alphabet Inc. Class A)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1652044/000165204426000018/goog-20251231.htm",
+          "title": "Alphabet Inc. Form 10-K for the fiscal year ended December 31, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Class A common stock (GOOGL); the Class C capital stock (GOOG) is a separate listing."
+    },
+    {
+      "symbol": "HOODx",
+      "underlying": "HOOD",
+      "kind": "common",
+      "company": "Robinhood Markets, Inc.",
+      "headquarters": "United States",
+      "sector": "Financials",
+      "industry": "Capital Markets",
+      "subIndustry": "Investment Banking & Brokerage",
+      "keywords": [
+        "brokerage",
+        "stock trading",
+        "options trading",
+        "cryptocurrency trading",
+        "prediction markets",
+        "futures trading",
+        "retirement accounts",
+        "margin investing"
+      ],
+      "tracks": null,
+      "sets": ["shelf", "universe"],
+      "sources": [
+        {
+          "url": "https://assets.backed.fi/products/robinhood-xstock",
+          "title": "Robinhood xStock - Backed Assets (issuer's product page: HOODx tracks Robinhood Markets, Inc.)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1783879/000178387926000023/hood-20251231.htm",
+          "title": "Robinhood Markets, Inc. Form 10-K for the fiscal year ended December 31, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Class A common stock."
+    },
+    {
+      "symbol": "MCDx",
+      "underlying": "MCD",
+      "kind": "common",
+      "company": "McDonald's Corporation",
+      "headquarters": "United States",
+      "sector": "Consumer Discretionary",
+      "industry": "Hotels, Restaurants & Leisure",
+      "subIndustry": "Restaurants",
+      "keywords": [
+        "restaurants",
+        "franchising",
+        "franchised restaurants",
+        "company-operated restaurants",
+        "real estate",
+        "brand licensing"
+      ],
+      "tracks": null,
+      "sets": ["universe"],
+      "sources": [
+        {
+          "url": "https://assets.backed.fi/products/mcdonalds-xstock",
+          "title": "McDonald's xStock - Backed Assets (issuer's product page: MCDx tracks McDonald's Corporation)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/63908/000006390826000035/mcd-20251231.htm",
+          "title": "McDonald's Corporation Form 10-K for the fiscal year ended December 31, 2025 (cover page and Business Summary)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": []
+    },
+    {
+      "symbol": "METAx",
+      "underlying": "META",
+      "kind": "common",
+      "company": "Meta Platforms, Inc.",
+      "headquarters": "United States",
+      "sector": "Communication Services",
+      "industry": "Interactive Media & Services",
+      "subIndustry": "Interactive Media & Services",
+      "keywords": [
+        "social media",
+        "advertising",
+        "messaging",
+        "virtual reality",
+        "ai glasses",
+        "ai assistant"
+      ],
+      "tracks": null,
+      "sets": ["shelf", "universe"],
+      "sources": [
+        {
+          "url": "https://assets.backed.fi/products/meta-xstock",
+          "title": "Meta xStock - Backed Assets (issuer's product page: METAx tracks Meta Platforms, Inc.)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1326801/000162828026003942/meta-20251231.htm",
+          "title": "Meta Platforms, Inc. Form 10-K for the fiscal year ended December 31, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Class A common stock."
+    },
+    {
+      "symbol": "MSFTx",
+      "underlying": "MSFT",
+      "kind": "common",
+      "company": "Microsoft Corporation",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Software",
+      "subIndustry": "Systems Software",
+      "keywords": [
+        "cloud",
+        "productivity software",
+        "operating systems",
+        "server products",
+        "video games",
+        "search advertising"
+      ],
+      "tracks": null,
+      "sets": ["shelf", "universe"],
+      "sources": [
+        {
+          "url": "https://assets.backed.fi/products/microsoft-xstock",
+          "title": "Microsoft xStock - Backed Assets (issuer's product page: MSFTx tracks Microsoft Corporation)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+          "title": "Microsoft Corporation Form 10-K for the fiscal year ended June 30, 2026 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": []
+    },
+    {
+      "symbol": "MSTRx",
+      "underlying": "MSTR",
+      "kind": "common",
+      "company": "Strategy Inc",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Software",
+      "subIndustry": "Application Software",
+      "keywords": [
+        "bitcoin treasury",
+        "bitcoin",
+        "digital credit",
+        "enterprise analytics software",
+        "business intelligence"
+      ],
+      "tracks": null,
+      "sets": ["shelf", "universe"],
+      "sources": [
+        {
+          "url": "https://assets.backed.fi/products/microstrategy-xstock",
+          "title": "MicroStrategy xStock - Backed Assets (issuer's product page: MSTRx tracks the stock with symbol MSTR, ISIN US5949724083)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1050446/000105044626000020/mstr-20251231.htm",
+          "title": "Strategy Inc Form 10-K for the fiscal year ended December 31, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ishares.com/us/products/239771/ishares-expanded-tech-software-sector-etf/latest-holdings.csv",
+          "title": "iShares Expanded Tech-Software Sector ETF (IGV) holdings as of Oct 05, 2026 (lists MSTR with Sector: Information Technology)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ishares.com/us/products/239771/ishares-north-american-techsoftware-etf",
+          "title": "iShares Expanded Tech-Software Sector ETF | IGV (fund page: tracks an index of North American companies in the software industry; exposure breakdown by sub-industry as of Oct 05, 2026)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/us/en/intermediary/etfs/state-street-spdr-sp-software-services-etf-xsw",
+          "title": "XSW: State Street SPDR S&P Software & Services ETF (fund page: the GICS sub-industries its index draws from; Strategy Inc among top holdings)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/us/en/intermediary/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xsw.xlsx",
+          "title": "State Street SPDR S&P Software & Services ETF daily holdings as of 05-Oct-2026 (lists STRATEGY INC, MSTR)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": ["subIndustry"],
+      "note": "Class A common stock. Renamed from MicroStrategy Incorporated to Strategy Inc on August 11, 2025; the token issuer's page still uses the old name. Not in the S&P 500: sector read on iShares' IGV holdings list; industry Software follows from that fund's published breakdown, where every Information Technology holding is Application Software or Systems Software; which of the two was not read on a published page, so the sub-industry is an assignment, not a reading."
+    },
+    {
+      "symbol": "NVDAx",
+      "underlying": "NVDA",
+      "kind": "common",
+      "company": "NVIDIA Corporation",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Semiconductors & Semiconductor Equipment",
+      "subIndustry": "Semiconductors",
+      "keywords": [
+        "gpus",
+        "data centers",
+        "ai infrastructure",
+        "accelerated computing",
+        "networking",
+        "gaming",
+        "automotive",
+        "robotics"
+      ],
+      "tracks": null,
+      "sets": ["shelf", "universe"],
+      "sources": [
+        {
+          "url": "https://assets.backed.fi/products/nvidia-xstock",
+          "title": "NVIDIA xStock - Backed Assets (issuer's product page: NVDAx tracks NVIDIA Corp)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+          "title": "NVIDIA Corporation Form 10-K for the fiscal year ended January 25, 2026 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": []
+    },
+    {
+      "symbol": "PLTRx",
+      "underlying": "PLTR",
+      "kind": "common",
+      "company": "Palantir Technologies Inc.",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Software",
+      "subIndustry": "Application Software",
+      "keywords": [
+        "software platforms",
+        "data analytics",
+        "ai platform",
+        "defense",
+        "intelligence agencies",
+        "government agencies",
+        "commercial enterprises"
+      ],
+      "tracks": null,
+      "sets": ["shelf"],
+      "sources": [
+        {
+          "url": "https://assets.backed.fi/products/palantir-xstock",
+          "title": "Palantir xStock - Backed Assets (issuer's product page: PLTRx tracks Palantir Technologies Inc.)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1321655/000132165526000011/pltr-20251231.htm",
+          "title": "Palantir Technologies Inc. Form 10-K for the fiscal year ended December 31, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Class A common stock. The 10-K cover gives the principal executive offices as Aventura, Florida, with Denver, Colorado as the former address."
+    },
+    {
+      "symbol": "QQQx",
+      "underlying": "QQQ",
+      "kind": "fund",
+      "company": "Invesco QQQ Trust, Series 1",
+      "headquarters": null,
+      "sector": null,
+      "industry": null,
+      "subIndustry": null,
+      "keywords": [
+        "nasdaq-100",
+        "index fund",
+        "nasdaq-listed stocks",
+        "non-financial companies",
+        "large-cap stocks"
+      ],
+      "tracks": "Nasdaq-100 Index",
+      "sets": ["shelf", "universe"],
+      "sources": [
+        {
+          "url": "https://assets.backed.fi/products/nasdaq-xstock",
+          "title": "Nasdaq xStock - Backed Assets (issuer's product page: QQQx tracks Invesco QQQ Trust)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1067839/000110465925123275/tm2529177d5_497k.htm",
+          "title": "Invesco QQQ Trust, Series 1 Summary Prospectus dated December 22, 2025 (investment objective and principal investment strategies)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.invesco.com/qqq-etf/en/home.html",
+          "title": "Invesco QQQ ETF (sponsor's page: tracks the Nasdaq-100 index)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "The token is named Nasdaq xStock but tracks this fund, not the index itself; the Nasdaq-100 leaves out companies classified as financials."
+    },
+    {
+      "symbol": "SPCXx",
+      "underlying": "SPCX",
+      "kind": "common",
+      "company": "Space Exploration Technologies Corp.",
+      "headquarters": "United States",
+      "sector": "Communication Services",
+      "industry": "Diversified Telecommunication Services",
+      "subIndustry": "Alternative Carriers",
+      "keywords": [
+        "rockets",
+        "launch services",
+        "spacecraft",
+        "satellite broadband",
+        "satellite-to-mobile",
+        "ai models",
+        "ai compute infrastructure"
+      ],
+      "tracks": null,
+      "sets": ["shelf", "universe"],
+      "sources": [
+        {
+          "url": "https://assets.backed.fi/products/spacex-xstock",
+          "title": "SpaceX xStock - Backed Assets (issuer's product page: SPCXx tracks Space Exploration Technologies Corp., symbol SPCX, ISIN US84615Q1031)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1181412/000162828026042639/spaceexplorationtechnologi.htm",
+          "title": "Space Exploration Technologies Corp. prospectus filed under Rule 424(b)(4) on June 12, 2026 (cover page, Prospectus Summary, segments)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1181412/000162828026052535/spcx-20260630.htm",
+          "title": "Space Exploration Technologies Corp. Form 10-Q for the quarter ended June 30, 2026 (cover page)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.msci.com/downloads/web/msci-com/indexes/markets-in-motion/megacap-ipos/large-ipos-and-index-inclusion-faq.pdf",
+          "title": "MSCI, Large IPOs and Index Inclusion: Key facts (FAQ, May 2026), section What is SpaceX's GICS classification?",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ishares.com/us/products/239724/ishares-core-sp-total-us-stock-market-etf/latest-holdings.csv",
+          "title": "iShares Core S&P Total U.S. Stock Market ETF (ITOT) holdings as of Oct 05, 2026 (lists SPCX with Sector: Communication)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "Class A common stock listed on Nasdaq and Nasdaq Texas since the June 2026 IPO. MSCI classifies it under Alternative Carriers (telecom) because Starlink connectivity is the majority of revenue, not under Aerospace & Defense. It acquired xAI in early 2026 and reports three segments: Space, Connectivity and AI."
+    },
+    {
+      "symbol": "SPYx",
+      "underlying": "SPY",
+      "kind": "fund",
+      "company": "State Street SPDR S&P 500 ETF Trust",
+      "headquarters": null,
+      "sector": null,
+      "industry": null,
+      "subIndustry": null,
+      "keywords": ["s&p 500", "us large cap", "index fund", "us equities"],
+      "tracks": "S&P 500 Index",
+      "sets": ["shelf", "universe"],
+      "sources": [
+        {
+          "url": "https://assets.backed.fi/products/sp500-xstock",
+          "title": "SP500 xStock - Backed Assets (issuer's product page: SPYx tracks SPDR S&P 500 ETF Trust)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/884394/000119312526023648/d935960d497.htm",
+          "title": "State Street SPDR S&P 500 ETF Trust prospectus filed under Rule 497 (U.S. prospectus dated January 26, 2026: name, investment objective)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/us/en/intermediary/etfs/state-street-spdr-sp-500-etf-trust-spy",
+          "title": "SPY: State Street SPDR S&P 500 ETF Trust (State Street fund page: objective and benchmark)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "The token is named SP500 xStock but tracks this fund, not the index itself. A unit investment trust; its prospectus dated January 26, 2026 names it State Street SPDR S&P 500 ETF Trust, formerly SPDR S&P 500 ETF Trust."
+    },
+    {
+      "symbol": "STRCx",
+      "underlying": "STRC",
+      "kind": "preferred",
+      "company": "Strategy Inc",
+      "headquarters": "United States",
+      "sector": "Information Technology",
+      "industry": "Software",
+      "subIndustry": "Application Software",
+      "keywords": [
+        "preferred stock",
+        "variable-rate dividend",
+        "monthly dividend",
+        "bitcoin treasury",
+        "digital credit"
+      ],
+      "tracks": null,
+      "sets": ["universe"],
+      "sources": [
+        {
+          "url": "https://assets.backed.fi/products/strategy-pp-variable-xstock",
+          "title": "Strategy PP Variable xStock - Backed Assets (issuer's product page: STRCx underlying is Strategy Variable Rate Perpetual Stretch preferred shares Series A, symbol STRC, ISIN US5949728530)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1050446/000105044626000020/mstr-20251231.htm",
+          "title": "Strategy Inc Form 10-K for the fiscal year ended December 31, 2025 (cover page lists STRC; Item 1. Business; risk factors on STRC Stock)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ishares.com/us/products/239771/ishares-expanded-tech-software-sector-etf/latest-holdings.csv",
+          "title": "iShares Expanded Tech-Software Sector ETF (IGV) holdings as of Oct 05, 2026 (lists the issuer, Strategy Inc, with Sector: Information Technology)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ishares.com/us/products/239771/ishares-north-american-techsoftware-etf",
+          "title": "iShares Expanded Tech-Software Sector ETF | IGV (fund page: tracks an index of North American companies in the software industry; exposure breakdown by sub-industry as of Oct 05, 2026)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.ssga.com/us/en/intermediary/etfs/state-street-spdr-sp-software-services-etf-xsw",
+          "title": "XSW: State Street SPDR S&P Software & Services ETF (fund page: the GICS sub-industries its index draws from; Strategy Inc among top holdings)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": ["subIndustry"],
+      "note": "Preferred stock, not common: Variable Rate Series A Perpetual Stretch Preferred Stock of Strategy Inc, listed on Nasdaq, with cumulative dividends paid monthly at a rate the company can adjust. Sector, industry and sub-industry are those of the issuer (see MSTR), not of the security; the sub-industry is an assignment, not a reading."
+    },
+    {
+      "symbol": "TSLAx",
+      "underlying": "TSLA",
+      "kind": "common",
+      "company": "Tesla, Inc.",
+      "headquarters": "United States",
+      "sector": "Consumer Discretionary",
+      "industry": "Automobiles",
+      "subIndustry": "Automobile Manufacturers",
+      "keywords": [
+        "electric vehicles",
+        "self-driving",
+        "robotaxi",
+        "energy storage",
+        "energy generation",
+        "vehicle charging",
+        "humanoid robots"
+      ],
+      "tracks": null,
+      "sets": ["shelf", "universe"],
+      "sources": [
+        {
+          "url": "https://assets.backed.fi/products/tesla-xstock",
+          "title": "Tesla xStock - Backed Assets (issuer's product page: TSLAx tracks Tesla, Inc.)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828026003952/tsla-20251231.htm",
+          "title": "Tesla, Inc. Form 10-K for the fiscal year ended December 31, 2025 (cover page and Item 1. Business)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+          "title": "List of S&P 500 companies - Wikipedia (GICS Sector and GICS Sub-Industry columns)",
+          "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
+          "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
+          "readOn": "2026-10-06"
+        }
+      ],
+      "unverified": [],
+      "note": "The filing also reports bitcoin held as digital assets; that is a balance-sheet holding, not a business line, so no crypto label."
+    }
+  ]
+}

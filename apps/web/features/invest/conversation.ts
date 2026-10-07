@@ -2,7 +2,7 @@ import type { BasketSheet, BasketSheetDraft, ChainId } from '@colosseum/schemas'
 import type { Lang } from '../../i18n';
 import type { ApiFetch } from '../account/person';
 import { exampleDraft } from '../goal/examples';
-import { browserCountry, preRead, type Words } from '../goal/pre-read';
+import { preRead, type Words } from '../goal/pre-read';
 import { type ReadFailure, ReadGoalError, readGoal } from '../goal/read-goal';
 import { checkSheet, fieldsOfDraft, parseNumber, type SheetFields } from '../goal/sheet';
 
@@ -170,24 +170,17 @@ export const QUICK: Record<Fact, readonly string[]> = {
   risk: ['low', 'medium', 'high'],
 };
 
-/**
- * The country the sheet is sent with. The person is never asked (gate COUNTRY-REMOVED), and the API's
- * sheet still needs one (`BasketSheet.country`): the browser's own region where it names one this app
- * lists, else Brazil. It decides nothing the person sees here.
- */
-export function silentCountry(languages: readonly string[]): string {
-  return browserCountry(languages) ?? 'BR';
-}
-
-const EMPTY = (lang: Lang, country: string): SheetFields => ({
+// No country: no plan is shaped by one, and none is asked or sent (gate COUNTRY-REMOVED).
+const EMPTY = (lang: Lang): SheetFields => ({
   goal: '',
   amount: '',
   income: '',
   horizon: '',
   risk: '',
-  country,
+  country: '',
   holdings: 'yes',
-  glide: 'yes',
+  // off unless the person asks for it (gate GLIDE-OPT-IN): the words here cannot say they did
+  glide: 'no',
   language: lang,
 });
 
@@ -278,10 +271,9 @@ export function readerConversation(
     chain: ChainId | null;
     /** The page's own example sentences, whose facts are known without a reader. */
     examples: readonly string[];
-    country: string;
   },
 ): Conversation {
-  const { lang, chain, examples, country } = o;
+  const { lang, chain, examples } = o;
 
   async function first(text: string): Promise<Reply> {
     const known = exampleDraft(text, examples, lang);
@@ -295,21 +287,17 @@ export function readerConversation(
         guessed = reading.guessed;
       } catch (e) {
         const why = e instanceof ReadGoalError ? e.kind : 'unreachable';
-        return reply(
-          { fields: EMPTY(lang, country), skipped: [] },
-          [{ key: 'failed', why }],
-          chain,
-        );
+        return reply({ fields: EMPTY(lang), skipped: [] }, [{ key: 'failed', why }], chain);
       }
     }
-    const read = fieldsOfDraft({ ...draft, country }, lang);
+    const read = fieldsOfDraft({ ...draft, country: null }, lang);
     const words = fieldsOfWords(preRead(affirmed(text, lang)));
     // what the words name only to refuse ("not high risk") is not taken from the reader either
     const refused = new Set(
       Object.keys(fieldsOfWords(preRead(text))).filter((fact) => !(fact in words)),
     );
     const fields: SheetFields = {
-      ...EMPTY(lang, country),
+      ...EMPTY(lang),
       // what the reader read, less what it only assumed
       goal: guessed.has('goal') ? '' : read.goal,
       amount: read.amount,
@@ -339,7 +327,7 @@ export function readerConversation(
   return {
     async turn(input, known) {
       if (input.kind === 'reopen') {
-        const sheet = known ?? { fields: EMPTY(lang, country), skipped: [] };
+        const sheet = known ?? { fields: EMPTY(lang), skipped: [] };
         return reply(
           { ...sheet, skipped: sheet.skipped.filter((f) => f !== input.fact) },
           [],
@@ -348,7 +336,7 @@ export function readerConversation(
         );
       }
       if (input.kind === 'answer') {
-        const sheet = known ?? { fields: EMPTY(lang, country), skipped: [] };
+        const sheet = known ?? { fields: EMPTY(lang), skipped: [] };
         // the monthly income may be left out
         if (input.fact === 'income' && input.value.trim() === '')
           return reply(

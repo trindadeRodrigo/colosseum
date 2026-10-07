@@ -472,10 +472,9 @@ describe('the plan, built beside the conversation', () => {
           horizonMonths: 18,
           risk: 'low',
           themes: [],
-          // never asked: sent silently, since the API's sheet still needs one
-          country: 'BR',
+          // no country: none is asked and none is sent (COUNTRY-REMOVED)
           chains: ['solana'],
-          rules: { useHoldings: true, glide: true },
+          rules: { useHoldings: true, glide: false },
           language: 'en',
         },
       },

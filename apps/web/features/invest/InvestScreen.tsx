@@ -36,7 +36,6 @@ import {
   type Say,
   type Send,
   type Sheet,
-  silentCountry,
   validOf,
 } from './conversation';
 import { takeWay } from './handoff';
@@ -149,9 +148,6 @@ export function InvestScreen() {
         lang,
         chain,
         examples: t.goal.examples.list,
-        country: silentCountry(
-          typeof navigator === 'undefined' ? [] : (navigator.languages ?? [navigator.language]),
-        ),
       }),
     [apiFetch, lang, chain, t],
   );
@@ -297,7 +293,8 @@ export function InvestScreen() {
           income: s.incomeTargetUsdMonthly === undefined ? '' : String(s.incomeTargetUsdMonthly),
           horizon: String(s.horizonMonths),
           risk: s.risk,
-          country: s.country,
+          // a plan built before the country left the sheet may carry one: it is not sent again
+          country: '',
           holdings: s.rules.useHoldings ? 'yes' : 'no',
           glide: s.rules.glide ? 'yes' : 'no',
           language: s.language,

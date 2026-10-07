@@ -40,19 +40,27 @@ const TOP = 14;
 const BOTTOM = 24;
 const RIGHT = 70;
 
-export function PlanChart({
-  amountUsd,
-  card,
-  yieldObs,
-}: {
+type PlanChartProps = {
   amountUsd: number;
   card: BasketCard;
   yieldObs: PinSource | null;
-}) {
+};
+
+/** A goal with no date has no term to project over: no chart is drawn (gate GLIDE-OPT-IN). */
+export function PlanChart(props: PlanChartProps) {
+  const months = props.card.termMonths;
+  return months === null ? null : <DatedPlanChart {...props} months={months} />;
+}
+
+function DatedPlanChart({
+  amountUsd,
+  card,
+  yieldObs,
+  months,
+}: PlanChartProps & { months: number }) {
   const t = useT();
   const lang = useLang();
   const words = t.plan.chart;
-  const months = card.termMonths;
   const { lowPct, highPct } = card.expectedReturn;
   const end = (pct: number) => amountUsd + (amountUsd * pct * months) / 1200;
   const low = end(lowPct);

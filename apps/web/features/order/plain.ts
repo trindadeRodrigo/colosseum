@@ -197,12 +197,16 @@ export function planSummary(
   const cash = lines.find((l) => isCashId(l.assetId));
   // Cash explains itself only by what kept money there, not by where it started.
   const cashWhy = cash?.reasons.find((r) => BINDING_CASH.includes(r.rule))?.text;
-  const head = t.plan.summary.head(
-    dollars(sheet.amountUsd, lang),
-    t.goal.card.months(sheet.horizonMonths),
-    t.plan.riskWord[sheet.risk].toLowerCase(),
-    chainName,
-  );
+  const riskWord = t.plan.riskWord[sheet.risk].toLowerCase();
+  // A goal with no date is said with none, never with the months it is built over (gate GLIDE-OPT-IN).
+  const head = sheet.horizonOpen
+    ? t.plan.summary.headOpen(dollars(sheet.amountUsd, lang), riskWord, chainName)
+    : t.plan.summary.head(
+        dollars(sheet.amountUsd, lang),
+        t.goal.card.months(sheet.horizonMonths),
+        riskWord,
+        chainName,
+      );
   const list = new Intl.ListFormat(LOCALE[lang], { type: 'conjunction' }).format(parts);
   const whys = [holding ? bindingReason(holding)?.text : undefined, cashWhy];
   return [`${head} ${list}.`, ...new Set(whys.map((why) => why && plainNames(why)))]
@@ -217,12 +221,14 @@ export function planSummary(
 export function goalLine(
   sheet: Pick<
     BasketProposal['sheet'],
-    'goal' | 'amountUsd' | 'horizonMonths' | 'incomeTargetUsdMonthly'
+    'goal' | 'amountUsd' | 'horizonMonths' | 'horizonOpen' | 'incomeTargetUsdMonthly'
   >,
   t: Pick<Dictionary, 'goal'>,
   amount: string,
   income: (usd: number) => string,
 ): string {
+  // A goal with no date is said with none, never with the months it is built over (gate GLIDE-OPT-IN).
+  if (sheet.horizonOpen) return t.goal.card.sentenceOpen[sheet.goal](amount);
   const months = t.goal.card.months(sheet.horizonMonths);
   return sheet.goal === 'income' && sheet.incomeTargetUsdMonthly !== undefined
     ? t.goal.card.sentenceIncome(income(sheet.incomeTargetUsdMonthly), amount, months)

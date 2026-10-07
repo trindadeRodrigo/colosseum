@@ -319,7 +319,10 @@ export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2
                 {fall > 0 ? t.plan.badFall.some(dollars(fall, lang)) : t.plan.badFall.none}
               </span>
               <span className="text-caption text-muted-foreground">
-                {t.plan.fall.put(amount, t.goal.card.months(sheet.horizonMonths))}
+                {/* a goal with no date shows none, never the months it is built over (GLIDE-OPT-IN) */}
+                {sheet.horizonOpen
+                  ? `${t.plan.fall.putOpen(amount)} ${t.goal.card.noDate}.`
+                  : t.plan.fall.put(amount, t.goal.card.months(sheet.horizonMonths))}
               </span>
             </figcaption>
           </figure>

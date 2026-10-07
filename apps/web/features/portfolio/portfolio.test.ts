@@ -357,3 +357,20 @@ describe('how the figures are written', () => {
     );
   });
 });
+
+// Gate GLIDE-OPT-IN (Oct 6): a goal with no date has no due date; its months are a parameter.
+describe('the due date of a goal', () => {
+  it('is the order day plus the months for a dated goal, and none for a goal with no date', async () => {
+    const { dueOf } = await import('./vault-goal');
+    const { planOn } = await import('../order/test/fixtures');
+    const { sheet, card } = planOn().proposal;
+    const placedAt = '2026-10-06T12:00:00.000Z';
+    expect(dueOf({ sheet, card, verdict: null, placedAt })?.toISOString().slice(0, 7)).toBe(
+      '2029-10',
+    );
+    const open = { ...sheet, horizonMonths: 120, horizonOpen: true };
+    expect(
+      dueOf({ sheet: open, card: { ...card, termMonths: null }, verdict: null, placedAt }),
+    ).toBeNull();
+  });
+});

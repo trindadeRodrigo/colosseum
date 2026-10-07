@@ -88,6 +88,16 @@ describe('a plan to grow', () => {
   });
 });
 
+describe('a goal with no date', () => {
+  it('shows no months it was built over under the bad-fall bar (GLIDE-OPT-IN)', async () => {
+    const host = await pane(of('grow', (p) => ({ sheet: { ...p.sheet, horizonOpen: true } })));
+    const fall = find(host, '[data-ui="plan-fall"]').textContent ?? '';
+    expect(fall).toContain(en.plan.fall.putOpen('$40,000'));
+    expect(fall).toContain(en.goal.card.noDate);
+    expect(fall).not.toMatch(/36|months/);
+  });
+});
+
 describe('a plan to protect', () => {
   it('leads with what most of it is kept in and the bad-fall figure, with the bar and no curve', async () => {
     const plan = of('protect');

@@ -15,6 +15,7 @@ import {
   launchShelf,
   NOW,
   pooledLiquidity,
+  roomyYield,
   secondRateToken,
   secondRateYield,
   sheet,
@@ -25,6 +26,7 @@ import {
 import {
   type ComposeContext,
   PersonalInputError,
+  PersonalParameters,
   type PersonalProposal,
   type PersonalSheet,
 } from './types';
@@ -125,6 +127,139 @@ describe('setting aside the next six months of withdrawals', () => {
       expect((error as PersonalInputError).code).toBe('InvalidContext');
     }
   });
+});
+
+describe('a floor on cash beside what is set aside', () => {
+  // A table with room everywhere, so each sleeve holds exactly its share and nothing else falls into
+  // cash: the cash is then at the floor the plan states, and the cents can be read. On Robinhood
+  // Chain what is set aside is held in SGOV, so none of it is in the cash either.
+  const roomy = (over: Partial<PersonalParameters>): ComposeContext => ({
+    now: NOW,
+    yields: fixtureYields(),
+    params: PersonalParameters.parse({
+      ...roomyYield(),
+      version: 'test: room everywhere',
+      capPerStockBps: { low: 10_000, medium: 10_000, high: 10_000 },
+      capPerIssuerBps: { low: 10_000, medium: 10_000, high: 10_000 },
+      tierCeilingUsd: { A: 10_000_000, B: 10_000_000, C: 10_000_000 },
+      minLineBps: 1,
+      minLineUsd: 0,
+      maxLinesPerChain: 16,
+      ...over,
+    }),
+  });
+  const everyRow = (row: { growthBps: number; dollarYieldBps: number; goldBps: number }) =>
+    Object.fromEntries(Object.keys(PERSONAL_PARAMS.sleeves).map((key) => [key, row]));
+  const cents = (usd: number | undefined) => Math.round((usd ?? 0) * 100);
+  /** The one floor on cash a plan states, and that share of the amount rounded down to the cent. */
+  const floorOf = (plan: PersonalProposal) => {
+    const said = new Map(
+      allReasons(plan)
+        .filter((r) => r.rule === 'CASH_NEAR_DATE' || r.rule === 'CASH_MAY_NEED')
+        .map((r) => [r.text, r]),
+    );
+    expect([...said.keys()]).toHaveLength(1);
+    const [says] = [...said.values()];
+    return {
+      text: says?.text,
+      cents: Math.floor((cents(plan.sheet.amountUsd) * Number(says?.params.floorBps)) / 10_000),
+    };
+  };
+  const held = (plan: PersonalProposal) =>
+    plan.lines.map((l) => [l.assetId, l.weightBps, l.amountUsd]);
+
+  // What fast-check found once among the generated plans (seed 630441494, on Robinhood Chain): a
+  // plan said "At least 87.54% stays in cash" and held $247,859.87 of $283,139, where 87.54% is
+  // $247,859.8806. What is set aside is its share of the amount rounded up to the cent ($25,001.18
+  // for 8.83%, which is $25,001.1737), so what is left to share was that much short; the split then
+  // gave its odd cent to gold, and the cash came out more than a cent under the share it states.
+  it('holds the share it states, to the cent, though what is set aside is rounded up', () => {
+    const plan = run(
+      sheet({
+        risk: 'low',
+        chains: ['robinhood'],
+        amountUsd: 283_139,
+        horizonMonths: 1,
+        rules: { useHoldings: false, glide: true },
+        obligations: [{ month: inMonths(0), amount: 25_000, currency: 'USD' }],
+      }),
+      launch,
+      roomy({
+        sleeves: everyRow({ growthBps: 0, dollarYieldBps: 0, goldBps: 400 }),
+        glideFloor: [],
+        cashFloor: [{ monthsLeft: 1, cashBps: 9601 }],
+      }),
+    );
+    expect(floorOf(plan).text).toBe(
+      'At least 87.54% stays in cash: you need this money in 1 month.',
+    );
+    // The cent comes from gold, the one sleeve the floor was filled from that holds anything here.
+    expect(held(plan)).toEqual([
+      ['robinhood:sgov', 883, 25_001.18],
+      ['robinhood:gld', 363, 10_277.94],
+      ['robinhood:usdg', 8754, 247_859.88],
+    ]);
+  });
+
+  const table = () =>
+    roomy({
+      sleeves: everyRow({ growthBps: 3300, dollarYieldBps: 2900, goldBps: 2100 }),
+      glideFloor: [{ monthsLeft: 480, dollarYieldBps: 4100 }],
+      cashFloor: [{ monthsLeft: 480, cashBps: 3700 }],
+    });
+  const SHAPES = {
+    'a date': { rules: { useHoldings: false, glide: true } },
+    'money that may be needed': {
+      rules: { useHoldings: false, glide: false },
+      limits: { mayNeedInMonths: 3 },
+    },
+    'a date and a split of the plan': {
+      rules: { useHoldings: false, glide: true },
+      sleeves: [
+        { kind: 'goal', shareBps: 6100 },
+        { kind: 'safe_yield', shareBps: 3900 },
+      ],
+    },
+  } satisfies Record<string, Partial<PersonalSheet>>;
+  const person = (shape: keyof typeof SHAPES, amountUsd: number) =>
+    sheet({
+      chains: ['robinhood'],
+      amountUsd,
+      horizonMonths: 12,
+      ...SHAPES[shape],
+      obligations: [{ month: inMonths(1), amount: 1234.56, currency: 'USD' }],
+    });
+
+  // Each of these held a cent less in cash, and a cent more in stocks, before the cash was held to
+  // its floor: 35.87% of $40,198.72 is $14,419.280864, and so on.
+  it.each([
+    ['a date', 40_198.72, 14_419.28, 385.9],
+    ['money that may be needed', 40_198.72, 14_419.28, 5065.03],
+    ['a date and a split of the plan', 28_762.68, 6034.41, 163.94],
+    ['a date and a split of the plan', 61_882.64, 13_508.98, 365.1],
+  ] as const)(
+    'with %s, $%s keeps $%s in cash, and the cent comes from the stocks',
+    (shape, amountUsd, cash, stocks) => {
+      const plan = run(person(shape, amountUsd), launch, table());
+      expect(cents(cash)).toBe(floorOf(plan).cents);
+      expect(line(plan, 'robinhood:usdg')?.amountUsd).toBe(cash);
+      expect(line(plan, 'robinhood:spy')?.amountUsd).toBe(stocks);
+      expect(cents(plan.lines.reduce((n, l) => n + l.amountUsd, 0))).toBe(cents(amountUsd));
+    },
+  );
+
+  // 300 amounts from $20,000 up, $37.13 apart: before, the one of $28,762.68 above was among them.
+  it('over amounts with odd cents, the cash is never under the share its floor states, rounded down to the cent', () => {
+    const c = table();
+    for (let i = 0; i < 300; i++) {
+      const amountUsd = Math.round((20_000 + i * 37.13) * 100) / 100;
+      const plan = run(person('a date and a split of the plan', amountUsd), launch, c);
+      expect(
+        cents(line(plan, 'robinhood:usdg')?.amountUsd),
+        `$${amountUsd}`,
+      ).toBeGreaterThanOrEqual(floorOf(plan).cents);
+    }
+  }, 60_000);
 });
 
 describe('the same goal in dollars and in reais (C5, C19)', () => {
@@ -303,6 +438,53 @@ describe('the schedule, in the goal’s currency (C7)', () => {
       { numRuns: 200 },
     );
   }, 60_000);
+});
+
+describe('a shared portfolio held whole, when the coverage check takes money from one of its lines', () => {
+  // Found by the mix's property test once it had withdrawals (Oct 6), and there without a mix too: a
+  // table row with no dollar yield, Sand to Server held whole on Robinhood Chain, and $140 owed this
+  // month. The $140 is set aside in SGOV, which nothing measures, so its sale is counted at a cost
+  // and falls $1.40 short: that comes out of the largest stock line alone. The portfolio's lines are
+  // then no longer in the weights it publishes. Kept as one component, the vault's target for that
+  // line was the published 30% and its dollars five basis points less.
+  const params = {
+    ...PERSONAL_PARAMS,
+    sleeves: {
+      ...PERSONAL_PARAMS.sleeves,
+      'grow:high': { growthBps: 10_000, dollarYieldBps: 0, goldBps: 0 },
+    },
+  };
+  const c = fixtureContext({ params });
+  const s = sheet({
+    chains: ['robinhood'],
+    themes: ['sand-to-server'],
+    risk: 'high',
+    amountUsd: 2000,
+    rules: { useHoldings: true, glide: false },
+    obligations: [{ month: inMonths(0), amount: 140, currency: 'USD' }],
+  });
+
+  it('is held part by part: each line’s target is what its dollars come to, and the lines say so', () => {
+    const plan = run(s, launch, c);
+    expect(plan.flags).toContain('coverage_moved');
+    const nvda = line(plan, 'robinhood:nvda');
+    expect(nvda?.reasons.map((r) => r.rule)).toEqual(
+      expect.arrayContaining(['OPENED', 'COVERAGE_MOVED_UNCOUNTED']),
+    );
+    expect(nvda?.reasons.map((r) => r.rule)).not.toContain('FOLLOWS');
+    expect(nvda?.viaIndex).toBeUndefined();
+    expect([nvda?.amountUsd, nvda?.weightBps]).toEqual([556.6, 2783]);
+    expect(plan.recipes[0]?.components.every((x) => x.kind === 'asset')).toBe(true);
+  });
+
+  it('stays whole where nothing is taken from it', () => {
+    const plan = run({ ...s, obligations: [] }, launch, c);
+    expect(plan.flags).not.toContain('coverage_moved');
+    expect(line(plan, 'robinhood:nvda')?.viaIndex).toBe('sand-to-server');
+    expect(plan.recipes[0]?.components).toEqual([
+      { kind: 'index', family: 'sand-to-server', weightBps: 10_000 },
+    ]);
+  });
 });
 
 describe('moving part of a line to cash', () => {

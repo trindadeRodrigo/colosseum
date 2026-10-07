@@ -255,6 +255,7 @@ export const pt: Dictionary = {
       time: 'Prazo e risco',
       shape: 'O que molda o plano',
       words: 'Palavras',
+      optional: 'Opcional',
     },
     fields: {
       goal: 'Para que é o dinheiro',
@@ -270,9 +271,9 @@ export const pt: Dictionary = {
     hints: {
       income: 'Quanto você precisa por mês. Deixe em branco se não tiver um número.',
       horizon: 'De 1 a 480.',
-      country: 'É você quem declara. Define quais ativos você pode ter.',
+      country: 'Pode deixar em branco. O plano não usa esse dado.',
       countryFromBrowser:
-        'Tirado do idioma deste navegador. Mude se você mora em outro país: ele define quais ativos você pode ter.',
+        'Tirado do idioma deste navegador. Pode mudar ou deixar em branco: o plano não usa esse dado.',
       holdings: 'O plano preenche lacunas e evita repetir o que você já tem.',
       amount: 'Com quanto o plano começa, de US$ 10 a US$ 1.000.000.',
       notFound: 'Não encontrei no seu objetivo: preencha.',
@@ -334,6 +335,12 @@ export const pt: Dictionary = {
       sentenceIncome: (income: string, amount: string, months: string) =>
         `Gerar ${income} por mês com ${amount} por ${months}.`,
       months: (n: number) => (n === 1 ? '1 mês' : `${n} meses`),
+      sentenceOpen: {
+        grow: (amount: string) => `Fazer ${amount} crescer, sem data definida.`,
+        income: (amount: string) => `Gerar renda com ${amount}, sem data definida.`,
+        protect: (amount: string) => `Proteger ${amount}, sem data definida.`,
+      },
+      noDate: 'Sem data definida',
       unfinished: 'Seu objetivo, como foi lido até aqui.',
       draftOpen: 'Rascunho: termine os limites',
       draftSet: 'Rascunho: limites definidos, ainda sem plano',
@@ -817,6 +824,7 @@ export const pt: Dictionary = {
       asked: (amount: string) => `pedido: ${amount} por mês`,
     },
     fall: {
+      putOpen: (amount: string) => `A barra inteira são os ${amount} que você coloca.`,
       put: (amount: string, months: string) =>
         `A barra inteira são os ${amount} que você coloca, por ${months}.`,
     },

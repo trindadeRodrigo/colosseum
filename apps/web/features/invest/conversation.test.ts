@@ -13,7 +13,6 @@ import {
   QUICK,
   readerConversation,
   type Sheet,
-  silentCountry,
   validOf,
 } from './conversation';
 import { wayChange } from './ways';
@@ -29,7 +28,6 @@ const talk = (apiFetch = reader(), chain: 'solana' | null = 'solana') =>
     lang: 'en',
     chain,
     examples: en.goal.examples.list,
-    country: 'BR',
   });
 const facts = (sheet: Sheet) => Object.fromEntries(FACTS.map((f) => [f, sheet.fields[f]]));
 
@@ -271,7 +269,6 @@ describe('words that change nothing', () => {
       lang,
       chain: 'solana',
       examples: en.goal.examples.list,
-      country: 'BR',
     }).turn({ kind: 'text', text }, medium);
     expect(reply.sheet).toEqual(medium);
     // answered in context: what is held, and nothing built again
@@ -295,7 +292,6 @@ describe('words that change nothing', () => {
         lang,
         chain: 'solana',
         examples: en.goal.examples.list,
-        country: 'BR',
       }).turn({ kind: 'text', text }, medium);
       expect(reply.sheet.fields[fact], text).toBe(medium.fields[fact]);
       expect(reply.sheet).toEqual(medium);
@@ -345,7 +341,6 @@ describe('words that change nothing', () => {
       lang: 'pt',
       chain: 'solana',
       examples: en.goal.examples.list,
-      country: 'BR',
     });
     const first = await pt.turn(
       { kind: 'text', text: 'Minha meta é fazer R$ 40.000 crescer' },
@@ -408,11 +403,14 @@ describe('words that change nothing', () => {
 });
 
 describe('what is never asked, and what the quick replies send', () => {
-  it('has no country among its facts, and sends one silently', () => {
+  it('has no country among its facts, and sends none (COUNTRY-REMOVED)', async () => {
     expect(FACTS).not.toContain('country');
-    expect(silentCountry(['pt-BR'])).toBe('BR');
-    expect(silentCountry(['en-US'])).toBe('US');
-    expect(silentCountry(['en'])).toBe('BR');
+    const whole = await talk().turn(
+      { kind: 'text', text: en.goal.examples.list[1] as string },
+      null,
+    );
+    expect(whole.sheet.fields.country).toBe('');
+    expect(whole.valid).not.toHaveProperty('country');
   });
 
   it('offers only replies the fact takes', () => {
