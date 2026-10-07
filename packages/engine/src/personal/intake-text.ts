@@ -1695,10 +1695,11 @@ const HALF_BEFORE = new RegExp(
 // figure and what leads into it: a verb in the form that asks ("invest", "put", never "investing" or
 // "invested"), what is put ("it", "all of it", "everything"), a sum, a percent or a half, and "in".
 // They open their clause, or follow the person's own words of wanting ("I want to", "I'd like to",
-// "let's", "I have $5,000 to"). After any other word they are not read as a share of this money: "I
-// can lose 30% in AI", "at least 30% in big tech", "I put $500 in AI last year", "I'm afraid to invest
-// in AI", "70% of experts say invest in AI", "it would be reckless to put it all in big tech". A list
-// of what is read, not of what is not: a form that is missing here is asked, never taken.
+// "let's", "my plan is to", "I have $5,000 to"). After any other word they are not read as a share
+// of this money: "I can lose 30% in AI", "at least 30% in big tech", "I put $500 in AI last year",
+// "I'm afraid to invest in AI", "70% of experts say invest in AI", "it would be reckless to put it
+// all in big tech". A list of what is read, not of what is not: a form that is missing here is
+// asked, never taken.
 const ASK_VERB =
   'invest|put|place|allocate|buy|add|keep|hold|have|go|move|investir|invista|aplicar|aplique|colocar|coloque|coloca|botar|bote|bota|p[oô]r|ponha|comprar|compre|ter';
 const ASK_OBJECT = String.raw`it(?:\s+all)?|all(?:\s+of\s+(?:it|this|that|my\s+money|the\s+money))?|everything|(?:all\s+)?(?:my|the)\s+money|this|that|tudo|isso|(?:todo\s+)?o\s+(?:meu\s+)?dinheiro|(?:todo\s+)?meu\s+dinheiro`;
@@ -1707,7 +1708,7 @@ const ASK_OBJECT = String.raw`it(?:\s+all)?|all(?:\s+of\s+(?:it|this|that|my\s+m
 const ASK_SUM = String.raw`(?:(?:us\$|u\$s|usd|\$)\s*)?\d[\d.,]*(?:\s*(?:k|mil|thousand))?(?:\s*(?:de\s+)?(?:%|percent|por\s+cento|dollars|d[oó]lares|bucks|usd))?`;
 const ASK_FIGURE = String.raw`(?:(?:the\s+other|another|the|my|a\s+outra|os\s+outros|os|meus)\s+)?(?:${ASK_SUM}|half|metade)(?:\s+(?:of\s+(?:it|the\s+money|my\s+money)|d[oe]\s+(?:dinheiro|valor|total)))?`;
 // The person's own words of wanting, right before the ask.
-const OWN_LEAD = String.raw`(?:i|we)(?:['’]d|\s+would)?\s+(?:want|like|love|prefer|wish|plan|intend)(?:\s+to)?|(?:i|we)(?:['’]ll|\s+will)|(?:(?:i['’]?m|i\s+am|we['’]?re|we\s+are)\s+)?(?:going|looking|hoping|planning|ready)\s+to|(?:i|we)(?:['’]ve)?\s+(?:have|got|have\s+got)\s+${ASK_SUM}\s+(?:that\s+(?:i|we)\s+(?:want|would\s+like)\s+)?to|let['’]?s|(?:eu\s+|n[oó]s\s+)?(?:quero|queria|queremos|gostaria\s+de|gostar[ií]amos\s+de|vou|vamos|pretendo|prefiro|desejo)|(?:eu\s+)?tenho\s+${ASK_SUM}\s+para`;
+const OWN_LEAD = String.raw`(?:i|we)(?:['’]d|\s+would)?\s+(?:want|like|love|prefer|wish|plan|intend)(?:\s+to)?|(?:i|we)(?:['’]ll|\s+will)|(?:i|we)(?:['’]d|\s+would)\s+rather|(?:i|we)(?:['’]ve|\s+have)?\s+decided\s+to|(?:my|our)\s+(?:plan|goal|idea|aim)\s+is\s+to|(?:(?:i['’]?m|i\s+am|we['’]?re|we\s+are)\s+)?(?:going|looking|hoping|planning|ready)\s+to|(?:i|we)(?:['’]ve)?\s+(?:have|got|have\s+got)\s+${ASK_SUM}\s+(?:that\s+(?:i|we)\s+(?:want|would\s+like)\s+)?to|let['’]?s|(?:eu\s+|n[oó]s\s+)?(?:quero|queria|queremos|gostaria\s+de|gostar[ií]amos\s+de|vou|vamos|pretendo|prefiro|desejo)|(?:eu\s+)?tenho\s+${ASK_SUM}\s+para|(?:meu|nosso|a)\s+(?:objetivo|plano|ideia)\s+[eé]`;
 // A small word that carries on at the start of a clause: "and", "then", "so", "please".
 const CARRIES_ON = String.raw`and|so|then|also|now|just|plus|ok(?:ay)?|yes|well|please|instead|make\s+(?:it|that)|e|mais|ent[aã]o|tamb[eé]m|agora|por\s+favor`;
 const PLAIN_ASK = new RegExp(

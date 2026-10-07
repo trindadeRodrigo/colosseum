@@ -3302,7 +3302,11 @@ describe('the second review (Oct 7): every sentence of its scripts, with a model
       ['please put it all in AI', WHOLE_OF_IT],
       ['Quero investir em IA', WHOLE_OF_IT],
       ['Tenho US$ 5.000 para investir em IA', WHOLE_OF_IT],
+      ['My plan is to invest in AI', WHOLE_OF_IT],
+      ["I'd rather invest in big tech", WHOLE_OF_IT],
+      ['Meu objetivo é investir em IA', WHOLE_OF_IT],
       ['Looking to invest $5,000 in AI', { kind: 'amount', value: 5000 }],
+      ["I've decided to put half in AI", { kind: 'percent', value: 50 }],
       ["let's put half in AI", { kind: 'percent', value: 50 }],
       ['I will put 30% in AI', { kind: 'percent', value: 30 }],
       ['Vou colocar metade em IA', { kind: 'percent', value: 50 }],
@@ -3320,6 +3324,7 @@ describe('the second review (Oct 7): every sentence of its scripts, with a model
       'I put $500 in AI last year',
       'we hold 30% in AI',
       'My advisor says put half in AI',
+      'His plan is to invest in AI',
       '70% of experts say invest in AI',
     ])
       expect(shares(text), text).toEqual([null]);
