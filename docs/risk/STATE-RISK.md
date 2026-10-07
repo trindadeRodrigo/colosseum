@@ -53,6 +53,7 @@ Steps are defined in `docs/risk/PLAN-RISK.md` §3. Status: `todo | in-progress |
 - 2026-10-01: 188 of 371 early pools (about $4M) pair an xStock with a non-dollar token (another xStock, STRC-type tokens). They are not counted as exit routes; two-hop exits are a later extension.
 - 2026-10-01: **`HANDOFF-RISK.md` says the schedule never draws equity; the code does.** Stocks sit in the at-par liquid pool. With a provider they are now sold last at measured exit cost; without one, behaviour is unchanged (baseline test).
 - 2026-10-01: the Byreal CLMM fork decodes at header level, but its tick arrays differ. It is excluded until it has its own decoder.
+- 2026-10-07: Byreal has its own decoder (`PLAN-UNIVERSE.md` RU.15): validated against the chain and Jupiter, used only by our own capture and router report behind options that are off; not in the registry, not collected.
 - 2026-10-07: why Byreal's tick arrays differ (`PLAN-UNIVERSE.md` RU.13): most are a second kind of array, a 216-byte header and one 168-byte tick for each slot allocated, where Raydium's are all 10,240 bytes. Byreal carries 6% of the amount Jupiter routes for the quoted stocks at $100k; it is ranked first among the venues we do not read.
 - 2026-10-01: some transactions are version 1; `getTransaction` needs `maxSupportedTransactionVersion: 1`.
 - 2026-10-01: the risk tables live in the same local Postgres as the structurer (additive migrations 0002, 0003). If `main` adds its own 0002/0003 before the merge, regenerate the risk migrations at merge time.
