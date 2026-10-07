@@ -248,6 +248,37 @@ describe('the steps', () => {
     expect(document.activeElement).toBe(head(host, 'amount'));
   });
 
+  it('keeps every step in place while the wallet is read again: the focus is not lost with it', async () => {
+    // The API says a test network and the wallet's own chain says the mock, as the e2e stub does: the
+    // card's label must not come and go with each read, or its contents are made again.
+    portStore.set(signedInPort(EMBEDDED, { userId: USER }, 'mock'));
+    const server = api({ funded: false, faucet: true });
+    // From before the first read: what a person has focused or typed in is not made again by it.
+    const host = await mount(withAccount('en', createElement(BuyScreen, { id: PLAN_ID })));
+    await settle();
+    const field = find<HTMLInputElement>(host, 'input[inputmode="decimal"]');
+    expect(server.to('/v1/funding')).toHaveLength(0);
+    await settle(350);
+    await settle();
+    expect(server.to('/v1/funding')).toHaveLength(1);
+    expect(find(host, 'input[inputmode="decimal"]')).toBe(field);
+    await click(next(host, 'amount'));
+    const before = head(host, 'funds');
+    expect(document.activeElement).toBe(before);
+    const reads = server.to('/v1/funding').length;
+    await click(button(host, en.buy.funding.readAgain) as HTMLButtonElement);
+    // while it reads, and once it has
+    expect(head(host, 'funds')).toBe(before);
+    await settle(350);
+    await settle();
+    expect(server.to('/v1/funding').length).toBeGreaterThan(reads);
+    expect(head(host, 'funds')).toBe(before);
+    expect(before.isConnected).toBe(true);
+    // a step opened now still takes the focus
+    await click(head(host, 'trust'));
+    expect(document.activeElement).toBe(head(host, 'trust'));
+  });
+
   it('holds the funds step until the wallet has what the buy needs', async () => {
     api({ funded: false });
     const host = await buy();

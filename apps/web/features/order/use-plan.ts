@@ -54,7 +54,14 @@ export function usePlan(id: string): PlanState {
     if (!userId) return setPlan(kept);
     let mine = true;
     setPlan(kept ?? undefined);
-    void readStoredPlan(apiFetch, id).then((read) => {
+    // The route reads a sign-in and needs none, so tokens gone stale are answered as nobody is: a
+    // person's own plan then reads as gone. Asked once more with fresh tokens before that is
+    // believed, and before the copy kept here is dropped.
+    const read = async () => {
+      const first = await readStoredPlan(apiFetch, id);
+      return first === 'gone' ? readStoredPlan(apiFetch, id, true) : first;
+    };
+    void read().then((read) => {
       if (!mine) return;
       if (read === 'gone') {
         forgetPlan(id);
