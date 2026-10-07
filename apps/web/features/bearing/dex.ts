@@ -252,8 +252,9 @@ const NO_QUOTE_PRICE = 'no_quote_price';
  * where it has recordings and is not in the figure. `noUsd` counts the recorded pools with no price
  * in dollars, those left unread and those whose every recording read says so. `failed` counts the
  * histories that did not load, and `failedWhy` is the first one's reason. `behind` counts the histories
- * with a dollar value that are not in the figure, their newest recording being more than 6 h before
- * its hour: with `inSum`, `noUsd` and `failed` every recorded pool of the selection is in one count.
+ * read that are neither in the figure nor without a price: no recording of theirs counts in the figure's
+ * hour (the newest is more than 6 h before it, or the window holds none). With `inSum`, `noUsd` and
+ * `failed`, every recorded pool of the selection is in exactly one count.
  */
 export function tvlSeries(
   hs: ReadonlyArray<Res<LiqHistBody>>,
@@ -353,9 +354,9 @@ export function tvlSeries(
   // in the figure: counted in the hour it is taken from
   const inSum = counted.map((t) => t === lp?.t);
   const noUsd = unpriced + whys.filter((w) => w === NO_QUOTE_PRICE).length;
-  // recorded, priced and read, and still not in the figure: its newest recording is more than 6 h
-  // before the hour the figure is taken from
-  const behind = series.filter((ps, i) => ps.length > 0 && !inSum[i]).length;
+  // read, and neither in the figure nor without a price: no recording of it counts in the hour the
+  // figure is taken from (its newest is more than 6 h before, or the window holds none)
+  const behind = hs.length - failed - inSum.filter(Boolean).length - (noUsd - unpriced);
   return { fact, value, held, inSum, noUsd, failed, failedWhy, behind };
 }
 

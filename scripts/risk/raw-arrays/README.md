@@ -12,7 +12,7 @@ COLOSSEUM_HOME=<temp folder> pnpm risk:raw-arrays-install-job --no-load # rehear
 pnpm risk:raw-arrays-install-job                                        # THE INSTALL (a person's)
 ```
 
-The source has no default folder: a hand run names one, and stops if it does not. Only a bundle the installer built knows where to write (`<home>/raw-arrays`).
+The source has no default folder: a hand run names one, and stops if it does not. A `.env` in the folder the command is run from counts as naming it, so a checkout whose `.env` gives the API its `RISK_RAW_ARRAYS_DIR` writes there. Only a bundle the installer built knows where to write by itself (`<home>/raw-arrays`).
 
 ## What one run does
 

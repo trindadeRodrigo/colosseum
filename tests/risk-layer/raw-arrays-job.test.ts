@@ -683,6 +683,26 @@ describe('raw arrays: one run of the job', { timeout: 60_000 }, () => {
       expect(r.code).toBe(1);
       expect(r.rows[0]?.error).toContain('raw folder');
     }
+    // a link to a folder inside the raw folder, and one to another folder of the home: what is above the place a
+    // link points at is not in the link's own name
+    const then = readdirSync(join(home, 'raw'))[0] as string;
+    const deep = join(root, 'link-to-a-day');
+    symlinkSync(join(home, 'raw', then), deep);
+    const inHome = join(root, 'home-with-pools');
+    mkdirSync(join(inHome, 'pools'), { recursive: true });
+    for (const f of ['registry.json', 'cache.json'])
+      writeFileSync(join(inHome, f), readFileSync(join(home, f)));
+    const toPools = join(root, 'link-to-pools');
+    symlinkSync(join(inHome, 'pools'), toPools);
+    for (const [dir, env] of [
+      [deep, {}],
+      [toPools, { RISK_HOME: inHome }],
+    ] as const) {
+      const r = await job({ SOLANA_RPC_URL: url, RISK_RAW_ARRAYS_DIR: dir, ...env });
+      expect(r.code).toBe(1);
+      expect(r.rows[0]?.error).toContain('a folder of its own');
+    }
+    expect(readdirSync(join(inHome, 'pools'))).toEqual([]);
     // a home whose raw folder is itself a link to another disk: the place it points at is the raw folder too
     const linked = join(root, 'home-linked-raw');
     const big = join(root, 'big-disk', 'collector-raw');

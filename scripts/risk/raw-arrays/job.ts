@@ -8,13 +8,14 @@ import {
   readdirSync,
   readFileSync,
   readSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { multipleAccounts, RISK_HOME } from '../lib-lending';
 import { rpcStats } from '../lib-pools';
 import { readSplitCapture, saveCapture } from '../lib-split';
@@ -116,7 +117,18 @@ const RAWS = [
   ...HOMES.map((h) => join(h, 'raw')),
   process.env.RISK_RAW_DIR ? resolve(process.env.RISK_RAW_DIR) : '',
 ];
-const refusalOf = (folder: string) => folderRefusal(resolve(folder), HOMES, RAWS, idOf);
+// A path with its links followed: the real path of its nearest folder that exists, then what is left of it. A link
+// that points at a folder inside the collector's home has that folder's parents above it, which its own name hides.
+const real = (path: string): string => {
+  if (existsSync(path)) return realpathSync.native(path);
+  const up = dirname(path);
+  return up === path ? path : join(real(up), basename(path));
+};
+// refused under the name it was given, or under the name the disk gives it
+const refusalOf = (folder: string) =>
+  [resolve(folder), real(resolve(folder))]
+    .map((dir) => folderRefusal(dir, HOMES, RAWS, idOf))
+    .find((refusal) => refusal) ?? null;
 
 /**
  * The folder this run may write into, decided before anything is read or created. It is refused when no folder is

@@ -415,6 +415,17 @@ describe('the recorded pools: no price in dollars, and recordings of more than o
     const none = tvlSeries([noUsd(hist(OTHER_POOL)), failed], 2);
     expect(none.inSum).toEqual([false, false]);
     expect([none.behind, none.noUsd, none.failed]).toEqual([0, 1, 1]);
+    // a history that loads with no recording in the window is behind too: the four counts are every pool read
+    const empty = res<LiqHistBody>({
+      ...ok(hist(OTHER_POOL)),
+      from: undefined,
+      to: undefined,
+      points: [],
+    });
+    const four = tvlSeries([hist(USDC_POOL), empty, noUsd(hist(OTHER_POOL)), failed], 4);
+    expect([four.inSum.filter(Boolean).length, four.behind, four.noUsd, four.failed]).toEqual([
+      1, 1, 1, 1,
+    ]);
   });
 
   it('counts the histories that did not load, and gives the first one’s reason', () => {
