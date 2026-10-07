@@ -5,7 +5,7 @@ import { Sparkline, sparkable } from '../../components/ui/Sparkline';
 import { Segmented, TimeChart } from '../../components/ui/TimeChart';
 import { useAnswer, useBearing } from './BearingProvider';
 import { ChartGrid, picked, RANGES, usePageState } from './DexPage';
-import { none, sumFact } from './fact';
+import { largestFirst, none, sumFact } from './fact';
 
 import { AvailChart } from './LendingPage';
 import {
@@ -195,9 +195,8 @@ function StableView({ rows }: { rows: LendRow[] }) {
   const biggest = (rs: LendRow[]) =>
     rs
       .slice()
-      .sort(
-        (x, y) =>
-          (histFact(y, 'suppliedUsd', '').value || 0) - (histFact(x, 'suppliedUsd', '').value || 0),
+      .sort((x, y) =>
+        largestFirst(histFact(x, 'suppliedUsd', ''), histFact(y, 'suppliedUsd', '')),
       )[0] as LendRow;
   const note = (rs: LendRow[]) =>
     rs.length > 1 ? (
@@ -344,9 +343,9 @@ function StableView({ rows }: { rows: LendRow[] }) {
             title={w.pie}
             slices={selRows.map((row) => ({
               label: poolName(row.meta, wds.lending.market),
-              value: histFact(row, 'suppliedUsd', 'supplied').value || 0,
+              value: histFact(row, 'suppliedUsd', 'supplied').value,
             }))}
-            total={supF.value || 0}
+            total={supF.value}
             totalHtml={<Fig f={supF} fmt={fm.usd1} />}
           />
         }

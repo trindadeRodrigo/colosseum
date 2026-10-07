@@ -128,6 +128,7 @@ export const regimeW = (r: string) => RW[r as Regime] ?? r;
 export const REASON: Record<string, string> = {
   no_samples_in_regime: 'no samples in this regime yet',
   insufficient_samples: 'too few samples to fit',
+  not_a_number: 'the stored value could not be used',
   beyond_measured_size: 'beyond the largest size measured',
   no_reference_price: 'no reference price',
   no_external_source: 'no external source for this',

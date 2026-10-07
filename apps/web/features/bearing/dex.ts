@@ -112,20 +112,24 @@ export function dexCounters(
   let poolT: string | null = null;
   for (const p of pools) poolT = maxT(poolT, p.fetchedAt);
   const noPools = selIds.some((id) => !dd[id]?.pools.ok);
-  const tvl: Fact = pools.length
+  // a pool with no TVL is not a zero: the sum is of the pools that have one, and says so
+  const sized = pools.filter((p) => p.tvlUsd != null);
+  const tvl: Fact = sized.length
     ? mk(
-        pools.reduce((s, p) => s + (p.tvlUsd || 0), 0),
+        sized.reduce((s, p) => s + (p.tvlUsd as number), 0),
         {
+          measured: sized.length,
+          of: pools.length,
           source: 'risk_pools.tvl_usd (GET /risk/pools), read when each pool was registered',
           fetchedAt: poolT,
-          quality: noPools ? 'lower_bound' : 'measured',
+          quality: noPools || sized.length < pools.length ? 'lower_bound' : 'measured',
           method: `sum of the TVL of the selected pools (GET /risk/pools?asset= per asset)${
             noPools ? '; some assets’ pool lists did not load, so this is a lower bound' : ''
           }`,
           methodVersion: 'registry-0.1',
         },
       )
-    : none(!selIds.length || poolsChosen ? 'nothing_selected' : 'not_collected');
+    : none(pools.length || !(!selIds.length || poolsChosen) ? 'not_collected' : 'nothing_selected');
   const cap = sumFact(
     selIds.map((id) => capFact(byId.get(id), r, body)),
     {

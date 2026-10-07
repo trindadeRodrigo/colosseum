@@ -229,9 +229,9 @@ function DexView({
             title={t.pie.title}
             slices={pools.map((p) => ({
               label: poolLabel(p, many, t.liquidity.quoteNotNamed),
-              value: p.tvlUsd || 0,
+              value: p.tvlUsd ?? null,
             }))}
-            total={k.tvl.value || 0}
+            total={k.tvl.value}
             totalHtml={<Fig f={k.tvl} fmt={fm.usd1} />}
             note={t.pie.note}
           />
@@ -249,7 +249,7 @@ function DexView({
             <TvlChart
               pools={pools}
               b={b}
-              tvl={k.tvl.value || 0}
+              tvl={k.tvl.value}
               tools={tools}
               range={range}
               setRange={setRange}
@@ -455,7 +455,8 @@ function TvlChart({
 }: {
   pools: readonly Pool[];
   b: Base;
-  tvl: number;
+  /** The selection's TVL today; null when it has no figure, and then no share of it is said. */
+  tvl: number | null;
   tools: ReactNode;
   range: number;
   setRange: (r: number) => void;

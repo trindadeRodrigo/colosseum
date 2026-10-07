@@ -9,7 +9,7 @@ import { type BearingDictionary, bearingDictionary } from '../../i18n/bearing';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useBearing } from './BearingProvider';
 import type { BearingChain } from './chain';
-import { cleanSource, type Fact, factDetail, pinSource } from './fact';
+import { cleanSource, type Fact, factDetail, partial, pinSource } from './fact';
 import { EN_FMT, type Fmt, fmtFor, iso, reasonW } from './format';
 
 // The pieces every Bearing page is built from (Rodrigo's Analytics 2.0): a figure with its pin, the
@@ -97,6 +97,14 @@ export function Fig({
         labels={all.pin}
         className="font-mono font-medium"
       />
+      {partial(f) && (
+        <span
+          data-ui="bearing-partial"
+          className="ml-1 font-sans text-caption font-normal text-muted-foreground"
+        >
+          {words.partial(f.measured)}
+        </span>
+      )}
       {f.quality === 'assumption' && (
         <span className="ml-1 font-sans text-caption font-normal text-muted-foreground">
           {words.flow.assumption}
@@ -443,15 +451,22 @@ export function Pie({
   note,
 }: {
   title: string;
-  slices: ReadonlyArray<{ label: string; value: number }>;
-  total: number;
+  /** A pool with no figure has a null value: it is not drawn, and the pie says how many are not. */
+  slices: ReadonlyArray<{ label: string; value: number | null }>;
+  /** Null when the total itself has no figure: the shares are then of the pools drawn. */
+  total: number | null;
   totalHtml: ReactNode;
   note?: string;
 }) {
   const fm = useFmt();
   const [on, setOn] = useState<number | null>(null);
   const t = useWords().pie;
-  const slices = given.filter((s) => s.value > 0).sort((a, b) => b.value - a.value);
+  const slices = given
+    .filter((s): s is { label: string; value: number } => s.value != null && s.value > 0)
+    .sort((a, b) => b.value - a.value);
+  const unmeasured = given.filter((s) => s.value == null).length;
+  /** What a share is of: the total where there is one, else the pools drawn. */
+  const whole = total && total > 0 ? total : slices.reduce((s, x) => s + x.value, 0);
   const top: Array<{ label: string; value: number; other?: boolean }> = slices.slice(0, 4);
   const rest = slices.slice(4);
   if (rest.length)
@@ -467,7 +482,7 @@ export function Pie({
     `${(c + rad * Math.cos(a)).toFixed(2)},${(c + rad * Math.sin(a)).toFixed(2)}`;
   let a0 = -Math.PI / 2;
   const paths = top.map((s, i) => {
-    const sw = (s.value / (total || 1)) * Math.PI * 2;
+    const sw = (s.value / (whole || 1)) * Math.PI * 2;
     const a1 = a0 + sw;
     const big = sw > Math.PI ? 1 : 0;
     const color = s.other ? OTHER : (SLICE[i] as string);
@@ -476,7 +491,7 @@ export function Pie({
     a0 = a1;
     return { s, i, color, d, full };
   });
-  const share = (v: number) => fm.pct(v / total);
+  const share = (v: number) => fm.pct(v / whole);
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the titles, the legend and the table
     <div data-ui="bearing-pie" onMouseLeave={() => setOn(null)}>
@@ -569,11 +584,19 @@ export function Pie({
                 </li>
               ))}
             </ul>
+            {unmeasured > 0 && (
+              <p
+                data-ui="bearing-pie-missing"
+                className="text-caption text-muted-foreground max-[1100px]:col-span-full"
+              >
+                {t.missing(unmeasured)}
+              </p>
+            )}
             <p className="font-mono text-b-meta text-muted-foreground max-[1100px]:col-span-full">
               {t.point}
             </p>
           </div>
-        ) : total > 0 ? (
+        ) : total != null && total > 0 ? (
           <p className="py-6 text-muted-foreground">
             <Reason code="not_collected" />
           </p>
