@@ -621,17 +621,24 @@ describe('what the executor answers', () => {
       }
     });
 
-    it('does not take an answer that names another order, or the same one', async () => {
+    it('does not take an answer that names another order, the same one, another owner or vault, a deposit or a step that is not a swap', async () => {
       for (const answer of [
         continuation({ continues: 'another-order' }),
         continuation({ id: ORDER_ID }),
+        // another owner's, another vault's, one that deposits, one with a step that is not a swap
+        continuation({ owner: { solana: '11111111111111111111111111111111' } }),
+        continuation({ basketId: 'another-vault' }),
+        continuation({ depositRaw: '10000000' }),
+        continuation({ legs: orderOn().legs.map((leg) => ({ ...leg, orderId: NEXT_ID })) }),
       ]) {
         server({ route: true, made: () => json(answer) });
         router.push.mockClear();
         const host = await stop();
         await click(finishButton(host) as HTMLElement);
         await settle();
-        expect(host.textContent).toContain(en.buy.failure.unreadable);
+        expect(host.textContent, JSON.stringify(answer).slice(0, 400)).toContain(
+          en.buy.failure.unreadable,
+        );
         expect(router.push).not.toHaveBeenCalled();
         await unmountAll();
         window.localStorage.clear();
