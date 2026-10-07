@@ -210,8 +210,11 @@ async function isJoined(db: Db, chain: ChainId, owner: Address, number: string):
  * a join still missing after that is the portfolio read's to make. Without this, an order whose vault
  * the chain no longer shows (a test network deployed again) would read the chain on every later answer.
  *
- * `readBefore` is for the build route, which holds the order as it was read before the build tracked
- * the steps sent earlier: a step that was sent then is asked for again, in case it settled since.
+ * `readBefore` is for a route that holds the order as it was read before the route did its work: the
+ * build and the cancel. Either may settle the step that opens the vault and then refuse, by tracking a
+ * step that was sent or by finding the landing of a transaction nobody reported. So a step that was not
+ * confirmed in that read is asked of the database again, whatever its status was then: one small
+ * query, and only on those routes.
  */
 export async function joinConfirmed(
   deps: OrderDeps,
@@ -226,8 +229,7 @@ export async function joinConfirmed(
   if (Math.floor(deps.now().getTime() / 1000) > order.expiresAt) return;
   try {
     const confirmed =
-      opening.status === 'confirmed' ||
-      (readBefore && opening.status === 'sent' && (await confirmedNow(deps.db, opening.id)));
+      opening.status === 'confirmed' || (readBefore && (await confirmedNow(deps.db, opening.id)));
     const owner = order.owner[chainFamily(opening.chain)];
     if (!confirmed || !owner) return;
     // An order keeps its vault's number, so asking whether the join is there reads nothing else. Only

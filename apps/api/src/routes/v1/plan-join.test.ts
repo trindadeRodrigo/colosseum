@@ -624,6 +624,78 @@ describe('a vault is joined to its plan when the step that opens it is confirmed
     }
   });
 
+  /**
+   * A buy whose step that opens the vault was built and landed, and nobody reported it. The step is
+   * still `built` in the database, and the order's read does not track a step that was never reported:
+   * nothing is in the cache until a call settles the step.
+   */
+  async function landedUnreported() {
+    const a = await someone();
+    await fund(a);
+    const placed = await order(a, { amountUsd: 100 });
+    const create = opening(placed);
+    await build(a, placed, create.id);
+    await land(a, placed, create.id);
+    expect(legOf(await read(a, placed), create.id).status).toBe('built');
+    expect(await cached(a)).toEqual([]);
+    expect(await held(a)).toEqual([]);
+    return { a, placed, create };
+  }
+
+  /**
+   * The step that opens the vault is confirmed in the database and the vault is joined, with no route
+   * asked to see it: the vault's row is in the cache, the person holds one plan, placed at the order's
+   * time, and the row names it.
+   */
+  async function settledAndJoined(who: Person, placed: OrderDetail) {
+    const steps = await data.db.select().from(legs).where(eq(legs.orderId, placed.id));
+    expect(steps.find((l) => l.kind === 'create_vault')?.status).toBe('confirmed');
+    const plansHeld = await held(who);
+    expect(plansHeld.map((p) => [p.proposalId, p.createdAt.toISOString()])).toEqual([
+      [plans.solana, placed.createdAt],
+    ]);
+    expect((await cached(who)).map((v) => v.basketId)).toEqual([plansHeld[0]?.id]);
+  }
+
+  it('a build of the opening step that finds its transaction landed unreported is refused, and joins the vault on that call', async () => {
+    const { a, placed, create } = await landedUnreported();
+    // The build settles the step on the landing and refuses: there is nothing to build again.
+    const res = await post(a, legUrl(placed, create.id, 'build'));
+    expect(res.statusCode, res.body).toBe(409);
+    expect(OrderError.parse(res.json())).toMatchObject({
+      code: 'STEP_LANDED',
+      error: expect.stringMatching(/built earlier for this step has landed/),
+    });
+    await settledAndJoined(a, placed);
+  });
+
+  it('a cancel of the opening step that finds its transaction landed unreported is refused, and joins the vault on that call', async () => {
+    const { a, placed, create } = await landedUnreported();
+    // The cancel settles the step on the landing and refuses: a landed transaction is not cancelled.
+    const res = await post(a, legUrl(placed, create.id, 'cancel'));
+    expect(res.statusCode, res.body).toBe(409);
+    expect(OrderError.parse(res.json())).toMatchObject({
+      code: 'STEP_LANDED',
+      error: expect.stringMatching(/transaction of this step has landed/),
+    });
+    await settledAndJoined(a, placed);
+  });
+
+  it('a cancel that is refused after its own tracking settled the opening step joins the vault on that call', async () => {
+    const sick = await flaky();
+    try {
+      const { a, placed, create } = await landedUnseen(sick);
+      // The step was sent, so the cancel tracks it first and finds it confirmed. Nothing of it is left
+      // to cancel: the refusal is the cancel's own, a sentence with no code.
+      const res = await post(a, legUrl(placed, create.id, 'cancel'), undefined, sick.app);
+      expect(res.statusCode, res.body).toBe(409);
+      expect(res.json()).toEqual({ error: 'this step has no attempt to cancel' });
+      await settledAndJoined(a, placed);
+    } finally {
+      await sick.app.close();
+    }
+  });
+
   it('a cancel answers the order too, and makes a join that was missed', async () => {
     let clock = Date.now();
     const timed = await flaky(() => new Date(clock));

@@ -104,9 +104,9 @@ async function published(
 /**
  * A buy whose step that opens the vault has confirmed: the vault is written to the cache and joined to
  * the plan it was opened for (orders/plan-join.ts). Done on every route that answers an order after a
- * step may have settled: the read, the report, the cancel, `continue`, which tracks the steps sent
- * before it decides anything, and the build, which tracks them too and makes the join whether it then
- * answers or refuses. Once joined it is one look in the database. It never fails the answer: what goes
+ * step may have settled: the read, the report, `continue`, which tracks the steps sent before it
+ * decides anything, and the build and the cancel, which make the join whether they then answer or
+ * refuse (`withJoin`). Once joined it is one look in the database. It never fails the answer: what goes
  * wrong is logged, and the portfolio's read makes the join later.
  */
 async function joined(
@@ -117,6 +117,30 @@ async function joined(
 ): Promise<StoredOrder> {
   await joinConfirmed(deps, stored, signedIn(req), req.log, readBefore);
   return stored;
+}
+
+/**
+ * A route's work on an order, with the join made after it whether the work answered or refused. For the
+ * build and the cancel: each may settle the step that opens the vault and then refuse, by tracking a
+ * step that was sent (and then a price has moved past a later step's minimum, or the step has no
+ * attempt left to cancel) or by finding the landing of a transaction nobody reported (`STEP_LANDED`).
+ * `read` is the order as it was read before the work, so the join asks the database what became of
+ * that step. What the caller gets is the work's own answer or refusal: the join never throws, and were
+ * it to, that is logged here and goes no further.
+ */
+async function withJoin<T>(
+  deps: OrderDeps,
+  req: FastifyRequest,
+  read: StoredOrder,
+  work: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await work();
+  } finally {
+    await joined(deps, req, read, true).catch((err: unknown) =>
+      req.log.error({ err, orderId: read.order.id }, 'the join after an order route failed'),
+    );
+  }
 }
 
 // The Order schema's own checks (every leg is the order's, on a chain its owner has an address for)
@@ -207,17 +231,12 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
     },
     async (req) => {
       const read = await ownOrder(deps, req, req.params.id);
-      try {
-        return await buildLeg(deps, read, req.params.legId, signedIn(req).userId);
-      } finally {
-        // The build tracked the steps sent before it, so the step that opens the vault may have settled
-        // since the order was read, whether the build then answered or refused (a price that moved
-        // past a later step's minimum, say). What the caller gets is the build's own answer or
-        // refusal: the join never throws, and were it to, that is logged here and goes no further.
-        await joined(deps, req, read, true).catch((err: unknown) =>
-          req.log.error({ err, orderId: read.order.id }, 'the join after a build failed'),
-        );
-      }
+      // The build tracks the steps sent before it, and settles its own step where the transaction
+      // built earlier has landed: the step that opens the vault may be confirmed by the time the
+      // build answers or refuses.
+      return withJoin(deps, req, read, () =>
+        buildLeg(deps, read, req.params.legId, signedIn(req).userId),
+      );
     },
   );
 
@@ -327,13 +346,14 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
         response: { 200: OrderDetail, default: OrderError },
       },
     },
-    async (req) =>
-      detail(
-        await joined(
-          deps,
-          req,
-          await cancelLeg(deps, await ownOrder(deps, req, req.params.id), req.params.legId),
-        ),
-      ),
+    async (req) => {
+      const read = await ownOrder(deps, req, req.params.id);
+      // The cancel tracks the steps sent before it, and settles its own step where the transaction
+      // has landed: the step that opens the vault may be confirmed by the time the cancel answers or
+      // refuses.
+      return withJoin(deps, req, read, async () =>
+        detail(await cancelLeg(deps, read, req.params.legId)),
+      );
+    },
   );
 }
