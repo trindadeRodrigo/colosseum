@@ -2,7 +2,7 @@
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, unmountAll } from '../../components/ui/test/dom';
-import { dictionary } from '../../i18n';
+import { dictionary, SIGNED_IN_COOKIE } from '../../i18n';
 import { EMBEDDED, fakePort, json, signedInPort } from '../wallet/test/fake-port';
 import { location, router } from '../wallet/test/mock-next';
 import { portStore, restarts } from '../wallet/test/mock-provider';
@@ -31,6 +31,14 @@ const control = (host: HTMLElement) => find(host, '[data-ui="account-control"]')
 const way = (host: HTMLElement) =>
   host.querySelector<HTMLAnchorElement>('[data-ui="account-control"] a[href="/sign-in"]');
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
+/** The hint this app keeps while someone is signed in, as a reload finds it. */
+const hint = (on: boolean) => {
+  // biome-ignore lint/suspicious/noDocumentCookie: the test sets the cookie the app reads
+  document.cookie = on
+    ? `${SIGNED_IN_COOKIE}=1; path=/`
+    : `${SIGNED_IN_COOKIE}=; max-age=0; path=/`;
+};
+const hinted = () => document.cookie.includes(`${SIGNED_IN_COOKIE}=1`);
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -41,6 +49,7 @@ beforeEach(() => {
   restarts.refuse = false;
   portStore.setApi(async () => json({ error: 'not found' }, 404));
   portStore.set(neverReady());
+  hint(false);
 });
 afterEach(async () => {
   await unmountAll();
@@ -139,7 +148,61 @@ describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s'
     expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
   });
 
-  it('is the person’s account when it loads late and they were signed in', async () => {
+  it('never shows "Sign in" to someone the hint says was signed in: a neutral box, then that sign-in is slow, then their account', async () => {
+    portStore.setApi(async (path) =>
+      path === '/v1/me'
+        ? json({
+            userId: 'did:privy:test',
+            wallets: EMBEDDED,
+            chain: 'solana',
+            chainSource: 'picked',
+            chainOptions: ['solana', 'robinhood'],
+          })
+        : json({ error: 'not found' }, 404),
+    );
+    // a reload by someone signed in, on a slow connection
+    hint(true);
+    const host = await shell(lang);
+    await later(WAY_IN_MS);
+    expect(way(host)).toBeNull();
+    await later(SLOW_MS - WAY_IN_MS - 1);
+    // nothing yet: no way in that would flip to their account a moment later
+    expect(way(host)).toBeNull();
+    expect(control(host).querySelector('button')).toBeNull();
+    await later(1);
+    // then their account's control says sign-in is slow, with "Try again" and "Sign out" in it
+    expect(way(host)).toBeNull();
+    const button = find(host, '[data-ui="account-menu-button"]');
+    expect(button.textContent).toBe(t.shell.slow.title);
+    await click(button);
+    const menu = find(host, '[data-ui="account-menu"]');
+    expect(find(menu, '[data-ui="sign-in-slow"] [data-act="sign-in-again"]').textContent).toBe(
+      t.shell.slow.again,
+    );
+    expect(find(menu, '[data-ui="sign-out"]').textContent).toBe(t.shell.signOut);
+    // and when the service loads, it is their account
+    await act(async () => portStore.set(signedInPort(EMBEDDED)));
+    await later(0);
+    expect(way(host)).toBeNull();
+    expect(find(host, '[data-ui="account-menu-button"]').getAttribute('data-chain')).toBe('solana');
+  });
+
+  it('lets that person out though the service cannot be reached: the hint goes, and the visitor’s way in is there at once', async () => {
+    const signOut = vi.fn(() => new Promise<void>(() => {}));
+    portStore.set({ ...neverReady(), signOut });
+    hint(true);
+    const host = await shell(lang);
+    await later(SLOW_MS);
+    await click(find(host, '[data-ui="account-menu-button"]'));
+    await click(find(host, '[data-ui="account-menu"] [data-ui="sign-out"]'));
+    // nobody to sign out at a service that names nobody: it is not asked, and nothing hangs
+    expect(signOut).not.toHaveBeenCalled();
+    expect(hinted()).toBe(false);
+    expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
+    expect(way(host)?.textContent).toBe(t.shell.signIn);
+  });
+
+  it('is the person’s account when it loads late for someone with no hint', async () => {
     portStore.setApi(async (path) =>
       path === '/v1/me'
         ? json({
@@ -159,6 +222,23 @@ describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s'
     expect(way(host)).toBeNull();
     expect(find(host, '[data-ui="account-menu-button"]').getAttribute('data-chain')).toBe('solana');
     expect(host.querySelector('[data-ui="account-slow"]')).toBeNull();
+  });
+
+  it('keeps the account control for someone signed in whose provider, started again, names nobody for a while', async () => {
+    portStore.set(fakePort({ status: 'loading', userId: 'did:privy:test' }));
+    const host = await shell(lang);
+    await later(SLOW_MS);
+    await click(find(host, '[data-ui="account-menu-button"]'));
+    await click(find(host, '[data-ui="account-menu"] [data-act="sign-in-again"]'));
+    expect(restarts.count).toBe(1);
+    // the new provider knows nobody yet, for longer than a visitor waits for "Sign in"
+    await act(async () => portStore.set(neverReady()));
+    await later(WAY_IN_MS + 1);
+    expect(way(host)).toBeNull();
+    expect(find(host, '[data-ui="account-menu-button"]').textContent).toBe(t.shell.slow.title);
+    await later(SLOW_MS);
+    expect(way(host)).toBeNull();
+    expect(host.querySelector('[data-ui="account-menu-button"]')).not.toBeNull();
   });
 });
 

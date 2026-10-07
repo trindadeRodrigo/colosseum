@@ -80,7 +80,7 @@ export function AppNav() {
 function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
   const t = useT();
   const port = useWalletPort();
-  const { slow, stalled } = useAccount();
+  const { slow, stalled, leave } = useAccount();
   const [busy, setBusy] = useState(false);
   const [stillIn, setStillIn] = useState(false);
   const [said, setSaid] = useState('');
@@ -98,6 +98,12 @@ function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
   }, [signedOut, t]);
 
   async function signOut() {
+    // The sign-in service names nobody (it has not loaded) and there is nobody to sign out there:
+    // the person leaves as far as this browser can, and gets the visitor's way in.
+    if (port.userId === null) {
+      leave();
+      return;
+    }
     setBusy(true);
     setStillIn(false);
     setSaid('');

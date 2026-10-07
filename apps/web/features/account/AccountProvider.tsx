@@ -98,6 +98,11 @@ export type AccountValue = {
   /** Reads the wallets and the person again, with no reload of the page. */
   again(): void;
   /**
+   * Signs out as far as this browser can when the sign-in service names nobody and cannot be asked:
+   * forgets the signed-in hint and what was kept for the person, and shows the visitor's way in.
+   */
+  leave(): void;
+  /**
    * The sign-in service has not loaded after `WAY_IN_MS`, and nobody is known to be signed in: the
    * bar offers "Sign in" as to a visitor, and the sign-in screen says the service has not answered.
    */
@@ -122,6 +127,12 @@ export type AccountValue = {
 };
 
 const AccountContext = createContext<AccountValue | null>(null);
+
+/** The hint says someone was signed in here when the page was last open. False on the server. */
+function signedInHint(): boolean {
+  if (typeof document === 'undefined') return false;
+  return document.cookie.split(';').some((pair) => pair.trim() === `${SIGNED_IN_COOKIE}=1`);
+}
 
 type Read = { key: string; person: Person | null; why?: Unknown };
 
@@ -279,7 +290,10 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
   // Signed in and not ready: the wallets are loading, or our server has not answered. Once someone was
   // seen signed in, a wallet provider that loads again still counts, until it says they are out.
-  const seen = useRef(false);
+  // Someone who reloads is known before the provider says so, by the hint this app keeps while a
+  // person is signed in (`SIGNED_IN_COOKIE`): they are never shown "Sign in" while it loads.
+  const seen = useRef<boolean | null>(null);
+  if (seen.current === null) seen.current = signedInHint();
   if (port.userId !== null) seen.current = true;
   else if (port.status === 'signed-out') seen.current = false;
   // And nobody known at all: the sign-in service has not loaded, so it has not said who is here.
@@ -292,6 +306,20 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     const timer = setTimeout(() => setStalled(true), WAY_IN_MS);
     return () => clearTimeout(timer);
   }, [nobody]);
+  // The way out for someone the hint says was signed in, when the sign-in service cannot be reached
+  // to sign them out: the hint and what this browser kept for them go, and they are a visitor, with
+  // the visitor's way in at once. What the service holds of their session is its own to end.
+  const [, setLeft] = useState(0);
+  const leave = useCallback(() => {
+    remember(SIGNED_IN_COOKIE, null);
+    forgetGoalDraft();
+    forgetPlans();
+    if (before.current !== null) forgetOrders(before.current);
+    before.current = null;
+    seen.current = false;
+    setStalled(true);
+    setLeft((n) => n + 1);
+  }, []);
   const [tries, setTries] = useState(0);
   const [late, setLate] = useState(false);
   const [held, setHeld] = useState(false);
@@ -336,8 +364,8 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   // to look at and to switch.
   const chain = current ?? (account.status === 'signed-out' || stalled ? browsing : null);
   const value = useMemo(
-    () => ({ account, slow, again, stalled, mock: port.test, chain, choose, retry }),
-    [account, slow, again, stalled, port.test, chain, choose, retry],
+    () => ({ account, slow, again, leave, stalled, mock: port.test, chain, choose, retry }),
+    [account, slow, again, leave, stalled, port.test, chain, choose, retry],
   );
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;
 }

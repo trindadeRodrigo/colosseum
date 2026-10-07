@@ -118,7 +118,7 @@ export const en = {
       body: 'The sign-in service hasn’t answered yet, so I can’t sign you in right now.',
       offline: 'This device looks offline. Check the connection, then try again.',
       blocked:
-        'A content blocker or the browser’s shields can stop it. If one is on for this site, allow auth.privy.io, then try again.',
+        'The sign-in service didn’t answer. A blocker can stop it, or this address may not be set up for sign-in.',
     },
     off: {
       api: 'Sign-in is off for the moment: our server isn’t answering. I ask again every few seconds, and this page updates by itself.',

@@ -3,7 +3,7 @@ import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppNav } from '../../components/shell/AppNav';
 import { click, find, mount, press, type, unmountAll } from '../../components/ui/test/dom';
-import { dictionary, type Lang } from '../../i18n';
+import { dictionary, type Lang, SIGNED_IN_COOKIE } from '../../i18n';
 import { GOAL_DRAFT } from '../goal/draft';
 import { GoalScreen } from '../goal/GoalScreen';
 import { READ_IN_DOLLARS } from '../goal/test/plan';
@@ -80,6 +80,9 @@ const TRYING = `${SAID} [data-ui="sign-in-trying"]`;
 beforeEach(() => {
   vi.useFakeTimers();
   window.sessionStorage.clear();
+  // no hint of an earlier sign-in from the test before
+  // biome-ignore lint/suspicious/noDocumentCookie: the test starts from no hint
+  document.cookie = `${SIGNED_IN_COOKIE}=; max-age=0; path=/`;
   window.localStorage.clear();
   restarts.count = 0;
   restarts.refuse = false;

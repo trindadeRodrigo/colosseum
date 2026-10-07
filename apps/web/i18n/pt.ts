@@ -92,7 +92,7 @@ export const pt: Dictionary = {
       body: 'O serviço de login ainda não respondeu, então não consigo fazer seu login agora.',
       offline: 'Este aparelho parece estar sem conexão. Confira a conexão e tente de novo.',
       blocked:
-        'Um bloqueador de conteúdo ou a proteção do navegador pode impedir isso. Se houver um ativo neste site, libere auth.privy.io e tente de novo.',
+        'O serviço de login não respondeu. Um bloqueador pode impedir isso, ou este endereço pode não estar configurado para login.',
     },
     off: {
       api: 'O login está indisponível no momento: nosso servidor não está respondendo. Eu tento de novo a cada poucos segundos, e esta página se atualiza sozinha.',
