@@ -49,11 +49,11 @@ describe('amounts', () => {
     expect(formatRaw('1.5', 6, 'en')).toBeNull();
   });
 
-  it('says how far under the quote a minimum is, to the nearest basis point', () => {
+  it('says how far under the quote a minimum is, rounded up', () => {
     expect(shortfallBps('1000000', '990000')).toBe(100);
-    // a 1% minimum the server rounded down by one unit still reads 1%, as the buy screen says it
-    expect(shortfallBps('1000000', '989999')).toBe(100);
     expect(shortfallBps('3', '2')).toBe(3333);
+    // a 1% minimum cut down to a raw unit is a hair over 1%: it is said as 1%, not 1.01%
+    expect(shortfallBps('39960400', '39560795')).toBe(100);
     expect(shortfallBps('100', '100')).toBe(0);
     expect(shortfallBps('0', '0')).toBeNull();
     expect(formatBps(75, 'en')).toBe('0.75%');

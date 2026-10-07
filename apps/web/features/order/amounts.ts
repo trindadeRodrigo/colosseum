@@ -41,9 +41,10 @@ export function formatBps(bps: number, locale: string): string {
 }
 
 /**
- * How far under the quote a minimum is, in basis points, to the nearest one, so a 1% minimum reads
- * "1%" here as on the buy screen. For display only: nothing compared or signed uses it (the guard
- * holds a step to the order's own `minOutRaw`). Null when either is not an amount or the quote is zero.
+ * How far under the quote a minimum is, in basis points, to the nearest one: what the trade may give
+ * up. A minimum is the quote less a whole percentage, rounded down to a raw unit, so the gap is a
+ * hair over that percentage: rounded up it read "1.01%" where the buy screen said 1%. Null when
+ * either is not an amount or the quote is zero.
  */
 export function shortfallBps(outRaw: string, minOutRaw: string): number | null {
   if (!DIGITS.test(outRaw) || !DIGITS.test(minOutRaw)) return null;

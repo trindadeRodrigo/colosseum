@@ -164,15 +164,22 @@ export function OrderScreen({ id }: { id: string }) {
   }, [record, load, userId, id, apiFetch]);
 
   /**
-   * Makes the order that finishes `from` with the cash in its vault, held to `trades`, and opens its
-   * review. `unseen`: this browser never reviewed `from`, and the new order's review says so.
+   * Makes the order that finishes `first` (the order of `from`) with the cash in its vault, held to
+   * `trades`, and opens its review. `first` is what the answer is held to for owner, vault and chain:
+   * the copy approved here, or the server's own in a browser that never reviewed it (`unseen`), which
+   * the new order's review then says.
    */
-  async function finish(from: OrderRecord, trades: Trade[], unseen: boolean) {
+  async function finish(
+    from: OrderRecord,
+    first: Pick<OrderDetail, 'id' | 'owner' | 'basketId' | 'legs'>,
+    trades: Trade[],
+    unseen: boolean,
+  ) {
     if (finishing) return;
     setFinishing(true);
     setFinishFailure(null);
     const o = t.order.outcome;
-    const made = await continueOrder(apiFetch, from.orderId);
+    const made = await continueOrder(apiFetch, first);
     if (made.kind !== 'placed') {
       setFinishing(false);
       if (made.kind === 'unavailable') return setCanFinish(false);
@@ -359,7 +366,7 @@ export function OrderScreen({ id }: { id: string }) {
                 variant="primary"
                 busy={finishing}
                 busyLabel={t.order.outcome.finishing}
-                onClick={() => finish(served, trades, true)}
+                onClick={() => finish(served, first, trades, true)}
               >
                 {t.order.outcome.finish}
               </Button>
@@ -679,7 +686,7 @@ export function OrderScreen({ id }: { id: string }) {
                   variant="primary"
                   busy={finishing}
                   busyLabel={t.order.outcome.finishing}
-                  onClick={() => finish(record, left, false)}
+                  onClick={() => finish(record, record.approved?.order ?? now, left, false)}
                 >
                   {t.order.outcome.finish}
                 </Button>

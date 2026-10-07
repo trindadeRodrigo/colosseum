@@ -176,8 +176,16 @@ export type ContinueOutcome =
   | { kind: 'refused'; sentence: string; retryable: boolean; priceMoved: boolean }
   | { kind: 'signed-out' | 'busy' | 'unreachable' | 'unreadable' | 'unavailable' };
 
-/** Asks for the order that finishes `id` with the cash in its vault. Nothing is deposited. */
-export async function continueOrder(apiFetch: ApiFetch, id: string): Promise<ContinueOutcome> {
+/**
+ * Asks for the order that finishes `first` with the cash in its vault. Nothing is deposited. The
+ * answer is taken only if it names that order, is another order, is the same owner's for the same
+ * vault, deposits nothing and has only swap steps, all on the first order's chain.
+ */
+export async function continueOrder(
+  apiFetch: ApiFetch,
+  first: Pick<OrderDetail, 'id' | 'owner' | 'basketId' | 'legs'>,
+): Promise<ContinueOutcome> {
+  const id = first.id;
   let res: Response;
   try {
     res = await apiFetch(continuePath(id), { method: 'POST' });
@@ -202,6 +210,16 @@ export async function continueOrder(apiFetch: ApiFetch, id: string): Promise<Con
   const order = OrderDetail.safeParse(body);
   // The answer must say which order it finishes, and be another order than that one.
   if (!order.success || body.continues !== id || order.data.id === id)
+    return { kind: 'unreadable' };
+  const chain = first.legs[0]?.chain;
+  const made = order.data;
+  if (
+    JSON.stringify(made.owner) !== JSON.stringify(first.owner) ||
+    made.basketId !== first.basketId ||
+    made.depositRaw !== undefined ||
+    made.legs.length === 0 ||
+    made.legs.some((leg) => leg.kind !== 'swap' || leg.chain !== chain)
+  )
     return { kind: 'unreadable' };
   return { kind: 'placed', order: { ...order.data, continues: id } };
 }
