@@ -810,7 +810,7 @@ function VaultsPanel({
                     <span>{t.shared.vault.version(vault.acceptedVersion)}</span>
                   )}
                 </div>
-                <h3 id={heading} className="w-full break-words font-serif text-h4">
+                <h3 id={heading} className="w-full break-words font-display text-h4">
                   {nameOf(vault)}
                 </h3>
                 <p className="text-body-sm text-muted-foreground">
