@@ -252,14 +252,14 @@ describe('both charts', () => {
 });
 
 describe('the words of a chart', () => {
-  /** A text's box, as the 10px mono face sets it: about 6.2px a character, 10px tall. */
+  /** A text's box, as the 12px mono face sets it: about 7.4px a character, 12px tall. */
   const textBox = (t: SVGTextElement) => {
     const x = Number(t.getAttribute('x'));
     const y = Number(t.getAttribute('y'));
-    const w = (t.textContent ?? '').length * 6.2;
+    const w = (t.textContent ?? '').length * 7.4;
     const anchor = t.getAttribute('text-anchor') ?? 'start';
     const left = anchor === 'end' ? x - w : anchor === 'middle' ? x - w / 2 : x;
-    return { left, right: left + w, top: y - 10, bottom: y + 2 };
+    return { left, right: left + w, top: y - 12, bottom: y + 3 };
   };
   const rectBox = (r: Element) => {
     const x = Number(r.getAttribute('x'));

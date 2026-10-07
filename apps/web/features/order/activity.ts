@@ -1,8 +1,9 @@
 import type { ExecutionStatus, LegStatus, OrderDetail } from '@colosseum/schemas';
 import type { Execution } from '../../components/ui/ExecutionList';
 import type { Dictionary } from '../../i18n';
-import { assetName } from './amounts';
+import { assetTicker } from './amounts';
 import { explorerUrlFor } from './readiness';
+import { unitsFor } from './units';
 
 // What was done on chain, as his guide writes it (guidelines.html, "Disclaimer and activity"): one
 // line per step that reached the chain, with what it was, the chain it is on, where it stands, when, and
@@ -31,12 +32,13 @@ export function activityOf(
         (latest, a) => (latest === null || a.n > latest.n ? a : latest),
         null,
       );
+      // a token by the symbol this repository committed for it, as the review names it
+      const tokens = unitsFor(leg.chain, mock)?.tokens;
+      const name = (asset: string) => tokens?.[asset]?.symbol ?? assetTicker(asset);
       return {
         id: leg.id,
         verb: t.order.kind[leg.kind],
-        detail: leg.trades
-          .map((trade) => `${assetName(trade.sell)} → ${assetName(trade.buy)}`)
-          .join(', '),
+        detail: leg.trades.map((trade) => `${name(trade.sell)} → ${name(trade.buy)}`).join(', '),
         status: STATUS[leg.status] as ExecutionStatus,
         error: leg.error?.message ?? null,
         at: last?.builtAt ?? order.createdAt,

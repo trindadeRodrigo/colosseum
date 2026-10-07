@@ -4,7 +4,7 @@ import { cn } from './cn';
 import { DataTable } from './DataTable';
 import { HatchBand, MockWord } from './internal/mock-parts';
 import { ProvenancePin } from './ProvenancePin';
-import { type PinSource, pinState } from './provenance';
+import { type PinLabels, type PinSource, pinState } from './provenance';
 import { Status, type StatusKind } from './StatusMark';
 
 // exit-plan-line.md. Every portfolio says how the money comes back out before the agent invests: how
@@ -93,6 +93,8 @@ type Shared = {
    */
   inKind?: string;
   labels?: Partial<ExitPlanLabels>;
+  /** What a cost's pin says, in the view's language. */
+  pinLabels?: PinLabels;
   className?: string;
 };
 
@@ -113,6 +115,7 @@ export function ExitPlanLine({
   caveat,
   inKind,
   labels,
+  pinLabels,
   className,
 }: ExitPlanLineProps) {
   const text = { ...EXIT_PLAN_LABELS, ...labels };
@@ -151,6 +154,7 @@ export function ExitPlanLine({
                           value={tier.cost.figure}
                           obs={tier.cost.obs}
                           detail={tier.cost.detail}
+                          labels={pinLabels}
                         />
                       </>
                     )}
@@ -222,6 +226,7 @@ export function ExitPlanPanel({
   level = 3,
   footer,
   labels,
+  pinLabels,
   className,
 }: ExitPlanPanelProps) {
   const text = { ...EXIT_PLAN_LABELS, ...labels };
@@ -283,6 +288,7 @@ export function ExitPlanPanel({
                     value={tier.cost.figure}
                     obs={tier.cost.obs}
                     detail={tier.cost.detail}
+                    labels={pinLabels}
                   />
                 ),
             },

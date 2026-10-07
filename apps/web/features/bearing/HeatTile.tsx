@@ -2,6 +2,7 @@
 import { HeatmapTile } from '../../components/ui/HeatmapTile';
 import type { HeatCell } from '../../components/ui/heatmap';
 import { useAnswer, useBearing } from './BearingProvider';
+import { readKey } from './chain';
 import { R } from './data';
 import { type Fact, maxT, mk } from './fact';
 import { iso, REGIMES } from './format';
@@ -23,7 +24,7 @@ export function HeatTile({ asset }: { asset: AssetRow }) {
   const { reader, clock } = useBearing();
   const t = useWords().heat;
   const res = useAnswer(
-    () => reader.get<HeatmapBody>(R.heatmap(asset.symbol, HEAT_SIZE)),
+    () => reader.get<HeatmapBody>(R.heatmap(readKey(asset, asset.symbol), HEAT_SIZE)),
     [asset.symbol, reader],
   );
   const title = t.head(asset.symbol, fm.usd(HEAT_SIZE));

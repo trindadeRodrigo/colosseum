@@ -287,6 +287,7 @@ function RecipeSection({
                 mock: false,
               }))}
               labels={{ afterHaircut: t.plan.legs.afterHaircut, quoted: t.plan.legs.quoted }}
+              pinLabels={t.pin}
             />
           ) : (
             <WeightsTable

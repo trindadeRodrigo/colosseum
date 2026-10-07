@@ -448,7 +448,24 @@ describe('what reached the chain, line by line', () => {
     const detail = activityOf(mocked, en, true)
       .map((line) => line.detail)
       .join(' ');
-    expect(detail).toContain('tUSDG → tspy');
+    expect(detail).toContain('tUSDG → TSPY');
     expect(detail).not.toMatch(/usdc/i);
+  });
+
+  it('names each token as the review does: by its committed symbol, else by its ticker', () => {
+    const detail = (order: ReturnType<typeof doneOrder>, mock: boolean) =>
+      activityOf(order, en, mock)
+        .map((line) => line.detail)
+        .join(' ');
+    expect(detail(doneOrder('solana'), false)).toContain('tUSDC → tSPYx');
+    const order = doneOrder('solana');
+    const onMock = {
+      ...order,
+      legs: order.legs.map((leg) => ({
+        ...leg,
+        trades: leg.trades.map((t) => ({ ...t, buy: 'solana:spy' })),
+      })),
+    };
+    expect(detail(onMock, true)).toContain('USDC → SPY');
   });
 });

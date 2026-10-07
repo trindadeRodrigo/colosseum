@@ -27,6 +27,37 @@
 @source not inline("{italic,font-thin,font-extralight,font-light,text-justify}");
 
 @custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * The fallbacks of the three faces (app/fonts.ts): a local face with its metrics adjusted to the real
+ * one's, so text does not move when the real face arrives. The figures are the ones next/font worked
+ * out when the faces came from Google at build; they are written here so the move to committed files
+ * changed nothing a reader sees.
+ */
+@font-face {
+  font-family: "IBM Plex Sans Fallback";
+  src: local(Arial);
+  ascent-override: 101.32%;
+  descent-override: 27.18%;
+  line-gap-override: 0%;
+  size-adjust: 101.17%;
+}
+@font-face {
+  font-family: "Newsreader Fallback";
+  src: local("Times New Roman");
+  ascent-override: 69.68%;
+  descent-override: 25.12%;
+  line-gap-override: 0%;
+  size-adjust: 105.48%;
+}
+@font-face {
+  font-family: "IBM Plex Mono Fallback";
+  src: local(Arial);
+  ascent-override: 76.16%;
+  descent-override: 20.43%;
+  line-gap-override: 0%;
+  size-adjust: 134.59%;
+}
 /* The landing closing's wide layout, the joint beside its heading (features/landing/closing-pose.ts, isNarrow). */
 @custom-variant closing-wide {
   @media (min-width: 960px) and (min-aspect-ratio: 23 / 20) {

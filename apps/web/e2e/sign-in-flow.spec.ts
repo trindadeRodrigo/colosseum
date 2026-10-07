@@ -26,9 +26,9 @@ test('a passkey: one button, and no chain is asked', async ({ page }) => {
   );
   await passkey.click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.locator('[data-ui="chain-switch"] > button')).toHaveAttribute(
-    'aria-label',
-    en.chain.switch.current('Solana'),
+  await expect(page.locator('header [data-ui="account-menu-button"]')).toHaveAttribute(
+    'data-chain',
+    'solana',
   );
 });
 

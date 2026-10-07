@@ -25,6 +25,10 @@ export const pt: Dictionary = {
     signOutFailed:
       'Não consegui encerrar sua sessão: o serviço de login não respondeu. Tente de novo.',
     account: 'Sua carteira',
+    address: 'Endereço',
+    copyAddress: 'Copiar endereço',
+    copied: 'Copiado',
+    viewOn: (explorer: string) => `Ver no ${explorer}`,
     disclaimer: 'Aviso legal',
     appearance: 'Aparência',
     themes: { auto: 'Sistema', light: 'Claro', dark: 'Escuro' },
@@ -119,6 +123,7 @@ export const pt: Dictionary = {
 
   chain: {
     names: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
+    short: { solana: 'Solana', robinhood: 'Robinhood', base: 'Base' },
     explorers: { solana: 'Solscan', robinhood: 'explorador da Robinhood', base: 'Basescan' },
     switch: {
       current: (chain: string) => `Rede: ${chain}`,
@@ -302,6 +307,8 @@ export const pt: Dictionary = {
         income: (amount: string, months: string) => `Gerar renda com ${amount} por ${months}.`,
         protect: (amount: string, months: string) => `Proteger ${amount} por ${months}.`,
       },
+      sentenceIncome: (income: string, amount: string, months: string) =>
+        `Gerar ${income} por mês com ${amount} por ${months}.`,
       months: (n: number) => (n === 1 ? '1 mês' : `${n} meses`),
       unfinished: 'Seu objetivo, como foi lido até aqui.',
       draftOpen: 'Rascunho: termine os limites',
@@ -414,6 +421,7 @@ export const pt: Dictionary = {
     vault: {
       title: 'Seu cofre',
       address: 'Endereço do cofre',
+      page: (address: string) => `Abrir a página do cofre ${address}`,
       value: 'Valor',
       cash: 'Caixa',
       autoFollow: 'Seguir automaticamente',
@@ -452,6 +460,8 @@ export const pt: Dictionary = {
     goalCard: {
       builtMet: 'No caminho quando o plano foi montado',
       builtShort: 'Abaixo da renda quando o plano foi montado',
+      builtPaid: (paid: string, asked: string) =>
+        `Quando este plano foi montado, ele pagava ${paid} por mês dos ${asked} que você pediu.`,
       noStatus: 'Ainda sem situação: o motor não dá uma para um cofre',
       unknown: (chain: string) => `Seu cofre na ${chain}.`,
       notJoined:
@@ -503,6 +513,7 @@ export const pt: Dictionary = {
         `Numa queda forte: você perderia cerca de ${amount}, uma estimativa.`,
     },
     details: 'Detalhes',
+    leftOut: 'Ficou de fora deste plano',
     kinds: {
       stock: 'Ações',
       etf: 'Fundos',
@@ -571,6 +582,7 @@ export const pt: Dictionary = {
       amount: 'valor',
       horizon: 'prazo',
       risk: 'risco',
+      riskValue: { low: 'baixo', medium: 'médio', high: 'alto' },
       chain: 'rede',
     },
     kpi: {
@@ -792,6 +804,10 @@ export const pt: Dictionary = {
       empty: (chain: string) => `Nenhum portfólio foi compartilhado na ${chain} ainda.`,
       emptyAll: 'Nenhum portfólio foi compartilhado ainda.',
       publish: 'Publicar um portfólio',
+      publishSoon: (chain: string) =>
+        `Publicar um portfólio na ${chain} está a caminho. Por enquanto dá para publicar na Solana.`,
+      signedOut: (chain: string) =>
+        `Você saiu da conta. Esta ainda é a prateleira da ${chain}; entre para seguir um portfólio.`,
       card: {
         by: (creator: string) => `por ${creator}`,
         platform: 'Da tenonfi',
@@ -944,6 +960,8 @@ export const pt: Dictionary = {
       assetsHint: 'De 3 a 12 ativos, cada um de 2% a 50%, em passos de 0,5%, somando 100%.',
       asset: 'Ativo',
       weight: 'Peso, em %',
+      assetOf: (n: number) => `Ativo ${n}`,
+      weightOf: (n: number) => `Peso do ativo ${n} (%)`,
       add: 'Incluir um ativo',
       remove: (asset: string) => `Tirar ${asset}`,
       total: (sum: string) => `Total: ${sum}`,
@@ -979,6 +997,8 @@ export const pt: Dictionary = {
         `Lido da ${chain} para esta página. Qualquer pessoa pode ver um cofre: o que ele tem é público na rede.`,
       loading: 'Lendo o cofre…',
       missing: 'Não há cofre neste endereço.',
+      back: 'Voltar ao seu portfólio',
+      explorer: (explorer: string) => `Ver no ${explorer}`,
       owner: 'Dono',
       follows: 'Segue',
       followsNothing: 'Nada: quem é dono define os pesos',

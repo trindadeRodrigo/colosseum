@@ -70,6 +70,36 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
 }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.landing.stage.title);
+  // the three faces are the app's own files (app/fonts.ts): loaded, named as before with their
+  // fallbacks, and what the heading is actually set in
+  const faces = await page.evaluate(async () => {
+    await document.fonts.ready;
+    const family = (el: Element | null) => (el ? getComputedStyle(el).fontFamily : '');
+    const width = (font: string) => {
+      const ctx = document.createElement('canvas').getContext('2d');
+      if (!ctx) return 0;
+      ctx.font = font;
+      return ctx.measureText('No product fits everyone').width;
+    };
+    return {
+      heading: family(document.querySelector('h1')),
+      body: family(document.body),
+      loaded: ['400 16px Newsreader', '500 16px "IBM Plex Sans"'].map((f) =>
+        document.fonts.check(f),
+      ),
+      fromGoogle: performance
+        .getEntriesByType('resource')
+        .filter((r) => /fonts\.(googleapis|gstatic)\.com/.test(r.name)).length,
+      serif: width('400 100px Newsreader'),
+      fallback: width('400 100px "Times New Roman"'),
+    };
+  });
+  expect(faces.heading).toMatch(/^"?newsreader"?, "?Newsreader"?, "?Newsreader Fallback"?/);
+  expect(faces.body).toMatch(/^"?plexSans"?, "?IBM Plex Sans"?, "?IBM Plex Sans Fallback"?/);
+  expect(faces.loaded).toEqual([true, true]);
+  expect(faces.fromGoogle).toBe(0);
+  // set in Newsreader itself, not its fallback: the two measure differently
+  expect(Math.abs(faces.serif - faces.fallback)).toBeGreaterThan(1);
   await expect(page.locator('article[data-ui="showcase-case"]')).toHaveCount(2);
   // a jump to the end of the page, over the stage, finds his bar compact, with its action
   await page.keyboard.press('End');
@@ -258,6 +288,8 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   // a vault opened with the deposit, then one swap per asset: the mock trades separately
   await expect(steps).toHaveCount(4);
   await expect(steps.nth(1)).toContainText('receive at least');
+  // a token by its ticker, and an amount in its smallest units grouped as any figure is
+  await expect(steps.nth(1)).toContainText(/on SPY · receive at least \d{1,3}(,\d{3})+ of SPY/);
   await check(page, 'review');
 
   await page.getByRole('button', { name: en.order.signAndBuy('$40') }).click();

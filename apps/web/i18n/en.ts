@@ -26,6 +26,11 @@ export const en = {
     signedOut: 'You’re signed out.',
     signOutFailed: 'I couldn’t sign you out: the sign-in service didn’t answer. Try again.',
     account: 'Your wallet',
+    /** The account menu in the bar: its items under the chains. */
+    address: 'Address',
+    copyAddress: 'Copy address',
+    copied: 'Copied',
+    viewOn: (explorer: string) => `View on ${explorer}`,
     disclaimer: 'Disclaimer',
     appearance: 'Appearance',
     themes: { auto: 'System', light: 'Light', dark: 'Dark' },
@@ -139,6 +144,7 @@ export const en = {
 
   chain: {
     names: { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base' },
+    short: { solana: 'Solana', robinhood: 'Robinhood', base: 'Base' },
     /** The explorer each chain's transaction links open, named beside the link. */
     explorers: { solana: 'Solscan', robinhood: 'Robinhood explorer', base: 'Basescan' },
     /** The bar's chain switcher (gate CHAIN-SWITCH). */
@@ -336,6 +342,9 @@ export const en = {
         income: (amount: string, months: string) => `Earn income from ${amount} for ${months}.`,
         protect: (amount: string, months: string) => `Protect ${amount} for ${months}.`,
       },
+      /** An income goal that names what it wants a month. */
+      sentenceIncome: (income: string, amount: string, months: string) =>
+        `Earn ${income} a month from ${amount} for ${months}.`,
       months: (n: number) => (n === 1 ? '1 month' : `${n} months`),
       unfinished: 'Your goal, as read so far.',
       draftOpen: 'Draft: finish the limits',
@@ -463,6 +472,8 @@ export const en = {
     vault: {
       title: 'Your vault',
       address: 'Vault address',
+      /** The link from a vault's panel to its own page. */
+      page: (address: string) => `Open the page of vault ${address}`,
       value: 'Value',
       cash: 'Cash',
       autoFollow: 'Auto-follow',
@@ -506,6 +517,9 @@ export const en = {
     goalCard: {
       builtMet: 'On track when the plan was built',
       builtShort: 'Short of its income when the plan was built',
+      /** The income plan's verdict in figures: what it paid a month of what was asked. */
+      builtPaid: (paid: string, asked: string) =>
+        `When this plan was built, it paid ${paid} a month of the ${asked} you asked for.`,
       noStatus: 'No status yet: the engine gives none for a vault',
       unknown: (chain: string) => `Your vault on ${chain}.`,
       notJoined:
@@ -563,6 +577,8 @@ export const en = {
       some: (amount: string) => `In a bad fall: you’d lose about ${amount}, an estimate.`,
     },
     details: 'Details',
+    /** Above what the engine left out of the plan, each with its own reason. */
+    leftOut: 'Left out of this plan',
     kinds: {
       stock: 'Stocks',
       etf: 'Funds',
@@ -631,6 +647,8 @@ export const en = {
       amount: 'amount',
       horizon: 'horizon',
       risk: 'risk',
+      /** The risk as the chip says it after "risk:", which in Portuguese agrees with "risco". */
+      riskValue: { low: 'low', medium: 'medium', high: 'high' },
       chain: 'chain',
     },
     kpi: {
@@ -854,6 +872,12 @@ export const en = {
       empty: (chain: string) => `No portfolio is shared on ${chain} yet.`,
       emptyAll: 'No portfolio is shared yet.',
       publish: 'Publish a portfolio',
+      /** Where publishing is not offered yet: said, in place of the link. */
+      publishSoon: (chain: string) =>
+        `Publishing a portfolio on ${chain} is coming. For now it can be done on Solana.`,
+      /** After signing out on this page: the shelf stays, and says whose it is now. */
+      signedOut: (chain: string) =>
+        `You’re signed out. This is still the shelf of ${chain}; sign in to follow a portfolio.`,
       card: {
         by: (creator: string) => `by ${creator}`,
         platform: 'From tenonfi',
@@ -1004,6 +1028,9 @@ export const en = {
       assetsHint: '3 to 12 assets, each from 2% to 50%, in steps of 0.5%, adding up to 100%.',
       asset: 'Asset',
       weight: 'Weight, in %',
+      /** The labels of a row's two fields. */
+      assetOf: (n: number) => `Asset ${n}`,
+      weightOf: (n: number) => `Weight of asset ${n} (%)`,
       add: 'Add an asset',
       remove: (asset: string) => `Remove ${asset}`,
       total: (sum: string) => `Total: ${sum}`,
@@ -1038,6 +1065,9 @@ export const en = {
         `Read from ${chain} for this page. Anyone can see a vault: what it holds is public on its chain.`,
       loading: 'Reading the vault…',
       missing: 'There is no vault at this address.',
+      back: 'Back to your portfolio',
+      /** The link to the vault's address on its chain's explorer. */
+      explorer: (explorer: string) => `See it on ${explorer}`,
       owner: 'Owner',
       follows: 'Follows',
       followsNothing: 'Nothing: the owner sets its weights',

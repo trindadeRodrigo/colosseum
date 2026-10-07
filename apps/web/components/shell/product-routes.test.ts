@@ -372,7 +372,8 @@ describe('rule 3: no screen can reach a key', () => {
    */
   const PACKAGES = [
     '@colosseum/schemas',
-    'next/font/google',
+    // the three faces, from files committed with the app: nothing is fetched at build (app/fonts.ts)
+    'next/font/local',
     'next/headers',
     'next/link',
     'next/navigation',

@@ -214,16 +214,16 @@ export function JointStage() {
                 !heroLow && 'max-[819px]:opacity-0 motion-reduce:opacity-100',
               )}
             >
-              <h1 className="font-display text-[clamp(2.4rem,1.6rem+2.6vw,4rem)]/[1.12] font-normal tracking-[-0.015em] [overflow-wrap:break-word]">
+              <h1 className="font-display text-[clamp(2.4rem,1.6rem+2.6vw,4rem)]/[round(1.12em,4px)] font-normal tracking-[-0.015em] [overflow-wrap:break-word]">
                 {t.title}
               </h1>
-              <p className="mt-7 max-w-[44ch] text-[1.125rem]/[1.7] text-muted-foreground">
+              <p className="mt-7 max-w-[44ch] text-[1.125rem]/8 text-muted-foreground">
                 <b className="font-medium text-foreground">{t.taglineStrong}</b>
                 <br />
                 {t.tagline}
               </p>
               {/* A still line, not a loop (joint-stage.md: no ambient motion). */}
-              <p className="mt-10 flex items-center gap-2.5 font-mono text-[12px] text-muted-foreground motion-reduce:hidden">
+              <p className="mt-10 flex items-center gap-2.5 font-mono text-[12px]/4 text-muted-foreground motion-reduce:hidden">
                 <span aria-hidden="true" className="inline-block h-7 w-px bg-muted-foreground" />
                 {t.cue}
               </p>
@@ -252,12 +252,12 @@ export function JointStage() {
                   : 'translate-y-3 motion-reduce:translate-y-0 max-[819px]:opacity-0 motion-reduce:opacity-100',
               )}
             >
-              <p className="font-mono text-[12px] font-medium tracking-[0.04em] text-primary">
+              <p className="font-mono text-[12px]/4 font-medium tracking-[0.04em] text-primary">
                 {step.n}
               </p>
               <h2
                 className={cn(
-                  'my-2 font-display text-[clamp(1.6rem,1.2rem+1.2vw,2.3rem)]/[1.2] font-normal transition-colors duration-[480ms]',
+                  'my-2 font-display text-[clamp(1.6rem,1.2rem+1.2vw,2.3rem)]/[round(1.2em,4px)] font-normal transition-colors duration-[480ms]',
                   on === i
                     ? 'text-foreground'
                     : 'text-muted-foreground motion-reduce:text-foreground',

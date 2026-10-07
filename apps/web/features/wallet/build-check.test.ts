@@ -9,6 +9,7 @@ import {
   DEV_ONLY,
   FORBIDDEN,
   REQUIRED,
+  SECRET_SHAPES,
   STAGE_BUDGET,
   STAGE_MARKERS,
 } from '../../scripts/check-build.mjs';
@@ -46,6 +47,42 @@ const CLEAN = {
   'server/app/monitor.html': '<html></html>',
   'server/chunks/ssr/1.js.map': map(`${OURS}app/(app)/layout.tsx`, `${OURS}${ALWAYS_BUILT}`),
 };
+
+describe('what a browser is sent', () => {
+  // made here, never a real key: each is the shape alone
+  const key = 'k'.repeat(40);
+  it.each([
+    ['a keyed Solana node', `fetch("https://mainnet.helius-rpc.com/?api-key=${key}")`],
+    ['a keyed EVM node', `url:"https://base-mainnet.g.alchemy.com/v2/${key}"`],
+    ['a provider key', `authorization:"Bearer sk-${key}"`],
+    ['a database URL', `"postgresql://postgres:${key}@db.example:5432/postgres"`],
+  ])('may not hold %s', (_, text) => {
+    const out = build({ ...CLEAN, 'static/chunks/env.js': text });
+    const problems = checkBuild(out);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatch(/^static\/chunks\/env\.js holds /);
+    // the finding names the file and the shape, never the key
+    expect(problems[0]).not.toContain(key);
+  });
+
+  it('may hold a public node, a public id and the words of the app', () => {
+    const out = build({
+      ...CLEAN,
+      'static/chunks/env.js':
+        'rpc:"https://api.devnet.solana.com",app:"cm0publicprivyappid000000",t:"task-list ask-me"',
+    });
+    expect(checkBuild(out)).toEqual([]);
+    expect(Object.keys(SECRET_SHAPES)).toHaveLength(4);
+  });
+
+  it('is not read into what the server alone keeps', () => {
+    const out = build({
+      ...CLEAN,
+      'server/chunks/db.js': `"postgresql://u:${'p'.repeat(12)}@h/db"`,
+    });
+    expect(checkBuild(out)).toEqual([]);
+  });
+});
 
 describe('the check that runs after every production build', () => {
   it('looks for the strings the code carries', () => {

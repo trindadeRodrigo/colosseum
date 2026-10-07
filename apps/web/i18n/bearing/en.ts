@@ -51,6 +51,22 @@ export const bearingEn = {
     down: (api: string) => `The risk API at ${api} did not answer.`,
     downAll: 'Every figure on this page waits for it; none is made up in its place.',
   },
+  chain: {
+    label: 'Chain',
+    notCollectedOn: (chain: string) => `not collected yet on ${chain}`,
+    pageNotCollected: (chain: string) =>
+      `Not collected yet on ${chain}: Bearing measures this page on Solana only for now.`,
+    sideBySide: {
+      title: 'Chains side by side',
+      note: 'Each chain as Bearing measures it now. Exit capacity is read in the time of week it is now.',
+      caption: 'Assets tracked, pool TVL, exit capacity and 24 h volume per chain',
+      chain: 'Chain',
+      assets: 'Assets tracked',
+      tvl: 'Pool TVL',
+      capacity: 'Exit capacity at ≤ 1% cost',
+      volume: 'Volume 24 h',
+    },
+  },
   regimes: {
     us_market_hours: 'market hours',
     us_offhours_weekday: 'off-hours',
@@ -139,6 +155,7 @@ export const bearingEn = {
       capacityNote: (regime: string) => `sale at ≤ 1% cost, ${regime}`,
       volume: 'Volume 24 h',
       volumeNote: (to: string) => `to ${to}, the newest swap history`,
+      volumeDexNote: 'DexScreener’s figure: Bearing’s swap history is not collected here yet.',
       lp: 'Top-3 LP share',
       lpNote: 'largest pool, by position',
     },

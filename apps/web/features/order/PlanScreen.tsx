@@ -25,7 +25,15 @@ import { dollars } from '../goal/sheet';
 import { formatBps } from './amounts';
 import { PlanChart } from './PlanChart';
 import { PlanGate } from './PlanGate';
-import { displayName, flagSentences, kindLabel, planSummary } from './plain';
+import {
+  displayName,
+  flagSentences,
+  goalLine,
+  kindLabel,
+  leftOut,
+  planSummary,
+  reasonsOf,
+} from './plain';
 import { usePlan } from './use-plan';
 
 // The plan a goal built, before anything is bought: the goal first, then what the plan holds and why,
@@ -81,24 +89,37 @@ export function PlanScreen({ id }: { id: string }) {
     [t.plan.chips.goal, t.goal.options.goal[sheet.goal].toLowerCase()],
     [t.plan.chips.amount, dollars(sheet.amountUsd, lang)],
     [t.plan.chips.horizon, t.goal.card.months(sheet.horizonMonths)],
-    [t.plan.chips.risk, t.goal.options.risk[sheet.risk].toLowerCase()],
+    [t.plan.chips.risk, t.plan.chips.riskValue[sheet.risk]],
     [t.plan.chips.chain, chainName],
   ];
 
   const name = (assetId: string) => displayName(assetId, t.plan);
   // The plan in one sentence: what goes where, largest first, then the largest holding's own reason.
   const summary = planSummary(proposal, t, lang, chainName);
-  const notes = flagSentences([...proposal.flags, ...(plan.rollUp?.flags ?? [])], t.plan, name);
+  // Money that could not be placed is said by the cash line's own reason, where it gives one, in
+  // place of the general note.
+  const unplaced = proposal.lines
+    .flatMap((l) => l.reasons)
+    .find((r) => r.rule === 'UNPLACED' || r.rule === 'NO_DOLLAR_YIELD')?.text;
+  const flags = [...proposal.flags, ...(plan.rollUp?.flags ?? [])];
+  const notes = [
+    ...new Set([
+      ...(unplaced ? [unplaced] : []),
+      ...flagSentences(
+        unplaced ? flags.filter((f) => f !== 'unplaced' && f !== 'no_dollar_yield') : flags,
+        t.plan,
+        name,
+      ),
+    ]),
+  ];
+  const out = leftOut(proposal);
 
   return (
     <div data-ui="plan-screen" className="flex flex-col gap-8">
       <header className="flex flex-col items-start gap-3">
         <ChainBadge chain={chain} />
         <h1 id={headingId} className={PAGE_TITLE}>
-          {t.goal.card.sentence[sheet.goal](
-            dollars(sheet.amountUsd, lang),
-            t.goal.card.months(sheet.horizonMonths),
-          )}
+          {goalLine(sheet, t, dollars(sheet.amountUsd, lang), (usd) => dollars(usd, lang))}
         </h1>
         <p data-ui="plan-summary" className="max-w-(--tf-measure-body) text-body-lg">
           {summary}
@@ -208,7 +229,7 @@ export function PlanScreen({ id }: { id: string }) {
                   {
                     key: 'why',
                     header: t.plan.columns.why,
-                    cell: (l) => l.reasons.map((r) => r.text).join(' ') || t.plan.noReason,
+                    cell: (l) => reasonsOf(l).join(' ') || t.plan.noReason,
                   },
                 ]}
               />
@@ -221,11 +242,13 @@ export function PlanScreen({ id }: { id: string }) {
                   weight: line.weightBps / 10_000,
                   weightLabel: `${share(line.weightBps)} · ${dollars(line.amountUsd, lang)}`,
                   rate: null,
-                  why: line.reasons[0]?.text,
+                  // the reason that decided the line, not the share it only started from
+                  why: reasonsOf(line)[0],
                   // The pane carries the plate for the whole plan, as the showcase case does.
                   mock: false,
                 }))}
                 labels={{ afterHaircut: t.plan.legs.afterHaircut, quoted: t.plan.legs.quoted }}
+                pinLabels={t.pin}
               />
             )}
           </div>
@@ -246,6 +269,7 @@ export function PlanScreen({ id }: { id: string }) {
             caveat={card.exit.costBps === null ? t.plan.exitUnmeasured : undefined}
             inKind={t.plan.inKind}
             labels={{ exitPlan: t.plan.exitPlan, costPrefix: t.plan.costPrefix }}
+            pinLabels={t.pin}
           />
           {proposal.verdict && (
             <p className="max-w-(--tf-measure-body) text-body">
@@ -263,7 +287,7 @@ export function PlanScreen({ id }: { id: string }) {
 
       {/* What the engine noted and how the plan is spread, closed until asked for: every code of the
           engine said in a sentence (features/order/plain.ts), none shown as it is written. */}
-      {(notes.length > 0 || plan.rollUp) && (
+      {(notes.length > 0 || out.length > 0 || plan.rollUp) && (
         <details data-ui="plan-details" className="border border-border px-6 py-4">
           <summary className="cursor-pointer text-body font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
             {t.plan.details}
@@ -275,6 +299,16 @@ export function PlanScreen({ id }: { id: string }) {
                   <li key={note}>{note}</li>
                 ))}
               </ul>
+            )}
+            {out.length > 0 && (
+              <div data-ui="plan-left-out" className="flex flex-col gap-1">
+                <h3 className="text-[0.8125rem]/5 font-medium">{t.plan.leftOut}</h3>
+                <ul className="flex max-w-(--tf-measure-body) list-disc flex-col gap-1 pl-5 text-body-sm">
+                  {out.map((sentence) => (
+                    <li key={sentence}>{sentence}</li>
+                  ))}
+                </ul>
+              </div>
             )}
             {plan.rollUp && (
               <RiskPanel

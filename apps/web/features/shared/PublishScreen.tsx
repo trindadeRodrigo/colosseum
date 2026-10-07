@@ -116,6 +116,10 @@ export function PublishScreen() {
   const [placing, setPlacing] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
+  /** The parts of the form the person has put a hand to: a rule is said once its part has been. */
+  const [touched, setTouched] = useState({ name: false, slug: false, copy: false, rows: false });
+  const touch = (part: keyof typeof touched) =>
+    setTouched((was) => (was[part] ? was : { ...was, [part]: true }));
   const reasonId = useId();
   const slug = slugText ?? slugOf(name);
   const owner = person.kind === 'ready' ? person.owner : null;
@@ -192,8 +196,15 @@ export function PublishScreen() {
   // Always the page's own: an update is offered only where the stored id is this one.
   const familyId = familyIdFor(slug || 'x');
   const chainName = t.chain.names[chain];
+  // A rule the form breaks is said after the person has typed in its part, or asked for the review:
+  // an empty form says nothing is wrong with it yet.
+  const partOf = (k: Problem): keyof typeof touched =>
+    k === 'name' || k === 'slug' || k === 'copy' ? k : 'rows';
+  const said = problems.filter(
+    (k) => tried || k === 'chain' || touched[partOf(k)] || (k === 'slug' && touched.name),
+  );
   const blocked = [
-    ...problems.map((k) => p.problems[k]),
+    ...said.map((k) => p.problems[k]),
     ...(existing.kind === 'theirs' ? [p.theirs] : []),
     ...(existing.kind === 'foreign' ? [t.shared.family.foreign] : []),
     ...(existing.kind === 'reading' ? [t.shared.check.reading] : []),
@@ -264,8 +275,10 @@ export function PublishScreen() {
     router.push(`/orders/${encodeURIComponent(placed.order.id)}`);
   }
 
-  const setRow = (key: number, change: Partial<Row>) =>
+  const setRow = (key: number, change: Partial<Row>) => {
+    touch('rows');
     setRows((all) => (all ?? []).map((r) => (r.key === key ? { ...r, ...change } : r)));
+  };
   const unused = (current: string) =>
     assets.filter((a) => a.id === current || !list.some((r) => r.asset === a.id));
 
@@ -302,7 +315,10 @@ export function PublishScreen() {
                   value={name}
                   maxLength={LIMITS.chars}
                   autoComplete="off"
-                  onChange={(e) => setName(e.currentTarget.value)}
+                  onChange={(e) => {
+                    touch('name');
+                    setName(e.currentTarget.value);
+                  }}
                 />
               )}
             </Field>
@@ -324,7 +340,10 @@ export function PublishScreen() {
                   maxLength={64}
                   autoComplete="off"
                   spellCheck={false}
-                  onChange={(e) => setSlugText(e.currentTarget.value)}
+                  onChange={(e) => {
+                    touch('slug');
+                    setSlugText(e.currentTarget.value);
+                  }}
                 />
               )}
             </Field>
@@ -338,7 +357,10 @@ export function PublishScreen() {
                   {...control}
                   value={copy}
                   maxLength={LIMITS.chars}
-                  onChange={(e) => setCopy(e.currentTarget.value)}
+                  onChange={(e) => {
+                    touch('copy');
+                    setCopy(e.currentTarget.value);
+                  }}
                 />
               )}
             </Field>
@@ -364,7 +386,7 @@ export function PublishScreen() {
             <ul className="flex flex-col gap-3">
               {list.map((row, i) => (
                 <li key={row.key} data-ui="publish-row" className="flex flex-wrap items-end gap-3">
-                  <Field label={`${p.asset} ${i + 1}`} className="min-w-[9rem] flex-1">
+                  <Field label={p.assetOf(i + 1)} className="min-w-[9rem] flex-1">
                     {(control) => (
                       <Select
                         {...control}
@@ -379,7 +401,7 @@ export function PublishScreen() {
                       </Select>
                     )}
                   </Field>
-                  <Field label={`${p.weight} ${i + 1}`}>
+                  <Field label={p.weightOf(i + 1)}>
                     {(control) => (
                       <Input
                         {...control}
@@ -393,7 +415,10 @@ export function PublishScreen() {
                   </Field>
                   <Button
                     variant="secondary"
-                    onClick={() => setRows((all) => (all ?? []).filter((r) => r.key !== row.key))}
+                    onClick={() => {
+                      touch('rows');
+                      setRows((all) => (all ?? []).filter((r) => r.key !== row.key));
+                    }}
                   >
                     {p.remove(symbolOf(row.asset))}
                   </Button>
@@ -404,7 +429,8 @@ export function PublishScreen() {
               <Button
                 variant="secondary"
                 className="self-start"
-                onClick={() =>
+                onClick={() => {
+                  touch('rows');
                   setRows((all) => [
                     ...(all ?? []),
                     {
@@ -412,8 +438,8 @@ export function PublishScreen() {
                       asset: unused('')[0]?.id ?? '',
                       weight: '',
                     },
-                  ])
-                }
+                  ]);
+                }}
               >
                 {p.add}
               </Button>
