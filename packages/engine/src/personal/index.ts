@@ -12,6 +12,7 @@ export {
   Disagreement,
   IntakeAnswers,
   type IntakeInput,
+  IntakeNarrative,
   IntakeQuestion,
   type IntakeResult,
   LimitsDraft,
@@ -26,15 +27,32 @@ export {
   amountInText,
   exitTimesIn,
   horizonsIn,
-  MARKET_SLUG,
+  MARKET_IDS,
   type Market,
+  type MarketMention,
+  type MarketShare,
+  type MixSaid,
+  marketMentionsIn,
+  marketShareIn,
   marketsIn,
   mentionsIn,
   mixIn,
+  mixSaidIn,
+  NARRATIVES,
+  type Narrative,
   openEndedIn,
   otherLanguageIn,
   refusalsIn,
+  type ShareSaid,
+  type Stance,
+  shareSaidIn,
+  stanceOf,
+  type TimeFrame,
+  timeFramesIn,
 } from './intake-text';
+// The market filter (gate THEME-MATCHED): the one contract between the intake, which names a filter,
+// and the theme sleeve, which fills it. A caller of the intake hands in its labels and its matches in
+// these types.
 export {
   attributeKey,
   type FilterMatch,
@@ -58,8 +76,8 @@ export {
   shelfLabelsOf,
 } from './matched-theme';
 export { growthRoomBps, RISKS } from './mix';
-export { PERSONAL_PARAMS, PERSONAL_PARAMS_STATUS } from './params';
-export { readBack } from './readback';
+export { INTAKE_LIMITS, PERSONAL_PARAMS, PERSONAL_PARAMS_STATUS } from './params';
+export { matchedName, readBack, type TermSaid, type ThemeNames } from './readback';
 export {
   proposeSleeveRebalances,
   SleeveBook,
@@ -75,12 +93,15 @@ export { eligibleForGoal, profileOfGoal, registryRowOf, sleeveOfClass } from './
 export { parseStockAttributes, StockAttributes, StockAttributesFile } from './stock-attributes';
 export {
   ASSUMPTION_TEMPLATES,
+  FILTER_BY_WORDS,
   INPUT_NAMES,
   type InputName,
+  MATCHED_NAME,
   QUESTION_TEMPLATES,
   READBACK_TEMPLATES,
   REASON_TEMPLATES,
   type RuleId,
+  TERM_SAID,
   TEXT_TEMPLATES,
 } from './templates';
 export { parseThemeList, ThemeList } from './theme-list';

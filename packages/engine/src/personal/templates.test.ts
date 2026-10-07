@@ -1,11 +1,14 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { MARKET_FILTER_BY } from './market-filter';
 import {
   ASSUMPTION_TEMPLATES,
   asListed,
   CLASS_WORDS,
+  FILTER_BY_WORDS,
   INPUT_NAMES,
+  MATCHED_NAME,
   placeholdersOf,
   QUESTION_TEMPLATES,
   READBACK_TEMPLATES,
@@ -13,6 +16,7 @@ import {
   type RuleId,
   reason,
   render,
+  TERM_SAID,
   TEXT_TEMPLATES,
   WORDS,
 } from './templates';
@@ -83,6 +87,7 @@ const SAMPLE: Record<string, string | number> = {
   sleeve: 'growth',
   month: '2028-04',
   months: 18,
+  years: 5,
   regimes: 'weekend,us_holiday',
   list: 'AAPL,NVDA',
   '': 'NVDA',
@@ -385,6 +390,120 @@ describe('intake templates', () => {
         expect(filled, `${t.id}.${lang}`).not.toMatch(/[{}]|undefined|NaN|null/);
       }
     }
+  });
+
+  // The founder's words (Oct 6) for a market, an industry or a trend the chain has nothing for.
+  it('says "nothing on your chain" as written, with and without a nearest', () => {
+    expect(ASSUMPTION_TEMPLATES.MARKET_NONE).toEqual({
+      en: 'There is no stock for “{words}” on {chain|chain} at the moment. We will be adding more soon.',
+      pt: 'No momento não há nenhuma ação para “{words}” na {chain|chain}. Vamos incluir mais em breve.',
+    });
+    expect(ASSUMPTION_TEMPLATES.MARKET_NEAREST).toEqual({
+      en: 'There is no stock for “{words}” on {chain|chain} at the moment, and we will be adding more soon. The nearest today is {nearest}, which you can choose.',
+      pt: 'No momento não há nenhuma ação para “{words}” na {chain|chain}, e vamos incluir mais em breve. O mais próximo hoje é {nearest}, que você pode escolher.',
+    });
+    expect(ASSUMPTION_TEMPLATES.MARKET_MATCHED).toEqual({
+      en: 'No curated list covers “{words}” on {chain|chain}, so the plan holds the names matched by {by}: {value}. Matched from the sourced attributes of each, not a curated theme.',
+      pt: 'Nenhuma lista com curadoria cobre “{words}” na {chain|chain}, então o plano fica com os nomes filtrados por {by}: {value}. Filtrados pelos atributos de cada um, que têm fonte; não é um tema com curadoria.',
+    });
+  });
+
+  it('names a theme filled by a filter by what it was matched by, in both languages', () => {
+    expect(placeholdersOf(MATCHED_NAME.pt)).toEqual(placeholdersOf(MATCHED_NAME.en));
+    for (const lang of LANGUAGES) {
+      expect(Object.keys(FILTER_BY_WORDS[lang]).sort()).toEqual([...MARKET_FILTER_BY].sort());
+      for (const by of MARKET_FILTER_BY) {
+        const said = render(
+          MATCHED_NAME[lang],
+          { by: FILTER_BY_WORDS[lang][by], value: 'Aerospace & Defense' },
+          lang,
+        );
+        expect(said, `${by}.${lang}`).toMatch(/: Aerospace & Defense$/);
+        expect(said, `${by}.${lang}`).not.toMatch(/[{}]|undefined|NaN|null/);
+        // Never said as a curated theme.
+        expect(said, `${by}.${lang}`).not.toMatch(/theme|tema|curat|curad/i);
+        for (const pattern of [...BANNED[lang], ...BRAND_BANNED])
+          expect(said, `${by}.${lang} against ${pattern}`).not.toMatch(pattern);
+      }
+    }
+    expect(FILTER_BY_WORDS.en).toEqual({
+      sector: 'sector',
+      industry: 'industry',
+      sub_industry: 'sub-industry',
+      keyword: 'keyword',
+    });
+    expect(FILTER_BY_WORDS.pt).toEqual({
+      sector: 'setor',
+      industry: 'indústria',
+      sub_industry: 'subindústria',
+      keyword: 'palavra-chave',
+    });
+  });
+
+  // How long the goal runs, the way the person said it (Oct 6): "about 5 years" is not "60 months".
+  it('says the time frame in months, in years or as a date, and one year as one', () => {
+    expect(TERM_SAID).toEqual({
+      months: { en: 'over {months|months}', pt: 'em {months|months}' },
+      years: { en: 'over {years|years}', pt: 'em {years|years}' },
+      date: { en: 'by {month|month}', pt: 'até {month|month}' },
+    });
+    expect(render('{a|years} · {b|years}', { a: 5, b: 1 }, 'en')).toBe('5 years · 1 year');
+    expect(render('{a|years} · {b|years}', { a: 5, b: 1 }, 'pt')).toBe('5 anos · 1 ano');
+    expect(() => render('{a|years}', { a: 'soon' }, 'en')).toThrow(/a/);
+    // The goal's line takes the phrase whole, and no months of its own.
+    for (const id of ['GOAL', 'GOAL_MIX'] as const)
+      for (const lang of LANGUAGES) {
+        const keys = placeholdersOf(READBACK_TEMPLATES[id][lang]).map((p) => p.key);
+        expect(keys, `${id}.${lang}`).toContain('term');
+        expect(keys, `${id}.${lang}`).not.toContain('months');
+      }
+    for (const lang of LANGUAGES) {
+      const filled = (said: keyof typeof TERM_SAID) =>
+        render(
+          READBACK_TEMPLATES.GOAL[lang],
+          {
+            goal: 'grow',
+            amount: 5000,
+            risk: 'medium',
+            term: render(TERM_SAID[said][lang], sampleParams(TERM_SAID[said][lang]), lang),
+          },
+          lang,
+        );
+      expect([filled('months'), filled('years'), filled('date')]).toEqual(
+        lang === 'en'
+          ? [
+              'You set a goal to grow with $5,000 over 18 months, at medium risk.',
+              'You set a goal to grow with $5,000 over 5 years, at medium risk.',
+              'You set a goal to grow with $5,000 by April 2028, at medium risk.',
+            ]
+          : [
+              'Você definiu um objetivo de crescimento com US$ 5.000 em 18 meses, com risco médio.',
+              'Você definiu um objetivo de crescimento com US$ 5.000 em 5 anos, com risco médio.',
+              'Você definiu um objetivo de crescimento com US$ 5.000 até abril de 2028, com risco médio.',
+            ],
+      );
+    }
+  });
+
+  // The review of Oct 6, finding 4: a risk the person gave is never replaced in silence.
+  it('says the risk the person gave and the limits the plan uses to hold what they asked, in one line', () => {
+    expect(ASSUMPTION_TEMPLATES.MIX_LIMITS_OTHER_RISK).toEqual({
+      en: 'You said {said|risk}, but to hold “{words}” the plan uses the limits for {risk|risk}.',
+      pt: 'Você disse {said|risk}, mas para manter “{words}” o plano usa os limites de {risk|risk}.',
+    });
+    const params = { said: 'low', words: 'all of it in stocks', risk: 'high' };
+    expect(render(ASSUMPTION_TEMPLATES.MIX_LIMITS_OTHER_RISK.en, params, 'en')).toBe(
+      'You said low risk, but to hold “all of it in stocks” the plan uses the limits for high risk.',
+    );
+    expect(
+      render(
+        ASSUMPTION_TEMPLATES.MIX_LIMITS_OTHER_RISK.pt,
+        { ...params, words: 'tudo em ações' },
+        'pt',
+      ),
+    ).toBe(
+      'Você disse risco baixo, mas para manter “tudo em ações” o plano usa os limites de risco alto.',
+    );
   });
 
   it('ban what reads as advice or a return promise', () => {

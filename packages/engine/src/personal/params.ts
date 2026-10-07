@@ -237,3 +237,21 @@ export const PERSONAL_PARAMS_STATUS: Record<Exclude<keyof PersonalParameters, 'v
  * folder holds no number of its own (`params.test.ts`).
  */
 export const STOCK_KEYWORDS = { least: 3, most: 8, carriers: 2 } as const;
+
+/**
+ * The bounds on what the guided intake reads from outside the engine: the model's reply, in
+ * characters, and the person's messages. They shape no plan, so they are not in the table above and
+ * move no `paramsHash`. The market filter's own type sets no length (`market-filter.ts`): whoever
+ * reads a value bounds it, here.
+ */
+export const INTAKE_LIMITS = {
+  /** The value of a filter the model names: longer than any GICS name or keyword on the shelf. */
+  filterValueChars: 80,
+  /** The person's words the model quotes for it. */
+  filterWordsChars: 100,
+  /**
+   * The last messages of a conversation read one by one, each as a possible answer to the question
+   * before it: the first message and ten later ones, the most the API takes, and one to spare.
+   */
+  turnsRead: 12,
+} as const;

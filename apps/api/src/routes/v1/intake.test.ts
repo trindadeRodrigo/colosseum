@@ -37,7 +37,11 @@ const evalSet = fixture('goals-eval.json') as {
 const recorded = fixture('intake-replies.json') as {
   replies: Record<string, unknown>;
   conversations: Record<string, { messages: string[]; replies: unknown[] }>;
+  narratives: { cases: Record<string, { text: string; reply: unknown }> };
 };
+// A goal that names a market the fixed lists have no word for, with the filter the model names for it
+// (gate THEME-MATCHED). MOCK, like every reply here.
+const obesityDrugs = recorded.narratives.cases['obesity-drugs'] as { text: string; reply: unknown };
 const chat = recorded.conversations['first-chat-oct6'] as {
   messages: string[];
   replies: unknown[];
@@ -47,10 +51,17 @@ const bigTech = recorded.conversations['big-tech-chat-oct6'] as {
   messages: string[];
   replies: unknown[];
 };
+// A share of the money said in words on a later turn ("70-30", "half", "all of it in stocks"), in
+// answer to "How much of the $2,000 for big tech?" (the review of Oct 6). MOCK, like every reply here.
+const inWords = (['pair', 'half', 'mix'] as const).map(
+  (name) =>
+    recorded.conversations[`share-in-words-${name}`] as { messages: string[]; replies: unknown[] },
+);
 // The conversation's replies, by the text each turn reads: the messages so far, joined as the route joins them.
 const replyByText = new Map<string, unknown>([
   ...evalSet.goals.map((g): [string, unknown] => [g.text, recorded.replies[g.id]]),
-  ...[chat, bigTech].flatMap((c) =>
+  [obesityDrugs.text, obesityDrugs.reply],
+  ...[chat, bigTech, ...inWords].flatMap((c) =>
     c.replies.map((r, i): [string, unknown] => [c.messages.slice(0, i + 1).join('\n\n'), r]),
   ),
 ]);
@@ -62,17 +73,23 @@ const callOf = (): ReadCall => async (text) => {
   return reply === undefined ? { reply: null, why: 'model_error' } : { reply };
 };
 
-/** A replay of the recorded replies, by text; `calls` counts what reached it. */
-function replay(): { model: IntakeModel; calls: () => number } {
+/**
+ * A replay of the recorded replies, by text; `calls` counts what reached it, and `vocabularies` keeps
+ * the attribute values each call was handed.
+ */
+function replay(): { model: IntakeModel; calls: () => number; vocabularies: () => unknown[] } {
   let calls = 0;
-  const call: ReadCall = async (text) => {
+  const vocabularies: unknown[] = [];
+  const call: ReadCall = async (text, _month, _language, vocabulary) => {
     calls += 1;
+    vocabularies.push(vocabulary);
     const reply = replyByText.get(text);
     return reply === undefined ? { reply: null, why: 'model_error' } : { reply };
   };
   return {
     model: budgetedModel(call, { id: 'claude-haiku-4-5', provenance: 'mock' }),
     calls: () => calls,
+    vocabularies: () => vocabularies,
   };
 }
 
@@ -158,8 +175,9 @@ describe('POST /v1/baskets/intake', () => {
       language: 'pt',
       limits: { cannotHold: { classes: ['stock'] } },
     });
+    // The time frame is said back as the person wrote it: a year, not 12 months.
     expect(second.readBack?.[0]).toBe(
-      'Você definiu um objetivo de proteção com US$ 550 em 12 meses, com risco baixo.',
+      'Você definiu um objetivo de proteção com US$ 550 em 1 ano, com risco baixo.',
     );
     // The person confirms: the sheet goes as it is to the engine.
     const plan = await post(who, '/v1/baskets/personalize', { sheet: second.sheet });
@@ -377,6 +395,209 @@ describe('POST /v1/baskets/intake', () => {
       'To hold “all of it in stocks”, the plan uses the limits for high risk.',
     ]);
     expect(second.readBack).toContain('The plan starts from The Seven.');
+  });
+
+  it('says what each market the text names reads to on the person chain (THEMES, THEME-MATCHED)', async () => {
+    const who = await someone('solana');
+    // Big tech with The Seven on the person's shelf (put there as in the test above where the
+    // database has none, and deleted at the end): a shared portfolio.
+    if (!(await loadFamilies(data.db, 'solana')).some((f) => f.meta.slug === 'the-seven'))
+      await data.storeFamily(
+        'solana',
+        [
+          { kind: 'asset', asset: 'solana:nvda', weightBps: 5000 },
+          { kind: 'asset', asset: 'solana:spy', weightBps: 5000 },
+        ],
+        { slug: 'the-seven', name: 'The Seven' },
+      );
+    const big = IntakeResponse.parse((await post(who, PATH, { text: bigTech.messages[0] })).json());
+    expect(big.narratives).toEqual([
+      {
+        id: 'big_tech',
+        words: 'big tech',
+        kind: 'portfolio',
+        slug: 'the-seven',
+        filter: null,
+        name: 'The Seven',
+      },
+    ]);
+    // A market only the model names, by a filter. This server hands the intake no labels and no
+    // attributes yet, so nothing matches: the one sentence is said, on the person's chain, and the
+    // model's value is said nowhere.
+    const res = await post(who, PATH, { text: obesityDrugs.text });
+    expect(res.statusCode, res.body).toBe(200);
+    const none = IntakeResponse.parse(res.json());
+    expect(none.reader.provenance).toBe('mock');
+    expect(none.narratives).toEqual([
+      { id: null, words: 'obesity drugs', kind: 'none', slug: null, filter: null, name: null },
+    ]);
+    expect(none.flags).toEqual(
+      expect.arrayContaining(['filter_no_match:marketFilter', 'market_not_on_shelf:marketFilter']),
+    );
+    expect(none.assumptions).toEqual([
+      'There is no stock for “obesity drugs” on Solana at the moment. We will be adding more soon.',
+    ]);
+    expect(res.body).not.toMatch(/GLP-1/);
+    // Nothing is held for it (gate THEME-NONE-YET): no mix, no theme sleeve, no share asked. The rest
+    // goes on as if it had not been named, so the risk is asked as for any goal.
+    expect(none.questions.map((q) => q.field)).toEqual(['risk']);
+    expect(none.mix).toBeNull();
+    expect(none.draft.sleeves).toBeNull();
+    const answered = IntakeResponse.parse(
+      (await post(who, PATH, { text: obesityDrugs.text, answers: { risk: 'medium' } })).json(),
+    );
+    expect(answered.questions).toEqual([]);
+    expect(answered.sheet).toMatchObject({ risk: 'medium', themes: [] });
+    expect(answered.sheet?.sleeves).toBeUndefined();
+    expect(answered.sheet?.mix).toBeUndefined();
+    expect(answered.readBack).toEqual([
+      'You set a goal to grow with $2,000 over 5 years, at medium risk.',
+      'The plan lives on Solana, the chain of your wallet.',
+      'Tokens you already hold count toward the plan.',
+      'There is no stock for “obesity drugs” on Solana at the moment. We will be adding more soon.',
+      'Nothing moves toward cash as the date nears unless you ask for it.',
+      'If this is right, confirm it and the plan is made from it.',
+    ]);
+    // The route has no attribute values to hand the model: no call was given any.
+    expect(replayed.vocabularies().length).toBeGreaterThan(0);
+    expect(replayed.vocabularies().filter((v) => v !== undefined)).toEqual([]);
+  });
+
+  it('reads a share or a mix said in words on a later turn as the answer to "how much" (EXPLICIT-MIX, the review of Oct 6)', async () => {
+    const who = await someone('solana');
+    // The Seven on the person's shelf, as in the tests above.
+    if (!(await loadFamilies(data.db, 'solana')).some((f) => f.meta.slug === 'the-seven'))
+      await data.storeFamily(
+        'solana',
+        [
+          { kind: 'asset', asset: 'solana:nvda', weightBps: 5000 },
+          { kind: 'asset', asset: 'solana:spy', weightBps: 5000 },
+        ],
+        { slug: 'the-seven', name: 'The Seven' },
+      );
+    const mixOf = (growthBps: number) => ({
+      growthBps,
+      dollarYieldBps: 0,
+      goldBps: 0,
+      cashBps: 10_000 - growthBps,
+    });
+    for (const [conversation, growthBps, risk] of [
+      [inWords[0], 7000, 'medium'],
+      [inWords[1], 5000, 'low'],
+      [inWords[2], 10_000, 'high'],
+    ] as const) {
+      const [text = '', ...later] = conversation?.messages ?? [];
+      const said = later[0] ?? '';
+      // Turn 1: a market with no share said asks how much of the money, once, and never the risk.
+      const first = IntakeResponse.parse((await post(who, PATH, { text })).json());
+      expect(first.reader.provenance, said).toBe('mock');
+      expect(first.questions, said).toEqual([
+        { field: 'mix', template: 'marketShare', text: 'How much of the $2,000 for big tech?' },
+      ]);
+      expect(first.sheet, said).toBeNull();
+      // Turn 2: the person answers in their own words, as a follow-up and not as a form field.
+      const res = await post(who, PATH, { text, followUps: later });
+      expect(res.statusCode, res.body).toBe(200);
+      const second = IntakeResponse.parse(res.json());
+      expect(second.reader, said).toMatchObject({ method: 'model', provenance: 'mock' });
+      expect(second.flags, said).toContain('mix_from_words');
+      expect(second.questions, said).toEqual([]);
+      expect(second.mix, said).toEqual(mixOf(growthBps));
+      expect(second.sheet, said).toMatchObject({
+        goal: 'grow',
+        amountUsd: 2000,
+        horizonMonths: 60,
+        risk,
+        themes: ['the-seven'],
+        mix: mixOf(growthBps),
+      });
+      expect(second.sheet?.sleeves, said).toBeUndefined();
+      expect(second.readBack?.[0], said).toBe('You set a goal to grow with $2,000 over 5 years.');
+      // The same answer on the form gives the same sheet: the words are read as the field is.
+      const byForm = IntakeResponse.parse(
+        (await post(who, PATH, { text, answers: { mix: mixOf(growthBps) } })).json(),
+      );
+      expect(byForm.sheet, said).toEqual(second.sheet);
+      // The confirm makes the plan from it.
+      const plan = await post(who, '/v1/baskets/personalize', { sheet: second.sheet });
+      expect(plan.statusCode, plan.body).toBe(200);
+    }
+    // With no model configured the words are read the same way, once what the rules parser read is
+    // answered.
+    const [text = ''] = inWords[0]?.messages ?? [];
+    const rules = await post(
+      who,
+      PATH,
+      {
+        text,
+        followUps: ['70-30'],
+        answers: { goal: 'grow', amountUsd: 2000, horizonMonths: 60 },
+      },
+      off,
+    );
+    expect(rules.statusCode, rules.body).toBe(200);
+    const byRules = IntakeResponse.parse(rules.json());
+    expect(byRules.reader.method).toBe('rules');
+    expect(byRules.flags).toContain('mix_from_words');
+    expect(byRules.sheet).toMatchObject({
+      themes: ['the-seven'],
+      mix: mixOf(7000),
+      risk: 'medium',
+    });
+  });
+
+  it('asks a mix the person only wonders about, with the reading as the question start, and builds nothing from what the text rules out', async () => {
+    const who = await someone('solana');
+    const ask = async (text: string) => {
+      const res = await post(
+        who,
+        PATH,
+        { text, answers: { goal: 'grow', amountUsd: 5000, horizonMonths: 60, risk: 'medium' } },
+        off,
+      );
+      expect(res.statusCode, res.body).toBe(200);
+      return IntakeResponse.parse(res.json());
+    };
+    const wondered = await ask(
+      'I want to grow $5,000 over 5 years. Should I put all of it in stocks?',
+    );
+    expect(wondered.mix).toBeNull();
+    expect(wondered.sheet).toBeNull();
+    // The question carries the mix it asks about: a mix is a value `read` may hold.
+    expect(wondered.questions).toEqual([
+      {
+        field: 'mix',
+        template: 'mix',
+        text: 'How do you want the money held: how much in stocks and crypto, and how much in cash?',
+        read: { growthBps: 10_000, dollarYieldBps: 0, goldBps: 0, cashBps: 0 },
+      },
+    ]);
+    // The review's sentences, through HTTP: no mix, no market, no question about either.
+    for (const sentence of [
+      'I am retired so no stocks please.',
+      "I wouldn't put all of it in stocks.",
+      "I don't want to invest in big tech.",
+      'I already invest in the S&P 500 through my pension.',
+    ]) {
+      const body = await ask(`I want to grow $5,000 over 5 years. ${sentence}`);
+      expect(body.mix, sentence).toBeNull();
+      expect(body.narratives, sentence).toEqual([]);
+      expect(body.questions, sentence).toEqual([]);
+      expect(body.sheet, sentence).toMatchObject({ risk: 'medium', themes: [] });
+      expect(body.sheet?.mix, sentence).toBeUndefined();
+    }
+  });
+
+  it('with no chain yet, a market the text names is not resolved, and nothing is said of it', async () => {
+    const who = await someone('passkey');
+    const res = await post(who, PATH, { text: obesityDrugs.text });
+    expect(res.statusCode, res.body).toBe(200);
+    const body = IntakeResponse.parse(res.json());
+    expect(body.narratives).toEqual([]);
+    expect(body.flags).toContain('market_unresolved:marketFilter');
+    expect(body.questions.map((q) => q.field)).toEqual(['chains']);
+    expect(body.assumptions.join(' ')).not.toMatch(/no stock/);
+    expect(body.sheet).toBeNull();
   });
 
   it('a person with no chain yet is asked to pick one, and no sheet is made', async () => {
