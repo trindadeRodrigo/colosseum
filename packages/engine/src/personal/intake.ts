@@ -47,6 +47,7 @@ import {
   risksRuledOutIn,
   saysMoreIn,
   shareSaidIn,
+  sharesOfMoneyIn,
   splitIn,
   stanceOf,
   sumsWrittenIn,
@@ -2010,13 +2011,50 @@ function intakeOf(
   let shareWaits = false;
   // The mix the text states, taken or not: what is read beside it is read the same either way.
   const mixSeen = mixRead ?? mixOfRules;
-  const splitWritten =
-    rest.ofMoney.length > 0 ||
-    rest.pairs.length > 0 ||
-    draft.sleeves !== null ||
-    sleevesAnswered !== undefined;
   const toGrow = value.goal !== 'income' && value.goal !== 'protect';
   const held = inPlay.filter((r) => r.kind === 'portfolio');
+  // A share the person writes for what they want held, beside the share they keep safe (Rodrigo, Oct
+  // 7: "8k safe and liquid, the 20% rest in a stock portfolio that follows big tech" was asked the
+  // risk of the 20%, and at low risk the plan held 12% in stocks). A split of one part kept safe and
+  // one other part, read by the model with each share written, says what the plain form says with
+  // the rest's figure written, where the other part's share is the one the text gives what is held:
+  // "80% safe and liquid, 20% in big tech" is "20% in big tech and the rest kept safe". The holding
+  // is then taken as the plain form is, the risk is not asked, and the limits it takes are said.
+  // Only where those two shares are all the text writes of the money: a share that is not the other
+  // part's, or anything a plain form would not account for, leaves the split and its questions as
+  // they were. With no share written for what is held ("20% to risk"), the risk of that part is asked.
+  const partsOf = (sleeves: PlanSleeve[] | null | undefined) => {
+    const safePart = sleeves?.find((x) => x.kind === 'safe_yield');
+    const otherPart = sleeves?.find((x) => x.kind === 'goal');
+    return sleeves?.length === 2 && safePart && otherPart && toGrow
+      ? { safeBps: safePart.shareBps, heldBps: otherPart.shareBps }
+      : null;
+  };
+  const twoParts = sleevesAnswered === undefined ? partsOf(draft.sleeves) : null;
+  const sharesWritten = twoParts ? sharesOfMoneyIn(text) : [];
+  // The safe part's own figure is part of the form: it says nothing more than the form does.
+  const safeShares = sharesWritten.filter(
+    (x) =>
+      x.value * BPS_PER_PCT === twoParts?.safeBps &&
+      (x.part === null || x.part === 'cash' || x.part === 'dollarYield'),
+  );
+  // What the text gives the narratives it names, in all: the share of the part that is not kept safe.
+  const narrativesBps = (() => {
+    const of = [...held.map((r) => ({ shares: [r.share] })), ...themes];
+    const bps = of.length > 0 ? sharesInBps(of, value.amountUsd) : null;
+    return Array.isArray(bps) ? bps.reduce((n, x) => n + x, 0) : null;
+  })();
+  const safeBeside =
+    twoParts !== null &&
+    narrativesBps === twoParts.heldBps &&
+    rest.pairs.length === 0 &&
+    rest.ofMoney.every((pct) => pct * BPS_PER_PCT === twoParts.safeBps);
+  const splitWritten =
+    (rest.ofMoney.length > 0 ||
+      rest.pairs.length > 0 ||
+      draft.sleeves !== null ||
+      sleevesAnswered !== undefined) &&
+    !safeBeside;
   // A share is taken only in its plain forms (the review of Oct 7). Where the text also says where
   // the rest goes and that is not cash or kept safe ("30% in AI and the rest in stocks", "half in
   // stocks and half in AI"), or carves a sum out of the share ("all of it in AI except $1,000"), the
@@ -2027,10 +2065,12 @@ function intakeOf(
   // 7): whatever the plain form did not account for, a sum, a percent or another holding, means
   // the share is asked ("All of it in AI except for a $1,000 cushion", "30% in AI and the balance
   // in stocks", "Invest in AI, but only 10%", "Invest in AI, and some gold too").
-  const accounted = [...named, ...refusals, ...(mixSaid ? [mixSaid] : [])].map(({ at, end }) => ({
-    at,
-    end,
-  }));
+  const accounted = [
+    ...named,
+    ...refusals,
+    ...(mixSaid ? [mixSaid] : []),
+    ...(safeBeside ? safeShares : []),
+  ].map(({ at, end }) => ({ at, end }));
   // Each message that names one is read once, however many times it names it.
   const saysMore = [...new Set(named.map((m) => turnOf(m.at)))].some((turn) => {
     const from = starts[turn] ?? 0;
@@ -2040,7 +2080,7 @@ function intakeOf(
       from + (turns[turn]?.length ?? 0),
       accounted,
       value.amountUsd,
-      restSaid === 'safe',
+      restSaid === 'safe' || safeBeside,
     );
   });
   if (saysMore) flags.push('share_not_alone');
@@ -2125,6 +2165,86 @@ function intakeOf(
           shareRead = parsed.data;
           flags.push('from_rules:market');
         }
+      }
+    }
+  }
+  // A market named beside a split whose share the text does not give it in a plain form ("20% in a
+  // stock portfolio that follows big tech", "30% to grow, I like big tech", a share corrected in a
+  // later message, a split the person answered): no reader can say whether the other part is the
+  // market's. How much is asked once, and never the risk in its place: a risk answer would hold
+  // less of the market than the share the person wrote. Where the split is one part kept safe and
+  // one other part, that part's share is the form's start, so a plain yes holds it; not where the
+  // person only wonders about the market, since a start is what a plain yes would take.
+  const [besideSplit] = held;
+  if (
+    themes.length === 0 &&
+    !mixSeen &&
+    !('mix' in answers) &&
+    splitWritten &&
+    besideSplit &&
+    toGrow &&
+    method === 'model' &&
+    marketMix === null &&
+    marketShareAsk === null
+  ) {
+    const parts = twoParts ?? partsOf(sleevesAnswered);
+    const start = parts
+      ? PersonalMix.safeParse({
+          growthBps: parts.heldBps,
+          dollarYieldBps: 0,
+          goldBps: 0,
+          cashBps: parts.safeBps,
+        })
+      : null;
+    marketShareAsk = besideSplit.words;
+    shareAskedOf = held.map((r) => ({ key: keyOf(r), words: r.words }));
+    if (start?.success && !named.some((m) => m.wondered)) shareRead = start.data;
+    flags.push('market_beside_split');
+  }
+  // The same split with no narrative, where the other part's share is written for stocks or for gold
+  // ("80% safe and liquid, 20% in stocks"): that share is the mix's and the rest is kept in cash, as
+  // for a market. The model read the split and the text says what the share is in; the words must
+  // state it as what the person wants held, name no class they rule out, and be all the message
+  // says of money and holdings.
+  if (
+    twoParts &&
+    method === 'model' &&
+    !reasked &&
+    named.length === 0 &&
+    !mixSeen &&
+    !mixSaid &&
+    !('mix' in answers) &&
+    sharesWritten.length === 2
+  ) {
+    const said = sharesWritten.find((x) => x.part === 'growth' || x.part === 'gold');
+    const [kept] = safeShares.filter((x) => x !== said);
+    const classes: Refused[] = said?.part === 'gold' ? ['gold'] : ['stock', 'crypto'];
+    const turn = said ? turnOf(said.at) : 0;
+    const from = starts[turn] ?? 0;
+    if (
+      said &&
+      kept &&
+      said.value * BPS_PER_PCT === twoParts.heldBps &&
+      stanceOf(text, said.at, said.partEnd) === 'stated' &&
+      !classes.some((c) => refused.has(c)) &&
+      !saysMoreIn(
+        text,
+        from,
+        from + (turns[turn]?.length ?? 0),
+        [{ at: said.at, end: said.partEnd }, kept, ...refusals].map(({ at, end }) => ({ at, end })),
+        value.amountUsd,
+        true,
+      )
+    ) {
+      const parsed = PersonalMix.safeParse({
+        growthBps: said.part === 'growth' ? twoParts.heldBps : 0,
+        dollarYieldBps: 0,
+        goldBps: said.part === 'gold' ? twoParts.heldBps : 0,
+        cashBps: twoParts.safeBps,
+      });
+      if (parsed.success) {
+        marketMix = { mix: parsed.data, words: text.slice(said.at, said.partEnd).trim() };
+        flags.push('mix_from_split');
       }
     }
   }

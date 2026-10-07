@@ -1984,6 +1984,17 @@ function plainSharesIn(text: string): PercentOfMoney[] {
   );
 }
 
+/**
+ * The same shares for a caller outside this file: each percent of the money written in its plain
+ * form, where it is written, and the part of a mix it leads into, where it names one ("20% in
+ * stocks" is `growth`; "80% safe and liquid" names none). `partEnd` is where the part's word ends.
+ */
+export function sharesOfMoneyIn(
+  text: string,
+): { value: number; at: number; end: number; part: MixPart | null; partEnd: number }[] {
+  return plainSharesIn(text);
+}
+
 // Another holding named right after this one, joined to it: "big tech and gold", "AI and defense".
 const JOINED_NEXT =
   /^\s*(?:,|and|or|e|ou|&|\+)\s*(?:(?:in|em|no|na)\s+)?(?:(?:the|a|o|os|as)\s+)?/iu;

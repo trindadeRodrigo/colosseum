@@ -1622,7 +1622,9 @@ describe('a mix and sleeves are never combined by guessing: asked once instead',
     expect(fields(asked)).toEqual(['sleeves']);
     expect(asked.flags).toContain('theme_beside_split');
     expect(asked.sheet).toBeNull();
-    // A split the model reads beside it is not taken either.
+    // Where the model reads that split too, a part kept safe and one other part whose share is the
+    // one written for the theme, both readers say the same as "30% in semiconductors and the rest
+    // kept safe": it is held as that form is (Rodrigo, Oct 7; ./stated-share.test.ts).
     const withSplit = intake(
       text,
       reply({
@@ -1633,7 +1635,8 @@ describe('a mix and sleeves are never combined by guessing: asked once instead',
         ],
       }),
     );
-    expect(fields(withSplit)).toEqual(['sleeves']);
+    expect(withSplit.questions).toEqual([]);
+    expect(withSplit.sheet?.sleeves).toEqual([theme('semiconductors', 3000), safe(7000)]);
     const answered = intake(text, reply({ markets: ['semiconductors'] }), {
       answers: { sleeves: [safe(7000), theme('semiconductors', 3000)] },
     });
