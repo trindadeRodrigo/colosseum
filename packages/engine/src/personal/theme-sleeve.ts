@@ -353,14 +353,21 @@ export function placeThemeSleeve(
     );
   }
 
-  // ---- What is left out, and why.
+  // ---- What is left out, and why. A name the theme counts a holding of says that on its line; where
+  // it gets none (no line left, or what it could take is under the least a line can be), the
+  // sentence is said here with why it is out, so a holding the theme counted is never left unsaid
+  // (as `compose` does for the goal's own names).
+  const heldToo = (n: Name): Reason[] => {
+    const less = cut.get(n.asset.id);
+    return less ? [less] : [];
+  };
   for (const n of noLine) {
     const why = reason('MAX_LINES', { asset: n.asset.symbol, max: P.maxLinesPerChain }, lang);
-    out.push({ ref: n.asset.symbol, reasons: [why] });
+    out.push({ ref: n.asset.symbol, reasons: [why, ...heldToo(n)] });
   }
   for (const n of ranked) {
     const why = dropped.get(n.asset.id);
-    if (why) out.push({ ref: n.asset.symbol, reasons: [why] });
+    if (why) out.push({ ref: n.asset.symbol, reasons: [why, ...heldToo(n)] });
   }
   book.removed.push(...out);
 
