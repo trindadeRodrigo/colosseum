@@ -111,6 +111,7 @@ export {
   settleBook,
 } from './rebalance';
 export { eligibleForGoal, profileOfGoal, registryRowOf, sleeveOfClass } from './registry';
+export { riskForSleeves } from './sleeve-risk';
 export { parseStockAttributes, StockAttributes, StockAttributesFile } from './stock-attributes';
 export {
   ASSUMPTION_TEMPLATES,
