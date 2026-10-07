@@ -11,6 +11,7 @@ import { pinSourceOfPrice } from '../../components/ui/price-source';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { displayName } from '../order/plain';
+import { planHref } from '../portfolio-section/pages';
 import { dollars, drift, share, shareExact, sharesOf, shareTenths, tokens, utc } from './figures';
 import {
   type HoldingRow,
@@ -180,6 +181,16 @@ export function VaultPanel({ chain, vault }: { chain: PortfolioChain; vault: Vau
             />
           </dd>
         </dl>
+        {/* The same vault over time: its page in the portfolio section (PORT-3). A text link, so the
+            page still has no primary button. */}
+        <Link
+          data-ui="vault-over-time"
+          href={planHref(vault.chain, vault.address)}
+          aria-label={words.overTimeOf(shorten(vault.address))}
+          className={`self-start ${buttonClass({ variant: 'link' })}`}
+        >
+          {words.overTime}
+        </Link>
         {missing > 0 && (
           <p className="text-body-sm text-muted-foreground">{words.unpriced(missing)}</p>
         )}

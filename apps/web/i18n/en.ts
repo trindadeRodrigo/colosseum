@@ -508,6 +508,9 @@ export const en = {
       address: 'Vault address',
       /** The link from a vault's panel to its own page. */
       page: (address: string) => `Open the page of vault ${address}`,
+      /** The link from a vault's panel to the same vault over time, in the portfolio section. */
+      overTime: 'See over time',
+      overTimeOf: (address: string) => `See over time: vault ${address}`,
       value: 'Value',
       cash: 'Cash',
       autoFollow: 'Auto-follow',
@@ -643,6 +646,8 @@ export const en = {
       /** Vaults on more than one chain: counted, never added up across them. */
       manyChains: (vaults: number, chains: string) => `You have ${vaults} vaults, on ${chains}.`,
       see: 'See your portfolio',
+      /** The way to the portfolio section: the same plans, over time. */
+      overTime: 'See your plans over time',
     },
   },
 

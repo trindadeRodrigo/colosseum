@@ -87,11 +87,14 @@ describe('home', () => {
     expect(box.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(card.textContent).toContain(en.portfolio.summary.worth('Solana'));
     expect(card.querySelector('[data-ui="figure"]')?.textContent).toContain('$1,040.00');
-    const link = find(card, 'a');
-    expect([link.textContent, link.getAttribute('href')]).toEqual([
-      en.portfolio.summary.see,
-      '/monitor',
+    // two ways on, both text links: the monitor first, then the same plans over time (PORT-3)
+    expect(
+      [...card.querySelectorAll('a')].map((link) => [link.textContent, link.getAttribute('href')]),
+    ).toEqual([
+      [en.portfolio.summary.see, '/monitor'],
+      [en.portfolio.summary.overTime, '/portfolio'],
     ]);
+    expect(card.querySelectorAll('[data-ui="button"]')).toHaveLength(0);
     // a test network: the hatch and one quiet line with the words, never MOCK
     expect(card.textContent).not.toContain('MOCK');
     expect(find(card, '[data-ui="sample-note"]').textContent).toBe(en.shell.testNetworkLine);
@@ -150,5 +153,6 @@ describe('home', () => {
     expect(host.textContent).toContain(pt.portfolio.summary.worth('Solana'));
     expect(host.textContent?.replace(/\s/g, ' ')).toContain('US$ 1.040,00');
     expect(host.textContent).toContain(pt.portfolio.summary.see);
+    expect(find(host, 'a[href="/portfolio"]').textContent).toBe(pt.portfolio.summary.overTime);
   });
 });

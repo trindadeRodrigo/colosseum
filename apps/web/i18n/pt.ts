@@ -442,6 +442,8 @@ export const pt: Dictionary = {
         'Uma compra parou depois do depósito, então este cofre tem mais caixa do que o plano prevê. O caixa está seguro aqui.',
       address: 'Endereço do cofre',
       page: (address: string) => `Abrir a página do cofre ${address}`,
+      overTime: 'Ver ao longo do tempo',
+      overTimeOf: (address: string) => `Ver ao longo do tempo: cofre ${address}`,
       value: 'Valor',
       cash: 'Caixa',
       autoFollow: 'Seguir automaticamente',
@@ -560,6 +562,7 @@ export const pt: Dictionary = {
       many: (vaults: number, chain: string) => `Você tem ${vaults} cofres na ${chain}.`,
       manyChains: (vaults: number, chains: string) => `Você tem ${vaults} cofres, na ${chains}.`,
       see: 'Ver seu portfólio',
+      overTime: 'Ver seus planos ao longo do tempo',
     },
   },
 

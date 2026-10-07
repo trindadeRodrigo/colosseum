@@ -7,6 +7,7 @@ import { ChainBadges } from '../../components/ui/ChainBadge';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
+import { SECTION } from '../portfolio-section/pages';
 import { useWalletPort } from '../wallet/WalletProvider';
 import { dollars } from './figures';
 import { type PortfolioChain, vaultValueSource } from './portfolio';
@@ -74,9 +75,13 @@ export function PortfolioSummary() {
           )}
         </p>
       </CardBody>
-      <CardFooter>
+      <CardFooter className="flex flex-wrap gap-x-6 gap-y-2">
         <Link href="/monitor" className={buttonClass({ variant: 'link' })}>
           {words.see}
+        </Link>
+        {/* The same plans over time: the portfolio section (PORT-3). A text link beside the first. */}
+        <Link data-ui="plans-over-time" href={SECTION} className={buttonClass({ variant: 'link' })}>
+          {words.overTime}
         </Link>
       </CardFooter>
     </Card>
