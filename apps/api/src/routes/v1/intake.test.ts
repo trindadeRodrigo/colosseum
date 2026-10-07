@@ -1,12 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { mockAssets } from '@colosseum/chain-mock';
-import { attributeVocabularyOf } from '@colosseum/engine/personal';
+import { attributeVocabularyOf, parseStockAttributes } from '@colosseum/engine/personal';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { budgetedModel, type IntakeModel, type ReadCall } from '../../llm';
 import type { ChainRegistry } from '../../orders/chains';
+import type { PlanInputs } from '../../orders/personalize';
 import { loadFamilies } from '../../orders/store';
+import { bearingPlanInputs } from '../../plan-inputs';
 import { loadStockAttributes } from '../../stock-attributes';
+import mockStocks from '../../testing/fixtures/mock-stocks.json';
 import { orderFlow } from '../../testing/flow';
 import {
   type PersonKind,
@@ -100,10 +103,26 @@ function replay(): { model: IntakeModel; calls: () => number; vocabularies: () =
   };
 }
 
+// MOCK: the attributes of the mock chain's stand-in stocks (a fixture labelled mock), with one
+// keyword that two of the names the chain lists carry; the fixture gives it to one. The mock chain
+// lists three stocks and no attribute of the fixture is shared by two of them, and a filter that
+// matches one name alone is never used to pick that stock (the second review, Oct 7).
+const twoNames = {
+  ...mockStocks,
+  stocks: mockStocks.stocks.map((row) =>
+    row.symbol === 'TSLAx' ? { ...row, keywords: [...row.keywords, 'data centers'] } : row,
+  ),
+};
+const withMockStocks: PlanInputs = async (q) => ({
+  ...(await bearingPlanInputs(q)),
+  ...(q.chain === 'solana' ? { stocks: parseStockAttributes(twoNames, 'mock-stocks.json') } : {}),
+});
+
 let issuer: TestIssuer;
 let data: Awaited<ReturnType<typeof testDb>>;
 let app: FastifyInstance;
 let off: FastifyInstance;
+let mocked: FastifyInstance;
 let registry: ChainRegistry;
 let replayed: ReturnType<typeof replay>;
 const undo: (() => Promise<unknown>)[] = [];
@@ -125,6 +144,14 @@ beforeAll(async () => {
   // No model configured: the server's own default with no key in the environment.
   ({ app: off } = await testApp({ issuer: issuer.issuer, db: data.db, now }));
   undo.push(() => off.close());
+  // No model, and the MOCK attributes above as the chain's.
+  ({ app: mocked } = await testApp({
+    issuer: issuer.issuer,
+    db: data.db,
+    now,
+    planInputs: withMockStocks,
+  }));
+  undo.push(() => mocked.close());
 });
 afterAll(async () => {
   for (const step of undo.reverse()) await step();
@@ -488,40 +515,88 @@ describe('POST /v1/baskets/intake', () => {
   it('reads a market to a confirmed label, to a filter over the stock attributes, or to nothing, on the chain’s own shelf', async () => {
     const who = await someone('solana');
     const answers = { goal: 'grow', amountUsd: 2000, horizonMonths: 60 };
-    const ask = async (text: string) =>
-      IntakeResponse.parse((await post(who, PATH, { text, answers })).json());
+    const ask = async (text: string, followUps: string[] = []) =>
+      IntakeResponse.parse(
+        (
+          await post(who, PATH, { text, answers, ...(followUps.length ? { followUps } : {}) })
+        ).json(),
+      );
+    const WHOLE = { growthBps: 10_000, dollarYieldBps: 0, goldBps: 0, cashBps: 0 };
+    // These texts have no recorded reply, so the rules parser reads them. With no model a holding
+    // the text states is asked once, with it as the question's start, and never taken (the second
+    // review, Oct 7): a plain yes holds what the person wrote.
     // AI: the Solana list is confirmed (gate THEME-AI-SOLANA) and the chain lists names of it.
-    const ai = await ask('I want to invest $2,000 in AI for 5 years');
+    const aiText = 'I want to invest $2,000 in AI for 5 years';
+    const aiAsked = await ask(aiText);
+    expect(aiAsked.reader.method).toBe('rules');
+    expect(aiAsked.sheet).toBeNull();
+    expect(aiAsked.questions).toEqual([
+      {
+        field: 'mix',
+        template: 'marketShare',
+        text: 'How much of the $2,000 for AI?',
+        read: WHOLE,
+      },
+    ]);
+    const ai = await ask(aiText, ['yes']);
+    expect(ai.flags).toContain('mix_confirmed');
     expect(ai.narratives).toEqual([
       { id: 'ai', words: 'AI', kind: 'label', slug: 'ai', filter: null, name: 'AI' },
     ]);
     expect(ai.questions).toEqual([]);
     expect(ai.sheet?.sleeves).toEqual([{ kind: 'theme', theme: 'ai', shareBps: 10_000 }]);
     expect(ai.readBack?.join(' ')).toContain('100% of the plan for the theme AI.');
-    // Semiconductors: its label is proposed, not confirmed, so the filter of the word list is read,
-    // and the chain lists a stock that carries it. Said as matched, not curated.
-    const semis = await ask('I want to invest $2,000 in semiconductors for 5 years');
-    const slug = 'matched-industry-semiconductors-semiconductor-equipment';
+    // AI infrastructure, on the MOCK attributes: its label is proposed, not confirmed, so the filter
+    // of the word list is read (keyword data centers), and the chain lists two names that carry it.
+    // Said as matched, not curated.
+    const onMock = async (text: string, followUps: string[] = []) =>
+      IntakeResponse.parse(
+        (
+          await post(
+            who,
+            PATH,
+            { text, answers, ...(followUps.length ? { followUps } : {}) },
+            mocked,
+          )
+        ).json(),
+      );
+    const centersText = 'I want to invest $2,000 in data centers for 5 years';
+    expect((await onMock(centersText)).questions).toMatchObject([
+      { field: 'mix', template: 'marketShare', read: WHOLE },
+    ]);
+    const semis = await onMock(centersText, ['yes']);
+    const slug = 'matched-keyword-data-centers';
     expect(semis.narratives).toMatchObject([
       {
-        id: 'semiconductors',
+        id: 'ai_infrastructure',
         kind: 'matched',
         slug,
-        filter: { by: 'industry', value: 'Semiconductors & Semiconductor Equipment' },
+        filter: { by: 'keyword', value: 'data centers' },
       },
     ]);
-    expect(semis.flags).toContain('label_proposed:semiconductors');
+    expect(semis.flags).toContain('label_proposed:ai-infrastructure');
     expect(semis.sheet?.sleeves).toEqual([{ kind: 'theme', theme: slug, shareBps: 10_000 }]);
     expect(semis.assumptions.join(' ')).toContain(
-      'the plan holds the names matched by industry: Semiconductors & Semiconductor Equipment. Matched from the sourced attributes of each, not a curated theme.',
+      'the plan holds the names matched by keyword: data centers. Matched from the sourced attributes of each, not a curated theme.',
     );
-    // And the sheet it gives is one the plan route builds: the sleeve holds the matched stock.
-    const built = await post(who, '/v1/baskets/personalize', { sheet: semis.sheet });
+    // And the sheet it gives is one the plan route builds: the sleeve holds the matched names.
+    const built = await post(who, '/v1/baskets/personalize', { sheet: semis.sheet }, mocked);
     expect(built.statusCode, built.body).toBe(200);
     const { proposal } = PersonalizeResponse.parse(built.json());
     expect(
       proposal.lines.some((l) => l.reasons.some((r) => r.rule === 'THEME_MATCHED_MEMBER')),
     ).toBe(true);
+    // Semiconductors: its label is proposed too, and its filter matches one name alone on Solana.
+    // A filter is never used to pick one stock (Oct 7): nothing is held, and the line says why.
+    const one = await ask('I want to invest $2,000 in semiconductors for 5 years');
+    expect(one.narratives).toMatchObject([{ id: 'semiconductors', kind: 'none', slug: null }]);
+    expect(one.flags).toEqual(
+      expect.arrayContaining(['label_proposed:semiconductors', 'filter_one_name:semiconductors']),
+    );
+    expect(one.assumptions).toEqual([
+      'There is only one stock for “semiconductors” on Solana at the moment, and a theme is not made of one. We will be adding more soon. The nearest today is AI, which you can choose.',
+    ]);
+    expect(one.questions.map((q) => q.field)).toEqual(['risk']);
     // Quantum computing: no label on Solana and no stock that carries it. The founder's sentence,
     // with the nearest list the chain can hold, nothing held for it, and the risk asked as for any
     // goal (gate THEME-NONE-YET).

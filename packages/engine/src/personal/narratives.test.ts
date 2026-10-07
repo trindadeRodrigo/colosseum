@@ -374,9 +374,11 @@ describe('the words of a narrative, read by code', () => {
     expect(
       marketsIn('invest in chip makers', ['Chips & Agents', 'Makers']).map((m) => m.market),
     ).toEqual(['semiconductors']);
-    const named = intake('Invest $2,000 in semiconductors for 5 years', reply(), {
-      portfolios: [...portfolios, { slug: 'semis', name: 'Semiconductors' }],
-    });
+    const named = intake(
+      'Invest $2,000 in semiconductors for 5 years',
+      reply({ markets: ['semiconductors'] }),
+      { portfolios: [...portfolios, { slug: 'semis', name: 'Semiconductors' }] },
+    );
     expect(named.narratives.map((n) => [n.id, n.kind, n.slug])).toEqual([
       ['semiconductors', 'label', 'semiconductors'],
     ]);
@@ -584,7 +586,8 @@ describe('a narrative reads to a shared portfolio, a curated label, a filter, or
       slug: 'matched-keyword-defense',
       name: 'names matched by keyword: defense',
     });
-    // A match that lists no stock on the chain is no match: the next filter is tried.
+    // A match that lists no stock on the chain is no match: the next filter is tried. (The keyword
+    // lists two here: since Oct 7 a filter that lists one name alone is no match either, below.)
     const unlisted = intake(
       'Invest $2,000 in defense stocks for 5 years',
       reply({ markets: ['defense'] }),
@@ -592,10 +595,23 @@ describe('a narrative reads to a shared portfolio, a curated label, a filter, or
         matchOf: (filter) =>
           filter.by === 'industry'
             ? { value: 'Aerospace & Defense', listed: 0 }
-            : { value: 'defense', listed: 1 },
+            : { value: 'defense', listed: 2 },
       },
     );
     expect(unlisted.narratives[0]?.slug).toBe('matched-keyword-defense');
+    // The same for a filter that lists one name alone: the next one is tried.
+    const oneThenTwo = intake(
+      'Invest $2,000 in defense stocks for 5 years',
+      reply({ markets: ['defense'] }),
+      {
+        matchOf: (filter) =>
+          filter.by === 'industry'
+            ? { value: 'Aerospace & Defense', listed: 1 }
+            : { value: 'defense', listed: 2 },
+      },
+    );
+    expect(oneThenTwo.narratives[0]?.slug).toBe('matched-keyword-defense');
+    expect(oneThenTwo.flags.filter((f) => f.startsWith('filter_'))).toEqual([]);
     // A curated label that is usable still comes before any filter.
     const curated = intake(
       'Invest $2,000 in defense stocks for 5 years',
@@ -838,13 +854,14 @@ describe('a narrative reads to a shared portfolio, a curated label, a filter, or
   });
 
   it('a filter matches only what the attributes write as the same value', () => {
-    const wrong = intake('Invest $2,000 in defense stocks for 5 years', reply(), {
+    const defense = reply({ markets: ['defense'] });
+    const wrong = intake('Invest $2,000 in defense stocks for 5 years', defense, {
       // A caller that answers with another value than the one asked for is not believed.
       matchOf: () => ({ value: 'Airlines', listed: 9 }),
     });
     expect(wrong.narratives[0]?.kind).toBe('none');
     expect(wrong.flags).toContain('filter_no_match:defense');
-    const none = intake('Invest $2,000 in defense stocks for 5 years', reply(), {
+    const none = intake('Invest $2,000 in defense stocks for 5 years', defense, {
       matchOf: () => null,
     });
     expect(none.narratives[0]?.kind).toBe('none');
@@ -865,9 +882,9 @@ describe('a narrative reads to a shared portfolio, a curated label, a filter, or
       [...LABELS].sort((a, b) => a.name.pt.localeCompare(b.name.pt)),
     ];
     for (const [text, answers] of texts) {
-      const said = orders.map((labels) =>
-        JSON.stringify(intake(text, reply(), { labels, answers })),
-      );
+      // The reply names the markets the text asks for, as a model does (with one, both readers).
+      const r = reply({ markets: marketsIn(text).map((m) => m.market) });
+      const said = orders.map((labels) => JSON.stringify(intake(text, r, { labels, answers })));
       expect(new Set(said).size, text).toBe(1);
       expect(JSON.parse(said[0] as string).sheet, text).not.toBeNull();
     }
@@ -970,19 +987,44 @@ describe('a narrative reads to a shared portfolio, a curated label, a filter, or
 });
 
 describe('a market the lists have no word for, named by the model as a filter (MOCK replies)', () => {
-  it('a filter whose words are written, and that matches: a theme sleeve, said as matched', () => {
+  // The second review (Oct 7): any words of the text with any value filled a sleeve ("my future" with
+  // sector Consumer Discretionary). The text check is the filter's second reader only where the
+  // person's words write the value it must carry. Where they do not, the link is the model's alone.
+  it('a filter for words that do not write its value: asked once by a question that says the match, held once answered, said as matched', () => {
     const { text, reply: r } = recordedCase('obesity-drugs');
-    const result = intake(text, r);
-    expect(result.narratives).toEqual([
+    const asked = intake(text, r);
+    const narrative = {
+      id: null,
+      words: 'obesity drugs',
+      kind: 'matched',
+      slug: 'matched-keyword-glp-1',
+      filter: { by: 'keyword', value: 'GLP-1' },
+      name: 'names matched by keyword: GLP-1',
+    };
+    expect(asked.narratives).toEqual([narrative]);
+    expect(asked.sheet).toBeNull();
+    expect(asked.flags).toContain('filter_not_written');
+    expect(asked.flags).not.toContain('sleeves_from_market');
+    expect(asked.questions).toEqual([
       {
-        id: null,
-        words: 'obesity drugs',
-        kind: 'matched',
-        slug: 'matched-keyword-glp-1',
-        filter: { by: 'keyword', value: 'GLP-1' },
-        name: 'names matched by keyword: GLP-1',
+        field: 'mix',
+        template: 'matchedShare',
+        text: 'I read “obesity drugs” as names matched by keyword: GLP-1. How much of the $2,000 for them? Say none if that is not what you meant.',
+        // "I have $2,000 to invest in obesity drugs": the whole, as the start.
+        read: { growthBps: WHOLE, dollarYieldBps: 0, goldBps: 0, cashBps: 0 },
       },
     ]);
+    // A plain yes holds what the person wrote.
+    expect(intake(`${text}\n\nyes`, r).sheet?.sleeves).toEqual([theme('matched-keyword-glp-1')]);
+    // "None" leaves it out for good; a share answers it.
+    const none = intake(`${text}\n\nnone`, r);
+    expect(none.narratives).toEqual([]);
+    expect(none.flags).toEqual(
+      expect.arrayContaining(['none_from_words', 'market_left_out:marketFilter']),
+    );
+    expect(fields(none)).toEqual(['risk']);
+    const result = intake(`${text}\n\nall of it`, r);
+    expect(result.narratives).toEqual([narrative]);
     expect(result.questions).toEqual([]);
     expect(result.sheet?.sleeves).toEqual([theme('matched-keyword-glp-1')]);
     expect(result.sheet?.risk).toBe('high');
@@ -990,6 +1032,40 @@ describe('a market the lists have no word for, named by the model as a filter (M
       'No curated list covers “obesity drugs” on Solana, so the plan holds the names matched by keyword: GLP-1. Matched from the sourced attributes of each, not a curated theme.',
     );
     expect(result.readBack).toContain('100% of the plan for names matched by keyword: GLP-1.');
+  });
+
+  it('a filter for words that write its value has both readers: held with no question', () => {
+    for (const [words, filter, slug] of [
+      ['insurance companies', { by: 'industry', value: 'Insurance' }, 'matched-industry-insurance'],
+      ['insurers', { by: 'industry', value: 'insurance' }, 'matched-industry-insurance'],
+      ['GLP-1 makers', { by: 'keyword', value: 'GLP-1' }, 'matched-keyword-glp-1'],
+    ] as const) {
+      const result = intake(
+        `Invest $2,000 in ${words} for 5 years`,
+        reply({ marketFilter: { ...filter, words } }),
+      );
+      expect(result.flags, words).not.toContain('filter_not_written');
+      expect(result.flags, words).toContain('sleeves_from_market');
+      expect(result.questions, words).toEqual([]);
+      expect(result.sheet?.sleeves, words).toEqual([theme(slug)]);
+    }
+    // And one that does not, whatever the words: the model's free association is never taken.
+    for (const [words, filter] of [
+      ['my future', { by: 'industry', value: 'Software' }],
+      ['something good', { by: 'sector', value: 'Health Care' }],
+      ['the long run', { by: 'keyword', value: 'cloud' }],
+    ] as const) {
+      const result = intake(
+        `Invest $2,000 in ${words} for 5 years`,
+        reply({ marketFilter: { ...filter, words } }),
+      );
+      expect(result.sheet, words).toBeNull();
+      expect(result.flags, words).toContain('filter_not_written');
+      expect(
+        result.questions.map((q) => q.template),
+        words,
+      ).toEqual(['matchedShare']);
+    }
   });
 
   it('words that are not written in the text: dropped, flagged, and nothing asked about it', () => {
@@ -1080,7 +1156,20 @@ describe('a market the lists have no word for, named by the model as a filter (M
 
   it('in Portuguese: the value as the attributes write it, the words as the person wrote them', () => {
     const { text, reply: r } = recordedCase('insurers-in-portuguese');
-    const result = intake(text, r);
+    // "Seguradoras" does not write "Insurance": the link is the model's, so it is asked once.
+    expect(intake(text, r).questions).toEqual([
+      {
+        field: 'mix',
+        template: 'matchedShare',
+        text: 'Li “seguradoras” como nomes filtrados por indústria: Insurance. Quanto dos US$ 2.000 para eles? Diga nada se não era isso que você quis dizer.',
+        read: { growthBps: WHOLE, dollarYieldBps: 0, goldBps: 0, cashBps: 0 },
+      },
+    ]);
+    expect(intake(`${text}\n\nsim`, r).sheet?.sleeves).toEqual([
+      theme('matched-industry-insurance'),
+    ]);
+    const result = intake(`${text}\n\ntudo`, r);
+    expect(result.questions).toEqual([]);
     expect(result.narratives).toEqual([
       {
         id: null,
@@ -1145,16 +1234,30 @@ describe('a market the lists have no word for, named by the model as a filter (M
     expect(free.narratives).toEqual([]);
     expect(free.flags.filter((f) => f.includes('marketFilter'))).toEqual([]);
     expect(fields(free)).not.toContain('mix');
-    // A narrative of the fixed lists is read all the same.
-    const fixed = intake('Invest $2,000 in semiconductors for 5 years', null, {
-      answers: { goal: 'grow', amountUsd: 2000, horizonMonths: 60 },
-    });
+    // A narrative of the fixed lists is read all the same. With no model it is asked once, with the
+    // share the text gives it as the form's start, and never taken (the second review, Oct 7).
+    const answers: IntakeAnswers = { goal: 'grow', amountUsd: 2000, horizonMonths: 60 };
+    const fixed = intake('Invest $2,000 in semiconductors for 5 years', null, { answers });
     expect(fixed.method).toBe('rules');
     expect(fixed.narratives.map((n) => [n.id, n.kind, n.slug])).toEqual([
       ['semiconductors', 'label', 'semiconductors'],
     ]);
-    expect(fixed.questions).toEqual([]);
-    expect(fixed.sheet?.sleeves).toEqual([theme('semiconductors')]);
+    const whole = { growthBps: WHOLE, dollarYieldBps: 0, goldBps: 0, cashBps: 0 };
+    expect(fixed.questions).toEqual([
+      {
+        field: 'mix',
+        template: 'marketShare',
+        text: 'How much of the $2,000 for semiconductors?',
+        read: whole,
+      },
+    ]);
+    expect(fixed.flags).toContain('from_rules:market');
+    expect(fixed.sheet).toBeNull();
+    const held = intake('Invest $2,000 in semiconductors for 5 years', null, {
+      answers: { ...answers, mix: whole },
+    });
+    expect(held.questions).toEqual([]);
+    expect(held.sheet?.sleeves).toEqual([theme('semiconductors')]);
   });
 
   it('a market the model names that the text has no word for is asked; one the text rules out is dropped', () => {
@@ -1328,10 +1431,12 @@ describe('the share of a theme, and the risk', () => {
   });
 
   it('several themes whose shares are not all written: the split is asked once, never the risk', () => {
+    // The question names the themes, in the person's words (the second review, Oct 7): until then
+    // it was the split between a safe part and a part that seeks a return, which names neither.
     const SPLIT = {
       field: 'sleeves',
-      template: 'sleeves',
-      text: 'How do you want to split the money: how much kept safe and easy to take out, and how much to seek a return?',
+      template: 'themeShares',
+      text: 'How do you want to split the money between semiconductors and AI?',
     };
     const r = reply({ markets: ['semiconductors', 'ai'] });
     // Sums that come to more than the money.
@@ -1539,7 +1644,10 @@ describe('a mix and sleeves are never combined by guessing: asked once instead',
 
   it('a theme beside a mix the text states that says another share: how much, once', () => {
     const text = 'Invest $2,000 in semiconductors for 5 years, 70% stocks and 30% cash';
-    const asked = intake(text, reply({ markets: ['semiconductors'] }));
+    // The replies read the mix the text states, as a model does: with one, a mix needs both readers
+    // (the second review, Oct 7). One the model does not read is not seen at all (the last case).
+    const mix = { growthPct: 70, dollarYieldPct: 0, goldPct: 0, cashPct: 30, creditPct: null };
+    const asked = intake(text, reply({ markets: ['semiconductors'], mix }));
     expect(asked.questions).toEqual([
       { field: 'mix', template: 'marketShare', text: 'How much of the $2,000 for semiconductors?' },
     ]);
@@ -1547,7 +1655,7 @@ describe('a mix and sleeves are never combined by guessing: asked once instead',
     expect(asked.flags).not.toContain('risk_from_mix');
     expect(asked.assumptions.filter((s) => /limits for/.test(s))).toEqual([]);
     expect(asked.sheet).toBeNull();
-    const answered = intake(text, reply({ markets: ['semiconductors'] }), {
+    const answered = intake(text, reply({ markets: ['semiconductors'], mix }), {
       answers: { mix: { growthBps: 7000, dollarYieldBps: 0, goldBps: 0, cashBps: 3000 } },
     });
     expect(answered.questions).toEqual([]);
@@ -1555,7 +1663,7 @@ describe('a mix and sleeves are never combined by guessing: asked once instead',
     expect(answered.sheet?.mix).toBeUndefined();
     // Answered as a split that holds the theme: the split is what is held, and the mix the text
     // states beside it is not applied.
-    const bySleeves = intake(text, reply({ markets: ['semiconductors'] }), {
+    const bySleeves = intake(text, reply({ markets: ['semiconductors'], mix }), {
       answers: { sleeves: [theme('semiconductors', 7000), safe(3000)] },
     });
     expect(bySleeves.questions).toEqual([]);
@@ -1566,14 +1674,14 @@ describe('a mix and sleeves are never combined by guessing: asked once instead',
     // Two themes beside such a mix: only a split can say each share, so the split is asked.
     const two = intake(
       'Invest $2,000 in semiconductors and AI for 5 years, 70% stocks and 30% cash',
-      reply({ markets: ['semiconductors', 'ai'] }),
+      reply({ markets: ['semiconductors', 'ai'], mix }),
     );
     expect(fields(two)).toEqual(['sleeves']);
     expect(two.flags).toEqual(expect.arrayContaining(['theme_beside_mix', 'theme_shares_unclear']));
     expect(two.sheet).toBeNull();
     const twoAnswered = intake(
       'Invest $2,000 in semiconductors and AI for 5 years, 70% stocks and 30% cash',
-      reply({ markets: ['semiconductors', 'ai'] }),
+      reply({ markets: ['semiconductors', 'ai'], mix }),
       { answers: { sleeves: [theme('semiconductors', 4000), theme('ai', 3000), safe(3000)] } },
     );
     expect(twoAnswered.questions).toEqual([]);
@@ -1583,6 +1691,14 @@ describe('a mix and sleeves are never combined by guessing: asked once instead',
       safe(3000),
     ]);
     expect(twoAnswered.sheet?.mix).toBeUndefined();
+    // A mix the model does not read is not seen, and its percents are no split either: the theme
+    // is held by the share the text gives it, and nothing is asked of the mix.
+    const unread = intake(text, reply({ markets: ['semiconductors'] }));
+    expect(unread.flags).toContain('text_only:mix');
+    expect(unread.flags).not.toContain('theme_beside_mix');
+    expect(unread.questions).toEqual([]);
+    expect(unread.sheet?.sleeves).toEqual([theme('semiconductors')]);
+    expect(unread.sheet?.mix).toBeUndefined();
   });
 
   it('a mix that says the same as the theme is no second mechanism: the sleeves are made', () => {
@@ -1642,7 +1758,13 @@ describe('a theme on a goal of income or to protect (gate PROTECT-NO-STOCKS)', (
     // To protect, with a matched theme: the same, and nothing is said to be matched.
     const protect = intake(
       'Protect $10,000 for 2 years at low risk, in defense stocks',
-      reply({ goal: 'protect', amountUsd: 10_000, horizonMonths: 24, risk: 'low' }),
+      reply({
+        goal: 'protect',
+        amountUsd: 10_000,
+        horizonMonths: 24,
+        risk: 'low',
+        markets: ['defense'],
+      }),
       // The rules parser reads this goal and risk another way, so both are confirmed by the person.
       { answers: { goal: 'protect', risk: 'low' } },
     );
@@ -1846,9 +1968,10 @@ describe('the read-back and the assumptions, in English and Portuguese', () => {
     );
     expect((result.readBack ?? []).join(' ')).not.toMatch(/para o tema/);
     // Each kind of filter has its word, in both languages.
+    // (Two names listed: since Oct 7 a filter that lists one alone is held by no sleeve.)
     const words = (language: 'en' | 'pt', by: MarketFilter['by']) =>
       intake('Invest $2,000 in uranium miners for 5 years', reply({ language }), {
-        matchOf: () => ({ value: 'Uranium', listed: 1 }),
+        matchOf: () => ({ value: 'Uranium', listed: 2 }),
         answers: { sleeves: [theme(matchedSlug({ by, value: 'Uranium' }) as string)] },
       }).readBack?.find((s) => /Uranium/.test(s));
     expect(
@@ -1902,6 +2025,221 @@ describe('the read-back and the assumptions, in English and Portuguese', () => {
     expect(asked.questions.map((q) => q.text)).toEqual([
       'Quanto dos US$ 2.000 para semicondutores?',
     ]);
+  });
+});
+
+// The second review of the intake (Oct 7), rule 6: a filter is never used to pick one stock. "I want
+// to invest $5,000 in my future" with a reply naming the industry Automobiles gave a sheet all in the
+// one car maker the chain lists.
+describe('a filter that matches one name alone is no theme', () => {
+  const one =
+    (...keys: string[]) =>
+    (filter: MarketFilter): FilterMatch | null =>
+      keys.includes(`${filter.by}:${attributeKey(filter.value)}`)
+        ? { value: filter.value, listed: 1 }
+        : null;
+  const FUTURE = 'I want to invest $5,000 in my future over 5 years';
+  const cars = { by: 'industry', value: 'Automobiles', words: 'my future' };
+
+  it('holds nothing for it and says so in its own sentence, never the sentence for no stock at all', () => {
+    const result = intake(FUTURE, reply({ amountUsd: 5000, marketFilter: cars }), {
+      matchOf: one('industry:automobiles'),
+    });
+    expect(result.narratives).toEqual([
+      { id: null, words: 'my future', kind: 'none', slug: null, filter: null, name: null },
+    ]);
+    expect(result.flags).toEqual(
+      expect.arrayContaining(['filter_one_name:marketFilter', 'market_not_on_shelf:marketFilter']),
+    );
+    expect(result.flags).not.toContain('filter_no_match:marketFilter');
+    expect(result.assumptions).toContain(
+      'There is only one stock for “my future” on Solana at the moment, and a theme is not made of one. We will be adding more soon.',
+    );
+    expect(result.assumptions.join(' ')).not.toMatch(/There is no stock for/);
+    // Nothing is held and nothing is asked of it: the risk is asked, as for any goal.
+    expect(result.sheet).toBeNull();
+    expect(result.mix).toBeNull();
+    expect(result.draft.sleeves).toBeNull();
+    expect(fields(result)).toEqual(['risk']);
+    const done = intake(FUTURE, reply({ amountUsd: 5000, marketFilter: cars }), {
+      matchOf: one('industry:automobiles'),
+      answers: { risk: 'medium' },
+    });
+    expect(done.sheet).toMatchObject({ risk: 'medium', themes: [] });
+    expect(done.sheet?.sleeves).toBeUndefined();
+    expect(JSON.stringify(done.sheet)).not.toMatch(/automobiles/);
+    // Two names listed: the same filter is a theme, said as matched.
+    const two = intake(FUTURE, reply({ amountUsd: 5000, marketFilter: cars }), {
+      matchOf: () => ({ value: 'Automobiles', listed: 2 }),
+    });
+    expect(two.narratives[0]).toMatchObject({
+      kind: 'matched',
+      slug: 'matched-industry-automobiles',
+    });
+  });
+
+  it('is the same for a fixed fallback of a narrative, with the nearest offered where the shelf has one', () => {
+    // Electric vehicles: the keyword lists nothing here and the sub-industry lists one car maker.
+    const ev = intake(
+      'Invest $2,000 in electric vehicles for 5 years',
+      reply({ markets: ['ev_autonomy'] }),
+      { matchOf: one('sub_industry:automobile-manufacturers') },
+    );
+    expect(ev.narratives[0]).toMatchObject({ kind: 'none', slug: null, filter: null });
+    expect(ev.flags).toContain('filter_one_name:ev_autonomy');
+    expect(ev.assumptions).toContain(
+      'There is only one stock for “electric vehicles” on Solana at the moment, and a theme is not made of one. We will be adding more soon. The nearest today is AI, which you can choose.',
+    );
+    expect(ev.sheet).toBeNull();
+    expect(fields(ev)).toEqual(['risk']);
+    // In Portuguese, with no nearest on the shelf.
+    const pt = intake(
+      'Quero investir US$ 2.000 em carros elétricos por 5 anos',
+      reply({ language: 'pt', markets: ['ev_autonomy'] }),
+      { matchOf: one('sub_industry:automobile-manufacturers'), labels: [], portfolios: [] },
+    );
+    expect(pt.assumptions).toContain(
+      'No momento há só uma ação para “carros elétricos” na Solana, e um tema não se faz de uma só. Vamos incluir mais em breve.',
+    );
+  });
+
+  it('a confirmed label is a person list and may hold one name', () => {
+    const curated = intake('Invest $2,000 in AI for 5 years', reply({ markets: ['ai'] }), {
+      labels: [label('ai', 'AI', 'IA', 'confirmed', 1)],
+    });
+    expect(curated.narratives[0]).toMatchObject({ kind: 'label', slug: 'ai' });
+    expect(curated.sheet?.sleeves).toEqual([theme('ai')]);
+  });
+
+  it('an answered split cannot hold it either: refused, and asked again', () => {
+    const slug = matchedSlug({ by: 'industry', value: 'Automobiles' }) as string;
+    const answered = intake(
+      'I want to grow $2,000 over 5 years at medium risk',
+      reply({ risk: 'medium' }),
+      { matchOf: one('industry:automobiles'), answers: { sleeves: [theme(slug)] } },
+    );
+    expect(answered.flags).toContain('answer_not_on_shelf:sleeves');
+    expect(answered.sheet).toBeNull();
+    expect(fields(answered)).toEqual(['sleeves']);
+  });
+});
+
+// The second review of the intake (Oct 7), rule 7: two inputs a caller with the shelf hands in.
+describe('what a caller with the shelf hands in: the risk of a split held in themes, and a shelf it could not read', () => {
+  const SEMIS = 'I want to grow $2,000 over 5 years. Put 30% in semiconductors.';
+  const semis = () => reply({ markets: ['semiconductors'] });
+
+  it('riskOfSleeves: the limits a sheet held in themes takes are the caller rule, said in the read-back', () => {
+    // Left out: the estimate on the issuer caps, which reads 30% in a theme as low risk.
+    const estimated = intake(SEMIS, semis());
+    expect(estimated.sheet).toMatchObject({
+      risk: 'low',
+      sleeves: [theme('semiconductors', 3000), safe(7000)],
+    });
+    expect(estimated.readBack).toContain(
+      'To hold “semiconductors”, the plan uses the limits for low risk.',
+    );
+    // Handed in: the caller sees the sleeves and the shared portfolios read, and its answer is the
+    // sheet's risk and the one line of the read-back.
+    const seen: unknown[] = [];
+    const exact = intake(SEMIS, semis(), {
+      riskOfSleeves: (sleeves, themes) => {
+        seen.push([sleeves, themes]);
+        return 'high';
+      },
+    });
+    expect(seen).toEqual([[[theme('semiconductors', 3000), safe(7000)], []]]);
+    expect(exact.sheet).toMatchObject({
+      risk: 'high',
+      sleeves: [theme('semiconductors', 3000), safe(7000)],
+    });
+    expect(exact.readBack).toContain(
+      'To hold “semiconductors”, the plan uses the limits for high risk.',
+    );
+    expect(exact.flags).toContain('risk_from_themes');
+    // A risk the person said that is another is said with it, never dropped.
+    const said = intake(`${SEMIS} Low risk.`, reply({ markets: ['semiconductors'], risk: 'low' }), {
+      riskOfSleeves: () => 'high',
+    });
+    expect(said.sheet?.risk).toBe('high');
+    expect(said.flags).toContain('risk_said_not_used:low');
+    expect(said.readBack).toContain(
+      'You said low risk, but to hold “semiconductors” the plan uses the limits for high risk.',
+    );
+    // It is not called for a plan that holds no theme.
+    const plain = intake(
+      'I want to grow $2,000 over 5 years at medium risk',
+      reply({ risk: 'medium' }),
+      {
+        riskOfSleeves: () => {
+          throw new Error('not held in themes');
+        },
+      },
+    );
+    expect(plain.sheet?.risk).toBe('medium');
+  });
+
+  it('shelfKnown false: a narrative is left unresolved, as with no chain, and no sentence says the chain has no stock', () => {
+    const AI = 'I want to invest $2,000 in AI for 5 years';
+    for (const r of [reply({ markets: ['ai'] }), null]) {
+      const answers: IntakeAnswers = r ? {} : { goal: 'grow', horizonMonths: 60 };
+      // With the shelf read and nothing on it for AI, the founder's sentence is said.
+      const read = intake(AI, r, { labels: [], portfolios: [], matchOf: undefined, answers });
+      expect(read.narratives.map((n) => n.kind)).toEqual(['none']);
+      expect(read.assumptions.join(' ')).toMatch(/There is no stock for “AI” on Solana/);
+      // With the shelf not read, nobody looked: it is not said, and nothing is resolved.
+      const unread = intake(AI, r, {
+        labels: [],
+        portfolios: [],
+        matchOf: undefined,
+        shelfKnown: false,
+        answers: { ...answers, risk: 'medium' },
+      });
+      expect(unread.narratives).toEqual([]);
+      expect(unread.flags).toEqual(
+        expect.arrayContaining(['market_unresolved:ai', 'shelf_unread']),
+      );
+      expect(unread.flags.filter((f) => /not_on_shelf|filter_no_match|label_/.test(f))).toEqual([]);
+      const said = [...unread.assumptions, ...unread.questions.map((q) => q.text)].join(' ');
+      expect(said).not.toMatch(/There is no stock|only one stock|nearest|curated list/);
+      expect(unread.assumptions).toContain(
+        'What is listed on Solana could not be read just now, so nothing is held for “AI” yet.',
+      );
+      // No sheet is made that would leave out, without a word, what the person asked for.
+      expect(unread.sheet).toBeNull();
+      expect(unread.readBack).toBeNull();
+      expect(unread.mix).toBeNull();
+      expect(unread.draft.sleeves).toBeNull();
+    }
+    // The same for a filter the model names, and for a shared portfolio it names.
+    const filter = intake(
+      'I want to invest $2,000 in obesity drugs for 5 years',
+      reply({ marketFilter: { by: 'keyword', value: 'GLP-1', words: 'obesity drugs' } }),
+      { shelfKnown: false, portfolios: [], labels: [], answers: { risk: 'medium' } },
+    );
+    expect(filter.flags).toEqual(
+      expect.arrayContaining(['market_unresolved:marketFilter', 'shelf_unread']),
+    );
+    expect(filter.sheet).toBeNull();
+    const named = intake(
+      'I want to grow $2,000 over 5 years at medium risk, starting from The Seven',
+      reply({ risk: 'medium', portfolios: ['The Seven'] }),
+      { shelfKnown: false, portfolios: [] },
+    );
+    expect(named.flags).not.toContain('not_on_shelf:themes');
+    expect(fields(named)).toEqual([]);
+    expect(named.sheet).toBeNull();
+    expect(named.assumptions).toContain(
+      'What is listed on Solana could not be read just now, so nothing is held for “The Seven” yet.',
+    );
+    // A goal that names nothing the shelf settles is read as ever.
+    const plain = intake(
+      'I want to grow $2,000 over 5 years at medium risk',
+      reply({ risk: 'medium' }),
+      { shelfKnown: false, portfolios: [] },
+    );
+    expect(plain.flags).not.toContain('shelf_unread');
+    expect(plain.sheet).toMatchObject({ risk: 'medium', themes: [] });
   });
 });
 
@@ -1973,7 +2311,7 @@ describe('whatever the text, the shelf and the answers', () => {
     { growthBps: WHOLE, dollarYieldBps: 0, goldBps: 0, cashBps: 0 },
   ];
 
-  it('never throws, never holds what the shelf has not, never a mix with sleeves, never asks the risk with a share, never holds or asks what the chain has nothing for, never loses a refusal', () => {
+  it('never throws, never holds what the shelf has not, never a mix with sleeves, never asks the risk with a share, never holds or asks what the chain has nothing for, never loses a refusal, never takes a holding one reader alone read', () => {
     let state = 20_261_006;
     const next = () => {
       state = (state * 1_103_515_245 + 12_345) % 2_147_483_648;
@@ -1985,6 +2323,9 @@ describe('whatever the text, the shelf and the answers', () => {
     let noneOnly = 0;
     let otherRisk = 0;
     let refusals = 0;
+    let withdrawn = 0;
+    let textOnly = 0;
+    let fromRules = 0;
     for (let run = 0; run < 400; run += 1) {
       const opener = pick(openers);
       const words = [pick(named), pick(named)].slice(0, Math.floor(next() * 3));
@@ -2005,13 +2346,29 @@ describe('whatever the text, the shelf and the answers', () => {
           Object.entries(ATTRIBUTES).some(
             ([key, m]) => m.listed > 0 && matchedSlug(filterOf(key, m.value)) === slug,
           ));
+      // What a faithful reader names: the markets the text asks for and the mix it states. The
+      // replies name them most of the time, and sometimes do not, or name a mix the text has not:
+      // with a model a holding needs both readers (the second review, Oct 7).
+      const stated = mixIn(text)?.mix;
       const r =
         next() < 0.7
           ? reply({
               ...opener.reply,
+              markets: pick([
+                marketsIn(text).map((m) => m.market),
+                marketsIn(text).map((m) => m.market),
+                [],
+              ]),
               mix: pick([
                 null,
-                null,
+                stated
+                  ? {
+                      growthPct: stated.growthBps / 100,
+                      dollarYieldPct: stated.dollarYieldBps / 100,
+                      goldPct: stated.goldBps / 100,
+                      cashPct: stated.cashBps / 100,
+                    }
+                  : null,
                 { growthPct: 100, dollarYieldPct: 0, goldPct: 0, cashPct: 0 },
               ]),
               marketFilter: pick([
@@ -2080,15 +2437,36 @@ describe('whatever the text, the shelf and the answers', () => {
         // A refusal the text states is read on every turn, with or without a model, and nothing
         // else is: a ruled-out narrative ("No defense stocks.") and "no problem with stocks" leave
         // out no class. Stocks refused are no stocks through a fund either: both classes.
+        // It is never lost in silence. Since Oct 7 a refusal against a holding of the same class
+        // is asked, never both in one sheet: where the person's own answer then holds the stocks
+        // (a mix with stocks, a split with a theme), the refusal is taken back, flagged, and said
+        // back in their words.
         const refuses = text.includes('No stocks please.');
         if (refuses) refusals += 1;
+        const takenBack = result.flags.includes('refusal_withdrawn:stock');
+        if (takenBack) {
+          withdrawn += 1;
+          expect(refuses, where).toBe(true);
+          expect(
+            (answers.mix?.growthBps ?? 0) > 0 ||
+              (answers.sleeves ?? []).some((s) => s.kind === 'theme'),
+            where,
+          ).toBe(true);
+          expect(
+            result.assumptions.some(
+              (s) => /“No stocks”/.test(s) && /leave out|deixar de fora/.test(s),
+            ),
+            where,
+          ).toBe(true);
+        }
+        const leftOut = refuses && !takenBack;
         expect(result.limits, where).toEqual({
           creditTolerance: null,
-          cannotHoldClasses: refuses ? ['etf', 'stock'] : null,
+          cannotHoldClasses: leftOut ? ['etf', 'stock'] : null,
         });
         if (result.sheet) {
           expect(result.sheet.limits, where).toEqual(
-            refuses ? { cannotHold: { classes: ['etf', 'stock'] } } : undefined,
+            leftOut ? { cannotHold: { classes: ['etf', 'stock'] } } : undefined,
           );
           expect(
             (result.readBack ?? []).some((s) =>
@@ -2097,7 +2475,51 @@ describe('whatever the text, the shelf and the answers', () => {
               ),
             ),
             where,
-          ).toBe(refuses);
+          ).toBe(leftOut);
+          // Never a sheet with both: stocks left out, and a theme of stocks held.
+          if (leftOut)
+            expect(
+              (result.sheet.sleeves ?? []).filter((s) => s.kind === 'theme'),
+              where,
+            ).toEqual([]);
+        }
+        // With a model a holding needs both readers: a narrative of the fixed words is read only
+        // where the reply names it too, and a mix is held with no answer only where the reply reads
+        // one. What the text check alone finds is flagged, and neither held, asked nor said.
+        const named = (r as { markets?: string[] } | null)?.markets ?? [];
+        // The reply's filter names a market too, by the person's words for it.
+        const filterWords =
+          (r as { marketFilter?: { words: string } | null } | null)?.marketFilter?.words ?? null;
+        const byFilter = (words: string) =>
+          filterWords !== null &&
+          (words.toLowerCase().includes(filterWords.toLowerCase()) ||
+            filterWords.toLowerCase().includes(words.toLowerCase()));
+        if (r) {
+          for (const n of result.narratives)
+            if (n.id !== null && !byFilter(n.words)) expect(named, where).toContain(n.id);
+          if (result.mix && !('mix' in answers) && !result.flags.includes('mix_from_market'))
+            expect((r as { mix: unknown }).mix, where).not.toBeNull();
+          for (const flag of result.flags.filter((f) => f.startsWith('text_only:market:'))) {
+            textOnly += 1;
+            const id = flag.slice('text_only:market:'.length);
+            expect(named, where).not.toContain(id);
+            expect(
+              result.narratives.map((n) => n.id),
+              where,
+            ).not.toContain(id);
+          }
+        }
+        // With no model a holding the text states is asked once, never taken: a mix or a theme is
+        // in the sheet only by the person's answer, on the form or in the words of a later message.
+        const themeHeld = (result.sheet?.sleeves ?? []).some((s) => s.kind === 'theme');
+        if (!r && result.sheet && (result.sheet.mix || themeHeld)) {
+          fromRules += 1;
+          expect(
+            'mix' in answers ||
+              answers.sleeves !== undefined ||
+              result.flags.some((f) => f === 'mix_from_words' || f === 'sleeves_from_words'),
+            where,
+          ).toBe(true);
         }
         // A share is asked only of a narrative the chain holds something for, and where every
         // narrative named has nothing there, none of them makes a mix or a sleeve (THEME-NONE-YET).
@@ -2195,6 +2617,9 @@ describe('whatever the text, the shelf and the answers', () => {
     expect(noneOnly).toBeGreaterThan(20);
     expect(otherRisk).toBeGreaterThan(0);
     expect(refusals).toBeGreaterThan(20);
+    expect(withdrawn).toBeGreaterThan(0);
+    expect(textOnly).toBeGreaterThan(20);
+    expect(fromRules).toBeGreaterThan(20);
     // Thousands of generated goals in one test: it gets the time of a property test, so a busy
     // machine does not fail it at the default five seconds.
   }, 60_000);

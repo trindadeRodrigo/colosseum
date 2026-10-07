@@ -254,4 +254,17 @@ export const INTAKE_LIMITS = {
    * before it: the first message and ten later ones, the most the API takes, and one to spare.
    */
   turnsRead: 12,
+  /**
+   * The names a filter must match on the person's chain to be held as a theme (Oct 7): a filter that
+   * matches one name alone would be a stock pick by another name. A curated label is a person's
+   * list and may hold one.
+   */
+  filterMinListed: 2,
+  /**
+   * How the person's words are held to the value a filter the model names must carry (Oct 7): a
+   * word counts from this many letters, and two words are one where they share a stem this long
+   * ("insurers" and "insurance"). Shorter words must be the same word, or its plural.
+   */
+  nameWordChars: 3,
+  sameStemChars: 5,
 } as const;

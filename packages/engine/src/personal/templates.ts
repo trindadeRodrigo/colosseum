@@ -1032,6 +1032,39 @@ export const QUESTION_TEMPLATES = {
     en: 'How much of the money for {market}?',
     pt: 'Quanto do dinheiro para {market}?',
   },
+  // A filter the model names for words that do not write its value ("obesity drugs" for keyword
+  // GLP-1; "my future" for sector Consumer Discretionary, the review of Oct 7): the link between the
+  // two is the model's alone, so it is never taken. One question says what it would be matched by,
+  // and "none" leaves it out. `matched` is `MATCHED_NAME`, filled.
+  matchedShare: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
+    en: 'I read “{market}” as {matched}. How much of the ${amount|amount} for them? Say none if that is not what you meant.',
+    pt: 'Li “{market}” como {matched}. Quanto dos US$ {amount|amount} para eles? Diga nada se não era isso que você quis dizer.',
+  },
+  matchedShareNoAmount: {
+    en: 'I read “{market}” as {matched}. How much of the money for them? Say none if that is not what you meant.',
+    pt: 'Li “{market}” como {matched}. Quanto do dinheiro para eles? Diga nada se não era isso que você quis dizer.',
+  },
+  // Several things named to hold, and no share for each (the review of Oct 7): the question names
+  // them, in the person's words, and "half each" answers it. `themes` is those words, joined.
+  themeShares: {
+    en: 'How do you want to split the money between {themes}?',
+    pt: 'Como você quer dividir o dinheiro entre {themes}?',
+  },
+  // One thing named with a share, and the text says where the rest goes, or carves a sum out of it
+  // ("30% in AI and the rest in stocks", "all of it in AI except $1,000"): the rest is asked, never
+  // put in the safe part by guessing.
+  themeAndRest: {
+    en: 'How much of the money for {market}, and how do you want the rest held: kept safe and easy to take out, or seeking a return?',
+    pt: 'Quanto do dinheiro para {market}, e como você quer o restante: seguro e fácil de tirar, ou buscando retorno?',
+  },
+  // A refusal and a holding of the same class in one conversation ("No stocks in my IRA, so here I
+  // want all stocks"): one question, never a sheet with both. `refusal` and `held` are the person's
+  // words.
+  holdOrLeaveOut: {
+    en: 'You wrote “{refusal}” and also “{held}”. Which one stands? Say how much of the money goes to it, or none.',
+    pt: 'Você escreveu “{refusal}” e também “{held}”. Qual dos dois vale? Diga quanto do dinheiro vai para isso, ou nada.',
+  },
   incomeTargetUsdMonthly: {
     en: 'How much income a month, in dollars, do you aim for?',
     pt: 'Quanto de renda por mês, em dólares, você busca?',
@@ -1250,6 +1283,37 @@ export const ASSUMPTION_TEMPLATES = {
     en: 'I did not read “{words}” as something to leave out. Say so if you want it left out.',
     pt: 'Não li “{words}” como algo a deixar de fora. Diga se quiser que fique de fora.',
   },
+  // A refusal the text states that the model did not read (the review of Oct 7): taken all the same,
+  // since a plan must not hold what a person refused, and said in a line of its own that names their
+  // words, so a clause read wrongly is seen and corrected. `classes` is what it leaves out.
+  REFUSAL_TAKEN: {
+    en: 'I read “{words}” as leaving out {classes|list}. Say so if that is not what you meant.',
+    pt: 'Li “{words}” como deixar de fora {classes|list}. Diga se não era isso que você quis dizer.',
+  },
+  REFUSAL_TAKEN_CREDIT: {
+    en: 'I read “{words}” as no tokens that lend to borrowers or trade a spread. Say so if that is not what you meant.',
+    pt: 'Li “{words}” como nenhum token que empresta a tomadores ou opera um spread. Diga se não era isso que você quis dizer.',
+  },
+  // A refusal of a part of a class ("no stocks from China"), and a name ruled out of a list the plan
+  // holds ("invest in AI but no Tesla"): a plan leaves out a class, so neither is applied, and that
+  // is said, never done in silence.
+  REFUSAL_OF_A_PART: {
+    en: 'A plan can leave out a whole class, not a part of one, so “{words}” was not applied.',
+    pt: 'Um plano pode deixar de fora uma classe inteira, não uma parte dela, então “{words}” não foi aplicado.',
+  },
+  CANNOT_LEAVE_OUT: {
+    en: 'A plan cannot leave one company out of a list it holds, so “{words}” was not applied.',
+    pt: 'Um plano não deixa uma empresa de fora de uma lista que mantém, então “{words}” não foi aplicado.',
+  },
+  // A share smaller than the least a line of the plan can be (the parameter table's `minLineUsd`
+  // and `minLineBps`; the review of Oct 7: "$20" of $5,000 gave a sheet with 0.4% in a theme): a plan
+  // could not hold it, so it is not taken, and how much is asked again. `least` is that floor in
+  // dollars for the amount of the plan.
+  SHARE_TOO_SMALL: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: a placeholder after a dollar sign, not a JS template.
+    en: 'The smallest part a plan of this size can hold is ${least|amount}, so a smaller one was not taken.',
+    pt: 'A menor parte que um plano deste tamanho pode ter é US$ {least|amount}, então uma parte menor não foi considerada.',
+  },
   MIX_DROPPED: {
     en: 'A plan for {goal|goal} holds no stocks or crypto, so “{words}” is not held.',
     pt: 'Um plano com {goal|goal} não tem ações nem cripto, então “{words}” não é mantido.',
@@ -1265,12 +1329,28 @@ export const ASSUMPTION_TEMPLATES = {
     en: 'There is no stock for “{words}” on {chain|chain} at the moment, and we will be adding more soon. The nearest today is {nearest}, which you can choose.',
     pt: 'No momento não há nenhuma ação para “{words}” na {chain|chain}, e vamos incluir mais em breve. O mais próximo hoje é {nearest}, que você pode escolher.',
   },
+  // A filter that matches one name alone on the person's chain is never used to pick that stock (Oct
+  // 7): nothing is held for it, and the line says why, with the nearest the shelf has where it has one.
+  MARKET_ONE: {
+    en: 'There is only one stock for “{words}” on {chain|chain} at the moment, and a theme is not made of one. We will be adding more soon.',
+    pt: 'No momento há só uma ação para “{words}” na {chain|chain}, e um tema não se faz de uma só. Vamos incluir mais em breve.',
+  },
+  MARKET_ONE_NEAREST: {
+    en: 'There is only one stock for “{words}” on {chain|chain} at the moment, and a theme is not made of one. We will be adding more soon. The nearest today is {nearest}, which you can choose.',
+    pt: 'No momento há só uma ação para “{words}” na {chain|chain}, e um tema não se faz de uma só. Vamos incluir mais em breve. O mais próximo hoje é {nearest}, que você pode escolher.',
+  },
   // No curated list for what the person named, and a filter over the sourced attributes that matches
   // some (gate THEME-MATCHED): the plan holds those, said as matched, never as curated. "Names", not
   // "stocks": a fund can be matched too, by a keyword.
   MARKET_MATCHED: {
     en: 'No curated list covers “{words}” on {chain|chain}, so the plan holds the names matched by {by}: {value}. Matched from the sourced attributes of each, not a curated theme.',
     pt: 'Nenhuma lista com curadoria cobre “{words}” na {chain|chain}, então o plano fica com os nomes filtrados por {by}: {value}. Filtrados pelos atributos de cada um, que têm fonte; não é um tema com curadoria.',
+  },
+  // What the chain lists could not be read (the chain is off, its adapter failed): what the person
+  // named is not looked up, nothing is held for it, and nothing is said of what the chain has.
+  SHELF_UNREAD: {
+    en: 'What is listed on {chain|chain} could not be read just now, so nothing is held for “{words}” yet.',
+    pt: 'Não foi possível ler agora o que está listado na {chain|chain}, então nada é mantido para “{words}” por enquanto.',
   },
   MAX_YIELD_LATER: {
     en: 'A part that seeks the highest yield is not built yet, so the part that seeks the goal is built as a goal to grow.',
