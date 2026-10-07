@@ -5,6 +5,7 @@ import { Card } from '../../components/ui/Card';
 import { DataTable } from '../../components/ui/DataTable';
 import { ExitPlanLine } from '../../components/ui/ExitPlanLine';
 import { MAX_LEGS, PlanLegs } from '../../components/ui/PlanLegs';
+import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import type { PinSource } from '../../components/ui/provenance';
 import { type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -103,6 +104,7 @@ export function PlanView({
       ? share(h.shareBps)
       : `${share(h.shareBps)} · ${dollars(h.amountUsd, lang)}`;
   const priced = holdings.some((h) => h.amountUsd !== null);
+  const yielding = holdings.some((h) => h.yield !== null);
   return (
     <div data-ui="plan-pane" className="flex flex-col gap-6">
       <Card
@@ -157,6 +159,27 @@ export function PlanView({
                           numeric: true,
                           cell: (h: PlanViewHolding) =>
                             h.amountUsd === null ? '—' : dollars(h.amountUsd, lang),
+                        },
+                      ]
+                    : []),
+                  // Only where some holding has a yield: each with its pin, and an empty cell where
+                  // a holding has none (never 0%).
+                  ...(yielding
+                    ? [
+                        {
+                          key: 'yield',
+                          header: t.plan.columns.yield,
+                          numeric: true,
+                          cell: (h: PlanViewHolding) =>
+                            h.yield ? (
+                              <ProvenancePin
+                                value={range(h.yield)}
+                                obs={h.yield.obs}
+                                labels={t.pin}
+                              />
+                            ) : (
+                              ''
+                            ),
                         },
                       ]
                     : []),
