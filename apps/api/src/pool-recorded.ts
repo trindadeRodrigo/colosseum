@@ -314,7 +314,7 @@ export const RECORDED_KEEP = 64;
 
 /**
  * The recordings with caches: the index is re-read at most once a minute; the newest recording of each pool asked
- * is kept, at most `RECORDED_KEEP` of them. A pool's history is read one file at a time and nothing of it is kept,
+ * is kept until the next refresh, at most `RECORDED_KEEP` of them. A pool's history is read one file at a time and nothing of it is kept,
  * so a 31-day sweep holds one recording at a time. `dirs` is one folder (the collector's) or a list of them, the
  * collector's first. `now` is a seam for tests.
  */
@@ -357,6 +357,9 @@ export function recordedStore(
     if (!index || now() - index.at > 60_000) {
       const at = now();
       index = { at, hours: byHour(list()), pools: null };
+      // A file can be written again inside its hour (a second run of a job, the collector listing a pool twice), and
+      // the history reads it fresh: what is kept is kept for one refresh, so the two agree within the minute.
+      kept.clear();
     }
     return index;
   };

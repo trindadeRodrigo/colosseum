@@ -1216,6 +1216,24 @@ describe('the liquidity routes on two folders', () => {
     expect(recordedStore([A, C]).latest(ORCA.pool)).toMatchObject({ slot: 42 });
   });
 
+  it('a file written again inside its hour is read again at the next refresh: the newest recording and the history agree within the minute', () => {
+    const A = folder('rewritten');
+    let t = Date.parse('2026-09-02T11:30:00.000Z');
+    orcaAt(A, '2026-09-02T11:25', 1, 'raw-arrays');
+    const store = recordedStore([folder('rewritten-empty'), A], () => t);
+    expect(store.latest(ORCA.pool)?.slot).toBe(1);
+    // a second run of the job in the same hour replaces the file
+    orcaAt(A, '2026-09-02T11:40', 2, 'raw-arrays');
+    // inside the minute the kept one answers, as any repeated request does
+    expect(store.latest(ORCA.pool)?.slot).toBe(1);
+    t += 61_000;
+    expect(store.latest(ORCA.pool)).toMatchObject({
+      slot: 2,
+      fetchedAt: '2026-09-02T11:40:00.000Z',
+    });
+    expect([...store.since(ORCA.pool, 0)].map((r) => r.slot)).toEqual([2]);
+  });
+
   it('a pool with different hours in each folder has one history, oldest first, and names both sources', async () => {
     const [C, A] = [folder('merged-collector'), folder('merged-arrays')];
     orcaAt(C, '2026-09-02T10:02', 10);

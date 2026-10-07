@@ -338,13 +338,17 @@ const USD_RECORDED =
 const RECORDED_SETS =
   'Recorded, at most once a pool and hour: by the collector, the Raydium and Orca pools among the pools that hold the top 80% of registry TVL, each in the runs where it lists the pool’s arrays again (about half the hours); by the raw-arrays job, every hour it runs, the other concentrated-liquidity pools of the tracked stocks.';
 const RECORDED_NO_USD =
-  'On the recorded basis a pool whose quote has no measured way to dollars (exit_path other) has no USD figure (usdNullReason no_quote_price), whichever job recorded it.';
+  'On the recorded basis a pool whose quote has no measured way to dollars (exit_path other) has no USD figure (usdNullReason no_quote_price), whichever job recorded it. A pool against another stock token (exit_path via_xstock) has a USD figure on the recorded basis, implied from the stock’s reference price, and none on the live basis, which prices USDC, USDT and SOL only.';
 /**
  * The rule is the pool's, not the recording's: a pool against a token the registry knows no measured way to dollars
  * from (exit_path other) has no quote price on the recorded basis, in a collector recording as in one of the
  * raw-arrays job. Implying that token's price from the asset's reference price and the pool's own mid would take
  * for granted that the pool trades at the reference price, with nothing measured to check it against. The live
  * basis prices no such token either. USDC and USDT are at par before this is asked.
+ *
+ * The two bases still differ for a pool against another stock token (via_xstock): recorded, its quote is implied
+ * from the asset's reference price like SOL's; live, `quotePrice` knows USDC, USDT and SOL only and answers null.
+ * No such pool had a recording before the raw-arrays job. Which of the two is right for them is not decided here.
  */
 const noQuotePrice = (p: { exitPath: string }) => p.exitPath === 'other';
 
