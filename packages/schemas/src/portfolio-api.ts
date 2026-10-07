@@ -246,11 +246,27 @@ export type PortfolioPlansQuery = z.infer<typeof PortfolioPlansQuery>;
  * What the person put into a vault through this app: the cash of each of their orders whose deposit
  * confirmed, counted once an order. It is gross: a withdrawal is not taken off, and money that reached
  * the vault any other way is not in it. `method` says so.
+ *
+ * `deposits` lists what it adds up, oldest first, one entry for each order counted, so a deposit can
+ * be marked on the line of the vault's value. `usd` is exactly the sum of the deposits' `usd`, and
+ * `orders` is how many there are.
  */
 export const PlanPutIn = Sourced.extend({
   usd: DecimalString,
   /** How many orders it adds up. */
   orders: z.number().int().positive(),
+  deposits: z.array(
+    z.object({
+      orderId: z.string().min(1),
+      /**
+       * When the server learned that the deposit had confirmed: the step's `updated_at`. No record
+       * says when it confirmed on the chain.
+       */
+      at: z.string().datetime(),
+      /** That order's cash. */
+      usd: DecimalString,
+    }),
+  ),
 });
 export type PlanPutIn = z.infer<typeof PlanPutIn>;
 
