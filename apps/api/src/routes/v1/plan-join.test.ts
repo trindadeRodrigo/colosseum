@@ -5,12 +5,15 @@ import {
   type BasketProposal,
   type BasketSheet,
   ChainError,
+  type ChainId,
   DISCLAIMER,
   type ObservationRef,
   OrderDetail,
+  OrderError,
   PortfolioResponse,
   type Principal,
   VaultPlan,
+  type VaultState,
   YieldObservation,
 } from '@colosseum/schemas';
 import { eq, inArray, sql } from 'drizzle-orm';
@@ -20,13 +23,14 @@ import type { ChainEntry, ChainRegistry } from '../../orders/chains';
 import type { PlanInputs } from '../../orders/personalize';
 import {
   type JoinedPlan,
+  type JoinLog,
   joinMissed,
   joinVault,
   plansOf,
   rememberVault,
 } from '../../orders/plan-join';
 import { basketIdOf, basketIdOfLinked } from '../../orders/prepare';
-import { loadProposal } from '../../orders/store';
+import { loadProposal, loadReadablePlan } from '../../orders/store';
 import { bearingPlanInputs } from '../../plan-inputs';
 import mockYields from '../../testing/fixtures/mock-yields.json';
 import { chainOf, orderFlow, walletOf } from '../../testing/flow';
@@ -44,11 +48,13 @@ import {
 } from '../../testing/harness';
 import { PersonalizeResponse } from './baskets';
 
-// The goal join on the server (PORT-1, orders/plan-join.ts), through HTTP on the mock chain and the
-// real database: a vault is in the cache, joined to the plan it was opened for, from the moment the
-// step that opens it is confirmed, and the join answers it with that plan (`plansOf`, which the
-// portfolio section's routes will serve; `GET /v1/portfolio` is not changed by it). Every test makes its
-// own people and reads only their rows: other sessions write to this database at the same time.
+// The goal join on the server (PORT-1, orders/plan-join.ts), on the mock chain and the real database.
+// The orders are taken through their routes over HTTP, and a vault is in the cache, joined to the plan
+// it was opened for, from the moment the step that opens it is confirmed. What the join then holds is
+// read from the tables and with `plansOf`, which the portfolio section's routes will serve (PORT-2): no
+// route answers it yet. `GET /v1/portfolio` is read for the one thing it does to the join, which is to
+// make one the confirm missed; its own answer is not changed by it. Every test makes its own people and
+// reads only their rows: other sessions write to this database at the same time.
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -132,7 +138,7 @@ async function nameMaker(planId: string, who: Pick<Person, 'sub'>) {
 /**
  * A stored plan that is this person's own, as `POST /v1/baskets/personalize` stores one: its row names
  * their user row. What a plan says (its sheet, card, verdict and observations) is answered to the
- * person who made it and to nobody else, so a test that expects a goal in the portfolio buys one of
+ * person who made it and to nobody else, so a test that expects the join to answer a goal buys one of
  * these. Each call stores a plan of its own: the shared `plans` stay nobody's.
  */
 async function ownPlan(who: Person, fixture: BasketProposal = planFixture(chainOf(who))) {
@@ -161,12 +167,12 @@ async function unjoin(who: Person) {
 }
 
 /**
- * A person's vaults as GET /v1/portfolio reads them, each with the plan the join holds for it. The
- * route's read makes a join the confirm missed and changes nothing in its own answer, which names a
+ * A person's vaults as GET /v1/portfolio reads them, each with what the join holds for it beside it.
+ * The route's read makes a join the confirm missed and changes nothing in its own answer, which names a
  * vault's stored plan itself (`planId`, API-ADD-MONEY). What the join holds is read as the portfolio
- * section's routes will read it, with `plansOf`, for the same person. Here `planId` is the join's, the
- * `baskets` row, and the route's own is kept as `storedPlan`. `body` is everything said to the person:
- * the route's answer, then the joined plans.
+ * section's routes will read it, with `plansOf`, for the same person: `joinId`, the person's `baskets`
+ * row, and `plan`. A vault the join answers nothing for has neither. `body` is everything said to the
+ * person: the route's answer, then the joined plans.
  */
 async function portfolio(who: Person, on: FastifyInstance = app) {
   const res = await get(who, '/v1/portfolio', on);
@@ -178,9 +184,8 @@ async function portfolio(who: Person, on: FastifyInstance = app) {
     for (const [address, plan] of await plansOf(data.db, chain, addresses, who.sub))
       joined.set(address, plan);
   }
-  const vaults = answered.map(({ planId: storedPlan, ...v }) => ({
+  const vaults = answered.map((v) => ({
     ...v,
-    storedPlan: storedPlan ?? null,
     ...(joined.get(v.address) as Partial<JoinedPlan>),
   }));
   return { body: `${res.body}\n${JSON.stringify([...joined.values()])}`, vaults };
@@ -241,6 +246,51 @@ async function flaky(now?: () => Date) {
   return { ...made, on };
 }
 
+/**
+ * The database with one query that fails while the switch is on: the look for the vaults that hold no
+ * plan yet (`joinMissed`), told by what it selects, a vault's address and nothing else. It fails as a
+ * query the database did not take does, when it is awaited. Every other query is the real database's.
+ */
+function failingLook() {
+  const on = { fails: false, failed: 0 };
+  const db = new Proxy(data.db, {
+    get(target, key) {
+      const value = Reflect.get(target, key, target);
+      if (key !== 'select') return typeof value === 'function' ? value.bind(target) : value;
+      return (fields?: Record<string, unknown>) => {
+        const theLook =
+          fields !== undefined &&
+          Object.keys(fields).length === 1 &&
+          fields.address === vaults.address;
+        if (!on.fails || !theLook)
+          return fields === undefined ? target.select() : target.select(fields as never);
+        on.failed += 1;
+        const refused = () => Promise.reject(new Error('the database did not answer'));
+        return { from: () => ({ where: refused }) };
+      };
+    },
+  });
+  return { db, on };
+}
+
+/** The person as a sign-in hands them to the join: their id, and their one wallet of that family. */
+const principalOf = (who: Person, family: 'solana' | 'evm'): Principal => ({
+  kind: 'user',
+  userId: who.sub,
+  wallets: [{ family, address: family === 'solana' ? who.solana : who.evm, kind: 'external' }],
+  ip: '127.0.0.1',
+});
+
+/** A log that keeps what it is told, for a test that counts what went wrong. */
+function keptLog() {
+  const said: { level: 'warn' | 'error'; fields: object; message: string }[] = [];
+  const log: JoinLog = {
+    warn: (fields, message) => void said.push({ level: 'warn', fields, message }),
+    error: (fields, message) => void said.push({ level: 'error', fields, message }),
+  };
+  return { log, said };
+}
+
 describe('a vault is joined to its plan when the step that opens it is confirmed', () => {
   it('on each chain: the vault is in the cache with its plan before any portfolio read, and the join answers the plan', async () => {
     for (const chain of CHAINS) {
@@ -283,10 +333,11 @@ describe('a vault is joined to its plan when the step that opens it is confirmed
       const mine = await portfolio(a);
       expect(mine.vaults).toHaveLength(1);
       const [vault] = mine.vaults;
-      // `basketId` stays the plan's number on the chain; the person's plan is `planId`.
-      expect([vault?.basketId, vault?.planId]).toEqual([basketIdOf(own.id), plan?.id]);
-      // The route's own answer names the same stored plan the join does.
-      expect(vault?.storedPlan).toBe(own.id);
+      // Three ids, each its own: `basketId` stays the plan's number on the chain, `joinId` is the
+      // person's `baskets` row, and the route's own `planId` is the stored plan, which is the one
+      // the join names.
+      expect([vault?.basketId, vault?.joinId]).toEqual([basketIdOf(own.id), plan?.id]);
+      expect(vault?.planId).toBe(own.id);
       expect(vault?.plan).toEqual({
         kind: 'personal',
         placedAt: placed.createdAt,
@@ -324,8 +375,61 @@ describe('a vault is joined to its plan when the step that opens it is confirmed
     await portfolio(a);
     const mine = await portfolio(a);
     expect((await held(a)).map((p) => p.id)).toEqual([plan?.id]);
-    expect(mine.vaults.map((v) => [v.planId, v.plan?.placedAt])).toEqual([
+    expect(mine.vaults.map((v) => [v.joinId, v.plan?.placedAt])).toEqual([
       [plan?.id, placed.createdAt],
+    ]);
+  });
+
+  it('only the step that opens the vault makes the join at an order’s routes: a later buy into the vault joins nothing', async () => {
+    const a = await someone();
+    const own = await ownPlan(a);
+    await fund(a);
+    const placed = await order(a, { amountUsd: 100, proposalId: own.id });
+    await settleAll(a, placed);
+    const [vault] = await cached(a);
+    if (!vault) throw new Error('no vault');
+    // As if the join had been missed when the vault was opened. The order that opened it is not
+    // asked again from here on: its own routes would make the join.
+    await unjoin(a);
+
+    // Two later buys into that vault, each with a step that deposits and none that opens a vault: the
+    // plan bought again, and money added to the vault by its address (add money). Each is taken
+    // through the build and the report of every step, and then read.
+    const laterBuys = [
+      () => order(a, { amountUsd: 50, proposalId: own.id }),
+      async () => {
+        const res = await post(a, '/v1/orders', {
+          type: 'buy',
+          owner: a.owner,
+          amountUsd: 50,
+          vault: { chain: 'solana', address: vault.address },
+        });
+        expect(res.statusCode, res.body).toBe(200);
+        return OrderDetail.parse(res.json());
+      },
+    ];
+    for (const buy of laterBuys) {
+      const later = await buy();
+      expect(Date.parse(later.createdAt)).toBeGreaterThan(Date.parse(placed.createdAt));
+      expect(later.legs.map((l) => l.kind)).toEqual(['deposit', 'swap', 'swap', 'swap']);
+      expect(later.basketId).toBe(vault.onchainBasketId);
+      expect((await settleAll(a, later)).status).toBe('done');
+      expect((await read(a, later)).status).toBe('done');
+      // Its deposit is confirmed, and none of its routes joined the vault: a deposit opens nothing,
+      // and its order's time is not when the plan was placed.
+      expect(await held(a)).toEqual([]);
+      expect((await cached(a)).map((v) => v.basketId)).toEqual([null]);
+    }
+
+    // The portfolio's read makes the join, from the order that opened the vault: the plan is placed
+    // at that order's time, not at a later buy's.
+    const mine = await portfolio(a);
+    const plansHeld = await held(a);
+    expect(plansHeld.map((p) => [p.proposalId, p.createdAt.toISOString()])).toEqual([
+      [own.id, placed.createdAt],
+    ]);
+    expect(mine.vaults.map((v) => [v.joinId, v.plan?.placedAt])).toEqual([
+      [plansHeld[0]?.id, placed.createdAt],
     ]);
   });
 
@@ -375,7 +479,7 @@ describe('a vault is joined to its plan when the step that opens it is confirmed
         const [plan] = await held(a);
         expect(plan).toMatchObject({ kind: 'personal', proposalId: own.id });
         expect(plan?.createdAt.toISOString()).toBe(placed.createdAt);
-        expect(mine.vaults.map((v) => [v.planId, v.plan?.sheet])).toEqual([
+        expect(mine.vaults.map((v) => [v.joinId, v.plan?.sheet])).toEqual([
           [plan?.id, own.fixture.sheet],
         ]);
         expect((await cached(a)).map((v) => v.basketId)).toEqual([plan?.id]);
@@ -443,33 +547,80 @@ describe('a vault is joined to its plan when the step that opens it is confirmed
     }
   });
 
-  it('a step that settles on a later read or build of the order is joined there', async () => {
-    // The report finds the transaction still pending, so the step is left sent. The next route that
-    // tracks it finds it confirmed: the read of the order, or the build of the step after it.
-    for (const via of ['read', 'build'] as const) {
+  /**
+   * A buy whose step that opens the vault landed and whose report found the transaction still pending:
+   * the step is left `sent`, nothing is in the cache, and the next route that tracks the order is the
+   * one that finds it confirmed.
+   */
+  async function landedUnseen(sick: Awaited<ReturnType<typeof flaky>>) {
+    const a = await someone();
+    await fund(a, sick.app);
+    const placed = await order(a, { amountUsd: 100 }, sick.app);
+    const create = opening(placed);
+    await build(a, placed, create.id, sick.app);
+    const txId = await land(a, placed, create.id, sick.app);
+    sick.on.pending = true;
+    const waiting = await report(a, placed, create.id, { txId }, sick.app);
+    sick.on.pending = false;
+    expect(legOf(waiting, create.id).status).toBe('sent');
+    expect(await cached(a)).toEqual([]);
+    expect(await held(a)).toEqual([]);
+    return { a, placed, create };
+  }
+
+  it('a step that settles on a later read or build of the order, or as its buy is finished, is joined there', async () => {
+    // The routes that track a step that was sent: the read of the order, the build of the step after
+    // it, and `continue`, which finishes a buy with the cash in its vault.
+    for (const via of ['read', 'build', 'continue'] as const) {
       const sick = await flaky();
       try {
-        const a = await someone();
-        await fund(a, sick.app);
-        const placed = await order(a, { amountUsd: 100 }, sick.app);
-        const create = opening(placed);
-        await build(a, placed, create.id, sick.app);
-        const txId = await land(a, placed, create.id, sick.app);
-        sick.on.pending = true;
-        const waiting = await report(a, placed, create.id, { txId }, sick.app);
-        sick.on.pending = false;
-        expect(legOf(waiting, create.id).status).toBe('sent');
-        expect(await cached(a)).toEqual([]);
-
+        const { a, placed, create } = await landedUnseen(sick);
         if (via === 'read')
           expect(legOf(await read(a, placed, sick.app), create.id).status).toBe('confirmed');
-        else await build(a, placed, first(placed, 1).id, sick.app);
-        const [plan] = await held(a);
-        expect([via, plan?.proposalId]).toEqual([via, plans.solana]);
-        expect((await cached(a)).map((v) => v.basketId)).toEqual([plan?.id]);
+        else if (via === 'build') await build(a, placed, first(placed, 1).id, sick.app);
+        else {
+          const res = await post(a, `/v1/orders/${placed.id}/continue`, undefined, sick.app);
+          expect(res.statusCode, res.body).toBe(200);
+          // The order of the swaps left, which itself opens no vault and is nobody's plan.
+          expect(OrderDetail.parse(res.json()).continues).toBe(placed.id);
+        }
+        // The vault is in the cache, the person holds one plan, and the vault names it.
+        const plansHeld = await held(a);
+        expect([via, plansHeld.map((p) => p.proposalId)]).toEqual([via, [plans.solana]]);
+        expect((await cached(a)).map((v) => v.basketId)).toEqual([plansHeld[0]?.id]);
+        expect(plansHeld[0]?.createdAt.toISOString()).toBe(placed.createdAt);
       } finally {
         await sick.app.close();
       }
+    }
+  });
+
+  it('a build that is refused still joins the step it found settled, and the refusal is the build’s own', async () => {
+    const sick = await flaky();
+    try {
+      const { a, placed, create } = await landedUnseen(sick);
+      // The price of the first asset moves past the minimum the order stated. The build of its swap
+      // tracks the step that was sent, finds it confirmed, and is then refused.
+      const swap = first(placed, 1);
+      const asset = swap.trades[0]?.buy ?? '';
+      const { adapter, mock } = sick.registry.get('solana');
+      const [price] = await adapter.getPrices([asset]);
+      if (!mock || !price) throw new Error('no mock price to move');
+      mock.setPrice(asset, (Number(price.usdPerToken) * 1.05).toFixed(6));
+      const res = await post(a, legUrl(placed, swap.id, 'build'), undefined, sick.app);
+      expect(res.statusCode, res.body).toBe(409);
+      expect(OrderError.parse(res.json())).toMatchObject({ code: 'PRICE_MOVED' });
+      const after = await data.db.select().from(legs).where(eq(legs.orderId, placed.id));
+      expect(after.find((l) => l.id === create.id)?.status).toBe('confirmed');
+      expect(after.find((l) => l.id === swap.id)?.status).toBe('planned');
+
+      // No other route of the order was asked: the refused build made the join.
+      const plansHeld = await held(a);
+      expect(plansHeld.map((p) => p.proposalId)).toEqual([plans.solana]);
+      expect((await cached(a)).map((v) => v.basketId)).toEqual([plansHeld[0]?.id]);
+      expect(plansHeld[0]?.createdAt.toISOString()).toBe(placed.createdAt);
+    } finally {
+      await sick.app.close();
     }
   });
 
@@ -523,11 +674,11 @@ describe('the portfolio read joins what the confirm missed', () => {
     const mine = await portfolio(a);
     const [plan] = await held(a);
     expect(plan?.createdAt.toISOString()).toBe(placed.createdAt);
-    expect(mine.vaults.map((v) => [v.planId, v.plan?.placedAt, v.plan?.card])).toEqual([
+    expect(mine.vaults.map((v) => [v.joinId, v.plan?.placedAt, v.plan?.card])).toEqual([
       [plan?.id, placed.createdAt, own.fixture.card],
     ]);
     // Read again: the same plan, and no other row.
-    expect((await portfolio(a)).vaults.map((v) => v.planId)).toEqual([plan?.id]);
+    expect((await portfolio(a)).vaults.map((v) => v.joinId)).toEqual([plan?.id]);
     expect(await held(a)).toHaveLength(1);
   });
 
@@ -612,7 +763,7 @@ describe('the portfolio read joins what the confirm missed', () => {
     const mine = await portfolio(a);
     const [atRead] = await held(a);
     expect(atRead?.proposalId).toBe(plans.solana);
-    expect(mine.vaults.map((v) => v.planId)).toEqual([atRead?.id]);
+    expect(mine.vaults.map((v) => v.joinId)).toEqual([atRead?.id]);
   });
 
   it('two joins of one vault at the same moment leave one plan', async () => {
@@ -643,7 +794,7 @@ describe('the portfolio read joins what the confirm missed', () => {
     const reads = await Promise.all(Array.from({ length: 4 }, () => portfolio(a)));
     const [again] = await held(a);
     expect(await held(a)).toHaveLength(1);
-    expect(reads.map((r) => r.vaults.map((v) => v.planId))).toEqual(
+    expect(reads.map((r) => r.vaults.map((v) => v.joinId))).toEqual(
       Array.from({ length: 4 }, () => [again?.id]),
     );
   });
@@ -730,13 +881,51 @@ describe('the portfolio read joins what the confirm missed', () => {
     for (const proposal of broken) {
       await data.db.update(proposals).set({ proposal }).where(eq(proposals.id, id));
       const after = await portfolio(a);
-      expect(after.vaults.map((v) => [v.planId, v.plan])).toEqual([
+      expect(after.vaults.map((v) => [v.joinId, v.plan])).toEqual([
         [plan?.id, { kind: 'personal', placedAt: placed.createdAt, proposalId: id }],
       ]);
       // Stored as it was again, the whole goal is back: it was that one part that took it away.
       await data.db.update(proposals).set({ proposal: income }).where(eq(proposals.id, id));
       expect((await portfolio(a)).vaults.map((v) => v.plan)).toEqual([whole]);
     }
+  });
+
+  it('answers no goal for a stored plan that no longer reads whole, though each of the four still reads', async () => {
+    const a = await someone();
+    const own = await ownPlan(a);
+    await fund(a);
+    const placed = await order(a, { amountUsd: 100, proposalId: own.id });
+    await settleAll(a, placed);
+    const only = { kind: 'personal' as const, placedAt: placed.createdAt, proposalId: own.id };
+    const whole = {
+      ...only,
+      sheet: own.fixture.sheet,
+      card: own.fixture.card,
+      verdict: null,
+      observations: [],
+    };
+    expect((await portfolio(a)).vaults.map((v) => v.plan)).toEqual([whole]);
+    expect((await loadReadablePlan(data.db, own.id, a.sub))?.proposal.sheet).toEqual(
+      own.fixture.sheet,
+    );
+
+    // The plan's lines no longer add up to 10,000, as a plan an older engine stored might not: one
+    // basis point is gone from the first. Its sheet, its card and its observations are as they
+    // were, so each of the four still reads alone.
+    const stored = await loadProposal(data.db, own.id);
+    expect(stored?.lines.map((line) => line.weightBps)).toEqual([5000, 3000, 2000]);
+    await data.db
+      .update(proposals)
+      .set({ proposal: sql`jsonb_set(${proposals.proposal}, '{lines,0,weightBps}', '4999')` })
+      .where(eq(proposals.id, own.id));
+    // The plan's own read refuses it to the person who made it, and the join says no more than that
+    // read would: the vault is held, at the confirm's join and at the read's, and no goal is answered.
+    await expect(loadReadablePlan(data.db, own.id, a.sub)).rejects.toMatchObject({ status: 409 });
+    await heldWithNoGoal(a, only);
+
+    // Stored as it was again, the whole goal is back.
+    await data.db.update(proposals).set({ proposal: own.fixture }).where(eq(proposals.id, own.id));
+    expect((await portfolio(a)).vaults.map((v) => v.plan)).toEqual([whole]);
   });
 
   it('answers the portfolio all the same when a vault cannot be joined', async () => {
@@ -781,8 +970,58 @@ describe('the portfolio read joins what the confirm missed', () => {
       provenance: 'mock',
     });
     const mine = await portfolio(a);
-    expect(mine.vaults.map((v) => [v.basketId, v.planId ?? null])).toEqual([['43', null]]);
+    expect(mine.vaults.map((v) => [v.basketId, v.joinId ?? null])).toEqual([['43', null]]);
     expect(await held(a)).toEqual([]);
+  });
+
+  it('answers the portfolio all the same when the look for the vaults that hold no plan fails, and logs it once', async () => {
+    const broken = failingLook();
+    const made = await testApp({ issuer: issuer.issuer, db: broken.db });
+    try {
+      const a = await someone();
+      await fund(a, made.app);
+      const placed = await order(a, { amountUsd: 100 }, made.app);
+      await settleAll(a, placed, made.app);
+      const [vault] = await made.registry.get('solana').adapter.getVaults(a.solana);
+      if (!vault) throw new Error('no vault');
+      await unjoin(a);
+      broken.on.fails = true;
+
+      // Asked as the portfolio's read asks it: it resolves, says once what went wrong, and joins
+      // nothing.
+      const { log, said } = keptLog();
+      await expect(
+        joinMissed(broken.db, 'solana', [vault], principalOf(a, 'solana'), log),
+      ).resolves.toBeUndefined();
+      expect(broken.on.failed).toBe(1);
+      expect(said.map((line) => line.level)).toEqual(['error']);
+      expect(said[0]?.fields).toMatchObject({ chain: 'solana', err: expect.any(Error) });
+      expect(await held(a)).toEqual([]);
+
+      // Through the route: the chain was read and is answered, and none is said to be unavailable.
+      const res = await get(a, '/v1/portfolio', made.app);
+      expect(res.statusCode, res.body).toBe(200);
+      const answer = PortfolioResponse.parse(res.json());
+      expect(broken.on.failed).toBe(2);
+      expect(answer.unavailable).toEqual([]);
+      expect(answer.chains.map((c) => [c.chain, c.vaults.map((v) => v.address)])).toEqual([
+        ['solana', [vault.address]],
+      ]);
+      expect(await held(a)).toEqual([]);
+      expect((await cached(a)).map((v) => v.basketId)).toEqual([null]);
+
+      // The next read tries again: with the database answering, the join is made.
+      broken.on.fails = false;
+      const mine = await portfolio(a, made.app);
+      const plansHeld = await held(a);
+      expect(plansHeld).toHaveLength(1);
+      expect(mine.vaults.map((v) => [v.joinId, v.plan?.placedAt])).toEqual([
+        [plansHeld[0]?.id, placed.createdAt],
+      ]);
+      expect(broken.on.failed).toBe(2);
+    } finally {
+      await made.app.close();
+    }
   });
 
   it('joins a vault only for a person who holds its owner’s wallet', async () => {
@@ -805,6 +1044,73 @@ describe('the portfolio read joins what the confirm missed', () => {
     expect(await plansOf(data.db, 'solana', [vault.address], stranger.sub)).toEqual(new Map());
     expect(await held(stranger)).toEqual([]);
     expect((await cached(a)).map((v) => v.basketId)).toEqual([null]);
+  });
+
+  it('answers a vault’s plan on the vault’s own chain only: its address asked on another chain has none', async () => {
+    const a = await someone('robinhood');
+    await fund(a);
+    await settleAll(a, await order(a, { amountUsd: 100 }));
+    const [vault] = await cached(a);
+    const [plan] = await held(a);
+    if (!vault || !plan) throw new Error('no joined vault');
+    expect([vault.chainId, vault.basketId]).toEqual(['robinhood', plan.id]);
+    const askedOn = async (chain: ChainId) =>
+      [...(await plansOf(data.db, chain, [vault.address], a.sub))].map(([address, joined]) => [
+        address,
+        joined.joinId,
+      ]);
+    expect(await askedOn('robinhood')).toEqual([[vault.address, plan.id]]);
+    // Base is an EVM chain too, so the address is one a vault there could have. It names no vault of
+    // Base's in the cache, and the Robinhood Chain vault's plan is not answered for it.
+    expect(await askedOn('base')).toEqual([]);
+    expect(await askedOn('solana')).toEqual([]);
+  });
+
+  it('joins a vault from the orders of its own chain only: one on Base is not joined from a Robinhood Chain order', async () => {
+    const a = await someone('robinhood');
+    await fund(a);
+    const placed = await order(a, { amountUsd: 100 });
+    await settleAll(a, placed);
+    const [state] = await registry.get('robinhood').adapter.getVaults(a.evm);
+    const [plan] = await held(a);
+    if (!state || !plan) throw new Error('no joined vault');
+    expect((await cached(a)).map((v) => [v.chainId, v.basketId])).toEqual([['robinhood', plan.id]]);
+
+    // A vault on Base as the cache would hold one. It is made up: no chain here opened it, and the
+    // person has no order on Base. Its owner and its plan number are the Robinhood Chain vault's, and
+    // so is its address, as two EVM chains can give one address to the same owner and number.
+    const onBase: VaultState = {
+      ...state,
+      chain: 'base',
+      cash: { ...state.cash, asset: 'base:usdc' },
+      positions: [],
+    };
+    await rememberVault(data.db, onBase, 'mock');
+    const cachedOn = async (chain: ChainId) => (await cached(a)).find((v) => v.chainId === chain);
+    expect(await cachedOn('base')).toMatchObject({
+      address: state.address,
+      owner: a.evm,
+      onchainBasketId: state.basketId,
+      basketId: null,
+    });
+
+    // The catch-up for Base finds the vault with no plan and no order of its chain: nothing goes
+    // wrong, and nothing is joined. The Robinhood Chain order does not stand in for one.
+    const { log, said } = keptLog();
+    await joinMissed(data.db, 'base', [onBase], principalOf(a, 'evm'), log);
+    expect(said).toEqual([]);
+    expect((await cachedOn('base'))?.basketId).toBeNull();
+    expect((await held(a)).map((p) => p.id)).toEqual([plan.id]);
+
+    // The same catch-up on the order's own chain does join: with the Robinhood Chain vault's join
+    // taken away, it is made again from that order, and the vault on Base still has none.
+    await unjoin(a);
+    await joinMissed(data.db, 'robinhood', [state], principalOf(a, 'evm'), log);
+    expect(said).toEqual([]);
+    const plansHeld = await held(a);
+    expect(plansHeld.map((p) => p.createdAt.toISOString())).toEqual([placed.createdAt]);
+    expect((await cachedOn('robinhood'))?.basketId).toBe(plansHeld[0]?.id);
+    expect((await cachedOn('base'))?.basketId).toBeNull();
   });
 
   it('leaves a vault the cache already has as it is when it is remembered again', async () => {
@@ -858,18 +1164,27 @@ describe('the portfolio read joins what the confirm missed', () => {
 });
 
 describe('a plan is answered to its own person only', () => {
-  it('is not in another person’s portfolio, and a vault joined to another person’s plan is answered with none', async () => {
+  it('is answered to nobody else who names the vault, and a vault joined to another person’s plan is answered with none', async () => {
     const a = await someone();
     await fund(a);
     await settleAll(a, await order(a, { amountUsd: 100 }));
     const [plan] = await held(a);
-    if (!plan) throw new Error('no plan');
+    const [vault] = await cached(a);
+    if (!plan || !vault) throw new Error('no plan');
 
-    // Somebody else, with wallets of their own.
+    // Somebody else, with wallets of their own, who has learnt the vault's address. The join answers
+    // the plan by address to the person whose plan it is, and nothing to anybody else who asks.
     const stranger = await someone();
+    const asked = (who: Person) => plansOf(data.db, 'solana', [vault.address], who.sub);
+    expect([...(await asked(a))].map(([address, joined]) => [address, joined.joinId])).toEqual([
+      [vault.address, plan.id],
+    ]);
+    expect(await asked(stranger)).toEqual(new Map());
+    // Their own portfolio has no vault, and its read made them no plan.
     const theirs = await portfolio(stranger);
     expect(theirs.vaults).toEqual([]);
     expect(theirs.body).not.toContain(plan.id);
+    expect(await held(stranger)).toEqual([]);
 
     // Another sign-in that holds the same wallet: the vault is the wallet's, the plan is not theirs.
     const sub = `did:privy:test-${randomUUID()}`;
@@ -883,16 +1198,16 @@ describe('a plan is answered to its own person only', () => {
     const seen = await portfolio(twin);
     expect(seen.vaults).toHaveLength(1);
     expect(seen.vaults[0]).toMatchObject({ owner: a.solana, basketId: basketIdOf(plans.solana) });
-    expect(seen.vaults[0]).not.toHaveProperty('planId');
+    expect(seen.vaults[0]).not.toHaveProperty('joinId');
     expect(seen.vaults[0]).not.toHaveProperty('plan');
     expect(seen.body).not.toContain(plan.id);
     expect(seen.body).not.toContain(plans.solana);
     // Reading it made them no plan, and left the owner's.
     expect(await held(twin)).toEqual([]);
-    expect((await portfolio(a)).vaults.map((v) => v.planId)).toEqual([plan.id]);
+    expect((await portfolio(a)).vaults.map((v) => v.joinId)).toEqual([plan.id]);
   });
 
-  it('answers a vault made straight on the chain, with no order, with neither field', async () => {
+  it('a vault made straight on the chain, with no order, is joined to nothing and answered no plan', async () => {
     const a = await someone();
     await fund(a);
     const { adapter, mock } = registry.get('solana');
@@ -912,7 +1227,7 @@ describe('a plan is answered to its own person only', () => {
     );
     const alone = await portfolio(a);
     expect(alone.vaults.map((v) => v.basketId)).toEqual(['42']);
-    expect(alone.vaults[0]).not.toHaveProperty('planId');
+    expect(alone.vaults[0]).not.toHaveProperty('joinId');
     expect(alone.vaults[0]).not.toHaveProperty('plan');
     expect((await cached(a)).map((v) => v.basketId)).toEqual([null]);
     expect(await held(a)).toEqual([]);
@@ -922,7 +1237,7 @@ describe('a plan is answered to its own person only', () => {
     const both = await portfolio(a);
     const [plan] = await held(a);
     expect(await held(a)).toHaveLength(1);
-    expect(Object.fromEntries(both.vaults.map((v) => [v.basketId, v.planId ?? null]))).toEqual({
+    expect(Object.fromEntries(both.vaults.map((v) => [v.basketId, v.joinId ?? null]))).toEqual({
       '42': null,
       [basketIdOf(plans.solana)]: plan?.id,
     });
@@ -931,7 +1246,7 @@ describe('a plan is answered to its own person only', () => {
   it('a plan that names no person, bought by its id alone, is held with none of what it says', async () => {
     // Stored with no person and not from a link, as a plan stored before plans named their person.
     // Its id still buys it for anybody (`loadBuyablePlan`) and reads it back to nobody
-    // (`loadReadablePlan`), and the portfolio follows the second.
+    // (`loadReadablePlan`), and the join answers a goal by the second.
     const id = await data.storePlan(planFixture('solana'));
     expect(await namedBy(id)).toEqual({ userId: null, fromLink: false });
     const b = await someone();
@@ -1124,7 +1439,7 @@ describe('the two other kinds of plan', () => {
       [basketIdOf(familyIdOf(slug)), plan?.id],
     ]);
     const mine = await portfolio(buyer);
-    expect(mine.vaults.map((v) => [v.planId, v.plan])).toEqual([
+    expect(mine.vaults.map((v) => [v.joinId, v.plan])).toEqual([
       [plan?.id, { kind: 'follow', placedAt: placed.createdAt, familyId: familyIdOf(slug) }],
     ]);
 
@@ -1184,7 +1499,7 @@ describe('the two other kinds of plan', () => {
           [basketIdOfLinked(id, buyer.sub), plan?.id],
         ]);
         const mine = await portfolio(buyer, linked.app);
-        expect(mine.vaults.map((v) => [v.planId, v.plan?.sheet, v.plan?.card])).toEqual([
+        expect(mine.vaults.map((v) => [v.joinId, v.plan?.sheet, v.plan?.card])).toEqual([
           [plan?.id, proposal.sheet, proposal.card],
         ]);
         // The card's figures travel with where they came from: the stored plan's own observations,

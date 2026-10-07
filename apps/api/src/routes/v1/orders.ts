@@ -104,9 +104,10 @@ async function published(
 /**
  * A buy whose step that opens the vault has confirmed: the vault is written to the cache and joined to
  * the plan it was opened for (orders/plan-join.ts). Done on every route that answers an order after a
- * step may have settled: the read, the report, the cancel, and the build, which tracks the steps sent
- * before it. Once joined it is one look in the database. It never fails the answer: what goes wrong is
- * logged, and the portfolio's read makes the join later.
+ * step may have settled: the read, the report, the cancel, `continue`, which tracks the steps sent
+ * before it decides anything, and the build, which tracks them too and makes the join whether it then
+ * answers or refuses. Once joined it is one look in the database. It never fails the answer: what goes
+ * wrong is logged, and the portfolio's read makes the join later.
  */
 async function joined(
   deps: OrderDeps,
@@ -206,11 +207,17 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
     },
     async (req) => {
       const read = await ownOrder(deps, req, req.params.id);
-      const built = await buildLeg(deps, read, req.params.legId, signedIn(req).userId);
-      // The build tracked the steps sent before it, so the step that opens the vault may have settled
-      // since the order was read.
-      await joined(deps, req, read, true);
-      return built;
+      try {
+        return await buildLeg(deps, read, req.params.legId, signedIn(req).userId);
+      } finally {
+        // The build tracked the steps sent before it, so the step that opens the vault may have settled
+        // since the order was read, whether the build then answered or refused (a price that moved
+        // past a later step's minimum, say). What the caller gets is the build's own answer or
+        // refusal: the join never throws, and were it to, that is logged here and goes no further.
+        await joined(deps, req, read, true).catch((err: unknown) =>
+          req.log.error({ err, orderId: read.order.id }, 'the join after a build failed'),
+        );
+      }
     },
   );
 
@@ -281,8 +288,9 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
       };
       const [made] = await continuationsOf(deps.db, stored.order.id);
       if (made) return answerMade(made);
-      // What the chain says now of a step that was sent, before anything is decided on its status.
-      const fresh = await refreshOrder(deps, stored);
+      // What the chain says now of a step that was sent, before anything is decided on its status. The
+      // step that opens the vault may be one of them: found confirmed here, its vault is joined here.
+      const fresh = await joined(deps, req, await refreshOrder(deps, stored));
       const left = leftOf(fresh.order);
       const leftLegIds = left.map((leg) => leg.id);
       // The attempts looked at here; one recorded after this is seen under the lock below.

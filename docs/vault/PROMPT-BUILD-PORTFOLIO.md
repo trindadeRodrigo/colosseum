@@ -9,6 +9,8 @@
 > - No read of many vaults by address exists on either reader, and `packages/chain-evm` makes no Multicall3 call: the worker reads one vault a call through its own seam (`apps/snapshot/src/source.ts`). ("Discovery".)
 > - `user_wallets` is written by nothing. Owners are those of orders with a confirmed step and of the `vaults` rows, which the goal join now writes when a vault is opened. A leg names no vault address.
 > - The band, the loss budget and the pause are kept on each snapshot row (`band_bps`, `loss_cap_bps`, `paused`), read once a pass from the chain's own settings. `VaultState` gained no field.
+> - The index the body names on `vault_snapshots`, `(chain_id, address, observed_at desc)`, was not made: the unique key on `(chain_id, address, observed_at)` serves that read. The one other index is `(owner, observed_at)`, for a person's history by the addresses of their wallets.
+> - `block_or_slot` is the chain's height at the start of the pass that read the vault, not the vault's own slot. Every read of the pass is at or after it, and it is null where the chain could not say.
 > - A chain on the mock is read only when `SNAPSHOT_CHAINS` names it, and the worker's mock is a chain of its own, replayed from the `vaults` rows (`apps/snapshot/README.md`).
 > - Two decisions were recorded, not one: `ON-TRACK-V1` and `SNAPSHOT-WORKER` (`docs/GATES.md`).
 

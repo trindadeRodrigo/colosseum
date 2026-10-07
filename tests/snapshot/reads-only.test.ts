@@ -57,6 +57,11 @@ const WRITES: readonly [RegExp, string][] = [
   // holds would relay `eth_sendRawTransaction` through its `request`. Held to the three namespaces
   // that send or sign, and to the start of the name, so that "signal" stays a word.
   [/^(eth|personal|wallet)_(send|sign)\w*$/, 'a JSON-RPC send or sign'],
+  // And every other method of the two namespaces a reader has no call for at all: `personal_` is a
+  // node that holds keys (`personal_unlockAccount` opens one to sign with) and `wallet_` is a wallet
+  // (`wallet_addEthereumChain`). `eth_` is where the reads are, so only its sends and signs are
+  // refused.
+  [/^(personal|wallet)_\w*$/, 'a JSON-RPC method of a wallet, or of a node that holds keys'],
   // What viem writes to a chain with, by name.
   [/^(writeContract|deployContract|createWalletClient|walletActions)$/, 'a wallet client'],
   [/^load\w*Key\w*$/, 'a key loader'],
@@ -263,6 +268,14 @@ describe('the snapshot worker reads only', () => {
       [
         "await rpc.request({ method: 'wallet_sendCalls', params: [calls] });",
         'names wallet_sendCalls: a JSON-RPC send or sign',
+      ],
+      [
+        "await rpc.request({ method: 'personal_unlockAccount', params: [who, phrase, 60] });",
+        'names personal_unlockAccount: a JSON-RPC method of a wallet, or of a node that holds keys',
+      ],
+      [
+        "await rpc.request({ method: 'wallet_addEthereumChain', params: [chain] });",
+        'names wallet_addEthereumChain: a JSON-RPC method of a wallet, or of a node that holds keys',
       ],
       ['await client.writeContract(request);', 'names writeContract: a wallet client'],
       ['await client.deployContract({ abi, bytecode });', 'names deployContract: a wallet client'],

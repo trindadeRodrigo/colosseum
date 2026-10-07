@@ -1,18 +1,15 @@
 import { baskets, type Db, legs, orders, proposals, users, vaults } from '@colosseum/db';
 import {
   type Address,
-  BasketCard,
-  BasketSheet,
+  BasketProposal,
   ChainError,
   type ChainId,
   chainFamily,
   type IntentRequest,
-  ObservationRef,
   type Principal,
   type Provenance,
   type VaultPlan,
   type VaultState,
-  Verdict,
 } from '@colosseum/schemas';
 import { and, desc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
 import { Refusal } from './errors';
@@ -23,12 +20,14 @@ import { isLinkedProposal, type StoredOrder } from './store';
 
 // The goal join, on the server (DESIGN-VAULT section 4). A vault is joined to the plan it was opened
 // for: `vaults.basket_id` names a row of `baskets`, the person's plan, and that row names the stored
-// plan (`proposals`) or the shared portfolio the vault follows. Until this file only the browser knew
-// it, from the order record it kept (apps/web/features/portfolio/vault-goal.ts).
+// plan (`proposals`) or the shared portfolio the vault follows. Two answers already say a vault's plan,
+// each worked out from the orders when it is asked: `GET /v1/me/plans` (API-PLANS) and the `planId` of
+// `GET /v1/portfolio` (API-ADD-MONEY). What this file adds is the join kept in the database, which the
+// snapshot worker (apps/snapshot) and the portfolio section's routes (PORT-2) read.
 //
 // The join is made when the step that opens the vault is confirmed, and by the portfolio's read for a
 // vault that was missed then. From the first of the two the vault has a row in `vaults`, valued or not:
-// the snapshot worker (apps/snapshot) reads the vaults that table names.
+// the snapshot worker reads the vaults that table names.
 
 /** The request's log, which hides node addresses in whatever it is handed (redact.ts). */
 export type JoinLog = {
@@ -41,8 +40,15 @@ export type Bought =
   | { kind: 'personal'; proposalId: string }
   | { kind: 'follow'; familyId: string };
 
-/** A vault's plan as the portfolio answers it: the id of the person's `baskets` row, and what it is. */
-export type JoinedPlan = { planId: string; plan: VaultPlan };
+/** A vault's plan as `plansOf` answers it, for the portfolio section's routes (PORT-2). */
+export type JoinedPlan = {
+  /**
+   * The id of the person's `baskets` row the vault is joined to. It is not the `planId` that
+   * `GET /v1/portfolio` answers, which is the stored plan's id (`proposals.id`).
+   */
+  joinId: string;
+  plan: VaultPlan;
+};
 
 /**
  * Writes a vault the cache does not have yet, as the chain has it now. Nobody has valued it, so
@@ -319,7 +325,9 @@ async function joinFromOrders(db: Db, vault: Named, privyId: string): Promise<vo
  * Joins the vaults the confirm missed, at the portfolio's read: the vaults are the ones just read from
  * the chain and written to the cache, and each that holds no plan yet is joined from the person's
  * orders (`joinFromOrders`). Only a vault of the person's own wallet is joined. It answers nothing and
- * never fails the read: what goes wrong is logged, and the next read tries again.
+ * never fails the read: what goes wrong is logged, and the next read tries again. That holds for the
+ * whole of its work, the look for the vaults that hold no plan included; a vault that cannot be joined
+ * is logged on its own and does not stop the ones after it.
  */
 export async function joinMissed(
   db: Db,
@@ -328,26 +336,31 @@ export async function joinMissed(
   principal: Principal,
   log: JoinLog,
 ): Promise<void> {
-  const privyId = principal.userId;
-  if (!privyId || states.length === 0) return;
-  const addresses = states.map((v) => v.address);
-  const unjoined = await db
-    .select({ address: vaults.address })
-    .from(vaults)
-    .where(
-      and(eq(vaults.chainId, chain), inArray(vaults.address, addresses), isNull(vaults.basketId)),
-    );
-  const mine = new Set(principal.wallets.map((w) => w.address));
-  for (const { address } of unjoined) {
-    const vault = states.find((v) => v.address === address);
-    // Only a vault of the person's own wallet is joined to the person's plan.
-    if (!vault || vault.chain !== chain || !mine.has(vault.owner)) continue;
-    try {
-      await joinFromOrders(db, vault, privyId);
-    } catch (err) {
-      // The portfolio is answered all the same: the join changes nothing in its answer.
-      log.error({ err, chain, vault: address }, 'a vault could not be joined to its plan');
+  try {
+    const privyId = principal.userId;
+    if (!privyId || states.length === 0) return;
+    const addresses = states.map((v) => v.address);
+    const unjoined = await db
+      .select({ address: vaults.address })
+      .from(vaults)
+      .where(
+        and(eq(vaults.chainId, chain), inArray(vaults.address, addresses), isNull(vaults.basketId)),
+      );
+    const mine = new Set(principal.wallets.map((w) => w.address));
+    for (const { address } of unjoined) {
+      const vault = states.find((v) => v.address === address);
+      // Only a vault of the person's own wallet is joined to the person's plan.
+      if (!vault || vault.chain !== chain || !mine.has(vault.owner)) continue;
+      try {
+        await joinFromOrders(db, vault, privyId);
+      } catch (err) {
+        // The portfolio is answered all the same: the join changes nothing in its answer.
+        log.error({ err, chain, vault: address }, 'a vault could not be joined to its plan');
+      }
     }
+  } catch (err) {
+    // The look itself failed, so no vault was tried. The portfolio is answered all the same.
+    log.error({ err, chain }, 'the vaults that hold no plan could not be read: none was joined');
   }
 }
 
@@ -358,18 +371,25 @@ export async function joinMissed(
  * person's plan, a vault made outside the app and one whose order nobody finds have none.
  *
  * Whose goal is answered (the stored plan's sheet, card, verdict and observations) follows the rule a
- * stored plan is read back by, `loadReadablePlan` in store.ts: the plan was made from a link (it is
- * anybody's who holds its id, as `GET /v1/baskets/{id}` answers it), or its row names the same user as
- * the `baskets` row. Any other vault is answered that the person holds the plan (`kind`, `placedAt`,
- * `proposalId`) and none of what it says: the goal it was made for is its maker's, whoever that is.
- * So a plan's goal is answered to nobody `loadReadablePlan` would refuse the plan to.
+ * stored plan is read back by, `loadReadablePlan` in store.ts, in both its halves. Whose it is: the
+ * plan was made from a link, or its row names the same user as the `baskets` row. And whether it still
+ * reads: the whole stored plan has to parse as a `BasketProposal` (`goalOf`), since `loadReadablePlan`
+ * refuses to everybody a plan that does not. Any other vault is answered that the person holds the
+ * plan (`kind`, `placedAt`, `proposalId`) and none of what it says: the goal it was made for is its
+ * maker's, whoever that is, and a plan that no longer reads says nothing. So a plan's goal is answered
+ * to nobody `loadReadablePlan` would refuse the plan to.
  *
- * A person can hold such a plan in two ways. A buy refuses a plan that names another person
- * (`loadBuyablePlan`), but a buy made before it did may have opened a vault for one. And a plan that
- * names no person and is not from a link is still bought by anybody holding its id: buying is the
- * looser of the two rules there, and holding the id does not read the plan back. Every plan the app
- * makes is stored after its person's user row is written, so those name their user; a row with none is
- * one stored another way (before plans named their person, a test's fixture, a row written by hand).
+ * A plan made from a link is anybody's who holds its id. The agent surface's flag is not asked here: it
+ * closes the read by id (`GET /v1/baskets/{id}`) to anybody, not a holder's own vault, so a holder is
+ * answered the goal of such a plan with the flag on or off.
+ *
+ * A person can hold a plan that is not theirs to read in two ways. A buy refuses a plan that names
+ * another person (`loadBuyablePlan`), but a buy made before it did may have opened a vault for one.
+ * And a plan that names no person and is not from a link is still bought by anybody holding its id:
+ * buying is the looser of the two rules there, and holding the id does not read the plan back. Every
+ * plan the app makes is stored after its person's user row is written, so those name their user; a row
+ * with none is one stored another way (before plans named their person, a test's fixture, a row
+ * written by hand).
  */
 export async function plansOf(
   db: Db,
@@ -381,7 +401,7 @@ export async function plansOf(
   const rows = await db
     .select({
       address: vaults.address,
-      planId: baskets.id,
+      joinId: baskets.id,
       kind: baskets.kind,
       proposalId: baskets.proposalId,
       familyId: baskets.familyId,
@@ -406,15 +426,16 @@ export async function plansOf(
     rows.map((row) => [
       row.address,
       {
-        planId: row.planId,
+        joinId: row.joinId,
         plan: {
           kind: row.kind,
           placedAt: row.placedAt.toISOString(),
           ...(row.proposalId ? { proposalId: row.proposalId } : {}),
           ...(row.familyId ? { familyId: row.familyId } : {}),
           // The rule of `loadReadablePlan` (store.ts): what a stored plan says is answered to the
-          // person its row names, and to anybody for a plan made from a link. A plan that names
-          // another person, or nobody, is held, and what it says is not this person's to read.
+          // person its row names, and to anybody for a plan made from a link, and only while the
+          // whole stored plan still reads (`goalOf`). A plan that names another person, or nobody,
+          // is held, and what it says is not this person's to read.
           ...(row.fromLink || (row.madeBy !== null && row.madeBy === row.heldBy)
             ? goalOf(row.proposal)
             : {}),
@@ -431,22 +452,16 @@ export async function plansOf(
  * its source, time, method and provenance. A reading the engine had with no source or no time is not
  * among them (`sharedProposal` in personalize.ts), and its figure has none to show.
  *
- * Nothing where there is no stored plan, or where one of the four no longer reads: a goal is not
- * answered in part, nor a card without the readings it stands on.
+ * Nothing where there is no stored plan, or where the stored plan no longer reads whole. The four are
+ * taken from the plan parsed as a `BasketProposal`, the parse `loadReadablePlan` (store.ts) reads a
+ * stored plan back by: a plan that read refuses, for lines that no longer add up to 10,000 as much as
+ * for a sheet nobody takes today, says nothing here either. So a goal is not answered in part, nor a
+ * card without the readings it stands on, nor any of the four from a plan that cannot be read back.
+ * `verdict` is null for a plan that stored none: its goal is not an income.
  */
 function goalOf(stored: unknown): Pick<VaultPlan, 'sheet' | 'card' | 'verdict' | 'observations'> {
-  if (typeof stored !== 'object' || stored === null) return {};
-  const plan = stored as Record<string, unknown>;
-  const sheet = BasketSheet.safeParse(plan.sheet);
-  const card = BasketCard.safeParse(plan.card);
-  const verdict = plan.verdict == null ? null : Verdict.safeParse(plan.verdict);
-  const observations = ObservationRef.array().safeParse(plan.observations);
-  if (!sheet.success || !card.success || verdict?.success === false || !observations.success)
-    return {};
-  return {
-    sheet: sheet.data,
-    card: card.data,
-    verdict: verdict?.data ?? null,
-    observations: observations.data,
-  };
+  const plan = BasketProposal.safeParse(stored);
+  if (!plan.success) return {};
+  const { sheet, card, verdict, observations } = plan.data;
+  return { sheet, card, verdict: verdict ?? null, observations };
 }
