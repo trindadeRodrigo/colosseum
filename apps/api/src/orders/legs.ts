@@ -29,6 +29,7 @@ import {
 import { autoFollowOffer, familyText, followedOn, recipeTargets, refuseAutoFollow } from './shared';
 import {
   blockedBy,
+  continuationsOf,
   isLinkedProposal,
   liveElsewhere,
   loadFamilies,
@@ -169,7 +170,15 @@ async function buildFor(
         ));
   const slippageBps = slippageOf(request);
   const trades = leg.trades.length ? leg.trades : undefined;
-  const shared = nonce === undefined ? {} : { nonce };
+  // The terms the order stated when it was made, and the person approved: every build of the step
+  // carries these minimums, however the price has moved since. A builder that can no longer meet one
+  // refuses (`PriceMoved`); it never writes another. A step stored before each trade had its figure
+  // states none, and is built from the quote as it was.
+  const minimums =
+    trades && leg.expected.length === trades.length
+      ? leg.expected.map((figure) => figure.minOutRaw)
+      : undefined;
+  const shared = { ...(nonce === undefined ? {} : { nonce }), ...(minimums ? { minimums } : {}) };
   const vault = async () => {
     const found = await planVault(entry, owner, basketId);
     if (!found) throw new ChainError('VaultNotFound', 'the vault for this plan is not open yet');
@@ -178,7 +187,12 @@ async function buildFor(
   switch (leg.kind) {
     // The adapter works out who may take the cash from the plan: nobody here names a spender.
     case 'approve':
-      return adapter.buildApprove({ owner, basketId, amountRaw: cashOf(leg), ...shared });
+      return adapter.buildApprove({
+        owner,
+        basketId,
+        amountRaw: cashOf(leg),
+        ...(nonce === undefined ? {} : { nonce }),
+      });
     case 'create_vault': {
       if (request.family) {
         // A vault that follows the version the order holds to: it copies that version's weights, and
@@ -479,6 +493,19 @@ async function assertNothingInFlight(
 }
 
 /**
+ * The same for several steps of one order: none of them has a transaction that can still land. For a
+ * continuation (continue.ts), which makes the steps again in another order: a transaction built for
+ * one of them and signed later would spend the vault's cash a second time.
+ */
+export async function assertNoneInFlight(
+  deps: OrderDeps,
+  stored: StoredOrder,
+  steps: readonly Leg[],
+): Promise<void> {
+  for (const leg of steps) await assertNothingInFlight(deps, stored, leg);
+}
+
+/**
  * EVM only. A wallet has one next nonce on a chain, and every build states it. Two orders of one
  * wallet built side by side would both be built on that nonce, and only one of the two transactions
  * could ever land. So a step is not built while another order of the same wallet holds a transaction
@@ -531,6 +558,15 @@ export async function buildLeg(
     });
   if (leg.status === 'confirmed' || leg.status === 'skipped')
     throw new Refusal(409, 'this step is already done');
+  // An order that another finishes (continue.ts) builds nothing more: what it left is that order's,
+  // at the terms that one states, and the vault's cash is spent once. Asked here before any work is
+  // done, and again under the order's lock when the build is recorded (`recordBuild`), which is the
+  // one that holds against a continuation made in between.
+  const [finishedBy] = await continuationsOf(deps.db, order.id);
+  if (finishedBy)
+    throw new Refusal(409, 'another order finishes this one: its steps left are that order’s', {
+      fix: `Open order ${finishedBy.id}.`,
+    });
   const waiting = order.legs.find((l) => l.chain === leg.chain && l.seq < leg.seq && !settled(l));
   if (waiting) throw new Refusal(409, 'an earlier step on this chain has not settled yet');
 

@@ -991,6 +991,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -1032,7 +1033,8 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
@@ -2012,6 +2014,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -2053,7 +2056,8 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
@@ -2712,6 +2716,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -2753,7 +2758,8 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
@@ -3056,6 +3062,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -3097,7 +3104,8 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
@@ -3442,6 +3450,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -3483,7 +3492,8 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
@@ -3886,6 +3896,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -3927,7 +3938,8 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
@@ -4164,6 +4176,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -4205,7 +4218,8 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
@@ -4392,6 +4406,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -4433,7 +4448,8 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
@@ -4638,6 +4654,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -4679,7 +4696,8 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
@@ -5186,6 +5204,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -5227,7 +5246,8 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
@@ -5571,6 +5591,10 @@
                       "type": "string",
                       "pattern": "^\\d{1,20}$"
                     },
+                    "continues": {
+                      "type": "string",
+                      "minLength": 1
+                    },
                     "legs": {
                       "type": "array",
                       "items": {
@@ -5998,6 +6022,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -6039,7 +6064,8 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
@@ -6121,6 +6147,10 @@
                       "type": "string",
                       "pattern": "^\\d{1,20}$"
                     },
+                    "continues": {
+                      "type": "string",
+                      "minLength": 1
+                    },
                     "legs": {
                       "type": "array",
                       "items": {
@@ -6548,6 +6578,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -6589,7 +6620,564 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/orders/{id}/continue": {
+      "post": {
+        "summary": "Finish a buy with the cash already in its vault. Nothing is deposited",
+        "tags": ["orders"],
+        "description": "For a buy whose deposit landed and whose swaps did not all follow: a step was not signed, or could no longer be built at the terms the order stated (`PRICE_MOVED`; an order’s minimums are never changed after it is made). Answers a new order, for the same owner and the same vault, whose steps are the swaps the first one left, with the same amounts, quoted now and stating new minimums to review and approve. It has no `depositRaw` and names the order it finishes in `continues`; its steps spend only the cash the vault holds, and it is refused (409) when the vault holds less than they spend, when the first order’s deposit has not landed, when nothing is left, and while a step of it is built or on its way. An order is finished by one order: called again while that one is still open, it answers that same order, and after that it is refused (409, naming it), since what that order left is its own to finish by this route. From then on the first order builds nothing more. No body. The order is its owner’s alone: anybody else gets 404.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "build",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": ["buy", "rebalance", "follow", "publish", "withdraw", "settings"]
+                    },
+                    "owner": {
+                      "type": "object",
+                      "properties": {
+                        "solana": {
+                          "type": "string",
+                          "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+                        },
+                        "evm": {
+                          "type": "string",
+                          "pattern": "^0x[0-9a-f]{40}$"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "depositRaw": {
+                      "type": "string",
+                      "maxLength": 78,
+                      "pattern": "^(?:0|[1-9]\\d*)$"
+                    },
+                    "basketId": {
+                      "type": "string",
+                      "pattern": "^\\d{1,20}$"
+                    },
+                    "continues": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "legs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "orderId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "chain": {
+                            "type": "string",
+                            "enum": ["solana", "base", "robinhood"]
+                          },
+                          "seq": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "approve",
+                              "create_vault",
+                              "deposit",
+                              "swap",
+                              "set_targets",
+                              "accept_version",
+                              "set_auto_follow",
+                              "withdraw",
+                              "publish",
+                              "adopt_version",
+                              "keeper_leg"
+                            ]
+                          },
+                          "signer": {
+                            "type": "string",
+                            "enum": ["owner", "keeper"]
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "cashRaw": {
+                            "type": "string",
+                            "maxLength": 78,
+                            "pattern": "^(?:0|[1-9]\\d*)$"
+                          },
+                          "trades": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "sell": {
+                                  "type": "string",
+                                  "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                },
+                                "buy": {
+                                  "type": "string",
+                                  "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                },
+                                "amountInRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                }
+                              },
+                              "required": ["sell", "buy", "amountInRaw"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "expected": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "inRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                },
+                                "outRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                },
+                                "minOutRaw": {
+                                  "type": "string",
+                                  "maxLength": 78,
+                                  "pattern": "^(?:0|[1-9]\\d*)$"
+                                },
+                                "costBps": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": ["inRaw", "outRaw", "minOutRaw", "costBps"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "planned",
+                              "built",
+                              "sent",
+                              "confirmed",
+                              "failed",
+                              "expired",
+                              "skipped"
+                            ]
+                          },
+                          "attempt": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "txId": {
+                            "type": ["string", "null"]
+                          },
+                          "explorerUrl": {
+                            "type": ["string", "null"]
+                          },
+                          "validUntil": {
+                            "type": ["string", "null"]
+                          },
+                          "error": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "code": {
+                                    "type": "string"
+                                  },
+                                  "message": {
+                                    "type": "string"
+                                  },
+                                  "retryable": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": ["code", "message", "retryable"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "trigger": {
+                            "type": "string",
+                            "enum": ["manual", "index_update", "drift", "liquidity_breach"]
+                          },
+                          "provenance": {
+                            "type": "string",
+                            "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "orderId",
+                          "chain",
+                          "seq",
+                          "kind",
+                          "signer",
+                          "description",
+                          "trades",
+                          "expected",
+                          "status",
+                          "attempt",
+                          "txId",
+                          "explorerUrl",
+                          "validUntil",
+                          "error",
+                          "trigger",
+                          "provenance"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["code", "text"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "needsConsent": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["auto_follow_on", "new_asset", "publish"]
+                      }
+                    },
+                    "fees": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "bps": {
+                            "type": "number"
+                          }
+                        },
+                        "required": ["kind", "bps"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "preparedBy": {
+                      "type": "string",
+                      "enum": ["app", "api", "mcp"]
+                    },
+                    "agentLabel": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["open", "partial", "done", "failed", "expired"]
+                    },
+                    "approvalUrl": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "expiresAt": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                    },
+                    "disclaimer": {
+                      "type": "string"
+                    },
+                    "attempts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "legId": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "n": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 9007199254740991
+                          },
+                          "messageHash": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "nonce": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": ["built", "sent", "confirmed", "failed", "expired"]
+                          },
+                          "txId": {
+                            "type": ["string", "null"]
+                          },
+                          "explorerUrl": {
+                            "type": ["string", "null"]
+                          },
+                          "validUntil": {
+                            "type": ["string", "null"]
+                          },
+                          "builtAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "legId",
+                          "n",
+                          "messageHash",
+                          "nonce",
+                          "status",
+                          "txId",
+                          "explorerUrl",
+                          "validUntil",
+                          "builtAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "owner",
+                    "summary",
+                    "legs",
+                    "warnings",
+                    "needsConsent",
+                    "fees",
+                    "preparedBy",
+                    "status",
+                    "approvalUrl",
+                    "expiresAt",
+                    "createdAt",
+                    "disclaimer",
+                    "attempts"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotCashLeg",
+                            "KeeperAssetOff",
+                            "PriceOutOfRange",
+                            "NothingTraded",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "PriceMoved",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE",
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
@@ -7015,6 +7603,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -7056,7 +7645,8 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
@@ -7147,6 +7737,10 @@
                     "basketId": {
                       "type": "string",
                       "pattern": "^\\d{1,20}$"
+                    },
+                    "continues": {
+                      "type": "string",
+                      "minLength": 1
                     },
                     "legs": {
                       "type": "array",
@@ -7575,6 +8169,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -7616,7 +8211,8 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
@@ -7741,6 +8337,10 @@
                       "type": "string",
                       "pattern": "^\\d{1,20}$"
                     },
+                    "continues": {
+                      "type": "string",
+                      "minLength": 1
+                    },
                     "legs": {
                       "type": "array",
                       "items": {
@@ -8168,6 +8768,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -8209,7 +8810,8 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
@@ -8715,6 +9317,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -8756,7 +9359,8 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
@@ -9153,6 +9757,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -9194,7 +9799,8 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
@@ -9432,6 +10038,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -9473,7 +10080,8 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
@@ -9963,6 +10571,7 @@
                             "NoGas",
                             "AllowanceTooLow",
                             "Expired",
+                            "PriceMoved",
                             "NotBuiltHere",
                             "Unavailable",
                             "Unknown"
@@ -10004,7 +10613,8 @@
                         "CHAIN_UNAVAILABLE",
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
-                        "NO_WALLET_FOR_CHAIN"
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED"
                       ]
                     },
                     "fix": {
