@@ -294,7 +294,7 @@ export function OrderScreen({ id }: { id: string }) {
     setFinishing(true);
     setFinishFailure(null);
     const o = t.order.outcome;
-    const made = await continueOrder(apiFetch, record.orderId);
+    const made = await continueOrder(apiFetch, record.approved?.order ?? now);
     if (made.kind !== 'placed') {
       setFinishing(false);
       if (made.kind === 'unavailable') return setCanFinish(false);
