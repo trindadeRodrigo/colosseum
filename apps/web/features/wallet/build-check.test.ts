@@ -115,6 +115,10 @@ describe('what a browser is sent', () => {
       expect(problems[0]).toContain(`fingerprint ${fingerprint(keypair)}`);
       expect(problems[0]).not.toContain(keypair.slice(1, 40));
     }
+    // the one table listed: sixty-four zeros, as blakejs ships them, and nothing else
+    const zeros = `[${Array.from({ length: 64 }, () => 0).join(',')}]`;
+    expect([...KNOWN_BYTE_TABLES.keys()]).toEqual([fingerprint(zeros)]);
+    expect(checkBuild(build({ ...CLEAN, 'static/chunks/env.js': `d=${zeros}` }))).toEqual([]);
     // a library's table, once listed, is let through; the same bytes changed by one are not
     KNOWN_BYTE_TABLES.set(fingerprint(keypair), 'a table made for this test');
     try {

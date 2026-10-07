@@ -68,7 +68,11 @@ export const fingerprint = (array) =>
  * entry is added only after the array was looked at where the library defines it. Anything else of
  * that shape fails the build, whatever it is called.
  */
-export const KNOWN_BYTE_TABLES = new Map([]);
+export const KNOWN_BYTE_TABLES = new Map([
+  // Sixty-four zeros: the parameter block of BLAKE2b in blakejs 1.2.1 (`parameterBlock` in
+  // blake2b.js), which the library fills in before each hash. Under the sign-in library's wallets.
+  ['ca0101ae4bf3b31b', 'blakejs: the empty BLAKE2b parameter block'],
+]);
 
 const BYTE = '(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)';
 const BYTES_64 = new RegExp(`\\[\\s*(?:${BYTE}\\s*,\\s*){63}${BYTE}\\s*\\]`, 'g');
