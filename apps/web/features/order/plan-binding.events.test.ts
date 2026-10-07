@@ -338,6 +338,22 @@ describe('an income plan and its gap (the flow audit, findings 11 and 14)', () =
     expect(recallPlan(PLAN_ID, USER)).not.toBeNull();
   });
 
+  it('does not take a plan from the throwaway wallet of development, which a real server answers as nobody', async () => {
+    // no account behind it: the server says "no such plan" with fresh tokens too
+    portStore.set(signedInPort(EMBEDDED, { userId: USER, test: true }, 'mock'));
+    rememberPlan(short());
+    const asked: string[] = [];
+    portStore.setApi(async (path) => {
+      if (path === '/v1/me') return json(person);
+      asked.push(path);
+      return json({ error: 'no plan with that id' }, 404);
+    });
+    const host = await shown();
+    expect(asked.length).toBeGreaterThan(0);
+    expect(find(host, 'h1').textContent).toBe('Earn $300 a month from $80,000 for 12 months.');
+    expect(recallPlan(PLAN_ID, USER)).not.toBeNull();
+  });
+
   it('keeps the browser’s copy while the server does not answer', async () => {
     rememberPlan(short());
     portStore.setApi(async (path) =>

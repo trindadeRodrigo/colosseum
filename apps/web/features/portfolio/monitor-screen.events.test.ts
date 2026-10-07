@@ -177,6 +177,38 @@ describe('the monitor, for a person with a vault on their chain', () => {
     expect(rows[1]?.[2]).toContain('$2,600.00');
   });
 
+  it('works each difference from the two shares as written, so a row never reads 33.4% beside 33.3% and 0%', async () => {
+    const [usdy, paxg] = vault().positions;
+    if (!usdy || !paxg) throw new Error('fixture');
+    api({
+      person: onSolana,
+      portfolio: () =>
+        json(
+          portfolioBody(
+            chainOf([
+              vault({
+                positions: [
+                  { ...usdy, weightBps: 3335, targetBps: 3330, driftBps: 5 },
+                  { ...paxg, weightBps: 3335, targetBps: 3330, driftBps: 5 },
+                ],
+              }),
+            ]),
+          ),
+        ),
+    });
+    signIn();
+    const host = await screen();
+    const rows = [...find(host, 'table').querySelectorAll('tbody tr')].map((tr) =>
+      [...tr.children].map((cell) => cell.textContent?.replace(/\s+/g, ' ').trim()),
+    );
+    // rounded together to 100.0 each way; each difference is the one between the two figures shown
+    expect(rows.map((r) => [r[4], r[5], r[6]])).toEqual([
+      ['33.4%', '33.3%', '+0.1%'],
+      ['33.3%', '33.3%', '0%'],
+      ['33.3%', '33.4%', '−0.1%'],
+    ]);
+  });
+
   it('puts a pin on every price and value, and none on a count, a share or an amount (rule 1)', async () => {
     api({ person: onSolana });
     signIn();

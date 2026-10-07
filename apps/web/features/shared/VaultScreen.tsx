@@ -17,7 +17,7 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 import type { CallFailure } from '../order/order-api';
 import { displayName } from '../order/plain';
 import { explorerAddressUrlFor } from '../order/readiness';
-import { dollars, drift, sharesOf, tokens } from '../portfolio/figures';
+import { dollars, drift, share, shareTenths, tokens } from '../portfolio/figures';
 import { type HoldingRow, holdingsOf, vaultValueSource } from '../portfolio/portfolio';
 import { OwnVaultActions } from '../portfolio/VaultActions';
 import { useApiFetch } from '../wallet/WalletProvider';
@@ -97,14 +97,10 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
   // The rows' shares, rounded together so they add up to the whole, as the portfolio writes them.
   const rows = holdingsOf(vault);
   const at = (asset: string) => rows.findIndex((r) => r.asset === asset);
-  const now = sharesOf(
-    lang,
-    rows.map((r) => r.weightBps),
-  );
-  const planned = sharesOf(
-    lang,
-    rows.map((r) => r.targetBps),
-  );
+  const nowTenths = shareTenths(rows.map((r) => r.weightBps));
+  const plannedTenths = shareTenths(rows.map((r) => r.targetBps));
+  const now = nowTenths.map((t) => share(lang, t * 10));
+  const planned = plannedTenths.map((t) => share(lang, t * 10));
   const explorer = explorerAddressUrlFor(read.chain, vault.address, read.provenance === 'mock');
   return (
     <div data-ui="vault-screen" className="flex flex-col gap-8">
@@ -229,7 +225,12 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                 key: 'drift',
                 header: v.columns.drift,
                 numeric: true,
-                cell: (r) => drift(lang, r.driftBps),
+                // from the two shares as written, so they and their difference agree
+                cell: (r) =>
+                  drift(
+                    lang,
+                    ((nowTenths[at(r.asset)] ?? 0) - (plannedTenths[at(r.asset)] ?? 0)) * 10,
+                  ),
               },
             ]}
           />
