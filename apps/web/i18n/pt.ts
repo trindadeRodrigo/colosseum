@@ -587,6 +587,7 @@ export const pt: Dictionary = {
   },
 
   talk: {
+    startOver: 'Começar de novo',
     pickWords: 'escolho|escolher|quero|fico com|vou de|vamos de|pego',
     chat: 'A conversa',
     you: 'Você',
@@ -607,6 +608,9 @@ export const pt: Dictionary = {
       heldBuilt:
         'Seu plano foi montado com isso. Toque em um limite para mudar, ou me diga o que mudar.',
       heldOpen: 'Ainda preciso de mais uma coisa.',
+      simple: 'O assistente não respondeu, então por ora estou lendo do jeito simples.',
+      notAnswer:
+        'Não consegui usar isso como resposta. Escolha uma abaixo, ou diga de outro jeito.',
       full: 'Esta conversa já tem o tamanho que eu consigo ler. Toque em um limite do plano para mudar.',
       building: 'Montando seu plano com estes limites…',
       built: 'O plano está à direita. Revise e invista, ou mude o que quiser.',
@@ -647,6 +651,9 @@ export const pt: Dictionary = {
       years: (n: number) => (n === 1 ? '1 ano' : `${n} anos`),
       aMonth: (amount: string) => `${amount} por mês`,
       noIncome: 'Sem valor definido',
+      all: 'Tudo',
+      half: 'Metade',
+      none: 'Nada',
       yes: 'Sim',
       no: 'Não',
       build: 'Sim, pode montar',

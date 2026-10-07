@@ -683,6 +683,7 @@ export const en = {
    * the plan on the right. The invest card's own words are `invest`.
    */
   talk: {
+    startOver: 'Start over',
     /** The words that pick a plan by its name: "choose Cover", "I’ll take Spread". */
     pickWords: "choose|pick|take|i choose|i pick|i[’']ll take|i want|go with|let[’']s go with",
     chat: 'The conversation',
@@ -706,6 +707,10 @@ export const en = {
       heldBuilt:
         'Your plan is built from that. Tap a limit to change it, or tell me what to change.',
       heldOpen: 'I still need one more thing.',
+      /** The guided intake did not answer: said once, then the simple questions follow. */
+      simple: 'The assistant didn’t answer, so I’m reading this the simple way for now.',
+      notAnswer:
+        'I couldn’t take that as an answer to this. Pick one below, or say it another way.',
       /** As many messages as a reader takes: the way on is a tap, or a new conversation. */
       full: 'This conversation is as long as I can read. Tap a limit on the plan to change it.',
       building: 'Building your plan from these limits…',
@@ -755,6 +760,9 @@ export const en = {
       years: (n: number) => (n === 1 ? '1 year' : `${n} years`),
       aMonth: (amount: string) => `${amount} a month`,
       noIncome: 'No set amount',
+      all: 'All of it',
+      half: 'Half',
+      none: 'None',
       yes: 'Yes',
       no: 'No',
       build: 'Yes, build it',

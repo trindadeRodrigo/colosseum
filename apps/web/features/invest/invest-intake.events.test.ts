@@ -269,6 +269,119 @@ describe('signed in: the guided intake reads the conversation', () => {
   });
 });
 
+describe('what Thom’s conversation of Oct 7 showed', () => {
+  const whole = (sheet: unknown, readBack: string[]) => answer({ sheet, readBack });
+
+  it('follows a read-back with its confirm, also once a plan stands: nothing is built from a change until yes', async () => {
+    const changed = { ...SHEET, goal: 'protect', risk: 'medium' };
+    const lines = [
+      'You set a goal to protect with $2,000, at medium risk.',
+      'If this is right, confirm it.',
+    ];
+    const server = api(
+      whole(SHEET, ['You want to grow $2,000.', 'If this is right, confirm it.']),
+      whole(changed, lines),
+      whole(changed, lines),
+    );
+    const host = await screen();
+    await say(host, 'Grow $2,000 over 5 years, high risk');
+    await say(host, 'yes');
+    await settle();
+    expect(server.to(PERSONALIZE_PATH)).toHaveLength(1);
+    expect(pane(host).getAttribute('data-state')).toBe('invest');
+    // a message that changes the sheet: the read-back, then the confirm, and no plan made yet
+    await say(host, 'actually protect it, medium risk');
+    expect(turns(host).at(-1)).toContain(lines[0]);
+    expect(turns(host).at(-1)).not.toContain(en.talk.say.built);
+    expect(replies(host)).toEqual([en.talk.replies.build]);
+    expect(server.to(PERSONALIZE_PATH)).toHaveLength(1);
+    // the plan from before the change cannot be invested in meanwhile
+    expect(pane(host).querySelector('[data-ui="invest-card"]')).toBeNull();
+    await say(host, 'yes');
+    await settle();
+    expect(server.to(PERSONALIZE_PATH)).toHaveLength(2);
+    expect(server.to(PERSONALIZE_PATH)[1]?.body).toEqual({ sheet: changed });
+    // with a plan standing for that exact sheet, the read-back is not printed again
+    await say(host, 'so?');
+    expect(turns(host).at(-1)).not.toContain(lines[0]);
+    expect(turns(host).at(-1)).toContain(en.talk.say.heldBuilt);
+    expect(replies(host)).toEqual([]);
+    expect(server.to(PERSONALIZE_PATH)).toHaveLength(2);
+  });
+
+  it('never shows an empty reply, and says a turn that failed', async () => {
+    const server = api(answer({}), answer({ draft: { goal: 'grow' } }));
+    const host = await screen();
+    await say(host, 'so?');
+    await say(host, 'i like nviDEA I WANT NVIDEA');
+    for (const li of host.querySelectorAll('[data-ui="invest-turns"] > li[data-who="app"]'))
+      expect((li.textContent ?? '').replace(en.talk.me, '').trim()).not.toBe('');
+    // the person's message is there once
+    expect(turns(host).filter((text) => text.includes('i like nviDEA I WANT NVIDEA'))).toHaveLength(
+      1,
+    );
+    expect(server.to(INTAKE_PATH)).toHaveLength(2);
+  });
+
+  it('says once that the assistant did not answer, reads the simple way, and asks the assistant again next turn', async () => {
+    const server = served({ intake: 500 });
+    const host = await screen();
+    await say(host, 'i like elon musk');
+    expect(turns(host).at(-1)).toContain(en.talk.say.simple);
+    await say(host, 'Grow $40,000');
+    expect(server.to(INTAKE_PATH)).toHaveLength(2);
+    expect(turns(host).filter((text) => text.includes(en.talk.say.simple))).toHaveLength(1);
+    // the facts the simple reader found are carried to the assistant as answers
+    await say(host, 'ten years');
+    expect(server.to(INTAKE_PATH)[2]?.body).toMatchObject({
+      answers: { amountUsd: 40_000 },
+      followUps: expect.arrayContaining(['ten years']),
+    });
+  });
+
+  it('starts over by its button or by saying so: an empty conversation and an empty pane', async () => {
+    const server = api(whole(SHEET, ['You want to grow $2,000.']));
+    const host = await screen();
+    expect(host.querySelector('[data-ui="invest-start-over"]')).toBeNull();
+    await say(host, 'Grow $2,000 over 5 years, high risk');
+    await say(host, 'yes');
+    await settle();
+    expect(pane(host).getAttribute('data-state')).toBe('invest');
+    await say(host, 'bro clear it out');
+    expect(turns(host)).toEqual([]);
+    expect(pane(host).getAttribute('data-state')).toBe('empty');
+    expect(window.sessionStorage.getItem(GOAL_DRAFT)).toBeNull();
+    // it was not read as a goal or a follow-up
+    expect(server.to(INTAKE_PATH)).toHaveLength(1);
+    // a new conversation starts from nothing: no earlier message is sent with it
+    await say(host, 'Protect $500');
+    expect(server.to(INTAKE_PATH)[1]?.body).toEqual({ text: 'Protect $500', language: 'en' });
+    await click(find(host, '[data-ui="invest-start-over"] button'));
+    await settle();
+    expect(turns(host)).toEqual([]);
+    for (const words of ['start over', 'Reset.', 'recomeçar', 'clear']) {
+      await say(host, 'Grow $2,000');
+      await say(host, words);
+      expect(turns(host), words).toEqual([]);
+    }
+  });
+
+  it('shows who read each turn only to the people building this', async () => {
+    api(answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT], method: 'rules' }));
+    const host = await screen();
+    await say(host, 'grow it');
+    expect(host.querySelector('[data-ui="invest-reader"]')).toBeNull();
+    await unmountAll();
+    window.sessionStorage.clear();
+    window.localStorage.setItem('tf-debug', '1');
+    const debug = await screen();
+    await say(debug, 'grow it');
+    expect(find(debug, '[data-ui="invest-reader"]').textContent).toBe(
+      '[server rules: model_not_configured]',
+    );
+  });
+});
+
 describe('signed out: the rules reader', () => {
   it('reads a visitor’s goal without the intake, which needs a sign-in', async () => {
     portStore.set(fakePort());

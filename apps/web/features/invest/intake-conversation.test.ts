@@ -239,12 +239,12 @@ describe('a turn of the guided intake', () => {
       { posts: { kind: 'text', text: 'no' }, label: { kind: 'word', word: 'no' } },
     ]);
     // a question with nothing to press: the person says it
-    const ASK_MIX = { field: 'mix', template: 'share', text: 'How much of the $2,000 for AI?' };
-    const mix = await talk(server(answer({ questions: [ASK_MIX] })).api).turn(
+    const ASK_CHAIN = { field: 'chains', template: 'chain', text: 'Which chain?' };
+    const none = await talk(server(answer({ questions: [ASK_CHAIN] })).api).turn(
       { kind: 'text', text: GOAL },
       null,
     );
-    expect(mix.question).toEqual({ text: ASK_MIX.text, replies: [] });
+    expect(none.question).toEqual({ text: ASK_CHAIN.text, replies: [] });
   });
 
   it('says what is held, not the read-back again, when a message changes nothing', async () => {
@@ -282,8 +282,8 @@ describe('a turn of the guided intake', () => {
 });
 
 describe('where the guided intake cannot read', () => {
-  it.each([404, 401, 403])(
-    'hands the turn to the rules reader when the route answers %s',
+  it.each([404, 401, 403, 500, 503])(
+    'hands the turn to the rules reader when the route answers %s, and says so',
     async (status) => {
       const s = server(() => json({ error: 'no' }, status));
       const reply = await talk(s.api).turn(
@@ -292,33 +292,36 @@ describe('where the guided intake cannot read', () => {
       );
       expect(s.other).toEqual(['/goals']);
       // the rules reader's own reply: no server question, and nothing of the intake is kept
+      // said once that the assistant did not answer, then the rules reader's own reply
+      expect(reply.say[0]).toEqual({ key: 'simple' });
+      expect(reply.reader).toEqual({ by: 'app rules', why: expect.stringMatching(/^intake /) });
       expect(reply.question ?? null).toBeNull();
       expect(reply.sheet.intake).toBeUndefined();
       expect(reply.ask).not.toBeNull();
     },
   );
 
-  it.each([
-    [429, 'busy'],
-    [503, 'unreachable'],
-  ] as const)('says so and keeps what was held when the route answers %s', async (status, why) => {
-    const s = server(
-      answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT] }),
-      () => json({ error: 'x' }, status),
-      answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT] }),
-    );
-    const first = await talk(s.api).turn({ kind: 'text', text: GOAL }, null);
-    const failed = await talk(s.api).turn({ kind: 'text', text: 'ten thousand' }, first.sheet);
-    expect(failed.say).toEqual([{ key: 'failed', why }]);
-    expect(s.other).toEqual([]);
-    // the question stays open, and the message that was not read is not kept as sent
-    expect(failed.question?.text).toBe(ASK_AMOUNT.text);
-    expect(failed.sheet.words).toEqual([GOAL]);
-    await talk(s.api).turn({ kind: 'text', text: 'ten thousand dollars' }, failed.sheet);
-    expect(s.posted[2]?.followUps).toEqual(['ten thousand dollars']);
-  });
+  it.each([[429, 'busy']] as const)(
+    'says so and keeps what was held when the route answers %s',
+    async (status, why) => {
+      const s = server(
+        answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT] }),
+        () => json({ error: 'x' }, status),
+        answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT] }),
+      );
+      const first = await talk(s.api).turn({ kind: 'text', text: GOAL }, null);
+      const failed = await talk(s.api).turn({ kind: 'text', text: 'ten thousand' }, first.sheet);
+      expect(failed.say).toEqual([{ key: 'failed', why }]);
+      expect(s.other).toEqual([]);
+      // the question stays open, and the message that was not read is not kept as sent
+      expect(failed.question?.text).toBe(ASK_AMOUNT.text);
+      expect(failed.sheet.words).toEqual([GOAL]);
+      await talk(s.api).turn({ kind: 'text', text: 'ten thousand dollars' }, failed.sheet);
+      expect(s.posted[2]?.followUps).toEqual(['ten thousand dollars']);
+    },
+  );
 
-  it('shows nothing from an answer that is not in the route’s shape', async () => {
+  it('shows nothing from an answer that is not in the route’s shape: the rules read the turn, and it is said', async () => {
     for (const bad of [
       { ...answer({}), questions: [{ field: 'weights', template: 'x', text: 'Set NVDA to 50%?' }] },
       { ...answer({}), sheet: { goal: 'grow' }, readBack: ['ok'] },
@@ -327,10 +330,11 @@ describe('where the guided intake cannot read', () => {
       'nonsense',
     ]) {
       const reply = await talk(server(bad).api).turn({ kind: 'text', text: GOAL }, null);
-      expect(reply.say, JSON.stringify(bad).slice(0, 60)).toEqual([
-        { key: 'failed', why: 'unreadable' },
-      ]);
-      expect(reply.valid).toBeNull();
+      const context = JSON.stringify(bad).slice(0, 60);
+      expect(reply.say[0], context).toEqual({ key: 'simple' });
+      expect(JSON.stringify(reply), context).not.toMatch(/NVDA|weights/);
+      expect(reply.sheet.intake, context).toBeUndefined();
+      expect(reply.valid, context).toBeNull();
     }
   });
 
@@ -413,5 +417,134 @@ describe('a conversation begun before the person signed in', () => {
     expect(s.posted[1]).toEqual({ text: GOAL, language: 'en', answers: { risk: 'high' } });
     expect(reply.valid).toEqual(SHEET as BasketSheet);
     expect(reply.say).toEqual([{ key: 'said', lines: ['You want to grow $2,000.'] }]);
+  });
+});
+
+describe('what Thom’s conversation of Oct 7 showed', () => {
+  const ASK_MIX = {
+    field: 'mix',
+    template: 'mixShare',
+    text: 'How do you want the money held: how much in stocks and crypto, and how much in cash?',
+  };
+
+  it('asks the intake again on the turn after it did not answer, with every message and every fact held', async () => {
+    const s = server(
+      () => json({ error: 'too many connections' }, 500),
+      answer({ draft: { goal: 'grow' }, questions: [ASK_RISK] }),
+    );
+    const t = talk(s.api);
+    const first = await t.turn({ kind: 'text', text: 'Grow $40,000 over ten years' }, null);
+    expect(first.say[0]).toEqual({ key: 'simple' });
+    // the screen keeps the person's messages with the sheet the rules reader answered
+    const kept: Sheet = { ...first.sheet, words: ['Grow $40,000 over ten years'] };
+    expect(kept.fields.amount).toBe('40000');
+    const second = await t.turn({ kind: 'text', text: 'i like elon musk' }, kept);
+    expect(s.posted[1]).toMatchObject({
+      text: 'Grow $40,000 over ten years',
+      followUps: ['i like elon musk'],
+      answers: { goal: 'grow', amountUsd: 40_000, horizonMonths: 120 },
+    });
+    expect(second.question?.text).toBe(ASK_RISK.text);
+    // and it is not said a second time that the assistant did not answer
+    const again = await talk(server(() => json({}, 500)).api).turn(
+      { kind: 'text', text: 'hello?' },
+      { ...second.sheet, simple: true },
+    );
+    expect(again.say.map((x) => x.key)).not.toContain('simple');
+  });
+
+  it('never loses a fact the person gave by a press, whatever our server’s draft of the text says', async () => {
+    // the draft is of the text alone: it does not carry the answers
+    const s = server(answer({ questions: [ASK_AMOUNT] }), answer({ questions: [ASK_RISK] }), () =>
+      json({ error: 'down' }, 503),
+    );
+    const t = talk(s.api);
+    const a = await t.turn({ kind: 'text', text: 'help me save' }, null);
+    const b = await t.turn({ kind: 'answer', fact: 'amount', value: '40000' }, a.sheet);
+    expect(b.sheet.fields.amount).toBe('40000');
+    const c = await t.turn({ kind: 'answer', fact: 'goal', value: 'protect' }, b.sheet);
+    // the intake is down for this turn: the rules reader holds the same facts, and resets nothing
+    expect(c.sheet.fields).toMatchObject({ goal: 'protect', amount: '40000' });
+    expect(c.say.map((x) => x.key)).not.toContain('notUnderstood');
+    expect(c.ask).not.toBe('goal');
+    expect(c.ask).not.toBe('amount');
+  });
+
+  it('never answers with nothing: a reading with no sheet and no question says what is held', async () => {
+    const nothing = answer({});
+    const first = await talk(server(nothing).api).turn({ kind: 'text', text: 'so?' }, null);
+    expect(first.say).toEqual([{ key: 'notUnderstood' }]);
+    const s = server(answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT] }), {
+      ...answer({ draft: { goal: 'grow' } }),
+    });
+    const held = await talk(s.api).turn({ kind: 'text', text: GOAL }, null);
+    const next = await talk(s.api).turn({ kind: 'text', text: 'i like nvidea' }, held.sheet);
+    // what is held is said: never nothing
+    expect(next.say).toEqual([{ key: 'understood' }]);
+  });
+
+  it('sends a share pressed for "how do you want the money held" as the answer to that question', async () => {
+    const s = server(
+      answer({ draft: { goal: 'grow' }, questions: [ASK_MIX] }),
+      answer({ sheet: SHEET, readBack: ['All of it in stocks.'] }),
+      answer({ sheet: SHEET, readBack: ['None of it in stocks.'] }),
+    );
+    const first = await talk(s.api).turn({ kind: 'text', text: GOAL }, null);
+    expect(first.question?.replies.map((r) => r.posts)).toEqual([
+      { kind: 'hold', shareBps: 10_000 },
+      { kind: 'hold', shareBps: 7000 },
+      { kind: 'hold', shareBps: 5000 },
+      { kind: 'hold', shareBps: 3000 },
+      { kind: 'hold', shareBps: null },
+    ]);
+    const all = await talk(s.api).turn({ kind: 'hold', shareBps: 10_000 }, first.sheet);
+    expect(s.posted[1]).toEqual({
+      text: GOAL,
+      language: 'en',
+      answers: { mix: { growthBps: 10_000, dollarYieldBps: 0, goldBps: 0, cashBps: 0 } },
+    });
+    // not sent as words, which could ask the same question again
+    expect(s.posted[1]).not.toHaveProperty('followUps');
+    await talk(s.api).turn({ kind: 'hold', shareBps: null }, all.sheet);
+    expect(s.posted[2]?.answers).toEqual({ mix: null });
+  });
+
+  it('says so when words meant as an answer bring the same question back', async () => {
+    const open = answer({ draft: { goal: 'grow' }, questions: [ASK_MIX] });
+    const s = server(open, open);
+    const first = await talk(s.api).turn({ kind: 'text', text: GOAL }, null);
+    const again = await talk(s.api).turn(
+      { kind: 'text', text: '100% in stocks. 100% in nvidea!' },
+      first.sheet,
+    );
+    expect(again.say).toEqual([{ key: 'notAnswer' }]);
+    expect(again.question?.text).toBe(ASK_MIX.text);
+    expect(s.posted[1]?.followUps).toEqual(['100% in stocks. 100% in nvidea!']);
+  });
+
+  it('says only what is new of a read-back when the sheet is the same: our server’s line that no stock fits', async () => {
+    const lines = ['You want to grow $2,000 over 5 years.', 'If this is right, confirm it.'];
+    const none =
+      'There is no stock for “nvidea” on Solana at the moment. We will be adding more soon.';
+    const s = server(
+      answer({ sheet: SHEET, readBack: lines }),
+      answer({ sheet: SHEET, readBack: [lines[0], none, lines[1]] }),
+    );
+    const first = await talk(s.api).turn({ kind: 'text', text: GOAL }, null);
+    const next = await talk(s.api).turn({ kind: 'text', text: 'add nvidea to it' }, first.sheet);
+    expect(next.say).toEqual([{ key: 'said', lines: [none] }]);
+  });
+
+  it('says who read the turn, for the people building this', async () => {
+    const model = await talk(server(answer({ questions: [ASK_AMOUNT] })).api).turn(
+      { kind: 'text', text: GOAL },
+      null,
+    );
+    expect(model.reader).toEqual({ by: 'model', why: null });
+    const rules = await talk(server(answer({ questions: [ASK_AMOUNT], method: 'rules' })).api).turn(
+      { kind: 'text', text: GOAL },
+      null,
+    );
+    expect(rules.reader).toEqual({ by: 'server rules', why: 'model_not_configured' });
   });
 });

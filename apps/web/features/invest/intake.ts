@@ -206,6 +206,8 @@ export type IntakeRequest = {
   followUps: string[];
   answers: IntakeAnswers;
   answersThen: IntakeAnswers[];
+  /** The answer to what is held, by a press: a mix, or null for none. Left out: not answered. */
+  mix?: HeldMix | null;
 };
 
 export async function readIntake(apiFetch: ApiFetch, ask: IntakeRequest): Promise<IntakeOutcome> {
@@ -215,7 +217,10 @@ export async function readIntake(apiFetch: ApiFetch, ask: IntakeRequest): Promis
   // Only answers the sheet's schema takes are sent: a tap can hold nothing else.
   const answers = IntakeAnswers.safeParse(ask.answers);
   const then = IntakeAnswers.array().safeParse(ask.answersThen);
-  if (!answers.success || !then.success) return { kind: 'refused' };
+  // a mix is sent only as one: four shares that add up to the whole, or none
+  const held = ask.mix === undefined ? undefined : mixOf(ask.mix);
+  if (!answers.success || !then.success || (ask.mix !== undefined && held === undefined))
+    return { kind: 'refused' };
   let res: Response;
   try {
     res = await apiFetch(INTAKE_PATH, {
@@ -225,7 +230,9 @@ export async function readIntake(apiFetch: ApiFetch, ask: IntakeRequest): Promis
         text,
         language: ask.language,
         ...(ask.followUps.length > 0 ? { followUps: ask.followUps, answersThen: then.data } : {}),
-        ...(Object.keys(answers.data).length > 0 ? { answers: answers.data } : {}),
+        ...(Object.keys(answers.data).length > 0 || held !== undefined
+          ? { answers: { ...answers.data, ...(held !== undefined ? { mix: held } : {}) } }
+          : {}),
       }),
     });
   } catch {

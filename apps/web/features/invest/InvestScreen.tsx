@@ -39,6 +39,7 @@ import {
   type IntakeState,
   isFact,
   isGoAhead,
+  isStartOver,
   PICKS,
   QUICK,
   type Question,
@@ -81,6 +82,8 @@ type Built = {
   candidates: PlanCandidate[];
   notShown: PlanCandidateNotShown[];
   own: boolean;
+  /** The sheet these were made from, as it was sent. */
+  sheet: BasketSheet;
 };
 type Build = { kind: 'idle' } | { kind: 'building' } | Exclude<BuildOutcome, { kind: 'built' }>;
 
@@ -102,6 +105,8 @@ type Turn =
       ask: Fact | null;
       /** The question in our server's words, with its replies. Never kept in the tab's storage. */
       question?: Question | null;
+      /** Who read the turn: shown to the people building this, never to anyone else. */
+      reader?: Reply['reader'];
       retry: boolean;
     };
 
@@ -247,7 +252,13 @@ export function InvestScreen() {
             proposal: kept.proposal,
             rollUp: kept.rollUp,
           });
-      setBuilt({ one, candidates: outcome.candidates, notShown: outcome.notShown, own });
+      setBuilt({
+        one,
+        candidates: outcome.candidates,
+        notShown: outcome.notShown,
+        own,
+        sheet: sheetToBuild,
+      });
       // Plans made from a change are new plans to compare: none is picked. The same plans made the
       // person's own keep their pick.
       if (!quiet) setPicked(null);
@@ -305,14 +316,29 @@ export function InvestScreen() {
     // a candidate named, while the plans are side by side: it is picked, and nothing is read
     const named = input.kind === 'text' && !stale ? candidateSaid(input.text) : null;
     if (named) return pick(named, words);
+    // "start over", "clear it out": the conversation and the pane are emptied
+    if (input.kind === 'text' && isStartOver(input.text)) return startOver();
     said(words);
     setReading(true);
     let reply: Reply;
     try {
       reply = await conversation.turn(input, from);
+    } catch (error) {
+      // A turn that fails says so: never an empty reply, and what was held stands.
+      console.error('[invest] the turn was not read', error);
+      say({
+        say: [{ key: 'failed', why: 'unreadable' }],
+        fields: from?.fields ?? null,
+        ask: asking,
+        question: lastApp?.who === 'app' ? (lastApp.question ?? null) : null,
+        retry: false,
+      });
+      return;
     } finally {
       setReading(false);
     }
+    // Who read it, for the people building this (the console, and a line in development).
+    if (reply.reader) console.info('[invest] read by', reply.reader.by, reply.reader.why ?? '');
     // Words that changed nothing build nothing again.
     const changed = !reply.say.some((x) => ['held', 'unfit', 'failed', 'full'].includes(x.key));
     // The person's own messages are kept with the sheet: a reader that reads the whole conversation
@@ -325,17 +351,43 @@ export function InvestScreen() {
     // The limits on the page are no longer the ones a plan was built for.
     if (changed) wanted.current += 1;
     if (!reply.valid) setBuild({ kind: 'idle' });
-    const rebuild = reply.valid !== null && sure && changed;
+    // What our server read back is confirmed before anything is made from it (gate GUIDED-INTAKE),
+    // each time it changes: the read-back is followed by "Yes, build it", never by a plan. A change
+    // by this app's own questions, which the person answered one by one, builds again at once.
+    const guidedChange =
+      reply.sheet.intake !== undefined &&
+      changed &&
+      reply.valid !== null &&
+      JSON.stringify(reply.valid) !== JSON.stringify(built?.sheet ?? null);
+    if (guidedChange && sure) setConfirmed(false);
+    const rebuild = reply.valid !== null && sure && changed && reply.sheet.intake === undefined;
     // "Shall I build it?" is not asked again once a plan was asked for, nor by a turn that changed
     // nothing: the question was already put, and is not said over in the same words.
+    const lines = reply.say.filter((s) => !((sure || !changed) && s.key === 'ready'));
     say({
-      say: reply.say.filter((s) => !((sure || !changed) && s.key === 'ready')),
+      // never an empty reply: with nothing else to say, what is held is said
+      say: lines.length === 0 && !reply.ask && !reply.question ? [{ key: 'held' }] : lines,
       fields: reply.sheet.fields,
       ask: reply.ask,
       question: reply.question ?? null,
+      reader: reply.reader,
       retry: false,
     });
     if (rebuild && reply.valid) void buildFrom(reply.valid, signedIn);
+  }
+
+  /** "Start over": the conversation, the goal and the plans on the pane are emptied. */
+  function startOver() {
+    wanted.current += 1;
+    wantsInvest.current = false;
+    setTurns([]);
+    setSheet(null);
+    setConfirmed(false);
+    setBuilt(null);
+    setPicked(null);
+    setBuild({ kind: 'idle' });
+    setText('');
+    setPaneOpen(false);
   }
 
   function confirm(words: string = w.replies.build) {
@@ -557,11 +609,26 @@ export function InvestScreen() {
     wasOpen.current = paneOpen;
   }, [paneOpen]);
 
+  // A development build, or a browser where `tf-debug` is set by hand: who read each turn is shown.
+  const [debug, setDebug] = useState(false);
+  useEffect(() => {
+    let flag = false;
+    try {
+      flag = window.localStorage.getItem('tf-debug') === '1';
+    } catch {
+      // no storage: no flag
+    }
+    setDebug(process.env.NODE_ENV === 'development' || flag);
+  }, []);
+
   const lastTurn = turns[turns.length - 1];
   const open = lastTurn?.who === 'app' ? lastTurn : null;
   const busy = reading || build.kind === 'building';
   // Every fact is known and no plan was asked for yet: "Build my plan" is the one reply.
-  const toConfirm = valid !== null && !confirmed && !built;
+  // The plans on the pane were made from another sheet than the one that is held now.
+  const pending =
+    built !== null && valid !== null && JSON.stringify(valid) !== JSON.stringify(built.sheet);
+  const toConfirm = valid !== null && !confirmed && (!built || pending);
   const fields = sheet?.fields ?? null;
   const planChain = built?.one.proposal.sheet.chains[0] ?? chain;
   const chainName = planChain ? t.chain.names[planChain] : '';
@@ -578,7 +645,7 @@ export function InvestScreen() {
   // pane under it, and the pane's last state is the plan and its one press.
   // The plan on the page is from before a change: a fact is asked about again, or the plan is being
   // built again. It is not invested in, by the card or by a button that names its old amount.
-  const stale = built !== null && (build.kind === 'building' || asking !== null);
+  const stale = built !== null && (build.kind === 'building' || asking !== null || pending);
   const canInvest = plan?.own === true && signedIn && blocked === null && !stale;
   // The pane's states: nothing yet; the goal as facts; the candidates side by side, none picked; the
   // plan that was picked; and that plan with its invest card.
@@ -647,9 +714,11 @@ export function InvestScreen() {
         ? r.label.word === 'noDate'
           ? t.goal.card.noDate
           : w.replies[r.label.word]
-        : r.label.value === ''
-          ? w.replies.noIncome
-          : factValue(r.label.fact, r.label.value, t, lang);
+        : r.label.kind === 'share'
+          ? formatBps(r.label.bps, LOCALE[lang])
+          : r.label.value === ''
+            ? w.replies.noIncome
+            : factValue(r.label.fact, r.label.value, t, lang);
 
   const line = (s: Extract<Turn, { who: 'app' }>['say'][number], at: SheetFields | null) => {
     switch (s.key) {
@@ -683,6 +752,10 @@ export function InvestScreen() {
         return w.say.riskBottom;
       case 'full':
         return w.say.full;
+      case 'simple':
+        return w.say.simple;
+      case 'notAnswer':
+        return w.say.notAnswer;
       case 'said':
         return '';
       case 'ready':
@@ -719,7 +792,17 @@ export function InvestScreen() {
         inert={paneOpen}
         className="flex min-h-0 flex-col gap-4 lg:col-span-5"
       >
-        <h1 className={PAGE_TITLE}>{t.goal.title}</h1>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h1 className={PAGE_TITLE}>{t.goal.title}</h1>
+          {/* an empty conversation and an empty pane, by one press or by saying so */}
+          {turns.length > 0 && (
+            <span data-ui="invest-start-over">
+              <Button variant="link" disabled={busy} onClick={startOver}>
+                {w.startOver}
+              </Button>
+            </span>
+          )}
+        </div>
         {/* Someone signed in whose wallets or chain are still being read is told, and not left
             waiting with no word: after a while, which side is slow and the two things they can do. */}
         {account.status === 'loading' && (slow || who !== '') && (
@@ -825,6 +908,15 @@ export function InvestScreen() {
                       {built ? w.say.heldBuilt : valid ? w.say.heldReady : w.say.heldOpen}
                     </p>
                   )}
+                {/* Who read the turn: for the people building this, never in a build people use. */}
+                {debug && turn.reader && (
+                  <p
+                    data-ui="invest-reader"
+                    className="font-mono text-source text-muted-foreground"
+                  >
+                    {`[${turn.reader.by}${turn.reader.why ? `: ${turn.reader.why}` : ''}]`}
+                  </p>
+                )}
                 {/* The one question: in our server's words where it wrote it, else this app's. */}
                 {turn.question ? (
                   <p data-ui="invest-question" className="text-body font-medium">
@@ -1302,6 +1394,8 @@ export function restoreDraft(raw: string | null): { turns: Turn[]; sheet: Sheet 
         string,
         unknown
       > | null;
+      // a turn whose every line was our server's, or a failure's, has nothing left to say
+      if (said.length === 0 && !isFact(t.ask)) continue;
       read.push({
         id: read.length,
         who: 'app',

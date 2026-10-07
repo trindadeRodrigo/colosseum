@@ -31,6 +31,8 @@ export type Sheet = {
   words?: string[];
   /** What the guided intake holds for this conversation (intake-conversation.ts). */
   intake?: IntakeState;
+  /** It was said that the intake did not answer and the rules read instead: not said twice. */
+  simple?: boolean;
 };
 
 /**
@@ -51,6 +53,10 @@ export type IntakeState = {
   themes: HeldTheme[];
   /** The goal has no date (gate GLIDE-OPT-IN): the time frame shows "No date set". */
   horizonOpen: boolean;
+  /** What the person answered to hold by a press: a mix of stocks and cash, or none. */
+  held?: HeldMix | null;
+  /** The read-back our server last gave, to say only what is new of the next one. */
+  readBack?: string[];
 };
 
 /** A quick reply: what it sends, and what it is said by. The screen has the words. */
@@ -59,7 +65,9 @@ export type QuickReply = {
   posts: Send;
   label:
     | { kind: 'fact'; fact: Fact; value: string }
-    | { kind: 'word'; word: 'yes' | 'no' | 'noDate' }
+    | { kind: 'word'; word: 'yes' | 'no' | 'noDate' | 'none' | 'all' | 'half' }
+    /** A share of the money, in basis points. */
+    | { kind: 'share'; bps: number }
     /** A choice our server offers, in its own words. */
     | { kind: 'option'; text: string };
 };
@@ -75,7 +83,12 @@ export type Send =
   /** A tap on a fact in the plan pane: the person wants to change it. */
   | { kind: 'reopen'; fact: Fact }
   /** Nothing new: what is held is read again, after the page was left and came back. */
-  | { kind: 'replay' };
+  | { kind: 'replay' }
+  /**
+   * An answer to "how do you want the money held": this share in stocks and crypto and the rest in
+   * cash, or null for none of it.
+   */
+  | { kind: 'hold'; shareBps: number | null };
 
 /** What to say back, as a key the screen has words for. Never a sentence, never a figure. */
 export type Say =
@@ -109,6 +122,10 @@ export type Say =
   | { key: 'said'; lines: string[] }
   /** The conversation has as many messages as a reader takes: a fact is changed by a tap. */
   | { key: 'full' }
+  /** The guided intake did not answer: this turn was read by the rules instead. Said once. */
+  | { key: 'simple' }
+  /** The words were not an answer our server could take to the question that is open. */
+  | { key: 'notAnswer' }
   /** Every fact is known: the plan is being built. */
   | { key: 'ready' };
 
@@ -121,6 +138,8 @@ export type Reply = {
   ask: Fact | null;
   /** The question in our server's words, where it wrote one; else the screen's own for `ask`. */
   question?: Question | null;
+  /** Who read this turn, for the people building this: shown in development only. */
+  reader?: { by: 'model' | 'server rules' | 'app rules'; why: string | null };
   /** The sheet as the API takes it, once it is whole and valid: what a plan is built from. */
   valid: BasketSheet | null;
 };
@@ -208,6 +227,16 @@ function riskStep(text: string): 1 | -1 | null {
   )
     return -1;
   return null;
+}
+
+/**
+ * "Start over", "clear it out", "reset", "recomeçar": the person wants an empty conversation. Only
+ * these few words, alone or after one word of address ("bro clear it out").
+ */
+export function isStartOver(text: string): boolean {
+  return /^(?:[\p{L}]+[\s,]+)?(clear|clear it|clear it out|clear everything|clear all|start over|start again|reset|restart|new goal|recomeçar|recomecar|limpar|limpar tudo|começar de novo|comecar de novo|apagar tudo|zerar)[\s.!?…]*$/iu.test(
+    text.trim(),
+  );
 }
 
 /** The quick replies of each question, as values the sheet takes. The screen has the words. */
@@ -310,6 +339,7 @@ function reply(sheet: Sheet, say: Say[], chain: ChainId | null, reopened?: Fact)
     say: valid && !reopened ? [...say, { key: 'ready' }] : say,
     ask: reopened ?? open[0] ?? null,
     valid: reopened ? null : valid,
+    reader: { by: 'app rules', why: null },
   };
 }
 
@@ -383,6 +413,9 @@ export function readerConversation(
     async turn(input, known) {
       if (input.kind === 'replay')
         return reply(known ?? { fields: EMPTY(lang), skipped: [] }, [], chain);
+      // an answer only the guided intake asks for: nothing here takes it
+      if (input.kind === 'hold')
+        return reply(known ?? { fields: EMPTY(lang), skipped: [] }, [{ key: 'held' }], chain);
       if (input.kind === 'reopen') {
         const sheet = known ?? { fields: EMPTY(lang), skipped: [] };
         return reply(

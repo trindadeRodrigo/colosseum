@@ -122,6 +122,16 @@ function questionOf(q: IntakeQuestion, lang: Lang): Question {
       label: { kind: 'option', text },
     }));
   else if (q.field === 'limits' || q.template === 'startFrom') replies = [say('yes'), say('no')];
+  // How the money is held, or how much of it goes to what was named: a share by a press, sent as
+  // the answer to this question, so words that say something else do not ask it again.
+  else if (q.field === 'mix')
+    replies = [
+      { posts: { kind: 'hold', shareBps: 10_000 }, label: { kind: 'word', word: 'all' } },
+      { posts: { kind: 'hold', shareBps: 7000 }, label: { kind: 'share', bps: 7000 } },
+      { posts: { kind: 'hold', shareBps: 5000 }, label: { kind: 'word', word: 'half' } },
+      { posts: { kind: 'hold', shareBps: 3000 }, label: { kind: 'share', bps: 3000 } },
+      { posts: { kind: 'hold', shareBps: null }, label: { kind: 'word', word: 'none' } },
+    ];
   // What our server read and asks to be sure of is the first reply: one press confirms it.
   const read = fact && q.read !== undefined ? fitAnswer(fact, String(q.read), lang) : null;
   if (fact && read !== null)
@@ -132,13 +142,33 @@ function questionOf(q: IntakeQuestion, lang: Lang): Question {
   return { text: q.text, replies };
 }
 
-/** The fields the pane shows: the confirmed sheet's where there is one, else the draft's. */
-function fieldsOf(reading: IntakeReading, lang: Lang): SheetFields {
+/**
+ * The fields the pane shows, one source for the whole conversation: the confirmed sheet's where there
+ * is one; else what our server read, with every answer the person gave by a press over it. An answer
+ * is never dropped because the server's draft, which is of the text alone, does not carry it.
+ */
+function fieldsOf(reading: IntakeReading, answers: IntakeAnswers, lang: Lang): SheetFields {
   const s = reading.sheet;
-  const fields = fieldsOfDraft({ ...reading.draft, country: null }, lang);
-  if (!s) return { ...fields, horizon: reading.draft.horizonOpen ? '' : fields.horizon };
+  const draft = fieldsOfDraft({ ...reading.draft, country: null }, lang);
+  if (!s) {
+    const open = (answers.horizonOpen ?? reading.draft.horizonOpen) === true;
+    return {
+      ...draft,
+      ...(answers.goal ? { goal: answers.goal } : {}),
+      ...(answers.amountUsd !== undefined ? { amount: String(answers.amountUsd) } : {}),
+      ...(answers.incomeTargetUsdMonthly !== undefined
+        ? { income: String(answers.incomeTargetUsdMonthly) }
+        : {}),
+      ...(answers.risk ? { risk: answers.risk } : {}),
+      horizon: open
+        ? ''
+        : answers.horizonMonths !== undefined
+          ? String(answers.horizonMonths)
+          : draft.horizon,
+    };
+  }
   return {
-    ...fields,
+    ...draft,
     goal: s.goal,
     amount: String(s.amountUsd),
     income: s.incomeTargetUsdMonthly === undefined ? '' : String(s.incomeTargetUsdMonthly),
@@ -191,6 +221,16 @@ export function intakeConversation(
       };
 
       if (input.kind === 'reopen') return local(held, [], state, input.fact);
+      if (input.kind === 'hold') {
+        const bps = input.shareBps;
+        state = {
+          ...state,
+          held:
+            bps === null
+              ? null
+              : { growthBps: bps, dollarYieldBps: 0, goldBps: 0, cashBps: 10_000 - bps },
+        };
+      }
       if (input.kind === 'answer') {
         if (input.fact === 'horizon' && input.value === NO_DATE) {
           const { horizonMonths: _, ...rest } = state.answers;
@@ -219,7 +259,7 @@ export function intakeConversation(
           state = { ...state, answersThen: [...state.answersThen, state.answers] };
         }
       }
-      if (words.length === 0) return local(held, [], state);
+      if (words.length === 0) return local(held, [{ key: 'held' }], state);
 
       const outcome = await readIntake(apiFetch, {
         text: words[0] as string,
@@ -228,14 +268,29 @@ export function intakeConversation(
         // one for each later message
         answersThen: words.slice(1).map((_, i) => state.answersThen[i] ?? {}),
         answers: state.answers,
+        ...(state.held !== undefined ? { mix: state.held } : {}),
       });
       if (
         outcome.kind === 'unavailable' ||
         outcome.kind === 'signed-out' ||
-        outcome.kind === 'no-identity'
+        outcome.kind === 'no-identity' ||
+        outcome.kind === 'unreachable' ||
+        outcome.kind === 'unreadable'
       ) {
+        // The intake did not answer: this turn is read by the rules, with every fact held carried
+        // over, and that is said, once. The next turn asks the intake again.
         const { intake: _, ...plain } = held;
-        return fallback.turn(input, known ? plain : null);
+        const read = await fallback.turn(
+          input.kind === 'hold' || input.kind === 'replay' ? { kind: 'replay' } : input,
+          known ? plain : null,
+        );
+        const told = held.simple === true;
+        return {
+          ...read,
+          sheet: { ...read.sheet, simple: true },
+          say: told ? read.say : [{ key: 'simple' }, ...read.say],
+          reader: { by: 'app rules', why: `intake ${outcome.kind}` },
+        };
       }
       if (outcome.kind !== 'read') {
         // Nothing was read: what was held stands, and the message is not kept as sent.
@@ -256,10 +311,12 @@ export function intakeConversation(
       const reading = outcome.reading;
       const first = reading.questions[0] ?? null;
       const question = first ? questionOf(first, lang) : null;
-      const fields = fieldsOf(reading, lang);
+      const fields = fieldsOf(reading, state.answers, lang);
       const next: IntakeState = {
         answers: state.answers,
         answersThen: state.answersThen,
+        ...(state.held !== undefined ? { held: state.held } : {}),
+        ...(reading.readBack ? { readBack: reading.readBack } : {}),
         sheet: reading.sheet,
         question,
         mix: reading.mix,
@@ -280,16 +337,29 @@ export function intakeConversation(
         held.intake?.sheet != null &&
         JSON.stringify(held.intake.sheet) === JSON.stringify(reading.sheet);
       const found = FACTS.some((fact) => fields[fact] !== '');
-      const say: Say[] = same
-        ? [{ key: 'held' }]
+      // The same question again after words that were meant to answer it: said, so it does not
+      // read as a loop.
+      const again =
+        input.kind === 'text' && question !== null && held.intake?.question?.text === question.text;
+      // The same sheet as before is not said back a second time: only what the read-back says now
+      // that it did not say before (that no stock fits a name, say).
+      const before = new Set(held.intake?.readBack ?? []);
+      const fresh = (reading.readBack ?? []).filter((line) => !before.has(line));
+      let say: Say[] = same
+        ? fresh.length > 0
+          ? [{ key: 'said', lines: fresh }]
+          : [{ key: 'held' }]
         : reading.readBack
           ? [{ key: 'said', lines: reading.readBack }]
           : [
-              ...(found ? [{ key: 'understood' as const }] : []),
+              ...(again ? [{ key: 'notAnswer' as const }] : []),
+              ...(found && !again ? [{ key: 'understood' as const }] : []),
               ...(reading.assumptions.length > 0
                 ? [{ key: 'said' as const, lines: reading.assumptions }]
                 : []),
             ];
+      // Never an empty turn: with nothing to say and nothing to ask, what is held is said.
+      if (say.length === 0 && question === null) say = [{ key: found ? 'held' : 'notUnderstood' }];
       return {
         sheet,
         open: reading.questions.flatMap((q) => FACT_OF[q.field] ?? []),
@@ -297,6 +367,10 @@ export function intakeConversation(
         ask: first ? (FACT_OF[first.field] ?? null) : null,
         question,
         valid,
+        reader: {
+          by: reading.reader.method === 'model' ? 'model' : 'server rules',
+          why: reading.reader.why,
+        },
       };
     },
   };
