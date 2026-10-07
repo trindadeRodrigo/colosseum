@@ -117,23 +117,38 @@ export type ConsentRequest = z.infer<typeof ConsentRequest>;
  * measure, with the stored plan's id; `follow` is a vault opened to follow a shared portfolio, with the
  * family's id and no sheet. The sheet, the card, the verdict and the observations are the stored plan's
  * own, as the engine made them, and come the four together or not at all: left out where the plan has
- * none stored, where one of them no longer reads, and for a plan that is not this person's to read
- * back (one another person made in the app, or one stored with no person and not made from a link).
- * The card's range and exit cost and the verdict's gap were worked out from the readings in
+ * none stored, where the stored plan no longer reads whole, and for a plan that is not this person's
+ * to read back (one another person made in the app, or one stored with no person and not made from a
+ * link). The card's range and exit cost and the verdict's gap were worked out from the readings in
  * `observations`, each with its own source, time, method and provenance. `verdict` is null for a plan
  * whose goal is not an income.
+ *
+ * The schema holds "the four together or not at all" itself: the sheet, the card and the observations
+ * are all there or all left out, and `verdict` is there, null or a verdict, exactly when they are. A
+ * card with no observations, or a verdict beside no sheet, is refused.
  */
-export const VaultPlan = z.object({
-  kind: z.enum(['personal', 'follow']),
-  /** When the order that opened the vault was made, as an ISO instant: the goal's date counts from it. */
-  placedAt: z.string().datetime(),
-  proposalId: z.uuid().optional(),
-  familyId: z.string().optional(),
-  sheet: BasketSheet.optional(),
-  card: BasketCard.optional(),
-  verdict: Verdict.nullable().optional(),
-  observations: z.array(ObservationRef).optional(),
-});
+export const VaultPlan = z
+  .object({
+    kind: z.enum(['personal', 'follow']),
+    /** When the order that opened the vault was made, as an ISO instant: the goal's date counts from it. */
+    placedAt: z.string().datetime(),
+    proposalId: z.uuid().optional(),
+    familyId: z.string().optional(),
+    sheet: BasketSheet.optional(),
+    card: BasketCard.optional(),
+    verdict: Verdict.nullable().optional(),
+    observations: z.array(ObservationRef).optional(),
+  })
+  .refine(
+    (p) => {
+      // `verdict: null` is a verdict that is there: it says the goal is not an income.
+      const there = [p.sheet, p.card, p.verdict, p.observations].filter((x) => x !== undefined);
+      return there.length === 0 || there.length === 4;
+    },
+    {
+      message: 'the sheet, the card, the verdict and the observations come together or not at all',
+    },
+  );
 export type VaultPlan = z.infer<typeof VaultPlan>;
 
 /**

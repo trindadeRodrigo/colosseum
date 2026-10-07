@@ -12,6 +12,7 @@ CHAIN_MODE_SOLANA=readonly SOLANA_RPC_URL=<devnet node> \
 - `--once` or `--loop`, exactly one. With `--once` the exit code is 1 when a pass failed. A flag it does not know stops it: `--dryrun` is refused, not ignored.
 - It reads the environment it is started with and loads no `.env` file, as the keeper.
 - `DATABASE_URL` is the database it writes to. Unset, it is the local one of `pnpm db:up`.
+- It opens its database through `createDb()` of `packages/db`, as the API does, and so obeys `DB_POOL_MAX` and `DB_PGBOUNCER` (`packages/db/src/pool.ts`).
 - What is wrong at start (mainnet, no chain to read, a missing node address, a node of another network, a deploy record it cannot read, a database of another network, a database that does not answer) is said on stderr and ends it with 1 before any pass. A database that is down is said by the code of the refusal, `the database did not take a query (ECONNREFUSED)`, never by the query.
 
 ## Which chains
