@@ -3828,4 +3828,36 @@ describe('the second review (Oct 7): every sentence of its scripts, with a model
     expect(earlier.questions.find((q) => q.field === 'horizonMonths')?.read).toBe(36);
   });
 
+  it('riskOfMix: the risk a mix takes is the caller rule, handed the mix, the portfolios and the amount of the sheet', () => {
+    const seen: unknown[] = [];
+    const riskOfMix: NonNullable<IntakeInput['riskOfMix']> = (mix, themes, amountUsd) => {
+      seen.push([mix, themes, amountUsd]);
+      return amountUsd !== undefined && amountUsd >= 5000 ? 'medium' : 'high';
+    };
+    const text = `${GOAL}Invest in big tech.`;
+    const held = intake(text, goal({ markets: ['big_tech'] }), { riskOfMix });
+    expect(seen).toEqual([[STOCKS, ['the-seven'], 5000]]);
+    // The amount handed in is the sheet's own, and the risk said is the caller's.
+    expect(held.sheet).toMatchObject({ amountUsd: 5000, risk: 'medium', mix: STOCKS });
+    expect(held.assumptions).toContain(
+      'To hold “big tech”, the plan uses the limits for medium risk.',
+    );
+    // An amount answered on the form is the sheet's too.
+    seen.length = 0;
+    const answered = intake(text, goal({ markets: ['big_tech'], amountUsd: null }), {
+      riskOfMix,
+      answers: { amountUsd: 1200 },
+    });
+    expect(seen).toEqual([[STOCKS, ['the-seven'], 1200]]);
+    expect(answered.sheet).toMatchObject({ amountUsd: 1200, risk: 'high' });
+    // Left out, the estimate on the issuer caps, as before.
+    expect(intake(text, goal({ markets: ['big_tech'] })).sheet?.risk).toBe(
+      riskForMixEstimate(STOCKS),
+    );
+    // A caller that takes two arguments still fits.
+    const two: IntakeInput['riskOfMix'] = (_mix, _themes) => 'low';
+    expect(intake(text, goal({ markets: ['big_tech'] }), { riskOfMix: two }).sheet?.risk).toBe(
+      'low',
+    );
+  });
 });

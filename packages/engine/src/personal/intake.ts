@@ -231,6 +231,13 @@ export type IntakeInput = {
   /** The chain of the person's wallet (gate ONE-CHAIN); null while they have not picked one. */
   homeChain: ChainId | null;
   portfolios: ShelfPortfolio[];
+  /**
+   * The risk whose limits a mix takes, for the read-back (gate EXPLICIT-MIX). A caller with the shelf
+   * passes the engine's exact rule (`riskForMix`); left out, `riskForMixEstimate` on the issuer caps.
+   * The engine's rule depends on the amount, so the intake hands in the sheet's own amount where it
+   * knows it (Oct 7).
+   */
+  riskOfMix?: (mix: PersonalMix, themes: string[], amountUsd?: number) => RiskLevel;
   /** The curated stock labels on the person's chain (gate THEMES). Left out: none. */
   labels?: ShelfLabel[];
   /**
@@ -1874,7 +1881,11 @@ function intakeOf(
       flags.push('risk_from_themes');
       limitsFor = { words: null, risk: value.risk };
     } else if (mix && !mixConflict && !heldOpen) {
-      value.risk = riskForMixEstimate(mix);
+      // A caller with the shelf passes the engine's exact rule, with the amount of the sheet where
+      // it is known; left out, the estimate on the caps.
+      value.risk =
+        input.riskOfMix?.(mix, value.themes ?? [], value.amountUsd ?? undefined) ??
+        riskForMixEstimate(mix);
       flags.push('risk_from_mix');
       limitsFor = { words: mixWords(mix), risk: value.risk };
     }
