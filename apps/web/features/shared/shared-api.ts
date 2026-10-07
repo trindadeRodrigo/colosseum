@@ -96,7 +96,14 @@ const CODES: readonly OrderErrorCode[] = [
 /** What a refusal said, when the screen shows the server's own sentence beside its code. */
 export type Placed =
   | OrderOutcome
-  | { kind: 'said'; status: number; error: string; fix: string | null; code?: OrderErrorCode };
+  | {
+      kind: 'said';
+      status: number;
+      error: string;
+      fix: string | null;
+      /** The order code the refusal carried, where it is one this app knows. */
+      code?: OrderErrorCode;
+    };
 
 /**
  * POST /v1/orders for a publish, a buy of a shared portfolio or a follow. The order that comes back is
@@ -132,7 +139,6 @@ export async function placeShared(
         status: res.status,
         error: answer.error,
         fix: typeof answer.fix === 'string' ? answer.fix : null,
-        // the order code beside the sentence, where the server gave one this app knows
         ...(code ? { code } : {}),
       };
     if (code) return { kind: 'code', code };

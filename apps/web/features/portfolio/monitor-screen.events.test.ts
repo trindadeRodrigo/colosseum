@@ -676,6 +676,44 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
       }
     });
 
+    it('drops this browser’s record of an order nobody approved once its time has run out, and no other', async () => {
+      const LOOKED = '00000000-0000-4000-8000-0000000000e1';
+      const FINISHING = '00000000-0000-4000-8000-0000000000e2';
+      const lapsed = (id: string) => ({ ...orderOn(), id, expiresAt: 1 });
+      api({
+        person: onSolana,
+        portfolio: () => {
+          // approved here: the order's own page runs from it
+          bought({ approved: { order: orderOn(), consents: [], at: '2026-10-06T00:00:00Z' } });
+          // made by the invest card to show its prices, and left
+          keepOrder(recordOf('solana', { orderId: LOOKED, userId: onSolana.userId }));
+          // made to finish another order, never approved: what it is held to is in its record
+          keepOrder(
+            recordOf('solana', {
+              orderId: FINISHING,
+              userId: onSolana.userId,
+              continues: { orderId: ORDER_ID, trades: [] },
+            }),
+          );
+          return cashHeavy();
+        },
+        more: (path) =>
+          path === `/v1/orders/${ORDER_ID}`
+            ? json(lapsed(ORDER_ID))
+            : path === `/v1/orders/${LOOKED}`
+              ? json(lapsed(LOOKED))
+              : path === `/v1/orders/${FINISHING}`
+                ? json(lapsed(FINISHING))
+                : null,
+      });
+      signIn();
+      await screen();
+      await settle();
+      await settle();
+      const kept = (id: string) => window.localStorage.getItem(`tf-order:${id}`) !== null;
+      expect([kept(LOOKED), kept(ORDER_ID), kept(FINISHING)]).toEqual([false, true, true]);
+    });
+
     it('leaves a buy alone once an order was made to finish it: what is left is that order’s', async () => {
       const trades = orderOn().legs.flatMap((leg) => leg.trades);
       api({

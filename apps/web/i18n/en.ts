@@ -1440,6 +1440,9 @@ export const en = {
     checkingFunds: 'Checking your wallet…',
     preparing: 'Reading prices for your order…',
     again: 'Read the prices again',
+    old: 'These prices are old: the order ran out before it was pressed. Read them again to invest.',
+    updated: 'Prices updated. Read the steps again before you press.',
+    updatedHold: 'The prices just changed: read them first.',
     fee: {
       none: 'We charge no fee on this order. The network fee is paid from your wallet.',
       some: (list: string) =>
