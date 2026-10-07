@@ -65,7 +65,28 @@ export type OrderRecord = {
    * too (`basketIdOfLinkedPlan`), so the link alone does not lead to the vault.
    */
   linked?: true;
+  /**
+   * The order finishes another with the cash already in its vault: that order's id, and the trades it
+   * had left when this one was made (what it buys and the cash for each). This order is offered for
+   * signing only while its own trades are among them (order-check.ts, `checkContinuation`).
+   */
+  continues?: { orderId: string; left: { buy: string; amountInRaw: string }[] };
 };
+
+/** What a continuation finishes, as it was written, or null when it does not read. */
+function readContinues(value: unknown): OrderRecord['continues'] | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const c = value as Record<string, unknown>;
+  if (!text(c.orderId) || !Array.isArray(c.left)) return null;
+  const left: { buy: string; amountInRaw: string }[] = [];
+  for (const t of c.left as unknown[]) {
+    const trade = t as Record<string, unknown> | null;
+    if (!trade || !text(trade.buy) || !text(trade.amountInRaw) || !/^\d+$/.test(trade.amountInRaw))
+      return null;
+    left.push({ buy: trade.buy, amountInRaw: trade.amountInRaw });
+  }
+  return { orderId: c.orderId, left };
+}
 
 function readGoal(value: unknown): PlacedGoal | null {
   if (typeof value !== 'object' || value === null) return null;
@@ -97,6 +118,8 @@ function readRecord(value: unknown): OrderRecord | null {
   const lines = Line.array().safeParse(r.lines);
   const terms = r.terms === undefined ? undefined : readTerms(r.terms);
   if (terms === null) return null;
+  const continues = r.continues === undefined ? undefined : readContinues(r.continues);
+  if (continues === null) return null;
   // A buy names its plan and an amount, or its portfolio and an amount; a follow and a publish neither.
   const buy = !terms || terms.kind === 'family';
   if (
@@ -132,6 +155,7 @@ function readRecord(value: unknown): OrderRecord | null {
     approved,
     goal: readGoal(r.goal),
     ...(r.linked === true ? { linked: true as const } : {}),
+    ...(continues ? { continues } : {}),
   };
 }
 

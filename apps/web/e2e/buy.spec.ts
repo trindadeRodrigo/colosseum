@@ -399,7 +399,10 @@ test('a step the server lies about is refused by the guard, and nothing is signe
   const steps = page.locator('[data-ui="order-step"]');
   await expect(steps.nth(0)).toHaveAttribute('data-status', 'confirmed');
   await expect(steps.nth(1)).not.toHaveAttribute('data-status', 'confirmed');
-  await expect(page.getByRole('link', { name: en.order.outcome.newOrder })).toBeVisible();
+  // the deposit landed: the page says the money is safe in the vault, and the way on spends that cash
+  await expect(status).toContainText(en.order.outcome.stopped('$40'));
+  await expect(page.getByRole('button', { name: en.order.outcome.finish })).toBeVisible();
+  await expect(page.getByRole('link', { name: en.order.outcome.newOrder })).toHaveCount(0);
   await check(page, 'refused');
 });
 

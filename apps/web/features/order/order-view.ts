@@ -106,6 +106,11 @@ export function outcomeView(outcome: RunOutcome, t: Dictionary, chain: ChainId):
         alarm: false,
       };
     case 'error':
+      // A step that would now give less than the order's stated minimum: the order's terms are never
+      // changed, so this order goes no further. What it deposited is in the vault.
+      // (read as text: the code is the API's, newer than this build's list of codes)
+      if ((outcome.error.body?.code as string | undefined) === 'PRICE_MOVED')
+        return { sentence: o.priceMoved, next: { kind: 'new-order' }, alarm: true };
       // A plan that is gone cannot be bought by trying again: it is made again from the goal.
       if (outcome.error.body?.code === 'PLAN_GONE')
         return { sentence: o.planGone, next: { kind: 'none' }, alarm: true };

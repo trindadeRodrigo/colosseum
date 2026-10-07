@@ -500,6 +500,9 @@ export const en = {
       details: { label: 'Details', version: 'Version of the portfolio it follows' },
       /** The method line in the pin of the vault's cash. */
       cashMethod: 'cash read from the vault, counted at one dollar',
+      /** A buy into this vault stopped after its deposit: most of it is still cash. */
+      unfinished:
+        'A buy stopped after its deposit, so more of this vault is cash than its plan holds. The cash is safe here.',
       parts: 'Its parts, by weight',
       planTitle: (parts: number) =>
         parts === 1 ? 'Your plan · 1 part' : `Your plan · ${parts} parts`,
@@ -1113,6 +1116,10 @@ export const en = {
       title: 'Review every step',
       lead: 'Each step is built fresh when its turn comes, checked against what you see here, and only then signed by your wallet. A step that doesn’t match is not signed.',
       deposit: 'Deposit',
+      /** On an order that finishes another: what it spends, none of it deposited now. */
+      fromVault: 'From your vault’s cash',
+      continuesLead:
+        'This order finishes a buy that stopped. It deposits nothing: every step spends cash that is already in your vault.',
       steps: 'Steps',
       expires: 'Sign before',
       spend: (amount: string, asset: string) => `Spend ${amount} on ${asset}`,
@@ -1222,8 +1229,23 @@ export const en = {
       seePortfolio: 'See your portfolio',
       buyMore: 'Buy more',
       /** The order stopped after its deposit landed: the money is in the vault, as cash. */
-      depositSafe: (amount: string) =>
-        `Your deposit of ${amount} is in your vault as cash, and it’s yours. A new order would deposit again: it can’t yet spend the cash already there.`,
+      stopped: (amount: string) =>
+        `Your ${amount} is safe in your vault as cash. The buying step didn’t go through.`,
+      /** The way on from there: a new order that deposits nothing and spends that cash. */
+      finish: 'Finish buying with the cash in your vault',
+      finishing: 'Making the order…',
+      finishRefused: 'I couldn’t make that order just now. Nothing moved. Try again.',
+      /** A transaction built before can still land: it clears by itself. */
+      finishWait:
+        'A step sent before can still reach the chain, so I can’t finish the buy yet. Try again in a minute or two.',
+      finishNoStore:
+        'This browser keeps nothing between pages, so I won’t make the order: a step could be signed twice. Allow this site to store data, then try again.',
+      /** The API's `PRICE_MOVED`: a step would now give less than the minimum the order stated. */
+      priceMoved:
+        'The price moved since you reviewed this order, so a step would now give less than the minimum you approved. Nothing was signed for it.',
+      /** The order page in a browser that did not make the order, when its deposit landed. */
+      elsewhereStopped: (amount: string) =>
+        `This order was made in another browser. Your ${amount} is safe in your vault as cash. To finish buying, open this page in the browser that made the order.`,
       details: 'Details',
       refused: (step: number) =>
         `I didn’t sign step ${step}: the transaction our server built for it isn’t the step you approved. Nothing was signed for it.`,

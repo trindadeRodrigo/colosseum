@@ -48,6 +48,50 @@ export function checkDeposit(
   return { ok: true, depositRaw: deposit, decimals: cash.decimals };
 }
 
+/** A trade an order may make: what it buys and the cash it spends on it. */
+export type AllowedTrade = { buy: string; amountInRaw: string };
+
+/** The trades of an order's steps that have not confirmed: what a continuation may still make. */
+export function tradesLeft(
+  approved: Pick<OrderDetail, 'legs'>,
+  now: Pick<OrderDetail, 'legs'>,
+): AllowedTrade[] {
+  return approved.legs
+    .filter((leg) => now.legs.find((l) => l.id === leg.id)?.status !== 'confirmed')
+    .flatMap((leg) => leg.trades.map((t) => ({ buy: t.buy, amountInRaw: t.amountInRaw })));
+}
+
+/**
+ * An order that finishes another with the cash already in the vault (`POST /v1/orders/{id}/continue`):
+ * it deposits nothing, every step is a swap, and every trade is one the first order left unmade, the
+ * same token for the same cash, each at most once. `depositRaw` in the answer is what it spends.
+ */
+export function checkContinuation(
+  order: Pick<OrderDetail, 'depositRaw' | 'legs'>,
+  left: readonly AllowedTrade[],
+  units: ChainUnits | null,
+): DepositCheck | { ok: false; why: 'trades' } {
+  const cash = units?.tokens[units.cash];
+  if (!units || !cash) return { ok: false, why: 'units' };
+  if (order.depositRaw !== undefined) return { ok: false, why: 'deposit' };
+  if (order.legs.length === 0) return { ok: false, why: 'steps' };
+  const open = [...left];
+  let spent = 0n;
+  for (const leg of order.legs) {
+    if (leg.kind !== 'swap' || leg.cashRaw !== undefined || leg.trades.length === 0)
+      return { ok: false, why: 'steps' };
+    for (const trade of leg.trades) {
+      if (!RAW.test(trade.amountInRaw) || trade.sell !== units.cash || trade.buy === units.cash)
+        return { ok: false, why: 'steps' };
+      const at = open.findIndex((t) => t.buy === trade.buy && t.amountInRaw === trade.amountInRaw);
+      if (at < 0) return { ok: false, why: 'trades' };
+      open.splice(at, 1);
+      spent += BigInt(trade.amountInRaw);
+    }
+  }
+  return { ok: true, depositRaw: spent, decimals: cash.decimals };
+}
+
 /**
  * A buy of a shared portfolio (WEB-4): the deposit as for a plan, and each trade the share of the
  * deposit that the portfolio's weight gives, in the order its screen read them (`tradesOf`). An API that

@@ -19,10 +19,20 @@ import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
 import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
+import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { OrderScreen } from './OrderScreen';
 import { recallOrder } from './order-record';
-import { doneOrder, LEG_SWAP, ORDER_ID, orderOn, PLAN_ID, recordOf, USER } from './test/fixtures';
+import {
+  doneOrder,
+  LEG_CREATE,
+  LEG_SWAP,
+  ORDER_ID,
+  orderOn,
+  PLAN_ID,
+  recordOf,
+  USER,
+} from './test/fixtures';
 
 // The order screen with real events, on the real runner (run-order.ts) and the real deployments of
 // packages/sdk. Only `execute` is a double: it answers what each test needs and records what it was
@@ -94,6 +104,33 @@ function api(order: OrderDetail, chain: 'solana' | 'robinhood' | 'base' = 'solan
 
 function seed(record = recordOf()) {
   window.localStorage.setItem(`tf-order:${ORDER_ID}`, JSON.stringify(record));
+}
+
+const NEXT_ID = '44444444-4444-4444-8444-444444444444';
+const SPY = orderOn().legs.find((l) => l.id === LEG_SWAP)?.trades[0]?.buy ?? '';
+/** The order after its deposit landed and its swap failed: the money is in the vault as cash. */
+const stopped = (order: OrderDetail): OrderDetail => ({
+  ...order,
+  legs: order.legs.map((leg, i) =>
+    i === 0 ? { ...leg, status: 'confirmed', txId: 'sig0' } : { ...leg, status: 'failed' },
+  ),
+});
+/**
+ * What `POST /v1/orders/{id}/continue` answers: a new order that names the first, deposits nothing
+ * and has the swap the first one left, quoted again.
+ */
+function continuation() {
+  const first = orderOn();
+  const { depositRaw: _none, ...rest } = first;
+  return {
+    ...rest,
+    id: NEXT_ID,
+    continues: ORDER_ID,
+    approvalUrl: `/orders/${NEXT_ID}`,
+    legs: first.legs
+      .filter((leg) => leg.id === LEG_SWAP)
+      .map((leg) => ({ ...leg, orderId: NEXT_ID, seq: 0 })),
+  };
 }
 
 const screen = async () => {
@@ -429,17 +466,12 @@ describe('what the executor answers', () => {
     expect(host.querySelector('[data-ui="deposit-safe"]')).toBeNull();
   });
 
-  it('says the deposit is in the vault as cash when a later step fails, and leads there first', async () => {
+  it('says the deposit is safe in the vault when a later step fails, and offers to finish with that cash', async () => {
     api(orderOn());
     seed();
     run.answer = async (order) => ({
       status: 'failed',
-      order: {
-        ...order,
-        legs: order.legs.map((leg, i) =>
-          i === 0 ? { ...leg, status: 'confirmed', txId: 'sig0' } : { ...leg, status: 'failed' },
-        ),
-      },
+      order: stopped(order),
       legId: LEG_SWAP,
       error: null,
     });
@@ -447,16 +479,143 @@ describe('what the executor answers', () => {
     await click(primary(host));
     await settle();
     expect(find(host, '[data-ui="deposit-safe"]').textContent).toBe(
-      en.order.outcome.depositSafe('10 tUSDC'),
+      en.order.outcome.stopped('$10'),
     );
-    // the vault first; a new order, which deposits again, is the second thing offered
-    const next = [...find(host, '[data-ui="order-next"]').querySelectorAll('a')];
-    expect(next.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
-      [en.order.outcome.seePortfolio, '/monitor'],
-      [en.order.outcome.newOrder, `/plan/${PLAN_ID}/buy`],
-    ]);
-    expect(next[0]?.className).toContain('bg-primary');
-    expect(next[1]?.className).not.toContain('bg-primary');
+    // one primary: finish with the cash that is there. A new order, which would ask for the whole
+    // deposit again, is not offered.
+    const next = find(host, '[data-ui="order-next"]');
+    expect(label(primary(host))).toBe(en.order.outcome.finish);
+    expect(host.querySelectorAll('[data-variant="primary"]')).toHaveLength(1);
+    expect(find(next, 'a').getAttribute('href')).toBe('/monitor');
+    expect(host.textContent).not.toContain(en.order.outcome.newOrder);
+  });
+
+  it('offers the same on a page opened again, from the order’s own state', async () => {
+    api({ ...stopped(orderOn()), status: 'failed' });
+    seed({
+      ...recordOf(),
+      approved: { order: orderOn(), consents: [], at: '2026-10-05T12:01:00Z' },
+    });
+    const host = await screen();
+    expect(find(host, '[data-ui="deposit-safe"]').textContent).toBe(
+      en.order.outcome.stopped('$10'),
+    );
+    expect(label(primary(host))).toBe(en.order.outcome.finish);
+    // never "Continue the buy", which would run the order that cannot go on
+    expect(host.textContent).not.toContain(en.order.resume('$10'));
+  });
+
+  it('finishes the buy: asks the API for the order that spends the vault’s cash, keeps it, and opens its review', async () => {
+    const calls: string[] = [];
+    portStore.setApi(async (path, init) => {
+      calls.push(`${init?.method ?? 'GET'} ${path}`);
+      if (path === '/v1/me') return json(person('solana'));
+      if (path === `/v1/orders/${ORDER_ID}`)
+        return json({ ...stopped(orderOn()), status: 'failed' });
+      if (path === `/v1/orders/${ORDER_ID}/continue`) return json(continuation());
+      return json({ error: 'not found' }, 404);
+    });
+    seed({
+      ...recordOf(),
+      approved: { order: orderOn(), consents: [], at: '2026-10-05T12:01:00Z' },
+    });
+    router.push.mockClear();
+    const host = await screen();
+    await click(primary(host));
+    await settle();
+    expect(calls).toContain(`POST /v1/orders/${ORDER_ID}/continue`);
+    expect(router.push).toHaveBeenCalledWith(`/orders/${NEXT_ID}`);
+    // the new order's record: the same plan and person, nothing approved yet, and what it may buy
+    const kept = recallOrder(NEXT_ID, USER);
+    expect(kept).toMatchObject({
+      orderId: NEXT_ID,
+      proposalId: PLAN_ID,
+      amountUsd: 6,
+      approved: null,
+      continues: { orderId: ORDER_ID, left: [{ buy: SPY, amountInRaw: '6000000' }] },
+    });
+  });
+
+  it('says to wait when a step sent before can still land, and keeps nothing', async () => {
+    portStore.setApi(async (path) => {
+      if (path === '/v1/me') return json(person('solana'));
+      if (path === `/v1/orders/${ORDER_ID}`)
+        return json({ ...stopped(orderOn()), status: 'failed' });
+      if (path === `/v1/orders/${ORDER_ID}/continue`)
+        return json(
+          { error: 'a transaction built for a step can still land', details: { retryable: true } },
+          409,
+        );
+      return json({ error: 'not found' }, 404);
+    });
+    seed({
+      ...recordOf(),
+      approved: { order: orderOn(), consents: [], at: '2026-10-05T12:01:00Z' },
+    });
+    router.push.mockClear();
+    const host = await screen();
+    await click(primary(host));
+    await settle();
+    const alert = find(host, '[data-ui="order-next"] [role="alert"]');
+    expect(alert.querySelector('p')?.textContent).toBe(en.order.outcome.finishWait);
+    expect(alert.textContent).toContain('a transaction built for a step can still land');
+    expect(router.push).not.toHaveBeenCalled();
+    expect(recallOrder(NEXT_ID, USER)).toBeNull();
+    // still offered, to try again
+    expect(label(primary(host))).toBe(en.order.outcome.finish);
+  });
+
+  it('does not take an answer that is not the continuation of this order: another vault, a deposit, another step', async () => {
+    for (const hostile of [
+      { ...continuation(), basketId: '999' },
+      { ...continuation(), continues: 'another-order' },
+      { ...continuation(), depositRaw: '10000000' },
+      { ...continuation(), owner: { solana: 'So11111111111111111111111111111111111111113' } },
+      { ...continuation(), legs: continuation().legs.map((l) => ({ ...l, kind: 'deposit' })) },
+    ]) {
+      window.localStorage.clear();
+      portStore.setApi(async (path) => {
+        if (path === '/v1/me') return json(person('solana'));
+        if (path === `/v1/orders/${ORDER_ID}`)
+          return json({ ...stopped(orderOn()), status: 'failed' });
+        if (path === `/v1/orders/${ORDER_ID}/continue`) return json(hostile);
+        return json({ error: 'not found' }, 404);
+      });
+      seed({
+        ...recordOf(),
+        approved: { order: orderOn(), consents: [], at: '2026-10-05T12:01:00Z' },
+      });
+      router.push.mockClear();
+      const host = await screen();
+      await click(primary(host));
+      await settle();
+      expect(router.push, JSON.stringify(Object.keys(hostile))).not.toHaveBeenCalled();
+      expect(recallOrder(NEXT_ID, USER)).toBeNull();
+      expect(find(host, '[data-ui="order-next"] [role="alert"]').textContent).toContain(
+        en.order.outcome.finishRefused,
+      );
+      await unmountAll();
+    }
+  });
+
+  it('says a moved price as that, and offers to finish with the cash', async () => {
+    api(orderOn());
+    seed();
+    run.answer = async (order) =>
+      ({
+        status: 'error',
+        order: stopped(order),
+        legId: LEG_SWAP,
+        error: Object.assign(new Error('409'), {
+          status: 409,
+          body: { error: 'the price has moved', code: 'PRICE_MOVED' },
+        }),
+      }) as never;
+    const host = await screen();
+    await click(primary(host));
+    await settle();
+    expect(status(host)).toContain(en.order.outcome.priceMoved);
+    expect(label(primary(host))).toBe(en.order.outcome.finish);
   });
 
   it('keeps the guard’s own words for a refusal behind "Details"', async () => {
@@ -559,6 +718,86 @@ describe('what a run is handed after a reload', () => {
     const host = await screen();
     expect(host.textContent).toContain(en.order.elsewhere);
     expect(host.querySelector('[data-variant="primary"]')).toBeNull();
+  });
+
+  it('in another browser, says the deposit of a stopped order is safe in the vault, and leads to the portfolio', async () => {
+    api({ ...stopped(orderOn()), status: 'failed' });
+    const host = await screen();
+    expect(host.textContent).toContain(en.order.outcome.elsewhereStopped('$10'));
+    expect(host.textContent).not.toContain(en.order.elsewhere);
+    const link = find(host, 'section a');
+    expect([link.textContent, link.getAttribute('href')]).toEqual([
+      en.order.outcome.seePortfolio,
+      '/monitor',
+    ]);
+    expect(host.querySelector('[data-variant="primary"]')).toBeNull();
+  });
+});
+
+describe('an order that finishes another with the cash in the vault', () => {
+  /** The record the first order's page keeps for it: what it finishes, and what it may still buy. */
+  const kept = () => ({
+    ...recordOf(),
+    amountUsd: 6,
+    continues: { orderId: 'first-order', left: [{ buy: SPY, amountInRaw: '6000000' }] },
+  });
+  /** The continuation as GET /v1/orders/{id} answers it, under this test's order id. */
+  const order = (): OrderDetail => {
+    const made = continuation();
+    return {
+      ...made,
+      id: ORDER_ID,
+      approvalUrl: `/orders/${ORDER_ID}`,
+      legs: made.legs.map((l) => ({ ...l, orderId: ORDER_ID })),
+    } as OrderDetail;
+  };
+
+  it('is reviewed as what it is: no deposit, the vault’s cash, and one button to sign it', async () => {
+    api(order());
+    seed(kept());
+    const host = await screen();
+    expect(find(host, '[data-ui="order-continues"]').textContent).toBe(
+      en.order.review.continuesLead,
+    );
+    const stats = [...host.querySelectorAll('[data-ui="stat"]')].map((x) => x.textContent);
+    expect(stats.some((x) => x?.startsWith(en.order.review.fromVault) && x.includes('$6'))).toBe(
+      true,
+    );
+    expect(stats.some((x) => x?.startsWith(en.order.review.deposit))).toBe(false);
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(label(primary(host))).toBe(en.order.signAndBuy('$6'));
+    // signed, it is run with the plan its first order was for
+    run.answer = async (o) => ({ status: 'done', order: { ...o, status: 'done' } });
+    await click(primary(host));
+    await settle();
+    expect(run.calls).toHaveLength(1);
+    expect(run.calls[0]?.deps.plan.basketId).toBe(basketIdOfPlan(PLAN_ID));
+  });
+
+  it('is not offered for signing when it buys what the first order did not leave, or deposits again', async () => {
+    const made = order();
+    const [swap] = made.legs;
+    if (!swap) throw new Error('fixture');
+    const [trade] = swap.trades;
+    if (!trade) throw new Error('fixture');
+    for (const [hostile, why] of [
+      // more cash than the step it stands for
+      [{ ...made, legs: [{ ...swap, trades: [{ ...trade, amountInRaw: '9000000' }] }] }, 'trades'],
+      // the same trade twice
+      [{ ...made, legs: [swap, { ...swap, id: LEG_CREATE, seq: 1 }] }, 'trades'],
+      // a deposit after all
+      [{ ...made, depositRaw: '10000000' }, 'deposit'],
+      // a step that is not a swap
+      [{ ...made, legs: [{ ...swap, kind: 'deposit', cashRaw: '6000000' }] }, 'steps'],
+    ] as const) {
+      api(hostile as OrderDetail);
+      seed(kept());
+      const host = await screen();
+      expect(find(host, '[role="alert"]').textContent, why).toBe(en.order.mismatch[why]);
+      expect(host.querySelector('[data-variant="primary"]'), why).toBeNull();
+      expect(run.calls).toHaveLength(0);
+      await unmountAll();
+    }
   });
 });
 

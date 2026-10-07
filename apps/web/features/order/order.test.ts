@@ -49,9 +49,15 @@ describe('amounts', () => {
     expect(formatRaw('1.5', 6, 'en')).toBeNull();
   });
 
-  it('says how far under the quote a minimum is, rounded up', () => {
+  it('says how far under the quote a minimum is, to the nearest basis point', () => {
     expect(shortfallBps('1000000', '990000')).toBe(100);
-    expect(shortfallBps('3', '2')).toBe(3334);
+    expect(shortfallBps('3', '2')).toBe(3333);
+    // a minimum is the quote less 1%, rounded down to a raw unit: the gap is a hair over 1%, and the
+    // order says 1%, as the buy screen did, never 1.01%
+    expect(shortfallBps('123456789', '122222221')).toBe(100);
+    expect(formatBps(shortfallBps('123456789', '122222221') ?? 0, 'en')).toBe('1%');
+    // a real difference still shows
+    expect(shortfallBps('1000000', '989900')).toBe(101);
     expect(shortfallBps('100', '100')).toBe(0);
     expect(shortfallBps('0', '0')).toBeNull();
     expect(formatBps(75, 'en')).toBe('0.75%');

@@ -441,6 +441,8 @@ export const pt: Dictionary = {
       holdings: 'O que você tem',
       details: { label: 'Detalhes', version: 'Versão do portfólio que ele segue' },
       cashMethod: 'dinheiro lido do cofre, contado a um dólar',
+      unfinished:
+        'Uma compra parou depois do depósito, então este cofre tem mais dinheiro do que o plano prevê. O dinheiro está seguro aqui.',
       parts: 'As partes, por peso',
       planTitle: (parts: number) =>
         parts === 1 ? 'Seu plano · 1 parte' : `Seu plano · ${parts} partes`,
@@ -1042,6 +1044,9 @@ export const pt: Dictionary = {
       title: 'Revise cada passo',
       lead: 'Cada passo é montado na hora, conferido com o que você vê aqui, e só então assinado pela sua carteira. Um passo que não confere não é assinado.',
       deposit: 'Depósito',
+      fromVault: 'Do dinheiro do seu cofre',
+      continuesLead:
+        'Esta ordem termina uma compra que parou. Ela não deposita nada: cada passo gasta dinheiro que já está no seu cofre.',
       steps: 'Passos',
       expires: 'Assine antes de',
       spend: (amount: string, asset: string) => `Gastar ${amount} em ${asset}`,
@@ -1148,8 +1153,19 @@ export const pt: Dictionary = {
         `Todos os passos estão confirmados em ${chain}. A transação de cada passo está no link ao lado dele.`,
       seePortfolio: 'Ver seu portfólio',
       buyMore: 'Comprar mais',
-      depositSafe: (amount: string) =>
-        `Seu depósito de ${amount} está no seu cofre em dinheiro, e é seu. Uma nova ordem depositaria de novo: ela ainda não consegue usar o dinheiro que já está lá.`,
+      stopped: (amount: string) =>
+        `Seus ${amount} estão seguros no seu cofre, em dinheiro. O passo de compra não foi concluído.`,
+      finish: 'Terminar a compra com o dinheiro do seu cofre',
+      finishing: 'Criando a ordem…',
+      finishRefused: 'Não consegui criar essa ordem agora. Nada se moveu. Tente de novo.',
+      finishWait:
+        'Um passo enviado antes ainda pode chegar à rede, então ainda não posso terminar a compra. Tente de novo em um ou dois minutos.',
+      finishNoStore:
+        'Este navegador não guarda nada entre as páginas, então não vou criar a ordem: um passo poderia ser assinado duas vezes. Permita que este site guarde dados e tente de novo.',
+      priceMoved:
+        'O preço mudou desde a sua revisão, então um passo daria agora menos que o mínimo que você aprovou. Nada foi assinado para ele.',
+      elsewhereStopped: (amount: string) =>
+        `Esta ordem foi criada em outro navegador. Seus ${amount} estão seguros no seu cofre, em dinheiro. Para terminar a compra, abra esta página no navegador que criou a ordem.`,
       details: 'Detalhes',
       refused: (step: number) =>
         `Não assinei o passo ${step}: a transação que nosso servidor montou para ele não é o passo que você aprovou. Nada foi assinado para ele.`,

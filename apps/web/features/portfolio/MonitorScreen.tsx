@@ -16,12 +16,19 @@ import { ChainBadgeMarked, ChainMark } from '../account/ChainName';
 import { ActivityPanel } from '../order/ActivityPanel';
 import { useWalletPort } from '../wallet/WalletProvider';
 import { dollars } from './figures';
-import { addDecimals, chainTotal, type PortfolioChain, sumSource, type Vault } from './portfolio';
+import {
+  addDecimals,
+  cashHolding,
+  chainTotal,
+  type PortfolioChain,
+  sumSource,
+  type Vault,
+} from './portfolio';
 import { usePortfolio } from './use-portfolio';
 import { useVaultHistory } from './use-vault-history';
 import { VaultGoalCard } from './VaultGoalCard';
 import { PlanParts, VaultPanel } from './VaultPanel';
-import { goalOfVault, putInto } from './vault-goal';
+import { goalOfVault, ordersOfVault, putInto } from './vault-goal';
 
 // The monitor (/monitor): the person's vaults, read from the API each time the page opens (GET
 // /v1/portfolio). One serif line, then the chain, then a panel per vault with its chain's badge, then
@@ -32,6 +39,8 @@ import { goalOfVault, putInto } from './vault-goal';
 // Nothing here signs: there is no primary button, and the vault's switches are not offered.
 
 const SIGN_IN = '/sign-in?next=/monitor';
+/** How far over its target a vault's cash is before the page speaks of it: five points of the vault. */
+const CASH_FAR_ABOVE_BPS = 500;
 
 export function MonitorScreen() {
   const t = useT();
@@ -75,9 +84,35 @@ export function MonitorScreen() {
       words.group.method(entry.vaults.length, nameOf(entry.chain)),
     );
 
+  /**
+   * A vault whose cash is far above its plan because a buy stopped after its deposit: said over the
+   * vault, with the way to finish the buy with that cash. The order's own page makes the new order,
+   * so this page still signs nothing.
+   */
+  const unfinishedOf = (vault: Vault) => {
+    const cash = cashHolding(vault);
+    const order = ordersOfVault(vault, history.records).find((r) => history.stopped.has(r.orderId));
+    if (!order || cash.driftBps < CASH_FAR_ABOVE_BPS) return null;
+    return (
+      <div
+        data-ui="vault-unfinished"
+        className="flex flex-col items-start gap-2 rounded-md border border-border bg-card p-4"
+      >
+        <Status status="watch">{words.vault.unfinished}</Status>
+        <Link
+          href={`/orders/${encodeURIComponent(order.orderId)}`}
+          className={buttonClass({ variant: 'secondary' })}
+        >
+          {t.order.outcome.finish}
+        </Link>
+      </div>
+    );
+  };
+
   /** One vault: his guide's "Goal card and plan" side by side, then what the vault holds. */
   const vaultBlock = (entry: PortfolioChain, vault: Vault) => (
     <div key={vault.address} data-ui="vault" className="flex flex-col gap-6">
+      {unfinishedOf(vault)}
       <div className="grid items-start gap-6 min-[980px]:grid-cols-2">
         <VaultGoalCard
           chain={entry}

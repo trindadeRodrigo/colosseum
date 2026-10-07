@@ -1,4 +1,5 @@
 'use client';
+import type { OrderDetail } from '@colosseum/schemas';
 import { useEffect, useMemo, useState } from 'react';
 import type { Execution } from '../../components/ui/ExecutionList';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -32,6 +33,12 @@ export type VaultHistory = {
   orders: OrderActivity[];
   /** The orders whose deposit is confirmed on chain, as the API last said: only these were put in. */
   deposited: ReadonlySet<string>;
+  /**
+   * The orders that stopped with cash left in the vault: a buy whose deposit landed and whose buying
+   * did not finish, or the order made to finish one, itself stopped. Not one that a later order
+   * finished. Its page offers to finish the buy with that cash.
+   */
+  stopped: ReadonlySet<string>;
 };
 
 export function useVaultHistory(): VaultHistory {
@@ -46,6 +53,7 @@ export function useVaultHistory(): VaultHistory {
   const lang = useLang();
   const [orders, setOrders] = useState<OrderActivity[]>([]);
   const [deposited, setDeposited] = useState<ReadonlySet<string>>(new Set());
+  const [stopped, setStopped] = useState<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
     setRecords(known ? recallOrders(userId) : []);
@@ -58,6 +66,7 @@ export function useVaultHistory(): VaultHistory {
     if (records.length === 0) {
       setOrders([]);
       setDeposited(new Set());
+      setStopped(new Set());
       return;
     }
     Promise.all(records.map((r) => readOrder(apiFetch, r.orderId))).then((read) => {
@@ -74,6 +83,35 @@ export function useVaultHistory(): VaultHistory {
               ? [answer.order.id]
               : [],
           ),
+        ),
+      );
+      // An order goes no further when it failed or ran out of time with a step not done. The buy a
+      // later order finished is not stopped any more.
+      const over = (order: OrderDetail) =>
+        order.status === 'failed' ||
+        order.status === 'expired' ||
+        order.legs.some((leg) => leg.status === 'failed' || leg.status === 'expired');
+      const landed = (order: OrderDetail) =>
+        order.legs.some(
+          (leg) =>
+            (leg.kind === 'create_vault' || leg.kind === 'deposit') && leg.status === 'confirmed',
+        );
+      const finished = new Set(
+        read.flatMap((answer, i) =>
+          answer.kind === 'read' && answer.order.status === 'done' && records[i]?.continues
+            ? [records[i]?.continues?.orderId ?? '']
+            : [],
+        ),
+      );
+      setStopped(
+        new Set(
+          read.flatMap((answer, i) => {
+            const record = records[i];
+            if (answer.kind !== 'read' || !record || answer.order.status === 'done') return [];
+            const root = record.continues?.orderId ?? record.orderId;
+            if (finished.has(root) || !over(answer.order)) return [];
+            return record.continues || landed(answer.order) ? [record.orderId] : [];
+          }),
         ),
       );
       setOrders(
@@ -110,5 +148,5 @@ export function useVaultHistory(): VaultHistory {
     () => orders.flatMap((o) => o.executions).sort((a, b) => b.at.localeCompare(a.at)),
     [orders],
   );
-  return { records, activity, orders, deposited };
+  return { records, activity, orders, deposited, stopped };
 }

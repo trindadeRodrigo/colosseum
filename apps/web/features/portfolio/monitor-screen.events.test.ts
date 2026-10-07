@@ -666,6 +666,94 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     expect(find(activity, '[data-ui="disclaimer"] p[lang]').textContent).toBe(DISCLAIMER.en);
   });
 
+  it('offers to finish a buy that stopped after its deposit, on the vault it left in cash', async () => {
+    // the deposit landed and the swap failed: the vault is all cash against a plan that holds little
+    const failed = () => {
+      const order = orderOn();
+      return {
+        ...order,
+        status: 'failed',
+        legs: order.legs.map((leg, i) =>
+          i === 0 ? { ...leg, status: 'confirmed', txId: 'sig0' } : { ...leg, status: 'failed' },
+        ),
+      };
+    };
+    const allCash = () => {
+      bought();
+      return json(
+        portfolioBody(
+          chainOf([
+            vault({
+              basketId: basketOfPlan(PLAN_ID),
+              // the plan's targets are set, and nothing of them is bought yet
+              positions: vault().positions.map((p) => ({
+                ...p,
+                raw: '0',
+                display: '0',
+                valueUsd: '0',
+                weightBps: 0,
+                driftBps: -p.targetBps,
+              })),
+              valueUsd: '40000',
+              cash: { ...vault().cash, raw: '40000000000', display: '40000' },
+            }),
+          ]),
+        ),
+      );
+    };
+    api({
+      person: onSolana,
+      portfolio: allCash,
+      more: (path) => (path === `/v1/orders/${ORDER_ID}` ? json(failed()) : null),
+    });
+    signIn();
+    const host = await screen();
+    await settle();
+    const note = find(host, '[data-ui="vault-unfinished"]');
+    expect(note.textContent).toContain(en.portfolio.vault.unfinished);
+    const link = find(note, 'a');
+    expect([link.textContent, link.getAttribute('href')]).toEqual([
+      en.order.outcome.finish,
+      `/orders/${ORDER_ID}`,
+    ]);
+    // the page still signs nothing: the link is not a primary button
+    expect(primary(host)).toBeNull();
+    await unmountAll();
+    window.localStorage.clear();
+    // the same vault after a buy that went through: nothing to finish
+    api({
+      person: onSolana,
+      portfolio: allCash,
+      more: (path) => (path === `/v1/orders/${ORDER_ID}` ? json(doneOrder()) : null),
+    });
+    signIn();
+    const fine = await screen();
+    await settle();
+    expect(fine.querySelector('[data-ui="vault-unfinished"]')).toBeNull();
+    await unmountAll();
+    window.localStorage.clear();
+    // nor while the buy is still on its way: the deposit landed and the next step is not signed yet
+    const open = () => {
+      const order = orderOn();
+      return {
+        ...order,
+        status: 'partial',
+        legs: order.legs.map((leg, i) =>
+          i === 0 ? { ...leg, status: 'confirmed', txId: 'sig0' } : leg,
+        ),
+      };
+    };
+    api({
+      person: onSolana,
+      portfolio: allCash,
+      more: (path) => (path === `/v1/orders/${ORDER_ID}` ? json(open()) : null),
+    });
+    signIn();
+    const going = await screen();
+    await settle();
+    expect(going.querySelector('[data-ui="vault-unfinished"]')).toBeNull();
+  });
+
   it('groups what was done by order, each under what it was and when, with no step listed twice', async () => {
     const second = 'order-2';
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});

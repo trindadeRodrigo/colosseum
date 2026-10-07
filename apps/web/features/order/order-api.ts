@@ -155,6 +155,59 @@ export async function readOrder(
     : { kind: 'unreadable' };
 }
 
+export type ContinueOutcome =
+  | { kind: 'placed'; order: OrderDetail }
+  /** 409: it cannot be finished now. `wait` when a transaction built before can still land. */
+  | { kind: 'not-now'; wait: boolean; said: string }
+  | { kind: CallFailure };
+
+/**
+ * POST /v1/orders/{id}/continue: a new order that finishes a buy which stopped after its deposit. It
+ * deposits nothing and its steps are the swaps the first order left, quoted now. The answer is held
+ * here to being that: an order of this owner and chain, for the same vault number, that names the
+ * order it finishes, states no deposit and has only swaps. What it may spend is held to the first
+ * order's own trades before it is offered for signing (order-check.ts, `checkContinuation`).
+ */
+export async function continueOrder(
+  apiFetch: ApiFetch,
+  first: Pick<OrderDetail, 'id' | 'owner' | 'basketId'>,
+  chain: ChainId,
+): Promise<ContinueOutcome> {
+  let res: Response;
+  try {
+    res = await apiFetch(`/v1/orders/${encodeURIComponent(first.id)}/continue`, { method: 'POST' });
+  } catch {
+    return { kind: 'unreachable' };
+  }
+  const body = await bodyOf(res);
+  if (res.status === 409) {
+    const details = body.details as { retryable?: unknown } | undefined;
+    return {
+      kind: 'not-now',
+      wait: details?.retryable === true,
+      said: typeof body.error === 'string' ? body.error : '',
+    };
+  }
+  if (!res.ok) return { kind: failureOf(res.status, body.code) };
+  const order = OrderDetail.safeParse(body);
+  if (!order.success) return { kind: 'unreadable' };
+  const family = chainFamily(chain);
+  const made = order.data;
+  if (
+    body.continues !== first.id ||
+    made.id === first.id ||
+    made.type !== 'buy' ||
+    made.depositRaw !== undefined ||
+    made.owner[family] === undefined ||
+    made.owner[family] !== first.owner[family] ||
+    made.basketId !== first.basketId ||
+    made.legs.length === 0 ||
+    made.legs.some((leg) => leg.chain !== chain || leg.kind !== 'swap')
+  )
+    return { kind: 'unreadable' };
+  return { kind: 'placed', order: made };
+}
+
 /** MOCK only: POST /v1/mock/fund gives the signed-in wallets mock cash and mock gas on one chain. */
 export async function fundMock(
   apiFetch: ApiFetch,

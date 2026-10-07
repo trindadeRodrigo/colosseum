@@ -1,6 +1,7 @@
 'use client';
 import type { ConsentKind, Leg, OrderDetail } from '@colosseum/schemas';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
@@ -20,8 +21,15 @@ import { dollars } from '../goal/sheet';
 import { SharedReview } from '../shared/SharedReview';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { assetTicker, formatBps, formatRaw, shortfallBps } from './amounts';
-import { type CallFailure, readOrder } from './order-api';
-import { checkDeposit, checkFamilyBuy, type DepositCheck, sharedShapeOk } from './order-check';
+import { type CallFailure, continueOrder, readOrder } from './order-api';
+import {
+  checkContinuation,
+  checkDeposit,
+  checkFamilyBuy,
+  type DepositCheck,
+  sharedShapeOk,
+  tradesLeft,
+} from './order-check';
 import { isBuy, keepOrder, type OrderRecord, recallOrder } from './order-record';
 import { legsInOrder, type NextStep, type OutcomeView, outcomeView, stepOf } from './order-view';
 import { chainReady, explorerUrlFor, onMock } from './readiness';
@@ -46,6 +54,8 @@ type Check = DepositCheck | { ok: false; why: 'trades' | 'shape' };
  * publish move nothing and have only the steps their terms call for.
  */
 function checkOf(order: OrderDetail, record: OrderRecord, units: ChainUnits | null): Check {
+  // An order that finishes another deposits nothing, and makes only trades the first one left.
+  if (record.continues) return checkContinuation(order, record.continues.left, units);
   const terms = record.terms;
   if (!terms) return checkDeposit(order, record.amountUsd, units);
   if (terms.kind === 'family') return checkFamilyBuy(order, record.amountUsd, units, terms.targets);
@@ -70,6 +80,11 @@ export function OrderScreen({ id }: { id: string }) {
   const [outcome, setOutcome] = useState<RunOutcome | null>(null);
   const [consents, setConsents] = useState<ConsentKind[]>([]);
   const [round, setRound] = useState(0);
+  const [finishing, setFinishing] = useState(false);
+  const [finishProblem, setFinishProblem] = useState<{ sentence: string; said: string } | null>(
+    null,
+  );
+  const router = useRouter();
   const stop = useRef({ aborted: false });
   const titleId = useId();
   const reasonId = useId();
@@ -189,8 +204,30 @@ export function OrderScreen({ id }: { id: string }) {
       </section>
     );
   }
-  if (!record)
-    return (
+  if (!record) {
+    // Made in another browser: its plan is not here to check the steps against. When its deposit
+    // landed and the buying did not finish, the page says where the money is, not only "make a new
+    // order".
+    const there = load.order;
+    const landed =
+      there.status !== 'done' &&
+      there.legs.some(
+        (leg) =>
+          (leg.kind === 'create_vault' || leg.kind === 'deposit') && leg.status === 'confirmed',
+      );
+    const on = there.legs[0]?.chain;
+    const cashUnits = on ? unitsFor(on, onMock(port, on)) : null;
+    const decimals = cashUnits?.tokens[cashUnits.cash]?.decimals;
+    return landed && there.depositRaw !== undefined && decimals !== undefined ? (
+      <Notice
+        title={t.order.title}
+        body={t.order.outcome.elsewhereStopped(
+          dollars(Number(there.depositRaw) / 10 ** decimals, lang),
+        )}
+        href="/monitor"
+        label={t.order.outcome.seePortfolio}
+      />
+    ) : (
       <Notice
         title={t.order.title}
         body={t.order.elsewhere}
@@ -198,6 +235,7 @@ export function OrderScreen({ id }: { id: string }) {
         label={t.plan.backToGoal}
       />
     );
+  }
 
   const shown = record.approved?.order ?? load.order;
   const now = live ?? load.order;
@@ -239,7 +277,58 @@ export function OrderScreen({ id }: { id: string }) {
       (leg) =>
         (leg.kind === 'create_vault' || leg.kind === 'deposit') && leg.status === 'confirmed',
     );
-  const stranded = deposited && !done && view?.next.kind === 'new-order';
+  // The same for an order that finishes another: it deposited nothing, and the cash is in the vault.
+  const inVault = deposited || (buying && record.continues !== undefined);
+  // It goes no further: the executor said so, or (on a page opened again) the order's own state does.
+  const over = view
+    ? view.next.kind === 'new-order'
+    : now.status === 'failed' ||
+      now.status === 'expired' ||
+      now.legs.some((leg) => leg.status === 'failed' || leg.status === 'expired');
+  const stranded = inVault && !done && !running && over;
+
+  /** A new order that finishes this buy with the cash in the vault, then its own review page. */
+  async function finish() {
+    if (!record || finishing) return;
+    setFinishing(true);
+    setFinishProblem(null);
+    const o = t.order.outcome;
+    const firstId = record.continues?.orderId ?? id;
+    const made = await continueOrder(
+      apiFetch,
+      { id: firstId, owner: shown.owner, basketId: shown.basketId },
+      chain,
+    );
+    if (made.kind !== 'placed') {
+      setFinishing(false);
+      setFinishProblem(
+        made.kind === 'not-now'
+          ? { sentence: made.wait ? o.finishWait : o.finishRefused, said: made.said }
+          : { sentence: made.kind === 'busy' ? t.shell.slowDown : o.finishRefused, said: '' },
+      );
+      return;
+    }
+    // What this order had left to buy: the new one is held to it before it is offered for signing.
+    const left = tradesLeft(shown, now);
+    const cashToken = units?.tokens[units.cash];
+    const spent = left.reduce((sum, trade) => sum + BigInt(trade.amountInRaw), 0n);
+    const kept =
+      cashToken !== undefined &&
+      spent > 0n &&
+      keepOrder({
+        ...record,
+        orderId: made.order.id,
+        amountUsd: Number(spent) / 10 ** cashToken.decimals,
+        approved: null,
+        continues: { orderId: firstId, left },
+      });
+    if (!kept) {
+      setFinishing(false);
+      setFinishProblem({ sentence: cashToken ? o.finishNoStore : o.finishRefused, said: '' });
+      return;
+    }
+    router.push(`/orders/${encodeURIComponent(made.order.id)}`);
+  }
 
   // The one primary button of the view: sign, carry on, approve a step again, or nothing.
   const next: NextStep | { kind: 'first' } =
@@ -273,6 +362,11 @@ export function OrderScreen({ id }: { id: string }) {
         {!record.approved && (
           <p className="max-w-(--tf-measure-body) text-body-lg">{t.order.review.lead}</p>
         )}
+        {record.continues && (
+          <p data-ui="order-continues" className="max-w-(--tf-measure-body) text-body">
+            {t.order.review.continuesLead}
+          </p>
+        )}
       </header>
 
       <Card
@@ -287,7 +381,10 @@ export function OrderScreen({ id }: { id: string }) {
         <CardHeader title={t.order.stepsTitle} level={2} meta={<ChainBadge chain={chain} />} />
         <CardBody className="flex flex-col gap-4">
           <StatRow>
-            {buying && <Stat label={t.order.review.deposit}>{depositShown}</Stat>}
+            {buying && !record.continues && (
+              <Stat label={t.order.review.deposit}>{depositShown}</Stat>
+            )}
+            {record.continues && <Stat label={t.order.review.fromVault}>{amount}</Stat>}
             <Stat label={t.order.review.steps}>{legs.length}</Stat>
             {!record.approved && (
               <Stat label={t.order.review.expires} className="max-[620px]:col-span-2">
@@ -366,6 +463,12 @@ export function OrderScreen({ id }: { id: string }) {
         {!running && done && !view && (
           <p className="text-body">{t.order.outcome.done(t.chain.names[chain])}</p>
         )}
+        {/* Where the money is, first: said whenever the order stopped after its deposit landed. */}
+        {stranded && (
+          <p data-ui="deposit-safe" className="max-w-(--tf-measure-body) text-body">
+            {t.order.outcome.stopped(amount)}
+          </p>
+        )}
         {view && (
           <div className="flex max-w-(--tf-measure-body) flex-col gap-1">
             <p
@@ -376,11 +479,7 @@ export function OrderScreen({ id }: { id: string }) {
               {view.alarm && <StatusMark status="off-track" size={12} className="mt-1.5" />}
               <span>{view.sentence}</span>
             </p>
-            {stranded && (
-              <p data-ui="deposit-safe" className="text-body">
-                {t.order.outcome.depositSafe(depositShown)}
-              </p>
-            )}
+
             {/* What failed, in the guard's own words: for the person to quote, not to read first. */}
             {(view.check || view.detail) && (
               <details data-ui="order-details" className="text-body-sm">
@@ -417,6 +516,7 @@ export function OrderScreen({ id }: { id: string }) {
         )}
         {check.ok &&
           !done &&
+          !stranded &&
           next.kind !== 'none' &&
           next.kind !== 'new-order' &&
           next.kind !== 'other-order' && (
@@ -455,23 +555,45 @@ export function OrderScreen({ id }: { id: string }) {
             )}
           </div>
         )}
-        {next.kind === 'new-order' &&
-          !done &&
-          (stranded ? (
-            // The deposit is in the vault: that is where to look first, not at a second deposit.
-            <div data-ui="order-next" className="flex flex-wrap items-center gap-3">
-              <Link href="/monitor" className={buttonClass({ variant: 'primary' })}>
+        {/* Stopped after the deposit: the one way on spends the cash that is in the vault. A new
+            order from the plan would ask for the whole deposit again, so it is not offered here. */}
+        {stranded && (
+          <div data-ui="order-next" className="flex flex-col items-start gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                variant="primary"
+                busy={finishing}
+                busyLabel={t.order.outcome.finishing}
+                onClick={finish}
+              >
+                {t.order.outcome.finish}
+              </Button>
+              <Link href="/monitor" className={buttonClass({ variant: 'secondary' })}>
                 {t.order.outcome.seePortfolio}
               </Link>
-              <Link href={newOrder} className={buttonClass({ variant: 'secondary' })}>
-                {t.order.outcome.newOrder}
-              </Link>
             </div>
-          ) : (
-            <Link href={newOrder} className={buttonClass({ variant: 'primary' })}>
-              {t.order.outcome.newOrder}
-            </Link>
-          ))}
+            {finishProblem && (
+              <div role="alert" className="flex max-w-(--tf-measure-body) flex-col gap-1">
+                <p className="text-body-sm text-destructive">{finishProblem.sentence}</p>
+                {finishProblem.said && (
+                  <details className="text-body-sm">
+                    <summary className="cursor-pointer text-muted-foreground">
+                      {t.order.outcome.details}
+                    </summary>
+                    <p className="font-mono text-source text-muted-foreground break-words">
+                      {finishProblem.said}
+                    </p>
+                  </details>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        {next.kind === 'new-order' && !done && !stranded && (
+          <Link href={newOrder} className={buttonClass({ variant: 'primary' })}>
+            {t.order.outcome.newOrder}
+          </Link>
+        )}
         {next.kind === 'other-order' && (
           <Link
             href={`/orders/${encodeURIComponent(next.orderId)}`}
