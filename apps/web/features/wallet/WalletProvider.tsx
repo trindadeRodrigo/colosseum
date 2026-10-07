@@ -121,12 +121,16 @@ export function useWalletRestart(): () => void {
  * with one `/` ('/v1/config'); anything that would lead to another host is refused before the token
  * is asked for, and a redirect is an error, so the token is never carried to where one points.
  * A call the API refuses with 401 while someone is signed in is sent once more, with fresh tokens;
- * its second answer is the one returned.
+ * its second answer is the one returned. A caller may ask for fresh tokens from the start
+ * (`freshSignIn`): a route that reads a sign-in without needing one answers a stale token as it
+ * answers nobody, with no 401 to say so.
  */
-export function useApiFetch(): (path: string, init?: RequestInit) => Promise<Response> {
+export type ApiInit = RequestInit & { freshSignIn?: boolean };
+export function useApiFetch(): (path: string, init?: ApiInit) => Promise<Response> {
   const port = useWalletPort();
   return useCallback(
-    async (path, init) => {
+    async (path, asked) => {
+      const { freshSignIn, ...init } = asked ?? {};
       const url = apiUrl(API, path);
       const send = async (fresh: boolean) => {
         const signIn = await port.authHeaders(fresh ? { fresh } : undefined);
@@ -135,7 +139,7 @@ export function useApiFetch(): (path: string, init?: RequestInit) => Promise<Res
         const res = await fetch(url, { cache: 'no-store', ...init, headers, redirect: 'error' });
         return { res, signedIn: 'authorization' in signIn };
       };
-      const first = await send(false);
+      const first = await send(freshSignIn === true);
       if (first.res.status !== 401 || !first.signedIn) return first.res;
       return (await send(true)).res;
     },
