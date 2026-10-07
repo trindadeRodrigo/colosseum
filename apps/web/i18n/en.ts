@@ -36,6 +36,9 @@ export const en = {
         'You’re signed in, but the sign-in service hasn’t handed over your wallets yet. Nothing is lost.',
       server:
         'You’re signed in, but our server hasn’t said yet which chain your plan lives on. Nothing is lost.',
+      /** Nobody is known to be signed in: the sign-in service has not loaded at all. */
+      service:
+        'The sign-in service hasn’t answered yet, so I can’t tell whether you’re signed in. You can still look around.',
       again: 'Try again',
       trying: 'Trying again…',
       /** "Try again" pressed while a step of an order is being signed. */
@@ -110,6 +113,13 @@ export const en = {
       /** The name of the group of the two chains to choose from. */
       chains: 'The chain of your plan',
     },
+    /** The sign-in screen when the sign-in service has not loaded after a few seconds. */
+    silent: {
+      body: 'The sign-in service hasn’t answered yet, so I can’t sign you in right now.',
+      offline: 'This device looks offline. Check the connection, then try again.',
+      blocked:
+        'The sign-in service didn’t answer. A blocker can stop it, or this address may not be set up for sign-in.',
+    },
     off: {
       api: 'Sign-in is off for the moment: our server isn’t answering. I ask again every few seconds, and this page updates by itself.',
       setup:
@@ -153,6 +163,8 @@ export const en = {
         'That wallet is no longer in this browser. Pick one from the list, or use a passkey.',
       tooMany: 'Too many tries in a short time. Wait a minute, then try again.',
       offline: 'I couldn’t reach the sign-in service. Check your connection, then try again.',
+      originRefused:
+        'Sign-in isn’t set up for this address: the sign-in service takes no sign-in from it. There is nothing for you to fix. Use the site at its own address, or tell us.',
       expired: 'That took too long and ran out of time. Try again.',
       walletNotMade:
         'You’re signed in, but your wallet couldn’t be made. Nothing is lost. Try again.',
