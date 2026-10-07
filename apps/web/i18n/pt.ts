@@ -210,6 +210,7 @@ export const pt: Dictionary = {
       time: 'Prazo e risco',
       shape: 'O que molda o plano',
       words: 'Palavras',
+      optional: 'Opcional',
     },
     fields: {
       goal: 'Para que é o dinheiro',
@@ -225,7 +226,7 @@ export const pt: Dictionary = {
     hints: {
       income: 'Quanto você precisa por mês. Deixe em branco se não tiver um número.',
       horizon: 'De 1 a 480.',
-      country: 'É você quem declara. Define quais ativos você pode ter.',
+      country: 'Pode deixar em branco. O plano não usa esse dado.',
       holdings: 'O plano preenche lacunas e evita repetir o que você já tem.',
       amount: 'Com quanto o plano começa, de US$ 10 a US$ 1.000.000.',
       notFound: 'Não encontrei no seu objetivo: preencha.',
