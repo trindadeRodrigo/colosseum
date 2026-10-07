@@ -2009,3 +2009,790 @@ describe('a mix said of a part of the money is asked, never guessed', () => {
     expect(fields(rules)).toContain('mix');
   });
 });
+
+// ---------------------------------------------------------------------------------------------------
+// The second independent review (Oct 7), on the intake: its scripts b1 to b7 (`review2-intake`).
+//
+// The fix for the first review was a list of the ways a clause turns a holding down, and the second
+// showed that such a list cannot be finished: most of its new sentences were still read as stated.
+// So the rules these cases hold are no list of phrases. Each says who must read a holding before it
+// is taken:
+//   1. With a model, a holding needs both readers: the model's reply and the text check. Words the
+//      text check finds that the reply does not read are not taken, not asked and not said.
+//   2. With no model, a holding the text check reads is asked once, its reading the start, and is
+//      never taken. A question has a way out ("none") and does not come back once answered.
+//   3. The last word wins: a later message decides over an earlier one.
+//   4. A refusal the text states is taken, with or without a model; one the model did not read is
+//      said in a line of its own; a refusal and a holding of one class are asked, never both held.
+//   5. A share is taken only in its plain forms.
+// Rules 6 and 7 (a filter never picks one stock; what a caller hands in) are in narratives.test.ts.
+//
+// Every sentence of the review's scripts is a case, on both paths: with the model reply its script
+// used, and with none. The replies are MOCK, written by hand. The labels and the attributes are MOCK,
+// set to what the review's shelf held for each case. No test reaches a network.
+describe('the second review (Oct 7): every sentence of its scripts, with a model and with none', () => {
+  // What the stocks' attributes carry on this MOCK shelf, by `attributeKey`, and how many of those
+  // names the chain lists: one car maker, two names in a broad sector, as the review's shelf had.
+  const ATTRIBUTES_2: Record<string, FilterMatch> = {
+    ...ATTRIBUTES,
+    'industry:automobiles': { value: 'Automobiles', listed: 1 },
+    'sub_industry:automobile-manufacturers': { value: 'Automobile Manufacturers', listed: 1 },
+    'sector:consumer-discretionary': { value: 'Consumer Discretionary', listed: 2 },
+    'industry:semiconductors-semiconductor-equipment': {
+      value: 'Semiconductors & Semiconductor Equipment',
+      listed: 1,
+    },
+    'keyword:bitcoin-treasury': { value: 'bitcoin treasury', listed: 1 },
+    'keyword:index-fund': { value: 'index fund', listed: 3 },
+    'keyword:cloud': { value: 'cloud', listed: 5 },
+  };
+  const matchOf2 = (filter: MarketFilter): FilterMatch | null =>
+    ATTRIBUTES_2[`${filter.by}:${attributeKey(filter.value)}`] ?? null;
+  /** The reply of the review's scripts where a faithful model reads no holding: every field null. */
+  const NOTHING_READ = reply({ goal: null, amountUsd: null, horizonMonths: null, risk: null });
+  /**
+   * The form answers its scripts gave: the goal, the amount and the time; and the risk, so that what
+   * is left to ask is only what a holding raises.
+   */
+  const FORM: IntakeAnswers = { goal: 'grow', amountUsd: 5000, horizonMonths: 60, risk: 'medium' };
+  const read = (text: string, r: unknown, answers: IntakeAnswers = FORM) =>
+    intake(text, r, { matchOf: matchOf2, answers });
+  type Result = ReturnType<typeof read>;
+  /** What a sheet holds of a mix, a theme or a shared portfolio; nothing where there is no sheet. */
+  const heldBy = (r: Result) => ({
+    mix: r.sheet?.mix ?? null,
+    sleeves: r.sheet?.sleeves ?? null,
+    themes: r.sheet?.themes ?? [],
+  });
+  const NOTHING_HELD = { mix: null, sleeves: null, themes: [] };
+  /** The questions about what is held: a mix, a share of the money, a split. */
+  const askedOfAHolding = (r: Result) =>
+    r.questions.filter((q) => q.field === 'mix' || q.field === 'sleeves');
+  /** The lines that say a holding: a part of the plan, a theme, the limits a holding takes. */
+  const SAYS_A_HOLDING =
+    /% of the plan|% do plano|limits for|limites de|starts from|parte de|matched by|filtrados por/;
+  const saidOfAHolding = (r: Result) =>
+    [...(r.readBack ?? []), ...r.assumptions].filter((s) => SAYS_A_HOLDING.test(s));
+
+  const STOCKS = bps(10_000, 0);
+  const CASH = bps(0, 10_000);
+  const GOLD = bps(0, 0, 0, 10_000);
+  const SIXTY_FORTY = bps(6000, 0, 4000);
+  const HALVES = bps(5000, 5000);
+
+  // b1: a mix written in a clause that does not state it as what the person wants held. How the text
+  // check reads each: `stated` (it cannot tell, and reads the mix in the third column), `negated` or
+  // `aside` (it reads the clause), `unread` (it reads no mix).
+  const B1: [string, 'stated' | 'negated' | 'aside' | 'unread', ReturnType<typeof bps>?][] = [
+    ['I have all my money in stocks and want to diversify', 'stated', STOCKS],
+    ['My savings are all in cash and I want to grow them', 'stated', CASH],
+    ["Today I'm all in crypto and it's stressing me out", 'stated', STOCKS],
+    ["I'm tired of being all in on stocks", 'stated', STOCKS],
+    ["I'm worried about having everything in stocks", 'stated', STOCKS],
+    ['I want to stop being all in on stocks', 'stated', STOCKS],
+    ['I want to move away from everything in crypto', 'stated', STOCKS],
+    ['Being all in stocks cost me a lot in 2022', 'stated', STOCKS],
+    ['I lost money going all in on crypto', 'stated', STOCKS],
+    ["I'm scared of putting all of it in stocks", 'stated', STOCKS],
+    ['all in stocks is what I want to avoid', 'stated', STOCKS],
+    ['all in stocks makes me nervous', 'stated', STOCKS],
+    ['Only stocks worries me', 'stated', STOCKS],
+    ['Only stocks keeps me up at night', 'stated', STOCKS],
+    ['I heard only stocks is the way to go but I am cautious', 'stated', STOCKS],
+    ['Everyone tells me to go all in on crypto', 'aside'],
+    ['The last thing I want is everything in crypto', 'stated', STOCKS],
+    ['I regret going all in on crypto', 'stated', STOCKS],
+    ["I'd hate to have everything in stocks", 'negated'],
+    ["No way I'm putting everything in crypto", 'negated'],
+    ['It would be foolish to put everything into bitcoin', 'stated', STOCKS],
+    ['Under no circumstances all in stocks', 'negated'],
+    ["I'm too old to go all in on stocks", 'stated', STOCKS],
+    ['People who go all in on stocks get burned', 'aside'],
+    ['100% stocks is too much for me', 'negated'],
+    ["I can't stomach 80% stocks and 20% cash", 'negated'],
+    ['My wife wants 70% stocks and 30% cash but I disagree', 'aside'],
+    ['Would 60/40 stocks and bonds be ok', 'stated', SIXTY_FORTY],
+    ['half stocks, half cash is what my dad did', 'stated', HALVES],
+    ['I only want stocks if the market is cheap', 'stated', STOCKS],
+    ['just cash for now, stocks later', 'stated', CASH],
+    ['My advisor says stocks only', 'stated', STOCKS],
+    ['stocks only? no thanks', 'negated'],
+    ['I keep everything in gold at home', 'stated', GOLD],
+    ['Right now I have everything in bitcoin', 'stated', STOCKS],
+    ['I sold everything in stocks last year', 'stated', STOCKS],
+    ['My pension is all in stocks, so this money should be calm', 'stated', STOCKS],
+    ['I inherited a portfolio that is all in stocks', 'stated', STOCKS],
+    ['I am fully invested in equities at work and want this safe', 'stated', STOCKS],
+    ['less of everything in stocks, more balance', 'stated', STOCKS],
+    ['Less than all of it in stocks', 'stated', STOCKS],
+    ['A friend put all of it in gold. I want something else', 'stated', GOLD],
+    ['Tenho tudo em ações e quero diversificar', 'stated', STOCKS],
+    ['Hoje está tudo em caixa e quero fazer render', 'stated', CASH],
+    ['Cansei de ter tudo em ações', 'stated', STOCKS],
+    ['Tenho medo de colocar tudo em ações', 'stated', STOCKS],
+    ['Tudo em ações me assusta', 'stated', STOCKS],
+    ['Tudo em cripto foi meu erro', 'stated', STOCKS],
+    ['Perdi dinheiro com tudo em cripto', 'stated', STOCKS],
+    ['Meu gerente disse só ações, eu discordo', 'stated', STOCKS],
+    ['Só ações me deixa nervoso', 'stated', STOCKS],
+    ['Deus me livre de tudo em bolsa', 'stated', STOCKS],
+    ['Jamais tudo em ações', 'stated', STOCKS],
+    ['Prefiro fugir de tudo em cripto', 'stated', STOCKS],
+    ['Minha previdência está toda em ações, então aqui quero calma', 'unread'],
+    ['Se eu fosse jovem colocaria tudo em ações', 'stated', STOCKS],
+  ];
+
+  it('b1, rules 1 and 2: a mix its clause does not state is not taken, asked or said with a model that reads none, and is asked once with no model', () => {
+    expect(B1).toHaveLength(56);
+    for (const [sentence, how, mix] of B1) {
+      // With a model that reads no mix: the words the text check finds are not taken, not asked and
+      // not said, however the check itself reads the clause.
+      const model = read(sentence, NOTHING_READ);
+      expect(model.mix, sentence).toBeNull();
+      expect(model.questions, sentence).toEqual([]);
+      expect(model.sheet, sentence).toMatchObject({ goal: 'grow', risk: 'medium' });
+      expect(heldBy(model), sentence).toEqual(NOTHING_HELD);
+      expect(saidOfAHolding(model), sentence).toEqual([]);
+      expect(
+        model.flags.filter((f) => /^text_only:|^mix_/.test(f)),
+        sentence,
+      ).toEqual(how === 'stated' ? ['text_only:mix'] : how === 'unread' ? [] : [`mix_${how}`]);
+      // With no model: never taken. Where the text check reads it as stated, it is the only reader,
+      // so it asks once with its reading as the start. Where it reads the clause, nothing is asked.
+      const rules = read(sentence, null);
+      expect(rules.mix, sentence).toBeNull();
+      expect(heldBy(rules), sentence).toEqual(NOTHING_HELD);
+      const asked = rules.questions.filter((q) => q.field === 'mix');
+      if (how !== 'stated') {
+        expect(asked, sentence).toEqual([]);
+        continue;
+      }
+      expect(rules.sheet, sentence).toBeNull();
+      expect(rules.questions, sentence).toHaveLength(1);
+      expect(asked[0], sentence).toMatchObject({ template: 'mix', read: mix });
+      expect(rules.flags, sentence).toContain('mix_asked:rules');
+      // The way out: "none" answers it, the question does not come back, and no mix is held.
+      const none = read(sentence, null, { ...FORM, mix: null });
+      expect(none.questions, sentence).toEqual([]);
+      expect(heldBy(none), sentence).toEqual(NOTHING_HELD);
+      expect(saidOfAHolding(none), sentence).toEqual([]);
+    }
+  });
+
+  // b2: a narrative's words that are not about investing, or said of something else. The id is the
+  // narrative the text check reads as an ask, null where it reads none; then its words, and what the
+  // no-model path does with it on this shelf: `asked` (how much of the money, once) or `said` (the
+  // chain has nothing for it, in one line).
+  const B2: ([string, null] | [string, Market, string, 'asked' | 'said'])[] = [
+    ['I work in AI and have $5,000 to invest', null],
+    ['The space between jobs left me with $5,000 to invest', null],
+    ['In defense of my plan, I want low risk', null],
+    ['I have a cloud of doubt about the market right now', 'cloud_software', 'cloud', 'asked'],
+    [
+      'After chips and salsa at the party we talked about investing',
+      'semiconductors',
+      'chips',
+      'asked',
+    ],
+    ['I spend too much on chips, so I want to save', 'semiconductors', 'chips', 'asked'],
+    ['My car needs an oil change, so I can only invest $200 a month', 'commodities', 'oil', 'said'],
+    ['The silver lining is that I have $5,000 to invest', 'commodities', 'silver', 'said'],
+    ['I am in software sales and want to invest my bonus', 'cloud_software', 'software', 'asked'],
+    ['I got this money from selling my cloud consulting business', null],
+    ['My kid loves rockets and I am saving for his college', 'space', 'rockets', 'said'],
+    ['I am from Asia and want to invest for 10 years', 'emerging_markets', 'Asia', 'said'],
+    ['I am in space research and have some savings', 'space', 'space', 'said'],
+    ['I am tired of brokers charging me fees', 'fintech', 'brokers', 'said'],
+    ['ChatGPT and other AI tools told me to keep it simple', 'ai', 'AI', 'asked'],
+    ['After I pay off the EV I can invest more', 'ev_autonomy', 'EV', 'said'],
+    ['I use AI at work every day. I want something safe.', 'ai', 'AI', 'asked'],
+    ['I read about AI in the news, not sure what to do', 'ai', 'AI', 'asked'],
+    ['I do not understand AI so keep it simple', null],
+    ['My pharma job pays well and I can invest $5,000', null],
+    [
+      'I am a nurse in health care and want to grow my savings',
+      'health_care',
+      'health care',
+      'said',
+    ],
+    ['I spend a lot in health care each year', 'health_care', 'health care', 'said'],
+    ['Software ate my weekend, anyway I have $5,000', 'cloud_software', 'Software', 'asked'],
+    [
+      'I sold my Tesla, EVs are expensive to insure, and now I have cash to invest',
+      'ev_autonomy',
+      'EVs',
+      'said',
+    ],
+    ['The oil and gas bill is killing me', 'commodities', 'oil and gas', 'said'],
+    ['I play quantum chess, anyway invest my money safely', 'quantum', 'quantum', 'said'],
+    ['Put my money to work in the cloud of uncertainty we live in', null],
+    ['I lost money in emerging markets once', 'emerging_markets', 'emerging markets', 'said'],
+    ['Nothing fancy like quantum computing', 'quantum', 'quantum computing', 'said'],
+    ['Unlike my friends I am not into meme stocks', null],
+    ['Forget about AI', 'ai', 'AI', 'asked'],
+    ['AI is overhyped', 'ai', 'AI', 'asked'],
+    ['AI is a bubble and I want nothing to do with it', 'ai', 'AI', 'asked'],
+    ['Stay clear of big tech', 'big_tech', 'big tech', 'asked'],
+    ['I am skeptical of big tech', 'big_tech', 'big tech', 'asked'],
+    ['Big tech is too expensive now', null],
+    ['I think AI will crash', 'ai', 'AI', 'asked'],
+    ['I would skip semiconductors', 'semiconductors', 'semiconductors', 'asked'],
+    ['Less AI, more boring things', 'ai', 'AI', 'asked'],
+    ['Semiconductors scare me', 'semiconductors', 'Semiconductors', 'asked'],
+    ['I got burned by big tech in 2022', 'big_tech', 'big tech', 'asked'],
+    [
+      'My portfolio at the bank is big tech heavy, so this one should differ',
+      'big_tech',
+      'big tech',
+      'asked',
+    ],
+    ['I hold the S&P 500 at my broker', null],
+    ['Besides my index funds I want something safe', null],
+    ['Gasto muito em saúde e quero guardar dinheiro', 'health_care', 'saúde', 'said'],
+    ['Trabalho com IA e quero investir meu bônus', null],
+    ['Ai, não sei o que fazer com esse dinheiro', null],
+    ['As corretoras cobram muito, quero algo simples', 'fintech', 'corretoras', 'said'],
+    ['Ganhei uma medalha de prata e um prêmio em dinheiro', 'commodities', 'prata', 'said'],
+    ['O preço do petróleo me preocupa', 'commodities', 'petróleo', 'said'],
+    ['IA é uma bolha', 'ai', 'IA', 'asked'],
+    ['Fujo de big tech', 'big_tech', 'big tech', 'asked'],
+    ['Tenho medo de semicondutores', 'semiconductors', 'semicondutores', 'asked'],
+    ['Chega de big tech', 'big_tech', 'big tech', 'asked'],
+    ['Minha filha estuda na Ásia e preciso pagar a faculdade', null],
+    ['Vi na nuvem de notícias que o mercado caiu', 'cloud_software', 'nuvem', 'asked'],
+  ];
+
+  it('b2, rules 1 and 2: words of a narrative that are no ask are not read, asked or said with a model that names none; with no model they are asked once or said, never held', () => {
+    expect(B2).toHaveLength(56);
+    for (const [sentence, id, words, rulesPath] of B2) {
+      const model = read(sentence, NOTHING_READ);
+      expect(model.narratives, sentence).toEqual([]);
+      expect(model.questions, sentence).toEqual([]);
+      expect(heldBy(model), sentence).toEqual(NOTHING_HELD);
+      expect(saidOfAHolding(model), sentence).toEqual([]);
+      expect(
+        model.assumptions.filter((s) => /no stock|only one stock|nenhuma ação|só uma ação/.test(s)),
+        sentence,
+      ).toEqual([]);
+      expect(
+        model.flags.filter((f) => /^text_only:|^market_|^no_cue:market/.test(f)),
+        sentence,
+      ).toEqual(id ? [`text_only:market:${id}`] : []);
+      const rules = read(sentence, null);
+      expect(rules.mix, sentence).toBeNull();
+      expect(heldBy(rules), sentence).toEqual(NOTHING_HELD);
+      if (!id) {
+        expect(rules.narratives, sentence).toEqual([]);
+        expect(rules.questions, sentence).toEqual([]);
+        continue;
+      }
+      expect(
+        rules.narratives.map((n) => [n.id, n.words]),
+        sentence,
+      ).toEqual([[id, words]]);
+      const asked = askedOfAHolding(rules);
+      if (rulesPath === 'asked') {
+        // The only reader read it: how much of the money, once, with no start, and no sheet yet.
+        expect(rules.sheet, sentence).toBeNull();
+        expect(rules.questions, sentence).toHaveLength(1);
+        expect(asked[0], sentence).toMatchObject({ field: 'mix', template: 'marketShare' });
+        expect(asked[0]?.text, sentence).toContain(words);
+        expect(asked[0]?.read, sentence).toBeUndefined();
+        // "None" answers it for good.
+        const none = read(sentence, null, { ...FORM, mix: null });
+        expect(none.questions, sentence).toEqual([]);
+        expect(heldBy(none), sentence).toEqual(NOTHING_HELD);
+      } else {
+        // Nothing on the chain for it: said in one line that names the words; nothing asked.
+        expect(asked, sentence).toEqual([]);
+        expect(rules.narratives[0]?.kind, sentence).toBe('none');
+        expect(
+          rules.assumptions.filter((s) => s.includes(`“${words}”`)),
+          sentence,
+        ).toHaveLength(1);
+      }
+    }
+  });
+
+  // b7: "invest in X" in a clause that turns it down. The text check reads each as an ask.
+  const B7: [string, Market, string][] = [
+    ["I'm done investing in AI", 'ai', 'AI'],
+    ['I stopped investing in big tech', 'big_tech', 'big tech'],
+    ['I regret investing in big tech', 'big_tech', 'big tech'],
+    ['I lost money investing in semiconductors', 'semiconductors', 'semiconductors'],
+    ["It's too late to invest in AI", 'ai', 'AI'],
+    ["I'm afraid to invest in AI", 'ai', 'AI'],
+    ["I'd be nervous putting everything in big tech", 'big_tech', 'big tech'],
+    ['I got burned investing in big tech', 'big_tech', 'big tech'],
+    ['Stop me from investing in AI', 'ai', 'AI'],
+    ['The last thing I want is to invest in big tech', 'big_tech', 'big tech'],
+    ['Only a fool would invest in AI now', 'ai', 'AI'],
+    ['Please talk me out of investing in AI', 'ai', 'AI'],
+    ['I am tired of hearing that I should invest in AI', 'ai', 'AI'],
+    ['My bank keeps pushing me to invest in big tech', 'big_tech', 'big tech'],
+    ['I think it is a bad time to invest in the S&P 500', 'us_market', 'S&P 500'],
+    ['I am scared to put it in US stocks', 'us_market', 'US stocks'],
+    ['It would be reckless to put it all in big tech', 'big_tech', 'big tech'],
+    ['I have had enough of putting everything in AI', 'ai', 'AI'],
+    ['Tenho medo de investir em IA', 'ai', 'IA'],
+    ['Desisti de investir em big techs', 'big_tech', 'big techs'],
+    ['Me arrependo de investir em IA', 'ai', 'IA'],
+    ['É tarde demais para investir em IA', 'ai', 'IA'],
+    ['Cansei de colocar tudo em big techs', 'big_tech', 'big techs'],
+    ['Seria loucura investir em semicondutores agora', 'semiconductors', 'semicondutores'],
+  ];
+
+  it('b7, rules 1 and 2: "invest in X" in a clause that turns it down is not taken as the whole plan: nothing with a model that names none, one question with no model', () => {
+    expect(B7).toHaveLength(24);
+    for (const [sentence, id, words] of B7) {
+      const model = read(sentence, NOTHING_READ);
+      expect(model.narratives, sentence).toEqual([]);
+      expect(model.questions, sentence).toEqual([]);
+      expect(heldBy(model), sentence).toEqual(NOTHING_HELD);
+      expect(saidOfAHolding(model), sentence).toEqual([]);
+      expect(model.flags, sentence).toContain(`text_only:market:${id}`);
+      const rules = read(sentence, null);
+      expect(rules.sheet, sentence).toBeNull();
+      expect(rules.mix, sentence).toBeNull();
+      expect(
+        rules.narratives.map((n) => [n.id, n.words]),
+        sentence,
+      ).toEqual([[id, words]]);
+      expect(rules.questions, sentence).toHaveLength(1);
+      expect(rules.questions[0], sentence).toMatchObject({ field: 'mix', template: 'marketShare' });
+      expect(rules.questions[0]?.text, sentence).toContain(words);
+      const none = read(sentence, null, { ...FORM, mix: null });
+      expect(none.questions, sentence).toEqual([]);
+      expect(heldBy(none), sentence).toEqual(NOTHING_HELD);
+    }
+  });
+
+  // b3: a refusal written in a clause that negates it, hedges it or says it of something else. What
+  // the text check takes as stated (rule 4: the class, and the words it read), or null and the flag
+  // that says how it read the clause. A refusal lowers what the plan may hold, so one the check
+  // reads as stated is taken on both paths, and is said: with a model that did not read it, in a
+  // line of its own that names the words; with no model, in the read-back the person confirms.
+  type Taken = 'stock' | 'crypto' | 'gold' | 'credit';
+  const B3: ([string, Taken, string, 'beside a holding'?] | [string, null, string | null])[] = [
+    ['A portfolio without stocks makes no sense to me', 'stock', 'without stocks'],
+    ['without stocks my plan is incomplete', 'stock', 'without stocks'],
+    ['no stocks is what my wife says, but I disagree', 'stock', 'no stocks'],
+    ['It would be silly to avoid stocks', 'stock', 'avoid stocks'],
+    ["There's no reason to avoid stocks", 'stock', 'avoid stocks'],
+    ['I see no reason to exclude crypto', 'crypto', 'exclude crypto'],
+    ["I'd be crazy to avoid stocks at my age", 'stock', 'avoid stocks'],
+    ["It's a mistake to stay away from stocks", 'stock', 'stay away from stocks'],
+    ['Nobody should avoid stocks at my age', 'stock', 'avoid stocks'],
+    ['I stopped avoiding stocks last year', 'stock', 'avoiding stocks'],
+    ['I no longer avoid crypto', null, 'refusal_aside:crypto'],
+    ["I'm done avoiding stocks", 'stock', 'avoiding stocks'],
+    ['Zero stocks today, which I want to change', 'stock', 'Zero stocks'],
+    ['So far nothing in crypto, which I want to change', 'crypto', 'nothing in crypto'],
+    ['Currently zero crypto in my wallet, time to add some', 'crypto', 'zero crypto'],
+    ['no funds needed before then, so I can take risk', null, null],
+    ['I need no funds from this until 2031', null, null],
+    ['no stocks are too risky for me', 'stock', 'no stocks'],
+    ['I am not one of those no stocks people', null, 'refusal_negated:stock'],
+    ['The no crypto crowd is wrong', 'crypto', 'no crypto'],
+    ['I was told no stocks at my age, which is nonsense', null, 'refusal_aside:stock'],
+    ['Do not leave me with no stocks', null, 'refusal_negated:stock'],
+    ['Make sure I am never without stocks', null, 'refusal_negated:stock'],
+    ['I want stocks, never mind gold', null, 'refusal_aside:gold'],
+    ['Why would anyone want no stocks', 'stock', 'no stocks'],
+    ['If there were no stocks I would be bored', null, 'refusal_aside:stock'],
+    ['Excluding stocks would be a mistake', 'stock', 'Excluding stocks'],
+    ['I have no fear of crypto', null, 'refusal_negated:crypto'],
+    ['I have zero doubts about stocks', null, 'refusal_negated:stock'],
+    ['no gold coins at home, so I want some gold here', 'gold', 'no gold'],
+    ['I own no gold and would like some', null, 'refusal_aside:gold'],
+    ['There is no gold in my portfolio and I want some', null, 'refusal_aside:gold'],
+    ['With no credit card debt I can invest more', null, 'refusal_aside:credit'],
+    ['I have no loans and no debts', null, 'refusal_aside:credit'],
+    ['My loans are paid, no loans anymore', 'credit', 'no loans'],
+    ['Without credit I could not have bought my house', 'credit', 'Without credit'],
+    ['No stocks in my IRA, so here I want all stocks', 'stock', 'No stocks', 'beside a holding'],
+    ['My last plan had no stocks and went nowhere', 'stock', 'no stocks'],
+    ['My advisor told me no crypto, I think he is wrong', 'crypto', 'no crypto'],
+    ['no equity in my house yet', 'stock', 'no equity'],
+    ['I have no shares in my company anymore', null, 'refusal_aside:stock'],
+    ['never bitcoin? I think that is outdated', null, 'refusal_wondered:crypto'],
+    ['I avoid nothing: stocks, crypto, gold, all fine', null, null],
+    ['Avoiding crypto was my mistake', 'crypto', 'Avoiding crypto'],
+    ['Ficar sem ações seria um erro', 'stock', 'sem ações'],
+    ['Sem ações não dá', 'stock', 'Sem ações'],
+    ['Fora ações, o que mais vocês têm?', 'stock', 'Fora ações'],
+    ['Não faz sentido ficar sem ações', null, 'refusal_negated:stock'],
+    ['Nenhuma ação na carteira hoje, quero começar', 'stock', 'Nenhuma ação'],
+    ['Quem fica sem cripto perde', 'crypto', 'sem cripto'],
+    ['Seria besteira evitar ações', 'stock', 'evitar ações'],
+    ['Parei de evitar ações', 'stock', 'evitar ações'],
+    ['Meu pai dizia nada de ações, eu penso diferente', null, 'refusal_aside:stock'],
+    ['Sem crédito no banco, quero investir o que tenho', 'credit', 'Sem crédito'],
+    ['Estou sem ouro e quero um pouco', null, 'refusal_aside:gold'],
+    ['Zero cripto hoje, quero entrar', 'crypto', 'Zero cripto'],
+  ];
+  const LEFT_OUT: Record<
+    Taken,
+    { classes: string[] | null; en: string; pt: string; read: string }
+  > = {
+    stock: {
+      classes: ['etf', 'stock'],
+      en: 'You left out stocks and stock funds.',
+      pt: 'Você deixou de fora ações e fundos de ações.',
+      read: 'leaving out stocks and stock funds',
+    },
+    crypto: {
+      classes: ['crypto'],
+      en: 'You left out crypto.',
+      pt: 'Você deixou de fora cripto.',
+      read: 'leaving out crypto',
+    },
+    gold: {
+      classes: ['gold'],
+      en: 'You left out gold.',
+      pt: 'Você deixou de fora ouro.',
+      read: 'leaving out gold',
+    },
+    credit: {
+      classes: null,
+      en: 'No tokens that lend to borrowers or trade a spread.',
+      pt: 'Nenhum token que empresta a tomadores ou opera um spread.',
+      read: 'no tokens that lend to borrowers or trade a spread',
+    },
+  };
+
+  it('b3, rule 4: a refusal the text check reads as stated is taken on both paths and said; one it reads as negated, aside or wondered is not', () => {
+    expect(B3).toHaveLength(56);
+    expect(B3.filter(([, taken]) => taken !== null)).toHaveLength(35);
+    for (const [sentence, taken, said, beside] of B3)
+      for (const r of [NOTHING_READ, null]) {
+        const where = `${sentence} (${r === null ? 'no model' : 'model'})`;
+        const result = read(sentence, r);
+        if (taken === null) {
+          expect(result.limits, where).toEqual({ creditTolerance: null, cannotHoldClasses: null });
+          expect(result.sheet, where).not.toBeNull();
+          expect(result.sheet?.limits, where).toBeUndefined();
+          expect(
+            result.flags.filter((f) => /^refusal_|cannotHold|noCredit/.test(f)),
+            where,
+          ).toEqual(said === null ? [] : [said]);
+          // One the person is not sure of is said back, so it is never dropped in silence.
+          expect(
+            result.assumptions.filter((s) => /^I did not read|^Não li/.test(s)),
+            where,
+          ).toHaveLength(said?.startsWith('refusal_wondered') ? 1 : 0);
+          continue;
+        }
+        const { classes, en, pt, read: readAs } = LEFT_OUT[taken];
+        expect(result.limits, where).toEqual({
+          creditTolerance: taken === 'credit' ? 'none' : null,
+          cannotHoldClasses: classes,
+        });
+        const line = `I read “${said}” as ${readAs}. Say so if that is not what you meant.`;
+        // The model did not read it: taken all the same, flagged, and said in a line of its own.
+        // With no model there is no second reader to differ from, and no such line.
+        expect(result.assumptions.includes(line), where).toBe(r !== null);
+        expect(
+          result.flags.includes(
+            `disagrees_with_rules:${taken === 'credit' ? 'noCredit' : `cannotHold:${taken}`}`,
+          ),
+          where,
+        ).toBe(r !== null);
+        // Beside a holding of the same class it is one question, never a sheet with both (below).
+        if (beside && r === null) continue;
+        expect(result.questions, where).toEqual([]);
+        expect(result.sheet?.limits, where).toEqual(
+          taken === 'credit' ? { creditTolerance: 'none' } : { cannotHold: { classes } },
+        );
+        expect(result.readBack, where).toContain(result.language === 'pt' ? pt : en);
+      }
+  });
+
+  // The same goal before each case below, and a reply that reads it and nothing of a holding.
+  const GOAL = 'I want to grow $5,000 over 5 years. ';
+  const goal = (over: Record<string, unknown> = {}) => reply({ risk: null, ...over });
+  const turns = (...messages: string[]) => conversationText(messages[0] ?? '', messages.slice(1));
+  /**
+   * What a result holds or asks of a holding, in one line: `hold` and what the sheet holds (a mix as
+   * stocks and crypto / dollar yield / gold / cash, the sleeves each at its share, the shared
+   * portfolios it starts from); else `ask`, the field and the template, and the start where the
+   * question has one; else `none`.
+   */
+  const outcome = (r: Result): string => {
+    const parts = (m: PersonalMix) =>
+      `${m.growthBps}/${m.dollarYieldBps}/${m.goldBps}/${m.cashBps}`;
+    const { mix, sleeves, themes } = heldBy(r);
+    if (mix || sleeves || themes.length > 0)
+      return [
+        'hold',
+        ...(mix ? [`mix ${parts(mix)}`] : []),
+        ...(sleeves
+          ? [sleeves.map((s) => `${s.kind === 'theme' ? s.theme : s.kind}@${s.shareBps}`).join('+')]
+          : []),
+        ...(themes.length > 0 ? [`from ${themes.join(',')}`] : []),
+      ].join(' ');
+    const asked = r.questions.filter((q) => ['mix', 'sleeves', 'themes'].includes(q.field));
+    if (asked.length === 0) return 'none';
+    return asked
+      .map((q) => {
+        const start = q.read as PersonalMix | undefined;
+        return `ask ${q.field}/${q.template}${start ? ` start ${parts(start)}` : ''}`;
+      })
+      .join(' & ');
+  };
+
+  it('rule 1: a mix or a narrative is taken where both readers read it, asked where only the model does, and nothing where only the text check does', () => {
+    // A mix.
+    const both = read(`${GOAL}All of it in stocks.`, goal({ mix: pct(100, 0) }), {});
+    expect(outcome(both)).toBe('hold mix 10000/0/0/0');
+    expect(both.questions).toEqual([]);
+    const textOnly = read(`${GOAL}All of it in stocks.`, goal());
+    expect(outcome(textOnly)).toBe('none');
+    expect(textOnly.flags).toContain('text_only:mix');
+    expect(saidOfAHolding(textOnly)).toEqual([]);
+    const modelOnly = read(`${GOAL}Mostly stocks.`, goal({ mix: pct(80, 20) }), {});
+    expect(outcome(modelOnly)).toBe('ask mix/mix start 8000/0/0/2000');
+    expect(modelOnly.flags).toEqual(expect.arrayContaining(['no_cue:mix', 'mix_asked:model']));
+    // A narrative.
+    const market = read(`${GOAL}Invest in big tech.`, goal({ markets: ['big_tech'] }), {});
+    expect(outcome(market)).toBe('hold mix 10000/0/0/0 from the-seven');
+    const unnamed = read(`${GOAL}Invest in big tech.`, goal());
+    expect(outcome(unnamed)).toBe('none');
+    expect(unnamed.narratives).toEqual([]);
+    expect(unnamed.flags).toContain('text_only:market:big_tech');
+    const invented = read(GOAL, goal({ markets: ['ai'] }));
+    expect(invented.narratives).toEqual([]);
+    expect(invented.flags).toContain('no_cue:market:ai');
+    expect(heldBy(invented)).toEqual(NOTHING_HELD);
+    // The words of a filter the model names count as the model naming the market those words are:
+    // the fixed list reads them, and the model's own filter is dropped.
+    const byFilter = read(
+      'Invest $5,000 in chip makers for 5 years',
+      goal({
+        marketFilter: {
+          by: 'industry',
+          value: 'Semiconductors & Semiconductor Equipment',
+          words: 'chip makers',
+        },
+      }),
+      {},
+    );
+    expect(outcome(byFilter)).toBe('hold semiconductors@10000');
+    expect(byFilter.flags).toContain('market_covers:marketFilter');
+    expect(byFilter.flags).not.toContain('text_only:market:semiconductors');
+    // The shares of a mix the model did not read are no split of the plan either.
+    const noSplit = read(`${GOAL}Only stocks is what my bank sells, 100% stocks they say.`, goal());
+    expect(noSplit.flags).toContain('text_only:mix');
+    expect(askedOfAHolding(noSplit)).toEqual([]);
+  });
+
+  it('rule 2: with no model a holding the text states is asked once, with its reading as the start, and "none" is a way out that stays', () => {
+    // A stated mix: the `mix` question, the mix as its start.
+    const mix = read(`${GOAL}All of it in stocks.`, null);
+    expect(outcome(mix)).toBe('ask mix/mix start 10000/0/0/0');
+    expect(mix.flags).toContain('mix_asked:rules');
+    // One narrative with its share: how much of the money, the share as its start.
+    const share = read(`${GOAL}Put 30% in AI.`, null);
+    expect(outcome(share)).toBe('ask mix/marketShare start 3000/0/0/7000');
+    expect(share.questions[0]?.text).toBe('How much of the $5,000 for AI?');
+    expect(share.flags).toContain('from_rules:market');
+    // Confirmed on the form, it is held.
+    expect(outcome(read(`${GOAL}Put 30% in AI.`, null, { ...FORM, mix: bps(3000, 7000) }))).toBe(
+      'hold ai@3000+safe_yield@7000',
+    );
+    // Several themes: one question that names them, in the person's words.
+    const two = `${GOAL}Invest in AI and semiconductors.`;
+    const asked = read(two, null);
+    expect(outcome(asked)).toBe('ask sleeves/themeShares');
+    expect(asked.questions[0]?.text).toBe(
+      'How do you want to split the money between AI and semiconductors?',
+    );
+    // In words: an even split, a pair in the order asked, a share for each by name.
+    for (const [words, held] of [
+      ['half each', 'hold ai@5000+semiconductors@5000'],
+      ['50-50', 'hold ai@5000+semiconductors@5000'],
+      ['equally', 'hold ai@5000+semiconductors@5000'],
+      ['60/40', 'hold ai@6000+semiconductors@4000'],
+      ['70% in AI and 30% in semiconductors', 'hold ai@7000+semiconductors@3000'],
+    ] as const) {
+      const answered = read(turns(two, words), null);
+      expect(outcome(answered), words).toBe(held);
+      expect(answered.flags, words).toContain('sleeves_from_words');
+      expect(answered.questions, words).toEqual([]);
+    }
+    // "None" leaves both out for good; "nothing for AI" leaves that one out, and the other is asked.
+    const none = read(turns(two, 'none'), null);
+    expect(outcome(none)).toBe('none');
+    expect(none.questions).toEqual([]);
+    expect(none.flags).toEqual(
+      expect.arrayContaining([
+        'none_from_words',
+        'market_left_out:ai',
+        'market_left_out:semiconductors',
+      ]),
+    );
+    const one = read(turns(two, 'nothing for AI'), null);
+    expect(one.flags).toEqual(expect.arrayContaining(['none_from_words', 'market_left_out:ai']));
+    expect(one.narratives.map((n) => n.id)).toEqual(['semiconductors']);
+    expect(outcome(one)).toBe('ask mix/marketShare');
+    // The ways a person says none of the money, and that it stays said on the turns after.
+    for (const words of ['none', 'zero', '0%', 'Nothing for AI, I just mentioned my job'])
+      for (const more of [[], ['medium risk is fine']]) {
+        const left = read(turns(`${GOAL}I like AI.`, words, ...more), null);
+        expect(outcome(left), words).toBe('none');
+        expect(left.questions, words).toEqual([]);
+        expect(left.narratives, words).toEqual([]);
+        expect(left.flags, words).toEqual(
+          expect.arrayContaining(['none_from_words', 'market_left_out:ai']),
+        );
+      }
+    // The form's `mix: null` leaves a shared portfolio's narrative out too.
+    const form = read(`${GOAL}I like big tech.`, null, { ...FORM, mix: null });
+    expect(outcome(form)).toBe('none');
+    expect(form.questions).toEqual([]);
+    expect(form.flags).toContain('market_left_out:big_tech');
+    // A text with a model's reply reads "none" the same way.
+    const byModel = read(turns(`${GOAL}I like AI.`, 'none'), goal({ markets: ['ai'] }));
+    expect(outcome(byModel)).toBe('none');
+    expect(byModel.flags).toEqual(
+      expect.arrayContaining(['none_from_words', 'market_left_out:ai']),
+    );
+  });
+
+  it('rule 3: the last word wins, for a mix, a narrative and a refusal', () => {
+    const first = 'I want to grow $5,000 over 5 years, all of it in stocks';
+    // A mix: the last message that says one decides.
+    const corrected = turns(first, 'Sorry, I meant 60% stocks and 40% cash');
+    expect(outcome(read(corrected, goal({ mix: pct(60, 40) }), {}))).toBe('hold mix 6000/0/0/4000');
+    expect(outcome(read(corrected, null))).toBe('hold mix 6000/0/0/4000');
+    // One a later message rules out is no mix, whatever the model still reads.
+    const takenBack = read(turns(first, 'Actually not all in stocks'), goal({ mix: pct(100, 0) }));
+    expect(outcome(takenBack)).toBe('none');
+    expect(takenBack.flags).toContain('mix_negated');
+    // A mix whose class a later message refuses is dropped, and the refusal is taken.
+    for (const r of [goal({ mix: pct(100, 0), cannotHold: ['stock'] }), null]) {
+      const refused = read(turns(first, 'No stocks.'), r);
+      expect(refused.mix).toBeNull();
+      expect(heldBy(refused)).toEqual(NOTHING_HELD);
+      expect(refused.flags).toContain('mix_refused_later');
+      expect(refused.limits.cannotHoldClasses).toEqual(['etf', 'stock']);
+      // The form never opens on the stocks the person refused.
+      expect(refused.questions.find((q) => q.field === 'mix')?.read).toBeUndefined();
+    }
+    // A narrative: one a later message only rules out is not asked for, whoever still names it.
+    const ai = 'I want to invest $5,000 in AI for 5 years';
+    for (const markets of [[], ['ai']]) {
+      const dropped = read(turns(ai, 'Actually, no AI.'), goal({ markets }));
+      expect(outcome(dropped), String(markets)).toBe('none');
+      expect(dropped.narratives, String(markets)).toEqual([]);
+    }
+    const kept = read(
+      turns(ai, 'Actually, no AI. Just put all of it in stocks.'),
+      goal({ markets: ['ai'], mix: pct(100, 0) }),
+      {},
+    );
+    expect(outcome(kept)).toBe('hold mix 10000/0/0/0');
+    expect(kept.flags).toContain('market_negated:ai');
+    // And one a later message asks for stands again; within one message any ask stands.
+    for (const text of [
+      turns(`${GOAL}No AI.`, 'Actually, invest in AI.'),
+      `${GOAL}No AI. Actually, invest in AI.`,
+    ])
+      expect(outcome(read(text, goal({ markets: ['ai'] }), {})), text).toBe('hold ai@10000');
+    // A refusal: a later message that names the class as held, or as no problem, takes it back,
+    // and that is said. With a model both readers must agree: a refusal it still reads stands.
+    const refusal = 'I want to grow $5,000 over 5 years at medium risk. No stocks.';
+    for (const later of [
+      'I changed my mind, stocks are fine',
+      'Ignore what I said about stocks, include them',
+    ])
+      for (const r of [goal({ risk: 'medium' }), null]) {
+        const back = read(turns(refusal, later), r);
+        expect(back.limits.cannotHoldClasses, later).toBeNull();
+        expect(back.sheet?.limits, later).toBeUndefined();
+        expect(back.flags, later).toContain('refusal_withdrawn:stock');
+        expect(back.assumptions, later).toContain(
+          'I did not read “No stocks” as something to leave out. Say so if you want it left out.',
+        );
+      }
+    const stands = read(
+      turns(refusal, 'I changed my mind, stocks are fine'),
+      goal({ risk: 'medium', cannotHold: ['stock'] }),
+    );
+    expect(stands.sheet?.limits).toEqual({ cannotHold: { classes: ['etf', 'stock'] } });
+    expect(stands.flags).not.toContain('refusal_withdrawn:stock');
+    // The other way round, the later refusal is the last word.
+    const later = read(
+      turns(
+        'I want to grow $5,000 over 5 years at medium risk. Stocks are fine.',
+        'On reflection, no stocks',
+      ),
+      null,
+    );
+    expect(later.sheet?.limits).toEqual({ cannotHold: { classes: ['etf', 'stock'] } });
+  });
+
+  it('rule 4: a refusal and a holding of one class are one question, never a sheet with both; a share takes the refusal back, "none" keeps it', () => {
+    const ira = 'No stocks in my IRA, so here I want all stocks';
+    // With a model that reads the mix, and with none: one question, by the `mix` field, with no
+    // start, that names both in the person's words.
+    for (const r of [reply({ ...NOTHING_READ, mix: pct(100, 0) }), null]) {
+      const asked = read(ira, r);
+      expect(outcome(asked)).toBe('ask mix/holdOrLeaveOut');
+      expect(asked.questions).toEqual([
+        {
+          field: 'mix',
+          template: 'holdOrLeaveOut',
+          text: 'You wrote “No stocks” and also “all stocks”. Which one stands? Say how much of the money goes to it, or none.',
+        },
+      ]);
+      expect(asked.flags).toContain('refusal_conflict:stock');
+      expect(asked.sheet).toBeNull();
+    }
+    // A share for the holding takes the refusal back, and that is said; "none" keeps the refusal.
+    for (const answer of [
+      read(ira, null, { ...FORM, mix: STOCKS }),
+      read(turns(ira, 'all of it in stocks'), null),
+    ]) {
+      expect(outcome(answer)).toBe('hold mix 10000/0/0/0');
+      expect(answer.sheet?.limits).toBeUndefined();
+      expect(answer.flags).toContain('refusal_withdrawn:stock');
+      expect(answer.assumptions).toContain(
+        'I did not read “No stocks” as something to leave out. Say so if you want it left out.',
+      );
+    }
+    for (const answer of [
+      read(ira, null, { ...FORM, mix: null }),
+      read(turns(ira, 'none'), null),
+    ]) {
+      expect(outcome(answer)).toBe('none');
+      expect(answer.questions).toEqual([]);
+      expect(answer.sheet?.limits).toEqual({ cannotHold: { classes: ['etf', 'stock'] } });
+      expect(answer.readBack).toContain('You left out stocks and stock funds.');
+    }
+    // A narrative, which is held in stocks, against a refusal of stocks: the same question.
+    const theme = `${GOAL}No stocks. Invest in AI.`;
+    const r = goal({ markets: ['ai'], cannotHold: ['stock'] });
+    const asked = read(theme, r);
+    expect(outcome(asked)).toBe('ask mix/holdOrLeaveOut');
+    expect(asked.questions[0]?.text).toBe(
+      'You wrote “No stocks” and also “AI”. Which one stands? Say how much of the money goes to it, or none.',
+    );
+    const half = read(turns(theme, 'half'), r);
+    expect(outcome(half)).toBe('hold ai@5000+safe_yield@5000');
+    expect(half.flags).toContain('refusal_withdrawn:stock');
+    const none = read(turns(theme, 'none'), r);
+    expect(outcome(none)).toBe('none');
+    expect(none.sheet?.limits).toEqual({ cannotHold: { classes: ['etf', 'stock'] } });
+    expect(none.flags).toContain('market_left_out:ai');
+    // A refusal of a part of a class is not applied, and that is said on both paths.
+    for (const reader of [goal({ risk: 'medium' }), null]) {
+      const part = read(`${GOAL}No stocks from China.`, reader);
+      expect(part.limits.cannotHoldClasses).toBeNull();
+      expect(part.flags).toContain('part_refused');
+      expect(part.assumptions).toContain(
+        'A plan can leave out a whole class, not a part of one, so “No stocks from China” was not applied.',
+      );
+    }
+  });
+});
