@@ -385,7 +385,7 @@ export const en = {
     signature: 'transaction id',
     noneYet: 'Nothing has reached the chain from this order yet.',
     noneVault:
-      'Nothing this browser placed for your vaults has reached the chain. Trades made elsewhere, or by the keeper, are not listed here yet.',
+      'Nothing from your buys has reached the chain yet. The keeper’s trades, and orders about a shared portfolio placed in another browser, are not listed here yet.',
   },
   /** The words a provenance pin says, in the language of the view. */
   pin: {
@@ -521,7 +521,7 @@ export const en = {
       noStatus: 'No status yet: the engine gives none for a vault',
       unknown: (chain: string) => `Your vault on ${chain}.`,
       notJoined:
-        'I can’t tell which goal this vault was bought for: it was bought in another browser, or before this one kept goals. What it holds is below.',
+        'This vault has no goal I can read: it was bought from a shared portfolio, which has none, or before plans kept their goal. What it holds is below.',
       putIn: (amount: string) => `you put in ${amount}`,
       seePlan: 'See your plan',
       seeOrder: 'See the order',
@@ -544,8 +544,8 @@ export const en = {
     fromLink:
       'This plan came from a link: our engine made it from the limits the link carried, which someone else may have set. Check the goal, the amount and the limits above before you buy.',
     missing: {
-      title: 'I don’t have this plan in this tab.',
-      body: 'A plan is kept in the browser tab that built it, and this one isn’t here. Build it again from your goal: your limits are kept.',
+      title: 'I can’t find this plan for you.',
+      body: 'It isn’t a plan made with this sign-in, or it is no longer kept. Build one from your goal: your limits are kept.',
     },
     backToGoal: 'Back to your goal',
     /** A plan on a chain no wallet of the person's signs on. */
@@ -687,6 +687,9 @@ export const en = {
     exitCost: (cost: string) => `≤ ${cost}`,
     inKind: 'You can also take the tokens themselves out of your vault at any time.',
     risk: {
+      /** On a plan read back from the server, which keeps the plan and not this summary. */
+      notKept:
+        'How this plan is spread, and what selling it costs, is worked out when a plan is built and isn’t kept with it. Build the plan again from your goal to see it.',
       title: 'How the plan is spread, and what selling costs',
       byClass: 'By kind of asset',
       byIssuer: 'By issuer',

@@ -348,7 +348,7 @@ export const pt: Dictionary = {
     signature: 'id da transação',
     noneYet: 'Nada desta ordem chegou à rede ainda.',
     noneVault:
-      'Nada que este navegador fez para os seus cofres chegou à rede. Operações feitas em outro lugar, ou pelo agente, ainda não aparecem aqui.',
+      'Nada das suas compras chegou à rede ainda. As operações do agente, e as ordens sobre um portfólio compartilhado feitas em outro navegador, ainda não aparecem aqui.',
   },
   pin: {
     sourceFor: 'Fonte de {value}',
@@ -464,7 +464,7 @@ export const pt: Dictionary = {
       noStatus: 'Ainda sem situação: o motor não dá uma para um cofre',
       unknown: (chain: string) => `Seu cofre na ${chain}.`,
       notJoined:
-        'Não sei para qual objetivo este cofre foi comprado: a compra foi feita em outro navegador, ou antes de este guardar objetivos. O que ele guarda está abaixo.',
+        'Este cofre não tem um objetivo que eu consiga ler: foi comprado a partir de um portfólio compartilhado, que não tem, ou antes de os planos guardarem seu objetivo. O que ele guarda está abaixo.',
       putIn: (amount: string) => `você colocou ${amount}`,
       seePlan: 'Ver seu plano',
       seeOrder: 'Ver a ordem',
@@ -485,8 +485,8 @@ export const pt: Dictionary = {
     fromLink:
       'Este plano veio de um link: nosso motor o montou com os limites que o link trazia, que outra pessoa pode ter definido. Confira o objetivo, o valor e os limites acima antes de comprar.',
     missing: {
-      title: 'Não tenho este plano nesta aba.',
-      body: 'Um plano fica guardado na aba do navegador que o montou, e este não está aqui. Monte de novo a partir do seu objetivo: seus limites continuam guardados.',
+      title: 'Não encontro este plano para você.',
+      body: 'Não é um plano feito com este login, ou não está mais guardado. Monte um a partir do seu objetivo: seus limites continuam guardados.',
     },
     backToGoal: 'Voltar ao seu objetivo',
     unsignable: (plan: string) =>
@@ -619,6 +619,8 @@ export const pt: Dictionary = {
     exitCost: (cost: string) => `≤ ${cost}`,
     inKind: 'Você também pode tirar os próprios tokens do seu cofre a qualquer momento.',
     risk: {
+      notKept:
+        'Como este plano se divide, e quanto custa vendê-lo, é calculado quando um plano é montado e não fica guardado com ele. Monte o plano de novo a partir do seu objetivo para ver.',
       title: 'Como o plano se divide, e quanto custa vender',
       byClass: 'Por tipo de ativo',
       byIssuer: 'Por emissor',

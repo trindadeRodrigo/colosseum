@@ -4699,7 +4699,7 @@
       "get": {
         "summary": "The signed-in person’s plans, with the goal each was built for and its buys",
         "tags": ["plans"],
-        "description": "The plans the person made in the app, and the plans made from a link that they bought, newest first (at most 50). Each has the goal sheet it was built from, the plan’s card, its chain, its buys (an order is the person’s by the wallets of the verified token) and the vault those buys opened, by its number on chain. A plan another person made is never listed. `GET /v1/baskets/{id}` reads one whole; `GET /v1/orders/{id}` reads a buy and its steps.",
+        "description": "The plans the person made in the app, and the plans made from a link that they bought, newest first. There is no paging yet: the answer holds the newest 50 plans, and of the person’s buys the newest 200, so a plan’s older buys can be missing from it. Each has the goal sheet it was built from, the plan’s card, its chain, its buys (an order is the person’s by the wallets of the verified token) and the vault those buys opened, by its number on chain. A plan another person made is never listed. `GET /v1/baskets/{id}` reads one whole; `GET /v1/orders/{id}` reads a buy and its steps.",
         "security": [
           {
             "accessToken": [],
@@ -5044,7 +5044,8 @@
                                     "enum": ["solana", "base", "robinhood"]
                                   },
                                   "basketId": {
-                                    "type": "string"
+                                    "type": "string",
+                                    "minLength": 1
                                   }
                                 },
                                 "required": ["chain", "basketId"],
