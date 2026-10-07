@@ -10,6 +10,7 @@ import {
 import { cardOf } from './card';
 import {
   adjustForHoldings,
+  CASH_FLOOR_FROM,
   capSingleStocks,
   holdable,
   resolveThemes,
@@ -418,11 +419,28 @@ function build(
   // A plan from the table keeps its split as it was.
   const whole = (cents: number, sleeve: Sleeve) =>
     sheet.mix ? Math.min(cents, shareOf(w.amount, sleeves.sized[sleeve])) : cents;
-  const growth = whole(growthUp, 'growth');
-  const gold = whole(goldUp, 'gold');
-  const dollarYield = whole(yieldUp, 'dollarYield');
-  const odd = growthUp - growth + (goldUp - gold) + (yieldUp - dollarYield);
-  const cash = cashDown + odd;
+  const part = {
+    growth: whole(growthUp, 'growth'),
+    gold: whole(goldUp, 'gold'),
+    dollarYield: whole(yieldUp, 'dollarYield'),
+  };
+  const odd = growthUp - part.growth + (goldUp - part.gold) + (yieldUp - part.dollarYield);
+  // A floor on cash is a share of the whole amount, and the plan says "at least" (`CASH_NEAR_DATE`,
+  // `CASH_MAY_NEED`). What is set aside came off rounded up, and a split of the plan gives the goal
+  // sleeve its share to the cent, so the split of what is left could leave the cash more than a cent
+  // under the share it states (a generated plan stated 87.54% of $283,139 and held $247,859.87). The
+  // cash holds at least that share rounded down to the cent: the cent or two it is short of it come
+  // from the sleeves the floor was filled from, in the same order.
+  const floorCents = Math.min(goalPart - setAside, shareOf(w.amount, sleeves.cashFloorBps));
+  const short = Math.max(0, floorCents - cashDown - odd);
+  let left = short;
+  for (const sleeve of CASH_FLOOR_FROM) {
+    const gives = Math.min(part[sleeve], left);
+    part[sleeve] -= gives;
+    left -= gives;
+  }
+  const { growth, gold, dollarYield } = part;
+  const cash = cashDown + odd + (short - left);
   /** Each theme sleeve's cents, by slug. */
   const themeCents = new Map(sleeves.themes.map((t, i) => [t.slug, themeSplit[i] ?? 0]));
   // A holding counts once: the themes first, the goal what is left (gate THEME-FIRST).

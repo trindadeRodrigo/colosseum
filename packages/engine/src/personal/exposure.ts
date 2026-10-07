@@ -34,6 +34,12 @@ export type SleevePlan = {
    * row is scaled, so `sized` adds up to `goalBps - setAsideBps`. Placed apart, before anything else.
    */
   setAsideBps: number;
+  /**
+   * The floor on cash the plan states (`CASH_NEAR_DATE`, `CASH_MAY_NEED`), in basis points of the
+   * whole plan; 0 where it states none. The cash is held to it to the cent, whatever the rounding of
+   * the parts placed before it (`build` in ./compose.ts).
+   */
+  cashFloorBps: number;
   /** Why each sleeve is the size it is. Every line of a sleeve carries these. */
   reasons: Record<Sleeve, Reason[]>;
   /**
@@ -88,6 +94,13 @@ function mixLessAside(
     take(sleeve, left, false);
   return { asked, table, gave };
 }
+
+/** The sleeves a floor on cash is filled from, in the order they give. */
+export const CASH_FLOOR_FROM: readonly Exclude<Sleeve, 'cash'>[] = [
+  'growth',
+  'gold',
+  'dollarYield',
+];
 
 /** The largest floor among the steps whose month count has not passed. Never rises as months grow. */
 function floorAt<T extends { monthsLeft: number }>(
@@ -187,7 +200,7 @@ export function sizeSleeves(w: World, setAside = 0, aside?: AsideOfMix): SleeveP
   const limitsAt = mix && table.growth > 0 ? reasons.growth.length : null;
 
   /** Moves up to `need` into one sleeve from the others, in turn. Returns the sleeves that gave. */
-  const raise = (to: Sleeve, need: number, from: Sleeve[]): Sleeve[] => {
+  const raise = (to: Sleeve, need: number, from: readonly Sleeve[]): Sleeve[] => {
     let left = need;
     return from.filter((sleeve) => {
       const take = Math.min(sized[sleeve], left);
@@ -227,15 +240,19 @@ export function sizeSleeves(w: World, setAside = 0, aside?: AsideOfMix): SleeveP
       : dated !== undefined
         ? { months: dated, rule: 'CASH_NEAR_DATE' }
         : null;
+  let cashFloorBps = 0;
   if (soonest) {
     const floor = ofGoal(
       floorAt(P.cashFloor, soonest.months, (step) => step.cashBps),
       true,
     );
     if (sized.cash < floor) {
-      const gave = raise('cash', floor - sized.cash, ['growth', 'gold', 'dollarYield']);
+      const gave = raise('cash', floor - sized.cash, CASH_FLOOR_FROM);
       const why = reason(soonest.rule, { floorBps: floor, months: soonest.months }, lang);
-      if (gave.length > 0) say(why, ['cash', ...gave]);
+      if (gave.length > 0) {
+        say(why, ['cash', ...gave]);
+        cashFloorBps = floor;
+      }
     }
   }
 
@@ -265,7 +282,17 @@ export function sizeSleeves(w: World, setAside = 0, aside?: AsideOfMix): SleeveP
         lang,
       ),
     );
-  return { table, sized, goalBps, safeYieldBps, themes, setAsideBps, reasons, asideSays };
+  return {
+    table,
+    sized,
+    goalBps,
+    safeYieldBps,
+    themes,
+    setAsideBps,
+    cashFloorBps,
+    reasons,
+    asideSays,
+  };
 }
 
 export type Part = { asset: BasketAsset; bps: number };
