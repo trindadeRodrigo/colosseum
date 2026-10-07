@@ -384,9 +384,8 @@ describe('a product’s page, on the plan view', () => {
     const pane = find(host, '[data-ui="plan-pane"]');
     const rows = [...pane.querySelectorAll('[data-ui="plan-rows"] > li')] as HTMLElement[];
     expect(rows).toHaveLength(5);
-    // five parts in the bar; the 10% one is too narrow to press, so it is drawn and not a button
-    expect(pane.querySelectorAll('[data-ui="plan-bar"] [data-part]')).toHaveLength(5);
-    expect(pane.querySelectorAll('[data-ui="plan-bar"] button')).toHaveLength(4);
+    // the bar is a picture of five parts, with a label to press for each holding under it
+    expect(pane.querySelectorAll('[data-ui="plan-bar"] button')).toHaveLength(5);
     // the two dollar tokens keep their own figure and pin on their row; a stock's row has none
     const yieldOf = (i: number) => rows[i]?.querySelector('[data-ui="row-yield"]');
     expect(yieldOf(3)?.textContent).toContain('4.00%');
