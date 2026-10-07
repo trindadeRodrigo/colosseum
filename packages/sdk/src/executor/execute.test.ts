@@ -121,6 +121,51 @@ describe('the executor: an order walked to its end', () => {
     ]);
   });
 
+  it('holds every step to the minimum the order stated, though the price ticks between the order and each build', async () => {
+    // A yield token's price ticks all day. The order states its minimums when it is made; each step
+    // is built later, at another price, and has to carry the stated minimum or the guard refuses it.
+    const s = scene('solana');
+    const order = await s.double.buy(1000);
+    const stated = order.legs.map((l) => l.expected.map((e) => e.minOutRaw));
+    // every asset a little cheaper than when the order was made: each trade now pays out more, and a
+    // minimum worked out from today's quote would be another figure
+    const tick = (asset: string, usdPerToken: string) =>
+      s.w.adapter.mock.setPrice(asset, usdPerToken);
+    tick('solana:spy', '99.9');
+    tick('solana:nvda', '49.95');
+    tick('solana:gold', '199.8');
+    const result = await execute(order, s.deps);
+    expect(result.status).toBe('done');
+    expect(statuses(result.order)).toEqual([
+      'create_vault:confirmed',
+      'swap:confirmed',
+      'swap:confirmed',
+      'swap:confirmed',
+    ]);
+    // what the wallet was asked to sign states the order's own minimums, to the unit
+    const signed = order.legs.map((l) =>
+      (s.wallet.asked.find((tx) => tx.legId === l.id)?.preview.minimums ?? []).map(
+        (m) => m.minOutRaw,
+      ),
+    );
+    expect(signed).toEqual(stated);
+    expect(stated.flat().length).toBe(3);
+  });
+
+  it('builds nothing for a step whose stated minimum the price can no longer meet, and says the price moved', async () => {
+    const s = scene('solana');
+    const order = await s.double.buy(1000);
+    // SPY costs 5% more than when the order was made: the 1% under its quote is out of reach
+    s.w.adapter.mock.setPrice('solana:spy', '105');
+    const result = await execute(order, s.deps);
+    expect(result.status).not.toBe('done');
+    expect(statuses(result.order).slice(0, 2)).toEqual(['create_vault:confirmed', 'swap:planned']);
+    // the wallet was asked for the deposit alone: no swap was built at other terms, and none signed
+    expect(s.wallet.asked.map((tx) => tx.legKind)).toEqual(['create_vault']);
+    // and the answer carries the API's own words for it
+    expect(JSON.stringify(result)).toMatch(/PriceMoved|price has moved/);
+  });
+
   it('on an EVM chain: the vault is approved by its address, then opened with the trades inside', async () => {
     const s = scene('robinhood');
     const order = await s.double.buy(1000);

@@ -836,6 +836,7 @@ describe('the /v1 route table', () => {
       '/v1/mock/orders/{id}/legs/{legId}/land',
       '/v1/orders',
       '/v1/orders/{id}',
+      '/v1/orders/{id}/continue',
       '/v1/orders/{id}/legs/{legId}/build',
       '/v1/orders/{id}/legs/{legId}/cancel',
       '/v1/orders/{id}/legs/{legId}/report',
@@ -843,6 +844,7 @@ describe('the /v1 route table', () => {
       '/v1/shelf',
       '/v1/testnet/fund',
       '/v1/vaults/{chain}/{address}',
+      '/v1/vaults/{chain}/{address}/name',
     ]);
     // No route lets a caller through without a token: 503 with no Privy app set, 401 with one.
     const res = await app.inject({ method: 'GET', url: '/v1/portfolio' });
@@ -910,6 +912,7 @@ describe('no /v1 route can make the server sign', () => {
     expect(files.map((f) => relative(src, f)).sort()).toEqual([
       'faucet/test-funds.ts',
       'orders/chains.ts',
+      'orders/continue.ts',
       'orders/errors.ts',
       'orders/families.ts',
       'orders/legs.ts',
