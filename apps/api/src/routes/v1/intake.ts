@@ -32,7 +32,7 @@ import type { IntakeModel } from '../../llm';
 import { Refusal, refusing } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { personChain } from '../../orders/person';
-import { type PlanInputs, shelfVersionOf } from '../../orders/personalize';
+import { type PlanInputs, preparePersonalInputs } from '../../orders/personalize';
 import { loadFamilies } from '../../orders/store';
 import { signedIn } from './orders';
 
@@ -159,15 +159,22 @@ async function shelfOf(
   chain: NonNullable<Awaited<ReturnType<typeof personChain>>['chain']>,
   families: Shelf['families'],
 ) {
+  let entry: ReturnType<OrderDeps['chains']['get']>;
   let assets: BasketAsset[];
   try {
-    assets = await refusing(() => deps.chains.get(chain).adapter.listAssets());
+    entry = deps.chains.get(chain);
+    assets = await refusing(() => entry.adapter.listAssets());
   } catch (err) {
     if (err instanceof Refusal) return null;
     throw err;
   }
-  const shelf: Shelf = { version: shelfVersionOf(chain, assets, families), assets, families };
-  return { shelf, figures: await inputs({ db: deps.db, chain, assets }) };
+  return preparePersonalInputs(
+    chain,
+    assets,
+    families,
+    entry.provenance,
+    (chain, assets, provenance) => inputs({ db: deps.db, chain, assets, provenance }),
+  );
 }
 
 export function registerIntakeRoute(
