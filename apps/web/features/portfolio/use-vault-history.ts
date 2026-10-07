@@ -10,10 +10,13 @@ import { isBuy, type OrderRecord, recallOrders } from '../order/order-record';
 import { onMock } from '../order/readiness';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { utc } from './figures';
+import { mergeRecords, readPersonPlans, recordsOfPlans } from './server-plans';
 
-// The orders this browser placed for the person, and what of them reached the chain: each read again
-// from the API (GET /v1/orders/{id}), so a line says where a step stands now. The API has no route
-// that lists a person's orders or the keeper's trades, so this is the history this browser knows.
+// The person's buys and what of them reached the chain. The buys are the server's list of their plans
+// (GET /v1/me/plans, server-plans.ts) together with what this browser kept (order-record.ts), so the
+// history is the same on a new device; each is read again from the API (GET /v1/orders/{id}), so a
+// line says where a step stands now. An order about a shared portfolio (a follow, a publish) and the
+// keeper's trades are in no list the API has: of those, this is what this browser placed.
 
 export type VaultHistory = {
   records: OrderRecord[];
@@ -37,8 +40,18 @@ export function useVaultHistory(): VaultHistory {
   const [deposited, setDeposited] = useState<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
-    setRecords(known ? recallOrders(userId) : []);
-  }, [userId, known]);
+    const kept = known ? recallOrders(userId) : [];
+    setRecords(kept);
+    if (!known || !userId) return;
+    let live = true;
+    // What this browser kept is shown at once; the server's list joins it when it answers.
+    void readPersonPlans(apiFetch).then((plans) => {
+      if (live && plans.length > 0) setRecords(mergeRecords(kept, recordsOfPlans(plans, userId)));
+    });
+    return () => {
+      live = false;
+    };
+  }, [userId, known, apiFetch]);
 
   const ids = useMemo(() => records.map((r) => r.orderId).join('|'), [records]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: read again when the list of orders changes, by its ids

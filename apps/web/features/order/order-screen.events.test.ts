@@ -497,14 +497,11 @@ describe('what the executor answers', () => {
         if (path === `/v1/orders/${ORDER_ID}`) return json(orderOn());
         if (path === `/v1/orders/${NEXT_ID}`) return json(continuation());
         if (method === 'POST' && path.endsWith('/continue')) {
-          // a server without the route answers as the web framework does
-          if (!o.route)
-            return json(
-              { message: `Route POST:${path} not found`, error: 'Not Found', statusCode: 404 },
-              404,
-            );
+          // a server without the route has no such route, whatever its 404 says
+          if (!o.route) return json({ error: 'no order with that id' }, 404);
           if (path === `/v1/orders/${ORDER_ID}/continue` && o.made) return o.made();
-          return json({ error: 'no order with that id' }, 404);
+          // the route takes a uuid: anything else is a badly formed request
+          return json({ error: 'params/id must be a uuid' }, 400);
         }
         return json({ error: 'not found' }, 404);
       });
@@ -538,7 +535,7 @@ describe('what the executor answers', () => {
       expect(stopped[0]?.textContent).toBe(en.order.outcome.seePortfolio);
       // the server was asked about an order nobody has: nothing was made to find out
       expect(calls.filter((c) => c.path.endsWith('/continue')).map((c) => c.path)).toEqual([
-        '/v1/orders/00000000-0000-4000-8000-000000000000/continue',
+        '/v1/orders/not-an-order/continue',
       ]);
     });
 
@@ -574,6 +571,34 @@ describe('what the executor answers', () => {
       });
     });
 
+    it('holds the next order to the trades the person approved, whatever the server says of them later', async () => {
+      server({ route: true, made: () => json(continuation()) });
+      seed();
+      // the answer after the stop names another, larger trade for the step that failed
+      const lied = stoppedOrder();
+      run.answer = async () => ({
+        status: 'failed',
+        order: {
+          ...lied,
+          legs: lied.legs.map((leg) => ({
+            ...leg,
+            trades: leg.trades.map((t) => ({ ...t, amountInRaw: '9000000' })),
+          })),
+        },
+        legId: LEG_SWAP,
+        error: null,
+      });
+      const host = await screen();
+      await click(primary(host));
+      await settle();
+      await settle();
+      await click(finishButton(host) as HTMLElement);
+      await settle();
+      expect(recallOrder(NEXT_ID, USER)?.continues?.trades).toEqual(
+        orderOn().legs.flatMap((leg) => leg.trades),
+      );
+    });
+
     it('says why in a sentence when the server refuses, and makes no record', async () => {
       for (const [body, sentence] of [
         [{ error: 'x', code: 'PRICE_MOVED' }, en.order.outcome.finishPriceMoved],
@@ -596,17 +621,24 @@ describe('what the executor answers', () => {
       }
     });
 
-    it('does not take an answer that names another order, or the same one', async () => {
+    it('does not take an answer that names another order, the same one, another owner or vault, a deposit or a step that is not a swap', async () => {
       for (const answer of [
         continuation({ continues: 'another-order' }),
         continuation({ id: ORDER_ID }),
+        // another owner's, another vault's, one that deposits, one with a step that is not a swap
+        continuation({ owner: { solana: '11111111111111111111111111111111' } }),
+        continuation({ basketId: 'another-vault' }),
+        continuation({ depositRaw: '10000000' }),
+        continuation({ legs: orderOn().legs.map((leg) => ({ ...leg, orderId: NEXT_ID })) }),
       ]) {
         server({ route: true, made: () => json(answer) });
         router.push.mockClear();
         const host = await stop();
         await click(finishButton(host) as HTMLElement);
         await settle();
-        expect(host.textContent).toContain(en.buy.failure.unreadable);
+        expect(host.textContent, JSON.stringify(answer).slice(0, 400)).toContain(
+          en.buy.failure.unreadable,
+        );
         expect(router.push).not.toHaveBeenCalled();
         await unmountAll();
         window.localStorage.clear();
@@ -892,16 +924,16 @@ describe.each([
   ['solana', 'Solscan'],
   ['robinhood', 'Robinhood explorer'],
 ] as const)('the chain of an order on %s', (chain, explorer) => {
-  it('is badged over the review and its steps, and a Robinhood order never says USDC', async () => {
+  it('is badged once, over the review, and a Robinhood order never says USDC', async () => {
     api(orderOn(chain), chain);
     seed(recordOf(chain));
     const host = await screen();
     const badges = [...host.querySelectorAll('[data-ui="chain-badge"]')];
-    expect(badges.map((b) => b.getAttribute('data-chain'))).toEqual([chain, chain]);
-    expect(badges.map((b) => b.textContent)).toEqual([CHAIN_NAMES[chain], CHAIN_NAMES[chain]]);
-    // one over the page, one in the head of its steps
+    expect(badges.map((b) => b.getAttribute('data-chain'))).toEqual([chain]);
+    expect(badges.map((b) => b.textContent)).toEqual([CHAIN_NAMES[chain]]);
+    // over the page, and not again in the head of its steps (CHAIN-EVERYWHERE, as amended)
     expect(find(host, 'header [data-ui="chain-badge"]')).toBeTruthy();
-    expect(find(host, '[data-ui="card-header"] [data-ui="chain-badge"]')).toBeTruthy();
+    expect(host.querySelector('[data-ui="card-header"] [data-ui="chain-badge"]')).toBeNull();
     if (chain === 'robinhood') expect(host.textContent).not.toMatch(/usdc/i);
   });
 

@@ -355,7 +355,7 @@ export const pt: Dictionary = {
     follow: (when: string) => `Seguir um portfólio compartilhado · ${when}`,
     publish: (when: string) => `Publicar um portfólio · ${when}`,
     noneVault:
-      'Nada que este navegador fez para os seus cofres chegou à rede. Operações feitas em outro lugar, ou pelo agente, ainda não aparecem aqui.',
+      'Nada das suas compras chegou à rede ainda. As operações do agente, e as ordens sobre um portfólio compartilhado feitas em outro navegador, ainda não aparecem aqui.',
   },
   pin: {
     sourceFor: 'Fonte de {value}',
@@ -476,7 +476,7 @@ export const pt: Dictionary = {
       due: (date: string) => `Data do objetivo: ${date}`,
       unknown: (chain: string) => `Seu cofre na ${chain}.`,
       notJoined:
-        'Este navegador não tem registro do objetivo para o qual este cofre foi comprado. O que ele guarda está abaixo.',
+        'Este cofre não tem um objetivo que eu consiga ler: foi comprado a partir de um portfólio compartilhado, que não tem, ou antes de os planos guardarem seu objetivo. O que ele guarda está abaixo.',
       follows: (name: string) => `Seu cofre segue ${name}.`,
       followsShared: 'Ele segue um portfólio compartilhado. O que ele guarda está abaixo.',
       seeShared: 'Ver esse portfólio',
@@ -560,6 +560,7 @@ export const pt: Dictionary = {
       withdrawalsShort: 'Nem todo saque é pago em dia com o que está separado.',
       notLive:
         'Alguns números vêm de uma rede de teste ou de dados de exemplo, não de mercados ao vivo.',
+      other: 'O plano traz mais uma observação que ainda não sabemos descrever.',
       simple: {
         exit_not_measured: 'Nenhuma parte deste plano tem custo de venda medido ainda.',
         exit_partly_measured: 'Só parte deste plano tem custo de venda medido.',
@@ -625,6 +626,8 @@ export const pt: Dictionary = {
     exitCost: (cost: string) => `≤ ${cost}`,
     inKind: 'Você também pode tirar os próprios tokens do seu cofre a qualquer momento.',
     risk: {
+      notKept:
+        'Como este plano se divide, e quanto custa vendê-lo, é calculado quando um plano é montado e não fica guardado com ele. Monte o plano de novo a partir do seu objetivo para ver.',
       title: 'Como o plano se divide, e quanto custa vender',
       byClass: 'Por tipo de ativo',
       byIssuer: 'Por emissor',
@@ -642,10 +645,11 @@ export const pt: Dictionary = {
       ways: 'Para fechar a diferença:',
       change: 'Mudar meus limites',
     },
-    monthly: (low: string, high: string) =>
-      low === high
-        ? `Paga cerca de ${low} por mês, na faixa projetada.`
-        : `Paga cerca de ${low} a ${high} por mês, na faixa projetada.`,
+    monthly: {
+      figure: (low: string, high: string) =>
+        low === high ? `Cerca de ${low} por mês` : `Cerca de ${low} a ${high} por mês`,
+      after: 'se a faixa projetada se mantiver. Uma estimativa, não uma promessa.',
+    },
     buy: 'Comprar este plano',
     chainNotReady: (chain: string) =>
       `${chain} ainda não está pronta para compras: os cofres dela não estão implantados nesta rede. Seu plano fica guardado e pode ser comprado quando estiverem.`,
@@ -896,6 +900,8 @@ export const pt: Dictionary = {
         mock: 'Rede de exemplo: não há rede para ler, então estas são palavras do nosso servidor, não conferidas.',
         'no-node': (chain: string) =>
           `Não conferido na ${chain}: este app não tem um nó próprio para ler. Estas são palavras do nosso servidor.`,
+        'no-reader': (chain: string) =>
+          `Não conferido na ${chain}: este app ainda não lê o registro da ${chain}. Estas são palavras do nosso servidor.`,
         'no-deployment': (chain: string) =>
           `Não conferido na ${chain}: este app não tem registro dos tokens nesta rede. Estas são palavras do nosso servidor.`,
         'family-id':
@@ -992,7 +998,7 @@ export const pt: Dictionary = {
         weight: 'Cada peso vai de 2% a 50%, em passos de 0,5%.',
         sum: 'Os pesos somam 100%.',
         twice: 'Um ativo aparece uma vez só.',
-        chain: 'Por enquanto, publicar só funciona na Solana.',
+        chain: 'Publicar ainda não está aberto nesta rede.',
       },
       failure: {
         said: (error: string) => `Nosso servidor recusou: ${error}.`,

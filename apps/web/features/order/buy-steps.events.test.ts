@@ -13,7 +13,7 @@ import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { BuyScreen } from './BuyScreen';
 import { rememberPlan } from './plan-store';
-import { PLAN_ID, planOn, USER } from './test/fixtures';
+import { PLAN_ID, planOn, serverKeepsPlans, USER } from './test/fixtures';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -85,27 +85,29 @@ function api(
     chainOptions: [],
   };
   let funded = o.funded ?? false;
-  portStore.setApi(async (path, init) => {
-    const method = init?.method ?? 'GET';
-    calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-    if (path === '/v1/me') return json(person);
-    if (path.startsWith('/v1/funding?'))
-      return json(funding({ funded, faucet: o.faucet ?? false, provenance: o.provenance }));
-    if (path === '/v1/testnet/fund' && method === 'POST') {
-      if (o.fund) return o.fund();
-      funded = true;
-      return json({
-        chain: 'solana',
-        provenance: 'sandbox',
-        wallet: SOLANA,
-        cash: { symbol: 'tUSDC', decimals: 6, raw: '40400000000' },
-        gas: { symbol: 'SOL', decimals: 9, raw: '12625000' },
-        txIds: ['devnet-signature'],
-        left: 2,
-      });
-    }
-    return json({ error: 'not found' }, 404);
-  });
+  portStore.setApi(
+    serverKeepsPlans(async (path, init) => {
+      const method = init?.method ?? 'GET';
+      calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      if (path === '/v1/me') return json(person);
+      if (path.startsWith('/v1/funding?'))
+        return json(funding({ funded, faucet: o.faucet ?? false, provenance: o.provenance }));
+      if (path === '/v1/testnet/fund' && method === 'POST') {
+        if (o.fund) return o.fund();
+        funded = true;
+        return json({
+          chain: 'solana',
+          provenance: 'sandbox',
+          wallet: SOLANA,
+          cash: { symbol: 'tUSDC', decimals: 6, raw: '40400000000' },
+          gas: { symbol: 'SOL', decimals: 9, raw: '12625000' },
+          txIds: ['devnet-signature'],
+          left: 2,
+        });
+      }
+      return json({ error: 'not found' }, 404);
+    }),
+  );
   return { calls, to: (prefix: string) => calls.filter((c) => c.path.startsWith(prefix)) };
 }
 
@@ -244,6 +246,37 @@ describe('the steps', () => {
     await click(head(host, 'amount'));
     expect(opened(host)).toEqual(['amount']);
     expect(document.activeElement).toBe(head(host, 'amount'));
+  });
+
+  it('keeps every step in place while the wallet is read again: the focus is not lost with it', async () => {
+    // The API says a test network and the wallet's own chain says the mock, as the e2e stub does: the
+    // card's label must not come and go with each read, or its contents are made again.
+    portStore.set(signedInPort(EMBEDDED, { userId: USER }, 'mock'));
+    const server = api({ funded: false, faucet: true });
+    // From before the first read: what a person has focused or typed in is not made again by it.
+    const host = await mount(withAccount('en', createElement(BuyScreen, { id: PLAN_ID })));
+    await settle();
+    const field = find<HTMLInputElement>(host, 'input[inputmode="decimal"]');
+    expect(server.to('/v1/funding')).toHaveLength(0);
+    await settle(350);
+    await settle();
+    expect(server.to('/v1/funding')).toHaveLength(1);
+    expect(find(host, 'input[inputmode="decimal"]')).toBe(field);
+    await click(next(host, 'amount'));
+    const before = head(host, 'funds');
+    expect(document.activeElement).toBe(before);
+    const reads = server.to('/v1/funding').length;
+    await click(button(host, en.buy.funding.readAgain) as HTMLButtonElement);
+    // while it reads, and once it has
+    expect(head(host, 'funds')).toBe(before);
+    await settle(350);
+    await settle();
+    expect(server.to('/v1/funding').length).toBeGreaterThan(reads);
+    expect(head(host, 'funds')).toBe(before);
+    expect(before.isConnected).toBe(true);
+    // a step opened now still takes the focus
+    await click(head(host, 'trust'));
+    expect(document.activeElement).toBe(head(host, 'trust'));
   });
 
   it('holds the funds step until the wallet has what the buy needs', async () => {

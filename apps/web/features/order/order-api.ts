@@ -147,22 +147,21 @@ export async function placeOrder(
 //
 // The route is not on every server yet. Nothing is offered until it is known to be there.
 
-/** A well-formed id no order has: asking to finish it tells whether the route is there, and makes nothing. */
-const NO_ORDER = '00000000-0000-4000-8000-000000000000';
+/** Not an order's id: asking to finish it tells whether the route is there, and can make nothing. */
+const NO_ORDER = 'not-an-order';
 
 const continuePath = (id: string) => `/v1/orders/${encodeURIComponent(id)}/continue`;
 
 /**
- * Whether this server finishes buys. A server with the route answers that it has no such order, in
- * the API's own shape (`{ error }`); one without it answers that there is no such route (the web
- * framework's `{ message: "Route POST:… not found" }`), or with a method it does not take.
+ * Whether this server finishes buys, by the status alone. The route takes an order's id, a uuid
+ * (`OrderRouteParams`): asked with something that is not one, a server with the route refuses the
+ * request as badly formed (400), and one without it has no such route (404). Anything else, a
+ * sign-in it does not know included, is read as no: the button stays hidden.
  */
 export async function continuesOrders(apiFetch: ApiFetch): Promise<boolean> {
   try {
     const res = await apiFetch(continuePath(NO_ORDER), { method: 'POST' });
-    if (res.status !== 404) return false;
-    const body = await bodyOf(res);
-    return typeof body.error === 'string' && body.message === undefined;
+    return res.status === 400;
   } catch {
     return false;
   }
@@ -174,8 +173,16 @@ export type ContinueOutcome =
   | { kind: 'refused'; sentence: string; retryable: boolean; priceMoved: boolean }
   | { kind: 'signed-out' | 'busy' | 'unreachable' | 'unreadable' | 'unavailable' };
 
-/** Asks for the order that finishes `id` with the cash in its vault. Nothing is deposited. */
-export async function continueOrder(apiFetch: ApiFetch, id: string): Promise<ContinueOutcome> {
+/**
+ * Asks for the order that finishes `first` with the cash in its vault. Nothing is deposited. The
+ * answer is taken only if it names that order, is another order, is the same owner's for the same
+ * vault, deposits nothing and has only swap steps, all on the first order's chain.
+ */
+export async function continueOrder(
+  apiFetch: ApiFetch,
+  first: Pick<OrderDetail, 'id' | 'owner' | 'basketId' | 'legs'>,
+): Promise<ContinueOutcome> {
+  const id = first.id;
   let res: Response;
   try {
     res = await apiFetch(continuePath(id), { method: 'POST' });
@@ -200,6 +207,16 @@ export async function continueOrder(apiFetch: ApiFetch, id: string): Promise<Con
   const order = OrderDetail.safeParse(body);
   // The answer must say which order it finishes, and be another order than that one.
   if (!order.success || body.continues !== id || order.data.id === id)
+    return { kind: 'unreadable' };
+  const chain = first.legs[0]?.chain;
+  const made = order.data;
+  if (
+    JSON.stringify(made.owner) !== JSON.stringify(first.owner) ||
+    made.basketId !== first.basketId ||
+    made.depositRaw !== undefined ||
+    made.legs.length === 0 ||
+    made.legs.some((leg) => leg.kind !== 'swap' || leg.chain !== chain)
+  )
     return { kind: 'unreadable' };
   return { kind: 'placed', order: { ...order.data, continues: id } };
 }

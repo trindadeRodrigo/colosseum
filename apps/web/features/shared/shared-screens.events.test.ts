@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
-import { solanaVaultAddress } from '@colosseum/sdk';
+import { TRUST_STATUS } from '@colosseum/schemas';
+import { deploymentsOf, type GuardDeployment, solanaVaultAddress } from '@colosseum/sdk';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
@@ -8,8 +9,8 @@ import { parse } from '../../components/ui/test/html';
 import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
-import { keepOrder, recallOrder } from '../order/order-record';
-import { basketOfPlan, explorerAddressUrlFor } from '../order/readiness';
+import { acceptTrust, keepOrder, recallOrder, trustAccepted } from '../order/order-record';
+import { basketOfPlan, explorerAddressUrlFor, publishableOn } from '../order/readiness';
 import { PLAN_ID, planOn, recordOf } from '../order/test/fixtures';
 import { EMBEDDED, fakePort, json, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
@@ -38,6 +39,20 @@ import {
 import { VaultScreen } from './VaultScreen';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
+// A switch for one case: Robinhood Chain's deployment as a file that names no registry would load.
+const deployed = vi.hoisted(() => ({ withoutRegistry: false }));
+vi.mock('../order/readiness', async (original) => {
+  const real = await original<typeof import('../order/readiness')>();
+  return {
+    ...real,
+    deploymentsFor: (...args: Parameters<typeof real.deploymentsFor>) => {
+      const all = real.deploymentsFor(...args);
+      if (!deployed.withoutRegistry || all?.robinhood?.family !== 'evm') return all;
+      const { registry: _, ...robinhood } = all.robinhood;
+      return { ...all, robinhood } as typeof all;
+    },
+  };
+});
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
 vi.mock('next/link', () => import('../wallet/test/mock-next'));
 
@@ -400,6 +415,57 @@ describe('buying a portfolio, which follows it', () => {
   });
 });
 
+describe('the trust notice on a buy the keeper may trade', () => {
+  const stored = (keeperShown?: boolean) =>
+    window.localStorage.setItem(
+      `tf-trust:${USER}`,
+      JSON.stringify({
+        textVersion: TRUST_STATUS.textVersion,
+        ...(keeperShown === undefined ? {} : { keeperShown }),
+      }),
+    );
+  const trustStep = (host: HTMLElement) =>
+    host.querySelector('[data-ui="buy-step"][data-step="trust"]');
+
+  it('shows the keeper’s limits among its short points', async () => {
+    api({ family: familyOf(FAMILY_ID), funded: true });
+    const host = await show(createElement(FamilyBuyScreen, { slug: SLUG }));
+    const short = [...find(host, '[data-ui="trust-short"]').querySelectorAll('li')].map(
+      (li) => li.textContent,
+    );
+    expect(short).toContain(en.trust.short.keeper('0.75%', '1%'));
+  });
+
+  it('asks again of someone who accepted it on a plan’s buy, where the keeper’s limits were not shown', async () => {
+    stored(false);
+    api({ family: familyOf(FAMILY_ID), funded: true });
+    const host = await show(createElement(FamilyBuyScreen, { slug: SLUG }));
+    expect(trustStep(host)).not.toBeNull();
+    expect(find(host, '[data-ui="trust-short"]').textContent).toContain(
+      en.trust.short.keeper('0.75%', '1%'),
+    );
+  });
+
+  it('does not ask again of someone who accepted it with the keeper’s limits shown, or before that was recorded', async () => {
+    for (const shown of [true, undefined]) {
+      stored(shown);
+      api({ family: familyOf(FAMILY_ID), funded: true });
+      const host = await show(createElement(FamilyBuyScreen, { slug: SLUG }));
+      expect(trustStep(host), String(shown)).toBeNull();
+      await unmountAll();
+    }
+  });
+
+  it('records what was shown, and an acceptance with the keeper’s limits is not written over by one without', () => {
+    acceptTrust(USER, TRUST_STATUS.textVersion, false);
+    expect(trustAccepted(USER, TRUST_STATUS.textVersion, false)).toBe(true);
+    expect(trustAccepted(USER, TRUST_STATUS.textVersion, true)).toBe(false);
+    acceptTrust(USER, TRUST_STATUS.textVersion, true);
+    acceptTrust(USER, TRUST_STATUS.textVersion, false);
+    expect(trustAccepted(USER, TRUST_STATUS.textVersion, true)).toBe(true);
+  });
+});
+
 describe('the publish form', () => {
   it('works out the family id from the address, holds the limits, and keeps its own text', async () => {
     const calls = api({ family: null, order: () => publishOrder() });
@@ -476,28 +542,57 @@ describe('the publish form', () => {
       { asset: 'solana:tslax', bps: 3000 },
     ];
     const form = (name: string, copy: string) => ({ name, slug: 'x', copy, rows });
-    expect(problemsOf(form('Three of the largest', 'Three test tokens.'), 'solana')).toEqual([]);
-    expect(problemsOf(form('Go to evil.xyz', ''), 'solana')).toEqual(['name']);
-    expect(problemsOf(form('U.S. stocks', 'see evil.xyz/airdrop'), 'solana')).toEqual(['copy']);
-    expect(problemsOf(form('Three', 'write to me@mail.com'), 'solana')).toEqual(['copy']);
-    expect(problemsOf(form('Three', 'plain\u202etext'), 'solana')).toEqual(['copy']);
-    expect(problemsOf(form('Three', 'two lines\nare fine'), 'solana')).toEqual([]);
+    expect(problemsOf(form('Three of the largest', 'Three test tokens.'))).toEqual([]);
+    expect(problemsOf(form('Go to evil.xyz', ''))).toEqual(['name']);
+    expect(problemsOf(form('U.S. stocks', 'see evil.xyz/airdrop'))).toEqual(['copy']);
+    expect(problemsOf(form('Three', 'write to me@mail.com'))).toEqual(['copy']);
+    expect(problemsOf(form('Three', 'plain\u202etext'))).toEqual(['copy']);
+    expect(problemsOf(form('Three', 'two lines\nare fine'))).toEqual([]);
   });
 
-  it('is not offered on Robinhood Chain, where the guard signs no publish yet (AGT-4)', async () => {
+  it('is offered on Robinhood Chain, whose deployment names its registry (AGT-4)', async () => {
     const calls = api({ family: null, chain: 'robinhood' });
     const shelf = await show(createElement(ShelfScreen));
     expect(calls.some((c) => c.path === '/v1/shelf?chain=robinhood')).toBe(true);
-    expect(shelf.querySelector('a[href="/publish"]')).toBeNull();
+    expect(shelf.querySelector('a[href="/publish"]')).not.toBeNull();
   });
 
-  it('says on Robinhood Chain that publishing is Solana only, with no form', async () => {
-    const calls = api({ family: null, chain: 'robinhood' });
+  it('shows the form on Robinhood Chain, and not the notice that publishing is closed', async () => {
+    api({ family: null, chain: 'robinhood' });
     const host = await show(createElement(PublishScreen));
-    expect(host.textContent).toContain(en.shared.publish.problems.chain);
-    expect(host.querySelector('input')).toBeNull();
-    expect(button(host, en.shared.publish.review)).toBeUndefined();
-    expect(calls.some((c) => c.path === '/v1/orders')).toBe(false);
+    expect(host.textContent).not.toContain(en.shared.publish.problems.chain);
+    expect(host.querySelector('input')).not.toBeNull();
+    expect(button(host, en.shared.publish.review)).toBeDefined();
+  });
+
+  it('is closed on screen where the deployment names no registry: the notice, no form, no order', async () => {
+    deployed.withoutRegistry = true;
+    try {
+      const calls = api({ family: null, chain: 'robinhood' });
+      const shelf = await show(createElement(ShelfScreen));
+      expect(shelf.querySelector('a[href="/publish"]')).toBeNull();
+      expect(find(shelf, '[data-ui="shelf-publish-soon"]').textContent).toBe(
+        en.shared.shelf.publishSoon('Robinhood Chain'),
+      );
+      const host = await mount(withAccount('en', createElement(PublishScreen)));
+      for (let i = 0; i < 4; i += 1) await settle(50);
+      expect(host.textContent).toContain(en.shared.publish.problems.chain);
+      expect(host.querySelector('input')).toBeNull();
+      expect(button(host, en.shared.publish.review)).toBeUndefined();
+      expect(calls.some((c) => c.path === '/v1/orders')).toBe(false);
+    } finally {
+      deployed.withoutRegistry = false;
+    }
+  });
+
+  it('is closed on an EVM chain whose deployment names no registry', () => {
+    const robinhood = deploymentsOf('testnet').robinhood;
+    expect(publishableOn(robinhood)).toBe(true);
+    const { registry: _, ...without } = robinhood as Extract<GuardDeployment, { family: 'evm' }>;
+    expect(publishableOn(without as GuardDeployment)).toBe(false);
+    expect(publishableOn(deploymentsOf('testnet').solana)).toBe(true);
+    // no deployment at all is a chain not ready, which the screens say on their own
+    expect(publishableOn(undefined)).toBe(true);
   });
 
   it('refuses an address that is another creator’s', async () => {
@@ -700,17 +795,23 @@ describe('the flow audit’s findings on these screens (34, 38, 42)', () => {
   });
 
   it.each(['en', 'pt'] as const)(
-    'the shelf on Robinhood Chain says publishing is coming, where Solana offers the link (%s)',
+    'the shelf of a chain with no registry says publishing is coming, where Solana offers the link (%s)',
     async (lang) => {
       const words = lang === 'en' ? en : pt;
-      api({ family: familyOf(FAMILY_ID), chain: 'robinhood' });
-      const rh = await mount(withAccount(lang, createElement(ShelfScreen)));
-      for (let i = 0; i < 4; i += 1) await settle(50);
-      expect(find(rh, '[data-ui="shelf-publish-soon"]').textContent).toBe(
-        words.shared.shelf.publishSoon('Robinhood Chain'),
-      );
-      expect(rh.querySelector('a[href="/publish"]')).toBeNull();
-      await unmountAll();
+      // Robinhood Chain as a deployment that names no registry would load it (AGT-4)
+      deployed.withoutRegistry = true;
+      try {
+        api({ family: familyOf(FAMILY_ID), chain: 'robinhood' });
+        const rh = await mount(withAccount(lang, createElement(ShelfScreen)));
+        for (let i = 0; i < 4; i += 1) await settle(50);
+        expect(find(rh, '[data-ui="shelf-publish-soon"]').textContent).toBe(
+          words.shared.shelf.publishSoon('Robinhood Chain'),
+        );
+        expect(rh.querySelector('a[href="/publish"]')).toBeNull();
+        await unmountAll();
+      } finally {
+        deployed.withoutRegistry = false;
+      }
       api({ family: familyOf(FAMILY_ID) });
       const sol = await mount(withAccount(lang, createElement(ShelfScreen)));
       for (let i = 0; i < 4; i += 1) await settle(50);

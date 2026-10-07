@@ -112,12 +112,13 @@ describe('the committed OpenAPI document (packages/sdk/openapi.json)', () => {
       'GET /v1/shelf',
       'GET /v1/vaults/{chain}/{address}',
     ]);
-    // The routes that ask a chain for quotes, the one that runs the engine on a chain's shelf, and the
+    // The routes that ask a chain for quotes (a continuation quotes its steps), the one that runs the engine on a chain's shelf, and the
     // test faucet, which plans the buy and sends on a test network, are the ones with the tighter budget.
     expect(classes.build).toEqual([
       'POST /v1/baskets/personalize',
       'POST /v1/baskets/propose',
       'POST /v1/orders',
+      'POST /v1/orders/{id}/continue',
       'POST /v1/orders/{id}/legs/{legId}/build',
       'POST /v1/testnet/fund',
     ]);

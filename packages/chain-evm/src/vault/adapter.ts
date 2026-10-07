@@ -15,6 +15,7 @@ import {
   type Quote,
   SetAutoFollowArgs,
   SetTargetsArgs,
+  statedMinimum,
   Trade,
   type TradeMinimum,
   WithdrawInKindArgs,
@@ -52,6 +53,17 @@ import { unlistedAssetId, unlistedToken } from './unlisted';
 export const DEADLINE_S = 900;
 /** The most trades one transaction makes (`Capabilities.maxTradesPerTx`). */
 export const MAX_TRADES = 8;
+
+/** A creator's shared portfolio's id in `IndexRegistry`: keccak256(abi.encode(creator, familyId)). */
+export function indexIdOf(creator: string, familyId: string): Hex {
+  const family = `0x${familyId.replace(/^0x/, '').toLowerCase()}` as Hex;
+  return keccak256(
+    encodeAbiParameters(parseAbiParameters('address, bytes32'), [
+      creator.toLowerCase() as Hex,
+      family,
+    ]),
+  );
+}
 
 const ZERO_WORD = `0x${'0'.repeat(64)}` as Hex;
 const ERC20 = parseAbi([
@@ -189,11 +201,15 @@ export function createEvmVaultAdapter(options: EvmVaultAdapterOptions): EvmVault
     return weights.sort((a, b) => (BigInt(a.token) < BigInt(b.token) ? -1 : 1));
   }
 
-  /** The owner's trades as the vault's `Swap`s, each quoted now and held to the slippage asked. */
+  /**
+   * The owner's trades as the vault's `Swap`s, each quoted now and held to the least the order stated
+   * for it (`stated`), or, where none was stated, to the slippage asked under that quote.
+   */
   async function swapsOf(
     trades: Trade[],
     slippageBps: number,
     deadline: bigint,
+    stated?: readonly string[],
   ): Promise<{ swaps: readonly unknown[]; minimums: TradeMinimum[] }> {
     if (trades.length > MAX_TRADES)
       refuse(
@@ -241,7 +257,7 @@ export function createEvmVaultAdapter(options: EvmVaultAdapterOptions): EvmVault
         // A trade after another in the same pool can fill one unit under the difference of the two
         // quotes, by the pool's rounding: its floor is set that much lower.
         const floor = (out * BigInt(10_000 - slippageBps)) / 10_000n - (prior > 0n ? 1n : 0n);
-        const minOut = floor > 0n ? floor : 1n;
+        const minOut = statedMinimum(stated, trades, i, out) ?? (floor > 0n ? floor : 1n);
         const { tokenIn, tokenOut, amountIn, t } = leg;
         return {
           swap: {
@@ -442,7 +458,7 @@ export function createEvmVaultAdapter(options: EvmVaultAdapterOptions): EvmVault
         const salt = planIdOf(a.basketId);
         const buys = deposit > 0n || trades.length > 0;
         const deadline = (await blockTime()) + BigInt(DEADLINE_S);
-        const { swaps, minimums } = await swapsOf(trades, a.slippageBps, deadline);
+        const { swaps, minimums } = await swapsOf(trades, a.slippageBps, deadline, a.minimums);
         const data = buys
           ? encodeFunctionData({
               abi: VAULT_FACTORY_ABI,
@@ -504,7 +520,7 @@ export function createEvmVaultAdapter(options: EvmVaultAdapterOptions): EvmVault
             minimums: [],
           });
         const deadline = (await blockTime()) + BigInt(DEADLINE_S);
-        const { swaps, minimums } = await swapsOf(trades, a.slippageBps, deadline);
+        const { swaps, minimums } = await swapsOf(trades, a.slippageBps, deadline, a.minimums);
         const swap = encodeFunctionData({
           abi: BASKET_VAULT_ABI,
           functionName: 'ownerSwap',
@@ -541,7 +557,7 @@ export function createEvmVaultAdapter(options: EvmVaultAdapterOptions): EvmVault
             );
         }
         const deadline = (await blockTime()) + BigInt(DEADLINE_S);
-        const { swaps, minimums } = await swapsOf(a.trades, a.slippageBps, deadline);
+        const { swaps, minimums } = await swapsOf(a.trades, a.slippageBps, deadline, a.minimums);
         return built({
           kind: 'swap',
           signer: owner,
@@ -707,10 +723,7 @@ export function createEvmVaultAdapter(options: EvmVaultAdapterOptions): EvmVault
         );
         const familyId = `0x${r.familyId}` as Hex;
         const metaHash = `0x${r.metaHash}` as Hex;
-        // The registry's id: keccak256(abi.encode(creator, familyId)).
-        const id = keccak256(
-          encodeAbiParameters(parseAbiParameters('address, bytes32'), [creator, familyId]),
-        );
+        const id = indexIdOf(creator, r.familyId);
         const exists =
           lower(await view<string>(registry, INDEX_REGISTRY_ABI, 'creatorOf', [id])) !==
           '0x0000000000000000000000000000000000000000';

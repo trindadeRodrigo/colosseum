@@ -26,7 +26,7 @@ import { BuyScreen } from './BuyScreen';
 import { recallOrder, trustAccepted } from './order-record';
 import { PlanScreen } from './PlanScreen';
 import { rememberPlan } from './plan-store';
-import { ORDER_ID, orderOn, PLAN_ID, planOn, USER } from './test/fixtures';
+import { ORDER_ID, orderOn, PLAN_ID, planOn, serverKeepsPlans, USER } from './test/fixtures';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -96,16 +96,18 @@ function api(
     chainOptions: [],
   };
   let funded = o.funded ?? true;
-  portStore.setApi(async (path, init) => {
-    const method = init?.method ?? 'GET';
-    calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-    if (path === '/v1/me') return json(person);
-    if (path.startsWith('/v1/funding?'))
-      return json(o.say ? o.say(funding(funded)) : funding(funded));
-    if (path === '/v1/orders' && method === 'POST') return o.order ? o.order() : json(orderOn());
-    if (path === `/v1/baskets/${PLAN_ID}` && o.linked !== undefined) return json(o.linked);
-    return json({ error: 'not found' }, 404);
-  });
+  portStore.setApi(
+    serverKeepsPlans(async (path, init) => {
+      const method = init?.method ?? 'GET';
+      calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      if (path === '/v1/me') return json(person);
+      if (path.startsWith('/v1/funding?'))
+        return json(o.say ? o.say(funding(funded)) : funding(funded));
+      if (path === '/v1/orders' && method === 'POST') return o.order ? o.order() : json(orderOn());
+      if (path === `/v1/baskets/${PLAN_ID}` && o.linked !== undefined) return json(o.linked);
+      return json({ error: 'not found' }, 404);
+    }),
+  );
   return {
     calls,
     to: (prefix: string) => calls.filter((c) => c.path.startsWith(prefix)),
@@ -378,6 +380,58 @@ describe('the plan screen', () => {
     expect(recallOrder(ORDER_ID, USER)?.linked).toBe(true);
   });
 
+  it('opens the person’s own plan in a tab that did not build it, read from the API, as their own', async () => {
+    // a new tab, another device, a sign-in again: nothing is in this tab's store
+    const server = api({ linked: { id: PLAN_ID, proposal: planOn().proposal, fromLink: false } });
+    const host = await plan();
+    expect(server.to('/v1/baskets/').map((c) => c.path)).toEqual([`/v1/baskets/${PLAN_ID}`]);
+    expect(find(host, 'h1').textContent).toBe('Grow $40,000 over 36 months.');
+    expect(host.textContent).not.toContain(en.plan.missing.title);
+    // their own plan, not one from a link: it does not say it came from one, and its buy is not kept as one
+    expect(host.querySelector('[data-ui="plan-from-link"]')).toBeNull();
+    expect(primaryLink(host)?.getAttribute('href')).toBe(`/plan/${PLAN_ID}/buy`);
+    // the server keeps the plan and not its risk summary: the screen says so where the summary was
+    expect(find(host, '[data-ui="plan-risk-not-kept"]').textContent).toBe(en.plan.risk.notKept);
+    await unmountAll();
+    // kept in the tab from then on: the buy screen opens on it without asking again
+    const bought = await buy();
+    expect(server.to('/v1/baskets/')).toHaveLength(1);
+    await type(find<HTMLInputElement>(bought, 'input[inputmode="decimal"]'), '10');
+    await settle(350);
+    await click(find(bought, '[data-ui="trust-notice"] input[type="checkbox"]'));
+    await click(find(bought, SIGN));
+    await settle();
+    expect(recallOrder(ORDER_ID, USER)?.linked).toBeUndefined();
+  });
+
+  it('asks for the plan once more with fresh tokens before it says there is none', async () => {
+    // the route reads a sign-in and needs none: tokens gone stale are answered as nobody is, with a
+    // 404 and no 401 to say why
+    const asked: (boolean | undefined)[] = [];
+    portStore.setApi(async (path, init) => {
+      if (path === '/v1/me') return json({ error: 'not this test' }, 503);
+      if (path !== `/v1/baskets/${PLAN_ID}`) return json({ error: 'not found' }, 404);
+      const fresh = (init as { freshSignIn?: boolean } | undefined)?.freshSignIn;
+      asked.push(fresh);
+      return fresh
+        ? json({ id: PLAN_ID, proposal: planOn().proposal, fromLink: false })
+        : json({ error: 'no plan with that id that you can read' }, 404);
+    });
+    await plan();
+    expect(asked).toEqual([undefined, true]);
+    await unmountAll();
+    // and a plan that is not there is asked for twice, no more
+    asked.length = 0;
+    window.sessionStorage.clear();
+    portStore.setApi(async (path, init) => {
+      if (path === `/v1/baskets/${PLAN_ID}`)
+        asked.push((init as { freshSignIn?: boolean } | undefined)?.freshSignIn);
+      return json({ error: 'not found' }, 404);
+    });
+    await plan();
+    expect(asked).toEqual([undefined, true]);
+  });
+
   it('shows no plan from a link the API answers for another id, or that is not a plan', async () => {
     for (const linked of [
       { id: 'another', proposal: planOn().proposal },
@@ -505,7 +559,10 @@ describe('the buy screen', () => {
     expect(Number.isNaN(Date.parse(kept?.goal?.placedAt ?? ''))).toBe(false);
     expect(kept?.lines).toEqual(planOn().proposal.lines);
     expect(kept?.linked).toBeUndefined();
-    expect(trustAccepted(USER, TRUST_STATUS.textVersion)).toBe(true);
+    // accepted for a plan's own vault, whose short points leave the keeper's limits out: a buy the
+    // keeper may trade asks again
+    expect(trustAccepted(USER, TRUST_STATUS.textVersion, false)).toBe(true);
+    expect(trustAccepted(USER, TRUST_STATUS.textVersion)).toBe(false);
   });
 
   it('says once on each card that its figures are from a test network, and never MOCK', async () => {

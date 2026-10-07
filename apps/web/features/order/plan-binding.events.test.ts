@@ -13,8 +13,8 @@ import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
 import { PlanScreen } from './PlanScreen';
 import { bindingReason, leftOut, planSummary, reasonsOf } from './plain';
-import { PLANS_KEPT, recallPlan, rememberPlan, type StoredPlan } from './plan-store';
-import { PLAN_ID, planOn, USER } from './test/fixtures';
+import { forgetPlans, PLANS_KEPT, recallPlan, rememberPlan, type StoredPlan } from './plan-store';
+import { PLAN_ID, planOn, serverKeepsPlans, USER } from './test/fixtures';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -111,8 +111,10 @@ beforeEach(() => {
   window.sessionStorage.clear();
   window.localStorage.clear();
   portStore.set(signedInPort(EMBEDDED, { userId: USER }));
-  portStore.setApi(async (path) =>
-    path === '/v1/me' ? json(person) : json({ error: 'not found' }, 404),
+  portStore.setApi(
+    serverKeepsPlans(async (path) =>
+      path === '/v1/me' ? json(person) : json({ error: 'not found' }, 404),
+    ),
   );
 });
 afterEach(unmountAll);
@@ -214,9 +216,19 @@ describe('an income plan and its gap (the flow audit, findings 11 and 14)', () =
     rememberPlan({ ...plan, proposal: { ...plan.proposal, sheet, verdict: undefined } });
     const host = await shown();
     // $80,000 at 2.21% to 2.45% a year, over twelve months
-    expect(find(host, '[data-ui="plan-monthly"]').textContent).toBe(
-      en.plan.monthly('$147', '$163'),
-    );
+    const monthly = find(host, '[data-ui="plan-monthly"]');
+    // said as an estimate from the range, never as what the plan pays
+    expect(monthly.textContent).toContain(en.plan.monthly.figure('$147', '$163'));
+    expect(monthly.textContent).toContain(en.plan.monthly.after);
+    expect(monthly.textContent).toMatch(/estimate, not a promise/);
+    expect(monthly.textContent).not.toMatch(/^Pays/);
+    // and the figure carries the pin of the yield reading it stands on (STYLE.md rule 1)
+    const pin = find(monthly, '[data-ui="figure"] [data-ui="pin"]');
+    expect(pin.getAttribute('aria-label')).toMatch(/^Source for About \$147/);
+    // in Portuguese too
+    const pt = dictionary('pt');
+    expect(pt.plan.monthly.figure('US$ 147', 'US$ 163')).toBe('Cerca de US$ 147 a US$ 163 por mês');
+    expect(pt.plan.monthly.after).toMatch(/estimativa, não uma promessa/);
     expect(host.querySelector('[data-ui="plan-verdict"]')).toBeNull();
   });
 
@@ -290,6 +302,59 @@ describe('an income plan and its gap (the flow audit, findings 11 and 14)', () =
     expect(find(await shown(), 'h1').textContent).toBe(
       'Earn $300 a month from $80,000 for 12 months.',
     );
+  });
+
+  it('takes the server’s word over the browser’s copy: a plan it says is gone is dropped and not shown', async () => {
+    for (const status of [404, 403]) {
+      rememberPlan(short());
+      // a server that does not have this plan for this person, whatever this browser kept
+      const asked: boolean[] = [];
+      portStore.setApi(async (path, init) => {
+        if (path === '/v1/me') return json(person);
+        asked.push((init as { freshSignIn?: boolean } | undefined)?.freshSignIn === true);
+        return json({ error: 'no plan with that id' }, status);
+      });
+      const host = await shown();
+      expect(find(host, 'h1').textContent, String(status)).toBe(en.plan.missing.title);
+      expect(recallPlan(PLAN_ID, USER)).toBeNull();
+      // believed only after it was asked once more, with fresh tokens
+      expect(asked, String(status)).toEqual([false, true]);
+      await unmountAll();
+    }
+  });
+
+  it('does not believe a first "gone" that fresh tokens take back: the copy stays, and the plan is shown', async () => {
+    const plan = short();
+    rememberPlan(plan);
+    // tokens gone stale are answered as nobody is; asked again with fresh ones, the plan is there
+    portStore.setApi(async (path, init) => {
+      if (path === '/v1/me') return json(person);
+      return (init as { freshSignIn?: boolean } | undefined)?.freshSignIn
+        ? json({ id: PLAN_ID, proposal: plan.proposal, fromLink: false })
+        : json({ error: 'no plan with that id' }, 404);
+    });
+    const host = await shown();
+    expect(find(host, 'h1').textContent).toBe('Earn $300 a month from $80,000 for 12 months.');
+    expect(recallPlan(PLAN_ID, USER)).not.toBeNull();
+  });
+
+  it('keeps the browser’s copy while the server does not answer', async () => {
+    rememberPlan(short());
+    portStore.setApi(async (path) =>
+      path === '/v1/me' ? json(person) : json({ error: 'down' }, 503),
+    );
+    const host = await shown();
+    expect(find(host, 'h1').textContent).toBe('Earn $300 a month from $80,000 for 12 months.');
+    expect(recallPlan(PLAN_ID, USER)).not.toBeNull();
+  });
+
+  it('forgets every plan this browser kept when the person signs out', () => {
+    rememberPlan(short());
+    rememberPlan({ ...short(), id: 'another-plan' });
+    forgetPlans();
+    expect(recallPlan(PLAN_ID, USER)).toBeNull();
+    expect(recallPlan('another-plan', USER)).toBeNull();
+    expect(Object.keys(window.localStorage).filter((key) => key.startsWith('tf-plan'))).toEqual([]);
   });
 
   it('keeps the newest few plans, and drops the oldest', () => {

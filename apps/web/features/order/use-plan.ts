@@ -3,12 +3,18 @@ import type { ChainId } from '@colosseum/schemas';
 import { useEffect, useState } from 'react';
 import { useAccount } from '../account/AccountProvider';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
-import { readLinkedPlan, recallPlan, rememberPlan, type StoredPlan } from './plan-store';
+import {
+  forgetPlan,
+  readStoredPlan,
+  recallPlan,
+  rememberPlan,
+  type StoredPlan,
+} from './plan-store';
 import { chainReady, onMock } from './readiness';
 
 // What the plan screen and the buy screen stand on: the person, the plan with this id as this tab kept
-// it, or, for a plan made from a link (an agent's, AGT-2), as the API reads it back, and the plan's
-// chain. A plan lives on one chain (gate ONE-CHAIN) and is bought there, whatever the person's current
+// it, or as the API reads it back (the person's own in a tab that did not build it, or one made from a
+// link, an agent's, AGT-2), and the plan's chain. A plan lives on one chain (gate ONE-CHAIN) and is bought there, whatever the person's current
 // chain is (CHAIN-SWITCH). One on a chain no wallet of theirs signs on is not offered for buying.
 
 export type PlanState =
@@ -41,17 +47,40 @@ export function usePlan(id: string): PlanState {
   const apiFetch = useApiFetch();
   const userId = port.userId;
   useEffect(() => {
+    // One read path: the browser's copy first, so the screen opens at once with its risk roll-up,
+    // then the server's (`readStoredPlan`), which is the last word. A plan it says is gone, or
+    // another person's, is dropped and not shown; when it does not answer, the copy stands.
     const kept = recallPlan(id, userId);
-    if (kept || !userId) return setPlan(kept);
-    // Not built in this tab: it may be a plan made from a link, which the API reads back by its id.
+    if (!userId) return setPlan(kept);
     let mine = true;
-    setPlan(undefined);
-    void readLinkedPlan(apiFetch, id).then((proposal) => {
+    setPlan(kept ?? undefined);
+    // The route reads a sign-in and needs none, so tokens gone stale are answered as nobody is: a
+    // person's own plan then reads as gone. Asked once more with fresh tokens before that is
+    // believed, and before the copy kept here is dropped.
+    const read = async () => {
+      const first = await readStoredPlan(apiFetch, id);
+      return first === 'gone' ? readStoredPlan(apiFetch, id, true) : first;
+    };
+    void read().then((read) => {
       if (!mine) return;
-      if (!proposal) return setPlan(null);
-      const linked: StoredPlan = { id, userId, proposal, rollUp: null, fromLink: true };
-      rememberPlan(linked);
-      setPlan(linked);
+      if (read === 'gone') {
+        forgetPlan(id);
+        return setPlan(null);
+      }
+      // the copy kept here stands while the server has the plan, or says nothing
+      if (kept) return;
+      if (!read) return setPlan(null);
+      // The risk roll-up is not stored with a plan: the plan screen shows none for one read back.
+      const stored: StoredPlan = {
+        id,
+        userId,
+        proposal: read.proposal,
+        rollUp: null,
+        readBack: true,
+        ...(read.fromLink ? { fromLink: true as const } : {}),
+      };
+      rememberPlan(stored);
+      setPlan(stored);
     });
     return () => {
       mine = false;

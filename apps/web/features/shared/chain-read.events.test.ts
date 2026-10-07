@@ -351,6 +351,37 @@ describe('a shared portfolio this app could read from the chain and could not', 
 });
 
 describe('a shared portfolio the chain does not hold', () => {
+  it('says on Robinhood Chain that this app does not read its registry yet, node or no node', async () => {
+    // a node is set for the chain: the reason is still that nothing here reads an EVM registry
+    process.env.NEXT_PUBLIC_CHAIN_READ_RPC_ROBINHOOD = 'https://node.example/robinhood';
+    portStore.setApi(async (path) => {
+      if (path === '/v1/me') return json({ ...person, chain: 'robinhood' });
+      if (path.startsWith('/v1/indexes/') && !path.includes('versions'))
+        return json({
+          family: familyOf(FAMILY_ID, {
+            recipes: [recipeOf({ chain: 'robinhood', name: 'Robinhood Chain' })],
+            chains: ['robinhood'],
+          }),
+          disclaimer: 'd',
+        });
+      if (path === '/v1/portfolio') return json({ chains: [], disclaimer: 'd' });
+      return json({ error: 'no' }, 404);
+    });
+    try {
+      const host = await mount(withAccount('en', createElement(FamilyScreen, { slug: SLUG })));
+      for (let i = 0; i < 5; i += 1) await settle(50);
+      const mark = find(host, '[data-ui="source-mark"]');
+      expect(mark.getAttribute('data-source')).toBe('api');
+      expect(mark.textContent).toContain(
+        en.shared.check.unverified['no-reader']('Robinhood Chain'),
+      );
+      expect(mark.textContent).not.toContain('no node of its own');
+      expect(NODE.asked).toEqual([]);
+    } finally {
+      delete process.env.NEXT_PUBLIC_CHAIN_READ_RPC_ROBINHOOD;
+    }
+  });
+
   it('blocks the buy, and the mark says the chain was read and holds no such portfolio', async () => {
     NODE_HOLDS.none = true;
     const host = await mount(withAccount('en', createElement(FamilyScreen, { slug: SLUG })));

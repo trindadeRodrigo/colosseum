@@ -122,7 +122,8 @@ describe('the monitor, for a person with a vault on their chain', () => {
       [words.address, VAULT],
       [words.version, '1'],
       [words.autoFollow, words.on],
-      [words.lossUsed, '0.1%'],
+      // the keeper's losses keep their second decimal: 0.12% is not 0.1%
+      [words.lossUsed, '0.12%'],
     ]);
     // and the address in the head leads to the vault's own page
     const page = `/vaults/solana/${VAULT}`;
@@ -553,9 +554,10 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
       `${en.portfolio.goalCard.putIn('$40,000')} · up to $40,000 within a day`,
     );
     const link = find(card, 'a');
+    // the plan is read back from the server in any tab, so the card leads to it
     expect([link.textContent, link.getAttribute('href')]).toEqual([
-      en.portfolio.goalCard.seeOrder,
-      `/orders/${ORDER_ID}`,
+      en.portfolio.goalCard.seePlan,
+      `/plan/${PLAN_ID}`,
     ]);
     // beside it, his plan: the parts by weight
     const titles = [...host.querySelectorAll('[data-ui="vault"] section h3')].map(
@@ -564,6 +566,102 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     // two positions and the cash
     expect(titles).toContain(en.portfolio.vault.planTitle(3));
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
+  });
+
+  /** What `GET /v1/me/plans` answers for the plan and its one buy. */
+  const listed = (over: object = {}) => {
+    const plan = planOn();
+    return json({
+      plans: [
+        {
+          id: PLAN_ID,
+          createdAt: '2026-09-30T00:00:00.000Z',
+          fromLink: false,
+          chain: 'solana',
+          sheet: plan.proposal.sheet,
+          card: plan.proposal.card,
+          verdict: null,
+          bought: true,
+          orders: [
+            {
+              id: ORDER_ID,
+              createdAt: '2026-10-01T00:00:00.000Z',
+              amountUsd: 40_000,
+              status: 'done',
+              deposited: true,
+            },
+          ],
+          vault: { chain: 'solana', basketId: basketOfPlan(PLAN_ID) },
+          ...over,
+        },
+      ],
+    });
+  };
+
+  it('shows the goal, what went in and what was done after a fresh sign-in, from the server alone', async () => {
+    // nothing kept in this browser: another device, or a sign-in again
+    const server = api({
+      person: onSolana,
+      portfolio: () => json(portfolioBody(chainOf([vault({ basketId: basketOfPlan(PLAN_ID) })]))),
+      more: (path) => (path === '/v1/me/plans' ? listed() : orders(true)(path)),
+    });
+    signIn();
+    const host = await screen();
+    await settle();
+    await settle();
+    expect(server.to('/v1/me/plans')).toHaveLength(1);
+    const card = find(host, '[data-ui="goal-card"]');
+    expect(find(card, 'h3').textContent).toBe('Grow $40,000 over 36 months.');
+    expect(card.textContent).not.toContain(en.portfolio.goalCard.notJoined);
+    expect(find(card, '[data-ui="goal-no-status"]').textContent).toBe('Goal date: October 2029');
+    expect(card.textContent).toContain(en.portfolio.goalCard.putIn('$40,000'));
+    const link = find(card, 'a');
+    expect([link.textContent, link.getAttribute('href')]).toEqual([
+      en.portfolio.goalCard.seePlan,
+      `/plan/${PLAN_ID}`,
+    ]);
+    // and what was done is the order's steps, read from the server by the order's id
+    expect(server.to(`/v1/orders/${ORDER_ID}`)).toHaveLength(1);
+    expect(
+      host.querySelectorAll('[data-ui="activity-panel"] [data-ui="execution-list"] li').length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('joins by the vault’s number the server gives, so a plan from a link finds the buyer’s own vault', async () => {
+    const own = '424242';
+    api({
+      person: onSolana,
+      portfolio: () => json(portfolioBody(chainOf([vault({ basketId: own })]))),
+      more: (path) =>
+        path === '/v1/me/plans'
+          ? listed({ fromLink: true, vault: { chain: 'solana', basketId: own } })
+          : orders(true)(path),
+    });
+    signIn();
+    const host = await screen();
+    await settle();
+    await settle();
+    expect(find(find(host, '[data-ui="goal-card"]'), 'h3').textContent).toBe(
+      'Grow $40,000 over 36 months.',
+    );
+  });
+
+  it('stands on what this browser kept when the server has no list, or answers something else', async () => {
+    for (const answer of [json({ error: 'not found' }, 404), json({ plans: 'no' }), json({})]) {
+      window.localStorage.clear();
+      api({
+        person: onSolana,
+        portfolio: () => bought(),
+        more: (path) => (path === '/v1/me/plans' ? answer : orders(true)(path)),
+      });
+      signIn();
+      const host = await screen();
+      await settle();
+      expect(find(find(host, '[data-ui="goal-card"]'), 'h3').textContent).toBe(
+        'Grow $40,000 over 36 months.',
+      );
+      await unmountAll();
+    }
   });
 
   it('counts nothing as put in from an order kept but not confirmed on chain', async () => {

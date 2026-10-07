@@ -5,7 +5,7 @@ import { CASH, SYMBOLS, tail, tokenName } from './amounts';
 
 // The plan in plain words (Thom, Oct 6: the plan screen read as a list of engine codes). Nothing here
 // shows an engine code: an asset by its name, a kind of asset by a word, a flag by a sentence, and a
-// code this file does not know is not shown at all. The sentences are
+// code this file does not know by one plain line that says there is a note. The sentences are
 // the dictionary's, in the language of the view.
 
 /** Who issues a dollar-yield token, where saying so tells the person what it is. */
@@ -54,14 +54,14 @@ export function kindLabel(key: string, words: Dictionary['plan']['kinds']): stri
 }
 
 /**
- * A flag of the engine or the roll-up as one sentence. Never the code. Null for a code this file
- * has no sentence for: a note that says only that there is a note tells the person nothing.
+ * A flag of the engine or the roll-up as one sentence. Never the code: a code this file has no
+ * sentence for is said by one plain line, so a note the engine wrote is never dropped in silence.
  */
 export function flagSentence(
   flag: string,
   words: Dictionary['plan'],
   name: (assetId: string) => string,
-): string | null {
+): string {
   const [code = '', ...rest] = flag.split(':');
   const f = words.flagWords;
   // an asset id is `chain:token`, so it takes the next two parts
@@ -96,7 +96,7 @@ export function flagSentence(
       return f.withdrawalsShort;
     default: {
       const plain = f.simple[code as keyof typeof f.simple];
-      return plain ?? null;
+      return plain ?? f.other;
     }
   }
 }
@@ -107,11 +107,7 @@ export function flagSentences(
   words: Dictionary['plan'],
   name: (assetId: string) => string,
 ): string[] {
-  return [
-    ...new Set(
-      flags.map((flag) => flagSentence(flag, words, name)).filter((s): s is string => s !== null),
-    ),
-  ];
+  return [...new Set(flags.map((flag) => flagSentence(flag, words, name)))];
 }
 
 /** The lines from the largest, cash last among equals. */

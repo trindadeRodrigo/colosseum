@@ -400,7 +400,7 @@ export const en = {
     follow: (when: string) => `Follow a shared portfolio · ${when}`,
     publish: (when: string) => `Publish a portfolio · ${when}`,
     noneVault:
-      'Nothing this browser placed for your vaults has reached the chain. Trades made elsewhere, or by the keeper, are not listed here yet.',
+      'Nothing from your buys has reached the chain yet. The keeper’s trades, and orders about a shared portfolio placed in another browser, are not listed here yet.',
   },
   /** The words a provenance pin says, in the language of the view. */
   pin: {
@@ -543,7 +543,7 @@ export const en = {
       due: (date: string) => `Goal date: ${date}`,
       unknown: (chain: string) => `Your vault on ${chain}.`,
       notJoined:
-        'This browser has no record of the goal this vault was bought for. What it holds is below.',
+        'This vault has no goal I can read: it was bought from a shared portfolio, which has none, or before plans kept their goal. What it holds is below.',
       /** A vault bought from a shared portfolio: what it follows, by name where this browser knows it. */
       follows: (name: string) => `Your vault follows ${name}.`,
       followsShared: 'It follows a shared portfolio. What it holds is below.',
@@ -635,6 +635,8 @@ export const en = {
       noQuote: 'There’s no recent price quote for selling all of it yet.',
       withdrawalsShort: 'Not every withdrawal is paid on time with what is set aside.',
       notLive: 'Some figures come from a test network or sample data, not from live markets.',
+      /** A flag this app has no sentence for yet: said plainly, once, never as its code. */
+      other: 'The plan carries one more note we can’t describe yet.',
       simple: {
         exit_not_measured: 'No part of this plan has a measured selling cost yet.',
         exit_partly_measured: 'Only part of this plan has a measured selling cost.',
@@ -703,6 +705,9 @@ export const en = {
     exitCost: (cost: string) => `≤ ${cost}`,
     inKind: 'You can also take the tokens themselves out of your vault at any time.',
     risk: {
+      /** On a plan read back from the server, which keeps the plan and not this summary. */
+      notKept:
+        'How this plan is spread, and what selling it costs, is worked out when a plan is built and isn’t kept with it. Build the plan again from your goal to see it.',
       title: 'How the plan is spread, and what selling costs',
       byClass: 'By kind of asset',
       byIssuer: 'By issuer',
@@ -722,10 +727,13 @@ export const en = {
       change: 'Change my limits',
     },
     /** What an income plan pays a month, from its projected range a year. */
-    monthly: (low: string, high: string) =>
-      low === high
-        ? `Pays about ${low} a month, on the projected range.`
-        : `Pays about ${low} to ${high} a month, on the projected range.`,
+    monthly: {
+      /** The figure itself, which carries the pin of the plan's yield reading. */
+      figure: (low: string, high: string) =>
+        low === high ? `About ${low} a month` : `About ${low} to ${high} a month`,
+      /** After it: an estimate, not a promise. */
+      after: 'if the projected range holds. An estimate, not a promise.',
+    },
     buy: 'Buy this plan',
     chainNotReady: (chain: string) =>
       `${chain} isn’t ready for buying yet: its vaults aren’t deployed on this network. Your plan is kept, and can be bought once they are.`,
@@ -977,6 +985,8 @@ export const en = {
         mock: 'Sample chain: there is no chain to read, so these are our server’s words, not checked.',
         'no-node': (chain: string) =>
           `Not checked against ${chain}: this app has no node of its own to read it from. These are our server’s words.`,
+        'no-reader': (chain: string) =>
+          `Not checked against ${chain}: this app doesn’t read ${chain}’s registry yet. These are our server’s words.`,
         'no-deployment': (chain: string) =>
           `Not checked against ${chain}: this app has no record of the tokens on this network. These are our server’s words.`,
         'family-id':
@@ -1074,7 +1084,7 @@ export const en = {
         weight: 'Each weight is from 2% to 50%, in steps of 0.5%.',
         sum: 'The weights add up to 100%.',
         twice: 'An asset appears once.',
-        chain: 'Publishing is built on Solana only for now.',
+        chain: 'Publishing isn’t open on this chain yet.',
       },
       failure: {
         said: (error: string) => `Our server said no: ${error}.`,

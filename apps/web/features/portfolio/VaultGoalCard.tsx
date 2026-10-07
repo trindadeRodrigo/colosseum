@@ -4,7 +4,6 @@ import { type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars as whole } from '../goal/sheet';
 import { goalLine } from '../order/plain';
-import { recallPlan } from '../order/plan-store';
 import { useWalletPort } from '../wallet/WalletProvider';
 import { dollars } from './figures';
 import { type PortfolioChain, type Vault, vaultValueSource } from './portfolio';
@@ -78,7 +77,6 @@ export function VaultGoalCard({
   const { goal, record } = joined;
   const { sheet, verdict, card } = goal;
   const due = monthYear(lang, dueOf(goal));
-  const plan = recallPlan(record.proposalId, port.userId);
   const builtFor = verdict && putIn === sheet.amountUsd ? verdict : null;
   const asked = sheet.incomeTargetUsdMonthly;
   return (
@@ -126,7 +124,9 @@ export function VaultGoalCard({
       }
       pinLabels={t.pin}
       action={
-        plan
+        // a plan is read back from the server in any tab (use-plan.ts); an order about a shared
+        // portfolio names no plan
+        record.proposalId
           ? { label: words.seePlan, href: `/plan/${encodeURIComponent(record.proposalId)}` }
           : { label: words.seeOrder, href: `/orders/${encodeURIComponent(record.orderId)}` }
       }
