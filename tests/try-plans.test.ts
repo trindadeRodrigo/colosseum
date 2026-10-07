@@ -690,6 +690,8 @@ describe('the extended shelf, with --shelf extended', () => {
   });
 });
 
+const COMPARE_TIMEOUT_MS = 30_000;
+
 describe('the two shelves side by side, with pnpm plan:compare', () => {
   const YIELD_GOALS = join(__dirname, '../try/prompts/yield-shelf.md');
   const files = [
@@ -769,5 +771,8 @@ describe('the two shelves side by side, with pnpm plan:compare', () => {
         }
       }
     },
+    // It makes every goal of a chain twice on both shelves: about a second alone, and past vitest's
+    // default 5 s beside the whole suite (it timed out in CI on #93). What it asserts is unchanged.
+    COMPARE_TIMEOUT_MS,
   );
 });
