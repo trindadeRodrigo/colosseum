@@ -52,6 +52,14 @@ export type Say =
   | { key: 'failed'; why: ReadFailure }
   /** An answer that is not one the fact takes: "abc" for an amount, an amount under $10. */
   | { key: 'unfit'; fact: Fact }
+  /**
+   * The words name one stock or coin to buy, which a plan cannot be told yet. `pick` is a key of this
+   * file's own list (`PICKS`): the name said back is ours, never the person's typed words.
+   */
+  | { key: 'cantPick'; pick: Pick }
+  /** "More risk" at the highest risk, "less risk" at the lowest: nothing to change. */
+  | { key: 'riskTop' }
+  | { key: 'riskBottom' }
   /** Every fact is known: the plan is being built. */
   | { key: 'ready' };
 
@@ -79,6 +87,50 @@ export function isGoAhead(text: string): boolean {
   return /^(y|yes|yep|yeah|ok|okay|k|go|go ahead|so|and|then|next|sure|do it|please|build|build it|build my plan|build the plan|s|sim|pode|pode sim|vai|bora|claro|isso|monta|montar|monte|e ai|e aí|então)[\s.!?…]*$/i.test(
     text.trim(),
   );
+}
+
+/**
+ * Single names a person may ask for, which a plan cannot be told to hold yet: the engine picks the
+ * assets (CLAUDE.md: the reader never picks one). Each with the words that name it and how it is
+ * said back.
+ */
+export const PICKS = {
+  nvidia: { name: 'Nvidia', kind: 'stock', said: /\b(nvidia|nvda|nvdax)\b/i },
+  apple: { name: 'Apple', kind: 'stock', said: /\b(apple|aapl|aaplx)\b/i },
+  tesla: { name: 'Tesla', kind: 'stock', said: /\b(tesla|tsla|tslax)\b/i },
+  microsoft: { name: 'Microsoft', kind: 'stock', said: /\b(microsoft|msft)\b/i },
+  amazon: { name: 'Amazon', kind: 'stock', said: /\b(amazon|amzn)\b/i },
+  google: { name: 'Google', kind: 'stock', said: /\b(google|alphabet|googl)\b/i },
+  meta: { name: 'Meta', kind: 'stock', said: /\b(meta|facebook)\b/i },
+  bitcoin: { name: 'Bitcoin', kind: 'coin', said: /\b(bitcoin|btc)\b/i },
+  ether: { name: 'Ethereum', kind: 'coin', said: /\b(ethereum|ether|eth)\b/i },
+} as const;
+export type Pick = keyof typeof PICKS;
+
+/** The first single name the words ask for, if any. */
+export function pickOf(text: string): Pick | null {
+  return (Object.keys(PICKS) as Pick[]).find((pick) => PICKS[pick].said.test(text)) ?? null;
+}
+
+const RISKS = ['low', 'medium', 'high'] as const;
+/** "More risk", "safer": a step from the risk that is held, not a risk of its own. */
+function riskStep(text: string): 1 | -1 | null {
+  const t = text.toLowerCase();
+  if (
+    /\b(more|higher|bigger|increase|raise|mais|maior|aumenta\w*)\b[^.?!]{0,20}\b(risk|risco)\b/.test(
+      t,
+    ) ||
+    /\b(riskier|more aggressive|mais arriscad\w+|mais agressiv\w+)\b/.test(t)
+  )
+    return 1;
+  if (
+    /\b(less|lower|smaller|reduce|menos|menor|diminu\w*|reduz\w*)\b[^.?!]{0,20}\b(risk|risco)\b/.test(
+      t,
+    ) ||
+    /\b(safer|more careful|mais segur\w+|mais conservador\w*)\b/.test(t)
+  )
+    return -1;
+  return null;
 }
 
 /** The quick replies of each question, as values the sheet takes. The screen has the words. */
@@ -240,7 +292,15 @@ export function readerConversation(
     if (fields.goal !== 'income') fields.income = '';
     const sheet = { fields, skipped: [] };
     const found = FACTS.some((fact) => fields[fact] !== '');
-    return reply(sheet, [{ key: found ? 'understood' : 'notUnderstood' }], chain);
+    const pick = pickOf(text);
+    return reply(
+      sheet,
+      [
+        { key: found ? 'understood' : 'notUnderstood' },
+        ...(pick ? [{ key: 'cantPick' as const, pick }] : []),
+      ],
+      chain,
+    );
   }
 
   return {
@@ -283,21 +343,35 @@ export function readerConversation(
       const open = reopened ?? openFacts(known)[0];
       const words = fieldsOfWords(preRead(text));
       const answered = open ? typedAnswer(open, text, lang) : null;
+      // What the words ask for that the sheet cannot take is said, never passed over in silence: a
+      // single stock to buy, or more risk than the highest.
+      const pick = pickOf(text);
+      const aside: Say[] = pick ? [{ key: 'cantPick', pick }] : [];
+      const step = words.risk === undefined && open !== 'risk' ? riskStep(text) : null;
+      const at = RISKS.indexOf(known.fields.risk as (typeof RISKS)[number]);
+      const stepped = step !== null && at >= 0 ? RISKS[at + step] : undefined;
+      if (step !== null && at >= 0 && stepped === undefined)
+        aside.push({ key: step === 1 ? 'riskTop' : 'riskBottom' });
       const said: Partial<SheetFields> = {
         ...words,
+        ...(stepped ? { risk: stepped } : {}),
         ...(open && answered !== null ? { [open]: answered } : {}),
       };
       if (Object.keys(said).length === 0)
         return reply(
           known,
-          [open ? { key: 'unfit', fact: open } : { key: 'held' }],
+          // with something specific to say, the general "I need an amount" is not said as well
+          [...aside, open && aside.length === 0 ? { key: 'unfit', fact: open } : { key: 'held' }],
           chain,
           // a reopened fact stays the question until it is answered
           reopened,
         );
       const fields = { ...known.fields, ...said };
       if (fields.goal !== 'income') fields.income = '';
-      return reply({ ...known, fields }, [{ key: 'understood' }], chain);
+      // words that say only what is already held change nothing
+      const same = FACTS.every((fact) => fields[fact] === known.fields[fact]);
+      if (same && !reopened) return reply(known, [...aside, { key: 'held' }], chain);
+      return reply({ ...known, fields }, [{ key: 'understood' }, ...aside], chain);
     },
   };
 }

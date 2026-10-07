@@ -165,8 +165,9 @@ describe('the plan screen', () => {
     expect(find(host, 'h1').textContent).toBe('Grow $40,000 over 36 months.');
     // the limits are the heading: no chips say them again (the flow audit, finding 12)
     expect(host.textContent).not.toMatch(/amount: |chain: |horizon: /);
-    // the bad fall is a sentence, not a bare figure with "estimate" beside it
-    expect(host.querySelectorAll('[data-ui="stat"]')).toHaveLength(3);
+    // the bad fall is a bar against what goes in, with its sentence; no row of bare figures
+    expect(host.querySelectorAll('[data-ui="stat"]')).toHaveLength(0);
+    expect(host.querySelector('[data-ui="plan-fall"] [data-ui="plan-fall-loss"]')).not.toBeNull();
     expect(find(host, '[data-ui="plan-bad-fall"]').textContent).toMatch(/^In a bad fall: /);
     // each asset by its name, never its id
     const legs = find(host, '[data-ui="plan-legs"]').textContent;
@@ -214,101 +215,33 @@ describe('the plan screen', () => {
     expect(exit.getAttribute('aria-label')).not.toContain(en.pin.sourceFor.split('{value}')[0]);
   });
 
-  it('reads a month of the chart out under a crosshair: the keyboard, a mouse, a finger, and its legend', async () => {
+  it('draws no curve for a plan to grow, and what an income plan pays out from its own range, pinned to its yield', async () => {
     api();
     rememberPlan(planOn());
-    const chart = find(await plan(), '[data-ui="plan-chart"]');
-    const plot = find(chart, '[data-ui="case-plot"]');
-    const readout = () => find(chart, '[data-ui="chart-readout"]');
-    expect(plot.getAttribute('tabindex')).toBe('0');
-    expect(readout().getAttribute('aria-live')).toBe('polite');
-    expect(readout().textContent).toBe(en.plan.chart.hint);
-    // $40,000 for 36 months at 1% to 2% a year
-    await press(plot, 'End');
-    expect(readout().textContent).toContain(en.plan.chart.month(36));
-    expect(readout().textContent).toContain(`${en.plan.chart.high}$42,400`);
-    expect(readout().textContent).toContain(`${en.plan.chart.low}$41,200`);
-    // each figure on the plan's own yield pin, as the figure under the chart
-    const pins = [...readout().querySelectorAll('[data-ui="figure"]')];
-    const under = find(chart, 'figcaption [data-ui="figure"]');
-    expect(pins.map((p) => p.getAttribute('data-state'))).toEqual([
-      under.getAttribute('data-state'),
-      under.getAttribute('data-state'),
-    ]);
-    await press(plot, 'Home');
-    expect(readout().textContent).toContain(en.plan.chart.month(0));
-    await press(plot, 'ArrowRight');
-    expect(readout().textContent).toContain(`${en.plan.chart.month(1)}`);
-    await press(plot, 'Escape');
-    expect(readout().textContent).toBe(en.plan.chart.hint);
-    // a mouse half way along, 640 wide: month 18 of 36
-    plot.getBoundingClientRect = () =>
-      ({
-        left: 0,
-        top: 0,
-        width: 640,
-        height: 200,
-        right: 640,
-        bottom: 200,
-        x: 0,
-        y: 0,
-      }) as DOMRect;
-    const middle = 56 + (640 - 56 - 70) / 2;
-    await fire(
-      plot,
-      new PointerEvent('pointermove', {
-        clientX: middle,
-        clientY: 50,
-        pointerType: 'mouse',
-        bubbles: true,
-      }),
-    );
-    expect(readout().textContent).toContain(en.plan.chart.month(18));
-    expect(readout().textContent).toContain(`${en.plan.chart.high}$41,200`);
-    expect(readout().textContent).toContain(`${en.plan.chart.low}$40,600`);
-    // a finger taps
-    await fire(
-      plot,
-      new PointerEvent('pointerdown', {
-        clientX: 56,
-        clientY: 50,
-        pointerType: 'touch',
-        bubbles: true,
-      }),
-    );
-    expect(readout().textContent).toContain(en.plan.chart.month(0));
-    // the legend lights the line it names
-    const low = find(chart, '[data-ui="case-legend"] li[data-series="low"]');
-    await fire(
-      low,
-      new PointerEvent('pointerover', { bubbles: true, relatedTarget: document.body }),
-    );
-    expect(find(chart, 'g[data-series="high"]').getAttribute('opacity')).toBe('0.25');
-    expect(find(chart, 'g[data-series="low"]').getAttribute('opacity')).toBe('1');
-  });
-
-  it('draws his chart from the plan’s own range, pinned to its yield, and none from a range with no source', async () => {
-    api();
-    rememberPlan(planOn());
-    const sourced = await plan();
-    const chart = find(sourced, '[data-ui="plan-chart"]');
-    // $40,000 for 36 months at 1% to 2% a year: $41,200 to $42,400, and nothing else worked out
-    expect(chart.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(
-      en.plan.chart.label(36, '1%', '2%'),
-    );
-    const pin = find(chart, '[data-ui="figure"]');
-    expect(pin.textContent).toContain('$41,200 – $42,400');
-    expect(pin.getAttribute('data-state')).toBe('mock');
-    expect(chart.textContent).toContain(en.plan.chart.note);
+    const grow = await plan();
+    // the engine projects no price: a plan to grow gets the bad-fall bar, never a growth curve
+    expect(grow.querySelector('[data-ui="plan-chart"]')).toBeNull();
+    expect(grow.querySelector('[data-ui="plan-fall"]')).not.toBeNull();
+    // its yield is a small pinned figure under the answer, not the headline
+    const small = find(grow, '[data-ui="plan-yield"]');
+    expect(small.textContent).toContain(en.plan.answer.range('1.00%', '2.00%'));
+    expect(small.querySelector('[data-ui="pin"]')).not.toBeNull();
+    expect(find(grow, '[data-ui="plan-answer"]').textContent).not.toContain('a year');
     await unmountAll();
-    // an income plan pays its yield out each month: no balance to draw, what it pays in all instead
+    // an income plan pays its yield out each month: what it pays, added up, as a band and in all
     const income = planOn();
     income.proposal.card = { ...income.proposal.card, cashFlow: 'monthly' };
     rememberPlan(income);
     const paid = find(await plan(), '[data-ui="plan-chart"]');
     expect(paid.getAttribute('data-kind')).toBe('paid');
-    expect(paid.querySelector('[role="img"]')).toBeNull();
-    expect(find(paid, '[data-ui="figure"]').textContent).toContain('$1,200 – $2,400');
+    expect(paid.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(
+      en.plan.chart.paidLabel(36, '1%', '2%'),
+    );
+    const pin = find(paid, '[data-ui="figure"]');
+    expect(pin.textContent).toContain('$1,200 – $2,400');
+    expect(pin.getAttribute('data-state')).toBe('mock');
+    expect(paid.textContent).toContain(en.plan.chart.projected);
+    expect(paid.textContent).toContain(en.plan.chart.note);
     await unmountAll();
     for (const change of [
       (p: ReturnType<typeof planOn>) => {
@@ -320,14 +253,16 @@ describe('the plan screen', () => {
     ]) {
       const stored = planOn();
       change(stored);
+      stored.proposal.card = { ...stored.proposal.card, cashFlow: 'monthly' };
       rememberPlan(stored);
       const host = await plan();
       expect(host.querySelector('[data-ui="plan-chart"]')).toBeNull();
+      expect(host.querySelector('[data-ui="plan-yield"]')).toBeNull();
       await unmountAll();
     }
   });
 
-  it('shows the risk roll-up as the API sent it, and a table when the plan has more than four parts', async () => {
+  it('shows the risk roll-up as the API sent it, and a row per holding when the plan has more than four parts', async () => {
     api();
     const base = planOn();
     const extra = ['solana:aaplx', 'solana:nvdax'].map((assetId) => ({
@@ -349,8 +284,9 @@ describe('the plan screen', () => {
       },
     });
     const host = await plan();
-    expect(host.querySelector('[data-ui="plan-legs"]')).toBeNull();
-    expect(host.querySelectorAll('tbody tr').length).toBeGreaterThanOrEqual(5);
+    // one picture whatever the count: a row per holding, and no table of holdings
+    expect(host.querySelectorAll('[data-ui="plan-legs"] [data-row]')).toHaveLength(5);
+    expect(host.querySelector('[data-ui="plan-legs"] table')).toBeNull();
     expect(host.textContent).toContain(en.plan.risk.title);
     expect(host.textContent).toContain('issuer one');
     expect(host.textContent).toContain(en.plan.risk.notMeasured);

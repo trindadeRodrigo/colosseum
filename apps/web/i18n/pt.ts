@@ -585,12 +585,22 @@ export const pt: Dictionary = {
       set: (label: string, value: string) => `${label}: ${value}.`,
       incomeSkipped: 'Sem valor definido por mês, então.',
       ready: 'É tudo de que preciso. Monto o seu plano? Nada é comprado quando eu monto.',
-      held: (facts: string) => `Continuo com: ${facts}.`,
+      held: (facts: string) => `Não achei nada para mudar nisso. Ainda tenho: ${facts}.`,
       heldBuilt:
         'Seu plano foi montado com isso. Toque em um limite para mudar, ou me diga o que mudar.',
       heldOpen: 'Ainda preciso de mais uma coisa.',
       building: 'Montando seu plano com estes limites…',
-      built: 'O plano está pronto. Toque em qualquer limite para mudar e eu monto de novo.',
+      built: 'O plano está à direita. Revise e invista, ou mude o que quiser.',
+      heldReady: 'Nada mudou. Diga sim e eu monto o plano com isso.',
+      cantPick: {
+        stock: (name: string) =>
+          `Ainda não escolho ações avulsas como ${name}. Posso mudar o risco, o valor, o prazo ou para que serve.`,
+        coin: (name: string) =>
+          `Ainda não escolho moedas avulsas como ${name}. Posso mudar o risco, o valor, o prazo ou para que serve.`,
+      },
+      riskTop: 'O risco já está em alto, o maior que eu faço.',
+      riskBottom: 'O risco já está em baixo, o menor que eu faço.',
+      builtBelow: 'O plano está pronto abaixo. Abra para revisar e investir, ou mude o que quiser.',
       unfit: {
         goal: 'Posso fazer renda, crescimento ou proteção. Qual?',
         amount: 'Preciso de um valor em dólares, de US$ 10 a US$ 1.000.000.',
@@ -771,6 +781,8 @@ export const pt: Dictionary = {
         `O que o rendimento em dólar projeta em ${months} meses: de ${low} a ${high} ao ano.`,
       after: (months: number) => `Depois de ${months} meses`,
       paid: (months: number) => `Pago ao longo de ${months} meses, ao todo`,
+      paidLabel: (months: number, low: string, high: string) =>
+        `O que o rendimento em dólar paga em ${months} meses, somado: de ${low} a ${high} ao ano, projetado.`,
       projected: 'projetado',
       low: 'ponta baixa',
       high: 'ponta alta',
@@ -782,6 +794,15 @@ export const pt: Dictionary = {
     },
     exitPlan: 'Plano de saída',
     costPrefix: 'custo',
+    whyShare: 'Por que essa parcela',
+    exitScale: 'A barra cheia é 1%, o custo em que a venda é medida.',
+    income: {
+      asked: (amount: string) => `pedido: ${amount} por mês`,
+    },
+    fall: {
+      put: (amount: string, months: string) =>
+        `A barra inteira são os ${amount} que você coloca, por ${months}.`,
+    },
     columns: {
       asset: 'Ativo',
       share: 'Parte',
@@ -828,6 +849,11 @@ export const pt: Dictionary = {
     invest: (amount: string) => `Investir ${amount}`,
     investing: 'Abrindo os passos…',
     answer: {
+      inFall: (share: string, what: string, loss: string) =>
+        `${share} em ${what} · numa queda forte, cerca de −${loss}`,
+      inNoFall: (share: string, what: string) =>
+        `${share} em ${what} · nenhuma perda contada numa queda forte`,
+      yieldAfter: 'ao ano do rendimento em dólar, projetado. Não é promessa.',
       range: (low: string, high: string) => `${low} a ${high} ao ano`,
       rangeAfter: 'projetado. Uma faixa, não uma promessa.',
       none: 'Ainda sem projeção: não há leitura de rendimento para este plano.',

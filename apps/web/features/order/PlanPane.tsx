@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useId } from 'react';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
-import { Card, CardBody, CardHeader, Stat, StatRow } from '../../components/ui/Card';
+import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { DataTable } from '../../components/ui/DataTable';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import type { PinSource } from '../../components/ui/provenance';
@@ -14,7 +14,7 @@ import { planProvenance } from '../goal/build-plan';
 import { dollars } from '../goal/sheet';
 import { formatBps } from './amounts';
 import { PlanChart } from './PlanChart';
-import { PlanView } from './PlanView';
+import { Meter, PlanView } from './PlanView';
 import { displayName, flagSentences, kindLabel, leftOut, reasonsOf } from './plain';
 import type { StoredPlan } from './plan-store';
 
@@ -101,6 +101,41 @@ export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2
 
   const verdict = proposal.verdict;
   const amount = dollars(sheet.amountUsd, lang);
+  const income = sheet.goal === 'income';
+  const asked = income ? (sheet.incomeTargetUsdMonthly ?? null) : null;
+  const monthly = income && ranged;
+  const fall = card.expectedReturn.lossInFallUsd;
+  // What most of the plan is in: the largest kind where the plan came with its spread, else the
+  // largest holding. Both are the engine's shares, as they are.
+  const top = (() => {
+    const kind = [...(plan.rollUp?.byClass ?? [])].sort((a, b) => b.bps - a.bps)[0];
+    if (kind)
+      return { bps: kind.bps, what: kindLabel(kind.key, t.plan.kinds).toLocaleLowerCase(locale) };
+    const line = [...proposal.lines].sort((a, b) => b.weightBps - a.weightBps)[0];
+    return line ? { bps: line.weightBps, what: name(line.assetId) } : null;
+  })();
+  const range = (
+    <ProvenancePin
+      value={t.plan.answer.range(
+        percent(card.expectedReturn.lowPct, lang),
+        percent(card.expectedReturn.highPct, lang),
+      )}
+      obs={yieldObs}
+      labels={t.pin}
+    />
+  );
+  // What an income plan pays a month: a figure worked from the yield range, so it carries that
+  // range's pin (STYLE.md rule 1), and is said as an estimate, never as what the plan pays.
+  const aMonthPin = (
+    <ProvenancePin
+      value={t.plan.monthly.figure(
+        aMonth(card.expectedReturn.lowPct),
+        aMonth(card.expectedReturn.highPct),
+      )}
+      obs={yieldObs}
+      labels={t.pin}
+    />
+  );
 
   return (
     <PlanView
@@ -111,23 +146,28 @@ export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2
       provenance={label}
       profile={sheet.goal === 'income' ? 'income' : undefined}
       answer={
+        // The headline follows the goal's kind. Income: whether the plan pays what was asked, or
+        // what it pays a month. Grow and protect: what most of it is in and what a bad fall could
+        // cost, never a yield range as the headline of a plan that is mostly stocks.
         verdict ? (
           verdict.met ? (
             t.plan.verdict.met
           ) : (
             t.plan.verdict.gap(dollars(verdict.gapUsdMonthly, lang))
           )
+        ) : monthly ? (
+          <span data-ui="plan-monthly">
+            {aMonthPin} {t.plan.monthly.after}
+          </span>
+        ) : top && !income ? (
+          fall > 0 ? (
+            t.plan.answer.inFall(share(top.bps), top.what, dollars(fall, lang))
+          ) : (
+            t.plan.answer.inNoFall(share(top.bps), top.what)
+          )
         ) : ranged ? (
           <>
-            <ProvenancePin
-              value={t.plan.answer.range(
-                percent(card.expectedReturn.lowPct, lang),
-                percent(card.expectedReturn.highPct, lang),
-              )}
-              obs={yieldObs}
-              labels={t.pin}
-            />{' '}
-            {t.plan.answer.rangeAfter}
+            {range} {t.plan.answer.rangeAfter}
           </>
         ) : (
           t.plan.answer.none
@@ -164,6 +204,39 @@ export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2
           )}
         </>
       }
+      under={
+        <>
+          {/* Income, with an amount asked: what the plan pays against it, as a meter. The fill is
+              the high end of the estimate over what was asked, both figures shown beside it. */}
+          {monthly && asked !== null && (
+            <div data-ui="plan-income-meter" className="flex flex-col gap-1.5">
+              <Meter
+                value={Math.round((sheet.amountUsd * card.expectedReturn.highPct) / 1200) / asked}
+              />
+              <p className="flex flex-wrap justify-between gap-x-4 text-body-sm">
+                <span data-ui="plan-monthly">{aMonthPin}</span>
+                <span className="text-muted-foreground">
+                  {t.plan.income.asked(dollars(asked, lang))}
+                </span>
+              </p>
+              {verdict && (
+                <p className="text-caption text-muted-foreground">{t.plan.monthly.after}</p>
+              )}
+            </div>
+          )}
+          {monthly && asked === null && verdict && (
+            <p data-ui="plan-monthly" className="text-body-sm">
+              {aMonthPin} {t.plan.monthly.after}
+            </p>
+          )}
+          {/* The yield, small, only where the plan has a part that pays one. */}
+          {!income && ranged && (
+            <p data-ui="plan-yield" className="text-body-sm text-muted-foreground">
+              {range} {t.plan.answer.yieldAfter}
+            </p>
+          )}
+        </>
+      }
       holdings={proposal.lines.map((line) => ({
         key: `${line.assetId}:${line.viaIndex ?? ''}`,
         asset: line.assetId,
@@ -179,13 +252,17 @@ export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2
         tiers: [
           {
             text: card.exit.text,
+            // the meter is the plan's own exit cost against 1%, the cost at which what can be sold
+            // is read (packages/basket/src/roll-up.ts); empty where nothing is measured
             ...(card.exit.costBps === null
-              ? {}
+              ? { meter: null }
               : {
                   cost: {
                     figure: t.plan.exitCost(share(Math.max(0, card.exit.costBps))),
                     obs: exitObs,
                   },
+                  meter: Math.max(0, card.exit.costBps) / 100,
+                  scale: t.plan.exitScale,
                 }),
           },
         ],
@@ -193,46 +270,33 @@ export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2
       }}
       figures={
         <>
-          <StatRow>
-            <Stat label={t.plan.kpi.amount}>{dollars(sheet.amountUsd, lang)}</Stat>
-            <Stat label={t.plan.kpi.horizon}>{t.goal.card.months(sheet.horizonMonths)}</Stat>
-            {/* On a phone the last two take a row each: a range with its pin is the widest figure. */}
-            <Stat
-              label={t.plan.kpi.projected}
-              className="max-[620px]:col-span-2 max-[620px]:border-l-0"
+          {/* What a bad fall could cost, as a bar against what goes in: the engine's own figure,
+              which is an estimate and is said as one. No price is projected, so none is drawn. */}
+          <figure data-ui="plan-fall" className="m-0 flex flex-col gap-1.5">
+            <div
+              aria-hidden="true"
+              className="flex h-5 w-full justify-end border border-border bg-leg-3"
             >
-              <ProvenancePin
-                value={t.plan.projectedValue(
-                  percent(card.expectedReturn.lowPct, lang),
-                  percent(card.expectedReturn.highPct, lang),
-                )}
-                obs={yieldObs}
-                labels={t.pin}
+              <span
+                data-ui="plan-fall-loss"
+                className="block h-full bg-foreground motion-safe:transition-[width] motion-safe:duration-300"
+                style={{ width: `${Math.min(100, (fall / sheet.amountUsd) * 100)}%` }}
               />
-            </Stat>
-          </StatRow>
-          <p data-ui="plan-bad-fall" className="text-body">
-            {card.expectedReturn.lossInFallUsd > 0
-              ? t.plan.badFall.some(dollars(card.expectedReturn.lossInFallUsd, lang))
-              : t.plan.badFall.none}
-          </p>
-          {sheet.goal === 'income' && ranged && (
-            // A figure worked from the yield range: it carries that range's pin (STYLE.md rule 1),
-            // and is said as an estimate, never as what the plan pays.
-            <p data-ui="plan-monthly" className="text-body">
-              <ProvenancePin
-                value={t.plan.monthly.figure(
-                  aMonth(card.expectedReturn.lowPct),
-                  aMonth(card.expectedReturn.highPct),
-                )}
-                obs={yieldObs}
-                labels={t.pin}
-              />{' '}
-              {t.plan.monthly.after}
-            </p>
+            </div>
+            <figcaption className="flex flex-col gap-0.5">
+              <span data-ui="plan-bad-fall" className="text-body">
+                {fall > 0 ? t.plan.badFall.some(dollars(fall, lang)) : t.plan.badFall.none}
+              </span>
+              <span className="text-caption text-muted-foreground">
+                {t.plan.fall.put(amount, t.goal.card.months(sheet.horizonMonths))}
+              </span>
+            </figcaption>
+          </figure>
+          {/* Income: what the yield pays out over the months, from a range that has a source. A
+              plan to grow or protect gets no curve: the engine projects no price. */}
+          {card.cashFlow === 'monthly' && ranged && (
+            <PlanChart amountUsd={sheet.amountUsd} card={card} yieldObs={yieldObs} />
           )}
-          {/* The chart of his case: drawn only from a range that has a source. */}
-          {ranged && <PlanChart amountUsd={sheet.amountUsd} card={card} yieldObs={yieldObs} />}
         </>
       }
       details={
