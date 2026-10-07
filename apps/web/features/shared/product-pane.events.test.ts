@@ -253,7 +253,7 @@ describe('a product’s page, on the plan view', () => {
     );
     expect(find(pane, 'h2').textContent).toBe(en.shared.family.recipe('Solana'));
     expect(pane.textContent).toContain(en.shared.family.versionN(2));
-    const rows = [...pane.querySelectorAll('[data-ui="plan-legs"] li')] as HTMLElement[];
+    const rows = [...pane.querySelectorAll('[data-ui="plan-rows"] > li')] as HTMLElement[];
     expect(rows).toHaveLength(3);
     const [fund, lend] = rows;
     if (!fund || !lend) throw new Error('two rows');
@@ -269,7 +269,14 @@ describe('a product’s page, on the plan view', () => {
     expect(lend.querySelector('[data-ui="pin"]')).not.toBeNull();
     expect(lend.textContent).toContain(en.shared.product.why.dollar_yield);
     // no amount is known on this page, so no row says dollars
-    expect(find(pane, '[data-ui="plan-legs"]').textContent).not.toContain('$');
+    expect(find(pane, '[data-ui="plan-rows"]').textContent).not.toContain('$');
+    // the picture: one bar, a part a holding by its share, each named for a reader
+    const parts = [...pane.querySelectorAll('[data-ui="plan-bar"] button')];
+    expect(parts.map((b) => b.getAttribute('aria-label'))).toEqual([
+      'SPYx, 50%',
+      'jlUSDC (Jupiter Lend), 30%',
+      'syrupUSDC (Maple), 20%',
+    ]);
     // and no yield of the whole portfolio is shown anywhere: that is the engine's to work out
     expect(host.textContent).not.toMatch(/\d% to \d/);
   });
@@ -281,10 +288,25 @@ describe('a product’s page, on the plan view', () => {
     const said = exit.textContent ?? '';
     expect(said).toContain(en.plan.exitPlan);
     // every size measured was taken: at least that much, in whole dollars
-    expect(said).toContain(en.shared.product.exit.atLeast('$250,000', 'SPYx', 7));
-    expect(said).toContain(en.shared.product.exit.about('$40,000', 'jlUSDC (Jupiter Lend)', 7));
-    expect(said).toContain(en.shared.product.exit.cost('1%'));
-    expect(said).toContain(en.shared.product.exit.notMeasured('syrupUSDC (Maple)'));
+    const tiers = [...exit.querySelectorAll('[data-ui="exit-tier"]')] as HTMLElement[];
+    expect(tiers).toHaveLength(2);
+    expect(tiers[0]?.textContent).toContain(
+      `SPYx: ${en.shared.product.exit.atLeast('$250,000', 7)}`,
+    );
+    expect(tiers[1]?.textContent).toContain(
+      `jlUSDC (Jupiter Lend): ${en.shared.product.exit.about('$40,000', 7)}`,
+    );
+    for (const tier of tiers) {
+      expect(tier.textContent).toContain(en.shared.product.exit.cost('1%'));
+      // the meter is the cost against 1%, and says what a full bar stands for
+      expect(find(tier, '[data-ui="meter"]').getAttribute('data-empty')).toBeNull();
+      expect(tier.textContent).toContain(en.plan.exitScale);
+    }
+    // what nobody measured has no tier and no meter: it is named once, under them
+    expect(find(exit, '[data-ui="exit-caveat"]').textContent).toBe(
+      en.shared.product.exit.notMeasured('syrupUSDC (Maple)'),
+    );
+    expect(said).not.toContain('syrupUSDC (Maple):');
     expect(exit.querySelectorAll('[data-ui="pin"]')).toHaveLength(2);
     await click(exit.querySelector('[data-ui="pin"]') as HTMLElement);
     expect(find(host, '[data-ui="pin-source"]').textContent).toContain('Bearing');
@@ -319,9 +341,7 @@ describe('a product’s page, on the plan view', () => {
     const pane = find(host, '[data-ui="plan-pane"]');
     expect(pane.textContent).toContain('4,00%');
     expect(pane.textContent).toContain(pt.shared.product.why.etf);
-    expect(pane.textContent).toContain(
-      pt.shared.product.exit.atLeast(dollars(250_000, 'pt'), 'SPYx', 7),
-    );
+    expect(pane.textContent).toContain(pt.shared.product.exit.atLeast(dollars(250_000, 'pt'), 7));
     expect(pane.textContent).toContain(pt.shared.product.publisher);
     const invest = find(pane, '[data-ui="product-invest"]');
     expect(find(invest, 'a').textContent).toBe(pt.shared.family.signIn);
@@ -361,24 +381,27 @@ describe('a product’s page, on the plan view', () => {
     api([familyOf(FAMILY_ID, { recipes: [recipe] })]);
     const host = await show(createElement(FamilyScreen, { slug: SLUG }));
     const pane = find(host, '[data-ui="plan-pane"]');
-    expect(pane.querySelector('[data-ui="plan-legs"]')).toBeNull();
-    const rows = [...pane.querySelectorAll('table tbody tr')] as HTMLElement[];
+    const rows = [...pane.querySelectorAll('[data-ui="plan-rows"] > li')] as HTMLElement[];
     expect(rows).toHaveLength(5);
-    // the two dollar tokens keep their own figure and pin; a stock's cell says nothing, never 0%
-    const text = (i: number) => rows[i]?.textContent ?? '';
-    expect(text(3)).toContain('4.00%');
-    expect(text(4)).toContain('6.00%');
-    expect(rows[3]?.querySelector('[data-ui="pin"]')).not.toBeNull();
-    expect(rows[4]?.querySelector('[data-ui="pin"]')).not.toBeNull();
-    for (const i of [0, 1, 2]) {
-      expect(rows[i]?.querySelector('[data-ui="pin"]')).toBeNull();
-      expect(text(i)).not.toContain('0.00%');
+    expect(pane.querySelectorAll('[data-ui="plan-bar"] button')).toHaveLength(5);
+    // the two dollar tokens keep their own figure and pin on their row; a stock's row has none
+    const yieldOf = (i: number) => rows[i]?.querySelector('[data-ui="row-yield"]');
+    expect(yieldOf(3)?.textContent).toContain('4.00%');
+    expect(yieldOf(4)?.textContent).toContain('6.00%');
+    for (const i of [3, 4]) {
+      expect(yieldOf(i)?.querySelector('[data-ui="pin"]')).not.toBeNull();
+      expect(yieldOf(i)?.textContent).toContain(en.plan.legs.afterHaircut);
     }
-    // the exit plan is its own block whatever the count: a tier a measured holding, the rest named
+    for (const i of [0, 1, 2]) {
+      expect(yieldOf(i)).toBeNull();
+      expect(rows[i]?.textContent).not.toContain('0.00%');
+    }
+    // the exit plan: a meter a measured holding, the rest named once
     const exit = find(pane, '[data-ui="exit-plan-line"]');
+    expect(exit.querySelectorAll('[data-ui="exit-tier"]')).toHaveLength(2);
     expect(exit.querySelectorAll('[data-ui="pin"]')).toHaveLength(2);
-    expect(exit.textContent).toContain(en.shared.product.exit.atLeast('$250,000', 'SPYx', 7));
-    expect(exit.textContent).toContain(
+    expect(exit.textContent).toContain(`SPYx: ${en.shared.product.exit.atLeast('$250,000', 7)}`);
+    expect(find(exit, '[data-ui="exit-caveat"]').textContent).toBe(
       en.shared.product.exit.notMeasured('NVDAx, TSLAx, and syrupUSDC (Maple)'),
     );
   });
@@ -387,8 +410,9 @@ describe('a product’s page, on the plan view', () => {
     api([familyOf(FAMILY_ID, { recipes: [withFigures(null)] })]);
     const host = await show(createElement(FamilyScreen, { slug: SLUG }));
     const pane = find(host, '[data-ui="plan-pane"]');
-    expect(pane.querySelectorAll('[data-ui="plan-legs"] li')).toHaveLength(3);
-    expect(pane.querySelectorAll('[data-ui="plan-legs"] [data-ui="pin"]')).toHaveLength(0);
+    expect(pane.querySelectorAll('[data-ui="plan-rows"] > li')).toHaveLength(3);
+    expect(pane.querySelectorAll('[data-ui="row-yield"]')).toHaveLength(0);
+    expect(pane.querySelectorAll('[data-ui="exit-tier"]')).toHaveLength(0);
     const exit = find(pane, '[data-ui="exit-plan-line"]');
     expect(exit.querySelectorAll('[data-ui="pin"]')).toHaveLength(0);
     expect(exit.textContent).toContain(
@@ -451,11 +475,13 @@ describe('a product’s page, when the portfolio gets a new version as the perso
     const pane = find(host, '[data-ui="plan-pane"]');
     expect(pane.textContent).toContain(en.shared.family.versionN(3));
     expect(pane.textContent).not.toContain(en.shared.family.versionN(2));
-    const rows = [...pane.querySelectorAll('[data-ui="plan-legs"] li')].map((li) => li.textContent);
+    const rows = [...pane.querySelectorAll('[data-ui="plan-rows"] > li')].map(
+      (li) => li.textContent,
+    );
     expect(rows).toHaveLength(2);
     expect(rows[0]).toContain('jlUSDC');
     expect(rows[0]).toContain('60%');
-    expect(pane.querySelector('[data-ui="plan-legs"]')?.textContent).not.toContain('SPYx');
+    expect(pane.querySelector('[data-ui="plan-rows"]')?.textContent).not.toContain('SPYx');
     const notice = find(host, '[data-ui="product-version-changed"]');
     expect(notice.textContent).toBe(en.shared.product.versionChanged(en.shared.family.versionN(3)));
     expect(notice.getAttribute('role')).toBe('status');

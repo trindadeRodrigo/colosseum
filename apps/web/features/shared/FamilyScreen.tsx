@@ -330,15 +330,19 @@ function RecipeSection({
             h.exit
               ? [
                   {
+                    name: h.name,
                     text: (h.exit.lowerBound ? p.exit.atLeast : p.exit.about)(
                       dollars(Math.floor(h.exit.capacityUsd), lang),
-                      h.name,
                       h.exit.windowDays,
                     ),
                     cost: {
                       figure: p.exit.cost(formatBps(h.exit.maxCostBps, locale)),
                       obs: h.exit.obs,
                     },
+                    // The meter is the cost against 1%, as on a plan: this capacity is the one
+                    // measured at that cost, so the server's own bound fills it.
+                    meter: h.exit.maxCostBps / 100,
+                    scale: t.plan.exitScale,
                   },
                 ]
               : [],

@@ -1064,10 +1064,8 @@ export const pt: Dictionary = {
         unread: 'Nosso servidor não tem registro de que tipo de token é este.',
       },
       exit: {
-        about: (amount: string, name: string, days: number) =>
-          `cerca de ${amount} de ${name} em até ${days} dias`,
-        atLeast: (amount: string, name: string, days: number) =>
-          `pelo menos ${amount} de ${name} em até ${days} dias`,
+        about: (amount: string, days: number) => `cerca de ${amount} em até ${days} dias`,
+        atLeast: (amount: string, days: number) => `pelo menos ${amount} em até ${days} dias`,
         cost: (cost: string) => `≤ ${cost}`,
         notMeasured: (names: string) =>
           `A venda de ${names} ainda não foi medida, então nenhum custo é mostrado para ela.`,

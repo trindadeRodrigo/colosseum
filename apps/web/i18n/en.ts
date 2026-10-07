@@ -1192,11 +1192,9 @@ export const en = {
         unread: 'Our server has no record of what kind of token this is.',
       },
       exit: {
-        /** One tier a holding whose selling was measured; its cost follows, with its pin. */
-        about: (amount: string, name: string, days: number) =>
-          `about ${amount} of ${name} within ${days} days`,
-        atLeast: (amount: string, name: string, days: number) =>
-          `at least ${amount} of ${name} within ${days} days`,
+        /** One tier a holding whose selling was measured, after its name; its cost follows, with its pin. */
+        about: (amount: string, days: number) => `about ${amount} within ${days} days`,
+        atLeast: (amount: string, days: number) => `at least ${amount} within ${days} days`,
         cost: (cost: string) => `≤ ${cost}`,
         notMeasured: (names: string) =>
           `Selling ${names} isn’t measured yet, so no cost is shown for it.`,
