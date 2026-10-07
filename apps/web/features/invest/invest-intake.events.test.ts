@@ -64,8 +64,8 @@ function served(o: { intake?: number; me?: number }, ...answers: unknown[]) {
   return { calls, to: (path: string) => calls.filter((c) => c.path === path) };
 }
 
-const screen = async () => {
-  const host = await mount(withAccount('en', createElement(InvestScreen)));
+const screen = async (lang: 'en' | 'pt' = 'en') => {
+  const host = await mount(withAccount(lang, createElement(InvestScreen)));
   await settle();
   await settle();
   return host;
@@ -128,6 +128,92 @@ beforeEach(() => {
 afterEach(unmountAll);
 
 describe('signed in: the guided intake reads the conversation', () => {
+  it.each(['en', 'pt'] as const)(
+    'pauses old income funding before an allocation amendment is read, keeps its bound unresolved through growth, and requires confirmation after withdrawal (%s)',
+    async (lang) => {
+      const t = dictionary(lang);
+      const income: BasketSheet = {
+        ...SHEET,
+        goal: 'income',
+        amountUsd: 1000,
+        incomeTargetUsdMonthly: 300,
+        horizonOpen: true,
+      };
+      const growth: BasketSheet = { ...SHEET, amountUsd: 1000, horizonOpen: true };
+      const request =
+        lang === 'en'
+          ? 'i think i want way more stocks on them. like at least40%'
+          : 'acho que quero bem mais ações nesses planos, pelo menos40%';
+      let release!: (value: Response) => void;
+      let reads = 0;
+      const builtSheets: BasketSheet[] = [];
+      portStore.setApi(async (path, init) => {
+        if (path === '/v1/me') return json(person);
+        if (path === INTAKE_PATH) {
+          reads++;
+          if (reads === 2)
+            return new Promise<Response>((resolve) => {
+              release = resolve;
+            });
+          return json(
+            answer({
+              sheet: reads >= 3 ? growth : income,
+              readBack:
+                reads >= 3
+                  ? ['The growth goal has no monthly income target.']
+                  : ['The income goal is read back.'],
+            }),
+          );
+        }
+        if (path === PERSONALIZE_PATH) {
+          const body = JSON.parse(String(init?.body)) as { sheet: BasketSheet };
+          builtSheets.push(body.sheet);
+          return json({ id: `plan-${builtSheets.length}`, proposal: proposalFor(body.sheet) });
+        }
+        return json({}, 404);
+      });
+      const host = await screen(lang);
+      await say(host, 'Income $300 monthly from $1000, high risk, no date');
+      await click(reply(host, t.talk.replies.build));
+      await settle();
+      expect(host.querySelector('[data-ui="invest-card"]')).not.toBeNull();
+      await type(box(host), request);
+      await press(box(host), 'Enter');
+      expect(host.querySelector('[data-ui="invest-card"]')).toBeNull();
+      expect(host.querySelector('[data-ui="pane-stale"]')).not.toBeNull();
+      await act(async () =>
+        release(json(answer({ sheet: income, readBack: ['The income goal is read back.'] }))),
+      );
+      await settle();
+      expect(turns(host).at(-1)).toContain(
+        t.talk.say.allocation(request, true, lang === 'en' ? 'at least40%' : 'pelo menos40%'),
+      );
+      expect(host.querySelector('[data-ui="invest-card"]')).toBeNull();
+      expect(builtSheets).toEqual([income]);
+      const stored = window.sessionStorage.getItem(GOAL_DRAFT);
+      const restored = restoreDraft(stored);
+      expect(restored?.sheet.allocation).toMatchObject({
+        text: request,
+        baseline: null,
+        minimum: true,
+      });
+      expect(restored?.sheet.intake?.sheet).toBeNull();
+      await click(reply(host, t.talk.replies.growGoal));
+      await settle();
+      expect(host.querySelector('[data-ui="invest-card"]')).toBeNull();
+      expect(replies(host)).not.toContain(t.talk.replies.build);
+      expect(builtSheets).toEqual([income]);
+      await click(reply(host, t.talk.replies.dropAllocation));
+      await settle();
+      expect(replies(host)).toContain(t.talk.replies.build);
+      expect(builtSheets).toEqual([income]);
+      await click(reply(host, t.talk.replies.build));
+      await settle();
+      expect(builtSheets).toEqual([income, growth]);
+      expect(reads).toBe(3);
+    },
+  );
+
   it('keeps a vague reader response in the conversation without an empty facts heading', async () => {
     const asked = {
       field: 'goal',

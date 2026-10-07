@@ -609,6 +609,10 @@ export const pt: Dictionary = {
       held: (facts: string) => `Não achei nada para mudar nisso. Ainda tenho: ${facts}.`,
       heldBuilt:
         'Seu plano foi montado com isso. Toque em um limite para mudar, ou me diga o que mudar.',
+      allocation: (request: string, conflict: boolean, bound?: string) =>
+        `Você pediu: “${request}”. ${bound ? `A exigência “${bound}” não foi aplicada. Limites mínimos e máximos de alocação ainda não são aceitos. ` : 'Não consigo confirmar que esse pedido de alocação foi aplicado. '}${conflict ? 'Planos de renda e proteção não mantêm ações. Mudar para crescimento não aplica a participação pedida nem mantém uma meta de renda mensal. ' : ''}Revise a leitura atual. O investimento fica pausado até você retirar explicitamente esse pedido e aceitar esses termos.`,
+      allocationDropped:
+        'Você retirou esse pedido de alocação. O objetivo validado atual permanece; revise os termos reais antes de montar ou escolher um plano.',
       heldOpen: 'Ainda preciso de mais uma coisa.',
       heardThemes: (names: string) => `Anotei o que você quer manter: ${names}.`,
       heardMix: (mix: string) => `Mantido como você disse: ${mix}.`,
@@ -657,6 +661,7 @@ export const pt: Dictionary = {
       aMonth: (amount: string) => `${amount} por mês`,
       noIncome: 'Sem valor definido',
       growGoal: 'Mudar para um objetivo de crescimento',
+      dropAllocation: 'Retirar esse pedido de alocação',
       all: 'Tudo',
       half: 'Metade',
       none: 'Nada',

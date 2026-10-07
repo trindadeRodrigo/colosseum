@@ -708,6 +708,10 @@ export const en = {
       held: (facts: string) => `I found nothing to change in that. I still have: ${facts}.`,
       heldBuilt:
         'Your plan is built from that. Tap a limit to change it, or tell me what to change.',
+      allocation: (request: string, conflict: boolean, bound?: string) =>
+        `You asked: “${request}”. ${bound ? `Your requirement “${bound}” has not been applied. Minimum and maximum allocation limits aren’t supported yet. ` : 'I cannot confirm that this allocation request was applied. '}${conflict ? 'Income and protection plans hold no stocks. Changing to growth does not apply your requested share or keep a monthly income target. ' : ''}Review the current read-back. Funding stays paused until you explicitly drop this request and accept those terms.`,
+      allocationDropped:
+        'You dropped that allocation request. The current validated goal remains; review its actual terms before building or choosing a plan.',
       heldOpen: 'I still need one more thing.',
       /** What our server read the person wants held, said before its question. */
       heardThemes: (names: string) => `I have what you want held: ${names}.`,
@@ -766,6 +770,7 @@ export const en = {
       aMonth: (amount: string) => `${amount} a month`,
       noIncome: 'No set amount',
       growGoal: 'Make it a growth goal',
+      dropAllocation: 'Drop this allocation request',
       all: 'All of it',
       half: 'Half',
       none: 'None',

@@ -366,6 +366,9 @@ export function intakeConversation(
       }
 
       const reading = outcome.reading;
+      const allocationRejected = reading.flags.some((f) =>
+        /(?:mix|themes|sleeves)_(?:dropped|refused|rejected)/.test(f),
+      );
       const first = reading.questions[0] ?? null;
       const question = first ? questionOf(first, lang) : null;
       const fields = fieldsOf(reading, state.answers, lang);
@@ -431,9 +434,13 @@ export function intakeConversation(
       // Never an empty turn: with nothing to say and nothing to ask, what is held is said.
       if (say.length === 0 && question === null) say = [{ key: found ? 'held' : 'notUnderstood' }];
       return {
+        allocationRejected,
         sheet,
         open: reading.questions.flatMap((q) => FACT_OF[q.field] ?? []),
-        say,
+        say:
+          same && reading.assumptions.length > 0
+            ? [{ key: 'said', lines: reading.assumptions }, ...say.filter((s) => s.key !== 'held')]
+            : say,
         ask: first ? (FACT_OF[first.field] ?? null) : null,
         question,
         valid,
