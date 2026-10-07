@@ -3859,6 +3859,193 @@
                               "provenance": {
                                 "type": "string",
                                 "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                              },
+                              "figures": {
+                                "type": "object",
+                                "properties": {
+                                  "holdings": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "asset": {
+                                          "type": "string",
+                                          "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                        },
+                                        "yield": {
+                                          "anyOf": [
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "source": {
+                                                  "type": "string",
+                                                  "minLength": 1
+                                                },
+                                                "method": {
+                                                  "type": "string",
+                                                  "minLength": 1
+                                                },
+                                                "fetchedAt": {
+                                                  "type": "string",
+                                                  "format": "date-time",
+                                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                                },
+                                                "provenance": {
+                                                  "type": "string",
+                                                  "enum": [
+                                                    "live",
+                                                    "mock",
+                                                    "sandbox",
+                                                    "fixture",
+                                                    "prior_dataset"
+                                                  ]
+                                                },
+                                                "quoted": {
+                                                  "type": "number"
+                                                },
+                                                "afterHaircut": {
+                                                  "type": "number"
+                                                },
+                                                "haircutRule": {
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": [
+                                                "source",
+                                                "method",
+                                                "fetchedAt",
+                                                "provenance",
+                                                "quoted",
+                                                "afterHaircut",
+                                                "haircutRule"
+                                              ],
+                                              "additionalProperties": false
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "exit": {
+                                          "anyOf": [
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "source": {
+                                                  "type": "string",
+                                                  "minLength": 1
+                                                },
+                                                "method": {
+                                                  "type": "string",
+                                                  "minLength": 1
+                                                },
+                                                "fetchedAt": {
+                                                  "type": "string",
+                                                  "format": "date-time",
+                                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                                },
+                                                "provenance": {
+                                                  "type": "string",
+                                                  "enum": [
+                                                    "live",
+                                                    "mock",
+                                                    "sandbox",
+                                                    "fixture",
+                                                    "prior_dataset"
+                                                  ]
+                                                },
+                                                "capacityUsd": {
+                                                  "type": "number",
+                                                  "minimum": 0
+                                                },
+                                                "lowerBound": {
+                                                  "type": "boolean"
+                                                },
+                                                "windowDays": {
+                                                  "type": "integer",
+                                                  "exclusiveMinimum": 0,
+                                                  "maximum": 9007199254740991
+                                                },
+                                                "maxCostBps": {
+                                                  "type": "number",
+                                                  "minimum": 0
+                                                }
+                                              },
+                                              "required": [
+                                                "source",
+                                                "method",
+                                                "fetchedAt",
+                                                "provenance",
+                                                "capacityUsd",
+                                                "lowerBound",
+                                                "windowDays",
+                                                "maxCostBps"
+                                              ],
+                                              "additionalProperties": false
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": ["asset", "yield", "exit"],
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "yield": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "source": {
+                                            "type": "string",
+                                            "minLength": 1
+                                          },
+                                          "method": {
+                                            "type": "string",
+                                            "minLength": 1
+                                          },
+                                          "fetchedAt": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                          },
+                                          "provenance": {
+                                            "type": "string",
+                                            "enum": [
+                                              "live",
+                                              "mock",
+                                              "sandbox",
+                                              "fixture",
+                                              "prior_dataset"
+                                            ]
+                                          },
+                                          "low": {
+                                            "type": "number"
+                                          },
+                                          "high": {
+                                            "type": "number"
+                                          }
+                                        },
+                                        "required": [
+                                          "source",
+                                          "method",
+                                          "fetchedAt",
+                                          "provenance",
+                                          "low",
+                                          "high"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": ["holdings", "yield"],
+                                "additionalProperties": false
                               }
                             },
                             "required": [
@@ -5723,6 +5910,10 @@
                           },
                           "required": ["orderId", "legId"],
                           "additionalProperties": false
+                        },
+                        "continuedBy": {
+                          "type": "string",
+                          "minLength": 1
                         }
                       },
                       "additionalProperties": false
@@ -5743,7 +5934,15 @@
                         "PLAN_GONE",
                         "CURRENCY_UNSUPPORTED",
                         "NO_WALLET_FOR_CHAIN",
-                        "PRICE_MOVED"
+                        "PRICE_MOVED",
+                        "ORDER_CONTINUED",
+                        "STEP_IN_FLIGHT",
+                        "STEP_LANDED",
+                        "NOTHING_LEFT",
+                        "VAULT_CASH_SHORT",
+                        "DEPOSIT_NOT_LANDED",
+                        "ORDER_BUSY",
+                        "CONTINUE_NOT_SUPPORTED"
                       ]
                     },
                     "fix": {
@@ -10392,7 +10591,7 @@
       "get": {
         "summary": "Every shared portfolio, or those with a recipe on one chain",
         "tags": ["shared portfolios"],
-        "description": "From the server's store, not the chains: each recipe's versions are the last the server read (`source: 'cache'`). A signed-in person is offered only the portfolios with a recipe on their own chain: pass `chain`. A recipe on a chain this server has switched off is left out. `autoFollow` says whether the auto-follow switch is offered: not on a portfolio that holds an asset with no price oracle on that chain, whose followers get the one-tap prompt instead. `name` and `copy` are the creator's words: `textMatches` says which version's hash they match, if any.",
+        "description": "From the server's store, not the chains: each recipe's versions are the last the server read (`source: 'cache'`). A signed-in person is offered only the portfolios with a recipe on their own chain: pass `chain`. A recipe on a chain this server has switched off is left out. `autoFollow` says whether the auto-follow switch is offered: not on a portfolio that holds an asset with no price oracle on that chain, whose followers get the one-tap prompt instead. `name` and `copy` are the creator's words: `textMatches` says which version's hash they match, if any. `figures` is what the server has measured about the version in effect, the readings a plan is made from: each holding's stored yield and the most of it that can be sold within the exit window (each null where the server has none, never zero), and the yield of the whole.",
         "parameters": [
           {
             "schema": {
@@ -10645,6 +10844,193 @@
                                 "provenance": {
                                   "type": "string",
                                   "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                                },
+                                "figures": {
+                                  "type": "object",
+                                  "properties": {
+                                    "holdings": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "asset": {
+                                            "type": "string",
+                                            "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                          },
+                                          "yield": {
+                                            "anyOf": [
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "source": {
+                                                    "type": "string",
+                                                    "minLength": 1
+                                                  },
+                                                  "method": {
+                                                    "type": "string",
+                                                    "minLength": 1
+                                                  },
+                                                  "fetchedAt": {
+                                                    "type": "string",
+                                                    "format": "date-time",
+                                                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                                  },
+                                                  "provenance": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                      "live",
+                                                      "mock",
+                                                      "sandbox",
+                                                      "fixture",
+                                                      "prior_dataset"
+                                                    ]
+                                                  },
+                                                  "quoted": {
+                                                    "type": "number"
+                                                  },
+                                                  "afterHaircut": {
+                                                    "type": "number"
+                                                  },
+                                                  "haircutRule": {
+                                                    "type": "string"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "source",
+                                                  "method",
+                                                  "fetchedAt",
+                                                  "provenance",
+                                                  "quoted",
+                                                  "afterHaircut",
+                                                  "haircutRule"
+                                                ],
+                                                "additionalProperties": false
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          },
+                                          "exit": {
+                                            "anyOf": [
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "source": {
+                                                    "type": "string",
+                                                    "minLength": 1
+                                                  },
+                                                  "method": {
+                                                    "type": "string",
+                                                    "minLength": 1
+                                                  },
+                                                  "fetchedAt": {
+                                                    "type": "string",
+                                                    "format": "date-time",
+                                                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                                  },
+                                                  "provenance": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                      "live",
+                                                      "mock",
+                                                      "sandbox",
+                                                      "fixture",
+                                                      "prior_dataset"
+                                                    ]
+                                                  },
+                                                  "capacityUsd": {
+                                                    "type": "number",
+                                                    "minimum": 0
+                                                  },
+                                                  "lowerBound": {
+                                                    "type": "boolean"
+                                                  },
+                                                  "windowDays": {
+                                                    "type": "integer",
+                                                    "exclusiveMinimum": 0,
+                                                    "maximum": 9007199254740991
+                                                  },
+                                                  "maxCostBps": {
+                                                    "type": "number",
+                                                    "minimum": 0
+                                                  }
+                                                },
+                                                "required": [
+                                                  "source",
+                                                  "method",
+                                                  "fetchedAt",
+                                                  "provenance",
+                                                  "capacityUsd",
+                                                  "lowerBound",
+                                                  "windowDays",
+                                                  "maxCostBps"
+                                                ],
+                                                "additionalProperties": false
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "required": ["asset", "yield", "exit"],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "yield": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "source": {
+                                              "type": "string",
+                                              "minLength": 1
+                                            },
+                                            "method": {
+                                              "type": "string",
+                                              "minLength": 1
+                                            },
+                                            "fetchedAt": {
+                                              "type": "string",
+                                              "format": "date-time",
+                                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                            },
+                                            "provenance": {
+                                              "type": "string",
+                                              "enum": [
+                                                "live",
+                                                "mock",
+                                                "sandbox",
+                                                "fixture",
+                                                "prior_dataset"
+                                              ]
+                                            },
+                                            "low": {
+                                              "type": "number"
+                                            },
+                                            "high": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "source",
+                                            "method",
+                                            "fetchedAt",
+                                            "provenance",
+                                            "low",
+                                            "high"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": ["holdings", "yield"],
+                                  "additionalProperties": false
                                 }
                               },
                               "required": [

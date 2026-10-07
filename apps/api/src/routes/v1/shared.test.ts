@@ -72,6 +72,21 @@ beforeAll(async () => {
     issuer: issuer.issuer,
     db: data.db,
     wrap: goldWithoutOracle,
+    // One stored reading, for the first asset the portfolios here hold: the shelf's figures stand on it.
+    planInputs: async () => ({
+      yields: [
+        {
+          assetId: WITHOUT_GOLD[0]?.asset ?? '',
+          quotedYield: 0.04,
+          haircutYield: 0.03,
+          haircutRule: 'a test rule',
+          source: 'a test reading',
+          method: 'written for this test',
+          fetchedAt: '2026-10-05T00:00:00.000Z',
+          provenance: 'mock',
+        },
+      ],
+    }),
   }));
   undo.push(() => app.close());
 });
@@ -199,9 +214,30 @@ describe('a creator publishes a shared portfolio', () => {
     const onchain = await registry.get('solana').adapter.getRecipe(recipe?.onchainId ?? '');
     expect(onchain.active.creator).toBe(creator.solana);
 
+    // What the server has measured of the version in effect: a holding at a time, null where it has
+    // no reading, and the whole's yield from the one reading times its share.
+    const share = (WITHOUT_GOLD[0]?.weightBps ?? 0) / 10_000;
+    expect(recipe?.figures?.holdings.map((h) => h.asset)).toEqual(
+      WITHOUT_GOLD.map(({ asset }) => asset),
+    );
+    expect(recipe?.figures?.holdings[0]?.yield).toMatchObject({
+      quoted: 0.04,
+      afterHaircut: 0.03,
+      source: 'a test reading',
+      provenance: 'mock',
+    });
+    expect(recipe?.figures?.holdings.slice(1).map((h) => h.yield)).toEqual(
+      WITHOUT_GOLD.slice(1).map(() => null),
+    );
+    expect(recipe?.figures?.holdings.map((h) => h.exit)).toEqual(WITHOUT_GOLD.map(() => null));
+    expect(recipe?.figures?.yield?.low).toBeCloseTo(0.03 * share, 12);
+    expect(recipe?.figures?.yield?.high).toBeCloseTo(0.04 * share, 12);
+
     const shelf = ShelfResponse.parse((await get(null, '/v1/shelf?chain=solana')).json());
     const card = shelf.families.find((f) => f.slug === text.slug);
     expect(card?.recipes[0]).toMatchObject({ source: 'cache', textMatches: 'active' });
+    // the card carries the same figures as the page
+    expect(card?.recipes[0]?.figures).toEqual(recipe?.figures);
     const elsewhere = ShelfResponse.parse((await get(null, '/v1/shelf?chain=robinhood')).json());
     expect(elsewhere.families.some((f) => f.slug === text.slug)).toBe(false);
   });

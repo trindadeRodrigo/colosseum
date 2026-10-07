@@ -201,7 +201,7 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
       deps.linkedPlans,
     );
     registerPortfolioRoute(scope, orderDeps);
-    registerSharedRoutes(scope, orderDeps);
+    registerSharedRoutes(scope, orderDeps, deps.planInputs);
     registerVaultRoute(scope, orderDeps);
     // Out of the route table altogether unless a chain runs on the mock.
     if (chains.active().some((entry) => entry.mock)) registerMockRoutes(scope, orderDeps);
