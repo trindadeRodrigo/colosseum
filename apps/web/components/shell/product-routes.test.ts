@@ -117,6 +117,8 @@ describe('the routes of the app', () => {
       'app/(app)/publish/page.tsx',
       'app/(app)/shelf/page.tsx',
       'app/(app)/sign-in/page.tsx',
+      'app/(app)/vaults/[chain]/[address]/add/loading.tsx',
+      'app/(app)/vaults/[chain]/[address]/add/page.tsx',
       'app/(app)/vaults/[chain]/[address]/loading.tsx',
       'app/(app)/vaults/[chain]/[address]/page.tsx',
       'app/(app)/vaults/[chain]/[address]/withdraw/page.tsx',
@@ -364,6 +366,9 @@ describe('rule 3: no screen can reach a key', () => {
     'features/order/chain-node.ts',
     // a shared portfolio read from that node, and a family's id worked out from its slug (WEB-4)
     'features/shared/chain-recipe.ts',
+    // a vault's targets read from that node, which an add of money is held to (WEB-ADD-MONEY): a read
+    // of the chain, with no wallet in it
+    'features/portfolio/chain-vault.ts',
   ];
   const SDK = '@colosseum/sdk';
 

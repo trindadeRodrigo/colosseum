@@ -7,29 +7,41 @@ import type { FastifyInstance } from 'fastify';
 // them can spend it for all. `TRUST_PROXY_HOPS` says how many proxies stand in front of this process:
 // the caller's address is then read that many entries from the right of `X-Forwarded-For`, which are
 // the ones those proxies wrote. Anything further left is the caller's own claim and is never read.
+//
+// Once hops are trusted, Fastify also believes `X-Forwarded-Host` and `X-Forwarded-Proto` for
+// `req.host` (`req.hostname`) and `req.protocol`. A caller behind fewer proxies than the number set
+// can write those. Nothing in this API decides anything by `req.host` or `req.protocol`, and nothing
+// may: an origin is read from `Origin` against the allowlist (cors.ts), a link is made from the
+// configured address, never from the request's.
 
 /** The most proxies a host is taken to put in front of one process. */
 const MAX_HOPS = 5;
 
+/** How many different counts are logged before the log goes quiet: a caller can make up any number. */
+const MAX_COUNTS_LOGGED = 8;
+
 /**
- * Says once, on the first request a proxy forwarded, how many entries its `X-Forwarded-For` had: the
- * number a person reads from the host's log to set `TRUST_PROXY_HOPS`. The count only, never an
- * address. A caller can add entries of their own, so the number to set is the smallest seen from a
- * plain request (a browser, or `curl` with no such header), not the largest.
+ * Says how many entries `X-Forwarded-For` has on the requests a proxy forwarded: each count once,
+ * the first time it is seen, and the count only, never an address. A person reads the host's log to
+ * set `TRUST_PROXY_HOPS`. A caller can write entries of their own in front of the proxies', so a
+ * count can be too high and never too low: the number to set is the LOWEST one logged, which is what
+ * a request with no such header of its own arrives with. The line says so each time.
  */
-export function logForwardedHopsOnce(app: FastifyInstance): void {
-  let said = false;
+export function logForwardedHops(app: FastifyInstance): void {
+  const seen = new Set<number>();
   app.addHook('onRequest', async (req) => {
-    if (said) return;
     const forwarded = req.headers['x-forwarded-for'];
-    if (forwarded === undefined) return;
-    said = true;
+    if (forwarded === undefined || seen.size >= MAX_COUNTS_LOGGED) return;
     const hops = [forwarded]
       .flat()
       .join(',')
       .split(',')
       .filter((entry) => entry.trim()).length;
-    req.log.info(`forwarded hops seen: ${hops}`);
+    if (seen.has(hops)) return;
+    seen.add(hops);
+    req.log.info(
+      `forwarded hops seen: ${hops} (lowest so far: ${Math.min(...seen)}; set TRUST_PROXY_HOPS to the lowest, a caller can add entries)`,
+    );
   });
 }
 

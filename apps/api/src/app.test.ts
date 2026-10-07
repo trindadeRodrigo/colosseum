@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildApp } from './app';
+import { OPEN_WRITES } from './plugins/limits';
 
 describe('api skeleton', () => {
   it('serves health with the disclaimer', async () => {
@@ -49,6 +50,24 @@ describe('api skeleton', () => {
     expect(over.headers['access-control-allow-origin']).toBe('https://somewhere.example');
     // a read is not counted
     expect((await app.inject({ url: '/health' })).statusCode).toBe(200);
+    await app.close();
+  });
+
+  it('counts every write outside /v1 and /risk: the list of open writes is the app’s own POST routes', async () => {
+    // with the structurer's signing route switched on, so the list is the longest it can be
+    const app = await buildApp({ env: { LEGACY_STRUCTURER: 'on' } });
+    await app.ready();
+    const paths = (app.swagger() as { paths: Record<string, Record<string, unknown>> }).paths;
+    const writes = Object.entries(paths)
+      .flatMap(([path, methods]) =>
+        Object.keys(methods)
+          .filter((method) => !['get', 'head', 'options'].includes(method))
+          .map((method) => `${method.toUpperCase()} ${path.replace(/\{(\w+)\}/g, ':$1')}`),
+      )
+      .filter((route) => !/^\w+ \/(v1|risk)(\/|$)/.test(route))
+      .sort();
+    // a write added outside /v1 without a line in OPEN_WRITES fails here: it would have no limit
+    expect(writes).toEqual([...OPEN_WRITES].sort());
     await app.close();
   });
 });
