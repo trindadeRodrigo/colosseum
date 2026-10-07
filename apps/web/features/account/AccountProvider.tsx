@@ -15,7 +15,12 @@ import { SIGNED_IN_COOKIE } from '../../i18n';
 import { forgetGoalDraft } from '../goal/draft';
 import { forgetEveryOrder, forgetOrders } from '../order/order-record';
 import { forgetPlans } from '../order/plan-store';
-import { useApiFetch, useWalletPort, useWalletRestart } from '../wallet/WalletProvider';
+import {
+  useApiFetch,
+  useLeaveHere,
+  useWalletPort,
+  useWalletRestart,
+} from '../wallet/WalletProvider';
 import { chainInAddress, FIRST_CHAIN, recallChain, rememberChain } from './chain-choice';
 import {
   fetchPerson,
@@ -100,14 +105,10 @@ export type AccountValue = {
   /**
    * Signs out as far as this browser can when the sign-in service names nobody and cannot be asked:
    * forgets the signed-in hint and what was kept for the person, and shows the visitor's way in.
-   * The service is asked to sign them out as soon as it loads (`ousting`).
+   * The wallet provider keeps back any port that names a person from then on, and signs them out at
+   * the service when it loads (WalletProvider, `useLeaveHere`).
    */
   leave(): void;
-  /**
-   * The service has loaded and names someone who signed out here while it could not be reached: they
-   * are being signed out there, and nothing of theirs is shown meanwhile.
-   */
-  ousting: boolean;
   /**
    * The sign-in service has not loaded after `WAY_IN_MS`, and nobody is known to be signed in: the
    * bar offers "Sign in" as to a visitor, and the sign-in screen says the service has not answered.
@@ -134,30 +135,6 @@ export type AccountValue = {
 
 const AccountContext = createContext<AccountValue | null>(null);
 
-/** Kept from "Sign out" pressed without the sign-in service until that service says nobody is in. */
-const LEFT_HERE = 'tf-left';
-function leftHere(): boolean {
-  try {
-    return typeof window !== 'undefined' && window.localStorage.getItem(LEFT_HERE) === '1';
-  } catch {
-    return false;
-  }
-}
-function markLeft(): void {
-  try {
-    window.localStorage.setItem(LEFT_HERE, '1');
-  } catch {
-    // No storage: the mark lasts as long as the page.
-  }
-}
-function forgetLeft(): void {
-  try {
-    window.localStorage.removeItem(LEFT_HERE);
-  } catch {
-    // As above.
-  }
-}
-
 /** The hint says someone was signed in here when the page was last open. False on the server. */
 function signedInHint(): boolean {
   if (typeof document === 'undefined') return false;
@@ -177,6 +154,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const port = useWalletPort();
   const apiFetch = useApiFetch();
   const restart = useWalletRestart();
+  const leaveHere = useLeaveHere();
   const [read, setRead] = useState<Read | null>(null);
   const [round, setRound] = useState(0);
   // The chain someone signed out is looking at: the address's, else this browser's, else the first.
@@ -199,34 +177,8 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
   // Who is signed in, with which wallets. A new person or a new wallet is read again; the same ones
   // are not, however often the port is rebuilt.
-  // "Sign out" pressed while the sign-in service could not be reached (`leave`): this browser was told
-  // the person is out, and that is finished when the service loads. If it then names a person, they
-  // are signed out there at once, and until it says so nothing of theirs is asked for or drawn: no
-  // account, no address, no figure. The mark goes when the service says nobody is signed in.
-  const [marked, setMarked] = useState(leftHere);
-  const ousting = marked && port.userId !== null;
-  const ousted = useRef(false);
-  const signedOutNow = port.status === 'signed-out';
-  useEffect(() => {
-    if (signedOutNow) {
-      if (marked) {
-        forgetLeft();
-        setMarked(false);
-      }
-      ousted.current = false;
-      return;
-    }
-    if (!ousting || ousted.current) return;
-    ousted.current = true;
-    // A sign-out the service refuses leaves the mark, and is tried again the next time the service
-    // reports anything (a new port), and when the page next loads: never in a loop of its own.
-    void port.signOut().catch(() => {
-      ousted.current = false;
-    });
-  }, [ousting, marked, signedOutNow, port]);
-
   const key =
-    port.status === 'ready' && !ousting
+    port.status === 'ready'
       ? [port.userId, ...port.accounts.map((a) => `${a.family}:${a.address}:${a.kind}`)].join('|')
       : null;
   const latest = useRef({ port, apiFetch, key });
@@ -256,9 +208,9 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   // changes it: while it loads, nothing is known.
   const status = port.status;
   useEffect(() => {
-    if (status === 'ready' && !ousting) remember(SIGNED_IN_COOKIE, '1');
+    if (status === 'ready') remember(SIGNED_IN_COOKIE, '1');
     else if (status === 'signed-out') remember(SIGNED_IN_COOKIE, null);
-  }, [status, ousting]);
+  }, [status]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `round` asks again; the port and the fetch are read as they are when the effect runs
   useEffect(() => {
@@ -350,7 +302,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   // person is signed in (`SIGNED_IN_COOKIE`): they are never shown "Sign in" while it loads.
   const seen = useRef<boolean | null>(null);
   if (seen.current === null) seen.current = signedInHint();
-  if (port.userId !== null && !ousting) seen.current = true;
+  if (port.userId !== null) seen.current = true;
   else if (port.status === 'signed-out') seen.current = false;
   // And nobody known at all: the sign-in service has not loaded, so it has not said who is here.
   const nobody = port.status === 'loading' && port.userId === null && !seen.current;
@@ -368,8 +320,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const [, setLeft] = useState(0);
   const leave = useCallback(() => {
     remember(SIGNED_IN_COOKIE, null);
-    markLeft();
-    setMarked(true);
+    leaveHere();
     forgetGoalDraft();
     forgetPlans();
     // nobody is known, so every record goes, whoever it was kept for
@@ -378,7 +329,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     seen.current = false;
     setStalled(true);
     setLeft((n) => n + 1);
-  }, []);
+  }, [leaveHere]);
   const [tries, setTries] = useState(0);
   const [late, setLate] = useState(false);
   const [held, setHeld] = useState(false);
@@ -428,14 +379,13 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       slow,
       again,
       leave,
-      ousting,
       stalled,
       mock: port.test,
       chain,
       choose,
       retry,
     }),
-    [account, slow, again, leave, ousting, stalled, port.test, chain, choose, retry],
+    [account, slow, again, leave, stalled, port.test, chain, choose, retry],
   );
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;
 }

@@ -7,7 +7,7 @@ import { keepOrder, recallOrder } from '../order/order-record';
 import { ORDER_ID, recordOf, USER } from '../order/test/fixtures';
 import { EMBEDDED, fakePort, json, signedInPort } from '../wallet/test/fake-port';
 import { location, router } from '../wallet/test/mock-next';
-import { portStore, restarts } from '../wallet/test/mock-provider';
+import { left, portStore, restarts } from '../wallet/test/mock-provider';
 import { SLOW_MS, WAY_IN_MS } from './AccountProvider';
 import { inShellWithSignIn } from './test/screen';
 
@@ -49,6 +49,7 @@ beforeEach(() => {
   location.pathname = '/goal';
   router.push.mockClear();
   restarts.count = 0;
+  left.count = 0;
   restarts.refuse = false;
   portStore.setApi(async () => json({ error: 'not found' }, 404));
   portStore.set(neverReady());
@@ -193,6 +194,9 @@ describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s'
   it('lets that person out though the service cannot be reached: the hint goes, and the visitor’s way in is there at once', async () => {
     const signOut = vi.fn(() => new Promise<void>(() => {}));
     portStore.set({ ...neverReady(), signOut });
+    // order records this browser kept: theirs, and one of somebody else who used this computer
+    keepOrder(recordOf());
+    keepOrder(recordOf('solana', { orderId: OTHERS_ORDER, userId: 'did:privy:other' }));
     hint(true);
     const host = await shell(lang);
     await later(SLOW_MS);
@@ -203,132 +207,12 @@ describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s'
     expect(hinted()).toBe(false);
     expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
     expect(way(host)?.textContent).toBe(t.shell.signIn);
-  });
-
-  it('finishes that sign-out when the service loads and names them: never their account, signed out there once, their records gone, and a sign-in after it is as any other', async () => {
-    const asked: string[] = [];
-    portStore.setApi(async (path) => {
-      asked.push(path);
-      return path === '/v1/me'
-        ? json({
-            userId: USER,
-            wallets: EMBEDDED,
-            chain: 'solana',
-            chainSource: 'picked',
-            chainOptions: ['solana', 'robinhood'],
-          })
-        : json({ error: 'not found' }, 404);
-    });
-    // order records this browser kept: theirs, and one of somebody else who used this computer
-    keepOrder(recordOf());
-    keepOrder(recordOf('solana', { orderId: OTHERS_ORDER, userId: 'did:privy:other' }));
-    hint(true);
-    const host = await shell(lang);
-    await later(SLOW_MS);
-    await click(find(host, '[data-ui="account-menu-button"]'));
-    await click(find(host, '[data-ui="account-menu"] [data-ui="sign-out"]'));
-    expect(way(host)?.textContent).toBe(t.shell.signIn);
     // nobody is known, so every order record in the browser went with the press, whoever's it was
     expect(recallOrder(ORDER_ID, USER)).toBeNull();
     expect(recallOrder(OTHERS_ORDER, 'did:privy:other')).toBeNull();
-
-    // the service loads at last, and its session names the person: a shared computer, walked away from
-    let out: () => void = () => {};
-    const signOut = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          out = resolve;
-        }),
-    );
-    await act(async () => portStore.set(signedInPort(EMBEDDED, { userId: USER, signOut })));
-    await later(0);
-    // signed out there at once, once, and nothing of theirs drawn or asked for meanwhile
-    expect(signOut).toHaveBeenCalledTimes(1);
-    expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
-    expect(host.querySelector('[data-ui="account-address"]')).toBeNull();
-    expect(host.textContent).not.toContain('So11');
-    expect(way(host)?.textContent).toBe(t.shell.signIn);
-    expect(asked).not.toContain('/v1/me');
-    expect(hinted()).toBe(false);
-    await later(60_000);
-    expect(signOut).toHaveBeenCalledTimes(1);
-    expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
-
-    // a record written for them meanwhile (another tab) goes when the service says they are out
-    keepOrder(recordOf());
-    await act(async () => {
-      out();
-      portStore.set(fakePort());
-    });
-    await later(0);
-    expect(recallOrder(ORDER_ID, USER)).toBeNull();
-    expect(way(host)?.textContent).toBe(t.shell.signIn);
-
-    // a sign-in after that is a sign-in: the account, read from our server, and the hint back
-    await act(async () => portStore.set(signedInPort(EMBEDDED, { userId: USER, signOut })));
-    await later(0);
-    expect(asked).toContain('/v1/me');
-    expect(find(host, '[data-ui="account-menu-button"]').getAttribute('data-chain')).toBe('solana');
-    expect(way(host)).toBeNull();
-    expect(hinted()).toBe(true);
-    expect(signOut).toHaveBeenCalledTimes(1);
-  });
-
-  it('tries that sign-out again the next time the service reports, when the service refused it, and not in a loop', async () => {
-    hint(true);
-    const host = await shell(lang);
-    await later(SLOW_MS);
-    await click(find(host, '[data-ui="account-menu-button"]'));
-    await click(find(host, '[data-ui="account-menu"] [data-ui="sign-out"]'));
-    let refuse = true;
-    const signOut = vi.fn(async () => {
-      if (refuse) throw new Error('the sign-in service did not answer');
-      portStore.set(fakePort());
-    });
-    await act(async () => portStore.set(signedInPort(EMBEDDED, { userId: USER, signOut })));
-    await later(60_000);
-    // refused once: not hammered, and still nothing of theirs drawn
-    expect(signOut).toHaveBeenCalledTimes(1);
-    expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
-    expect(way(host)?.textContent).toBe(t.shell.signIn);
-    // the service reports again (its wallets arrive): the sign-out is tried again, with no reload
-    refuse = false;
-    await act(async () => portStore.set(signedInPort(EMBEDDED, { userId: USER, signOut })));
-    await later(0);
-    expect(signOut).toHaveBeenCalledTimes(2);
-    expect(way(host)?.textContent).toBe(t.shell.signIn);
-    expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
-    // out there now: the next sign-in is an ordinary one
-    await act(async () => portStore.set(signedInPort(EMBEDDED, { userId: USER, signOut })));
-    await later(0);
-    expect(signOut).toHaveBeenCalledTimes(2);
-    expect(host.querySelector('[data-ui="account-menu-button"]')).not.toBeNull();
-  });
-
-  it('remembers that sign-out across a reload, until the service says nobody is signed in', async () => {
-    hint(true);
-    const first = await shell(lang);
-    await later(SLOW_MS);
-    await click(find(first, '[data-ui="account-menu-button"]'));
-    await click(find(first, '[data-ui="account-menu"] [data-ui="sign-out"]'));
-    await unmountAll();
-    // the page is opened again, and now the service loads with their session
-    const signOut = vi.fn(async () => {
-      portStore.set(fakePort());
-    });
-    portStore.set(signedInPort(EMBEDDED, { userId: USER, signOut }));
-    const host = await shell(lang);
-    await later(0);
-    expect(signOut).toHaveBeenCalledTimes(1);
-    expect(host.querySelector('[data-ui="account-menu-button"]')).toBeNull();
-    expect(way(host)?.textContent).toBe(t.shell.signIn);
-    // out there too: the mark is gone, and the next page is an ordinary one
-    await unmountAll();
-    portStore.set(signedInPort(EMBEDDED, { userId: USER, signOut }));
-    const next = await shell(lang);
-    await later(0);
-    expect(signOut).toHaveBeenCalledTimes(1);
-    expect(next.querySelector('[data-ui="account-menu-button"]')).not.toBeNull();
+    // and the wallet provider is told: from now on it hands out no port that names a person until
+    // the service says they are out (features/wallet/left-here.events.test.ts)
+    expect(left.count).toBe(1);
   });
 
   it('is the person’s account when it loads late for someone with no hint', async () => {

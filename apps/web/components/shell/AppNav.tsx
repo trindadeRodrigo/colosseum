@@ -52,8 +52,7 @@ export function AppNav() {
   const pathname = usePathname();
   const port = useWalletPort();
   const account = useAccountControl();
-  const { ousting } = useAccount();
-  const signedIn = port.status !== 'signed-out' && port.userId !== null && !ousting;
+  const signedIn = port.status !== 'signed-out' && port.userId !== null;
   const exact = ROUTES.some((route) => route.href === pathname);
   return (
     <CompactNav
@@ -81,7 +80,7 @@ export function AppNav() {
 function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
   const t = useT();
   const port = useWalletPort();
-  const { slow, stalled, leave, ousting } = useAccount();
+  const { slow, stalled, leave } = useAccount();
   const [busy, setBusy] = useState(false);
   const [stillIn, setStillIn] = useState(false);
   const [said, setSaid] = useState('');
@@ -131,9 +130,7 @@ function useAccountControl(): { action: ReactNode; sheetHead: ReactNode } {
   // what is wrong if the service still has not answered).
   const waitedOut = nobody && stalled && (!slow || slow.side === 'service');
   const unknown = nobody && !slow && !stalled;
-  // Someone who signed out here while the service could not be reached, now being signed out there:
-  // the visitor's controls, never their account.
-  const visitor = signedOut || waitedOut || ousting;
+  const visitor = signedOut || waitedOut;
   const signedIn = !visitor && !unknown;
   const action = (
     <div data-ui="account-control" className="relative ml-2 flex items-center gap-2">
