@@ -7,10 +7,11 @@ import { encodeArgs, parseType } from './guard/evm/abi';
 import { evmVaultAddress, planIdOf } from './guard/evm/addresses';
 import { BASKET_PROGRAM } from './guard/generated/basket-program';
 import { EVM_INTERFACE } from './guard/generated/evm-interface';
-import { vaultAddress } from './guard/solana/addresses';
+import { TOKEN_PROGRAMS, tokenAccountAddress, vaultAddress } from './guard/solana/addresses';
 import {
   readEvmVault,
   readSolanaVault,
+  readSolanaVaultCash,
   SNAPSHOT_SIGNATURE,
   VAULT_ACCOUNT_SIZE,
 } from './vault-read';
@@ -269,5 +270,57 @@ describe("an EVM vault's targets, read from the caller's own node", () => {
         readEvmVault(evmNode(answer), EVM, evmAt),
         answer.slice(0, 20),
       ).rejects.toThrow();
+  });
+});
+
+describe('the cash a Solana vault holds, read from the node', () => {
+  const CASH = { ...SOLANA, cash: 'solana:paxg' as const };
+  const where = { owner: OWNER, basketId: '42' };
+  const vault = vaultAddress(BASKET_PROGRAM.address, OWNER, '42');
+  const account = tokenAccountAddress(vault, KEY(3), TOKEN_PROGRAMS.token);
+  const held = (
+    over: { owner?: string; mint?: string; holder?: string; amount?: unknown } = {},
+  ) => ({
+    owner: over.owner ?? TOKEN_PROGRAMS.token,
+    data: {
+      parsed: {
+        info: {
+          mint: over.mint ?? KEY(3),
+          owner: over.holder ?? vault,
+          tokenAmount: { amount: 'amount' in over ? over.amount : '6000000' },
+        },
+      },
+    },
+  });
+  const node = (value: unknown) => {
+    const asked: unknown[][] = [];
+    const rpc = async (method: string, params: unknown[]) => {
+      asked.push([method, params[0]]);
+      return { value };
+    };
+    return { rpc, asked };
+  };
+
+  it('is the balance of the vault’s own account for the cash mint, and nothing else is asked', async () => {
+    const { rpc, asked } = node(held());
+    expect(await readSolanaVaultCash(rpc, CASH, where)).toBe(6_000_000n);
+    expect(asked).toEqual([['getAccountInfo', account]]);
+  });
+
+  it('is zero for a vault whose cash account is not there', async () => {
+    expect(await readSolanaVaultCash(node(null).rpc, CASH, where)).toBe(0n);
+  });
+
+  it('is not taken from an account of another program, mint or holder, or with no amount', async () => {
+    for (const value of [
+      held({ owner: KEY(8) }),
+      held({ mint: KEY(1) }),
+      held({ holder: OWNER }),
+      held({ amount: 6 }),
+      held({ amount: '-1' }),
+      { owner: TOKEN_PROGRAMS.token, data: ['AAAA', 'base64'] },
+    ])
+      await expect(readSolanaVaultCash(node(value).rpc, CASH, where)).rejects.toThrow(/cash/);
+    await expect(readSolanaVaultCash(async () => null, CASH, where)).rejects.toThrow(/no answer/);
   });
 });

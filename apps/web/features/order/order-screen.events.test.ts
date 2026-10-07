@@ -58,6 +58,25 @@ vi.mock('@colosseum/sdk', async (original) => ({
     return run.answer(order, deps);
   },
 }));
+/** The vault as this app's own node says it stands: `unknown` where a test sets nothing (no node). */
+const chain = vi.hoisted(() => ({
+  now: { state: 'unknown' } as
+    | { state: 'reading' }
+    | { state: 'unknown' }
+    | { state: 'read'; autoFollow: boolean; cashRaw: bigint },
+  asked: [] as ({ owner: string; basketId: string } | null)[],
+}));
+vi.mock('../portfolio/chain-vault', async (original) => ({
+  ...(await original<typeof import('../portfolio/chain-vault')>()),
+  useVaultNow: (
+    _chain: unknown,
+    _mock: unknown,
+    at: { owner: string; basketId: string } | null,
+  ) => {
+    chain.asked.push(at);
+    return chain.now;
+  },
+}));
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
 vi.mock('../wallet/signing', () => import('../wallet/test/mock-signing'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
@@ -132,6 +151,8 @@ const status = (host: HTMLElement) =>
 beforeEach(() => {
   window.localStorage.clear();
   run.calls.length = 0;
+  chain.now = { state: 'unknown' };
+  chain.asked.length = 0;
   installLocks();
   portStore.set(signedInPort(EMBEDDED, { userId: USER }));
 });
@@ -611,57 +632,116 @@ describe('what the executor answers', () => {
       );
     });
 
+    it('reads the order again, and says nothing, when a step turns out to have landed', async () => {
+      const calls = server({
+        route: true,
+        made: () =>
+          json(
+            {
+              error: 'the transaction built earlier for this step has landed: read the order again',
+              code: 'STEP_LANDED',
+            },
+            409,
+          ),
+      });
+      router.push.mockClear();
+      const host = await stop();
+      const reads = () => calls.filter((c) => c.path === `/v1/orders/${ORDER_ID}`).length;
+      const before = reads();
+      await click(finishButton(host) as HTMLElement);
+      await settle();
+      await settle();
+      expect(reads()).toBe(before + 1);
+      expect(host.querySelector('[role="alert"]')).toBeNull();
+      expect(host.textContent).not.toContain('has landed');
+      expect(router.push).not.toHaveBeenCalled();
+      expect(recallOrder(NEXT_ID, USER)).toBeNull();
+    });
+
     describe.each(['en', 'pt'] as const)('a refusal by the server, in %s', (lang) => {
       const t = dictionary(lang);
       const o = t.order.outcome;
       const OTHER = '77777777-7777-4777-8777-777777777777';
       const UNKNOWN = 'the vault of this order is not open';
-      // each as the server words it (apps/api/src/orders: continue.ts, store.ts, legs.ts)
+      /** The codes this app has a sentence for. `STEP_LANDED` says nothing (its own test). */
+      const KNOWN = [
+        'ORDER_CONTINUED',
+        'ORDER_BUSY',
+        'STEP_IN_FLIGHT',
+        'NOTHING_LEFT',
+        'VAULT_CASH_SHORT',
+        'DEPOSIT_NOT_LANDED',
+        'CONTINUE_NOT_SUPPORTED',
+      ];
+      // each by the code the server sends with it (`OrderErrorCode`); the sentence is the server's
       it.each([
         [
           'another order finishes it',
           {
             error: 'another order finishes this one: what is left is that order’s',
-            fix: `Finish order ${OTHER}.`,
+            code: 'ORDER_CONTINUED',
+            details: { continuedBy: OTHER },
           },
           o.finishOther,
         ],
         [
-          'the wait for the order ran out',
+          'another request holds the order',
           {
             error: 'this order is being worked on by another request',
+            code: 'ORDER_BUSY',
             details: { retryable: true },
           },
-          o.finishWorking,
-        ],
-        [
-          'a step was built a moment ago',
-          { error: 'a step of this order was built just now', details: { retryable: true } },
           o.finishWorking,
         ],
         [
           'a transaction can still land',
           {
             error: 'the transaction built earlier for this step can still land',
+            code: 'STEP_IN_FLIGHT',
             details: { retryable: true },
           },
           o.finishLater,
         ],
-        ['nothing is left', { error: 'this order has nothing left to buy' }, o.finishNothing],
+        [
+          'nothing is left',
+          { error: 'this order has nothing left to buy', code: 'NOTHING_LEFT' },
+          o.finishNothing,
+        ],
         [
           'the cash in the vault is short',
-          {
-            error:
-              'the vault holds 1000000 raw USDC in cash, less than the 6000000 the steps left would spend',
-          },
+          { error: 'the vault holds less cash than the steps left', code: 'VAULT_CASH_SHORT' },
           o.finishShort,
         ],
         [
           'the deposit has not landed',
-          { error: 'this order has not put its cash in the vault yet' },
+          { error: 'this order has not put its cash in the vault yet', code: 'DEPOSIT_NOT_LANDED' },
           o.finishNotDeposited,
         ],
-        ['one this app has no words for', { error: UNKNOWN }, o.finishRefused(UNKNOWN)],
+        [
+          'not an order this route finishes',
+          { error: 'only a buy is finished this way', code: 'CONTINUE_NOT_SUPPORTED' },
+          o.finishUnsupported,
+        ],
+        // a code this app does not know, and no code at all: the server's own sentence
+        [
+          'a code not known here',
+          { error: UNKNOWN, code: 'SOMETHING_NEW' },
+          o.finishRefused(UNKNOWN),
+        ],
+        ['no code', { error: UNKNOWN }, o.finishRefused(UNKNOWN)],
+        // a code that names a member every object has finds no sentence of this app's
+        [
+          'a code named constructor',
+          { error: UNKNOWN, code: 'constructor' },
+          o.finishRefused(UNKNOWN),
+        ],
+        ['a code named toString', { error: UNKNOWN, code: 'toString' }, o.finishRefused(UNKNOWN)],
+        // the words alone decide nothing: a sentence that reads like a known refusal, with no code
+        [
+          'known words and no code',
+          { error: 'this order has nothing left to buy' },
+          o.finishRefused('this order has nothing left to buy'),
+        ],
       ])('is said in this app’s words and makes no record: %s', async (_, body, sentence) => {
         server({ route: true, made: () => json(body, 409) });
         router.push.mockClear();
@@ -674,8 +754,12 @@ describe('what the executor answers', () => {
         await settle();
         const said = find(host, '[role="alert"]');
         expect(said.textContent).toContain(sentence);
-        // the server's English is shown only for a refusal this app does not know
-        if (body.error !== UNKNOWN) expect(said.textContent).not.toContain(body.error);
+        // never `undefined` in place of a sentence
+        expect(said.textContent).not.toContain('undefined');
+        // the server's English is never shown for a refusal this app knows by its code
+        const known = 'code' in body && KNOWN.includes(body.code);
+        if (known) expect(said.textContent).not.toContain(body.error);
+        else expect(said.textContent).toContain(body.error);
         // the order that already finishes this one is a link, not an id to copy
         const link = said.querySelector('[data-ui="order-finish-other"]');
         if (sentence === o.finishOther)
@@ -1156,6 +1240,45 @@ describe('what the executor answers', () => {
           trades: next.legs.flatMap((leg) => leg.trades),
           unseen: true,
         });
+      });
+
+      it('asks this app’s own node about the vault, and offers no finish for more cash than it holds', async () => {
+        // the steps left spend 6 USDC
+        for (const [cashRaw, offered] of [
+          [6_000_000n, true],
+          [5_999_999n, false],
+        ] as const) {
+          elsewhere();
+          chain.now = { state: 'read', autoFollow: false, cashRaw };
+          const host = await screen();
+          await settle();
+          await settle();
+          expect(finishButton(host) !== undefined).toBe(offered);
+          expect(host.querySelector('[data-ui="order-cash-short"]')?.textContent).toBe(
+            offered ? undefined : en.order.outcome.finishShort,
+          );
+          // the vault of this person's own wallet for the plan's number, never an address a server named
+          expect(chain.asked.filter((at) => at !== null).at(-1)).toEqual({
+            owner: EMBEDDED.find((w) => w.family === 'solana')?.address,
+            basketId: basketIdOfPlan(PLAN_ID),
+          });
+          await unmountAll();
+        }
+      });
+
+      it('offers nothing while the vault is being read, and as before where there is no node', async () => {
+        elsewhere();
+        chain.now = { state: 'reading' };
+        const reading = await screen();
+        await settle();
+        await settle();
+        expect(finishButton(reading)).toBeUndefined();
+        await unmountAll();
+        chain.now = { state: 'unknown' };
+        const none = await screen();
+        await settle();
+        await settle();
+        expect(finishButton(none)).not.toBeUndefined();
       });
 
       it('offers no finish when what the server lists as left is not the plan’s: another token, a token twice, or more than was deposited', async () => {

@@ -1364,6 +1364,9 @@ export const pt: Dictionary = {
       finishNothing: 'Não falta nada para comprar nesta ordem: todos os passos dela foram feitos.',
       finishShort:
         'Seu cofre agora tem menos caixa do que os passos que faltam gastariam: parte foi gasta ou retirada desde então. Nada foi criado. Adicione dinheiro ao cofre para o que ainda quer comprar.',
+      finishUnsupported: 'Esta ordem não pode ser terminada dessa forma. Faça uma nova ordem.',
+      keeperBuys:
+        'Seguir automático está ativado neste cofre agora, então nosso operador compra os ativos do cofre com este caixa quando rebalancear o cofre de novo. Não há mais nada para assinar.',
       finishNotDeposited:
         'O depósito desta ordem ainda não chegou, então não há caixa no cofre para terminar a compra. Assine os passos dela na ordem primeiro.',
       finishLater:

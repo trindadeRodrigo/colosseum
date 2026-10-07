@@ -21,5 +21,6 @@ export {
   type ChainVault,
   readEvmVault,
   readSolanaVault,
+  readSolanaVaultCash,
   VAULT_ACCOUNT_SIZE,
 } from './vault-read';

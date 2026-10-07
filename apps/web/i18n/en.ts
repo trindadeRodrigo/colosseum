@@ -1477,6 +1477,10 @@ export const en = {
       finishNothing: 'Nothing is left to buy in this order: every step it had is done.',
       finishShort:
         'Your vault now holds less cash than the steps left would spend: some was spent or withdrawn since. Nothing was made. Add money to the vault for what you still want to buy.',
+      finishUnsupported: 'This order isn’t one that can be finished this way. Make a new order.',
+      /** A stopped add into a vault whose auto-follow is on now: no order is made for the cash. */
+      keeperBuys:
+        'Auto-follow is on for this vault now, so our keeper buys the vault’s assets with this cash when it next rebalances the vault. There is nothing more to sign.',
       finishNotDeposited:
         'This order’s deposit hasn’t landed yet, so there is no cash in the vault to finish with. Sign its steps in order first.',
       finishLater: 'A step signed before can still land. Look again in a minute, then try again.',
