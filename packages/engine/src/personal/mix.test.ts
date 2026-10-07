@@ -881,6 +881,75 @@ describe('a floor beside what is set aside: what dollar yield is short of still 
   });
 });
 
+describe('what only a name’s own line says is still said where the name ends with no line (the stress of Oct 7)', () => {
+  it('a holding: $10, 60% in The Seven and 40% in gold, 60 cents of NVDA held, and NVDA says why it had less', () => {
+    // A seventh of $6 is under the least a line can be, and so is $4 of gold: the plan holds dollar
+    // yield and cash. The 60 cents of NVDA cut what the plan set out to buy of it from 86 cents to 31,
+    // and the other names and the gold had the difference between them. No line of any of them is
+    // there to say so, and the sentence went with the line: the plan said nothing of the holding, and
+    // the stocks were 24 points short of what its sentences added up to. Seed 23 of the stress found
+    // the same on a generated table, behind the plan that stopped it first.
+    const s = sheet({
+      amountUsd: 10,
+      themes: ['the-seven'],
+      rules: noGlide,
+      mix: mix({ growthBps: 6000, goldBps: 4000 }),
+    });
+    const plan = run(s, fixtureContext({ holdings: [{ underlying: 'NVDA', valueUsd: 0.6 }] }));
+    expect(heldIn(plan)).toEqual({ growth: 0, dollarYield: 5000, gold: 0, cash: 5000 });
+    expect(plan.removed.find((r) => r.ref === 'NVDA')?.reasons.map((r) => r.text)).toEqual([
+      'NVDA is left out: $0.31 is too small to be a part of your plan.',
+      'Less NVDA: you already hold $0.60 of it.',
+    ]);
+    // Without the holding the sentences add up by themselves: seven names at 86 or 85 cents.
+    const without = run(s);
+    expect(without.removed.find((r) => r.ref === 'NVDA')?.reasons.map((r) => r.rule)).toEqual([
+      'BELOW_MINIMUM',
+    ]);
+  });
+
+  it('the coverage check: a line it moves whole to cash is named, with what was moved', () => {
+    // MOCK table: the least a line can be is 5.5% of the plan, and a rate leg may hold 60% of it. On
+    // Robinhood Chain, 40% in The Seven and 60% in dollar yield, $6,000 to withdraw this month. SGOV
+    // holds all that is set aside; nothing measures it, so its sale is counted at a cost and falls $60
+    // short. That comes out of the largest stock line, which would be left under the least a line can
+    // be: all $572.80 of it goes to cash. The line is gone, and the sentence that says so was on it.
+    // Not found by the stress: it is the same loss as the holding's, and with the repo's own table no
+    // line is that near the least one where the plan has no cash to spare.
+    const table = {
+      ...PERSONAL_PARAMS,
+      minLineBps: 550,
+      capPerAssetBps: {
+        bySymbol: {},
+        byLegType: { ...PERSONAL_PARAMS.capPerAssetBps.byLegType, rate: 6000 },
+      },
+      issuerCapBps: 6000,
+    };
+    const context = fixtureContext({ params: table });
+    const s = sheet({
+      chains: ['robinhood'],
+      themes: ['the-seven'],
+      rules: noGlide,
+      obligations: [{ month: monthAfter(NOW, 0), amount: 6000, currency: 'USD' }],
+      mix: mix({ growthBps: 4000, dollarYieldBps: 6000 }),
+    });
+    const plan = run(s, context);
+    expect(plan.flags).toContain('coverage_moved');
+    expect(heldIn(plan)).toEqual({ growth: 3427, dollarYield: 6000, gold: 0, cash: 573 });
+    expect(plan.lines.some((l) => l.assetId === 'robinhood:nvda')).toBe(false);
+    expect(plan.removed.map((r) => [r.ref, r.reasons.map((x) => [x.rule, x.params])])).toEqual([
+      ['NVDA', [['COVERAGE_MOVED_UNCOUNTED', { usd: 572.8, month: '2026-10' }]]],
+    ]);
+    // With the repo's least line (0.5%) the same plan keeps the line, which says what it gave.
+    const usual = fixtureContext({ params: { ...table, minLineBps: PERSONAL_PARAMS.minLineBps } });
+    const kept = run(s, usual);
+    expect(
+      said(kept, 'robinhood:nvda').find((r) => r.rule === 'COVERAGE_MOVED_UNCOUNTED'),
+    ).toMatchObject({ params: { usd: 60, month: '2026-10' } });
+    expect(kept.removed).toEqual([]);
+  });
+});
+
 describe('a candidate that would change a share the mix states is not made', () => {
   it('only credit: Spread would hold 60% in dollar yield where the plan holds 90%', () => {
     const all = candidates(

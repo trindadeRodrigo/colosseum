@@ -757,6 +757,27 @@ function build(
     }
   }
 
+  // Two things are said only on a name's own line: that a holding left it with less, and that the
+  // coverage check moved money out of it. Where the name ends with no line (what the holding left is
+  // too small or has no room; the check moved all of it), the sentence went with the line, and money
+  // had moved with no word of it on the plan. So it is said of the name where the plan lists what
+  // was left out, beside the rest of why it is out.
+  const withLine = new Set(lines.map((l) => l.assetId));
+  const nameWithLine = new Set(lines.map((l) => w.byId.get(l.assetId)?.underlying));
+  for (const unit of [...growthUnits, ...goldUnits]) {
+    const says = unit.reasons.filter((r) => r.rule === 'ALREADY_HELD');
+    if (says.length > 0 && !nameWithLine.has(unit.name))
+      book.removed.push({ ref: unit.name, reasons: says });
+  }
+  for (const { asset, reasons } of book.lines.values()) {
+    const says = reasons.filter((r) => r.rule.startsWith('COVERAGE_MOVED'));
+    if (says.length > 0 && !withLine.has(asset.id))
+      book.removed.push({
+        ref: w.sleeveOf(asset) === 'dollarYield' ? asset.symbol : asset.underlying,
+        reasons: says,
+      });
+  }
+
   // What was left out, each thing once, with every reason it was.
   const out = new Map<string, Reason[]>();
   for (const r of book.removed) out.set(r.ref, [...(out.get(r.ref) ?? []), ...r.reasons]);

@@ -921,15 +921,31 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
         .map((l) => l.cents),
     );
   const bySymbol = new Map(lines.map((l) => [l.a.symbol, l]));
-  /** What the coverage check says it moved to cash from the lines of a token, or of an issuer. */
+  /**
+   * What the coverage check says it moved to cash from the lines of a token, or of an issuer. A line
+   * it moved whole is gone: the plan says it of the name, where it lists what was left out (a ticker,
+   * or a token's own symbol).
+   */
   const movedOn = (keep: (a: BasketAsset) => boolean) =>
     sum(
-      plan.lines
-        .filter((l) => {
-          const a = byId.get(l.assetId);
-          return a !== undefined && keep(a);
-        })
-        .flatMap((l) => l.reasons)
+      [
+        ...plan.lines
+          .filter((l) => {
+            const a = byId.get(l.assetId);
+            return a !== undefined && keep(a);
+          })
+          .flatMap((l) => l.reasons),
+        ...plan.removed
+          .filter((x) =>
+            shelf.assets.some(
+              (a) =>
+                s.chains.includes(a.chain) &&
+                (a.symbol === x.ref || a.underlying === x.ref) &&
+                keep(a),
+            ),
+          )
+          .flatMap((x) => x.reasons),
+      ]
         .filter((x) => x.rule === 'COVERAGE_MOVED' || x.rule === 'COVERAGE_MOVED_UNCOUNTED')
         .map((x) => cents(Number(x.params.usd))),
     );
@@ -1221,6 +1237,12 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
       const rounded = cashLine.filter(
         (r) => r.rule === 'ROUNDING' && namesIn(sleeve).has(String(r.params.asset)),
       );
+      // What the coverage check moved out of this class to cash: said on the line it took it from,
+      // and of a name it left with nothing where the plan lists what was left out.
+      const moved = [
+        ...linesOf(sleeve).flatMap((l) => l.reasons),
+        ...plan.removed.filter((x) => namesIn(sleeve).has(x.ref)).flatMap((x) => x.reasons),
+      ].filter((r) => r.rule.startsWith('COVERAGE_MOVED'));
       if (sleeve === 'growth' || sleeve === 'gold')
         return [
           ...setAsideFrom(sleeve),
@@ -1229,7 +1251,8 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
           // A cap, a ceiling, a line that is not there, a token that cannot be held: said where the
           // money went, with the names it was meant for.
           ...overflowOf(sleeve),
-          ...rules(on, 'ALREADY_HELD', 'COVERAGE_MOVED_UNCOUNTED'),
+          ...rules(on, 'ALREADY_HELD'),
+          ...moved,
           ...heldAlready,
           ...rounded,
         ];
@@ -1241,8 +1264,9 @@ export function violations(plan: PersonalProposal, shelf: Shelf, given: ComposeC
           // The need for cash may take from dollar yield, after stocks and gold. Its sentence is where
           // the sleeve's own money went: on its dollar-yield lines, and on the cash line for what no
           // token had room for. A line that holds only what is set aside carries neither.
-          ...rules(on, 'CASH_MAY_NEED', 'CASH_NEAR_DATE', 'COVERAGE_MOVED'),
+          ...rules(on, 'CASH_MAY_NEED', 'CASH_NEAR_DATE'),
           ...(floorsMove(sleeve) < 0 ? rules(cashLine, 'CASH_MAY_NEED', 'CASH_NEAR_DATE') : []),
+          ...moved,
           // What no dollar-yield token took stays in cash, and the cash line says so.
           ...rules(cashLine, 'UNPLACED', 'NO_DOLLAR_YIELD', 'YIELD_TOO_SMALL'),
           ...rounded,

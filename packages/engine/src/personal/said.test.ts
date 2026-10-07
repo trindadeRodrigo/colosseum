@@ -367,6 +367,30 @@ describe('what the person already holds', () => {
     expect(rulesOn(plan, 'solana:nvdax')).toContain('ALREADY_HELD');
   });
 
+  it('a holding that leaves a name too small for a line is said of that name, with why it is left out', () => {
+    // $1,262 of NVDA beside a $10,000 plan leaves $28.18 of it to buy: under the least a line can be,
+    // so NVDA is left out. The holding is why its part was that small. The sentence was on the name's
+    // line only, and went with it: here the other lines still say a holding moved them, and a plan in
+    // which none of them had a line either said nothing of the holding at all (mix.test.ts has one).
+    const plan = withHeld(1_262);
+    expect(line(plan, 'solana:nvdax')).toBeUndefined();
+    expect(plan.removed.find((r) => r.ref === 'NVDA')?.reasons.map((r) => r.text)).toEqual([
+      'NVDA is left out: $28 is too small to be a part of your plan.',
+      'Less NVDA: you already hold $1,262 of it.',
+    ]);
+    expect(
+      violations(
+        plan,
+        shelf,
+        fixtureContext({ holdings: [{ underlying: 'NVDA', valueUsd: 1_262 }] }),
+      ),
+    ).toEqual([]);
+    // A name that keeps its line says it there, as before, and is not listed as left out.
+    const kept = withHeld(1_000);
+    expect(rulesOn(kept, 'solana:nvdax')).toContain('ALREADY_HELD');
+    expect(kept.removed.find((r) => r.ref === 'NVDA')).toBeUndefined();
+  });
+
   it('holding more than the plan would buy: nothing of it is bought, and its money is held in dollar yield, with why', () => {
     // A table with half in stocks and half in gold, and a person who cannot hold gold and already
     // has $20,000 of the S&P 500. The target for stocks is half of $30,000, less than they hold.
