@@ -304,6 +304,61 @@ describe('a product’s page, on the plan view', () => {
     expect(host.textContent).not.toContain(pt.shared.family.buy);
   });
 
+  it('keeps each holding’s yield and its exit tier for a product with more than four holdings', async () => {
+    // five holdings: the view turns from the bar to a table, and the yields must not be lost
+    const five = [
+      { asset: 'solana:spyx', weightBps: 3000 },
+      { asset: 'solana:nvdax', weightBps: 2000 },
+      { asset: 'solana:tslax', weightBps: 1000 },
+      { asset: 'solana:jlusdc', weightBps: 2500 },
+      { asset: 'solana:syrupusdc', weightBps: 1500 },
+    ];
+    const [fund, lend, credit] = FIGURES.holdings;
+    if (!fund || !lend || !credit) throw new Error('three figures');
+    const figures: RecipeFigures = {
+      holdings: [
+        fund,
+        { ...fund, asset: 'solana:nvdax', cls: 'stock', exit: null },
+        { ...fund, asset: 'solana:tslax', cls: 'stock', exit: null },
+        lend,
+        credit,
+      ],
+    };
+    const recipe = recipeOf({
+      active: {
+        version: 2,
+        effectiveAt: 1_791_000_000,
+        components: five,
+        metaHash: 'ab'.repeat(32),
+        status: 'active',
+      },
+      figures,
+    });
+    api([familyOf(FAMILY_ID, { recipes: [recipe] })]);
+    const host = await show(createElement(FamilyScreen, { slug: SLUG }));
+    const pane = find(host, '[data-ui="plan-pane"]');
+    expect(pane.querySelector('[data-ui="plan-legs"]')).toBeNull();
+    const rows = [...pane.querySelectorAll('table tbody tr')] as HTMLElement[];
+    expect(rows).toHaveLength(5);
+    // the two dollar tokens keep their own figure and pin; a stock's cell says nothing, never 0%
+    const text = (i: number) => rows[i]?.textContent ?? '';
+    expect(text(3)).toContain('4.00%');
+    expect(text(4)).toContain('6.00%');
+    expect(rows[3]?.querySelector('[data-ui="pin"]')).not.toBeNull();
+    expect(rows[4]?.querySelector('[data-ui="pin"]')).not.toBeNull();
+    for (const i of [0, 1, 2]) {
+      expect(rows[i]?.querySelector('[data-ui="pin"]')).toBeNull();
+      expect(text(i)).not.toContain('0.00%');
+    }
+    // the exit plan is its own block whatever the count: a tier a measured holding, the rest named
+    const exit = find(pane, '[data-ui="exit-plan-line"]');
+    expect(exit.querySelectorAll('[data-ui="pin"]')).toHaveLength(2);
+    expect(exit.textContent).toContain(en.shared.product.exit.atLeast('$250,000', 'SPYx', 7));
+    expect(exit.textContent).toContain(
+      en.shared.product.exit.notMeasured('NVDAx, TSLAx, and syrupUSDC (Maple)'),
+    );
+  });
+
   it('with no figures from the server: every holding is there, and nothing is measured', async () => {
     api([familyOf(FAMILY_ID, { recipes: [withFigures(null)] })]);
     const host = await show(createElement(FamilyScreen, { slug: SLUG }));
