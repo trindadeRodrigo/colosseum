@@ -50,15 +50,19 @@ export type SharedTerms =
     }
   /**
    * More money into a vault the person has (add money): a deposit, and the trades the vault's targets
-   * give. The vault and its targets are the ones the person's portfolio showed when they chose it.
+   * give. The targets are the chain's where this app read the vault from its own node (`source:
+   * 'chain'`), and the API's answer, shown as unverified, where it could not (`source: 'api'`).
    */
   | {
       kind: 'vault';
       vault: string;
       /** The plan number of that vault, which the guard derives its address from. */
       basketId: string;
-      /** The vault's targets as shown, which the add's trades are held to. None: it keeps cash. */
+      /** The vault's targets, which the add's trades are held to. None: the amount stays as cash. */
       targets: Target[];
+      /** Auto-follow is on: the add only deposits, and the keeper invests it. Then no target is named. */
+      keeper: boolean;
+      source: TermsSource;
     };
 
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
@@ -119,8 +123,17 @@ export function readTerms(value: unknown): SharedTerms | null {
     const targets = Target.array().safeParse(t.targets);
     if (!isText(t.vault) || !t.vault || !isText(t.basketId) || !/^\d+$/.test(t.basketId))
       return null;
-    if (!targets.success) return null;
-    return { kind: 'vault', vault: t.vault, basketId: t.basketId, targets: targets.data };
+    const source = sourceOf(t.source);
+    if (!targets.success || !source || typeof t.keeper !== 'boolean') return null;
+    if (t.keeper && targets.data.length > 0) return null;
+    return {
+      kind: 'vault',
+      vault: t.vault,
+      basketId: t.basketId,
+      targets: targets.data,
+      keeper: t.keeper,
+      source,
+    };
   }
   if (t.kind === 'publish') {
     const components = targetsOf(t.components);

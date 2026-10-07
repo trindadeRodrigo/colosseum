@@ -77,8 +77,12 @@ export function checkFamilyBuy(
 
 /**
  * More money into a vault the person has (add money): the deposit as for a plan, into the vault they
- * chose and no new one, once, and each trade the share its targets give, as the portfolio showed them.
- * The guard then holds every step's bytes to the vault of that number and the person's own wallet.
+ * chose and no new one, once, and each trade the share its targets give: every trade buys a target with
+ * the cash token, for exactly the share of the deposit that target's weight gives, and no target is
+ * left out. The targets are the ones this app read from the chain itself where it could
+ * (features/portfolio/chain-vault.ts): the guard holds every step's bytes to the vault of that number
+ * and the person's own wallet, and a swap to the tokens the deployment lists, but not to the vault's
+ * targets, so this is where an add's trades are held to them.
  */
 export function checkVaultAdd(
   order: Pick<OrderDetail, 'depositRaw' | 'legs' | 'basketId'>,

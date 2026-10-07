@@ -60,6 +60,8 @@ const terms: Extract<SharedTerms, { kind: 'vault' }> = {
   vault: VAULT,
   basketId: '7',
   targets: [{ asset: spy, weightBps: 6000 }],
+  keeper: false,
+  source: 'api',
 };
 
 describe('an order that adds money to a vault, before it is offered for signing', () => {
@@ -115,6 +117,52 @@ describe('an order that adds money to a vault, before it is offered for signing'
     ).toEqual({ ok: false, why: 'trades' });
   });
 
+  it('refuses a trade into an asset outside the targets, and a share off by one unit', () => {
+    const add = addOrder();
+    const withTrades = (trades: { sell: string; buy: string; amountInRaw: string }[]) => ({
+      ...add,
+      legs: add.legs.map((l) => (l.kind === 'swap' ? { ...l, trades } : l)),
+    });
+    const cash = 'solana:usdc';
+    // the vault's one target is bought, and so is a token the vault has no target on
+    const beside = withTrades([
+      { sell: cash, buy: spy, amountInRaw: '6000000' },
+      { sell: cash, buy: 'solana:nvdax', amountInRaw: '1000000' },
+    ]);
+    expect(checkVaultAdd(beside, 10, units, terms)).toEqual({ ok: false, why: 'trades' });
+    // the whole invested share goes to a token outside the targets
+    const instead = withTrades([{ sell: cash, buy: 'solana:nvdax', amountInRaw: '6000000' }]);
+    expect(checkVaultAdd(instead, 10, units, terms)).toEqual({ ok: false, why: 'trades' });
+    // 60% of $10 is 6,000,000 units: one more or one fewer is not that share
+    for (const amountInRaw of ['6000001', '5999999', '0'])
+      expect(
+        checkVaultAdd(withTrades([{ sell: cash, buy: spy, amountInRaw }]), 10, units, terms),
+        amountInRaw,
+      ).toEqual({ ok: false, why: 'trades' });
+    // two targets: the shares swapped between them are each off
+    const two = {
+      ...terms,
+      targets: [
+        { asset: spy, weightBps: 4000 },
+        { asset: 'solana:nvdax', weightBps: 2000 },
+      ],
+    };
+    const right = withTrades([
+      { sell: cash, buy: spy, amountInRaw: '4000000' },
+      { sell: cash, buy: 'solana:nvdax', amountInRaw: '2000000' },
+    ]);
+    expect(checkVaultAdd(right, 10, units, two).ok).toBe(true);
+    const swapped = withTrades([
+      { sell: cash, buy: spy, amountInRaw: '2000000' },
+      { sell: cash, buy: 'solana:nvdax', amountInRaw: '4000000' },
+    ]);
+    expect(checkVaultAdd(swapped, 10, units, two)).toEqual({ ok: false, why: 'trades' });
+    // an add to a vault with auto-follow on is the deposit alone: any trade is refused
+    const keeper = { ...terms, targets: [], keeper: true };
+    expect(checkVaultAdd(add, 10, units, keeper)).toEqual({ ok: false, why: 'trades' });
+    expect(checkVaultAdd(withTrades([]), 10, units, keeper).ok).toBe(true);
+  });
+
   it('is a buy, kept and read back with its terms, and the guard is handed the vault’s number alone', () => {
     expect(isBuy({ terms })).toBe(true);
     expect(readTerms(JSON.parse(JSON.stringify(terms)))).toEqual(terms);
@@ -124,6 +172,10 @@ describe('an order that adds money to a vault, before it is offered for signing'
       { ...terms, vault: '' },
       { ...terms, targets: [{ asset: spy, weightBps: -1 }] },
       { ...terms, targets: undefined },
+      { ...terms, source: 'somewhere' },
+      { ...terms, keeper: undefined },
+      // auto-follow on: the add is the deposit alone, so it names no target
+      { ...terms, keeper: true },
     ])
       expect(readTerms(bad)).toBeNull();
     expect(planTermsOf(terms)).toEqual({ basketId: '7' });
@@ -212,7 +264,12 @@ function api(
     if (path === PORTFOLIO_PATH)
       return json(
         portfolioBody(
-          chainOf(o.vaults ?? [vault(), vault({ address: SECOND_VAULT, basketId: '8' })]),
+          chainOf(
+            o.vaults ?? [
+              vault(),
+              vault({ address: SECOND_VAULT, basketId: '8', autoFollow: false }),
+            ],
+          ),
         ),
       );
     if (path.startsWith('/v1/funding?')) return json(funding);
@@ -296,8 +353,52 @@ describe('the add-money screen', () => {
           { asset: 'solana:usdy', weightBps: 6000 },
           { asset: 'solana:paxg', weightBps: 1500 },
         ],
+        keeper: false,
+        // this app has no node of its own here: the targets are our server's, and said to be
+        source: 'api',
       },
     });
+    expect(find(host, '[data-ui="source-mark"]').textContent).toContain(
+      en.portfolio.add.source.notRead('Solana'),
+    );
+  });
+
+  it('for a vault with auto-follow on: says the keeper invests it, and holds the add to the deposit alone', async () => {
+    api();
+    // the fixtures' first vault has auto-follow on, and a newer version of what it follows waits
+    const host = await add(VAULT);
+    expect(find(host, '[data-ui="add-keeper"]').textContent).toBe(en.portfolio.add.keeper);
+    expect(host.querySelector('[data-ui="add-newer-version"]')).toBeNull();
+    await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '10');
+    await settle(350);
+    await click(find(host, '[data-ui="trust-notice"] input[type="checkbox"]'));
+    await click(find(host, SIGN));
+    await settle();
+    expect(recallOrder(ORDER_ID, USER)?.terms).toEqual({
+      kind: 'vault',
+      vault: VAULT,
+      basketId: '7',
+      targets: [],
+      keeper: true,
+      source: 'api',
+    });
+  });
+
+  it('says in one line when the portfolio the vault follows has a newer version', async () => {
+    api({
+      vaults: [
+        vault({
+          autoFollow: false,
+          recipeOnchainId: 'recipe',
+          pending: { version: 4, effectiveAt: 1_791_300_000, newAssets: [] },
+        }),
+      ],
+    });
+    const host = await add(VAULT);
+    expect(find(host, '[data-ui="add-newer-version"]').textContent).toBe(
+      en.portfolio.add.newerVersion(4),
+    );
+    expect(host.querySelector('[data-ui="add-keeper"]')).toBeNull();
   });
 
   it('offers nothing for a vault that is not among the person’s own, and asks the server nothing about it', async () => {

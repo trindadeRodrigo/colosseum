@@ -10,6 +10,7 @@ import { ChainBadge } from '../../components/ui/ChainBadge';
 import { shorten } from '../../components/ui/format';
 import { PAGE_TITLE } from '../../components/ui/heading';
 import { SkeletonSummary } from '../../components/ui/Skeleton';
+import { StatusMark } from '../../components/ui/StatusMark';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars, parseNumber } from '../goal/sheet';
 import { BuySteps, MAX_USD, MIN_USD } from '../order/BuySteps';
@@ -19,6 +20,7 @@ import { acceptTrust, keepOrder, trustAccepted } from '../order/order-record';
 import { chainReady, onMock } from '../order/readiness';
 import type { SharedTerms } from '../shared/terms';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
+import { sameTargets, useChainVault } from './chain-vault';
 import type { Vault } from './portfolio';
 import { usePortfolio } from './use-portfolio';
 import { PlanParts } from './VaultPanel';
@@ -29,7 +31,8 @@ import { ownVault, sameAddress } from './vault-name';
 // notice where it was never accepted, and one button that names the amount. It makes the order (POST
 // /v1/orders with `vault`) and leads to the order screen, where every step is reviewed before anything
 // is signed. The vault is one of the person's own, as their portfolio lists it, and the order is held
-// to it and to the targets shown here (features/shared/terms.ts, kind `vault`). Nothing is signed here.
+// to it and to its targets as this app reads them from the chain itself (chain-vault.ts; our server's
+// where it cannot, said to be unverified), kept as terms of kind `vault`. Nothing is signed here.
 
 /**
  * What an add buys: the vault's targets in the order the portfolio lists its positions, which is the
@@ -71,6 +74,13 @@ export function AddMoneyScreen({ chain: chainParam, address }: { chain: string; 
       ? parsed
       : null;
   const vaultAddress = vault?.address ?? null;
+  const mock = chain ? onMock(port, chain) : false;
+  // The vault as this app reads it from its own node: what the add's trades are held to.
+  const check = useChainVault(
+    chain,
+    mock,
+    vault && owner ? { owner, basketId: vault.basketId, address: vault.address } : null,
+  );
 
   // What the wallet is missing for this amount, read again a moment after the amount stops changing.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `round` reads the wallet again
@@ -122,30 +132,73 @@ export function AddMoneyScreen({ chain: chainParam, address }: { chain: string; 
     );
   }
 
-  const mock = onMock(port, chain);
   const chainName = port.network(chain)?.name ?? t.chain.names[chain];
   const accepted = trustAccepted(port.userId, TRUST_STATUS.textVersion);
   const funded = funding.kind === 'read' ? funding.funding : null;
+  const shown = targetsOfVault(vault);
+  // What the add is held to: the chain's targets where this app read them, and our server's, said to
+  // be unverified, where it could not. With auto-follow on the add is the deposit alone.
+  const held: Pick<
+    Extract<SharedTerms, { kind: 'vault' }>,
+    'targets' | 'keeper' | 'source'
+  > | null =
+    check.state === 'read'
+      ? check.targets
+        ? {
+            targets: check.vault.autoFollow ? [] : check.targets,
+            keeper: check.vault.autoFollow,
+            source: 'chain',
+          }
+        : null
+      : check.state === 'unverified'
+        ? { targets: vault.autoFollow ? [] : shown, keeper: vault.autoFollow, source: 'api' }
+        : null;
+  // Our server plans the order from its own read: where that is not the chain's, the order it would
+  // make is one this app would refuse at the review, so none is made.
+  const differs =
+    check.state === 'read' &&
+    check.targets !== null &&
+    (!sameTargets(check.targets, shown) || check.vault.autoFollow !== vault.autoFollow);
+  const sourceWords = words.source;
+  const sourceSentence =
+    check.state === 'reading'
+      ? t.shared.check.reading
+      : check.state === 'failed'
+        ? sourceWords.failed(chainName)
+        : check.state === 'missing'
+          ? sourceWords.missing(chainName)
+          : check.state === 'unverified'
+            ? check.why === 'mock'
+              ? sourceWords.mock
+              : sourceWords.notRead(chainName)
+            : !check.targets
+              ? sourceWords.unlisted
+              : differs
+                ? sourceWords.differs(chainName)
+                : sourceWords.read(chainName);
+  const alarm = owner !== null && check.state !== 'reading' && (held === null || differs);
   const blocked = [
     ...(!chainReady(chain, mock) ? [t.plan.chainNotReady(chainName)] : []),
     ...(port.network(chain)?.on === false ? [t.plan.chainOff(chainName)] : []),
     ...(!active ? [t.buy.blocked.wallet] : !owner ? [words.otherWallet(shorten(vault.owner))] : []),
+    // Nothing is offered until the vault is read, and never against a read that failed or differs.
+    ...(owner && (held === null || differs) ? [sourceSentence] : []),
     ...(amount === null ? [t.buy.blocked.amount] : []),
     ...(amount !== null && owner && !funded?.ok ? [t.buy.blocked.funding] : []),
     ...(!accepted && !ticked ? [t.buy.blocked.trust] : []),
   ];
 
   async function review() {
-    if (!chain || !vault || !owner || amount === null || !port.userId) return;
+    if (!chain || !vault || !owner || amount === null || !port.userId || !held || differs) return;
     setPlacing(true);
     setFailure(null);
     setFailureCode(null);
-    // What the add is held to: the vault chosen and the targets shown, never the order the API answers.
+    // What the add is held to: the vault chosen and its targets as read, never the order the API answers.
     const terms: SharedTerms = {
       kind: 'vault',
       vault: vault.address,
       basketId: vault.basketId,
-      targets: targetsOfVault(vault),
+      ...held,
     };
     const outcome = await placeOrder(apiFetch, {
       vault: vault.address,
@@ -220,8 +273,43 @@ export function AddMoneyScreen({ chain: chainParam, address }: { chain: string; 
           </Link>
         </p>
       </header>
-      <div className="max-w-3xl">
+      <div className="flex max-w-3xl flex-col gap-3">
         <PlanParts vault={vault} />
+        {owner && (
+          <p
+            data-ui="source-mark"
+            data-source={check.state === 'read' ? 'chain' : 'api'}
+            data-state={check.state}
+            className={
+              alarm
+                ? 'flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm text-destructive'
+                : 'flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm'
+            }
+          >
+            <StatusMark
+              status={alarm ? 'off-track' : check.state === 'read' ? 'on-track' : 'watch'}
+              className="mt-1.5"
+            />
+            <span>
+              {check.state !== 'reading' && (
+                <span className="font-medium">
+                  {check.state === 'read' ? t.shared.check.verified : t.shared.check.notChecked}.{' '}
+                </span>
+              )}
+              {sourceSentence}
+            </span>
+          </p>
+        )}
+        {held?.keeper && (
+          <p data-ui="add-keeper" className="max-w-(--tf-measure-body) text-body-sm">
+            {words.keeper}
+          </p>
+        )}
+        {vault.pending && (
+          <p data-ui="add-newer-version" className="max-w-(--tf-measure-body) text-body-sm">
+            {words.newerVersion(vault.pending.version)}
+          </p>
+        )}
       </div>
       <BuySteps
         chain={chain}

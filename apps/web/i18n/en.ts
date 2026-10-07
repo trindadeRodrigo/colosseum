@@ -588,6 +588,28 @@ export const en = {
         `This vault belongs to another wallet of yours (${address}). Sign in with that wallet to add money to it.`,
       noVault:
         'Our server doesn’t list this vault as yours any more. Read your portfolio again, then try again.',
+      /** Auto-follow is on: the add is the deposit alone. */
+      keeper:
+        'Auto-follow is on for this vault, so this add only deposits the cash. Our keeper buys the vault’s assets with it at its next rebalance.',
+      /** The portfolio the vault follows has a version the owner has not accepted. */
+      newerVersion: (version: number) =>
+        `The portfolio this vault follows has a newer version, version ${version}. This add buys the vault’s current targets; accepting the new version is a separate step.`,
+      /** Where the targets an add is held to come from. */
+      source: {
+        read: (chain: string) =>
+          `Read from ${chain} by this app, not from our server: the targets this add buys are the chain’s.`,
+        mock: 'Sample chain: there is no chain to read, so the targets are our server’s words, not checked.',
+        notRead: (chain: string) =>
+          `Not checked against ${chain}: this app has no node of its own to read it from. The targets are our server’s words.`,
+        failed: (chain: string) =>
+          `I couldn’t read this vault on ${chain}: the node this app reads from didn’t answer, or what our server named isn’t the vault the chain holds. I won’t offer to add money until I can.`,
+        missing: (chain: string) =>
+          `I read ${chain}, and it holds no such vault for your wallet, so I won’t offer to add money to it.`,
+        differs: (chain: string) =>
+          `Our server’s answer differs from the targets ${chain} holds for this vault, so I won’t offer to add money now. Read your portfolio again in a moment.`,
+        unlisted:
+          'This vault has a target on a token this app doesn’t list, so I can’t hold an add to it and won’t offer one.',
+      },
     },
     /** On the home page, under the goal. */
     summary: {

@@ -519,6 +519,25 @@ export const pt: Dictionary = {
         `Este cofre pertence a outra carteira sua (${address}). Entre com essa carteira para adicionar dinheiro a ele.`,
       noVault:
         'Nosso servidor não lista mais este cofre como seu. Leia seu portfólio de novo e tente outra vez.',
+      keeper:
+        'Seguir automático está ativado neste cofre, então este aporte só deposita o caixa. Nosso operador compra os ativos do cofre com ele no próximo rebalanceamento.',
+      newerVersion: (version: number) =>
+        `O portfólio que este cofre segue tem uma versão mais nova, a versão ${version}. Este aporte compra as metas atuais do cofre; aceitar a nova versão é um passo separado.`,
+      source: {
+        read: (chain: string) =>
+          `Lido da ${chain} por este app, não do nosso servidor: as metas que este aporte compra são as da rede.`,
+        mock: 'Rede de exemplo: não há rede para ler, então as metas são palavras do nosso servidor, sem conferência.',
+        notRead: (chain: string) =>
+          `Sem conferência com a ${chain}: este app não tem um nó próprio para ler. As metas são palavras do nosso servidor.`,
+        failed: (chain: string) =>
+          `Não consegui ler este cofre na ${chain}: o nó que este app lê não respondeu, ou o que nosso servidor indicou não é o cofre que a rede guarda. Não ofereço adicionar dinheiro até conseguir.`,
+        missing: (chain: string) =>
+          `Li a ${chain}, e ela não guarda um cofre assim para a sua carteira, então não ofereço adicionar dinheiro a ele.`,
+        differs: (chain: string) =>
+          `A resposta do nosso servidor difere das metas que a ${chain} guarda para este cofre, então não ofereço adicionar dinheiro agora. Leia seu portfólio de novo em instantes.`,
+        unlisted:
+          'Este cofre tem uma meta em um token que este app não lista, então não consigo conferir um aporte e não ofereço um.',
+      },
     },
     summary: {
       title: 'Seu portfólio',

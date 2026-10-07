@@ -2,6 +2,7 @@
 import type { ChainId, Target } from '@colosseum/schemas';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { DataTable } from '../../components/ui/DataTable';
+import { StatusMark } from '../../components/ui/StatusMark';
 import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { formatBps, tokenName } from '../order/amounts';
@@ -77,9 +78,33 @@ export function SharedReview({ terms, chain }: { terms: SharedTerms; chain: Chai
             <dt className="text-muted-foreground">{s.vault}</dt>
             <dd className="break-all font-mono text-source">{terms.vault}</dd>
           </dl>
+          <p
+            data-ui="source-mark"
+            data-source={terms.source}
+            className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm"
+          >
+            <StatusMark
+              status={terms.source === 'chain' ? 'on-track' : 'watch'}
+              className="mt-1.5"
+            />
+            <span>
+              <span className="font-medium">
+                {terms.source === 'chain' ? t.shared.check.verified : t.shared.check.notChecked}.
+              </span>{' '}
+              {terms.source === 'chain'
+                ? t.portfolio.add.source.read(t.chain.names[chain])
+                : mock
+                  ? t.portfolio.add.source.mock
+                  : t.portfolio.add.source.notRead(t.chain.names[chain])}
+            </span>
+          </p>
           {terms.targets.length > 0 && weights(terms.targets)}
           <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
-            {terms.targets.length > 0 ? s.addNote : s.addCashNote}
+            {terms.keeper
+              ? t.portfolio.add.keeper
+              : terms.targets.length > 0
+                ? s.addNote
+                : s.addCashNote}
           </p>
         </CardBody>
       </Card>
