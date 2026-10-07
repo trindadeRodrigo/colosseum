@@ -224,5 +224,29 @@ describe.skipIf(!FORK_URL)('the guard, on what the EVM adapter builds', () => {
       { kind: 'withdraw', basketId: '1', withdrawals: [{ asset: id('tspy'), amountRaw: null }] },
       cash,
     );
+    // Part of the cash, by amount (gate WITHDRAW): the bytes carry the amount, and the guard holds
+    // them to the one reviewed. More than the vault holds is refused by the builder: nothing is built.
+    const part = (amount: string) =>
+      adapter.buildWithdrawInKind({
+        vault,
+        assets: [id('tusdg')],
+        amounts: { [id('tusdg')]: amount },
+      });
+    const [some] = await part('7');
+    if (!some) throw new Error('no partial withdrawal was built');
+    const of = (amountRaw: string): StepOf => ({
+      kind: 'withdraw',
+      basketId: '1',
+      withdrawals: [{ asset: id('tusdg'), amountRaw }],
+    });
+    passes(of('7'), some);
+    refused(of('6'), some);
+    refused(of('8'), some);
+    const held = (await adapter.getVault(vault))?.cash.raw ?? '0';
+    expect(BigInt(held)).toBeGreaterThan(7n);
+    const [exact] = await part(held);
+    if (!exact) throw new Error('the exact balance was not built');
+    passes(of(held), exact);
+    await expect(part((BigInt(held) + 1n).toString())).rejects.toMatchObject({ code: 'BadInput' });
   });
 });
