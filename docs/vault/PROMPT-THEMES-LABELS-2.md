@@ -2,65 +2,47 @@
 
 > Written 2026-10-06 (evening) by Rodrigo's session when the machine had to be turned off. It continues `docs/vault/PROMPT-THEMES-LABELS.md`. Start a fresh Claude Code session in `~/Documents/Colosseum` (the hooks load there), then say: `Run ~/Documents/Colosseum-try/docs/vault/PROMPT-THEMES-LABELS-2.md`.
 
-**Nothing of this session is pushed.** Every commit below is local, in its worktree. Nothing was merged into `staging` or `main`, no pull request was opened, and `pnpm verify` (the full gate) was not run on any branch: only `pnpm verify:quick` and focused tests.
+**Nothing is pushed.** Every commit is local, in its worktree, and no pull request was opened. The session tried to push the six branches as drafts on Oct 7 and the permission check refused it: Rodrigo pushes, or allows it (section 3, step 7).
 
 ---
 
-## 1. Where things stand
+## 1. Where things stand (Oct 7, after the session resumed)
 
-| Worktree | Branch | Local state | What it holds |
+| Worktree | Branch | Local state when this was written | `pnpm verify` |
 |---|---|---|---|
-| `~/Documents/Colosseum-labels` (new) | `themes/labels`, cut from `origin/engine/themes`, no upstream | 17 commits, clean | The contract `market-filter.ts`, the matched theme sleeve, `content/stocks/` (19 + 42 rows), 30 proposed label files, the content tests, DESIGN-VAULT sections 2, 7, 17. Reviewed once; its 8 blocking findings are fixed, not re-reviewed |
-| `~/Documents/Colosseum-intake` | `engine/intake` (#71) | 15 commits ahead of origin | The same contract file (byte-identical), the narratives in the intake (a narrative reads to a shared portfolio, a confirmed label, a filter, or nothing), the reader's `marketFilter`, and the intake findings of the review of COUNTRY-REMOVED and EXPLICIT-MIX. Not reviewed |
-| `~/Documents/Colosseum-engine` | `engine/plans` (#64) | 11 commits ahead of origin, clean; the last, `747ec8b3`, is a WIP commit whose tests were not re-run | The engine findings of that review (a mix with withdrawals, `riskForMix`, `violations()`), the country leftovers in the web goal screen and the wording. Not reviewed |
-| `~/Documents/Colosseum-try` | `tools/try-plans` (#93) | 18 commits ahead of origin | `themes/labels` merged in (`9dbe82f8`), and this file. The intake and the engine fixes are not merged here yet, and nothing is wired |
-| `~/Documents/Colosseum-themes`, `-rebalance` | `engine/themes` (#72), `engine/rebalance` (#73) | untouched | They wait for the merge-down of `engine/plans` |
+| `~/Documents/Colosseum-engine` | `engine/plans` (#64) | `a4a5765f`, then the engine agent's next task (section 2) | exit 0 at `a4a5765f`: 3,833 tests |
+| `~/Documents/Colosseum-themes` | `engine/themes` (#72) | `3e037893` (merge of `engine/plans`) | exit 0: 3,884 tests |
+| `~/Documents/Colosseum-rebalance` | `engine/rebalance` (#73) | `97da959b` | exit 0: 3,930 tests |
+| `~/Documents/Colosseum-labels` | `themes/labels` (no pull request yet) | `8185409c` (merge of `engine/themes`) | exit 0: 3,981 tests |
+| `~/Documents/Colosseum-intake` | `engine/intake` (#71) | `469d3cbd`, then the intake agent's next task (section 2) | one run at `d4629631`: 4,074 passed, 1 timed out at 5 s under load and passes alone (it has a 60 s timeout since `469d3cbd`). No clean run yet |
+| `~/Documents/Colosseum-try` | `tools/try-plans` (#93) | `6b26f29e` and later: everything merged, the wiring, the `/plan-chat` skill, this file | one run at `29b2c407`: 4,387 passed, 1 boundary self-check timed out under load and passes alone. No clean run yet |
 
-Two agents were stopped when the machine went down, and each left a note, untracked, in its worktree. Read both first:
-- `Colosseum-intake/HANDOFF-INTAKE-WIP.md`: the intake agent finished and committed every item of its task (the last commit is `286b38b0`); the note says what it changed, which tests moved and why, and what it chose differently. Its last runs: `verify:quick` passed, 435 tests in the engine folder, 28 in the API.
-- `Colosseum-engine/HANDOFF-ENGINE-WIP.md`: the engine agent committed every finding (through `969be609`, 316 tests in the engine folder), then one WIP commit, `747ec8b3`: a late change to `compose.ts` (`Run.alone`, typechecked, tests not re-run after it) and a new property test in `mix.test.ts`. Run `pnpm exec vitest run packages/engine/src/personal` there first; if it fails, revert only the `compose.ts` part of `747ec8b3`, as the note says. The note also lists what to watch when merging `engine/plans` into `engine/themes`, `engine/rebalance` and `tools/try-plans`, and the two rules it implemented for Rodrigo to confirm (a mix with withdrawals; the risk a mix takes).
+The verify logs, the research files, the two content generators (`stocks/assemble.mjs`, `stocks/labels.mjs`), the three review reports' scripts and the gate text are in `~/Documents/Colosseum-data/themes-labels-session-20261006/` (outside the repo). `review/REPORT.md` is the first review; `review2-engine/` and `review2-intake/` hold the second round's scripts. Each of the two agents left an untracked note in its worktree: `Colosseum-engine/HANDOFF-ENGINE-WIP.md`, `Colosseum-intake/HANDOFF-INTAKE-WIP.md`.
 
-The session's scratch files were copied to `~/Documents/Colosseum-data/themes-labels-session-20261006/` (outside the repo):
-- `stocks/`: the two research files, Robinhood's registry as read (`rh-assets.json`), and the two generators that write the content (`assemble.mjs` writes `content/stocks/`, `labels.mjs` writes `content/themes/`: edit the tables there and run them again rather than editing 30 files by hand);
-- `review/REPORT.md`: the independent review of COUNTRY-REMOVED and EXPLICIT-MIX (9 blocking findings), with its reproductions;
-- `review-labels/`: the reproductions of the review of `themes/labels`;
-- `docs/gates-rows.md`: the two gate rows, written and not yet in any `docs/GATES.md`.
+**What works end to end** (the playground, model off, extended shelf): "all of it in semiconductors" on Robinhood Chain holds AMD, INTC, MU, NVDA, TSM, said as matched by industry; "defense stocks" on Solana says "There is no stock for “defense stocks” on Solana at the moment. We will be adding more soon." and builds the plan from the rest; "Put $1,000 in AI" of $2,000 on Solana holds the confirmed AI list at 50% and the rest in the safe-yield sleeve; "I am retired so no stocks please" reads back "You left out stocks and stock funds." and no plan holds either.
 
-## 2. What was built, and what was decided on the way
+## 2. In flight when this was written, and what the second review found
 
-**The contract** (`packages/engine/src/personal/market-filter.ts`, the same file on `themes/labels` and `engine/intake`): a filter is `{ by: 'sector' | 'industry' | 'sub_industry' | 'keyword', value }`. It travels in the sheet as a theme sleeve's slug, `matched-<by>-<key>` (`matched-industry-aerospace-defense`), so no shared type changed.
+Two independent reviewers looked at everything new on Oct 6 and 7. What they confirmed: the mix with withdrawals, the country leftovers, the merges, the labels fixes (each with a mutation that fails a test), the wiring's merges, the route's no-file rule, that no test was weakened. What they found is being fixed by rule, not by word list:
 
-**What 1c does, in three lines.** The model, or the intake's fixed word lists, name only a filter over the sourced attributes (never a stock). Pure code (`matchStocks`) selects the stocks that carry the value, and the theme sleeve holds them as it holds a curated list, every line said as "matched, not curated". Example: "semiconductors" on Robinhood Chain, while its label is only proposed, becomes industry: Semiconductors & Semiconductor Equipment and holds NVDA, AMD, INTC, MU and TSM.
+- **The intake agent** (`engine/intake`): (1) with a model, a holding (a mix, a narrative, its share) is taken only when the model read it and the text confirms it; words the model did not read are flagged, not taken; (2) with no model, a holding read from the text is asked once, never taken, and a question never comes back once answered; (3) the last mention wins across messages; (4) bare "funds" is not stock funds, and a refusal beside a holding of the same class is asked; (5) a share is taken only in its plain forms, and "the rest in stocks", "except $1,000" are asked; (6) a filter fills a sleeve only when the shelf lists at least two names for it, with its own sentence when there is exactly one; (7) two new inputs, `riskOfSleeves` and `shelfKnown`. The reviewer's sentences are in `review2-intake/` (`b1` to `b7`, `c2`, `c4`, `c5`, `a3`).
+- **The engine agent** (`engine/plans`, then merges down): the risk a mix takes when a shared portfolio is followed whole (the plan took low and said "50% with one issuer" with Backed at 100%); the plan staying at a risk whose cap keeps stocks out; `violations()` re-deriving both without the plan's own sentences; the plan saying when its risk is above what the read-back could know; the odd cent. Scripts in `review2-engine/` (`p2` to `p11`, `fuzz-risk`).
 
-**Rodrigo's instruction of Oct 6** ("if there is no stock that fits the label and cannot be inferred, tell the client there is no stock at the moment and we'll be implementing soon") is built as: "There is no stock for “X” on <chain> at the moment. We will be adding more soon.", with the nearest portfolio or label offered where the shelf has one. Nothing is held for it: no sleeve, no mix, no share question.
-
-**Rules added by the build and its reviews, for Rodrigo to confirm** (each is in DESIGN-VAULT section 7 on `themes/labels`):
-1. A field a row marks `unverified` is never matched on.
-2. A fund and a preferred stock are matched by keyword only.
-3. A keyword selects nothing unless at least two tracked stocks of the chain carry it (nine keywords in ten were carried by one stock: naming one was picking the stock).
-4. A narrative held as a theme sleeve takes the share the person wrote, and the rest goes to the safe-yield sleeve (gate EXPLICIT-MIX says "the rest in cash" for a portfolio).
-5. A narrative with nothing to hold no longer becomes "that share in generic stocks at high-risk limits", which is what the first build of EXPLICIT-MIX did.
-6. No sector, industry or sub-industry name is sent to the model: only our own keywords (see the licence question below).
+**Queued, not started:**
+1. On `themes/labels`, the engine side of rule (6): one rule, "a matched theme fills a sleeve only when the shelf lists at least two of its names", in `fillingList` (`theme-sleeve.ts`), replacing the rule on a keyword's tracked carriers in `matchStocks`; a true sentence for exactly one name (today `matched-keyword-smartphones` on Solana says "There is no stock" while AAPLx carries it); `attributeVocabularyOf` takes the shelf's tokens and gives only values at least two listed names carry; `violations()` and the tests follow. The intake's rule (6) already keeps the product's own path from making such a sleeve.
+2. On `tools/try-plans`, after the last merges: wire `riskOfSleeves` (the lowest risk at which the theme sleeves hold their whole share in their names: make the plan at each risk) and `shelfKnown: false` where the route could not read the chain's shelf, in `apps/api/src/routes/v1/intake.ts` and `scripts/try/run.ts`; fix three sentences the wiring made false (`docs/vault/DESIGN-VAULT.md` "The route hands none yet", twice, and `try/README.md` "it reads no refusals"); in `.claude/skills/plan-chat/SKILL.md` the example "pharma" has a market id now (use "streaming").
+3. `docs/GATES.md`, the same bytes on every branch (edit it on `engine/plans` and `engine/intake`, let it flow down): `THEME-NONE-YET` (a proposed list counts as none at the intake; a sheet that still names it says "its list is proposed and not confirmed yet"); `MATCH-RULES` (rule 6 replaces the keyword rule; and the sentence about what the model is shown: none of the classification values of our files is sent, the reader's instructions name the classification and three of its industries as examples); `MIX-AS-WRITTEN` and `MIX-RISK` as the two agents finally build them.
+4. One ledger row for this work in `docs/vault/STATE-VAULT.md`, the same line on `engine/plans` and `engine/intake` (the ENG-3 row is one long line: add rows after it, do not edit it on two branches). It still has none of this work.
 
 ## 3. What to do, in this order
 
-1. **Check the state** of section 1 against `git status` and `git log` in each worktree, and read the two notes. In `Colosseum-engine`, run the engine tests on the WIP commit `747ec8b3` before anything is merged from it.
-2. **Confirm the two agents' tasks are whole** (their reports are claims until checked: read the diffs). Their task lists were:
-   - Intake (`engine/intake`): (A) a narrative with nothing to hold is not a stated holding; (B) the narratives table with ordered fallback filters and two new narratives, `health_care` and `social_media`; (C) review findings 1, 4, 6 and 9 of `review/REPORT.md`; (D) "about 5 years" read back in years, and a share said in a later message read by the API's follow-up path; (E) DESIGN-VAULT section 7 for the intake; plus the words "names matched by" and "keyword" / "palavra-chave".
-   - Engine (`engine/plans`): (A) a mix with withdrawals; (B) `riskForMix` takes a risk that admits the mix; (C) `violations()` sees an under-held mix; (D) the small optional findings; (E) the country leftovers (web goal screen, wording, PLAN-VAULT line 91).
-3. **`docs/GATES.md` on every branch.** The Oct 6 rows differ by branch (review finding 7). `origin/tools/try-plans` has the union: copy that file onto `engine/plans` and `engine/intake` (it only adds rows), then append the two rows of `docs/gates-rows.md` (`THEME-MATCHED`, `THEME-NONE-YET`) after `EXPLICIT-MIX`, the same bytes on `themes/labels`, `engine/intake` and `tools/try-plans`. Check the rows against what the agents really built before writing them.
-4. **Merge down the stack**, never rebasing: `engine/plans` into `engine/themes`, that into `engine/rebalance`; `engine/themes` into `themes/labels`; then `themes/labels`, `engine/rebalance` and `engine/intake` into `tools/try-plans`. Expect conflicts in `packages/engine/src/personal/index.ts` (keep both sides' exports; `MARKET_SLUG` is gone on the intake side), `templates.ts`, `intake.ts` (the `riskOfMix` lines that exist only on `tools/try-plans`) and `DESIGN-VAULT.md`.
-5. **Wire it on `tools/try-plans`** (the only place where the intake and the theme sleeve meet):
-   - `scripts/try/data.ts`: load `content/stocks/<chain>.json` (`loadStockAttributes`), hand `stocks` in the context, and give each chain its `labels` (`shelfLabelsOf`).
-   - `scripts/try/run.ts`: pass `labels` and `matchOf: (f) => filterMatchOf(f, stocks, shelf.assets)` to `runIntake`, and the keywords of `attributeVocabularyOf(stocks)` to the reader (no sector or industry names).
-   - `apps/api/src/routes/v1/intake.ts`: the same, through injected inputs (no file reachable from the `/v1` routes may read a file: `orders.test.ts`), and `riskOfMix` too (review finding 5).
-   - `scripts/try/json.ts`: put `narratives` and what the shelf offers (portfolios, usable labels) in the JSON.
-   - `.claude/skills/plan-chat/SKILL.md`: when the person asks "what can I invest in?", list the shared portfolios and the confirmed labels with a name on the shelf from that JSON; say the founder's sentence for the rest; take a `marketFilter` value only from the keywords given; remove "where they live" (line 92).
-   - Tests (1d.3 of the first prompt): an unknown narrative falls back honestly end to end; the same filter gives the same members in any order; `violations()` holds a matched theme as a curated one.
-6. **Verify**, one branch at a time, never two at once: `pnpm db:up`, then `pnpm verify` on `engine/plans`, `engine/themes`, `engine/rebalance` (its earlier run timed out under load in `risk-split.test.ts`), `themes/labels`, `engine/intake`, `tools/try-plans`. Restore `apps/web/next-env.d.ts` after each build.
-7. **Independent review** by an agent that wrote none of it: the fix commits on `themes/labels` (`f7c4f716`, `2ffe6bef`, `4c8866d8`, `e9262362`), the whole of the intake's and the engine's new commits, and the wiring. Fix, and re-review the affected scope.
-8. **Ledger and pull requests.** One new row in `docs/vault/STATE-VAULT.md` for this work (the ENG-3 row is one very long line: do not edit it on two branches), with the commands and results. Push the branches. Open a pull request for `themes/labels` into `engine/themes` (stacked on #72) with `/open-pr`; #64, #71 and #93 already exist as drafts. Do not merge any.
-9. **Update the memory** `eng3-solver-handoff` and this file's state.
+1. **Read the two agents' reports or notes**, and check their diffs: their reports are claims. Run the reviewers' scripts again on the result.
+2. **Merge**: `engine/plans` into `engine/themes`, that into `engine/rebalance` and `themes/labels` (the engine agent was asked to do these three); then `themes/labels`, `engine/rebalance` and `engine/intake` into `tools/try-plans`. Conflicts so far were always import and export lines, the header of `templates.ts`, and `docs/GATES.md` (take the intake's or the engine's, they are the same file).
+3. **The queue of section 2**, items 1 to 4.
+4. **Re-review the affected scope only** with an agent that wrote none of it: the two agents' new commits and items 1 and 2. Do not restart a broad audit: both reviewers said what is sound.
+5. **`pnpm verify`, one branch at a time, with nothing else running on the machine** (a second test process makes 5-second tests time out: that is what failed every non-clean run so far). All six branches at their final tips.
+6. **Ledger evidence**, then the memory `eng3-solver-handoff`.
+7. **Push and pull requests, with Rodrigo's word**: the six branches, then a pull request for `themes/labels` into `engine/themes` (stacked on #72) with `/open-pr`. #64, #71, #72, #73 and #93 exist as drafts. Merge none.
 
 ## 4. For Rodrigo to decide
 
