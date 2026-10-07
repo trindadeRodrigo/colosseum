@@ -145,7 +145,15 @@ describe('plans on the extended shelf on Robinhood Chain', () => {
       }
   });
 
-  it('on the grid, every candidate the launch shelf shows is still shown, and its cash share falls from 45.71% to 21.57% of a plan', () => {
+  // These figures moved on Oct 7, with the cap per issuer by risk counting all a plan holds with one
+  // issuer (docs/vault/DESIGN-VAULT.md, section 7, row Risk). Every stock, SGOV and GLD on this
+  // chain have the same issuer, so on the launch shelf Cover of a goal to grow of $1,000 to $50,000
+  // leaves 50% in cash at low risk and 30% at medium, where it left 40% and 5%. In those six goals
+  // Spread is then no better than Cover and is not shown: 36 candidates where there were 42, and a
+  // mean cash share of 50.42% where it was 45.71%. On the extended shelf the two added tokens have
+  // issuers of their own and take part of that cash: 71 candidates where there were 73, and 26.20%
+  // where it was 21.57%. The other thirty goals are as they were on both shelves.
+  it('on the grid, every candidate the launch shelf shows is still shown, and its cash share falls from 50.42% to 26.20% of a plan', () => {
     let [before, after, n, shownBefore, shownAfter] = [0, 0, 0, 0, 0];
     for (const s of shelfGrid('robinhood')) {
       const [a, b] = [candidates(s, launch, onLaunch), candidates(s, extended, onExtended)];
@@ -163,10 +171,10 @@ describe('plans on the extended shelf on Robinhood Chain', () => {
         n += 1;
       }
     }
-    // The 42 candidates the launch shelf shows over the 36 goals; the extended shelf shows 73.
-    expect([shownBefore, shownAfter, n]).toEqual([42, 73, 42]);
-    // The mean cash share over those 42, in basis points of a plan.
-    expect(Math.round(before / n)).toBe(4571);
-    expect(Math.round(after / n)).toBe(2157);
+    // The 36 candidates the launch shelf shows over the 36 goals; the extended shelf shows 71.
+    expect([shownBefore, shownAfter, n]).toEqual([36, 71, 36]);
+    // The mean cash share over those 36, in basis points of a plan.
+    expect(Math.round(before / n)).toBe(5042);
+    expect(Math.round(after / n)).toBe(2620);
   });
 });
