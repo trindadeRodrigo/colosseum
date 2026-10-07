@@ -357,6 +357,11 @@ export const OrderErrorCode = z.enum([
   'ORDER_CONTINUED',
   /** A transaction built for a step can still land, so the step is not made again yet. Retryable. */
   'STEP_IN_FLIGHT',
+  /**
+   * A step's transaction landed and nobody had reported it: the step has settled on it now, and the
+   * order reads differently. Read the order again; nothing else is to be done.
+   */
+  'STEP_LANDED',
   /** Every step of the order is done: there is nothing to finish. */
   'NOTHING_LEFT',
   /** The vault holds less cash than the steps left would spend. */
