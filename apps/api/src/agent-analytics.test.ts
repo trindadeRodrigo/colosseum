@@ -3,7 +3,7 @@ import { type AssetFactsInput, buildAssetFacts, type DepthCurve } from '@colosse
 import type { AssetFacts, BasketAsset } from '@colosseum/schemas';
 import { describe, expect, it, vi } from 'vitest';
 import { launchShelf } from '../../../packages/engine/src/personal/testing';
-import { createAgentAnalytics, projectSheet } from './agent-analytics';
+import { createAgentAnalytics, projectSheet, roundSize } from './agent-analytics';
 
 // The conversation's analytics without a database: the sheet and the twins are handed in. The sheet is
 // the real builder's, from rows written here.
@@ -31,7 +31,7 @@ const meta = {
   provenance: 'live' as const,
 };
 // Weekdays measured, no weekend yet, no reference prices: the hosted data as it is on Oct 8.
-const measured = (sizeUsd = 10_000): AssetFacts =>
+const measured = (sizeUsd = 10_000, over: Partial<AssetFactsInput> = {}): AssetFacts =>
   buildAssetFacts({
     assetId: 'spyx',
     symbol: 'SPYx',
@@ -66,6 +66,7 @@ const measured = (sizeUsd = 10_000): AssetFacts =>
     tracking: [],
     issuer: null,
     gapGridPct: [5, 20],
+    ...over,
   } satisfies AssetFactsInput);
 
 describe('projectSheet', () => {
@@ -89,6 +90,37 @@ describe('projectSheet', () => {
     expect(of('cap1pct')?.value).toBeGreaterThan(10_000);
     expect(of('lp_top1')).toMatchObject({ value: 0.4, source: 'risk_lp_concentration' });
     expect(of('lp_exit')).toMatchObject({ value: 0.015, unit: 'fraction' });
+  });
+
+  it('names the size a figure was measured at when it is not the sheet size, and a lower bound', () => {
+    const shallow = curve([0.001, 0.002, 0.003, 0.004]);
+    const sheet = measured(10_000, {
+      sell: {
+        assetId: 'spyx',
+        byRegime: { us_market_hours: shallow, us_offhours_weekday: shallow },
+      },
+      lp: {
+        ...meta,
+        fetchedAt: '2026-10-08T11:00:00.000Z',
+        top1: 0.4,
+        top3: 0.63,
+        top10: 0.9,
+        lpExitN: 3,
+        sellWithoutTopN: [{ notionalUsd: 25_000, costPct: 1.5 }],
+      },
+    });
+    const projected = projectSheet(sheet);
+    expect(projected.find((f) => f.metric === 'lp_exit')).toMatchObject({
+      value: 0.015,
+      sizeUsd: 25_000,
+    });
+    // The curve never reaches the tolerance: what sells at 1% is at least the deepest measured point.
+    expect(projected.find((f) => f.metric === 'cap1pct')).toMatchObject({
+      value: 100_000,
+      lowerBound: true,
+    });
+    expect(projected.find((f) => f.metric === 'exit_worst')).not.toHaveProperty('sizeUsd');
+    expect(projected.find((f) => f.metric === 'exit_worst')).not.toHaveProperty('lowerBound');
   });
 
   it('keeps every missing figure as null with its reason, never zero', () => {
@@ -239,6 +271,24 @@ describe('createAgentAnalytics', () => {
       ).toMatchObject({ sizeUsd: 10_000, basis: 'reference' });
   });
 
+  it('rounds a vault value to two significant figures, so a turn after a price move reads the same sheets', () => {
+    expect([1, 99.4, 2_537, 2_500.4, 123_456].map(roundSize)).toEqual([
+      1, 99, 2_500, 2_500, 120_000,
+    ]);
+  });
+
+  it('reads an EVM token under the lower-case address the collectors store', async () => {
+    const sheet = vi.fn(async () => null);
+    const read = createAgentAnalytics({ sheet, twins: noTwins });
+    const evm = {
+      ...stock,
+      chain: 'robinhood' as const,
+      address: '0xAbCdEf0123456789aBcDeF0123456789ABCDEF01',
+    };
+    await read({ db, chain: 'robinhood', assets: [evm], provenance: 'live', sizeUsd: null });
+    expect(sheet).toHaveBeenCalledWith(db, '0xabcdef0123456789abcdef0123456789abcdef01', 10_000);
+  });
+
   it('keeps a read for ten minutes, and reads again after', async () => {
     let clock = 0;
     const sheet = vi.fn(async () => measured());
@@ -300,5 +350,28 @@ describe('createAgentAnalytics', () => {
       timeoutMs: 10,
     });
     expect(await late(query)).toEqual({ unavailable: 'analytics_timeout' });
+  });
+
+  it('does not start the queued sheets of a read every caller has gone on without', async () => {
+    const sheet = vi.fn(
+      (): Promise<AssetFacts | null> =>
+        new Promise((resolve) => setTimeout(() => resolve(null), 30)),
+    );
+    const read = createAgentAnalytics({ sheet, twins: noTwins, concurrency: 1, timeoutMs: 10 });
+    const query = {
+      db,
+      chain: 'solana' as const,
+      assets,
+      provenance: 'live' as const,
+      sizeUsd: null,
+    };
+    expect(await read(query)).toEqual({ unavailable: 'analytics_timeout' });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    // The sheet that held the one slot finished; the rest were never started.
+    expect(sheet).toHaveBeenCalledTimes(1);
+    // And the read is not kept: the next conversation reads again.
+    sheet.mockImplementation(async () => null);
+    expect(await read(query)).toMatchObject({ basis: 'reference' });
+    expect(sheet).toHaveBeenCalledTimes(1 + listed.length);
   });
 });

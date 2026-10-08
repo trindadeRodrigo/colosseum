@@ -900,16 +900,35 @@ describe("Bearing's analytics in the conversation context", () => {
           {
             assetId: stock.id,
             modelledOn: 'SPYx',
-            figures: [{ metric: 'lp_exit', value: 0.015, ...pin, provenance: 'sandbox' }],
+            figures: [
+              { metric: 'lp_exit', value: 0.015, ...pin, provenance: 'sandbox', sizeUsd: 25_000 },
+              { metric: 'exit_worst', value: 0.004, ...pin, provenance: 'sandbox' },
+              {
+                metric: 'cap1pct',
+                value: 100_000,
+                ...pin,
+                unit: 'usd',
+                provenance: 'sandbox',
+                lowerBound: true,
+              },
+            ],
           },
         ],
       }),
     );
+    // An LP-exit cost read at the grid point above the vault's size says that size.
     expect(ctx.evidence.find((row) => row.id === `lpexit:${stock.id}`)).toMatchObject({
       label:
-        'Exit cost at the current vault size if the largest liquidity providers leave; SPYx mainnet figures on a test network',
+        'Exit cost at $25,000, the nearest measured size above about the current vault size if the largest liquidity providers leave; SPYx mainnet figures on a test network',
       provenance: 'sandbox',
     });
+    expect(ctx.evidence.find((row) => row.id === `exit:${stock.id}:worst`)?.label).toBe(
+      'Exit cost at about the current vault size, worst measured regime; SPYx mainnet figures on a test network',
+    );
+    // A capacity the data only bounds from below says so, never that it is the most that sells.
+    expect(ctx.evidence.find((row) => row.id === `cap1pct:${stock.id}`)?.label).toBe(
+      'Largest sale at no more than 1% cost, worst measured regime; a lower bound, the true figure is at least this; SPYx mainnet figures on a test network',
+    );
     expect(ctx.analytics).toMatchObject({ sizeUsd: 2_000, basis: 'vault' });
   });
 
@@ -948,7 +967,7 @@ describe("Bearing's analytics in the conversation context", () => {
     );
   });
 
-  it("makes the vault's measured weekend ratio and LP exit cost citable", () => {
+  it("makes the vault's measured weekend ratio citable", () => {
     const provider = {
       entry: (assetId: string) =>
         assetId === stock.id
@@ -975,10 +994,8 @@ describe("Bearing's analytics in the conversation context", () => {
       source: 'offline measured fixture',
       method: 'offline-exit-fixture',
     });
-    expect(ctx.evidence.find((row) => row.id === `liquidity:${stock.id}:lpexit`)).toMatchObject({
-      value: 0.015,
-      unit: 'fraction',
-    });
+    // Its LP-exit cost comes from an LP row, not these curves: it is cited as the analytics' `lpexit:`.
+    expect(ctx.evidence.some((row) => row.id === `liquidity:${stock.id}:lpexit`)).toBe(false);
     expect(ctx.analytics).toBeUndefined();
   });
 

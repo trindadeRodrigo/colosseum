@@ -50,6 +50,11 @@ export function projectSheet(sheet: AssetFacts): AnalyticsFigure[] {
           method: `${fact.method} (${fact.methodVersion})`,
           fetchedAt: fact.fetchedAt,
           provenance: fact.provenance,
+          // the size it was measured at, when that is not the sheet's (an LP-exit grid point)
+          ...(fact.sizeUsd !== undefined && fact.sizeUsd !== sheet.sizeUsd
+            ? { sizeUsd: fact.sizeUsd }
+            : {}),
+          ...(fact.quality === 'lower_bound' ? { lowerBound: true } : {}),
         };
   };
   const worst = sheet.costs.find((cost) => cost.regime === sheet.worstRegime);
@@ -102,21 +107,32 @@ function relabel(
   );
 }
 
-/** At most `n` reads at once; the rest wait their turn. */
+/** At most `n` reads at once; the rest wait their turn, and a finished read hands its turn on. */
 function limiter(n: number) {
   let running = 0;
   const waiting: Array<() => void> = [];
   return async <T>(work: () => Promise<T>): Promise<T> => {
     if (running >= n) await new Promise<void>((resolve) => waiting.push(resolve));
-    running += 1;
+    else running += 1;
     try {
       return await work();
     } finally {
-      running -= 1;
-      waiting.shift()?.();
+      const next = waiting.shift();
+      if (next) next();
+      else running -= 1;
     }
   };
 }
+
+/** Two significant figures: a vault's value moves with its prices, and its reads are kept by this. */
+export function roundSize(usd: number): number {
+  const step = 10 ** Math.max(0, Math.floor(Math.log10(usd)) - 1);
+  return Math.round(usd / step) * step;
+}
+
+const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+/** The collectors store an EVM address in lower case; a shelf may spell it checksummed. */
+const stored = (address: string) => (EVM_ADDRESS.test(address) ? address.toLowerCase() : address);
 
 export function createAgentAnalytics(
   deps: {
@@ -135,11 +151,12 @@ export function createAgentAnalytics(
   const now = deps.now ?? Date.now;
   const limit = limiter(deps.concurrency ?? CONCURRENCY);
   const { refSizeUsd, tau } = defaultFactsParams();
-  const cache = new Map<string, { at: number; read: Promise<Read['assets']> }>();
+  type Entry = { at: number; read: Promise<Read['assets']>; waiting: number; dropped: boolean };
+  const cache = new Map<string, Entry>();
 
   return async ({ db, chain, assets, provenance, sizeUsd }) => {
-    const vault = sizeUsd !== null && Number.isFinite(sizeUsd) && Math.round(sizeUsd) > 0;
-    const size = vault ? Math.round(sizeUsd) : refSizeUsd;
+    const vault = sizeUsd !== null && Number.isFinite(sizeUsd) && sizeUsd >= 1;
+    const size = vault ? roundSize(sizeUsd) : refSizeUsd;
     const base = { sizeUsd: size, basis: vault ? ('vault' as const) : ('reference' as const), tau };
     const listed = assets.filter((asset) => asset.chain === chain && asset.cls !== 'cash');
     const key = [chain, provenance ?? '', size, ...listed.map((asset) => asset.id).sort()].join(
@@ -148,14 +165,20 @@ export function createAgentAnalytics(
     for (const [k, entry] of cache) if (now() - entry.at > ttl) cache.delete(k);
     let entry = cache.get(key);
     if (!entry) {
-      const read = (async () => {
+      const fresh: Entry = { at: now(), read: Promise.resolve([]), waiting: 0, dropped: false };
+      // A sheet whose every caller has gone on without it is not started.
+      const sheetOf = (id: string) =>
+        limit(() =>
+          fresh.dropped ? Promise.reject(new Error('dropped')) : sheet(db, stored(id), size),
+        );
+      fresh.read = (async () => {
         const twinOf = new Map(
           (await twins(db, listed, provenance)).map((twin) => [twin.id, twin]),
         );
         return Promise.all(
           listed.map(async (asset) => {
             const twin = twinOf.get(asset.id);
-            const found = await limit(() => sheet(db, twin?.twinMint ?? asset.address, size));
+            const found = await sheetOf(twin?.twinMint ?? asset.address);
             return {
               assetId: asset.id,
               modelledOn: twin?.twinSymbol ?? null,
@@ -164,26 +187,36 @@ export function createAgentAnalytics(
           }),
         );
       })();
-      entry = { at: now(), read };
-      cache.set(key, entry);
+      entry = fresh;
+      cache.set(key, fresh);
       if (cache.size > MAX_ENTRIES) cache.delete(cache.keys().next().value as string);
-      // A failed read is not kept: the next conversation tries again.
-      read.catch(() => {
-        if (cache.get(key) === entry) cache.delete(key);
+      // A failed or dropped read is not kept: the next conversation tries again.
+      fresh.read.catch(() => {
+        if (cache.get(key) === fresh) cache.delete(key);
       });
     }
+    const current = entry;
+    current.waiting += 1;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const result = await Promise.race([
-        entry.read,
+        current.read,
         new Promise<'timeout'>((resolve) => {
           timer = setTimeout(() => resolve('timeout'), timeout);
         }),
       ]);
-      return result === 'timeout'
-        ? { unavailable: 'analytics_timeout' }
-        : { ...base, assets: result };
+      if (result === 'timeout') {
+        current.waiting -= 1;
+        if (current.waiting === 0) {
+          current.dropped = true;
+          if (cache.get(key) === current) cache.delete(key);
+        }
+        return { unavailable: 'analytics_timeout' };
+      }
+      current.waiting -= 1;
+      return { ...base, assets: result };
     } catch {
+      current.waiting -= 1;
       return { unavailable: 'analytics_failed' };
     } finally {
       clearTimeout(timer);

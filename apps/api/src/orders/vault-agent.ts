@@ -48,6 +48,10 @@ export type AnalyticsFigure =
       method: string;
       fetchedAt: string;
       provenance: Provenance;
+      /** Measured at this size, not the analytics' size: the nearest grid point above it. */
+      sizeUsd?: number;
+      /** The true value is at least this: the deepest point the data measures. */
+      lowerBound?: boolean;
     })
   | (AnalyticsMetric & { value: null; reason: FactNullReason });
 /**
@@ -256,7 +260,7 @@ function analyticsEvidence(
     };
   const size =
     analytics.basis === 'vault'
-      ? 'the current vault size'
+      ? 'about the current vault size'
       : `the $${analytics.sizeUsd.toLocaleString('en-US')} reference size`;
   const tolerance = `no more than ${percent(analytics.tau)}% cost`;
   const unsheeted: string[] = [];
@@ -272,14 +276,18 @@ function analyticsEvidence(
     read.push(asset.symbol);
     for (const figure of row.figures) {
       const regime = figure.regime ? REGIME_NAMES[figure.regime] : null;
+      const measuredAt =
+        figure.value !== null && figure.sizeUsd !== undefined
+          ? `$${figure.sizeUsd.toLocaleString('en-US')}, the nearest measured size above ${size}`
+          : size;
       const named = {
         exit_worst: {
           id: `exit:${asset.id}:worst`,
-          label: `Exit cost at ${size}, worst measured regime${regime ? ` (${regime})` : ''}`,
+          label: `Exit cost at ${measuredAt}, worst measured regime${regime ? ` (${regime})` : ''}`,
         },
         exit: {
           id: `exit:${asset.id}:${figure.regime ?? 'unknown'}`,
-          label: `Exit cost at ${size}, ${regime ?? 'unknown regime'}`,
+          label: `Exit cost at ${measuredAt}, ${regime ?? 'unknown regime'}`,
         },
         cap1pct: {
           id: `cap1pct:${asset.id}`,
@@ -292,7 +300,7 @@ function analyticsEvidence(
         },
         lp_exit: {
           id: `lpexit:${asset.id}`,
-          label: `Exit cost at ${size} if the largest liquidity providers leave`,
+          label: `Exit cost at ${measuredAt} if the largest liquidity providers leave`,
         },
         cap_variation: {
           id: `capvar:${asset.id}`,
@@ -310,7 +318,7 @@ function analyticsEvidence(
           : VaultAgentSource.safeParse({
               id: named.id,
               assetId: asset.id,
-              label: `${named.label}${twin}`,
+              label: `${named.label}${figure.value !== null && figure.lowerBound ? '; a lower bound, the true figure is at least this' : ''}${twin}`,
               value: figure.value,
               unit: UNITS[figure.unit],
               source: figure.source,
@@ -486,14 +494,7 @@ function buildAgentContext(
           value: observation.weekendRatio,
           unit: 'ratio',
         });
-      if (observation.lpExitCostPct !== null && Number.isFinite(observation.lpExitCostPct))
-        add({
-          ...pin,
-          id: `liquidity:${asset.id}:lpexit`,
-          label: 'Exit cost at the current vault size if the largest liquidity providers leave',
-          value: observation.lpExitCostPct / 100,
-          unit: 'fraction',
-        });
+      // The LP-exit cost is the analytics' `lpexit:`, pinned to its own LP row, not to these curves.
     }
     return { assetId: asset.id, observation };
   });
@@ -510,7 +511,7 @@ function buildAgentContext(
       add({
         id: `capacity:${asset.id}`,
         assetId: asset.id,
-        label: `Largest sale at no more than ${percent(PERSONAL_PARAMS.tau)}% cost, worst regime of the exit window; does not depend on an amount`,
+        label: `Largest sale at no more than ${percent(PERSONAL_PARAMS.tau)}% cost, worst regime of the exit window; does not depend on an amount${capacity.lowerBound ? '; a lower bound, the true figure is at least this' : ''}`,
         value: capacity.capacityUsd,
         unit: 'USD',
         source: prepared.figures.liquidity.source,
