@@ -39,7 +39,7 @@ test('the embed’s page has a bare root: no bar, no wallet, no face or wood of 
   const answer = await page.goto(`/embed?${SAMPLE}`);
   expect(answer?.headers()['content-security-policy']).toMatch(/^frame-ancestors 'self'/);
   const html = await page.content();
-  for (const banned of ['wallet-adapter', 'Newsreader', '#7A5A3A', '#E6D3B7'])
+  for (const banned of ['wallet-adapter', 'Inter Tight', 'interTight', '#F5A83A'])
     expect(html, banned).not.toContain(banned);
   // the product's base class, with its faces and ground, is not on the embed's body
   expect(await page.locator('body').getAttribute('class')).toBeNull();

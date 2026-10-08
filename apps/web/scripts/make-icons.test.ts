@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { deflateSync } from 'node:zlib';
+import { deflateSync, inflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { BLACK, HINOKI, INK, ico, rgba, SMALL, tabSvg } from './make-icons.mjs';
+import { HONEY, INK, ico, rgba, SMALL, shapes, tabSvg } from './make-icons.mjs';
 
 // The icons are made by scripts/make-icons.mjs and committed; this holds the committed files to what
 // the script says it makes, and the two encoders it writes them with.
@@ -29,15 +29,22 @@ function rgbPng() {
 }
 
 describe('the icons', () => {
-  it('draws the tab icon as the small cut, in ink on a light tab and hinoki on a dark one', () => {
+  it('draws the tab icon as the small cut of the face: honey tile, ink cut, honey pin, in any tab', () => {
     const svg = readFileSync(join(WEB, 'app/icon.svg'), 'utf8');
     expect(svg).toBe(tabSvg());
     expect(svg).toContain('viewBox="0 0 16 16"');
-    expect(svg).toContain(SMALL.shapes);
-    expect(svg).toMatch(new RegExp(`fill: ${INK};.*prefers-color-scheme: dark.*fill: ${HINOKI};`));
-    // no blue, no violet: the brand's colours and nothing else
-    expect(svg.match(/#[0-9A-F]{6}/gi)?.sort()).toEqual([HINOKI, INK].sort());
-    expect(BLACK).toBe('#0D0B09');
+    expect(svg).toContain(shapes(SMALL));
+    // logo-directions.md, "Cuts by size": the 16 cut
+    expect(SMALL).toMatchObject({
+      tile: [0, 0, 16, 16, 4],
+      cut: [3, 5, 10, 6, 1],
+      pin: [9, 6.5, 3, 3, 0.6],
+    });
+    // the same in a light tab and a dark one: the cut is ink on honey either way
+    expect(svg).not.toContain('prefers-color-scheme');
+    // honey and ink and nothing else: no white, no blue (the mark has no white)
+    expect([...new Set(svg.match(/#[0-9A-F]{6}/gi))].sort()).toEqual([HONEY, INK].sort());
+    expect([HONEY, INK]).toEqual(['#F5A83A', '#15161C']);
   });
 
   it('holds 16, 32 and 48 px in the .ico, each an RGBA PNG', () => {
@@ -81,12 +88,18 @@ describe('the icons', () => {
     expect(rgba(out)).toBe(out);
   });
 
-  it('makes the Apple tile 180 px and the manifest’s 192 and 512', () => {
+  it('makes the Apple tile 180 px and the manifest’s 192 and 512, honey to the edge', () => {
     for (const [file, size] of [
       ['app/apple-icon.png', 180],
       ['public/icon-192.png', 192],
       ['public/icon-512.png', 512],
     ] as const)
       expect(readFileSync(join(WEB, file)).readUInt32BE(16), file).toBe(size);
+    // its corner pixel is honey: the tile is square, and the platform's mask rounds it
+    const tile = readFileSync(join(WEB, 'public/icon-192.png'));
+    const length = tile.readUInt32BE(33);
+    const rows = inflateSync(tile.subarray(41, 41 + length));
+    expect(rows[0]).toBe(0); // no filter on the first row
+    expect([...rows.subarray(1, 5)]).toEqual([0xf5, 0xa8, 0x3a, 255]);
   });
 });

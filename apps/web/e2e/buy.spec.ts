@@ -76,22 +76,20 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
     return {
       heading: family(document.querySelector('h1')),
       body: family(document.body),
-      loaded: ['400 16px Newsreader', '500 16px "IBM Plex Sans"'].map((f) =>
-        document.fonts.check(f),
-      ),
+      loaded: ['600 16px "Inter Tight"', '400 16px Inter'].map((f) => document.fonts.check(f)),
       fromGoogle: performance
         .getEntriesByType('resource')
         .filter((r) => /fonts\.(googleapis|gstatic)\.com/.test(r.name)).length,
-      serif: width('400 100px Newsreader'),
-      fallback: width('400 100px "Times New Roman"'),
+      display: width('600 100px "Inter Tight"'),
+      fallback: width('600 100px Arial'),
     };
   });
-  expect(faces.heading).toMatch(/^"?newsreader"?, "?Newsreader"?, "?Newsreader Fallback"?/);
-  expect(faces.body).toMatch(/^"?plexSans"?, "?IBM Plex Sans"?, "?IBM Plex Sans Fallback"?/);
+  expect(faces.heading).toMatch(/^"?interTight"?, "?Inter Tight"?, "?Inter Tight Fallback"?/);
+  expect(faces.body).toMatch(/^"?inter"?, "?Inter"?, "?Inter Fallback"?/);
   expect(faces.loaded).toEqual([true, true]);
   expect(faces.fromGoogle).toBe(0);
-  // set in Newsreader itself, not its fallback: the two measure differently
-  expect(Math.abs(faces.serif - faces.fallback)).toBeGreaterThan(1);
+  // set in Inter Tight itself, not its fallback: the two measure differently
+  expect(Math.abs(faces.display - faces.fallback)).toBeGreaterThan(1);
   await expect(page.locator('article[data-ui="showcase-case"]')).toHaveCount(2);
   // a jump to the end of the page, over the stage, finds his bar compact, with its action
   await page.keyboard.press('End');

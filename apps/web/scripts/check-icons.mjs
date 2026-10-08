@@ -18,8 +18,9 @@ export async function iconProblems(base) {
     return bytes;
   };
   const svg = await get('/icon.svg', 'image/svg+xml');
-  if (svg && !svg.toString().includes('prefers-color-scheme: dark'))
-    problems.push('/icon.svg has no dark-tab colour');
+  // the face reads in a light tab and a dark one alike (ink on honey, LOGO-2): it is the honey tile
+  if (svg && !/fill="#F5A83A"/i.test(svg.toString()))
+    problems.push('/icon.svg is not the honey tile');
   const ico = await get('/favicon.ico', 'image/x-icon');
   if (ico) {
     const sizes = Array.from({ length: ico.readUInt16LE(4) }, (_, i) => ico[6 + 16 * i]);
@@ -59,7 +60,7 @@ export async function iconProblems(base) {
       ],
       ['the manifest', /<link rel="manifest" href="\/manifest\.webmanifest"/],
       ['the preview image', /<meta property="og:image" content="[^"]*\/opengraph-image[^"]*"/],
-      ['the bar colour', /<meta name="theme-color" content="#0D0B09"/],
+      ['the bar colour', /<meta name="theme-color" content="#0C0D12"/],
     ])
       if (!link.test(head)) problems.push(`${page}'s head has no link to ${what}`);
   }

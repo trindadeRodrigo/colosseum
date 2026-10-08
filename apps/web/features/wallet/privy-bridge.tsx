@@ -74,8 +74,10 @@ function privyConfig(chains: WalletChains): PrivyClientConfig {
     // What is left of its appearance is the one window it still owns: the export of a key.
     appearance: {
       theme: 'light',
-      // STYLE.md: the primary is hardwood, and no blue or violet anywhere. Privy's default accent is violet.
-      accentColor: '#7A5A3A',
+      // STYLE.md: the primary is honey, with ink on it (IDENTITY-2); no blue or violet anywhere. Privy's
+      // default accent is violet. Privy picks the text on its accent by the accent's lightness: on honey
+      // that is its dark foreground, not white.
+      accentColor: '#F5A83A',
       walletChainType: 'ethereum-and-solana',
       // The only other login method is the passkey, and Privy insists on this when there is no email
       // or social login.
