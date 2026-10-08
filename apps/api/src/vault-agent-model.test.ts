@@ -206,6 +206,17 @@ describe('vault proposal provider uses the existing model settings and a shared 
     expect(sdk.create).toHaveBeenLastCalledWith(expect.anything(), { timeout: 1000 });
   });
 
+  it('asks for the goal and risk as the person said them, with their words, and to ask when unsaid', () => {
+    const { purpose } = VAULT_AGENT_REPLY_SCHEMA.properties as unknown as {
+      purpose: { required: string[] };
+    };
+    expect(purpose.required).toEqual(['goal', 'goalQuote', 'risk', 'riskQuote']);
+    expect(VAULT_AGENT_REPLY_SCHEMA.required).toContain('purpose');
+    expect(VAULT_AGENT_SYSTEM).toContain('copied exactly from one person message');
+    expect(VAULT_AGENT_SYSTEM).toContain('Never infer either');
+    expect(VAULT_AGENT_SYSTEM).toContain('use question to ask for what is missing');
+  });
+
   it('asks the model for picks only: no weight in its schema, and the prompt says the server sets them', () => {
     expect(JSON.stringify(VAULT_AGENT_REPLY_SCHEMA)).not.toContain('weightBps');
     expect(VAULT_AGENT_SYSTEM).toContain('the server sets the weights');

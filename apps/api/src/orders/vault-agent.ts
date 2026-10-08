@@ -14,10 +14,12 @@ import type {
 import {
   type VaultAgentSource as AgentSource,
   VaultAgentModelReply,
+  type VaultAgentPurpose,
   VaultAgentReply,
   VaultAgentRequest,
   type VaultAgentResult,
   VaultAgentSource,
+  type VaultAgentStatedPurpose,
   type VaultAgentWarning,
   type VaultAgentWeightNote,
 } from '@colosseum/schemas';
@@ -623,6 +625,23 @@ function eligibilityGoal(context: ConversationAgentContext): 'grow' | 'income' |
     if (goal === 'grow' || goal === 'income' || goal === 'protect') return goal;
   }
   return null;
+}
+
+/**
+ * The goal and risk of a new goal as the person said them: the model's reading, each kept only where
+ * the quote it gave is in one of the person's messages. Anything else is null, never a default.
+ */
+function statedPurpose(
+  read: VaultAgentPurpose | null | undefined,
+  personWords: readonly string[],
+): VaultAgentStatedPurpose {
+  const plain = (text: string) => text.toLowerCase().replace(/\s+/g, ' ').trim();
+  const said = (quote: string | null | undefined) =>
+    !!quote && personWords.some((words) => plain(words).includes(plain(quote)));
+  return {
+    goal: read?.goal && said(read.goalQuote) ? read.goal : null,
+    risk: read?.risk && said(read.riskQuote) ? read.risk : null,
+  };
 }
 
 function hasNonFiniteNumber(value: unknown): boolean {
@@ -1568,7 +1587,9 @@ export async function replyToVaultConversation(
       model = kept.reply;
       sentencesCut = kept.cut;
     }
-    const { proposal, ...conversation } = model;
+    const { proposal, purpose: read, ...conversation } = model;
+    // A new goal's goal and risk are the person's or nothing: kept only with their own words for it.
+    if (context.kind === 'new_goal') purpose = statedPurpose(read, personWords);
     const prose = proseOf(model);
     if (prose.some(claimsApplied)) return rejected('prose_claims_applied');
     if (!proposal)
@@ -1747,10 +1768,14 @@ export async function replyToVaultConversation(
       ? { result: { kind: 'reply', reply: reply.data } }
       : rejected('reply_shape', where(reply.error.issues));
   };
+  // The goal and risk the person said, read with the reply that was checked last: served with any reply.
+  let purpose: VaultAgentStatedPurpose | undefined;
+  const served = (result: VaultAgentResult): VaultAgentResult =>
+    result.kind === 'reply' && purpose ? { ...result, purpose } : result;
   const started = Date.now();
   const first = await ask();
   const checked = check(first);
-  if (!checked.problems || !checked.failed) return checked.result;
+  if (!checked.problems || !checked.failed) return served(checked.result);
   const second = check(
     await ask({
       previous: first.reply,
@@ -1776,5 +1801,5 @@ export async function replyToVaultConversation(
     second.result.kind === 'failure' && checked.result.kind === 'reply'
       ? checked.result
       : second.result;
-  return { ...final, repair };
+  return served({ ...final, repair });
 }

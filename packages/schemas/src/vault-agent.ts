@@ -65,10 +65,27 @@ export const VaultAgentModelProposal = z.strictObject({
   tradeoffs: z.array(prose(600)).max(12),
   unknowns: z.array(prose(600)).max(12),
 });
+/**
+ * What the money is for and the risk the person accepts, as the model read them in a new-goal
+ * conversation: each a value the person stated or confirmed, with their own words for it, or null when
+ * unsaid. The server keeps a value only where its quote is in one of the person's messages
+ * (`VaultAgentStatedPurpose`); it never fills one in.
+ */
+export const VaultAgentPurpose = z.strictObject({
+  goal: z.enum(['grow', 'income', 'protect']).nullable(),
+  goalQuote: prose(400).nullable(),
+  risk: z.enum(['low', 'medium', 'high']).nullable(),
+  riskQuote: prose(400).nullable(),
+});
+export type VaultAgentPurpose = z.infer<typeof VaultAgentPurpose>;
+/** The goal and risk the person said, as served with a new-goal reply. Null: the person has not said. */
+export const VaultAgentStatedPurpose = VaultAgentPurpose.pick({ goal: true, risk: true });
+export type VaultAgentStatedPurpose = z.infer<typeof VaultAgentStatedPurpose>;
 export const VaultAgentModelReply = z.strictObject({
   message: prose(2400),
   question: prose(500).nullable(),
   proposal: VaultAgentModelProposal.nullable(),
+  purpose: VaultAgentPurpose.nullable().optional(),
 });
 export type VaultAgentModelReply = z.infer<typeof VaultAgentModelReply>;
 
@@ -183,6 +200,12 @@ export type VaultAgentFailure = 'unavailable' | 'timeout' | 'budget' | 'invalid'
  */
 export type VaultAgentRepairNote = { failed: string; outcome: string; sentencesCut?: number };
 export type VaultAgentResult =
-  | { kind: 'reply'; reply: VaultAgentReply; repair?: VaultAgentRepairNote }
+  /** `purpose`: a new-goal reply's goal and risk as the person said them; absent for a vault. */
+  | {
+      kind: 'reply';
+      reply: VaultAgentReply;
+      purpose?: VaultAgentStatedPurpose;
+      repair?: VaultAgentRepairNote;
+    }
   /** `detail` is a fixed code for the server log (which check failed); never the person's text. */
   | { kind: 'failure'; reason: VaultAgentFailure; detail?: string; repair?: VaultAgentRepairNote };
