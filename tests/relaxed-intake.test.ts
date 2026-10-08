@@ -119,7 +119,8 @@ const recorded = JSON.parse(
 describe('PR182 six committed mock audit cases', () => {
   for (const [key, raw] of Object.entries(recorded).filter(([k]) => k.startsWith('robinhood|'))) {
     it(key, () => {
-      const plan = run(raw, [key.split('|')[1] ?? '']);
+      const entry = recordedReply(raw, recorded.provenance);
+      const plan = run(entry.raw, [key.split('|')[1] ?? '']);
       expect(plan.ready).toBe(false);
       expect(plan.shelfProvenance).toBe('fixture');
       expect(plan.modelProvenance).toBe('mock');
@@ -433,6 +434,15 @@ describe('bounded standalone proposal contract', () => {
       raw: fixture,
       provenance: 'recorded',
     });
+    expect(recordedReply({ reply: fixture, provenance: 'live' }, undefined)).toEqual({
+      raw: fixture,
+      provenance: 'recorded',
+    });
+    expect(recordedReply({ reply: fixture, provenance: 'mock' }, undefined)).toEqual({
+      raw: fixture,
+      provenance: 'mock',
+    });
+    expect(() => recordedReply({ reply: fixture, provenance: 'unknown' }, 'mock')).toThrow();
     for (const [key, raw] of Object.entries(recorded).filter(([key]) =>
       key.startsWith('robinhood|'),
     )) {

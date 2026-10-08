@@ -79,14 +79,12 @@ export function recordedReply(
   entry: unknown,
   fileProvenance: unknown,
 ): { raw: unknown; provenance: Plan['modelProvenance'] } {
-  if (
-    entry &&
-    typeof entry === 'object' &&
-    'reply' in entry &&
-    'provenance' in entry &&
-    entry.provenance === 'live-recorded'
-  )
-    return { raw: entry.reply, provenance: 'recorded' };
+  if (entry && typeof entry === 'object' && 'reply' in entry && 'provenance' in entry) {
+    if (entry.provenance === 'mock') return { raw: entry.reply, provenance: 'mock' };
+    if (entry.provenance === 'live-recorded' || entry.provenance === 'live')
+      return { raw: entry.reply, provenance: 'recorded' };
+    throw new Error('unknown recorded reply provenance');
+  }
   return { raw: entry, provenance: fileProvenance === 'mock' ? 'mock' : 'recorded' };
 }
 // Keep provider output simple and closed: numeric maps are accepted by pure offline helpers only.

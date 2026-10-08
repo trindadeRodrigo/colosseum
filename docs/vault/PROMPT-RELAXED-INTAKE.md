@@ -1,6 +1,6 @@
 # Relaxed terminal intake experiment
 
-Updated Oct 8 after the PR #182 audit. This document describes the bounded terminal experiment in `scripts/relaxed/`, not a new product intake direction. The current production model-led vault conversation continues under `MODEL-LED-VAULT-CONVERSATION` in `docs/GATES.md`; the terminal experiment does not replace its preview, confirmation, sourced evidence or shared API quota.
+Updated Oct 8 after the PR #182 audit and its merge into staging (`fcba147f`). This repair preserves Rodrigo’s per-entry recording provenance, explicit split-pot intent, chain allowlist, readiness display and chip-maker fixture correction. It validates stated shares rather than scaling them silently. This document describes the bounded terminal experiment in `scripts/relaxed/`, not a new product intake direction. The current production model-led vault conversation continues under `MODEL-LED-VAULT-CONVERSATION` in `docs/GATES.md`; the terminal experiment does not replace its preview, confirmation, sourced evidence or shared API quota.
 
 The earlier build brief proposed an engine module, a flagged API route, a web switch and deterministic compose after confirmation. Those are not implemented here and are not acceptance criteria for this repair. No new API, shared schema, migration, order, funding, publishing or execution integration is added. Adopting another intake path remains a founders' decision.
 
