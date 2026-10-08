@@ -362,7 +362,7 @@ constraints:
     - "a mock shown as live — no MOCK figure without hatch + the word MOCK; no text set on hatch strokes"
     - "the hatch for anything but MOCK or stale; any diagonal other than the hatch"
     - "omit, shrink below body size, or paraphrase the disclaimer; present the brand as licensed advice; promise returns ('earn up to', 'guaranteed', 'risk-free')"
-    - "blue, indigo or violet anywhere in UI — including info states, links, charts and focus rings"
+    - "blue, indigo or violet anywhere in UI — including info states, links, charts and focus rings; exception: verified token identification artwork retains original colours (Thom, Oct 7, INVEST-TWO-PANE), without extending the interface palette"
     - "mint, lime, neon, gradients, glass, blur, glow, ambient orbs, gold foil, amber #F59E0B"
     - "cinnabar, vermilion or seal-red; a red pin; pure #FFFFFF or #000000 UI grounds"
     - "Japanese clichés: kanji/kana as decoration, torii, ensō, hanko seals, sakura, waves, brush type, washi-paper texture, asanoha, kikkō, seigaiha, Japanese terms in product UI"

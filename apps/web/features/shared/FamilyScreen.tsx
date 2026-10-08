@@ -32,7 +32,7 @@ import { Invest } from '../order/Invest';
 import { AmountField, MAX_USD, MIN_USD } from '../order/InvestCard';
 import type { CallFailure } from '../order/order-api';
 import { keepOrder, type OrderRecord, recallOrders } from '../order/order-record';
-import { PlanView } from '../order/PlanView';
+import { AssetMark, PlanView } from '../order/PlanView';
 import { goalLine } from '../order/plain';
 import { networkFor } from '../order/readiness';
 import { unpriced, holdingsOf as vaultHoldingsOf } from '../portfolio/portfolio';
@@ -830,14 +830,19 @@ function VaultsPanel({
                       }))}
                     />
                   )}
-                  <p className="font-mono text-source [overflow-wrap:anywhere]">
+                  <p className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-source [overflow-wrap:anywhere]">
                     {holdings.length > 0
-                      ? holdings
-                          .map(
-                            (holding) =>
-                              `${tokenName(holding.asset)} ${holding.valueUsd === null ? '—' : formatBps(holding.weightBps, LOCALE[lang])}`,
-                          )
-                          .join(' · ')
+                      ? holdings.map((holding) => (
+                          <span
+                            key={holding.asset}
+                            className="inline-flex min-w-0 items-center gap-1.5"
+                          >
+                            <AssetMark asset={holding.asset} className="size-5" />
+                            <span>
+                              {`${tokenName(holding.asset)} ${holding.valueUsd === null ? '—' : formatBps(holding.weightBps, LOCALE[lang])}`}
+                            </span>
+                          </span>
+                        ))
                       : v.noHoldings}
                   </p>
                   {unpricedCount > 0 && (

@@ -5,6 +5,7 @@ import { click, find, fire, mount, settle, unmountAll } from '../../components/u
 import { dictionary } from '../../i18n';
 import { inLanguage } from '../account/test/screen';
 import { PlanPane } from './PlanPane';
+import { AssetMark } from './PlanView';
 import type { StoredPlan } from './plan-store';
 import { planOn } from './test/fixtures';
 
@@ -212,6 +213,18 @@ describe('a plan for income', () => {
 });
 
 describe('the allocation, as the picture', () => {
+  it('keeps asset names available when a local logo fails, without changing allocation controls', async () => {
+    const host = await mount(createElement(AssetMark, { asset: 'solana:tjlusdc' }));
+    const mark = find(host, '[data-ui="asset-mark"]');
+    const image = find(mark, 'img');
+    expect(image.getAttribute('src')).toBe('/assets/tokens/jlusdc.png');
+    expect(image.getAttribute('alt')).toBe('');
+    expect(mark.getAttribute('aria-hidden')).toBe('true');
+    await fire(image, new Event('error'));
+    expect(mark.querySelector('img')).toBeNull();
+    expect(mark.textContent).toBe('jlU');
+  });
+
   it('draws one bar as a picture, a part per holding by its share, with a label to press under each', async () => {
     const host = await pane(of('grow'));
     const bar = find(host, '[data-ui="plan-bar"]');

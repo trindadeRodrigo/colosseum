@@ -16,7 +16,7 @@ These are product rules expressed as design. A screen that breaks one of them is
 3. **The disclaimer is never omitted, and the brand is never presented as advice.** The disclaimer renders from the single `DISCLAIMER` constant, unedited, on the plan view and in the API docs, at body size, in a hairline box. No return promises: no "earn up to", "guaranteed" or "risk-free".
 4. **No Japanese clichés.** The reference is joinery as craft and structure, not culture as costume. No kanji or kana, torii, ensō, hanko or seal-red, sakura, waves, brush type, washi texture, asanoha, kikkō or seigaiha, and no Japanese words in product UI.
 5. **Nothing like Teiten.** No bevelled chassis, instrument nameplates, LEDs, screws, retro-OS panels, mono-led headlines or cinnabar signal. Bearing is an instrument *drawn as a drawing*, not hardware.
-6. **No blue or violet.** Not for links, info states, charts or focus rings. Wood is the only colour. Status pigments (forest, ochre, madder) are earth colours and always come with a word and a shape.
+6. **No blue or violet.** Not for links, info states, charts or focus rings. Wood is the only colour. Status pigments (forest, ochre, madder) are earth colours and always come with a word and a shape. Exception for token identification (Thom, Oct 7): verified token logos retain their original artwork colours; this does not extend to interface controls, status or allocation colours (gate INVEST-TWO-PANE).
 7. **The brand recedes in the embed.** Inside a partner app, the partner's colours, font, radius and buttons take over. What survives: the pin and its popover, hatch + MOCK, hairline structure, the disclaimer block, explorer links, and a "Powered by tenonfi" credit in the partner's muted colour.
 
 ---

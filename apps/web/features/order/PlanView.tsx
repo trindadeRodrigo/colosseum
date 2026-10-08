@@ -102,11 +102,18 @@ const percent = (value: number, lang: Lang) =>
     maximumFractionDigits: 2,
   }).format(value / 100);
 
-/**
- * An asset's mark: a round coin with the first letters of its ticker, as the landing's closing draws
- * its coins. No logo is used: a token's name is its own, and its issuer's mark is not ours to show.
- */
+/** Locally served, verified token artwork; unknown assets retain their ticker. */
+const ASSET_LOGOS = new Map([
+  ['jlusdc', '/assets/tokens/jlusdc.png'],
+  ['syrupusdc', '/assets/tokens/syrupusdc.svg'],
+  ['paxg', '/assets/tokens/paxg.png'],
+]);
+
+/** The same asset identity in allocation segments, labels and holding rows. */
 export function AssetMark({ asset, className }: { asset: string; className?: string }) {
+  const src = ASSET_LOGOS.get(tokenName(asset).toLowerCase());
+  const [failed, setFailed] = useState<string | null>(null);
+  const showLogo = src !== undefined && failed !== src;
   const letters = tokenName(asset)
     .replace(/[^A-Za-z]/g, '')
     .slice(0, 3);
@@ -115,11 +122,23 @@ export function AssetMark({ asset, className }: { asset: string; className?: str
       aria-hidden="true"
       data-ui="asset-mark"
       className={cn(
-        'inline-grid size-6 shrink-0 place-items-center rounded-full border border-foreground/40 bg-card font-mono text-[9px]/none font-medium text-foreground',
+        'inline-grid size-6 shrink-0 place-items-center overflow-hidden rounded-sm border border-foreground/40 bg-card font-mono text-[9px]/none font-medium text-foreground',
         className,
       )}
     >
-      {letters}
+      {showLogo ? (
+        // biome-ignore lint/performance/noImgElement: tiny local token artwork, already sized; no remote image service
+        <img
+          src={src}
+          alt=""
+          width={24}
+          height={24}
+          className="size-full object-contain"
+          onError={() => setFailed(src)}
+        />
+      ) : (
+        letters
+      )}
     </span>
   );
 }

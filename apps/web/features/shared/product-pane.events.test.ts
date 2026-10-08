@@ -289,6 +289,14 @@ describe('a product’s page, on the plan view', () => {
       'jlUSDC (Jupiter Lend), 30%',
       'syrupUSDC (Maple), 20%',
     ]);
+    for (const [asset, src] of [
+      ['solana:jlusdc', '/assets/tokens/jlusdc.png'],
+      ['solana:syrupusdc', '/assets/tokens/syrupusdc.svg'],
+    ]) {
+      for (const selector of ['data-part', 'data-label', 'data-row']) {
+        expect(pane.querySelector(`[${selector}="${asset}"] img`)?.getAttribute('src')).toBe(src);
+      }
+    }
     // and no yield of the whole portfolio is shown anywhere: that is the engine's to work out
     expect(host.textContent).not.toMatch(/\d% to \d/);
   });
