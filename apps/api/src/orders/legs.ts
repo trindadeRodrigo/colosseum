@@ -17,6 +17,7 @@ import {
 import { assertBuilds, type ChainEntry, type ChainRegistry } from './chains';
 import { legErrorFromRevert, Refusal, refusing } from './errors';
 import { familyBySlug } from './families';
+import { buildRetarget } from './mix';
 import {
   basketIdOf,
   basketIdOfBuy,
@@ -147,6 +148,8 @@ async function buildFor(
   if (request.type === 'publish' || request.type === 'follow')
     return buildShared(deps, stored, leg, entry, owner, nonce);
   if (request.type === 'withdraw') return buildWithdraw(request, leg, entry, owner, nonce);
+  // A vault's own targets, from a mix the person confirmed (orders/mix.ts).
+  if (request.type === 'rebalance') return buildRetarget(request, leg, entry, owner, nonce);
   if (request.type !== 'buy' || !(request.proposalId || request.family || request.vault))
     throw new Refusal(501, `a ${request.type} order cannot be built yet`);
   const { adapter } = entry;
