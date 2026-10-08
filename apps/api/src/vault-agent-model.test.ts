@@ -523,10 +523,13 @@ describe('conversation context and grounded replies through the provider stub', 
       messages,
       latestPerson: messages.at(-1)?.text,
       vault: state,
-      // The rows without their source lists: those reach the model as evidence it may cite.
+      // The rows without their source lists: those reach the model as evidence it may cite. They go
+      // out sorted by symbol, in the cached block.
       stockAttributes: {
         ...attributes,
-        stocks: attributes.stocks.map(({ sources: _sources, ...row }) => row),
+        stocks: attributes.stocks
+          .map(({ sources: _sources, ...row }) => row)
+          .sort((a, b) => (a.symbol < b.symbol ? -1 : 1)),
       },
       allocationConstraints: [],
     });
@@ -1048,5 +1051,33 @@ describe('the conversation prompt is ordered for prompt caching', () => {
     sdk.create.mockRejectedValueOnce(new Anthropic.APIConnectionTimeoutError({}));
     await model.read('a-person-id', prompt);
     expect(onUsage).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns the answer when the usage logger throws', async () => {
+    const model = createAnthropicVaultAgentModel({
+      ...options,
+      quota: { reserve: () => null },
+      onUsage: () => {
+        throw new Error('logger down');
+      },
+    });
+    sdk.create.mockResolvedValueOnce({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: '{"message":"ok"}' }],
+      usage,
+    });
+    expect(await model.read('a-person-id', prompt)).toEqual({ reply: { message: 'ok' } });
+  });
+
+  it('sorts the stock attributes in the cached block, whatever order they were loaded in', () => {
+    const stocks = ['TSLAx', 'AAPLx', 'NVDAx'].map((symbol) => ({ symbol, company: symbol }));
+    const withStocks = (rows: typeof stocks) =>
+      vaultAgentContent({ ...prompt, stockAttributes: { stocks: rows } as never })[0]?.text ?? '';
+    expect(withStocks(stocks)).toBe(withStocks([...stocks].reverse()));
+    expect(
+      JSON.parse(withStocks(stocks)).stockAttributes.stocks.map(
+        (row: { symbol: string }) => row.symbol,
+      ),
+    ).toEqual(['AAPLx', 'NVDAx', 'TSLAx']);
   });
 });

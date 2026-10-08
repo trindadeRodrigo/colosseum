@@ -207,7 +207,13 @@ export function vaultAgentContent(prompt: VaultAgentPrompt): Anthropic.TextBlock
         chain,
         exitCostTolerance,
         catalog: byId(catalog),
-        stockAttributes,
+        // Sorted here so the cached bytes do not depend on the order the stock file is loaded in.
+        stockAttributes: stockAttributes && {
+          ...stockAttributes,
+          stocks: [...stockAttributes.stocks].sort((a, b) =>
+            a.symbol < b.symbol ? -1 : a.symbol > b.symbol ? 1 : 0,
+          ),
+        },
         evidence: byId(evidence.filter(({ id }) => LISTING_EVIDENCE.test(id))),
       }),
       ...CACHED,
@@ -289,14 +295,17 @@ export function createAnthropicVaultAgentModel(options: {
           { timeout },
         );
         const usage = response.usage;
-        options.onUsage?.({
-          model: options.model,
-          call: repair ? 'repair' : 'first',
-          input_tokens: usage?.input_tokens ?? null,
-          cache_creation_input_tokens: usage?.cache_creation_input_tokens ?? null,
-          cache_read_input_tokens: usage?.cache_read_input_tokens ?? null,
-          output_tokens: usage?.output_tokens ?? null,
-        });
+        // A logger that throws must not turn the answer into `unavailable`.
+        try {
+          options.onUsage?.({
+            model: options.model,
+            call: repair ? 'repair' : 'first',
+            input_tokens: usage?.input_tokens ?? null,
+            cache_creation_input_tokens: usage?.cache_creation_input_tokens ?? null,
+            cache_read_input_tokens: usage?.cache_read_input_tokens ?? null,
+            output_tokens: usage?.output_tokens ?? null,
+          });
+        } catch {}
         if (response.stop_reason === 'max_tokens')
           return { reply: null, why: 'invalid', detail: 'model_cut_off' };
         if (response.stop_reason === 'refusal')
