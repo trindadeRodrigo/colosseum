@@ -6,6 +6,7 @@ import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createChainRegistry } from '../../orders/chains';
 import { Refusal } from '../../orders/errors';
+import type { AgentAnalytics } from '../../orders/vault-agent';
 import { registerAuth } from '../../plugins/auth';
 import { person, testIssuer } from '../../testing/harness';
 import type { VaultAgentModel } from '../../vault-agent-model';
@@ -15,7 +16,7 @@ const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
 });
-async function setup(available = true) {
+async function setup(available = true, analytics?: AgentAnalytics) {
   const issuer = await testIssuer('goal-reply');
   const owner = await person(issuer, 'solana');
   const other = await person(issuer, 'solana');
@@ -31,8 +32,29 @@ async function setup(available = true) {
   const liquidityEntry = vi.fn(() => {
     throw new Error('No confirmed planning size');
   });
+  // Size-free: what sells at the cost tolerance, which a new goal can read with no amount.
+  const exitCapacity = vi.fn((id: string) =>
+    id === asset.id
+      ? {
+          capacityUsd: 42_000,
+          lowerBound: false,
+          regime: 'us_offhours_weekday',
+          samples: 30,
+          dataFrom: '2026-10-06T00:00:00.000Z',
+          dataTo: '2026-10-07T20:00:00.000Z',
+        }
+      : null,
+  );
   const inputs = vi.fn(async () => ({
-    liquidity: { provider: { entry: liquidityEntry }, source: 'offline measured input' },
+    liquidity: {
+      provider: {
+        entry: liquidityEntry,
+        exitCapacity,
+        methodVersion: 'offline-exit-fixture',
+        provenance: 'mock',
+      },
+      source: 'offline measured input',
+    },
   }));
   const model: VaultAgentModel = {
     read: vi.fn(async () => ({
@@ -67,6 +89,7 @@ async function setup(available = true) {
     { db, chains, now: () => new Date('2026-10-08T01:00:00.000Z') },
     available ? model : null,
     inputs as unknown as Parameters<typeof registerGoalConversationReplyRoute>[3],
+    analytics,
   );
   const body = {
     version: 1,
@@ -106,6 +129,8 @@ async function setup(available = true) {
   });
   return {
     app,
+    asset,
+    exitCapacity,
     owner,
     other,
     evm,
@@ -166,10 +191,20 @@ describe('new-goal model preview route', () => {
         catalog: expect.any(Array),
         evidence: expect.arrayContaining([
           expect.objectContaining({ id: expect.stringMatching(/^price:/), provenance: 'mock' }),
+          {
+            id: `capacity:${s.asset.id}`,
+            assetId: s.asset.id,
+            label:
+              'Largest sale within the cost tolerance, worst regime of the exit window; does not depend on an amount',
+            value: 42_000,
+            unit: 'USD',
+            provenance: 'mock',
+          },
         ]),
         unknowns: expect.arrayContaining([
           expect.stringContaining('No planning amount has been confirmed'),
         ]),
+        analytics: null,
       }),
     );
     expect(s.vaults).not.toHaveBeenCalled();
@@ -179,6 +214,92 @@ describe('new-goal model preview route', () => {
     expect(source).not.toMatch(
       /\b(?:homeChain|personChain|compose|personalize|insertProposal|prepareOrder|buildOrder)\s*\(/,
     );
+  });
+  it("reads Bearing's analytics at the reference size and serves a cited figure with its server source", async () => {
+    const analytics = vi.fn<AgentAnalytics>(async () => ({
+      sizeUsd: 10_000,
+      basis: 'reference',
+      tau: 0.01,
+      assets: [],
+    }));
+    const s = await setup(true, analytics);
+    analytics.mockImplementation(async () => ({
+      sizeUsd: 10_000,
+      basis: 'reference',
+      tau: 0.01,
+      assets: [
+        {
+          assetId: s.asset.id,
+          modelledOn: null,
+          figures: [
+            {
+              metric: 'exit_worst',
+              regime: 'us_offhours_weekday',
+              value: 0.004,
+              unit: 'fraction',
+              source: 'offline fact sheet',
+              method: 'fixture (facts-0.1)',
+              fetchedAt: '2026-10-07T20:00:00.000Z',
+              provenance: 'mock',
+            },
+            { metric: 'volatility', value: null, reason: 'no_reference_price' },
+          ],
+        },
+      ],
+    }));
+    const cited = s.proposal(1000);
+    cited.proposal.allocations[0]?.evidenceIds.push(`exit:${s.asset.id}:worst`);
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: cited });
+    const res = await s.post();
+    expect(res.statusCode, res.body).toBe(200);
+    expect(analytics).toHaveBeenCalledWith(
+      expect.objectContaining({ chain: 'solana', sizeUsd: null, provenance: 'mock' }),
+    );
+    expect(analytics.mock.calls[0]?.[0].assets.length).toBeGreaterThan(1);
+    const prompt = vi.mocked(s.model.read).mock.calls[0]?.[1];
+    expect(prompt?.analytics).toMatchObject({
+      sizeUsd: 10_000,
+      basis: 'reference',
+      assets: [
+        {
+          assetId: s.asset.id,
+          values: { [`exit:${s.asset.id}:worst`]: 0.004 },
+          provenance: 'mock',
+          worstRegime: 'us_offhours_weekday',
+        },
+      ],
+      unknowns: [
+        `Annualised price volatility: unknown (no reference prices collected), for ${s.asset.symbol}.`,
+      ],
+    });
+    // Once, in the analytics block; not again as an evidence row.
+    expect(prompt?.evidence.some((row) => row.id === `exit:${s.asset.id}:worst`)).toBe(false);
+    expect(res.json().proposal.sources).toContainEqual(
+      expect.objectContaining({
+        id: `exit:${s.asset.id}:worst`,
+        source: 'offline fact sheet',
+        method: 'fixture (facts-0.1)',
+        fetchedAt: '2026-10-07T20:00:00.000Z',
+      }),
+    );
+  });
+  it('goes on without analytics that fail, says so to the model and logs the code', async () => {
+    const s = await setup(true, async () => {
+      throw new Error('the pool is exhausted');
+    });
+    const res = await s.post();
+    expect(res.statusCode, res.body).toBe(200);
+    expect(vi.mocked(s.model.read).mock.calls[0]?.[1].analytics).toEqual({
+      unknowns: [
+        "Bearing's exit, liquidity and market analytics could not be read for this reply; those figures are unknown, not zero.",
+      ],
+    });
+    expect(
+      s.logs
+        .map((line) => JSON.parse(line))
+        .filter((line) => line.msg === 'the new-goal conversation went on without its analytics'),
+    ).toEqual([expect.objectContaining({ level: 40, code: 'analytics_threw', chain: 'solana' })]);
+    expect(s.logs.join('')).not.toContain('pool is exhausted');
   });
   it('preserves different model-selected weights and appends server unknowns without creating a buyable plan', async () => {
     const s = await setup();

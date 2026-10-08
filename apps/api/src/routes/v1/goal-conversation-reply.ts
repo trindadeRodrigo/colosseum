@@ -11,7 +11,13 @@ import { z } from 'zod';
 import { Refusal, refusing } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { type PlanInputs, preparePersonalInputs } from '../../orders/personalize';
-import { buildGoalAgentContext, replyToVaultConversation } from '../../orders/vault-agent';
+import {
+  type AgentAnalytics,
+  analyticsGap,
+  buildGoalAgentContext,
+  readAgentAnalytics,
+  replyToVaultConversation,
+} from '../../orders/vault-agent';
 import type { VaultAgentModel } from '../../vault-agent-model';
 import { signedIn } from './orders';
 
@@ -28,6 +34,7 @@ export function registerGoalConversationReplyRoute(
   deps: OrderDeps,
   model: VaultAgentModel | null,
   inputs: PlanInputs = async () => ({}),
+  analytics?: AgentAnalytics,
 ) {
   const path = '/v1/conversations/:chain/goal/reply';
   scope.addHook('onSend', async (req, reply, payload) => {
@@ -83,13 +90,28 @@ export function registerGoalConversationReplyRoute(
       }
       const context = await refusing(async () => {
         const listed = await entry.adapter.listAssets();
-        const [prices, prepared] = await Promise.all([
+        // No amount yet: Bearing's analytics at their reference size, which never fail the reply.
+        const [prices, prepared, read] = await Promise.all([
           entry.adapter.getPrices(listed.map((asset) => asset.id)),
           preparePersonalInputs(chain, listed, [], entry.provenance, (on, assets, provenance) =>
             inputs({ db: deps.db, chain: on, assets, provenance }),
           ),
+          readAgentAnalytics(analytics, {
+            db: deps.db,
+            chain,
+            assets: listed,
+            provenance: entry.provenance,
+            sizeUsd: null,
+          }),
         ]);
+        const gap = analyticsGap(read);
+        if (gap)
+          req.log.warn(
+            { code: gap, chain },
+            'the new-goal conversation went on without its analytics',
+          );
         return buildGoalAgentContext({
+          analytics: read,
           chain,
           observedAt: deps.now().toISOString(),
           entry,

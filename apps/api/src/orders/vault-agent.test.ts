@@ -5,9 +5,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { launchShelf } from '../../../../packages/engine/src/personal/testing';
 import { VAULT_AGENT_SYSTEM, type VaultAgentModel } from '../vault-agent-model';
 import {
+  type AgentAnalytics,
+  type AgentAnalyticsResult,
+  analyticsGap,
+  buildGoalAgentContext,
   buildVaultAgentContext,
+  readAgentAnalytics,
   replyToVaultConversation,
   type VaultAgentContext,
+  type VaultAgentPrompt,
 } from './vault-agent';
 
 // Offline model replies are fixtures. No model, node, database, order builder, or allocator is called.
@@ -866,5 +872,478 @@ describe('model-led private vault proposals', () => {
     expect(VaultAgentRequest.safeParse({ ...request(), messageId: 'x'.repeat(65) }).success).toBe(
       false,
     );
+  });
+});
+
+describe("Bearing's analytics in the conversation context", () => {
+  type Built = Parameters<typeof buildVaultAgentContext>[0];
+  const offline = { source: 'offline adapter', provenance: 'mock' } as Built['entry'];
+  const pin = {
+    unit: 'fraction' as const,
+    source: 'offline fact sheet',
+    method: 'fixture (facts-0.1)',
+    fetchedAt: now,
+    provenance: 'mock' as const,
+  };
+  const sheet = (over: Partial<Extract<AgentAnalyticsResult, { assets: unknown }>> = {}) =>
+    ({
+      sizeUsd: 10_000,
+      basis: 'reference',
+      tau: 0.01,
+      assets: [
+        {
+          assetId: stock.id,
+          modelledOn: null,
+          figures: [
+            { metric: 'exit_worst', regime: 'us_offhours_weekday', value: 0.004, ...pin },
+            { metric: 'exit', regime: 'us_market_hours', value: 0.002, ...pin },
+            { metric: 'exit', regime: 'weekend', value: null, reason: 'no_samples_in_regime' },
+            { metric: 'weekend', value: null, reason: 'no_samples_in_regime' },
+            { metric: 'lp_top1', value: 0.4, ...pin },
+            { metric: 'volatility', value: null, reason: 'no_reference_price' },
+            { metric: 'drawdown', value: null, reason: 'no_reference_price' },
+          ],
+        },
+        { assetId: reserve.id, modelledOn: null, figures: null },
+        { assetId: cash.id, modelledOn: null, figures: null },
+      ],
+      ...over,
+    }) satisfies AgentAnalyticsResult;
+  const built = (
+    analytics: AgentAnalyticsResult | null,
+    prepared: Built['prepared'] = {
+      shelf,
+      figures: {},
+    },
+  ) =>
+    buildVaultAgentContext({
+      state,
+      entry: offline,
+      prices,
+      prepared,
+      person: 'owner-fixture',
+      currentGoals: context.currentGoals,
+      analytics,
+    });
+  const sent = (model: VaultAgentModel) =>
+    vi.mocked(model.read).mock.calls[0]?.[1] as VaultAgentPrompt;
+
+  it('makes each measured figure citable, labelled with its size and regime, and each missing one an unknown with its reason', async () => {
+    const ctx = built(sheet());
+    expect(ctx.evidence.find((row) => row.id === `exit:${stock.id}:worst`)).toEqual({
+      id: `exit:${stock.id}:worst`,
+      assetId: stock.id,
+      label: 'Exit cost at the reference size, worst measured regime (weekday off-hours)',
+      value: 0.004,
+      unit: 'fraction',
+      source: 'offline fact sheet',
+      method: 'fixture (facts-0.1)',
+      fetchedAt: now,
+      provenance: 'mock',
+    });
+    expect(ctx.evidence.find((row) => row.id === `lp:${stock.id}:top1`)?.value).toBe(0.4);
+    expect(ctx.evidence.find((row) => row.id === `exit:${stock.id}:us_market_hours`)).toMatchObject(
+      { label: 'Exit cost at the reference size in that regime (US market hours)', value: 0.002 },
+    );
+    // Missing is never a zero: no evidence id, a line that says what and why.
+    for (const id of [`exit:${stock.id}:weekend`, `weekend:${stock.id}`, `vol:${stock.id}`])
+      expect(ctx.evidence.some((row) => row.id === id)).toBe(false);
+    expect(ctx.analytics?.unknowns).toEqual([
+      `Exit cost at the reference size in that regime (weekend): unknown (no samples in that regime yet), for ${stock.symbol}.`,
+      `Weekend ÷ market-hours exit capacity: unknown (no samples in that regime yet), for ${stock.symbol}.`,
+      `Annualised price volatility: unknown (no reference prices collected), for ${stock.symbol}.`,
+      `Largest price drawdown: unknown (no reference prices collected), for ${stock.symbol}.`,
+      `No Bearing fact sheet, so exit, liquidity and market figures are unknown, for ${reserve.symbol}.`,
+    ]);
+    // The model reads the figures once, by id, with what each id measures said once.
+    expect(ctx.analytics).toMatchObject({
+      sizeUsd: 10_000,
+      basis: 'reference',
+      assets: [
+        {
+          assetId: stock.id,
+          provenance: 'mock',
+          worstRegime: 'us_offhours_weekday',
+          values: {
+            [`exit:${stock.id}:worst`]: 0.004,
+            [`exit:${stock.id}:us_market_hours`]: 0.002,
+            [`lp:${stock.id}:top1`]: 0.4,
+          },
+        },
+      ],
+    });
+    expect(ctx.analytics?.legend?.['exit:<asset>:worst']).toBe(
+      'Exit cost at the reference size, worst measured regime',
+    );
+    // No label holds a number the model could repeat into its prose.
+    for (const text of [
+      ...ctx.evidence
+        .filter((row) => /^(?:exit|lp|lpexit|weekend|capvar|volume|vol|drawdown):/.test(row.id))
+        .map((row) => row.label ?? ''),
+      ...Object.values(ctx.analytics?.legend ?? {}),
+      ...(ctx.analytics?.unknowns ?? []),
+    ])
+      expect([
+        text,
+        /\p{N}/u.test(text.replaceAll(stock.symbol, '').replaceAll(reserve.symbol, '')),
+      ]).toEqual([text, false]);
+    // The person's unknowns stay the server's few lines; the analytics gaps are the model's to weigh.
+    expect(ctx.unknowns.join(' ')).not.toContain('reference prices');
+
+    const value = proposal(1000);
+    value.proposal.allocations[0]?.evidenceIds.push(
+      `exit:${stock.id}:worst`,
+      `lp:${stock.id}:top1`,
+    );
+    const model = fake(value);
+    const result = await replyToVaultConversation(request(), ctx, model);
+    if (result.kind !== 'reply') throw new Error('analytics citation rejected');
+    // The figure goes to the model once, in the analytics block, not again as an evidence row.
+    expect(sent(model).evidence.some((row) => row.id === `exit:${stock.id}:worst`)).toBe(false);
+    expect(sent(model).analytics).toEqual(ctx.analytics);
+    expect(sent(model).exitCostTolerance).toBe(0.01);
+    expect(VAULT_AGENT_SYSTEM).toContain("not this person's amount");
+    expect(VAULT_AGENT_SYSTEM).toContain('they are not limits on weights');
+    // The reply carries the server's whole source.
+    expect(result.reply.proposal?.sources).toContainEqual(
+      ctx.evidence.find((row) => row.id === `exit:${stock.id}:worst`),
+    );
+    expect(result.reply.proposal?.unknowns.join(' ')).not.toContain('reference prices');
+
+    const borrowed = proposal(1000);
+    borrowed.proposal.allocations[1]?.evidenceIds.push(`exit:${stock.id}:worst`);
+    expect(await replyToVaultConversation(request(), ctx, fake(borrowed))).toEqual(
+      rejected('allocation_evidence'),
+    );
+  });
+
+  it('keeps the fully measured analytics of the whole catalog compact', () => {
+    const figures = [
+      { metric: 'exit_worst' as const, regime: 'weekend' as const, value: 0.0123, ...pin },
+      ...(['us_market_hours', 'us_offhours_weekday', 'us_holiday'] as const).map((regime) => ({
+        metric: 'exit' as const,
+        regime,
+        value: 0.0045,
+        ...pin,
+      })),
+      { metric: 'weekend' as const, value: 0.42, ...pin, unit: 'ratio' as const },
+      { metric: 'lp_top1' as const, value: 0.41, ...pin },
+      { metric: 'lp_exit' as const, value: 0.031, ...pin },
+      { metric: 'cap_variation' as const, regime: 'weekend' as const, value: 0.18, ...pin },
+      { metric: 'volume_28d' as const, value: 1_234_567, ...pin, unit: 'usd' as const },
+      { metric: 'volatility' as const, value: 0.27, ...pin },
+      { metric: 'drawdown' as const, value: 0.19, ...pin },
+    ];
+    const listed = assets.filter((asset) => asset.cls !== 'cash');
+    const ctx = built(
+      sheet({
+        assets: listed.map((asset) => ({ assetId: asset.id, modelledOn: null, figures })),
+      }),
+    );
+    expect(ctx.analytics?.assets).toHaveLength(listed.length);
+    expect(Object.keys(ctx.analytics?.assets?.[0]?.values ?? {})).toHaveLength(figures.length);
+    // Each figure once, by id, with what it measures said once for all: under the prompt's budget.
+    expect(JSON.stringify(ctx.analytics).length).toBeLessThan(25_000);
+  });
+
+  it('keeps the first of two figures that would share an id, so a doubled row never fails the reply', async () => {
+    const twice = [
+      { metric: 'exit_worst' as const, regime: 'weekend' as const, value: 0.02, ...pin },
+      { metric: 'exit' as const, regime: 'us_market_hours' as const, value: 0.002, ...pin },
+      { metric: 'exit' as const, regime: 'us_market_hours' as const, value: 0.009, ...pin },
+      { metric: 'lp_top1' as const, value: 0.4, ...pin },
+    ];
+    const ctx = built(
+      sheet({
+        assets: [
+          { assetId: stock.id, modelledOn: null, figures: twice },
+          {
+            assetId: stock.id,
+            modelledOn: null,
+            figures: [{ metric: 'lp_top1', value: 0.7, ...pin }],
+          },
+        ],
+      }),
+    );
+    const ids = ctx.evidence.map((row) => row.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ctx.evidence.find((row) => row.id === `exit:${stock.id}:us_market_hours`)?.value).toBe(
+      0.002,
+    );
+    expect(ctx.evidence.find((row) => row.id === `lp:${stock.id}:top1`)?.value).toBe(0.4);
+    expect(ctx.analytics?.assets).toHaveLength(1);
+    expect(ctx.analytics?.assets?.[0]?.values).toEqual({
+      [`exit:${stock.id}:worst`]: 0.02,
+      [`exit:${stock.id}:us_market_hours`]: 0.002,
+      [`lp:${stock.id}:top1`]: 0.4,
+    });
+    expect((await replyToVaultConversation(request(), ctx, fake(proposal(1000)))).kind).toBe(
+      'reply',
+    );
+  });
+
+  it('keeps a sixteen-asset test-network vault with every figure measured small, and its words free of numbers', () => {
+    const figures = [
+      {
+        metric: 'exit_worst' as const,
+        regime: 'weekend' as const,
+        value: 0.0123,
+        lowerBound: true,
+      },
+      ...(['us_market_hours', 'us_offhours_weekday', 'us_holiday'] as const).map((regime) => ({
+        metric: 'exit' as const,
+        regime,
+        value: 0.0045,
+      })),
+      { metric: 'weekend' as const, value: 0.42, unit: 'ratio' as const },
+      { metric: 'lp_top1' as const, value: 0.41 },
+      { metric: 'lp_exit' as const, value: 0.031, sizeUsd: 100_000 },
+      { metric: 'cap_variation' as const, regime: 'weekend' as const, value: 0.18 },
+      { metric: 'volume_28d' as const, value: 1_234_567, unit: 'usd' as const },
+      { metric: 'volatility' as const, value: 0.27 },
+      { metric: 'drawdown' as const, value: 0.19 },
+    ].map((figure) => ({ ...pin, provenance: 'sandbox' as const, ...figure }));
+    const sixteen = assets.filter((asset) => asset.cls !== 'cash').slice(0, 16);
+    expect(sixteen).toHaveLength(16);
+    const ctx = built(
+      sheet({
+        sizeUsd: 37_000,
+        basis: 'vault',
+        assets: sixteen.map((asset) => ({
+          assetId: asset.id,
+          modelledOn: asset.symbol,
+          figures,
+        })),
+      }),
+    );
+    expect(ctx.analytics?.assets).toHaveLength(16);
+    expect(ctx.analytics?.unknowns).toEqual([]);
+    // 9,286 characters with every flag set on every asset: each figure once by id, the legend once.
+    expect(JSON.stringify(ctx.analytics).length).toBeLessThan(11_000);
+    const names = assets.flatMap((asset) => [asset.symbol, asset.underlying ?? '']).filter(Boolean);
+    const analyticsRows = ctx.evidence.filter((row) =>
+      /^(?:exit|lp|lpexit|weekend|capvar|volume|vol|drawdown):/.test(row.id),
+    );
+    expect(analyticsRows).toHaveLength(16 * figures.length);
+    for (const text of [
+      ...analyticsRows.map((row) => row.label ?? ''),
+      ...Object.values(ctx.analytics?.legend ?? {}),
+    ])
+      expect([
+        text,
+        /[\p{N}%$]/u.test(names.reduce((rest, name) => rest.replaceAll(name, ''), text)),
+      ]).toEqual([text, false]);
+    // Every figure keeps its pin on the server, and none on a test network says live.
+    for (const row of analyticsRows)
+      expect(row).toMatchObject({
+        source: pin.source,
+        fetchedAt: now,
+        provenance: 'sandbox',
+        method: expect.stringContaining(pin.method),
+      });
+  });
+
+  it('says a gap once for every asset it holds for, and names assets still being read', () => {
+    const gap = {
+      metric: 'volatility' as const,
+      value: null,
+      reason: 'no_reference_price' as const,
+    };
+    const ctx = built(
+      sheet({
+        assets: [
+          ...[stock, reserve].map((asset) => ({
+            assetId: asset.id,
+            modelledOn: null,
+            figures: [gap],
+          })),
+          { assetId: otherReserve.id, modelledOn: null, figures: null, unread: 'reading' as const },
+        ],
+      }),
+    );
+    expect(ctx.analytics?.unknowns).toEqual([
+      'Annualised price volatility: unknown (no reference prices collected), for every asset with a sheet.',
+      `Bearing's figures are still being read, so unknown for this reply, for ${otherReserve.symbol}.`,
+    ]);
+  });
+
+  it('names the vault size, a larger measured size, a lower bound and the mainnet model in words', () => {
+    const ctx = built(
+      sheet({
+        sizeUsd: 2_000,
+        basis: 'vault',
+        assets: [
+          {
+            assetId: stock.id,
+            modelledOn: 'SPYx',
+            figures: [
+              { metric: 'lp_exit', value: 0.015, ...pin, provenance: 'sandbox', sizeUsd: 25_000 },
+              {
+                metric: 'exit_worst',
+                value: 0.004,
+                ...pin,
+                provenance: 'sandbox',
+                lowerBound: true,
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    // The size it was read at is a figure: in the pin, not the words.
+    expect(ctx.evidence.find((row) => row.id === `lpexit:${stock.id}`)).toMatchObject({
+      label:
+        "Exit cost at the nearest measured size above about the vault's size if the largest liquidity providers leave; SPYx mainnet figures on a test network",
+      method: 'fixture (facts-0.1); measured at $25,000',
+      provenance: 'sandbox',
+    });
+    expect(ctx.evidence.find((row) => row.id === `exit:${stock.id}:worst`)?.label).toBe(
+      "Exit cost at about the vault's size, worst measured regime; a lower bound, the true figure is at least this; SPYx mainnet figures on a test network",
+    );
+    expect(ctx.analytics?.assets?.[0]).toMatchObject({
+      modelledOn: 'SPYx',
+      provenance: 'sandbox',
+      lowerBound: [`exit:${stock.id}:worst`],
+      largerSize: [`lpexit:${stock.id}`],
+    });
+    expect(ctx.analytics).toMatchObject({ sizeUsd: 2_000, basis: 'vault' });
+  });
+
+  it('turns analytics that could not be read, or a figure that is not a valid source, into unknowns', async () => {
+    const down = built({ unavailable: 'analytics_timeout' });
+    expect(down.evidence.some((row) => /^(?:exit|lp|vol):/.test(row.id))).toBe(false);
+    expect(down.analytics).toEqual({
+      unknowns: [
+        "Bearing's exit, liquidity and market analytics could not be read for this reply; those figures are unknown, not zero.",
+      ],
+    });
+    expect(await readAgentAnalytics(undefined, {} as never)).toBeNull();
+    expect(
+      await readAgentAnalytics(
+        (async () => {
+          throw new Error('pool exhausted');
+        }) as AgentAnalytics,
+        {} as never,
+      ),
+    ).toEqual({ unavailable: 'analytics_threw' });
+    expect(analyticsGap({ unavailable: 'analytics_timeout' })).toBe('analytics_timeout');
+    expect(analyticsGap({ ...sheet(), incomplete: 'analytics_partial_1_of_3' })).toBe(
+      'analytics_partial_1_of_3',
+    );
+    expect(analyticsGap(sheet())).toBeNull();
+
+    const bad = built(
+      sheet({
+        assets: [
+          {
+            assetId: stock.id,
+            modelledOn: null,
+            figures: [{ metric: 'volume_28d', value: 5, ...pin, fetchedAt: 'yesterday' }],
+          },
+        ],
+      }),
+    );
+    expect(bad.evidence.some((row) => row.id === `volume:${stock.id}`)).toBe(false);
+    expect(bad.analytics?.unknowns).toEqual([
+      `Traded volume over the last four weeks: unknown (the stored figure could not be read), for ${stock.symbol}.`,
+    ]);
+    expect((await replyToVaultConversation(request(), bad, fake(proposal(1000)))).kind).toBe(
+      'reply',
+    );
+  });
+
+  it("keeps one figure per measure: the vault's weekend ratio and LP-exit cost are the analytics'", () => {
+    const provider = {
+      entry: (assetId: string) =>
+        assetId === stock.id
+          ? {
+              assetId,
+              capacityUsd: 50_000,
+              samples: 12,
+              dataTo: now,
+              weekendRatio: 0.6,
+              lpExitCostPct: 1.5,
+              methodVersion: 'offline-exit-fixture',
+              provenance: 'mock',
+            }
+          : null,
+    } as unknown as NonNullable<Built['prepared']['figures']['liquidity']>['provider'];
+    const ctx = built(null, {
+      shelf,
+      figures: { liquidity: { provider, source: 'offline measured fixture' } },
+    });
+    expect(ctx.evidence.filter((row) => row.id.startsWith(`liquidity:${stock.id}`))).toEqual([
+      expect.objectContaining({ id: `liquidity:${stock.id}` }),
+    ]);
+    expect(ctx.analytics).toBeUndefined();
+  });
+
+  it('gives a new goal the size-free exit capacity of each measured asset, and never fails on a bad reading', () => {
+    const capacity = (measured: boolean, dataTo = now) => ({
+      covers: () => true,
+      exitCapacity: vi.fn((assetId: string) =>
+        measured || assetId === stock.id
+          ? {
+              capacityUsd: 80_000,
+              lowerBound: assetId === otherReserve.id,
+              regime: 'us_offhours_weekday',
+              samples: 30,
+              dataFrom: '2026-10-06T00:00:00.000Z',
+              dataTo,
+            }
+          : null,
+      ),
+      entry: vi.fn(() => {
+        throw new Error('A new goal has no amount to size an entry');
+      }),
+      methodVersion: 'offline-exit-fixture',
+      provenance: 'sandbox',
+    });
+    const goal = (provider: ReturnType<typeof capacity>) =>
+      buildGoalAgentContext({
+        chain: 'solana',
+        observedAt: now,
+        entry: offline,
+        prices,
+        person: 'owner-fixture',
+        prepared: {
+          shelf,
+          figures: {
+            liquidity: {
+              provider: provider as unknown as NonNullable<
+                Built['prepared']['figures']['liquidity']
+              >['provider'],
+              source: 'offline measured fixture',
+            },
+          },
+        },
+      });
+    const some = capacity(false);
+    const partial = goal(some);
+    expect(partial.evidence.find((row) => row.id === `capacity:${stock.id}`)).toEqual({
+      id: `capacity:${stock.id}`,
+      assetId: stock.id,
+      label:
+        'Largest sale within the cost tolerance, worst regime of the exit window; does not depend on an amount',
+      value: 80_000,
+      unit: 'USD',
+      source: 'offline measured fixture',
+      fetchedAt: now,
+      method: 'offline-exit-fixture; cost tolerance 0.01',
+      provenance: 'sandbox',
+    });
+    expect(partial.evidence.some((row) => row.id === `capacity:${reserve.id}`)).toBe(false);
+    expect(partial.evidence.some((row) => row.id === `capacity:${cash.id}`)).toBe(false);
+    expect(partial.unknowns.join(' ')).toContain('Measured exit evidence is missing');
+    expect(some.entry).not.toHaveBeenCalled();
+    const all = goal(capacity(true));
+    expect(all.unknowns.join(' ')).not.toContain('Measured exit evidence is missing');
+    expect(all.evidence.find((row) => row.id === `capacity:${otherReserve.id}`)?.label).toContain(
+      'a lower bound, the true figure is at least this',
+    );
+    // A reading whose date is not one is not measured: an unknown, never a failed reply.
+    const dateless = goal(capacity(true, 'yesterday'));
+    expect(dateless.evidence.some((row) => row.id.startsWith('capacity:'))).toBe(false);
+    expect(dateless.unknowns.join(' ')).toContain('Measured exit evidence is missing');
   });
 });
