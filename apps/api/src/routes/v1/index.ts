@@ -47,6 +47,7 @@ import { createAnthropicVaultAgentModel, type VaultAgentModel } from '../../vaul
 import { type LinkedPlanLimits, registerBasketRoutes } from './baskets';
 import { buildConfig, registerConfigRoute } from './config';
 import { registerFundingRoute } from './funding';
+import { registerGoalConversationReplyRoute } from './goal-conversation-reply';
 import { registerIntakeRoute } from './intake';
 import { registerMeRoutes } from './me';
 import { registerMockRoutes } from './mock';
@@ -230,6 +231,7 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
     registerSharedRoutes(scope, orderDeps);
     registerVaultRoute(scope, orderDeps);
     registerVaultConversationReplyRoute(scope, orderDeps, vaultAgentModel, deps.planInputs);
+    registerGoalConversationReplyRoute(scope, orderDeps, vaultAgentModel, deps.planInputs);
     // Out of the route table altogether unless a chain runs on the mock.
     if (chains.active().some((entry) => entry.mock)) registerMockRoutes(scope, orderDeps);
   });

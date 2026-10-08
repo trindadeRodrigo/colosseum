@@ -1,6 +1,6 @@
 import { EXIT_WINDOW_DAYS } from '@colosseum/basket';
 import { eligibleForGoal, PERSONAL_PARAMS } from '@colosseum/engine/personal';
-import type { BasketAsset, Price, Shelf, VaultState } from '@colosseum/schemas';
+import type { BasketAsset, ChainId, Price, Shelf, VaultState } from '@colosseum/schemas';
 import {
   type VaultAgentSource as AgentSource,
   VaultAgentModelReply,
@@ -14,9 +14,8 @@ import type { ChainEntry } from './chains';
 import type { PlanInputs } from './personalize';
 
 type Figures = Awaited<ReturnType<PlanInputs>>;
-export type VaultAgentContext = {
+type AgentContextData = {
   person: string;
-  state: VaultState;
   assets: BasketAsset[];
   evidence: AgentSource[];
   currentGoals: readonly unknown[];
@@ -28,12 +27,17 @@ export type VaultAgentContext = {
   /** Only a separately confirmed, server-owned goal change can replace existing eligibility. */
   confirmedGoal?: 'grow' | 'income' | 'protect';
 };
+export type VaultAgentContext = AgentContextData & { kind?: 'vault'; state: VaultState };
+export type GoalAgentContext = AgentContextData & { kind: 'new_goal'; chain: ChainId; state: null };
+export type ConversationAgentContext = VaultAgentContext | GoalAgentContext;
 export type VaultAgentPrompt = {
   version: 1;
+  kind: 'vault' | 'new_goal';
+  chain: ChainId;
   language: 'en' | 'pt';
   messages: VaultAgentRequest['messages'];
   latestPerson: string;
-  vault: VaultState;
+  vault: VaultState | null;
   currentGoals: readonly unknown[];
   catalog: Array<
     Pick<
@@ -63,8 +67,7 @@ function catalogCap(asset: BasketAsset): number {
 }
 
 /** This reads observations and guardrails only. It never calls an allocator, stores, or trades. */
-export function buildVaultAgentContext(input: {
-  state: VaultState;
+type ContextInput = {
   entry: ChainEntry;
   prices: Price[];
   prepared: { shelf: Shelf; figures: Figures };
@@ -72,9 +75,36 @@ export function buildVaultAgentContext(input: {
   currentGoals?: readonly unknown[];
   caps?: Record<string, number>;
   confirmedGoal?: 'grow' | 'income' | 'protect';
-}): VaultAgentContext {
+};
+
+export function buildVaultAgentContext(
+  input: ContextInput & { state: VaultState },
+): VaultAgentContext {
+  return buildAgentContext({
+    ...input,
+    kind: 'vault',
+    chain: input.state.chain,
+    observedAt: input.state.observedAt,
+  }) as VaultAgentContext;
+}
+
+/** A new-goal draft has no vault, holdings or planning size. Catalog observations remain real. */
+export function buildGoalAgentContext(
+  input: ContextInput & { chain: ChainId; observedAt: string },
+): GoalAgentContext {
+  return buildAgentContext({ ...input, kind: 'new_goal', state: null }) as GoalAgentContext;
+}
+
+function buildAgentContext(
+  input: ContextInput & {
+    kind: 'vault' | 'new_goal';
+    state: VaultState | null;
+    chain: ChainId;
+    observedAt: string;
+  },
+): ConversationAgentContext {
   const { state, entry, prepared } = input;
-  const assets = prepared.shelf.assets.filter((asset) => asset.chain === state.chain);
+  const assets = prepared.shelf.assets.filter((asset) => asset.chain === input.chain);
   const listed = new Map(assets.map((asset) => [asset.id, asset]));
   const evidence: AgentSource[] = [];
   const add = (source: AgentSource) => {
@@ -88,7 +118,7 @@ export function buildVaultAgentContext(input: {
       value: catalogCap(asset),
       unit: 'bps',
       source: entry.source,
-      fetchedAt: state.observedAt,
+      fetchedAt: input.observedAt,
       method:
         asset.cls === 'cash'
           ? 'listed asset catalog; cash residual has no catalog holding cap'
@@ -101,7 +131,7 @@ export function buildVaultAgentContext(input: {
       assetId: asset.id,
       label: `Risk tier ${tier?.tier ?? asset.tier}`,
       source: tier?.source ?? entry.source,
-      fetchedAt: tier?.fetchedAt ?? state.observedAt,
+      fetchedAt: tier?.fetchedAt ?? input.observedAt,
       method: tier?.method ?? 'listed asset catalog tier; not a measured risk observation',
       provenance: tier?.provenance ?? entry.provenance,
     });
@@ -154,18 +184,21 @@ export function buildVaultAgentContext(input: {
     });
   }
   const unknowns: string[] = [];
-  const holdings = [state.cash, ...state.positions];
+  const holdings = state ? [state.cash, ...state.positions] : [];
   const prices = new Map(input.prices.map((price) => [price.asset, Number(price.usdPerToken)]));
   const values = holdings.map((holding) => {
     const price = prices.get(holding.asset);
     return price === undefined ? null : Number(holding.display) * price;
   });
-  const notionalUsd = values.every((value) => value !== null && Number.isFinite(value))
-    ? values.reduce<number>((sum, value) => sum + (value ?? 0), 0)
-    : null;
+  const notionalUsd =
+    state && values.every((value) => value !== null && Number.isFinite(value))
+      ? values.reduce<number>((sum, value) => sum + (value ?? 0), 0)
+      : null;
   if (notionalUsd === null)
     unknowns.push(
-      'Some current holdings lack a usable reference price; the full vault value is unknown.',
+      state
+        ? 'Some current holdings lack a usable reference price; the full vault value is unknown.'
+        : 'No planning amount has been confirmed for this new goal; size-dependent exit capacity and feasibility are unknown. There is no existing vault or current holdings.',
     );
   const caps = { ...input.caps };
   const liquidity = assets.map((asset) => {
@@ -210,13 +243,17 @@ export function buildVaultAgentContext(input: {
   if (!prepared.figures.stocks)
     unknowns.push('Sourced company classifications are unavailable for this chain.');
   if (!prepared.figures.yields?.length)
-    unknowns.push('No sourced yield observations were returned for this vault catalog.');
+    unknowns.push('No sourced yield observations were returned for this catalog.');
   if (!input.currentGoals?.length && !input.confirmedGoal)
     unknowns.push(
-      'The current investment goal is unavailable; this preview has not been checked against income or protection eligibility.',
+      state
+        ? 'The current investment goal is unavailable; this preview has not been checked against income or protection eligibility.'
+        : 'A new investment goal has not been confirmed; this preview has not been checked against income or protection eligibility. Funding requires fresh confirmation of the goal and amount.',
     );
   return {
     person: input.person,
+    kind: input.kind,
+    ...(input.kind === 'new_goal' ? { chain: input.chain } : {}),
     state,
     assets,
     evidence,
@@ -226,10 +263,10 @@ export function buildVaultAgentContext(input: {
     unknowns,
     caps,
     ...(input.confirmedGoal ? { confirmedGoal: input.confirmedGoal } : {}),
-  };
+  } as ConversationAgentContext;
 }
 
-function eligibilityGoal(context: VaultAgentContext): 'grow' | 'income' | 'protect' | null {
+function eligibilityGoal(context: ConversationAgentContext): 'grow' | 'income' | 'protect' | null {
   if (context.confirmedGoal) return context.confirmedGoal;
   for (const value of [...context.currentGoals].reverse()) {
     if (typeof value !== 'object' || value === null) continue;
@@ -267,10 +304,10 @@ function hasFinancialFigure(text: string, personWords: string[], catalogNames: s
 
 function claimsApplied(text: string): boolean {
   return (
-    /\bi\s+(?:have\s+)?(?:changed|applied|updated|rebalanced)\s+(?:your|the)\s+(?:vault|portfolio|strategy|allocations?)\b/iu.test(
+    /\bi\s+(?:have\s+)?(?:changed|applied|updated|rebalanced|created|opened|funded)\s+(?:your|the)\s+(?:vault|portfolio|strategy|allocations?)\b/iu.test(
       text,
     ) ||
-    /\b(?:eu\s+)?(?:alterei|apliquei|atualizei|rebalanceei)\s+(?:o\s+seu|a\s+sua|seu|sua|o|a)\s+(?:cofre|carteira|estratégia|estrategia|alocação|alocacao|alocações|alocacoes)\b/iu.test(
+    /\b(?:eu\s+)?(?:alterei|apliquei|atualizei|rebalanceei|criei|abri|financiei)\s+(?:o\s+seu|a\s+sua|seu|sua|o|a)\s+(?:cofre|carteira|estratégia|estrategia|alocação|alocacao|alocações|alocacoes)\b/iu.test(
       text,
     )
   );
@@ -403,7 +440,7 @@ function holdingConstraints(
 
 export async function replyToVaultConversation(
   request: VaultAgentRequest,
-  context: VaultAgentContext,
+  context: ConversationAgentContext,
   model: VaultAgentModel | null,
 ): Promise<VaultAgentResult> {
   const parsed = VaultAgentRequest.safeParse(request);
@@ -417,10 +454,9 @@ export async function replyToVaultConversation(
       return { kind: 'failure', reason: 'invalid' };
     sourceById.set(source.data.id, source.data);
   }
+  const chain = context.kind === 'new_goal' ? context.chain : context.state.chain;
   const catalog = new Map(
-    context.assets
-      .filter((asset) => asset.chain === context.state.chain)
-      .map((asset) => [asset.id, asset]),
+    context.assets.filter((asset) => asset.chain === chain).map((asset) => [asset.id, asset]),
   );
   const caps = Object.fromEntries(
     [...catalog.values()].map((asset) => [
@@ -432,6 +468,8 @@ export async function replyToVaultConversation(
     return { kind: 'failure', reason: 'invalid' };
   const prompt: VaultAgentPrompt = {
     version: 1,
+    kind: context.kind ?? 'vault',
+    chain,
     language: parsed.data.language,
     messages: parsed.data.messages,
     latestPerson: parsed.data.messages.at(-1)?.text ?? '',
