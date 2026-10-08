@@ -1398,6 +1398,45 @@ export const pt: Dictionary = {
     },
     vault: {
       title: 'Um cofre, como a rede o tem',
+      conversation: {
+        details: 'Detalhes do cofre e fontes dos preços',
+        draftIntro: 'Proposta preliminar, não aplicada:',
+        comparison: 'Meta atual → fatia proposta',
+        reasons: 'Escolhas e fontes',
+        tradeoffs: 'Escolhas e consequências',
+        unknowns: 'O que não sabemos',
+        sources: 'Fontes',
+        title: 'Conversa sobre seu cofre',
+        loading: 'Abrindo a conversa…',
+        saved: 'Salva na sua conta',
+        local: 'Neste navegador · o armazenamento na conta está indisponível',
+        conflict:
+          'Existe outra versão salva. Suas palavras permanecem neste navegador. A conversa está pausada até reconciliar as versões.',
+        notSaved:
+          'Este navegador não conseguiu salvar estas mensagens. Mantenha esta página aberta.',
+        capacity: 'Esta conversa chegou ao limite. Suas mensagens anteriores foram mantidas.',
+        unavailable:
+          'Sua mensagem está salva. O serviço de conversa do cofre ainda não está disponível; nenhuma resposta ou mudança de estratégia foi produzida.',
+        failed:
+          'Não consegui uma resposta. Suas palavras foram mantidas; nenhuma mudança de estratégia foi produzida.',
+        pending:
+          'Uma conversa sobre este cofre, com o que ele tem agora como contexto. O serviço de conversa está sendo conectado.',
+        empty:
+          'Pergunte sobre o que este cofre tem, sua estratégia ou uma mudança que deseja considerar.',
+        history: 'Conversa salva',
+        you: 'Você',
+        agent: 'Tenonfi',
+        placeholder: 'Pergunte sobre este cofre ou descreva uma mudança…',
+        send: 'Enviar mensagem',
+        reading: 'Buscando uma resposta…',
+        current: 'O que tem agora',
+        noHoldings: 'Este cofre não tem tokens agora.',
+        targets: 'Metas da estratégia atual',
+        targetsNote: 'Metas registradas na rede, separadas das fatias mantidas agora.',
+        proposed: 'Estratégia proposta',
+        previewOnly:
+          'Somente uma prévia. Seu cofre não mudou. Aplicar uma atualização de estratégia ainda não está disponível aqui.',
+      },
       lead: (chain: string) =>
         `Lido da ${chain} para esta página. Qualquer pessoa pode ver um cofre: o que ele tem é público na rede.`,
       loading: 'Lendo o cofre…',

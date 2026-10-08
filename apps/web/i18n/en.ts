@@ -1549,6 +1549,42 @@ export const en = {
     },
     vault: {
       title: 'A vault, as its chain holds it',
+      conversation: {
+        details: 'Vault details and price sources',
+        draftIntro: 'Draft proposal, not applied:',
+        comparison: 'Current target → proposed share',
+        reasons: 'Tradeoffs and sources',
+        tradeoffs: 'Tradeoffs',
+        unknowns: 'What is not known',
+        sources: 'Sources',
+        title: 'Your vault conversation',
+        loading: 'Opening the conversation…',
+        saved: 'Saved to your account',
+        local: 'This browser · account storage is unavailable',
+        conflict:
+          'Another saved version exists. Your words remain in this browser. Continuing is paused until the versions are reconciled.',
+        notSaved: 'This browser could not save these messages. Keep this page open.',
+        capacity: 'This conversation has reached its limit. Your earlier messages are kept.',
+        unavailable:
+          'Your message is saved. The vault conversation service is not available yet; no reply or strategy change was produced.',
+        failed: 'I could not get a reply. Your words are kept; no strategy change was produced.',
+        pending:
+          'A conversation about this vault, with its current holdings as context. The conversation service is being connected.',
+        empty: 'Ask about what this vault holds, its strategy, or a change you want to consider.',
+        history: 'Saved conversation',
+        you: 'You',
+        agent: 'Tenonfi',
+        placeholder: 'Ask about this vault or describe a change…',
+        send: 'Send message',
+        reading: 'Getting a reply…',
+        current: 'What it holds now',
+        noHoldings: 'This vault holds no tokens now.',
+        targets: 'Current strategy targets',
+        targetsNote: 'Targets recorded on chain, separate from the shares held now.',
+        proposed: 'Proposed strategy',
+        previewOnly:
+          'Preview only. Your vault has not changed. Applying a strategy update is not available here yet.',
+      },
       lead: (chain: string) =>
         `Read from ${chain} for this page. Anyone can see a vault: what it holds is public on its chain.`,
       loading: 'Reading the vault…',
