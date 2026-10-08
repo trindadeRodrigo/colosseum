@@ -223,6 +223,29 @@ describe('a plain request for a stock counts', () => {
   });
 });
 
+describe("a stated share reads tickers as written, so the person's shares drive only what they named", () => {
+  it('sets no limit on METAx from "my meta", and one from META or Meta Platforms', async () => {
+    const stockAttributes = {
+      stocks: [{ symbol: 'METAx', company: 'Meta Platforms, Inc.' }],
+    } as unknown as VaultAgentContext['stockAttributes'];
+    const limits = async (text: string, language: 'en' | 'pt' = 'en') => {
+      const model = fake(proposal());
+      await replyToVaultConversation(
+        { version: 1, language, messageId: 'turn', messages: [{ who: 'person', text }] },
+        { ...context, stockAttributes },
+        model,
+      );
+      return vi.mocked(model.read).mock.calls[0]?.[1].allocationConstraints;
+    };
+    expect(await limits('I want 10% for my meta.')).toEqual([]);
+    expect(await limits('Quero 10% na minha meta de aposentadoria.', 'pt')).toEqual([]);
+    for (const text of ['I want 10% META.', 'I want 10% Meta Platforms.'])
+      expect(await limits(text)).toEqual([
+        { assetIds: [symbol('META')], minWeightBps: 1000, maxWeightBps: 1000, personQuote: text },
+      ]);
+  });
+});
+
 describe('the reply schema ties warnings to the proposal', () => {
   it('refuses a warning without a proposal, or on an asset or source the proposal lacks', () => {
     const warning = {
