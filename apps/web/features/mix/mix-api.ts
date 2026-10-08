@@ -27,8 +27,13 @@ export type MixFailure =
   /** 503: the chain only reads for now. */
   | { kind: 'read-only' }
   | { kind: 'busy' }
-  /** The answer did not read, or did not match what was asked. */
+  /** The answer to a review did not read, or did not match what was asked. Nothing was stored. */
   | { kind: 'unreadable' }
+  /**
+   * The server took a confirm and its answer did not read or match: the plan or the order may be
+   * stored by now, so the screen does not say that nothing was.
+   */
+  | { kind: 'unchecked' }
   | { kind: 'unreachable' }
   /** Any other refusal, in the server's words. */
   | { kind: 'said'; error: string };
@@ -38,7 +43,7 @@ export type MixCall<T> = { kind: 'ok'; value: T } | MixFailure;
 async function post<T>(
   api: ApiFetch,
   path: string,
-  body: unknown,
+  body: { confirm: boolean },
   parse: (value: unknown) => T | null,
 ): Promise<MixCall<T>> {
   let res: Response;
@@ -57,7 +62,7 @@ async function post<T>(
     if (read && typeof read === 'object' && !Array.isArray(read))
       answer = read as Record<string, unknown>;
   } catch {
-    if (res.ok) return { kind: 'unreadable' };
+    if (res.ok) return { kind: body.confirm ? 'unchecked' : 'unreadable' };
   }
   if (!res.ok) {
     if (res.status === 429 || answer.code === 'RATE_LIMITED') return { kind: 'busy' };
@@ -78,10 +83,14 @@ async function post<T>(
       : { kind: 'unreadable' };
   }
   const value = parse(answer);
-  return value === null ? { kind: 'unreadable' } : { kind: 'ok', value };
+  if (value === null) return { kind: body.confirm ? 'unchecked' : 'unreadable' };
+  return { kind: 'ok', value };
 }
 
-/** A review is for the chain asked about, and its lines are the ones sent, in weight. */
+/**
+ * A review is for the chain asked about, its lines are the ones sent, in weight, and its targets and
+ * cash are those same lines: the targets are what the guard holds a vault's first step to.
+ */
 function matches(
   review: MixReview,
   chain: ChainId,
@@ -89,9 +98,19 @@ function matches(
 ) {
   if (review.chain !== chain) return false;
   const weights = new Map(sent.map((line) => [line.assetId, line.weightBps]));
+  if (
+    review.lines.length !== weights.size ||
+    !review.lines.some((line) => line.cls !== 'cash') ||
+    review.lines.some((line) => weights.get(line.assetId) !== line.weightBps)
+  )
+    return false;
+  const held = review.lines.filter((line) => line.cls !== 'cash');
+  const targets = new Map(review.targets.map((target) => [target.asset, target.weightBps]));
   return (
-    review.lines.length === weights.size &&
-    review.lines.every((line) => weights.get(line.assetId) === line.weightBps)
+    targets.size === review.targets.length &&
+    targets.size === held.length &&
+    held.every((line) => targets.get(line.assetId) === line.weightBps) &&
+    review.cashBps === 10_000 - held.reduce((sum, line) => sum + line.weightBps, 0)
   );
 }
 

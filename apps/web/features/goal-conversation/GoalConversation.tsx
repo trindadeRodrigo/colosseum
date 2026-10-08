@@ -11,7 +11,7 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 import { UseGoalMix } from '../mix/UseGoalMix';
 import { share } from '../portfolio/figures';
 import { VaultAgentError, type VaultAgentReply } from '../vault-conversation/agent';
-import { StrategyPreview } from '../vault-conversation/StrategyPreview';
+import { StrategyPreview, WeightNotes } from '../vault-conversation/StrategyPreview';
 import {
   conversationNetwork,
   readLocal,
@@ -318,6 +318,7 @@ export function GoalConversation({
             <h2 className="text-body-lg font-medium">{t.talk.workbench.strategy}</h2>
             <p className="max-w-[48ch] text-body-sm text-muted-foreground">{copy.empty}</p>
             <p className="text-caption text-muted-foreground">{copy.previewOnly}</p>
+            {reply?.notes && <WeightNotes notes={reply.notes} />}
           </div>
         )}
       </div>

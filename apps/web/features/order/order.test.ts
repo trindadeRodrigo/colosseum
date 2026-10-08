@@ -241,6 +241,15 @@ describe('the calls before anything is signed', () => {
     const said = (status: number, body: object = {}) =>
       placeOrder(async () => json({ error: 'e', ...body }, status), ask);
     expect(await said(409, { code: 'NOT_FUNDED' })).toEqual({ kind: 'code', code: 'NOT_FUNDED' });
+    // a mix bought above the amount it was reviewed at has its own sentence (gate ANY-COMPOSITION)
+    expect(await said(422, { code: 'AMOUNT_OVER_REVIEW' })).toEqual({
+      kind: 'code',
+      code: 'AMOUNT_OVER_REVIEW',
+    });
+    for (const lang of ['en', 'pt'] as const)
+      expect(dictionary(lang).buy.failure.AMOUNT_OVER_REVIEW).not.toBe(
+        dictionary(lang).buy.failure.refused,
+      );
     expect(await said(409, { code: 'VERSION_CHANGED' })).toEqual({
       kind: 'code',
       code: 'VERSION_CHANGED',

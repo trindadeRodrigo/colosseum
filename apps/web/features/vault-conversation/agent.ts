@@ -58,6 +58,8 @@ const NOTE_CODES = new Set<WeightNote['code']>([
   'share_unread',
   'share_withdrawn',
 ]);
+/** The notes that can stand on a reply with no proposal: each is about the person's own words. */
+const ALONE_CODES = new Set<WeightNote['code']>(['share_unmet', 'share_unread', 'share_withdrawn']);
 const WARNING_CODES = new Set(['over_exit_capacity', 'outside_goal_requested']);
 /** Independent from the new-goal wizard; the provider owns grounded dialogue and policy checks. */
 export type VaultAgentRequest = {
@@ -70,6 +72,8 @@ export type VaultAgentReply = {
   message: string;
   question?: string;
   proposal?: VaultStrategyPreview;
+  /** Notes on a reply with no proposal: a share the server did not apply, could not meet, or dropped. */
+  notes?: WeightNote[];
 };
 export type VaultAgent = (request: VaultAgentRequest) => Promise<unknown>;
 export class VaultAgentError extends Error {
@@ -100,6 +104,30 @@ export function strategyReplyOf(value: unknown, chain: ChainId): VaultAgentReply
     (row.question != null && !text(row.question, 500))
   )
     return null;
+  // An older server sends no notes: none are shown, never a guess. Without a proposal only a note on
+  // the person's own words can stand (a share unmet, unread or withdrawn), and no warning.
+  if (row.weightNotes != null && !Array.isArray(row.weightNotes)) return null;
+  const notes: WeightNote[] = [];
+  for (const raw of Array.isArray(row.weightNotes) ? row.weightNotes : []) {
+    const n = record(raw);
+    if (
+      !n ||
+      typeof n.code !== 'string' ||
+      !NOTE_CODES.has(n.code as WeightNote['code']) ||
+      (row.proposal == null && !ALONE_CODES.has(n.code as WeightNote['code'])) ||
+      !Array.isArray(n.assetIds) ||
+      n.assetIds.length > 64 ||
+      !n.assetIds.every((id) => AssetId.safeParse(id).success) ||
+      (n.quote !== undefined && !text(n.quote, 400))
+    )
+      return null;
+    notes.push({
+      code: n.code as WeightNote['code'],
+      assetIds: n.assetIds as string[],
+      ...(n.quote !== undefined ? { quote: n.quote as string } : {}),
+    });
+  }
+  if (row.proposal == null && Array.isArray(row.warnings) && row.warnings.length > 0) return null;
   let proposal: VaultStrategyPreview | undefined;
   if (row.proposal != null) {
     const p = record(row.proposal);
@@ -182,7 +210,6 @@ export function strategyReplyOf(value: unknown, chain: ChainId): VaultAgentReply
     // An older server sends neither list: no warning and no note, never a guess.
     const warnings: VaultStrategyPreview['warnings'] = [];
     if (row.warnings != null && !Array.isArray(row.warnings)) return null;
-    if (row.weightNotes != null && !Array.isArray(row.weightNotes)) return null;
     for (const raw of Array.isArray(row.warnings) ? row.warnings : []) {
       const w = record(raw);
       if (
@@ -199,25 +226,6 @@ export function strategyReplyOf(value: unknown, chain: ChainId): VaultAgentReply
         evidenceId: w.evidenceId as string,
       });
     }
-    const weightNotes: WeightNote[] = [];
-    for (const raw of Array.isArray(row.weightNotes) ? row.weightNotes : []) {
-      const n = record(raw);
-      if (
-        !n ||
-        typeof n.code !== 'string' ||
-        !NOTE_CODES.has(n.code as WeightNote['code']) ||
-        !Array.isArray(n.assetIds) ||
-        n.assetIds.length > 64 ||
-        !n.assetIds.every((id) => AssetId.safeParse(id).success) ||
-        (n.quote !== undefined && !text(n.quote, 400))
-      )
-        return null;
-      weightNotes.push({
-        code: n.code as WeightNote['code'],
-        assetIds: n.assetIds as string[],
-        ...(n.quote !== undefined ? { quote: n.quote as string } : {}),
-      });
-    }
     proposal = {
       objective: p.objective,
       summary: p.summary,
@@ -226,13 +234,13 @@ export function strategyReplyOf(value: unknown, chain: ChainId): VaultAgentReply
       unknowns: p.unknowns,
       sources,
       warnings,
-      weightNotes,
+      weightNotes: notes,
     };
   }
   return {
     message: row.message,
     ...(row.question ? { question: row.question as string } : {}),
-    ...(proposal ? { proposal } : {}),
+    ...(proposal ? { proposal } : notes.length ? { notes } : {}),
   };
 }
 

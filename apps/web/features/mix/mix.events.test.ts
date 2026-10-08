@@ -119,6 +119,61 @@ const answer = {
   ],
 };
 
+/** A review of the lines sent, as the server reads them back: its targets and cash are those lines. */
+const reviewFor = (
+  sent: { assetId: string; weightBps: number }[],
+  over: Partial<MixReview> = {},
+): MixReview => {
+  const lines = sent.map((line) => {
+    const sample = reviewOf().lines.find((l) => l.assetId === line.assetId);
+    if (!sample) throw new Error(`no sample line for ${line.assetId}`);
+    return { ...sample, weightBps: line.weightBps, amountUsd: line.weightBps / 100 };
+  });
+  const held = lines.filter((line) => line.cls !== 'cash');
+  return reviewOf({
+    lines,
+    targets: held.map((line) => ({ asset: line.assetId, weightBps: line.weightBps })),
+    cashBps: 10_000 - held.reduce((n, line) => n + line.weightBps, 0),
+    ...over,
+  });
+};
+/** The same warning, by the same id, on a figure that moved: only the hash tells the two apart. */
+const moved = (over: Partial<MixReview> = {}): Partial<MixReview> => ({
+  reviewHash: 'cd'.repeat(32),
+  warnings: [
+    {
+      ...(reviewOf().warnings[0] as MixReview['warnings'][number]),
+      figures: [{ ...figure, value: 3 }],
+    },
+  ],
+  ...over,
+});
+const box = (host: HTMLElement) =>
+  find<HTMLInputElement>(host, '[data-ui="mix-review-warnings"] input[type="checkbox"]');
+const chooseGoal = async (host: HTMLElement, goal = 'grow', risk = 'medium') => {
+  for (const [i, value] of [goal, risk].entries()) {
+    const select = host.querySelectorAll('select')[i] as HTMLSelectElement;
+    select.value = value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  await settle();
+};
+const goalMix = (lang: 'en' | 'pt' = 'en') =>
+  mount(
+    withAccount(
+      lang,
+      createElement(UseGoalMix, {
+        chain: 'solana',
+        userId,
+        allocations: [
+          { assetId: 'solana:usdc', weightBps: 6000 },
+          { assetId: 'solana:gldx', weightBps: 4000 },
+        ],
+        onClose: () => {},
+      }),
+    ),
+  );
+
 type Call = { url: string; body: Record<string, unknown> };
 beforeEach(() => {
   vi.stubEnv('NEXT_PUBLIC_CHAIN_NETWORK_SOLANA', 'testnet');
@@ -236,17 +291,7 @@ describe('a vault conversation’s preview, applied to the vault', () => {
       if (url.endsWith('/conversation/reply'))
         return json({ ...answer, messageId: body.messageId });
       if (!url.endsWith('/targets')) return json({}, 404);
-      const [gold, cash] = reviewOf().lines.slice().reverse();
-      return json({
-        status: 'review',
-        review: reviewOf({
-          origin: 'person',
-          lines: [
-            { ...cash, weightBps: 4500, amountUsd: 45 },
-            { ...gold, weightBps: 5500, amountUsd: 55 },
-          ] as MixReview['lines'],
-        }),
-      });
+      return json({ status: 'review', review: reviewFor(body.allocations, { origin: 'person' }) });
     });
     const host = await mount(withAccount('en', createElement(VaultConversation, { read, userId })));
     await type(find<HTMLTextAreaElement>(host, 'textarea'), 'Put 40% in gold');
@@ -266,6 +311,103 @@ describe('a vault conversation’s preview, applied to the vault', () => {
       ],
     });
     expect(find(host, '[data-ui="mix-review-lines"]').textContent).toContain('55%');
+    expect(find(host, '[data-ui="mix-review-total"]').textContent).toContain('$100.00');
+  });
+
+  /** The conversation with a preview shown, its editor opened and the review asked for. */
+  const reviewing = async (targetsAnswer: (body: Call['body'], n: number) => Response) => {
+    let n = 0;
+    portStore.setApi(async (url, init) => {
+      if (init?.method !== 'POST') return json({}, 404);
+      const body = JSON.parse(String(init.body));
+      if (url.endsWith('/conversation/reply'))
+        return json({ ...answer, messageId: body.messageId });
+      if (!url.endsWith('/targets')) return json({}, 404);
+      n += 1;
+      return targetsAnswer(body, n);
+    });
+    const host = await mount(withAccount('en', createElement(VaultConversation, { read, userId })));
+    await type(find<HTMLTextAreaElement>(host, 'textarea'), 'Put 40% in gold');
+    await click(find(host, '[data-ui="composer-send"]'));
+    await settle();
+    await click(buttonNamed(host, en.mix.preview.apply));
+    await settle();
+    await click(find(host, '[data-action="targets-review"]'));
+    await settle();
+    return host;
+  };
+
+  it('unticks a warning whose figure moved under the same id, and holds the confirm again', async () => {
+    const host = await reviewing((body) =>
+      json({ status: 'review', review: body.confirm ? reviewOf(moved()) : reviewOf() }),
+    );
+    await click(box(host));
+    await click(find(host, '[data-action="mix-confirm"]'));
+    await settle();
+    expect(host.textContent).toContain(en.mix.review.changed);
+    expect(box(host).checked).toBe(false);
+    expect(find(host, '[data-action="mix-confirm"]').getAttribute('aria-disabled')).toBe('true');
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it('refuses a review whose targets are not the lines it was sent', async () => {
+    const host = await reviewing(() =>
+      json({
+        status: 'review',
+        review: reviewOf({ targets: [{ asset: 'solana:gldx', weightBps: 9000 }], cashBps: 1000 }),
+      }),
+    );
+    expect(host.querySelector('[data-ui="mix-review-lines"]')).toBeNull();
+    expect(find(host, '[role="alert"]').textContent).toBe(en.mix.failure.unreadable);
+  });
+
+  it('does not say nothing was stored when the server took the confirm and its order does not match', async () => {
+    const host = await reviewing((body) =>
+      body.confirm
+        ? json({
+            status: 'ordered',
+            review: reviewOf({ unconfirmed: [] }),
+            order: { ...retargetOrder(), type: 'buy' },
+          })
+        : json({ status: 'review', review: reviewOf() }),
+    );
+    await click(box(host));
+    await click(find(host, '[data-action="mix-confirm"]'));
+    await settle();
+    expect(find(host, '[role="alert"]').textContent).toBe(en.mix.failure.unchecked);
+    expect(en.mix.failure.unchecked).not.toContain('Nothing was stored');
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it('closes the editor when another proposal arrives, and offers the new one', async () => {
+    const host = await reviewing(() => json({ status: 'review', review: reviewOf() }));
+    expect(host.querySelector('[data-ui="mix-review-lines"]')).not.toBeNull();
+    await type(find<HTMLTextAreaElement>(host, 'textarea'), 'And now?');
+    await click(find(host, '[data-ui="composer-send"]'));
+    await settle();
+    expect(host.querySelector('[data-ui="mix-review-lines"]')).toBeNull();
+    expect(host.querySelector('[data-ui="weight-editor"]')).toBeNull();
+    expect(buttonNamed(host, en.mix.preview.apply)).not.toBeNull();
+  });
+
+  it('shows a note on a share that was not applied when the reply has no proposal', async () => {
+    portStore.setApi(async (url, init) => {
+      if (init?.method !== 'POST' || !url.endsWith('/conversation/reply')) return json({}, 404);
+      return json({
+        ...answer,
+        messageId: JSON.parse(String(init.body)).messageId,
+        proposal: null,
+        warnings: [],
+        weightNotes: [{ code: 'share_unmet', assetIds: [], quote: '70% TSLA' }],
+      });
+    });
+    const host = await mount(withAccount('en', createElement(VaultConversation, { read, userId })));
+    await type(find<HTMLTextAreaElement>(host, 'textarea'), 'I want 70% TSLA');
+    await click(find(host, '[data-ui="composer-send"]'));
+    await settle();
+    const notes = find(host, '[data-ui="weight-notes"]').textContent ?? '';
+    expect(notes).toContain(en.mix.preview.notesAlone);
+    expect(notes).toContain(en.mix.preview.note.unmet('70% TSLA'));
   });
 });
 
@@ -342,58 +484,101 @@ describe('a new goal’s mix, made into a plan', () => {
     expect(localStorage.getItem(`tf-plan:${proposalId}`)).not.toBeNull();
   });
 
-  it('shows a new review, unticked, when the figures moved before the confirm', async () => {
+  it('unticks a warning whose figure moved under the same id, and holds the confirm again', async () => {
     let n = 0;
     portStore.setApi(async (url, init) => {
       if (!url.endsWith('/goal/accept')) return json({}, 404);
       const body = JSON.parse(String(init?.body ?? '{}'));
       n += 1;
-      return json({
-        status: 'review',
-        review: body.confirm
-          ? reviewOf({
-              reviewHash: 'cd'.repeat(32),
-              warnings: [
-                {
-                  ...(reviewOf().warnings[0] as MixReview['warnings'][number]),
-                  id: 'NOT_FOR_GOAL:solana:gldx',
-                  code: 'NOT_FOR_GOAL',
-                },
-              ],
-            })
-          : reviewOf(),
-      });
+      return json({ status: 'review', review: body.confirm ? reviewOf(moved()) : reviewOf() });
     });
-    const host = await mount(
-      withAccount(
-        'en',
-        createElement(UseGoalMix, {
-          chain: 'solana',
-          userId,
-          allocations: [
-            { assetId: 'solana:usdc', weightBps: 6000 },
-            { assetId: 'solana:gldx', weightBps: 4000 },
-          ],
-          onClose: () => {},
-        }),
-      ),
-    );
+    const host = await goalMix();
     await type(host.querySelector('input') as HTMLInputElement, '100');
-    for (const [i, value] of ['grow', 'medium'].entries()) {
-      const select = host.querySelectorAll('select')[i] as HTMLSelectElement;
-      select.value = value;
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-    await settle();
+    await chooseGoal(host);
     await click(find(host, '[data-action="mix-review"]'));
     await settle();
-    await click(find(host, '[data-ui="mix-review-warnings"] input[type="checkbox"]'));
+    await click(box(host));
     await click(find(host, '[data-action="mix-confirm"]'));
     await settle();
     expect(n).toBe(2);
     expect(host.textContent).toContain(en.mix.review.changed);
+    expect(box(host).checked).toBe(false);
     expect(find(host, '[data-action="mix-confirm"]').getAttribute('aria-disabled')).toBe('true');
     expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it('starts a review of changed weights with nothing ticked', async () => {
+    portStore.setApi(async (url, init) => {
+      if (!url.endsWith('/goal/accept')) return json({}, 404);
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      const gold = body.allocations.find((l: { assetId: string }) => l.assetId === 'solana:gldx');
+      // the same warning id at 40% and at 90%; the hash is the review's own
+      return json({
+        status: 'review',
+        review: reviewFor(body.allocations, gold.weightBps === 4000 ? {} : moved()),
+      });
+    });
+    const host = await goalMix();
+    await type(host.querySelector('input') as HTMLInputElement, '100');
+    await chooseGoal(host);
+    await click(find(host, '[data-action="mix-review"]'));
+    await settle();
+    await click(box(host));
+    expect(find(host, '[data-action="mix-confirm"]').getAttribute('aria-disabled')).toBeNull();
+    await click(buttonNamed(host, en.mix.review.back));
+    await type(find<HTMLInputElement>(host, '[data-ui="targets-lines"] input'), '90');
+    await click(find(host, '[data-action="mix-review"]'));
+    await settle();
+    expect(find(host, '[data-ui="mix-review-lines"]').textContent).toContain('90%');
+    expect(box(host).checked).toBe(false);
+    expect(find(host, '[data-action="mix-confirm"]').getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('reads a Portuguese amount with a decimal comma, and shows the total reviewed', async () => {
+    const calls: Call[] = [];
+    portStore.setApi(async (url, init) => {
+      if (!url.endsWith('/goal/accept')) return json({}, 404);
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      calls.push({ url, body });
+      return json({ status: 'review', review: reviewOf({ amountUsd: body.amountUsd }) });
+    });
+    const host = await goalMix('pt');
+    await type(host.querySelector('input') as HTMLInputElement, '100,50');
+    await chooseGoal(host);
+    await click(find(host, '[data-action="mix-review"]'));
+    await settle();
+    expect(calls[0]?.body.amountUsd).toBe(100.5);
+    expect(find(host, '[data-ui="mix-review-total"]').textContent).toMatch(/100,50/);
+  });
+
+  it('says each asset the goal refuses on a line of its own, with what to do', async () => {
+    portStore.setApi(async (url) =>
+      url.endsWith('/goal/accept')
+        ? json(
+            {
+              error: 'this mix cannot be bought as it is',
+              code: 'MIX_NOT_VALID',
+              details: { issues: ['NOT_FOR_GOAL:solana:gldx', 'NOT_FOR_GOAL:solana:btc'] },
+            },
+            422,
+          )
+        : json({}, 404),
+    );
+    const host = await goalMix();
+    await type(host.querySelector('input') as HTMLInputElement, '100');
+    await chooseGoal(host, 'protect', 'low');
+    await click(find(host, '[data-action="mix-review"]'));
+    await settle();
+    const said = (find(host, '[role="alert"]').textContent ?? '').split('\n');
+    expect(said).toHaveLength(3);
+    expect(said[0]).toBe(en.mix.failure.invalid);
+    expect(said[1]).toMatch(/gold|GLD/i);
+    expect(said[1]).toContain('Take it out, or choose another goal.');
+    expect(said[2]).not.toBe(said[1]);
+    expect(said[2]).toContain('Take it out, or choose another goal.');
+    const pt = dictionary('pt');
+    expect(pt.mix.issue('NOT_FOR_GOAL', 'Ouro')).toContain('Ouro');
+    expect(pt.mix.issue('NOT_FOR_GOAL', 'Ouro')).not.toBe(pt.mix.issue('', 'Ouro'));
   });
 });
 
@@ -402,29 +587,13 @@ describe('a new goal’s mix, with a weight the person changed', () => {
     const calls: Call[] = [];
     portStore.setApi(async (url, init) => {
       if (!url.endsWith('/goal/accept')) return json({}, 404);
-      calls.push({ url, body: JSON.parse(String(init?.body ?? '{}')) });
-      return json({}, 500);
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      calls.push({ url, body });
+      return json({ status: 'review', review: reviewFor(body.allocations, { origin: 'person' }) });
     });
-    const host = await mount(
-      withAccount(
-        'en',
-        createElement(UseGoalMix, {
-          chain: 'solana',
-          userId,
-          allocations: [
-            { assetId: 'solana:usdc', weightBps: 6000 },
-            { assetId: 'solana:gldx', weightBps: 4000 },
-          ],
-          onClose: () => {},
-        }),
-      ),
-    );
+    const host = await goalMix();
     await type(host.querySelector('input') as HTMLInputElement, '100');
-    for (const [i, value] of ['grow', 'medium'].entries()) {
-      const select = host.querySelectorAll('select')[i] as HTMLSelectElement;
-      select.value = value;
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-    }
+    await chooseGoal(host);
     const weight = find<HTMLInputElement>(host, '[data-ui="targets-lines"] input');
     expect(weight.value).toBe('40');
     // a weight that does not read holds the review back
@@ -442,6 +611,9 @@ describe('a new goal’s mix, with a weight the person changed', () => {
         { assetId: 'solana:usdc', weightBps: 7500 },
       ],
     });
+    const lines = find(host, '[data-ui="mix-review-lines"]').textContent ?? '';
+    expect(lines).toContain('25%');
+    expect(lines).toContain('75%');
   });
 });
 
@@ -454,13 +626,10 @@ describe('the weight editor of a vault the person owns', () => {
         const body = JSON.parse(String(init.body));
         calls.push({ url, body });
         // The review reads back the lines sent, as the server does.
-        const sent = body.allocations as { assetId: string; weightBps: number }[];
-        const lines = sent.map((line) => {
-          const sample = reviewOf().lines.find((l) => l.assetId === line.assetId);
-          if (!sample) throw new Error(`no sample line for ${line.assetId}`);
-          return { ...sample, weightBps: line.weightBps, amountUsd: line.weightBps / 100 };
+        return json({
+          status: 'review',
+          review: reviewFor(body.allocations, { origin: 'person' }),
         });
-        return json({ status: 'review', review: reviewOf({ origin: 'person', lines }) });
       }
       return json({}, 404);
     });
@@ -498,6 +667,17 @@ describe('the weight editor of a vault the person owns', () => {
     expect(review.getAttribute('aria-disabled')).toBe('true');
     await click(review);
     expect(calls).toEqual([]);
+  });
+
+  it('empties a weight that did not read when the unit changes, never giving it another meaning', async () => {
+    const host = await showEditor([]);
+    await type(inputs(host)[0] as HTMLInputElement, '150');
+    const unit = host.querySelector('select') as HTMLSelectElement;
+    unit.value = 'bps';
+    unit.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle();
+    expect(inputs(host)[0]?.value).toBe('');
+    expect(find(host, '[data-action="targets-review"]').getAttribute('aria-disabled')).toBe('true');
   });
 
   it('switches between percents and basis points without changing a weight, and sends the person’s mix', async () => {

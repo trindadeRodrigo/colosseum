@@ -3,7 +3,7 @@ import { useT } from '../../i18n/I18nProvider';
 import { displayName } from '../order/plain';
 import type { MixFailure } from './mix-api';
 
-/** The sentence a mix call's failure is said with; a 422 names each line the server refused. */
+/** What a mix call's failure is said with; a 422 says each thing the server refused on a line of its own. */
 export function useFailureText(): (failure: MixFailure) => string {
   const t = useT();
   const f = t.mix.failure;
@@ -15,7 +15,7 @@ export function useFailureText(): (failure: MixFailure) => string {
           const asset = rest.length ? displayName(rest.join(':'), t.plan) : '';
           return t.mix.issue(code, asset);
         });
-        return [f.invalid, ...new Set(issues)].join(' ');
+        return [f.invalid, ...new Set(issues)].join('\n');
       }
       case 'signed-out':
         return f.signedOut;
@@ -29,6 +29,8 @@ export function useFailureText(): (failure: MixFailure) => string {
         return f.busy;
       case 'unreadable':
         return f.unreadable;
+      case 'unchecked':
+        return f.unchecked;
       case 'unreachable':
         return f.unreachable;
       case 'said':

@@ -6,13 +6,14 @@ import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { Field, Input, Select } from '../../components/ui/Field';
 import { useLang, useT } from '../../i18n/I18nProvider';
+import { parseNumber } from '../goal/sheet';
 import { MAX_USD, MIN_USD } from '../order/InvestCard';
 import { rememberPlan } from '../order/plan-store';
 import { onMock } from '../order/readiness';
 import { unitsFor } from '../order/units';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { useFailureText } from './failure';
-import { MixReviewCard } from './MixReviewCard';
+import { MixReviewCard, useTicks } from './MixReviewCard';
 import { acceptedOf, mixOf, sameMix } from './mix';
 import { acceptGoalMix } from './mix-api';
 import { linesOf, WeightEditor, type Weights, weightsOf } from './WeightEditor';
@@ -24,13 +25,6 @@ import { linesOf, WeightEditor, type Weights, weightsOf } from './WeightEditor';
 
 type Goal = 'grow' | 'income' | 'protect';
 type Risk = 'low' | 'medium' | 'high';
-
-const amountOf = (text: string): number | null => {
-  const typed = text.trim().replace(/[$\s]/g, '').replace(/,/g, '');
-  if (!/^\d+(\.\d{1,2})?$/.test(typed)) return null;
-  const n = Number(typed);
-  return n >= MIN_USD && n <= MAX_USD ? n : null;
-};
 
 export function UseGoalMix({
   chain,
@@ -57,10 +51,12 @@ export function UseGoalMix({
   const [tried, setTried] = useState(false);
   const [review, setReview] = useState<MixReview | null>(null);
   const [changed, setChanged] = useState(false);
-  const [ticked, setTicked] = useState<Set<string>>(new Set());
+  const [ticked, tick] = useTicks(review);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  const amount = amountOf(amountText);
+  // Read as the buy screen reads an amount: in Portuguese "100,50" is a hundred dollars and fifty cents.
+  const typed = parseNumber(amountText, lang);
+  const amount = typed !== null && typed >= MIN_USD && typed <= MAX_USD ? typed : null;
   const mock = onMock(port, chain);
   const cash = unitsFor(chain, mock)?.cash ?? null;
   const start = allocations
@@ -133,14 +129,7 @@ export function UseGoalMix({
         <MixReviewCard
           review={review}
           ticked={ticked}
-          onTick={(id, on) =>
-            setTicked((old) => {
-              const next = new Set(old);
-              if (on) next.add(id);
-              else next.delete(id);
-              return next;
-            })
-          }
+          onTick={tick}
           confirmLabel={busy ? g.confirming : g.confirm}
           onConfirm={confirm}
           onBack={() => setReview(null)}
@@ -148,7 +137,10 @@ export function UseGoalMix({
           changed={changed}
         />
         {failure && (
-          <p role="alert" className="max-w-(--tf-measure-body) text-body-sm text-destructive">
+          <p
+            role="alert"
+            className="max-w-(--tf-measure-body) whitespace-pre-line text-body-sm text-destructive"
+          >
             {failure}
           </p>
         )}
@@ -226,7 +218,10 @@ export function UseGoalMix({
           <p className="max-w-(--tf-measure-body) text-body-sm">{t.mix.failure.readOnly}</p>
         )}
         {failure && (
-          <p role="alert" className="max-w-(--tf-measure-body) text-body-sm text-destructive">
+          <p
+            role="alert"
+            className="max-w-(--tf-measure-body) whitespace-pre-line text-body-sm text-destructive"
+          >
             {failure}
           </p>
         )}

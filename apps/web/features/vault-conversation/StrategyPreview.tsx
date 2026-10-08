@@ -67,27 +67,6 @@ export function StrategyPreview({
   const nameOf = (asset: string) =>
     proposal.allocations.find((line) => line.assetId === asset)?.symbol ??
     displayName(asset, t.plan);
-  const names = (assets: readonly string[]) =>
-    new Intl.ListFormat(LOCALE[language], { type: 'conjunction' }).format(assets.map(nameOf));
-  const everyPick = (assets: readonly string[]) => assets.length === proposal.allocations.length;
-  const noteOf = (note: VaultStrategyPreview['weightNotes'][number]): string => {
-    switch (note.code) {
-      case 'equal_split':
-        return everyPick(note.assetIds) ? m.note.equalAll : m.note.equalRest(names(note.assetIds));
-      case 'stated':
-        return m.note.stated(names(note.assetIds), note.quote ?? '');
-      case 'scaled':
-        return m.note.scaled;
-      case 'pick_dropped':
-        return m.note.dropped(names(note.assetIds));
-      case 'share_unmet':
-        return m.note.unmet(note.quote ?? '');
-      case 'share_unread':
-        return m.note.unread(note.quote ?? '');
-      case 'share_withdrawn':
-        return m.note.withdrawn(note.quote ?? '');
-    }
-  };
   const change = (bps: number) =>
     `${new Intl.NumberFormat(LOCALE[language], { maximumFractionDigits: 2, signDisplay: 'exceptZero' }).format(bps / 100).replace('-', '−')} ${copy.points}`;
   return (
@@ -163,21 +142,7 @@ export function StrategyPreview({
               ))}
             </tbody>
           </table>
-          {proposal.weightNotes.length > 0 && (
-            <div data-ui="weight-notes">
-              <h3 className="text-caption font-medium">{m.notes}</h3>
-              <ul className="list-inside list-disc text-body-sm">
-                {proposal.weightNotes.map((note) => (
-                  <li
-                    key={`${note.code}:${note.assetIds.join(',')}:${note.quote ?? ''}`}
-                    className="[overflow-wrap:anywhere]"
-                  >
-                    {noteOf(note)}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <WeightNotes notes={proposal.weightNotes} allocations={proposal.allocations} />
           {proposal.warnings.length > 0 && (
             <div data-ui="mix-warnings" className="flex flex-col gap-2">
               <h3 className="text-caption font-medium">{m.warnings}</h3>
@@ -273,5 +238,64 @@ export function StrategyPreview({
       </Card>
       <Disclaimer lang={language} label={t.shell.disclaimer} />
     </>
+  );
+}
+
+/**
+ * What the server did with the weights, in words: the code, the served picks and the person's own
+ * quote. Also stands alone under a reply with no proposal, where a share was not applied.
+ */
+export function WeightNotes({
+  notes,
+  allocations = [],
+}: {
+  notes: readonly VaultStrategyPreview['weightNotes'][number][];
+  allocations?: VaultStrategyPreview['allocations'];
+}) {
+  const t = useT();
+  const language = useLang();
+  const m = t.mix.preview;
+  if (notes.length === 0) return null;
+  const names = (assets: readonly string[]) =>
+    new Intl.ListFormat(LOCALE[language], { type: 'conjunction' }).format(
+      assets.map(
+        (asset) =>
+          allocations.find((line) => line.assetId === asset)?.symbol ?? displayName(asset, t.plan),
+      ),
+    );
+  const noteOf = (note: (typeof notes)[number]): string => {
+    switch (note.code) {
+      case 'equal_split':
+        return note.assetIds.length === allocations.length
+          ? m.note.equalAll
+          : m.note.equalRest(names(note.assetIds));
+      case 'stated':
+        return m.note.stated(names(note.assetIds), note.quote ?? '');
+      case 'scaled':
+        return m.note.scaled;
+      case 'pick_dropped':
+        return m.note.dropped(names(note.assetIds));
+      case 'share_unmet':
+        return m.note.unmet(note.quote ?? '');
+      case 'share_unread':
+        return m.note.unread(note.quote ?? '');
+      case 'share_withdrawn':
+        return m.note.withdrawn(note.quote ?? '');
+    }
+  };
+  return (
+    <div data-ui="weight-notes">
+      <h3 className="text-caption font-medium">{allocations.length ? m.notes : m.notesAlone}</h3>
+      <ul className="list-inside list-disc text-body-sm">
+        {notes.map((note) => (
+          <li
+            key={`${note.code}:${note.assetIds.join(',')}:${note.quote ?? ''}`}
+            className="[overflow-wrap:anywhere]"
+          >
+            {noteOf(note)}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

@@ -21,7 +21,7 @@ import {
   type VaultAgentReply,
   vaultAgent,
 } from './agent';
-import { StrategyPreview } from './StrategyPreview';
+import { StrategyPreview, WeightNotes } from './StrategyPreview';
 import {
   conversationKey,
   conversationNetwork,
@@ -421,6 +421,7 @@ export function VaultConversation({
             </details>
           </CardBody>
         </Card>
+        {reply?.notes && !proposal && <WeightNotes notes={reply.notes} />}
         {proposal && (
           <section data-ui="vault-proposal">
             <StrategyPreview

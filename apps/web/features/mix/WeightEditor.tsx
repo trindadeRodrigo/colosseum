@@ -84,12 +84,13 @@ export function WeightEditor({
     all.find((a) => a.id === asset)?.symbol ?? names?.[asset] ?? displayName(asset, t.plan);
   const edit = (next: EditorRow[]) => onChange({ rows: next, unit });
   const switchUnit = (to: WeightUnit) =>
-    // The weights keep their value: each row is written again in the other unit where it reads.
+    // The weights keep their value: each row is written again in the other unit. A text that did not
+    // read is emptied, never kept to mean something else ("150" percent is not 150 basis points).
     onChange({
       unit: to,
       rows: rows.map((row) => {
         const bps = bpsOf(row.text, unit);
-        return bps === null ? row : { ...row, text: textOf(bps, to) };
+        return { ...row, text: bps === null ? '' : textOf(bps, to) };
       }),
     });
 

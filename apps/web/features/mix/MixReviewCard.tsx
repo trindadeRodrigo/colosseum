@@ -1,6 +1,6 @@
 'use client';
 import type { MixReview } from '@colosseum/schemas';
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
@@ -16,6 +16,31 @@ import { unticked } from './mix';
 // planned, each figure with its pin; then each warning, which the person ticks one by one. Nothing here
 // is a figure of the model's or of this app's: the review is the server's, and the confirm sends back
 // its hash with the ticks.
+
+const NONE: ReadonlySet<string> = new Set();
+
+/**
+ * The warnings the person ticked, held to the one review they were ticked on. A tick is given to a
+ * warning with its figures, which only the review's hash names: a review with another hash (a figure
+ * that moved, a weight that changed) starts with none, even where a warning keeps its id.
+ */
+export function useTicks(
+  review: MixReview | null,
+): [ReadonlySet<string>, (id: string, on: boolean) => void] {
+  const [held, setHeld] = useState<{ hash: string; ids: ReadonlySet<string> } | null>(null);
+  const hash = review?.reviewHash ?? null;
+  const ticked = held && held.hash === hash ? held.ids : NONE;
+  const tick = (id: string, on: boolean) => {
+    if (!hash) return;
+    setHeld((old) => {
+      const next = new Set(old && old.hash === hash ? old.ids : NONE);
+      if (on) next.add(id);
+      else next.delete(id);
+      return { hash, ids: next };
+    });
+  };
+  return [ticked, tick];
+}
 
 export function MixReviewCard({
   review,
@@ -124,6 +149,14 @@ export function MixReviewCard({
               </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr data-ui="mix-review-total">
+              <th scope="row" colSpan={2} className="py-3 text-start font-medium">
+                {r.total}
+              </th>
+              <td className="py-3 text-end font-medium tabular-nums">{usd(review.amountUsd)}</td>
+            </tr>
+          </tfoot>
         </table>
         {review.warnings.length > 0 && (
           <fieldset data-ui="mix-review-warnings" className="flex min-w-0 flex-col gap-3">

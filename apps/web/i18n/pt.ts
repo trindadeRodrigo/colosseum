@@ -1199,6 +1199,8 @@ export const pt: Dictionary = {
       VERSION_CHANGED:
         'Um portfólio compartilhado deste plano mudou depois que o plano foi feito. Monte o plano de novo a partir do seu objetivo.',
       ORDER_EXPIRED: 'Essa ordem perdeu o prazo. Tente de novo.',
+      AMOUNT_OVER_REVIEW:
+        'Esta mistura foi revisada com um valor menor e não é comprada acima dele. Diminua o valor ou revise a mistura de novo com o novo valor.',
       US_PERSON:
         'Este produto não é para pessoas nos Estados Unidos, então a ordem não foi criada.',
       RATE_LIMITED:
@@ -2176,11 +2178,12 @@ export const pt: Dictionary = {
   },
   /** Misturas da conversa ou da própria pessoa (gate ANY-COMPOSITION, #191). */
   mix: {
-    activity: (when: string) => `Novos alvos do seu cofre · ${when}`,
+    activity: (when: string) => `Novos pesos-alvo do seu cofre · ${when}`,
     preview: {
       use: 'Usar esta mistura',
       apply: 'Aplicar ao meu cofre',
       notes: 'Como os pesos foram definidos',
+      notesAlone: 'Sobre as proporções que você deu',
       warnings: 'Antes de usar',
       note: {
         equalAll: 'As escolhas dividem o cofre em partes iguais: você não deu proporções.',
@@ -2198,7 +2201,7 @@ export const pt: Dictionary = {
         overExit: (name: string) =>
           `${name} pesa mais do que a saída medida consegue vender no tamanho do seu cofre. Vender pode levar mais tempo.`,
         outsideGoal: (name: string) =>
-          `${name} está fora do que sua meta normalmente guarda. Está aqui porque você pediu.`,
+          `${name} está fora do que seu objetivo normalmente guarda. Está aqui porque você pediu.`,
       },
     },
     review: {
@@ -2209,6 +2212,7 @@ export const pt: Dictionary = {
       amount: 'Valor',
       price: 'Preço',
       exit: 'O máximo que guarda e ainda sai como planejado',
+      total: 'Total revisado',
       cash: 'Caixa',
       cashPrice: 'contado a um dólar',
       measured: 'medido',
@@ -2220,11 +2224,11 @@ export const pt: Dictionary = {
       back: 'Mudar a mistura',
     },
     goal: {
-      title: 'Usar esta mistura para uma nova meta',
+      title: 'Usar esta mistura para um novo objetivo',
       lead: 'Diga quanto e para quê. Confiro a mistura com os preços de hoje antes de qualquer compra.',
       amount: 'Valor',
       amountHint: 'Em dólares, de US$ 10 a US$ 1.000.000.',
-      goal: 'Meta',
+      goal: 'Objetivo',
       goals: { grow: 'Fazer crescer', income: 'Renda mensal', protect: 'Manter seguro' },
       risk: 'Risco',
       risks: { low: 'Baixo', medium: 'Médio', high: 'Alto' },
@@ -2240,12 +2244,12 @@ export const pt: Dictionary = {
       },
     },
     vault: {
-      review: 'Revisar estes alvos',
+      review: 'Revisar estes pesos-alvo',
       reviewing: 'Revisando…',
       confirm: 'Confirmar e criar a ordem',
       confirming: 'Criando a ordem…',
       after:
-        'Em seguida, a tela da ordem mostra cada passo a assinar: primeiro os alvos, depois as vendas e as compras.',
+        'Em seguida, a tela da ordem mostra cada passo a assinar: primeiro os pesos-alvo, depois as vendas e as compras.',
     },
     editor: {
       title: 'Os pesos do seu cofre',
@@ -2286,6 +2290,8 @@ export const pt: Dictionary = {
       readOnly: 'Esta rede só lê por enquanto. Nada pode ser comprado ou alterado nela.',
       busy: 'Muitos pedidos agora. Espere um pouco e tente de novo.',
       unreadable: 'A resposta não bateu com o pedido. Nada foi guardado. Tente de novo.',
+      unchecked:
+        'O servidor recebeu sua confirmação, mas a resposta não bateu com o que você revisou, então parei aqui. Pode já estar guardado: veja seu portfólio antes de tentar de novo.',
       unreachable: 'Não consegui falar com o servidor. Nada foi guardado. Tente de novo.',
       said: (error: string) => `O servidor disse: ${error}`,
       noStore:
@@ -2307,6 +2313,8 @@ export const pt: Dictionary = {
           return 'Um cofre guarda 16 ativos além do caixa.';
         case 'NO_PRICE':
           return `${asset} não tem um preço usável agora.`;
+        case 'NOT_FOR_GOAL':
+          return `${asset} não entra em um plano de renda mensal nem de manter o dinheiro seguro: pode perder valor. Tire-o ou escolha outro objetivo.`;
         case 'ALL_CASH':
           return 'Um cofre aberto guarda pelo menos um ativo próprio.';
         case 'OVER_ORDER_LIMIT':
@@ -2316,12 +2324,12 @@ export const pt: Dictionary = {
       }
     },
     order: {
-      title: 'Novos alvos do seu cofre',
-      signTargets: 'Assinar e aplicar os alvos',
+      title: 'Novos pesos-alvo do seu cofre',
+      signTargets: 'Assinar e aplicar os pesos-alvo',
       cash: (share: string) => `O restante fica em caixa: ${share}.`,
       fromConversation: 'Proposto na sua conversa e confirmado por você.',
       fromPerson: 'Escolhido por você.',
-      note: 'O primeiro passo define estes alvos na rede; os passos seguintes vendem e compram para chegar a eles, cada um com seu mínimo.',
+      note: 'O primeiro passo define estes pesos-alvo na rede; os passos seguintes vendem e compram para chegar a eles, cada um com seu mínimo.',
     },
   },
 };

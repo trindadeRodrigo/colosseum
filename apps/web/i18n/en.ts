@@ -1341,6 +1341,8 @@ export const en = {
       VERSION_CHANGED:
         'A shared portfolio in this plan changed after the plan was made. Build the plan again from your goal.',
       ORDER_EXPIRED: 'That order ran out of time. Try again.',
+      AMOUNT_OVER_REVIEW:
+        'This mix was reviewed at a smaller amount, and it’s bought at no more than that. Lower the amount, or review the mix again at the new one.',
       US_PERSON: 'This product isn’t for people in the United States, so the order wasn’t made.',
       RATE_LIMITED: 'Our server asked me to slow down. Wait a minute, then try again.',
       CHAIN_UNAVAILABLE: 'This chain is switched off on our server for now. Nothing was ordered.',
@@ -2316,6 +2318,7 @@ export const en = {
       use: 'Use this mix',
       apply: 'Apply to my vault',
       notes: 'How the weights were set',
+      notesAlone: 'About the shares you gave',
       warnings: 'Before you use it',
       note: {
         equalAll: 'The picks share the vault equally: you didn’t give shares.',
@@ -2344,6 +2347,7 @@ export const en = {
       amount: 'Amount',
       price: 'Price',
       exit: 'Most it holds and still exits as planned',
+      total: 'Total reviewed',
       cash: 'Cash',
       cashPrice: 'counted at one dollar',
       measured: 'measured',
@@ -2422,6 +2426,8 @@ export const en = {
       readOnly: 'This chain only reads for now. Nothing can be bought or changed on it.',
       busy: 'Too many requests just now. Wait a moment and try again.',
       unreadable: 'The answer didn’t match what was asked. Nothing was stored. Try again.',
+      unchecked:
+        'The server took your confirmation, but its answer didn’t match what you reviewed, so I stopped here. It may already be stored: look at your portfolio before you try again.',
       unreachable: 'I couldn’t reach the server. Nothing was stored. Try again.',
       said: (error: string) => `The server said: ${error}`,
       noStore:
@@ -2443,6 +2449,8 @@ export const en = {
           return 'A vault holds 16 assets besides cash.';
         case 'NO_PRICE':
           return `${asset} has no usable price just now.`;
+        case 'NOT_FOR_GOAL':
+          return `${asset} can’t go in a plan for monthly income or for keeping money safe: it can fall in value. Take it out, or choose another goal.`;
         case 'ALL_CASH':
           return 'An open vault keeps at least one asset of its own.';
         case 'OVER_ORDER_LIMIT':

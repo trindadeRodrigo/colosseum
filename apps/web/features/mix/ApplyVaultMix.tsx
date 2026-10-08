@@ -13,7 +13,7 @@ import { isVaultOf } from '../shared/chain-recipe';
 import type { SharedTerms } from '../shared/terms';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { useFailureText } from './failure';
-import { MixReviewCard } from './MixReviewCard';
+import { MixReviewCard, useTicks } from './MixReviewCard';
 import { acceptedOf } from './mix';
 import { applyVaultMix } from './mix-api';
 
@@ -44,7 +44,7 @@ export function ApplyVaultMix({
   const failureText = useFailureText();
   const [review, setReview] = useState<MixReview | null>(null);
   const [changed, setChanged] = useState(false);
-  const [ticked, setTicked] = useState<Set<string>>(new Set());
+  const [ticked, tick] = useTicks(review);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const sent = JSON.stringify(lines);
@@ -126,7 +126,10 @@ export function ApplyVaultMix({
   }
 
   const said = failure && (
-    <p role="alert" className="max-w-(--tf-measure-body) text-body-sm text-destructive">
+    <p
+      role="alert"
+      className="max-w-(--tf-measure-body) whitespace-pre-line text-body-sm text-destructive"
+    >
       {failure}
     </p>
   );
@@ -148,14 +151,7 @@ export function ApplyVaultMix({
       <MixReviewCard
         review={review}
         ticked={ticked}
-        onTick={(id, on) =>
-          setTicked((old) => {
-            const next = new Set(old);
-            if (on) next.add(id);
-            else next.delete(id);
-            return next;
-          })
-        }
+        onTick={tick}
         confirmLabel={busy ? v.confirming : v.confirm}
         onConfirm={confirm}
         onBack={onBack}
