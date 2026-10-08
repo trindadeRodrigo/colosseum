@@ -710,7 +710,6 @@ export function InvestCard({
                       asked.current = want ? `${want}|${orderRound + 1}` : null;
                       setOld(false);
                       mustAsk.current = false;
-                      mustAsk.current = false;
                       setOrderRound((n) => n + 1);
                     }}
                   >
