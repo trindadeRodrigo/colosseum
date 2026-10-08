@@ -503,8 +503,8 @@ export const en = {
   portfolio: {
     overview: {
       title: 'Portfolio overview',
-      value: 'Total value · USD',
-      partialValue: 'Value of vaults read · USD',
+      value: 'Total value · dollars',
+      partialValue: 'Value of vaults read · dollars',
       vaults: 'Vaults read',
       holdings: 'Holdings across vaults',
       partial:

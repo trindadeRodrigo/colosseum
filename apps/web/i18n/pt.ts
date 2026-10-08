@@ -445,8 +445,8 @@ export const pt: Dictionary = {
   portfolio: {
     overview: {
       title: 'Visão geral do portfólio',
-      value: 'Valor total · USD',
-      partialValue: 'Valor dos cofres lidos · USD',
+      value: 'Valor total · dólares',
+      partialValue: 'Valor dos cofres lidos · dólares',
       vaults: 'Cofres lidos',
       holdings: 'Posições nos cofres',
       partial:
