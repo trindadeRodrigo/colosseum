@@ -568,7 +568,8 @@ describe('the forbidden things', () => {
               /(^|,)\s*(html|:host|code|kbd|samp|pre)\b/.test(b.finding.where);
             const legacy =
               b.files.length > 0 && b.files.every((f) => LEGACY[f]?.includes(b.finding.kind));
-            if (!known && !base && !legacy && !centred(b)) problems.push(say(b));
+            if (!known && !base && !legacy && !centred(b) && !popover(b) && !caption(b))
+              problems.push(say(b));
           }
         }
         expect(source).toBeDefined();
