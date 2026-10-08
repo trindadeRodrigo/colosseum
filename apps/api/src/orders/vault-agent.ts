@@ -59,6 +59,13 @@ export type VaultAgentPrompt = {
   unknowns: string[];
   caps: Record<string, number>;
   eligibilityGoal: 'grow' | 'income' | 'protect' | null;
+  /** Person-authored limits projected onto the supplied catalog, never allocation choices. */
+  allocationConstraints: Array<{
+    assetIds: string[];
+    minWeightBps: number;
+    maxWeightBps: number;
+    personQuote: string;
+  }>;
 };
 
 /** Cash is the residual balance, not a capped creator target (compose's cash convention). */
@@ -466,6 +473,7 @@ export async function replyToVaultConversation(
   );
   if (Object.values(caps).some((cap) => !Number.isInteger(cap) || cap < 0 || cap > 10_000))
     return { kind: 'failure', reason: 'invalid' };
+  const constraints = holdingConstraints(parsed.data.messages, [...catalog.values()]);
   const prompt: VaultAgentPrompt = {
     version: 1,
     kind: context.kind ?? 'vault',
@@ -494,6 +502,12 @@ export async function replyToVaultConversation(
     unknowns: context.unknowns,
     caps,
     eligibilityGoal: eligibilityGoal(context),
+    allocationConstraints: constraints.map((constraint) => ({
+      assetIds: [...catalog.values()].filter(constraint.matches).map((asset) => asset.id),
+      minWeightBps: constraint.min,
+      maxWeightBps: constraint.max,
+      personQuote: constraint.quote,
+    })),
   };
   let output: Awaited<ReturnType<VaultAgentModel['read']>>;
   try {
@@ -559,7 +573,7 @@ export async function replyToVaultConversation(
     }
   }
   if (sum !== 10_000) return { kind: 'failure', reason: 'invalid' };
-  for (const constraint of holdingConstraints(parsed.data.messages, [...catalog.values()])) {
+  for (const constraint of constraints) {
     const actual = proposal.allocations.reduce((weight, allocation) => {
       const asset = catalog.get(allocation.assetId);
       return weight + (asset && constraint.matches(asset) ? allocation.weightBps : 0);
