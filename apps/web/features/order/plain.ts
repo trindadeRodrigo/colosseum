@@ -69,6 +69,11 @@ export function flagSentence(
   const currency = rest[0] ?? '';
   if (code.endsWith('_provenance')) return f.notLive;
   switch (code) {
+    // A mix the person confirmed (gate ANY-COMPOSITION): who chose it, and each warning accepted.
+    case 'origin':
+      return f.origin(rest[0] ?? '');
+    case 'confirmed':
+      return f.confirmed(rest[0] ?? '', rest.length >= 3 ? name(`${rest[1]}:${rest[2]}`) : '');
     case 'ceiling_from_tier':
       return f.ceilingFromTier(asset);
     case 'coverage_from_tier':
