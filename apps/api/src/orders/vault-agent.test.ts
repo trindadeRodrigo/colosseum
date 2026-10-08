@@ -1083,6 +1083,30 @@ describe('model-led private vault proposals', () => {
     [`Quero ${stock.symbol} removido.`, 'pt'],
     [`Quero a ${stock.symbol} vendida.`, 'pt'],
     [`Quero ${stock.symbol} zerado.`, 'pt'],
+    // Another listed asset behind a preposition moves the stock, it does not ask for it (second re-check, 1).
+    [`Put my ${stock.symbol} into ${cash.symbol}.`, 'en'],
+    [`I want my ${stock.symbol} in ${cash.symbol}.`, 'en'],
+    [`I want ${stock.symbol} in ${cash.symbol}.`, 'en'],
+    [`Keep ${stock.symbol} in ${cash.symbol}.`, 'en'],
+    [`I want half of my ${stock.symbol} in ${cash.symbol}.`, 'en'],
+    [`I want ${stock.symbol} into ${reserve.symbol}.`, 'en'],
+    [`Quero minha ${stock.symbol} em ${cash.symbol}.`, 'pt'],
+    [`Coloque minha ${stock.symbol} em ${cash.symbol}.`, 'pt'],
+    [`I want a reserve, ${stock.symbol} in ${cash.symbol}`, 'en'],
+    [`Quero renda, ${stock.symbol} em ${cash.symbol}`, 'pt'],
+    // A zero share, with or without a percent sign, and a bare number (second re-check, 2).
+    [`I want ${stock.symbol} at 0.`, 'en'],
+    [`Keep ${stock.symbol} at 0.`, 'en'],
+    [`I want ${stock.symbol} 0.`, 'en'],
+    [`I want ${stock.symbol} at zero percent.`, 'en'],
+    [`Quero ${stock.symbol} em 0.`, 'pt'],
+    [`Quero ${stock.symbol} a 0.`, 'pt'],
+    [`I want yield, ${stock.symbol} at 0`, 'en'],
+    [`I want ${stock.symbol} at 20.`, 'en'],
+    // A quantity or degree word after the name (second re-check, 3).
+    [`I want ${stock.symbol} too little`, 'en'],
+    [`I want cash, ${stock.symbol} too little`, 'en'],
+    [`Quero ${stock.symbol} pouco.`, 'pt'],
     // A list carries only from a piece that asked for an asset or a kind of asset (re-check, 2).
     [`I want protection from volatility and ${stock.symbol}`, 'en'],
     [`I want to hear about bonds and ${stock.symbol}.`, 'en'],
@@ -1123,6 +1147,8 @@ describe('model-led private vault proposals', () => {
     [`I want less ${otherStock.symbol}, more ${stock.symbol}.`, 'en'],
     [`Quero incluir ${stock.symbol}`, 'pt'],
     [`Add ${stock.symbol} to the mix, please.`, 'en'],
+    [`I want a bit of ${stock.symbol} in my portfolio.`, 'en'],
+    [`Quero um pouco de ${stock.symbol} na carteira.`, 'pt'],
     [`I want ${stock.symbol} at 20% in my plan.`, 'en'],
     [`I want a reserve and ${stock.symbol}.`, 'en'],
     [`I want bonds and ${stock.symbol} too.`, 'en'],
@@ -1144,6 +1170,10 @@ describe('model-led private vault proposals', () => {
   it('reads a list after one asking verb, and a list after one refusal', async () => {
     expect(
       (await requestedFor(`I want ${otherStock.symbol}, ${stock.symbol} and a reserve.`)).requested,
+    ).toEqual(expect.arrayContaining([stock.id, otherStock.id]));
+    // A full stop inside a number ends no sentence, and a share under one percent is not a zero.
+    expect(
+      (await requestedFor(`I want 0.5% ${otherStock.symbol} and 20% ${stock.symbol}.`)).requested,
     ).toEqual(expect.arrayContaining([stock.id, otherStock.id]));
     // The later refusal withdraws the earlier ask.
     expect(

@@ -705,12 +705,20 @@ const ASKS = word(ASKS_WORDS, 'iu');
 // "more NVDA" asks with no verb, but only for the name right after it.
 const ASKS_OR_MORE = word(`${ASKS_WORDS}|more|mais`, 'giu');
 // All that may stand between an asking word and the name it asks for ("I want [some] NVDA", "put [a
-// bit of my money in] NVDA"), or around the names of a list that continues one ("TSLA [too]"). Any other
-// word there and the name is not read as asked for.
-const ASK_FILLER = word(
-  'to\\s+(?:have|hold|own|get)|to\\s+(?:my|the|this|that|it)|for\\s+me|(?:pra|para)\\s+mim|after\\s+all|de\\s+novo|again|now|afinal|agora|exposure\\s+to|exposição\\s+(?:a|em)|at\\s+least|pelo\\s+menos|as\\s+well|por\\s+favor|por\\s+cento|some|a|an|the|of|in|into|at|my|me|i|more|bit|little|few|lot|also|too|just|please|tokens?|tokenized|position|it|this|that|vault|plan|portfolio|there|here|money|mix|exactly|percent|half|eu|ter|um|uma|uns|umas|o|os|as|de|do|da|dos|das|em|no|na|nos|nas|meu|minha|mais|pouco|também|tambem|posição|isso|neste|nesse|nele|cofre|plano|carteira|aqui|dinheiro|exatamente|metade',
+// bit of my money in] NVDA"), and all that may stand after the name ("NVDA [in my plan, please]"). Two
+// short closed lists: any other word there and the name is not read as asked for. No quantity or degree
+// word stands after a name ("NVDA too little"), and a number counts only as a share, with its sign.
+const ASK_BEFORE_NAME = word(
+  'to\\s+(?:have|hold|own|get)|exposure\\s+to|a\\s+(?:bit|little|lot)(?:\\s+of)?|at\\s+least|exactly|some|a|an|the|of|in|into|my|me|more|also|just|tokenized|half|money|ter|exposição\\s+(?:a|em)|um\\s+pouco(?:\\s+de)?|pelo\\s+menos|exatamente|um|uma|uns|umas|o|os|as|de|do|da|dos|das|em|no|na|nos|nas|meu|minha|mais|também|tambem|metade|dinheiro',
   'giu',
 );
+const ASK_AFTER_NAME = word(
+  '(?:in|into|to|on)\\s+(?:(?:my|the|this|that)\\s+)?(?:it|there|vault|plan|portfolio|mix)|(?:em|n[oa]|neste|nesse|nesta|nessa|para|pra|pro|ao)\\s+(?:(?:o|a|meu|minha)\\s+)?(?:cofre|plano|carteira)|for\\s+me|(?:pra|para)\\s+mim|after\\s+all|as\\s+well|at\\s+least|pelo\\s+menos|por\\s+favor|de\\s+novo|please|too|also|again|now|there|here|at|exactly|também|tambem|agora|afinal|aqui|nele|nela|em|com|exatamente',
+  'giu',
+);
+// A share: a number with its percent sign. A number without one is no filler.
+const ASK_SHARE =
+  /\d+(?:[.,]\d+)?\s*(?:%|(?:percent|per\s*cent|por\s*cento|pct)(?![\p{L}\p{N}]))/giu;
 // The kinds of asset a person names without a ticker. A piece that asks for one ("I want bonds") asks
 // for a thing, so a list may continue it; "I want safety, NVDA" asks for no thing.
 const KIND_WORDS = word(
@@ -721,13 +729,14 @@ const SETS_AGAINST =
   /^(?:from|against|than|over|to|for|with|about|on|contra|que|para|pra|por|sobre|com)$/iu;
 const EXCEPT = /^(?:just|only|só|apenas|somente)(?![\p{L}\p{N}])/iu;
 // One asking verb or one refusal covers a list: "I want TSLA, NVDA and a reserve", "sell TSLA and NVDA".
-const ASK_PIECES = /,|(?<![\p{L}\p{N}])(?:and|or|then|e|ou|depois)(?![\p{L}\p{N}])/iu;
+const ASK_PIECES =
+  /(?<!\d),|,(?!\d)|(?<![\p{L}\p{N}])(?:and|or|then|e|ou|depois)(?![\p{L}\p{N}])/iu;
 const POLITE_ASK =
   /^(?:please\s+)?(?:can|could|would)\s+you\s+(?:please\s+)?(?:add|put|include|buy)\b|^(?:você\s+|voce\s+)?(?:pode|poderia)\s+(?:por\s+favor\s+)?(?:colocar|adicionar|incluir|comprar|pôr|botar)(?![\p{L}\p{N}])/iu;
 // A refusal, an exclusion, an upper bound, a withdrawal, a sale, a reduction, a swap, a comparison
 // against or a worry: the clause asks for nothing.
 const REFUSES = word(
-  "rid|reduce[sd]?|reducing|away|off|lower|trim|shrink\\p{L}*|halve[sd]?|swap|replace|trade|exit|dump|sold|gone|down|smaller|safer|riskier|versus|vs|compared|worr\\p{L}*|scared|afraid|nervous|concern\\p{L}*|sair|saia|reduzir|reduza|reduz|diminuir|diminua|trocar|troque|troca|substituir|substitua|livrar|desfazer|preocup\\p{L}*|medo|receio|mais\\s+segur[oa]s?|do\\s+que|em\\s+vez|ao\\s+invés|no|not|none|never|nothing|without|except|excluding|exclude|avoid|avoiding|out|sell|selling|remove|drop|scratch|cut|minus|instead|rather|risky|less|fewer|stop|don'?t|do\\s+not|doesn'?t|won'?t|at\\s+most|no\\s+more|max|maximum|up\\s+to|already|menos|sem|não|nao|nada|nenhum|nenhuma|nunca|exceto|tirar|tire|tira|vender|venda|vende|evitar|evite|evita|arriscad[ao]s?|fora|máximo|maximo|até|já",
+  "zero|rid|reduce[sd]?|reducing|away|off|lower|trim|shrink\\p{L}*|halve[sd]?|swap|replace|trade|exit|dump|sold|gone|down|smaller|safer|riskier|versus|vs|compared|worr\\p{L}*|scared|afraid|nervous|concern\\p{L}*|sair|saia|reduzir|reduza|reduz|diminuir|diminua|trocar|troque|troca|substituir|substitua|livrar|desfazer|preocup\\p{L}*|medo|receio|mais\\s+segur[oa]s?|do\\s+que|em\\s+vez|ao\\s+invés|no|not|none|never|nothing|without|except|excluding|exclude|avoid|avoiding|out|sell|selling|remove|drop|scratch|cut|minus|instead|rather|risky|less|fewer|stop|don'?t|do\\s+not|doesn'?t|won'?t|at\\s+most|no\\s+more|max|maximum|up\\s+to|already|menos|sem|não|nao|nada|nenhum|nenhuma|nunca|exceto|tirar|tire|tira|vender|venda|vende|evitar|evite|evita|arriscad[ao]s?|fora|máximo|maximo|até|já",
   'iu',
 );
 // Someone else's view, a condition or a wish to talk about it: not the person's instruction.
@@ -804,10 +813,42 @@ function requestedStocks(
   const besidesFiller = (text: string) =>
     anyName
       .reduce((rest, pattern) => rest.replace(pattern, ' '), text)
-      .replace(/\d+(?:[.,]\d+)?\s*%?/gu, ' ')
-      .replace(ASK_FILLER, ' ');
+      .replace(ASK_SHARE, ' ')
+      .replace(ASK_BEFORE_NAME, ' ');
   const WORDS = /[\p{L}\p{N}'-]+/gu;
-  const onlyFiller = (text: string) => !/[\p{L}\p{N}]/u.test(besidesFiller(text));
+  // Another listed name is read only in a bare list, name beside name with at most a share between:
+  // behind a preposition it is where the stock goes ("NVDA in USDC"), not something asked for with it.
+  const NAME = '\u0001';
+  const marked = (text: string) =>
+    anyName.reduce((rest, pattern) => rest.replace(pattern, NAME), text).replace(ASK_SHARE, ' ');
+  const worded = (text: string) => /[\p{L}\p{N}]/u.test(text);
+  /** Between the asking word and the name: filler, then at most a bare run of other names. */
+  const leads = (text: string) => {
+    const all = marked(text);
+    const run = all.indexOf(NAME);
+    return (
+      !worded((run < 0 ? all : all.slice(0, run)).replace(ASK_BEFORE_NAME, ' ')) &&
+      !worded(run < 0 ? '' : all.slice(run))
+    );
+  };
+  /** From the name to the end of the piece: at most a bare run of other names, then filler. */
+  const trails = (text: string) => {
+    const all = marked(text);
+    const run = all.lastIndexOf(NAME) + 1;
+    return !worded(all.slice(0, run)) && !worded(all.slice(run).replace(ASK_AFTER_NAME, ' '));
+  };
+  /** A piece that is a list of names and nothing else: "a little NVDA", "TSLA, NVDA too". */
+  const bareList = (text: string) => {
+    const all = marked(text);
+    const from = all.indexOf(NAME);
+    const to = all.lastIndexOf(NAME) + 1;
+    return (
+      from >= 0 &&
+      !worded(all.slice(0, from).replace(ASK_BEFORE_NAME, ' ')) &&
+      !worded(all.slice(from, to)) &&
+      !worded(all.slice(to).replace(ASK_AFTER_NAME, ' '))
+    );
+  };
   // "Stocks" names a kind, so a word or two may describe it ("electric vehicle stocks"), but nothing
   // that sets it against something ("protection from stocks").
   const describes = (text: string) => {
@@ -823,8 +864,10 @@ function requestedStocks(
     );
   };
   // Portuguese "no" is "in the"; its refusals are não, nenhum, nada, sem.
+  // A share of zero, with or without its sign, refuses as well: "NVDA at 0".
   const refuses = (clause: string) =>
-    REFUSES.test(language === 'pt' ? clause.replace(word('no', 'iu'), 'em') : clause);
+    REFUSES.test(language === 'pt' ? clause.replace(word('no', 'iu'), 'em') : clause) ||
+    (clause.match(/\d+(?:[.,]\d+)?/gu) ?? []).some((n) => Number(n.replace(',', '.')) === 0);
   // The latest affirmative (true) or refusing (false) mention of each stock, and of stocks in general.
   const latest = new Map<string, { at: number; asked: boolean }>();
   let at = 0;
@@ -834,7 +877,8 @@ function requestedStocks(
     if (/^["“‘']/u.test(text)) continue;
     const questioned = text.includes('?');
     const sentences = text
-      .split(/[.;!?\n]+/u)
+      // A stop or a comma between digits is part of a number ("0.5%", "0,5%").
+      .split(/[;!?\n]+|\.(?!\d)/u)
       .filter((sentence) => !CONDITION.test(sentence))
       .flatMap((sentence) =>
         sentence.split(
@@ -873,7 +917,7 @@ function requestedStocks(
         if (!asks.length) {
           // "I want no stocks, just AAPL": the exception to a refusal the person wanted is asked for.
           const except = wanted ? piece.replace(EXCEPT, '') : piece;
-          if (carried === null || !found.length || !onlyFiller(except)) carried = null;
+          if (carried === null || !found.length || !bareList(except)) carried = null;
           else
             for (const { key } of found)
               latest.set(key, { at, asked: carried || except !== piece });
@@ -888,8 +932,8 @@ function requestedStocks(
           // something to happen to it, not for it.
           if (
             ask &&
-            (key === '*' ? describes(between) : onlyFiller(between)) &&
-            onlyFiller(piece.slice(end))
+            (key === '*' ? describes(between) : leads(between)) &&
+            trails(piece.slice(end))
           )
             latest.set(key, { at, asked: true });
           else unclear = true;
@@ -897,10 +941,7 @@ function requestedStocks(
         // A list continues only an ask for a thing: a listed asset, stocks, or a kind of asset.
         const last = asks.at(-1);
         const rest = last ? piece.slice(last.index + last[0].length) : '';
-        const thing =
-          found.length > 0 ||
-          (onlyFiller(rest) && anyName.some((pattern) => rest.search(pattern) >= 0)) ||
-          asksForKind(rest);
+        const thing = found.length > 0 || bareList(rest) || asksForKind(rest);
         carried = !unclear && thing ? true : null;
       }
     }
