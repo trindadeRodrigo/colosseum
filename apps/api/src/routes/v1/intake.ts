@@ -8,6 +8,7 @@ import {
   IntakeAnswers,
   IntakeNarrative,
   IntakeQuestion,
+  type IntakeResult,
   LimitsDraft,
   PersonalInputError,
   PersonalMix,
@@ -17,6 +18,7 @@ import {
   riskForSleeves,
   runIntake,
   shelfLabelsOf,
+  yesOrNoSaidIn,
 } from '@colosseum/engine/personal';
 import {
   type BasketAsset,
@@ -28,7 +30,7 @@ import {
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import type { IntakeModel } from '../../llm';
+import type { IntakeModel, IntakeVocabulary } from '../../llm';
 import { Refusal, refusing } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { personChain } from '../../orders/person';
@@ -43,32 +45,93 @@ import { signedIn } from './orders';
 
 /** What a goal's text may be: the bounds of the first reader (`PostGoalsRequest`), kept. */
 export const GOAL_TEXT = { min: 3, max: 2000 } as const;
+export const INTAKE_TEXT_BUDGET = 22_000;
+export const INTAKE_FOLLOW_UPS = 199;
 
-export const IntakeRequest = z.object({
-  text: z.string().trim().min(GOAL_TEXT.min).max(GOAL_TEXT.max),
-  /** The language of the page, when the text does not settle it. */
-  language: Language.optional(),
-  /**
-   * The person's later messages, in their own words, in order ("70-30, I want to grow it", "half").
-   * Each turn reads `text` with these through the same reader and checks (Oct 6), and a message that
-   * says only a share or a mix is read as the answer to the `mix` question the ones before it left
-   * open.
-   */
-  followUps: z.array(z.string().trim().min(1).max(GOAL_TEXT.max)).max(10).optional(),
-  /** The person's answers to earlier questions, by field, from a form. */
-  answers: IntakeAnswers.optional(),
-  /**
-   * The form's answers as they stood when each of `followUps` was sent, one for each, in order (the
-   * third review, Oct 7). A plain yes or no names no question: it is applied only to the question
-   * that was the one open when it was said, with the form as it stood then. Left out, the form is
-   * counted as empty at each message, so a yes or no answers only a question that was the one open
-   * whatever the form says.
-   */
-  answersThen: z.array(IntakeAnswers).max(10).optional(),
+export const PendingInterest = z.strictObject({
+  quote: z.string().trim().min(1).max(160),
+  sourceTurn: z.number().int().min(0),
 });
+export type PendingInterest = z.infer<typeof PendingInterest>;
+
+export const IntakeRequest = z
+  .object({
+    text: z.string().trim().min(GOAL_TEXT.min).max(GOAL_TEXT.max),
+    /** The language of the page, when the text does not settle it. */
+    language: Language.optional(),
+    /**
+     * The person's later messages, in their own words, in order ("70-30, I want to grow it", "half").
+     * Each turn reads `text` with these through the same reader and checks (Oct 6), and a message that
+     * says only a share or a mix is read as the answer to the `mix` question the ones before it left
+     * open.
+     */
+    followUps: z
+      .array(z.string().trim().min(1).max(GOAL_TEXT.max))
+      .max(INTAKE_FOLLOW_UPS)
+      .optional(),
+    /** The person's answers to earlier questions, by field, from a form. */
+    answers: IntakeAnswers.optional(),
+    /**
+     * The form's answers as they stood when each of `followUps` was sent, one for each, in order (the
+     * third review, Oct 7). A plain yes or no names no question: it is applied only to the question
+     * that was the one open when it was said, with the form as it stood then. Left out, the form is
+     * counted as empty at each message, so a yes or no answers only a question that was the one open
+     * whatever the form says.
+     */
+    answersThen: z.array(IntakeAnswers).max(INTAKE_FOLLOW_UPS).optional(),
+    /** Capability opt-in: legacy clients never receive a contextual question they cannot retain. */
+    dialogueVersion: z.literal(1).optional(),
+    pendingInterest: PendingInterest.nullable().optional(),
+    /** The actual question addressed by each person reply, aligned with followUps. */
+    questionThen: z
+      .array(z.literal('interestClarification').nullable())
+      .max(INTAKE_FOLLOW_UPS)
+      .optional(),
+  })
+  .superRefine((body, ctx) => {
+    const words = [body.text, ...(body.followUps ?? [])];
+    if (conversationText(body.text, body.followUps).length > INTAKE_TEXT_BUDGET)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['followUps'],
+        message: 'the conversation exceeds 22,000 characters',
+      });
+    if (body.dialogueVersion === 1 && (body.questionThen?.length ?? 0) !== words.length - 1)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['questionThen'],
+        message: 'Question origins must align with followUps.',
+      });
+    if (body.answersThen !== undefined && body.answersThen.length !== words.length - 1)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['answersThen'],
+        message: 'send one answersThen entry per follow-up',
+      });
+    if (
+      body.pendingInterest &&
+      !words[body.pendingInterest.sourceTurn]?.includes(body.pendingInterest.quote)
+    )
+      ctx.addIssue({
+        code: 'custom',
+        path: ['pendingInterest'],
+        message: 'The pending interest must quote its original person turn.',
+      });
+    if (body.dialogueVersion !== 1 && (body.pendingInterest || body.questionThen))
+      ctx.addIssue({
+        code: 'custom',
+        path: ['dialogueVersion'],
+        message: 'Contextual state requires dialogueVersion 1.',
+      });
+  })
+  .describe(
+    'At most 200 chronological messages and 22,000 characters in their trimmed text joined by blank lines. Each message is at most 2,000 characters. When answersThen is provided, it has one entry per follow-up.',
+  );
 export type IntakeRequest = z.infer<typeof IntakeRequest>;
 
 export const IntakeResponse = z.object({
+  /** Present for supported dialogue clients; absence never discharges a stored pending interest. */
+  pendingInterest: PendingInterest.nullable().optional(),
   /** How the text was read. A model reply replayed in a test is `mock`, and says so. */
   reader: z.object({
     method: z.enum(['model', 'rules']),
@@ -115,11 +178,149 @@ export const IntakeResponse = z.object({
 });
 export type IntakeResponse = z.infer<typeof IntakeResponse>;
 
+const Interest = z.strictObject({
+  kind: z.literal('interest'),
+  quote: z.string().min(1).max(160),
+  keywords: z.array(z.string().min(1).max(80)).max(3),
+});
+
+const Resolution = z.strictObject({
+  kind: z.enum(['business', 'allocation', 'decline']),
+  quote: z.string().min(1).max(GOAL_TEXT.max),
+});
+
+/** Keep all original words for the model. Only an ambiguous answer to the contextual question is
+ * withheld from the execution reader, with its aligned historic form snapshot. No words are made up. */
+export function executionHistory(body: IntakeRequest) {
+  const turns = (body.followUps ?? [])
+    .map((text, index) => ({ text, index }))
+    .filter(
+      ({ text, index }) =>
+        !(
+          body.dialogueVersion === 1 &&
+          body.questionThen?.[index] === 'interestClarification' &&
+          yesOrNoSaidIn(text) !== null
+        ),
+    );
+  return {
+    text: conversationText(
+      body.text,
+      turns.map((turn) => turn.text),
+    ),
+    ...(body.answersThen
+      ? { answersThen: turns.map((turn) => body.answersThen?.[turn.index] ?? {}) }
+      : {}),
+  };
+}
+
+// This checks the provenance/personal instruction of semantic resolution; it does not map a name
+// to any asset. A quoted, hypothetical or third-party sentence cannot begin one of these requests.
+const BUSINESS_REQUEST =
+  /^(?:please\s+)?(?:i\s+(?:want|would\s+like|would\s+prefer)\s+to\s+invest|invest|(?:eu\s+)?(?:quero|prefiro)\s+investir|(?:eu\s+)?gostaria\s+de\s+investir|invista)\b/iu;
+const ALLOCATION_REQUEST =
+  /^(?:please\s+)?(?:i\s+(?:want|would\s+like|would\s+prefer)\s+to\s+)?(?:put|allocate|hold|buy|add|increase|reduce|replace)\b|^(?:(?:eu\s+)?(?:quero|prefiro)\s+)?(?:colocar|alocar|manter|comprar|aumentar|reduzir|coloque|aloque|mantenha|compre|aumente|reduza)\b/iu;
+const COMPLETE_REQUEST =
+  /^(?:please\s+)?(?:grow|protect|earn|invest|i\s+(?:want|would\s+like|plan|intend)\s+to\s+(?:grow|protect|earn|invest|save)|(?:eu\s+)?(?:quero|gostaria\s+de|pretendo)\s+(?:crescer|proteger|investir|ganhar|poupar)|crescer|proteger|investir)\b/iu;
+const DECLINE_INTEREST =
+  /^(?:ignore\s+that\s+interest|ignore\s+esse\s+interesse|esque[cç]a\s+esse\s+interesse)[.!]?$/iu;
+const NON_REQUEST =
+  /\b(?:if|would\s+you|should\s+i|my\s+friend|someone|said|quoted|se\s+eu|meu\s+amigo|disse)\b/iu;
+const FINANCIAL_ACTION =
+  /\b(?:invest|investir|invista|allocate|aloque|hold|mantenha|stocks?|shares?|a[cç][oõ]es|empresas?|business(?:es)?|industr(?:y|ies)|setor(?:es)?|allocation|aloca[cç][aã]o|cash|caixa|gold|ouro|bonds?|t[ií]tulos|crypto|cripto)\b/iu;
+const EXPLORATORY_REQUEST =
+  /\b(?:explain|understand|know|learn|discuss|read\s+about|hear\s+about|saber|entender|explique|explicar|conhecer|aprender)\b/iu;
+
+/** Non-executable reader metadata can ask a question, never set a holding or a sheet field. */
+export function contextualIntake(
+  result: IntakeResult,
+  reply: unknown,
+  latestText: string,
+  nowMonth: string,
+  vocabulary?: IntakeVocabulary,
+  dialogue?: { pendingInterest: PendingInterest | null; sourceTurn: number },
+): IntakeResult & { pendingInterest?: PendingInterest | null } {
+  if (!dialogue) return result;
+  let pending = dialogue.pendingInterest;
+  const raw = z.object({ clarification: Interest }).safeParse(reply);
+  const fresh =
+    yesOrNoSaidIn(latestText) === null &&
+    raw.success &&
+    raw.data.clarification.quote.trim() === raw.data.clarification.quote &&
+    latestText.includes(raw.data.clarification.quote) &&
+    raw.data.clarification.keywords.every((word) => vocabulary?.keywords.includes(word));
+  // A complete latest instruction is handled by the execution reader, even with bad metadata.
+  // This is a pure read, with no historic form answers and no second model call.
+  const latest = runIntake({
+    text: latestText,
+    nowMonth,
+    language: result.language,
+    reply,
+    homeChain: result.sheet?.chains[0] ?? result.draft.chains?.[0] ?? null,
+    portfolios: [],
+  });
+  const resolution = z.object({ interestResolution: Resolution }).safeParse(reply);
+  const explicit =
+    !fresh &&
+    resolution.success &&
+    resolution.data.interestResolution.quote === latestText &&
+    yesOrNoSaidIn(latestText) === null &&
+    !NON_REQUEST.test(latestText) &&
+    !EXPLORATORY_REQUEST.test(latestText) &&
+    (resolution.data.interestResolution.kind === 'business'
+      ? BUSINESS_REQUEST.test(latestText)
+      : resolution.data.interestResolution.kind === 'allocation'
+        ? latest.mix !== null ||
+          (ALLOCATION_REQUEST.test(latestText) && FINANCIAL_ACTION.test(latestText))
+        : DECLINE_INTEREST.test(latestText));
+  const complete =
+    latest.sheet !== null &&
+    COMPLETE_REQUEST.test(latestText) &&
+    !NON_REQUEST.test(latestText) &&
+    !EXPLORATORY_REQUEST.test(latestText);
+  // The explicit authored decline is usable even when the reader timed out or spent its budget.
+  if (DECLINE_INTEREST.test(latestText.trim()) || (reply !== null && (complete || explicit)))
+    pending = null;
+  else if (fresh && raw.success)
+    pending = { quote: raw.data.clarification.quote, sourceTurn: dialogue.sourceTurn };
+  if (!pending) return { ...result, pendingInterest: null };
+  const quote = pending.quote;
+  const keywords = fresh && raw.success ? raw.data.clarification.keywords : [];
+  const pt = result.language === 'pt';
+  const question: IntakeQuestion = {
+    field: 'themes',
+    template: 'interestClarification',
+    text: pt
+      ? `Quando você diz “${quote}”, há um negócio ou setor que você quer refletir neste plano? Diga qual.`
+      : `When you say “${quote}”, is there a business or industry you want this plan to reflect? Tell me which one.`,
+  };
+  // Choices repeat only a vocabulary value the person actually wrote. Clicking one creates a new
+  // person-origin message, not a themes form answer or an inferred holding.
+  const named = [...new Set(keywords)].filter((word) =>
+    quote.toLocaleLowerCase().includes(word.toLocaleLowerCase()),
+  );
+  question.options = [
+    ...named.map((word) =>
+      pt
+        ? `Quero investir em negócios ligados a ${word}.`
+        : `I want to invest in businesses related to ${word}.`,
+    ),
+    pt ? 'Ignore esse interesse.' : 'Ignore that interest.',
+  ];
+  return {
+    ...result,
+    pendingInterest: pending,
+    questions: [question, ...result.questions],
+    sheet: null,
+    readBack: null,
+  };
+}
+
 /**
  * What the route says of itself in the API document, sentence by sentence. One string there.
  */
 const INTAKE_DESCRIPTION = [
   "The guided intake. Send the text of a goal, and on later turns the same text with the person's later messages in `followUps` (their own words, read again with the text by the same reader and checks) or `answers` (by field, from a form).",
+  'Contextual dialogue requires `dialogueVersion: 1`; legacy clients receive ordinary questions only. A personal exploratory interest whose investment meaning is unclear can receive a contextual question (field `themes`, template `interestClarification`). Non-executable model metadata must quote exact words of the latest person message; the API authors the question in English or Portuguese. No company, asset or allocation is inferred from admiration. Optional choices repeat only person-written sourced shelf keywords as new natural-language messages, never form answers. The response `pendingInterest` carries the original quote and its `sourceTurn` (0 is `text`, 1 is the first `followUps` turn). Send this conservative state back, with `questionThen` aligned to `followUps` recording which replies addressed `interestClarification`. Invalid quote/source alignment is refused. The original words all reach the model; only bare yes/no addressed to the contextual question, and the matching `answersThen` slots, are omitted from execution-history interpretation so they cannot confirm older holdings. No replacement person words are fabricated. While pending, sheet and read-back remain null through missing metadata, model fallback, thanks and ambiguous yes/no. A model-validated explicit business/allocation request, explicit decline or complete valid latest instruction clears pending state; ordinary missing facts can still be asked. Rules-only fallback conservatively retains pending state even after a complete new instruction. The authored choices “Ignore that interest.” and “Ignore esse interesse.” are exact person commands that clear pending state without a model; bare no, quotation, negation or a third-party story do not. At most three sourced business choices plus this decline are offered. An absent response marker never clears client state.',
   'A model reads the text into a draft of the sheet; it never sets weights, picks assets or states a figure, and every value it gives is checked in code. An amount must be written in the text in its role (the income as a rate a month, the sum put in never as one) and in dollars (an amount in another currency is asked in dollars); a bare number is the sum only where it can be one: not where it is said of the person ("I am 35") or where the text writes another sum as money ("$5,000"), which is flagged `not_a_sum:amountUsd` and asked. Where the last message that writes a sum writes several that could be the one put in ("I have $5,000 and owe $2,000 on my card"), the amount is asked once with the model\'s value as the start (`amount_several`); a sum that leads into what it is put in ("$500 in big tech") is a share and not one of them. A time frame must be written as one (not an age, and not the length of something else: "after 5 years of marriage"); where one message writes two, the date is asked (`horizon_several`), and across messages the last one written decides. A shared portfolio must be written in the text by its name or its slug and be said as a holding: as the shelf writes it inside a sentence, after a word that picks it where it ends its clause ("starting from the seven"), or alone; its words in another sense ("The 500 dollars I saved", "Home Team lost again") are not; "the seven of us are saving" is never taken (`no_cue:portfolios`), one its clause rules out is dropped (`portfolio_negated`, `portfolio_aside`), and it must be on the shelf of the person\'s chain. Where the model names a portfolio and the text writes its words with nothing that says they name it ("My pick is the seven."), it is asked once by its name (field `themes`, template `startFrom`: "Do you want to start from the shared portfolio The Seven?", its `read` the slug; flag `portfolio_asked`): a plain yes takes it, a plain no leaves it out, and `answers.themes` stands over the question. With no model a portfolio\'s name said as a holding ("Start me off from The Seven.") is asked by the same question, with it as the start (`from_rules:themes`), and never taken. A goal or a risk the text has no word for is asked with the model\'s value as the start; a risk word a negation is of ("I can\'t take high risk") is no word for that risk, and is asked with no start (`risk_negated:<risk>`); the negation may come after the word ("High risk is not for me."), and a word of degree said of something else ("low fees", "a high tax bracket") is no word for the risk (`no_cue:risk`, asked). A time to get the money out ("can take up to 3 months to get out") is never the time frame, a goal with no date ("no hard cap") is built with no date and said back so, a split ("70% safe, 30% to risk") must add up to the whole with each share written as a share of the money ("I can lose 30% and I am 70% sure" writes none), and a field the rules parser reads differently is flagged and asked.',
   'A refusal ("no stocks", "I don\'t want any crypto", "I can\'t hold stocks", "leave out gold", "sem crédito") is read from the text by code, with or without the model, and becomes the sheet\'s limits where its clause states it: it is taken, not asked, and the read-back says it back. It leads its list ("no stocks, crypto or gold" leaves out the three). A refusal of stocks leaves out the funds of stocks with them (`cannotHold.classes` holds `stock` and `etf`, said back as "You left out stocks and stock funds."), unless their own clause then holds them ("no stocks, but ETFs are fine": an ask, a contrast with the refusal, or something said of them); funds the refusal only goes on to name are left out with it ("No stocks, including ETFs.", "No stocks. Same goes for ETFs."), a refusal of funds by their own name ("no ETFs", "no index funds") leaves out `etf` only, and bare "funds" is money, not a class. One the clause negates, says of something else or only wonders about ("no stocks? not sure") is not taken, flagged `refusal_` with how and what, and said where the person was not sure. A refusal the model gives that the text check does not confirm ("Do not buy stocks for me.", "Nada de bolsa.") is asked once by the `limits` field ("Do you want to leave out stocks and stock funds?", its `read` the classes a yes leaves out): a plain yes takes it, a plain no leaves the class in and one line says so ("You said not to leave out stocks and stock funds, so the plan may hold them."), and `answers.limits` stands over the question. A yes to it is the person\'s last word on the class: a mix, a narrative or a shared portfolio that would hold it is then not held, and never shares the sheet with it. With no model, a refusal the text states that a later mention of its class would take back ("No stocks." then "Remember, stocks are out.") is asked by the same question and not taken back on one reader\'s word: a yes keeps it, a no takes it back and says so; an answer that says what is held, or the form\'s limits, settles it without the question. It is never taken and never dropped in silence (the third review, Oct 7). What the text states that the model missed is taken all the same and said in a line of its own that names the person\'s words ("I read “avoid stocks” as leaving out stocks and stock funds. Say so if that is not what you meant."). A refusal of a part of a class ("no stocks from China") and a name ruled out of a list the plan holds ("invest in AI but no Tesla") are not applied, and a line says so; a word is such a name only where it is a company the chain\'s sourced attributes know, by name, ticker or symbol ("No IRA involved" and "not in January" say nothing). A refusal and a holding of the same class in one conversation ("No stocks in my IRA, so here I want all stocks") are one question by the `mix` field (template `holdOrLeaveOut`), never a sheet with both: a share for the holding takes the refusal back, "none" leaves the holding out. The holding is whatever would hold the class: a mix stated or answered, a narrative, a shared portfolio the model names ("No stocks. Start from The Seven."), and for a refusal of stock funds a narrative too ("No ETFs. Put it all in index funds."). The last word wins over an answer given in words (the third review, Oct 7): an answer closes its question until a later message names a narrative again, states a mix or a share for the holding ("Put 20% in AI." after "all of it", "Make that 40%." after "Put 30% in AI."), asks again for one answered "none", or refuses its class ("Also, no stocks."). The question is then open again and asked once more, with the new reading as its start, which a plain yes takes (flag `answer_reopened`); a message that says nothing of the holding leaves the answer as it is, and the form\'s own answers are not reopened.',
   'The glide is off unless the text asks for it or names a date to come that the money is needed by. The country is neither asked nor read (gate COUNTRY-REMOVED).',
@@ -200,8 +401,9 @@ export function registerIntakeRoute(
     },
     async (req): Promise<IntakeResponse> => {
       const principal = signedIn(req);
-      const { language, answers, answersThen } = req.body;
+      const { language, answers } = req.body;
       const text = conversationText(req.body.text, req.body.followUps);
+      const execution = executionHistory(req.body);
       const nowMonth = monthOf(deps.now());
       const { chain } = await personChain(deps.db, principal);
       const families = chain ? await loadFamilies(deps.db, chain) : [];
@@ -261,13 +463,13 @@ export function registerIntakeRoute(
         rules: { useHoldings: false, glide: false },
         language: 'en' as const,
       });
-      const result = runIntake({
-        text,
+      const reading = runIntake({
+        text: execution.text,
         nowMonth,
         language,
         reply: read.reply,
         answers,
-        ...(answersThen ? { answersThen } : {}),
+        ...(execution.answersThen ? { answersThen: execution.answersThen } : {}),
         homeChain: chain,
         portfolios,
         // The person has a chain and what it lists could not be read (the chain is off, or its
@@ -310,8 +512,24 @@ export function registerIntakeRoute(
             }
           : {}),
       });
+      const result = contextualIntake(
+        reading,
+        read.reply,
+        req.body.followUps?.at(-1) ?? req.body.text,
+        nowMonth,
+        vocabulary,
+        req.body.dialogueVersion === 1
+          ? {
+              pendingInterest: req.body.pendingInterest ?? null,
+              sourceTurn: req.body.followUps?.length ?? 0,
+            }
+          : undefined,
+      );
       const byModel = read.reply !== null && model !== null;
       return {
+        ...(req.body.dialogueVersion === 1
+          ? { pendingInterest: result.pendingInterest ?? null }
+          : {}),
         reader: {
           method: result.method,
           model: byModel ? model.id : null,
