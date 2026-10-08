@@ -104,11 +104,11 @@ beforeEach(() => {
 afterEach(unmountAll);
 
 describe('before anything is said', () => {
-  it('is one full-width question, a natural-height conversation and the box, without an empty plan placeholder', async () => {
+  it('opens the full workbench with a compact heading, usable chat and a truthful empty strategy', async () => {
     api();
     const host = await screen();
     expect(host.querySelectorAll('h1')).toHaveLength(1);
-    expect(find(host, 'h1').textContent).toBe(en.goal.title);
+    expect(find(host, 'h1').textContent).toBe(en.talk.workbench.title);
     expect(box(host)).toBeTruthy();
     expect(
       [...find(host, `ul[aria-label="${en.talk.examples}"]`).querySelectorAll('button')].map(
@@ -116,13 +116,27 @@ describe('before anything is said', () => {
       ),
     ).toEqual(en.goal.examples.list);
     expect(pane(host).getAttribute('data-state')).toBe('empty');
-    expect(pane(host).classList.contains('hidden')).toBe(true);
-    expect(host.querySelector('[data-ui="pane-empty"], [data-ui="invest-summary"]')).toBeNull();
+    expect(pane(host).classList.contains('hidden')).toBe(false);
+    const empty = find(pane(host), '[data-ui="pane-empty"]');
+    expect(empty.textContent).toContain(en.talk.workbench.strategy);
+    expect(empty.textContent).toContain(en.talk.workbench.preview);
+    expect(
+      empty.querySelector(
+        '[data-ui="figure"], [data-ui="holdings-bar"], [data-ui="skeleton"], button',
+      ),
+    ).toBeNull();
+    expect(host.querySelector('[data-ui="invest-summary"]')).toBeNull();
     expect(find(host, 'h1').closest('[data-ui="invest-chat"]')).toBeNull();
     expect(find(host, '[data-ui="invest-screen"]').getAttribute('data-layout')).toBe('intake');
     const chat = find(host, '[data-ui="invest-chat"]');
-    expect(chat.className).not.toMatch(/dvh|min-h-\[|sticky/);
-    expect(find(host, '[data-ui="invest-turns"]').className).not.toMatch(/flex-1|overflow-y-auto/);
+    expect(find(host, '[data-ui="invest-screen"]').classList.contains('lg:grid')).toBe(true);
+    expect(chat.classList.contains('lg:col-span-5')).toBe(true);
+    expect(pane(host).classList.contains('lg:col-span-7')).toBe(true);
+    expect(chat.className).not.toMatch(/(?:^| )h-\[|(?:^| )min-h-\[|lg:h-\[|lg:min-h-\[/);
+    expect(find(host, '[data-ui="invest-turns"]').classList.contains('lg:overflow-y-auto')).toBe(
+      true,
+    );
+    expect(find(chat, '[data-ui="invest-invitation"]').textContent).toContain(en.goal.title);
     expect(find(host, 'textarea').closest('form')?.previousElementSibling).toBe(
       find(host, '[data-ui="invest-turns"]'),
     );

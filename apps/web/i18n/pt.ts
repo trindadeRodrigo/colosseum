@@ -587,6 +587,14 @@ export const pt: Dictionary = {
   },
 
   talk: {
+    workbench: {
+      title: 'Investir',
+      invitation: 'Conte o que deseja alcançar. Eu ajudo você a esclarecer os detalhes.',
+      strategy: 'Prévia da estratégia',
+      empty:
+        'Os ativos e as fontes do seu plano aparecerão aqui quando ele estiver montado e pronto para revisar.',
+      preview: 'Montar uma prévia não investe seu dinheiro.',
+    },
     capacity:
       'Esta conversa chegou ao limite. Suas mensagens anteriores foram mantidas. Recomece para iniciar outra.',
     startOver: 'Começar de novo',

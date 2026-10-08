@@ -683,6 +683,14 @@ export const en = {
    * the plan on the right. The invest card's own words are `invest`.
    */
   talk: {
+    workbench: {
+      title: 'Invest',
+      invitation: 'Tell me what you want to achieve. I’ll help you work through the details.',
+      strategy: 'Strategy preview',
+      empty:
+        'Your plan’s holdings and sources will appear here when it is built and ready to review.',
+      preview: 'Building a preview does not invest your money.',
+    },
     capacity:
       'This conversation has reached its limit. Your earlier messages are kept. Start over to begin another.',
     startOver: 'Start over',

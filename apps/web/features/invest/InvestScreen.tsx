@@ -13,8 +13,7 @@ import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Composer } from '../../components/ui/Composer';
 import { cn } from '../../components/ui/cn';
-import { PAGE_TITLE } from '../../components/ui/heading';
-import { LatticeStatus } from '../../components/ui/Lattice';
+import { LatticeGlyph, LatticeStatus } from '../../components/ui/Lattice';
 import { type Dictionary, type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
@@ -62,7 +61,7 @@ import { type HeldMix, IntakeAnswers, pendingInterestOf } from './intake';
 import { intakeConversation } from './intake-conversation';
 import { wayChange } from './ways';
 
-// Invest starts as a naturally sized conversation. A built plan joins the desktop workspace;
+// Invest keeps conversation and strategy beside each other throughout the desktop workspace;
 // on a phone it opens from a disclosure, with the conversation and all other content inert behind it.
 //
 // Left: one box, the three example goals, then turns. The person's words; then what was understood,
@@ -964,16 +963,13 @@ export function InvestScreen() {
     <div
       data-ui="invest-screen"
       data-layout={workspace ? 'plan' : 'intake'}
-      className={cn(
-        'flex min-w-0 flex-col gap-4',
-        workspace && 'lg:grid lg:grid-cols-12 lg:items-start lg:gap-6',
-      )}
+      className="flex min-w-0 flex-col gap-4 lg:grid lg:grid-cols-12 lg:items-start lg:gap-4"
     >
       <header
         inert={overlayOpen}
         className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 lg:col-span-12"
       >
-        <h1 className={`${PAGE_TITLE} max-w-none!`}>{t.goal.title}</h1>
+        <h1 className="text-body-lg font-semibold">{w.workbench.title}</h1>
         {/* an empty conversation and an empty pane, by one press or by saying so */}
         {turns.length > 0 && (
           <span data-ui="invest-start-over">
@@ -990,9 +986,8 @@ export function InvestScreen() {
         inert={overlayOpen}
         className={cn(
           'flex min-w-0 flex-col gap-4',
-          workspace
-            ? 'lg:sticky lg:top-24 lg:col-span-5 lg:max-h-[calc(100dvh-8rem)]'
-            : 'max-w-(--tf-measure-body)',
+          'lg:sticky lg:top-24 lg:col-span-5 lg:max-h-[calc(100dvh-8rem)]',
+          turns.length === 0 && 'lg:self-center',
         )}
       >
         {/* Someone signed in whose wallets or chain are still being read is told, and not left
@@ -1020,16 +1015,16 @@ export function InvestScreen() {
           </p>
         )}
         {turns.length === 0 && (
-          <p className="max-w-(--tf-measure-body) text-body text-muted-foreground">{t.goal.lead}</p>
+          <div data-ui="invest-invitation" className="flex min-w-0 flex-col gap-2">
+            <p className="font-display text-[1.25rem]/7">{t.goal.title}</p>
+            <p className="text-body-sm text-muted-foreground">{w.workbench.invitation}</p>
+          </div>
         )}
         <ol
           ref={thread}
           data-ui="invest-turns"
           aria-live="polite"
-          className={cn(
-            'flex min-w-0 flex-col gap-4',
-            workspace && 'lg:min-h-0 lg:overflow-y-auto',
-          )}
+          className={cn('flex min-w-0 flex-col gap-4', 'lg:min-h-0 lg:overflow-y-auto')}
         >
           {turns.map((turn) =>
             turn.who === 'person' ? (
@@ -1269,11 +1264,8 @@ export function InvestScreen() {
         }}
         className={cn(
           'min-w-0 flex-col gap-4',
-          !workspace
-            ? fields
-              ? 'flex max-w-(--tf-measure-body)'
-              : 'hidden'
-            : 'lg:col-span-7 lg:flex',
+          'lg:col-span-7 lg:flex',
+          !workspace && 'flex',
           overlayOpen
             ? 'fixed inset-0 z-40 flex overflow-y-auto bg-background p-4 pt-28 lg:static lg:z-auto lg:overflow-visible lg:p-0 lg:pt-0'
             : workspace && 'hidden',
@@ -1297,6 +1289,17 @@ export function InvestScreen() {
             build={toConfirm && !busy ? () => confirm() : null}
             visitor={!signedIn}
           />
+        )}
+        {!workspace && (
+          <div
+            data-ui="pane-empty"
+            className="flex min-w-0 flex-col items-start justify-center gap-3 rounded-md border border-border bg-card p-4 sm:min-h-60"
+          >
+            <LatticeGlyph size={32} />
+            <h2 className="text-body-lg font-medium">{w.workbench.strategy}</h2>
+            <p className="max-w-[48ch] text-body-sm text-muted-foreground">{w.workbench.empty}</p>
+            <p className="text-caption text-muted-foreground">{w.workbench.preview}</p>
+          </div>
         )}
         {build.kind === 'building' && <LatticeStatus label={w.pane.building} />}
         {stale && build.kind !== 'building' && (

@@ -674,7 +674,11 @@ describe('the plan on a phone', () => {
     expect(last(host)).toContain(en.talk.failure.unavailable);
     await say(host, 'Start over');
     expect(turns(host)).toEqual([]);
-    expect(pane(host).classList.contains('hidden')).toBe(true);
+    expect(pane(host).classList.contains('hidden')).toBe(false);
+    expect(find(pane(host), '[data-ui="pane-empty"]').textContent).toContain(
+      en.talk.workbench.preview,
+    );
+    expect(pane(host).querySelector('[data-ui="plan-pane"], [data-ui="invest-card"]')).toBeNull();
     expect(host.querySelector('[data-ui="invest-summary"]')).toBeNull();
   });
 

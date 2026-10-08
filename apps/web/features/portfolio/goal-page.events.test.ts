@@ -74,6 +74,37 @@ afterEach(unmountAll);
 
 describe('home', () => {
   it.each(['en', 'pt'] as const)(
+    'keeps vaults collapsed until explicitly opened, while preserving real links and holdings (%s)',
+    async (lang) => {
+      api(onSolana, () =>
+        json(portfolioBody(chainOf([vault(), vault({ address: SECOND_VAULT })]))),
+      );
+      portStore.set(signedInPort(PHANTOM));
+      const host = await home(lang);
+      const switcher = find<HTMLDetailsElement>(host, '[data-ui="vault-switcher"]');
+      expect(switcher.open).toBe(false);
+      expect(find(host, '[data-ui="invest-screen"]').classList.contains('lg:grid')).toBe(true);
+      expect(find(host, '[data-ui="invest-chat"]').classList.contains('lg:col-span-5')).toBe(true);
+      expect(find(host, '[data-ui="invest-pane"]').classList.contains('lg:col-span-7')).toBe(true);
+      expect(find(switcher, 'summary').textContent).toBe(dictionary(lang).portfolio.summary.title);
+      expect(find(switcher, 'summary + ul').className).not.toMatch(/grid-cols/);
+      await click(find(switcher, 'summary'));
+      expect(switcher.open).toBe(true);
+      expect(owned(host)).toHaveLength(2);
+      expect(owned(host).map((row) => find(row, 'a').getAttribute('href'))).toEqual([
+        `/vaults/solana/${VAULT}`,
+        `/vaults/solana/${SECOND_VAULT}`,
+      ]);
+      expect(
+        owned(host).every((row) => row.querySelector('[data-ui="owned-vault-holdings"]') !== null),
+      ).toBe(true);
+      await click(find(switcher, 'summary'));
+      expect(switcher.open).toBe(false);
+      expect(find(host, '[data-ui="portfolio-link"]').getAttribute('href')).toBe('/monitor');
+    },
+  );
+
+  it.each(['en', 'pt'] as const)(
     'shows measured holdings and cash rather than planned weights, with compact wrapping labels (%s)',
     async (lang) => {
       const t = dictionary(lang);
@@ -152,10 +183,10 @@ describe('home', () => {
     expect(find(card, '[data-ui="figure"]').textContent).toBe('$0.00\u202f');
     expect(find(card, 'a').getAttribute('href')).toBe(`/vaults/solana/${VAULT}`);
   });
-  it('is the goal, first: the one serif question and the typing box, and nothing else for a visitor', async () => {
+  it('starts with the workbench, compact prompt and truthful empty strategy for a visitor', async () => {
     const calls = api(null);
     const host = await home();
-    expect(find(host, 'h1').textContent).toBe(en.goal.title);
+    expect(find(host, 'h1').textContent).toBe(en.talk.workbench.title);
     expect(host.querySelectorAll('.font-display')).toHaveLength(1);
     expect(find(host, 'textarea')).toBeTruthy();
     expect(summary(host)).toBeNull();
@@ -174,7 +205,7 @@ describe('home', () => {
     expect(box.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(card.textContent).toContain(en.shared.vaults.address(shortAddress(VAULT)));
     expect(card.querySelector('[data-ui="figure"]')?.textContent).toContain('$1,040.00\u202f');
-    const link = find(card, 'header a');
+    const link = find(card, '[data-ui="portfolio-link"]');
     expect([link.textContent, link.getAttribute('href')]).toEqual([
       en.portfolio.summary.see,
       '/monitor',
@@ -247,7 +278,7 @@ describe('home', () => {
     portStore.set(signedInPort(PHANTOM));
     const host = await home();
     expect(summary(host)).toBeNull();
-    expect(find(host, 'h1').textContent).toBe(en.goal.title);
+    expect(find(host, 'h1').textContent).toBe(en.talk.workbench.title);
   });
 
   it('says the vault in Portuguese', async () => {
