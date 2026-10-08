@@ -1,11 +1,18 @@
-import type { ChainId } from '@colosseum/schemas';
-import { type DeploymentNetwork, deploymentsOf, type GuardDeployments } from '@colosseum/sdk';
+import { type ChainId, explorerLink } from '@colosseum/schemas';
+import {
+  basketIdOfLinkedPlan,
+  basketIdOfPlan,
+  type DeploymentNetwork,
+  deploymentsOf,
+  type GuardDeployment,
+  type GuardDeployments,
+} from '@colosseum/sdk';
 import { publicWalletEnv, walletChains } from '../wallet/chains';
 
 // Whether a chain can be bought on from this app: it needs a deployment committed for its network in
 // packages/sdk/deployments/, which the guard derives every address from. The test network's file has
-// Solana only until Robinhood Chain is deployed there (ADE-2); when its entry lands, the screens take it
-// with no change here. The order runner reads the deployments it hands the executor from here too.
+// Solana and Robinhood Chain (46630, since WEB-RH-BUY); Base has none, and nothing is signed there. The
+// order runner reads the deployments it hands the executor from here too.
 
 /**
  * The network a chain's deployment is read for. Every real network is this app's own
@@ -59,3 +66,57 @@ export const onMock = (
 /** True when an order on this chain can be signed from this app. */
 export const chainReady = (chain: ChainId, mock: boolean): boolean =>
   deploymentsFor(chain, mock) !== null;
+
+/**
+ * The vault a plan was bought into, by its number on chain: the API's own rule, from the SDK
+ * (`basketIdOfPlan`), or, for a plan made from a link, the buyer's own (`basketIdOfLinkedPlan`, gate
+ * `AGENT-LINK`). The runner names it to the guard, and the portfolio joins a vault to the goal of its
+ * plan with it.
+ */
+export const basketOfPlan = (proposalId: string, buyer: string | null = null): string =>
+  buyer ? basketIdOfLinkedPlan(proposalId, buyer) : basketIdOfPlan(proposalId);
+
+/**
+ * A transaction's link on the explorer of the network this app signs for, from this app's own chain
+ * table, never the API's word: a link the API sent could point anywhere, mainnet's explorer included.
+ * On the mock, whose transactions are no network's, the mock's own `mock://` link (packages/chain-mock's
+ * rule). Null on a network with no explorer, and where there is no transaction.
+ */
+export function explorerUrlFor(chain: ChainId, txId: string | null, mock: boolean): string | null {
+  if (!txId) return null;
+  if (mock) return `mock://${chain}/tx/${txId}`;
+  try {
+    return explorerLink(walletChains(publicWalletEnv())[chain].config, txId);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a shared portfolio can be published on a chain with this deployment: the guard signs an EVM
+ * publish only through the registry the deployment names (AGT-4). No deployment at all is the chain
+ * not being ready, which the screens say on their own.
+ */
+export const publishableOn = (deployment: GuardDeployment | undefined): boolean =>
+  deployment?.family !== 'evm' || deployment.registry !== undefined;
+
+/**
+ * A wallet's page on the explorer of the network this app signs for, from the same chain table as a
+ * transaction's link: Solscan names an account `/account/…`, the EVM explorers `/address/…`. Null on
+ * the mock, whose addresses are no network's, and on a network with no explorer.
+ */
+export function explorerAddressUrlFor(
+  chain: ChainId,
+  address: string,
+  mock: boolean,
+): string | null {
+  if (mock || !address) return null;
+  try {
+    const { config } = walletChains(publicWalletEnv())[chain];
+    if (!config.explorerTx?.includes('/tx/{txId}')) return null;
+    const page = config.family === 'solana' ? 'account' : 'address';
+    return config.explorerTx.replace('/tx/{txId}', `/${page}/${encodeURIComponent(address)}`);
+  } catch {
+    return null;
+  }
+}

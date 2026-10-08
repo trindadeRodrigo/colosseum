@@ -8,6 +8,7 @@ import {
 } from '../../bytes';
 import { sha256 } from '../../hash';
 import { type Context, familyOf, isUnlimited, reading, sameWeights, tradesOf } from '../context';
+import { familyTextHash } from '../meta';
 import { GuardRefusal } from '../refusal';
 import type { ApprovedTrade, MockDeployment } from '../types';
 
@@ -57,16 +58,35 @@ const FIELDS: Record<string, readonly string[]> = {
   set_targets: ['vault', 'targets'],
   accept_version: ['vault', 'recipeOnchainId', 'expectedVersion'],
   set_auto_follow: ['vault', 'on'],
-  withdraw: ['vault', 'assets'],
+  withdraw: ['vault', 'assets', 'amounts'],
+  publish: ['creator', 'recipe'],
 };
+
+/** What the mock's publish carries of a recipe. The version and the time are the mock's to give. */
+const RECIPE_FIELDS = [
+  'schemaVersion',
+  'familyId',
+  'chain',
+  'onchainId',
+  'creator',
+  'kind',
+  'version',
+  'effectiveAt',
+  'components',
+  'metaHash',
+  'maxFeeBps',
+  'flags',
+];
 
 export function checkMock(ctx: Context, deployment: MockDeployment): void {
   const { step, tx, need } = ctx;
   const { legId, owner } = step;
   const family = familyOf(deployment.chain);
   const malformed = (message: string) => new GuardRefusal('malformed', message, legId);
-  if (step.kind === 'publish')
-    throw new GuardRefusal('unsupported', 'the mock reader signs no shared portfolio yet', legId);
+  // The mock has one operation for a first version and the next: it tells them apart itself. It has
+  // none for taking a version back, which its control does for a test.
+  if (step.kind === 'publish' && step.action === 'cancel')
+    throw new GuardRefusal('unsupported', 'the mock takes back no version by a transaction', legId);
 
   const { message, hashed } = reading('the payload', legId, () => {
     if (family === 'solana') {
@@ -249,16 +269,76 @@ export function checkMock(ctx: Context, deployment: MockDeployment): void {
       vaultIs();
       need('auto_follow', a.on === step.on, 'the bytes set auto-follow another way');
       break;
+    case 'publish': {
+      // The creator's own portfolio of this family, with the assets and weights and the hash of the
+      // text the creator's form showed, worked out here; no fee and no flags.
+      need('signer', a.creator === owner, `the operation publishes as ${String(a.creator)}`);
+      const r = a.recipe;
+      if (!isFields(r)) throw malformed('the publish carries no recipe');
+      const more = Object.keys(r).filter((key) => !RECIPE_FIELDS.includes(key));
+      if (more.length)
+        throw malformed(`the recipe carries ${more.join(', ')}, which a publish has no use for`);
+      const text = step.text;
+      if (!text) throw malformed('a publish names the text it shows');
+      need(
+        'recipe',
+        r.creator === owner &&
+          r.chain === step.chain &&
+          r.kind === 'community' &&
+          r.familyId === step.familyId &&
+          (r.onchainId === null ||
+            r.onchainId === mockAddress(deployment.chain, `recipe:${owner}:${step.familyId}`)),
+        "the bytes publish another creator's or another family's portfolio",
+      );
+      need(
+        'recipe',
+        r.metaHash === familyTextHash({ familyId: step.familyId, ...text }),
+        'the bytes carry the hash of other words than the ones shown',
+      );
+      const lines = Array.isArray(r.components) ? r.components : [];
+      need(
+        'targets',
+        lines.every((c) => isFields(c) && c.kind === 'asset') &&
+          sameWeights(
+            step.components.map((t) => ({ key: t.asset, bps: t.weightBps })),
+            lines.map((c) => ({
+              key: isFields(c) ? String(c.asset) : '',
+              bps: isFields(c) && typeof c.weightBps === 'number' ? c.weightBps : -1,
+            })),
+          ),
+        "the assets and weights in the bytes are not the step's",
+      );
+      need('limits', r.maxFeeBps === 0 && r.flags === 0, 'the bytes set a fee cap or flags');
+      break;
+    }
     case 'withdraw': {
       vaultIs();
-      // The mock pays only the vault's owner, and takes whole balances.
+      // The mock pays only the vault's owner. A token leaves in full unless the bytes name an amount.
       const assets = Array.isArray(a.assets) ? a.assets : [];
+      const amounts = isFields(a.amounts) ? a.amounts : {};
       const want = step.withdrawals === 'all' ? null : step.withdrawals.map((w) => w.asset);
       need(
         'asset',
         want === null || (assets.length === want.length && assets.every((id, i) => id === want[i])),
         'the bytes withdraw other tokens than the step names',
       );
+      need(
+        'asset',
+        a.amounts === undefined ||
+          (isFields(a.amounts) && Object.keys(amounts).every((id) => assets.includes(id))),
+        'the bytes name an amount for a token they do not withdraw',
+      );
+      // Everything: any amount of what is there. Named: the amount reviewed, and a whole token only
+      // where the step names none.
+      if (step.withdrawals !== 'all')
+        for (const w of step.withdrawals) {
+          const stated = amounts[w.asset];
+          need(
+            'amount',
+            w.amountRaw === null ? stated === undefined : stated === w.amountRaw,
+            `the bytes withdraw ${String(stated ?? 'all')} of ${w.asset}, and the step ${w.amountRaw ?? 'all'}`,
+          );
+        }
       break;
     }
   }

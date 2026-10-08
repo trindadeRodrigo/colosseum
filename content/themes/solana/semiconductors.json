@@ -1,0 +1,23 @@
+{
+  "slug": "semiconductors",
+  "name": {
+    "en": "Semiconductors",
+    "pt": "Semicondutores"
+  },
+  "chain": "solana",
+  "version": 1,
+  "curator": "Rodrigo",
+  "status": "confirmed",
+  "decidedOn": "2026-10-07",
+  "gate": "LABELS-CONFIRMED",
+  "note": "Proposed on 2026-10-06 from the sourced attributes in content/stocks/solana.json, and confirmed by Rodrigo on 2026-10-07 with the members it was proposed with (gate LABELS-CONFIRMED). Nvidia is the one tracked chip maker on Solana.",
+  "members": [
+    {
+      "symbol": "NVDAx",
+      "reason": {
+        "en": "Nvidia designs GPUs and other processors for data centers, gaming PCs and vehicles",
+        "pt": "a Nvidia projeta GPUs e outros processadores para data centers, PCs de jogos e veículos"
+      }
+    }
+  ]
+}

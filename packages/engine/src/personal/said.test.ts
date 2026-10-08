@@ -9,6 +9,7 @@ import {
   LIQUIDITY_SOURCE,
   launchShelf,
   NOW,
+  roomyYield,
   sheet,
   violations,
 } from './testing';
@@ -23,14 +24,7 @@ const ctx = fixtureContext();
 const line = (plan: PersonalProposal, id: string) => plan.lines.find((l) => l.assetId === id);
 const rulesOn = (plan: PersonalProposal, id: string) => line(plan, id)?.reasons.map((r) => r.rule);
 /** The rules that say something was left out. */
-const LEFT_OUT = [
-  'MAX_LINES',
-  'BELOW_MINIMUM',
-  'EXCLUDED',
-  'NOT_FOR_GOAL',
-  'NOT_IN_COUNTRY',
-  'NOT_ON_CHAIN',
-];
+const LEFT_OUT = ['MAX_LINES', 'BELOW_MINIMUM', 'EXCLUDED', 'NOT_FOR_GOAL', 'NOT_ON_CHAIN'];
 
 describe('a reason names what it is about', () => {
   it('at $20 the dollar-yield share is too small to hold, and the cash line says that, not " is left out"', () => {
@@ -175,7 +169,8 @@ describe('a figure that shaped the plan is on the plan', () => {
   });
 
   it('lists the yield of every dollar-yield token that was ranked, held or not', () => {
-    const plan = compose(sheet(), shelf, ctx);
+    // Dollar yield free of its caps, so syrupUSDC takes it all and jlUSDC is ranked and not held.
+    const plan = compose(sheet(), shelf, fixtureContext({ params: roomyYield() }));
     expect(plan.lines.some((l) => l.assetId === 'solana:jlusdc')).toBe(false);
     expect(plan.observations.filter((o) => o.kind === 'yield').map((o) => o.id)).toEqual([
       'solana:jlusdc',
@@ -224,9 +219,10 @@ describe('the date sentence is true of the plan it is on', () => {
   it.each([
     ['Robinhood Chain, $1,000 in 6 months', { chains: ['robinhood'], amountUsd: 1_000 }, 8000],
     [
-      'Robinhood Chain, The Seven in 24 months',
-      { chains: ['robinhood'], themes: ['the-seven'], horizonMonths: 24 },
-      4000,
+      // At 12 months: at 24 the floor (40%) equals SGOV's cap, and dollar yield alone meets it.
+      'Robinhood Chain, The Seven in 12 months',
+      { chains: ['robinhood'], themes: ['the-seven'], horizonMonths: 12 },
+      6000,
     ],
     ['Solana, $200,000 in 6 months', { chains: ['solana'], amountUsd: 200_000 }, 8000],
     ['Base, in 6 months', { chains: ['base'] }, 8000],
@@ -250,16 +246,21 @@ describe('the date sentence is true of the plan it is on', () => {
   it('reads the same in both languages, on the dollar-yield line and on the cash line', () => {
     const person = { chains: ['robinhood' as const], horizonMonths: 6, amountUsd: 1_000 };
     const en = compose(sheet(person), shelf, ctx);
+    // SGOV is held to 40%, its cap as a rate leg (gate SOLVER-PARAMS); the rest of the floor is cash.
     expect(en.lines.map((l) => [l.assetId, l.weightBps])).toEqual([
-      ['robinhood:sgov', 7000],
-      ['robinhood:usdg', 3000],
+      ['robinhood:spy', 500],
+      ['robinhood:sgov', 4000],
+      ['robinhood:gld', 500],
+      ['robinhood:usdg', 5000],
     ]);
-    for (const l of en.lines)
+    const kept = (lines: typeof en.lines) =>
+      lines.filter((l) => l.assetId === 'robinhood:sgov' || l.assetId === 'robinhood:usdg');
+    for (const l of kept(en.lines))
       expect(l.reasons.map((r) => r.text)).toContain(
         'At least 80% is kept out of stocks, crypto and gold, in dollar yield or cash: you need this money in 6 months, by April 2027.',
       );
     const pt = compose(sheet({ ...person, language: 'pt' }), shelf, ctx);
-    for (const l of pt.lines)
+    for (const l of kept(pt.lines))
       expect(l.reasons.map((r) => r.text)).toContain(
         'Pelo menos 80% fica fora de ações, cripto e ouro, em rendimento em dólar ou caixa: você precisa deste dinheiro em 6 meses, até abril de 2027.',
       );
@@ -307,7 +308,8 @@ describe('what compose is handed is checked before it is used', () => {
     // A second observation of the same token, as good as the first (same method and time), higher.
     const higher = { ...jl, quotedYield: 0.09, haircutYield: 0.08 };
     const plans = [[...ys, higher], [higher, ...ys], [...ys].reverse().concat(higher, higher)].map(
-      (yields) => compose(sheet(), shelf, fixtureContext({ yields })),
+      // Dollar yield free of its caps, so the higher-ranked token takes it all.
+      (yields) => compose(sheet(), shelf, fixtureContext({ yields, params: roomyYield() })),
     );
     expect(plans[1]).toEqual(plans[0]);
     expect(plans[2]).toEqual(plans[0]);
@@ -365,11 +367,36 @@ describe('what the person already holds', () => {
     expect(rulesOn(plan, 'solana:nvdax')).toContain('ALREADY_HELD');
   });
 
+  it('a holding that leaves a name too small for a line is said of that name, with why it is left out', () => {
+    // $1,262 of NVDA beside a $10,000 plan leaves $28.18 of it to buy: under the least a line can be,
+    // so NVDA is left out. The holding is why its part was that small. The sentence was on the name's
+    // line only, and went with it: here the other lines still say a holding moved them, and a plan in
+    // which none of them had a line either said nothing of the holding at all (mix.test.ts has one).
+    const plan = withHeld(1_262);
+    expect(line(plan, 'solana:nvdax')).toBeUndefined();
+    expect(plan.removed.find((r) => r.ref === 'NVDA')?.reasons.map((r) => r.text)).toEqual([
+      'NVDA is left out: $28 is too small to be a part of your plan.',
+      'Less NVDA: you already hold $1,262 of it.',
+    ]);
+    expect(
+      violations(
+        plan,
+        shelf,
+        fixtureContext({ holdings: [{ underlying: 'NVDA', valueUsd: 1_262 }] }),
+      ),
+    ).toEqual([]);
+    // A name that keeps its line says it there, as before, and is not listed as left out.
+    const kept = withHeld(1_000);
+    expect(rulesOn(kept, 'solana:nvdax')).toContain('ALREADY_HELD');
+    expect(kept.removed.find((r) => r.ref === 'NVDA')).toBeUndefined();
+  });
+
   it('holding more than the plan would buy: nothing of it is bought, and its money is held in dollar yield, with why', () => {
     // A table with half in stocks and half in gold, and a person who cannot hold gold and already
     // has $20,000 of the S&P 500. The target for stocks is half of $30,000, less than they hold.
+    // Dollar yield free of its caps: this is about where the money goes, not how much one token takes.
     const table = {
-      ...PERSONAL_PARAMS,
+      ...roomyYield(),
       sleeves: {
         ...PERSONAL_PARAMS.sleeves,
         'grow:high': { growthBps: 5000, dollarYieldBps: 0, goldBps: 5000 },
@@ -423,6 +450,9 @@ describe('an income goal: what the verdict says is so', () => {
     incomeTargetUsdMonthly: 300,
   });
   const yields = new Map(fixtureYields().map((y) => [y.assetId, y.haircutYield]));
+  // The verdict's arithmetic, on a plan whose dollar yield is free of its caps: $50,000 and $30,000
+  // in the two tokens, as their tiers allow. The capped plan is in solver.test.ts.
+  const ctx = fixtureContext({ params: roomyYield() });
   const monthly = (plan: PersonalProposal) =>
     plan.lines.reduce((n, l) => n + l.amountUsd * (yields.get(l.assetId) ?? 0), 0) / 12;
 
@@ -647,24 +677,28 @@ describe('the words', () => {
     ]);
   });
 
-  it('names a country, not its code, and reads as a Brazilian would say it', () => {
+  // Gate COUNTRY-REMOVED (Oct 6): this test held that NVDAx blocked in Brazil was left out of a
+  // Brazilian's plan, said "in Brazil". It is now held, and no sentence names a country.
+  it("holds an asset blocked in the person's country, says no country, and reads as a Brazilian would say it", () => {
     const blocked = {
       ...shelf,
       assets: shelf.assets.map((a) =>
         a.id === 'solana:nvdax' ? { ...a, blockedCountries: ['BR'] } : a,
       ),
     };
-    const said = (language: 'en' | 'pt') =>
-      compose(sheet({ themes: ['the-seven'], language }), blocked, ctx)
-        .removed.find((r) => r.ref === 'NVDA')
-        ?.reasons.map((r) => r.text);
-    expect(said('en')).toEqual(['NVDAx is left out: it is not offered in Brazil.']);
-    expect(said('pt')).toEqual(['NVDAx fica de fora: não é oferecido no Brasil.']);
+    for (const language of ['en', 'pt'] as const) {
+      const plan = compose(sheet({ themes: ['the-seven'], language }), blocked, ctx);
+      expect(plan.removed.find((r) => r.ref === 'NVDA')).toBeUndefined();
+      expect(line(plan, 'solana:nvdax')).toBeDefined();
+      for (const r of allReasons(plan))
+        expect(r.text).not.toMatch(/Brazil|Brasil|not offered|não é oferecido/);
+    }
     const pt = compose(sheet({ language: 'pt' }), shelf, ctx);
     expect(line(pt, 'solana:syrupusdc')?.reasons.map((r) => r.text)).toEqual([
       'Para um objetivo de crescimento, com risco médio, a parcela inicial de rendimento em dólar é 15%.',
       'Escolhido pelo rendimento após o deságio, entre os tokens de rendimento em dólar que você pode ter na Solana.',
       'US$ 1.500 que iria para SPY fica em rendimento em dólar ou caixa: no máximo 70% do plano fica com um só emissor, com risco médio, e Backed (xStocks) está nesse limite.',
+      'No máximo 25% do plano em tokens que emprestam a tomadores ou operam uma diferença de taxas: você não disse quanto risco de crédito aceita, e este é o limite até dizer. Esses tokens juntos estão nesse limite.',
       'syrupUSDC comporta no máximo US$ 50.000: o custo de vender ainda não está medido, então o limite é o da faixa dele na lista de ativos.',
     ]);
   });
@@ -695,15 +729,16 @@ describe('the card', () => {
   const bruno = sheet({ goal: 'protect', amountUsd: 50_000, horizonMonths: 18, risk: 'low' });
 
   it('gives a range: after haircut at the low end, as quoted at the high end, and they differ', () => {
-    // $25,000 and $15,000 in the two dollar-yield tokens of a $50,000 plan.
+    // $12,500 and $25,000 in the two dollar-yield tokens of a $50,000 plan: syrupUSDC at the credit
+    // budget (a quarter), jlUSDC at the issuer cap (half).
     const { expectedReturn } = compose(bruno, shelf, ctx).card;
     const ys = new Map(fixtureYields().map((y) => [y.assetId, y]));
     const part = (pick: 'haircutYield' | 'quotedYield') =>
-      (25_000 * (ys.get('solana:syrupusdc')?.[pick] ?? 0) +
-        15_000 * (ys.get('solana:jlusdc')?.[pick] ?? 0)) /
+      (12_500 * (ys.get('solana:syrupusdc')?.[pick] ?? 0) +
+        25_000 * (ys.get('solana:jlusdc')?.[pick] ?? 0)) /
       500;
-    expect(expectedReturn.lowPct).toBe(3.27);
-    expect(expectedReturn.highPct).toBe(3.84);
+    expect(expectedReturn.lowPct).toBe(2.72);
+    expect(expectedReturn.highPct).toBe(3.37);
     expect(expectedReturn.lowPct).toBeCloseTo(part('haircutYield'), 2);
     expect(expectedReturn.highPct).toBeCloseTo(part('quotedYield'), 2);
     expect(expectedReturn.highPct).toBeGreaterThan(expectedReturn.lowPct);

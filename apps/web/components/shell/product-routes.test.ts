@@ -81,35 +81,95 @@ function reach(roots: readonly string[]): { files: Set<string>; packages: Map<st
 const isRoute = (file: string) =>
   /^app\/(.+\/)?(page|layout|route|template|loading|error|not-found|default)\.[jt]sx?$/.test(file);
 const routes = shipped.filter(isRoute);
-const product = routes.filter((file) => file.startsWith('app/(app)/'));
+// His landing page (app/(marketing)) and the partner embed (app/(embed)) are held to the same rules as
+// the product: they ship to the same people, and must reach no wallet library and no signing member
+// either.
+const product = routes.filter(
+  (file) =>
+    file.startsWith('app/(app)/') ||
+    file.startsWith('app/(marketing)/') ||
+    file.startsWith('app/(embed)/'),
+);
+const embed = routes.filter((file) => file.startsWith('app/(embed)/'));
 const older = routes.filter((file) => file.startsWith('app/(structurer)/'));
 
 describe('the routes of the app', () => {
   it('are the product’s, under one layout, and the pages not yet rebuilt, under theirs', () => {
     expect(product.sort()).toEqual([
+      'app/(app)/analytics/[page]/loading.tsx',
+      'app/(app)/analytics/[page]/page.tsx',
+      'app/(app)/analytics/layout.tsx',
+      'app/(app)/analytics/methodology/page.tsx',
+      'app/(app)/analytics/page.tsx',
       'app/(app)/goal/page.tsx',
+      'app/(app)/indexes/[slug]/buy/loading.tsx',
+      'app/(app)/indexes/[slug]/buy/page.tsx',
+      'app/(app)/indexes/[slug]/loading.tsx',
+      'app/(app)/indexes/[slug]/page.tsx',
       'app/(app)/layout.tsx',
       'app/(app)/monitor/page.tsx',
+      'app/(app)/orders/[id]/loading.tsx',
       'app/(app)/orders/[id]/page.tsx',
-      'app/(app)/page.tsx',
+      'app/(app)/plan/[id]/buy/loading.tsx',
       'app/(app)/plan/[id]/buy/page.tsx',
+      'app/(app)/plan/[id]/loading.tsx',
       'app/(app)/plan/[id]/page.tsx',
+      'app/(app)/publish/page.tsx',
+      'app/(app)/shelf/page.tsx',
       'app/(app)/sign-in/page.tsx',
+      'app/(app)/vaults/[chain]/[address]/add/loading.tsx',
+      'app/(app)/vaults/[chain]/[address]/add/page.tsx',
+      'app/(app)/vaults/[chain]/[address]/loading.tsx',
+      'app/(app)/vaults/[chain]/[address]/page.tsx',
+      'app/(app)/vaults/[chain]/[address]/targets/page.tsx',
+      'app/(app)/vaults/[chain]/[address]/withdraw/page.tsx',
+      'app/(embed)/embed/[chain]/[address]/page.tsx',
+      'app/(embed)/embed/page.tsx',
+      'app/(embed)/layout.tsx',
+      'app/(marketing)/layout.tsx',
+      'app/(marketing)/page.tsx',
     ]);
     expect(older.sort()).toEqual([
       // an address no route answers: 404 inside this group's layout, as before there were two
       'app/(structurer)/[...missing]/page.tsx',
-      'app/(structurer)/embed/[id]/layout.tsx',
-      'app/(structurer)/embed/[id]/page.tsx',
       'app/(structurer)/layout.tsx',
       'app/(structurer)/plans/[id]/page.tsx',
-      'app/(structurer)/risk/[asset]/page.tsx',
-      'app/(structurer)/risk/methodology/page.tsx',
-      'app/(structurer)/risk/page.tsx',
     ]);
     // every route is in one group or the other: there is no layout above the two
     expect(routes.filter((file) => !product.includes(file) && !older.includes(file))).toEqual([]);
     expect(files).not.toContain('app/layout.tsx');
+  });
+
+  it('give the partner embed a bare root that reaches no wallet, no bar and no font of ours', () => {
+    const built = reach(embed);
+    const reached = [...built.files];
+    // embed-shell.md: no Nav, no wallet, no providers, no brand faces
+    expect(reached.filter((file) => file.startsWith('features/wallet/'))).toEqual([
+      // the API's address check, a plain function
+      'features/wallet/api-url.ts',
+    ]);
+    for (const file of [
+      'components/shell/AppNav.tsx',
+      'components/shell/AppDocument.tsx',
+      'components/ui/CompactNav.tsx',
+      'features/account/AccountProvider.tsx',
+      'app/fonts.ts',
+      'app/fonts-mono.ts',
+    ])
+      expect(reached, file).not.toContain(file);
+    expect([...built.packages.keys()].sort()).toEqual([
+      '@colosseum/schemas',
+      'next/headers',
+      'next/navigation',
+      'react',
+    ]);
+  });
+
+  it('bites: the product’s own layout does reach the bar, the wallet and the faces', () => {
+    const theirs = [...reach(product.filter((f) => f === 'app/(app)/layout.tsx')).files];
+    expect(theirs).toContain('components/shell/AppNav.tsx');
+    expect(theirs).toContain('app/fonts.ts');
+    expect(theirs.some((file) => file.startsWith('features/wallet/'))).toBe(true);
   });
 });
 
@@ -121,7 +181,7 @@ describe('rule 1: nothing the product ships imports from a dev, test or fixtures
   );
 
   it('reads the app: the product’s screens and what they are tested with', () => {
-    expect(shipped).toContain('features/goal/GoalScreen.tsx');
+    expect(shipped).toContain('features/invest/InvestScreen.tsx');
     expect(shipped).toContain('features/account/SignInScreen.tsx');
     expect(shipped).toContain('components/shell/AppDocument.tsx');
     for (const helper of [
@@ -143,7 +203,7 @@ describe('rule 1: nothing the product ships imports from a dev, test or fixtures
   it('finds none at all in what the product’s routes are built from', () => {
     const built = [...reach(product).files];
     expect(built.length).toBeGreaterThan(40);
-    expect(built).toContain('features/goal/GoalScreen.tsx');
+    expect(built).toContain('features/invest/InvestScreen.tsx');
     expect(built).toContain('features/wallet/privy-bridge.tsx');
     expect(built.filter(notShipped)).toEqual([]);
   });
@@ -199,7 +259,7 @@ describe('rule 1: nothing the product ships imports from a dev, test or fixtures
     const bad = (file: string, text: string) =>
       importsOf(file, text).filter((edge) => edge.file !== null && notShipped(edge.file));
     expect(
-      bad('features/goal/GoalScreen.tsx', "import { SHEET } from './test/plan';"),
+      bad('features/invest/InvestScreen.tsx', "import { SHEET } from './test/plan';"),
     ).toHaveLength(1);
     expect(
       bad('app/(app)/goal/page.tsx', "const S = () => import('../dev/ui/Showcase');"),
@@ -283,6 +343,21 @@ describe('rule 3: no screen can reach a key', () => {
   /** The one screen that imports the runner, and the one route built from it. */
   const ORDER_SCREEN = 'features/order/OrderScreen.tsx';
   const ORDER_ROUTE = 'app/(app)/orders/[id]/page.tsx';
+  /**
+   * The routes that sign: the order's own, and the three whose card runs an order with one press
+   * (features/order/InvestCard.tsx draws the order screen inside it). Each reaches the runner through
+   * the order screen and by no other file.
+   */
+  const SIGNING_ROUTES: readonly string[] = [
+    ORDER_ROUTE,
+    'app/(app)/plan/[id]/buy/page.tsx',
+    'app/(app)/indexes/[slug]/buy/page.tsx',
+    // a shared portfolio's own page mounts the invest card under its holdings (gate PRODUCTS-PLAN-PANE)
+    'app/(app)/indexes/[slug]/page.tsx',
+    'app/(app)/vaults/[chain]/[address]/add/page.tsx',
+    // the Invest screen's pane mounts the invest card under the plan (gate INVEST-TWO-PANE)
+    'app/(app)/goal/page.tsx',
+  ];
 
   /** What a file outside the seam may take from a file of the seam, by name. Types are free. */
   const OPEN: Record<string, readonly string[]> = {
@@ -290,9 +365,15 @@ describe('rule 3: no screen can reach a key', () => {
   };
   /** More that one file may take, and no other: the runner the whole port, and both the network table. */
   const OPEN_TO: Record<string, Record<string, readonly string[]>> = {
-    [RUNNER]: { [SIGNING]: ['useSigningPort'] },
+    // the hold says a run is open, so the wallet provider is not mounted again under it
+    [RUNNER]: { [SIGNING]: ['useSigningPort', 'useSigningHold'] },
     'features/order/readiness.ts': {
       'features/wallet/chains.ts': ['publicWalletEnv', 'walletChains'],
+    },
+    // "Try again" for a slow sign-in mounts the wallet provider again: a function that takes and
+    // returns nothing, open to the account alone.
+    'features/account/AccountProvider.tsx': {
+      'features/wallet/WalletProvider.tsx': ['useWalletRestart', 'useLeaveHere', 'useOustedPerson'],
     },
   };
 
@@ -300,7 +381,17 @@ describe('rule 3: no screen can reach a key', () => {
    * The files that import packages/sdk: the runner, which calls `execute`; readiness.ts, which reads
    * the committed deployments. (order-view.ts takes the runner's answer types from run-order.ts.)
    */
-  const SDK_FILES = [RUNNER, 'features/order/readiness.ts'];
+  const SDK_FILES = [
+    RUNNER,
+    'features/order/readiness.ts',
+    // this app's own node per chain, for the reads it makes itself (WEB-4)
+    'features/order/chain-node.ts',
+    // a shared portfolio read from that node, and a family's id worked out from its slug (WEB-4)
+    'features/shared/chain-recipe.ts',
+    // a vault's targets read from that node, which an add of money is held to (WEB-ADD-MONEY): a read
+    // of the chain, with no wallet in it
+    'features/portfolio/chain-vault.ts',
+  ];
   const SDK = '@colosseum/sdk';
 
   /**
@@ -309,11 +400,20 @@ describe('rule 3: no screen can reach a key', () => {
    */
   const PACKAGES = [
     '@colosseum/schemas',
-    'next/font/google',
+    // the three faces, from files committed with the app: nothing is fetched at build (app/fonts.ts)
+    'next/font/local',
     'next/headers',
     'next/link',
     'next/navigation',
     'react',
+    // the landing's 3D joint (features/landing/joint-scene.ts): a renderer, with no network, storage or
+    // wallet of its own; loaded only by the landing page, after its first paint. Its drawing takes
+    // three's own line and geometry helpers, which are part of the same package.
+    'three',
+    'three/examples/jsm/lines/LineMaterial.js',
+    'three/examples/jsm/lines/LineSegments2.js',
+    'three/examples/jsm/lines/LineSegmentsGeometry.js',
+    'three/examples/jsm/utils/BufferGeometryUtils.js',
   ];
 
   /**
@@ -449,9 +549,9 @@ describe('rule 3: no screen can reach a key', () => {
 
   it('reads every file a product route is built from, the screens among them', () => {
     for (const file of [
-      'features/goal/GoalScreen.tsx',
+      'features/invest/InvestScreen.tsx',
       'features/account/SignInScreen.tsx',
-      'features/account/ChainPick.tsx',
+      'features/account/ChainSwitch.tsx',
       'features/account/AccountProvider.tsx',
       'features/wallet/SignIn.tsx',
       'components/shell/AppNav.tsx',
@@ -512,11 +612,15 @@ describe('rule 3: no screen can reach a key', () => {
       'features/order/order-view.ts',
     ]);
     expect(takesRunner('features/order/order-view.ts')).toBe(false);
-    // by any path: every product route but the order's is built without the whole port
-    expect(product).toContain(ORDER_ROUTE);
-    expect(reach(product.filter((r) => r !== ORDER_ROUTE)).files.has(SIGNING)).toBe(false);
-    expect(reach(product.filter((r) => r !== ORDER_ROUTE)).files.has(RUNNER)).toBe(false);
-    expect(reach([ORDER_ROUTE]).files.has(SIGNING)).toBe(true);
+    // by any path: every product route is built without the whole port, but the order's and the
+    // three that invest, which draw the order's own screen inside their card (INVEST-ONE-PRESS)
+    for (const route of SIGNING_ROUTES) expect(product).toContain(route);
+    const others = product.filter((r) => !SIGNING_ROUTES.includes(r));
+    expect(reach(others).files.has(SIGNING)).toBe(false);
+    expect(reach(others).files.has(RUNNER)).toBe(false);
+    // and none of them reaches the order screen, which is the one way to the runner
+    expect(reach(others).files.has(ORDER_SCREEN)).toBe(false);
+    for (const route of SIGNING_ROUTES) expect(reach([route]).files.has(SIGNING), route).toBe(true);
     expect(built.files.has(RUNNER)).toBe(true);
   });
 
@@ -533,13 +637,17 @@ describe('rule 3: no screen can reach a key', () => {
       .replace('signer: port,', '')
       .replace('onMock(port, chain)', '')
       .replace('port.active(chainFamily(chain))', '')
-      .replace('[port, apiFetch]', '');
+      .replace('[port, apiFetch, hold]', '');
     expect(rest.match(/\bport\b/g) ?? []).toEqual([]);
     // what the executor is handed beside it is the README's list (features/wallet/README.md, item 3)
     for (const dep of [
       'api: createOrderApi(apiFetch)',
       'deployments,',
-      'plan: { basketId: basketIdOfPlan(',
+      // a plan's terms, or a shared portfolio's (planTermsOf, WEB-4)
+      'plan: plan ?? {',
+      // a plan's number: the order's, held to one this app works out (gate AGENT-LINK)
+      'const basketId = input.terms ? null : planNumberOf(order.basketId, input.plan);',
+      "basketId: basketId ?? '',",
       'consents: input.consents',
       'signed: localSigned',
       'chainRead: chainReadFor(',
@@ -580,7 +688,7 @@ describe('rule 3: no screen can reach a key', () => {
   });
 
   it('bites: every way of getting at a signature that is written in the file', () => {
-    const file = 'features/goal/GoalScreen.tsx';
+    const file = 'features/invest/InvestScreen.tsx';
     const caught: Record<string, string> = {
       'a call': "await port.sign('solana', [tx]);",
       'a call on the hook': 'await useWalletPort().send(chain, tx);',
@@ -617,7 +725,7 @@ describe('rule 3: no screen can reach a key', () => {
   });
 
   it('bites: what is not written in the file is held by what a screen can reach', () => {
-    const file = 'features/goal/GoalScreen.tsx';
+    const file = 'features/invest/InvestScreen.tsx';
     // A key built at run time, and the port handed to a helper: nothing in the text names a member.
     // The port a screen holds has none, so both come to nothing (the test above), and the typecheck
     // refuses both: the screen's port has no such member and takes no string as a key.

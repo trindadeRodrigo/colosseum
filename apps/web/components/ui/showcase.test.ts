@@ -33,8 +33,9 @@ const BUILT = [
   'embed-shell',
   'subscribe-block',
   'token-mapping',
+  'bearing-heatmap-tile',
 ];
-const NOT_BUILT = ['bearing-heatmap-tile', 'goal-showcase-case', 'joint-stage'];
+const NOT_BUILT = ['goal-showcase-case', 'joint-stage'];
 
 describe('the showcase (/dev/ui)', () => {
   it('accounts for every component spec: built and shown, or listed as not built', () => {
@@ -75,14 +76,18 @@ describe('the showcase (/dev/ui)', () => {
     }
   });
 
-  it('labels every panel MOCK: a note at the top of the page is not enough', () => {
+  it('marks every panel as sample in its own panel: a note at the top of the page is not enough', () => {
     for (const section of sections)
       for (const panel of all(section, (el) => classes(el).includes('tf-app')).slice(-2)) {
-        const plates = all(panel, ui('mock-plate'));
-        expect(plates.length, specOf(section)).toBeGreaterThan(0);
-        expect(text(plates[0] as never)).toContain('MOCK');
+        const marks = all(
+          panel,
+          (el) =>
+            ['sample-note', 'sample-glyph'].includes(el.attrs['data-ui'] ?? '') ||
+            'data-hatch' in el.attrs,
+        );
+        expect(marks.length, specOf(section)).toBeGreaterThan(0);
       }
-    expect(text(all(page, tag('h1'))[0]?.parent as never)).toContain('MOCK');
+    expect(all(page, (el) => classes(el).includes('tf-mock-plate'))).toHaveLength(0);
   });
 
   it('shows the pin in each of its states', () => {

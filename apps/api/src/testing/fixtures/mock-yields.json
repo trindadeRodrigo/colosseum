@@ -1,0 +1,22 @@
+[
+  {
+    "assetId": "solana:yield",
+    "quotedYield": 0.04,
+    "haircutYield": 0.03,
+    "haircutRule": "MOCK: a figure for the mock chain's stand-in token, not a reading",
+    "source": "apps/api/src/testing/fixtures/mock-yields.json",
+    "method": "mock_value_written_by_hand_not_a_reading",
+    "fetchedAt": "2026-10-05T00:00:00.000Z",
+    "provenance": "mock"
+  },
+  {
+    "assetId": "robinhood:yield",
+    "quotedYield": 0.04,
+    "haircutYield": 0.03,
+    "haircutRule": "MOCK: a figure for the mock chain's stand-in token on Robinhood Chain (the tUSDG side), not a reading",
+    "source": "apps/api/src/testing/fixtures/mock-yields.json",
+    "method": "mock_value_written_by_hand_not_a_reading",
+    "fetchedAt": "2026-10-05T00:00:00.000Z",
+    "provenance": "mock"
+  }
+]

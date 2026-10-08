@@ -17,20 +17,24 @@ export const TRUST_STATUS = {
   /**
    * The admin of each chain's deployment, as its deploy recorded it: the key that upgrades and
    * changes parameters. Only deployed chains are listed. Solana: `roles.admin` of
-   * `deployments/solana-devnet.json` (trust.test.ts holds the two together).
+   * `deployments/solana-devnet.json`; Robinhood Chain: `roles.admin` of
+   * `deployments/robinhood-testnet.json` (trust.test.ts holds each to its record).
    */
-  admin: { solana: '32AQhayMMrQFW3DgdmwW6EBwjQE8Ek8HeB4ixL55boWC' } as Partial<
-    Record<ChainId, string>
-  >,
+  admin: {
+    solana: '32AQhayMMrQFW3DgdmwW6EBwjQE8Ek8HeB4ixL55boWC',
+    robinhood: '0xf474920851f97dc8797e78470095206dfd8367d8',
+  } as Partial<Record<ChainId, string>>,
   /**
    * What the keeper may do in a vault with auto-follow on, per deployed chain, as the deploy set it:
    * a trade is refused when it receives less than the reference price minus `toleranceBps`, and a leg
    * that loses is refused once the week's losses would pass `weeklyLossCapBps` of the vault's value.
    * Solana: `params.toleranceBps` and `params.lossCapBps` of `deployments/solana-devnet.json`.
+   * Robinhood Chain: `params` of `contracts/script/config/46630.json`, which its deploy wrote.
    */
-  keeper: { solana: { toleranceBps: 75, weeklyLossCapBps: 100 } } as Partial<
-    Record<ChainId, { toleranceBps: number; weeklyLossCapBps: number }>
-  >,
+  keeper: {
+    solana: { toleranceBps: 75, weeklyLossCapBps: 100 },
+    robinhood: { toleranceBps: 125, weeklyLossCapBps: 100 },
+  } as Partial<Record<ChainId, { toleranceBps: number; weeklyLossCapBps: number }>>,
   /** Issuers of stock tokens can pause, freeze or seize them. */
   issuersCanFreeze: true,
   /** The product is not offered to people in the United States. */

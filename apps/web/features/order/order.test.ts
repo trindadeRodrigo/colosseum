@@ -3,6 +3,7 @@ import { deploymentsOf, GuardRefusal } from '@colosseum/sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { dictionary } from '../../i18n';
 import { json } from '../wallet/test/fake-port';
+import { activityOf } from './activity';
 import { formatBps, formatRaw, shortfallBps } from './amounts';
 import { placeOrder, readFunding, readOrder } from './order-api';
 import { checkDeposit, depositRawOf } from './order-check';
@@ -10,8 +11,9 @@ import { keepOrder, recallOrder } from './order-record';
 import { outcomeView, refusalKind, stepOf } from './order-view';
 import { recallPlan, rememberPlan } from './plan-store';
 import { targetsOfPlan } from './plan-terms';
-import { chainReady, deploymentsFor, networkFor } from './readiness';
+import { chainReady, deploymentsFor, explorerUrlFor, networkFor } from './readiness';
 import {
+  doneOrder,
   LEG_CREATE,
   LEG_SWAP,
   linesOn,
@@ -49,7 +51,12 @@ describe('amounts', () => {
 
   it('says how far under the quote a minimum is, rounded up', () => {
     expect(shortfallBps('1000000', '990000')).toBe(100);
-    expect(shortfallBps('3', '2')).toBe(3334);
+    // a 1% minimum cut down to a raw unit is a hair over 1%: it is the 1% the order states
+    expect(shortfallBps('1000001', '990000')).toBe(100);
+    expect(shortfallBps('3', '2')).toBe(3333);
+    // a gap that is no tolerance's rounding is rounded up, never down: 1.005% is said as 1.01%
+    expect(shortfallBps('1000000', '989950')).toBe(101);
+    expect(shortfallBps('1000001', '989990')).toBe(101);
     expect(shortfallBps('100', '100')).toBe(0);
     expect(shortfallBps('0', '0')).toBeNull();
     expect(formatBps(75, 'en')).toBe('0.75%');
@@ -115,15 +122,28 @@ describe('what this browser keeps', () => {
 
 describe('which chains can be signed on', () => {
   it('takes the deployment from the file committed for this app’s network, never the API', () => {
-    // unset means the test network, and its file has Solana only until Robinhood Chain is deployed
+    // unset means the test network, and its file has Solana, and Robinhood Chain since ADE-2 deployed it
     expect(networkFor('solana', false)).toBe('testnet');
     expect(deploymentsFor('solana', false)?.solana?.family).toBe('solana');
     expect(chainReady('solana', false)).toBe(true);
-    expect(chainReady('robinhood', false)).toBe(false);
-    expect(deploymentsFor('robinhood', false)).toBeNull();
+    expect(networkFor('robinhood', false)).toBe('testnet');
+    expect(chainReady('robinhood', false)).toBe(true);
+    expect(deploymentsFor('robinhood', false)?.robinhood?.family).toBe('evm');
+    // Base is deployed on no network yet: nothing is signed there
+    expect(chainReady('base', false)).toBe(false);
+    expect(deploymentsFor('base', false)).toBeNull();
     // on the mock both are the mock's
     expect(networkFor('robinhood', true)).toBe('mock');
     expect(deploymentsFor('robinhood', true)?.robinhood?.family).toBe('mock');
+  });
+
+  it('links a transaction on Robinhood Chain to the test network’s explorer, never mainnet’s', () => {
+    const link = explorerUrlFor('robinhood', '0xab', false);
+    expect(link).toBe('https://explorer.testnet.chain.robinhood.com/tx/0xab');
+    expect(new URL(link ?? '').origin).not.toBe('https://explorer.chain.robinhood.com');
+    // the mock's transactions are no network's: the mock's own link
+    expect(explorerUrlFor('robinhood', '0xab', true)).toBe('mock://robinhood/tx/0xab');
+    expect(explorerUrlFor('robinhood', null, false)).toBeNull();
   });
 
   it('signs nothing on mainnet, which has no deployment file', () => {
@@ -221,6 +241,15 @@ describe('the calls before anything is signed', () => {
     const said = (status: number, body: object = {}) =>
       placeOrder(async () => json({ error: 'e', ...body }, status), ask);
     expect(await said(409, { code: 'NOT_FUNDED' })).toEqual({ kind: 'code', code: 'NOT_FUNDED' });
+    // a mix bought above the amount it was reviewed at has its own sentence (gate ANY-COMPOSITION)
+    expect(await said(422, { code: 'AMOUNT_OVER_REVIEW' })).toEqual({
+      kind: 'code',
+      code: 'AMOUNT_OVER_REVIEW',
+    });
+    for (const lang of ['en', 'pt'] as const)
+      expect(dictionary(lang).buy.failure.AMOUNT_OVER_REVIEW).not.toBe(
+        dictionary(lang).buy.failure.refused,
+      );
     expect(await said(409, { code: 'VERSION_CHANGED' })).toEqual({
       kind: 'code',
       code: 'VERSION_CHANGED',
@@ -293,6 +322,18 @@ describe('what the order screen says about each answer of the executor', () => {
     expect(
       view({ status: 'error', order, legId: null, error: { status: 500, message: 'x' } }).next.kind,
     ).toBe('run');
+    // a plan that is gone is not bought by trying again: the person is told to make it again
+    const gone = view({
+      status: 'error',
+      order,
+      legId: LEG_SWAP,
+      error: {
+        status: 409,
+        message: 'the plan this order buys is gone',
+        body: { error: 'the plan this order buys is gone', code: 'PLAN_GONE' },
+      },
+    });
+    expect([gone.sentence, gone.next.kind]).toEqual([en.order.outcome.planGone, 'none']);
     // a revert is never sent again, and an expired order is over
     expect(view({ status: 'failed', order, legId: LEG_SWAP, error: null }).next.kind).toBe(
       'new-order',
@@ -315,11 +356,21 @@ describe('an order holds the amount the person typed, in committed units', () =>
 
   it('reads the cash token from the deploy record, the same one the guard derives from', () => {
     expect(units?.cash).toBe(deploymentsOf('testnet').solana?.cash);
-    expect(units?.tokens[units.cash]).toEqual({ symbol: 'tUSDC', decimals: 6 });
-    expect(units?.tokens['solana:spyx']).toEqual({ symbol: 'tSPYx', decimals: 8 });
+    expect(units?.tokens[units.cash]).toEqual({ symbol: 'USDC', decimals: 6 });
+    expect(units?.tokens['solana:spyx']).toEqual({ symbol: 'SPYx', decimals: 8 });
     expect(unitsFor('solana', true)?.cash).toBe(deploymentsOf('mock').solana?.cash);
     expect(unitsFor('robinhood', true)?.cash).toBe(deploymentsOf('mock').robinhood?.cash);
-    expect(unitsFor('robinhood', false)).toBeNull();
+    // Robinhood Chain's test network: the units of its committed deployment, the names of its record
+    const robinhood = unitsFor('robinhood', false);
+    expect(robinhood?.cash).toBe(deploymentsOf('testnet').robinhood?.cash);
+    expect(robinhood?.tokens[robinhood.cash]).toEqual({ symbol: 'tUSDG', decimals: 6 });
+    expect(robinhood?.tokens['robinhood:tspy']).toEqual({ symbol: 'SPY', decimals: 18 });
+    expect(unitsFor('base', false)).toBeNull();
+    // the mock's dollar goes by the name of the chain it stands in for: never USDC on Robinhood Chain
+    const mock = unitsFor('robinhood', true);
+    expect(mock && mock.tokens[mock.cash]?.symbol).toBe('tUSDG');
+    const mockSolana = unitsFor('solana', true);
+    expect(mockSolana && mockSolana.tokens[mockSolana.cash]?.symbol).toBe('USDC');
   });
 
   it('takes every decimals from the deployment file the guard reads, and the mock’s from cashDecimals', () => {
@@ -378,5 +429,57 @@ describe('an order holds the amount the person typed, in committed units', () =>
       why: 'deposit',
     });
     expect(checkDeposit(order, 10, null)).toEqual({ ok: false, why: 'units' });
+  });
+});
+
+describe('what reached the chain, line by line', () => {
+  it.each([
+    ['solana', 'Solscan'],
+    ['robinhood', 'Robinhood explorer'],
+  ] as const)('says the chain of every line on %s, and names its explorer', (chain, explorer) => {
+    const lines = activityOf(doneOrder(chain), en, false);
+    expect(lines.length).toBe(2);
+    for (const line of lines) {
+      expect(line.chain).toBe(chain);
+      expect(line.explorer).toBe(explorer);
+    }
+    expect(dictionary('pt').chain.explorers[chain]).toBe(
+      chain === 'solana' ? 'Solscan' : 'explorador da Robinhood',
+    );
+    if (chain === 'robinhood')
+      expect(lines.map((line) => line.detail).join(' ')).not.toMatch(/usdc/i);
+  });
+
+  it('names Robinhood Chain’s dollar tUSDG, also where the mock’s id says usdc', () => {
+    const order = doneOrder('robinhood');
+    const mocked = {
+      ...order,
+      legs: order.legs.map((leg) => ({
+        ...leg,
+        trades: leg.trades.map((t) => ({ ...t, sell: 'robinhood:usdc' })),
+      })),
+    };
+    const detail = activityOf(mocked, en, true)
+      .map((line) => line.detail)
+      .join(' ');
+    expect(detail).toContain('tUSDG → SPY');
+    expect(detail).not.toMatch(/usdc/i);
+  });
+
+  it('names each token as the review does: by its committed symbol, else by its ticker', () => {
+    const detail = (order: ReturnType<typeof doneOrder>, mock: boolean) =>
+      activityOf(order, en, mock)
+        .map((line) => line.detail)
+        .join(' ');
+    expect(detail(doneOrder('solana'), false)).toContain('USDC → SPYx');
+    const order = doneOrder('solana');
+    const onMock = {
+      ...order,
+      legs: order.legs.map((leg) => ({
+        ...leg,
+        trades: leg.trades.map((t) => ({ ...t, buy: 'solana:spy' })),
+      })),
+    };
+    expect(detail(onMock, true)).toContain('USDC → SPY');
   });
 });

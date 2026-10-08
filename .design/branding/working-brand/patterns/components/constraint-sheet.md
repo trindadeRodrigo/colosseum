@@ -1,7 +1,7 @@
 # Constraint sheet (editable)
 > Type: custom | Component: `<ConstraintSheet mode="edit" | "read">` | Replaces: the 11-field `field()` grid in GoalFlow and the raw `dl` in PlanView | Revised 2026-10-08 (honey on night)
 
-The LLM only reads a goal into a typed sheet. The person sees exactly what was read, can change any field, and **the solver never runs on a sheet that failed zod validation**. This component is where that rule becomes visible.
+The LLM reads a goal into a typed sheet, asking where the goal is unclear and saying back what it understood (gate `GUIDED-INTAKE`); it never decides the plan. The person sees exactly what was read, can change any field, and **the solver never runs on a sheet that failed zod validation**. This component is where that rule becomes visible.
 
 ## Anatomy (edit mode)
 

@@ -1,12 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import {
+  assertNode as assertEvmNode,
+  createEvmRpc,
+  type EvmDeploymentRecord,
+  type EvmRpc,
+  deploymentAssets as evmDeploymentAssets,
+} from '@colosseum/chain-evm/vault';
+import {
   assertNode,
   createVaultRpc,
   deploymentAssets,
   type SolanaDeploymentRecord,
   type VaultNodeRpc,
 } from '@colosseum/chain-solana/vault';
-import { basketAssets, createDb, type Db } from '@colosseum/db';
+import { basketAssets, type Db, sharedDb } from '@colosseum/db';
 import {
   BasketAsset,
   ChainError,
@@ -16,19 +23,50 @@ import {
 } from '@colosseum/schemas';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { type ChainRegistry, createChainRegistry, type SolanaInputs } from '../../orders/chains';
+import {
+  createTestFunds,
+  faucetKeysFrom,
+  type TestFunds,
+  type TestFundsSender,
+} from '../../faucet/test-funds';
+import { type IntakeModel, intakeModelFromEnv, intakeSettings } from '../../llm';
+import { createModelQuota } from '../../model-quota';
+import {
+  type ChainRegistry,
+  createChainRegistry,
+  type EvmInputs,
+  type SolanaInputs,
+} from '../../orders/chains';
 import { Refusal, refusalFromChainError } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import type { PlanInputs } from '../../orders/personalize';
+import type { AgentAnalytics } from '../../orders/vault-agent';
 import { authFromEnv, enforceSignIn, identify, type TokenIssuer } from '../../plugins/auth';
 import { type Limits, registerLimits, requireDeclared } from '../../plugins/limits';
-import { registerBasketRoutes } from './baskets';
+import { loggable } from '../../plugins/loggable';
+import {
+  createAnthropicVaultAgentModel,
+  type VaultAgentModel,
+  vaultAgentEffort,
+  vaultAgentModelId,
+  vaultAgentTimeoutMs,
+} from '../../vault-agent-model';
+import { type LinkedPlanLimits, registerBasketRoutes } from './baskets';
 import { buildConfig, registerConfigRoute } from './config';
 import { registerFundingRoute } from './funding';
+import { registerGoalConversationReplyRoute } from './goal-conversation-reply';
+import { registerIntakeRoute } from './intake';
 import { registerMeRoutes } from './me';
+import { registerMixRoutes } from './mix';
 import { registerMockRoutes } from './mock';
 import { registerOrderRoutes } from './orders';
 import { registerPortfolioRoute } from './portfolio';
+import { registerSharedRoutes } from './shared';
+import { registerTestnetRoute } from './testnet';
+import { registerThreadRoutes } from './thread';
+import { registerVaultRoute } from './vault';
+import { registerVaultConversationRoutes } from './vault-conversation';
+import { registerVaultConversationReplyRoute } from './vault-conversation-reply';
 
 /**
  * What the /v1 routes run on. Left out, each comes from the environment the app hands in. A test hands
@@ -47,6 +85,10 @@ export type V1Deps = {
   solana?: SolanaInputs;
   /** The deploy's record the addresses came from: `basket_assets` is held to its mints at start. */
   solanaRecord?: SolanaDeploymentRecord | null;
+  /** What Robinhood Chain runs on in `live` or `readonly`. Default: `ROBINHOOD_RPC_URL` and the `basket_assets` rows. */
+  robinhood?: EvmInputs;
+  /** Robinhood Chain's deploy record: `basket_assets` is held to its tokens at start. */
+  robinhoodRecord?: EvmDeploymentRecord | null;
   db?: Db;
   now?: () => Date;
   /**
@@ -54,8 +96,30 @@ export type V1Deps = {
    * ceiling is its tier's and says so. The server hands in the reader of the stored figures.
    */
   planInputs?: PlanInputs;
+  /**
+   * Bearing's per-asset figures the conversations explain each asset with. Default: none, and the
+   * model reads only the plan inputs. The server hands in the reader of the fact sheets.
+   */
+  agentAnalytics?: AgentAnalytics;
+  /** Read each live chain's analytics from the start and keep them current. Default: off. */
+  warmAgentAnalytics?: boolean;
+  /**
+   * The model the guided intake reads a goal with. Default: Anthropic's when `ANTHROPIC_API_KEY` is
+   * set, else none, and the intake reads with the rules parser alone. A test hands in a replay.
+   */
+  intakeModel?: IntakeModel | null;
+  /** Private, non-executable vault dialogue. Uses the configured intake model and shared quota. */
+  vaultAgentModel?: VaultAgentModel | null;
   /** The rate limits. Default: `LIMITS`, the ones a server runs with. */
   limits?: Limits;
+  /** The daily cap and the keeping time of plans made from a link. Default: `LINKED_PLANS`. */
+  linkedPlans?: LinkedPlanLimits;
+  /**
+   * The test faucet's senders (POST /v1/testnet/fund). Left out: made from the faucet keys in the
+   * environment (`FAUCET_KEY_ENV`), for the chains on a test network only, or none. A test hands in
+   * its own.
+   */
+  testFunds?: TestFundsSender[];
   /**
    * What `requireDeclared(root)` answered, when the app called it before its own routes, so that a
    * /v1 path registered ahead of these is held to the rule too. Left out, it is called here.
@@ -74,21 +138,94 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
   const issuer = deps.auth === undefined ? authFromEnv(env) : deps.auth;
   let db = deps.db;
   if (!db) {
-    // Opens no connection until the first query.
-    const own = createDb();
-    db = own.db;
-    app.addHook('onClose', () => own.client.end());
+    // The process's one pool, shared with the routes outside /v1 (packages/db: `sharedDb`). Opens no
+    // connection until the first query.
+    db = sharedDb().db;
   }
+  // Read only when the registry is made here: a test that hands in its chains hands in its senders.
+  const solana = deps.chains
+    ? undefined
+    : (deps.solana ??
+      (await solanaFromEnv(env, flags.chainMode.solana, db, deps.solanaRecord ?? null)));
+  const robinhood = deps.chains
+    ? undefined
+    : (deps.robinhood ??
+      (await robinhoodFromEnv(env, flags.chainMode.robinhood, db, deps.robinhoodRecord ?? null)));
   const chains =
     deps.chains ??
     createChainRegistry(flags, parseChainConfigs(env, deps.contracts), {
       seed: `${Date.now()}:${randomUUID()}`,
       now: deps.now,
-      solana:
-        deps.solana ??
-        (await solanaFromEnv(env, flags.chainMode.solana, db, deps.solanaRecord ?? null)),
+      solana,
+      robinhood,
     });
-  const orderDeps: OrderDeps = { db, chains, now: deps.now ?? (() => new Date()) };
+  const orderDeps: OrderDeps = {
+    db,
+    chains,
+    now: deps.now ?? (() => new Date()),
+    // The kind of failure only: what was being written is a person's own words, and is not logged.
+    onRecordError: (what) => app.log.error(what, 'a plan’s thread could not be written'),
+  };
+  // The conversations' analytics, read from the start and kept current, so a turn finds them kept.
+  const analytics = deps.agentAnalytics;
+  if (deps.warmAgentAnalytics && analytics?.warm) {
+    const warm = analytics.warm;
+    const on = db;
+    app.addHook('onReady', async () => {
+      for (const entry of chains.active()) {
+        if (entry.mock) continue;
+        entry.adapter.listAssets().then(
+          (assets) => warm({ db: on, chain: entry.chain, assets, provenance: entry.provenance }),
+          () =>
+            app.log.warn(
+              { code: 'analytics_warm_no_catalog', chain: entry.chain },
+              'the conversation analytics were not warmed',
+            ),
+        );
+      }
+    });
+    app.addHook('onClose', async () => analytics.stop?.());
+  }
+  const modelSettings = intakeSettings(env);
+  const quota = createModelQuota({ ...modelSettings, now: deps.now });
+  const intakeModel =
+    deps.intakeModel === undefined ? intakeModelFromEnv(env, deps.now, quota) : deps.intakeModel;
+  const apiKey = env.ANTHROPIC_API_KEY?.trim();
+  const vaultAgentModel =
+    deps.vaultAgentModel === undefined
+      ? apiKey
+        ? createAnthropicVaultAgentModel({
+            apiKey,
+            model: vaultAgentModelId(env, modelSettings.model),
+            timeoutMs: vaultAgentTimeoutMs(env),
+            effort: vaultAgentEffort(env),
+            quota,
+          })
+        : null
+      : deps.vaultAgentModel;
+
+  // The test faucet. Its key-holding file is loaded only here, only when a faucet key is set for a
+  // chain on a test network (DESIGN-VAULT section 2, rule 5): otherwise it is never in the process.
+  let senders = deps.testFunds ?? [];
+  const faucetKeys = deps.testFunds ? null : faucetKeysFrom(env, chains);
+  if (faucetKeys) {
+    const { createFaucetSenders } = await import('../../faucet/signer');
+    senders = await createFaucetSenders(faucetKeys, chains.active(), {
+      // The node is held to the genesis of the network the record was deployed on.
+      ...(solana
+        ? { solana: { rpc: solana.rpc, genesisHash: deps.solanaRecord?.genesisHash ?? null } }
+        : {}),
+      ...(robinhood ? { robinhood } : {}),
+    });
+  }
+  const testFunds: TestFunds | null = senders.length
+    ? createTestFunds({
+        senders,
+        now: deps.now,
+        // The chain and the error's name: never the error, whose message can carry the RPC URL.
+        log: (fields) => app.log.error(fields, 'a test faucet send failed'),
+      })
+    : null;
 
   // Its own scope: sign-in, the rate limits and the error shape apply to these routes and to no
   // others. Default deny: a route under /v1 that does not say who may call it and which budget it
@@ -120,16 +257,45 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
           .code(status)
           .send({ error: ours ? err.message : 'the request body could not be read as JSON' });
       }
-      req.log.error({ err }, 'a /v1 route failed');
+      // By what it is called and its code where it has one, and nothing else of it: a database's
+      // error repeats the statement's values, which name the person (plugins/loggable.ts).
+      req.log.error({ err: loggable(err) }, 'a /v1 route failed');
       // The request id and nothing else: no SQL, no stack.
       return reply.code(500).send({ error: `the server failed on this request (${req.id})` });
     });
     registerConfigRoute(scope, config);
     registerMeRoutes(scope, orderDeps);
-    registerFundingRoute(scope, orderDeps);
+    registerFundingRoute(scope, orderDeps, testFunds ?? undefined);
+    registerTestnetRoute(scope, orderDeps, testFunds);
     registerOrderRoutes(scope, orderDeps);
-    registerBasketRoutes(scope, orderDeps, deps.planInputs ?? (async () => ({})));
+    registerBasketRoutes(
+      scope,
+      orderDeps,
+      deps.planInputs ?? (async () => ({})),
+      { agentSurface: flags.agentSurface },
+      deps.linkedPlans,
+    );
+    registerIntakeRoute(scope, orderDeps, intakeModel, deps.planInputs);
+    registerThreadRoutes(scope, orderDeps);
     registerPortfolioRoute(scope, orderDeps);
+    registerSharedRoutes(scope, orderDeps, deps.planInputs);
+    registerVaultRoute(scope, orderDeps);
+    registerVaultConversationRoutes(scope, orderDeps);
+    registerVaultConversationReplyRoute(
+      scope,
+      orderDeps,
+      vaultAgentModel,
+      deps.planInputs,
+      deps.agentAnalytics,
+    );
+    registerGoalConversationReplyRoute(
+      scope,
+      orderDeps,
+      vaultAgentModel,
+      deps.planInputs,
+      deps.agentAnalytics,
+    );
+    registerMixRoutes(scope, orderDeps, deps.planInputs);
     // Out of the route table altogether unless a chain runs on the mock.
     if (chains.active().some((entry) => entry.mock)) registerMockRoutes(scope, orderDeps);
   });
@@ -175,7 +341,34 @@ export async function solanaFromEnv(
  * its mint (`solana:mint-<hex>`) as it does once the fill script has removed the row.
  */
 export function holdToRecord(assets: BasketAsset[], record: SolanaDeploymentRecord): BasketAsset[] {
-  const made = new Map(deploymentAssets(record).map((a) => [a.address, a]));
+  return holdTo(assets, {
+    network: record.network,
+    made: deploymentAssets(record),
+    cash: { id: record.cash.id, address: record.cash.mint },
+    retired: record.retired.map((r) => r.mint),
+  });
+}
+
+/** The same for an EVM chain's rows and its record. */
+export function holdToEvmRecord(assets: BasketAsset[], record: EvmDeploymentRecord): BasketAsset[] {
+  return holdTo(assets, {
+    network: record.network,
+    made: evmDeploymentAssets(record),
+    cash: { id: record.cash.id, address: record.cash.address },
+    retired: record.retired.map((r) => r.address),
+  });
+}
+
+function holdTo(
+  assets: BasketAsset[],
+  record: {
+    network: string;
+    made: BasketAsset[];
+    cash: { id: string; address: string };
+    retired: string[];
+  },
+): BasketAsset[] {
+  const made = new Map(record.made.map((a) => [a.address, a]));
   const fields = [
     'decimals',
     'cls',
@@ -187,7 +380,7 @@ export function holdToRecord(assets: BasketAsset[], record: SolanaDeploymentReco
   ] as const;
   // A token the deploy retired stays listed on chain and may still be in a vault: its row does not stop
   // the start, and is left out of what the adapter lists.
-  const retired = new Set(record.retired.map((r) => r.mint));
+  const retired = new Set(record.retired);
   const wrong = assets.flatMap((a) => {
     if (retired.has(a.address)) return [];
     const want = made.get(a.address);
@@ -197,13 +390,43 @@ export function holdToRecord(assets: BasketAsset[], record: SolanaDeploymentReco
       .map((f) => `${a.id} has ${f} ${a[f]}, and ${record.network} says ${want[f]}`);
   });
   const cash = assets.filter((a) => a.cls === 'cash');
-  if (cash.length !== 1 || cash[0]?.address !== record.cash.mint)
+  if (cash.length !== 1 || cash[0]?.address !== record.cash.address)
     wrong.push(
-      `the cash row is not ${record.network}'s cash, ${record.cash.id} (${record.cash.mint})`,
+      `the cash row is not ${record.network}'s cash, ${record.cash.id} (${record.cash.address})`,
     );
   if (wrong.length)
     throw new Error(
       `basket_assets does not match the record of ${record.network}: ${wrong.slice(0, 3).join('; ')}`,
     );
   return assets.filter((a) => !retired.has(a.address));
+}
+
+/**
+ * What Robinhood Chain runs on when it is `live` or `readonly` and nothing was handed in: the RPC at
+ * `ROBINHOOD_RPC_URL` and the network's assets as `basket_assets` holds them, held to the deploy's
+ * record. The record is required: it is what the node is checked against. Nothing for any other mode.
+ */
+export async function robinhoodFromEnv(
+  env: EnvLike,
+  mode: string,
+  db: Db,
+  record: EvmDeploymentRecord | null,
+  connect: (url: string) => EvmRpc = createEvmRpc,
+): Promise<EvmInputs | undefined> {
+  if (mode !== 'live' && mode !== 'readonly') return undefined;
+  if (!record)
+    throw new Error(
+      `CHAIN_MODE_ROBINHOOD is ${mode}, and there is no deploy record for its network in deployments/`,
+    );
+  // As written: a URL can carry a key, and keys are case-sensitive (readEnv lower-cases).
+  const url = env.ROBINHOOD_RPC_URL?.trim();
+  if (!url) throw new Error(`CHAIN_MODE_ROBINHOOD is ${mode}, and ROBINHOOD_RPC_URL is not set`);
+  const rows = await db.select().from(basketAssets).where(eq(basketAssets.chainId, 'robinhood'));
+  const assets = rows.map(({ updatedAt: _, chainId, ...row }) =>
+    BasketAsset.parse({ ...row, chain: chainId }),
+  );
+  const rpc = connect(url);
+  // The node is asked what chain it is: a test label on a mainnet node does not start.
+  await assertEvmNode(rpc, record);
+  return { rpc, assets: holdToEvmRecord(assets, record) };
 }

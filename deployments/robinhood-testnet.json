@@ -1,0 +1,259 @@
+{
+  "network": "robinhood-testnet",
+  "chain": "robinhood",
+  "provenance": "sandbox",
+  "evmChainId": 46630,
+  "deployBlock": 129516952,
+  "contracts": {
+    "factory": "0xa3309dc51b41e55fcd48b12377025cd2ba4d21a4",
+    "registry": "0xe73c5df15452469873f610a26dac7fec68a23b14",
+    "beacon": "0x4c6699623966be46a40844da3e79d7da3d8d3d96",
+    "vaultLogic": "0x2730d4cbdcf7f645ba59b61896dc72f54a48c90e",
+    "factoryLogic": "0x8f57474dee397a8e574d999ddca9e7e41bbbace4",
+    "registryLogic": "0x9c7ffb366bcb9c41802c86d7f1aeadbe743b9fc5"
+  },
+  "roles": {
+    "admin": "0xf474920851f97dc8797e78470095206dfd8367d8",
+    "guardian": "0x0000000000000000000000000000000000000000",
+    "keeper": "0x0000000000000000000000000000000000000000",
+    "priceWriter": "0xcfc59e5c01d37215f4138df6f97a2e90682d6da7",
+    "tokenIssuer": "0xf474920851f97dc8797e78470095206dfd8367d8"
+  },
+  "sequencerFeed": null,
+  "routers": [
+    {
+      "address": "0xd290cfe0738e1ab9cea9dc138bbec024dc3bd127",
+      "pull": 2
+    }
+  ],
+  "cash": {
+    "id": "robinhood:tusdg",
+    "symbol": "tUSDG",
+    "name": "Test USDG (test network)",
+    "address": "0xd3d6e7bf284d922651983468b75492be4f3f689a",
+    "decimals": 6
+  },
+  "assets": [
+    {
+      "id": "robinhood:tspy",
+      "symbol": "tSPY",
+      "name": "Test SPDR S&P 500 ETF (test network)",
+      "address": "0xb4e18cbb171bdd09e69255e69f94aaf081e943ad",
+      "decimals": 18,
+      "modelOf": "SPY",
+      "kind": "etf",
+      "feed": "0x21b840058cc61182faa178abf69fbbc48ef1a93d",
+      "feedDecimals": 8,
+      "averageFeed": "0x2ce75a4d5574565fa25c60cae5ac1826c23f52f0",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "60152912311",
+        "maxPrice": "97020826308"
+      }
+    },
+    {
+      "id": "robinhood:tqqq",
+      "symbol": "tQQQ",
+      "name": "Test Invesco QQQ (test network)",
+      "address": "0xd2589158fde964d7a6fea7918568aaa1a6b6283f",
+      "decimals": 18,
+      "modelOf": "QQQ",
+      "kind": "etf",
+      "feed": "0xba994692d733047f96c028448c2abe078b5fc3a6",
+      "feedDecimals": 8,
+      "averageFeed": "0x71258801eef20baa1fb5a1ecc890ba8f5ccde818",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "58600425405",
+        "maxPrice": "94516815170"
+      }
+    },
+    {
+      "id": "robinhood:tnvda",
+      "symbol": "tNVDA",
+      "name": "Test NVIDIA (test network)",
+      "address": "0x92c47af3a0878f360106db7b79b0ca9c32f0c4fd",
+      "decimals": 18,
+      "modelOf": "NVDA",
+      "kind": "stock",
+      "feed": "0x9e5da6df67c1a52291c45a8e728cffaa5dbbc84b",
+      "feedDecimals": 8,
+      "averageFeed": "0x0b3c30a17bfa19d116ee57275f2755cbd3012751",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "18524836073",
+        "maxPrice": "29878767861"
+      }
+    },
+    {
+      "id": "robinhood:taapl",
+      "symbol": "tAAPL",
+      "name": "Test Apple (test network)",
+      "address": "0x8fdea72a9d0fb5c21364d6ac4cc8544beb84b9fc",
+      "decimals": 18,
+      "modelOf": "AAPL",
+      "kind": "stock",
+      "feed": "0x9c7732fab1a7913fa4fd835f7c2efed466d2d909",
+      "feedDecimals": 8,
+      "averageFeed": "0x5d3d4266e6df4f23231da83968f89e0f1686a1d6",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "25893344787",
+        "maxPrice": "41763459335"
+      }
+    },
+    {
+      "id": "robinhood:tmsft",
+      "symbol": "tMSFT",
+      "name": "Test Microsoft (test network)",
+      "address": "0x5d7f0011031cdb8fa954d451c3348a96e10a23f0",
+      "decimals": 18,
+      "modelOf": "MSFT",
+      "kind": "stock",
+      "feed": "0x9df2d64a3881cb6ab9990b3060804ca89b6034ae",
+      "feedDecimals": 8,
+      "averageFeed": "0x173489265e8f650daf7de2c96ce0793adf18d7fa",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "40752139253",
+        "maxPrice": "65729256861"
+      }
+    },
+    {
+      "id": "robinhood:tgoogl",
+      "symbol": "tGOOGL",
+      "name": "Test Alphabet (test network)",
+      "address": "0xb4c3e6dd28c98c8c0f27b3db2f77cc4d257297d5",
+      "decimals": 18,
+      "modelOf": "GOOGL",
+      "kind": "stock",
+      "feed": "0x953504a488b2c31dde4cc67f67266e1b906f4a44",
+      "feedDecimals": 8,
+      "averageFeed": "0x52be8227bb836a82cd6e6d43169fc15742714d80",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "26803921926",
+        "maxPrice": "43232132138"
+      }
+    },
+    {
+      "id": "robinhood:tamzn",
+      "symbol": "tAMZN",
+      "name": "Test Amazon (test network)",
+      "address": "0x837a0b2aacedef3ed3d4bec19be3c5bc0873185b",
+      "decimals": 18,
+      "modelOf": "AMZN",
+      "kind": "stock",
+      "feed": "0x913746e6f6dbd08972dd8cde3e22456d06c6dd86",
+      "feedDecimals": 8,
+      "averageFeed": "0xf601c588d2223c78d83df95157bee74ab818622b",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "19513329750",
+        "maxPrice": "31473112500"
+      }
+    },
+    {
+      "id": "robinhood:tmeta",
+      "symbol": "tMETA",
+      "name": "Test Meta (test network)",
+      "address": "0x872ba0c735b0c41c43d8881bce2ef1deccd6bc69",
+      "decimals": 18,
+      "modelOf": "META",
+      "kind": "stock",
+      "feed": "0x6b82a5724daa6ddb819f843d5de1ae56c7ffe940",
+      "feedDecimals": 8,
+      "averageFeed": "0x3272d53f1f203bcead7b44b495b6ab0d44d03f2b",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "57726502168",
+        "maxPrice": "93107261562"
+      }
+    },
+    {
+      "id": "robinhood:ttsla",
+      "symbol": "tTSLA",
+      "name": "Test Tesla (test network)",
+      "address": "0x9f8c39aff46ce9d06dd4b1c31107761f7f2d9796",
+      "decimals": 18,
+      "modelOf": "TSLA",
+      "kind": "stock",
+      "feed": "0xa09c80f51f9586eb3945d3cd378010589a1f3b46",
+      "feedDecimals": 8,
+      "averageFeed": "0xf9e18cdab2942d95e01f45fed63c327202936732",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "29319490000",
+        "maxPrice": "47289500000"
+      }
+    },
+    {
+      "id": "robinhood:tgld",
+      "symbol": "tGLD",
+      "name": "Test SPDR Gold Shares (test network)",
+      "address": "0xb3fc39f47282ef0a9e2451ba406f04074d27c425",
+      "decimals": 18,
+      "modelOf": "GLD",
+      "kind": "gold",
+      "feed": "0x255d8dcfb9d692716e4f41e321861e9279c8e6d1",
+      "feedDecimals": 8,
+      "averageFeed": "0x54b7875f4b52dfbfb523196a061f766a4f9b5055",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "29419116768",
+        "maxPrice": "47450188336"
+      }
+    },
+    {
+      "id": "robinhood:tsgov",
+      "symbol": "tSGOV",
+      "name": "Test iShares 0-3 Month Treasury Bond ETF (test network)",
+      "address": "0xb68427c11ecd92eaefa0f44ed87071f38e2ac216",
+      "decimals": 18,
+      "modelOf": "SGOV",
+      "kind": "dollar_yield",
+      "feed": "0xd5c138ed86e79540a31c598bb6e42d633312b92b",
+      "feedDecimals": 8,
+      "averageFeed": "0x85ce82d8f9c4e2ca7a7925c375e94b2ae534fe56",
+      "maxAge": 93600,
+      "session": 1,
+      "maxWeightBps": 5000,
+      "keeperOn": true,
+      "range": {
+        "minPrice": "7840434077",
+        "maxPrice": "12645861415"
+      }
+    }
+  ],
+  "retired": []
+}

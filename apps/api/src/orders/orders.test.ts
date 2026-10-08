@@ -29,7 +29,7 @@ import {
 import { registerV1Routes } from '../routes/v1';
 import { planFixture, testIssuer } from '../testing/harness';
 import { createChainRegistry } from './chains';
-import { Refusal, refusalFromChainError } from './errors';
+import { Refusal, refusalFromChainError, UNSAID_CHAIN_ERROR } from './errors';
 import { attemptFor, orderStatus } from './legs';
 import { basketIdOf, prepareIntent, targetsOf, tradesFor } from './prepare';
 
@@ -67,13 +67,76 @@ describe('the chain registry', () => {
     });
   });
 
-  it('stops at start on live or readonly: no adapter is wired, and nothing falls back to the mock', () => {
+  it('stops at start on live or readonly where no adapter is wired, and nothing falls back to the mock', () => {
     const address = '0x00000000000000000000000000000000000000aa';
-    const ready = { CHAIN_ROUTER_ROBINHOOD: address };
     for (const mode of ['live', 'readonly'])
-      expect(() => registry({ ...ready, CHAIN_MODE_ROBINHOOD: mode })).toThrow(
-        `CHAIN_MODE_ROBINHOOD is ${mode}, and the API has no robinhood adapter for that yet`,
+      expect(() => registry({ CHAIN_ROUTER_BASE: address, CHAIN_MODE_BASE: mode })).toThrow(
+        `CHAIN_MODE_BASE is ${mode}, and the API has no base adapter for that yet`,
       );
+    // Robinhood Chain has its adapter, and does not start without its node and its asset list.
+    for (const mode of ['live', 'readonly'])
+      expect(() =>
+        registry({ CHAIN_ROUTER_ROBINHOOD: address, CHAIN_MODE_ROBINHOOD: mode }),
+      ).toThrow(
+        `CHAIN_MODE_ROBINHOOD is ${mode}, and the API was given no Robinhood Chain RPC or no asset list`,
+      );
+  });
+
+  it('runs Robinhood Chain on the EVM adapter in live or readonly, on its test network or a local copy, labelled sandbox', () => {
+    const contracts = {
+      robinhood: {
+        factory: '0x00000000000000000000000000000000000000f1',
+        registry: '0x00000000000000000000000000000000000000f2',
+      },
+    };
+    const cash = {
+      id: 'robinhood:tusdg',
+      chain: 'robinhood' as const,
+      address: '0x00000000000000000000000000000000000000c0',
+      symbol: 'tUSDG',
+      decimals: 6,
+      cls: 'cash' as const,
+      underlying: 'USD',
+      issuer: 'test',
+      tier: 'A' as const,
+      priceKind: 'none' as const,
+      priceRef: '',
+      session: 'always' as const,
+      autoFollowEligible: true,
+      maxWeightBps: 0,
+      blockedCountries: [],
+      sheet: 'test',
+      provenance: 'sandbox' as const,
+    };
+    // Nothing is asked of the node here: the adapter reads only when a route asks it to.
+    const robinhood = { rpc: {} as never, assets: [cash] };
+    for (const mode of ['live', 'readonly'] as const)
+      for (const network of ['testnet', 'local']) {
+        const e = {
+          CHAIN_MODE_ROBINHOOD: mode,
+          CHAIN_NETWORK_ROBINHOOD: network,
+          CHAIN_ROUTER_ROBINHOOD: '0x00000000000000000000000000000000000000ab',
+        };
+        const entry = createChainRegistry(parseFlags(e), parseChainConfigs(e, contracts), {
+          seed: 'a',
+          robinhood,
+        }).get('robinhood');
+        expect([entry.mode, entry.provenance, entry.mock]).toEqual([mode, 'sandbox', undefined]);
+        expect(entry.adapter.capabilities).toMatchObject({
+          trade: mode,
+          maxTradesPerTx: 8,
+          tradesInCreate: true,
+          needsApprove: true,
+        });
+        expect(entry.source).not.toMatch(/https?:/);
+      }
+    const onMainnet = { CHAIN_MODE_ROBINHOOD: 'live', CHAIN_NETWORK_ROBINHOOD: 'mainnet' };
+    expect(() =>
+      createChainRegistry(parseFlags(onMainnet), parseChainConfigs(onMainnet, contracts), {
+        seed: 'a',
+        robinhood,
+      }),
+    ).toThrow('CHAIN_MODE_ROBINHOOD is live on mainnet, which this API does not run yet');
   });
 
   it('runs Solana on its real adapter in live or readonly, on a test network or a local copy, labelled sandbox', () => {
@@ -416,6 +479,22 @@ describe('a chain refusal as the API answers it', () => {
     expect(answer(new ChainError('VaultExists', 'x', true))[2]).toEqual(d('VaultExists', true));
     expect(answer(new ChainError('Unknown', 'x'))[0]).toBe(500);
   });
+
+  it('says its own text only for a refusal the adapter wrote, never for one it wrapped', () => {
+    // viem's message names the node's URL, and a node's URL can carry its key
+    const raw = new Error('HTTP request failed.\n\nURL: https://rpc.example.invalid/v2/KEY-abc123');
+    const wrapped = new ChainError('Unavailable', raw.message);
+    wrapped.cause = raw;
+    for (const e of [new ChainError('Unknown', raw.message), wrapped]) {
+      const r = refusalFromChainError(e);
+      expect(r.message).toBe(UNSAID_CHAIN_ERROR);
+      expect(JSON.stringify(r.body())).not.toContain('rpc.example');
+      // the code and whether to ask again still reach the caller
+      expect(r.extra.details).toMatchObject({ chainCode: e.code });
+    }
+    // a refusal the adapter wrote in its own words is said as it is
+    expect(refusalFromChainError(new ChainError('NotFunded', 'add cash')).message).toBe('add cash');
+  });
 });
 
 describe('view: value, weight and drift, as the portfolio route gets them from packages/basket', () => {
@@ -743,19 +822,37 @@ describe('the /v1 route table', () => {
     const app = await buildApp();
     await app.ready();
     expect(v1Paths(app.swagger())).toEqual([
+      '/v1/baskets/intake',
       '/v1/baskets/personalize',
+      '/v1/baskets/propose',
+      '/v1/baskets/{id}',
+      '/v1/baskets/{id}/thread',
       '/v1/config',
+      '/v1/conversations/{chain}/goal/accept',
+      '/v1/conversations/{chain}/goal/reply',
       '/v1/funding',
+      '/v1/indexes/{slug}',
+      '/v1/indexes/{slug}/versions',
       '/v1/me',
       '/v1/me/chain',
+      '/v1/me/plans',
+      '/v1/me/withdrawals',
       '/v1/mock/fund',
       '/v1/mock/orders/{id}/legs/{legId}/land',
       '/v1/orders',
       '/v1/orders/{id}',
+      '/v1/orders/{id}/continue',
       '/v1/orders/{id}/legs/{legId}/build',
       '/v1/orders/{id}/legs/{legId}/cancel',
       '/v1/orders/{id}/legs/{legId}/report',
       '/v1/portfolio',
+      '/v1/shelf',
+      '/v1/testnet/fund',
+      '/v1/vaults/{chain}/{address}',
+      '/v1/vaults/{chain}/{address}/conversation',
+      '/v1/vaults/{chain}/{address}/conversation/reply',
+      '/v1/vaults/{chain}/{address}/name',
+      '/v1/vaults/{chain}/{address}/targets',
     ]);
     // No route lets a caller through without a token: 503 with no Privy app set, 401 with one.
     const res = await app.inject({ method: 'GET', url: '/v1/portfolio' });
@@ -765,8 +862,21 @@ describe('the /v1 route table', () => {
     const bare = Fastify();
     bare.setValidatorCompiler(validatorCompiler);
     bare.setSerializerCompiler(serializerCompiler);
-    await registerV1Routes(bare, { CHAIN_MODE_SOLANA: 'off', CHAIN_MODE_ROBINHOOD: 'off' });
+    // Which routes read a sign-in without needing one (`config.optionalSignIn`, plugins/auth.ts).
+    const optional: string[] = [];
+    bare.addHook('onRoute', (route) => {
+      if (route.config?.optionalSignIn && route.method !== 'HEAD')
+        optional.push(`${route.method} ${route.url} ${route.config.auth}`);
+    });
+    await registerV1Routes(bare, {
+      CHAIN_MODE_SOLANA: 'off',
+      CHAIN_MODE_ROBINHOOD: 'off',
+      AGENT_SURFACE: 'on',
+    });
     await bare.ready();
+    // Exactly one, and a public one: the read of a plan by its id. Another route that starts reading
+    // tokens it does not need is a change to who the API takes a caller for, and is made on purpose.
+    expect(optional).toEqual(['GET /v1/baskets/:id public']);
     const routes = bare.printRoutes({ commonPrefix: false });
     expect(routes).toContain('/v1/orders');
     expect(routes).not.toContain('mock');
@@ -805,34 +915,66 @@ describe('no /v1 route can make the server sign', () => {
 
   it('reaches no key, no signer and no chain package that can sign', () => {
     const { files, packages } = reach(join(src, 'routes/v1/index.ts'));
+    // The test faucet's rules are here; its signing file is not: one dynamic import loads it, only when
+    // a faucet key is set (tests/boundaries.test.ts, BEHIND_A_FLAG).
     expect(files.map((f) => relative(src, f)).sort()).toEqual([
+      'faucet/test-funds.ts',
+      'llm.ts',
+      'model-quota.ts',
       'orders/chains.ts',
+      'orders/continue.ts',
       'orders/errors.ts',
+      'orders/families.ts',
+      // a shared portfolio's figures, from the plan inputs handed in: no file, no key, no chain call
+      'orders/figures.ts',
       'orders/legs.ts',
+      'orders/mix.ts',
       'orders/person.ts',
       'orders/personalize.ts',
+      'orders/plan-join.ts',
       'orders/prepare.ts',
+      'orders/shared.ts',
       'orders/store.ts',
+      'orders/thread.ts',
+      'orders/vault-agent.ts',
+      'orders/vault-conversation-owner.ts',
+      'orders/vault-conversation.ts',
+      'orders/withdraw.ts',
       'plugins/auth.ts',
       'plugins/limits.ts',
+      'plugins/loggable.ts',
       'plugins/paths.ts',
       'routes/v1/baskets.ts',
       'routes/v1/config.ts',
       'routes/v1/funding.ts',
+      'routes/v1/goal-conversation-reply.ts',
       'routes/v1/index.ts',
+      'routes/v1/intake.ts',
       'routes/v1/me.ts',
+      'routes/v1/mix.ts',
       'routes/v1/mock.ts',
       'routes/v1/orders.ts',
       'routes/v1/portfolio.ts',
+      'routes/v1/shared.ts',
+      'routes/v1/testnet.ts',
+      'routes/v1/thread.ts',
+      'routes/v1/vault-conversation-reply.ts',
+      'routes/v1/vault-conversation.ts',
+      'routes/v1/vault.ts',
+      'vault-agent-model.ts',
     ]);
     // The chain packages that can sign keep that behind their `./server` entry, and neither the
-    // package's root nor that entry is here: the Solana adapter comes in by its key-free `./vault`
-    // entry, which tests/boundaries.test.ts holds to reaching no signing file. packages/basket is
+    // package's root nor that entry is here: the Solana and EVM adapters come in by their key-free
+    // `./vault` entries, which tests/boundaries.test.ts holds to reaching no signing file. packages/basket is
     // arithmetic over what it is handed: it imports the schemas and nothing else. The engine comes in
     // by its `./personal` entry, which reads no clock, network or environment
     // (packages/engine/src/personal/purity.test.ts), not by its root, which holds the model client.
+    // Intake and private vault previews use Anthropic's SDK in these two clients only. Neither
+    // holds a chain signing key; the quota module only reserves model calls.
     expect([...packages.keys()].sort()).toEqual([
+      '@anthropic-ai/sdk',
       '@colosseum/basket',
+      '@colosseum/chain-evm/vault',
       '@colosseum/chain-mock',
       '@colosseum/chain-solana/vault',
       '@colosseum/db',
@@ -847,6 +989,10 @@ describe('no /v1 route can make the server sign', () => {
     ]);
     // jose is used to verify and nowhere to sign; node:crypto to hash and to make ids.
     expect([...(packages.get('jose') ?? [])]).toEqual(['plugins/auth.ts']);
+    expect([...(packages.get('@anthropic-ai/sdk') ?? [])]).toEqual([
+      'llm.ts',
+      'vault-agent-model.ts',
+    ]);
     for (const file of files) {
       // The code, without its comments.
       const text = readFileSync(file, 'utf8')

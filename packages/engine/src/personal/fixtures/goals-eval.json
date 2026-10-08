@@ -1,5 +1,5 @@
 {
-  "about": "The 12-goal evaluation set for the sentence parser (DESIGN-VAULT section 7). Each goal is a sentence and the draft of the sheet it should parse to: every field of BasketSheetDraft, null where the sentence does not say. Months are counted from nowMonth, and 'by 2031' means January 2031, as the rules parser counts.",
+  "about": "The goal evaluation set (12 goals on Oct 3, 18 since ENG-3 slice 4: negations, two amounts in one sentence, Portuguese numbers and a goal in reais) for the sentence parser (DESIGN-VAULT section 7). Each goal is a sentence and the draft of the sheet it should parse to: every field of BasketSheetDraft, null where the sentence does not say. Months are counted from nowMonth, and 'by 2031' means January 2031, as the rules parser counts. `expectLimits` is what the intake reads of the person's refusals (a draft of PersonalLimits); a refusal of stocks leaves out the funds of stocks with them (classes `stock` and `etf`). A goal written in another currency than dollars has no amountUsd: the intake asks for the amount in dollars.",
   "nowMonth": "2026-10",
   "goals": [
     {
@@ -16,7 +16,15 @@
         "chains": null,
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "en"
+        "language": "en",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
+      },
+      "expectLimits": {
+        "creditTolerance": null,
+        "cannotHoldClasses": null
       }
     },
     {
@@ -33,7 +41,15 @@
         "chains": null,
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "en"
+        "language": "en",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
+      },
+      "expectLimits": {
+        "creditTolerance": null,
+        "cannotHoldClasses": null
       }
     },
     {
@@ -50,7 +66,15 @@
         "chains": null,
         "incomeTargetUsdMonthly": 300,
         "rules": null,
-        "language": "en"
+        "language": "en",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
+      },
+      "expectLimits": {
+        "creditTolerance": null,
+        "cannotHoldClasses": null
       }
     },
     {
@@ -67,7 +91,15 @@
         "chains": ["solana"],
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "en"
+        "language": "en",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
+      },
+      "expectLimits": {
+        "creditTolerance": null,
+        "cannotHoldClasses": null
       }
     },
     {
@@ -80,11 +112,19 @@
         "horizonMonths": 24,
         "risk": "low",
         "themes": null,
-        "country": "BR",
+        "country": null,
         "chains": null,
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "en"
+        "language": "en",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
+      },
+      "expectLimits": {
+        "creditTolerance": null,
+        "cannotHoldClasses": ["etf", "stock"]
       }
     },
     {
@@ -101,7 +141,15 @@
         "chains": null,
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "en"
+        "language": "en",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
+      },
+      "expectLimits": {
+        "creditTolerance": null,
+        "cannotHoldClasses": null
       }
     },
     {
@@ -118,7 +166,15 @@
         "chains": null,
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "pt"
+        "language": "pt",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
+      },
+      "expectLimits": {
+        "creditTolerance": null,
+        "cannotHoldClasses": null
       }
     },
     {
@@ -135,7 +191,15 @@
         "chains": null,
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "pt"
+        "language": "pt",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
+      },
+      "expectLimits": {
+        "creditTolerance": null,
+        "cannotHoldClasses": null
       }
     },
     {
@@ -152,7 +216,15 @@
         "chains": null,
         "incomeTargetUsdMonthly": 300,
         "rules": null,
-        "language": "pt"
+        "language": "pt",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
+      },
+      "expectLimits": {
+        "creditTolerance": null,
+        "cannotHoldClasses": null
       }
     },
     {
@@ -169,7 +241,15 @@
         "chains": ["solana"],
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "pt"
+        "language": "pt",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
+      },
+      "expectLimits": {
+        "creditTolerance": null,
+        "cannotHoldClasses": null
       }
     },
     {
@@ -182,11 +262,19 @@
         "horizonMonths": 24,
         "risk": "low",
         "themes": null,
-        "country": "BR",
+        "country": null,
         "chains": null,
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "pt"
+        "language": "pt",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
+      },
+      "expectLimits": {
+        "creditTolerance": null,
+        "cannotHoldClasses": ["etf", "stock"]
       }
     },
     {
@@ -203,7 +291,165 @@
         "chains": null,
         "incomeTargetUsdMonthly": null,
         "rules": null,
-        "language": "pt"
+        "language": "pt",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
+      },
+      "expectLimits": {
+        "creditTolerance": null,
+        "cannotHoldClasses": null
+      }
+    },
+    {
+      "id": "en-grow-3y-no-credit",
+      "text": "Grow $8,000 over 3 years at medium risk, no credit.",
+      "expect": {
+        "basketType": null,
+        "goal": "grow",
+        "amountUsd": 8000,
+        "horizonMonths": 36,
+        "risk": "medium",
+        "themes": null,
+        "country": null,
+        "chains": null,
+        "incomeTargetUsdMonthly": null,
+        "rules": null,
+        "language": "en",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
+      },
+      "expectLimits": {
+        "creditTolerance": "none",
+        "cannotHoldClasses": null
+      }
+    },
+    {
+      "id": "en-income-two-amounts",
+      "text": "From $40,000 I want $250 a month of income for 10 years, low risk.",
+      "expect": {
+        "basketType": null,
+        "goal": "income",
+        "amountUsd": 40000,
+        "horizonMonths": 120,
+        "risk": "low",
+        "themes": null,
+        "country": null,
+        "chains": null,
+        "incomeTargetUsdMonthly": 250,
+        "rules": null,
+        "language": "en",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
+      },
+      "expectLimits": {
+        "creditTolerance": null,
+        "cannotHoldClasses": null
+      }
+    },
+    {
+      "id": "en-grow-3k-no-crypto",
+      "text": "Grow $3k for 18 months, high risk, no crypto.",
+      "expect": {
+        "basketType": null,
+        "goal": "grow",
+        "amountUsd": 3000,
+        "horizonMonths": 18,
+        "risk": "high",
+        "themes": null,
+        "country": null,
+        "chains": null,
+        "incomeTargetUsdMonthly": null,
+        "rules": null,
+        "language": "en",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
+      },
+      "expectLimits": {
+        "creditTolerance": null,
+        "cannotHoldClasses": ["crypto"]
+      }
+    },
+    {
+      "id": "pt-protect-reais-sem-acoes",
+      "text": "Quero guardar R$ 3.000,00 por um ano, sem ações.",
+      "expect": {
+        "basketType": null,
+        "goal": "protect",
+        "amountUsd": null,
+        "horizonMonths": 12,
+        "risk": null,
+        "themes": null,
+        "country": null,
+        "chains": null,
+        "incomeTargetUsdMonthly": null,
+        "rules": null,
+        "language": "pt",
+        "currency": "BRL",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
+      },
+      "expectLimits": {
+        "creditTolerance": null,
+        "cannotHoldClasses": ["etf", "stock"]
+      }
+    },
+    {
+      "id": "pt-income-two-amounts-mil",
+      "text": "Com 3 mil dólares, quero uma renda de US$ 15 por mês por 2 anos, risco baixo.",
+      "expect": {
+        "basketType": null,
+        "goal": "income",
+        "amountUsd": 3000,
+        "horizonMonths": 24,
+        "risk": "low",
+        "themes": null,
+        "country": null,
+        "chains": null,
+        "incomeTargetUsdMonthly": 15,
+        "rules": null,
+        "language": "pt",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
+      },
+      "expectLimits": {
+        "creditTolerance": null,
+        "cannotHoldClasses": null
+      }
+    },
+    {
+      "id": "pt-protect-sem-credito",
+      "text": "Proteger US$ 12.500 por 6 meses, sem crédito.",
+      "expect": {
+        "basketType": null,
+        "goal": "protect",
+        "amountUsd": 12500,
+        "horizonMonths": 6,
+        "risk": null,
+        "themes": null,
+        "country": null,
+        "chains": null,
+        "incomeTargetUsdMonthly": null,
+        "rules": null,
+        "language": "pt",
+        "currency": "USD",
+        "obligations": null,
+        "sleeves": null,
+        "restoreSplit": null
+      },
+      "expectLimits": {
+        "creditTolerance": "none",
+        "cannotHoldClasses": null
       }
     }
   ]

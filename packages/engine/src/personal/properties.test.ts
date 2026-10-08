@@ -2,15 +2,21 @@ import type { ChainId, Shelf } from '@colosseum/schemas';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { sizeSleeves } from './exposure';
-import { compose } from './index';
+import { candidates, compose } from './index';
+import { type MarketFilter, matchedSlug } from './market-filter';
 import { PERSONAL_PARAMS } from './params';
+import type { StockAttributesFile } from './stock-attributes';
 import {
+  aiList,
   editShelf,
   expectedSleeves,
   fixtureLiquidity,
+  fixtureStocks,
   fixtureYields,
   launchShelf,
   NOW,
+  roomyYield,
+  usdBrl,
   violations,
 } from './testing';
 import {
@@ -21,7 +27,7 @@ import {
   PersonalSheet,
   SLEEVES,
 } from './types';
-import { buildWorld } from './world';
+import { buildWorld, monthAfter } from './world';
 
 // Generated people, generated parameter tables, generated shelves. For any valid sheet the plan keeps
 // the vault's target rules and every ceiling and cap, holds nothing excluded or ineligible, and is
@@ -70,7 +76,7 @@ const personOn = (chain: ChainId): fc.Arbitrary<PersonalSheet> =>
       ),
       risk: fc.constantFrom(...RISKS),
       themes: fc.uniqueArray(fc.constantFrom(...SLUGS, 'no-such-portfolio'), { maxLength: 3 }),
-      country: fc.constantFrom('BR', 'XX', 'DE'),
+      country: fc.constantFrom('BR', 'US', 'DE'),
       chains: fc.constant([chain]),
       incomeTargetUsdMonthly: maybe(fc.integer({ min: 1, max: 5000 })),
       rules: fc.record({ useHoldings: fc.boolean(), glide: fc.boolean() }),
@@ -90,6 +96,105 @@ const personOn = (chain: ChainId): fc.Arbitrary<PersonalSheet> =>
           limits: Object.keys(limits).length ? limits : undefined,
         }),
       );
+    });
+
+/** A dated withdrawal, from two months back to a year and more ahead, in dollars or reais. */
+const withdrawal = fc.record({
+  month: fc.integer({ min: -2, max: 14 }).map((m) => monthAfter(NOW, m)),
+  amount: fc.oneof(fc.integer({ min: 1, max: 200_000 }), fc.constantFrom(500, 3000, 25_000)),
+  currency: fc.constantFrom('USD', 'BRL'),
+});
+
+/** A theme a sheet may name: the one with a list (on Solana), and one with none anywhere. */
+const THEME_SLUGS = ['ai', 'no-such-theme'];
+
+/** The slug of a filter over the fixture attributes (`fixtureStocks`), as the intake would write it. */
+const filtered = (by: MarketFilter['by'], value: string): string => {
+  const slug = matchedSlug({ by, value });
+  if (slug === null) throw new Error(`no slug for ${value}`);
+  return slug;
+};
+const TECH = filtered('sector', 'Information Technology');
+const CLOUD = filtered('keyword', 'cloud');
+/**
+ * The matched themes a sheet may name (gate THEME-MATCHED): filters that match several stocks, one
+ * stock, a fund by a keyword, stocks no launch shelf lists, and nothing at all; one whose value has a
+ * comma in it; and a slug that starts as a filter's and names none.
+ */
+const MATCHED_SLUGS = [
+  TECH,
+  CLOUD,
+  filtered('sector', 'Utilities'),
+  filtered('industry', 'Semiconductors & Semiconductor Equipment'),
+  filtered('industry', 'Capital Markets'),
+  filtered('industry', 'Aerospace & Defense'),
+  filtered('sub_industry', 'Technology Hardware, Storage & Peripherals'),
+  filtered('keyword', 'gold'),
+  filtered('keyword', 'index fund'),
+  'matched-country-brazil',
+];
+/** Two themes that name one stock: a curated list and a filter, or two filters. */
+const OVERLAPPING = [
+  ['ai', TECH],
+  ['ai', CLOUD],
+  [TECH, CLOUD],
+  [TECH, filtered('industry', 'Semiconductors & Semiconductor Equipment')],
+  [TECH, filtered('sub_industry', 'Technology Hardware, Storage & Peripherals')],
+];
+/** Any two of some themes, in either order. */
+const twoOf = (slugs: string[]) => fc.shuffledSubarray(slugs, { minLength: 2, maxLength: 2 });
+
+/**
+ * The same, and sometimes split (gate SLEEVES), in a currency, with withdrawals: a goal sleeve, a
+ * safe-yield sleeve and up to two theme sleeves, or the whole plan in any one of them. What must not
+ * be lost is held to what the sleeves outside the themes hold, as the sheet requires. `themes` are
+ * the two themes the theme sleeves name.
+ */
+const splitOn = (
+  chain: ChainId,
+  themes: fc.Arbitrary<string[]> = twoOf(THEME_SLUGS),
+): fc.Arbitrary<PersonalSheet> =>
+  fc
+    .tuple(
+      personOn(chain),
+      maybe(
+        fc.record({
+          weights: fc.array(fc.integer({ min: 0, max: 10 }), { minLength: 4, maxLength: 4 }),
+          slugs: themes,
+        }),
+      ),
+      maybe(fc.constantFrom('USD', 'BRL')),
+      maybe(fc.array(withdrawal, { maxLength: 6 })),
+    )
+    .map(([sheet, cut, currency, obligations]) => {
+      // Four weights for the goal, the safe yield and two themes: the shares of 10,000 they give.
+      const weights = cut && cut.weights.some((x) => x > 0) ? cut.weights : undefined;
+      const total = weights ? weights.reduce((n, x) => n + x, 0) : 0;
+      const shares = weights ? weights.map((x) => Math.floor((x * 10_000) / total)) : [];
+      if (weights) {
+        const first = shares.findIndex((x) => x > 0);
+        shares[first] = (shares[first] ?? 0) + 10_000 - shares.reduce((n, x) => n + x, 0);
+      }
+      const [goal = 0, safe = 0, themeA = 0, themeB = 0] = shares;
+      const sleeves = weights
+        ? [
+            ...(goal > 0 ? [{ kind: 'goal' as const, shareBps: goal }] : []),
+            ...(safe > 0 ? [{ kind: 'safe_yield' as const, shareBps: safe }] : []),
+            ...[themeA, themeB].flatMap((shareBps, i) =>
+              shareBps > 0
+                ? [{ kind: 'theme' as const, shareBps, theme: cut?.slugs[i] ?? 'ai' }]
+                : [],
+            ),
+          ]
+        : undefined;
+      const outside = 10_000 - themeA - themeB;
+      const keep = sheet.limits?.mustKeepUsd;
+      const most = Math.floor((Math.round(sheet.amountUsd * 100) * outside) / 10_000) / 100;
+      const limits =
+        sheet.limits && keep !== undefined && keep > most
+          ? { ...sheet.limits, mustKeepUsd: most }
+          : sheet.limits;
+      return PersonalSheet.parse(filled({ ...sheet, limits, currency, obligations, sleeves }));
     });
 
 const sleeveRow = fc.tuple(bps, bps, bps).map(([growth, dollarYield, gold]) => {
@@ -137,6 +242,15 @@ const table: fc.Arbitrary<PersonalParameters> = fc
       growth: fc.constantFrom('SPY', 'NVDA', 'JitoSOL', 'ZZZ'),
       gold: fc.shuffledSubarray(['PAXG', 'GLD', 'SLV', 'ZZZ'], { minLength: 1 }),
     }),
+    // The banded fill's numbers (gate SOLVER-PARAMS), any of them.
+    yieldBand: fc.double({ min: 0, max: 0.05, noNaN: true }),
+    capPerAssetBps: fc.record({
+      bySymbol: fc.record({ syrupUSDC: bps }, { requiredKeys: [] }),
+      byLegType: fc.record({ rate: bps, credit: bps, basis: bps, market_deposit: bps }),
+    }),
+    issuerCapBps: bps,
+    creditShareBps: fc.record({ none: bps, limited: bps, accept: bps }),
+    defaultCreditTolerance: fc.constantFrom('none' as const, 'limited' as const, 'accept' as const),
   })
   .map(({ rows, ...rest }) =>
     PersonalParameters.parse({
@@ -187,11 +301,14 @@ const world = fc.record({
 });
 type World = typeof world extends fc.Arbitrary<infer T> ? T : never;
 
-/** The shelf and the context of a generated world. Built here, so a failure prints the world small. */
-function made(raw: World): { shelf: Shelf; context: ComposeContext } {
+/**
+ * The shelf and the context of a generated world. Built here, so a failure prints the world small.
+ * `stocks` are the stock attributes of the chain, where a test hands any (gate THEME-MATCHED).
+ */
+function made(raw: World, stocks?: StockAttributesFile): { shelf: Shelf; context: ComposeContext } {
   return {
     shelf: editShelf(launch, (a) =>
-      raw.blocked.includes(a.id) ? { ...a, blockedCountries: ['XX'] } : a,
+      raw.blocked.includes(a.id) ? { ...a, blockedCountries: ['US'] } : a,
     ),
     context: {
       now: NOW,
@@ -204,18 +321,26 @@ function made(raw: World): { shelf: Shelf; context: ComposeContext } {
         Object.fromEntries(raw.notMeasured.map(([id, gaps]) => [id, [...gaps]])),
       ),
       params: raw.params,
+      // Every world can convert reais: a withdrawal in reais needs the rate, and an unused one only
+      // changes the hash.
+      fx: [usdBrl()],
+      // The Solana AI list as content/themes holds it. The server hands every list of the chain, so a
+      // property below also runs each plan with lists the sheet does not name.
+      themes: [aiList()],
+      ...(stocks ? { stocks } : {}),
     },
   };
 }
 
 describe.each(CHAINS)('for any valid sheet, on %s alone', (chain) => {
   const person = personOn(chain);
+  const anyone = splitOn(chain);
 
   it(
     'the plan keeps the vault’s target rules, every ceiling and cap, and holds nothing ruled out',
     () => {
       fc.assert(
-        fc.property(person, world, (sheet, raw) => {
+        fc.property(anyone, world, (sheet, raw) => {
           const { shelf, context } = made(raw);
           const plan = compose(sheet, shelf, context);
           expect(violations(plan, shelf, context)).toEqual([]);
@@ -226,11 +351,72 @@ describe.each(CHAINS)('for any valid sheet, on %s alone', (chain) => {
     PATIENCE,
   );
 
+  // The server hands every list of the chain (apps/api/src/plan-inputs.ts). A list the sheet does not
+  // name, proposed or confirmed, must change nothing, whatever tokens it names.
+  it(
+    'lists the sheet does not name change nothing: not a line, not what is left out, not the hash',
+    () => {
+      fc.assert(
+        fc.property(anyone, world, (sheet, raw) => {
+          const { shelf, context } = made(raw);
+          const plan = compose(sheet, shelf, context);
+          const ai = aiList();
+          const every = shelf.assets
+            .filter((a) => a.chain === chain && a.cls !== 'cash')
+            .map((a) => ({ symbol: a.symbol, reason: { en: 'a name', pt: 'um nome' } }))
+            .filter((m, i, all) => all.findIndex((x) => x.symbol === m.symbol) === i);
+          const bystanders = (['proposed', 'confirmed'] as const).map((status) => ({
+            ...ai,
+            chain,
+            slug: `bystander-${status}`,
+            status,
+            members: every,
+          }));
+          const served = compose(sheet, shelf, {
+            ...context,
+            themes: [...(context.themes ?? []), ...bystanders],
+          });
+          expect(served.lines).toEqual(plan.lines);
+          expect(served.removed).toEqual(plan.removed);
+          expect(served.inputsHash).toBe(plan.inputsHash);
+        }),
+        { numRuns: RUNS },
+      );
+    },
+    PATIENCE,
+  );
+
+  it(
+    "each candidate keeps the same rules, inside the person's limits, and comes in the fixed order",
+    () => {
+      fc.assert(
+        fc.property(anyone, world, (sheet, raw) => {
+          const { shelf, context } = made(raw);
+          const answer = candidates(sheet, shelf, context);
+          expect(answer.shown.length).toBeGreaterThan(0);
+          expect([...answer.shown, ...answer.notShown].map((c) => c.id).sort()).toEqual([
+            'carry',
+            'cover',
+            'spread',
+          ]);
+          const order = answer.shown.map((c) => c.id);
+          expect(order).toEqual(
+            ['cover', 'spread', 'carry'].filter((id) => order.some((o) => o === id)),
+          );
+          for (const { id, plan } of answer.shown)
+            expect(violations(plan, shelf, context), id).toEqual([]);
+        }),
+        { numRuns: RUNS },
+      );
+    },
+    PATIENCE,
+  );
+
   it(
     'the plan is the same every time, in whatever order the shelf is listed',
     () => {
       fc.assert(
-        fc.property(person, world, fc.integer({ min: 1, max: 50 }), (sheet, raw, seed) => {
+        fc.property(anyone, world, fc.integer({ min: 1, max: 50 }), (sheet, raw, seed) => {
           const { shelf, context } = made(raw);
           const plan = compose(sheet, shelf, context);
           expect(compose(sheet, shelf, context)).toEqual(plan);
@@ -324,6 +510,85 @@ describe.each(CHAINS)('for any valid sheet, on %s alone', (chain) => {
   );
 });
 
+// Gate THEME-MATCHED: a theme sleeve filled by a filter over the stock attributes of the chain is held
+// to every rule above, and to its own in `violations`: only stocks its filter matches, within the
+// limits a curated theme has, said as matched on every line. The two theme sleeves are drawn from the
+// matched themes and the two above, so a matched theme is also met beside a curated one that names
+// the same stock.
+describe.each(CHAINS)('with a matched theme, for any valid sheet, on %s alone', (chain) => {
+  const stocks = fixtureStocks(chain);
+  // Any two of the themes; one time in three, two that name one stock.
+  const themes = fc.oneof(
+    { weight: 2, arbitrary: twoOf([...THEME_SLUGS, ...MATCHED_SLUGS]) },
+    { weight: 1, arbitrary: fc.constantFrom(...OVERLAPPING).chain(twoOf) },
+  );
+  const sheets = splitOn(chain, themes);
+  // Two generated goals in three hold no stock (PROTECT-NO-STOCKS), and a matched sleeve is then
+  // empty: half the sheets here are of a goal to grow, where it holds names.
+  const anyone = fc.oneof(
+    sheets,
+    sheets.map((sheet) => PersonalSheet.parse({ ...sheet, goal: 'grow' })),
+  );
+
+  it(
+    'the plan keeps every rule, and a matched sleeve holds only what its filter matches',
+    () => {
+      fc.assert(
+        fc.property(anyone, world, (sheet, raw) => {
+          const { shelf, context } = made(raw, stocks);
+          const plan = compose(sheet, shelf, context);
+          expect(violations(plan, shelf, context)).toEqual([]);
+        }),
+        { numRuns: RUNS * 2 },
+      );
+    },
+    PATIENCE,
+  );
+
+  it(
+    'each candidate keeps the same rules',
+    () => {
+      fc.assert(
+        fc.property(anyone, world, (sheet, raw) => {
+          const { shelf, context } = made(raw, stocks);
+          const answer = candidates(sheet, shelf, context);
+          expect(answer.shown.length).toBeGreaterThan(0);
+          for (const { id, plan } of answer.shown)
+            expect(violations(plan, shelf, context), id).toEqual([]);
+        }),
+        { numRuns: RUNS },
+      );
+    },
+    PATIENCE,
+  );
+
+  it(
+    'the plan is the same in whatever order the shelf lists its tokens and the attributes their rows',
+    () => {
+      fc.assert(
+        fc.property(anyone, world, fc.integer({ min: 1, max: 50 }), (sheet, raw, seed) => {
+          const { shelf, context } = made(raw, stocks);
+          const plan = compose(sheet, shelf, context);
+          const order = (id: string) =>
+            [...id].reduce((n, ch) => (n * seed + ch.charCodeAt(0)) % 9973, seed);
+          const shuffled: Shelf = {
+            ...shelf,
+            assets: [...shelf.assets].sort((a, b) => order(a.id) - order(b.id)),
+          };
+          const rows = [...stocks.stocks]
+            .sort((a, b) => order(a.symbol) - order(b.symbol))
+            .map((row) => ({ ...row, keywords: [...row.keywords].reverse() }));
+          expect(
+            compose(sheet, shuffled, { ...context, stocks: { ...stocks, stocks: rows } }),
+          ).toEqual(plan);
+        }),
+        { numRuns: RUNS },
+      );
+    },
+    PATIENCE,
+  );
+});
+
 // A plan that is all cash keeps every rule above. This is the other half: where there is room, a plan
 // holds what the table asks, sleeve by sleeve. Room is a table with no cap or ceiling in the way, on
 // a chain that lists what each sleeve starts from, for a person who holds nothing and rules nothing
@@ -351,7 +616,7 @@ describe.each(['solana', 'robinhood'] as const)('where there is room, on %s', (c
     })
     .map(({ rows, ...floors }) =>
       PersonalParameters.parse({
-        ...PERSONAL_PARAMS,
+        ...roomyYield(),
         ...floors,
         version: 'generated, with room',
         sleeves: Object.fromEntries(

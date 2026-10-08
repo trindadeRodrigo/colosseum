@@ -1,7 +1,7 @@
 # Subscribe block (marketing closing)
 > Type: custom | Component: `<SubscribeBlock>` | Source: landing prototype `.closing` + `form.sub` | Field: [composer.md](./composer.md) single-line variant | Revised 2026-10-08 (honey on night)
 
-The landing's closing section: eyebrow, display heading, a short lede, a framed reference photo, and an email field to follow the build.
+The landing's closing section: eyebrow, display heading (Inter Tight 600), a short lede, a framed picture (on the landing, the hero's joint drawn in ink coming together, gate `CLOSING-INK`; a photograph, with its caption below, where a page supplies one), and an email field to follow the build.
 
 ## Anatomy
 

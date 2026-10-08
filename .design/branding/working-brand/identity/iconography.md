@@ -104,7 +104,7 @@ Icons don't animate, except that the brand glyphs may play their joint's single-
 ## 6. Curated set and banned metaphors
 **Allowed (starter registry):** `ArrowUpRight` (explorer and external links, "Tx ↗"), `Copy`, `Check` (copy confirmation only), `X`, `ChevronDown/Right`, `Plus`, `Minus`, `Pencil` (edit constraint sheet), `Clock` (fetched age), `History` (activity), `Wallet`, `Search`, `Menu`, `Info`, `FileText`, `Code`, `Settings`.
 
-**Banned:** `Sparkles` / `Wand` (AI magic; the LLM only parses), `Rocket`, `Zap`, `Flame`, `Gem`, `Crown`, `Trophy`, `Coins`, `PiggyBank`, `HandCoins`, `TrendingUp/Down` (P&L), `Shield*` / `BadgeCheck` / `Lock` used as a promise (implies a guarantee; this is not licensed advice), `RefreshCw` for rebalance, `LogOut` / `DoorOpen` for the exit plan, `CircleCheck` / `TriangleAlert` for goal state, any emoji, and any hexagon (kikkō; it reads as crypto).
+**Banned:** `Sparkles` / `Wand` (AI magic; the LLM reads and asks, it does not decide), `Rocket`, `Zap`, `Flame`, `Gem`, `Crown`, `Trophy`, `Coins`, `PiggyBank`, `HandCoins`, `TrendingUp/Down` (P&L), `Shield*` / `BadgeCheck` / `Lock` used as a promise (implies a guarantee; this is not licensed advice), `RefreshCw` for rebalance, `LogOut` / `DoorOpen` for the exit plan, `CircleCheck` / `TriangleAlert` for goal state, any emoji, and any hexagon (kikkō; it reads as crypto).
 
 ---
 

@@ -239,6 +239,11 @@ describe('creation events', () => {
     expect(allowedSpan(r.tooManyLogs?.message)).toBeNull();
     expect(tooManyLogs(r.tooManyLogs?.message)).toBe(true);
     expect(tooManyLogs(r.wholeLife?.message)).toBe(false);
+    // the Swap walk of RU.14 (2026-10-06) met a refusal for the reply's size on a busy window
+    expect(tooManyLogs('response too large')).toBe(true);
+    expect(tooManyLogs('Request timeout on the free plan, please upgrade to paid plan')).toBe(
+      false,
+    );
     // the second endpoint names no span the scan could use
     expect(allowedSpan(r.drpc?.message)).toBeNull();
     expect(tooManyLogs(r.drpc?.message)).toBe(false);

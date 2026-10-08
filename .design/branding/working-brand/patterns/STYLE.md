@@ -16,7 +16,7 @@ These are product rules expressed as design. A screen that breaks one of them is
 3. **The disclaimer is never omitted, and the brand is never presented as advice.** The disclaimer renders from the single `DISCLAIMER` constant, unedited, on the plan view and in the API docs, at body size, in a hairline box. No return promises: no "earn up to", "guaranteed" or "risk-free".
 4. **No Japanese clichés.** The reference is joinery as craft and structure, not culture as costume. No kanji or kana, torii, ensō, hanko or seal-red, sakura, waves, brush type, washi texture, asanoha, kikkō or seigaiha, and no Japanese words in product UI.
 5. **Nothing like Teiten.** No bevelled chassis, instrument nameplates, LEDs, screws, retro-OS panels, mono-led headlines or cinnabar signal. Bearing is a dense data screen, not hardware.
-6. **One brand colour.** Honey `#F5A83A` is the only accent, in both modes, and it always carries ink text. Leaf, clay and madder carry direction and status, never brand. Chalk is a line (focus, guides, "today"), never a fill or a brand element. There is no second brand hue and no blue brand.
+6. **One brand colour.** Honey `#F5A83A` is the only accent, in both modes, and it always carries ink text. Leaf, clay and madder carry direction and status, never brand. Chalk is a line (focus, guides, "today"), never a fill or a brand element. There is no second brand hue and no blue brand. Exception for token identification (Thom, Oct 7, `INVEST-TWO-PANE`): verified token logos keep their original artwork colours; that does not extend the interface or chart palette.
 7. **Status is word + shape + colour.** On track, watch and off track each have a square glyph, a word and a colour on a 14% tint. Deltas are signed and coloured by direction. Colour alone never carries meaning.
 8. **The brand recedes in the embed.** Inside a partner app, the partner's colours, font, radius and buttons take over. What survives: the pin and its popover, the hatch with its sample line, hairline structure, the disclaimer block, explorer links, and a "Powered by tenonfi" credit with the 16 px cut in the partner's muted colour.
 
@@ -150,6 +150,7 @@ It takes the Sage's structure (a grid, hairlines, tabular figures, signed deltas
 - Pills on primary or secondary buttons. Radius above 16px on anything but chips, badges and the composer (20px).
 - Font weights below 400, centred or justified body text, uppercase other than captions and column heads.
 - Text set on photographs, gradient scrims, duotones, wood-grain textures as backgrounds.
+- Circles as containers, except the composer's send button and the token identification mark (`AssetMark`, Thom, Oct 7), which are round.
 - Bounce, spring, overshoot, confetti, counting-up figures, parallax or ambient loops.
 - The Sparkles, Wand, Rocket, Coins, TrendingUp or Shield-as-promise icons, RefreshCw for rebalance, emoji, exclamation marks, mascots, leaderboards.
 - Brand colour, patterns or photography inside the partner embed.
@@ -238,6 +239,7 @@ It takes the Sage's structure (a grid, hairlines, tabular figures, signed deltas
   --color-leg-3: var(--chart-3); --color-leg-4: var(--chart-4);
   --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px; --radius-xl: 16px;
   --radius-composer: 20px; --radius-pill: 9999px;
+  --radius-asset: var(--radius-pill); /* AssetMark only (Thom, 2026-10-07) */
   --font-display: "Inter Tight", "Inter", system-ui, Arial, sans-serif;
   --font-sans: "Inter", "Inter Fallback", system-ui, Arial, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;

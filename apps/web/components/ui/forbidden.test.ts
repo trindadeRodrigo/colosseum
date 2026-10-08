@@ -16,7 +16,7 @@ import {
 
 // The forbidden things (STYLE.md, "Never"), looked for in the source of apps/web and in the stylesheet
 // the app is built from: a blue or a violet, a shadow, a corner that is not 0 or 2px outside the
-// composer, a typeface that is not one of the three, a font fetched from another origin.
+// composer and token identification marks, a typeface that is not one of the three, a font fetched from another origin.
 
 /**
  * What was written before the design system and still breaks it. WEB-2 rebuilds these pages on the
@@ -29,21 +29,28 @@ const LEGACY: Record<string, readonly Kind[]> = {
   // Rodrigo's pages and components: Tailwind's cool greys, blue links, 4px corners, chart colours,
   // and two uppercase labels
   'app/(structurer)/layout.tsx': ['hue'],
-  'app/(structurer)/embed/[id]/layout.tsx': ['hue', 'radius', 'case'],
-  'app/(structurer)/risk/page.tsx': ['hue'],
-  'app/(structurer)/risk/[asset]/page.tsx': ['hue'],
-  'app/(structurer)/risk/methodology/page.tsx': ['hue'],
   'components/PlanView.tsx': ['hue'],
   'components/Provenance.tsx': ['radius', 'case'],
   'components/ScheduleChart.tsx': ['hue'],
-  'components/risk/CostCurveChart.tsx': ['hue'],
-  'components/risk/HourOfWeekHeatmap.tsx': ['hue'],
   // the wallet check, a development page (WAL-1), plain until it takes the primitives
   'features/wallet/dev/DevWallet.tsx': ['hue'],
 };
 
+/**
+ * Pictures drawn at build by `next/og`, which reads no stylesheet and so no `var(--font-…)`: each
+ * names the brand's face itself, and that finding alone is excused. So are the two files where the faces
+ * are defined (app/fonts.ts, app/fonts-mono.ts): each face is told its own name there, since
+ * `next/font/local` would name it after its export.
+ */
+const DRAWN: Record<string, string> = {
+  'app/opengraph-image.tsx': "fontFamily: 'Newsreader'",
+  'app/fonts.ts': 'font-family',
+  'app/fonts-mono.ts': 'font-family',
+};
+
 /** The product's own routes and what they are built from: none of it may ever be on the list above. */
-const PRODUCT = /^(app\/\(app\)|components\/shell|features\/(account|goal|portfolio)|i18n)\//;
+const PRODUCT =
+  /^(app\/\((app|marketing|embed)\)|components\/shell|features\/(account|goal|portfolio|landing|order|embed)|i18n)\//;
 
 /**
  * The stylesheet of @solana/wallet-adapter-react-ui, which the layout of the pages not yet rebuilt
@@ -245,7 +252,7 @@ describe('the forbidden things', () => {
       expect(files).toContain('app/globals.css');
       expect(files).toContain('components/ui/Button.tsx');
       expect(files).toContain('app/(structurer)/plans/[id]/page.tsx');
-      expect(files).toContain('app/(app)/page.tsx');
+      expect(files).toContain('app/(marketing)/page.tsx');
       expect(files).toContain('app/(app)/monitor/page.tsx');
       expect(files).toContain('components/shell/AppNav.tsx');
       expect(files.some(notScanned)).toBe(false);
@@ -257,7 +264,16 @@ describe('the forbidden things', () => {
     });
 
     it('finds nothing forbidden outside the pages listed as legacy', () => {
-      const fresh = found.filter((f) => !LEGACY[f.file]?.includes(f.kind));
+      const fresh = found.filter(
+        (f) =>
+          !LEGACY[f.file]?.includes(f.kind) && !(f.kind === 'font' && DRAWN[f.file] === f.what),
+      );
+      // and each picture's excuse is still needed
+      for (const [file, what] of Object.entries(DRAWN))
+        expect(
+          found.some((f) => f.file === file && f.what === what),
+          file,
+        ).toBe(true);
       expect(fresh.map((f) => `${f.file}: ${f.kind}: ${f.what}`)).toEqual([]);
     });
 
@@ -265,9 +281,16 @@ describe('the forbidden things', () => {
       expect(read(ADAPTER.importedBy)).toContain(ADAPTER.stylesheet);
     });
 
-    it('uses the composer’s rounded utilities in the composer only', () => {
+    it('uses rounded utilities only in the composer or dedicated token wrapper', () => {
       for (const name of Object.keys(COMPOSER_RADIUS))
         expect(users(name), name).toEqual(['components/ui/Composer.tsx']);
+      // The token-only exception is scoped to the component, never the rest of PlanView.
+      const file = 'features/order/PlanView.tsx';
+      expect(users('rounded-asset')).toEqual([file]);
+      const source = read(file);
+      const assetMark = source.match(/export function AssetMark\([\s\S]*?\n}\n/)?.[0] ?? '';
+      expect(classTokens(file, assetMark).has('rounded-asset')).toBe(true);
+      expect(classTokens(file, source.replace(assetMark, '')).has('rounded-asset')).toBe(false);
     });
   });
 
@@ -293,16 +316,13 @@ describe('the forbidden things', () => {
       expect(blamed.filter((b) => !base(b) && !legacy(b) && !centred(b)).map(say)).toEqual([]);
     });
 
-    it('sets uppercase on the MOCK plate and nowhere else but two legacy labels', () => {
+    it('sets uppercase nowhere but one legacy label: the boxed MOCK is gone (MOCK-QUIET)', () => {
       const upper: string[] = [];
       root.walkDecls('text-transform', (decl) => {
         if (/uppercase/.test(decl.value)) upper.push((decl.parent as postcss.Rule).selector);
       });
-      expect(upper.sort()).toEqual(['.tf-mock-plate', '.uppercase']);
-      expect(users('uppercase').sort()).toEqual([
-        'app/(structurer)/embed/[id]/layout.tsx',
-        'components/Provenance.tsx',
-      ]);
+      expect(upper.sort()).toEqual(['.uppercase']);
+      expect(users('uppercase').sort()).toEqual(['components/Provenance.tsx']);
     });
 
     it('centres text only where a spec allows it, and every such place still does', () => {
@@ -346,13 +366,14 @@ describe('the forbidden things', () => {
         'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
       );
       expect(users(SYSTEM_FACES.utility)).toEqual([SYSTEM_FACES.usedBy]);
-      // and the base class of the design system goes on one <body>: the product's
+      // and the base class of the design system goes on the product's <body> and the landing's
       expect(users('tf-app').filter((file) => !file.startsWith('app/(app)/dev/'))).toEqual([
+        'app/(marketing)/layout.tsx',
         'components/shell/AppDocument.tsx',
       ]);
     });
 
-    it('rounds nothing but the composer: 20px for the box, a round send button', () => {
+    it('keeps surfaces square, with scoped round composer and token marks', () => {
       const corners = new Map<string, string>();
       root.walkDecls('border-radius', (decl) => {
         const rule = decl.parent as postcss.Rule;
@@ -360,6 +381,12 @@ describe('the forbidden things', () => {
       });
       expect(corners.get('.rounded-composer')).toBe('var(--tf-radius-composer)');
       expect(corners.get('.rounded-round')).toBe('var(--tf-radius-round)');
+      expect(corners.get('.rounded-asset')).toBe('var(--tf-radius-round)');
+      expect(vars.get('--tf-radius-round')).toBe('9999px');
+      // A circular card is still a violation; the exception names only the dedicated utility.
+      expect(
+        scanCss(postcss.parse('.card { border-radius: 9999px }'), vars).map((f) => f.kind),
+      ).toEqual(['radius']);
       expect(vars.get('--tf-radius-composer')).toBe('20px');
       expect(corners.get('.rounded-md')).toBe('var(--radius)');
     });

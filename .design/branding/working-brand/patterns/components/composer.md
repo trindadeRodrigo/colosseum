@@ -97,5 +97,5 @@ Same container and button; `<input type="email">` instead of a textarea; fixed o
 | 20px container, round honey send button with the ink arrow | A white arrow on honey, or a honey outline |
 | Keep the 1px edge and the card fill so the box is seen; the glow behind it on the home page | A glass, blur or neon glow to lift it |
 | Put the focus ring on the container | Ring the borderless textarea inside it |
-| Use `ArrowUp` (add it to the icon registry) | Use `Sparkles`, `Wand` or `Send` paper-plane: the LLM only parses |
+| Use `ArrowUp` (add it to the icon registry) | Use `Sparkles`, `Wand` or `Send` paper-plane: the LLM reads and asks, it does not decide |
 | Keep the typed text after an error | Clear the box or blame the person ("invalid input") |

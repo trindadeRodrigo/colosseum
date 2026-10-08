@@ -1,10 +1,12 @@
+import type { ChainId } from '@colosseum/schemas';
 import { useId } from 'react';
 import { Button } from './Button';
+import { ChainBadge } from './ChainBadge';
 import { cn } from './cn';
-import { HatchBand, MockWord } from './internal/mock-parts';
+import { HatchBand, SampleNote } from './internal/mock-parts';
 import { LatticeStatus } from './Lattice';
 import { ProvenancePin } from './ProvenancePin';
-import type { PinSource } from './provenance';
+import type { PinLabels, PinSource } from './provenance';
 import { Status, type StatusKind, statusWord } from './StatusMark';
 
 // goal-card.md. One goal, one sentence, where it stands, and where to look next. The card answers a
@@ -14,8 +16,13 @@ import { Status, type StatusKind, statusWord } from './StatusMark';
 export type GoalCardLabels = {
   /** While the card waits for its goal. */
   loading: string;
+  /** A sample card's one quiet line (MOCK-QUIET). */
+  sample: string;
 };
-export const GOAL_CARD_LABELS: GoalCardLabels = { loading: 'Loading your goal' };
+export const GOAL_CARD_LABELS: GoalCardLabels = {
+  loading: 'Loading your goal',
+  sample: 'Sample figures',
+};
 
 export type GoalCardAmount = {
   /** The current value as shown: "$12,480 of $40,000". It is a priced figure, so it carries a pin. */
@@ -34,8 +41,10 @@ type Common = {
   variant?: 'card' | 'header';
   /** Header only: profile · solver version · created. */
   meta?: string;
-  /** An input of this plan is not live: a hatch band on the left edge and the MOCK plate after the status. */
+  /** An input of this plan is not live: a hatch band on the left edge and one quiet line. */
   mock?: boolean;
+  /** The chain the goal's plan or vault is on, as a badge after the status. */
+  chain?: ChainId;
   labels?: Partial<GoalCardLabels>;
   className?: string;
 };
@@ -48,12 +57,20 @@ export type GoalCardProps = Common &
          * From the engine, never worked out here. The word is always shown beside the mark: a card
          * handed an empty word throws.
          */
-        status: { kind: StatusKind; word: string; date: string };
+        /** `date` is left out when the word is a whole sentence that needs none after it. */
+        status: { kind: StatusKind; word: string; date?: string } | null;
+        /**
+         * Said in place of the status when the engine gives none: the card never works one out. The
+         * date still stands beside it.
+         */
+        noStatus?: { sentence: string; date?: string };
         /** One sentence of reason, when the goal is on watch or off track. The card is not tinted. */
         reason?: string;
         amount?: GoalCardAmount;
         /** After the amount: "access to cash within 7 days". For an income goal, what it pays and from when. */
         detail?: string;
+        /** The pin's words, in the language of the view. */
+        pinLabels?: Partial<PinLabels>;
       }
     | {
         /** The sheet is not validated yet: no status mark and no amount. */
@@ -65,7 +82,16 @@ export type GoalCardProps = Common &
   );
 
 export function GoalCard(props: GoalCardProps) {
-  const { sentence, action, variant = 'card', meta, mock = false, labels, className } = props;
+  const {
+    sentence,
+    action,
+    variant = 'card',
+    meta,
+    mock = false,
+    chain,
+    labels,
+    className,
+  } = props;
   const sentenceId = useId();
   const header = variant === 'header';
   const Heading = header ? 'h1' : 'h3';
@@ -108,10 +134,20 @@ export function GoalCard(props: GoalCardProps) {
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <Status status={props.status.kind}>
-                {statusWord(props.status.word)} · {props.status.date}
-              </Status>
-              {mock && <MockWord announce />}
+              {props.status ? (
+                <Status status={props.status.kind}>
+                  {statusWord(props.status.word)}
+                  {props.status.date !== undefined && ` · ${props.status.date}`}
+                </Status>
+              ) : (
+                props.noStatus && (
+                  <p data-ui="goal-no-status" className="text-caption text-muted-foreground">
+                    {props.noStatus.sentence}
+                    {props.noStatus.date ? ` · ${props.noStatus.date}` : ''}
+                  </p>
+                )
+              )}
+              {chain && <ChainBadge chain={chain} />}
             </div>
             {props.reason && <p className="text-body-sm text-foreground">{props.reason}</p>}
             {(props.amount || props.detail) && (
@@ -121,6 +157,7 @@ export function GoalCard(props: GoalCardProps) {
                     value={props.amount.figure}
                     labelValue={props.amount.labelValue}
                     obs={props.amount.obs}
+                    labels={props.pinLabels}
                   />
                 )}
                 {props.amount && props.detail && ' · '}
@@ -130,7 +167,8 @@ export function GoalCard(props: GoalCardProps) {
           </>
         )}
 
-        {props.state === 'draft' && mock && <MockWord announce />}
+        {props.state === 'draft' && chain && <ChainBadge chain={chain} />}
+        {mock && <SampleNote line={labels?.sample ?? GOAL_CARD_LABELS.sample} />}
         {header && meta && <p className="text-caption text-muted-foreground">{meta}</p>}
         <Button
           variant="link"

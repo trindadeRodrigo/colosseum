@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { basketSchema, chainRows, createDb, schema } from '@colosseum/db';
 import {
   AssetKind,
@@ -47,7 +49,7 @@ describe('db schema', () => {
   });
 });
 
-// DESIGN-VAULT section 4, migration 0006.
+// DESIGN-VAULT section 4; snapshot0018 and private history0019.
 const EXPECTED_VAULT = [
   'chains',
   'users',
@@ -59,7 +61,12 @@ const EXPECTED_VAULT = [
   'recipe_versions',
   'baskets',
   'proposals',
+  'plan_threads',
+  'plan_turns',
+  'vault_conversations',
   'vaults',
+  'vault_snapshots',
+  'snapshot_runs',
   'follows',
   'orders',
   'legs',
@@ -74,7 +81,7 @@ const EXPECTED_VAULT = [
 describe('db schema: vault tables', () => {
   const tables = (Object.values(basketSchema) as unknown[]).filter(isTable) as PgTable[];
 
-  it('declares the 20 vault tables, and none that the core schema already has', () => {
+  it('declares the 25 vault tables, and none that the core schema already has', () => {
     const names = tables.map((t) => getTableName(t));
     expect([...names].sort()).toEqual([...EXPECTED_VAULT].sort());
     expect(names.filter((n) => EXPECTED.includes(n))).toEqual([]);
@@ -104,6 +111,13 @@ describe('db schema: vault tables', () => {
     expect(open).toHaveLength(1);
     expect(open[0]?.unique).toBe(true);
     expect(open[0]?.where).toBeDefined();
+    // The snapshot worker's runs hold the same rule, beside the index its newest runs are read by.
+    const openSnapshot = getTableConfig(basketSchema.snapshotRuns)
+      .indexes.map((i) => i.config)
+      .filter((i) => i.unique);
+    expect(openSnapshot).toHaveLength(1);
+    expect(openSnapshot[0]?.columns.map((c) => ('name' in c ? c.name : ''))).toEqual(['chain_id']);
+    expect(openSnapshot[0]?.where).toBeDefined();
     const attempts = getTableConfig(basketSchema.legAttempts);
     expect(attempts.uniqueConstraints.map((u) => u.columns.map((c) => c.name))).toContainEqual([
       'chain_id',
@@ -149,6 +163,52 @@ describe('db schema: vault tables', () => {
     expect(indexed(basketSchema.vaults)).toEqual(expect.arrayContaining(['owner', 'recipe_id']));
     expect(indexed(basketSchema.follows)).toContain('family_id');
     expect(indexed(basketSchema.keeperLegs)).toContain('keeper_run_id');
+  });
+
+  it('keeps what a plan made from a link rests on (gate AGENT-LINK): its mark, its index, an order’s vault number', () => {
+    const column = (table: PgTable, name: string) =>
+      getTableConfig(table).columns.find((c) => c.name === name);
+    const fromLink = column(basketSchema.proposals, 'from_link');
+    expect([fromLink?.getSQLType(), fromLink?.notNull, fromLink?.default]).toEqual([
+      'boolean',
+      true,
+      false,
+    ]);
+    const basketId = column(basketSchema.orders, 'basket_id');
+    expect([basketId?.getSQLType(), basketId?.notNull]).toEqual(['text', false]);
+    const index = getTableConfig(basketSchema.proposals).indexes.find(
+      (i) => i.config.name === 'proposals_from_link_created_idx',
+    );
+    expect(index?.config.columns.map((c) => ('name' in c ? c.name : ''))).toEqual(['created_at']);
+    expect(index?.config.where).toBeDefined();
+  });
+
+  it('declares no column the migrations do not make, and makes none it does not declare', () => {
+    // The latest snapshot drizzle-kit wrote with the newest migration is what the migrations make.
+    const meta = join(import.meta.dirname, '..', 'packages', 'db', 'migrations', 'meta');
+    const latest = readdirSync(meta)
+      .filter((f) => /^\d{4}_snapshot\.json$/.test(f))
+      .sort()
+      .at(-1);
+    if (!latest) throw new Error('no migration snapshot');
+    const snapshot = JSON.parse(readFileSync(join(meta, latest), 'utf8')) as {
+      tables: Record<
+        string,
+        { columns: Record<string, unknown>; indexes: Record<string, unknown> }
+      >;
+    };
+    const tables = [...Object.values(schema), ...Object.values(basketSchema)].filter(isTable);
+    for (const table of tables as PgTable[]) {
+      const config = getTableConfig(table);
+      const made = snapshot.tables[`public.${config.name}`];
+      expect(made, config.name).toBeDefined();
+      expect(Object.keys(made?.columns ?? {}).sort(), config.name).toEqual(
+        config.columns.map((c) => c.name).sort(),
+      );
+      expect(Object.keys(made?.indexes ?? {}).sort(), config.name).toEqual(
+        config.indexes.map((i) => i.config.name ?? '').sort(),
+      );
+    }
   });
 
   it('opens the database with both schemas, so db.query knows the vault tables', async () => {

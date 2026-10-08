@@ -1,5 +1,5 @@
 import type { Provenance } from '@colosseum/schemas';
-import { formatAge, isoUtc } from './format';
+import { type Age, type AgeWords, formatAge, isoUtc, sayAge } from './format';
 
 // What the provenance pin is handed, and what state that puts a figure in (provenance-pin.md). This is
 // a plain module, apart from ProvenancePin.tsx, so that a server component can ask the state of a
@@ -52,6 +52,8 @@ export type PinLabels = {
   stale: string;
   /** In place of the age, when the API says a figure is stale and the age it gives is not one. */
   ageUnknown: string;
+  /** The age said in full in the accessible name. Left out: English, "3 hours old". */
+  age?: AgeWords;
   /** In place of a figure that has no source. */
   missing: string;
   /** The name of the popover when it holds a link. */
@@ -67,7 +69,7 @@ export type PinLabels = {
 export const PIN_LABELS: PinLabels = {
   sourceFor: 'Source for {value}',
   staleSuffix: ', stale, {age}',
-  mockSuffix: ', mock data',
+  mockSuffix: ', sample figure',
   stale: 'stale',
   ageUnknown: 'age unknown',
   missing: 'no source yet',
@@ -75,13 +77,16 @@ export const PIN_LABELS: PinLabels = {
   copy: 'Copy source',
   copied: 'Copied',
   kinds: {
-    mock: 'mock data',
+    mock: 'sample data, not live',
     sandbox: 'test network',
     fixture: 'fixture',
     prior_dataset: 'prior dataset',
   },
   unknownKind: 'not live',
 };
+
+const ageSaid = (age: Age | null, labels: PinLabels) =>
+  age === null ? labels.ageUnknown : labels.age ? sayAge(age, labels.age) : age.long;
 
 /** "Source for 6.40%", with ", stale, 3 hours old" or ", mock data" appended. */
 export function pinLabel(value: string, obs: PinSource, labels: PinLabels = PIN_LABELS): string {
@@ -91,10 +96,7 @@ export function pinLabel(value: string, obs: PinSource, labels: PinLabels = PIN_
   if (state === 'stale')
     return (
       name +
-      labels.staleSuffix.replace(
-        '{age}',
-        formatAge(obs.staleAgeSec as number)?.long ?? labels.ageUnknown,
-      )
+      labels.staleSuffix.replace('{age}', ageSaid(formatAge(obs.staleAgeSec as number), labels))
     );
   return name;
 }

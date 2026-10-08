@@ -28,7 +28,7 @@ Three things around the engine and Bearing, and two smaller ones.
 
 ## What a person does
 
-1. **Says what the money needs to do,** in a sentence or a short form: the outcome, the amount, the date, how much risk, cash they must be able to reach. They connect a wallet or create one with a passkey, so the product sees what they already hold. Someone who creates a wallet picks its chain at that moment: the sign-up asks once, Solana or Robinhood Chain. The plan lives on that wallet's chain, and the product proposes only what exists there.
+1. **Says what the money needs to do,** in a sentence or a short form: the outcome, the amount, the date, how much risk, cash they must be able to reach. They connect a wallet or create one with a passkey, so the product sees what they already hold. Someone who creates a wallet picks a chain, and can switch it later. A plan lives on the chain it was made on, and the product proposes only what exists there.
 2. **Confirms the sheet.** The goal and the limits, written down and editable.
 3. **Sees the plan before anything moves:** each line with its reason ("less Nvidia because you already hold $4k of it", "20% in dollar yield because you need the money in 18 months"), and the exit plan at their size: how much they can get back, how fast, at what cost.
 4. **Buys in one tap.** The trades run on the plan's chain and the assets land in their own vault.
@@ -111,7 +111,7 @@ What Colosseum's form needs: a live app, a public GitHub repo, a 2–3 minute pi
 
 What must work live on mainnet, with real small amounts. These nine things are the MVP:
 
-1. **Sign in two ways.** Connect a wallet, or create one with just a passkey (no seed phrase). Someone who creates one is asked once for its chain, Solana or Robinhood Chain. The plan lives on that wallet's chain. The product shows what the chain needs in cash and gas, and does not bridge.
+1. **Sign in two ways.** Connect a wallet, or create one with just a passkey (no seed phrase). Nobody is asked for a chain: a person starts on the chain the bar shows, or on their outside wallet's, and switches it from the bar. A plan lives on the chain it was made on. The product shows what the chain needs in cash and gas, and does not bridge.
 2. **Shared portfolios.** At least six on the shelf with real assets, at least two published on more than one chain. A person is offered the ones with a recipe on their chain.
 3. **A plan from a sentence or a form,** with a reason on every line. Three test people must get three visibly different plans.
 4. **One-tap buy.** One confirmation places real swaps on the plan's chain, with a status per leg and a retry if one fails.
@@ -170,7 +170,7 @@ What agents can't do, and what therefore sets the pace: funding and testing real
 - Shared portfolios are in, with serious assets only at launch.
 - Solana and Robinhood Chain first; Base follows if there is time (Oct 2).
 - A plan lives on one chain: the chain of the wallet the person created or connected when signing in. The product proposes only what exists on that chain, and the deposit, the vault and every trade of the plan are there. A plan is never split across chains. A shared portfolio may be published on more than one chain, and a person gets the recipe of their own (Oct 3).
-- Someone who creates a wallet in the app picks its chain at that moment: the sign-up asks once, Solana or Robinhood Chain (Oct 3).
+- Someone who creates a wallet in the app picks its chain at that moment (Oct 3). Since Oct 6 the chain is the person's current chain and can be switched from the header; each plan stays on the chain it was made on (gate `CHAIN-SWITCH`).
 - What an asset may weigh comes from Bearing's measured exit numbers: the cap per asset on chain, the ceiling per line in a plan and the exit cost shown. The tiers on the asset list rest on price impact alone; they are a fallback where nothing is measured, and are labelled as such (Oct 3).
 - A plan whose goal is to protect holds no stock tokens: dollar yield, gold and cash only. Income plans hold none either, and growth plans are unchanged. The asset registry's eligibility enforces it (Oct 3).
 - Wallet connect or a passkey wallet (Privy).

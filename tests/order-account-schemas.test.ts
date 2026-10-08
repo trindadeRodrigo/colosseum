@@ -178,8 +178,16 @@ describe('the bodies of /v1/me and /v1/funding', () => {
       { amountUsd: '0', proposalId: ID },
       { amountUsd: '1000000.01', proposalId: ID },
       { amountUsd: '10', proposalId: 'a-plan' },
+      { family: 'core' },
+      { amountUsd: '10', family: 'Not A Slug' },
+      { amountUsd: '10', proposalId: ID, family: 'core' },
     ])
       expect([query, FundingQuery.safeParse(query).success]).toEqual([query, false]);
+    // A shared portfolio's slug in place of the plan (WEB-4).
+    expect(FundingQuery.parse({ amountUsd: '10', family: 'core' })).toEqual({
+      amountUsd: 10,
+      family: 'core',
+    });
   });
 
   it('a funding query may name the wallet to read, as an address in the form used here', () => {

@@ -43,8 +43,56 @@ export async function buyMetadata() {
   return { title: t.buy.title, description: t.buy.funding.title };
 }
 
+export async function addMoneyMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.portfolio.add.title, description: t.buy.funding.title };
+}
+
 export async function orderMetadata() {
   const { lang } = await readPreferences();
   const t = dictionary(lang);
   return { title: t.order.title, description: t.order.review.title };
+}
+
+export async function shelfMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.shared.meta.shelf, description: t.shared.shelf.leadAll };
+}
+
+export async function familyMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.shared.meta.family, description: t.shared.meta.familyDescription };
+}
+
+export async function familyBuyMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.shared.buy.title, description: t.shared.meta.familyDescription };
+}
+
+export async function publishMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.shared.meta.publish, description: t.shared.meta.publishDescription };
+}
+
+export async function vaultMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.shared.meta.vault, description: t.shared.vault.title };
+}
+
+export async function targetsMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.mix.editor.title, description: t.mix.editor.lead };
+}
+
+export async function withdrawMetadata() {
+  const { lang } = await readPreferences();
+  const t = dictionary(lang);
+  return { title: t.withdraw.meta, description: t.withdraw.title };
 }

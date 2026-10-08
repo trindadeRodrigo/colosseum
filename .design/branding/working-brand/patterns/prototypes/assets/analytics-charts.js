@@ -3,7 +3,7 @@
    under the price, value axis on the right, crosshair with axis tags and an OHLC readout), an exchange depth chart,
    the CLMM liquidity distribution (bars by price around the pool price, zoom), and sparklines.
    Charts draw at their real pixel width and redraw on resize, so type stays 11–12px at every width.
-   Brand: wood only (two series at most: hinoki / wood-400 on dark, heartwood / wood-400 on paper), flat fills,
+   Brand (IDENTITY-2, 2026-10-08): honey as the one accent; a second series in muted; direction in leaf / madder; the values come from analytics.css tokens
    square marks, hairline grid, solid = measured, dashed = too few samples. Up candles hollow, down candles
    filled, so direction never rests on colour. Callers mount placeholders: markup first, then mount(root). */
 (function () {

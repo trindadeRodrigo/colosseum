@@ -180,6 +180,7 @@ tokens:
     border-radius-xl: "16px"     # app tiles, hero media
     border-radius-pill: "9999px" # chips, status badges, filter tabs, the composer's send button
     border-radius-composer: "20px"   # the goal composer container and the subscribe field
+    border-radius-asset: "9999px"   # → --tf-radius-asset. The circular token identification mark (AssetMark) only (Thom, 2026-10-07)
     border-width: "1px"
     focus-ring-width: "2px"
     focus-ring-offset: "2px"
@@ -381,7 +382,7 @@ constraints:
     - "a mock shown as live — no sample figure without its hatched pin or glyph and the card's quiet line; no text set on hatch strokes; no sandbox card without 'test network'; no boxed MOCK word anywhere (gate MOCK-QUIET)"
     - "the hatch for anything but MOCK or stale"
     - "omit, shrink below body size, or paraphrase the disclaimer; present the brand as licensed advice; promise returns ('earn up to', 'guaranteed', 'risk-free')"
-    - "a second brand colour: honey is the only accent. Chalk is a line, never a fill, a button or a brand element; no blue brand, no blue gradient"
+    - "a second brand colour: honey is the only accent. Chalk is a line, never a fill, a button or a brand element; no blue brand, no blue gradient. Exception: verified token identification artwork retains its original colours (Thom, Oct 7, INVEST-TWO-PANE), without extending the interface palette"
     - "two-hue gradients, glass, backdrop blur, neon glow, ambient orbs, gold foil, metallic or wood-grain fills in UI"
     - "white text on honey (2.0:1). Honey carries ink; as text on light grounds use honey-l"
     - "honey as the 'watch' colour, or any status shown by colour alone"

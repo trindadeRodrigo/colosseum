@@ -1,6 +1,7 @@
 import { BasketSheet, BasketSheetDraft, type Provenance } from '@colosseum/schemas';
 import { describe, expect, it, vi } from 'vitest';
 import { dictionary } from '../../i18n';
+import { builtFor, CANDIDATE_ID } from '../order/test/candidates';
 import { json } from '../wallet/test/fake-port';
 import { buildPlan, PERSONALIZE_PATH, planProvenance } from './build-plan';
 import { COUNTRY_CODES, countryOptions } from './countries';
@@ -48,6 +49,11 @@ describe('the first reader’s answer, as a draft of this product’s limits', (
       incomeTargetUsdMonthly: null,
       rules: null,
       language: 'pt',
+      // Added to the draft on Oct 5 (ENG-3 slice 2); the first reader says nothing of them.
+      currency: null,
+      obligations: null,
+      sleeves: null,
+      restoreSplit: null,
     });
   });
 
@@ -157,6 +163,9 @@ describe('building a plan: the one call, against a double of the route that is n
       id: 'plan-1',
       proposal,
       rollUp: null,
+      // a server that sends no candidates: the plan is the one plan
+      candidates: [],
+      notShown: [],
     });
     expect(PERSONALIZE_PATH).toBe('/v1/baskets/personalize');
     expect(api).toHaveBeenCalledWith(PERSONALIZE_PATH, {
@@ -164,6 +173,53 @@ describe('building a plan: the one call, against a double of the route that is n
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ sheet: SHEET }),
     });
+  });
+
+  it('reads the candidates in the fixed order, whatever order they came in, each its own stored plan (THREE-PLANS)', async () => {
+    const answer = builtFor(SHEET);
+    const built = await buildPlan(
+      vi.fn(async () => json(answer)),
+      SHEET,
+    );
+    expect(built.kind).toBe('built');
+    if (built.kind !== 'built') return;
+    expect(built.candidates.map((c) => c.candidate)).toEqual(['cover', 'spread', 'carry']);
+    expect(built.candidates.map((c) => c.id)).toEqual([
+      CANDIDATE_ID.cover,
+      CANDIDATE_ID.spread,
+      CANDIDATE_ID.carry,
+    ]);
+    // the ones the engine left out, each with its reason
+    const two = await buildPlan(
+      vi.fn(async () => json(builtFor(SHEET, ['spread', 'cover']))),
+      SHEET,
+    );
+    expect(two.kind === 'built' && two.candidates.map((c) => c.candidate)).toEqual([
+      'cover',
+      'spread',
+    ]);
+    expect(two.kind === 'built' && two.notShown).toEqual([
+      { candidate: 'carry', why: 'carry came out the same as another.' },
+    ]);
+  });
+
+  it('shows none of the candidates when one is not an answer to what was asked', async () => {
+    const answer = builtFor(SHEET);
+    const twice = { ...answer, candidates: [answer.candidates[0], answer.candidates[0]] };
+    const sameId = {
+      ...answer,
+      candidates: answer.candidates.map((c) => ({ ...c, id: CANDIDATE_ID.cover })),
+    };
+    const other = builtFor({ ...SHEET, amountUsd: SHEET.amountUsd + 1 });
+    const mixed = { ...answer, candidates: [answer.candidates[0], other.candidates[1]] };
+    const marked = { ...answer, candidates: [{ ...answer.candidates[0], candidate: 'best' }] };
+    for (const bad of [twice, sameId, mixed, marked, { ...answer, candidates: [] }])
+      expect(
+        await buildPlan(
+          vi.fn(async () => json(bad)),
+          SHEET,
+        ),
+      ).toEqual({ kind: 'unreadable' });
   });
 
   it('keeps the risk roll-up the server sends with the plan, and leaves out one that does not parse', async () => {
@@ -262,6 +318,12 @@ describe('building a plan: the one call, against a double of the route that is n
     expect(await answers(422, { error: 'no plan', code: 'GOAL_NOT_ACHIEVABLE' })).toEqual({
       kind: 'no-plan',
     });
+    expect(
+      await answers(422, {
+        error: 'Plans are in US dollars for now',
+        code: 'CURRENCY_UNSUPPORTED',
+      }),
+    ).toEqual({ kind: 'currency' });
     expect(await answers(429)).toEqual({ kind: 'busy' });
     expect(await answers(500)).toEqual({ kind: 'unreachable' });
     expect(
@@ -298,6 +360,16 @@ describe('a number as a person types one', () => {
 
   it('is null for nothing typed', () => {
     expect(parseNumber('')).toBeNull();
+    // in the language of the page a lone mark means one thing
+    expect(parseNumber('10.555', 'en')).toBeNaN();
+    expect(parseNumber('10.55', 'en')).toBe(10.55);
+    expect(parseNumber('10,555', 'en')).toBe(10555);
+    expect(parseNumber('10,5', 'en')).toBeNaN();
+    expect(parseNumber('10.555', 'pt')).toBe(10555);
+    expect(parseNumber('10,55', 'pt')).toBe(10.55);
+    expect(parseNumber('10,555', 'pt')).toBeNaN();
+    expect(parseNumber('1.000,50', 'pt')).toBe(1000.5);
+    expect(parseNumber('1,000.50', 'en')).toBe(1000.5);
     expect(parseNumber('  $ ')).toBeNull();
   });
 
@@ -378,7 +450,9 @@ describe('the limits, checked against the shared schema', () => {
     expect(wrong({ amount: '1,000,001' }).errors).toEqual({ amount: 'amountHigh' });
     expect(wrong({ goal: '' }).errors).toEqual({ goal: 'goal' });
     expect(wrong({ risk: '' }).errors).toEqual({ risk: 'risk' });
-    expect(wrong({ country: '' }).errors).toEqual({ country: 'country' });
+    // Gate COUNTRY-REMOVED (Oct 6): an empty country is no error; it was `{ country: 'country' }`.
+    expect(wrong({ country: '' })).toMatchObject({ errors: {} });
+    expect(wrong({ country: '' }).sheet?.country).toBeUndefined();
     for (const horizon of ['', '0', '481', '12.5', 'three years'])
       expect(wrong({ horizon }).errors, horizon).toEqual({ horizon: 'horizon' });
     expect(wrong({ goal: '', amount: '', horizon: '', risk: '', country: '' }).errors).toEqual({
@@ -386,7 +460,6 @@ describe('the limits, checked against the shared schema', () => {
       amount: 'amountEmpty',
       horizon: 'horizon',
       risk: 'risk',
-      country: 'country',
     });
   });
 
@@ -515,11 +588,17 @@ describe('the goal as one sentence', () => {
     expect(goalSentence({ ...FIELDS, amount: '40.000' }, pt, 'pt')).toMatch(
       /^Fazer US\$\s40\.000 crescer em 36 meses\.$/,
     );
-    expect(dollars(1500.5, 'en')).toBe('$1,500.5');
+    expect(dollars(1500.5, 'en')).toBe('$1,500.50');
   });
 
   it('is not made while any of the three cannot be read', () => {
-    for (const over of [{ goal: '' as const }, { amount: '' }, { amount: 'x' }, { horizon: '' }])
+    for (const over of [
+      { goal: '' as const },
+      { amount: '' },
+      { amount: 'x' },
+      { horizon: '' },
+      { horizon: '0' },
+    ])
       expect(goalSentence({ ...FIELDS, ...over }, en, 'en')).toBeNull();
   });
 });

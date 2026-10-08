@@ -28,6 +28,43 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * The fallbacks of the three faces (app/fonts.ts): a local face with its metrics adjusted to the real
+ * one's, so text does not move when the real face arrives. The figures are the ones next/font worked
+ * out when the faces came from Google at build; they are written here so the move to committed files
+ * changed nothing a reader sees.
+ */
+@font-face {
+  font-family: "IBM Plex Sans Fallback";
+  src: local(Arial);
+  ascent-override: 101.32%;
+  descent-override: 27.18%;
+  line-gap-override: 0%;
+  size-adjust: 101.17%;
+}
+@font-face {
+  font-family: "Newsreader Fallback";
+  src: local("Times New Roman");
+  ascent-override: 69.68%;
+  descent-override: 25.12%;
+  line-gap-override: 0%;
+  size-adjust: 105.48%;
+}
+@font-face {
+  font-family: "IBM Plex Mono Fallback";
+  src: local(Arial);
+  ascent-override: 76.16%;
+  descent-override: 20.43%;
+  line-gap-override: 0%;
+  size-adjust: 134.59%;
+}
+/* The landing closing's wide layout, the joint beside its heading (features/landing/closing-pose.ts, isNarrow). */
+@custom-variant closing-wide {
+  @media (min-width: 960px) and (min-aspect-ratio: 23 / 20) {
+    @slot;
+  }
+}
+
 /* ---------------------------------------------------------------------------------------------------
  * A. Semantic variables. OKLCH as in working-brand.theme.json; the comment is the .yml name and hex.
  * `.light` is :root again, so a light sample can sit inside a dark page (the showcase).
@@ -144,6 +181,23 @@
   --tf-heat-3: #8a6c4b;
   --tf-heat-4: #5a3a1e;
   --tf-heat-5: #1a1714;
+  /* Bearing charts (Rodrigo's Analytics 2.0, analytics2.css, raised for contrast 2026-10-03): wood only
+     plus the status pigments. Two series, the pie's five slices, covered and not covered, the grid,
+     and the four paths of the simulation's flow */
+  --tf-bearing-s1: #342515;
+  --tf-bearing-s2: #9d7751;
+  --tf-bearing-p1: #20150a;
+  --tf-bearing-p2: #bc946d;
+  --tf-bearing-p3: #63482e;
+  --tf-bearing-p4: #deb48c;
+  --tf-bearing-po: #7a6d5f;
+  --tf-bearing-cv: #2f4a2a;
+  --tf-bearing-un: #e58aa0;
+  --tf-bearing-grid: #cdbfab;
+  --tf-bearing-f1: #342515;
+  --tf-bearing-f2: #7a5a3a;
+  --tf-bearing-f3: #9d7751;
+  --tf-bearing-f4: #6e655b;
 }
 
 .dark {
@@ -169,13 +223,27 @@
   --tf-heat-3: #8a6c4b;
   --tf-heat-4: #c9ae86;
   --tf-heat-5: #f2e6d3;
+  --tf-bearing-s1: #f3d8c4;
+  --tf-bearing-s2: #9d7751;
+  --tf-bearing-p1: #f3d8c4;
+  --tf-bearing-p2: #9d7751;
+  --tf-bearing-p3: #deb48c;
+  --tf-bearing-p4: #63482e;
+  --tf-bearing-po: #aa9e92;
+  --tf-bearing-cv: #7fa37a;
+  --tf-bearing-un: #c2455f;
+  --tf-bearing-grid: #4a4037;
+  --tf-bearing-f1: #f3d8c4;
+  --tf-bearing-f2: #c9ae86;
+  --tf-bearing-f3: #9d7751;
+  --tf-bearing-f4: #a49a8e;
 }
 
 :root {
   /* hatch pitch: 6px on surfaces, 3px inside a glyph */
   --tf-hatch-pitch-ui: 6px;
   --tf-hatch-pitch-glyph: 3px;
-  /* shape: square. The typing box and its send button are the only rounded things */
+  /* shape: square, except the typing box, its send button and token identification marks */
   --tf-radius-composer: 20px;
   --tf-radius-round: 9999px;
   --tf-border-width: 1px;
@@ -292,6 +360,20 @@
     --tf-heat-3: #8a6c4b;
     --tf-heat-4: #c9ae86;
     --tf-heat-5: #f2e6d3;
+    --tf-bearing-s1: #f3d8c4;
+    --tf-bearing-s2: #9d7751;
+    --tf-bearing-p1: #f3d8c4;
+    --tf-bearing-p2: #9d7751;
+    --tf-bearing-p3: #deb48c;
+    --tf-bearing-p4: #63482e;
+    --tf-bearing-po: #aa9e92;
+    --tf-bearing-cv: #7fa37a;
+    --tf-bearing-un: #c2455f;
+    --tf-bearing-grid: #4a4037;
+    --tf-bearing-f1: #f3d8c4;
+    --tf-bearing-f2: #c9ae86;
+    --tf-bearing-f3: #9d7751;
+    --tf-bearing-f4: #a49a8e;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -361,6 +443,20 @@
   --color-heat-3: var(--tf-heat-3);
   --color-heat-4: var(--tf-heat-4);
   --color-heat-5: var(--tf-heat-5);
+  --color-bearing-s1: var(--tf-bearing-s1);
+  --color-bearing-s2: var(--tf-bearing-s2);
+  --color-bearing-p1: var(--tf-bearing-p1);
+  --color-bearing-p2: var(--tf-bearing-p2);
+  --color-bearing-p3: var(--tf-bearing-p3);
+  --color-bearing-p4: var(--tf-bearing-p4);
+  --color-bearing-po: var(--tf-bearing-po);
+  --color-bearing-cv: var(--tf-bearing-cv);
+  --color-bearing-un: var(--tf-bearing-un);
+  --color-bearing-grid: var(--tf-bearing-grid);
+  --color-bearing-f1: var(--tf-bearing-f1);
+  --color-bearing-f2: var(--tf-bearing-f2);
+  --color-bearing-f3: var(--tf-bearing-f3);
+  --color-bearing-f4: var(--tf-bearing-f4);
 
   /* shape: 0 or 2px. A stray rounded-full or rounded-xl comes out square */
   --radius-none: 0px;
@@ -376,6 +472,8 @@
   /* the typing box only: components/ui/Composer.tsx */
   --radius-composer: var(--tf-radius-composer);
   --radius-round: var(--tf-radius-round);
+  /* token identification only: AssetMark, never a card or control */
+  --radius-asset: var(--tf-radius-round);
 
   /* type */
   --font-sans: var(--tf-font-sans);
@@ -440,6 +538,11 @@
   --ease-seat: var(--tf-ease-seat);
   --animate-seat: seat var(--tf-dur-slide) var(--tf-ease-seat) both;
   --animate-pin-drop: pin-drop var(--tf-dur-fade) var(--tf-ease-seat) var(--tf-delay-pin) both;
+  /* A dialog rises 12px as it fades in (320ms); its scrim fades (160ms). With reduced motion both are
+   * a 120ms crossfade (STYLE.md, Motion). */
+  --animate-dialog-in: dialog-in var(--tf-dur-slide) var(--tf-ease-seat) both;
+  --animate-scrim-in: fade var(--tf-dur-fade) var(--tf-ease-seat) both;
+  --animate-crossfade: fade 120ms linear both;
   --default-transition-duration: 160ms;
   --default-transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 
@@ -467,12 +570,60 @@
   }
 }
 
+@keyframes dialog-in {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
 @keyframes fade {
   from {
     opacity: 0;
   }
   to {
     opacity: 1;
+  }
+}
+
+/* The loader (STYLE.md, "the lattice assembles"): a 3x3 lattice whose horizontals slide in on x, then
+ * whose verticals drop on y, 240ms each with a 60ms stagger, then a 400ms hold, over and over while a
+ * wait lasts. Under reduced motion it is the still lattice. */
+.tf-lattice-assemble .tf-lattice-h {
+  animation: lattice-h 1240ms var(--tf-ease-seat) calc(var(--i) * 60ms) infinite both;
+}
+.tf-lattice-assemble .tf-lattice-v {
+  animation: lattice-v 1240ms var(--tf-ease-seat) calc(420ms + var(--i) * 60ms) infinite both;
+}
+
+@keyframes lattice-h {
+  0% {
+    transform: translateX(-100%);
+  }
+  19%,
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes lattice-v {
+  0% {
+    transform: translateY(-100%);
+  }
+  19%,
+  100% {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tf-lattice-assemble .tf-lattice-h,
+  .tf-lattice-assemble .tf-lattice-v {
+    animation: none;
   }
 }
 
@@ -595,7 +746,9 @@
   container-type: inline-size;
 
   --tf-embed-fg: var(--embed-fg, CanvasText);
-  --tf-embed-muted: var(--embed-muted, GrayText);
+  /* GrayText on Canvas is under 4.5:1 in light (#808080 on white, 3.9:1): with no partner colour the
+     muted text is the partner's own text colour, mixed toward the ground, which holds AA in both */
+  --tf-embed-muted: var(--embed-muted, color-mix(in oklab, CanvasText 62%, Canvas));
   --tf-embed-bg: var(--embed-bg, Canvas);
   --tf-embed-border: var(--embed-border, color-mix(in oklab, var(--tf-embed-fg) 40%, transparent));
   --tf-embed-accent: var(--embed-accent, var(--tf-embed-fg));
@@ -652,17 +805,29 @@
   --tf-e-credit: max(0.6944em, 11px);
   --tf-e-leading: 1.5;
 
+  /* the system's own face, for a partner that names none: the embed never inherits our faces */
+  --tf-embed-system-font:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* the partner's buttons may be rounder than their boxes (a pill, in the guide's sample) */
+  --tf-embed-button-radius: var(--embed-button-radius, var(--radius));
+
+  /* the partner's container, as guidelines section 08 draws it: their ground, their hairline,
+     their radius, and room inside */
   background-color: var(--tf-embed-bg);
   color: var(--tf-embed-fg);
-  font-family: var(--embed-font, inherit);
+  /* the partner's face; with none, the system's, never ours (rule 7: the brand recedes) */
+  font-family: var(--embed-font, var(--tf-embed-system-font));
   line-height: 1.5;
+  border: 1px solid var(--tf-embed-border);
   border-radius: var(--embed-radius, inherit);
+  padding: 1.25em;
 }
 
 /* Inside the embed, type is the partner's: their face, and sizes in em of their text. */
 @layer utilities {
   .tf-embed :is(.font-sans, .font-display, .font-condensed) {
-    font-family: var(--embed-font, inherit);
+    font-family: var(--embed-font, var(--tf-embed-system-font));
   }
 
   .tf-embed :is(.text-body, .text-body-sm, .text-body-lg) {

@@ -31,7 +31,7 @@
     {
       "id": "solana:spyx",
       "modelOf": "SPYx",
-      "kind": "stock",
+      "kind": "etf",
       "multiplier": 1.0057146,
       "initialPrice": {
         "usd": "776.80",
@@ -47,7 +47,7 @@
     {
       "id": "solana:qqqx",
       "modelOf": "QQQx",
-      "kind": "stock",
+      "kind": "etf",
       "initialPrice": {
         "usd": "755.90",
         "source": "Kamino Scope entry 347 on mainnet, read through scripts/testnet/solana/prices.ts's source (TNET-5)",

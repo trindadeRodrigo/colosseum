@@ -7,6 +7,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { API } from '../../lib/api';
@@ -18,7 +19,14 @@ import { type ScreenPort, screenPort, type WebWalletPort } from './port';
 // the wallet provider all arrive with the bridge, when something first asks for the wallet.
 
 /** What a bridge is: it mounts a wallet provider, and reports a new port whenever its state changes. */
-export type BridgeProps = { onPort: (port: WebWalletPort) => void };
+export type BridgeProps = {
+  onPort: (port: WebWalletPort) => void;
+  /**
+   * What outlives a bridge when it is mounted again (`restart`): the calls that make wallets, so the
+   * next bridge waits for one still open and never asks for the same wallet beside it.
+   */
+  carry?: { making: Promise<void> };
+};
 
 // Client only, and only once something asks for the wallet: a page that never calls useWalletPort()
 // loads none of the provider's code.
@@ -37,7 +45,15 @@ const testWalletOn =
  * `port` is the whole wallet, signing included: only signing.ts reads it. `screen` is the same wallet
  * with no signing member, which is what every screen gets.
  */
-type Value = { port: WebWalletPort; screen: ScreenPort; activate: () => void };
+type Value = {
+  leaveHere: () => void;
+  ousted: { userId: string } | null;
+  port: WebWalletPort;
+  screen: ScreenPort;
+  activate: () => void;
+  restart: () => boolean;
+  hold: () => () => void;
+};
 export const WalletContext = createContext<Value | null>(null);
 WalletContext.displayName = WALLET_MARKER;
 
@@ -69,20 +85,153 @@ const LOADING: WebWalletPort = {
   authHeaders: () => Promise.resolve({}),
 };
 
+// "Sign out" pressed while the sign-in service could not be reached leaves a mark in this browser
+// (`useLeaveHere`): the person was told they are out. From then until the service itself says nobody
+// is signed in, no consumer is handed a port that names a person, signs, or carries their tokens:
+// while the mark is set, a port of the service that names someone is kept back, every screen and the
+// signing port see the wallet still loading, and the service is asked to sign that person out (again
+// after a refusal, each wait twice the one before). The mark goes when the service says they are out.
+const LEFT_HERE = 'tf-left';
+/** The waits between tries of a sign-out the service refused: 2 s, doubling, a minute at most. */
+export const SIGN_OUT_RETRY_MS = 2_000;
+const SIGN_OUT_RETRY_MAX_MS = 60_000;
+/**
+ * How long one try may take. A sign-out whose call never settles (a service that hangs) counts as
+ * refused after this, and is tried again as one that was.
+ */
+export const SIGN_OUT_WAIT_MS = 10_000;
+
+function leftHere(): boolean {
+  try {
+    return typeof window !== 'undefined' && window.localStorage.getItem(LEFT_HERE) === '1';
+  } catch {
+    return false;
+  }
+}
+function keepLeft(on: boolean): void {
+  try {
+    if (on) window.localStorage.setItem(LEFT_HERE, '1');
+    else window.localStorage.removeItem(LEFT_HERE);
+  } catch {
+    // No storage: the mark lasts as long as the page.
+  }
+}
+
 /**
  * Holds the one WalletPort of the app. It adds nothing to the page: the wallet provider is mounted
  * beside the children, not around them, so they render on the server as before.
  */
 export function WalletProvider({ children }: { children: ReactNode }) {
-  const [port, setPort] = useState<WebWalletPort>(LOADING);
+  // What the bridge last reported. It is what every consumer gets, except while the mark is set.
+  const [reported, setPort] = useState<WebWalletPort>(LOADING);
+  const [marked, setMarked] = useState(leftHere);
+  const leaveHere = useCallback(() => {
+    keepLeft(true);
+    setMarked(true);
+  }, []);
+  // Another tab of this browser set the mark: this one learns it at once, so a tab left open on the
+  // person's account is closed to them with the tab the press was made in. Only ever set from there:
+  // the mark goes in a tab when that tab's own service says nobody is signed in, never because
+  // another tab let go of it while this one's service still names the person.
+  useEffect(() => {
+    const heard = (event: StorageEvent) => {
+      if ((event.key === null || event.key === LEFT_HERE) && leftHere()) setMarked(true);
+    };
+    window.addEventListener('storage', heard);
+    return () => window.removeEventListener('storage', heard);
+  }, []);
+  const namesSomeone = reported.status !== 'signed-out' && reported.userId !== null;
+  const keptBack = marked && namesSomeone;
+  const port = keptBack ? LOADING : reported;
+  // The sign-out the mark stands for, at the service: once it names someone, and again after a
+  // refusal when its wait is over or the service reports anything new, whichever is later.
+  const signingOut = useRef(false);
+  // The wait of the try that is open, ended with the provider itself.
+  const waiting = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(waiting.current), []);
+  // Who the service named while the mark was set: told to the account once the service says they
+  // are out, for what this browser kept under their id (`useOustedPerson`).
+  const named = useRef<string | null>(null);
+  if (keptBack) named.current = reported.userId;
+  const [ousted, setOusted] = useState<{ userId: string } | null>(null);
+  const refusals = useRef(0);
+  const notBefore = useRef(0);
+  const [again, setAgain] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `again` is the end of a wait after a refusal
+  useEffect(() => {
+    if (!marked) return;
+    if (reported.status === 'signed-out') {
+      keepLeft(false);
+      setMarked(false);
+      if (named.current !== null) setOusted({ userId: named.current });
+      named.current = null;
+      refusals.current = 0;
+      notBefore.current = 0;
+      return;
+    }
+    if (!namesSomeone || signingOut.current) return;
+    const wait = notBefore.current - Date.now();
+    if (wait > 0) {
+      const timer = setTimeout(() => setAgain((n) => n + 1), wait);
+      return () => clearTimeout(timer);
+    }
+    signingOut.current = true;
+    // One try: the service's answer, or the end of its wait, whichever comes first. A try that ran
+    // out of time is a refusal like any other; its late answer changes nothing.
+    let over = false;
+    const refused = () => {
+      if (over) return;
+      over = true;
+      clearTimeout(limit);
+      signingOut.current = false;
+      refusals.current += 1;
+      notBefore.current =
+        Date.now() +
+        Math.min(SIGN_OUT_RETRY_MS * 2 ** (refusals.current - 1), SIGN_OUT_RETRY_MAX_MS);
+      setAgain((n) => n + 1);
+    };
+    const limit = setTimeout(refused, SIGN_OUT_WAIT_MS);
+    waiting.current = limit;
+    reported.signOut().then(() => {
+      if (over) return;
+      over = true;
+      clearTimeout(limit);
+      signingOut.current = false;
+    }, refused);
+  }, [marked, reported, namesSomeone, again]);
   const [active, setActive] = useState(false);
   const activate = useCallback(() => setActive(true), []);
-  const value = useMemo(() => ({ port, screen: screenPort(port), activate }), [port, activate]);
+  // The wallet provider mounted again, for a sign-in that never finished loading: it reads the
+  // session and the wallets from the start. The page is not loaded again, so what was typed stays.
+  // The port of the provider that is gone goes with it: until the new one reports, the wallet is
+  // loading for the same person, and nothing can be signed with hooks that are no longer mounted.
+  // Refused (false) while an order is being run: its step is signed with the port it started on.
+  const [turn, setTurn] = useState(0);
+  const [carry] = useState(() => ({ making: Promise.resolve() }));
+  const held = useRef(0);
+  const hold = useCallback(() => {
+    held.current += 1;
+    let open = true;
+    return () => {
+      if (open) held.current -= 1;
+      open = false;
+    };
+  }, []);
+  const restart = useCallback(() => {
+    if (held.current > 0) return false;
+    setPort((last) => ({ ...LOADING, userId: last.userId }));
+    setTurn((n) => n + 1);
+    return true;
+  }, []);
+  const value = useMemo(
+    () => ({ port, screen: screenPort(port), activate, restart, hold, leaveHere, ousted }),
+    [port, activate, restart, hold, leaveHere, ousted],
+  );
   const Bridge = testWalletOn && TestBridge ? TestBridge : PrivyBridge;
   return (
     <WalletContext.Provider value={value}>
       {children}
-      {active ? <Bridge onPort={setPort} /> : null}
+      {active ? <Bridge key={turn} onPort={setPort} carry={carry} /> : null}
     </WalletContext.Provider>
   );
 }
@@ -101,18 +250,53 @@ export function useWalletPort(): ScreenPort {
 }
 
 /**
+ * Mounts the wallet provider again (`restart` above). Only the account's "Try again" calls it. False
+ * when it was not done: an order is being run.
+ */
+export function useWalletRestart(): () => boolean {
+  const value = useContext(WalletContext);
+  if (!value) throw new Error('useWalletRestart() needs <WalletProvider> above it');
+  return value.restart;
+}
+
+/**
+ * Marks this browser as signed out though the sign-in service could not be asked (see `LEFT_HERE`
+ * above). Only the account's "Sign out" for a service that names nobody calls it.
+ */
+export function useLeaveHere(): () => void {
+  const value = useContext(WalletContext);
+  if (!value) throw new Error('useLeaveHere() needs <WalletProvider> above it');
+  return value.leaveHere;
+}
+
+/**
+ * The person the service signed out after a mark, once it has said they are out: for what this
+ * browser kept under their id, which nobody could name while the service was silent. A new object
+ * each time it happens; null until then.
+ */
+export function useOustedPerson(): { userId: string } | null {
+  const value = useContext(WalletContext);
+  if (!value) throw new Error('useOustedPerson() needs <WalletProvider> above it');
+  return value.ousted;
+}
+
+/**
  * The one way the app calls the API as the signed-in person: fetch with the sign-in headers the API's
  * auth expects (the Privy access token as a Bearer token, and the identity token when there is one).
  * Signed out, the call goes out without them. `path` is the part after the API's address and starts
  * with one `/` ('/v1/config'); anything that would lead to another host is refused before the token
  * is asked for, and a redirect is an error, so the token is never carried to where one points.
  * A call the API refuses with 401 while someone is signed in is sent once more, with fresh tokens;
- * its second answer is the one returned.
+ * its second answer is the one returned. A caller may ask for fresh tokens from the start
+ * (`freshSignIn`): a route that reads a sign-in without needing one answers a stale token as it
+ * answers nobody, with no 401 to say so.
  */
-export function useApiFetch(): (path: string, init?: RequestInit) => Promise<Response> {
+export type ApiInit = RequestInit & { freshSignIn?: boolean };
+export function useApiFetch(): (path: string, init?: ApiInit) => Promise<Response> {
   const port = useWalletPort();
   return useCallback(
-    async (path, init) => {
+    async (path, asked) => {
+      const { freshSignIn, ...init } = asked ?? {};
       const url = apiUrl(API, path);
       const send = async (fresh: boolean) => {
         const signIn = await port.authHeaders(fresh ? { fresh } : undefined);
@@ -121,7 +305,7 @@ export function useApiFetch(): (path: string, init?: RequestInit) => Promise<Res
         const res = await fetch(url, { cache: 'no-store', ...init, headers, redirect: 'error' });
         return { res, signedIn: 'authorization' in signIn };
       };
-      const first = await send(false);
+      const first = await send(freshSignIn === true);
       if (first.res.status !== 401 || !first.signedIn) return first.res;
       return (await send(true)).res;
     },

@@ -1,10 +1,10 @@
 import { apportion } from '@colosseum/basket';
-import type { BasketAsset, Reason } from '@colosseum/schemas';
-import { BPS, bpsOf, byName, split, sum, toCents, toUsd } from './money';
+import { type BasketAsset, type Reason, sleevesOf } from '@colosseum/schemas';
+import { BPS, bpsOf, byName, shareOf, split, sum, toCents, toUsd } from './money';
 import { once, type Removed, type Sized, type Unit } from './placement';
 import { eligibleForGoal } from './registry';
 import { type RuleId, reason } from './templates';
-import { SLEEVES, type Sleeve } from './types';
+import { type PersonalMix, SLEEVES, type Sleeve } from './types';
 import type { Family, World } from './world';
 
 // Exposure: how big each sleeve is (stocks and crypto, dollar yield, gold, cash) and what is inside
@@ -13,13 +13,94 @@ import type { Family, World } from './world';
 
 export type SleeveSizes = Record<Sleeve, number>;
 export type SleevePlan = {
-  /** The row of the table for this goal and risk, in basis points; cash is what the row leaves. */
+  /**
+   * The row of the table for this goal and risk, in basis points of the whole plan, scaled to the
+   * goal sleeve's share; cash is what the row leaves of that share.
+   */
   table: SleeveSizes;
   /** The sleeves once the date, the need for cash and what must not be lost are applied. */
   sized: SleeveSizes;
+  /**
+   * The person's split (gate SLEEVES): the goal sleeve's share and the safe-yield sleeve's, in basis
+   * points of the whole plan. With no split, the goal sleeve is the whole plan. `sized` adds up to
+   * `goalBps`; `safeYieldBps` is placed apart, in rate legs only.
+   */
+  goalBps: number;
+  safeYieldBps: number;
+  /** Each theme sleeve (gate SLEEVES), in the sheet's order: its slug and its share of the whole plan. */
+  themes: { slug: string; shareBps: number }[];
+  /**
+   * Of the goal sleeve, what is set aside for the next withdrawals (slice 2): taken off before the
+   * row is scaled, so `sized` adds up to `goalBps - setAsideBps`. Placed apart, before anything else.
+   */
+  setAsideBps: number;
+  /**
+   * The floor on cash the plan states (`CASH_NEAR_DATE`, `CASH_MAY_NEED`), in basis points of the
+   * whole plan; 0 where it states none. The cash is held to it to the cent, whatever the rounding of
+   * the parts placed before it (`build` in ./compose.ts).
+   */
+  cashFloorBps: number;
   /** Why each sleeve is the size it is. Every line of a sleeve carries these. */
   reasons: Record<Sleeve, Reason[]>;
+  /**
+   * With a mix, what each class of it gave to what is set aside (gate EXPLICIT-MIX): said on the
+   * lines that hold what is set aside, as on the lines of the class that gave.
+   */
+  asideSays: Reason[];
 };
+
+/**
+ * What is set aside for withdrawals, as a plan with a mix sizes its sleeves by it: the first and last
+ * month it pays for, and how much of it is held as dollar yield (in rate legs), in basis points of the
+ * plan. The rest of it is held as cash.
+ */
+export type AsideOfMix = { from: string; to: string; inYieldBps: number };
+
+/**
+ * A mix once what is set aside for withdrawals is taken out of it (gate EXPLICIT-MIX). Withdrawals
+ * keep their rule with a mix as without: what the next months owe is set aside first, in full. It is
+ * held in rate legs, which are dollar yield, and in cash, so each part counts first as the dollar
+ * yield or the cash the person asked for. Where that class of the mix is smaller than the part held
+ * as it, the other of the two gives; only then stocks and crypto, and then gold, the order the
+ * date's floors take them in.
+ *
+ * `table` is what is left of each class to place. `gave` is what each class gave to money held as
+ * another class: what the plan then holds less of than the mix, and says so.
+ */
+function mixLessAside(
+  mix: PersonalMix,
+  setAsideBps: number,
+  inYieldBps: number,
+): { asked: SleeveSizes; table: SleeveSizes; gave: SleeveSizes } {
+  const asked: SleeveSizes = {
+    growth: mix.growthBps,
+    dollarYield: mix.dollarYieldBps,
+    gold: mix.goldBps,
+    cash: mix.cashBps,
+  };
+  const table = { ...asked };
+  const gave: SleeveSizes = { growth: 0, dollarYield: 0, gold: 0, cash: 0 };
+  let left = setAsideBps;
+  const take = (sleeve: Sleeve, most: number, itsOwn: boolean) => {
+    const bps = Math.min(table[sleeve], most, left);
+    table[sleeve] -= bps;
+    left -= bps;
+    if (!itsOwn) gave[sleeve] += bps;
+  };
+  const asYield = Math.min(setAsideBps, Math.max(0, inYieldBps));
+  take('dollarYield', asYield, true);
+  take('cash', setAsideBps - asYield, true);
+  for (const sleeve of ['cash', 'dollarYield', 'growth', 'gold'] as const)
+    take(sleeve, left, false);
+  return { asked, table, gave };
+}
+
+/** The sleeves a floor on cash is filled from, in the order they give. */
+export const CASH_FLOOR_FROM: readonly Exclude<Sleeve, 'cash'>[] = [
+  'growth',
+  'gold',
+  'dollarYield',
+];
 
 /** The largest floor among the steps whose month count has not passed. Never rises as months grow. */
 function floorAt<T extends { monthsLeft: number }>(
@@ -33,39 +114,93 @@ function floorAt<T extends { monthsLeft: number }>(
 }
 
 /**
- * The size of each sleeve, in basis points adding up to 10,000.
+ * The size of each sleeve, in basis points of the whole plan. With no split they add up to 10,000;
+ * with one, the goal sleeve's sizes add up to its share, and the safe-yield sleeve and each theme
+ * sleeve hold their own (gate SLEEVES).
  *
  * A nearer date never gives less cash, and never less in cash and dollar yield together: each floor
  * is taken from the steps the date has not passed, and is filled from stocks and crypto first, then
- * gold.
+ * gold. Within a split, the table's shares and the floors of the date are the goal sleeve's, scaled
+ * to its share; what must not be lost is a sum of money, and the safe-yield sleeve counts toward it.
  */
-export function sizeSleeves(w: World): SleevePlan {
+export function sizeSleeves(w: World, setAside = 0, aside?: AsideOfMix): SleevePlan {
   const { sheet, P, lang } = w;
-  const row = P.sleeves[`${sheet.goal}:${sheet.risk}`] ?? {
-    growthBps: 0,
-    dollarYieldBps: 0,
-    goldBps: 0,
-  };
-  const table: SleeveSizes = {
-    growth: row.growthBps,
-    dollarYield: row.dollarYieldBps,
-    gold: row.goldBps,
-    cash: BPS - row.growthBps - row.dollarYieldBps - row.goldBps,
-  };
+  const split = sleevesOf(sheet);
+  const goalBps = sum(split.filter((x) => x.kind === 'goal').map((x) => x.shareBps));
+  const safeYieldBps = sum(split.filter((x) => x.kind === 'safe_yield').map((x) => x.shareBps));
+  const themes = split.flatMap((x) =>
+    x.kind === 'theme' ? [{ slug: x.theme, shareBps: x.shareBps }] : [],
+  );
+  // What is set aside for withdrawals comes off the goal sleeve first, with a mix as without; the
+  // table shares the rest, and a mix is held on the rest as `mixLessAside` says.
+  const mix = sheet.mix;
+  const setAsideBps = Math.min(goalBps, Math.max(0, setAside));
+  const restBps = goalBps - setAsideBps;
+  /** A share of the goal sleeve, as basis points of the whole plan: rounded down, or up for a floor. */
+  const ofGoal = (bps: number, up = false) =>
+    up ? Math.ceil((bps * restBps) / BPS) : Math.floor((bps * restBps) / BPS);
+  const less = mix ? mixLessAside(mix, setAsideBps, aside?.inYieldBps ?? 0) : null;
+  let table: SleeveSizes;
+  if (less) {
+    table = less.table;
+  } else {
+    const row = P.sleeves[`${sheet.goal}:${sheet.risk}`] ?? {
+      growthBps: 0,
+      dollarYieldBps: 0,
+      goldBps: 0,
+    };
+    const growth = ofGoal(row.growthBps);
+    const dollarYield = ofGoal(row.dollarYieldBps);
+    const gold = ofGoal(row.goldBps);
+    table = { growth, dollarYield, gold, cash: restBps - growth - dollarYield - gold };
+  }
   const sized = { ...table };
   const reasons: SleevePlan['reasons'] = { growth: [], dollarYield: [], gold: [], cash: [] };
+  const goalPart =
+    goalBps < BPS ? [reason('SPLIT_GOAL', { shareBps: goalBps, goal: sheet.goal }, lang)] : [];
+  const asked: Record<Sleeve, number> = less ? less.asked : table;
   for (const sleeve of SLEEVES)
     if (table[sleeve] > 0)
       reasons[sleeve].push(
-        reason(
-          'SLEEVE',
-          { sleeveBps: table[sleeve], sleeve, goal: sheet.goal, risk: sheet.risk },
-          lang,
-        ),
+        ...goalPart,
+        mix
+          ? asked[sleeve] >= BPS
+            ? reason('MIX_ALL', { sleeve }, lang)
+            : reason('MIX', { sleeveBps: asked[sleeve], sleeve }, lang)
+          : reason(
+              'SLEEVE',
+              { sleeveBps: table[sleeve], sleeve, goal: sheet.goal, risk: sheet.risk },
+              lang,
+            ),
       );
+  // Where what is set aside keeps the plan from the mix, the class that gave says how much, and
+  // what that leaves it: a cap says the same where it is the cap that does.
+  const asideSays: Reason[] = [];
+  if (less && aside)
+    for (const sleeve of SLEEVES) {
+      if (less.gave[sleeve] <= 0) continue;
+      const says = reason(
+        'MIX_SET_ASIDE',
+        {
+          usd: toUsd(shareOf(w.amount, less.gave[sleeve])),
+          sleeve,
+          askedBps: less.asked[sleeve],
+          leftBps: less.asked[sleeve] - less.gave[sleeve],
+          from: aside.from,
+          to: aside.to,
+        },
+        lang,
+      );
+      reasons[sleeve].push(says);
+      asideSays.push(says);
+    }
+  // The limits the plan takes for the mix's stocks and crypto are said once on that sleeve, here in
+  // the order of its reasons. The share they are taken for is the one the plan sets out to hold, known
+  // once what is set aside and the floors below have had theirs: the sentence is written then.
+  const limitsAt = mix && table.growth > 0 ? reasons.growth.length : null;
 
   /** Moves up to `need` into one sleeve from the others, in turn. Returns the sleeves that gave. */
-  const raise = (to: Sleeve, need: number, from: Sleeve[]): Sleeve[] => {
+  const raise = (to: Sleeve, need: number, from: readonly Sleeve[]): Sleeve[] => {
     let left = need;
     return from.filter((sleeve) => {
       const take = Math.min(sized[sleeve], left);
@@ -80,8 +215,11 @@ export function sizeSleeves(w: World): SleevePlan {
   };
 
   // The date: a floor on dollar yield that rises as it nears. The person can switch this off.
-  if (sheet.rules.glide) {
-    const floor = floorAt(P.glideFloor, sheet.horizonMonths, (step) => step.dollarYieldBps);
+  if (sheet.rules.glide && !sheet.horizonOpen && w.goalMonth !== null) {
+    const floor = ofGoal(
+      floorAt(P.glideFloor, sheet.horizonMonths, (step) => step.dollarYieldBps),
+      true,
+    );
     if (sized.dollarYield < floor) {
       const gave = raise('dollarYield', floor - sized.dollarYield, ['growth', 'gold']);
       const why = reason(
@@ -95,19 +233,26 @@ export function sizeSleeves(w: World): SleevePlan {
 
   // How soon the money may be needed: a floor on cash. The sooner of the date and what they said.
   const said = sheet.limits?.mayNeedInMonths;
-  const dated = sheet.rules.glide ? sheet.horizonMonths : undefined;
+  const dated = sheet.rules.glide && !sheet.horizonOpen ? sheet.horizonMonths : undefined;
   const soonest: { months: number; rule: RuleId } | null =
     said !== undefined && (dated === undefined || said <= dated)
       ? { months: said, rule: 'CASH_MAY_NEED' }
       : dated !== undefined
         ? { months: dated, rule: 'CASH_NEAR_DATE' }
         : null;
+  let cashFloorBps = 0;
   if (soonest) {
-    const floor = floorAt(P.cashFloor, soonest.months, (step) => step.cashBps);
+    const floor = ofGoal(
+      floorAt(P.cashFloor, soonest.months, (step) => step.cashBps),
+      true,
+    );
     if (sized.cash < floor) {
-      const gave = raise('cash', floor - sized.cash, ['growth', 'gold', 'dollarYield']);
+      const gave = raise('cash', floor - sized.cash, CASH_FLOOR_FROM);
       const why = reason(soonest.rule, { floorBps: floor, months: soonest.months }, lang);
-      if (gave.length > 0) say(why, ['cash', ...gave]);
+      if (gave.length > 0) {
+        say(why, ['cash', ...gave]);
+        cashFloorBps = floor;
+      }
     }
   }
 
@@ -115,14 +260,39 @@ export function sizeSleeves(w: World): SleevePlan {
   const keep = sheet.limits?.mustKeepUsd ?? 0;
   if (keep > 0) {
     const floor = Math.min(BPS, bpsOf(toCents(keep), w.amount));
-    const kept = sized.dollarYield + sized.cash;
+    const kept = sized.dollarYield + sized.cash + safeYieldBps + setAsideBps;
     if (kept < floor) {
       const gave = raise('dollarYield', floor - kept, ['growth', 'gold']);
       const why = reason('MUST_KEEP', { floorBps: floor, keepUsd: keep }, lang);
       if (gave.length > 0) say(why, ['dollarYield', 'cash', ...gave]);
     }
   }
-  return { table, sized, reasons };
+  if (limitsAt !== null)
+    reasons.growth.splice(
+      limitsAt,
+      0,
+      reason(
+        'MIX_LIMITS',
+        {
+          sleeveBps: sized.growth,
+          risk: sheet.risk,
+          stockCapBps: P.capPerStockBps[sheet.risk] ?? 0,
+          issuerCapBps: P.capPerIssuerBps[sheet.risk] ?? 0,
+        },
+        lang,
+      ),
+    );
+  return {
+    table,
+    sized,
+    goalBps,
+    safeYieldBps,
+    themes,
+    setAsideBps,
+    cashFloorBps,
+    reasons,
+    asideSays,
+  };
 }
 
 export type Part = { asset: BasketAsset; bps: number };
@@ -160,8 +330,6 @@ function leftOut(w: World, rule: string, name: string): Reason {
   const { sheet, lang } = w;
   if (rule === 'NOT_FOR_GOAL')
     return reason('NOT_FOR_GOAL', { asset: name, goal: sheet.goal }, lang);
-  if (rule === 'NOT_IN_COUNTRY')
-    return reason('NOT_IN_COUNTRY', { asset: name, country: sheet.country }, lang);
   if (rule === 'EXCLUDED') return reason('EXCLUDED', { asset: name }, lang);
   return reason('NOT_ON_CHAIN', { asset: name, chain: w.chain }, lang);
 }
@@ -256,6 +424,25 @@ export function unitsOf(
   }));
 }
 
+/**
+ * A sentence about what the person holds of an underlying. It always says the whole holding, as
+ * `w.held` has it; where a theme counted part of it first (gate THEME-FIRST) and `counted` is the
+ * rest, it says both: "of the $3,000 you hold, $2,167 counts here".
+ */
+export function heldReason(
+  w: World,
+  rule: 'ALREADY_HELD' | 'ALREADY_HELD_NONE' | 'MORE_BECAUSE_HELD',
+  asset: string,
+  counted: number,
+): Reason {
+  const whole = w.held.get(asset) ?? counted;
+  if (whole <= counted) return reason(rule, { asset, heldUsd: toUsd(whole) }, w.lang);
+  return reason(`${rule}_PART`, { asset, totalUsd: toUsd(whole), heldUsd: toUsd(counted) }, w.lang);
+}
+
+/** What the goal sleeve counts of the person's holdings: all of them, or what the themes left. */
+export type GoalHeld = { byName: Map<string, number>; total: number };
+
 /** Cents that no unit took, with the name they were meant for and what kept them out. */
 export type Unbought = { names: string[]; cents: number; cause: Reason };
 
@@ -272,13 +459,14 @@ export function adjustForHoldings(
   units: Unit[],
   fixed: Sized[],
   removed: Removed[],
+  goalHeld: GoalHeld = { byName: w.held, total: w.heldTotal },
 ): Unbought[] {
-  if (w.heldTotal <= 0) return [];
+  if (goalHeld.total <= 0) return [];
   const all: Sized[] = [...units, ...fixed];
   const free = sum(all.map((u) => u.cents));
   if (free <= 0) return [];
-  const wealth = BigInt(w.amount + w.heldTotal);
-  const heldOf = (at: number) => w.held.get(units[at]?.name ?? '') ?? 0;
+  const wealth = BigInt(w.amount + goalHeld.total);
+  const heldOf = (at: number) => goalHeld.byName.get(units[at]?.name ?? '') ?? 0;
   const buys = all.map((u, at) => {
     const buy = BigInt(u.cents) * wealth - BigInt(heldOf(at)) * BigInt(w.amount);
     return buy > 0n ? buy : 0n;
@@ -292,13 +480,12 @@ export function adjustForHoldings(
     const held = heldOf(at);
     const now = scaled[at] ?? 0;
     if (u.cents <= 0 || held <= 0 || now >= u.cents) return;
-    const values = { asset: u.name, heldUsd: toUsd(held) };
-    larger.push(reason('MORE_BECAUSE_HELD', values, w.lang));
+    larger.push(heldReason(w, 'MORE_BECAUSE_HELD', u.name, held));
     if (now <= 0) {
-      const why = reason('ALREADY_HELD_NONE', values, w.lang);
+      const why = heldReason(w, 'ALREADY_HELD_NONE', u.name, held);
       none.set(u, why);
       removed.push({ ref: u.name, reasons: [why] });
-    } else u.reasons.push(reason('ALREADY_HELD', values, w.lang));
+    } else u.reasons.push(heldReason(w, 'ALREADY_HELD', u.name, held));
   });
   // When the person holds enough of everything, nothing is bought, and no unit grew: each unit's
   // cents are handed back, with the holding that kept them out.

@@ -1,13 +1,13 @@
 # Goal showcase case (marketing)
 > Type: custom | Component: `<ShowcaseCase>` | Source: landing prototype `.case` (Mariana / trip fund, Diego / mountain season) | Revised 2026-10-08 (honey on night)
 
-A sample person, their goal in their own words, and the plan cut for it: photo + prompt + plan panel (sheet chips, KPIs, chart, legs, exit line) + the sample marking. It shows *the same pieces fit differently for different people*. **Everything in it is sample.**
+A sample person, their goal in their own words, and the plan cut for it: the plan drawn as a joint + prompt + plan panel (sheet chips, KPIs, chart, legs, exit line) + the sample marking. It shows *the same pieces fit differently for different people*. **Everything in it is sample.**
 
 ## Anatomy
 
 ```
 ┌──────────────────────┬────────────────────────────────────────────────────┐ 1px --border, 10px radius, bg --card
-│ [photo]              │ Trip fund · Jan–Mar 2029                            │ pane head: Inter 600 18px + sub (muted)
+│ [plan as a joint]    │ Trip fund · Jan–Mar 2029                            │ pane head: Inter 600 18px + sub (muted)
 │                      │ Low risk · reachable in 1 day · income, so no stocks│
 │                      │ [target: $1,000/mo × 3] [horizon: 27 months] …     │ sheet chips (6px tags, mono 12px) = the constraint sheet
 ├──────────────────────┤ ┌ you save ┬ for ┬ earned on top ┬ odds of funding ┐│ KPI strip (card.md stat cells, Inter Tight 600)
@@ -24,7 +24,7 @@ Grid: 5 / 7 columns (≥ 980px), stacked below. One case per row, 32px between c
 
 ## Parts
 
-1. **Photo column**: `<img>` cover, no filter, no scrim. **The prompt sits on a solid plate below the photo**, not on it: `who` line (Plex Mono 12px, `--tf-honey-text`) + the quote (Inter Tight 600, 20–23px, −0.015em, typographic quotes). No serif. Photo credit / "placeholder · generated" as a caption under the image in Plex Mono 12px (not overlaid).
+1. **Plan column** (gate `PLAN-JOINT`): the case's plan drawn as a joint in the hero's ink (`JOINT-3D`), not a photograph: one post stacked from the plan's parts, each layer as tall as its share and drawn in the part's legend colour (`--chart-1`…`4`), each set on the one below by a tenon whose hidden length is dashed, with a hairline reveal at each joint; a leader from each layer to its share and name in Plex Mono, in one aligned column kept inside the drawing; a long name wraps at a word, never smaller than 12 px on a phone. Outline 1.5 px, other lines 0.85 px. Its parts are read from the same case data as the legend and the chart. The layers come together from a little apart (≈ 1 s) when the card comes into view; never with reduced motion. Each layer is a part the reader can point at (Thom, Oct 6): a mouse over it, a tap, or the keyboard (one tab stop; the arrows step through the layers; Escape lets go) lifts it a few pixels out of the stack, brightens it and dims the rest, and lights the same part in the parts list and in the trip chart's bars; a row of the list lights its layer. With reduced motion only the colours change. No caption. **The prompt sits on a solid plate above the drawing**, not on it: `who` line (Plex Mono 12px, `--primary`) + the quote (Newsreader 400, 20–23px, typographic quotes). This is the case's one serif line.
 2. **Pane head**: title (Inter 600 18px), sub-line muted, the case keeps a 6px hatched left edge (frame placement); no badge (gate MOCK-QUIET).
 3. **Sheet chips**: the constraint sheet in compact form, `key: value`, Plex Mono 12px, `bg-muted`, 1px `--border`, **6px radius** (tags, not pills: they are not interactive). Not interactive.
 4. **KPI strip**: [card.md](./card.md) stat cells joined by hairlines; values in Inter Tight 600 (`text-figure-lg` at ≥ 980px, `text-b-kpi` below); 4 columns, 2×2 below 620px. Rates, prices and anything derived from yields ("earned on top") carry a hatched pin; estimates say "estimate" in the unit slot. Odds are labelled "estimate", never "chance to win".
@@ -43,9 +43,9 @@ Grid: 5 / 7 columns (≥ 980px), stacked below. One case per row, 32px between c
 
 | Prototype | Spec |
 |---|---|
-| Prompt text on the photo over a `linear-gradient` scrim | Prompt on a solid plate below the photo (no text on photographs, no gradient scrims; the glow is the only gradient and sits behind heroes, not on photos) |
-| `photo-src` label overlaid on the photo | Caption below the image |
-| `filter: saturate(.9) contrast(1.02)` | No filter (unmodified photography; no duotones) |
+| Prompt text on the photo over a `linear-gradient` scrim | Prompt on a solid plate below the drawing (no text over the picture, no gradient scrims) |
+| `photo-src` label overlaid on the photo | No photograph: the plan drawn as a joint, no caption |
+| `filter: saturate(.9) contrast(1.02)` on the photo | No photograph, so no filter |
 | `.mock` = text on hatch with a background span | The case's hatched edge + the muted foot line "sample rates, not live" ([mock-plate.md](./mock-plate.md), gate MOCK-QUIET) |
 | `.pin` = 7px hatched circle | The square-pin glyph in its sample state (hatched, no pin, "sample figure") |
 | Eyebrow "TWO GOALS · TWO CUTS" uppercase | A caption eyebrow (12px uppercase is allowed for eyebrows) or sentence case Plex Mono; no all-caps word in running text |
@@ -57,12 +57,12 @@ Grid: 5 / 7 columns (≥ 980px), stacked below. One case per row, 32px between c
 
 ## Accessibility
 
-`<article aria-labelledby>` per case; photo `alt` describes the scene (not the person's finances); chart has text alternative; KPI values in text. Contrast: all text ≥ 4.5 on `--card` in both modes (ink 18.05 on white, text 16.15 on night-2; muted-l 5.16, muted 6.77); the honey base-case line is 1.99 on white and 9.16 on night-2, so on light the chart's data are also in the hidden table and the direct labels are in `--foreground`.
+`<article aria-labelledby>` per case; the drawing's label names each part and its share, as the legend does; chart has text alternative; KPI values in text. Contrast: all text ≥ 4.5 on `--card` in both modes (ink 18.05 on white, text 16.15 on night-2; muted-l 5.16, muted 6.77); the honey base-case line is 1.99 on white and 9.16 on night-2, so on light the chart's data are also in the hidden table and the direct labels are in `--foreground`.
 
 ## Do / don't
 
 | Do | Don't |
 |---|---|
 | A hatched edge and "sample rates, not live" on every case, hatched pins on every rate | One "sample data" note at the bottom of the page |
-| Prompt in the person's words, Inter Tight, on a solid plate | Overlaying text on the photo |
+| Prompt in the person's words, Inter Tight, on a solid plate | Overlaying text on the drawing |
 | Rates from fixtures with provenance | Rates typed into the JSX |

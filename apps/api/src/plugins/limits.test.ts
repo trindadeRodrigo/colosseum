@@ -168,6 +168,26 @@ describe('rate limits on /v1, as the server runs them', () => {
     ]).toEqual([200, '120', '87']);
   });
 
+  it('counts a funding read that plans a shared portfolio’s buy as a builder, and a plain one as a read', async () => {
+    const a = data.track(await person(issuer));
+    const plain = await send('GET', '/v1/funding', { headers: a.headers });
+    expect(plain.headers['ratelimit-limit']).toBe('120');
+    // Whatever the answer: a request the planner refuses is still a request.
+    const planned = () =>
+      send('GET', '/v1/funding?amountUsd=10&family=no-such-portfolio', { headers: a.headers });
+    const first = await planned();
+    expect(first.headers['ratelimit-limit']).toBe('30');
+    await burst(29, planned);
+    expect((await planned()).statusCode).toBe(429);
+    // The builders' budget is shared: placing an order is out too, and a plain read is not.
+    const order = await send('POST', '/v1/orders', {
+      headers: a.headers,
+      payload: { type: 'buy', owner: a.owner, amountUsd: 10, family: 'no-such-portfolio' },
+    });
+    expect(order.statusCode).toBe(429);
+    expect((await send('GET', '/v1/funding', { headers: a.headers })).statusCode).not.toBe(429);
+  });
+
   it('applies to /v1 and to nothing else the API serves', async () => {
     for (const url of ['/health', '/risk/facts/methodology']) {
       const seen = await burst(150, () => send('GET', url));
@@ -292,6 +312,7 @@ describe('default deny for /v1', () => {
       ['GET', '/v1/orders', 404],
       // Every route but the config needs a person.
       ['GET', '/v1/me', 401],
+      ['GET', '/v1/me/withdrawals', 401],
       ['GET', '/v1/funding', 401],
       ['GET', '/v1/portfolio', 401],
       ['POST', '/v1/orders', 401],

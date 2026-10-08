@@ -15,6 +15,17 @@ describe('the web’s units for the mock’s cash token', () => {
       symbol: cash?.symbol,
       decimals: cash?.decimals,
     });
-    expect(cash?.symbol).toBe(MOCK_CASH_SYMBOL);
+    expect(cash?.symbol).toBe(MOCK_CASH_SYMBOL[chain]);
+  });
+});
+
+// Their decimals are the mock's; each goes by its slug in capitals, as the rest of the app names it.
+describe('the web’s units for the mock’s other tokens', () => {
+  it.each(['solana', 'robinhood', 'base'] as const)('are packages/chain-mock’s on %s', (chain) => {
+    const units = unitsFor(chain, true);
+    const listed = mockAssets(chain);
+    expect(Object.keys(units?.tokens ?? {}).sort()).toEqual(listed.map((a) => a.id).sort());
+    for (const asset of listed)
+      expect(units?.tokens[asset.id]?.decimals, asset.id).toBe(asset.decimals);
   });
 });

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mockAddress } from '@colosseum/chain-mock';
 import {
+  baskets,
   createDb,
   type Db,
   indexFamilies,
@@ -12,6 +13,7 @@ import {
   recipeVersions,
   seedChains,
   users,
+  vaultSnapshots,
   vaults,
 } from '@colosseum/db';
 import {
@@ -23,13 +25,16 @@ import {
   parseChainConfigs,
   parseFlags,
 } from '@colosseum/schemas';
-import { inArray, or } from 'drizzle-orm';
+import { type AnyColumn, inArray, or } from 'drizzle-orm';
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { buildApp } from '../app';
+import type { TestFundsSender } from '../faucet/test-funds';
+import type { IntakeModel } from '../llm';
 import { type ChainRegistry, createChainRegistry } from '../orders/chains';
 import type { PlanInputs } from '../orders/personalize';
 import { IDENTITY_TOKEN_HEADER, type TokenIssuer } from '../plugins/auth';
 import { LIMITS, type Limits } from '../plugins/limits';
+import type { LinkedPlanLimits } from '../routes/v1/baskets';
 
 // For tests only. Nothing the server runs imports this file: the tokens here are signed with a key
 // pair made in the test, and the app under test is handed that pair's public half as its only issuer.
@@ -64,9 +69,10 @@ export async function testIssuer(name: string): Promise<TestIssuer> {
 }
 
 /**
- * How a test person signed in, which is what decides their chain (gates ONE-CHAIN, CHAIN-PICK):
- * - `solana`: connected an outside Solana wallet. Their plans live on Solana.
- * - `robinhood`: connected an outside EVM wallet. Their plans live on Robinhood Chain.
+ * How a test person signed in, which is what decides the chain they start on (gates ONE-CHAIN,
+ * CHAIN-SWITCH):
+ * - `solana`: connected an outside Solana wallet. They are on Solana.
+ * - `robinhood`: connected an outside EVM wallet. They are on Robinhood Chain.
  * - `passkey`: made their wallets in the app, one of each family. No chain until they pick one.
  */
 export type PersonKind = 'solana' | 'robinhood' | 'passkey';
@@ -233,7 +239,7 @@ export async function testDb() {
   const families: string[] = [];
   return {
     db,
-    /** Remembers a person, so their orders, vault rows and picked chain are deleted at the end. */
+    /** Remembers a person, so their orders, vaults, plans and picked chain are deleted at the end. */
     track(p: Person) {
       owners.push(p.solana, p.evm);
       people.push(p.sub);
@@ -257,17 +263,22 @@ export async function testDb() {
     /**
      * A shared portfolio as the cache tables hold one: a family, its recipe on `chain`, and the
      * version in effect. Answers the slug a plan names it by, and a way to put another version in
-     * effect.
+     * effect. `named` gives it a slug and a name of the shelf ("the-seven", "The Seven") where a test
+     * needs one the person can name; it is deleted at the end like any other.
      */
-    async storeFamily(chain: ChainId, components: Component[]) {
+    async storeFamily(
+      chain: ChainId,
+      components: Component[],
+      named?: { slug: string; name: string },
+    ) {
       const familyId = randomUUID().replaceAll('-', '').padEnd(64, '0');
-      const slug = `test-${familyId.slice(0, 12)}`;
+      const slug = named?.slug ?? `test-${familyId.slice(0, 12)}`;
       families.push(familyId);
       await db.insert(indexFamilies).values({
         familyId,
         slug,
         nameKey: slug,
-        name: `Test ${slug}`,
+        name: named?.name ?? `Test ${slug}`,
         copy: '',
         creatorKind: 'platform',
         kind: 'index',
@@ -302,7 +313,70 @@ export async function testDb() {
       await publish(components);
       return { slug, publish };
     },
+    /** Remembers a shared portfolio a test published through the API, so its rows go at the end. */
+    trackFamily(familyId: string) {
+      families.push(familyId);
+    },
+    /** Remembers a plan a test made through the API with no person, one from a link, so it goes at the end. */
+    trackPlan(id: string) {
+      plans.push(id);
+    },
     async cleanUp() {
+      // First the plans people hold (`baskets`). A settled buy writes one: it names its person and its
+      // stored plan or shared portfolio, and the vault and every snapshot of the vault name it. So the
+      // snapshots go, then the vaults, then those plans, and only then what they named.
+      const userIds = people.length
+        ? (await db.select({ id: users.id }).from(users).where(inArray(users.privyId, people))).map(
+            (u) => u.id,
+          )
+        : [];
+      // The stored plans that go below: the ones a test stored, and the ones a person made.
+      const planIds = userIds.length
+        ? (
+            await db
+              .select({ id: proposals.id })
+              .from(proposals)
+              .where(inArray(proposals.userId, userIds))
+          ).map((p) => p.id)
+        : [];
+      planIds.push(...plans);
+      // A `where` with no clause would match every row, so a list with nothing in it adds none.
+      const among = (column: AnyColumn, ids: string[]) =>
+        ids.length ? [inArray(column, ids)] : [];
+      const held = [
+        ...among(baskets.userId, userIds),
+        ...among(baskets.proposalId, planIds),
+        ...among(baskets.familyId, families),
+      ];
+      const basketIds = held.length
+        ? (
+            await db
+              .select({ id: baskets.id })
+              .from(baskets)
+              .where(or(...held))
+          ).map((b) => b.id)
+        : [];
+      const snapshots = [
+        ...among(vaultSnapshots.owner, owners),
+        ...among(vaultSnapshots.basketId, basketIds),
+      ];
+      if (snapshots.length) await db.delete(vaultSnapshots).where(or(...snapshots));
+      const cached = [...among(vaults.owner, owners), ...among(vaults.basketId, basketIds)];
+      if (cached.length) await db.delete(vaults).where(or(...cached));
+      if (basketIds.length) await db.delete(baskets).where(inArray(baskets.id, basketIds));
+      // Before the people: a family a test published names its creator's user row.
+      if (families.length) {
+        const mine = await db
+          .select({ id: recipes.id })
+          .from(recipes)
+          .where(inArray(recipes.familyId, families));
+        const recipeIds = mine.map((r) => r.id);
+        if (recipeIds.length) {
+          await db.delete(recipeVersions).where(inArray(recipeVersions.recipeId, recipeIds));
+          await db.delete(recipes).where(inArray(recipes.id, recipeIds));
+        }
+        await db.delete(indexFamilies).where(inArray(indexFamilies.familyId, families));
+      }
       if (owners.length) {
         const mine = await db
           .select({ id: orders.id })
@@ -317,36 +391,13 @@ export async function testDb() {
           await db.delete(legs).where(inArray(legs.orderId, orderIds));
           await db.delete(orders).where(inArray(orders.id, orderIds));
         }
-        await db.delete(vaults).where(inArray(vaults.owner, owners));
       }
       if (people.length) {
         // The plans a person made through the API name them: those go before the person does.
-        const mine = await db
-          .select({ id: users.id })
-          .from(users)
-          .where(inArray(users.privyId, people));
-        if (mine.length)
-          await db.delete(proposals).where(
-            inArray(
-              proposals.userId,
-              mine.map((u) => u.id),
-            ),
-          );
+        if (userIds.length) await db.delete(proposals).where(inArray(proposals.userId, userIds));
         await db.delete(users).where(inArray(users.privyId, people));
       }
       if (plans.length) await db.delete(proposals).where(inArray(proposals.id, plans));
-      if (families.length) {
-        const mine = await db
-          .select({ id: recipes.id })
-          .from(recipes)
-          .where(inArray(recipes.familyId, families));
-        const recipeIds = mine.map((r) => r.id);
-        if (recipeIds.length) {
-          await db.delete(recipeVersions).where(inArray(recipeVersions.recipeId, recipeIds));
-          await db.delete(recipes).where(inArray(recipes.id, recipeIds));
-        }
-        await db.delete(indexFamilies).where(inArray(indexFamilies.familyId, families));
-      }
       await client.end();
     },
   };
@@ -369,10 +420,18 @@ export async function testApp(a: {
   env?: EnvLike;
   now?: () => Date;
   limits?: Limits;
+  /** The daily cap and keeping time of plans made from a link. */
+  linkedPlans?: LinkedPlanLimits;
   /** Wraps the registry, to make a chain misbehave. */
   wrap?: (registry: ChainRegistry) => ChainRegistry;
   /** The figures a plan is made with. Default: the server's reader of the stored ones. */
   planInputs?: PlanInputs;
+  /** The guided intake's model. Default: none (no key in a test's environment). */
+  intakeModel?: IntakeModel | null;
+  /** The test faucet's senders (POST /v1/testnet/fund). Default: none. */
+  testFunds?: TestFundsSender[];
+  /** Where the app's log lines go, for a test that reads them. Default: no log. */
+  logTo?: { write(line: string): void };
 }) {
   const env = a.env ?? {};
   const registry = createChainRegistry(parseFlags(env), parseChainConfigs(env), {
@@ -381,13 +440,17 @@ export async function testApp(a: {
   });
   const app = await buildApp({
     env,
+    ...(a.logTo ? { logTo: a.logTo } : {}),
     v1: {
       auth: a.issuer,
       chains: a.wrap ? a.wrap(registry) : registry,
       db: a.db,
       now: a.now,
       limits: a.limits ?? ROOMY,
+      ...(a.linkedPlans ? { linkedPlans: a.linkedPlans } : {}),
       ...(a.planInputs ? { planInputs: a.planInputs } : {}),
+      ...(a.intakeModel !== undefined ? { intakeModel: a.intakeModel } : {}),
+      ...(a.testFunds ? { testFunds: a.testFunds } : {}),
     },
   });
   return { app, registry };

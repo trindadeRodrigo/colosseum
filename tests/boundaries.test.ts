@@ -12,7 +12,7 @@ import {
 } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
 // The import rules of docs/vault/DESIGN-VAULT.md section 2, read from the import statements of every source
 // file under packages/ and apps/. scripts/ and the root tests/ may import anything and are not read.
@@ -63,6 +63,8 @@ const LAYOUT: Record<string, Row> = {
   // "As today": it mounts the /risk routes file of apps/api by a relative path.
   'apps/risk-api': { may: [SCHEMAS, DB, RISK, 'apps/api'] },
   'apps/keeper': { may: [SCHEMAS, BASKET, DB, SOLANA, EVM, MOCK] },
+  // The snapshot worker reads chains and writes what it read. It is not in MAY_SIGN: no signing entry.
+  'apps/snapshot': { may: [SCHEMAS, BASKET, DB, SOLANA, EVM, MOCK] },
   'apps/mcp': { may: [SDK] },
   'apps/web': { may: [SCHEMAS, SDK] },
 };
@@ -70,7 +72,7 @@ const LAYOUT: Record<string, Row> = {
 const RULES = {
   1: 'rule 1: schemas imports nothing but zod',
   2: 'rule 2: risk never imports engine, and basket imports only schemas',
-  3: 'rule 3: only apps/api and apps/keeper join logic, chains and the database',
+  3: 'rule 3: only apps/api, apps/keeper and apps/snapshot join logic, chains and the database',
   4: 'rule 4: apps/web and apps/mcp never import db, engine or a chain package',
   5: 'rule 5: only apps/keeper and scripts/ import a signing entry',
   6: 'rule 6: no new library reads process.env',
@@ -113,15 +115,23 @@ type Exemption = { since: string; why: string; covers: readonly (readonly [strin
 // which moved sign.ts and wallet.ts of chain-solana behind "./server".
 const EXEMPT: readonly Exemption[] = [];
 
-// Rule 5 has one standing allowance, and it is not an exemption: it is held to a condition. The
-// structurer's server-signing route stays in apps/api, switched off, not deleted (section 2, the
-// add-only rule). The file below may import a signing entry because nothing loads it but one dynamic
-// import in `loader`, inside an `if` on the flag: with LEGACY_STRUCTURER off the file is never loaded,
-// so no registered route reaches a signer and no key-reading code is in the process. A static import of
-// the file, a second loader, or the import moved out of the `if` fails the test. When the vault path
-// replaces this route the file goes, and this entry with it.
+// Rule 5 has two standing allowances, and they are not exemptions: each is held to a condition, and
+// they are listed in the order the scan finds them. A file below may import a signing entry because
+// nothing loads it but one dynamic import in `loader`, inside an `if` on the flag: with the flag off
+// the file is never loaded, so no registered route reaches a signer and no key-reading code is in the
+// process. A static import of the file, a second loader, or the import moved out of the `if` fails the
+// test. The structurer's server-signing route stays in apps/api, switched off, not deleted (section 2,
+// the add-only rule); when the vault path replaces it the file goes, and its entry with it.
 type BehindAFlag = { loader: string; flag: string; why: string };
 const BEHIND_A_FLAG: Record<string, BehindAFlag> = {
+  // The test faucet's signer (POST /v1/testnet/fund, decided Oct 6): `faucetKeys` is set only when a
+  // faucet key is configured for a chain on its real adapter on a test network, so with no key, or on
+  // mainnet, the file is never loaded.
+  'apps/api/src/faucet/signer.ts': {
+    loader: 'apps/api/src/routes/v1/index.ts',
+    flag: 'faucetKeys',
+    why: 'The test faucet sends test tokens and gas from a test-network key held by the server; it signs nothing on mainnet.',
+  },
   'apps/api/src/routes/monitor-rebalance.ts': {
     loader: 'apps/api/src/app.ts',
     flag: 'flags.legacyStructurer',
@@ -129,7 +139,11 @@ const BEHIND_A_FLAG: Record<string, BehindAFlag> = {
   },
 };
 /** Where an app starts. What these load statically is what is in the process whatever the flags say. */
-const ENTRY_POINTS = ['apps/api/src/server.ts', 'apps/risk-api/src/server.ts'];
+const ENTRY_POINTS = [
+  'apps/api/src/server.ts',
+  'apps/risk-api/src/server.ts',
+  'apps/snapshot/src/main.ts',
+];
 
 // Rule 6 says "new". These read process.env before the rule existed (2026-10-02): the entry points and the
 // config of db, the RPC, Jupiter and wallet settings of chain-solana, the LLM settings of the parser.
@@ -725,21 +739,38 @@ function sweep(): void {
 const nameOf = (dir: string) =>
   (JSON.parse(readFileSync(join(ROOT, dir, 'package.json'), 'utf8')) as { name: string }).name;
 
+/** The planted files not yet removed: `afterEach` removes any a test left, however it ended. */
+const planted = new Set<string>();
+
+/**
+ * A self-check that plants a file runs the checker over the whole checkout, which can take longer than
+ * vitest's default 5 s on a loaded machine (it timed out in CI on #81). Its own limit, so a slow run is
+ * not a failure; what it asserts is unchanged.
+ */
+const PLANT_TIMEOUT_MS = 30_000;
+
 /** Plants `source` (after the marker line), runs the checker, removes the file. */
 function withPlant(source: string): { file: string; caught: Violation[] } {
   const file = `${PLANT_DIR}/boundary-plant-${randomBytes(6).toString('hex')}.ts`;
   const full = inside(file);
   removeLater(full);
+  planted.add(full);
   writeFileSync(full, PLANT_MARK + source, { flag: 'wx' });
   try {
     return { file, caught: check(ROOT, file).filter((v) => v.file === file) };
   } finally {
     rmSync(full, { force: true });
+    planted.delete(full);
   }
 }
 
 describe('import boundaries (DESIGN-VAULT.md section 2)', () => {
   sweep();
+  // A test that timed out or threw before its `finally` ran still leaves no planted file behind.
+  afterEach(() => {
+    for (const full of planted) rmSync(full, { force: true });
+    planted.clear();
+  });
   const scanned = scan(ROOT);
   const found = scanned.violations;
 
@@ -805,39 +836,51 @@ describe('import boundaries (DESIGN-VAULT.md section 2)', () => {
       const reach = [dir, ...row.may];
       const joins = reach.includes(DB) && reach.some((d) => CHAINS.includes(d));
       expect(joins, `${dir} joins a chain and the database`).toBe(
-        dir === 'apps/api' || dir === 'apps/keeper',
+        dir === 'apps/api' || dir === 'apps/keeper' || dir === 'apps/snapshot',
       );
     }
     for (const dir of ['apps/web', 'apps/mcp'])
       for (const banned of [DB, ENGINE, ...CHAINS]) expect(LAYOUT[dir]?.may).not.toContain(banned);
   });
 
-  it('self-check: catches an import planted in a watched folder, then removes it', () => {
-    const { file, caught } = withPlant(
-      `import { REGISTRY } from '${nameOf(ENGINE)}';\nexport const n = REGISTRY.length;\n`,
-    );
-    expect(caught).toEqual([{ file, line: 2, kind: 'import', target: ENGINE, rule: 3 }]);
-    expect(existsSync(inside(file))).toBe(false);
-  });
+  it(
+    'self-check: catches an import planted in a watched folder, then removes it',
+    () => {
+      const { file, caught } = withPlant(
+        `import { REGISTRY } from '${nameOf(ENGINE)}';\nexport const n = REGISTRY.length;\n`,
+      );
+      expect(caught).toEqual([{ file, line: 2, kind: 'import', target: ENGINE, rule: 3 }]);
+      expect(existsSync(inside(file))).toBe(false);
+    },
+    PLANT_TIMEOUT_MS,
+  );
 
-  it('self-check: catches a planted `import type` too', () => {
-    const { file, caught } = withPlant(
-      `// a comment first\nimport type { Asset } from '${nameOf(ENGINE)}';\nexport type A = Asset;\n`,
-    );
-    expect(caught).toEqual([{ file, line: 3, kind: 'import', target: ENGINE, rule: 3 }]);
-    expect(existsSync(inside(file))).toBe(false);
-  });
+  it(
+    'self-check: catches a planted `import type` too',
+    () => {
+      const { file, caught } = withPlant(
+        `// a comment first\nimport type { Asset } from '${nameOf(ENGINE)}';\nexport type A = Asset;\n`,
+      );
+      expect(caught).toEqual([{ file, line: 3, kind: 'import', target: ENGINE, rule: 3 }]);
+      expect(existsSync(inside(file))).toBe(false);
+    },
+    PLANT_TIMEOUT_MS,
+  );
 
-  it('self-check: catches a signing entry planted outside the keeper', () => {
-    const { file, caught } = withPlant(
-      `import { loadKeypair } from '${nameOf(SOLANA)}/server';\nexport const k = loadKeypair;\n`,
-    );
-    expect(caught).toEqual([
-      { file, line: 2, kind: 'import', target: SOLANA, rule: 3 },
-      { file, line: 2, kind: 'signing', target: SOLANA, rule: 5 },
-    ]);
-    expect(existsSync(inside(file))).toBe(false);
-  });
+  it(
+    'self-check: catches a signing entry planted outside the keeper',
+    () => {
+      const { file, caught } = withPlant(
+        `import { loadKeypair } from '${nameOf(SOLANA)}/server';\nexport const k = loadKeypair;\n`,
+      );
+      expect(caught).toEqual([
+        { file, line: 2, kind: 'import', target: SOLANA, rule: 3 },
+        { file, line: 2, kind: 'signing', target: SOLANA, rule: 5 },
+      ]);
+      expect(existsSync(inside(file))).toBe(false);
+    },
+    PLANT_TIMEOUT_MS,
+  );
 
   it('self-check: a flagged file loaded any other way is a problem', () => {
     const file = 'apps/api/src/routes/monitor-rebalance.ts';
@@ -953,6 +996,9 @@ describe('import boundaries: each rule bites', () => {
     'apps/keeper/src/main.ts':
       "import '@x/db';\nimport '@x/basket';\nimport { sign } from '@x/chain-solana/server';\nimport 'viem/accounts';\nimport '@x/engine';",
     'apps/risk-api/src/server.ts': "import '@x/db';\nimport '@x/risk';\nimport '@x/chain-evm';",
+    // The snapshot worker has the keeper's row and not its right to sign.
+    'apps/snapshot/src/main.ts':
+      "import '@x/db';\nimport '@x/chain-mock';\nimport { sign } from '@x/chain-solana/server';",
     'apps/mcp/src/server.ts': "import '@x/sdk';\nconst engine = require('@x/engine');",
     'apps/web/app/page.tsx':
       "import type { Plan } from '@x/schemas';\nimport { X } from '@/components/X';\nimport type { Db } from '@x/db';\nimport '@x/chain-solana/server';\nexport default () => <X />;",
@@ -993,6 +1039,7 @@ describe('import boundaries: each rule bites', () => {
         `apps/keeper/src/main.ts:5 import ${ENGINE} (${RULES.table})`,
         `apps/mcp/src/server.ts:2 import ${ENGINE} (${RULES[4]})`,
         `apps/risk-api/src/server.ts:3 import ${EVM} (${RULES[3]})`,
+        `apps/snapshot/src/main.ts:3 signing ${SOLANA} (${RULES[5]})`,
         `apps/web/app/page.tsx:3 import ${DB} (${RULES[4]})`,
         `apps/web/app/page.tsx:4 import ${SOLANA} (${RULES[4]})`,
         `apps/web/app/page.tsx:4 signing ${SOLANA} (${RULES[5]})`,

@@ -1,4 +1,11 @@
-import { BasketProposal, type BasketSheet, RiskRollUp } from '@colosseum/schemas';
+import {
+  BasketProposal,
+  type BasketSheet,
+  PlanCandidate,
+  PlanCandidateId,
+  PlanCandidateNotShown,
+  RiskRollUp,
+} from '@colosseum/schemas';
 import { type ApiFetch, signInRefusal } from '../account/person';
 
 // "Build my plan": one call, with the shapes of DESIGN-VAULT section 3.6. The route is not in the API
@@ -24,7 +31,20 @@ import { type ApiFetch, signInRefusal } from '../account/person';
 export const PERSONALIZE_PATH = '/v1/baskets/personalize';
 
 export type BuildOutcome =
-  | { kind: 'built'; id: string; proposal: BasketProposal; rollUp: RiskRollUp | null }
+  | {
+      kind: 'built';
+      id: string;
+      proposal: BasketProposal;
+      rollUp: RiskRollUp | null;
+      /**
+       * The plans of the same goal made three ways (gate THREE-PLANS), each stored with its own id,
+       * which a buy names: at most one of each, in the fixed order Cover, Spread, Carry, none picked.
+       * Empty where the server sent none: then the plan above is the one plan.
+       */
+      candidates: PlanCandidate[];
+      /** The candidates the engine left out, each with its reason. */
+      notShown: PlanCandidateNotShown[];
+    }
   /** The route is not there: the API has nothing that builds a plan yet. */
   | { kind: 'unavailable' }
   /** The server does not know this sign-in any more (401), or does not let it build (403). */
@@ -35,6 +55,8 @@ export type BuildOutcome =
   | { kind: 'no-chain' }
   /** The server is the final gate and refused the sheet. */
   | { kind: 'refused' }
+  /** The goal or a withdrawal is in another currency than US dollars (gate USD-ONLY). */
+  | { kind: 'currency' }
   /** A valid sheet, and no plan fits it. */
   | { kind: 'no-plan' }
   | { kind: 'busy' }
@@ -63,10 +85,21 @@ const answers = (asked: BasketSheet, got: BasketSheet) =>
   got.chains.length === asked.chains.length &&
   got.chains.every((chain, i) => chain === asked.chains[i]);
 
-export async function buildPlan(apiFetch: ApiFetch, sheet: BasketSheet): Promise<BuildOutcome> {
+/**
+ * The same plan for someone who is not signed in (`POST /v1/baskets/propose`, which asks for no
+ * sign-in): a visitor can talk and see a plan. It is stored as a plan made from a link, and is built
+ * again as the person's own once they sign in (features/invest/InvestScreen.tsx).
+ */
+export const PROPOSE_PATH = '/v1/baskets/propose';
+
+export async function buildPlan(
+  apiFetch: ApiFetch,
+  sheet: BasketSheet,
+  path: typeof PERSONALIZE_PATH | typeof PROPOSE_PATH = PERSONALIZE_PATH,
+): Promise<BuildOutcome> {
   let res: Response;
   try {
-    res = await apiFetch(PERSONALIZE_PATH, {
+    res = await apiFetch(path, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ sheet }),
@@ -85,6 +118,7 @@ export async function buildPlan(apiFetch: ApiFetch, sheet: BasketSheet): Promise
   // and a different one for each thing the person can do about it.
   if (res.status >= 400 && res.status < 500) {
     if (answer.code === 'GOAL_NOT_ACHIEVABLE') return { kind: 'no-plan' };
+    if (answer.code === 'CURRENCY_UNSUPPORTED') return { kind: 'currency' };
     if (res.status === 401 || res.status === 403) return { kind: 'signed-out' };
     if (res.status === 409) return { kind: 'no-chain' };
     return { kind: 'refused' };
@@ -96,10 +130,32 @@ export async function buildPlan(apiFetch: ApiFetch, sheet: BasketSheet): Promise
   // A plan for another goal, amount or chain is not the answer to what was asked: it is not shown.
   if (!answers(sheet, proposal.data.sheet)) return { kind: 'unreadable' };
   const rollUp = RiskRollUp.safeParse(answer.rollUp);
+  // The candidates, where the server sends them: each once, each its own stored plan, and every one
+  // the answer to what was asked. One that is not is not shown, and neither is the rest.
+  let candidates: PlanCandidate[] = [];
+  if (answer.candidates !== undefined) {
+    const read = PlanCandidate.array().min(1).max(3).safeParse(answer.candidates);
+    if (!read.success) return { kind: 'unreadable' };
+    const names = read.data.map((c) => c.candidate);
+    const ids = read.data.map((c) => c.id);
+    if (new Set(names).size !== names.length || new Set(ids).size !== ids.length)
+      return { kind: 'unreadable' };
+    if (!read.data.every((c) => answers(sheet, c.proposal.sheet))) return { kind: 'unreadable' };
+    // The fixed order, whatever order they came in: none is first because the server put it first.
+    const order = PlanCandidateId.options;
+    candidates = [...read.data].sort(
+      (a, b) => order.indexOf(a.candidate) - order.indexOf(b.candidate),
+    );
+  }
+  const notShown = PlanCandidateNotShown.array()
+    .max(2)
+    .safeParse(answer.candidatesNotShown ?? []);
   return {
     kind: 'built',
     id,
     proposal: proposal.data,
     rollUp: rollUp.success ? rollUp.data : null,
+    candidates,
+    notShown: notShown.success ? notShown.data : [],
   };
 }

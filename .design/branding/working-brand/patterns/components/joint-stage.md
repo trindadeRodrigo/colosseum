@@ -1,7 +1,7 @@
 # Joint stage (pinned hero)
 > Type: custom | Component: `<JointStage>` | Source: landing prototype `.stage` / `.sticky` / `#scene` (three.js) | Revised 2026-10-08 (honey on night)
 
-The landing hero: the through-tenon joint sits pinned behind the copy and **seats as you scroll steps 01–03**, then the stage releases and scrolls away with the page. It is the brand's lock animation (H2) driven by the reader, not by a timer.
+The landing hero: one slender pinned through-tenon (post, rail, pin), drawn as a joiner's drawing in the brand's ink (gate `JOINT-3D`), sits pinned behind the copy and **seats as you scroll steps 01–03**, then the stage releases and scrolls away with the page. It is the brand's lock animation (H2) driven by the reader, not by a timer.
 
 ## Anatomy
 
@@ -32,16 +32,17 @@ section.stage
 
 | Condition | Render |
 |---|---|
-| WebGL available, motion allowed | three.js scene (pinned version, self-hosted, not a CDN `<script>`), lazy-initialised when the stage is near the viewport; pixel ratio ≤ 2; pause rendering when off-screen or tab hidden |
-| `prefers-reduced-motion: reduce` | **No scroll-linked motion.** Show the 2D drawing in two static states: exploded for the hero/steps 01–02, seated from step 03 (120ms crossfade). Steps scroll normally; no sticky |
-| No WebGL / JS off / low-power (`navigator.connection.saveData`) | Static 2D seated drawing (SVG), no sticky. Copy fully readable |
+| WebGL available, motion allowed | three.js scene (pinned version, self-hosted, not a CDN `<script>`), lazy-initialised after the first paint, faded in on its first frame; pixel ratio ≤ 2 (1.5 on phones and small GPUs); pause rendering when off-screen or tab hidden. The joint is drawn as a joiner's drawing: fills in the ground colour, a heavier outline, hidden edges dashed (gate `JOINT-3D`) |
+| `prefers-reduced-motion: reduce` | **No scroll-linked motion.** The seated drawing, as an SVG still cut from the same scene, stands beside the copy. Steps scroll normally; no sticky |
+| No WebGL (or only a software one), or low-power (`navigator.connection.saveData`) | The same drawing as SVG stills in the pinned layer: apart for the hero and steps 01–02, seated from step 03 (crossfade). Copy fully readable |
+| JS off | The seated SVG still |
 | Print | the static drawing |
 
 ## Constraints applied
 
 - **No ambient loops**: the prototype's infinite `scroll-cue` animation becomes a static 1px line + "Scroll to see it fit" (or plays once on load and stops).
-- **No gradient scrim behind copy on mobile**: the prototype's `linear-gradient` plate under hero/step copy becomes a solid `--background` plate (opaque) with 24px padding, anchored to the bottom of the viewport. The glow stays behind the joint, never behind text.
-- Wood textures and wood colours belong to the 3D object only, never to the UI. No wood-grain backgrounds.
+- **No gradient scrim behind copy on mobile**: the prototype's `linear-gradient` plate under hero/step copy becomes a solid `--background` plate (opaque) with 24px padding, anchored to the bottom of the viewport. The honey glow stays behind the stage, never behind copy.
+- The drawing's ink belongs to the joint only, never to the UI background. Scene background = `--background` (night `#0C0D12`, the joint in the text colour `#F3F1EC` with the rail in honey; paper in light mode, the joint in ink `#15161C` with the rail in honey-deep `#D9881B`), with `--tf-glow` behind the stage. No wood-grain backgrounds.
 - No parallax on other elements; only the joint moves, on its own axes. No bounce, no overshoot.
 - No figures in the stage, so no pins; the stage makes no performance claims.
 
