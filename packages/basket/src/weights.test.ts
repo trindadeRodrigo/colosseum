@@ -1,5 +1,6 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { personWeights, scaleToWholeBps, splitBps } from './weights';
+import { personWeights, type StatedShare, scaleToWholeBps, splitBps } from './weights';
 
 const sum = (weights: readonly number[]) => weights.reduce((n, w) => n + w, 0);
 
@@ -93,5 +94,77 @@ describe('the weights of a person’s picks: equal unless they stated shares', (
       { members: [0], min: 0.5, max: 100 },
     ])
       expect(() => personWeights(2, [bad])).toThrow(RangeError);
+  });
+
+  it('does not depend on the order the shares were stated: "at least 20% AAPL and 60% NVDA"', () => {
+    const atLeast = { members: [0], min: 2000, max: 10000 };
+    const sixty = { members: [1], min: 6000, max: 6000 };
+    for (const order of [
+      [atLeast, sixty],
+      [sixty, atLeast],
+    ])
+      expect(personWeights(4, order)).toEqual({
+        weights: [2000, 6000, 1000, 1000],
+        unmet: [],
+        scaled: false,
+      });
+  });
+});
+
+describe('the weights do not depend on the order of the shares (property)', () => {
+  const share = (count: number) =>
+    fc
+      .record({
+        members: fc.uniqueArray(fc.integer({ min: 0, max: count - 1 }), {
+          minLength: 0,
+          maxLength: count,
+        }),
+        kind: fc.constantFrom('exact', 'min', 'max', 'both'),
+        a: fc.integer({ min: 0, max: 10000 }),
+        b: fc.integer({ min: 0, max: 10000 }),
+      })
+      .map(({ members, kind, a, b }): StatedShare => {
+        const [low, high] = a <= b ? [a, b] : [b, a];
+        if (kind === 'exact') return { members, min: a, max: a };
+        if (kind === 'min') return { members, min: a, max: 10000 };
+        if (kind === 'max') return { members, min: 0, max: a };
+        return { members, min: low, max: high };
+      });
+  const input = fc
+    .integer({ min: 1, max: 17 })
+    .chain((count) =>
+      fc.tuple(
+        fc.constant(count),
+        fc.array(share(count), { maxLength: 4 }),
+        fc.infiniteStream(fc.nat()),
+      ),
+    );
+
+  it('gives the same weights and the same unmet shares in any order, always summing to 10,000', () => {
+    fc.assert(
+      fc.property(input, ([count, stated, stream]) => {
+        const base = personWeights(count, stated);
+        expect(sum(base.weights)).toBe(10000);
+        expect(base.weights.every((w) => Number.isInteger(w) && w >= 0)).toBe(true);
+        // A shuffle (from the stream) and the reverse.
+        const random = stated.map((_, i) => i);
+        for (let i = random.length - 1; i > 0; i -= 1) {
+          const j = (stream.next().value as number) % (i + 1);
+          [random[i], random[j]] = [random[j] as number, random[i] as number];
+        }
+        for (const order of [stated.map((_, i) => stated.length - 1 - i), random]) {
+          const moved = personWeights(
+            count,
+            order.map((i) => stated[i] as StatedShare),
+          );
+          expect(moved.weights).toEqual(base.weights);
+          expect(moved.scaled).toBe(base.scaled);
+          expect(moved.unmet.map((i) => order[i]).sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual(
+            base.unmet,
+          );
+        }
+      }),
+      { numRuns: 3000 },
+    );
   });
 });

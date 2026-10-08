@@ -38,14 +38,18 @@ export function scaleToWholeBps(shares: readonly number[]): number[] {
 export type StatedShare = { members: readonly number[]; min: number; max: number };
 
 /**
- * The weights of `count` picks under the person's stated shares. With none, an equal split. Otherwise,
- * in the order the person stated them, each share that the current weights do not already meet fixes its
- * lines at the nearest total it allows, split equally among its lines still free, and the free lines
- * share what is left equally. When the person gave exact shares, two or more, that cover every pick
- * once ("70% Tesla, 30% Nvidia"), those shares are scaled to the whole whatever they add up to, and
- * `scaled` says so; one exact share on every pick ("70% Tesla" with Tesla alone) is not scaled, it is
- * unmet.
- * `unmet` lists the stated shares, by index, that the picks cannot meet: the caller asks the person.
+ * The weights of `count` picks under the person's stated shares. With none, an equal split.
+ *
+ * When the person gave exact shares, two or more, that cover every pick once ("70% Tesla, 30% Nvidia"),
+ * those shares are scaled to the whole whatever they add up to, and `scaled` says so. One exact share on
+ * every pick ("70% Tesla" with Tesla alone) is not scaled: it is unmet.
+ *
+ * Otherwise the result does not depend on the order the shares were stated. Exact shares are applied
+ * first, then minimums, then maximums, each kind in one fixed order (by its picks, then its bounds). An
+ * exact share fixes its free picks at its total; a bound that the current weights break moves its free
+ * picks to the nearest total it allows. The picks no share fixed share what is left equally. The bounds
+ * are passed over again until none moves, since lowering one share raises the others.
+ * `unmet` lists the stated shares, by their index in `stated`, that the picks cannot meet.
  */
 export function personWeights(
   count: number,
@@ -61,16 +65,19 @@ export function personWeights(
       share.members.some((index) => !Number.isInteger(index) || index < 0 || index >= count)
     )
       throw new RangeError('a stated share is whole basis points over picks that exist');
-  const exact = stated.filter((share) => share.min === share.max && share.members.length > 0);
+  const isExact = (share: StatedShare) => share.min === share.max;
+  const exact = stated.filter((share) => isExact(share) && share.members.length > 0);
   const covered = new Set(exact.flatMap((share) => share.members));
   const disjoint = covered.size === exact.reduce((n, share) => n + share.members.length, 0);
   if (exact.length >= 2 && exact.length === stated.length && disjoint && covered.size === count) {
-    // Every pick has the share the person gave it: those shares, scaled to the whole.
-    const groups = scaleToWholeBps(exact.map((share) => share.min));
+    // Every pick has the share the person gave it: those shares, scaled to the whole, in pick order.
+    const byPick = [...exact].sort((a, b) => Math.min(...a.members) - Math.min(...b.members));
+    const groups = scaleToWholeBps(byPick.map((share) => share.min));
     const weights = Array<number>(count).fill(0);
-    exact.forEach((share, i) => {
-      splitBps(share.members.length, groups[i]).forEach((weight, j) => {
-        weights[share.members[j] as number] = weight;
+    byPick.forEach((share, i) => {
+      const members = [...share.members].sort((a, b) => a - b);
+      splitBps(members.length, groups[i]).forEach((weight, j) => {
+        weights[members[j] as number] = weight;
       });
     });
     const sum = exact.reduce((n, share) => n + share.min, 0);
@@ -90,25 +97,42 @@ export function personWeights(
   };
   const total = (weights: readonly number[], members: readonly number[]) =>
     members.reduce((n, i) => n + (weights[i] ?? 0), 0);
-  for (const share of stated) {
-    const now = total(current(), share.members);
+  /** Fix the share's free picks at the total it needs; false when it needs nothing or cannot. */
+  const apply = (share: StatedShare, always: boolean): boolean => {
+    const weights = current();
+    const now = total(weights, share.members);
     const target = Math.min(share.max, Math.max(share.min, now));
-    if (target === now && share.min !== share.max) continue;
+    if (target === now && !always) return false;
     const free = share.members.filter((i) => !locked.has(i));
-    const fixed = total(
-      current(),
-      share.members.filter((i) => locked.has(i)),
-    );
-    const budget = target - fixed;
+    const budget =
+      target -
+      total(
+        weights,
+        share.members.filter((i) => locked.has(i)),
+      );
     const left = WHOLE - [...locked.values()].reduce((n, w) => n + w, 0);
     const others = count - locked.size - free.length;
-    // Nothing free to move, more than is left, or a remainder with no other line to hold it: unmet.
+    // Nothing free to move, more than is left, or a remainder with no other pick to hold it: unmet.
     if (free.length === 0 || budget < 0 || budget > left || (others === 0 && budget !== left))
-      continue;
+      return false;
     splitBps(free.length, budget).forEach((weight, j) => {
       locked.set(free[j] as number, weight);
     });
-  }
+    return true;
+  };
+  const kind = (share: StatedShare) => (isExact(share) ? 0 : share.min > 0 ? 1 : 2);
+  const key = (share: StatedShare) =>
+    [
+      kind(share),
+      [...share.members].sort((a, b) => a - b).join(','),
+      String(share.min).padStart(5, '0'),
+      String(share.max).padStart(5, '0'),
+    ].join('|');
+  const ordered = [...stated].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+  for (const share of ordered) if (kind(share) === 0) apply(share, true);
+  const bounds = ordered.filter((share) => kind(share) !== 0);
+  for (let pass = 0; pass <= bounds.length; pass += 1)
+    if (!bounds.map((share) => apply(share, false)).some(Boolean)) break;
   const weights = current();
   const unmet = stated.flatMap((share, i) => {
     const sum = total(weights, share.members);
