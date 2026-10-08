@@ -733,12 +733,30 @@ describe('conversation context and grounded replies through the provider stub', 
       respond(value);
       expect(
         await replyToVaultConversation(turn([{ who: 'person', text }]), context, offlineModel()),
-      ).toEqual({
-        kind: 'failure',
-        reason: 'invalid',
-        detail,
-        repair: { failed: detail, outcome: detail },
-      });
+      ).toMatchObject(
+        // A figure the repair still states costs its sentence, here the whole reason; the rest is refused.
+        detail === 'prose_figure'
+          ? {
+              kind: 'reply',
+              repair: { failed: detail, outcome: 'prose_figure_trimmed', sentencesCut: 1 },
+              reply: {
+                proposal: {
+                  allocations: [
+                    expect.objectContaining({
+                      why: 'This part of the draft was left out because it stated a figure that could not be confirmed.',
+                    }),
+                    expect.objectContaining({ assetId: cash.id }),
+                  ],
+                },
+              },
+            }
+          : {
+              kind: 'failure',
+              reason: 'invalid',
+              detail,
+              repair: { failed: detail, outcome: detail },
+            },
+      );
       expect(sdk.create).toHaveBeenCalledTimes(2);
       expect(sdk.create.mock.calls[1]?.[0].messages).toEqual([
         sdk.create.mock.calls[0]?.[0].messages[0],

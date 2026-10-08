@@ -257,6 +257,21 @@ describe('private model-led vault reply route', () => {
     expect(res.body).not.toContain('rebalanced');
     expect(s.model.read).toHaveBeenCalledTimes(2);
   });
+  it('serves a reply whose repair attempt still states a figure without that sentence', async () => {
+    const s = await setup();
+    const figure = {
+      message: 'Which direction would you like to explore? It will return 12% a year.',
+      question: null,
+      proposal: null,
+    };
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: figure });
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: figure });
+    const res = await s.post();
+    expect(res.statusCode).toBe(200);
+    expect(res.json().message).toBe('Which direction would you like to explore?');
+    expect(res.body).not.toContain('12%');
+    expect(s.model.read).toHaveBeenCalledTimes(2);
+  });
   it('rejects wrong-chain state and malformed histories before model invocation', async () => {
     const s = await setup();
     s.read.mockResolvedValueOnce({ ...s.state, chain: 'robinhood' });
