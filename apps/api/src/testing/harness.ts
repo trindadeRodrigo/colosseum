@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mockAddress } from '@colosseum/chain-mock';
 import {
+  baskets,
   createDb,
   type Db,
   indexFamilies,
@@ -12,6 +13,7 @@ import {
   recipeVersions,
   seedChains,
   users,
+  vaultSnapshots,
   vaults,
 } from '@colosseum/db';
 import {
@@ -23,7 +25,7 @@ import {
   parseChainConfigs,
   parseFlags,
 } from '@colosseum/schemas';
-import { inArray, or } from 'drizzle-orm';
+import { type AnyColumn, inArray, or } from 'drizzle-orm';
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { buildApp } from '../app';
 import type { TestFundsSender } from '../faucet/test-funds';
@@ -237,7 +239,7 @@ export async function testDb() {
   const families: string[] = [];
   return {
     db,
-    /** Remembers a person, so their orders, vault rows and picked chain are deleted at the end. */
+    /** Remembers a person, so their orders, vaults, plans and picked chain are deleted at the end. */
     track(p: Person) {
       owners.push(p.solana, p.evm);
       people.push(p.sub);
@@ -315,7 +317,53 @@ export async function testDb() {
     trackFamily(familyId: string) {
       families.push(familyId);
     },
+    /** Remembers a plan a test made through the API with no person, one from a link, so it goes at the end. */
+    trackPlan(id: string) {
+      plans.push(id);
+    },
     async cleanUp() {
+      // First the plans people hold (`baskets`). A settled buy writes one: it names its person and its
+      // stored plan or shared portfolio, and the vault and every snapshot of the vault name it. So the
+      // snapshots go, then the vaults, then those plans, and only then what they named.
+      const userIds = people.length
+        ? (await db.select({ id: users.id }).from(users).where(inArray(users.privyId, people))).map(
+            (u) => u.id,
+          )
+        : [];
+      // The stored plans that go below: the ones a test stored, and the ones a person made.
+      const planIds = userIds.length
+        ? (
+            await db
+              .select({ id: proposals.id })
+              .from(proposals)
+              .where(inArray(proposals.userId, userIds))
+          ).map((p) => p.id)
+        : [];
+      planIds.push(...plans);
+      // A `where` with no clause would match every row, so a list with nothing in it adds none.
+      const among = (column: AnyColumn, ids: string[]) =>
+        ids.length ? [inArray(column, ids)] : [];
+      const held = [
+        ...among(baskets.userId, userIds),
+        ...among(baskets.proposalId, planIds),
+        ...among(baskets.familyId, families),
+      ];
+      const basketIds = held.length
+        ? (
+            await db
+              .select({ id: baskets.id })
+              .from(baskets)
+              .where(or(...held))
+          ).map((b) => b.id)
+        : [];
+      const snapshots = [
+        ...among(vaultSnapshots.owner, owners),
+        ...among(vaultSnapshots.basketId, basketIds),
+      ];
+      if (snapshots.length) await db.delete(vaultSnapshots).where(or(...snapshots));
+      const cached = [...among(vaults.owner, owners), ...among(vaults.basketId, basketIds)];
+      if (cached.length) await db.delete(vaults).where(or(...cached));
+      if (basketIds.length) await db.delete(baskets).where(inArray(baskets.id, basketIds));
       // Before the people: a family a test published names its creator's user row.
       if (families.length) {
         const mine = await db
@@ -343,21 +391,10 @@ export async function testDb() {
           await db.delete(legs).where(inArray(legs.orderId, orderIds));
           await db.delete(orders).where(inArray(orders.id, orderIds));
         }
-        await db.delete(vaults).where(inArray(vaults.owner, owners));
       }
       if (people.length) {
         // The plans a person made through the API name them: those go before the person does.
-        const mine = await db
-          .select({ id: users.id })
-          .from(users)
-          .where(inArray(users.privyId, people));
-        if (mine.length)
-          await db.delete(proposals).where(
-            inArray(
-              proposals.userId,
-              mine.map((u) => u.id),
-            ),
-          );
+        if (userIds.length) await db.delete(proposals).where(inArray(proposals.userId, userIds));
         await db.delete(users).where(inArray(users.privyId, people));
       }
       if (plans.length) await db.delete(proposals).where(inArray(proposals.id, plans));

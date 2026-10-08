@@ -49,7 +49,7 @@ describe('db schema', () => {
   });
 });
 
-// DESIGN-VAULT section 4, migration 0006.
+// DESIGN-VAULT section 4, migration 0006; the two snapshot tables, migration 0018.
 const EXPECTED_VAULT = [
   'chains',
   'users',
@@ -62,6 +62,8 @@ const EXPECTED_VAULT = [
   'baskets',
   'proposals',
   'vaults',
+  'vault_snapshots',
+  'snapshot_runs',
   'follows',
   'orders',
   'legs',
@@ -76,7 +78,7 @@ const EXPECTED_VAULT = [
 describe('db schema: vault tables', () => {
   const tables = (Object.values(basketSchema) as unknown[]).filter(isTable) as PgTable[];
 
-  it('declares the 20 vault tables, and none that the core schema already has', () => {
+  it('declares the 22 vault tables, and none that the core schema already has', () => {
     const names = tables.map((t) => getTableName(t));
     expect([...names].sort()).toEqual([...EXPECTED_VAULT].sort());
     expect(names.filter((n) => EXPECTED.includes(n))).toEqual([]);
@@ -106,6 +108,13 @@ describe('db schema: vault tables', () => {
     expect(open).toHaveLength(1);
     expect(open[0]?.unique).toBe(true);
     expect(open[0]?.where).toBeDefined();
+    // The snapshot worker's runs hold the same rule, beside the index its newest runs are read by.
+    const openSnapshot = getTableConfig(basketSchema.snapshotRuns)
+      .indexes.map((i) => i.config)
+      .filter((i) => i.unique);
+    expect(openSnapshot).toHaveLength(1);
+    expect(openSnapshot[0]?.columns.map((c) => ('name' in c ? c.name : ''))).toEqual(['chain_id']);
+    expect(openSnapshot[0]?.where).toBeDefined();
     const attempts = getTableConfig(basketSchema.legAttempts);
     expect(attempts.uniqueConstraints.map((u) => u.columns.map((c) => c.name))).toContainEqual([
       'chain_id',
