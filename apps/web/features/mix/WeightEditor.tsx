@@ -51,6 +51,7 @@ export function WeightEditor({
   value,
   onChange,
   names,
+  plain = false,
 }: {
   chain: ChainId;
   mock: boolean;
@@ -59,6 +60,8 @@ export function WeightEditor({
   onChange: (next: Weights) => void;
   /** Names the server gave for assets this app's list does not hold. */
   names?: Readonly<Record<string, string>>;
+  /** Percents only, with no count of the lines: the editor behind the deposit step of a new goal. */
+  plain?: boolean;
 }) {
   const t = useT();
   const lang = useLang();
@@ -96,21 +99,25 @@ export function WeightEditor({
 
   return (
     <div data-ui="weight-editor" className="flex min-w-0 flex-col gap-4">
-      <p className="text-caption text-muted-foreground">
-        {e.lines(read.filter((line) => (line.weightBps ?? 0) > 0).length)}
-      </p>
-      <Field label={e.unit}>
-        {(control) => (
-          <Select
-            {...control}
-            value={unit}
-            onChange={(ev) => switchUnit(ev.currentTarget.value as WeightUnit)}
-          >
-            <option value="percent">{e.percent}</option>
-            <option value="bps">{e.bps}</option>
-          </Select>
-        )}
-      </Field>
+      {!plain && (
+        <>
+          <p className="text-caption text-muted-foreground">
+            {e.lines(read.filter((line) => (line.weightBps ?? 0) > 0).length)}
+          </p>
+          <Field label={e.unit}>
+            {(control) => (
+              <Select
+                {...control}
+                value={unit}
+                onChange={(ev) => switchUnit(ev.currentTarget.value as WeightUnit)}
+              >
+                <option value="percent">{e.percent}</option>
+                <option value="bps">{e.bps}</option>
+              </Select>
+            )}
+          </Field>
+        </>
+      )}
       <ul data-ui="targets-lines" className="flex flex-col gap-3">
         {rows.map((row, i) => {
           const name = nameOf(row.assetId);

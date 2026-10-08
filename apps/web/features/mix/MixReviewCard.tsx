@@ -49,6 +49,7 @@ export function MixReviewCard({
   confirmLabel,
   onConfirm,
   onBack,
+  backLabel,
   busy,
   changed,
 }: {
@@ -58,6 +59,8 @@ export function MixReviewCard({
   confirmLabel: string;
   onConfirm: () => void;
   onBack: () => void;
+  /** Where "back" leads, when it is not to changing the mix: the deposit step of a new goal. */
+  backLabel?: string;
   busy: boolean;
   /** The server answered a new review to a confirm: its figures moved since the person looked. */
   changed?: boolean;
@@ -206,7 +209,7 @@ export function MixReviewCard({
             {confirmLabel}
           </Button>
           <Button variant="secondary" disabled={busy} onClick={onBack}>
-            {r.back}
+            {backLabel ?? r.back}
           </Button>
         </div>
       </CardBody>

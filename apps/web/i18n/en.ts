@@ -2089,23 +2089,67 @@ export const en = {
       back: 'Change the mix',
     },
     goal: {
-      title: 'Use this mix for a new goal',
-      lead: 'Say how much and what it’s for. I check the mix at today’s prices before anything is bought.',
-      amount: 'Amount',
-      amountHint: 'In dollars, from $10 to $1,000,000.',
-      goal: 'Goal',
       goals: { grow: 'Make it grow', income: 'Monthly income', protect: 'Keep it safe' },
-      risk: 'Risk',
       risks: { low: 'Low', medium: 'Medium', high: 'High' },
       choose: 'Choose one',
-      review: 'Review this mix',
-      reviewing: 'Reviewing…',
       confirm: 'Confirm and go to buy',
       confirming: 'Confirming…',
+    },
+    deposit: {
+      title: 'Deposit into this mix',
+      /** What the person said in the conversation, as one sentence: "For growth, at higher risk." */
+      purpose: (
+        goal: 'grow' | 'income' | 'protect' | null,
+        risk: 'low' | 'medium' | 'high' | null,
+      ) => {
+        const goals = {
+          grow: 'For growth',
+          income: 'For monthly income',
+          protect: 'To keep it safe',
+        };
+        const risks = { low: 'at lower risk', medium: 'at medium risk', high: 'at higher risk' };
+        if (goal && risk) return `${goals[goal]}, ${risks[risk]}.`;
+        if (goal) return `${goals[goal]}.`;
+        return risk ? `A${risks[risk].slice(1)}.` : '';
+      },
+      changePurpose: 'Change',
+      changePurposeLabel: 'Change the goal or the risk in the conversation',
+      askGoal: 'What is this money for?',
+      askRisk: 'How much risk can it take?',
+      askWhy:
+        'You haven’t said this in the conversation, and I don’t guess it: the goal decides which assets the plan may hold. Tap one, or say it in the conversation.',
+      limits: 'From $10 to $1,000,000.',
+      quick: 'Quick amounts',
+      quickOne: (amount: string) => `Deposit ${amount}`,
+      mix: 'What it buys',
+      edited: 'Edited by hand',
+      share: 'Share',
+      unchecked: 'not checked yet',
+      needAmount: 'Type an amount to see what goes into each asset.',
+      needPurpose: 'Choose the goal and the risk to see what goes into each asset.',
+      checking: 'Checking at today’s prices…',
+      checked: 'Checked at today’s prices. Nothing is bought yet.',
+      review: 'Review deposit',
+      reviewOf: (amount: string) => `Review deposit of ${amount}`,
+      reviewing: 'Checking…',
+      changeMix: 'Change the mix',
+      next: 'Nothing is bought or signed on this page. Next you check the review, then sign each step on the buy screen.',
+      editByHand: 'Edit weights by hand',
+      editorLead:
+        'Type a weight for each asset, in percent. Whatever you leave unassigned stays in cash. The weights here are the ones I check.',
+      reset: 'Back to the proposed weights',
+      backToProposal: 'Back to the proposal',
+      backToDeposit: 'Back to the deposit',
+      invalidNext: 'Ask for a change in the conversation, or edit the weights by hand.',
+      blocked: {
+        weights: 'Fix the weights in the editor first.',
+        amount: 'Type an amount first.',
+        purpose: 'Choose the goal and the risk first.',
+      },
       errors: {
-        amount: 'Type an amount from $10 to $1,000,000.',
-        goal: 'Choose what the money is for.',
-        risk: 'Choose a risk.',
+        notAmount: 'Type an amount in dollars, such as 250 or 250.50.',
+        belowMin: 'The least you can deposit is $10.',
+        aboveMax: 'The most in one deposit is $1,000,000. Type less.',
       },
     },
     vault: {
