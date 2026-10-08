@@ -113,10 +113,20 @@ export type PostBasketsIntakeBody = {
       creditBps?: number;
     } | null;
   }[];
+  dialogueVersion?: 1;
+  pendingInterest?: {
+    quote: string;
+    sourceTurn: number;
+  } | null;
+  questionThen?: ('interestClarification' | null)[];
 };
 
 /** POST /v1/baskets/intake: response. Read a goal into a sheet, ask what it leaves open, and say back what was understood */
 export type PostBasketsIntakeResponse = {
+  pendingInterest?: {
+    quote: string;
+    sourceTurn: number;
+  } | null;
   reader: {
     method: 'model' | 'rules';
     model: string | null;
