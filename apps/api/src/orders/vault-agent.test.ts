@@ -113,6 +113,13 @@ const proposal = (share: number) => ({
   },
 });
 const fake = (reply: unknown): VaultAgentModel => ({ read: vi.fn(async () => ({ reply })) });
+// The reply failed `detail`, the model was asked once to correct it, and sent the same reply again.
+const rejected = (detail: string) => ({
+  kind: 'failure',
+  reason: 'invalid',
+  detail,
+  repair: { failed: detail, outcome: detail },
+});
 
 describe('model-led private vault proposals', () => {
   it('accepts real-catalog cash residual previews while honoring explicit additional cash caps', async () => {
@@ -169,7 +176,7 @@ describe('model-led private vault proposals', () => {
         { ...cashContext, caps: { [cash.id]: 5000 } },
         fake(value),
       ),
-    ).toEqual({ kind: 'failure', reason: 'invalid' });
+    ).toEqual(rejected('allocation_over_cap'));
   });
 
   it('keeps an explicit stock minimum through later refinement and asks about a mismatched draft without reweighting', async () => {
@@ -178,6 +185,12 @@ describe('model-led private vault proposals', () => {
     const result = await replyToVaultConversation(minimum, context, wrong);
     expect(result.kind).toBe('reply');
     if (result.kind !== 'reply') throw new Error('Missing explanation');
+    // The repair sent the same draft, so the person is asked about the limit as before.
+    expect(wrong.read).toHaveBeenCalledTimes(2);
+    expect(result.repair).toEqual({
+      failed: 'allocation_constraint',
+      outcome: 'allocation_constraint',
+    });
     expect(result.reply.proposal).toBeNull();
     expect(result.reply.message).toContain(minimum.messages[1]?.text);
     expect(result.reply.question).toContain('within that limit');
@@ -236,16 +249,16 @@ describe('model-led private vault proposals', () => {
     ).toBe('reply');
     expect(
       await replyToVaultConversation(request('I want to grow my $1000.'), context, fake(value)),
-    ).toEqual({ kind: 'failure', reason: 'invalid' });
+    ).toEqual(rejected('prose_figure'));
     value.proposal.objective = 'Grow my $2000 while keeping a reserve.';
     expect(
       await replyToVaultConversation(request('I want to grow my $2000.'), context, fake(value)),
-    ).toEqual({ kind: 'failure', reason: 'invalid' });
+    ).toEqual(rejected('prose_figure'));
     value.proposal.objective = 'Grow with a reserve.';
     value.proposal.allocations[0]!.why = 'The measured price is $1000.';
     expect(
       await replyToVaultConversation(request('I want to invest $1000.'), context, fake(value)),
-    ).toEqual({ kind: 'failure', reason: 'invalid' });
+    ).toEqual(rejected('prose_figure'));
   });
 
   it('preserves the exact reported stock-minimum wording across its sentence boundary', async () => {
@@ -269,10 +282,9 @@ describe('model-led private vault proposals', () => {
     expect((await replyToVaultConversation(request(), namedContext, fake(value))).kind).toBe(
       'reply',
     );
-    expect(await replyToVaultConversation(request(), context, fake(value))).toEqual({
-      kind: 'failure',
-      reason: 'invalid',
-    });
+    expect(await replyToVaultConversation(request(), context, fake(value))).toEqual(
+      rejected('prose_figure'),
+    );
   });
 
   it.each([
@@ -287,7 +299,7 @@ describe('model-led private vault proposals', () => {
   ])('rejects a false application assertion: %s', async (message) => {
     expect(
       await replyToVaultConversation(request(), context, fake({ ...proposal(1000), message })),
-    ).toEqual({ kind: 'failure', reason: 'invalid' });
+    ).toEqual(rejected('prose_claims_applied'));
   });
 
   it.each([
@@ -345,6 +357,19 @@ describe('model-led private vault proposals', () => {
     'symbol',
     'infinity',
   ])('rejects a model reply that violates %s without substituting an allocation', async (fault) => {
+    const expected: Record<string, string> = {
+      asset: 'allocation_unlisted',
+      crosschain: 'allocation_unlisted',
+      cap: 'allocation_over_cap',
+      sum: 'allocation_sum',
+      duplicate: 'allocation_duplicate',
+      evidence: 'allocation_evidence',
+      'wrong-reference': 'allocation_evidence',
+      'financial-figure': 'prose_figure',
+      'written-figure': 'prose_figure',
+      symbol: 'reply_schema',
+      infinity: 'reply_schema',
+    };
     const value = proposal(1000);
     const [allocation, remainder] = value.proposal.allocations;
     if (!allocation || !remainder) throw new Error('Incomplete allocation fixture');
@@ -369,7 +394,7 @@ describe('model-led private vault proposals', () => {
         { ...context, ...(caps ? { caps } : {}) },
         fake(value),
       ),
-    ).toEqual({ kind: 'failure', reason: 'invalid' });
+    ).toEqual(rejected(expected[fault] ?? 'unmapped'));
   });
 
   it('returns a conversational question without inventing an allocation from admiration', async () => {
@@ -395,8 +420,217 @@ describe('model-led private vault proposals', () => {
         kind: 'failure',
         reason: why,
       });
+      const detailed: VaultAgentModel = {
+        read: async () => ({ reply: null, why, detail: 'model_error_400' }),
+      };
+      expect(await replyToVaultConversation(request(), context, detailed)).toEqual({
+        kind: 'failure',
+        reason: why,
+        detail: 'model_error_400',
+      });
     },
   );
+
+  it('asks the model once to correct a reply that fails a check, and returns the corrected one', async () => {
+    const repaired = await replyToVaultConversation(request(), context, {
+      read: vi
+        .fn()
+        .mockResolvedValueOnce({ reply: { ...proposal(1000), message: 'I changed your vault.' } })
+        .mockResolvedValueOnce({ reply: proposal(1000) }),
+    });
+    expect(repaired).toMatchObject({
+      kind: 'reply',
+      repair: { failed: 'prose_claims_applied', outcome: 'repaired' },
+    });
+    if (repaired.kind !== 'reply') throw new Error('repair rejected');
+    expect(repaired.reply.message).toBe(proposal(1000).message);
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({ reply: { ...proposal(1000), message: 'I changed your vault.' } })
+      .mockResolvedValueOnce({ reply: proposal(1000) });
+    await replyToVaultConversation(request(), context, { read });
+    expect(read).toHaveBeenCalledTimes(2);
+    const [person, prompt] = read.mock.calls[0] ?? [];
+    expect(read.mock.calls[1]).toEqual([
+      person,
+      prompt,
+      {
+        previous: { ...proposal(1000), message: 'I changed your vault.' },
+        problems: [expect.stringContaining('nothing has been applied')],
+        elapsedMs: expect.any(Number),
+      },
+    ]);
+  });
+
+  it('names where a structure check failed on the repair call, and keeps the second failure', async () => {
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({ reply: { question: null, proposal: null } })
+      .mockResolvedValueOnce({ reply: null, why: 'timeout', detail: 'model_timeout' });
+    expect(await replyToVaultConversation(request(), context, { read })).toEqual({
+      kind: 'failure',
+      reason: 'timeout',
+      detail: 'model_timeout',
+      repair: { failed: 'reply_schema', outcome: 'model_timeout' },
+    });
+    expect(read.mock.calls[1]?.[2]).toMatchObject({
+      problems: [
+        expect.stringContaining('required structure'),
+        expect.stringMatching(/^At message: /),
+      ],
+    });
+  });
+
+  it('repairs a draft that breaks a stated limit, naming the limit but never the draft weights', async () => {
+    const minimum = request('I want at least 40% stocks in this vault.');
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({ reply: proposal(1000) })
+      .mockResolvedValueOnce({ reply: proposal(4000) });
+    const repaired = await replyToVaultConversation(minimum, context, { read });
+    expect(repaired).toMatchObject({
+      kind: 'reply',
+      repair: { failed: 'allocation_constraint', outcome: 'repaired' },
+    });
+    if (repaired.kind !== 'reply') throw new Error('Repair rejected');
+    expect(repaired.reply.proposal?.allocations[0]?.weightBps).toBe(4000);
+    const problems: string[] = read.mock.calls[1]?.[2].problems;
+    expect(problems).toEqual([
+      expect.stringContaining('broke a limit the person stated'),
+      'At allocationConstraints.0 (the person said “I want at least 40% stocks in this vault.”): the weightBps of its assetIds together came below its minWeightBps.',
+    ]);
+    // The draft's own weights are not repeated back.
+    expect(problems.join(' ')).not.toMatch(/1000|4500/);
+    const maximum = request('I want at most 10% stocks in this vault.');
+    const over = vi
+      .fn()
+      .mockResolvedValueOnce({ reply: proposal(4000) })
+      .mockResolvedValueOnce({ reply: proposal(1000) });
+    expect(await replyToVaultConversation(maximum, context, { read: over })).toMatchObject({
+      kind: 'reply',
+      repair: { failed: 'allocation_constraint', outcome: 'repaired' },
+    });
+    expect(over.mock.calls[1]?.[2].problems[1]).toContain('came above its maxWeightBps');
+  });
+
+  it('keeps the question about a stated limit when its repair fails another way', async () => {
+    const minimum = request('I want at least 40% stocks in this vault.');
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({ reply: proposal(1000) })
+      .mockResolvedValueOnce({ reply: null, why: 'timeout', detail: 'model_timeout' });
+    const out = await replyToVaultConversation(minimum, context, { read });
+    expect(out).toMatchObject({
+      kind: 'reply',
+      repair: { failed: 'allocation_constraint', outcome: 'model_timeout' },
+    });
+    if (out.kind !== 'reply') throw new Error('Missing explanation');
+    expect(out.reply.proposal).toBeNull();
+    expect(out.reply.message).toContain(minimum.messages[1]?.text);
+    expect(out.reply.question).toContain('within that limit');
+    // A repair that fails a structure check also leaves the question standing.
+    const schema = vi
+      .fn()
+      .mockResolvedValueOnce({ reply: proposal(1000) })
+      .mockResolvedValueOnce({ reply: { question: null, proposal: null } });
+    expect(await replyToVaultConversation(minimum, context, { read: schema })).toMatchObject({
+      kind: 'reply',
+      reply: { proposal: null, question: expect.stringContaining('within that limit') },
+      repair: { failed: 'allocation_constraint', outcome: 'reply_schema' },
+    });
+  });
+
+  it('repairs a reply that fails the final preview shape, and names where', async () => {
+    // A catalog symbol too long for the preview: only the final reply, with server symbols, fails.
+    const long = { ...otherReserve, symbol: 'R'.repeat(81) };
+    const shapeContext = {
+      ...context,
+      assets: assets.map((asset) => (asset.id === otherReserve.id ? long : asset)),
+      evidence: [
+        ...context.evidence,
+        {
+          id: `catalog:${cash.id}`,
+          assetId: cash.id,
+          source: 'offline catalog',
+          method: 'cash residual',
+          fetchedAt: now,
+          provenance: 'mock' as const,
+        },
+      ],
+    };
+    const fixed = proposal(1000);
+    fixed.proposal.allocations = [
+      proposal(1000).proposal.allocations[0] as (typeof fixed.proposal.allocations)[number],
+      {
+        assetId: cash.id,
+        weightBps: 9000,
+        why: 'Retain the rest as cash.',
+        evidenceIds: [`catalog:${cash.id}`],
+      },
+    ];
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({ reply: proposal(1000) })
+      .mockResolvedValueOnce({ reply: fixed });
+    const out = await replyToVaultConversation(request(), shapeContext, { read });
+    expect(out).toMatchObject({
+      kind: 'reply',
+      repair: { failed: 'reply_shape', outcome: 'repaired' },
+    });
+    expect(read.mock.calls[1]?.[2]).toMatchObject({
+      previous: proposal(1000),
+      problems: [
+        expect.stringContaining('final preview limits'),
+        expect.stringMatching(/^At proposal\.allocations\.2\.symbol: /),
+      ],
+    });
+    // The same reply again is refused with the shape code.
+    expect(await replyToVaultConversation(request(), shapeContext, fake(proposal(1000)))).toEqual(
+      rejected('reply_shape'),
+    );
+  });
+
+  it('gives the repair the time the first call actually took', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(1_000_000);
+      const read = vi
+        .fn()
+        .mockImplementationOnce(async () => {
+          vi.setSystemTime(1_000_000 + 7_250);
+          return { reply: { ...proposal(1000), message: 'I changed your vault.' } };
+        })
+        .mockResolvedValueOnce({ reply: proposal(1000) });
+      await replyToVaultConversation(request(), context, { read });
+      expect(read.mock.calls[1]?.[2]).toMatchObject({ elapsedMs: 7_250 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    [{ reply: null, why: 'timeout', detail: 'model_timeout' }, 'timeout'],
+    [{ reply: null, why: 'budget', detail: 'model_person_budget_spent' }, 'budget'],
+    [{ reply: null, why: 'invalid', detail: 'model_cut_off' }, 'invalid'],
+    [{ reply: null, why: 'unavailable', detail: 'model_error_529' }, 'unavailable'],
+  ] as const)('does not repair a model failure: %o', async (output, reason) => {
+    const read = vi.fn(async () => output);
+    expect(await replyToVaultConversation(request(), context, { read })).toEqual({
+      kind: 'failure',
+      reason,
+      detail: output.detail,
+    });
+    expect(read).toHaveBeenCalledOnce();
+    const thrown = vi.fn(async () => {
+      throw new Error('socket closed');
+    });
+    expect(await replyToVaultConversation(request(), context, { read: thrown })).toEqual({
+      kind: 'failure',
+      reason: 'unavailable',
+      detail: 'model_threw',
+    });
+    expect(thrown).toHaveBeenCalledOnce();
+  });
 
   it('rejects counterfeit server metrics before calling the model', async () => {
     const model = fake(proposal(1000));
@@ -408,7 +642,7 @@ describe('model-led private vault proposals', () => {
         { ...context, evidence: [{ ...firstSource, value: Number.NaN }] },
         model,
       ),
-    ).toEqual({ kind: 'failure', reason: 'invalid' });
+    ).toEqual({ kind: 'failure', reason: 'invalid', detail: 'context_non_finite' });
     expect(model.read).not.toHaveBeenCalled();
   });
 
@@ -421,7 +655,7 @@ describe('model-led private vault proposals', () => {
           { ...context, currentGoals: [{ goal }] },
           fake(proposal(1000)),
         ),
-      ).toEqual({ kind: 'failure', reason: 'invalid' });
+      ).toEqual(rejected('allocation_ineligible'));
       const explicit = await replyToVaultConversation(
         request(),
         { ...context, currentGoals: [{ goal }], confirmedGoal: 'grow' },
@@ -457,10 +691,9 @@ describe('model-led private vault proposals', () => {
       person: 'owner-fixture',
     });
     expect(built.caps?.[stock.id]).toBe(500);
-    expect(await replyToVaultConversation(request(), built, fake(proposal(1000)))).toEqual({
-      kind: 'failure',
-      reason: 'invalid',
-    });
+    expect(await replyToVaultConversation(request(), built, fake(proposal(1000)))).toEqual(
+      rejected('allocation_over_cap'),
+    );
     const crowded = proposal(1000);
     crowded.proposal.unknowns = Array.from({ length: 12 }, () => 'Model uncertainty.');
     const accepted = await replyToVaultConversation(request(), context, fake(crowded));

@@ -1,16 +1,95 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { VaultAgentFailure } from '@colosseum/schemas';
+import type { EnvLike, VaultAgentFailure } from '@colosseum/schemas';
 import type { VaultAgentPrompt } from './orders/vault-agent';
+
+/**
+ * The conversation sends the whole catalog, its evidence and the dialogue, and answers in prose with a
+ * structured proposal: far more than the intake's read of one goal, so it has its own time and output
+ * budget. `VAULT_AGENT_TIMEOUT_MS` overrides the time (`vaultAgentTimeoutMs`). The output budget leaves
+ * room for the thinking the Claude 5 family always does, which counts against it, and stays under the
+ * SDK's limit for a call that is not streamed.
+ */
+export const VAULT_AGENT_TIMEOUT_MS = 30_000;
+export const VAULT_AGENT_MAX_TOKENS = 16_000;
+
+/** How hard a model that takes `output_config.effort` thinks; `VAULT_AGENT_EFFORT` overrides it. */
+export const VAULT_AGENT_EFFORTS = ['low', 'medium', 'high'] as const;
+export type VaultAgentEffort = (typeof VAULT_AGENT_EFFORTS)[number];
+export const VAULT_AGENT_EFFORT: VaultAgentEffort = 'low';
+
+/**
+ * Whether a model takes `temperature`. The Claude 5 family and Opus 4.7/4.8 answer 400 to any sampling
+ * parameter (Sonnet 5.5 and Haiku 5.5 to any but the default), so it is sent only to the older models
+ * known to take it: Claude 3, Haiku 4.5, Sonnet and Opus 4.5/4.6. Any other id, a future one included,
+ * goes without it.
+ */
+export function acceptsTemperature(model: string): boolean {
+  return /^claude-(?:3-|haiku-4-5(?![0-9])|(?:sonnet|opus)-4-[56](?![0-9]))/.test(model);
+}
+
+/**
+ * Whether a model takes `output_config.effort`: the Claude 5 family, Opus 4.5 to 4.8 and Sonnet 4.6.
+ * Haiku 4.5 and Sonnet 4.5 answer 400 to it; any other id, a future one included, goes without it.
+ */
+export function acceptsEffort(model: string): boolean {
+  return /^claude-(?:(?:opus|sonnet|haiku|fable|mythos)-5|opus-4-[5-8]|sonnet-4-6)(?![0-9])/.test(
+    model,
+  );
+}
+
+/** The conversation's effort: `VAULT_AGENT_EFFORT`, low by default. A value that cannot be read throws. */
+export function vaultAgentEffort(env: EnvLike): VaultAgentEffort {
+  const raw = env.VAULT_AGENT_EFFORT?.trim();
+  if (raw === undefined || raw === '') return VAULT_AGENT_EFFORT;
+  const effort = VAULT_AGENT_EFFORTS.find((level) => level === raw);
+  if (effort === undefined) throw new Error('VAULT_AGENT_EFFORT must be low, medium or high');
+  return effort;
+}
+
+/**
+ * The conversation's model: `VAULT_AGENT_MODEL`, or the intake's configured model when unset. Checked like
+ * `INTAKE_MODEL`; a value that cannot be read throws without repeating it.
+ */
+export function vaultAgentModelId(env: EnvLike, intakeModel: string): string {
+  const model = env.VAULT_AGENT_MODEL?.trim() || intakeModel;
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:@-]{0,99}$/.test(model))
+    throw new Error('VAULT_AGENT_MODEL must be a model id: letters, digits, dots and dashes');
+  return model;
+}
+
+/**
+ * A reply that fails one of our checks gets one more call to correct itself. Both calls together stay
+ * within the configured time plus this margin; the second is skipped when less than the minimum is left.
+ */
+export const VAULT_AGENT_REPAIR_MARGIN_MS = 15_000;
+export const VAULT_AGENT_REPAIR_MIN_MS = 5_000;
+
+/** One call's time for the conversation, 1,000 to 120,000 ms. A value that cannot be read throws. */
+export function vaultAgentTimeoutMs(env: EnvLike): number {
+  const raw = env.VAULT_AGENT_TIMEOUT_MS?.trim();
+  if (raw === undefined || raw === '') return VAULT_AGENT_TIMEOUT_MS;
+  const n = Number(raw);
+  if (!/^\d+$/.test(raw) || n < 1_000 || n > 120_000)
+    throw new Error('VAULT_AGENT_TIMEOUT_MS must be a whole number from 1000 to 120000');
+  return n;
+}
 
 /** Required shared reservation; the provider has no independent daily budget. */
 export type VaultAgentQuota = {
   reserve(person: string): 'model_budget_spent' | 'model_person_budget_spent' | null;
 };
+/** The second call: the reply that failed, what was wrong with it in plain words, and the time spent. */
+export type VaultAgentRepair = {
+  previous: unknown;
+  problems: readonly string[];
+  elapsedMs: number;
+};
 export type VaultAgentModel = {
   read(
     person: string,
     prompt: VaultAgentPrompt,
-  ): Promise<{ reply: unknown } | { reply: null; why: VaultAgentFailure }>;
+    repair?: VaultAgentRepair,
+  ): Promise<{ reply: unknown } | { reply: null; why: VaultAgentFailure; detail?: string }>;
 };
 
 export const VAULT_AGENT_SYSTEM = [
@@ -63,44 +142,85 @@ export const VAULT_AGENT_REPLY_SCHEMA = object({
   },
 });
 
+/** The turn that asks the model to correct a reply the server could not accept. */
+export function repairRequest(problems: readonly string[]): string {
+  return [
+    'The server could not accept your previous reply. Nothing was shown to the person.',
+    ...problems.map((problem) => `- ${problem}`),
+    'Return the complete corrected reply for the same person message, under the same rules. Change only what is needed to fix these problems.',
+  ].join('\n');
+}
+
 /** Settings and shared quota come from the existing configured setup; no environment is read here. */
 export function createAnthropicVaultAgentModel(options: {
   apiKey: string;
   model: string;
   timeoutMs: number;
+  effort?: VaultAgentEffort;
   quota: VaultAgentQuota;
 }): VaultAgentModel {
+  const effort = acceptsEffort(options.model)
+    ? { effort: options.effort ?? VAULT_AGENT_EFFORT }
+    : {};
   const client = new Anthropic({
     apiKey: options.apiKey,
     timeout: options.timeoutMs,
     maxRetries: 0,
   });
   return {
-    async read(person, prompt) {
-      if (options.quota.reserve(person) !== null) return { reply: null, why: 'budget' };
+    async read(person, prompt, repair) {
+      const timeout = repair
+        ? options.timeoutMs + VAULT_AGENT_REPAIR_MARGIN_MS - repair.elapsedMs
+        : options.timeoutMs;
+      if (repair && timeout < VAULT_AGENT_REPAIR_MIN_MS)
+        return { reply: null, why: 'timeout', detail: 'repair_no_time' };
+      // A repair is a second paid call, so it reserves from the same budget as the first.
+      const denied = options.quota.reserve(person);
+      if (denied !== null) return { reply: null, why: 'budget', detail: denied };
+      const messages: Anthropic.MessageParam[] = [
+        { role: 'user', content: JSON.stringify(prompt) },
+      ];
+      if (repair)
+        messages.push(
+          { role: 'assistant', content: JSON.stringify(repair.previous) },
+          { role: 'user', content: repairRequest(repair.problems) },
+        );
       try {
-        const response = await client.messages.create({
-          model: options.model,
-          max_tokens: 1024,
-          temperature: 0,
-          system: VAULT_AGENT_SYSTEM,
-          messages: [{ role: 'user', content: JSON.stringify(prompt) }],
-          output_config: { format: { type: 'json_schema', schema: VAULT_AGENT_REPLY_SCHEMA } },
-        });
-        if (response.stop_reason === 'max_tokens' || response.stop_reason === 'refusal')
-          return { reply: null, why: 'invalid' };
+        const response = await client.messages.create(
+          {
+            model: options.model,
+            max_tokens: VAULT_AGENT_MAX_TOKENS,
+            ...(acceptsTemperature(options.model) ? { temperature: 0 } : {}),
+            system: VAULT_AGENT_SYSTEM,
+            messages,
+            // No `thinking` parameter: the Claude 5 family rejects turning it off; effort sets its depth.
+            output_config: {
+              ...effort,
+              format: { type: 'json_schema', schema: VAULT_AGENT_REPLY_SCHEMA },
+            },
+          },
+          { timeout },
+        );
+        if (response.stop_reason === 'max_tokens')
+          return { reply: null, why: 'invalid', detail: 'model_cut_off' };
+        if (response.stop_reason === 'refusal')
+          return { reply: null, why: 'invalid', detail: 'model_refused' };
         const block = response.content.find((item) => item.type === 'text');
-        if (block?.type !== 'text') return { reply: null, why: 'invalid' };
+        if (block?.type !== 'text') return { reply: null, why: 'invalid', detail: 'model_no_text' };
         try {
           return { reply: JSON.parse(block.text) as unknown };
         } catch {
-          return { reply: null, why: 'invalid' };
+          return { reply: null, why: 'invalid', detail: 'model_not_json' };
         }
       } catch (error) {
-        return {
-          reply: null,
-          why: error instanceof Anthropic.APIConnectionTimeoutError ? 'timeout' : 'unavailable',
-        };
+        if (error instanceof Anthropic.APIConnectionTimeoutError)
+          return { reply: null, why: 'timeout', detail: 'model_timeout' };
+        // The status and the class only: an error's message can echo the request.
+        const status =
+          error instanceof Anthropic.APIError && typeof error.status === 'number'
+            ? `_${error.status}`
+            : '';
+        return { reply: null, why: 'unavailable', detail: `model_error${status}` };
       }
     },
   };
