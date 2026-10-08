@@ -47,6 +47,7 @@ import {
   type StoredOrder,
   TakenElsewhere,
 } from './store';
+import { noteOrder } from './thread';
 import { buildWithdraw, SkippedStep } from './withdraw';
 
 // Building a leg and settling it (DESIGN-VAULT 3.3). The API builds unsigned transactions and relays
@@ -56,7 +57,27 @@ export type OrderDeps = {
   db: Db;
   chains: ChainRegistry;
   now: () => Date;
+  /**
+   * Told when the record beside an order (a plan's thread, thread.ts) could not be written. It is
+   * handed the kind of failure and never the error itself, which can carry what was being written.
+   */
+  onRecordError?: (what: { name: string; code?: string }) => void;
 };
+
+/** What a failure is called, with nothing of what it was about. */
+export const failureOf = (e: unknown): { name: string; code?: string } => {
+  const name =
+    e instanceof Error && /^[A-Za-z][A-Za-z0-9]{0,60}$/.test(e.name) ? e.name : 'unknown';
+  const code = (e as { code?: unknown } | null)?.code;
+  return {
+    name,
+    ...(typeof code === 'string' && /^[A-Za-z0-9_]{1,32}$/.test(code) ? { code } : {}),
+  };
+};
+
+/** Tells the thread of the order's plan where the order stands now (thread.ts). Never throws. */
+const tellThread = (deps: OrderDeps, stored: StoredOrder) =>
+  noteOrder(deps.db, stored, { onError: (e) => deps.onRecordError?.(failureOf(e)) });
 
 const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
 const settled = (leg: Leg) => leg.status === 'confirmed' || leg.status === 'skipped';
@@ -85,7 +106,10 @@ async function reload(deps: OrderDeps, id: string, expiresAt?: number): Promise<
   const status = orderStatus(stored.order.legs, until, seconds(deps.now()));
   if (status !== stored.order.status || until !== stored.order.expiresAt)
     await recordOrderState(deps.db, id, { status, expiresAt: until });
-  return { ...stored, order: { ...stored.order, status, expiresAt: until } };
+  const now = { ...stored, order: { ...stored.order, status, expiresAt: until } };
+  // The plan's thread is told when the order's status moved: done, failed, expired.
+  if (status !== stored.order.status) await tellThread(deps, now);
+  return now;
 }
 
 const ownerOn = (order: Order, leg: Leg): Address => {
@@ -427,16 +451,20 @@ async function settle(
  * Reads the order again after an outcome. The first transaction the chain has seen keeps an order open
  * for a day; a transaction that is only claimed, or one that lands after the order expired, does not.
  */
-function afterOutcome(deps: OrderDeps, stored: StoredOrder, status: Outcome['status']) {
+async function afterOutcome(deps: OrderDeps, stored: StoredOrder, status: Outcome['status']) {
   const now = seconds(deps.now());
   const seen = status === 'confirmed' || status === 'failed';
   const first = !stored.attempts.some(final);
   const open = now <= stored.order.expiresAt;
-  return reload(
+  const after = await reload(
     deps,
     stored.order.id,
     seen && first && open ? now + ORDER_POLICY.signedSeconds : undefined,
   );
+  // A step settled: the thread is told what that makes true (the deposit landed), whether or not
+  // the order's own status moved.
+  await tellThread(deps, after);
+  return after;
 }
 
 /**
@@ -662,7 +690,8 @@ export async function buildLeg(
       ? { exclusive: { owner, orderId: order.id, chainName: entry.config.name, clear } }
       : {}),
   });
-  await reload(deps, order.id);
+  // A step was built: the thread is told the order was made, the first time (thread.ts).
+  await tellThread(deps, await reload(deps, order.id));
   return { tx: stampTx(built, { legId: leg.id, attemptId: attempt.id }), attempt };
 }
 
