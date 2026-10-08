@@ -496,6 +496,18 @@ export const en = {
 
   /** The monitor (/monitor), and the line about it on the home page. */
   portfolio: {
+    overview: {
+      title: 'Portfolio overview',
+      value: 'Total value · USD',
+      partialValue: 'Value of vaults read · USD',
+      vaults: 'Vaults read',
+      holdings: 'Holdings across vaults',
+      partial:
+        'This overview includes only the chains that answered. Unavailable chains are not counted.',
+      open: 'Open vault',
+      details: 'Holdings and plan details',
+      actions: 'Vault actions',
+    },
     /** A chain of the person's that could not be read this time; the others are shown all the same. */
     chainOut: (chain: string) => `${chain} is unavailable right now.`,
     /** A chain of the person's that this server has switched off: asking again will not help. */

@@ -437,6 +437,18 @@ export const pt: Dictionary = {
   },
 
   portfolio: {
+    overview: {
+      title: 'Visão geral do portfólio',
+      value: 'Valor total · USD',
+      partialValue: 'Valor dos cofres lidos · USD',
+      vaults: 'Cofres lidos',
+      holdings: 'Posições nos cofres',
+      partial:
+        'Esta visão inclui apenas as redes que responderam. Redes indisponíveis não entram na conta.',
+      open: 'Abrir cofre',
+      details: 'Detalhes dos ativos e plano',
+      actions: 'Ações do cofre',
+    },
     chainOut: (chain: string) => `${chain} está indisponível agora.`,
     chainOff: (chain: string) => `${chain} está indisponível no nosso servidor por enquanto.`,
     notHeld: (chain: string) =>
