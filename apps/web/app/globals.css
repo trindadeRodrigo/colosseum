@@ -243,7 +243,7 @@
   /* hatch pitch: 6px on surfaces, 3px inside a glyph */
   --tf-hatch-pitch-ui: 6px;
   --tf-hatch-pitch-glyph: 3px;
-  /* shape: square. The typing box and its send button are the only rounded things */
+  /* shape: square, except the typing box, its send button and token identification marks */
   --tf-radius-composer: 20px;
   --tf-radius-round: 9999px;
   --tf-border-width: 1px;
@@ -472,6 +472,8 @@
   /* the typing box only: components/ui/Composer.tsx */
   --radius-composer: var(--tf-radius-composer);
   --radius-round: var(--tf-radius-round);
+  /* token identification only: AssetMark, never a card or control */
+  --radius-asset: var(--tf-radius-round);
 
   /* type */
   --font-sans: var(--tf-font-sans);

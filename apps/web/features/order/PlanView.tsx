@@ -122,7 +122,7 @@ export function AssetMark({ asset, className }: { asset: string; className?: str
       aria-hidden="true"
       data-ui="asset-mark"
       className={cn(
-        'inline-grid size-6 shrink-0 place-items-center overflow-hidden rounded-sm border border-foreground/40 bg-card font-mono text-[9px]/none font-medium text-foreground',
+        'inline-grid size-6 shrink-0 place-items-center overflow-hidden rounded-asset border border-foreground/40 bg-card font-mono text-[9px]/none font-medium text-foreground',
         className,
       )}
     >

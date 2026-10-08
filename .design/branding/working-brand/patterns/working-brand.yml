@@ -162,13 +162,13 @@ tokens:
       display: "18ch"
 
   shape:
-    # Joinery is square. 0-2px only; the platform app-icon mask is the only other rounding.
+    # Joinery is square. 0-2px for surfaces; exceptions below and the platform app-icon mask are scoped.
     border-radius-sm: "0px"     # badges, status squares, tags, table cells
     border-radius-md: "2px"     # cards, inputs, buttons
     border-radius-lg: "2px"     # → --radius. shadcn's calc(var(--radius) - 4px) clamps to 0 — intended
     # Founder exception (2026-10-01): the typing box alone is modern and rounded. Composer + subscribe field only.
     border-radius-composer: "20px"   # → --tf-radius-composer. The goal composer container and the subscribe field
-    border-radius-round: "9999px"    # → --tf-radius-round. The composer's send button only (and the pin)
+    border-radius-round: "9999px"    # → --tf-radius-round. The composer's send button, the pin, and scoped circular token identification marks (Thom, 2026-10-07)
     border-width: "1px"
     border-width-key: "1.5px"   # key member outline in drawings, icon stroke
     focus-ring-width: "2px"
