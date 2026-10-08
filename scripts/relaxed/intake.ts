@@ -92,7 +92,7 @@ Read what the person wrote. Work out what they mean, including people, companies
 Then write one JSON object:
   understood: one sentence in the person's language saying what you understood.
   shape: "pick" unless the words call for another: "grow" when they want the money to grow over time, "income" when they want to live off it or want monthly money, "protect" when they want to keep it safe, "split" when they want part safe and part risky or state two shares.
-  lines: holdings from the table, each {id, why}. Only ids that appear in the table. If a thing they named is not on the table, do not pick a stand-in; put it in not_available with one line on why.
+  lines: holdings from the table, each {id, why}. \`why\` is one short clause, in the person's language, on what the company does and why it fits what they said; never just the theme's name. Only ids that appear in the table. If a thing they named is not on the table, do not pick a stand-in; put it in not_available with one line on why.
   buckets: only for "split": each {name, share, lines}. Shares as stated, else equal.
   stated: only what the person actually said, in their own numbers: amount, currency, preferred weights, horizon, risk words. Leave out anything they did not say.
   not_available: names you understood but could not place on the table.
@@ -116,11 +116,17 @@ const Line = z.object({ id: z.string(), why: z.string() });
 const Reply = z.object({
   understood: z.string().min(1),
   shape: z.enum(['pick', 'grow', 'income', 'protect', 'split']),
-  lines: z.array(Line).default([]),
-  buckets: z.array(z.object({ name: z.string(), share: z.number().min(0).max(1).optional(), lines: z.array(Line) })).optional(),
-  stated: z.record(z.string(), z.unknown()).default({}),
-  not_available: z.array(z.union([z.string(), z.object({ name: z.string(), why: z.string().optional() })])).default([]),
-  question: z.string().nullable().optional(),
+  lines: z.array(Line).nullish().transform((v) => v ?? []),
+  buckets: z
+    .array(z.object({ name: z.string(), share: z.number().min(0).max(1).nullish(), lines: z.array(Line).nullish().transform((v) => v ?? []) }))
+    .nullish()
+    .transform((v) => v ?? undefined),
+  stated: z.record(z.string(), z.unknown()).nullish().transform((v) => v ?? {}),
+  not_available: z
+    .array(z.union([z.string(), z.object({ name: z.string(), why: z.string().nullish() })]))
+    .nullish()
+    .transform((v) => v ?? []),
+  question: z.string().nullish(),
 });
 type Reply = z.infer<typeof Reply>;
 

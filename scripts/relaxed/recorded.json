@@ -105,5 +105,23 @@
     },
     "not_available": [],
     "question": null
+  },
+  "robinhood|i want to invest in big techs": {
+    "understood": "You want to invest in big technology companies.",
+    "shape": "pick",
+    "lines": [
+      {
+        "id": "robinhood:AAPL",
+        "why": "big-tech theme"
+      },
+      {
+        "id": "robinhood:MSFT",
+        "why": "big-tech theme"
+      }
+    ],
+    "buckets": null,
+    "stated": {},
+    "not_available": [],
+    "question": null
   }
 }
