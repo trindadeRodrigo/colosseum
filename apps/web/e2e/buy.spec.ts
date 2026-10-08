@@ -313,6 +313,17 @@ test('a buy on the mock chain: plan, buy, review, sign, every step confirmed', a
   // at 375 px his bar keeps its links in the sheet under the menu button
   await go(page, en.shell.portfolio);
   await expect(page).toHaveURL(/\/monitor$/);
+  const summary = page.locator('[data-ui="vault-summary"]');
+  await expect(summary).toHaveCount(1);
+  await expect(summary.locator('[data-ui="vault-add-money"]')).toBeVisible();
+  await expect(summary.locator('[data-ui="holdings-bar"]')).toBeVisible();
+  await expect(summary.getByRole('link', { name: en.portfolio.overview.open })).toBeVisible();
+  const readDetails = page.locator('[data-ui="vault-read-details"]');
+  await expect(readDetails).not.toHaveAttribute('open', '');
+  await readDetails.locator(':scope > summary').click();
+  await expect(readDetails).toHaveAttribute('open', '');
+  await readDetails.getByText(en.portfolio.planDetails, { exact: true }).click();
+  await page.locator('[data-ui="activity-details"] > summary').click();
   const vault = page.locator('section[data-ui="card"]').filter({
     has: page.getByRole('heading', { name: en.portfolio.vault.title }),
   });
@@ -404,9 +415,17 @@ test('a withdrawal: part of the cash, then everything, to the owner’s own wall
     { timeout: 90_000 },
   );
   const w = en.withdraw;
+  const openDetails = async () => {
+    const details = page.locator('[data-ui="vault-read-details"]');
+    await expect(details).toHaveCount(1);
+    if ((await details.getAttribute('open')) === null)
+      await details.locator(':scope > summary').click();
+    await expect(details).toHaveAttribute('open', '');
+  };
   /** From the portfolio to the withdraw screen of the one vault. */
   const open = async () => {
     await expect(page).toHaveURL(/\/monitor$/);
+    await openDetails();
     await page.locator('a[data-ui="vault-withdraw"]').click();
     await expect(page).toHaveURL(/\/vaults\/solana\/[^/]+\/withdraw$/);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(w.title);
@@ -445,6 +464,7 @@ test('a withdrawal: part of the cash, then everything, to the owner’s own wall
   await expect(page.getByText(w.what.errors.over('2 USDC'))).toBeVisible();
   await page.getByLabel(w.what.amount('USDC'), { exact: true }).fill('1');
   await through(1);
+  await openDetails();
   await expect(page.locator('a[data-ui="vault-withdraw"]')).toBeVisible();
   await expect(page.locator('[data-ui="vault-empty"]')).toHaveCount(0);
 
@@ -456,6 +476,10 @@ test('a withdrawal: part of the cash, then everything, to the owner’s own wall
   await page.getByRole('button', { name: new RegExp(`^${w.steps.names.what}`) }).click();
   await through(4);
   await expect(page).toHaveURL(/\/monitor$/);
+  await expect(page.locator('[data-ui="vault-summary"]')).toContainText(
+    en.shared.vault.conversation.noHoldings,
+  );
+  await openDetails();
   await expect(page.locator('[data-ui="vault-empty"]')).toHaveText(w.empty);
   await expect(page.locator('a[data-ui="vault-withdraw"]')).toHaveCount(0);
   await check(page, 'monitor-emptied');
