@@ -14,10 +14,12 @@ import type {
 import {
   type VaultAgentSource as AgentSource,
   VaultAgentModelReply,
+  type VaultAgentPurpose,
   VaultAgentReply,
   VaultAgentRequest,
   type VaultAgentResult,
   VaultAgentSource,
+  type VaultAgentStatedPurpose,
   type VaultAgentWarning,
   type VaultAgentWeightNote,
 } from '@colosseum/schemas';
@@ -623,6 +625,23 @@ function eligibilityGoal(context: ConversationAgentContext): 'grow' | 'income' |
     if (goal === 'grow' || goal === 'income' || goal === 'protect') return goal;
   }
   return null;
+}
+
+/**
+ * The goal and risk of a new goal as the person said them: the model's reading, each kept only where
+ * the quote it gave is in one of the person's messages. Anything else is null, never a default.
+ */
+function statedPurpose(
+  read: VaultAgentPurpose | null | undefined,
+  personWords: readonly string[],
+): VaultAgentStatedPurpose {
+  const plain = (text: string) => text.toLowerCase().replace(/\s+/g, ' ').trim();
+  const said = (quote: string | null | undefined) =>
+    !!quote && personWords.some((words) => plain(words).includes(plain(quote)));
+  return {
+    goal: read?.goal && said(read.goalQuote) ? read.goal : null,
+    risk: read?.risk && said(read.riskQuote) ? read.risk : null,
+  };
 }
 
 function hasNonFiniteNumber(value: unknown): boolean {
@@ -1568,13 +1587,17 @@ export async function replyToVaultConversation(
       model = kept.reply;
       sentencesCut = kept.cut;
     }
-    const { proposal, ...conversation } = model;
+    const { proposal, purpose: read, ...conversation } = model;
+    // A new goal's goal and risk are the person's or nothing: kept only with their own words for it.
+    const purpose =
+      context.kind === 'new_goal' ? { purpose: statedPurpose(read, personWords) } : {};
     const prose = proseOf(model);
     if (prose.some(claimsApplied)) return rejected('prose_claims_applied');
     if (!proposal)
       return {
         result: {
           kind: 'reply',
+          ...purpose,
           reply: {
             version: 1,
             messageId: request.messageId,
@@ -1651,6 +1674,7 @@ export async function replyToVaultConversation(
         ],
         result: {
           kind: 'reply',
+          ...purpose,
           reply: {
             version: 1,
             messageId: request.messageId,
@@ -1744,7 +1768,7 @@ export async function replyToVaultConversation(
       weightNotes,
     });
     return reply.success
-      ? { result: { kind: 'reply', reply: reply.data } }
+      ? { result: { kind: 'reply', ...purpose, reply: reply.data } }
       : rejected('reply_shape', where(reply.error.issues));
   };
   const started = Date.now();

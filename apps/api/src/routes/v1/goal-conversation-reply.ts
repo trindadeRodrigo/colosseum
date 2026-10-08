@@ -4,6 +4,7 @@ import {
   OrderError,
   VaultAgentReplyShape,
   VaultAgentRequest,
+  VaultAgentStatedPurpose,
   warningsBelong,
 } from '@colosseum/schemas';
 import type { FastifyInstance } from 'fastify';
@@ -22,9 +23,14 @@ import {
 import type { VaultAgentModel } from '../../vault-agent-model';
 import { signedIn } from './orders';
 
-export const GoalConversationReply = VaultAgentReplyShape.extend({ chain: ChainId }).superRefine(
-  warningsBelong,
-);
+/**
+ * `goal` and `risk` are what the person said the money is for and the risk they accept, each null
+ * until they have said it: a mix is made into a plan with these (`goal/accept`), never with a default.
+ */
+export const GoalConversationReply = VaultAgentReplyShape.extend({
+  chain: ChainId,
+  ...VaultAgentStatedPurpose.shape,
+}).superRefine(warningsBelong);
 export const GoalConversationReplyError = z.strictObject({
   error: z.string(),
   code: z.literal('GOAL_AGENT_UNAVAILABLE'),
@@ -53,7 +59,7 @@ export function registerGoalConversationReplyRoute(
         tags: ['plans'],
         summary: 'Discuss a new goal and preview model-proposed allocations',
         description:
-          'Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. Uses the existing model and shared call quota. A preview requires separate fresh goal and amount confirmation before any financial review.',
+          'Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. Uses the existing model and shared call quota. A preview requires separate fresh goal and amount confirmation before any financial review. `goal` and `risk` are the ones the person stated or confirmed in their own messages, as the model read them and only where the words it quotes are in those messages; each is null until then, and neither is ever defaulted.',
         params: z.strictObject({ chain: ChainId }),
         body: VaultAgentRequest,
         response: {
@@ -159,7 +165,7 @@ export function registerGoalConversationReplyRoute(
             ? 'the new-goal conversation reply passed on its repair attempt'
             : 'the new-goal conversation reply asks about a stated limit its repair attempt still missed',
         );
-      return { ...result.reply, chain };
+      return { ...result.reply, chain, goal: null, risk: null, ...result.purpose };
     },
   );
 }

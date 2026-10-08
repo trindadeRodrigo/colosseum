@@ -10505,7 +10505,7 @@
       "post": {
         "summary": "Discuss a new goal and preview model-proposed allocations",
         "tags": ["plans"],
-        "description": "Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. Uses the existing model and shared call quota. A preview requires separate fresh goal and amount confirmation before any financial review.",
+        "description": "Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. Uses the existing model and shared call quota. A preview requires separate fresh goal and amount confirmation before any financial review. `goal` and `risk` are the ones the person stated or confirmed in their own messages, as the model read them and only where the words it quotes are in those messages; each is null until then, and neither is ever defaulted.",
         "requestBody": {
           "required": true,
           "content": {
@@ -10835,6 +10835,28 @@
                     "chain": {
                       "type": "string",
                       "enum": ["solana", "base", "robinhood"]
+                    },
+                    "goal": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": ["grow", "income", "protect"]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "risk": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": ["low", "medium", "high"]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -10845,7 +10867,9 @@
                     "proposal",
                     "warnings",
                     "weightNotes",
-                    "chain"
+                    "chain",
+                    "goal",
+                    "risk"
                   ],
                   "additionalProperties": false
                 }

@@ -2077,6 +2077,8 @@ export type PostConversationsByChainGoalReplyResponse = {
     quote?: string;
   }[];
   chain: 'solana' | 'base' | 'robinhood';
+  goal: ('grow' | 'income' | 'protect') | null;
+  risk: ('low' | 'medium' | 'high') | null;
 };
 
 /** GET /v1/funding: query. What the signed-in wallet is missing on its chain: the dollar token and native gas */
