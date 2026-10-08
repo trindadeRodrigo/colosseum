@@ -123,5 +123,28 @@
     "stated": {},
     "not_available": [],
     "question": null
+  },
+  "robinhood|safe liquid yields": {
+    "understood": "You want a conservative investment with safe, liquid yields.",
+    "shape": "protect",
+    "lines": [
+      {
+        "id": "robinhood:SGOV",
+        "why": "U.S. Treasury bills, safe and liquid"
+      },
+      {
+        "id": "robinhood:steakUSDG",
+        "why": "dollar yield on USDG"
+      },
+      {
+        "id": "robinhood:AAPL",
+        "why": "a stock, to show the rule"
+      }
+    ],
+    "stated": {
+      "risk": "low"
+    },
+    "not_available": [],
+    "question": null
   }
 }

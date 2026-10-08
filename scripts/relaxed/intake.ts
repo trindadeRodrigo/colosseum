@@ -64,12 +64,21 @@ const yieldShelf = JSON.parse(
   readFileSync(join(root, `packages/engine/src/personal/fixtures/shelves/${chain}-yield.json`), 'utf8'),
 ).rows as { asset: { symbol: string; cls: string; underlying: string; issuer: string; tier: string } }[];
 
+// A fund is classed by what it tracks: Treasury bills are dollar yield, bullion is gold or a commodity,
+// an index is an etf. The engine's registry does the same by class (registry.ts, SLEEVE_OF_CLASS).
+const fundClass = (tracks: string | null) => {
+  const t = (tracks ?? '').toLowerCase();
+  if (/treasury|t-bill|bills?\b|bond/.test(t)) return 'dollar_yield';
+  if (/gold/.test(t)) return 'gold';
+  if (/silver|oil|crude|commodit/.test(t)) return 'commodity';
+  return 'etf';
+};
 const rows: Row[] = [
   ...stocks.filter((s) => s.sets.includes('shelf') || s.sets.includes('universe') || s.sets.includes('cut')).map((s) => ({
     id: `${chain}:${s.symbol}`,
-    cls: s.kind === 'fund' ? 'etf' : 'stock',
+    cls: s.kind === 'fund' ? fundClass(s.tracks) : 'stock',
     text: [
-      `${chain}:${s.symbol}`, s.company, s.kind === 'fund' ? `fund tracking ${s.tracks ?? '?'}` : `${s.sector ?? ''} / ${s.industry ?? ''}`,
+      `${chain}:${s.symbol}`, s.company, s.kind === 'fund' ? `${fundClass(s.tracks)} fund tracking ${s.tracks ?? '?'}` : `stock | ${s.sector ?? ''} / ${s.industry ?? ''}`,
       `keywords: ${s.keywords.join(', ')}`, themesOf(s.symbol).length ? `themes: ${themesOf(s.symbol).join(', ')}` : '',
     ].filter(Boolean).join(' | '),
   })),
@@ -91,10 +100,10 @@ Read what the person wrote. Work out what they mean, including people, companies
 
 Then write one JSON object:
   understood: one sentence in the person's language saying what you understood.
-  shape: "pick" unless the words call for another: "grow" when they want the money to grow over time, "income" when they want to live off it or want monthly money, "protect" when they want to keep it safe, "split" when they want part safe and part risky or state two shares.
+  shape: "pick" unless the words call for another (for every shape, still fill \`lines\` with what fits: yield rows and Treasury funds for "protect" and "income", growth holdings for "grow"; the plan rules are applied after you): "grow" when they want the money to grow over time, "income" when they want to live off it or want monthly money, "protect" when they want to keep it safe, "split" when they want part safe and part risky or state two shares.
   lines: holdings from the table, each {id, why}. \`why\` is one short clause, in the person's language, on what the company does and why it fits what they said; never just the theme's name. Only ids that appear in the table. If a thing they named is not on the table, do not pick a stand-in; put it in not_available with one line on why.
   buckets: only for "split": each {name, share, lines}. Shares as stated, else equal.
-  stated: only what the person actually said, in their own numbers: amount, currency, preferred weights, horizon, risk words. Leave out anything they did not say.
+  stated: only what the person actually said: amount, currency, weights, horizon, and risk as "low" | "medium" | "high" when they used a risk word (conservative, safe, careful = low; aggressive, high risk = high). Leave out anything they did not say.
   not_available: names you understood but could not place on the table.
   question: null almost always. Ask one question only when \`lines\` would otherwise be empty. If you can pick something, pick it, state what you assumed in \`understood\`, and leave question null: the person can widen or narrow the list after the read-back.
 
@@ -179,8 +188,15 @@ const equalSplit = (n: number): number[] => {
   const base = Math.floor(10_000 / n);
   return Array.from({ length: n }, (_, i) => base + (i < 10_000 - base * n ? 1 : 0));
 };
+const leftOut: string[] = [];
 const noStocks = <L extends { id: string }>(shape: string, lines: L[]): L[] =>
-  shape === 'income' || shape === 'protect' ? lines.filter((l) => !['stock', 'etf'].includes(clsOf.get(l.id) ?? '')) : lines;
+  shape === 'income' || shape === 'protect'
+    ? lines.filter((l) => {
+        const ok = !['stock', 'etf'].includes(clsOf.get(l.id) ?? '');
+        if (!ok) leftOut.push(`${l.id} (${clsOf.get(l.id)}, no stock tokens in a plan to ${shape === 'protect' ? 'protect' : 'pay income'})`);
+        return ok;
+      })
+    : lines;
 
 const pct = (bps: number) => `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 2)}%`;
 
@@ -194,6 +210,7 @@ function render(rawReply: unknown, provenance: 'live' | 'recorded' | 'mock'): Re
   const r: Reply = parsed.data;
   const assumptions: string[] = [];
   dropped.length = 0;
+  leftOut.length = 0;
 
   const plate = provenance === 'live' ? 'LIVE' : provenance === 'recorded' ? 'RECORDED from a live run' : 'MOCK · reply written by hand, not by a model';
   console.log(`\n[${plate} · ${chain} · shape: ${r.shape}]\n`);
@@ -201,11 +218,10 @@ function render(rawReply: unknown, provenance: 'live' | 'recorded' | 'mock'): Re
 
   function printBucket(title: string | null, lines: { id: string; why: string }[], shape: string) {
     const kept = noStocks(shape, keep(lines));
-    if (kept.length !== lines.length && (shape === 'income' || shape === 'protect')) assumptions.push(`${shape}: stock tokens left out (gate PROTECT-NO-STOCKS)`);
     if (title) console.log(`— ${title}`);
     if (kept.length === 0) { console.log('  (no line yet)'); return; }
     const weights = equalSplit(kept.length);
-    kept.forEach((l, i) => console.log(`  ${pct(weights[i] ?? 0).padStart(7)}  ${l.id.padEnd(26)} ${l.why}`));
+    kept.forEach((l, i) => console.log(`  ${pct(weights[i] ?? 0).padStart(7)}  ${l.id.padEnd(22)} ${(clsOf.get(l.id) ?? '').padEnd(13)} ${l.why}`));
   }
 
   if (r.shape === 'split' && r.buckets?.length) {
@@ -217,8 +233,9 @@ function render(rawReply: unknown, provenance: 'live' | 'recorded' | 'mock'): Re
     printBucket(null, r.lines, r.shape);
     if (r.shape === 'pick') assumptions.push('equal split (no weights stated)');
     else {
-      assumptions.push(`${r.shape} plan: the solver runs on the parameter table`);
-      if (!('risk' in r.stated)) assumptions.push('risk medium (not stated)');
+      assumptions.push(`a plan to ${r.shape === 'grow' ? 'grow' : r.shape === 'income' ? 'pay income' : 'protect'}: these lines start it; the solver sizes them on the parameter table`);
+      if ('risk' in r.stated) assumptions.push(`risk ${String(r.stated.risk)} (you said so)`);
+      else assumptions.push(r.shape === 'protect' ? 'risk low (a plan to protect)' : 'risk medium (not stated)');
       if (!('horizon' in r.stated)) assumptions.push('no date set (none stated)');
     }
   }
@@ -227,6 +244,7 @@ function render(rawReply: unknown, provenance: 'live' | 'recorded' | 'mock'): Re
     for (const n of r.not_available) console.log(`  · ${typeof n === 'string' ? n : `${n.name}${n.why ? ` (${n.why})` : ''}`}`);
   }
   if (dropped.length) console.log(`\nDropped, not on the table: ${dropped.join(', ')}`);
+  if (leftOut.length) { console.log('\nLeft out by the plan rules:'); for (const l of leftOut) console.log(`  · ${l}`); }
   if (Object.keys(r.stated).length) console.log('\nYou said:', JSON.stringify(r.stated));
   console.log('\nAssumed:'); for (const a of assumptions) console.log(`  · ${a}`);
   console.log(`\n${r.question ? `Question: ${r.question}` : 'Is that right? (yes / tell me what to change)'}\n`);
