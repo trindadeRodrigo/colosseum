@@ -563,6 +563,49 @@ describe('a sequence that stops', () => {
     expect(run.calls[1]?.order).toEqual(orderOn());
   });
 
+  it('leaving the card stops the run under way between steps: the executor is told, and signs on for nobody', async () => {
+    api();
+    const first = gate<void>();
+    run.script = async (order, deps) => {
+      deps.onEvent?.({ order, legId: LEG_CREATE, phase: 'landing' } as never);
+      await first.wait;
+      const deposited = standing(order, { [LEG_CREATE]: 'confirmed' });
+      if (deps.signal?.aborted)
+        return { status: 'waiting', order: deposited, legId: LEG_SWAP, why: 'stopped' } as never;
+      return { status: 'done', order: { ...deposited, status: 'done' } };
+    };
+    const host = await buy();
+    await tick(host);
+    await click(find(host, PRESS));
+    await settle();
+    expect(run.calls).toHaveLength(1);
+    expect(run.calls[0]?.deps.signal?.aborted).toBe(false);
+    // the card goes while the deposit lands: the signal of this run, not one from before it, is set
+    await unmountAll();
+    expect(run.calls[0]?.deps.signal?.aborted).toBe(true);
+    first.open();
+    await settle();
+    expect(run.calls).toHaveLength(1);
+  });
+
+  it('a press that cannot keep its order runs nothing and locks nothing: the amount is still the person’s', async () => {
+    api();
+    const host = await buy();
+    await tick(host);
+    const store = window.localStorage;
+    const setItem = store.setItem.bind(store);
+    const full = vi.spyOn(store, 'setItem').mockImplementation((key: string, value: string) => {
+      if (key.startsWith('tf-order:')) throw new Error('QuotaExceededError');
+      setItem(key, value);
+    });
+    await click(find(host, PRESS));
+    await settle();
+    full.mockRestore();
+    expect(run.calls).toEqual([]);
+    expect(host.textContent).toContain(en.order.outcome.notRunnable['no-store']);
+    expect(find<HTMLInputElement>(host, 'input[inputmode="decimal"]').disabled).toBe(false);
+  });
+
   it('a step that fails after the deposit: says what landed, offers to finish the buy, and signs nothing more by itself', async () => {
     const server = api({ finishes: true });
     run.script = async (order) => {

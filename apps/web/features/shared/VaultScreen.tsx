@@ -251,7 +251,9 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
 
       {mine && port.userId && (
         <VaultConversation
-          key={`${port.userId}:${read.chain}:${conversationNetwork(read.chain) ?? 'unconfigured'}:${vault.address}:${read.provenance}:${vault.observedAt}:${account.status === 'ready' ? account.chain : account.status}`}
+          // a new person, vault or network is another conversation; a new read of the same vault is
+          // the same one, which says so of a reply it set aside (VaultConversation.tsx)
+          key={`${port.userId}:${read.chain}:${conversationNetwork(read.chain) ?? 'unconfigured'}:${vault.address}:${read.provenance}`}
           read={read}
           userId={port.userId}
           showValue={false}
@@ -289,6 +291,12 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
               </Stat>
               <Stat label={v.autoFollow}>{vault.autoFollow ? v.on : v.off}</Stat>
             </StatRow>
+            {!mine && unpriced(vault) > 0 && (
+              // The value leaves out what has no price: said here as on the owner's card above.
+              <p data-ui="vault-unpriced" className="text-caption text-muted-foreground">
+                {t.portfolio.vault.unpriced(unpriced(vault))}
+              </p>
+            )}
             <dl className="grid gap-x-6 gap-y-1 text-body-sm sm:grid-cols-[auto_1fr]">
               <dt className="text-muted-foreground">{v.address}</dt>
               <dd className="break-all font-mono text-source">{vault.address}</dd>
@@ -344,7 +352,8 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                   key: 'weight',
                   header: v.columns.weight,
                   numeric: true,
-                  cell: (r) => now[at(r.asset)] ?? '',
+                  // a holding with no price has no share that was worked out: never drawn as 0%
+                  cell: (r) => (r.valueUsd === null ? '—' : (now[at(r.asset)] ?? '')),
                 },
                 {
                   key: 'target',
@@ -358,10 +367,12 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                   numeric: true,
                   // from the two shares as written, so they and their difference agree
                   cell: (r) =>
-                    drift(
-                      lang,
-                      ((nowTenths[at(r.asset)] ?? 0) - (plannedTenths[at(r.asset)] ?? 0)) * 10,
-                    ),
+                    r.valueUsd === null
+                      ? '—'
+                      : drift(
+                          lang,
+                          ((nowTenths[at(r.asset)] ?? 0) - (plannedTenths[at(r.asset)] ?? 0)) * 10,
+                        ),
                 },
               ]}
             />

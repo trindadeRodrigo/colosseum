@@ -166,18 +166,32 @@ export function OrderScreen({
     setRecord(recallOrder(id, userId));
   }, [id, userId]);
 
+  // The order and the person the read on the screen is of. A second look at the same one (the wallet
+  // reported again, a step landed) leaves the screen as it is until the answer is here, and an answer
+  // that is no read leaves it standing: an order that is being run is never taken off the screen by
+  // a look at it.
+  const readOf = useRef<string | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `round` reads the order again
   useEffect(() => {
     if (port.status !== 'ready') return;
     let mine = true;
-    setLoad({ kind: 'loading' });
+    const of = `${id}|${userId ?? ''}`;
+    const again = readOf.current === of;
+    if (!again) {
+      readOf.current = null;
+      setLoad({ kind: 'loading' });
+    }
     readOrder(apiFetch, id).then((read) => {
-      if (mine) setLoad(read);
+      if (!mine) return;
+      if (read.kind === 'read') readOf.current = of;
+      setLoad((before) =>
+        again && read.kind !== 'read' && before.kind === 'read' ? before : read,
+      );
     });
     return () => {
       mine = false;
     };
-  }, [id, apiFetch, port.status, round]);
+  }, [id, userId, apiFetch, port.status, round]);
 
   // An order that stopped for good is the one case a buy may be finished from: only then is the
   // server asked whether it can. Stopped as this page just saw it, or as the order itself says when
@@ -336,16 +350,31 @@ export function OrderScreen({
     else embed.onStopped?.({ orderId: record.orderId });
   }, [embed, record, running, outcome]);
 
-  // Leaving the page stops the run between steps; what was signed is still reported.
+  // Leaving the page stops the run between steps; what was signed is still reported. The signal is
+  // the one of the run under way, read as the screen goes: each press hands the executor a new one.
+  useEffect(
+    () => () => {
+      stop.current.aborted = true;
+    },
+    [],
+  );
+
+  // The same when the screen stays and the order's steps are not on it: the person signed out, the
+  // wallet is being read again, the record of what they approved is another person's. A run is only
+  // ever under way with its steps shown; where they are not, the executor is told to stop, and it asks
+  // the wallet for nothing more (packages/sdk, `signal`).
+  const onScreen =
+    port.status !== 'loading' &&
+    port.status !== 'signed-out' &&
+    account.status !== 'loading' &&
+    load.kind === 'read' &&
+    !!record;
   useEffect(() => {
-    const signal = stop.current;
-    return () => {
-      signal.aborted = true;
-    };
-  }, []);
+    if (running && !onScreen) stop.current.aborted = true;
+  }, [running, onScreen]);
 
   const go = useCallback(
-    async (again?: { legId: string; signedTimes: number }) => {
+    async (again?: { legId: string; signedTimes: number }, first = false) => {
       if (!record) return;
       // The order as the review screen showed it, kept from the moment the person approved it.
       let approved = record.approved;
@@ -363,12 +392,16 @@ export function OrderScreen({
         }
         setRecord(next);
       }
+      // Approved only once the order is checked and kept: a press that cannot run locks nothing.
+      if (first) embed?.onApprove();
       // The first press's acceptance of the trust notice, kept once and only when the run begins.
       const begun = () => {
         accepts.current?.();
         accepts.current = null;
       };
       stop.current = { aborted: false };
+      // Each run tells its host how it ended: one that stops as the last one did is told again.
+      told.current = null;
       setStopping(false);
       setRunning(true);
       setOutcome(null);
@@ -1010,7 +1043,6 @@ export function OrderScreen({
                   // The first press is the approval of what the card showed: the host keeps the
                   // acceptance of the notice with it, before anything is signed.
                   if (next.kind === 'first') {
-                    embed?.onApprove();
                     // The notice is accepted by a press that starts: kept in `go`, as the run begins.
                     accepts.current = embed
                       ? embed.onStarted
@@ -1022,6 +1054,7 @@ export function OrderScreen({
                     next.kind === 'approve-again'
                       ? { legId: next.legId, signedTimes: next.signedTimes }
                       : undefined,
+                    next.kind === 'first',
                   );
                 }}
               >

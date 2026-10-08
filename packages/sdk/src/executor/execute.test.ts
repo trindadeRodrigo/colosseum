@@ -798,6 +798,78 @@ describe('the executor: what the API can answer', () => {
     expect(result.order.legs[0]?.status).toBe('confirmed');
     expect(s.wallet.sign).toHaveBeenCalledTimes(1);
   });
+
+  it.each(['building', 'checking'] as const)(
+    'asked to stop while a step is %s: the wallet is not asked, and the step is signed once by the next run',
+    async (phase) => {
+      const s = scene('solana');
+      const order = await s.double.buy(100);
+      const second = order.legs[1]?.id;
+      const signal = { aborted: false };
+      const result = await execute(order, {
+        ...s.deps,
+        signal,
+        onEvent: (e) => {
+          // The card goes while the second step is on its way to the wallet.
+          if (e.legId === second && e.phase === phase) signal.aborted = true;
+        },
+      });
+      expect(result).toMatchObject({ status: 'waiting', why: 'stopped', legId: second });
+      expect(s.wallet.sign).toHaveBeenCalledTimes(1);
+      expect(s.wallet.asked.map((tx) => tx.legId)).toEqual([order.legs[0]?.id]);
+      // The attempt that was built is closed, not left to be signed by nobody.
+      expect(result.order.legs[1]?.status).not.toBe('built');
+      // Run again by the person: every step is signed once, and the order is done.
+      const again = await execute(result.order, s.deps);
+      expect(again.status).toBe('done');
+      expect(s.wallet.asked.map((tx) => tx.legId)).toEqual(order.legs.map((l) => l.id));
+    },
+  );
+
+  it('asked to stop while a wallet that sends is being written down as asked: it is not asked, and the next run sends once', async () => {
+    const s = scene('robinhood', { signOnly: false });
+    const order = await s.double.buy(100);
+    const signal = { aborted: false };
+    // A store that takes time, as an agent's may: the stop arrives while the "asked" record is written.
+    const kept = new Map<string, SignedRecord>();
+    const signed = {
+      get: async (key: string) => kept.get(key),
+      set: async (key: string, record: SignedRecord) => {
+        await Promise.resolve();
+        if (record.proof === null && record.times > 0) signal.aborted = true;
+        kept.set(key, record);
+      },
+    };
+    const result = await execute(order, { ...s.deps, signed, signal });
+    expect(result).toMatchObject({ status: 'waiting', why: 'stopped', legId: order.legs[0]?.id });
+    expect(s.wallet.send).not.toHaveBeenCalled();
+    // nothing says the wallet was asked: the next run is not held for a look at a send that never was
+    expect([...kept.values()].every((record) => record.times === 0)).toBe(true);
+    signal.aborted = false;
+    const quiet = {
+      get: signed.get,
+      set: async (key: string, record: SignedRecord) => void kept.set(key, record),
+    };
+    const again = await execute(result.order, { ...s.deps, signed: quiet });
+    expect(again.status).toBe('done');
+    expect(s.wallet.asked.map((tx) => tx.legId)).toEqual(order.legs.map((l) => l.id));
+  });
+
+  it('asked to stop before the first step: nothing is signed at all', async () => {
+    const s = scene('robinhood', { signOnly: false });
+    const order = await s.double.buy(100);
+    const signal = { aborted: false };
+    const result = await execute(order, {
+      ...s.deps,
+      signal,
+      onEvent: (e) => {
+        if (e.phase === 'checking') signal.aborted = true;
+      },
+    });
+    expect(result).toMatchObject({ status: 'waiting', why: 'stopped', legId: order.legs[0]?.id });
+    expect(s.wallet.send).not.toHaveBeenCalled();
+    expect(s.wallet.sign).not.toHaveBeenCalled();
+  });
 });
 
 describe('the executor: an API that never lets go', () => {

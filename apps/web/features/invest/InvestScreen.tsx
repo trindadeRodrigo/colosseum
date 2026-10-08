@@ -663,14 +663,8 @@ export function InvestScreen() {
       void buildFrom(valid, true, true);
   }, [ready, visitorPlan, valid]);
 
-  // A plan lives on one chain (gate ONE-CHAIN). When the person moves to another, the plan on the
-  // page is another chain's: it is built again for the chain they are on.
+  // The chain the plan on the page was built for.
   const planOn = built?.one.proposal.sheet.chains[0] ?? null;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: when the chain is no longer the plan's
-  useEffect(() => {
-    if (planOn && chain && planOn !== chain && valid && build.kind !== 'building')
-      void buildFrom(valid, signedIn && built?.own === true);
-  }, [planOn, chain, valid]);
 
   // A new turn is brought into view without reserving a viewport-height conversation.
   const count = turns.length;
@@ -692,7 +686,19 @@ export function InvestScreen() {
   // What the invest card tells the conversation (features/order/Invest.tsx): one line as each step
   // runs, in the card's own words, then that the vault is open, or that the buy stopped short.
   const lastLine = useRef('');
+  // From the press that approves an order until it is done or stops, the run is on the pane: its card
+  // stays, with its Stop, and nothing that would change or take away the plan is offered meanwhile.
+  const [ordering, setOrdering] = useState(false);
+  // A plan lives on one chain (gate ONE-CHAIN). When the person moves to another, the plan on the
+  // page is another chain's: it is built again for the chain they are on. Not while its order is
+  // being run: that plan's card stays until the run ends, and the plan is built again then.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: when the chain is no longer the plan's, or a run has ended
+  useEffect(() => {
+    if (planOn && chain && planOn !== chain && valid && build.kind !== 'building' && !ordering)
+      void buildFrom(valid, signedIn && built?.own === true);
+  }, [planOn, chain, valid, ordering]);
   function onProgress(progress: InvestProgress) {
+    setOrdering(true);
     if (progress.line === '' || progress.line === lastLine.current) return;
     lastLine.current = progress.line;
     say({ say: [{ key: 'progress', text: progress.line }], fields: null, ask: null, retry: false });
@@ -700,14 +706,19 @@ export function InvestScreen() {
   /** Whether the pane is the phone's overlay: under the width the two panes sit side by side at. */
   const onPhone = () =>
     typeof window.matchMedia !== 'function' || window.matchMedia('(max-width: 1023.98px)').matches;
-  const onDone = () => say({ say: [{ key: 'done' }], fields: null, ask: null, retry: false });
-  const onStopped = (stopped: { orderId: string }) =>
+  const onDone = () => {
+    setOrdering(false);
+    say({ say: [{ key: 'done' }], fields: null, ask: null, retry: false });
+  };
+  const onStopped = (stopped: { orderId: string }) => {
+    setOrdering(false);
     say({
       say: [{ key: 'stopped', orderId: stopped.orderId }],
       fields: null,
       ask: null,
       retry: false,
     });
+  };
 
   // On a phone the pane opens over the conversation as a dialog: focus goes into it, Escape and its
   // one button close it, and focus goes back to the line that opened it.
@@ -779,7 +790,7 @@ export function InvestScreen() {
       sheet?.allocation !== undefined ||
       sheet?.intake?.pendingInterest != null ||
       (sheet?.intake?.interestReview === true && !confirmed));
-  const canInvest = plan?.own === true && signedIn && blocked === null && !stale;
+  const canInvest = plan?.own === true && signedIn && blocked === null && (ordering || !stale);
   // The pane's states: nothing yet; the goal as facts; the candidates side by side, none picked; the
   // plan that was picked; and that plan with its invest card.
   const state = canInvest
@@ -974,7 +985,11 @@ export function InvestScreen() {
         {/* an empty conversation and an empty pane, by one press or by saying so */}
         {turns.length > 0 && (
           <span data-ui="invest-start-over">
-            <Button variant="link" disabled={build.kind === 'building'} onClick={startOver}>
+            <Button
+              variant="link"
+              disabled={build.kind === 'building' || ordering}
+              onClick={startOver}
+            >
               {w.startOver}
             </Button>
           </span>
@@ -1123,6 +1138,7 @@ export function InvestScreen() {
                 {/* The replies of the turn that is open, right under it: one press answers. */}
                 {turn === open &&
                   !busy &&
+                  !ordering &&
                   (turn.ask ||
                     turn.question ||
                     toConfirm ||
@@ -1191,7 +1207,7 @@ export function InvestScreen() {
           placeholder={turns.length === 0 ? t.goal.composer.placeholder : w.placeholder}
           maxLength={GOAL_TEXT.max}
           busy={reading}
-          disabled={build.kind === 'building'}
+          disabled={build.kind === 'building' || ordering}
           lang={LOCALE[lang]}
           labels={{ submit: w.reply, busy: w.reading }}
         />
@@ -1285,7 +1301,7 @@ export function InvestScreen() {
             compact={!workspace}
             skipped={sheet?.skipped ?? []}
             held={sheet?.intake ?? null}
-            disabled={busy}
+            disabled={busy || ordering}
             onChange={(fact) => post({ kind: 'reopen', fact }, w.facts.changeSay[fact])}
             build={toConfirm && !busy ? () => confirm() : null}
             visitor={!signedIn}
@@ -1328,7 +1344,7 @@ export function InvestScreen() {
                 <p data-ui="pane-picked" className="text-body font-medium">
                   {w.pane.picked(pickedName ?? '')}
                 </p>
-                <Button variant="link" onClick={() => setPicked(null)}>
+                <Button variant="link" disabled={ordering} onClick={() => setPicked(null)}>
                   {w.pane.backToPlans}
                 </Button>
               </div>
@@ -1338,7 +1354,7 @@ export function InvestScreen() {
               chain={planChain}
               blocked={blocked}
               level={2}
-              onWay={closeGap}
+              onWay={ordering ? undefined : closeGap}
               // Its own button only while the card cannot be here. Signed out it leads to the
               // sign-in dialog. Signed in with a plan that is still a visitor's, it makes the plan
               // theirs. On a chain that is not ready it is off and says why. None while the plan

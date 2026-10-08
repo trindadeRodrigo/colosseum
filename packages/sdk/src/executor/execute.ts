@@ -178,7 +178,10 @@ export type ExecutorDeps = {
   patience?: Partial<Patience>;
   sleep?: (ms: number) => Promise<void>;
   onEvent?: (event: ExecutionEvent) => void;
-  /** Set `aborted` to stop between steps. A signature already made is still reported. */
+  /**
+   * Set `aborted` to stop: read between steps and again as the wallet is about to be asked, so nothing
+   * is signed once it is set. A signature already made is still reported.
+   */
   signal?: { readonly aborted: boolean };
 };
 
@@ -412,7 +415,8 @@ export function makeExecute(guard: Guard) {
     type Made =
       | { record: SignedRecord & { proof: ReportLegRequest } }
       | { wallet: { code: WalletErrorCode; message: string }; unknown: boolean }
-      | { unknownBlockhash: true };
+      | { unknownBlockhash: true }
+      | { stopped: true };
     /**
      * What the caller's read says before a signature: the height kept with it. Null: its node does not
      * have the blockhash after the tries it was given. With no read given there is nothing to keep.
@@ -448,6 +452,9 @@ export function makeExecute(guard: Guard) {
       // there is no blockhash for a node to know.
       const height = deployment.family === 'mock' ? 'none' : await heightBefore(tx);
       if (height === null) return { unknownBlockhash: true };
+      // Asked to stop while the step was built, checked or looked up: the wallet is not asked. Whoever
+      // set the signal may no longer be showing what would be signed.
+      if (deps.signal?.aborted) return { stopped: true };
       const now = {
         times: (before?.times ?? 0) + 1,
         chain: tx.chainId,
@@ -458,6 +465,16 @@ export function makeExecute(guard: Guard) {
         // It is written down that the wallet was asked before it is asked: a page that dies between
         // the two does not ask a second time.
         await remember(key, { ...now, proof: null });
+        // Asked to stop while that was written (a store that takes time): the wallet is not asked, and
+        // the record is put back as it was, so the next run does not read this as a send that may
+        // have gone.
+        if (deps.signal?.aborted) {
+          await remember(
+            key,
+            before ?? { times: 0, chain: tx.chainId, messageHash: '', proof: null },
+          );
+          return { stopped: true };
+        }
         try {
           const { txId } = await signer.send(tx.chainId, tx);
           if (typeof txId !== 'string' || !txId)
@@ -765,8 +782,14 @@ export function makeExecute(guard: Guard) {
             if (stop === 'rebuild') continue;
             if (stop) return stop;
           }
+          const stopped = async (): Promise<ExecutionResult> => {
+            await cancel(legId);
+            return { status: 'waiting', order: seen, legId, why: 'stopped' };
+          };
+          if (deps.signal?.aborted) return stopped();
           tell(legId, 'signing');
           const made = await sign(pass, key, before);
+          if ('stopped' in made) return stopped();
           if ('unknownBlockhash' in made) {
             await cancel(legId);
             return { status: 'waiting', order: seen, legId, why: 'unknown_blockhash' };

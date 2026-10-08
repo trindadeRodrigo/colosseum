@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+
+import { VaultConversationTranscript } from '@colosseum/schemas';
 import { act, createElement, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
@@ -12,6 +14,7 @@ import { StrategyPreview } from './StrategyPreview';
 import {
   conversationKey,
   conversationNetwork,
+  plainText,
   readLocal,
   serverConversation,
   transcriptOf,
@@ -48,6 +51,7 @@ beforeEach(() => {
   vi.stubEnv('NEXT_PUBLIC_CHAIN_NETWORK_SOLANA', 'testnet');
   vi.stubEnv('NEXT_PUBLIC_CHAIN_NETWORK_ROBINHOOD', 'testnet');
   localStorage.clear();
+  sessionStorage.clear();
   portStore.set(signedInPort(EMBEDDED, { userId }));
   portStore.setApi(async () => json({}, 404));
 });
@@ -590,6 +594,47 @@ describe('current context and truthful holdings', () => {
     }
   });
 
+  it('sets aside a reply asked of the read before when the same vault is read again, and says so', async () => {
+    let change: (value: typeof read) => void = () => {};
+    let complete: (response: Response) => void = () => {};
+    let messageId = '';
+    let signal: AbortSignal | null | undefined;
+    function Workspace() {
+      const [value, setValue] = useState(read);
+      change = setValue;
+      return createElement(VaultConversation, { read: value, userId });
+    }
+    portStore.setApi(async (url, init) => {
+      if (url.endsWith('/reply')) {
+        messageId = JSON.parse(String(init?.body)).messageId;
+        signal = init?.signal;
+        return new Promise((done) => {
+          complete = done;
+        });
+      }
+      return json({}, 404);
+    });
+    const host = await mount(withAccount('en', createElement(Workspace)));
+    await send(host, 'Should I hold more gold?');
+    const later = new Date(Date.parse(read.vault.observedAt) + 60_000).toISOString();
+    await act(async () => change({ ...read, vault: { ...read.vault, observedAt: later } }));
+    expect(signal?.aborted).toBe(true);
+    complete(json({ ...reply, messageId }));
+    await settle();
+    // the answer was for the read before: not shown, and the person is told why, with their words kept
+    expect(host.querySelector('[data-ui="vault-proposal"]')).toBeNull();
+    expect(host.textContent).not.toContain(reply.message);
+    expect(host.textContent).toContain(en.shared.vault.conversation.reread);
+    expect(host.textContent).toContain('Should I hold more gold?');
+    expect(
+      readLocal(
+        conversationKey(userId, read.chain, read.vault.address, read.provenance, 'testnet'),
+      ).transcript.at(-1)?.text,
+    ).toBe('Should I hold more gold?');
+    // and the box is open again for the same question
+    expect(find<HTMLTextAreaElement>(host, 'textarea').disabled).toBe(false);
+  });
+
   it.each([otherRead, evmRead])(
     'discards an in-flight reply when opening another vault/chain',
     async (nextRead) => {
@@ -765,6 +810,156 @@ describe('conservative stored history and provider validation', () => {
       });
     },
   );
+
+  it('takes out of a message exactly what our server refuses in one, and keeps lines', () => {
+    const accepted = (text: string) =>
+      VaultConversationTranscript.safeParse([{ id: 'a', who: 'app', text }]).success;
+    const codes = [
+      ...Array.from({ length: 0xa1 }, (_, i) => i),
+      ...Array.from({ length: 0x30 }, (_, i) => 0x600 + i),
+      ...Array.from({ length: 0x80 }, (_, i) => 0x2000 + i),
+      0xfeff,
+    ];
+    for (const code of codes) {
+      const text = `a${String.fromCharCode(code)}b`;
+      // what the schema refuses is changed, what it accepts is left as it is
+      expect(plainText(text) === text, `U+${code.toString(16)}`).toBe(accepted(text));
+      expect(accepted(plainText(text)), `U+${code.toString(16)}`).toBe(true);
+    }
+    expect(plainText('one\r\ntwo\rthree\n\tfour')).toBe('one\ntwo\nthree\n\tfour');
+  });
+
+  it('sends our server no character it refuses, whatever text the save is handed', async () => {
+    const value = {
+      revision: 0,
+      transcript: [
+        { id: 'a', who: 'person' as const, text: 'Why\u2066 gold?\r\nTell me.' },
+        { id: 'b', who: 'app' as const, text: 'Gold\u0000 is\u202e here\u0007.\u009f' },
+        // nothing but what is taken out: an empty row would be refused, so it is not sent
+        { id: 'c', who: 'app' as const, text: '\u0007\u202e \u200f' },
+      ],
+    };
+    let sent: { transcript: unknown } = { transcript: null };
+    const store = serverConversation(
+      async (_path, init) => {
+        sent = JSON.parse(String(init?.body));
+        // our server, by its own schema: a refused row is a 400, as it would be for every save after
+        if (!VaultConversationTranscript.safeParse(sent.transcript).success) return json({}, 400);
+        return json({
+          version: 1,
+          chain: read.chain,
+          address: read.vault.address,
+          provenance: read.provenance,
+          network: 'testnet',
+          revision: 1,
+          transcript: sent.transcript,
+        });
+      },
+      read.chain,
+      read.vault.address,
+      read.provenance,
+      'testnet',
+    );
+    expect(await store.write(value)).toBe('saved');
+    expect(sent.transcript).toEqual([
+      { id: 'a', who: 'person', text: 'Why gold?\nTell me.' },
+      { id: 'b', who: 'app', text: 'Gold is here.' },
+    ]);
+  });
+
+  it('saves a reply with characters our server refuses as plain text, so later saves still go through', async () => {
+    const writes: { transcript: unknown }[] = [];
+    portStore.setApi(async (url, init) => {
+      if (url.endsWith('/reply'))
+        return json({
+          ...reply,
+          messageId: JSON.parse(String(init?.body)).messageId,
+          message: 'First line.\r\nSecond \u202eline\u0007 here.\u200f',
+          proposal: null,
+        });
+      if (url === path && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body));
+        writes.push(body);
+        return json({
+          version: 1,
+          chain: read.chain,
+          address: read.vault.address,
+          provenance: read.provenance,
+          network: 'testnet',
+          revision: body.expectedRevision + 1,
+          transcript: body.transcript,
+          checkpoint: null,
+          updatedAt: null,
+        });
+      }
+      if (url === path)
+        return json({
+          version: 1,
+          chain: read.chain,
+          address: read.vault.address,
+          provenance: read.provenance,
+          network: 'testnet',
+          revision: 0,
+          transcript: [],
+          checkpoint: null,
+          updatedAt: null,
+        });
+      return json({}, 404);
+    });
+    const host = await show();
+    await settle();
+    await send(host, 'Why\u2066 gold?\r\nTell me.');
+    await send(host, 'And after that?');
+    // every save, the first and the ones after the reply, is one the schema takes
+    expect(writes.length).toBeGreaterThanOrEqual(3);
+    for (const write of writes)
+      expect(VaultConversationTranscript.safeParse(write.transcript).success).toBe(true);
+    const kept = readLocal(
+      conversationKey(userId, read.chain, read.vault.address, read.provenance, 'testnet'),
+    ).transcript.map((turn) => turn.text);
+    expect(kept.slice(0, 2)).toEqual(['Why gold?\nTell me.', 'First line.\nSecond line here.']);
+    expect(kept.at(-2)).toBe('And after that?');
+  });
+
+  it('asks an API without the history route once a tab, and a vault’s own 404 every time', async () => {
+    const value = { revision: 0, transcript: [] };
+    const missing = vi.fn(async (_path: string) =>
+      json({ message: `Route GET:${path} not found`, error: 'Not Found', statusCode: 404 }, 404),
+    );
+    const one = serverConversation(
+      missing,
+      read.chain,
+      read.vault.address,
+      read.provenance,
+      'testnet',
+    );
+    expect(await one.read()).toBeNull();
+    expect(missing).toHaveBeenCalledTimes(1);
+    // the route is not there: another vault's page, a write, asks nothing more in this tab
+    const two = serverConversation(
+      missing,
+      read.chain,
+      'another-vault',
+      read.provenance,
+      'testnet',
+    );
+    expect(await two.read()).toBeNull();
+    expect(await two.write(value)).toBe('unavailable');
+    expect(missing).toHaveBeenCalledTimes(1);
+    // a 404 for one vault on an API that has the route is that vault's, and is asked again
+    sessionStorage.clear();
+    const notYours = vi.fn(async (_path: string) => json({ error: 'not found' }, 404));
+    const three = serverConversation(
+      notYours,
+      read.chain,
+      read.vault.address,
+      read.provenance,
+      'testnet',
+    );
+    expect(await three.read()).toBeNull();
+    expect(await three.read()).toBeNull();
+    expect(notYours).toHaveBeenCalledTimes(2);
+  });
 
   it('does not ask for private history without a valid configured network', async () => {
     vi.stubEnv('NEXT_PUBLIC_CHAIN_NETWORK_SOLANA', 'invalid-network');

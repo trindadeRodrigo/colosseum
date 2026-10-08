@@ -25,6 +25,7 @@ import { StrategyPreview } from './StrategyPreview';
 import {
   conversationKey,
   conversationNetwork,
+  plainText,
   readLocal,
   serverConversation,
   type Turn,
@@ -79,7 +80,14 @@ export function VaultConversation({
   const localKey = useRef(key);
   localKey.current = context;
 
+  // A reply under way when the vault is read again was asked of the read before: it is set aside, and
+  // said so. One under way for another person, vault or network is that conversation's, and goes quietly.
+  const shownKey = useRef(key);
+  const said = useRef(copy);
+  said.current = copy;
   useEffect(() => {
+    const interrupted = sending.current && shownKey.current === key;
+    shownKey.current = key;
     const run = ++generation.current;
     const local = readLocal(key);
     heldTurns.current = local.transcript;
@@ -87,7 +95,7 @@ export function VaultConversation({
     setReply(null);
     setBusy(false);
     sending.current = false;
-    setError(undefined);
+    setError(interrupted ? said.current.reread : undefined);
     setStorage('local');
     setLoading(true);
     revision.current = 0;
@@ -155,8 +163,11 @@ export function VaultConversation({
     return true;
   }
 
-  async function send(words: string) {
+  async function send(typed: string) {
     if (sending.current || busy || loading || storage === 'conflict') return;
+    // every message is kept as our server keeps it: one character it refuses would block later saves
+    const words = plainText(typed);
+    if (!words.trim()) return;
     const next = [
       ...heldTurns.current,
       { id: crypto.randomUUID(), who: 'person' as const, text: words },
@@ -195,7 +206,7 @@ export function VaultConversation({
         setError(copy.failed);
         return;
       }
-      const message = [result.message, result.question].filter(Boolean).join('\n\n');
+      const message = plainText([result.message, result.question].filter(Boolean).join('\n\n'));
       const completed = [...next, { id: crypto.randomUUID(), who: 'app' as const, text: message }];
       if (result.proposal) {
         const lines = [
@@ -204,7 +215,7 @@ export function VaultConversation({
             (line) =>
               `${line.symbol ?? line.assetId} (${line.assetId}): ${share(language, line.weightBps)} [${line.evidenceIds.join(', ')}]`,
           ),
-        ];
+        ].map(plainText);
         let chunk = copy.draftIntro;
         for (const line of lines) {
           if (chunk.length + line.length + 1 > 8000) {

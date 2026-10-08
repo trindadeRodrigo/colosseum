@@ -461,7 +461,7 @@ export const pt: Dictionary = {
       `Nenhuma carteira desta conta está na ${chain}, então nada é lido lá.`,
     title: (vaults: number) =>
       vaults > 1 ? 'O que seus cofres guardam.' : 'O que seu cofre guarda.',
-    planDetails: 'Detalhes da meta e estratégia',
+    planDetails: 'Detalhes do objetivo e da estratégia',
     lead: 'Seus cofres, seus ativos e as estratégias que seguem. Abra um cofre para continuar a conversa ou adicionar dinheiro.',
     chain: 'Rede',
     reading: 'Lendo seu cofre…',
@@ -620,7 +620,7 @@ export const pt: Dictionary = {
         differs: (chain: string) =>
           `A resposta do nosso servidor difere das metas que a ${chain} guarda para este cofre, então não ofereço adicionar dinheiro agora. Leia seu portfólio de novo em instantes.`,
         unlisted:
-          'Este cofre tem uma meta em um token que este app não lista, então não consigo conferir um aporte e não ofereço um.',
+          'Este cofre tem um peso-alvo em um token que este app não lista, então não consigo conferir um aporte e não ofereço um.',
       },
     },
     summary: {
@@ -664,7 +664,7 @@ export const pt: Dictionary = {
       heldBuilt:
         'Seu plano foi montado com isso. Toque em um limite para mudar, ou me diga o que mudar.',
       allocation: (request: string, conflict: boolean, bound?: string) =>
-        `Você pediu: “${request}”. ${bound ? `A exigência “${bound}” não foi aplicada. Limites mínimos e máximos de alocação ainda não são aceitos. ` : 'Não consigo confirmar que esse pedido de alocação foi aplicado. '}${conflict ? 'Planos de renda e proteção não mantêm ações. Mudar para crescimento não aplica a participação pedida nem mantém uma meta de renda mensal. ' : ''}Revise a leitura atual. O investimento fica pausado até você retirar explicitamente esse pedido e aceitar esses termos.`,
+        `Você pediu: “${request}”. ${bound ? `A exigência “${bound}” não foi aplicada. Limites mínimos e máximos de alocação ainda não são aceitos. ` : 'Não consigo confirmar que esse pedido de alocação foi aplicado. '}${conflict ? 'Planos de renda e proteção não mantêm ações. Mudar para crescimento não aplica a participação pedida nem mantém um objetivo de renda mensal. ' : ''}Revise a leitura atual. O investimento fica pausado até você retirar explicitamente esse pedido e aceitar esses termos.`,
       allocationDropped:
         'Você retirou esse pedido de alocação. O objetivo validado atual permanece; revise os termos reais antes de montar ou escolher um plano.',
       heldOpen: 'Ainda preciso de mais uma coisa.',
@@ -1464,7 +1464,7 @@ export const pt: Dictionary = {
       familyId: 'O identificador dele, calculado a partir do endereço',
       assets: 'Ativos e pesos',
       assetsHint:
-        'Estes são os pesos-alvo do cofre. Compartilhar exige de 3 a 12 ativos listados, de 2% a 50% em passos de 0,5%, sem meta de caixa. Ajuste a estratégia no cofre antes de compartilhar se ela não couber.',
+        'Estes são os pesos-alvo do cofre. Compartilhar exige de 3 a 12 ativos listados, de 2% a 50% em passos de 0,5%, sem peso-alvo de caixa. Ajuste a estratégia no cofre antes de compartilhar se ela não couber.',
       asset: 'Ativo',
       weight: 'Peso, em %',
       assetOf: (n: number) => `Ativo ${n}`,
@@ -1535,6 +1535,8 @@ export const pt: Dictionary = {
           'Sua mensagem está salva. O serviço de conversa do cofre ainda não está disponível; nenhuma resposta ou mudança de estratégia foi produzida.',
         failed:
           'Não consegui uma resposta. Suas palavras foram mantidas; nenhuma mudança de estratégia foi produzida.',
+        reread:
+          'O cofre foi lido de novo enquanto eu respondia, então deixei essa resposta de lado. Suas palavras foram mantidas; pergunte de novo para ter uma resposta sobre o que ele tem agora.',
         pending:
           'Uma conversa sobre este cofre, com o que ele tem agora como contexto. O serviço de conversa está sendo conectado.',
         empty:

@@ -36,7 +36,7 @@ const FILL = ['bg-leg-1', 'bg-leg-2', 'bg-leg-3', 'bg-leg-4'] as const;
 /** The first observation of a kind, as a pin takes it. Null when the plan names none. */
 const observed = (
   plan: PlanCandidate['proposal'],
-  kind: 'yield' | 'liquidity',
+  kind: 'yield' | 'liquidity' | 'fx',
 ): PinSource | null => {
   const o = plan.observations.find((x) => x.kind === kind);
   return o
@@ -137,7 +137,9 @@ function Candidate({
   const locale = LOCALE[lang];
   const share = (bps: number) => formatBps(bps, locale);
   const label = planProvenance(proposal);
-  const yieldObs = observed(proposal, 'yield');
+  // A yielding holding with no reading is in the carry at nothing (the engine flags it): the sum is
+  // then not a figure that was observed, and it and what stands on it are shown as not read.
+  const yieldObs = proposal.flags.includes('yield_not_read') ? null : observed(proposal, 'yield');
   const exitObs = observed(proposal, 'liquidity');
   const currency = currencyOf(proposal.sheet);
   const held = proposal.lines.filter((l) => l.weightBps > 0);
@@ -274,6 +276,8 @@ function Candidate({
                 lang={lang}
                 currency={currency}
                 share={share}
+                yieldObs={yieldObs}
+                pinLabels={t.pin}
                 onWay={onWay}
               />
             )}
@@ -286,12 +290,26 @@ function Candidate({
               share={share}
               yieldObs={yieldObs}
               exitObs={exitObs}
+              fxObs={observed(proposal, 'fx')}
               pinLabels={t.pin}
             />
           </div>
         </details>
       </div>
     </Card>
+  );
+}
+
+/** A sentence of the dictionary with one figure in it, the figure on its pin where the words put it. */
+const SLOT = '\u0000';
+function withFigure(write: (figure: string) => string, figure: ReactNode): ReactNode {
+  const [before, after = ''] = write(SLOT).split(SLOT);
+  return (
+    <>
+      {before}
+      {figure}
+      {after}
+    </>
   );
 }
 
@@ -324,6 +342,8 @@ function Withdrawals({
   lang,
   currency,
   share,
+  yieldObs,
+  pinLabels,
   onWay,
 }: {
   status: PlanStatus;
@@ -331,10 +351,15 @@ function Withdrawals({
   lang: Lang;
   currency: string;
   share: (bps: number) => string;
+  yieldObs: PinSource | null;
+  pinLabels: Dictionary['pin'];
   onWay?: (way: string) => void;
 }) {
   const w = words.status;
-  const observedCarry = share(status.carryObservedBps);
+  // the yield observed is a figure like any other: on its pin, inside the sentence that says it
+  const observedCarry = (
+    <ProvenancePin value={share(status.carryObservedBps)} obs={yieldObs} labels={pinLabels} />
+  );
   const date = status.observedOn
     ? new Intl.DateTimeFormat(LOCALE[lang], { dateStyle: 'medium', timeZone: 'UTC' }).format(
         new Date(status.observedOn),
@@ -346,10 +371,13 @@ function Withdrawals({
       <p className="text-body">{status.met ? w.met : w.notMet}</p>
       <p className="text-body-sm">
         {status.carryNeededBps === null
-          ? w.neededOut(observedCarry)
+          ? withFigure(w.neededOut, observedCarry)
           : status.carryNeededBps === 0
-            ? w.neededNone(observedCarry)
-            : w.needed(share(status.carryNeededBps), observedCarry)}{' '}
+            ? withFigure(w.neededNone, observedCarry)
+            : withFigure(
+                (observed) => w.needed(share(status.carryNeededBps as number), observed),
+                observedCarry,
+              )}{' '}
         {date && w.observedOn(date)}
       </p>
       {!status.met && (status.ways.length > 0 || status.noAmountCloses) && (
@@ -396,6 +424,7 @@ function Score({
   share,
   yieldObs,
   exitObs,
+  fxObs,
   pinLabels,
 }: {
   scorecard: PlanScorecard;
@@ -406,6 +435,7 @@ function Score({
   share: (bps: number) => string;
   yieldObs: PinSource | null;
   exitObs: PinSource | null;
+  fxObs: PinSource | null;
   pinLabels: Dictionary['pin'];
 }) {
   const s = words.score;
@@ -445,8 +475,11 @@ function Score({
       </span>
     </span>,
   ]);
+  // a share of the plan's own weights, as the issuer's above: no reading of a market is in it
   rows.push([s.credit, share(scorecard.creditBasisBps)]);
-  if (scorecard.openFxUsd !== undefined) rows.push([s.fx, dollars(scorecard.openFxUsd, lang)]);
+  // what is owed in another currency, in dollars at the rate the plan read
+  if (scorecard.openFxUsd !== undefined)
+    rows.push([s.fx, pinned(dollars(scorecard.openFxUsd, lang), fxObs)]);
   return (
     <div className="flex flex-col gap-2">
       <dl data-ui="candidate-score" className="flex flex-col text-body-sm">

@@ -1171,6 +1171,68 @@ describe('auto-follow on a vault’s page, after a withdrawal switched it off', 
     return show(createElement(VaultScreen, { chain: 'solana', address: VAULT }));
   };
 
+  it('draws no share and no drift for a holding with no price: a dash, never 0%', async () => {
+    const host = await page({
+      valueUsd: '50',
+      positions: [
+        {
+          asset: 'solana:paxg',
+          raw: '1',
+          multiplier: '1',
+          display: '1',
+          targetBps: 4000,
+          weightBps: 0,
+          driftBps: -4000,
+          valueUsd: null,
+          lastKeeperAt: null,
+        },
+      ],
+    });
+    const row = [...host.querySelectorAll('tbody tr')].find((tr) =>
+      tr.textContent?.includes('PAXG'),
+    ) as HTMLElement;
+    const cells = [...row.querySelectorAll('th, td')].map((cell) => cell.textContent);
+    const heads = [...host.querySelectorAll('thead th')].map((th) => th.textContent);
+    const at = (name: string) => cells[heads.indexOf(name)];
+    expect(at(en.shared.vault.columns.price)).toBe('—');
+    expect(at(en.shared.vault.columns.weight)).toBe('—');
+    expect(at(en.shared.vault.columns.drift)).toBe('—');
+    // what it is meant to be is the plan's own number, and is still said
+    expect(at(en.shared.vault.columns.target)).toMatch(/40/);
+  });
+
+  it('says to a visitor, as to the owner, that the value leaves out a holding with no price', async () => {
+    const OTHER = 'EPjFWdd5AufqSSqeM2qtbKqmnzN6gRLfV9YzcVz8kGDw';
+    const paxg = {
+      asset: 'solana:paxg',
+      raw: '1',
+      multiplier: '1',
+      display: '1',
+      targetBps: 4000,
+      weightBps: 0,
+      driftBps: -4000,
+      valueUsd: null,
+      lastKeeperAt: null,
+    };
+    const visitor = await page({
+      owner: OTHER,
+      valueUsd: '50',
+      positions: [paxg],
+    });
+    expect(find(visitor, '[data-ui="vault-unpriced"]').textContent).toBe(
+      en.portfolio.vault.unpriced(1),
+    );
+    await unmountAll();
+    // nothing is said where every holding has its price
+    const priced = await page({ owner: OTHER });
+    expect(priced.querySelector('[data-ui="vault-unpriced"]')).toBeNull();
+    await unmountAll();
+    // the owner is told on their own card: the fold under it does not say it again
+    const owner = await page({ valueUsd: '50', positions: [paxg] });
+    expect(owner.textContent).toContain(en.portfolio.vault.unpriced(1));
+    expect(owner.querySelector('[data-ui="vault-unpriced"]')).toBeNull();
+  });
+
   it('tells the owner where to switch it on again, with the way there', async () => {
     const host = await page({ autoFollow: false });
     const line = find(host, '[data-ui="vault-auto-follow-off"]');
