@@ -96,7 +96,7 @@ Then write one JSON object:
   buckets: only for "split": each {name, share, lines}. Shares as stated, else equal.
   stated: only what the person actually said, in their own numbers: amount, currency, preferred weights, horizon, risk words. Leave out anything they did not say.
   not_available: names you understood but could not place on the table.
-  question: at most one, only when you cannot pick without it. Prefer an assumption you state in \`understood\` over a question.
+  question: null almost always. Ask one question only when \`lines\` would otherwise be empty. If you can pick something, pick it, state what you assumed in \`understood\`, and leave question null: the person can widen or narrow the list after the read-back.
 
 Rules:
 - Never state a yield, price, return or any figure that is not on the table row you are quoting.
@@ -250,7 +250,7 @@ if (!chat) {
   let last: Reply | null = null;
   let line = text || (await rl.question('you > ')).trim();
   while (line) {
-    if (last && YES.test(line)) {
+    if (last && !last.question && YES.test(line)) {
       console.log(`\nConfirmed. This is what would go to POST /v1/baskets/personalize:\n${JSON.stringify(last, null, 2)}\n`);
       break;
     }
