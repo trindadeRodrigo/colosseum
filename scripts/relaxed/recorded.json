@@ -1,16 +1,16 @@
 {
-  "about": "Recorded replies for the offline demo of scripts/relaxed/intake.ts, keyed <chain>|<text>. The four below were WRITTEN BY HAND on 2026-10-08 as the expected shape of the model's answer, not returned by a model: provenance mock. Run with --record once ANTHROPIC_API_KEY is set to replace them with live replies.",
+  "about": "Six hand-written sample replies (mock), never a live model evaluation. Catalog IDs corrected to current fixture IDs; split pots explicitly carry protect/pick goals. Recorded person text is synthetic, not private production history.",
   "provenance": "mock",
   "robinhood|I want to invest in Elon": {
     "understood": "You want to invest in the companies Elon Musk leads: Tesla and SpaceX, both on this table.",
     "shape": "pick",
     "lines": [
       {
-        "id": "robinhood:TSLA",
+        "id": "robinhood:tsla",
         "why": "Tesla, the company Elon Musk runs; electric vehicles and energy"
       },
       {
-        "id": "robinhood:SPCX",
+        "id": "robinhood:spcx",
         "why": "SpaceX, which he founded and runs; rockets and Starlink"
       }
     ],
@@ -29,31 +29,31 @@
     "shape": "pick",
     "lines": [
       {
-        "id": "robinhood:NVDA",
+        "id": "robinhood:nvda",
         "why": "Nvidia, GPUs and AI accelerators"
       },
       {
-        "id": "robinhood:AMD",
+        "id": "robinhood:amd",
         "why": "AMD, CPUs and GPUs"
       },
       {
-        "id": "robinhood:INTC",
+        "id": "robinhood:intc",
         "why": "Intel, processors and foundry"
       },
       {
-        "id": "robinhood:MU",
+        "id": "robinhood:mu",
         "why": "Micron, memory chips"
       },
       {
-        "id": "robinhood:TSM",
+        "id": "robinhood:tsm",
         "why": "TSMC, the largest contract chip maker"
       },
       {
-        "id": "robinhood:ASML",
+        "id": "robinhood:asml",
         "why": "ASML, the lithography machines chips are made with"
       },
       {
-        "id": "robinhood:SNDK",
+        "id": "robinhood:sndk",
         "why": "Sandisk, flash storage"
       }
     ],
@@ -83,24 +83,26 @@
         "share": 0.5,
         "lines": [
           {
-            "id": "robinhood:SGOV",
+            "id": "robinhood:sgov",
             "why": "fundo de títulos curtos do Tesouro americano, o mais conservador da tabela"
           },
           {
-            "id": "robinhood:steakUSDG",
+            "id": "robinhood:steakusdg",
             "why": "rendimento em dólar sobre USDG"
           }
-        ]
+        ],
+        "goal": "protect"
       },
       {
         "name": "Tesla",
         "share": 0.5,
         "lines": [
           {
-            "id": "robinhood:TSLA",
+            "id": "robinhood:tsla",
             "why": "Tesla, como pedido"
           }
-        ]
+        ],
+        "goal": "pick"
       }
     ],
     "stated": {
@@ -115,11 +117,11 @@
     "shape": "pick",
     "lines": [
       {
-        "id": "robinhood:AAPL",
+        "id": "robinhood:aapl",
         "why": "big-tech theme"
       },
       {
-        "id": "robinhood:MSFT",
+        "id": "robinhood:msft",
         "why": "big-tech theme"
       }
     ],
@@ -134,15 +136,15 @@
     "shape": "protect",
     "lines": [
       {
-        "id": "robinhood:SGOV",
+        "id": "robinhood:sgov",
         "why": "U.S. Treasury bills, safe and liquid"
       },
       {
-        "id": "robinhood:steakUSDG",
+        "id": "robinhood:steakusdg",
         "why": "dollar yield on USDG"
       },
       {
-        "id": "robinhood:AAPL",
+        "id": "robinhood:aapl",
         "why": "a stock, to show the rule"
       }
     ],
