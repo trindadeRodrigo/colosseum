@@ -1,22 +1,10 @@
 // @vitest-environment happy-dom
 import { act, createElement, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  click,
-  find,
-  fire,
-  mount,
-  press,
-  settle,
-  type,
-  unmountAll,
-} from '../../components/ui/test/dom';
+import { click, find, mount, press, settle, type, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
 import { withAccount } from '../account/test/screen';
-import { PERSONALIZE_PATH, PROPOSE_PATH } from '../goal/build-plan';
 import { GOAL_HANDOFF, GOAL_HANDOFF_OWNER } from '../goal/draft';
-import { proposalFor, READ_IN_DOLLARS } from '../goal/test/plan';
-import { keepWay, readWay } from '../invest/handoff';
 import { Simulate } from '../landing/Simulate';
 import { sourceValue } from '../vault-conversation/StrategyPreview';
 import { preview } from '../vault-conversation/test/fixtures';
@@ -55,11 +43,6 @@ const send = async (host: HTMLElement, words: string) => {
   await settle();
 };
 const show = (lang: 'en' | 'pt' = 'en') => mount(withAccount(lang, createElement(GoalEntry)));
-async function mode(host: HTMLElement, value: string) {
-  const selector = find<HTMLSelectElement>(host, '[data-ui="goal-mode"]');
-  selector.value = value;
-  await fire(selector, new Event('change', { bubbles: true }));
-}
 beforeEach(() => {
   window.history.replaceState(null, '', '/goal');
   router.push.mockClear();
@@ -159,7 +142,7 @@ describe('private strategy exploration for a new goal', () => {
     'defaults to truthful explore workbench with no fake vault or funding (%s)',
     async (lang) => {
       const host = await show(lang);
-      expect(find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').value).toBe('explore');
+      expect(host.querySelector('[data-ui="goal-mode"]')).toBeNull();
       expect(find(host, '[data-ui="goal-empty-preview"]').textContent).toContain(
         dictionary(lang).goal.explore.empty,
       );
@@ -211,22 +194,6 @@ describe('private strategy exploration for a new goal', () => {
     ).toBe(true);
     expect(messages.at(-1)).toEqual({ who: 'person', text: 'Less gold please' });
     expect(calls.every((row) => row.path === path)).toBe(true);
-  });
-  it('keeps separate mode history and cannot hand model draft to guided funding', async () => {
-    const host = await show();
-    await send(host, 'Consider gold');
-    await mode(host, 'guided');
-    expect(host.querySelector('[data-ui="goal-conversation"]')).toBeNull();
-    expect(find(host, '[data-ui="invest-screen"]').textContent).not.toContain(
-      'Here is a private preview.',
-    );
-    expect(find(host, '[data-ui="invest-turns"]').textContent).toBe('');
-    expect(host.querySelector('[data-ui="buy-card"]')).toBeNull();
-    await mode(host, 'explore');
-    expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain('Consider gold');
-    expect(host.querySelector('[data-ui="goal-empty-preview"]')).not.toBeNull();
-    expect(host.querySelector('[data-ui="holdings-bar"]')).toBeNull();
-    expect(calls).toHaveLength(1);
   });
   it('preserves exact plain words across unavailable API and reopen without fabricating reply', async () => {
     portStore.setApi(async (url) => baseApi(url));
@@ -423,7 +390,6 @@ describe('existing entry handoffs', () => {
     await unmountAll();
     portStore.setApi(async (url) => baseApi(url));
     const host = await show();
-    expect(find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').value).toBe('explore');
     expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe(words);
     expect(find<HTMLTextAreaElement>(host, 'textarea').disabled).toBe(true);
     expect(calls).toHaveLength(0);
@@ -460,7 +426,6 @@ describe('existing entry handoffs', () => {
     const words = 'Consider gold with a small budget';
     window.history.replaceState(null, '', `/goal#goal=${encodeURIComponent(words)}`);
     const host = await show();
-    expect(find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').value).toBe('explore');
     expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe(words);
     expect(sessionStorage.getItem(GOAL_HANDOFF)).toBe(words);
     expect(calls).toHaveLength(0);
@@ -469,47 +434,16 @@ describe('existing entry handoffs', () => {
     expect(sessionStorage.getItem(GOAL_HANDOFF)).toBeNull();
     expect(calls[0].body.messages).toEqual([{ who: 'person', text: words }]);
   });
-  it('routes a validated old plan change to its original guided consumer without model authority', async () => {
-    const sheet = {
-      basketType: 'standard' as const,
-      goal: 'income' as const,
-      amountUsd: 80000,
-      horizonMonths: 12,
-      risk: 'low' as const,
-      themes: [],
-      chains: ['solana' as const],
-      incomeTargetUsdMonthly: 300,
-      rules: { useHoldings: true, glide: true },
-      language: 'en' as const,
-    };
-    const way = 'You can aim for $147 a month instead of $300.';
-    portStore.set(fakePort());
-    keepWay(sheet, way);
-    expect(readWay()).toMatchObject({ sheet: { incomeTargetUsdMonthly: 300 }, way });
-    portStore.setApi(async (url, init) => {
-      if (init?.method === 'POST') {
-        const body = JSON.parse(String(init.body));
-        calls.push({ path: url, body });
-        if (url === PERSONALIZE_PATH || url === PROPOSE_PATH)
-          return json({ id: 'continued-plan', proposal: proposalFor(body.sheet, 'sandbox') });
-        if (url === '/goals') return json(READ_IN_DOLLARS);
-        return json({}, 404);
-      }
-      return baseApi(url);
-    });
+  it('ignores a continuation the removed guided flow left in the tab', async () => {
+    const saved = JSON.stringify({ sheet: { goal: 'income' }, way: 'Aim for $147 a month.' });
+    sessionStorage.setItem('tf-invest-way', saved);
     const host = await show();
     await settle();
-    await settle();
-    expect(find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').value).toBe('guided');
-    expect(host.querySelector('[data-ui="goal-conversation"]')).toBeNull();
-    expect(find(host, '[data-ui="invest-turns"]').textContent).toContain(way);
-    expect(readWay()).toBeNull();
-    expect(
-      calls
-        .filter((call) => [PERSONALIZE_PATH, PROPOSE_PATH].includes(call.path))
-        .map((call) => call.body.sheet),
-    ).toMatchObject([{ goal: 'income', amountUsd: 80000, incomeTargetUsdMonthly: 147 }]);
-    expect(calls.some((call) => call.path === path || call.path.includes('/orders'))).toBe(false);
+    expect(host.querySelector('[data-ui="goal-conversation"]')).not.toBeNull();
+    expect(host.querySelector('[data-ui="invest-screen"]')).toBeNull();
+    expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe('');
+    expect(sessionStorage.getItem('tf-invest-way')).toBe(saved);
+    expect(calls).toHaveLength(0);
   });
 });
 

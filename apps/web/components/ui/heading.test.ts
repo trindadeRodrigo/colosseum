@@ -13,10 +13,7 @@ const OWN = new Set([
   'features/wallet/dev/DevWallet.tsx',
 ]);
 
-const WORKSPACES = new Set([
-  'features/invest/InvestScreen.tsx',
-  'features/goal-conversation/GoalConversation.tsx',
-]);
+const WORKSPACES = new Set(['features/goal-conversation/GoalConversation.tsx']);
 
 /** Every <h1 …> in a file whose class is not the page title's. */
 export function otherTitles(text: string, file?: string): string[] {

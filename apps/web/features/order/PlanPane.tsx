@@ -18,10 +18,9 @@ import { PlanView } from './PlanView';
 import { displayName, flagSentences, kindLabel, leftOut, reasonsOf } from './plain';
 import type { StoredPlan } from './plan-store';
 
-// The plan, showing how (gate INVEST-TWO-PANE): one block that the Invest screen's right pane, the
-// plan's own page (/plan/{id}) and the product pages all draw. The answer first, in one line: whether
-// the plan reaches the income asked of it, or the gap in dollars, or the range it projects. Then the
-// ways to close a gap, as buttons; one row per holding with its share, its dollars and the one reason
+// The plan, showing how: the block the plan's own page (/plan/{id}) draws. The answer first, in one
+// line: whether the plan reaches the income asked of it, or the gap in dollars, or the range it
+// projects. Then the ways to close a gap, as sentences; one row per holding with its share, its dollars and the one reason
 // that decided it (the rest are under "Details"); the exit plan as its own block; the figures and the
 // chart; and one button, "Invest $X". A plan carries no yield and no exit figure per holding
 // (`BasketLine` has neither), so the range and the exit cost are the plan's, each with its pin, said
@@ -48,21 +47,16 @@ export type PlanPaneProps = {
   chain: ChainId;
   /** Why the plan cannot be invested in here yet, in a sentence: the button is off and says so. */
   blocked?: string | null;
-  /**
-   * A way to close the gap was pressed. Left out, the ways are sentences. The engine writes each way
-   * as a sentence with its own figures: the button says it as it is.
-   */
-  onWay?: (way: string) => void;
   /** The one button: a link to follow, or an action. Left out: no button (the pane hosts the step). */
   invest?:
     | { href: string; onFollow?: () => void; label?: string }
     /** `label`: the button's own words where it does not invest yet ("Make this plan yours"). */
     | { onPress: () => void; busy?: boolean; label?: string };
-  /** The heading level of the block's own title: 2 on a page, 3 inside the Invest screen's pane. */
+  /** The heading level of the block's own title: 2 on a page, 3 inside another block. */
   level?: 2 | 3;
 };
 
-export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2 }: PlanPaneProps) {
+export function PlanPane({ plan, chain, blocked = null, invest, level = 2 }: PlanPaneProps) {
   const t = useT();
   const lang = useLang();
   const reasonId = useId();
@@ -192,30 +186,15 @@ export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2
       aside={
         <>
           {/* The ways the engine found to close the gap. Each is the engine's own sentence, with
-                its own figures; pressed, it is a turn of the conversation and the plan is redrawn. */}
+                its own figures. */}
           {verdict && !verdict.met && verdict.ways.length > 0 && (
             <div data-ui="plan-ways" className="flex flex-col items-start gap-2">
               <p className="text-body-sm">{t.plan.verdict.ways}</p>
-              {onWay ? (
-                <div className="flex flex-wrap gap-2">
-                  {verdict.ways.map((way) => (
-                    <Button
-                      key={way.change}
-                      variant="secondary"
-                      className="h-auto! min-h-10 py-2 text-left whitespace-normal"
-                      onClick={() => onWay(way.change)}
-                    >
-                      {way.change}
-                    </Button>
-                  ))}
-                </div>
-              ) : (
-                <ul className="flex list-disc flex-col gap-1 pl-5 text-body-sm">
-                  {verdict.ways.map((way) => (
-                    <li key={way.change}>{way.change}</li>
-                  ))}
-                </ul>
-              )}
+              <ul className="flex list-disc flex-col gap-1 pl-5 text-body-sm">
+                {verdict.ways.map((way) => (
+                  <li key={way.change}>{way.change}</li>
+                ))}
+              </ul>
             </div>
           )}
         </>
