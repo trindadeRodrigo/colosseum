@@ -1,6 +1,16 @@
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { config as loadEnv } from 'dotenv';
 import { z } from 'zod';
+
+// The model key: from the shell, else from the first env file that has it. The file is only loaded,
+// never printed. From a worktree the main checkout's .env is the usual place.
+if (!process.env.ANTHROPIC_API_KEY) {
+  for (const f of [process.env.DOTENV_CONFIG_PATH, '.env', '../Colosseum/.env'].filter((x): x is string => Boolean(x))) {
+    loadEnv({ path: resolve(f), quiet: true });
+    if (process.env.ANTHROPIC_API_KEY) break;
+  }
+}
 
 // The relaxed intake, as a terminal MVP (docs/vault/PROMPT-RELAXED-INTAKE.md, sections 2 to 5).
 // The model reads the person's words with the whole shelf of one chain in front of it and answers a
@@ -224,7 +234,7 @@ if (!chat) {
   if (!render(reply, provenance)) process.exit(1);
 } else {
   if (!process.env.ANTHROPIC_API_KEY?.trim()) {
-    console.error('chat needs a model: set ANTHROPIC_API_KEY (from a worktree: DOTENV_CONFIG_PATH=<main checkout>/.env pnpm tsx -r dotenv/config ...).');
+    console.error('chat needs a model: no ANTHROPIC_API_KEY in the shell, in ./.env or in ../Colosseum/.env. Add the line ANTHROPIC_API_KEY=<key> to ~/Documents/Colosseum/.env, or run: export ANTHROPIC_API_KEY=<key>');
     process.exit(1);
   }
   const { createInterface } = await import('node:readline/promises');
