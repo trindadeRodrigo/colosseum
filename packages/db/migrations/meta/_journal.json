@@ -127,6 +127,13 @@
       "when": 1791335096314,
       "tag": "0017_leg_withdrawals",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791393277643,
+      "tag": "0018_vault_snapshots",
+      "breakpoints": true
     }
   ]
 }

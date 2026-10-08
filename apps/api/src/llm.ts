@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import { MARKET_FILTER_BY, MARKET_IDS } from '@colosseum/engine/personal';
 import type { EnvLike, Language } from '@colosseum/schemas';
+import { createModelQuota, type ModelQuota } from './model-quota';
 
 // The model behind the guided intake (gate GUIDED-INTAKE; DESIGN-VAULT section 7): Claude Haiku 4.5 on
 // Anthropic's Messages API with structured outputs. It reads a goal into fields and says which it could
@@ -220,6 +221,14 @@ export type IntakeVocabulary = {
   keywords: string[];
 };
 
+/** Exact person turns and the contextual question boundary, never synthetic person words. */
+export type IntakeDialogueContext = {
+  turns: readonly string[];
+  latestTurn: number;
+  pendingInterest: { quote: string; sourceTurn: number } | null;
+  questionOrigin: 'interestClarification' | null;
+};
+
 /** What the intake reads with: a model, or nothing. Tests hand in a replay of recorded replies. */
 export type IntakeModel = {
   id: string;
@@ -236,6 +245,7 @@ export type IntakeModel = {
     language: Language | undefined,
     who: string,
     vocabulary?: IntakeVocabulary,
+    dialogue?: IntakeDialogueContext,
   ): Promise<{ reply: unknown } | { reply: null; why: string }>;
 };
 
@@ -245,6 +255,7 @@ export type ReadCall = (
   nowMonth: string,
   language?: Language,
   vocabulary?: IntakeVocabulary,
+  dialogue?: IntakeDialogueContext,
 ) => Promise<{ reply: unknown } | { reply: null; why: string }>;
 
 const listed = (values: string[]) => (values.length > 0 ? values.join(', ') : 'none');
@@ -257,12 +268,16 @@ export function intakeUserMessage(
   nowMonth: string,
   language?: Language,
   vocabulary?: IntakeVocabulary,
+  dialogue?: IntakeDialogueContext,
 ): string {
   const head = `Current month: ${nowMonth}.${language ? ` Page language: ${language}.` : ''}`;
   const values = vocabulary
     ? `\nAttribute values on this shelf: sectors: ${listed(vocabulary.sectors)}; industries: ${listed(vocabulary.industries)}; sub-industries: ${listed(vocabulary.subIndustries)}; keywords: ${listed(vocabulary.keywords)}.`
     : '';
-  return `${head}${values}\n\nThe goal:\n${text}`;
+  const boundary = dialogue
+    ? `\n\nPerson dialogue (exact chronological turns; latestTurn is zero-based):\n${JSON.stringify(dialogue)}\nLatest person message:\n${dialogue.turns[dialogue.latestTurn] ?? ''}`
+    : '';
+  return `${head}${values}\n\nThe goal:\n${text}${boundary}`;
 }
 
 /** Claude Haiku 4.5 over Anthropic's Messages API, with structured outputs. */
@@ -275,7 +290,7 @@ export function anthropicCall(
     timeout: o.timeoutMs ?? INTAKE_TIMEOUT_MS,
     maxRetries: 0,
   });
-  return async (text, nowMonth, language, vocabulary) => {
+  return async (text, nowMonth, language, vocabulary, dialogue) => {
     try {
       const response = await client.messages.create({
         model: o.model ?? INTAKE_MODEL_ID,
@@ -283,7 +298,10 @@ export function anthropicCall(
         temperature: 0,
         system: INTAKE_SYSTEM,
         messages: [
-          { role: 'user', content: intakeUserMessage(text, nowMonth, language, vocabulary) },
+          {
+            role: 'user',
+            content: intakeUserMessage(text, nowMonth, language, vocabulary, dialogue),
+          },
         ],
         output_config: { format: { type: 'json_schema', schema: INTAKE_REPLY_SCHEMA } },
       });
@@ -318,6 +336,7 @@ const keyOf = (
   nowMonth: string,
   language?: Language,
   vocabulary?: IntakeVocabulary,
+  dialogue?: IntakeDialogueContext,
 ) =>
   createHash('sha256')
     .update(
@@ -333,6 +352,7 @@ const keyOf = (
               [...vocabulary.keywords].sort(),
             ]
           : null,
+        dialogue ?? null,
       ]),
     )
     .digest('hex');
@@ -352,33 +372,23 @@ export function budgetedModel(
     dailyCalls?: number;
     dailyCallsPerPerson?: number;
     now?: () => Date;
+    quota?: ModelQuota;
   } = {},
 ): IntakeModel {
   const dailyCalls = opts.dailyCalls ?? INTAKE_DAILY_CALLS;
   const perPerson = opts.dailyCallsPerPerson ?? INTAKE_DAILY_CALLS_PER_PERSON;
   const now = opts.now ?? (() => new Date());
   const cache = new Map<string, unknown>();
-  let day = '';
-  let used = 0;
-  const usedBy = new Map<string, number>();
+  const quota = opts.quota ?? createModelQuota({ dailyCalls, dailyCallsPerPerson: perPerson, now });
   return {
     id: opts.id ?? INTAKE_MODEL_ID,
     provenance: opts.provenance ?? 'live',
-    async read(text, nowMonth, language, who, vocabulary) {
-      const key = keyOf(text, nowMonth, language, vocabulary);
+    async read(text, nowMonth, language, who, vocabulary, dialogue) {
+      const key = keyOf(text, nowMonth, language, vocabulary, dialogue);
       if (cache.has(key)) return { reply: cache.get(key) };
-      const today = now().toISOString().slice(0, 10);
-      if (today !== day) {
-        day = today;
-        used = 0;
-        usedBy.clear();
-      }
-      const mine = usedBy.get(who) ?? 0;
-      if (mine >= perPerson) return { reply: null, why: 'model_person_budget_spent' };
-      if (used >= dailyCalls) return { reply: null, why: 'model_budget_spent' };
-      used += 1;
-      usedBy.set(who, mine + 1);
-      const answer = await call(text, nowMonth, language, vocabulary);
+      const denied = quota.reserve(who);
+      if (denied) return { reply: null, why: denied };
+      const answer = await call(text, nowMonth, language, vocabulary, dialogue);
       if (answer.reply !== null) {
         if (cache.size >= CACHE_SIZE) cache.delete(cache.keys().next().value as string);
         cache.set(key, answer.reply);
@@ -394,7 +404,11 @@ export function budgetedModel(
  * model from `INTAKE_MODEL` and a call's time from `INTAKE_MODEL_TIMEOUT_MS` (`intakeSettings`). Null
  * when no key is set: the intake reads with the rules parser alone.
  */
-export function intakeModelFromEnv(env: EnvLike, now?: () => Date): IntakeModel | null {
+export function intakeModelFromEnv(
+  env: EnvLike,
+  now?: () => Date,
+  quota?: ModelQuota,
+): IntakeModel | null {
   // Read with or without a key, so a value that cannot be read stops the start either way.
   const settings = intakeSettings(env);
   // As written: keys are case-sensitive.
@@ -405,6 +419,7 @@ export function intakeModelFromEnv(env: EnvLike, now?: () => Date): IntakeModel 
     dailyCalls: settings.dailyCalls,
     dailyCallsPerPerson: settings.dailyCallsPerPerson,
     now,
+    quota,
   });
 }
 

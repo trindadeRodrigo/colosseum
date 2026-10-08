@@ -14,9 +14,12 @@ import type {
   Network,
   Order,
   OrderType,
+  Price,
   Target,
   Trade,
   VaultPosition,
+  VaultState,
+  VaultView,
   WalletAccount,
 } from '@colosseum/schemas';
 import { sql } from 'drizzle-orm';
@@ -258,6 +261,85 @@ export const vaults = pgTable(
     unique('vaults_chain_address_key').on(t.chainId, t.address),
     index('vaults_owner_idx').on(t.owner),
     index('vaults_recipe_idx').on(t.recipeId),
+  ],
+);
+
+/**
+ * One read of one vault at one time, kept whole: the view, and every price it stood on. A cache with
+ * its time, as `vaults` is, but never overwritten: the rows of a vault are its history. Only the
+ * snapshot worker (apps/snapshot) writes it, and it names a vault by its chain and address, as the
+ * keeper's tables do, since it finds vaults on the chain. `basket_id` is the plan the vault was joined
+ * to when it was read, null for a vault no order of ours opened.
+ */
+export const vaultSnapshots = pgTable(
+  'vault_snapshots',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    chainId: chainId(),
+    address: text('address').notNull(),
+    observedAt: ts('observed_at').notNull(),
+    /**
+     * The chain's height at the start of the pass that read the vault: a slot on Solana, a block on
+     * EVM. Every read of the pass is at or after it. Null where the chain could not say.
+     */
+    blockOrSlot: numeric('block_or_slot', { precision: 20, scale: 0 }),
+    owner: text('owner').notNull(),
+    basketId: uuid('basket_id').references(() => baskets.id),
+    /** The plan's number onchain: the Solana seed and the EVM salt. */
+    onchainBasketId: numeric('onchain_basket_id', { precision: 20, scale: 0 }).notNull(),
+    /** The shared portfolio the vault followed, by its id on the chain; null when it followed none. */
+    recipeOnchainId: text('recipe_onchain_id'),
+    acceptedVersion: integer('accepted_version').notNull(),
+    autoFollow: boolean('auto_follow').notNull(),
+    /** Display only, cut to cents. The positions carry their own figures to six places. */
+    valueUsd: numeric('value_usd', { precision: 18, scale: 2 }).notNull(),
+    cash: jsonb('cash').$type<Holding>().notNull(),
+    /** As `view()` of packages/basket gave them: amount, value, weight, target and drift. */
+    positions: jsonb('positions').$type<VaultView['positions']>().notNull(),
+    /** A published version of the followed portfolio that was not yet applied. */
+    pending: jsonb('pending').$type<VaultState['pending']>(),
+    lossUsedBps: integer('loss_used_bps').notNull(),
+    /** The chain's settings at the read. Null where the chain has none (the mock has only a band). */
+    bandBps: integer('band_bps'),
+    lossCapBps: integer('loss_cap_bps'),
+    paused: boolean('paused'),
+    /** Every price the view stood on, each with its own source, time, method and provenance. */
+    prices: jsonb('prices').$type<Price[]>().notNull(),
+    provenance: provenanceEnum('provenance').notNull(),
+    source: text('source').notNull(),
+    method: text('method').notNull(),
+  },
+  (t) => [
+    // One row per vault per time; its index also serves the newest-first read of one vault.
+    unique('vault_snapshots_chain_address_time_key').on(t.chainId, t.address, t.observedAt),
+    // A person's history is read by the addresses of their wallets.
+    index('vault_snapshots_owner_time_idx').on(t.owner, t.observedAt),
+  ],
+);
+
+/**
+ * One pass of the snapshot worker over one chain. The partial unique index allows one open run per
+ * chain, as `keeper_runs` has it. `error` is why the pass as a whole failed, in words that carry no
+ * node address; null when it went through.
+ */
+export const snapshotRuns = pgTable(
+  'snapshot_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    chainId: chainId(),
+    startedAt: ts('started_at').notNull().defaultNow(),
+    finishedAt: ts('finished_at'),
+    vaultsRead: integer('vaults_read').notNull().default(0),
+    vaultsFailed: integer('vaults_failed').notNull().default(0),
+    error: text('error'),
+    provenance: provenanceEnum('provenance').notNull(),
+  },
+  (t) => [
+    uniqueIndex('snapshot_runs_one_open_per_chain')
+      .on(t.chainId)
+      .where(sql`${t.finishedAt} is null`),
+    // When a chain last answered is read by its newest runs.
+    index('snapshot_runs_chain_started_idx').on(t.chainId, t.startedAt),
   ],
 );
 

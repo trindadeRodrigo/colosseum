@@ -5,7 +5,7 @@ import {
   DISCLAIMER,
   OrderError,
   PortfolioResponse,
-  type WalletAccount,
+  type Principal,
 } from '@colosseum/schemas';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -13,12 +13,20 @@ import type { ChainEntry } from '../../orders/chains';
 import { Refusal, refusalFromChainError } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { chainsHeld } from '../../orders/person';
+import { type JoinLog, joinMissed } from '../../orders/plan-join';
 import { cacheVault, everyPersonPlan, vaultNames } from '../../orders/store';
 import { loggable } from '../../plugins/loggable';
 import { signedIn } from './orders';
 
-async function chainPortfolio(deps: OrderDeps, entry: ChainEntry, wallets: WalletAccount[]) {
-  const owners = wallets.filter((w) => w.family === entry.config.family).map((w) => w.address);
+async function chainPortfolio(
+  deps: OrderDeps,
+  entry: ChainEntry,
+  principal: Principal,
+  log: JoinLog,
+) {
+  const owners = principal.wallets
+    .filter((w) => w.family === entry.config.family)
+    .map((w) => w.address);
   const states = (await Promise.all(owners.map((o) => entry.adapter.getVaults(o)))).flat();
   // Value, weight and drift come from the one place that computes them (packages/basket). It takes the
   // chain's asset list for each token's decimals.
@@ -37,6 +45,9 @@ async function chainPortfolio(deps: OrderDeps, entry: ChainEntry, wallets: Walle
   }));
   // The cache follows what was just read from the chain.
   for (const v of vaults) await cacheVault(deps.db, v, entry.provenance);
+  // A vault whose order confirmed without its plan being joined to it is joined now that it is in the
+  // cache (orders/plan-join.ts). The join is kept in the database and changes nothing in this answer.
+  await joinMissed(deps.db, entry.chain, vaults, principal, log);
   return {
     chain: entry.chain,
     name: entry.config.name,
@@ -78,7 +89,7 @@ export function registerPortfolioRoute(scope: FastifyInstance, deps: OrderDeps) 
           retryable: false,
         }));
       const settled = await Promise.allSettled(
-        entries.map((entry) => chainPortfolio(deps, entry, principal.wallets)),
+        entries.map((entry) => chainPortfolio(deps, entry, principal, req.log)),
       );
       const chains = [];
       for (const [i, result] of settled.entries()) {

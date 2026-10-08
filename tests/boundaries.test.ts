@@ -63,6 +63,8 @@ const LAYOUT: Record<string, Row> = {
   // "As today": it mounts the /risk routes file of apps/api by a relative path.
   'apps/risk-api': { may: [SCHEMAS, DB, RISK, 'apps/api'] },
   'apps/keeper': { may: [SCHEMAS, BASKET, DB, SOLANA, EVM, MOCK] },
+  // The snapshot worker reads chains and writes what it read. It is not in MAY_SIGN: no signing entry.
+  'apps/snapshot': { may: [SCHEMAS, BASKET, DB, SOLANA, EVM, MOCK] },
   'apps/mcp': { may: [SDK] },
   'apps/web': { may: [SCHEMAS, SDK] },
 };
@@ -70,7 +72,7 @@ const LAYOUT: Record<string, Row> = {
 const RULES = {
   1: 'rule 1: schemas imports nothing but zod',
   2: 'rule 2: risk never imports engine, and basket imports only schemas',
-  3: 'rule 3: only apps/api and apps/keeper join logic, chains and the database',
+  3: 'rule 3: only apps/api, apps/keeper and apps/snapshot join logic, chains and the database',
   4: 'rule 4: apps/web and apps/mcp never import db, engine or a chain package',
   5: 'rule 5: only apps/keeper and scripts/ import a signing entry',
   6: 'rule 6: no new library reads process.env',
@@ -137,7 +139,11 @@ const BEHIND_A_FLAG: Record<string, BehindAFlag> = {
   },
 };
 /** Where an app starts. What these load statically is what is in the process whatever the flags say. */
-const ENTRY_POINTS = ['apps/api/src/server.ts', 'apps/risk-api/src/server.ts'];
+const ENTRY_POINTS = [
+  'apps/api/src/server.ts',
+  'apps/risk-api/src/server.ts',
+  'apps/snapshot/src/main.ts',
+];
 
 // Rule 6 says "new". These read process.env before the rule existed (2026-10-02): the entry points and the
 // config of db, the RPC, Jupiter and wallet settings of chain-solana, the LLM settings of the parser.
@@ -830,7 +836,7 @@ describe('import boundaries (DESIGN-VAULT.md section 2)', () => {
       const reach = [dir, ...row.may];
       const joins = reach.includes(DB) && reach.some((d) => CHAINS.includes(d));
       expect(joins, `${dir} joins a chain and the database`).toBe(
-        dir === 'apps/api' || dir === 'apps/keeper',
+        dir === 'apps/api' || dir === 'apps/keeper' || dir === 'apps/snapshot',
       );
     }
     for (const dir of ['apps/web', 'apps/mcp'])
@@ -990,6 +996,9 @@ describe('import boundaries: each rule bites', () => {
     'apps/keeper/src/main.ts':
       "import '@x/db';\nimport '@x/basket';\nimport { sign } from '@x/chain-solana/server';\nimport 'viem/accounts';\nimport '@x/engine';",
     'apps/risk-api/src/server.ts': "import '@x/db';\nimport '@x/risk';\nimport '@x/chain-evm';",
+    // The snapshot worker has the keeper's row and not its right to sign.
+    'apps/snapshot/src/main.ts':
+      "import '@x/db';\nimport '@x/chain-mock';\nimport { sign } from '@x/chain-solana/server';",
     'apps/mcp/src/server.ts': "import '@x/sdk';\nconst engine = require('@x/engine');",
     'apps/web/app/page.tsx':
       "import type { Plan } from '@x/schemas';\nimport { X } from '@/components/X';\nimport type { Db } from '@x/db';\nimport '@x/chain-solana/server';\nexport default () => <X />;",
@@ -1030,6 +1039,7 @@ describe('import boundaries: each rule bites', () => {
         `apps/keeper/src/main.ts:5 import ${ENGINE} (${RULES.table})`,
         `apps/mcp/src/server.ts:2 import ${ENGINE} (${RULES[4]})`,
         `apps/risk-api/src/server.ts:3 import ${EVM} (${RULES[3]})`,
+        `apps/snapshot/src/main.ts:3 signing ${SOLANA} (${RULES[5]})`,
         `apps/web/app/page.tsx:3 import ${DB} (${RULES[4]})`,
         `apps/web/app/page.tsx:4 import ${SOLANA} (${RULES[4]})`,
         `apps/web/app/page.tsx:4 signing ${SOLANA} (${RULES[5]})`,

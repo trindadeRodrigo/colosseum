@@ -1,0 +1,177 @@
+{
+  "about": "Recorded replies for the offline demo of scripts/relaxed/intake.ts, keyed <chain>|<text>, each with its provenance: \"mock\" when WRITTEN BY HAND as the expected shape of the model's answer (plated MOCK when printed), \"live\" when --record saved a model's reply (plated RECORDED from a live run).",
+  "robinhood|I want to invest in Elon": {
+    "reply": {
+      "understood": "You want to invest in the companies Elon Musk leads: Tesla and SpaceX, both on this table.",
+      "shape": "pick",
+      "lines": [
+        {
+          "id": "robinhood:TSLA",
+          "why": "Tesla, the company Elon Musk runs; electric vehicles and energy"
+        },
+        {
+          "id": "robinhood:SPCX",
+          "why": "SpaceX, which he founded and runs; rockets and Starlink"
+        }
+      ],
+      "stated": {},
+      "not_available": [
+        {
+          "name": "xAI",
+          "why": "private company, not on this table"
+        }
+      ],
+      "question": null,
+      "say": "You want to invest in the companies Elon Musk leads: Tesla and SpaceX, both on this table.",
+      "open": []
+    },
+    "provenance": "mock"
+  },
+  "robinhood|the chip makers": {
+    "reply": {
+      "understood": "You want the semiconductor companies on this table.",
+      "shape": "pick",
+      "lines": [
+        {
+          "id": "robinhood:NVDA",
+          "why": "Nvidia, GPUs and AI accelerators"
+        },
+        {
+          "id": "robinhood:AMD",
+          "why": "AMD, CPUs and GPUs"
+        },
+        {
+          "id": "robinhood:INTC",
+          "why": "Intel, processors and foundry"
+        },
+        {
+          "id": "robinhood:MU",
+          "why": "Micron, memory chips"
+        },
+        {
+          "id": "robinhood:TSM",
+          "why": "TSMC, the largest contract chip maker"
+        },
+        {
+          "id": "robinhood:SNDK",
+          "why": "Sandisk, flash storage"
+        }
+      ],
+      "stated": {},
+      "not_available": [],
+      "question": null,
+      "say": "You want the semiconductor companies on this table.",
+      "open": []
+    },
+    "provenance": "mock"
+  },
+  "robinhood|I have 10k, grow it for my kids": {
+    "reply": {
+      "understood": "You have 10,000 to grow over the long term for your children, with no date or risk stated.",
+      "shape": "grow",
+      "lines": [],
+      "stated": {
+        "amount": 10000
+      },
+      "not_available": [],
+      "question": null,
+      "say": "You have 10,000 to grow over the long term for your children, with no date or risk stated.",
+      "open": []
+    },
+    "provenance": "mock"
+  },
+  "robinhood|metade em algo seguro, metade em Tesla": {
+    "reply": {
+      "understood": "Você quer metade do dinheiro em algo seguro e a outra metade em Tesla.",
+      "shape": "split",
+      "lines": [],
+      "buckets": [
+        {
+          "name": "Seguro",
+          "share": 0.5,
+          "lines": [
+            {
+              "id": "robinhood:SGOV",
+              "why": "fundo de títulos curtos do Tesouro americano, o mais conservador da tabela"
+            },
+            {
+              "id": "robinhood:steakUSDG",
+              "why": "rendimento em dólar sobre USDG"
+            }
+          ],
+          "shape": "protect"
+        },
+        {
+          "name": "Tesla",
+          "share": 0.5,
+          "lines": [
+            {
+              "id": "robinhood:TSLA",
+              "why": "Tesla, como pedido"
+            }
+          ],
+          "shape": "pick"
+        }
+      ],
+      "stated": {
+        "weights": "metade/metade"
+      },
+      "not_available": [],
+      "question": null,
+      "say": "Você quer metade do dinheiro em algo seguro e a outra metade em Tesla.",
+      "open": []
+    },
+    "provenance": "mock"
+  },
+  "robinhood|i want to invest in big techs": {
+    "reply": {
+      "understood": "You want to invest in big technology companies.",
+      "shape": "pick",
+      "lines": [
+        {
+          "id": "robinhood:AAPL",
+          "why": "big-tech theme"
+        },
+        {
+          "id": "robinhood:MSFT",
+          "why": "big-tech theme"
+        }
+      ],
+      "buckets": null,
+      "stated": {},
+      "not_available": [],
+      "question": null,
+      "say": "You want to invest in big technology companies.",
+      "open": []
+    },
+    "provenance": "mock"
+  },
+  "robinhood|safe liquid yields": {
+    "reply": {
+      "understood": "You want a conservative investment with safe, liquid yields.",
+      "shape": "protect",
+      "lines": [
+        {
+          "id": "robinhood:SGOV",
+          "why": "U.S. Treasury bills, safe and liquid"
+        },
+        {
+          "id": "robinhood:steakUSDG",
+          "why": "dollar yield on USDG"
+        },
+        {
+          "id": "robinhood:AAPL",
+          "why": "a stock, to show the rule"
+        }
+      ],
+      "stated": {
+        "risk": "low"
+      },
+      "not_available": [],
+      "question": null,
+      "say": "You want a conservative investment with safe, liquid yields.",
+      "open": []
+    },
+    "provenance": "mock"
+  }
+}

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BasketCard, BasketSheet, Verdict } from './basket-sheet';
+import { BasketCard, BasketSheet, ObservationRef, Verdict } from './basket-sheet';
 import { BasketTx } from './basket-tx';
 import { Address, ChainId } from './chain';
 import { Provenance } from './enums';
@@ -150,6 +150,46 @@ export const ConsentRequest = z.object({
   textVersion: z.string().min(1),
 });
 export type ConsentRequest = z.infer<typeof ConsentRequest>;
+
+/**
+ * The plan a vault was opened for, as the server's join holds it (`vaults.basket_id`, DESIGN-VAULT
+ * section 4): what the portfolio section's routes answer a vault with. `personal` is a plan made to
+ * measure, with the stored plan's id; `follow` is a vault opened to follow a shared portfolio, with the
+ * family's id and no sheet. The sheet, the card, the verdict and the observations are the stored plan's
+ * own, as the engine made them, and come the four together or not at all: left out where the plan has
+ * none stored, where the stored plan no longer reads whole, and for a plan that is not this person's
+ * to read back (one another person made in the app, or one stored with no person and not made from a
+ * link). The card's range and exit cost and the verdict's gap were worked out from the readings in
+ * `observations`, each with its own source, time, method and provenance. `verdict` is null for a plan
+ * whose goal is not an income.
+ *
+ * The schema holds "the four together or not at all" itself: the sheet, the card and the observations
+ * are all there or all left out, and `verdict` is there, null or a verdict, exactly when they are. A
+ * card with no observations, or a verdict beside no sheet, is refused.
+ */
+export const VaultPlan = z
+  .object({
+    kind: z.enum(['personal', 'follow']),
+    /** When the order that opened the vault was made, as an ISO instant: the goal's date counts from it. */
+    placedAt: z.string().datetime(),
+    proposalId: z.uuid().optional(),
+    familyId: z.string().optional(),
+    sheet: BasketSheet.optional(),
+    card: BasketCard.optional(),
+    verdict: Verdict.nullable().optional(),
+    observations: z.array(ObservationRef).optional(),
+  })
+  .refine(
+    (p) => {
+      // `verdict: null` is a verdict that is there: it says the goal is not an income.
+      const there = [p.sheet, p.card, p.verdict, p.observations].filter((x) => x !== undefined);
+      return there.length === 0 || there.length === 4;
+    },
+    {
+      message: 'the sheet, the card, the verdict and the observations come together or not at all',
+    },
+  );
+export type VaultPlan = z.infer<typeof VaultPlan>;
 
 /**
  * GET /v1/portfolio: the signed-in person's vaults, one entry per chain that is not switched off.

@@ -17,7 +17,9 @@ import {
   riskForMixEstimate,
   riskForSleeves,
   runIntake,
+  type StockAttributesFile,
   shelfLabelsOf,
+  type ThemeList,
   yesOrNoSaidIn,
 } from '@colosseum/engine/personal';
 import {
@@ -230,6 +232,56 @@ const FINANCIAL_ACTION =
 const EXPLORATORY_REQUEST =
   /\b(?:explain|understand|know|learn|discuss|read\s+about|hear\s+about|saber|entender|explique|explicar|conhecer|aprender)\b/iu;
 
+type CompanyDialogue = { quote: string; name: string; listed: boolean; options: string[] };
+
+/** Only a company the person actually names; alternatives come from confirmed shelf membership. */
+export function namedCompanyDialogue(
+  text: string,
+  stocks: StockAttributesFile | null,
+  themes: ThemeList[],
+  assets: BasketAsset[],
+  language: 'en' | 'pt',
+): CompanyDialogue | undefined {
+  if (!stocks || NON_REQUEST.test(text) || EXPLORATORY_REQUEST.test(text)) return;
+  for (const row of stocks.stocks) {
+    if (row.unverified.includes('company')) continue;
+    const short = row.company.replace(/,?\s+(?:Inc\.?|Corporation|Corp\.?|Ltd\.?|plc)$/iu, '');
+    for (const name of [row.company, short, row.underlying, row.symbol]) {
+      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const found = new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'iu').exec(text);
+      if (!found) continue;
+      // A plain contextual answer may name the business; an unsolicited mention is not an order.
+      if (
+        !BUSINESS_REQUEST.test(text) &&
+        !ALLOCATION_REQUEST.test(text) &&
+        text.trim() !== found[0]
+      )
+        continue;
+      const available = shelfLabelsOf(themes, assets);
+      const options = themes
+        .filter(
+          (theme) =>
+            theme.chain === stocks.chain &&
+            theme.status === 'confirmed' &&
+            theme.members.some((member) => member.symbol === row.symbol) &&
+            available.some((label) => label.slug === theme.slug && label.listed > 0),
+        )
+        .slice(0, 3)
+        .map((theme) =>
+          language === 'pt'
+            ? `Quero investir em ${theme.name.pt}.`
+            : `I want to invest in ${theme.name.en}.`,
+        );
+      return {
+        quote: found[0],
+        name: row.company,
+        listed: assets.some((asset) => asset.chain === stocks.chain && asset.symbol === row.symbol),
+        options,
+      };
+    }
+  }
+}
+
 /** Non-executable reader metadata can ask a question, never set a holding or a sheet field. */
 export function contextualIntake(
   result: IntakeResult,
@@ -238,6 +290,7 @@ export function contextualIntake(
   nowMonth: string,
   vocabulary?: IntakeVocabulary,
   dialogue?: { pendingInterest: PendingInterest | null; sourceTurn: number },
+  company?: CompanyDialogue,
 ): IntakeResult & { pendingInterest?: PendingInterest | null } {
   if (!dialogue) return result;
   let pending = dialogue.pendingInterest;
@@ -260,7 +313,6 @@ export function contextualIntake(
   });
   const resolution = z.object({ interestResolution: Resolution }).safeParse(reply);
   const explicit =
-    !fresh &&
     resolution.success &&
     resolution.data.interestResolution.quote === latestText &&
     yesOrNoSaidIn(latestText) === null &&
@@ -277,11 +329,26 @@ export function contextualIntake(
     COMPLETE_REQUEST.test(latestText) &&
     !NON_REQUEST.test(latestText) &&
     !EXPLORATORY_REQUEST.test(latestText);
+  const needsTarget =
+    explicit &&
+    resolution.success &&
+    resolution.data.interestResolution.kind === 'business' &&
+    /\b(?:benefit\s+from|related\s+to|connected\s+to|ligad[oa]s?\s+a)\b/iu.test(latestText) &&
+    result.narratives.length === 0 &&
+    result.mix === null;
   // The explicit authored decline is usable even when the reader timed out or spent its budget.
-  if (DECLINE_INTEREST.test(latestText.trim()) || (reply !== null && (complete || explicit)))
+  if (
+    DECLINE_INTEREST.test(latestText.trim()) ||
+    (reply !== null && (complete || (explicit && !needsTarget)))
+  )
     pending = null;
-  else if (fresh && raw.success)
+  else if (!pending && fresh && raw.success)
     pending = { quote: raw.data.clarification.quote, sourceTurn: dialogue.sourceTurn };
+  if ((needsTarget || company) && !DECLINE_INTEREST.test(latestText.trim()))
+    pending ??= {
+      quote: company?.quote ?? latestText.slice(0, 160),
+      sourceTurn: dialogue.sourceTurn,
+    };
   if (!pending) return { ...result, pendingInterest: null };
   const quote = pending.quote;
   const keywords = fresh && raw.success ? raw.data.clarification.keywords : [];
@@ -293,17 +360,31 @@ export function contextualIntake(
       ? `Quando você diz “${quote}”, há um negócio ou setor que você quer refletir neste plano? Diga qual.`
       : `When you say “${quote}”, is there a business or industry you want this plan to reflect? Tell me which one.`,
   };
+  if (company) {
+    question.text = pt
+      ? `Você nomeou ${company.name}. ${company.listed ? 'O ativo está listado nesta rede, mas o plano ainda não aceita escolher uma ação individual.' : 'Esse ativo não está listado nesta rede.'} ${company.options.length > 0 ? 'Quer explorar um tema relacionado disponível, ou deixar essa ideia de lado?' : 'Nenhum tema relacionado está disponível nesta rede. Nomeie outra empresa ou setor, ou deixe essa ideia de lado.'}`
+      : `You named ${company.name}. ${company.listed ? 'The instrument is listed on this chain, but the plan does not support choosing an individual stock yet.' : 'This instrument is not listed on this chain.'} ${company.options.length > 0 ? 'Would you like to explore a related available theme, or leave this idea aside?' : 'No related theme is available on this chain. Name another company or sector, or leave this idea aside.'}`;
+  } else if (needsTarget) {
+    question.text = pt
+      ? 'Entendi que você quer investir em ações ligadas a esse interesse. Qual empresa ou setor você tem em mente?'
+      : 'You want stocks connected to this interest. Which particular company or sector do you have in mind?';
+  } else if (fresh && latestText !== quote) {
+    question.text = pt
+      ? 'Qual parte desse interesse você quer refletir no investimento? Pode nomear uma empresa ou setor, ou deixar a ideia de lado.'
+      : 'What part of this interest would you like your investment to reflect? You can name a company or sector, or leave the idea aside.';
+  }
   // Choices repeat only a vocabulary value the person actually wrote. Clicking one creates a new
   // person-origin message, not a themes form answer or an inferred holding.
   const named = [...new Set(keywords)].filter((word) =>
     quote.toLocaleLowerCase().includes(word.toLocaleLowerCase()),
   );
   question.options = [
-    ...named.map((word) =>
-      pt
-        ? `Quero investir em negócios ligados a ${word}.`
-        : `I want to invest in businesses related to ${word}.`,
-    ),
+    ...(company?.options ??
+      named.map((word) =>
+        pt
+          ? `Quero investir em negócios ligados a ${word}.`
+          : `I want to invest in businesses related to ${word}.`,
+      )),
     pt ? 'Ignore esse interesse.' : 'Ignore that interest.',
   ];
   return {
@@ -421,7 +502,21 @@ export function registerIntakeRoute(
           }
         : undefined;
       const read: { reply: unknown; why?: string } = model
-        ? await model.read(text, nowMonth, language, principal.userId ?? principal.ip, vocabulary)
+        ? await model.read(
+            text,
+            nowMonth,
+            language,
+            principal.userId ?? principal.ip,
+            vocabulary,
+            req.body.dialogueVersion === 1
+              ? {
+                  turns: [req.body.text, ...(req.body.followUps ?? [])],
+                  latestTurn: req.body.followUps?.length ?? 0,
+                  pendingInterest: req.body.pendingInterest ?? null,
+                  questionOrigin: req.body.questionThen?.at(-1) ?? null,
+                }
+              : undefined,
+          )
         : { reply: null, why: 'model_not_configured' };
       // No model read it: said in the log with why (the request's id is on the line), and never
       // with the text. The answer says the same to the screen (`reader.why`).
@@ -523,6 +618,15 @@ export function registerIntakeRoute(
               pendingInterest: req.body.pendingInterest ?? null,
               sourceTurn: req.body.followUps?.length ?? 0,
             }
+          : undefined,
+        held
+          ? namedCompanyDialogue(
+              req.body.followUps?.at(-1) ?? req.body.text,
+              stocks,
+              held.figures.themes ?? [],
+              held.shelf.assets,
+              reading.language,
+            )
           : undefined,
       );
       const byModel = read.reply !== null && model !== null;
