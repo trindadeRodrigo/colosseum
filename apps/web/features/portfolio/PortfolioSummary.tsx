@@ -7,12 +7,15 @@ import { ChainBadge } from '../../components/ui/ChainBadge';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars as goalDollars } from '../goal/sheet';
+import { tokenName } from '../order/amounts';
 import { type OrderRecord, recallOrders } from '../order/order-record';
+import { AssetMark } from '../order/PlanView';
 import { goalLine } from '../order/plain';
+import { HoldingsBar } from '../shared/HoldingsBar';
 import { shortAddress } from '../shared/use-person';
 import { useWalletPort } from '../wallet/WalletProvider';
-import { dollars } from './figures';
-import { unpriced, vaultValueSource } from './portfolio';
+import { dollars, sharesOf } from './figures';
+import { holdingsOf, unpriced, vaultValueSource } from './portfolio';
 import { usePortfolio } from './use-portfolio';
 import { goalOfVault } from './vault-goal';
 
@@ -51,7 +54,7 @@ export function PortfolioSummary() {
           {t.portfolio.summary.see}
         </Link>
       </header>
-      <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <ul className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
         {held.map(({ entry, vault }) => {
           const goal = goalOfVault(vault, records)?.goal.sheet;
           const name =
@@ -62,6 +65,12 @@ export function PortfolioSummary() {
                 )
               : t.shared.vaults.address(shortAddress(vault.address)));
           const source = vaultValueSource(entry, vault, t.portfolio.vault.valueMethod);
+          const holdings = holdingsOf(vault).filter((row) => !/^0+$/.test(row.raw));
+          const measured = holdings.filter((row) => row.valueUsd !== null && row.weightBps > 0);
+          const shares = sharesOf(
+            lang,
+            holdings.map((row) => (row.valueUsd === null ? 0 : row.weightBps)),
+          );
           const titleId = `${heading}-${vault.chain}-${vault.address}`;
           return (
             <li key={`${vault.chain}:${vault.address}`} data-ui="owned-vault" className="min-w-0">
@@ -69,7 +78,6 @@ export function PortfolioSummary() {
                 as="article"
                 interactive
                 aria-labelledby={titleId}
-                className="h-full"
                 mock={source.provenance !== 'live'}
                 mockLabels={{
                   announce:
@@ -78,7 +86,7 @@ export function PortfolioSummary() {
                       : t.shell.mockAnnounce,
                 }}
               >
-                <div className="flex min-w-0 flex-col items-start gap-3 p-6">
+                <div className="flex min-w-0 flex-col items-start gap-2 p-6">
                   <ChainBadge chain={vault.chain} />
                   <h3 id={titleId} className="w-full break-words text-body font-semibold">
                     {name}
@@ -92,6 +100,38 @@ export function PortfolioSummary() {
                       obs={source}
                       labels={t.pin}
                     />
+                  </div>
+                  <div
+                    data-ui="owned-vault-holdings"
+                    className="flex w-full min-w-0 flex-col gap-2"
+                  >
+                    <p className="text-caption text-muted-foreground">{t.plan.holds}</p>
+                    {measured.length > 0 && (
+                      <HoldingsBar
+                        shares={measured.map((row) => ({
+                          key: row.asset,
+                          shareBps: row.weightBps,
+                        }))}
+                      />
+                    )}
+                    {holdings.length > 0 ? (
+                      <ul className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 font-mono text-source">
+                        {holdings.map((row, i) => (
+                          <li
+                            key={row.asset}
+                            data-asset={row.asset}
+                            className="inline-flex min-w-0 max-w-full items-center gap-1.5 [overflow-wrap:anywhere]"
+                          >
+                            <AssetMark asset={row.asset} className="size-5" />
+                            <span className="min-w-0">
+                              {tokenName(row.asset)} {row.valueUsd === null ? '—' : shares[i]}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-body-sm text-muted-foreground">{t.withdraw.empty}</p>
+                    )}
                   </div>
                   {unpriced(vault) > 0 && (
                     <p className="text-body-sm text-muted-foreground">
