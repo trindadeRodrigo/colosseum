@@ -25,7 +25,32 @@ export type VaultStrategyPreview = {
     value?: number | null;
     unit?: string;
   }[];
+  /**
+   * Server-written notes on the proposal (gate ANY-COMPOSITION): a weight above measured exit capacity,
+   * citing that figure among `sources`, and a stock outside the goal that the person asked for.
+   */
+  warnings: {
+    code: 'over_exit_capacity' | 'outside_goal_requested';
+    assetId: string;
+    evidenceId: string;
+  }[];
+  /** What the server did with the weights, so nothing it did is silent. Codes, assets and the person's words. */
+  weightNotes: WeightNote[];
 };
+export type WeightNote = {
+  code: 'equal_split' | 'stated' | 'scaled' | 'pick_dropped' | 'share_unmet' | 'share_unread';
+  assetIds: string[];
+  quote?: string;
+};
+const NOTE_CODES = new Set<WeightNote['code']>([
+  'equal_split',
+  'stated',
+  'scaled',
+  'pick_dropped',
+  'share_unmet',
+  'share_unread',
+]);
+const WARNING_CODES = new Set(['over_exit_capacity', 'outside_goal_requested']);
 /** Independent from the new-goal wizard; the provider owns grounded dialogue and policy checks. */
 export type VaultAgentRequest = {
   vault: VaultResponse;
@@ -146,6 +171,45 @@ export function strategyReplyOf(value: unknown, chain: ChainId): VaultAgentReply
       });
     }
     if (allocations.reduce((sum, a) => sum + a.weightBps, 0) !== 10_000) return null;
+    // An older server sends neither list: no warning and no note, never a guess.
+    const warnings: VaultStrategyPreview['warnings'] = [];
+    if (row.warnings != null && !Array.isArray(row.warnings)) return null;
+    if (row.weightNotes != null && !Array.isArray(row.weightNotes)) return null;
+    for (const raw of Array.isArray(row.warnings) ? row.warnings : []) {
+      const w = record(raw);
+      if (
+        !w ||
+        typeof w.code !== 'string' ||
+        !WARNING_CODES.has(w.code) ||
+        !allocations.some((a) => a.assetId === w.assetId) ||
+        !sources.some((source) => source.id === w.evidenceId)
+      )
+        return null;
+      warnings.push({
+        code: w.code as VaultStrategyPreview['warnings'][number]['code'],
+        assetId: w.assetId as string,
+        evidenceId: w.evidenceId as string,
+      });
+    }
+    const weightNotes: WeightNote[] = [];
+    for (const raw of Array.isArray(row.weightNotes) ? row.weightNotes : []) {
+      const n = record(raw);
+      if (
+        !n ||
+        typeof n.code !== 'string' ||
+        !NOTE_CODES.has(n.code as WeightNote['code']) ||
+        !Array.isArray(n.assetIds) ||
+        n.assetIds.length > 64 ||
+        !n.assetIds.every((id) => AssetId.safeParse(id).success) ||
+        (n.quote !== undefined && !text(n.quote, 400))
+      )
+        return null;
+      weightNotes.push({
+        code: n.code as WeightNote['code'],
+        assetIds: n.assetIds as string[],
+        ...(n.quote !== undefined ? { quote: n.quote as string } : {}),
+      });
+    }
     proposal = {
       objective: p.objective,
       summary: p.summary,
@@ -153,6 +217,8 @@ export function strategyReplyOf(value: unknown, chain: ChainId): VaultAgentReply
       tradeoffs: p.tradeoffs,
       unknowns: p.unknowns,
       sources,
+      warnings,
+      weightNotes,
     };
   }
   return {

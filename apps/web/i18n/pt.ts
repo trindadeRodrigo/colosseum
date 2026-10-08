@@ -2172,4 +2172,149 @@ export const pt: Dictionary = {
       see: 'Ver na tenonfi',
     },
   },
+  /** Misturas da conversa ou da própria pessoa (gate ANY-COMPOSITION, #191). */
+  mix: {
+    activity: (when: string) => `Novos alvos do seu cofre · ${when}`,
+    preview: {
+      use: 'Usar esta mistura',
+      apply: 'Aplicar ao meu cofre',
+      notes: 'Como os pesos foram definidos',
+      warnings: 'Antes de usar',
+      note: {
+        equalAll: 'As escolhas dividem o cofre em partes iguais: você não deu proporções.',
+        equalRest: (names: string) => `${names} dividem o restante em partes iguais.`,
+        stated: (names: string, quote: string) => `${names} seguem o que você disse: “${quote}”.`,
+        scaled: 'As proporções que você deu não somavam o todo, então ajustei para o todo.',
+        dropped: (name: string) =>
+          `${name} ficou de fora: suas proporções não deixam nada para ele.`,
+        unmet: (quote: string) => `Estas escolhas não conseguem cumprir “${quote}”.`,
+        unread: (quote: string) =>
+          `Não apliquei “${quote}”. Diga como proporção, por exemplo “40% em ouro”, e eu aplico.`,
+      },
+      warning: {
+        overExit: (name: string) =>
+          `${name} pesa mais do que a saída medida consegue vender no tamanho do seu cofre. Vender pode levar mais tempo.`,
+        outsideGoal: (name: string) =>
+          `${name} está fora do que sua meta normalmente guarda. Está aqui porque você pediu.`,
+      },
+    },
+    review: {
+      title: 'Confira esta mistura',
+      lead: 'Conferi cada linha de novo com os preços de hoje. Nada foi comprado nem alterado ainda.',
+      asset: 'Ativo',
+      weight: 'Peso',
+      amount: 'Valor',
+      price: 'Preço',
+      exit: 'O máximo que guarda e ainda sai como planejado',
+      cash: 'Caixa',
+      cashPrice: 'contado a um dólar',
+      measured: 'medido',
+      tier: 'pela faixa, não medido',
+      warnings: 'Confirme cada um destes',
+      left: (n: number) => (n === 1 ? 'Falta confirmar um.' : `Faltam confirmar ${n}.`),
+      allTicked: 'Todos os avisos estão confirmados.',
+      changed: 'Os números mudaram desde que você olhou. Confira de novo.',
+      back: 'Mudar a mistura',
+    },
+    goal: {
+      title: 'Usar esta mistura para uma nova meta',
+      lead: 'Diga quanto e para quê. Confiro a mistura com os preços de hoje antes de qualquer compra.',
+      amount: 'Valor',
+      amountHint: 'Em dólares, de US$ 10 a US$ 1.000.000.',
+      goal: 'Meta',
+      goals: { grow: 'Fazer crescer', income: 'Renda mensal', protect: 'Manter seguro' },
+      risk: 'Risco',
+      risks: { low: 'Baixo', medium: 'Médio', high: 'Alto' },
+      choose: 'Escolha um',
+      review: 'Revisar esta mistura',
+      reviewing: 'Revisando…',
+      confirm: 'Confirmar e ir para a compra',
+      confirming: 'Confirmando…',
+      errors: {
+        amount: 'Digite um valor de US$ 10 a US$ 1.000.000.',
+        goal: 'Escolha para que é o dinheiro.',
+        risk: 'Escolha um risco.',
+      },
+    },
+    vault: {
+      review: 'Revisar estes alvos',
+      reviewing: 'Revisando…',
+      confirm: 'Confirmar e criar a ordem',
+      confirming: 'Criando a ordem…',
+      after:
+        'Em seguida, a tela da ordem mostra cada passo a assinar: primeiro os alvos, depois as vendas e as compras.',
+    },
+    editor: {
+      title: 'Os pesos do seu cofre',
+      lead: 'Escolha o que seu cofre guarda e quanto. O que ficar sem peso fica em caixa.',
+      edit: 'Editar pesos',
+      unit: 'Digitar pesos em',
+      percent: 'Porcentagem',
+      bps: 'Pontos-base',
+      add: 'Adicionar um ativo',
+      addButton: 'Adicionar',
+      addNone: 'Todos os ativos listados já estão na mistura.',
+      remove: (name: string) => `Remover ${name}`,
+      weight: (name: string) => `Peso de ${name}`,
+      cash: (share: string) => `Caixa: ${share}`,
+      lines: (n: number) => `${n} de 16 ativos`,
+      issues: {
+        'too-many': 'Um cofre guarda 16 ativos além do caixa. Remova um.',
+        duplicate: 'Cada ativo uma vez. Remova a repetição.',
+        'cash-line': 'O caixa é o que os outros deixam. Remova-o como linha.',
+        'not-whole': 'Use porcentagens com até duas casas decimais, ou pontos-base inteiros.',
+        'over-whole': (over: string) => `Os pesos somam mais que o todo. Tire ${over}.`,
+        'all-cash': 'Dê peso a pelo menos um ativo: um cofre guarda um ativo próprio.',
+      },
+      loading: 'Lendo seu cofre…',
+      notYours: 'Este cofre não é seu, ou não está lá.',
+      failed: 'Não consegui ler este cofre agora. Tente de novo.',
+      back: 'Voltar ao seu cofre',
+    },
+    failure: {
+      invalid: 'Não consigo usar esta mistura assim:',
+      signedOut: 'Seu acesso expirou. Entre de novo e tente mais uma vez.',
+      noWallet: 'Seu acesso não tem carteira nesta rede. Adicione uma e tente de novo.',
+      notYours: 'Este cofre não é seu.',
+      readOnly: 'Esta rede só lê por enquanto. Nada pode ser comprado ou alterado nela.',
+      busy: 'Muitos pedidos agora. Espere um pouco e tente de novo.',
+      unreadable: 'A resposta não bateu com o pedido. Nada foi guardado. Tente de novo.',
+      unreachable: 'Não consegui falar com o servidor. Nada foi guardado. Tente de novo.',
+      said: (error: string) => `O servidor disse: ${error}`,
+      noStore:
+        'Este navegador não guardou a ordem, então ela não pode ser assinada aqui. Permita o armazenamento do site e tente de novo.',
+    },
+    issue: (code: string, asset: string) => {
+      switch (code) {
+        case 'WEIGHT_NOT_WHOLE':
+          return 'Um peso não é um número inteiro de pontos-base.';
+        case 'NOT_LISTED':
+          return `${asset} não está na lista desta rede agora.`;
+        case 'DUPLICATE':
+          return `${asset} aparece duas vezes.`;
+        case 'FOREIGN_CASH':
+          return `${asset} é um token de caixa que esta rede não usa. Deixe o caixa como o restante.`;
+        case 'SUM_NOT_10000':
+          return 'Os pesos não somam o todo.';
+        case 'TOO_MANY_LINES':
+          return 'Um cofre guarda 16 ativos além do caixa.';
+        case 'NO_PRICE':
+          return `${asset} não tem um preço usável agora.`;
+        case 'ALL_CASH':
+          return 'Um cofre aberto guarda pelo menos um ativo próprio.';
+        case 'OVER_ORDER_LIMIT':
+          return 'Este cofre vale mais do que uma ordem pode mover.';
+        default:
+          return 'Uma linha não pode ser usada.';
+      }
+    },
+    order: {
+      title: 'Novos alvos do seu cofre',
+      sign: 'Assinar e aplicar os alvos',
+      cash: (share: string) => `O restante fica em caixa: ${share}.`,
+      fromConversation: 'Proposto na sua conversa e confirmado por você.',
+      fromPerson: 'Escolhido por você.',
+      note: 'O primeiro passo define estes alvos na rede; os passos seguintes vendem e compram para chegar a eles, cada um com seu mínimo.',
+    },
+  },
 };
