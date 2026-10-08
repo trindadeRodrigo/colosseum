@@ -62,12 +62,17 @@ export function registerVaultConversationReplyRoute(
         req.params,
         principal,
       );
-      if (!model)
+      if (!model) {
+        req.log.warn(
+          { reason: 'unavailable', detail: 'no_model', chain: identity.chain },
+          'the vault conversation has no model configured',
+        );
         return reply.code(503).send({
           error: 'The vault conversation is not available yet.',
           code: 'VAULT_AGENT_UNAVAILABLE',
           reason: 'unavailable',
         });
+      }
       const context = await refusing(async () => {
         const listed = await entry.adapter.listAssets();
         const [prices, prepared] = await Promise.all([
@@ -83,12 +88,30 @@ export function registerVaultConversationReplyRoute(
         return buildVaultAgentContext({ state, entry, prices, prepared, person: identity.privyId });
       });
       const result = await replyToVaultConversation(req.body, context, model);
-      if (result.kind === 'failure')
+      if (result.kind === 'failure') {
+        // The reason and which check failed: never the person's words or the model's reply.
+        req.log.warn(
+          {
+            reason: result.reason,
+            detail: result.detail ?? null,
+            repair: result.repair ?? null,
+            chain: identity.chain,
+          },
+          'the vault conversation returned no reply',
+        );
         return reply.code(503).send({
           error: 'A valid strategy preview could not be returned. Your vault has not changed.',
           code: 'VAULT_AGENT_UNAVAILABLE',
           reason: result.reason,
         });
+      }
+      if (result.repair)
+        req.log.warn(
+          { repair: result.repair, chain: identity.chain },
+          result.repair.outcome === 'repaired'
+            ? 'the vault conversation reply passed on its repair attempt'
+            : 'the vault conversation reply asks about a stated limit its repair attempt still missed',
+        );
       return { ...result.reply, chain: identity.chain, address: identity.address };
     },
   );
