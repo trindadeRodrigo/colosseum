@@ -198,7 +198,7 @@ describe('a figure the repair attempt still states costs its sentence, not the r
     ],
   ])('serves the message without its figure sentences: %s', async (message, kept, cut) => {
     const out = await twice({ ...proposal(), message });
-    expect(out).toMatchObject({ ...trimmed(cut), reply: { message: `${kept} ${FIGURE_CUT}` } });
+    expect(out).toMatchObject({ ...trimmed(cut), reply: { message: `${kept}\n${FIGURE_CUT}` } });
     if (out.kind !== 'reply') throw new Error('Rejected');
     // Nothing else moved: the picks, their reasons and the server's weights.
     expect(out.reply.proposal?.allocations.map((line) => line.why)).toEqual(
@@ -269,7 +269,7 @@ describe('a figure the repair attempt still states costs its sentence, not the r
       request(said),
       named,
     );
-    expect(out).toMatchObject({ ...trimmed(1), reply: { message: `${kept} ${FIGURE_CUT}` } });
+    expect(out).toMatchObject({ ...trimmed(1), reply: { message: `${kept}\n${FIGURE_CUT}` } });
     // With no figure beside them the same words pass on the first call, with nothing cut.
     const model = fake({ ...proposal(), message: kept });
     const clean = await replyToVaultConversation(request(said), named, model);
@@ -290,7 +290,7 @@ describe('a figure the repair attempt still states costs its sentence, not the r
     expect(out).toMatchObject({
       ...trimmed(4),
       reply: {
-        message: `Aqui está uma direção. É uma prévia. ${FIGURE_CUT_PT}`,
+        message: `Aqui está uma direção. É uma prévia.\n${FIGURE_CUT_PT}`,
         proposal: {
           summary:
             'Esta parte da proposta foi omitida porque trazia um número que não pôde ser confirmado.',
@@ -325,7 +325,7 @@ describe('a figure the repair attempt still states costs its sentence, not the r
     expect(await replyToVaultConversation(request(), context, { read })).toMatchObject({
       kind: 'reply',
       repair: { failed: 'prose_claims_applied', outcome: 'prose_figure_trimmed', sentencesCut: 1 },
-      reply: { message: `Here is a direction. ${FIGURE_CUT}` },
+      reply: { message: `Here is a direction.\n${FIGURE_CUT}` },
     });
   });
 
@@ -334,11 +334,11 @@ describe('a figure the repair attempt still states costs its sentence, not the r
       'This mix aims for steady growth. Returns are not guaranteed and it could lose 30% in a bad year.';
     expect(await twice({ ...proposal(), message })).toMatchObject({
       ...trimmed(1),
-      reply: { message: `This mix aims for steady growth. ${FIGURE_CUT}` },
+      reply: { message: `This mix aims for steady growth.\n${FIGURE_CUT}` },
     });
   });
 
-  it('keeps a plain caveat in a list and says once that items were left out', async () => {
+  it('says once in a list that items were left out, also when none is left', async () => {
     const value = proposal();
     value.proposal.tradeoffs = [
       'Stocks can fall 40% in a bad year.',
@@ -347,11 +347,11 @@ describe('a figure the repair attempt still states costs its sentence, not the r
     ];
     value.proposal.unknowns = ['Stocks can fall. They fell 40% once.'];
     expect(await twice(value)).toMatchObject({
-      ...trimmed(3),
+      ...trimmed(4),
       reply: {
         message: value.message,
         proposal: {
-          tradeoffs: ['Nothing here is guaranteed.', FIGURE_CUT],
+          tradeoffs: [FIGURE_CUT],
           unknowns: [...context.unknowns, 'Stocks can fall.', FIGURE_CUT],
         },
       },
@@ -364,14 +364,14 @@ describe('a figure the repair attempt still states costs its sentence, not the r
     const out = await twice({ ...proposal(), message: `Here is a direction. ${clause}` });
     expect(out).toMatchObject({
       ...trimmed(1),
-      reply: { message: `Here is a direction. ${FIGURE_CUT}` },
+      reply: { message: `Here is a direction.\n${FIGURE_CUT}` },
     });
     // A list marker after a line break does start a sentence.
     expect(
       await twice({ ...proposal(), message: 'Two points:\n- A reserve helps\n- It yields 5%' }),
     ).toMatchObject({
       ...trimmed(1),
-      reply: { message: `Two points:\n- A reserve helps ${FIGURE_CUT}` },
+      reply: { message: `Two points:\n- A reserve helps\n${FIGURE_CUT}` },
     });
   });
 
@@ -385,26 +385,48 @@ describe('a figure the repair attempt still states costs its sentence, not the r
   });
 
   it.each([
-    'Returns are not guaranteed.',
-    'Nothing here is guaranteed.',
     'There is no guarantee of a return.',
-    'This is not risk-free.',
-    'Growth isn’t guaranteed.',
-    'O retorno não é garantido.',
-    'Nada aqui é garantido.',
     'É um investimento sem garantia.',
-    'Isto não é sem risco.',
     FIGURE_REMOVED,
     FIGURE_CUT,
     FIGURE_CUT_PT,
     'Esta parte da proposta foi omitida porque trazia um número que não pôde ser confirmado.',
-  ])('passes a plain caveat and the server sentences on the first call: %s', async (message) => {
-    const model = fake({ ...proposal(), message });
-    expect(await replyToVaultConversation(request(), context, model)).toMatchObject({
-      kind: 'reply',
-      reply: { message },
-    });
-    expect(model.read).toHaveBeenCalledTimes(1);
+  ])(
+    'passes a caveat without the word and the server sentences on the first call: %s',
+    async (message) => {
+      const model = fake({ ...proposal(), message });
+      expect(await replyToVaultConversation(request(), context, model)).toMatchObject({
+        kind: 'reply',
+        reply: { message },
+      });
+      expect(model.read).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  // A negated form is not let through: the word can be negated and still promise (review of #197).
+  it.each([
+    'Returns are not guaranteed by a bank but by the protocol itself.',
+    'You will never be guaranteed less than what you put in.',
+    'Your return is never not guaranteed.',
+    'Isn’t guaranteed income what you asked for? This mix gives you exactly that.',
+    'Risky it is not\nGuaranteed income every month.',
+    'O retorno não é garantido pelo banco, mas pelo protocolo.',
+    'Não é não garantido.',
+    'Returns are not guaranteed.',
+    'Nothing here is guaranteed.',
+  ])('never serves "guaranteed" as written, negated or not: %s', async (sentence) => {
+    const read = vi
+      .fn<VaultAgentModel['read']>()
+      .mockResolvedValue({ reply: { ...proposal(), message: `Here is a direction. ${sentence}` } });
+    const out = await replyToVaultConversation(request(), context, { read });
+    // The first call asks for the repair; the repair attempt loses the sentence and says so.
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(read.mock.calls[1]?.[2]?.problems[0]).toContain('guaranteed');
+    expect(out).toMatchObject({ kind: 'reply', repair: { outcome: 'prose_figure_trimmed' } });
+    if (out.kind !== 'reply') throw new Error('Rejected');
+    expect(out.reply.message).toMatch(/^Here is a direction\./);
+    expect(out.reply.message.endsWith(`\n${FIGURE_CUT}`)).toBe(true);
+    expect(out.reply.message).not.toMatch(/guarante|garantid/i);
   });
 
   it.each([

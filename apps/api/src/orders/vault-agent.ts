@@ -632,13 +632,6 @@ function hasNonFiniteNumber(value: unknown): boolean {
   return false;
 }
 
-/**
- * A caveat, not a promise: the negation stands directly before the word ("not guaranteed", "isn't
- * risk-free", "nothing here is guaranteed", "não é garantido"). Anything looser still counts as a promise.
- */
-const NEGATED_PROMISE =
-  /(?:\b(?:not|never|nothing(?:\s+(?:here|in\s+this|about\s+this))?\s+is)|n['’]t)\s+(?:be\s+)?(?:guaranteed|risk[- ]free)\b|\b(?:não|nao|nunca|nem|nada(?:\s+(?:aqui|disso|nisso))?)\s+(?:(?:é|está|são|foi|será)\s+)?(?:garantido|sem risco)\b/giu;
-
 /** Exact attributed person quotes and catalog names may contain numbers; new metrics may not. */
 function hasFinancialFigure(text: string, personWords: string[], catalogNames: string[]): boolean {
   const names = catalogNames.filter((name) => /\p{N}/u.test(name));
@@ -649,9 +642,7 @@ function hasFinancialFigure(text: string, personWords: string[], catalogNames: s
   for (const name of names) remainder = remainder.replaceAll(name, '');
   return (
     /[\p{N}%$€£]/u.test(remainder) ||
-    /\b(?:guaranteed|risk[- ]free|garantido|sem risco)\b/iu.test(
-      text.replace(NEGATED_PROMISE, ''),
-    ) ||
+    /\b(?:guaranteed|risk[- ]free|garantido|sem risco)\b/iu.test(text) ||
     /\b(?:one|two|three|four|five|six|seven|eight|nine|ten|hundred|thousand|million|um|dois|três|tres|quatro|cinco|dez|cem|mil)\s+(?:percent|per\s+cent|basis\s+points?|dollars?|months?|years?|por\s+cento|d[oó]lares|meses|anos)\b/iu.test(
       remainder,
     )
@@ -691,7 +682,7 @@ const FIGURE_REMOVED = {
   en: 'This part of the draft was left out because it stated a figure that could not be confirmed.',
   pt: 'Esta parte da proposta foi omitida porque trazia um número que não pôde ser confirmado.',
 };
-/** Said by the server after what is left of a message, and once in a list that lost an item or part of one. */
+/** Said by the server on a line of its own after what is left of a message, and once in a list that lost an item or part of one. */
 const FIGURE_CUT = {
   en: 'Part of this reply was left out because it stated a figure that could not be confirmed.',
   pt: 'Parte desta resposta foi omitida porque trazia um número que não pôde ser confirmado.',
@@ -729,7 +720,7 @@ function withoutFigureSentences(
     return cut === before ? kept : [...kept.slice(0, 11), FIGURE_CUT[language]];
   };
   const message = trim(reply.message);
-  const said = cut ? `${message} ${FIGURE_CUT[language]}` : message;
+  const said = cut ? `${message}\n${FIGURE_CUT[language]}` : message;
   if (!message || said.length > 2400) return null;
   const { proposal } = reply;
   return {

@@ -269,7 +269,7 @@ describe('private model-led vault reply route', () => {
     const res = await s.post();
     expect(res.statusCode).toBe(200);
     expect(res.json().message).toBe(
-      'Which direction would you like to explore? Part of this reply was left out because it stated a figure that could not be confirmed.',
+      'Which direction would you like to explore?\nPart of this reply was left out because it stated a figure that could not be confirmed.',
     );
     expect(res.body).not.toContain('12%');
     expect(s.model.read).toHaveBeenCalledTimes(2);
