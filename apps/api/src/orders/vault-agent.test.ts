@@ -222,10 +222,11 @@ describe('model-led private vault proposals', () => {
       outcome: 'allocation_constraint',
     });
     expect(result.reply.proposal).toBeNull();
-    expect(result.reply.message).toContain(minimum.messages[1]?.text);
+    // The quote is the server's own read of the person's message: the number and the asset beside it.
+    expect(result.reply.message).toContain('“at least 40% stocks”');
     expect(result.reply.question).toContain('within that limit');
     expect(result.reply.weightNotes).toEqual([
-      { code: 'share_unmet', assetIds: listedStocks, quote: forty.quote },
+      { code: 'share_unmet', assetIds: listedStocks, quote: 'at least 40% stocks' },
     ]);
     const later = {
       ...minimum,
@@ -251,8 +252,12 @@ describe('model-led private vault proposals', () => {
     );
     expect(weightsOf(correct)).toEqual([4000, 3000, 3000]);
     expect(correct.kind === 'reply' && correct.reply.weightNotes).toEqual([
-      { code: 'stated', assetIds: [stock.id], quote: forty.quote },
+      { code: 'stated', assetIds: [stock.id], quote: 'at least 40% stocks' },
       { code: 'equal_split', assetIds: [reserve.id, otherReserve.id] },
+    ]);
+    // The server holds the minimum from the person's words even when the model reports no share.
+    expect(weightsOf(await replyToVaultConversation(minimum, context, fake(proposal())))).toEqual([
+      4000, 3000, 3000,
     ]);
     expect(
       weightsOf(
@@ -271,25 +276,43 @@ describe('model-led private vault proposals', () => {
       fake(withStated(proposal(), ten)),
     );
     expect(weightsOf(replacement)).toEqual([3334, 3333, 3333]);
-    // "Make that at least 10%." names no asset, so it is no share the server can hold the model to:
-    // the split is equal, and the person is told their share was not applied.
+    // "Make that at least 10%." names no asset: the server reads it as a new number for the one share
+    // that stands, and says so with the person's words.
     const unnamed = { ...ten, quote: 'Make that at least 10%.' };
-    const unread = await replyToVaultConversation(
+    const remade = await replyToVaultConversation(
       amended,
       context,
       fake(withStated(proposal(), unnamed)),
     );
-    expect(unread).toMatchObject({
+    expect(remade).toMatchObject({
       kind: 'reply',
-      repair: { failed: 'stated_ungrounded', outcome: 'repaired' },
       reply: {
         weightNotes: [
-          { code: 'equal_split', assetIds: [stock.id, reserve.id, otherReserve.id] },
-          { code: 'share_unread', assetIds: [], quote: 'Make that at least 10%' },
+          { code: 'stated', assetIds: [stock.id], quote: 'Make that at least 10%' },
+          { code: 'equal_split', assetIds: [reserve.id, otherReserve.id] },
         ],
       },
     });
-    expect(weightsOf(unread)).toEqual([3334, 3333, 3333]);
+    expect(remade.repair).toBeUndefined();
+    expect(weightsOf(remade)).toEqual([3334, 3333, 3333]);
+    // With two shares standing, "that" is not one share: the words are said back as unread.
+    const two = await replyToVaultConversation(
+      {
+        ...minimum,
+        messages: [
+          { who: 'person', text: `I want at least 40% stocks and at least 20% ${reserve.symbol}.` },
+          { who: 'person', text: 'Make that at least 10%.' },
+        ],
+      },
+      context,
+      fake(proposal()),
+    );
+    expect(weightsOf(two)).toEqual([4000, 3000, 3000]);
+    expect(two.kind === 'reply' && two.reply.weightNotes.at(-1)).toEqual({
+      code: 'share_unread',
+      assetIds: [],
+      quote: 'Make that at least 10%',
+    });
     const dropped = {
       ...later,
       messages: [...later.messages, { who: 'person' as const, text: 'Ignore that stock minimum.' }],
@@ -331,8 +354,8 @@ describe('model-led private vault proposals', () => {
     ).toEqual(rejected('prose_figure'));
   });
 
-  it('preserves the exact reported stock-minimum wording across its sentence boundary', async () => {
-    const text = 'i think i want way more stocks on them. like at least 40%';
+  it('holds a casually worded stock minimum, and says back one that names no asset', async () => {
+    const text = 'i think i want way more stocks on them. like at least 40% stocks';
     const share = stocksAtLeast(4000, text);
     const out = await replyToVaultConversation(
       request(text),
@@ -340,9 +363,27 @@ describe('model-led private vault proposals', () => {
       fake(withStated(reservesOnly(), share)),
     );
     if (out.kind !== 'reply') throw new Error('Missing conflict explanation');
-    expect(out.reply.message).toContain(text);
+    expect(out.reply.message).toContain('“at least 40% stocks”');
     expect(out.reply.proposal).toBeNull();
     expect(out.reply.question).toBeTruthy();
+    // The number in a sentence of its own, with the asset in the one before: the server does not
+    // guess which asset it is. The split is equal and the person is told their words were not applied.
+    const apart = 'i think i want way more stocks on them. like at least 40%';
+    const unread = await replyToVaultConversation(
+      request(apart),
+      context,
+      fake(withStated(reservesOnly(), stocksAtLeast(4000, apart))),
+    );
+    expect(weightsOf(unread)).toEqual([5000, 5000]);
+    expect(unread).toMatchObject({
+      repair: { failed: 'stated_ungrounded', outcome: 'repaired' },
+      reply: {
+        weightNotes: [
+          { code: 'equal_split', assetIds: [reserve.id, otherReserve.id] },
+          { code: 'share_unread', assetIds: [], quote: 'like at least 40%' },
+        ],
+      },
+    });
     // With a stock picked, the server meets the stated minimum itself.
     expect(
       weightsOf(
@@ -585,7 +626,7 @@ describe('model-led private vault proposals', () => {
     const problems: string[] = read.mock.calls[1]?.[2].problems;
     expect(problems).toEqual([
       expect.stringContaining('cannot meet a share the person stated'),
-      'At stated.0 (the person said “I want at least 40% stocks in this vault.”): the picks cannot meet it.',
+      'The person said “at least 40% stocks”: the picks cannot meet it.',
     ]);
     // No weight is repeated back: the server's equal split is not the model's to argue with.
     expect(problems.join(' ')).not.toMatch(/5000|3334|3333/);
@@ -609,7 +650,9 @@ describe('model-led private vault proposals', () => {
       repair: { failed: 'allocation_constraint', outcome: 'repaired' },
     });
     expect(weightsOf(capped)).toEqual([1000, 4500, 4500]);
-    expect(over.mock.calls[1]?.[2].problems[1]).toContain('At stated.0');
+    expect(over.mock.calls[1]?.[2].problems[1]).toBe(
+      'The person said “at most 10% stocks”: the picks cannot meet it.',
+    );
   });
 
   it('keeps the question about a stated limit when its repair fails another way', async () => {
@@ -630,7 +673,7 @@ describe('model-led private vault proposals', () => {
     });
     if (out.kind !== 'reply') throw new Error('Missing explanation');
     expect(out.reply.proposal).toBeNull();
-    expect(out.reply.message).toContain(minimum.messages[1]?.text);
+    expect(out.reply.message).toContain('“at least 40% stocks”');
     expect(out.reply.question).toContain('within that limit');
     // A repair that fails a structure check also leaves the question standing.
     const schema = vi

@@ -529,6 +529,8 @@ describe('conversation context and grounded replies through the provider stub', 
         language === 'pt'
           ? 'Quero investir em veículos elétricos, com pelo menos 40% em ações.'
           : 'I want electric vehicle stocks, with at least 40% stocks.';
+      // What the server reads in it: the number and the asset beside it.
+      const said = language === 'pt' ? 'pelo menos 40% em ações' : 'at least 40% stocks';
       const messages: VaultAgentRequest['messages'] = [{ who: 'person', text: instruction }];
       // The model reports the person's minimum with their words; the server holds it to them.
       const minimum = {
@@ -555,7 +557,7 @@ describe('conversation context and grounded replies through the provider stub', 
       if (first.kind !== 'reply' || !first.reply.proposal) throw new Error('Preview rejected');
       expect(first.reply.question).toBeNull();
       expect(first.reply.weightNotes).toEqual([
-        { code: 'stated', assetIds: [tesla.id], quote: instruction },
+        { code: 'stated', assetIds: [tesla.id], quote: said },
         { code: 'equal_split', assetIds: [cash.id] },
       ]);
       expect(first.reply.proposal.objective).toBe(draft(language).proposal?.objective);
@@ -596,7 +598,7 @@ describe('conversation context and grounded replies through the provider stub', 
               .map((asset) => asset.id),
             minWeightBps: 4000,
             maxWeightBps: 10000,
-            personQuote: instruction,
+            personQuote: said,
           },
         ],
       });
@@ -622,9 +624,11 @@ describe('conversation context and grounded replies through the provider stub', 
         failed: 'allocation_constraint',
         outcome: 'allocation_constraint',
       });
-      expect(sdk.create.mock.calls.at(-1)?.[0].messages[2].content).toContain('At stated.0');
+      expect(sdk.create.mock.calls.at(-1)?.[0].messages[2].content).toContain(
+        `The person said “${said}”: the picks cannot meet it.`,
+      );
       expect(mismatch.reply.proposal).toBeNull();
-      expect(mismatch.reply.message).toContain(instruction);
+      expect(mismatch.reply.message).toContain(`“${said}”`);
       messages.push({
         who: 'person',
         text: language === 'pt' ? 'Quero pelo menos 10% em ações.' : 'Make that at least 10%.',

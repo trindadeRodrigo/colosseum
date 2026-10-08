@@ -223,16 +223,14 @@ describe('new-goal model preview route', () => {
   it('retains the explicit stock minimum and returns a useful question for a conflicting model draft', async () => {
     const s = await setup();
     // Cash alone cannot hold a stock minimum, and the repair sends the same picks: the person is asked.
-    const text = 'i think i want way more stocks on them. like at least 40%';
+    const text = 'i think i want way more stocks on them. like at least 40% stocks';
     const cashOnly = s.proposal(true);
     cashOnly.proposal.stated = [{ assetIds: s.stocks, kind: 'min', bps: 4000, quote: text }];
     vi.mocked(s.model.read).mockResolvedValueOnce({ reply: cashOnly });
     vi.mocked(s.model.read).mockResolvedValueOnce({ reply: cashOnly });
     const res = await s.post(s.owner, {
       ...s.body,
-      messages: [
-        { who: 'person', text: 'i think i want way more stocks on them. like at least 40%' },
-      ],
+      messages: [{ who: 'person', text }],
     });
     expect(res.statusCode, res.body).toBe(200);
     expect(res.json().proposal).toBeNull();
