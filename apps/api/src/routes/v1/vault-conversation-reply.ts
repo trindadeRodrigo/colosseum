@@ -108,7 +108,9 @@ export function registerVaultConversationReplyRoute(
       if (result.repair)
         req.log.warn(
           { repair: result.repair, chain: identity.chain },
-          'the vault conversation reply passed on its repair attempt',
+          result.repair.outcome === 'repaired'
+            ? 'the vault conversation reply passed on its repair attempt'
+            : 'the vault conversation reply asks about a stated limit its repair attempt still missed',
         );
       return { ...result.reply, chain: identity.chain, address: identity.address };
     },

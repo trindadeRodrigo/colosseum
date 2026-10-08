@@ -580,6 +580,8 @@ describe('conversation context and grounded replies through the provider stub', 
         ...allocation,
         weightBps: allocation.assetId === tesla.id ? 1000 : 9000,
       }));
+      // The repair call returns the same draft, so the limit is raised with the person.
+      respond(reduced);
       respond(reduced);
       const mismatch = await replyToVaultConversation(
         turn(messages, language),
@@ -588,6 +590,13 @@ describe('conversation context and grounded replies through the provider stub', 
       );
       expect(mismatch.kind).toBe('reply');
       if (mismatch.kind !== 'reply') throw new Error('Missing constraint explanation');
+      expect(mismatch.repair).toEqual({
+        failed: 'allocation_constraint',
+        outcome: 'allocation_constraint',
+      });
+      expect(sdk.create.mock.calls.at(-1)?.[0].messages[2].content).toContain(
+        'At allocationConstraints.0',
+      );
       expect(mismatch.reply.proposal).toBeNull();
       expect(mismatch.reply.message).toContain(instruction);
       messages.push({
