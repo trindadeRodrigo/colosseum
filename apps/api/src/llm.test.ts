@@ -133,6 +133,35 @@ describe('what the model is sent', () => {
 });
 
 describe('the cache around a call', () => {
+  it('sends exact latest-turn context and distinguishes pending-question boundaries in the same call cache', async () => {
+    const calls: unknown[] = [];
+    const model = budgetedModel(
+      async (_text, _month, _language, _vocabulary, dialogue) => {
+        calls.push(dialogue);
+        return { reply: { read: calls.length } };
+      },
+      { provenance: 'mock' },
+    );
+    const context = {
+      turns: ['i like elon', 'elon musk!'],
+      latestTurn: 1,
+      pendingInterest: { quote: 'i like elon', sourceTurn: 0 },
+      questionOrigin: 'interestClarification' as const,
+    };
+    const text = context.turns.join('\n\n');
+    const first = await model.read(text, '2026-10', 'en', 'person', undefined, context);
+    expect(await model.read(text, '2026-10', 'en', 'person', undefined, context)).toEqual(first);
+    expect(
+      await model.read(text, '2026-10', 'en', 'person', undefined, {
+        ...context,
+        questionOrigin: null,
+      }),
+    ).not.toEqual(first);
+    expect(calls).toHaveLength(2);
+    const message = intakeUserMessage(text, '2026-10', 'en', undefined, context);
+    expect(message).toContain(JSON.stringify(context));
+    expect(message).toContain('Latest person message:\nelon musk!');
+  });
   it('hands the vocabulary to the call, and reads the same goal with another vocabulary again', async () => {
     const seen: (IntakeVocabulary | undefined)[] = [];
     const call: ReadCall = async (_text, _month, _language, vocabulary) => {

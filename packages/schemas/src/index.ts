@@ -29,4 +29,5 @@ export * from './trust';
 export * from './tx';
 export * from './universe';
 export * from './vault';
+export * from './vault-agent';
 export * from './wallet';

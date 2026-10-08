@@ -1357,6 +1357,61 @@ export type GetConfigResponse = {
   }[];
 };
 
+/** POST /v1/conversations/{chain}/goal/reply: params. Discuss a new goal and preview model-proposed allocations */
+export type PostConversationsByChainGoalReplyParams = {
+  chain: 'solana' | 'base' | 'robinhood';
+};
+
+/** POST /v1/conversations/{chain}/goal/reply: body. Discuss a new goal and preview model-proposed allocations */
+export type PostConversationsByChainGoalReplyBody = {
+  version: 1;
+  language: 'en' | 'pt';
+  messageId: string;
+  messages: (
+    | {
+        who: 'person';
+        text: string;
+      }
+    | {
+        who: 'app';
+        text: string;
+      }
+  )[];
+};
+
+/** POST /v1/conversations/{chain}/goal/reply: response. Discuss a new goal and preview model-proposed allocations */
+export type PostConversationsByChainGoalReplyResponse = {
+  version: 1;
+  messageId: string;
+  message: string;
+  question: string | null;
+  proposal: {
+    objective: string;
+    summary: string;
+    allocations: {
+      assetId: string;
+      weightBps: number;
+      why: string;
+      evidenceIds: string[];
+      symbol: string;
+    }[];
+    tradeoffs: string[];
+    unknowns: string[];
+    sources: {
+      source: string;
+      method: string;
+      fetchedAt: string;
+      provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+      id: string;
+      assetId?: string;
+      label?: string;
+      value?: number | null;
+      unit?: string;
+    }[];
+  } | null;
+  chain: 'solana' | 'base' | 'robinhood';
+};
+
 /** GET /v1/funding: query. What the signed-in wallet is missing on its chain: the dollar token and native gas */
 export type GetFundingQuery = {
   wallet?: string | string;
@@ -2560,6 +2615,63 @@ export type GetVaultsByChainByAddressResponse = {
   disclaimer: string;
 };
 
+/** POST /v1/vaults/{chain}/{address}/conversation/reply: params. Discuss an owned vault and preview a model-proposed strategy */
+export type PostVaultsByChainByAddressConversationReplyParams = {
+  chain: 'solana' | 'base' | 'robinhood';
+  address: string;
+};
+
+/** POST /v1/vaults/{chain}/{address}/conversation/reply: body. Discuss an owned vault and preview a model-proposed strategy */
+export type PostVaultsByChainByAddressConversationReplyBody = {
+  version: 1;
+  language: 'en' | 'pt';
+  messageId: string;
+  messages: (
+    | {
+        who: 'person';
+        text: string;
+      }
+    | {
+        who: 'app';
+        text: string;
+      }
+  )[];
+};
+
+/** POST /v1/vaults/{chain}/{address}/conversation/reply: response. Discuss an owned vault and preview a model-proposed strategy */
+export type PostVaultsByChainByAddressConversationReplyResponse = {
+  version: 1;
+  messageId: string;
+  message: string;
+  question: string | null;
+  proposal: {
+    objective: string;
+    summary: string;
+    allocations: {
+      assetId: string;
+      weightBps: number;
+      why: string;
+      evidenceIds: string[];
+      symbol: string;
+    }[];
+    tradeoffs: string[];
+    unknowns: string[];
+    sources: {
+      source: string;
+      method: string;
+      fetchedAt: string;
+      provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+      id: string;
+      assetId?: string;
+      label?: string;
+      value?: number | null;
+      unit?: string;
+    }[];
+  } | null;
+  chain: 'solana' | 'base' | 'robinhood';
+  address: string;
+};
+
 /** PUT /v1/vaults/{chain}/{address}/name: params. Name a vault of yours, or clear its name */
 export type PutVaultsByChainByAddressNameParams = {
   chain: 'solana' | 'base' | 'robinhood';
@@ -2591,6 +2703,11 @@ export interface ApiRoutes {
   };
   'GET /v1/baskets/{id}': { params: GetBasketsByIdParams; response: GetBasketsByIdResponse };
   'GET /v1/config': { response: GetConfigResponse };
+  'POST /v1/conversations/{chain}/goal/reply': {
+    params: PostConversationsByChainGoalReplyParams;
+    body: PostConversationsByChainGoalReplyBody;
+    response: PostConversationsByChainGoalReplyResponse;
+  };
   'GET /v1/funding': { query: GetFundingQuery; response: GetFundingResponse };
   'GET /v1/indexes/{slug}': {
     params: GetIndexesBySlugParams;
@@ -2631,6 +2748,11 @@ export interface ApiRoutes {
   'GET /v1/vaults/{chain}/{address}': {
     params: GetVaultsByChainByAddressParams;
     response: GetVaultsByChainByAddressResponse;
+  };
+  'POST /v1/vaults/{chain}/{address}/conversation/reply': {
+    params: PostVaultsByChainByAddressConversationReplyParams;
+    body: PostVaultsByChainByAddressConversationReplyBody;
+    response: PostVaultsByChainByAddressConversationReplyResponse;
   };
   'PUT /v1/vaults/{chain}/{address}/name': {
     params: PutVaultsByChainByAddressNameParams;

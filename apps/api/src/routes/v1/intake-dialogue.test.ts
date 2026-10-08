@@ -1,7 +1,15 @@
-import { conversationText, runIntake } from '@colosseum/engine/personal';
+import {
+  conversationText,
+  parseStockAttributes,
+  parseThemeList,
+  runIntake,
+} from '@colosseum/engine/personal';
 import { describe, expect, it, vi } from 'vitest';
+import stockCatalog from '../../../../../content/stocks/solana.json';
+import evTheme from '../../../../../content/themes/solana/ev-autonomy.json';
+import { launchShelf } from '../../../../../packages/engine/src/personal/testing';
 import { budgetedModel, type IntakeVocabulary } from '../../llm';
-import { contextualIntake, executionHistory, IntakeRequest } from './intake';
+import { contextualIntake, executionHistory, IntakeRequest, namedCompanyDialogue } from './intake';
 
 // MOCK semantic interpretations. Real pure engine checks run; no network or database is used.
 const NOW = '2026-10';
@@ -34,6 +42,82 @@ const read = (text: string, reply: unknown, latest = text, words = vocabulary) =
 };
 
 describe('contextual interest questions at the API / execution-reader seam', () => {
+  it('offers only available confirmed catalog themes for a person-named company and reports an unlisted instrument honestly', () => {
+    const stocks = parseStockAttributes(stockCatalog);
+    const themes = [parseThemeList(evTheme)];
+    const assets = launchShelf().assets;
+    expect(namedCompanyDialogue('i like elon', stocks, themes, assets, 'en')).toBeUndefined();
+    const company = namedCompanyDialogue('Tesla', stocks, themes, assets, 'en');
+    expect(company).toMatchObject({ quote: 'Tesla', name: 'Tesla, Inc.', listed: true });
+    expect(company?.options).toEqual([`I want to invest in ${evTheme.name.en}.`]);
+    const unavailable = namedCompanyDialogue('Tesla', stocks, themes, [], 'en');
+    expect(unavailable).toMatchObject({ listed: false, options: [] });
+    const engine = runIntake({
+      text: 'Tesla',
+      nowMonth: NOW,
+      reply: {},
+      homeChain: 'solana',
+      portfolios: [],
+    });
+    const out = contextualIntake(
+      engine,
+      {},
+      'Tesla',
+      NOW,
+      vocabulary,
+      { pendingInterest: { quote: 'i like elon', sourceTurn: 0 }, sourceTurn: 1 },
+      unavailable,
+    );
+    expect(out.questions[0]?.text).toContain('not listed on this chain');
+    expect(out.sheet).toBeNull();
+  });
+  it('advances the screenshot sequence without losing the original person source or inferring an asset', () => {
+    const pending = { quote: 'i like elon', sourceTurn: 0 };
+    const latest = 'I want to invest in stocks that will benefit from Elon Musk';
+    const reply = { ...interest(latest), interestResolution: { kind: 'business', quote: latest } };
+    const engine = runIntake({
+      text: conversationText(pending.quote, ['elon musk!', latest]),
+      nowMonth: NOW,
+      reply,
+      homeChain: 'solana',
+      portfolios: [],
+    });
+    const out = contextualIntake(engine, reply, latest, NOW, vocabulary, {
+      pendingInterest: pending,
+      sourceTurn: 2,
+    });
+    expect(out.pendingInterest).toEqual(pending);
+    expect(out.questions[0]?.text).toContain('Which particular company or sector');
+    expect(out.sheet).toBeNull();
+    expect(JSON.stringify(out)).not.toMatch(/Tesla|TSLA/);
+    const declined = contextualIntake(engine, null, 'Ignore that interest.', NOW, vocabulary, {
+      pendingInterest: pending,
+      sourceTurn: 3,
+    });
+    expect(declined.pendingInterest).toBeNull();
+  });
+
+  it('validated market resolution takes precedence over contradictory fresh clarification', () => {
+    const latest = 'I want to invest in electric vehicle businesses';
+    const reply = {
+      markets: ['ev_autonomy'],
+      ...interest(latest),
+      interestResolution: { kind: 'business', quote: latest },
+    };
+    const engine = runIntake({
+      text: latest,
+      nowMonth: NOW,
+      reply,
+      homeChain: 'solana',
+      portfolios: [],
+    });
+    const out = contextualIntake(engine, reply, latest, NOW, vocabulary, {
+      pendingInterest: { quote: 'i like elon', sourceTurn: 0 },
+      sourceTurn: 1,
+    });
+    expect(out.pendingInterest).toBeNull();
+    expect(out.questions.some((q) => q.template === 'interestClarification')).toBe(false);
+  });
   it('retains reviewed 200-message/22,000-character capacity with aligned origin and form arrays', () => {
     const followUps = Array.from({ length: 199 }, () => 'a');
     expect(

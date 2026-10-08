@@ -7125,6 +7125,462 @@
         }
       }
     },
+    "/v1/conversations/{chain}/goal/reply": {
+      "post": {
+        "summary": "Discuss a new goal and preview model-proposed allocations",
+        "tags": ["plans"],
+        "description": "Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. Uses the existing model and shared call quota. A preview requires separate fresh goal and amount confirmation before any financial review.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "number",
+                    "enum": [1]
+                  },
+                  "language": {
+                    "type": "string",
+                    "enum": ["en", "pt"]
+                  },
+                  "messageId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "messages": {
+                    "minItems": 1,
+                    "maxItems": 400,
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "who": {
+                              "type": "string",
+                              "enum": ["person"]
+                            },
+                            "text": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 2000
+                            }
+                          },
+                          "required": ["who", "text"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "who": {
+                              "type": "string",
+                              "enum": ["app"]
+                            },
+                            "text": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 8000
+                            }
+                          },
+                          "required": ["who", "text"],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "required": ["version", "language", "messageId", "messages"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["solana", "base", "robinhood"]
+            },
+            "in": "path",
+            "name": "chain",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "standard",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "type": "number",
+                      "enum": [1]
+                    },
+                    "messageId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "message": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2400
+                    },
+                    "question": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "proposal": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "objective": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 800
+                            },
+                            "summary": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 1600
+                            },
+                            "allocations": {
+                              "minItems": 1,
+                              "maxItems": 64,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "assetId": {
+                                    "type": "string",
+                                    "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                  },
+                                  "weightBps": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "why": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 1000
+                                  },
+                                  "evidenceIds": {
+                                    "minItems": 1,
+                                    "maxItems": 16,
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 160
+                                    }
+                                  },
+                                  "symbol": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 80
+                                  }
+                                },
+                                "required": [
+                                  "assetId",
+                                  "weightBps",
+                                  "why",
+                                  "evidenceIds",
+                                  "symbol"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "tradeoffs": {
+                              "maxItems": 12,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 600
+                              }
+                            },
+                            "unknowns": {
+                              "maxItems": 12,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 600
+                              }
+                            },
+                            "sources": {
+                              "maxItems": 1024,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "source": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "method": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "fetchedAt": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                  },
+                                  "provenance": {
+                                    "type": "string",
+                                    "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 160
+                                  },
+                                  "assetId": {
+                                    "type": "string",
+                                    "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                  },
+                                  "label": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "value": {
+                                    "type": ["number", "null"]
+                                  },
+                                  "unit": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 80
+                                  }
+                                },
+                                "required": ["source", "method", "fetchedAt", "provenance", "id"],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": [
+                            "objective",
+                            "summary",
+                            "allocations",
+                            "tradeoffs",
+                            "unknowns",
+                            "sources"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "chain": {
+                      "type": "string",
+                      "enum": ["solana", "base", "robinhood"]
+                    }
+                  },
+                  "required": ["version", "messageId", "message", "question", "proposal", "chain"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object",
+                          "properties": {
+                            "chainCode": {
+                              "type": "string",
+                              "enum": [
+                                "NotKeeper",
+                                "AutoFollowOff",
+                                "KeeperPaused",
+                                "MintNotAccepted",
+                                "RouterNotAllowed",
+                                "SpentTooMuch",
+                                "ReceivedTooLittle",
+                                "OtherAccountDebited",
+                                "AccountTampered",
+                                "PriceStale",
+                                "PriceDeviation",
+                                "MarketClosed",
+                                "MultiplierWindow",
+                                "NotTowardTarget",
+                                "PastTarget",
+                                "Cooldown",
+                                "LossCapReached",
+                                "AssetNotPriced",
+                                "NewAssetNeedsOwner",
+                                "VersionNotEffective",
+                                "CreatorLimit",
+                                "VersionMismatch",
+                                "WrongDestination",
+                                "ParamOutOfBounds",
+                                "NotUpgradeAuthority",
+                                "InvalidTargets",
+                                "NotCashMint",
+                                "ZeroAddress",
+                                "LockedAtLaunch",
+                                "HookNotAllowed",
+                                "AssetListFull",
+                                "SameMint",
+                                "NoPendingVersion",
+                                "NotCreatorOrGuardian",
+                                "NotCashLeg",
+                                "KeeperAssetOff",
+                                "PriceOutOfRange",
+                                "NothingTraded",
+                                "NotOwner",
+                                "CashTokenNotSet",
+                                "DepositShortfall",
+                                "GasTooLow",
+                                "NotAdmin",
+                                "NoCode",
+                                "AssetIsRouter",
+                                "RouterIsAsset",
+                                "NotCreating",
+                                "RouterFailed",
+                                "BalanceUnreadable",
+                                "CashTokenNotRemovable",
+                                "HandoverNotDone",
+                                "AlreadySet",
+                                "RecipeExists",
+                                "BadInput",
+                                "NotSupported",
+                                "TooManyTrades",
+                                "BadTrade",
+                                "VaultNotFound",
+                                "VaultExists",
+                                "RecipeNotFound",
+                                "NotFollowing",
+                                "NotFunded",
+                                "NoGas",
+                                "AllowanceTooLow",
+                                "Expired",
+                                "PriceMoved",
+                                "NotBuiltHere",
+                                "Unavailable",
+                                "Unknown"
+                              ]
+                            },
+                            "retryable": {
+                              "type": "boolean"
+                            },
+                            "blocking": {
+                              "type": "object",
+                              "properties": {
+                                "orderId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "legId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": ["orderId", "legId"],
+                              "additionalProperties": false
+                            },
+                            "continuedBy": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "NOT_FUNDED",
+                            "ASSET_NOT_ELIGIBLE",
+                            "GOAL_NOT_ACHIEVABLE",
+                            "NEW_ASSET_NEEDS_APPROVAL",
+                            "VERSION_CHANGED",
+                            "CREATOR_LIMIT",
+                            "ORDER_EXPIRED",
+                            "US_PERSON",
+                            "RATE_LIMITED",
+                            "CHAIN_UNAVAILABLE",
+                            "PLAN_GONE",
+                            "CURRENCY_UNSUPPORTED",
+                            "NO_WALLET_FOR_CHAIN",
+                            "PRICE_MOVED",
+                            "ORDER_CONTINUED",
+                            "STEP_IN_FLIGHT",
+                            "STEP_LANDED",
+                            "NOTHING_LEFT",
+                            "VAULT_CASH_SHORT",
+                            "DEPOSIT_NOT_LANDED",
+                            "ORDER_BUSY",
+                            "CONTINUE_NOT_SUPPORTED"
+                          ]
+                        },
+                        "fix": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["error"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "code": {
+                          "type": "string",
+                          "enum": ["GOAL_AGENT_UNAVAILABLE"]
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": ["unavailable", "timeout", "budget", "invalid"]
+                        }
+                      },
+                      "required": ["error", "code", "reason"],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/funding": {
       "get": {
         "summary": "What the signed-in wallet is missing on its chain: the dollar token and native gas",
@@ -15664,6 +16120,485 @@
                   },
                   "required": ["error"],
                   "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/vaults/{chain}/{address}/conversation/reply": {
+      "post": {
+        "summary": "Discuss an owned vault and preview a model-proposed strategy",
+        "tags": ["portfolio"],
+        "description": "Fresh chain ownership on every call; missing and other-owned vaults return the same 404. The model receives the supplied conversation, real current vault state, listed assets and sourced risk inputs. It may choose preview weights, which the server validates without calling the allocation engine. Sources and numerical metrics are server-authored. No history, plan, order, target or account-chain change is stored. Existing configured model and shared intake call quota apply. Cache-Control: private, no-store.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "number",
+                    "enum": [1]
+                  },
+                  "language": {
+                    "type": "string",
+                    "enum": ["en", "pt"]
+                  },
+                  "messageId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "messages": {
+                    "minItems": 1,
+                    "maxItems": 400,
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "who": {
+                              "type": "string",
+                              "enum": ["person"]
+                            },
+                            "text": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 2000
+                            }
+                          },
+                          "required": ["who", "text"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "who": {
+                              "type": "string",
+                              "enum": ["app"]
+                            },
+                            "text": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 8000
+                            }
+                          },
+                          "required": ["who", "text"],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "required": ["version", "language", "messageId", "messages"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["solana", "base", "robinhood"]
+            },
+            "in": "path",
+            "name": "chain",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "address",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "standard",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "type": "number",
+                      "enum": [1]
+                    },
+                    "messageId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "message": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2400
+                    },
+                    "question": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "proposal": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "objective": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 800
+                            },
+                            "summary": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 1600
+                            },
+                            "allocations": {
+                              "minItems": 1,
+                              "maxItems": 64,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "assetId": {
+                                    "type": "string",
+                                    "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                  },
+                                  "weightBps": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "why": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 1000
+                                  },
+                                  "evidenceIds": {
+                                    "minItems": 1,
+                                    "maxItems": 16,
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 160
+                                    }
+                                  },
+                                  "symbol": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 80
+                                  }
+                                },
+                                "required": [
+                                  "assetId",
+                                  "weightBps",
+                                  "why",
+                                  "evidenceIds",
+                                  "symbol"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "tradeoffs": {
+                              "maxItems": 12,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 600
+                              }
+                            },
+                            "unknowns": {
+                              "maxItems": 12,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 600
+                              }
+                            },
+                            "sources": {
+                              "maxItems": 1024,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "source": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "method": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "fetchedAt": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                                  },
+                                  "provenance": {
+                                    "type": "string",
+                                    "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 160
+                                  },
+                                  "assetId": {
+                                    "type": "string",
+                                    "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                                  },
+                                  "label": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "value": {
+                                    "type": ["number", "null"]
+                                  },
+                                  "unit": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 80
+                                  }
+                                },
+                                "required": ["source", "method", "fetchedAt", "provenance", "id"],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": [
+                            "objective",
+                            "summary",
+                            "allocations",
+                            "tradeoffs",
+                            "unknowns",
+                            "sources"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "chain": {
+                      "type": "string",
+                      "enum": ["solana", "base", "robinhood"]
+                    },
+                    "address": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "messageId",
+                    "message",
+                    "question",
+                    "proposal",
+                    "chain",
+                    "address"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object",
+                          "properties": {
+                            "chainCode": {
+                              "type": "string",
+                              "enum": [
+                                "NotKeeper",
+                                "AutoFollowOff",
+                                "KeeperPaused",
+                                "MintNotAccepted",
+                                "RouterNotAllowed",
+                                "SpentTooMuch",
+                                "ReceivedTooLittle",
+                                "OtherAccountDebited",
+                                "AccountTampered",
+                                "PriceStale",
+                                "PriceDeviation",
+                                "MarketClosed",
+                                "MultiplierWindow",
+                                "NotTowardTarget",
+                                "PastTarget",
+                                "Cooldown",
+                                "LossCapReached",
+                                "AssetNotPriced",
+                                "NewAssetNeedsOwner",
+                                "VersionNotEffective",
+                                "CreatorLimit",
+                                "VersionMismatch",
+                                "WrongDestination",
+                                "ParamOutOfBounds",
+                                "NotUpgradeAuthority",
+                                "InvalidTargets",
+                                "NotCashMint",
+                                "ZeroAddress",
+                                "LockedAtLaunch",
+                                "HookNotAllowed",
+                                "AssetListFull",
+                                "SameMint",
+                                "NoPendingVersion",
+                                "NotCreatorOrGuardian",
+                                "NotCashLeg",
+                                "KeeperAssetOff",
+                                "PriceOutOfRange",
+                                "NothingTraded",
+                                "NotOwner",
+                                "CashTokenNotSet",
+                                "DepositShortfall",
+                                "GasTooLow",
+                                "NotAdmin",
+                                "NoCode",
+                                "AssetIsRouter",
+                                "RouterIsAsset",
+                                "NotCreating",
+                                "RouterFailed",
+                                "BalanceUnreadable",
+                                "CashTokenNotRemovable",
+                                "HandoverNotDone",
+                                "AlreadySet",
+                                "RecipeExists",
+                                "BadInput",
+                                "NotSupported",
+                                "TooManyTrades",
+                                "BadTrade",
+                                "VaultNotFound",
+                                "VaultExists",
+                                "RecipeNotFound",
+                                "NotFollowing",
+                                "NotFunded",
+                                "NoGas",
+                                "AllowanceTooLow",
+                                "Expired",
+                                "PriceMoved",
+                                "NotBuiltHere",
+                                "Unavailable",
+                                "Unknown"
+                              ]
+                            },
+                            "retryable": {
+                              "type": "boolean"
+                            },
+                            "blocking": {
+                              "type": "object",
+                              "properties": {
+                                "orderId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "legId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": ["orderId", "legId"],
+                              "additionalProperties": false
+                            },
+                            "continuedBy": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "NOT_FUNDED",
+                            "ASSET_NOT_ELIGIBLE",
+                            "GOAL_NOT_ACHIEVABLE",
+                            "NEW_ASSET_NEEDS_APPROVAL",
+                            "VERSION_CHANGED",
+                            "CREATOR_LIMIT",
+                            "ORDER_EXPIRED",
+                            "US_PERSON",
+                            "RATE_LIMITED",
+                            "CHAIN_UNAVAILABLE",
+                            "PLAN_GONE",
+                            "CURRENCY_UNSUPPORTED",
+                            "NO_WALLET_FOR_CHAIN",
+                            "PRICE_MOVED",
+                            "ORDER_CONTINUED",
+                            "STEP_IN_FLIGHT",
+                            "STEP_LANDED",
+                            "NOTHING_LEFT",
+                            "VAULT_CASH_SHORT",
+                            "DEPOSIT_NOT_LANDED",
+                            "ORDER_BUSY",
+                            "CONTINUE_NOT_SUPPORTED"
+                          ]
+                        },
+                        "fix": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["error"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "code": {
+                          "type": "string",
+                          "enum": ["VAULT_AGENT_UNAVAILABLE"]
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": ["unavailable", "timeout", "budget", "invalid"]
+                        }
+                      },
+                      "required": ["error", "code", "reason"],
+                      "additionalProperties": false
+                    }
+                  ]
                 }
               }
             }
