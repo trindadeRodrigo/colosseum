@@ -282,6 +282,12 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
               </Stat>
               <Stat label={v.autoFollow}>{vault.autoFollow ? v.on : v.off}</Stat>
             </StatRow>
+            {!mine && unpriced(vault) > 0 && (
+              // The value leaves out what has no price: said here as on the owner's card above.
+              <p data-ui="vault-unpriced" className="text-caption text-muted-foreground">
+                {t.portfolio.vault.unpriced(unpriced(vault))}
+              </p>
+            )}
             <dl className="grid gap-x-6 gap-y-1 text-body-sm sm:grid-cols-[auto_1fr]">
               <dt className="text-muted-foreground">{v.address}</dt>
               <dd className="break-all font-mono text-source">{vault.address}</dd>

@@ -395,6 +395,8 @@ export function OrderScreen({
         accepts.current = null;
       };
       stop.current = { aborted: false };
+      // Each run tells its host how it ended: one that stops as the last one did is told again.
+      told.current = null;
       setStopping(false);
       setRunning(true);
       setOutcome(null);

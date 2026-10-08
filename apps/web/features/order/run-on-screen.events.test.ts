@@ -361,6 +361,33 @@ describe('the invest card inside another screen, while its steps run', () => {
     expect(told).toEqual(['progress 0/0', 'progress 1/2', `stopped ${ORDER_ID}`]);
   });
 
+  it('tells its host each time a run stops: stopped, begun again and stopped again is two notices', async () => {
+    let ends = gate();
+    run.script = async (order, deps) => {
+      deps.onEvent?.({ order, legId: LEG_CREATE, phase: 'landing' } as never);
+      await ends.wait;
+      // the deposit is still landing each time: the same answer twice
+      return { status: 'waiting', order, legId: LEG_CREATE, why: 'stopped' } as never;
+    };
+    const { host, told } = await card();
+    const stopped = () => told.filter((line) => line === `stopped ${ORDER_ID}`).length;
+    await click(find(host, PRESS));
+    await settle();
+    ends.open();
+    await settle();
+    await settle();
+    expect(stopped()).toBe(1);
+    // the same order, begun again from the card, stops the same way
+    ends = gate();
+    await click(find(host, PRESS));
+    await settle();
+    expect(run.calls).toHaveLength(2);
+    ends.open();
+    await settle();
+    await settle();
+    expect(stopped()).toBe(2);
+  });
+
   it('says nothing more to its host when the card goes after the run has ended', async () => {
     const { landed } = depositing();
     const { host, told } = await card();

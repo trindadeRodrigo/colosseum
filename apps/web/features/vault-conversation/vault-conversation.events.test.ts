@@ -835,6 +835,8 @@ describe('conservative stored history and provider validation', () => {
       transcript: [
         { id: 'a', who: 'person' as const, text: 'Why\u2066 gold?\r\nTell me.' },
         { id: 'b', who: 'app' as const, text: 'Gold\u0000 is\u202e here\u0007.\u009f' },
+        // nothing but what is taken out: an empty row would be refused, so it is not sent
+        { id: 'c', who: 'app' as const, text: '\u0007\u202e \u200f' },
       ],
     };
     let sent: { transcript: unknown } = { transcript: null };

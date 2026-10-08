@@ -159,7 +159,10 @@ export function serverConversation(
       if (network === null || !served()) return 'unavailable';
       // The one place a conversation is sent from: nothing leaves here with a character our server
       // refuses, whoever made the text. One refused row would refuse every later save of this vault's.
-      const transcript = value.transcript.map((row) => ({ ...row, text: plainText(row.text) }));
+      // A row with nothing left in it is refused too: it is left out.
+      const transcript = value.transcript
+        .map((row) => ({ ...row, text: plainText(row.text) }))
+        .filter((row) => row.text.trim() !== '');
       try {
         const response = await api(path, {
           method: 'PUT',
