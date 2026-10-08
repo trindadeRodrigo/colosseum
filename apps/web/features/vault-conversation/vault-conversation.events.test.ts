@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+
+import { VaultConversationTranscript } from '@colosseum/schemas';
 import { act, createElement, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
@@ -12,6 +14,7 @@ import { StrategyPreview } from './StrategyPreview';
 import {
   conversationKey,
   conversationNetwork,
+  plainText,
   readLocal,
   serverConversation,
   transcriptOf,
@@ -807,6 +810,78 @@ describe('conservative stored history and provider validation', () => {
       });
     },
   );
+
+  it('takes out of a message exactly what our server refuses in one, and keeps lines', () => {
+    const accepted = (text: string) =>
+      VaultConversationTranscript.safeParse([{ id: 'a', who: 'app', text }]).success;
+    const codes = [
+      ...Array.from({ length: 0xa1 }, (_, i) => i),
+      ...Array.from({ length: 0x30 }, (_, i) => 0x600 + i),
+      ...Array.from({ length: 0x80 }, (_, i) => 0x2000 + i),
+      0xfeff,
+    ];
+    for (const code of codes) {
+      const text = `a${String.fromCharCode(code)}b`;
+      // what the schema refuses is changed, what it accepts is left as it is
+      expect(plainText(text) === text, `U+${code.toString(16)}`).toBe(accepted(text));
+      expect(accepted(plainText(text)), `U+${code.toString(16)}`).toBe(true);
+    }
+    expect(plainText('one\r\ntwo\rthree\n\tfour')).toBe('one\ntwo\nthree\n\tfour');
+  });
+
+  it('saves a reply with characters our server refuses as plain text, so later saves still go through', async () => {
+    const writes: { transcript: unknown }[] = [];
+    portStore.setApi(async (url, init) => {
+      if (url.endsWith('/reply'))
+        return json({
+          ...reply,
+          messageId: JSON.parse(String(init?.body)).messageId,
+          message: 'First line.\r\nSecond \u202eline\u0007 here.\u200f',
+          proposal: null,
+        });
+      if (url === path && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body));
+        writes.push(body);
+        return json({
+          version: 1,
+          chain: read.chain,
+          address: read.vault.address,
+          provenance: read.provenance,
+          network: 'testnet',
+          revision: body.expectedRevision + 1,
+          transcript: body.transcript,
+          checkpoint: null,
+          updatedAt: null,
+        });
+      }
+      if (url === path)
+        return json({
+          version: 1,
+          chain: read.chain,
+          address: read.vault.address,
+          provenance: read.provenance,
+          network: 'testnet',
+          revision: 0,
+          transcript: [],
+          checkpoint: null,
+          updatedAt: null,
+        });
+      return json({}, 404);
+    });
+    const host = await show();
+    await settle();
+    await send(host, 'Why\u2066 gold?\r\nTell me.');
+    await send(host, 'And after that?');
+    // every save, the first and the ones after the reply, is one the schema takes
+    expect(writes.length).toBeGreaterThanOrEqual(3);
+    for (const write of writes)
+      expect(VaultConversationTranscript.safeParse(write.transcript).success).toBe(true);
+    const kept = readLocal(
+      conversationKey(userId, read.chain, read.vault.address, read.provenance, 'testnet'),
+    ).transcript.map((turn) => turn.text);
+    expect(kept.slice(0, 2)).toEqual(['Why gold?\nTell me.', 'First line.\nSecond line here.']);
+    expect(kept.at(-2)).toBe('And after that?');
+  });
 
   it('asks an API without the history route once a tab, and a vault’s own 404 every time', async () => {
     const value = { revision: 0, transcript: [] };

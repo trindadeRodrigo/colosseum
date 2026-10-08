@@ -27,6 +27,18 @@ export function conversationKey(
   return `${CONVERSATION_PREFIX}2:${encodeURIComponent(user)}:${chain}:${network ?? 'unconfigured'}:${normalizeAddress(chainFamily(chain), address)}:${provenance}`;
 }
 
+// What our server refuses in a conversation's text (VaultConversationTranscript in packages/schemas):
+// control characters but tab and line feed, and the marks that reorder text. A carriage return ends a
+// line as a line feed does.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: these are the characters taken out
+const NOT_PLAIN =
+  /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u061C\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+
+/** A message as our server keeps it: one that held such a character would refuse every later save. */
+export function plainText(text: string): string {
+  return text.replace(/\r\n?/g, '\n').replace(NOT_PLAIN, '');
+}
+
 /** History is plain text, never a restored sheet, confirmation or executable proposal. */
 export function transcriptOf(value: unknown): Transcript | null {
   if (!value || typeof value !== 'object') return null;
@@ -41,21 +53,22 @@ export function transcriptOf(value: unknown): Transcript | null {
   for (const item of v.transcript) {
     if (!item || typeof item !== 'object') return null;
     const row = item as Record<string, unknown>;
+    const text = typeof row.text === 'string' ? plainText(row.text) : null;
     if (
       typeof row.id !== 'string' ||
       !row.id ||
       row.id.length > 64 ||
       ids.has(row.id) ||
       (row.who !== 'person' && row.who !== 'app') ||
-      typeof row.text !== 'string' ||
-      !row.text.trim() ||
-      row.text.length > (row.who === 'person' ? 2000 : 8000)
+      text === null ||
+      !text.trim() ||
+      text.length > (row.who === 'person' ? 2000 : 8000)
     )
       return null;
     ids.add(row.id);
-    total += row.text.length;
-    if (row.who === 'person') personWords += `${personWords ? '\n\n' : ''}${row.text.trim()}`;
-    rows.push({ id: row.id, who: row.who, text: row.text });
+    total += text.length;
+    if (row.who === 'person') personWords += `${personWords ? '\n\n' : ''}${text.trim()}`;
+    rows.push({ id: row.id, who: row.who, text });
   }
   if (
     total > 220_000 ||
