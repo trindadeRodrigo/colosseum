@@ -45,6 +45,7 @@ export async function readyToInvest(
  * at the foot, then its own page.
  */
 export async function planFromGoal(page: Page, goal: string) {
+  await page.locator('[data-ui="goal-mode"]').selectOption('guided');
   const box = page.locator('[data-ui="invest-chat"] textarea');
   await box.fill(goal);
   await box.press('Enter');

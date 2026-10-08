@@ -124,14 +124,29 @@ test('his landing page: the hero, the two sample cases, the typing box that hand
     ).toEqual([]);
   }
   await page.keyboard.press('Home');
+  const automaticPosts: string[] = [];
+  page.on('request', (request) => {
+    if (
+      request.method() === 'POST' &&
+      /\/(goals|baskets|orders|conversations)\b/.test(request.url())
+    )
+      automaticPosts.push(request.url());
+  });
   const box = page.locator('#simulate textarea');
   await box.fill('Grow $2,000 for ten years, high risk');
   await box.press('Enter');
   await expect(page).toHaveURL(/\/goal$/);
-  // the goal screen reads what the landing handed it
-  await expect(page.locator('[data-ui="invest-turns"] [data-who="person"]').first()).toContainText(
+  // Plain landing words stay an unconfirmed model-led prefill. Only an explicit Send can ask for a reply.
+  await expect(page.locator('[data-ui="goal-mode"]')).toHaveValue('explore');
+  await expect(page.locator('[data-ui="goal-chat"] textarea')).toHaveValue(
     'Grow $2,000 for ten years, high risk',
   );
+  await expect(page.locator('[data-ui="goal-transcript"] li')).toHaveCount(0);
+  await expect(page.locator('[data-ui="invest-screen"], [data-ui="invest-card"]')).toHaveCount(0);
+  expect(await page.evaluate(() => sessionStorage.getItem('tf-goal-handoff'))).toBe(
+    'Grow $2,000 for ten years, high risk',
+  );
+  expect(automaticPosts).toEqual([]);
 });
 
 test('the two sample cases fit their cards on a phone and a tablet, in English and Portuguese', async ({

@@ -287,7 +287,7 @@ export function VaultConversation({
           disabled={loading || storage === 'conflict'}
           error={error}
           lang={language}
-          labels={{ submit: copy.send, busy: copy.reading }}
+          labels={{ submit: copy.submitMessage, busy: copy.reading }}
         />
       </div>
       <div className="flex min-w-0 flex-col gap-4">

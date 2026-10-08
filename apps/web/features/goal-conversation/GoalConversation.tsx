@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Composer } from '../../components/ui/Composer';
+import { WORKSPACE_TITLE } from '../../components/ui/heading';
 import { LatticeGlyph } from '../../components/ui/Lattice';
 import { dictionary } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -13,6 +14,7 @@ import { StrategyPreview } from '../vault-conversation/StrategyPreview';
 import { readLocal, type Turn, transcriptOf, writeLocal } from '../vault-conversation/storage';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { goalAgent } from './agent';
+import { consumeGoalHandoff, readGoalHandoff } from './handoff';
 
 export const goalConversationKey = (userId: string, chain: ChainId, provenance: Provenance) =>
   `tf-goal-conversation:1:${encodeURIComponent(userId)}:${chain}:${provenance}`;
@@ -42,6 +44,7 @@ export function GoalConversation({
   const cancel = useRef<AbortController | null>(null);
   const sending = useRef(false);
   const held = useRef<Turn[]>([]);
+  const prefill = useRef<string | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -58,17 +61,21 @@ export function GoalConversation({
     setReply(null);
     setBusy(false);
     sending.current = false;
-    setText('');
+    prefill.current = readGoalHandoff(userId, ready);
+    setText(prefill.current ?? '');
     setError(undefined);
     setLoaded(true);
     return () => {
       ++generation.current;
       cancel.current?.abort();
     };
-  }, [api, key, context]);
+  }, [api, key, context, userId, ready]);
 
   function persist(next: Turn[]) {
-    if (key && !writeLocal(key, { revision: 0, transcript: next })) setError(copy.notSaved);
+    if (!key) return false;
+    const saved = writeLocal(key, { revision: 0, transcript: next });
+    if (!saved) setError(copy.notSaved);
+    return saved;
   }
   function startOver() {
     if (sending.current) return;
@@ -100,7 +107,10 @@ export function GoalConversation({
     setReply(null);
     held.current = next;
     setTurns(next);
-    persist(next);
+    if (persist(next) && prefill.current && userId) {
+      consumeGoalHandoff(prefill.current, userId);
+      prefill.current = null;
+    }
     const controller = new AbortController();
     cancel.current = controller;
     try {
@@ -159,7 +169,7 @@ export function GoalConversation({
       className="grid min-w-0 gap-4 lg:grid-cols-12 lg:items-start"
     >
       <header className="flex flex-wrap items-baseline justify-between gap-3 lg:col-span-12">
-        <h1 className="text-body-lg font-semibold">{t.talk.workbench.title}</h1>
+        <h1 className={WORKSPACE_TITLE}>{t.talk.workbench.title}</h1>
         {turns.length > 0 && (
           <Button variant="link" disabled={busy} onClick={startOver}>
             {t.talk.startOver}
@@ -230,7 +240,7 @@ export function GoalConversation({
           error={error}
           lang={lang}
           labels={{
-            submit: t.shared.vault.conversation.send,
+            submit: t.shared.vault.conversation.submitMessage,
             busy: t.shared.vault.conversation.reading,
           }}
         />

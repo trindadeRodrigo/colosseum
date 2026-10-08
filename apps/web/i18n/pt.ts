@@ -1456,7 +1456,7 @@ export const pt: Dictionary = {
         you: 'Você',
         agent: 'Tenonfi',
         placeholder: 'Pergunte sobre este cofre ou descreva uma mudança…',
-        send: 'Enviar mensagem',
+        submitMessage: 'Enviar mensagem',
         reading: 'Buscando uma resposta…',
         current: 'O que tem agora',
         noHoldings: 'Este cofre não tem tokens agora.',

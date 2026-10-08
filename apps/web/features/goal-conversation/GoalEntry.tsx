@@ -1,7 +1,8 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useT } from '../../i18n/I18nProvider';
 import { useAccount } from '../account/AccountProvider';
+import { readWay } from '../invest/handoff';
 import { InvestScreen } from '../invest/InvestScreen';
 import { useWalletPort } from '../wallet/WalletProvider';
 import { GoalConversation } from './GoalConversation';
@@ -13,6 +14,11 @@ export function GoalEntry() {
   const port = useWalletPort();
   const [mode, setMode] = useState('explore');
   const network = chain ? port.network(chain) : null;
+  useEffect(() => {
+    // Only an existing validated financial continuation belongs to the guided flow.
+    // Its original consumer retains ownership of reading/removing the saved sheet and change.
+    if (readWay()) setMode('guided');
+  }, []);
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <label className="flex items-center gap-2 self-start text-caption text-muted-foreground">

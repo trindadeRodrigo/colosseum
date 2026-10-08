@@ -13,6 +13,7 @@ import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
 import { Composer } from '../../components/ui/Composer';
 import { cn } from '../../components/ui/cn';
+import { WORKSPACE_TITLE } from '../../components/ui/heading';
 import { LatticeGlyph, LatticeStatus } from '../../components/ui/Lattice';
 import { type Dictionary, type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
@@ -969,7 +970,7 @@ export function InvestScreen() {
         inert={overlayOpen}
         className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 lg:col-span-12"
       >
-        <h1 className="text-body-lg font-semibold">{w.workbench.title}</h1>
+        <h1 className={WORKSPACE_TITLE}>{w.workbench.title}</h1>
         {/* an empty conversation and an empty pane, by one press or by saying so */}
         {turns.length > 0 && (
           <span data-ui="invest-start-over">

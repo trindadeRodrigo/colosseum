@@ -4,9 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, fire, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
 import { withAccount } from '../account/test/screen';
+import { PERSONALIZE_PATH, PROPOSE_PATH } from '../goal/build-plan';
+import { GOAL_HANDOFF, GOAL_HANDOFF_OWNER } from '../goal/draft';
+import { proposalFor, READ_IN_DOLLARS } from '../goal/test/plan';
+import { keepWay, readWay } from '../invest/handoff';
+import { Simulate } from '../landing/Simulate';
 import { sourceValue } from '../vault-conversation/StrategyPreview';
 import { preview } from '../vault-conversation/test/fixtures';
-import { json, PHANTOM, signedInPort } from '../wallet/test/fake-port';
+import { fakePort, json, PHANTOM, signedInPort } from '../wallet/test/fake-port';
+import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { GoalConversation, goalConversationKey } from './GoalConversation';
 import { GoalEntry } from './GoalEntry';
@@ -46,6 +52,8 @@ async function mode(host: HTMLElement, value: string) {
   await fire(selector, new Event('change', { bubbles: true }));
 }
 beforeEach(() => {
+  window.history.replaceState(null, '', '/goal');
+  router.push.mockClear();
   localStorage.clear();
   sessionStorage.clear();
   calls.length = 0;
@@ -274,6 +282,107 @@ describe('private strategy exploration for a new goal', () => {
     expect(find<HTMLTextAreaElement>(host, 'textarea').disabled).toBe(true);
     await send(host, 'Consider gold');
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe('existing entry handoffs', () => {
+  it('prefills actual landing words in Explore across sign-in, then consumes once on accepted words even if reply fails', async () => {
+    portStore.set(fakePort());
+    const landing = await mount(withAccount('en', createElement(Simulate)));
+    const words = 'Grow $2,000 for ten years';
+    await send(landing, words);
+    expect(router.push).toHaveBeenCalledWith('/goal');
+    expect(sessionStorage.getItem(GOAL_HANDOFF)).toBe(words);
+    await unmountAll();
+    portStore.setApi(async (url) => baseApi(url));
+    const host = await show();
+    expect(find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').value).toBe('explore');
+    expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe(words);
+    expect(find<HTMLTextAreaElement>(host, 'textarea').disabled).toBe(true);
+    expect(calls).toHaveLength(0);
+    await act(async () => portStore.set(signedInPort(PHANTOM, { userId })));
+    await settle();
+    expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe(words);
+    expect(sessionStorage.getItem(GOAL_HANDOFF)).toBe(words);
+    expect(sessionStorage.getItem(GOAL_HANDOFF_OWNER)).toBe(userId);
+    await click(find(host, '[data-ui="composer-send"]'));
+    await settle();
+    expect(sessionStorage.getItem(GOAL_HANDOFF)).toBeNull();
+    expect(sessionStorage.getItem(GOAL_HANDOFF_OWNER)).toBeNull();
+    expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain(words);
+    expect(host.textContent).toContain(en.goal.explore.unavailable);
+    expect(localStorage.getItem(goalConversationKey(userId, 'solana', 'sandbox'))).toContain(words);
+    expect(host.querySelector('[data-ui="invest-screen"]')).toBeNull();
+  });
+  it('does not prefill another verified person with an unconsumed signed-in handoff', async () => {
+    sessionStorage.setItem(GOAL_HANDOFF, 'My private pending goal');
+    const host = await show();
+    expect(sessionStorage.getItem(GOAL_HANDOFF_OWNER)).toBe(userId);
+    expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe('My private pending goal');
+    portStore.setApi(async (url) =>
+      url === '/v1/me' ? json({ ...person, userId: 'another-person' }) : json({}, 404),
+    );
+    await act(async () => portStore.set(signedInPort(PHANTOM, { userId: 'another-person' })));
+    await settle();
+    expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe('');
+    expect(host.textContent).not.toContain('My private pending goal');
+    expect(sessionStorage.getItem(GOAL_HANDOFF)).toBe('My private pending goal');
+    expect(calls).toHaveLength(0);
+  });
+  it('keeps a bounded goal fragment as unconfirmed Explore prefill until explicit send', async () => {
+    const words = 'Consider gold with a small budget';
+    window.history.replaceState(null, '', `/goal#goal=${encodeURIComponent(words)}`);
+    const host = await show();
+    expect(find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').value).toBe('explore');
+    expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe(words);
+    expect(sessionStorage.getItem(GOAL_HANDOFF)).toBe(words);
+    expect(calls).toHaveLength(0);
+    await send(host, words);
+    expect(window.location.hash).toBe('');
+    expect(sessionStorage.getItem(GOAL_HANDOFF)).toBeNull();
+    expect(calls[0].body.messages).toEqual([{ who: 'person', text: words }]);
+  });
+  it('routes a validated old plan change to its original guided consumer without model authority', async () => {
+    const sheet = {
+      basketType: 'standard' as const,
+      goal: 'income' as const,
+      amountUsd: 80000,
+      horizonMonths: 12,
+      risk: 'low' as const,
+      themes: [],
+      chains: ['solana' as const],
+      incomeTargetUsdMonthly: 300,
+      rules: { useHoldings: true, glide: true },
+      language: 'en' as const,
+    };
+    const way = 'You can aim for $147 a month instead of $300.';
+    portStore.set(fakePort());
+    keepWay(sheet, way);
+    expect(readWay()).toMatchObject({ sheet: { incomeTargetUsdMonthly: 300 }, way });
+    portStore.setApi(async (url, init) => {
+      if (init?.method === 'POST') {
+        const body = JSON.parse(String(init.body));
+        calls.push({ path: url, body });
+        if (url === PERSONALIZE_PATH || url === PROPOSE_PATH)
+          return json({ id: 'continued-plan', proposal: proposalFor(body.sheet, 'sandbox') });
+        if (url === '/goals') return json(READ_IN_DOLLARS);
+        return json({}, 404);
+      }
+      return baseApi(url);
+    });
+    const host = await show();
+    await settle();
+    await settle();
+    expect(find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').value).toBe('guided');
+    expect(host.querySelector('[data-ui="goal-conversation"]')).toBeNull();
+    expect(find(host, '[data-ui="invest-turns"]').textContent).toContain(way);
+    expect(readWay()).toBeNull();
+    expect(
+      calls
+        .filter((call) => [PERSONALIZE_PATH, PROPOSE_PATH].includes(call.path))
+        .map((call) => call.body.sheet),
+    ).toMatchObject([{ goal: 'income', amountUsd: 80000, incomeTargetUsdMonthly: 147 }]);
+    expect(calls.some((call) => call.path === path || call.path.includes('/orders'))).toBe(false);
   });
 });
 

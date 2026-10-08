@@ -14,10 +14,10 @@ export function keepWay(sheet: BasketSheet, way: string): void {
   }
 }
 
-export function takeWay(): { sheet: BasketSheet; way: string } | null {
+/** Non-consuming compatibility check; the original Invest screen remains the only consumer. */
+export function readWay(): { sheet: BasketSheet; way: string } | null {
   try {
     const raw = window.sessionStorage.getItem(KEY);
-    window.sessionStorage.removeItem(KEY);
     const read = raw ? (JSON.parse(raw) as { sheet?: unknown; way?: unknown }) : null;
     const sheet = BasketSheet.safeParse(read?.sheet);
     return sheet.success && typeof read?.way === 'string'
@@ -26,4 +26,14 @@ export function takeWay(): { sheet: BasketSheet; way: string } | null {
   } catch {
     return null;
   }
+}
+
+export function takeWay(): { sheet: BasketSheet; way: string } | null {
+  const value = readWay();
+  try {
+    window.sessionStorage.removeItem(KEY);
+  } catch {
+    return null;
+  }
+  return value;
 }

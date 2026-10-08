@@ -1603,7 +1603,7 @@ export const en = {
         you: 'You',
         agent: 'Tenonfi',
         placeholder: 'Ask about this vault or describe a change…',
-        send: 'Send message',
+        submitMessage: 'Send message',
         reading: 'Getting a reply…',
         current: 'What it holds now',
         noHoldings: 'This vault holds no tokens now.',
