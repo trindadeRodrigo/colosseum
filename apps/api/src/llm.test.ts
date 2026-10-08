@@ -25,6 +25,18 @@ const VOCABULARY: IntakeVocabulary = {
 };
 
 describe('what the model is asked for', () => {
+  it('asks for bounded non-executable latest-person interest metadata, never advice or an inferred company', () => {
+    const [interest, none] = INTAKE_REPLY_SCHEMA.properties.clarification.anyOf;
+    expect(none).toEqual({ type: 'null' });
+    expect(interest.additionalProperties).toBe(false);
+    expect(interest.required).toEqual(['kind', 'quote', 'keywords']);
+    expect(interest.properties.quote).toEqual({ type: 'string' });
+    expect(interest.properties.keywords).toEqual({ type: 'array', items: { type: 'string' } });
+    expect(INTAKE_SYSTEM).toContain('latest message');
+    expect(INTAKE_SYSTEM).toContain('Do not infer Tesla');
+    expect(INTAKE_SYSTEM).toContain("someone else's preference");
+    expect(INTAKE_SYSTEM).toContain('A complete financial instruction must proceed normally');
+  });
   it('names a market only by an id of the engine list, and a filter only as one attribute and one value', () => {
     const { properties, required } = INTAKE_REPLY_SCHEMA;
     expect(properties.markets.items.enum).toEqual([...MARKET_IDS]);

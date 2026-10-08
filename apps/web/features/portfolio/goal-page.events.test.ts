@@ -297,7 +297,8 @@ describe('home', () => {
     expect(cards.every((card) => find(card, 'h3').querySelector('img') === null)).toBe(true);
     expect(
       Array.from(host.querySelectorAll('img')).every(
-        (image) => image.getAttribute('src') === '/assets/tokens/paxg.png' && !image.hasAttribute('onerror'),
+        (image) =>
+          image.getAttribute('src') === '/assets/tokens/paxg.png' && !image.hasAttribute('onerror'),
       ),
     ).toBe(true);
     expect(calls.filter((path) => path === PORTFOLIO_PATH)).toHaveLength(1);

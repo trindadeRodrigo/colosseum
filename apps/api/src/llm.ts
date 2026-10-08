@@ -51,8 +51,42 @@ export const INTAKE_REPLY_SCHEMA = {
     'markets',
     'marketFilter',
     'mix',
+    'clarification',
+    'interestResolution',
   ],
   properties: {
+    interestResolution: {
+      anyOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: ['kind', 'quote'],
+          properties: {
+            kind: { type: 'string', enum: ['business', 'allocation', 'decline'] },
+            quote: { type: 'string' },
+          },
+        },
+        { type: 'null' },
+      ],
+    },
+    // Non-executable metadata: the API authors the question, never the model's prose.
+    clarification: {
+      anyOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: ['kind', 'quote', 'keywords'],
+          properties: {
+            kind: { type: 'string', enum: ['interest'] },
+            // Length bounds are checked by the API: Anthropic's raw schema omits unsupported
+            // minLength/maxLength/maxItems constraints (no SDK parse helper is used here).
+            quote: { type: 'string' },
+            keywords: { type: 'array', items: { type: 'string' } },
+          },
+        },
+        { type: 'null' },
+      ],
+    },
     goal: { anyOf: [{ type: 'string', enum: ['grow', 'income', 'protect'] }, { type: 'null' }] },
     amountUsd: { anyOf: [{ type: 'number' }, { type: 'null' }] },
     incomeTargetUsdMonthly: { anyOf: [{ type: 'number' }, { type: 'null' }] },
@@ -157,6 +191,8 @@ export const INTAKE_REPLY_SCHEMA = {
 export const INTAKE_SYSTEM = [
   "You read one person's financial goal into fields. The text may be in any language (English, Portuguese, Spanish, French or another): read it as written, and never translate a value. You are a reader, not an adviser.",
   'Fill a field only with what the text says. When the text does not say it, give null. Never guess, never pick a value for the person, never suggest anything.',
+  'clarification: non-executable metadata for a contextual follow-up, not an investment instruction. For a personal exploratory interest in the latest message ("I like Elon", "eu gosto do Elon"), whose investment meaning is still unclear, give kind interest, quote an exact span of that latest message (at most 160 characters), and keywords an empty list unless that span itself names values from the supplied shelf keywords. Do not infer Tesla, an asset, an allocation, a business or an industry from admiration for a person. The API writes the question; return no prose, prices, yields or advice. Give null for a quotation, someone else\'s preference, a story, a negated interest, a hypothetical, or an interest that a later message has already clarified. A clear request to invest in a business or market goes in markets or marketFilter as usual, not clarification. A complete financial instruction must proceed normally. Consider the latest message in context, but never keep an earlier exploratory interest alive after an explicit clarification.',
+  'interestResolution: non-executable metadata only when the latest message explicitly resolves an exploratory interest: business for a personal request to invest in a named business/industry/market, allocation for a personal instruction saying what to hold, or decline for an explicit instruction to ignore/drop that interest. quote the exact complete latest message (at most 2000 characters). A quotation, third-party story, negation of the investment request, hypothetical, thanks, a plain yes/no, or merely answering a missing fact is not resolution: null. Never choose any business, company, asset or share; execution fields still follow all the checks above. Clarification and resolution must not both be non-null.',
   'goal: grow (make the money grow), income (earn a monthly income from it) or protect (keep it safe). risk: low, medium or high, only as the person says it ("conservative" is low, "aggressive" is high). A mix is not a risk: "all in stocks" gives risk null.',
   'mix: only when the person states what they want held, of the whole money: "all of it in stocks" (growthPct 100), "70% stocks and 30% cash" (growthPct 70, cashPct 30), "only credit" or "only high yield" (dollarYieldPct 100, creditPct 100), "all in gold" (goldPct 100), "tudo em ações". growthPct is stocks and crypto; dollarYieldPct is dollar yield, including credit and bonds; creditPct is the part of dollarYieldPct in credit or high yield, else null. The four add up to 100, each as written. A market or a trend ("big tech", "AI") is not a mix, and a share of the money for one ("put 50% in big tech") is not a mix either. What the person rules out, only asks about, or says of what they or someone else already hold is not stated ("I wouldn\'t put all of it in stocks", "Should I put all of it in stocks?", "I already have everything in stocks at my broker"): null. Nothing stated to hold: null.',
   'markets: markets, industries or trends the person names to invest in, only from this list: big_tech ("big tech", "Magnificent 7", "US tech giants"), us_market ("the S&P", "the US market", "US stocks"), ai ("AI", "artificial intelligence"), semiconductors ("semiconductors", "chips", "chip makers"), ai_infrastructure ("AI infrastructure", "data centers"), crypto_economy ("crypto stocks", "crypto companies"; "crypto" alone is an asset, not this), fintech ("fintech", "brokers"), space ("space stocks", "rockets"), quantum ("quantum computing"), ev_autonomy ("electric vehicles", "EVs", "self-driving"), cloud_software ("cloud", "software", "SaaS"), emerging_markets ("emerging markets", "Asia"), commodities ("commodities", "oil", "silver"; gold is not this: "all in gold" is a mix), broad_market ("index funds", "the whole market"), retail_favourites ("meme stocks"), defense ("defense stocks", "weapons"), health_care ("health care stocks", "pharma", "pharmaceuticals"), social_media ("social media stocks", "social networks"). One the person rules out ("no big tech", "I would never invest in big tech", "anything but AI") or already holds elsewhere ("I already invest in the S&P 500 through my pension") is not named. None: an empty list. Do not name a portfolio, a company or a ticker for them.',
