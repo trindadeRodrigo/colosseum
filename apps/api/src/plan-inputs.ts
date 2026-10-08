@@ -1,14 +1,20 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { EXIT_WINDOW_DAYS } from '@colosseum/basket';
-import { assets as assetsTable, riskPools, yieldObservations } from '@colosseum/db';
+import { assets as assetsTable, type Db, riskPools, yieldObservations } from '@colosseum/db';
 import { PERSONAL_PARAMS } from '@colosseum/engine/personal';
-import { chainFamily, type YieldObservation } from '@colosseum/schemas';
+import {
+  type BasketAsset,
+  chainFamily,
+  type Provenance,
+  type YieldObservation,
+} from '@colosseum/schemas';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { loadLiquidityProvider, RISK_METHOD_VERSION } from './liquidity';
 import { modelContent } from './model-content';
 import {
   asSandbox,
+  type ExitTwin,
   exitTwins,
   isMeasured,
   issuerTwins,
@@ -66,6 +72,68 @@ const SCOPE = readJson<{ assets: Array<{ symbol: string; mint: string }> }>(
 
 export const BEARING_SOURCE = `Bearing: sell-side depth measured on chain (risk_depth_curves, ${RISK_METHOD_VERSION})`;
 
+/**
+ * The mainnet token each test-network token reads Bearing's figures from (model-exits.ts), on a chain
+ * that runs as a test network; none elsewhere, where every token reads its own. Shared by the plan
+ * inputs and the conversation's analytics (agent-analytics.ts).
+ */
+export async function resolveExitTwins(
+  db: Db,
+  assets: BasketAsset[],
+  provenance: Provenance | undefined,
+): Promise<ExitTwin[]> {
+  const tokens = standIns(assets, provenance);
+  const names = [...new Set(tokens.flatMap(twinSymbols))];
+  const lower = names.map((n) => n.toLowerCase());
+  if (!lower.length) return [];
+  // Solana's stocks are in Bearing's pool registry; the EVM stocks have no pool rows there (PLAN-UNIVERSE
+  // RU.14, DU6) and are found by their seeded `assets` rows, under the collector's spelling.
+  // The pool registry is Solana's; an EVM stock's chain is the prefix of its seeded row's id.
+  const registry: RegistryAsset[] = [
+    ...(SCOPE?.assets ?? [])
+      .filter((a) => names.includes(a.symbol))
+      .map((a) => ({
+        chain: 'solana',
+        assetSymbol: a.symbol,
+        assetMint: a.mint,
+        tvlUsd: null,
+        pinned: true,
+      })),
+    ...(
+      await db
+        .select({
+          assetSymbol: riskPools.assetSymbol,
+          assetMint: riskPools.assetMint,
+          tvlUsd: riskPools.tvlUsd,
+        })
+        .from(riskPools)
+        .where(inArray(sql`lower(${riskPools.assetSymbol})`, lower))
+    ).map((r) => ({ ...r, chain: 'solana' })),
+    ...(
+      await db
+        .select({
+          id: assetsTable.id,
+          assetSymbol: assetsTable.symbol,
+          assetMint: assetsTable.mint,
+        })
+        .from(assetsTable)
+        .where(and(eq(assetsTable.chain, 'evm'), inArray(sql`lower(${assetsTable.symbol})`, lower)))
+    ).flatMap((r) =>
+      r.assetMint
+        ? [
+            {
+              chain: r.id.split(':')[0] as string,
+              assetSymbol: r.assetSymbol,
+              assetMint: r.assetMint,
+              tvlUsd: null,
+            },
+          ]
+        : [],
+    ),
+  ];
+  return exitTwins(tokens, registry);
+}
+
 export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets, provenance }) => {
   const lists = loadThemeLists(chain);
   const stocks = loadStockAttributes(chain);
@@ -79,58 +147,7 @@ export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets, provena
   // On a chain that runs as a test network, a test-network token reads the depth of the mainnet token it
   // models (model-exits.ts); every other token reads its own.
   const tokens = standIns(assets, provenance);
-  const names = [...new Set(tokens.flatMap(twinSymbols))];
-  const lower = names.map((n) => n.toLowerCase());
-  // Solana's stocks are in Bearing's pool registry; the EVM stocks have no pool rows there (PLAN-UNIVERSE
-  // RU.14, DU6) and are found by their seeded `assets` rows, under the collector's spelling.
-  // The pool registry is Solana's; an EVM stock's chain is the prefix of its seeded row's id.
-  const registry: RegistryAsset[] = lower.length
-    ? [
-        ...(SCOPE?.assets ?? [])
-          .filter((a) => names.includes(a.symbol))
-          .map((a) => ({
-            chain: 'solana',
-            assetSymbol: a.symbol,
-            assetMint: a.mint,
-            tvlUsd: null,
-            pinned: true,
-          })),
-        ...(
-          await db
-            .select({
-              assetSymbol: riskPools.assetSymbol,
-              assetMint: riskPools.assetMint,
-              tvlUsd: riskPools.tvlUsd,
-            })
-            .from(riskPools)
-            .where(inArray(sql`lower(${riskPools.assetSymbol})`, lower))
-        ).map((r) => ({ ...r, chain: 'solana' })),
-        ...(
-          await db
-            .select({
-              id: assetsTable.id,
-              assetSymbol: assetsTable.symbol,
-              assetMint: assetsTable.mint,
-            })
-            .from(assetsTable)
-            .where(
-              and(eq(assetsTable.chain, 'evm'), inArray(sql`lower(${assetsTable.symbol})`, lower)),
-            )
-        ).flatMap((r) =>
-          r.assetMint
-            ? [
-                {
-                  chain: r.id.split(':')[0] as string,
-                  assetSymbol: r.assetSymbol,
-                  assetMint: r.assetMint,
-                  tvlUsd: null,
-                },
-              ]
-            : [],
-        ),
-      ]
-    : [];
-  const twins = exitTwins(tokens, registry);
+  const twins = await resolveExitTwins(db, assets, provenance);
   const twinOf = new Map(twins.map((t) => [t.id, t.twinMint]));
   const loaded = await loadLiquidityProvider(
     db,

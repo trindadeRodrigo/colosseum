@@ -512,9 +512,25 @@ describe('conversation context and grounded replies through the provider stub', 
       messages,
       latestPerson: messages.at(-1)?.text,
       vault: state,
-      stockAttributes: attributes,
+      // The rows without their source lists: those reach the model as evidence it may cite.
+      stockAttributes: {
+        ...attributes,
+        stocks: attributes.stocks.map(({ sources: _sources, ...row }) => row),
+      },
       allocationConstraints: [],
     });
+    expect(JSON.stringify(sentPrompt().stockAttributes)).not.toContain('"sources"');
+    // Evidence goes out as what the model cites; its source and method stay on the server.
+    expect(sentPrompt().evidence).toContainEqual({
+      id: `stock:${tesla.id}:0`,
+      assetId: tesla.id,
+      provenance: 'mock',
+    });
+    expect(
+      sentPrompt().evidence.filter(
+        (row) => 'source' in row || 'method' in row || 'fetchedAt' in row,
+      ),
+    ).toEqual([]);
     expect(sdk.create).toHaveBeenCalledTimes(3);
     expect(VAULT_AGENT_SYSTEM).toContain('resolve the name clarification');
     expect(VAULT_AGENT_SYSTEM).toContain('use that intent instead of repeating');
