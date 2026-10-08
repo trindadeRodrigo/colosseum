@@ -40,6 +40,10 @@ const has = (name: string) => {
   return true;
 };
 const chain = flag('--chain') ?? 'robinhood';
+if (!['robinhood', 'solana'].includes(chain)) {
+  console.error(`no shelf for chain "${chain}": robinhood or solana`);
+  process.exit(2);
+}
 const useRecorded = has('--recorded');
 const record = has('--record');
 const chat = has('--chat');
@@ -146,7 +150,7 @@ Every turn you answer with this object (the API holds you to its schema):
   "say": the message the person reads. Your words, your reasoning, your questions. One short paragraph, or two when there is a lot to say. Mention the holdings by name, not by id. Do not list weights or repeat the table; the code prints the lines under your message.
   "shape": "pick" | "grow" | "income" | "protect" | "split",
   "lines": [{ "id": exact id from the table, "why": one clause on why it fits }],
-  "buckets": only for "split": [{ "name", "share": 0 to 1 or null, "lines": [...] }],
+  "buckets": only for "split": [{ "name", "shape": the shape of that pot ("protect" for the safe one, "pick" for named things, ...), "share": the pot's share of the money as 0 to 1, only when the person gave the number, else null, "lines": [...] }],
   "stated": what the person has said so far, nothing guessed: { "amount": number, "currency": "USD" | "BRL" | ..., "when": their words, "monthly": number, "weights": their words, "risk": "low" | "medium" | "high" },
   "not_available": [{ "name", "why" }],
   "open": the fields of rule 4 still missing for this shape, as a list of "amount" | "when" | "monthly" | "shares"; empty when the plan is ready to confirm
@@ -231,6 +235,7 @@ const Reply = z.object({
     .array(
       z.object({
         name: z.string(),
+        shape: z.enum(['pick', 'grow', 'income', 'protect']).nullish(),
         share: z.number().min(0).max(1).nullish(),
         lines: z
           .array(Line)
@@ -269,13 +274,18 @@ const Reply = z.object({
 type Reply = z.infer<typeof Reply>;
 
 const recordedPath = join(root, 'scripts/relaxed/recorded.json');
+type Recorded = { reply: unknown; provenance: 'live' | 'mock' };
 const recorded = (() => {
   try {
-    return JSON.parse(readFileSync(recordedPath, 'utf8')) as Record<string, unknown>;
+    return JSON.parse(readFileSync(recordedPath, 'utf8')) as Record<string, Recorded | string>;
   } catch {
-    return {};
+    return {} as Record<string, Recorded | string>;
   }
 })();
+const entryOf = (k: string): Recorded | null => {
+  const e = recorded[k];
+  return e && typeof e === 'object' && 'reply' in e ? e : null;
+};
 const key = `${chain}|${text}`;
 
 type Turn = { role: 'user' | 'assistant'; content: string };
@@ -284,15 +294,16 @@ async function ask(
 ): Promise<{ reply: unknown; provenance: 'live' | 'recorded' | 'mock' }> {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (useRecorded || !apiKey) {
-    if (!(key in recorded)) {
+    const entry = entryOf(key);
+    if (!entry) {
       console.error(
         `no recorded reply for "${text}" on ${chain}, and ${apiKey ? '--recorded was asked' : 'ANTHROPIC_API_KEY is not set'}.`,
       );
       process.exit(1);
     }
     return {
-      reply: recorded[key],
-      provenance: recorded.provenance === 'mock' ? 'mock' : 'recorded',
+      reply: entry.reply,
+      provenance: entry.provenance === 'live' ? 'recorded' : 'mock',
     };
   }
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -341,8 +352,7 @@ async function ask(
     process.exit(1);
   }
   if (record && turns.length === 1) {
-    recorded[key] = reply;
-    recorded.provenance = 'live-recorded';
+    recorded[key] = { reply, provenance: 'live' };
     writeFileSync(recordedPath, JSON.stringify(recorded, null, 2) + '\n');
   }
   return { reply, provenance: 'live' };
@@ -451,12 +461,27 @@ function render(rawReply: unknown, provenance: 'live' | 'recorded' | 'mock'): Pl
   if (r.shape === 'split' && r.buckets?.length) {
     const n = r.buckets.length;
     const allShares = r.buckets.every((b) => b.share != null);
-    const shares = allShares
-      ? r.buckets.map((b) => Math.round((b.share as number) * 10_000))
-      : equalSplit(n);
-    if (!allShares) assumptions.push('equal shares between the pots until you say otherwise');
+    let shares = equalSplit(n);
+    if (allShares) {
+      // The shares the person gave, scaled to the whole to the unit, whatever they summed to.
+      const given = r.buckets.map((b) => b.share as number);
+      const sum = given.reduce((a, b) => a + b, 0);
+      shares = sum > 0 ? given.map((g) => Math.round((g / sum) * 10_000)) : equalSplit(n);
+      const drift = 10_000 - shares.reduce((a, b) => a + b, 0);
+      shares[0] = (shares[0] ?? 0) + drift;
+      if (Math.abs(sum - 1) > 0.001)
+        assumptions.push(
+          `the shares you gave summed to ${Math.round(sum * 100)}%; scaled to the whole`,
+        );
+    } else assumptions.push('equal shares between the pots until you say otherwise');
     r.buckets.forEach((b, i) => {
-      bucket(`${b.name} · ${pct(shares[i] ?? 0)} · one vault`, shares[i] ?? 0, b.lines, 'pick');
+      const shape = b.shape ?? 'pick';
+      bucket(
+        `${b.name} · ${pct(shares[i] ?? 0)} · ${shape} · one vault`,
+        shares[i] ?? 0,
+        b.lines,
+        shape,
+      );
     });
   } else {
     bucket(null, 10_000, r.lines, r.shape);
@@ -471,11 +496,16 @@ function render(rawReply: unknown, provenance: 'live' | 'recorded' | 'mock'): Pl
     ...(dropped.length ? [`dropped, not on the table: ${dropped.join(', ')}`] : []),
   ];
   if (notes.length) console.log(`\n  ${notes.join('\n  ')}`);
+  const missing = [
+    ...new Set([
+      ...REQUIRED[r.shape].filter((k) => r.stated[k] == null || r.stated[k] === ''),
+      ...r.open,
+    ]),
+  ];
   console.log(
-    `\n  [${plate} · ${chain} · ${r.shape}${r.open.length ? ` · open: ${r.open.join(', ')}` : ' · ready to confirm'}]\n`,
+    `\n  [${plate} · ${chain} · ${r.shape}${missing.length ? ` · open: ${missing.join(', ')}` : ' · ready to confirm'}]\n`,
   );
 
-  const missing = REQUIRED[r.shape].filter((k) => r.stated[k] == null || r.stated[k] === '');
   return {
     shape: r.shape,
     understood: r.say,
@@ -484,7 +514,7 @@ function render(rawReply: unknown, provenance: 'live' | 'recorded' | 'mock'): Pl
     notAvailable: r.not_available,
     leftOut: [...leftOut],
     assumptions,
-    missing: [...new Set([...missing, ...r.open])],
+    missing,
     questions: r.open,
   };
 }
@@ -495,6 +525,10 @@ if (!chat) {
   const { reply, provenance } = await ask([{ role: 'user', content: text }]);
   if (!render(reply, provenance)) process.exit(1);
 } else {
+  if (useRecorded) {
+    console.error('chat is live only; --recorded is for one-shot runs');
+    process.exit(2);
+  }
   if (!process.env.ANTHROPIC_API_KEY?.trim()) {
     console.error(
       'chat needs a model: no ANTHROPIC_API_KEY in the shell, in ./.env or in ../Colosseum/.env. Add the line ANTHROPIC_API_KEY=<key> to ~/Documents/Colosseum/.env, or run: export ANTHROPIC_API_KEY=<key>',
