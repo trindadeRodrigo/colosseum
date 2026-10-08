@@ -8,6 +8,7 @@ import {
   VaultAgentRequest,
   type VaultAgentResult,
   VaultAgentSource,
+  type VaultAgentWarning,
 } from '@colosseum/schemas';
 import type { VaultAgentModel, VaultAgentRepair } from '../vault-agent-model';
 import type { ChainEntry } from './chains';
@@ -22,7 +23,11 @@ type AgentContextData = {
   stockAttributes: Figures['stocks'] | null;
   liquidity: Array<{ assetId: string; observation: unknown | null }>;
   unknowns: string[];
-  /** Additional server guardrail caps; these never determine allocation weights. */
+  /**
+   * The share of the vault each asset's measured exit capacity can sell at its current size, keyed by
+   * asset, each with its `liquidity:<asset>` source. A weight above it is allowed with a warning
+   * (ANY-COMPOSITION); it never chooses a weight.
+   */
   caps?: Record<string, number>;
   /** Only a separately confirmed, server-owned goal change can replace existing eligibility. */
   confirmedGoal?: 'grow' | 'income' | 'protect';
@@ -42,23 +47,18 @@ export type VaultAgentPrompt = {
   catalog: Array<
     Pick<
       BasketAsset,
-      | 'id'
-      | 'symbol'
-      | 'underlying'
-      | 'cls'
-      | 'tier'
-      | 'issuer'
-      | 'maxWeightBps'
-      | 'provenance'
-      | 'sheet'
+      'id' | 'symbol' | 'underlying' | 'cls' | 'tier' | 'issuer' | 'provenance' | 'sheet'
     >
   >;
   evidence: AgentSource[];
   stockAttributes: Figures['stocks'] | null;
   liquidity: VaultAgentContext['liquidity'];
   unknowns: string[];
-  caps: Record<string, number>;
+  /** Measured exit capacity as a share of the vault; above it is allowed and warned, not refused. */
+  exitCapacityBps: Record<string, number>;
   eligibilityGoal: 'grow' | 'income' | 'protect' | null;
+  /** Assets outside eligibilityGoal that the person asked for in their own words. */
+  requestedOutsideGoal: string[];
   /** Person-authored limits projected onto the supplied catalog, never allocation choices. */
   allocationConstraints: Array<{
     assetIds: string[];
@@ -68,11 +68,6 @@ export type VaultAgentPrompt = {
   }>;
 };
 
-/** Cash is the residual balance, not a capped creator target (compose's cash convention). */
-function catalogCap(asset: BasketAsset): number {
-  return asset.cls === 'cash' ? 10000 : asset.maxWeightBps;
-}
-
 /** This reads observations and guardrails only. It never calls an allocator, stores, or trades. */
 type ContextInput = {
   entry: ChainEntry;
@@ -80,7 +75,6 @@ type ContextInput = {
   prepared: { shelf: Shelf; figures: Figures };
   person: string;
   currentGoals?: readonly unknown[];
-  caps?: Record<string, number>;
   confirmedGoal?: 'grow' | 'income' | 'protect';
 };
 
@@ -121,14 +115,14 @@ function buildAgentContext(
     add({
       id: `catalog:${asset.id}`,
       assetId: asset.id,
-      label: `${asset.symbol} catalog cap`,
-      value: catalogCap(asset),
-      unit: 'bps',
+      // A shared portfolio's ceiling (maxWeightBps) does not bind the person's own vault, so it is not
+      // offered as a figure here (ANY-COMPOSITION).
+      label: `${asset.symbol} listed on this chain`,
       source: entry.source,
       fetchedAt: input.observedAt,
       method:
         asset.cls === 'cash'
-          ? 'listed asset catalog; cash residual has no catalog holding cap'
+          ? 'listed asset catalog; cash is the residual balance'
           : 'listed asset catalog',
       provenance: entry.provenance,
     });
@@ -207,7 +201,7 @@ function buildAgentContext(
         ? 'Some current holdings lack a usable reference price; the full vault value is unknown.'
         : 'No planning amount has been confirmed for this new goal; size-dependent exit capacity and feasibility are unknown. There is no existing vault or current holdings.',
     );
-  const caps = { ...input.caps };
+  const caps: Record<string, number> = {};
   const liquidity = assets.map((asset) => {
     const observed =
       asset.cls !== 'cash' && notionalUsd !== null && notionalUsd > 0
@@ -221,11 +215,7 @@ function buildAgentContext(
     if (observation && notionalUsd !== null && notionalUsd > 0) {
       if (!Number.isFinite(observation.capacityUsd) || observation.capacityUsd < 0)
         throw new Error('Invalid measured exit capacity');
-      caps[asset.id] = Math.min(
-        catalogCap(asset),
-        caps[asset.id] ?? catalogCap(asset),
-        Math.min(10000, Math.floor((observation.capacityUsd / notionalUsd) * 10000)),
-      );
+      caps[asset.id] = Math.min(10000, Math.floor((observation.capacityUsd / notionalUsd) * 10000));
     }
     if (observation?.dataTo && prepared.figures.liquidity)
       add({
@@ -322,9 +312,10 @@ const REPAIR_HINTS: Record<string, string> = {
     'Prose said something was applied, created, funded, traded or approved. A proposal is only a private preview; nothing has been applied.',
   allocation_unlisted: "An allocation named an assetId that is not in this chain's catalog.",
   allocation_duplicate: 'The same assetId appeared in more than one allocation.',
-  allocation_over_cap: "An allocation's weightBps was above that asset's limit in caps.",
+  allocation_lines:
+    'The proposal held more than sixteen assets besides cash; a vault holds at most sixteen.',
   allocation_ineligible:
-    'An allocation used an asset that is not eligible for eligibilityGoal: stocks are not eligible for income or protect.',
+    'An allocation used an asset that is outside eligibilityGoal (stocks in income or protect) and is not in requestedOutsideGoal. Only the person can ask for such an asset; never add one on your own.',
   allocation_evidence:
     'An allocation cited an evidenceId that does not exist in evidence or belongs to a different asset.',
   allocation_sum: 'Allocation weightBps did not add up to exactly 10000.',
@@ -343,6 +334,53 @@ function claimsApplied(text: string): boolean {
   );
 }
 
+/** A quote, a hypothetical, someone else's view or a request to talk: not the person's instruction. */
+const NOT_AN_INSTRUCTION =
+  /^["“‘']|\b(?:if|should\s+i|my\s+friend|my\s+advisor|someone|said|quoted|explain|understand|discuss|talk\s+about|learn|example|se\s+eu|meu\s+amigo|disse|entender|discutir|exemplo)\b/iu;
+const STOCK_WORDS = ['stocks?', 'shares?', 'equities', 'ações', 'acoes'];
+const isStock = (asset: Pick<BasketAsset, 'cls'>) => asset.cls === 'stock' || asset.cls === 'etf';
+const namesAny = (text: string, words: string[]) =>
+  words.length > 0 &&
+  new RegExp(`(?<![\\p{L}\\p{N}])(?:${words.join('|')})(?![\\p{L}\\p{N}])`, 'iu').test(text);
+const literal = (word: string) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Assets the person asked for in their own words: a kept percentage minimum on them, or an instruction
+ * that names the asset, its company or stocks in general and refuses nothing. The model's reply never
+ * counts. Gate ANY-COMPOSITION: an asset outside the goal's eligibility is allowed only from here.
+ */
+function requestedAssets(
+  messages: VaultAgentRequest['messages'],
+  assets: BasketAsset[],
+  companies: Map<string, string[]>,
+  constraints: HoldingConstraint[],
+): Set<string> {
+  const requested = new Set<string>();
+  for (const constraint of constraints)
+    if (constraint.min > 0)
+      for (const asset of assets) if (constraint.matches(asset)) requested.add(asset.id);
+  for (const message of messages) {
+    if (message.who !== 'person') continue;
+    const text = message.text.trim();
+    if (
+      NOT_AN_INSTRUCTION.test(text) ||
+      !/\b(?:want|would\s+like|prefer|add|include|buy|put|allocate|invest|hold|keep|quero|queria|prefiro|adicione|inclua|compre|coloque|aloque|invista|mantenha)\b/iu.test(
+        text,
+      ) ||
+      /\b(?:do\s+not|don't|dont|never|without|não|nao|nunca|sem)\b/iu.test(text)
+    )
+      continue;
+    for (const asset of assets) {
+      const words = [asset.symbol, asset.underlying, ...(companies.get(asset.id) ?? [])].map(
+        literal,
+      );
+      if (namesAny(text, words) || (isStock(asset) && namesAny(text, STOCK_WORDS)))
+        requested.add(asset.id);
+    }
+  }
+  return requested;
+}
+
 type HoldingConstraint = {
   key: string;
   matches(asset: BasketAsset): boolean;
@@ -358,11 +396,7 @@ function holdingConstraints(
 ): HoldingConstraint[] {
   const constraints = new Map<string, HoldingConstraint>();
   const targets: Array<{ key: string; words: string[]; matches(asset: BasketAsset): boolean }> = [
-    {
-      key: 'stocks',
-      words: ['stocks?', 'shares?', 'equities', 'ações', 'acoes'],
-      matches: (asset) => asset.cls === 'stock' || asset.cls === 'etf',
-    },
+    { key: 'stocks', words: STOCK_WORDS, matches: isStock },
     { key: 'cash', words: ['cash', 'caixa'], matches: (asset) => asset.cls === 'cash' },
     { key: 'gold', words: ['gold', 'ouro'], matches: (asset) => asset.cls === 'gold' },
     { key: 'crypto', words: ['crypto', 'cripto'], matches: (asset) => asset.cls === 'crypto' },
@@ -378,12 +412,7 @@ function holdingConstraints(
   for (const message of messages) {
     if (message.who !== 'person') continue;
     const text = message.text.trim();
-    if (
-      /^["“‘']|\b(?:if|should\s+i|my\s+friend|my\s+advisor|someone|said|quoted|explain|understand|discuss|talk\s+about|learn|example|se\s+eu|meu\s+amigo|disse|entender|discutir|exemplo)\b/iu.test(
-        text,
-      )
-    )
-      continue;
+    if (NOT_AN_INSTRUCTION.test(text)) continue;
     const instruction =
       /^(?:please\s+)?(?:i\s+(?:think\s+i\s+)?(?:want|would\s+like|would\s+prefer)|we\s+want|put|allocate|hold|keep|set|make|increase|reduce|replace|quero|prefiro|coloque|aloque|mantenha|aumente|reduza|faça|faca)\b/iu.test(
         text,
@@ -492,15 +521,32 @@ export async function replyToVaultConversation(
   const catalog = new Map(
     context.assets.filter((asset) => asset.chain === chain).map((asset) => [asset.id, asset]),
   );
-  const caps = Object.fromEntries(
-    [...catalog.values()].map((asset) => [
-      asset.id,
-      Math.min(catalogCap(asset), context.caps?.[asset.id] ?? catalogCap(asset)),
-    ]),
-  );
-  if (Object.values(caps).some((cap) => !Number.isInteger(cap) || cap < 0 || cap > 10_000))
+  // Every exit-capacity share must be a listed asset's, whole, in range and backed by its measured
+  // figure: a warning cites that figure, so a share without one is a server fault.
+  const caps = context.caps ?? {};
+  if (
+    Object.entries(caps).some(
+      ([id, cap]) =>
+        !catalog.has(id) ||
+        !Number.isInteger(cap) ||
+        cap < 0 ||
+        cap > 10_000 ||
+        !sourceById.has(`liquidity:${id}`),
+    )
+  )
     return invalid('context_caps');
   const constraints = holdingConstraints(parsed.data.messages, [...catalog.values()]);
+  const goal = eligibilityGoal(context);
+  const companies = new Map<string, string[]>();
+  for (const row of context.stockAttributes?.stocks ?? [])
+    for (const asset of catalog.values())
+      if (asset.symbol === row.symbol) companies.set(asset.id, [row.company]);
+  const requested = requestedAssets(
+    parsed.data.messages,
+    [...catalog.values()],
+    companies,
+    constraints,
+  );
   const prompt: VaultAgentPrompt = {
     version: 1,
     kind: context.kind ?? 'vault',
@@ -511,14 +557,13 @@ export async function replyToVaultConversation(
     vault: context.state,
     currentGoals: context.currentGoals,
     catalog: [...catalog.values()].map(
-      ({ id, symbol, underlying, cls, tier, issuer, maxWeightBps, provenance, sheet }) => ({
+      ({ id, symbol, underlying, cls, tier, issuer, provenance, sheet }) => ({
         id,
         symbol,
         underlying,
         cls,
         tier,
         issuer,
-        maxWeightBps: cls === 'cash' ? 10000 : maxWeightBps,
         provenance,
         sheet,
       }),
@@ -527,8 +572,13 @@ export async function replyToVaultConversation(
     stockAttributes: context.stockAttributes,
     liquidity: context.liquidity,
     unknowns: context.unknowns,
-    caps,
-    eligibilityGoal: eligibilityGoal(context),
+    exitCapacityBps: caps,
+    eligibilityGoal: goal,
+    requestedOutsideGoal: goal
+      ? [...catalog.values()]
+          .filter((asset) => requested.has(asset.id) && !eligibleForGoal(asset, goal))
+          .map((asset) => asset.id)
+      : [],
     allocationConstraints: constraints.map((constraint) => ({
       assetIds: [...catalog.values()].filter(constraint.matches).map((asset) => asset.id),
       minWeightBps: constraint.min,
@@ -597,19 +647,44 @@ export async function replyToVaultConversation(
       return {
         result: {
           kind: 'reply',
-          reply: { version: 1, messageId: request.messageId, ...conversation, proposal: null },
+          reply: {
+            version: 1,
+            messageId: request.messageId,
+            ...conversation,
+            proposal: null,
+            warnings: [],
+          },
         },
       };
     const ids = new Set<string>();
     const sources = new Set<string>();
+    const warnings: VaultAgentWarning[] = [];
     let sum = 0;
     for (const allocation of proposal.allocations) {
       const asset = catalog.get(allocation.assetId);
       if (!asset) return rejected('allocation_unlisted');
       if (ids.has(asset.id)) return rejected('allocation_duplicate');
-      if (allocation.weightBps > (caps[asset.id] ?? 0)) return rejected('allocation_over_cap');
-      if (prompt.eligibilityGoal && !eligibleForGoal(asset, prompt.eligibilityGoal))
-        return rejected('allocation_ineligible');
+      // Any listed composition may be proposed (ANY-COMPOSITION): exit capacity and a goal's
+      // eligibility warn; only an asset outside the goal that the person never asked for is refused.
+      const cap = caps[asset.id];
+      if (cap !== undefined && allocation.weightBps > cap) {
+        warnings.push({
+          code: 'over_exit_capacity',
+          assetId: asset.id,
+          evidenceId: `liquidity:${asset.id}`,
+        });
+        sources.add(`liquidity:${asset.id}`);
+      }
+      if (goal && !eligibleForGoal(asset, goal)) {
+        if (!requested.has(asset.id)) return rejected('allocation_ineligible');
+        const listed = sourceById.has(`catalog:${asset.id}`)
+          ? `catalog:${asset.id}`
+          : allocation.evidenceIds[0];
+        if (listed) {
+          warnings.push({ code: 'outside_goal_requested', assetId: asset.id, evidenceId: listed });
+          sources.add(listed);
+        }
+      }
       ids.add(asset.id);
       sum += allocation.weightBps;
       for (const id of allocation.evidenceIds) {
@@ -620,6 +695,11 @@ export async function replyToVaultConversation(
       }
     }
     if (sum !== 10_000) return rejected('allocation_sum');
+    if (
+      proposal.allocations.filter((allocation) => catalog.get(allocation.assetId)?.cls !== 'cash')
+        .length > 16
+    )
+      return rejected('allocation_lines');
     for (const constraint of constraints) {
       const actual = proposal.allocations.reduce((weight, allocation) => {
         const asset = catalog.get(allocation.assetId);
@@ -633,6 +713,7 @@ export async function replyToVaultConversation(
               version: 1,
               messageId: request.messageId,
               proposal: null,
+              warnings: [],
               message:
                 request.language === 'pt'
                   ? `A proposta não respeitou seu pedido: “${constraint.quote}”. Esse limite continua valendo; nada foi aplicado.`
@@ -659,6 +740,7 @@ export async function replyToVaultConversation(
         unknowns: [...new Set([...context.unknowns, ...proposal.unknowns])].slice(0, 12),
         sources: [...sources].map((id) => sourceById.get(id)),
       },
+      warnings,
     });
     return reply.success
       ? { result: { kind: 'reply', reply: reply.data } }

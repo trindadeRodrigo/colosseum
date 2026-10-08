@@ -578,8 +578,7 @@ describe('conversation context and grounded replies through the provider stub', 
     ['invented-source', 'allocation_evidence'],
     ['wrong-asset-source', 'allocation_evidence'],
     ['invented-figure', 'prose_figure'],
-    ['over-cap', 'allocation_over_cap'],
-    ['ineligible', 'allocation_ineligible'],
+    ['unasked-stock', 'allocation_ineligible'],
   ])(
     'rejects a provider fixture with %s while keeping the grounded proposal boundary',
     async (fault, detail) => {
@@ -591,18 +590,16 @@ describe('conversation context and grounded replies through the provider stub', 
       if (fault === 'invented-figure') allocation.why = 'The stock will return 12%.';
       const context = {
         ...conversationContext,
-        ...(fault === 'over-cap' ? { caps: { [tesla.id]: 1000 } } : {}),
-        ...(fault === 'ineligible' ? { currentGoals: [{ goal: 'protect' }] } : {}),
+        ...(fault === 'unasked-stock' ? { currentGoals: [{ goal: 'protect' }] } : {}),
       };
+      // The person never asks for a stock in the protect case: the model may not add one.
+      const text =
+        fault === 'unasked-stock' ? 'Keep my savings safe.' : 'I want electric vehicle stocks.';
       // The repair call returns the same reply: it is refused again, never shown or substituted.
       respond(value);
       respond(value);
       expect(
-        await replyToVaultConversation(
-          turn([{ who: 'person', text: 'I want electric vehicle stocks.' }]),
-          context,
-          offlineModel(),
-        ),
+        await replyToVaultConversation(turn([{ who: 'person', text }]), context, offlineModel()),
       ).toEqual({
         kind: 'failure',
         reason: 'invalid',
@@ -617,4 +614,44 @@ describe('conversation context and grounded replies through the provider stub', 
       ]);
     },
   );
+
+  it('passes a requested stock in a protect goal and a weight over exit capacity, each with a server warning', async () => {
+    const value = draft();
+    respond(value);
+    const measured = {
+      id: `liquidity:${tesla.id}`,
+      assetId: tesla.id,
+      label: 'Measured exit capacity at the current vault size',
+      value: 120,
+      unit: 'USD',
+      source: 'offline measured fixture',
+      method: 'offline-exit-fixture',
+      fetchedAt: observedAt,
+      provenance: 'mock' as const,
+    };
+    const out = await replyToVaultConversation(
+      turn([{ who: 'person', text: 'I want electric vehicle stocks.' }]),
+      {
+        ...conversationContext,
+        currentGoals: [{ goal: 'protect' }],
+        evidence: [...conversationContext.evidence, measured],
+        caps: { [tesla.id]: 100 },
+      },
+      offlineModel(),
+    );
+    if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
+    expect(out.reply.warnings).toEqual([
+      { code: 'over_exit_capacity', assetId: tesla.id, evidenceId: measured.id },
+      { code: 'outside_goal_requested', assetId: tesla.id, evidenceId: `catalog:${tesla.id}` },
+    ]);
+    expect(sdk.create).toHaveBeenCalledTimes(1);
+    expect(sentPrompt()).toMatchObject({
+      eligibilityGoal: 'protect',
+      exitCapacityBps: { [tesla.id]: 100 },
+      requestedOutsideGoal: expect.arrayContaining([tesla.id]),
+    });
+    expect(VAULT_AGENT_SYSTEM).toContain('any composition of listed assets');
+    expect(VAULT_AGENT_SYSTEM).toContain('requestedOutsideGoal');
+    expect(VAULT_AGENT_SYSTEM).not.toContain('catalog and guardrail caps');
+  });
 });

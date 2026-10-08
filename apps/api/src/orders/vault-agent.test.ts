@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { checkCreatorLimits } from '@colosseum/basket';
 import type { Price, VaultState } from '@colosseum/schemas';
 import { VaultAgentRequest } from '@colosseum/schemas';
 import { describe, expect, it, vi } from 'vitest';
@@ -122,7 +123,7 @@ const rejected = (detail: string) => ({
 });
 
 describe('model-led private vault proposals', () => {
-  it('accepts real-catalog cash residual previews while honoring explicit additional cash caps', async () => {
+  it('accepts real-catalog cash residual previews and refuses an exit share without its measured figure', async () => {
     const cashContext = {
       ...context,
       evidence: [
@@ -152,12 +153,13 @@ describe('model-led private vault proposals', () => {
     expect(model.read).toHaveBeenCalledWith(
       'owner-fixture',
       expect.objectContaining({
-        caps: expect.objectContaining({ [cash.id]: 10000 }),
-        catalog: expect.arrayContaining([
-          expect.objectContaining({ id: cash.id, maxWeightBps: 10000 }),
-        ]),
+        exitCapacityBps: {},
+        catalog: expect.arrayContaining([expect.objectContaining({ id: cash.id })]),
       }),
     );
+    // A shared portfolio's ceiling is not sent: it does not bind the person's own vault.
+    const sent = vi.mocked(model.read).mock.calls[0]?.[1];
+    expect(sent?.catalog.every((asset) => !('maxWeightBps' in asset))).toBe(true);
     value.proposal.allocations = [
       proposal(1000).proposal.allocations[0] as (typeof value.proposal.allocations)[number],
       {
@@ -170,13 +172,15 @@ describe('model-led private vault proposals', () => {
     expect((await replyToVaultConversation(request(), cashContext, fake(value))).kind).toBe(
       'reply',
     );
+    const unsourced = fake(value);
     expect(
       await replyToVaultConversation(
         request(),
         { ...cashContext, caps: { [cash.id]: 5000 } },
-        fake(value),
+        unsourced,
       ),
-    ).toEqual(rejected('allocation_over_cap'));
+    ).toEqual({ kind: 'failure', reason: 'invalid', detail: 'context_caps' });
+    expect(unsourced.read).not.toHaveBeenCalled();
   });
 
   it('keeps an explicit stock minimum through later refinement and asks about a mismatched draft without reweighting', async () => {
@@ -341,7 +345,6 @@ describe('model-led private vault proposals', () => {
   it.each([
     'asset',
     'crosschain',
-    'cap',
     'sum',
     'duplicate',
     'evidence',
@@ -354,7 +357,6 @@ describe('model-led private vault proposals', () => {
     const expected: Record<string, string> = {
       asset: 'allocation_unlisted',
       crosschain: 'allocation_unlisted',
-      cap: 'allocation_over_cap',
       sum: 'allocation_sum',
       duplicate: 'allocation_duplicate',
       evidence: 'allocation_evidence',
@@ -369,10 +371,6 @@ describe('model-led private vault proposals', () => {
     if (!allocation || !remainder) throw new Error('Incomplete allocation fixture');
     if (fault === 'asset') allocation.assetId = 'solana:unlisted';
     if (fault === 'crosschain') allocation.assetId = 'robinhood:unlisted';
-    if (fault === 'cap') {
-      allocation.weightBps = 9000;
-      remainder.weightBps = 1000;
-    }
     if (fault === 'sum') allocation.weightBps = 500;
     if (fault === 'duplicate') remainder.assetId = stock.id;
     if (fault === 'evidence') allocation.evidenceIds = ['invented-risk-observation'];
@@ -381,14 +379,9 @@ describe('model-led private vault proposals', () => {
     if (fault === 'written-figure') allocation.why = 'It pays ten percent annually.';
     if (fault === 'symbol') Object.assign(allocation, { symbol: 'MADEUP' });
     if (fault === 'infinity') allocation.weightBps = Number.POSITIVE_INFINITY;
-    const caps = fault === 'cap' ? { [stock.id]: 2000 } : undefined;
-    expect(
-      await replyToVaultConversation(
-        request(),
-        { ...context, ...(caps ? { caps } : {}) },
-        fake(value),
-      ),
-    ).toEqual(rejected(expected[fault] ?? 'unmapped'));
+    expect(await replyToVaultConversation(request(), context, fake(value))).toEqual(
+      rejected(expected[fault] ?? 'unmapped'),
+    );
   });
 
   it('returns a conversational question without inventing an allocation from admiration', async () => {
@@ -499,6 +492,160 @@ describe('model-led private vault proposals', () => {
     expect(thrown).toHaveBeenCalledOnce();
   });
 
+  // Gate ANY-COMPOSITION: any listed mix, any weights; exit capacity and goal eligibility warn.
+  const concentrated = () => {
+    const value = proposal(7000);
+    const [, reserveLine, otherLine] = value.proposal.allocations;
+    if (!reserveLine || !otherLine) throw new Error('Incomplete allocation fixture');
+    reserveLine.weightBps = 1500;
+    otherLine.weightBps = 1500;
+    return value;
+  };
+
+  it('accepts a single asset at seventy percent, above its shared-portfolio ceiling, which still binds a shared portfolio', async () => {
+    expect(stock.maxWeightBps).toBeLessThan(7000);
+    const out = await replyToVaultConversation(request(), context, fake(concentrated()));
+    if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
+    expect(out.reply.proposal?.allocations.map((line) => line.weightBps)).toEqual([
+      7000, 1500, 1500,
+    ]);
+    expect(out.reply.warnings).toEqual([]);
+    expect(out).not.toHaveProperty('repair');
+    // The same weights as a shared portfolio are still refused at the asset's ceiling.
+    const limits = {
+      assets: [stock, reserve, otherReserve].map(({ id, maxWeightBps, cls }) => ({
+        id,
+        maxWeightBps,
+        cls,
+      })),
+      now: 1_791_212_400,
+      lastPublishAt: null,
+      hasPending: false,
+      publishDelay: 172_800,
+    };
+    expect(
+      checkCreatorLimits(
+        null,
+        [
+          { asset: stock.id, weightBps: 7000 },
+          { asset: reserve.id, weightBps: 1500 },
+          { asset: otherReserve.id, weightBps: 1500 },
+        ],
+        limits,
+      ),
+    ).toMatchObject({ ok: false, code: 'WeightAboveCeiling' });
+  });
+
+  it('warns on a weight above the measured exit share and cites that figure', async () => {
+    const measured = {
+      id: `liquidity:${stock.id}`,
+      assetId: stock.id,
+      label: 'Measured exit capacity at the current vault size',
+      value: 250,
+      unit: 'USD',
+      source: 'offline measured fixture',
+      method: 'offline-exit-fixture',
+      fetchedAt: now,
+      provenance: 'mock' as const,
+    };
+    const out = await replyToVaultConversation(
+      request(),
+      { ...context, evidence: [...context.evidence, measured], caps: { [stock.id]: 2000 } },
+      fake(concentrated()),
+    );
+    if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
+    expect(out.reply.warnings).toEqual([
+      { code: 'over_exit_capacity', assetId: stock.id, evidenceId: measured.id },
+    ]);
+    expect(out.reply.proposal?.sources).toContainEqual(measured);
+  });
+
+  it.each(['income', 'protect'] as const)(
+    'in a %s goal, takes a stock only when the person asked for it, with a warning',
+    async (goal) => {
+      const goalContext = { ...context, currentGoals: [{ goal }] };
+      const outside = {
+        code: 'outside_goal_requested',
+        assetId: stock.id,
+        evidenceId: `catalog:${stock.id}`,
+      };
+      // Naming the asset asks for it alone; asking for stocks asks for every listed stock.
+      const stocks = assets.filter((asset) => asset.cls === 'stock' || asset.cls === 'etf');
+      for (const [asked, requested] of [
+        [`I want ${stock.symbol} in this vault.`, [stock.id]],
+        ['I want stocks in it as well.', stocks.map((asset) => asset.id)],
+        ['Quero ações também.', stocks.map((asset) => asset.id)],
+        ['I want at least 10% stocks.', stocks.map((asset) => asset.id)],
+      ] as const) {
+        const model = fake(proposal(1000));
+        const out = await replyToVaultConversation(request(asked), goalContext, model);
+        if (out.kind !== 'reply') throw new Error(`${asked} refused: ${JSON.stringify(out)}`);
+        expect(out.reply.warnings).toEqual([outside]);
+        expect(out.reply.proposal?.sources).toContainEqual(
+          expect.objectContaining({ id: `catalog:${stock.id}` }),
+        );
+        expect(vi.mocked(model.read).mock.calls[0]?.[1]).toMatchObject({
+          eligibilityGoal: goal,
+          requestedOutsideGoal: requested,
+        });
+      }
+      // The model adding a stock on its own, a refusal, a question or a request for another asset
+      // is not the person asking for that stock.
+      for (const unasked of [
+        'Keep my savings safe.',
+        'I do not want stocks.',
+        'Should I buy stocks?',
+        `I want ${reserve.symbol} in this vault.`,
+      ]) {
+        const model = fake(proposal(1000));
+        expect(await replyToVaultConversation(request(unasked), goalContext, model)).toEqual(
+          rejected('allocation_ineligible'),
+        );
+        expect(vi.mocked(model.read).mock.calls[0]?.[1]).toMatchObject({
+          requestedOutsideGoal: [],
+        });
+      }
+    },
+  );
+
+  it('refuses more than sixteen assets besides cash', async () => {
+    const many = Array.from({ length: 17 }, (_, index) => ({
+      ...stock,
+      id: `solana:fixture-${index}`,
+      symbol: `FIX${String.fromCharCode(65 + index)}`,
+      underlying: `FIX${String.fromCharCode(65 + index)}`,
+    }));
+    const value = proposal(1000);
+    value.proposal.allocations = many.map((asset, index) => ({
+      assetId: asset.id,
+      weightBps: index === 0 ? 10000 - 16 * 588 : 588,
+      why: 'Spread across listed names.',
+      evidenceIds: [`catalog:${asset.id}`],
+    }));
+    const wide = {
+      ...context,
+      assets: [...context.assets, ...many],
+      evidence: [
+        ...context.evidence,
+        ...many.map((asset) => ({
+          id: `catalog:${asset.id}`,
+          assetId: asset.id,
+          source: 'offline catalog',
+          method: 'listed assets',
+          fetchedAt: now,
+          provenance: 'mock' as const,
+        })),
+      ],
+    };
+    expect(await replyToVaultConversation(request(), wide, fake(value))).toEqual(
+      rejected('allocation_lines'),
+    );
+    const [first, ...rest] = value.proposal.allocations.slice(0, 16);
+    if (!first) throw new Error('Missing allocation fixture');
+    value.proposal.allocations = [{ ...first, weightBps: 10000 - 15 * 588 }, ...rest];
+    expect((await replyToVaultConversation(request(), wide, fake(value))).kind).toBe('reply');
+  });
+
   it('rejects counterfeit server metrics before calling the model', async () => {
     const model = fake(proposal(1000));
     const firstSource = context.evidence[0];
@@ -532,7 +679,7 @@ describe('model-led private vault proposals', () => {
     },
   );
 
-  it('enforces a measured exit-capacity ceiling and retains server unknowns even if the model fills its unknown list', async () => {
+  it('warns above measured exit capacity, citing the figure, and retains server unknowns even if the model fills its unknown list', async () => {
     const provider = {
       entry: (assetId: string) =>
         assetId === stock.id
@@ -558,9 +705,21 @@ describe('model-led private vault proposals', () => {
       person: 'owner-fixture',
     });
     expect(built.caps?.[stock.id]).toBe(500);
-    expect(await replyToVaultConversation(request(), built, fake(proposal(1000)))).toEqual(
-      rejected('allocation_over_cap'),
+    const over = await replyToVaultConversation(request(), built, fake(proposal(1000)));
+    if (over.kind !== 'reply') throw new Error(`over capacity refused: ${JSON.stringify(over)}`);
+    expect(over.reply.warnings).toEqual([
+      { code: 'over_exit_capacity', assetId: stock.id, evidenceId: `liquidity:${stock.id}` },
+    ]);
+    expect(over.reply.proposal?.sources).toContainEqual(
+      expect.objectContaining({ id: `liquidity:${stock.id}`, value: 100, unit: 'USD' }),
     );
+    expect(over.reply.proposal?.allocations[0]).toMatchObject({
+      assetId: stock.id,
+      weightBps: 1000,
+    });
+    // At or under the measured share: no warning.
+    const under = await replyToVaultConversation(request(), built, fake(proposal(500)));
+    expect(under.kind === 'reply' && under.reply.warnings).toEqual([]);
     const crowded = proposal(1000);
     crowded.proposal.unknowns = Array.from({ length: 12 }, () => 'Model uncertainty.');
     const accepted = await replyToVaultConversation(request(), context, fake(crowded));

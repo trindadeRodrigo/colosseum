@@ -70,12 +70,26 @@ export const VaultAgentProposal = VaultAgentModelProposal.extend({
     .max(64),
   sources: z.array(VaultAgentSource).max(1024),
 });
+/**
+ * Server-written notes on a proposal the person may still choose (gate ANY-COMPOSITION). The code names
+ * the condition and `evidenceId` the sourced figure behind it, one of the reply's `proposal.sources`; the
+ * screen writes the words. `over_exit_capacity`: the weight is above what the measured exit capacity can
+ * sell at the vault's current size. `outside_goal_requested`: the asset is outside the goal's eligibility
+ * (stocks in an income or protect goal) and is there because the person asked for it.
+ */
+export const VaultAgentWarning = z.strictObject({
+  code: z.enum(['over_exit_capacity', 'outside_goal_requested']),
+  assetId: AssetId,
+  evidenceId: prose(160),
+});
+export type VaultAgentWarning = z.infer<typeof VaultAgentWarning>;
 export const VaultAgentReply = z.strictObject({
   version: z.literal(1),
   messageId: prose(64),
   message: prose(2400),
   question: prose(500).nullable(),
   proposal: VaultAgentProposal.nullable(),
+  warnings: z.array(VaultAgentWarning).max(128),
 });
 export type VaultAgentReply = z.infer<typeof VaultAgentReply>;
 export type VaultAgentFailure = 'unavailable' | 'timeout' | 'budget' | 'invalid';

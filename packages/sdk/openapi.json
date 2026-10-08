@@ -7396,12 +7396,44 @@
                         }
                       ]
                     },
+                    "warnings": {
+                      "maxItems": 128,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "enum": ["over_exit_capacity", "outside_goal_requested"]
+                          },
+                          "assetId": {
+                            "type": "string",
+                            "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                          },
+                          "evidenceId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 160
+                          }
+                        },
+                        "required": ["code", "assetId", "evidenceId"],
+                        "additionalProperties": false
+                      }
+                    },
                     "chain": {
                       "type": "string",
                       "enum": ["solana", "base", "robinhood"]
                     }
                   },
-                  "required": ["version", "messageId", "message", "question", "proposal", "chain"],
+                  "required": [
+                    "version",
+                    "messageId",
+                    "message",
+                    "question",
+                    "proposal",
+                    "warnings",
+                    "chain"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -16408,6 +16440,30 @@
                         }
                       ]
                     },
+                    "warnings": {
+                      "maxItems": 128,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "enum": ["over_exit_capacity", "outside_goal_requested"]
+                          },
+                          "assetId": {
+                            "type": "string",
+                            "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                          },
+                          "evidenceId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 160
+                          }
+                        },
+                        "required": ["code", "assetId", "evidenceId"],
+                        "additionalProperties": false
+                      }
+                    },
                     "chain": {
                       "type": "string",
                       "enum": ["solana", "base", "robinhood"]
@@ -16424,6 +16480,7 @@
                     "message",
                     "question",
                     "proposal",
+                    "warnings",
                     "chain",
                     "address"
                   ],

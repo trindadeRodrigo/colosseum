@@ -1409,6 +1409,11 @@ export type PostConversationsByChainGoalReplyResponse = {
       unit?: string;
     }[];
   } | null;
+  warnings: {
+    code: 'over_exit_capacity' | 'outside_goal_requested';
+    assetId: string;
+    evidenceId: string;
+  }[];
   chain: 'solana' | 'base' | 'robinhood';
 };
 
@@ -2668,6 +2673,11 @@ export type PostVaultsByChainByAddressConversationReplyResponse = {
       unit?: string;
     }[];
   } | null;
+  warnings: {
+    code: 'over_exit_capacity' | 'outside_goal_requested';
+    assetId: string;
+    evidenceId: string;
+  }[];
   chain: 'solana' | 'base' | 'robinhood';
   address: string;
 };
