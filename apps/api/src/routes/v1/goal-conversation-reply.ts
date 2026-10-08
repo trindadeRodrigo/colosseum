@@ -139,7 +139,9 @@ export function registerGoalConversationReplyRoute(
       if (result.repair)
         req.log.warn(
           { repair: result.repair, chain },
-          'the new-goal conversation reply passed on its repair attempt',
+          result.repair.outcome === 'repaired'
+            ? 'the new-goal conversation reply passed on its repair attempt'
+            : 'the new-goal conversation reply asks about a stated limit its repair attempt still missed',
         );
       return { ...result.reply, chain };
     },
