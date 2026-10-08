@@ -10505,7 +10505,7 @@
       "post": {
         "summary": "Discuss a new goal and preview model-proposed allocations",
         "tags": ["plans"],
-        "description": "Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. Uses the existing model and shared call quota. A preview requires separate fresh goal and amount confirmation before any financial review. `goal` and `risk` are the ones the person stated or confirmed in their own messages, as the model read them and only where the words it quotes are in those messages; each is null until then, and neither is ever defaulted.",
+        "description": "Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. Uses the existing model and shared call quota. A preview requires separate fresh goal and amount confirmation before any financial review.",
         "requestBody": {
           "required": true,
           "content": {
@@ -10845,7 +10845,8 @@
                         {
                           "type": "null"
                         }
-                      ]
+                      ],
+                      "description": "What the person said the money is for, as the model read it and only where the words it quotes are in their messages. Null until they have said it; never defaulted."
                     },
                     "risk": {
                       "anyOf": [
@@ -10856,7 +10857,8 @@
                         {
                           "type": "null"
                         }
-                      ]
+                      ],
+                      "description": "The risk the person said they accept, read and checked the same way. Null until they have said it; never defaulted."
                     }
                   },
                   "required": [

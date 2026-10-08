@@ -29,7 +29,12 @@ import { signedIn } from './orders';
  */
 export const GoalConversationReply = VaultAgentReplyShape.extend({
   chain: ChainId,
-  ...VaultAgentStatedPurpose.shape,
+  goal: VaultAgentStatedPurpose.shape.goal.describe(
+    'What the person said the money is for, as the model read it and only where the words it quotes are in their messages. Null until they have said it; never defaulted.',
+  ),
+  risk: VaultAgentStatedPurpose.shape.risk.describe(
+    'The risk the person said they accept, read and checked the same way. Null until they have said it; never defaulted.',
+  ),
 }).superRefine(warningsBelong);
 export const GoalConversationReplyError = z.strictObject({
   error: z.string(),
@@ -59,7 +64,7 @@ export function registerGoalConversationReplyRoute(
         tags: ['plans'],
         summary: 'Discuss a new goal and preview model-proposed allocations',
         description:
-          'Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. Uses the existing model and shared call quota. A preview requires separate fresh goal and amount confirmation before any financial review. `goal` and `risk` are the ones the person stated or confirmed in their own messages, as the model read them and only where the words it quotes are in those messages; each is null until then, and neither is ever defaulted.',
+          'Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. Uses the existing model and shared call quota. A preview requires separate fresh goal and amount confirmation before any financial review.',
         params: z.strictObject({ chain: ChainId }),
         body: VaultAgentRequest,
         response: {

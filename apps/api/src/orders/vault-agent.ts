@@ -1589,15 +1589,13 @@ export async function replyToVaultConversation(
     }
     const { proposal, purpose: read, ...conversation } = model;
     // A new goal's goal and risk are the person's or nothing: kept only with their own words for it.
-    const purpose =
-      context.kind === 'new_goal' ? { purpose: statedPurpose(read, personWords) } : {};
+    if (context.kind === 'new_goal') purpose = statedPurpose(read, personWords);
     const prose = proseOf(model);
     if (prose.some(claimsApplied)) return rejected('prose_claims_applied');
     if (!proposal)
       return {
         result: {
           kind: 'reply',
-          ...purpose,
           reply: {
             version: 1,
             messageId: request.messageId,
@@ -1674,7 +1672,6 @@ export async function replyToVaultConversation(
         ],
         result: {
           kind: 'reply',
-          ...purpose,
           reply: {
             version: 1,
             messageId: request.messageId,
@@ -1768,13 +1765,17 @@ export async function replyToVaultConversation(
       weightNotes,
     });
     return reply.success
-      ? { result: { kind: 'reply', ...purpose, reply: reply.data } }
+      ? { result: { kind: 'reply', reply: reply.data } }
       : rejected('reply_shape', where(reply.error.issues));
   };
+  // The goal and risk the person said, read with the reply that was checked last: served with any reply.
+  let purpose: VaultAgentStatedPurpose | undefined;
+  const served = (result: VaultAgentResult): VaultAgentResult =>
+    result.kind === 'reply' && purpose ? { ...result, purpose } : result;
   const started = Date.now();
   const first = await ask();
   const checked = check(first);
-  if (!checked.problems || !checked.failed) return checked.result;
+  if (!checked.problems || !checked.failed) return served(checked.result);
   const second = check(
     await ask({
       previous: first.reply,
@@ -1800,5 +1801,5 @@ export async function replyToVaultConversation(
     second.result.kind === 'failure' && checked.result.kind === 'reply'
       ? checked.result
       : second.result;
-  return { ...final, repair };
+  return served({ ...final, repair });
 }
