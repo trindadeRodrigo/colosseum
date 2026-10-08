@@ -351,6 +351,52 @@ describe('reviewMix: warnings the person confirms, never refusals', () => {
   });
 });
 
+describe('reviewMix: what an income or protect plan may hold', () => {
+  it('refuses crypto outside a growth goal, and takes it in one', async () => {
+    const { ctx } = await setup();
+    const nvda = ctx.assets.find((a) => a.id === 'solana:nvda') as BasketAsset;
+    const coin = {
+      ...nvda,
+      id: 'solana:coin',
+      symbol: 'COIN',
+      underlying: 'coin',
+      cls: 'crypto',
+    } as BasketAsset;
+    const wide = {
+      ...ctx,
+      assets: [...ctx.assets, coin],
+      prepared: {
+        ...ctx.prepared,
+        shelf: { ...ctx.prepared.shelf, assets: [...ctx.prepared.shelf.assets, coin] },
+      },
+    };
+    const checked = {
+      picks: [
+        { asset: ctx.cash, weightBps: 5000 },
+        { asset: coin, weightBps: 5000 },
+      ],
+      targets: [{ asset: coin.id, weightBps: 5000 }],
+      cashBps: 5000,
+      prices: new Map(),
+    };
+    const at = (goal: 'grow' | 'income' | 'protect') =>
+      reviewMix(wide, checked, {
+        origin: 'person',
+        goal,
+        risk: 'high',
+        amountUsd: 100,
+        language: 'en',
+        accepted: [],
+      });
+    for (const goal of ['income', 'protect'] as const) {
+      const r = await refusal(Promise.resolve().then(() => at(goal)));
+      expect(r.extra.code).toBe('MIX_NOT_VALID');
+      expect(r.extra.details?.issues).toEqual(['NOT_FOR_GOAL:solana:coin']);
+    }
+    expect(at('grow').review.warnings).toEqual([]);
+  });
+});
+
 describe('reviewMix: a ceiling with no source is not printed', () => {
   it('says the line is over its exit and states no figure', async () => {
     const chains = createChainRegistry(parseFlags({}), parseChainConfigs({}), { seed: 'mix:bare' });

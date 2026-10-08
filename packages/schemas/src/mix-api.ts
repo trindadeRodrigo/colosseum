@@ -46,6 +46,11 @@ export const MixIssueCode = z.enum([
   'TOO_MANY_LINES',
   /** No usable price now: the asset has no feed, or the chain's price is older than it trades on. */
   'NO_PRICE',
+  /**
+   * An asset an income or protect plan cannot hold: crypto, gold and any class the goal's list leaves
+   * out but stocks, which are a warning instead (`NOT_FOR_GOAL` among the warnings).
+   */
+  'NOT_FOR_GOAL',
   /** All cash, for a vault that is already open: a vault's own targets cannot be emptied (orders/README item 9). */
   'ALL_CASH',
   /** A vault worth more than one order may move (`ORDER_LIMITS.maxAmountUsd`): a rebalance trades up to its value. */
@@ -69,8 +74,8 @@ export type MixFigure = z.infer<typeof MixFigure>;
  * - `EXIT_OVER_TIER_CEILING`: nothing is measured for the asset, and the line is larger than its tier's
  *   ceiling, which stands in (gate EXIT-SOURCE).
  * - `OVER_LISTED_CAP`: the line weighs more than the asset list's cap for the asset.
- * - `NOT_FOR_GOAL`: an asset an income or protect plan does not normally hold, stocks above all (gate
- *   PROTECT-NO-STOCKS, a warning for a mix the person confirms since Oct 8).
+ * - `NOT_FOR_GOAL`: a stock or a fund of stocks in an income or protect plan (gate PROTECT-NO-STOCKS, a
+ *   warning for a mix the person confirms since Oct 8). Any other class outside the goal is refused.
  * - `STOPS_FOLLOWING`: the vault follows a shared portfolio or has auto-follow on; its own targets end
  *   both.
  */

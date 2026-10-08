@@ -250,6 +250,7 @@ export function reviewMix(
       text,
       figures,
     });
+  const notForGoal: string[] = [];
   const lines: MixReviewLine[] = checked.picks.map(({ asset, weightBps }, i) => {
     const fixedLine = fixed.lines[i];
     if (!fixedLine || fixedLine.line.assetId !== asset.id) throw new Error('the mix lost a line');
@@ -313,13 +314,18 @@ export function reviewMix(
           ],
           asset.id,
         );
-      if (a.goal && !fixedLine.forGoal)
-        warn(
-          'NOT_FOR_GOAL',
-          reason('MIX_NOT_FOR_GOAL', { asset: asset.symbol, goal: a.goal }, a.language).text,
-          [],
-          asset.id,
-        );
+      // Outside the goal's list, a stock or a fund of stocks is the person's choice, with a warning
+      // (gate ANY-COMPOSITION); crypto, gold and any other class stay out of an income or protect plan.
+      if (a.goal && !fixedLine.forGoal) {
+        if (asset.cls === 'stock' || asset.cls === 'etf')
+          warn(
+            'NOT_FOR_GOAL',
+            reason('MIX_NOT_FOR_GOAL', { asset: asset.symbol, goal: a.goal }, a.language).text,
+            [],
+            asset.id,
+          );
+        else notForGoal.push(`NOT_FOR_GOAL:${asset.id}`);
+      }
     }
     return {
       assetId: asset.id,
@@ -342,11 +348,19 @@ export function reviewMix(
   });
   if (a.vault && (a.vault.recipeOnchainId !== null || a.vault.autoFollow))
     warn('STOPS_FOLLOWING', reason('MIX_STOPS_FOLLOWING', {}, a.language).text, []);
+  if (notForGoal.length)
+    throw new Refusal(422, 'this mix holds an asset a plan for this goal cannot hold', {
+      code: 'MIX_NOT_VALID',
+      fix: 'Take out the assets named in details.issues, or choose another goal.',
+      details: { issues: notForGoal },
+    });
   const accepted = new Set(a.accepted);
   const body = {
     chain: entry.chain,
     origin: a.origin,
     goal: a.goal,
+    risk: a.vault ? null : a.risk,
+    horizonMonths: a.horizonMonths ?? null,
     amountUsd: a.amountUsd,
     lines,
     targets: checked.targets,
@@ -381,7 +395,7 @@ function reviewHashOf(
   review: Pick<
     MixReview,
     'chain' | 'origin' | 'goal' | 'amountUsd' | 'lines' | 'targets' | 'cashBps' | 'warnings'
-  >,
+  > & { risk: string | null; horizonMonths: number | null },
   vault: boolean,
 ): string {
   return hash({
@@ -389,6 +403,8 @@ function reviewHashOf(
     chain: review.chain,
     origin: review.origin,
     goal: review.goal,
+    risk: review.risk,
+    horizonMonths: review.horizonMonths,
     amountUsd: vault ? null : review.amountUsd,
     lines: review.lines.map((l) => [
       l.assetId,
