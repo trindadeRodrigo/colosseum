@@ -2310,7 +2310,7 @@ export const pt: Dictionary = {
     },
     order: {
       title: 'Novos alvos do seu cofre',
-      sign: 'Assinar e aplicar os alvos',
+      signTargets: 'Assinar e aplicar os alvos',
       cash: (share: string) => `O restante fica em caixa: ${share}.`,
       fromConversation: 'Proposto na sua conversa e confirmado por você.',
       fromPerson: 'Escolhido por você.',

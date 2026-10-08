@@ -695,12 +695,12 @@ export function OrderScreen({
                   : terms?.kind === 'retarget'
                     ? record.approved
                       ? t.order.shared.resume
-                      : t.mix.order.sign
+                      : t.mix.order.signTargets
                     : record.approved
-                    ? t.order.resume(amount)
-                    : embed
-                      ? t.invest.press(amount)
-                      : t.order.signAndBuy(amount);
+                      ? t.order.resume(amount)
+                      : embed
+                        ? t.invest.press(amount)
+                        : t.order.signAndBuy(amount);
   // A deposit is never signed for before the trust notice is accepted (DESIGN-VAULT section 13). The
   // invest card makes the order before that, to show its prices, so the order's own page asks too:
   // an order opened here that nobody approved is held until the notice is accepted, as on the card.

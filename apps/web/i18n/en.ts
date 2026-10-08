@@ -2445,7 +2445,7 @@ export const en = {
     },
     order: {
       title: 'New targets for your vault',
-      sign: 'Sign and apply the targets',
+      signTargets: 'Sign and apply the targets',
       cash: (share: string) => `The rest stays in cash: ${share}.`,
       fromConversation: 'Proposed in your conversation, and confirmed by you.',
       fromPerson: 'Chosen by you.',

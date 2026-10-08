@@ -184,13 +184,22 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
               {t.withdraw.empty}
             </p>
           ) : (
-            <Link
-              data-ui="vault-withdraw"
-              href={`/vaults/${encodeURIComponent(read.chain)}/${encodeURIComponent(vault.address)}/withdraw`}
-              className={buttonClass({ variant: 'secondary' })}
-            >
-              {t.withdraw.action}
-            </Link>
+            <>
+              <Link
+                data-ui="vault-edit-weights"
+                href={`/vaults/${encodeURIComponent(read.chain)}/${encodeURIComponent(vault.address)}/targets`}
+                className={buttonClass({ variant: 'secondary' })}
+              >
+                {t.mix.editor.edit}
+              </Link>
+              <Link
+                data-ui="vault-withdraw"
+                href={`/vaults/${encodeURIComponent(read.chain)}/${encodeURIComponent(vault.address)}/withdraw`}
+                className={buttonClass({ variant: 'secondary' })}
+              >
+                {t.withdraw.action}
+              </Link>
+            </>
           ))}
         {/* Auto-follow is switched on where the vault's portfolio is: its page offers the switch. A
             withdrawal switches it off, and this is the way back. */}

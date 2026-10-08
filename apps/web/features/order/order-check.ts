@@ -270,13 +270,11 @@ export function retargetShapeOk(
   if (!units || order.depositRaw !== undefined || order.legs.length === 0) return false;
   const legs = order.legs.slice().sort((a, b) => a.seq - b.seq);
   if (
-    legs.some(
-      (l) => (l.cashRaw !== undefined && l.cashRaw !== '0') || l.withdrawals !== undefined,
-    )
+    legs.some((l) => (l.cashRaw !== undefined && l.cashRaw !== '0') || l.withdrawals !== undefined)
   )
     return false;
   const [first, ...rest] = legs;
-  if (!first || first.kind !== 'set_targets' || first.trades.length > 0) return false;
+  if (first?.kind !== 'set_targets' || first.trades.length > 0) return false;
   const buys = new Set([...terms.targets.map((t) => t.asset), units.cash]);
   return rest.every(
     (l) =>

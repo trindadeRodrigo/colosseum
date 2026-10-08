@@ -338,3 +338,74 @@ describe('a new goal’s mix, made into a plan', () => {
     expect(router.push).not.toHaveBeenCalled();
   });
 });
+
+describe('the weight editor of a vault the person owns', () => {
+  const vaultPath = `/v1/vaults/solana/${derived}`;
+  const showEditor = async (calls: Call[]) => {
+    portStore.setApi(async (url, init) => {
+      if (url === vaultPath && !init?.method) return json(read);
+      if (url === `${vaultPath}/targets` && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body));
+        calls.push({ url, body });
+        // The review reads back the lines sent, as the server does.
+        const sent = body.allocations as { assetId: string; weightBps: number }[];
+        const lines = sent.map((line) => {
+          const sample = reviewOf().lines.find((l) => l.assetId === line.assetId);
+          if (!sample) throw new Error(`no sample line for ${line.assetId}`);
+          return { ...sample, weightBps: line.weightBps, amountUsd: line.weightBps / 100 };
+        });
+        return json({ status: 'review', review: reviewOf({ origin: 'person', lines }) });
+      }
+      return json({}, 404);
+    });
+    const { TargetsScreen } = await import('./TargetsScreen');
+    const host = await mount(
+      withAccount('en', createElement(TargetsScreen, { chain: 'solana', address: derived })),
+    );
+    await settle();
+    return host;
+  };
+  const inputs = (host: HTMLElement) => [
+    ...host.querySelectorAll<HTMLInputElement>('[data-ui="targets-lines"] input'),
+  ];
+
+  it('starts from the vault’s targets, shows the rest as cash, and says what to change', async () => {
+    const calls: Call[] = [];
+    const host = await showEditor(calls);
+    expect(inputs(host).map((input) => input.value)).toEqual(['30']);
+    expect(find(host, '[data-ui="targets-cash"]').textContent).toBe(en.mix.editor.cash('70%'));
+    await type(inputs(host)[0] as HTMLInputElement, '120');
+    expect(host.textContent).toContain(en.mix.editor.issues['not-whole']);
+    await type(inputs(host)[0] as HTMLInputElement, '');
+    expect(find(host, '[data-ui="targets-issues"]').textContent).toContain(
+      en.mix.editor.issues['all-cash'],
+    );
+    const review = find(host, '[data-action="targets-review"]');
+    expect(review.getAttribute('aria-disabled')).toBe('true');
+    await click(review);
+    expect(calls).toEqual([]);
+  });
+
+  it('switches between percents and basis points without changing a weight, and sends the person’s mix', async () => {
+    const calls: Call[] = [];
+    const host = await showEditor(calls);
+    await type(inputs(host)[0] as HTMLInputElement, '62.5');
+    const unit = host.querySelector('select') as HTMLSelectElement;
+    unit.value = 'bps';
+    unit.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle();
+    expect(inputs(host)[0]?.value).toBe('6250');
+    expect(find(host, '[data-ui="targets-cash"]').textContent).toBe(en.mix.editor.cash('37.5%'));
+    await click(find(host, '[data-action="targets-review"]'));
+    await settle();
+    expect(calls[0]?.body).toMatchObject({
+      origin: 'person',
+      confirm: false,
+      allocations: [
+        { assetId: 'solana:gldx', weightBps: 6250 },
+        { assetId: 'solana:usdc', weightBps: 3750 },
+      ],
+    });
+    expect(find(host, '[data-ui="mix-review-lines"]')).not.toBeNull();
+  });
+});
