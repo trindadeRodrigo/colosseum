@@ -30,25 +30,25 @@
 
 /*
  * The fallbacks of the three faces (app/fonts.ts): a local face with its metrics adjusted to the real
- * one's, so text does not move when the real face arrives. The figures are the ones next/font worked
- * out when the faces came from Google at build; they are written here so the move to committed files
- * changed nothing a reader sees.
+ * one's, so text does not move when the real face arrives. The figures are the ones next/font works
+ * out for these faces (capsize's average widths against Arial's); IBM Plex Mono's are the ones Google's
+ * build worked out when the faces came from Google.
  */
 @font-face {
-  font-family: "IBM Plex Sans Fallback";
+  font-family: "Inter Fallback";
   src: local(Arial);
-  ascent-override: 101.32%;
-  descent-override: 27.18%;
+  ascent-override: 90.44%;
+  descent-override: 22.52%;
   line-gap-override: 0%;
-  size-adjust: 101.17%;
+  size-adjust: 107.12%;
 }
 @font-face {
-  font-family: "Newsreader Fallback";
-  src: local("Times New Roman");
-  ascent-override: 69.68%;
-  descent-override: 25.12%;
+  font-family: "Inter Tight Fallback";
+  src: local(Arial);
+  ascent-override: 100.51%;
+  descent-override: 25.03%;
   line-gap-override: 0%;
-  size-adjust: 105.48%;
+  size-adjust: 96.39%;
 }
 @font-face {
   font-family: "IBM Plex Mono Fallback";
@@ -58,194 +58,244 @@
   line-gap-override: 0%;
   size-adjust: 134.59%;
 }
-/* The landing closing's wide layout, the joint beside its heading (features/landing/closing-pose.ts, isNarrow). */
-@custom-variant closing-wide {
-  @media (min-width: 960px) and (min-aspect-ratio: 23 / 20) {
-    @slot;
-  }
-}
 
 /* ---------------------------------------------------------------------------------------------------
  * A. Semantic variables. OKLCH as in working-brand.theme.json; the comment is the .yml name and hex.
+ * Day is warm paper with white cards; night is a cool near-black. Honey is the one brand colour in both.
  * `.light` is :root again, so a light sample can sit inside a dark page (the showcase).
  * ------------------------------------------------------------------------------------------------- */
 :root,
 .light {
   color-scheme: light;
-  --background: oklch(95.96% 0.013 82.4); /* paper #F6F1E8 */
-  --foreground: oklch(20.88% 0.0125 67.03); /* ink #1C1712 */
-  --card: oklch(97.98% 0.0085 84.59); /* paper-raised #FBF8F2 */
-  --card-foreground: oklch(20.88% 0.0125 67.03); /* ink */
-  --popover: oklch(97.98% 0.0085 84.59); /* paper-raised */
-  --popover-foreground: oklch(20.88% 0.0125 67.03); /* ink */
-  --primary: oklch(49.32% 0.0626 65.5); /* hardwood #7A5A3A: the brand wood on paper */
-  --primary-foreground: oklch(97.98% 0.0085 84.59); /* paper-raised */
-  --secondary: oklch(92.72% 0.0177 81.33); /* paper-sunk #EDE6DA */
-  --secondary-foreground: oklch(20.88% 0.0125 67.03); /* ink */
-  --accent: oklch(92.72% 0.0177 81.33); /* paper-sunk: a hover surface, not a second hue */
-  --accent-foreground: oklch(37.95% 0.0615 60.46); /* heartwood #5A3A1E */
-  --muted: oklch(92.72% 0.0177 81.33); /* paper-sunk: table heads, input wells */
-  --muted-foreground: oklch(51.21% 0.0192 70.28); /* stone #6E655B */
-  --destructive: oklch(50.01% 0.1535 12.83); /* madder #A8324A */
-  --border: oklch(85.32% 0.0278 78.16); /* hair #D9CDBB: decoration only, never a control edge */
-  --input: oklch(60.39% 0.0272 71.23); /* member #8C7F70: every control edge */
-  --ring: oklch(49.32% 0.0626 65.5); /* hardwood */
-  --sidebar: oklch(95.96% 0.013 82.4); /* paper */
-  --sidebar-foreground: oklch(20.88% 0.0125 67.03); /* ink */
-  --sidebar-primary: oklch(49.32% 0.0626 65.5); /* hardwood */
-  --sidebar-primary-foreground: oklch(97.98% 0.0085 84.59); /* paper-raised */
-  --sidebar-accent: oklch(92.72% 0.0177 81.33); /* paper-sunk */
-  --sidebar-accent-foreground: oklch(37.95% 0.0615 60.46); /* heartwood */
-  --sidebar-border: oklch(85.32% 0.0278 78.16); /* hair */
-  --sidebar-ring: oklch(49.32% 0.0626 65.5); /* hardwood */
-  --success: oklch(37.8% 0.0621 140.63); /* forest #2F4A2A: on track */
-  --warning: oklch(50.78% 0.108 73.3); /* ochre #8A5A00: watch */
-  --info: oklch(20.88% 0.0125 67.03); /* ink: there is no blue info colour */
-  --chart-1: oklch(49.32% 0.0626 65.5); /* hardwood: plan leg 1 */
-  --chart-2: oklch(37.95% 0.0615 60.46); /* heartwood: leg 2 */
-  --chart-3: oklch(59.77% 0.0712 65.74); /* wood-400 #9D7751: leg 3 */
-  --chart-4: oklch(51.21% 0.0192 70.28); /* stone: leg 4 */
-  --chart-5: oklch(20.88% 0.0125 67.03); /* ink: the base-case line */
-  --radius: 2px;
+  --background: oklch(97.03% 0.007 88.64); /* paper #F7F5F0 */
+  --foreground: oklch(20.19% 0.0121 277.81); /* ink #15161C */
+  --card: oklch(100% 0 0); /* paper-2 #FFFFFF */
+  --card-foreground: oklch(20.19% 0.0121 277.81); /* ink #15161C */
+  --popover: oklch(100% 0 0); /* paper-2 #FFFFFF */
+  --popover-foreground: oklch(20.19% 0.0121 277.81); /* ink #15161C */
+  --primary: oklch(78.86% 0.1494 71.36); /* honey #F5A83A: the one brand colour */
+  --primary-foreground: oklch(20.19% 0.0121 277.81); /* ink #15161C: ink on honey, both modes */
+  --secondary: oklch(94.35% 0.0099 87.47); /* paper-3 #EFECE5 */
+  --secondary-foreground: oklch(20.19% 0.0121 277.81); /* ink #15161C */
+  --accent: oklch(94.2% 0.03 78.78); /* honey at 14% over paper #F7EAD6 */
+  --accent-foreground: oklch(56.69% 0.1248 64.33); /* honey-l #A8640A */
+  --muted: oklch(94.35% 0.0099 87.47); /* paper-3 #EFECE5 */
+  --muted-foreground: oklch(53.59% 0.0175 273.64); /* muted-l #6A6D78 */
+  --destructive: oklch(51.82% 0.1696 16.89); /* madder-l #B52F44 */
+  --border: oklch(90.43% 0.0129 86.83); /* line-l #E3DFD6: hairlines, card edges */
+  --input: oklch(82.13% 0.0161 86.44); /* line-l2 #C9C4B9: every control edge */
+  --ring: oklch(54.02% 0.1193 247.65); /* chalk-l #2A73B0: focus only */
+  --sidebar: oklch(97.03% 0.007 88.64); /* paper #F7F5F0 */
+  --sidebar-foreground: oklch(20.19% 0.0121 277.81); /* ink #15161C */
+  --sidebar-primary: oklch(78.86% 0.1494 71.36); /* honey #F5A83A */
+  --sidebar-primary-foreground: oklch(20.19% 0.0121 277.81); /* ink #15161C */
+  --sidebar-accent: oklch(94.2% 0.03 78.78); /* honey at 14% over paper #F7EAD6 */
+  --sidebar-accent-foreground: oklch(56.69% 0.1248 64.33); /* honey-l #A8640A */
+  --sidebar-border: oklch(90.43% 0.0129 86.83); /* line-l #E3DFD6 */
+  --sidebar-ring: oklch(54.02% 0.1193 247.65); /* chalk-l #2A73B0 */
+  --chart-1: oklch(78.86% 0.1494 71.36); /* honey #F5A83A */
+  --chart-2: oklch(69.58% 0.1471 66.59); /* honey-deep #D9881B */
+  --chart-3: oklch(64.49% 0.1076 67.33); /* wood-deep #B9803F */
+  --chart-4: oklch(53.59% 0.0175 273.64); /* muted-l #6A6D78 */
+  --chart-5: oklch(20.19% 0.0121 277.81); /* ink #15161C: the base-case line */
+  --success: oklch(52.7% 0.1264 152.44); /* leaf-l #1B7F45: on track */
+  --warning: oklch(52.1% 0.1386 42.89); /* clay-l #A8481A: watch */
+  --info: oklch(54.02% 0.1193 247.65); /* chalk-l #2A73B0: a line only */
+  --radius: 8px;
 }
 
 .dark {
   color-scheme: dark;
-  --background: oklch(15.13% 0.0055 67.77); /* black #0D0B09 */
-  --foreground: oklch(92.14% 0.0206 81.78); /* washi #ECE4D6 */
-  --card: oklch(20.7% 0.0075 67.36); /* char #1A1714 */
-  --card-foreground: oklch(92.14% 0.0206 81.78); /* washi */
-  --popover: oklch(24.62% 0.011 73.4); /* char-2 #24201B */
-  --popover-foreground: oklch(92.14% 0.0206 81.78); /* washi */
-  --primary: oklch(87.52% 0.0429 77.6); /* hinoki #E6D3B7: the brand wood on warm black */
-  --primary-foreground: oklch(15.13% 0.0055 67.77); /* black */
-  --secondary: oklch(24.62% 0.011 73.4); /* char-2 */
-  --secondary-foreground: oklch(92.14% 0.0206 81.78); /* washi */
-  --accent: oklch(24.62% 0.011 73.4); /* char-2 */
-  --accent-foreground: oklch(87.52% 0.0429 77.6); /* hinoki */
-  --muted: oklch(24.62% 0.011 73.4); /* char-2 */
-  --muted-foreground: oklch(69.14% 0.0208 72.45); /* stone-d #A49A8E */
-  --destructive: oklch(73.48% 0.1134 4.6); /* madder-d #E58AA0 */
-  --border: oklch(32.31% 0.0179 67.1); /* hair-d #3A322A */
-  --input: oklch(54.28% 0.0267 69.27); /* member-d #7A6D5F */
-  --ring: oklch(87.52% 0.0429 77.6); /* hinoki */
-  --sidebar: oklch(20.7% 0.0075 67.36); /* char */
-  --sidebar-foreground: oklch(92.14% 0.0206 81.78); /* washi */
-  --sidebar-primary: oklch(87.52% 0.0429 77.6); /* hinoki */
-  --sidebar-primary-foreground: oklch(15.13% 0.0055 67.77); /* black */
-  --sidebar-accent: oklch(24.62% 0.011 73.4); /* char-2 */
-  --sidebar-accent-foreground: oklch(87.52% 0.0429 77.6); /* hinoki */
-  --sidebar-border: oklch(32.31% 0.0179 67.1); /* hair-d */
-  --sidebar-ring: oklch(87.52% 0.0429 77.6); /* hinoki */
-  --success: oklch(67.75% 0.0712 141.65); /* forest-d #7FA37A */
-  --warning: oklch(75.07% 0.1294 79.85); /* ochre-d #D9A441 */
-  --info: oklch(92.14% 0.0206 81.78); /* washi */
-  --chart-1: oklch(87.52% 0.0429 77.6); /* hinoki */
-  --chart-2: oklch(76.45% 0.0623 77.35); /* hinoki-deep #C9AE86 */
-  --chart-3: oklch(59.77% 0.0712 65.74); /* wood-400 */
-  --chart-4: oklch(69.14% 0.0208 72.45); /* stone-d */
-  --chart-5: oklch(92.14% 0.0206 81.78); /* washi */
+  --background: oklch(16.04% 0.0107 276.24); /* night #0C0D12 */
+  --foreground: oklch(95.83% 0.007 88.64); /* text #F3F1EC */
+  --card: oklch(19.69% 0.0144 272.52); /* night-2 #13151C */
+  --card-foreground: oklch(95.83% 0.007 88.64); /* text #F3F1EC */
+  --popover: oklch(23.18% 0.018 270.53); /* night-3 #1A1D26 */
+  --popover-foreground: oklch(95.83% 0.007 88.64); /* text #F3F1EC */
+  --primary: oklch(78.86% 0.1494 71.36); /* honey #F5A83A: the one brand colour */
+  --primary-foreground: oklch(20.19% 0.0121 277.81); /* ink #15161C: ink on honey, both modes */
+  --secondary: oklch(23.18% 0.018 270.53); /* night-3 #1A1D26 */
+  --secondary-foreground: oklch(95.83% 0.007 88.64); /* text #F3F1EC */
+  --accent: oklch(26.44% 0.0246 69.12); /* honey at 14% over night #2D2318 */
+  --accent-foreground: oklch(78.86% 0.1494 71.36); /* honey #F5A83A */
+  --muted: oklch(23.18% 0.018 270.53); /* night-3 #1A1D26 */
+  --muted-foreground: oklch(69.87% 0.0235 277.32); /* muted #9A9DAD */
+  --destructive: oklch(66.77% 0.1832 15.21); /* madder #EF5A6F */
+  --border: oklch(28.63% 0.0228 270.5); /* line #262A36: hairlines, card edges */
+  --input: oklch(35.43% 0.0287 271.32); /* line-2 #363B4B: every control edge */
+  --ring: oklch(74.9% 0.0978 245.75); /* chalk #78B4E8: focus only */
+  --sidebar: oklch(19.69% 0.0144 272.52); /* night-2 #13151C */
+  --sidebar-foreground: oklch(95.83% 0.007 88.64); /* text #F3F1EC */
+  --sidebar-primary: oklch(78.86% 0.1494 71.36); /* honey #F5A83A */
+  --sidebar-primary-foreground: oklch(20.19% 0.0121 277.81); /* ink #15161C */
+  --sidebar-accent: oklch(26.44% 0.0246 69.12); /* honey at 14% over night #2D2318 */
+  --sidebar-accent-foreground: oklch(78.86% 0.1494 71.36); /* honey #F5A83A */
+  --sidebar-border: oklch(28.63% 0.0228 270.5); /* line #262A36 */
+  --sidebar-ring: oklch(74.9% 0.0978 245.75); /* chalk #78B4E8 */
+  --chart-1: oklch(78.86% 0.1494 71.36); /* honey #F5A83A */
+  --chart-2: oklch(83.98% 0.0817 76.68); /* wood #E9C48E */
+  --chart-3: oklch(69.58% 0.1471 66.59); /* honey-deep #D9881B */
+  --chart-4: oklch(69.87% 0.0235 277.32); /* muted #9A9DAD */
+  --chart-5: oklch(95.83% 0.007 88.64); /* text #F3F1EC: the base-case line */
+  --success: oklch(73.09% 0.1556 155.29); /* leaf #3FC47C: on track */
+  --warning: oklch(68.99% 0.1718 41.84); /* clay #F0703A: watch */
+  --info: oklch(74.9% 0.0978 245.75); /* chalk #78B4E8: a line only */
 }
 
 /* ---------------------------------------------------------------------------------------------------
- * B. Brand extensions. Hex verbatim from the .yml (tokens.brand-color, provenance, status, shape,
- * spacing, motion, typography.measure).
+ * B. Brand extensions. Hex verbatim from the .yml (tokens.brand-color, provenance, status, scales,
+ * shape, spacing, motion, typography.measure). Tints are translucent on purpose: a badge sits on
+ * whatever surface it is placed on.
  * ------------------------------------------------------------------------------------------------- */
 :root,
 .light {
-  /* species-press */
-  --tf-primary-hover: #63482e; /* wood-600 */
-  --tf-primary-pressed: #5a3a1e; /* heartwood */
-  /* provenance pin: the pin is the species opposite the ground */
-  --tf-pin-outline: #6e655b; /* stone */
-  --tf-pin: #7a5a3a; /* hardwood */
-  /* the hatch means MOCK or stale, and nothing else */
-  --tf-hatch: #6e655b; /* stone */
-  --tf-mock-plate: #fbf8f2; /* paper-raised */
-  --tf-mock-plate-fg: #1c1712; /* ink */
-  --tf-mock-plate-border: #6e655b; /* stone */
-  /* status: a word, a shape and a colour, never the colour alone */
-  --tf-status-on: #2f4a2a; /* forest */
-  --tf-status-on-bg: #deeedb;
-  --tf-status-watch: #8a5a00; /* ochre */
-  --tf-status-watch-bg: #ffeadb;
-  --tf-status-off: #a8324a; /* madder */
-  --tf-status-off-bg: #faeaec;
-  /* the three warm layers: depth without shadows */
-  --tf-layer-sunk: #ede6da;
-  --tf-layer-ground: #f6f1e8;
-  --tf-layer-raised: #fbf8f2;
-  /* Bearing heatmap, low to high depth */
-  --tf-heat-1: #f2e6d3;
-  --tf-heat-2: #c9ae86;
-  --tf-heat-3: #8a6c4b;
-  --tf-heat-4: #5a3a1e;
-  --tf-heat-5: #1a1714;
-  /* Bearing charts (Rodrigo's Analytics 2.0, analytics2.css, raised for contrast 2026-10-03): wood only
-     plus the status pigments. Two series, the pie's five slices, covered and not covered, the grid,
-     and the four paths of the simulation's flow */
-  --tf-bearing-s1: #342515;
-  --tf-bearing-s2: #9d7751;
-  --tf-bearing-p1: #20150a;
-  --tf-bearing-p2: #bc946d;
-  --tf-bearing-p3: #63482e;
-  --tf-bearing-p4: #deb48c;
-  --tf-bearing-po: #7a6d5f;
-  --tf-bearing-cv: #2f4a2a;
-  --tf-bearing-un: #e58aa0;
-  --tf-bearing-grid: #cdbfab;
-  --tf-bearing-f1: #342515;
-  --tf-bearing-f2: #7a5a3a;
-  --tf-bearing-f3: #9d7751;
-  --tf-bearing-f4: #6e655b;
+  /* the brand colour and its states: honey carries ink in both modes (never white, 2.0:1) */
+  --tf-honey: #f5a83a;
+  --tf-honey-hover: #e99c2e;
+  --tf-honey-deep: #d9881b;
+  --tf-honey-text: #a8640a; /* honey-l: honey as text or link on light grounds */
+  --tf-honey-tint: rgba(245, 168, 58, 0.14); /* selected rows, chips, badges */
+  --tf-primary-hover: #e99c2e; /* honey-hover */
+  --tf-primary-pressed: #d9881b; /* honey-deep */
+  /* grounds and lines, by name (drawings, the mark, the embed boundary) */
+  --tf-night: #0c0d12;
+  --tf-night-2: #13151c;
+  --tf-night-3: #1a1d26;
+  --tf-line: #262a36;
+  --tf-line-2: #363b4b;
+  --tf-paper: #f7f5f0;
+  --tf-paper-2: #ffffff;
+  --tf-paper-3: #efece5;
+  --tf-line-l: #e3dfd6;
+  --tf-line-l2: #c9c4b9;
+  --tf-ink: #15161c;
+  --tf-text: #f3f1ec;
+  --tf-muted: #9a9dad;
+  --tf-muted-2: #6e7282;
+  --tf-muted-l: #6a6d78;
+  /* the cut of the mark: night on dark grounds, ink elsewhere (LOGO-2) */
+  --tf-mark-cut: #15161c;
+  /* direction colours: always with a word and a square glyph */
+  --tf-leaf: #1b7f45; /* leaf-l */
+  --tf-leaf-tint: rgba(63, 196, 124, 0.14);
+  --tf-clay: #a8481a; /* clay-l */
+  --tf-clay-tint: rgba(240, 112, 58, 0.14);
+  --tf-madder: #b52f44; /* madder-l */
+  --tf-madder-tint: rgba(239, 90, 111, 0.14);
+  /* the carpenter's line: focus, "today", guides. Never a fill */
+  --tf-chalk: #2a73b0; /* chalk-l */
+  --tf-chalk-tint: rgba(120, 180, 232, 0.14);
+  /* wood: the joint, drawings and chart legs only */
+  --tf-wood: #e9c48e;
+  --tf-wood-deep: #b9803f;
+  /* provenance pin: the tenon end in line mode, with its square pin */
+  --tf-pin-outline: #c9c4b9; /* line-l2 */
+  --tf-pin: #a8640a; /* honey-l */
+  /* the hatch means sample or stale, and nothing else */
+  --tf-hatch: #6a6d78; /* muted-l */
+  --tf-sample-fg: #6a6d78; /* muted-l: "Sample figures · test network" */
+  /* status: a word, a shape and a colour on its 14% tint, never the colour alone */
+  --tf-status-on: #1b7f45; /* leaf-l */
+  --tf-status-on-bg: rgba(63, 196, 124, 0.14); /* leaf-tint */
+  --tf-status-watch: #a8481a; /* clay-l */
+  --tf-status-watch-bg: rgba(240, 112, 58, 0.14); /* clay-tint */
+  --tf-status-off: #b52f44; /* madder-l */
+  --tf-status-off-bg: rgba(239, 90, 111, 0.14); /* madder-tint */
+  /* the three layers: depth without shadows */
+  --tf-layer-sunk: #efece5;
+  --tf-layer-ground: #f7f5f0;
+  --tf-layer-raised: #ffffff;
+  /* light as gradient: the only gradients allowed (a glow behind heroes, a fill under the base case) */
+  --tf-glow: radial-gradient(
+    60% 90% at 78% 30%,
+    rgba(245, 168, 58, 0.28),
+    rgba(245, 168, 58, 0) 70%
+  ); /* glow-l */
+  --tf-glow-l: radial-gradient(
+    60% 90% at 78% 30%,
+    rgba(245, 168, 58, 0.28),
+    rgba(245, 168, 58, 0) 70%
+  );
+  --tf-curve-fill: linear-gradient(to bottom, rgba(245, 168, 58, 0.35), rgba(245, 168, 58, 0));
+  /* Bearing heatmap, low to high depth: pale, honey, night */
+  --tf-heat-1: #ffe9c2;
+  --tf-heat-2: #f5a83a;
+  --tf-heat-3: #b06c12;
+  --tf-heat-4: #5c3707;
+  --tf-heat-5: #1a1d26;
+  /* Bearing charts: honey, wood and muted for series; leaf and madder for covered and not covered */
+  --tf-bearing-s1: #a8640a; /* honey-l */
+  --tf-bearing-s2: #6a6d78; /* muted-l */
+  --tf-bearing-p1: #f5a83a; /* honey */
+  --tf-bearing-p2: #d9881b; /* honey-deep */
+  --tf-bearing-p3: #b9803f; /* wood-deep */
+  --tf-bearing-p4: #e9c48e; /* wood */
+  --tf-bearing-po: #6a6d78; /* muted-l */
+  --tf-bearing-cv: #1b7f45; /* leaf-l */
+  --tf-bearing-un: #b52f44; /* madder-l */
+  --tf-bearing-grid: #e3dfd6; /* line-l */
+  --tf-bearing-f1: #a8640a; /* honey-l */
+  --tf-bearing-f2: #d9881b; /* honey-deep */
+  --tf-bearing-f3: #b9803f; /* wood-deep */
+  --tf-bearing-f4: #6a6d78; /* muted-l */
 }
 
 .dark {
-  --tf-primary-hover: #d7c09e;
-  --tf-primary-pressed: #c9ae86; /* hinoki-deep */
-  --tf-pin-outline: #a49a8e; /* stone-d */
-  --tf-pin: #e6d3b7; /* hinoki */
-  --tf-hatch: #a49a8e; /* stone-d */
-  --tf-mock-plate: #1a1714; /* char */
-  --tf-mock-plate-fg: #ece4d6; /* washi */
-  --tf-mock-plate-border: #a49a8e; /* stone-d */
-  --tf-status-on: #7fa37a; /* forest-d */
-  --tf-status-on-bg: #050d04;
-  --tf-status-watch: #d9a441; /* ochre-d */
-  --tf-status-watch-bg: #180c00;
-  --tf-status-off: #e58aa0; /* madder-d */
-  --tf-status-off-bg: #220409;
-  --tf-layer-sunk: #0d0b09;
-  --tf-layer-ground: #1a1714;
-  --tf-layer-raised: #24201b;
-  --tf-heat-1: #1a1714;
-  --tf-heat-2: #5a3a1e;
-  --tf-heat-3: #8a6c4b;
-  --tf-heat-4: #c9ae86;
-  --tf-heat-5: #f2e6d3;
-  --tf-bearing-s1: #f3d8c4;
-  --tf-bearing-s2: #9d7751;
-  --tf-bearing-p1: #f3d8c4;
-  --tf-bearing-p2: #9d7751;
-  --tf-bearing-p3: #deb48c;
-  --tf-bearing-p4: #63482e;
-  --tf-bearing-po: #aa9e92;
-  --tf-bearing-cv: #7fa37a;
-  --tf-bearing-un: #c2455f;
-  --tf-bearing-grid: #4a4037;
-  --tf-bearing-f1: #f3d8c4;
-  --tf-bearing-f2: #c9ae86;
-  --tf-bearing-f3: #9d7751;
-  --tf-bearing-f4: #a49a8e;
+  --tf-honey-text: #f5a83a; /* honey itself is the text colour on night */
+  --tf-mark-cut: #0c0d12; /* night */
+  --tf-leaf: #3fc47c;
+  --tf-clay: #f0703a;
+  --tf-madder: #ef5a6f;
+  --tf-chalk: #78b4e8;
+  --tf-pin-outline: #6e7282; /* muted-2 */
+  --tf-pin: #f5a83a; /* honey */
+  --tf-hatch: #9a9dad; /* muted */
+  --tf-sample-fg: #9a9dad; /* muted */
+  --tf-status-on: #3fc47c; /* leaf */
+  --tf-status-watch: #f0703a; /* clay */
+  --tf-status-off: #ef5a6f; /* madder */
+  --tf-layer-sunk: #0c0d12;
+  --tf-layer-ground: #13151c;
+  --tf-layer-raised: #1a1d26;
+  --tf-glow: radial-gradient(
+    60% 90% at 78% 30%,
+    rgba(245, 168, 58, 0.22),
+    rgba(245, 168, 58, 0) 70%
+  );
+  --tf-heat-1: #1a1d26;
+  --tf-heat-2: #5c3707;
+  --tf-heat-3: #b06c12;
+  --tf-heat-4: #f5a83a;
+  --tf-heat-5: #ffe9c2;
+  --tf-bearing-s1: #f5a83a; /* honey */
+  --tf-bearing-s2: #9a9dad; /* muted */
+  --tf-bearing-p1: #f5a83a; /* honey */
+  --tf-bearing-p2: #e9c48e; /* wood */
+  --tf-bearing-p3: #d9881b; /* honey-deep */
+  --tf-bearing-p4: #b9803f; /* wood-deep */
+  --tf-bearing-po: #9a9dad; /* muted */
+  --tf-bearing-cv: #3fc47c; /* leaf */
+  --tf-bearing-un: #ef5a6f; /* madder */
+  --tf-bearing-grid: #262a36; /* line */
+  --tf-bearing-f1: #f5a83a; /* honey */
+  --tf-bearing-f2: #e9c48e; /* wood */
+  --tf-bearing-f3: #d9881b; /* honey-deep */
+  --tf-bearing-f4: #9a9dad; /* muted */
 }
 
 :root {
   /* hatch pitch: 6px on surfaces, 3px inside a glyph */
   --tf-hatch-pitch-ui: 6px;
   --tf-hatch-pitch-glyph: 3px;
-  /* shape: square, except the typing box, its send button and token identification marks */
+  /* shape: soft, not square. Tags 6px, controls and popovers 8px (--radius), cards 10px, app tiles
+     16px; chips, badges, the send button and token marks are pills; the typing box is 20px */
+  --tf-radius-sm: 6px;
+  --tf-radius-lg: 10px;
+  --tf-radius-xl: 16px;
+  --tf-radius-pill: 9999px;
   --tf-radius-composer: 20px;
-  --tf-radius-round: 9999px;
+  /* the one shadow: popovers and the composer */
+  --tf-shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.35);
   --tf-border-width: 1px;
   --tf-border-width-key: 1.5px;
   --tf-focus-ring-width: 2px;
@@ -270,28 +320,25 @@
   /* layout */
   --tf-measure-body: 66ch;
   --tf-measure-docs: 72ch;
-  --tf-measure-display: 18ch;
+  --tf-measure-display: 16ch;
   --tf-page-max: 1280px;
   --tf-hit-min: 24px;
-  --tf-row-dense: 28px;
-  --tf-row-comfortable: 32px;
+  --tf-row-dense: 36px;
+  --tf-row-comfortable: 44px;
   /*
    * The three typefaces. The first name in each stack is the variable next/font sets on <html>
    * (app/fonts.ts); the rest is the .yml stack. The partner embed swaps these for the partner's own.
    */
   --tf-font-sans:
-    var(--font-plex-sans, "IBM Plex Sans"), "IBM Plex Sans", "Plex Sans Fallback", system-ui,
-    -apple-system, "Segoe UI", Arial, sans-serif;
+    var(--font-inter, "Inter"), "Inter", "Inter Fallback", system-ui, -apple-system, "Segoe UI",
+    Arial, sans-serif;
   --tf-font-display:
-    var(--font-newsreader, "Newsreader"), "Newsreader Variable", "Newsreader",
-    "Newsreader Fallback", Georgia, "Times New Roman", serif;
+    var(--font-inter-tight, "Inter Tight"), "Inter Tight", "Inter", system-ui, Arial, sans-serif;
   --tf-font-mono:
     var(--font-plex-mono, "IBM Plex Mono"), "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo,
     Consolas, monospace;
-  /* Bearing only. The condensed face is not loaded yet, so this is IBM Plex Sans for now. */
-  --tf-font-condensed:
-    "IBM Plex Sans Condensed", var(--font-plex-sans, "IBM Plex Sans"), "IBM Plex Sans",
-    "Arial Narrow", system-ui, sans-serif;
+  /* Bearing heads and dense labels. There is no condensed face: it is Inter Tight */
+  --tf-font-condensed: "Inter Tight", "Inter", system-ui, sans-serif;
 }
 
 /* ---------------------------------------------------------------------------------------------------
@@ -304,76 +351,80 @@
 @media (prefers-color-scheme: dark) {
   .tf-auto {
     color-scheme: dark;
-    --background: oklch(15.13% 0.0055 67.77); /* black #0D0B09 */
-    --foreground: oklch(92.14% 0.0206 81.78); /* washi #ECE4D6 */
-    --card: oklch(20.7% 0.0075 67.36); /* char #1A1714 */
-    --card-foreground: oklch(92.14% 0.0206 81.78); /* washi */
-    --popover: oklch(24.62% 0.011 73.4); /* char-2 #24201B */
-    --popover-foreground: oklch(92.14% 0.0206 81.78); /* washi */
-    --primary: oklch(87.52% 0.0429 77.6); /* hinoki #E6D3B7: the brand wood on warm black */
-    --primary-foreground: oklch(15.13% 0.0055 67.77); /* black */
-    --secondary: oklch(24.62% 0.011 73.4); /* char-2 */
-    --secondary-foreground: oklch(92.14% 0.0206 81.78); /* washi */
-    --accent: oklch(24.62% 0.011 73.4); /* char-2 */
-    --accent-foreground: oklch(87.52% 0.0429 77.6); /* hinoki */
-    --muted: oklch(24.62% 0.011 73.4); /* char-2 */
-    --muted-foreground: oklch(69.14% 0.0208 72.45); /* stone-d #A49A8E */
-    --destructive: oklch(73.48% 0.1134 4.6); /* madder-d #E58AA0 */
-    --border: oklch(32.31% 0.0179 67.1); /* hair-d #3A322A */
-    --input: oklch(54.28% 0.0267 69.27); /* member-d #7A6D5F */
-    --ring: oklch(87.52% 0.0429 77.6); /* hinoki */
-    --sidebar: oklch(20.7% 0.0075 67.36); /* char */
-    --sidebar-foreground: oklch(92.14% 0.0206 81.78); /* washi */
-    --sidebar-primary: oklch(87.52% 0.0429 77.6); /* hinoki */
-    --sidebar-primary-foreground: oklch(15.13% 0.0055 67.77); /* black */
-    --sidebar-accent: oklch(24.62% 0.011 73.4); /* char-2 */
-    --sidebar-accent-foreground: oklch(87.52% 0.0429 77.6); /* hinoki */
-    --sidebar-border: oklch(32.31% 0.0179 67.1); /* hair-d */
-    --sidebar-ring: oklch(87.52% 0.0429 77.6); /* hinoki */
-    --success: oklch(67.75% 0.0712 141.65); /* forest-d #7FA37A */
-    --warning: oklch(75.07% 0.1294 79.85); /* ochre-d #D9A441 */
-    --info: oklch(92.14% 0.0206 81.78); /* washi */
-    --chart-1: oklch(87.52% 0.0429 77.6); /* hinoki */
-    --chart-2: oklch(76.45% 0.0623 77.35); /* hinoki-deep #C9AE86 */
-    --chart-3: oklch(59.77% 0.0712 65.74); /* wood-400 */
-    --chart-4: oklch(69.14% 0.0208 72.45); /* stone-d */
-    --chart-5: oklch(92.14% 0.0206 81.78); /* washi */
-    --tf-primary-hover: #d7c09e;
-    --tf-primary-pressed: #c9ae86; /* hinoki-deep */
-    --tf-pin-outline: #a49a8e; /* stone-d */
-    --tf-pin: #e6d3b7; /* hinoki */
-    --tf-hatch: #a49a8e; /* stone-d */
-    --tf-mock-plate: #1a1714; /* char */
-    --tf-mock-plate-fg: #ece4d6; /* washi */
-    --tf-mock-plate-border: #a49a8e; /* stone-d */
-    --tf-status-on: #7fa37a; /* forest-d */
-    --tf-status-on-bg: #050d04;
-    --tf-status-watch: #d9a441; /* ochre-d */
-    --tf-status-watch-bg: #180c00;
-    --tf-status-off: #e58aa0; /* madder-d */
-    --tf-status-off-bg: #220409;
-    --tf-layer-sunk: #0d0b09;
-    --tf-layer-ground: #1a1714;
-    --tf-layer-raised: #24201b;
-    --tf-heat-1: #1a1714;
-    --tf-heat-2: #5a3a1e;
-    --tf-heat-3: #8a6c4b;
-    --tf-heat-4: #c9ae86;
-    --tf-heat-5: #f2e6d3;
-    --tf-bearing-s1: #f3d8c4;
-    --tf-bearing-s2: #9d7751;
-    --tf-bearing-p1: #f3d8c4;
-    --tf-bearing-p2: #9d7751;
-    --tf-bearing-p3: #deb48c;
-    --tf-bearing-p4: #63482e;
-    --tf-bearing-po: #aa9e92;
-    --tf-bearing-cv: #7fa37a;
-    --tf-bearing-un: #c2455f;
-    --tf-bearing-grid: #4a4037;
-    --tf-bearing-f1: #f3d8c4;
-    --tf-bearing-f2: #c9ae86;
-    --tf-bearing-f3: #9d7751;
-    --tf-bearing-f4: #a49a8e;
+    --background: oklch(16.04% 0.0107 276.24); /* night #0C0D12 */
+    --foreground: oklch(95.83% 0.007 88.64); /* text #F3F1EC */
+    --card: oklch(19.69% 0.0144 272.52); /* night-2 #13151C */
+    --card-foreground: oklch(95.83% 0.007 88.64); /* text #F3F1EC */
+    --popover: oklch(23.18% 0.018 270.53); /* night-3 #1A1D26 */
+    --popover-foreground: oklch(95.83% 0.007 88.64); /* text #F3F1EC */
+    --primary: oklch(78.86% 0.1494 71.36); /* honey #F5A83A: the one brand colour */
+    --primary-foreground: oklch(20.19% 0.0121 277.81); /* ink #15161C: ink on honey, both modes */
+    --secondary: oklch(23.18% 0.018 270.53); /* night-3 #1A1D26 */
+    --secondary-foreground: oklch(95.83% 0.007 88.64); /* text #F3F1EC */
+    --accent: oklch(26.44% 0.0246 69.12); /* honey at 14% over night #2D2318 */
+    --accent-foreground: oklch(78.86% 0.1494 71.36); /* honey #F5A83A */
+    --muted: oklch(23.18% 0.018 270.53); /* night-3 #1A1D26 */
+    --muted-foreground: oklch(69.87% 0.0235 277.32); /* muted #9A9DAD */
+    --destructive: oklch(66.77% 0.1832 15.21); /* madder #EF5A6F */
+    --border: oklch(28.63% 0.0228 270.5); /* line #262A36: hairlines, card edges */
+    --input: oklch(35.43% 0.0287 271.32); /* line-2 #363B4B: every control edge */
+    --ring: oklch(74.9% 0.0978 245.75); /* chalk #78B4E8: focus only */
+    --sidebar: oklch(19.69% 0.0144 272.52); /* night-2 #13151C */
+    --sidebar-foreground: oklch(95.83% 0.007 88.64); /* text #F3F1EC */
+    --sidebar-primary: oklch(78.86% 0.1494 71.36); /* honey #F5A83A */
+    --sidebar-primary-foreground: oklch(20.19% 0.0121 277.81); /* ink #15161C */
+    --sidebar-accent: oklch(26.44% 0.0246 69.12); /* honey at 14% over night #2D2318 */
+    --sidebar-accent-foreground: oklch(78.86% 0.1494 71.36); /* honey #F5A83A */
+    --sidebar-border: oklch(28.63% 0.0228 270.5); /* line #262A36 */
+    --sidebar-ring: oklch(74.9% 0.0978 245.75); /* chalk #78B4E8 */
+    --chart-1: oklch(78.86% 0.1494 71.36); /* honey #F5A83A */
+    --chart-2: oklch(83.98% 0.0817 76.68); /* wood #E9C48E */
+    --chart-3: oklch(69.58% 0.1471 66.59); /* honey-deep #D9881B */
+    --chart-4: oklch(69.87% 0.0235 277.32); /* muted #9A9DAD */
+    --chart-5: oklch(95.83% 0.007 88.64); /* text #F3F1EC: the base-case line */
+    --success: oklch(73.09% 0.1556 155.29); /* leaf #3FC47C: on track */
+    --warning: oklch(68.99% 0.1718 41.84); /* clay #F0703A: watch */
+    --info: oklch(74.9% 0.0978 245.75); /* chalk #78B4E8: a line only */
+    --tf-honey-text: #f5a83a; /* honey itself is the text colour on night */
+    --tf-mark-cut: #0c0d12; /* night */
+    --tf-leaf: #3fc47c;
+    --tf-clay: #f0703a;
+    --tf-madder: #ef5a6f;
+    --tf-chalk: #78b4e8;
+    --tf-pin-outline: #6e7282; /* muted-2 */
+    --tf-pin: #f5a83a; /* honey */
+    --tf-hatch: #9a9dad; /* muted */
+    --tf-sample-fg: #9a9dad; /* muted */
+    --tf-status-on: #3fc47c; /* leaf */
+    --tf-status-watch: #f0703a; /* clay */
+    --tf-status-off: #ef5a6f; /* madder */
+    --tf-layer-sunk: #0c0d12;
+    --tf-layer-ground: #13151c;
+    --tf-layer-raised: #1a1d26;
+    --tf-glow: radial-gradient(
+      60% 90% at 78% 30%,
+      rgba(245, 168, 58, 0.22),
+      rgba(245, 168, 58, 0) 70%
+    );
+    --tf-heat-1: #1a1d26;
+    --tf-heat-2: #5c3707;
+    --tf-heat-3: #b06c12;
+    --tf-heat-4: #f5a83a;
+    --tf-heat-5: #ffe9c2;
+    --tf-bearing-s1: #f5a83a; /* honey */
+    --tf-bearing-s2: #9a9dad; /* muted */
+    --tf-bearing-p1: #f5a83a; /* honey */
+    --tf-bearing-p2: #e9c48e; /* wood */
+    --tf-bearing-p3: #d9881b; /* honey-deep */
+    --tf-bearing-p4: #b9803f; /* wood-deep */
+    --tf-bearing-po: #9a9dad; /* muted */
+    --tf-bearing-cv: #3fc47c; /* leaf */
+    --tf-bearing-un: #ef5a6f; /* madder */
+    --tf-bearing-grid: #262a36; /* line */
+    --tf-bearing-f1: #f5a83a; /* honey */
+    --tf-bearing-f2: #e9c48e; /* wood */
+    --tf-bearing-f3: #d9881b; /* honey-deep */
+    --tf-bearing-f4: #9a9dad; /* muted */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -422,12 +473,24 @@
   /* brand utilities */
   --color-primary-hover: var(--tf-primary-hover);
   --color-primary-pressed: var(--tf-primary-pressed);
+  --color-honey: var(--tf-honey);
+  --color-honey-hover: var(--tf-honey-hover);
+  --color-honey-deep: var(--tf-honey-deep);
+  --color-honey-text: var(--tf-honey-text);
+  --color-honey-tint: var(--tf-honey-tint);
+  --color-leaf: var(--tf-leaf);
+  --color-leaf-tint: var(--tf-leaf-tint);
+  --color-clay: var(--tf-clay);
+  --color-clay-tint: var(--tf-clay-tint);
+  --color-madder: var(--tf-madder);
+  --color-madder-tint: var(--tf-madder-tint);
+  --color-chalk: var(--tf-chalk);
+  --color-wood: var(--tf-wood);
+  --color-wood-deep: var(--tf-wood-deep);
   --color-pin: var(--tf-pin);
   --color-pin-outline: var(--tf-pin-outline);
   --color-hatch: var(--tf-hatch);
-  --color-mock-plate: var(--tf-mock-plate);
-  --color-mock-plate-foreground: var(--tf-mock-plate-fg);
-  --color-mock-plate-border: var(--tf-mock-plate-border);
+  --color-sample-foreground: var(--tf-sample-fg);
   --color-status-on: var(--tf-status-on);
   --color-status-on-bg: var(--tf-status-on-bg);
   --color-status-watch: var(--tf-status-watch);
@@ -458,22 +521,22 @@
   --color-bearing-f3: var(--tf-bearing-f3);
   --color-bearing-f4: var(--tf-bearing-f4);
 
-  /* shape: 0 or 2px. A stray rounded-full or rounded-xl comes out square */
+  /* shape: soft, not square. Nothing above 16px but pills and the typing box */
   --radius-none: 0px;
-  --radius-xs: 0px;
-  --radius-sm: 0px;
+  --radius-xs: var(--tf-radius-sm);
+  --radius-sm: var(--tf-radius-sm);
   --radius-md: var(--radius);
-  --radius-lg: var(--radius);
-  --radius-xl: var(--radius);
-  --radius-2xl: var(--radius);
-  --radius-3xl: var(--radius);
-  --radius-4xl: var(--radius);
-  --radius-full: var(--radius);
-  /* the typing box only: components/ui/Composer.tsx */
+  --radius-lg: var(--tf-radius-lg);
+  --radius-xl: var(--tf-radius-xl);
+  --radius-2xl: var(--tf-radius-xl);
+  --radius-3xl: var(--tf-radius-xl);
+  --radius-4xl: var(--tf-radius-xl);
+  /* chips, status badges, filter tabs, the composer's send button */
+  --radius-full: var(--tf-radius-pill);
+  /* the typing box and the subscribe field only */
   --radius-composer: var(--tf-radius-composer);
-  --radius-round: var(--tf-radius-round);
   /* token identification only: AssetMark, never a card or control */
-  --radius-asset: var(--tf-radius-round);
+  --radius-asset: var(--tf-radius-pill);
 
   /* type */
   --font-sans: var(--tf-font-sans);
@@ -481,51 +544,59 @@
   --font-mono: var(--tf-font-mono);
   --font-condensed: var(--tf-font-condensed);
 
-  /* expressive scale: marketing, the plan view, the API docs */
-  --text-display: clamp(3.0625rem, 2.5834rem + 2.0442vw, 4.2188rem);
-  --text-display--line-height: clamp(3.5rem, 2.982rem + 2.2099vw, 4.75rem);
-  --text-display--letter-spacing: -0.015em;
-  --text-h1: clamp(2.4375rem, 2.1397rem + 1.2707vw, 3.1562rem);
-  --text-h1--line-height: clamp(3rem, 2.6892rem + 1.326vw, 3.75rem);
-  --text-h1--letter-spacing: -0.01em;
-  --text-h2: clamp(1.9375rem, 1.7562rem + 0.7735vw, 2.375rem);
-  --text-h2--line-height: clamp(2.5rem, 2.2928rem + 0.884vw, 3rem);
-  --text-h2--letter-spacing: -0.015em;
-  --text-h3: clamp(1.5625rem, 1.4719rem + 0.3867vw, 1.7812rem);
-  --text-h3--line-height: clamp(2rem, 1.8964rem + 0.442vw, 2.25rem);
-  --text-h3--letter-spacing: -0.01em;
-  --text-h4: clamp(1.25rem, 1.2112rem + 0.1657vw, 1.3438rem);
-  --text-h4--line-height: 1.75rem;
-  --text-h4--letter-spacing: -0.005em;
+  /* expressive scale: marketing, the plan view, the API docs. Display levels are Inter Tight 600 */
+  --text-display: clamp(2.75rem, 2.2rem + 2.2vw, 4rem);
+  --text-display--line-height: 1.05;
+  --text-display--letter-spacing: -0.025em;
+  --text-h1: clamp(2.125rem, 1.8rem + 1.3vw, 2.875rem);
+  --text-h1--line-height: 1.1;
+  --text-h1--letter-spacing: -0.02em;
+  --text-h2: clamp(1.625rem, 1.45rem + 0.8vw, 2.125rem);
+  --text-h2--line-height: 1.15;
+  --text-h2--letter-spacing: -0.02em;
+  --text-h3: clamp(1.25rem, 1.15rem + 0.4vw, 1.5rem);
+  --text-h3--line-height: 1.25;
+  --text-h3--letter-spacing: -0.015em;
+  --text-h4: 1.125rem;
+  --text-h4--line-height: 1.5rem;
+  --text-h4--letter-spacing: -0.01em;
   --text-body-lg: 1.125rem;
   --text-body-lg--line-height: 1.75rem;
   --text-body: 1rem;
   --text-body--line-height: 1.5rem;
   --text-body-sm: 0.875rem;
-  --text-body-sm--line-height: 1.5rem;
-  --text-body-sm--letter-spacing: 0.01em;
-  --text-caption: 0.78125rem;
-  --text-caption--line-height: 1.25rem;
-  --text-caption--letter-spacing: 0.015em;
+  --text-body-sm--line-height: 1.375rem;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+  --text-caption--letter-spacing: 0.04em;
+  --text-figure-lg: 1.75rem;
+  --text-figure-lg--line-height: 2rem;
+  --text-figure-lg--letter-spacing: -0.02em;
+  --text-sample-line: 0.78125rem;
+  --text-sample-line--line-height: 1.25rem;
   --text-source: 0.8125rem;
   --text-source--line-height: 1.25rem;
   /* productive scale: Bearing. Fixed sizes */
-  --text-b-kpi: 1.4688rem;
-  --text-b-kpi--line-height: 2rem;
-  --text-b-title: 1.3125rem;
+  --text-b-kpi: 1.375rem;
+  --text-b-kpi--line-height: 1.75rem;
+  --text-b-kpi--letter-spacing: -0.02em;
+  --text-b-title: 1.25rem;
   --text-b-title--line-height: 1.75rem;
-  --text-b-section: 1.0313rem;
+  --text-b-section: 0.9375rem;
   --text-b-section--line-height: 1.5rem;
-  --text-b-emph: 0.9063rem;
+  --text-b-emph: 0.8125rem;
   --text-b-emph--line-height: 1.25rem;
   --text-b-cell: 0.8125rem;
   --text-b-cell--line-height: 1.25rem;
-  --text-b-head: 0.75rem;
+  --text-b-head: 0.6875rem;
   --text-b-head--line-height: 1rem;
+  --text-b-head--letter-spacing: 0.05em;
   --text-b-meta: 0.75rem;
   --text-b-meta--line-height: 1rem;
+  --text-b-delta: 0.6875rem;
+  --text-b-delta--line-height: 1rem;
 
-  /* no shadows: depth is three layers and hairlines */
+  /* no shadows: depth is three layers, hairlines and tints. One exception, by name: the popover */
   --shadow-2xs: none;
   --shadow-xs: none;
   --shadow-sm: none;
@@ -533,6 +604,7 @@
   --shadow-lg: none;
   --shadow-xl: none;
   --shadow-2xl: none;
+  --shadow-popover: var(--tf-shadow-popover);
 
   /* motion */
   --ease-seat: var(--tf-ease-seat);
@@ -548,6 +620,8 @@
 
   /* layout */
   --container-page: 1280px;
+  --spacing-row-dense: var(--tf-row-dense);
+  --spacing-row-comfortable: var(--tf-row-comfortable);
 }
 
 @keyframes seat {
@@ -684,8 +758,8 @@
 }
 
 /*
- * The section hatch (mock-plate.md). It means MOCK or stale and always travels with the word; text
- * never sits on it. components/ui/hatch.test.ts fails on a hatch with no plate beside it.
+ * The section hatch (mock-plate.md). It means sample or stale and always travels with its words; text
+ * never sits on it. components/ui/hatch.test.ts fails on a hatch with no line beside it.
  */
 @utility tf-hatch {
   background-image: repeating-linear-gradient(
@@ -700,33 +774,17 @@
   }
 }
 
-/* The solid plate that carries the word MOCK: the only uppercase word in the system. */
-@utility tf-mock-plate {
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding: 0 6px;
-  border: 1px solid var(--tf-mock-plate-border);
-  background: var(--tf-mock-plate);
-  color: var(--tf-mock-plate-fg);
-  font: 500 0.78125rem / 1.25rem var(--tf-font-mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-
-  @media (forced-colors: active) {
-    border-color: CanvasText;
-  }
-}
-
-/* The plate of a stale panel: the same box, in sentence case ("stale · 3 h"). */
+/* The plate of a stale panel: a hairline tag in sentence case ("stale · 3 h"). The word MOCK has no
+ * plate any more (gate MOCK-QUIET). */
 @utility tf-stale-plate {
   display: inline-flex;
   align-items: center;
   height: 20px;
   padding: 0 6px;
-  border: 1px solid var(--tf-mock-plate-border);
-  background: var(--tf-mock-plate);
-  color: var(--tf-mock-plate-fg);
+  border: 1px solid var(--tf-hatch);
+  border-radius: var(--tf-radius-sm);
+  background: var(--card);
+  color: var(--foreground);
   font: 400 0.8125rem / 1.25rem var(--tf-font-mono);
 
   @media (forced-colors: active) {
@@ -734,10 +792,20 @@
   }
 }
 
+/* Light as the only gradient (STYLE.md, bold bet 5): a honey glow behind a hero or the composer, and
+ * a honey fill under the base-case line. Nothing else is drawn with a gradient but the hatch. */
+@utility bg-glow {
+  background-image: var(--tf-glow);
+}
+
+@utility bg-curve-fill {
+  background-image: var(--tf-curve-fill);
+}
+
 /*
  * The partner embed (embed-shell.md, token-mapping.md section 8). Inside it the brand recedes: every
  * semantic variable above is pointed at the partner's own (--embed-*), with system colours when the
- * partner sets none, so nothing in the shell can read a wood colour, a brand typeface or our radius.
+ * partner sets none, so nothing in the shell can read honey, a brand typeface or our radius.
  * What survives is structure: the pin, the hatch with its word, hairlines, the disclaimer.
  * The system colours follow the colour scheme around the shell; the embed route sets
  * `color-scheme: light dark` on its own root so that they follow the host.
@@ -785,9 +853,19 @@
   --tf-pin: var(--tf-embed-muted);
   --tf-pin-outline: var(--tf-embed-muted);
   --tf-hatch: var(--tf-embed-muted);
-  --tf-mock-plate: var(--tf-embed-bg);
-  --tf-mock-plate-fg: var(--tf-embed-fg);
-  --tf-mock-plate-border: var(--tf-embed-muted);
+  --tf-sample-fg: var(--tf-embed-muted);
+  --tf-honey: var(--tf-embed-accent);
+  --tf-honey-text: var(--tf-embed-accent);
+  --tf-honey-tint: transparent;
+  --tf-leaf: var(--tf-embed-fg);
+  --tf-clay: var(--tf-embed-fg);
+  --tf-madder: var(--tf-embed-fg);
+  --tf-leaf-tint: transparent;
+  --tf-clay-tint: transparent;
+  --tf-madder-tint: transparent;
+  --tf-glow: none;
+  --tf-curve-fill: none;
+  --tf-shadow-popover: none;
   --tf-status-on: var(--tf-embed-fg);
   --tf-status-on-bg: var(--tf-embed-bg);
   --tf-status-watch: var(--tf-embed-fg);
@@ -797,6 +875,9 @@
   --tf-font-mono: var(--embed-mono, ui-monospace, monospace);
   /* boxes inside take the partner's radius, and are square when the partner sets none */
   --radius: var(--embed-radius, 0px);
+  --tf-radius-sm: var(--embed-radius, 0px);
+  --tf-radius-lg: var(--embed-radius, 0px);
+  --tf-radius-xl: var(--embed-radius, 0px);
   /* sizes in em of the partner's own text, on a 1.2 ratio */
   --tf-e-title: 1.44em;
   --tf-e-lead: 1.2em;
@@ -836,7 +917,7 @@
     letter-spacing: normal;
   }
 
-  .tf-embed :is(.text-caption, .text-source, .tf-mock-plate, .tf-stale-plate) {
+  .tf-embed :is(.text-caption, .text-source, .text-sample-line, .tf-stale-plate) {
     font-size: var(--tf-e-small);
     line-height: var(--tf-e-leading);
   }

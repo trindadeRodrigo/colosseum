@@ -5,8 +5,9 @@ import { describe, expect, it } from 'vitest';
 
 // The three faces are served from files committed with the app (assets/fonts), so a build fetches
 // nothing: the CI build used to fail whenever it could not reach Google. The files are the ones
-// Google's build shipped for the Latin subset, byte for byte, so no glyph and no width changed; the
-// fallbacks keep the figures that build worked out.
+// Google serves for the Latin subset, byte for byte; the fallbacks carry the figures next/font works
+// out for these faces. Since IDENTITY-2 (Oct 8) the faces are Inter Tight, Inter and IBM Plex Mono:
+// no serif, no Plex Sans.
 
 const WEB = join(import.meta.dirname, '..');
 const FONTS = join(WEB, 'assets', 'fonts');
@@ -15,18 +16,15 @@ const sha = (file: string) =>
     .update(readFileSync(join(FONTS, file)))
     .digest('hex');
 
-/** The Latin files of Google Fonts on 2026-10-06 (IBM Plex Sans v23, IBM Plex Mono v20, Newsreader v26). */
+/** The Latin files of Google Fonts (IBM Plex Mono v20 on 2026-10-06; Inter and Inter Tight on 2026-10-08). */
 const FILES: Record<string, string> = {
-  'ibm-plex-sans-latin-wght.woff2':
-    '056e4e2459f57a0033c8c9c844ff19d6e42ac8602027803d4345823bcc939818',
-  'ibm-plex-sans-greek-wght.woff2':
-    'a29d4e6345cdb7e2b6daabf4961a6dcafcbc7ed1eac26186ca4a004cd32d64d8',
+  'inter-tight-latin-wght.woff2':
+    '0853f2772e021f0e121726ea62a169db758febefa5b3b4dd3e2ba8b0faf27d7d',
+  'inter-latin-opsz-wght.woff2': '2a4af46ed9b378ee608dbd447942f19c08919661506f5523e6150f27824ca9bb',
   'ibm-plex-mono-latin-400.woff2':
     'c36f509c0a8f9f85f29cb44bc8701d8a9e0b14c499e77a884f789ead7093a7ac',
   'ibm-plex-mono-latin-500.woff2':
     'a76f53ca6612e7b3828eec2311098675b7f9849ae4169a8bcef6302aec02a6c0',
-  'newsreader-latin-opsz-wght.woff2':
-    '01817351be3edfc1714fe6d60ddea6a22a169a5ebd033b50c7f9495e5d9c386a',
 };
 
 function sources(dir: string, out: string[] = []): string[] {
@@ -44,11 +42,17 @@ describe('the faces', () => {
     const woff2 = readdirSync(FONTS).filter((f) => f.endsWith('.woff2'));
     expect(woff2.sort()).toEqual(Object.keys(FILES).sort());
     for (const [file, hash] of Object.entries(FILES)) expect(sha(file), file).toBe(hash);
-    for (const licence of ['OFL-IBM-Plex.txt', 'OFL-Newsreader.txt'])
+    for (const licence of ['OFL-IBM-Plex.txt', 'OFL-Inter.txt', 'OFL-InterTight.txt'])
       expect(readFileSync(join(FONTS, licence), 'utf8')).toContain('SIL Open Font License');
-    // only what the app uses: under 220 KB for the five
+    // and no licence is left for a face that is gone
+    expect(
+      readdirSync(FONTS)
+        .filter((f) => f.endsWith('.txt'))
+        .sort(),
+    ).toEqual(['OFL-IBM-Plex.txt', 'OFL-Inter.txt', 'OFL-InterTight.txt']);
+    // only what the app uses: under 200 KB for the four
     const bytes = woff2.reduce((sum, f) => sum + statSync(join(FONTS, f)).size, 0);
-    expect(bytes).toBeLessThan(220 * 1024);
+    expect(bytes).toBeLessThan(200 * 1024);
   });
 
   it('are never fetched at build: no file imports next/font/google, or names Google’s font hosts', () => {
@@ -70,19 +74,21 @@ describe('the faces', () => {
     const fonts = readFileSync(join(WEB, 'app', 'fonts.ts'), 'utf8');
     const mono = readFileSync(join(WEB, 'app', 'fonts-mono.ts'), 'utf8');
     for (const text of [fonts, mono]) expect(text).toContain("from 'next/font/local'");
-    // the sans: one variable file, 400 to 600; the serif: its variable file, as Google gave it
+    // the display face and the UI face: one variable file each, 100 to 900, as Google gives them
     expect(fonts).toMatch(
-      /plexSans = localFont\(\{[^}]*weight: '400 600'[^}]*variable: '--font-plex-sans'[^}]*display: 'swap'[^}]*preload: true/s,
+      /interTight = localFont\(\{[^}]*weight: '100 900'[^}]*variable: '--font-inter-tight'[^}]*display: 'swap'[^}]*preload: true/s,
     );
     expect(fonts).toMatch(
-      /newsreader = localFont\(\{[^}]*weight: '200 800'[^}]*variable: '--font-newsreader'[^}]*display: 'swap'[^}]*preload: true/s,
+      /inter = localFont\(\{[^}]*weight: '100 900'[^}]*variable: '--font-inter'[^}]*display: 'swap'[^}]*preload: true/s,
     );
+    // no serif and no Plex Sans is loaded any more (IDENTITY-2)
+    expect(fonts).not.toMatch(/newsreader|plex-sans|plexSans/i);
     expect(mono).toMatch(
       /weight: '400'[\s\S]*weight: '500'[\s\S]*variable: '--font-plex-mono'[\s\S]*display: 'swap'[\s\S]*preload: false/,
     );
   });
 
-  it('keep the fallbacks Google’s build worked out, by name and by figure', () => {
+  it('keep metric-matched fallbacks, with the figures next/font works out, by name and by figure', () => {
     const css = readFileSync(join(WEB, 'app', 'globals.css'), 'utf8');
     const face = (name: string) =>
       css.match(new RegExp(`@font-face \\{\\s*font-family: "${name}";([^}]*)\\}`))?.[1] ?? '';
@@ -90,15 +96,17 @@ describe('the faces', () => {
       [...face(name).matchAll(/(ascent-override|descent-override|size-adjust): ([\d.]+)%/g)].map(
         (m) => `${m[1]} ${m[2]}`,
       );
-    expect(figures('IBM Plex Sans Fallback')).toEqual([
-      'ascent-override 101.32',
-      'descent-override 27.18',
-      'size-adjust 101.17',
+    // capsize's figures (ascent 1984, descent 494, 2048 units; average widths 880 and 978) against
+    // Arial's (913): size-adjust = width / 913, the overrides = metric / (2048 × size-adjust)
+    expect(figures('Inter Tight Fallback')).toEqual([
+      'ascent-override 100.51',
+      'descent-override 25.03',
+      'size-adjust 96.39',
     ]);
-    expect(figures('Newsreader Fallback')).toEqual([
-      'ascent-override 69.68',
-      'descent-override 25.12',
-      'size-adjust 105.48',
+    expect(figures('Inter Fallback')).toEqual([
+      'ascent-override 90.44',
+      'descent-override 22.52',
+      'size-adjust 107.12',
     ]);
     expect(figures('IBM Plex Mono Fallback')).toEqual([
       'ascent-override 76.16',
@@ -107,10 +115,12 @@ describe('the faces', () => {
     ]);
     const fonts = readFileSync(join(WEB, 'app', 'fonts.ts'), 'utf8');
     const mono = readFileSync(join(WEB, 'app', 'fonts-mono.ts'), 'utf8');
-    expect(fonts).toContain("fallback: ['IBM Plex Sans', 'IBM Plex Sans Fallback']");
-    expect(fonts).toContain("fallback: ['Newsreader', 'Newsreader Fallback']");
+    expect(fonts).toContain("fallback: ['Inter Tight', 'Inter Tight Fallback']");
+    expect(fonts).toContain("fallback: ['Inter', 'Inter Fallback']");
+    // the fallbacks of the faces that are gone are gone with them
+    expect(css).not.toMatch(/Newsreader|Plex Sans/);
     expect(mono).toContain("fallback: ['IBM Plex Mono', 'IBM Plex Mono Fallback']");
-    // next/font's own guess at a fallback is switched off, so there is one fallback, the old one
+    // next/font's own guess at a fallback is switched off, so there is one fallback, the one written
     for (const text of [fonts, mono]) expect(text).toContain('adjustFontFallback: false');
   });
 
@@ -132,33 +142,31 @@ describe('the faces', () => {
     );
   };
 
-  it('are one family of two files for the sans: Latin, and the Greek letters Bearing writes', () => {
+  it('each keep their own name, over the Latin range Google lists', () => {
     const fonts = readFileSync(join(WEB, 'app', 'fonts.ts'), 'utf8');
-    const [latin, greek] = ranges();
-    expect(latin).toContain('U+0000-00FF');
-    expect(greek).toContain('U+0370-0377');
-    // the Greek file joins the sans face's own family, and is fetched only where it is needed
-    expect(fonts).toMatch(
-      /plexSansGreek = localFont\(\{[\s\S]*?preload: false[\s\S]*?IBM Plex Sans/,
-    );
-    // each face keeps its own name in the stylesheet, as it had from Google
-    for (const name of ['IBM Plex Sans', 'Newsreader'])
+    const all = ranges();
+    expect(all).toHaveLength(2);
+    for (const range of all) expect(range).toContain('U+0000-00FF');
+    // each face keeps its own name in the stylesheet, as it has from Google
+    for (const name of ['Inter Tight', 'Inter'])
       expect(fonts).toContain(`{ prop: 'font-family', value: "'${name}'" }`);
     expect(readFileSync(join(WEB, 'app', 'fonts-mono.ts'), 'utf8')).toContain(
       `{ prop: 'font-family', value: "'IBM Plex Mono'" }`,
     );
-    expect(fonts).toMatch(/fontVariables = `[^`]*plexSansGreek\.variable/);
-    for (const letter of ['τ', 'Σ', 'Δ', 'σ'])
-      expect(inRange(greek as string)(letter), letter).toBe(true);
+    expect(fonts).toMatch(
+      /fontVariables = `\$\{inter\.variable\} \$\{interTight\.variable\} \$\{plexMono\.variable\}`/,
+    );
   });
 
   it('hold every character the dictionaries and Bearing write, but the signs no face ever had', () => {
     const covered = ranges().map(inRange);
     /**
-     * Arrows and comparison signs: in none of the files Google serves for these faces either, so the
-     * system's face has always drawn them. A new one is added here by someone who looked.
+     * Arrows and comparison signs: in none of the Latin files Google serves for these faces, so the
+     * system's face draws them. So does it the Greek letters Bearing writes in its methods: Inter
+     * comes from Google as a Latin file here, and there is no Greek file to fetch at build (IDENTITY-2).
+     * A new one is added here by someone who looked.
      */
-    const SYSTEM_DRAWN = new Set(['→', '↗', '≤', '≥', '≈']);
+    const SYSTEM_DRAWN = new Set(['→', '↗', '≤', '≥', '≈', 'τ', 'Σ', 'Δ', 'σ']);
     const written = new Map<string, string>();
     for (const top of ['i18n', join('features', 'bearing')])
       for (const path of sources(join(WEB, top))) {
@@ -173,9 +181,8 @@ describe('the faces', () => {
           `${ch} (U+${(ch.codePointAt(0) ?? 0).toString(16).toUpperCase()}) in ${file}`,
       );
     expect(loose).toEqual([]);
-    // the bite: the Greek letters are there, and it is the Greek file that holds them
+    // the bite: the Greek letters are there, and no file of ours holds them
     expect(written.has('τ')).toBe(true);
-    expect(covered[0]?.('τ')).toBe(false);
-    expect(covered[1]?.('τ')).toBe(true);
+    expect(covered.some((holds) => holds('τ'))).toBe(false);
   });
 });
