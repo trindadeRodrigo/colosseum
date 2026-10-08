@@ -18,7 +18,7 @@ import {
   type Recipe,
   type RecipeVersionView,
   type SharedFamily,
-  type Target,
+  Target,
 } from '@colosseum/schemas';
 import {
   ApiRefusal,
@@ -551,6 +551,59 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     return send(res, 200, { ok: true });
   }
   if (path === '/__stub/reports') return send(res, 200, reports);
+  if (path === '/__stub/source-vault' && method === 'POST') {
+    // An already-owned private vault fixture, not an order or production endpoint. Publication and
+    // follower buys below still build, guard and sign every step through the browser executor.
+    const body = (await read(req)) as { owner: string; targets: unknown };
+    const targets = Target.array().parse(body.targets);
+    const owner = body.owner;
+    const { adapter } = world;
+    const listed = new Set((await adapter.listAssets()).map((a) => a.id));
+    if (
+      !owner ||
+      targets.length === 0 ||
+      new Set(targets.map((t) => t.asset)).size !== targets.length ||
+      targets.some((t) => !listed.has(t.asset)) ||
+      targets.reduce((n, t) => n + t.weightBps, 0) !== 10_000
+    )
+      return send(res, 422, { error: 'an owned source needs exact listed targets' });
+    lastWallet = owner;
+    const basketId = '700';
+    const depositRaw = '100000000';
+    adapter.mock.fund(owner, { gasRaw: GAS_FAUCET, assets: { [adapter.mock.cash]: depositRaw } });
+    const trades = targets.map((t) => ({
+      sell: adapter.mock.cash,
+      buy: t.asset,
+      amountInRaw: String(t.weightBps * 10_000),
+    }));
+    if (adapter.capabilities.needsApprove)
+      await adapter.mock.send(
+        await adapter.buildApprove({ owner, basketId, amountRaw: depositRaw }),
+      );
+    await adapter.mock.send(
+      await adapter.buildCreateVault({
+        owner,
+        basketId,
+        targets,
+        autoFollow: false,
+        depositRaw,
+        slippageBps: 50,
+        ...(adapter.capabilities.tradesInCreate ? { trades } : {}),
+      }),
+    );
+    const source = (await adapter.getVaults(owner)).find((v) => v.basketId === basketId);
+    if (!source) return send(res, 500, { error: 'source fixture was not created' });
+    if (!adapter.capabilities.tradesInCreate)
+      for (const trade of trades)
+        await adapter.mock.send(
+          await adapter.buildOwnerSwap({
+            vault: source.address,
+            trades: [trade],
+            slippageBps: 50,
+          }),
+        );
+    return send(res, 200, { address: source.address });
+  }
   if (path.startsWith('/risk/') && method === 'GET') {
     const answer = riskAnswer(`${path}${url.search}`);
     return send(res, answer.status, answer.body);

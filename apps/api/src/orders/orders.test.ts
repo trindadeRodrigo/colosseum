@@ -925,6 +925,8 @@ describe('no /v1 route can make the server sign', () => {
       'orders/continue.ts',
       'orders/errors.ts',
       'orders/families.ts',
+      // a shared portfolio's figures, from the plan inputs handed in: no file, no key, no chain call
+      'orders/figures.ts',
       'orders/legs.ts',
       'orders/mix.ts',
       'orders/person.ts',

@@ -81,10 +81,14 @@ const screen = async (lang: Lang = 'en') => {
 };
 const signIn = (accounts = PHANTOM, provenance: 'sandbox' | 'live' | 'mock' = 'sandbox') =>
   portStore.set(signedInPort(accounts, {}, provenance));
-const vaults = (host: HTMLElement) => host.querySelectorAll('[data-ui="card"] h2');
+const vaults = (host: HTMLElement) => host.querySelectorAll('[data-ui="vault-summary"]');
 const pins = (host: HTMLElement) => [...host.querySelectorAll('[data-ui="figure"]')];
 /** The vault's own panel: what it holds. */
-const panel = (host: HTMLElement) => find(host, '[data-ui="vault"] > [data-ui="card"]');
+const panel = (host: HTMLElement) => {
+  const card = find(host, '[data-ui="vault-value"]').closest<HTMLElement>('[data-ui="card"]');
+  if (!card) throw new Error('The detailed vault value keeps its original card.');
+  return card;
+};
 const primary = (host: HTMLElement) => host.querySelector('[data-variant="primary"]');
 const text = (host: HTMLElement) => host.textContent ?? '';
 
@@ -96,6 +100,124 @@ beforeEach(() => {
 afterEach(unmountAll);
 
 describe('the monitor, for a person with a vault on their chain', () => {
+  it('shows a sourced overall value and compact owned cards, retaining all details and routes', async () => {
+    const zero = vault({
+      address: SECOND_VAULT,
+      name: 'Rainy day',
+      valueUsd: '0',
+      cash: { ...vault().cash, raw: '0', display: '0' },
+      positions: vault().positions.map((row) => ({
+        ...row,
+        raw: '0',
+        display: '0',
+        valueUsd: '0',
+        weightBps: 0,
+      })),
+    });
+    const server = api({
+      person: onSolana,
+      portfolio: () => json(portfolioBody(chainOf([vault({ name: '<img src=x> Travel' }), zero]))),
+    });
+    signIn();
+    const host = await screen();
+    const overview = find(host, '[data-ui="portfolio-summary"]');
+    expect(find(overview, '[data-ui="portfolio-total"]').textContent).toContain('$1,040.00');
+    expect(find(overview, '[data-ui="portfolio-total"] [data-ui="pin"]')).toBeTruthy();
+    expect(find(overview, '[data-ui="portfolio-vault-count"]').textContent).toBe('2');
+    expect(find(overview, '[data-ui="portfolio-holding-count"]').textContent).toBe('3');
+    const cards = [...host.querySelectorAll<HTMLElement>('[data-ui="vault"]')];
+    expect(cards).toHaveLength(2);
+    expect(cards.map((card) => find(card, '[data-ui="vault-name"]').textContent)).toEqual([
+      '<img src=x> Travel',
+      'Rainy day',
+    ]);
+    expect(host.querySelector('img[src="x"]')).toBeNull();
+    expect(
+      cards.map((card) => find(card, '[data-ui="vault-add-money"]').getAttribute('href')),
+    ).toEqual([`/vaults/solana/${VAULT}/add`, `/vaults/solana/${SECOND_VAULT}/add`]);
+    for (const [index, card] of cards.entries()) {
+      const summary = find(card, '[data-ui="vault-summary"]');
+      expect(summary.querySelector('table')).toBeNull();
+      expect(find(summary, '[data-ui="vault-summary-value"] [data-ui="pin"]')).toBeTruthy();
+      const open = [...summary.querySelectorAll('a')].find(
+        (link) => link.textContent === en.portfolio.overview.open,
+      );
+      expect(open?.getAttribute('href')).toBe(
+        `/vaults/solana/${index === 0 ? VAULT : SECOND_VAULT}`,
+      );
+      const details = find<HTMLDetailsElement>(card, '[data-ui="vault-read-details"]');
+      expect(details.open).toBe(false);
+      expect(details.querySelector('table')).not.toBeNull();
+      expect(details.querySelector('[data-ui="goal-card"]')).not.toBeNull();
+    }
+    const current = find(cards[0] as HTMLElement, '[data-ui="vault-summary-holdings"]');
+    expect(current.querySelectorAll('[data-ui="asset-mark"]')).toHaveLength(3);
+    expect(current.textContent).toContain('USDY (Ondo) 63.5%');
+    expect(current.textContent).toContain('Cash (USDC) 24%');
+    expect(cards[1]?.querySelector('[data-ui="holdings-bar"]')).toBeNull();
+    expect(server.to(PORTFOLIO_PATH)).toHaveLength(1);
+    expect(primary(host)).toBeNull();
+  });
+
+  it.each(['en', 'pt'] as const)(
+    'labels a partial read and unpriced actual holding without inventing its share, %s',
+    async (lang) => {
+      const [first, second] = vault().positions;
+      if (!first || !second) throw new Error('The fixture has both positions.');
+      api({
+        person: onSolana,
+        portfolio: () =>
+          json({
+            ...portfolioBody(
+              chainOf([
+                vault({
+                  valueUsd: '250',
+                  positions: [
+                    { ...first, valueUsd: null, weightBps: 0 },
+                    { ...second, raw: '0', valueUsd: '0', weightBps: 0 },
+                  ],
+                }),
+              ]),
+            ),
+            unavailable: [
+              {
+                chain: 'robinhood',
+                name: 'Robinhood Chain',
+                code: 'CHAIN_UNAVAILABLE',
+                error: 'unavailable',
+                retryable: true,
+              },
+            ],
+          }),
+      });
+      signIn();
+      const host = await screen(lang);
+      const overview = find(host, '[data-ui="portfolio-summary"]');
+      const copy = dictionary(lang).portfolio;
+      expect(overview.textContent).toContain(copy.overview.partialValue);
+      expect(find(overview, '[data-ui="portfolio-partial"]').textContent).toBe(
+        copy.overview.partial,
+      );
+      expect(find(overview, '[data-ui="portfolio-total"]').textContent).toContain(
+        lang === 'en' ? '$250.00' : 'US$ 250,00',
+      );
+      expect(find(overview, '[data-ui="portfolio-vault-count"]').textContent).toBe('1');
+      expect(find(overview, '[data-ui="portfolio-holding-count"]').textContent).toBe('2');
+      expect(find(overview, '[data-ui="portfolio-unpriced"]').textContent).toBe(
+        copy.vault.unpriced(1),
+      );
+      const summary = find(host, '[data-ui="vault-summary"]');
+      const rows = [...summary.querySelectorAll('[data-ui="vault-summary-holdings"] li')];
+      expect(rows).toHaveLength(2);
+      expect(rows[0]?.textContent).toContain('—');
+      expect(summary.textContent).not.toContain('PAXG');
+      expect(summary.querySelectorAll('[data-ui="holdings-bar"] > span')).toHaveLength(1);
+      expect(
+        summary.querySelector('[data-ui="holdings-bar"] > span')?.getAttribute('style'),
+      ).toContain('100%');
+    },
+  );
+
   it('asks once for the portfolio, and shows the vault with its value, with its own facts behind Details', async () => {
     const server = api({ person: onSolana });
     signIn();
@@ -108,8 +230,17 @@ describe('the monitor, for a person with a vault on their chain', () => {
     expect(host.querySelectorAll('.font-display')).toHaveLength(1);
     expect(find(host, '.font-display').closest('[data-ui="goal-card"]')).not.toBeNull();
     expect(vaults(host)).toHaveLength(1);
+    expect(find(host, `a[href="/vaults/solana/${VAULT}#vault-conversation"]`).textContent).toBe(
+      en.shared.vault.conversation.resume,
+    );
+    const goalDetails = [...host.querySelectorAll('details')].find(
+      (details) => details.querySelector('summary')?.textContent === en.portfolio.planDetails,
+    );
+    expect(goalDetails?.open).toBe(false);
+    expect(goalDetails?.querySelector('[data-ui="goal-card"]')).not.toBeNull();
+
     const words = en.portfolio.vault;
-    expect(find(host, '[data-ui="card"] h2').textContent).toBe(words.title);
+    expect(find(panel(host), 'h2').textContent).toBe(words.title);
     expect(text(host)).toContain(words.value);
     expect(text(host)).toContain('$1,040.00');
     expect(text(host)).toContain(words.observed('Oct 5, 2026, 14:00 UTC'));
@@ -653,6 +784,9 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
         [doneOrder(), true],
         [orderOn(), true],
         [stoppedOrder(), false],
+        // an order nobody signed that ran out (the invest card makes one to show its prices): no
+        // deposit of its own landed, so it is no stopped buy, however much cash the vault holds
+        [{ ...orderOn(), status: 'expired' as const }, true],
       ] as const) {
         api({
           person: onSolana,
@@ -671,6 +805,44 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
         await unmountAll();
         window.localStorage.clear();
       }
+    });
+
+    it('drops this browser’s record of an order nobody approved once its time has run out, and no other', async () => {
+      const LOOKED = '00000000-0000-4000-8000-0000000000e1';
+      const FINISHING = '00000000-0000-4000-8000-0000000000e2';
+      const lapsed = (id: string) => ({ ...orderOn(), id, expiresAt: 1 });
+      api({
+        person: onSolana,
+        portfolio: () => {
+          // approved here: the order's own page runs from it
+          bought({ approved: { order: orderOn(), consents: [], at: '2026-10-06T00:00:00Z' } });
+          // made by the invest card to show its prices, and left
+          keepOrder(recordOf('solana', { orderId: LOOKED, userId: onSolana.userId }));
+          // made to finish another order, never approved: what it is held to is in its record
+          keepOrder(
+            recordOf('solana', {
+              orderId: FINISHING,
+              userId: onSolana.userId,
+              continues: { orderId: ORDER_ID, trades: [] },
+            }),
+          );
+          return cashHeavy();
+        },
+        more: (path) =>
+          path === `/v1/orders/${ORDER_ID}`
+            ? json(lapsed(ORDER_ID))
+            : path === `/v1/orders/${LOOKED}`
+              ? json(lapsed(LOOKED))
+              : path === `/v1/orders/${FINISHING}`
+                ? json(lapsed(FINISHING))
+                : null,
+      });
+      signIn();
+      await screen();
+      await settle();
+      await settle();
+      const kept = (id: string) => window.localStorage.getItem(`tf-order:${id}`) !== null;
+      expect([kept(LOOKED), kept(ORDER_ID), kept(FINISHING)]).toEqual([false, true, true]);
     });
 
     it('leaves a buy alone once an order was made to finish it: what is left is that order’s', async () => {
@@ -1090,6 +1262,17 @@ describe('each vault as his guide’s goal card, plan and activity', () => {
     for (const line of lines)
       expect(line.querySelector('a[href^="https://solscan.io/tx/"]')).not.toBeNull();
     expect(find(activity, '[data-ui="disclaimer"] p[lang]').textContent).toBe(DISCLAIMER.en);
+    const historyDetails = find<HTMLDetailsElement>(activity, '[data-ui="activity-details"]');
+    expect(historyDetails.open).toBe(false);
+    expect(find(historyDetails, 'summary').textContent).toBe(en.activity.title);
+    expect(historyDetails.querySelector('[data-ui="disclaimer"]')).toBeNull();
+    expect(find(activity, '[data-ui="disclaimer"]').closest('details')).toBeNull();
+    expect(historyDetails.querySelectorAll('[data-ui="execution-list"] li')).toHaveLength(
+      lines.length,
+    );
+    expect(
+      [...historyDetails.querySelectorAll('a')].map((link) => link.getAttribute('href')),
+    ).toEqual([...activity.querySelectorAll('a')].map((link) => link.getAttribute('href')));
   });
 });
 
@@ -1135,13 +1318,14 @@ describe('the chain of each vault', () => {
     ['solana', onSolana, () => portfolioBody()],
     ['robinhood', onRobinhood, () => portfolioOf(robinhoodChain())],
   ] as const)(
-    'is badged on the goal card and the vault panel, on %s',
+    'is badged on the summary, goal card and vault panel, on %s',
     async (chain, person, body) => {
       api({ person, portfolio: () => json(body()) });
       signIn(chain === 'solana' ? PHANTOM : EMBEDDED, chain === 'solana' ? 'sandbox' : 'mock');
       const host = await screen();
       const vault = find(host, '[data-ui="vault"]');
-      expect(chainsOf(vault as HTMLElement)).toEqual([chain, chain]);
+      expect(chainsOf(vault as HTMLElement)).toEqual([chain, chain, chain]);
+      expect(chainsOf(vault as HTMLElement, '[data-ui="vault-summary"]')).toEqual([chain]);
       expect(chainsOf(vault as HTMLElement, '[data-ui="goal-card"]')).toEqual([chain]);
       expect(chainsOf(vault as HTMLElement, '[data-ui="card-header"]')).toEqual([chain]);
       // the page's chain line names it too, and there is nothing to group

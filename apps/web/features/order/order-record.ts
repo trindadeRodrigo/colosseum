@@ -186,6 +186,21 @@ export function keepOrder(record: OrderRecord): boolean {
   }
 }
 
+/**
+ * Forgets the record of an order nobody approved: the invest card made it to show its prices, and
+ * the person changed the amount or left before pressing. Nothing was signed for it, and our server's
+ * copy runs out by itself. An order that was approved is never forgotten here: it is what its page
+ * runs from.
+ */
+export function forgetUnapproved(orderId: string, userId: string | null): void {
+  try {
+    const record = recallOrder(orderId, userId);
+    if (record && record.approved === null) window.localStorage.removeItem(KEY(orderId));
+  } catch {
+    // Not removed: it is one more record with nothing approved, which signs nothing.
+  }
+}
+
 /** The record of this order, for this person, if it is here and reads. */
 export function recallOrder(orderId: string, userId: string | null): OrderRecord | null {
   if (!userId) return null;

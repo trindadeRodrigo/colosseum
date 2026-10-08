@@ -134,7 +134,7 @@ Reserved      1 ──[2]── 3 ── 4 ── 5  Enthusiastic  calm; confide
 |---|---|---|
 | **Goal** | What the user wants: amount, date, income, exit window, risk profile | Always named by the user's label ("Apartment fund") |
 | **Constraint sheet** | The editable, validated statement of the goal | Consumer UI may say **"Your goal, in detail"**. Docs say `ConstraintSheet` |
-| **Plan** | The portfolio solved for the goal, plus path and stress cases | Not "strategy", which means someone else's menu |
+| **Plan** | The portfolio solved for the goal, plus path and stress cases | Not "strategy" for a plan. Two scoped exceptions (Thom, Oct 7–8): a vault's target weights as its owner sets and refines them in the vault conversation, and a product shared from that vault, are its "strategy" (gates `MODEL-LED-VAULT-CONVERSATION`, `SHARED-FULL`). A plan made for a goal stays a plan |
 | **Leg** | One position in the plan | Consumer UI may say "part of your plan". Never "bet" or "play" |
 | **After-haircut yield** | The yield we use, after credit-aware haircut | "Quoted" for the source's number. Never show quoted alone |
 | **Exit** / **access to cash** | How much can be withdrawn, how fast, at what cost | Consumer: "access to cash". Docs and Bearing: "exit capacity", "depth" |

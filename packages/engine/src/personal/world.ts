@@ -198,6 +198,11 @@ function inOrder(yields: YieldObservation[]): YieldObservation[] {
   );
   return sorted.filter((x, i) => x.key !== sorted[i - 1]?.key).map((x) => x.y);
 }
+
+/** The observations a plan counts, including its deterministic choice between tied readings. */
+export function primaryYieldsOf(yields: YieldObservation[]): Map<string, YieldObservation> {
+  return pickPrimaryYield(inOrder(yields));
+}
 const MONTHS_IN_A_YEAR = 12;
 
 /** The month `months` after the month of an ISO time, as YYYY-MM. Read from the text: no clock. */
@@ -474,7 +479,7 @@ export function buildWorld(
     families,
     held,
     heldTotal,
-    yields: pickPrimaryYield(inOrder(parsedYields.data)),
+    yields: primaryYieldsOf(parsedYields.data),
     given: {
       yields: inOrder(parsedYields.data),
       fx: fxInOrder,

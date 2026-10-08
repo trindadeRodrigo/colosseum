@@ -15,6 +15,7 @@ import { SIGNED_IN_COOKIE } from '../../i18n';
 import { forgetGoalDraft } from '../goal/draft';
 import { forgetEveryOrder, forgetOrders } from '../order/order-record';
 import { forgetPlans } from '../order/plan-store';
+import { forgetConversations } from '../vault-conversation/forget';
 import {
   useApiFetch,
   useLeaveHere,
@@ -160,7 +161,10 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   // browser kept under their id since the press (another tab of theirs may have) goes with them.
   const ousted = useOustedPerson();
   useEffect(() => {
-    if (ousted) forgetOrders(ousted.userId);
+    if (ousted) {
+      forgetOrders(ousted.userId);
+      forgetConversations(ousted.userId);
+    }
   }, [ousted]);
   const [read, setRead] = useState<Read | null>(null);
   const [round, setRound] = useState(0);
@@ -207,6 +211,8 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       // they sign in again. The trust acceptance stays: it holds no figure (order-record.ts).
       forgetPlans();
       forgetOrders(before.current);
+      // and their private vault conversations, as private as the records
+      forgetConversations(before.current);
     }
     before.current = who;
   }, [who, out]);
@@ -332,6 +338,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     forgetPlans();
     // nobody is known, so every record goes, whoever it was kept for
     forgetEveryOrder();
+    forgetConversations(null);
     before.current = null;
     seen.current = false;
     setStalled(true);

@@ -180,7 +180,7 @@ describe('rule 1: nothing the product ships imports from a dev, test or fixtures
   );
 
   it('reads the app: the product’s screens and what they are tested with', () => {
-    expect(shipped).toContain('features/goal/GoalScreen.tsx');
+    expect(shipped).toContain('features/invest/InvestScreen.tsx');
     expect(shipped).toContain('features/account/SignInScreen.tsx');
     expect(shipped).toContain('components/shell/AppDocument.tsx');
     for (const helper of [
@@ -202,7 +202,7 @@ describe('rule 1: nothing the product ships imports from a dev, test or fixtures
   it('finds none at all in what the product’s routes are built from', () => {
     const built = [...reach(product).files];
     expect(built.length).toBeGreaterThan(40);
-    expect(built).toContain('features/goal/GoalScreen.tsx');
+    expect(built).toContain('features/invest/InvestScreen.tsx');
     expect(built).toContain('features/wallet/privy-bridge.tsx');
     expect(built.filter(notShipped)).toEqual([]);
   });
@@ -258,7 +258,7 @@ describe('rule 1: nothing the product ships imports from a dev, test or fixtures
     const bad = (file: string, text: string) =>
       importsOf(file, text).filter((edge) => edge.file !== null && notShipped(edge.file));
     expect(
-      bad('features/goal/GoalScreen.tsx', "import { SHEET } from './test/plan';"),
+      bad('features/invest/InvestScreen.tsx', "import { SHEET } from './test/plan';"),
     ).toHaveLength(1);
     expect(
       bad('app/(app)/goal/page.tsx', "const S = () => import('../dev/ui/Showcase');"),
@@ -342,6 +342,21 @@ describe('rule 3: no screen can reach a key', () => {
   /** The one screen that imports the runner, and the one route built from it. */
   const ORDER_SCREEN = 'features/order/OrderScreen.tsx';
   const ORDER_ROUTE = 'app/(app)/orders/[id]/page.tsx';
+  /**
+   * The routes that sign: the order's own, and the three whose card runs an order with one press
+   * (features/order/InvestCard.tsx draws the order screen inside it). Each reaches the runner through
+   * the order screen and by no other file.
+   */
+  const SIGNING_ROUTES: readonly string[] = [
+    ORDER_ROUTE,
+    'app/(app)/plan/[id]/buy/page.tsx',
+    'app/(app)/indexes/[slug]/buy/page.tsx',
+    // a shared portfolio's own page mounts the invest card under its holdings (gate PRODUCTS-PLAN-PANE)
+    'app/(app)/indexes/[slug]/page.tsx',
+    'app/(app)/vaults/[chain]/[address]/add/page.tsx',
+    // the Invest screen's pane mounts the invest card under the plan (gate INVEST-TWO-PANE)
+    'app/(app)/goal/page.tsx',
+  ];
 
   /** What a file outside the seam may take from a file of the seam, by name. Types are free. */
   const OPEN: Record<string, readonly string[]> = {
@@ -533,7 +548,7 @@ describe('rule 3: no screen can reach a key', () => {
 
   it('reads every file a product route is built from, the screens among them', () => {
     for (const file of [
-      'features/goal/GoalScreen.tsx',
+      'features/invest/InvestScreen.tsx',
       'features/account/SignInScreen.tsx',
       'features/account/ChainSwitch.tsx',
       'features/account/AccountProvider.tsx',
@@ -596,11 +611,15 @@ describe('rule 3: no screen can reach a key', () => {
       'features/order/order-view.ts',
     ]);
     expect(takesRunner('features/order/order-view.ts')).toBe(false);
-    // by any path: every product route but the order's is built without the whole port
-    expect(product).toContain(ORDER_ROUTE);
-    expect(reach(product.filter((r) => r !== ORDER_ROUTE)).files.has(SIGNING)).toBe(false);
-    expect(reach(product.filter((r) => r !== ORDER_ROUTE)).files.has(RUNNER)).toBe(false);
-    expect(reach([ORDER_ROUTE]).files.has(SIGNING)).toBe(true);
+    // by any path: every product route is built without the whole port, but the order's and the
+    // three that invest, which draw the order's own screen inside their card (INVEST-ONE-PRESS)
+    for (const route of SIGNING_ROUTES) expect(product).toContain(route);
+    const others = product.filter((r) => !SIGNING_ROUTES.includes(r));
+    expect(reach(others).files.has(SIGNING)).toBe(false);
+    expect(reach(others).files.has(RUNNER)).toBe(false);
+    // and none of them reaches the order screen, which is the one way to the runner
+    expect(reach(others).files.has(ORDER_SCREEN)).toBe(false);
+    for (const route of SIGNING_ROUTES) expect(reach([route]).files.has(SIGNING), route).toBe(true);
     expect(built.files.has(RUNNER)).toBe(true);
   });
 
@@ -668,7 +687,7 @@ describe('rule 3: no screen can reach a key', () => {
   });
 
   it('bites: every way of getting at a signature that is written in the file', () => {
-    const file = 'features/goal/GoalScreen.tsx';
+    const file = 'features/invest/InvestScreen.tsx';
     const caught: Record<string, string> = {
       'a call': "await port.sign('solana', [tx]);",
       'a call on the hook': 'await useWalletPort().send(chain, tx);',
@@ -705,7 +724,7 @@ describe('rule 3: no screen can reach a key', () => {
   });
 
   it('bites: what is not written in the file is held by what a screen can reach', () => {
-    const file = 'features/goal/GoalScreen.tsx';
+    const file = 'features/invest/InvestScreen.tsx';
     // A key built at run time, and the port handed to a helper: nothing in the text names a member.
     // The port a screen holds has none, so both come to nothing (the test above), and the typecheck
     // refuses both: the screen's port has no such member and takes no string as a key.

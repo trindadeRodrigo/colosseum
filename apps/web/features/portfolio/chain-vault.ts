@@ -76,6 +76,17 @@ export function buyableTargets(vault: ChainVault): Target[] | null {
     : null;
 }
 
+/** Read-only chain seam shared by owned-vault views and strategy publication. */
+export function readChainVault(
+  node: RpcCall,
+  deployment: Exclude<GuardDeployment, { family: 'mock' }>,
+  at: { owner: string; basketId: string },
+): Promise<ChainVault | null> {
+  return deployment.family === 'solana'
+    ? readSolanaVault(node, deployment, at)
+    : readEvmVault(node, deployment, at);
+}
+
 export const sameTargets = (a: readonly Target[], b: readonly Target[]) =>
   a.length === b.length &&
   a.every((t, i) => t.asset === b[i]?.asset && t.weightBps === b[i]?.weightBps);
