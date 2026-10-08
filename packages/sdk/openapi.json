@@ -1686,7 +1686,7 @@
       "post": {
         "summary": "Make a plan from a goal and its limits, and store it. Nothing is bought",
         "tags": ["plans"],
-        "description": "The sheet is validated before anything is computed, and a sheet that does not validate answers 400: the engine never runs on it. The plan is made by a deterministic engine on the chain the signed-in person's plans live on (`GET /v1/me`), from the assets listed there and the shared portfolios that have a recipe there. The sheet names that one chain: another answers 422, and a person with no chain yet gets 409. Stock tokens are never in a plan whose goal is to protect or to earn an income. A line's ceiling comes from the measured exit of its token where there is one; where there is none it is its tier's, and the line and `flags` say so (`ceiling_from_tier:<asset>`). Every line has its reasons; every figure the plan stands on is in `observations` with its source, time, method and provenance. `rollUp` is the plan's concentration by issuer, chain and class and its exit figures, from the same figures; with no stored quote before a buy, its quoted exit is null. The answer's `id` is what `POST /v1/orders` buys (`proposalId`). `candidates` are the plans of the same goal made three ways inside the same limits (Cover, Spread, Carry), each stored with its own `id`, in that fixed order, none marked or selected; each has its `scorecard` (months covered, months paid now and under each named stress, carry observed, exit cost, concentration, credit share, open FX for a goal not in dollars) and, with withdrawals to come, its `status` with the ways to close a gap. Two that come out as one choice, or one that another matches or betters on every line of the scorecard, are not shown: `candidatesNotShown` says why. No odds and no projected return. The plan is not advice: see `disclaimer`.",
+        "description": "The sheet is validated before anything is computed, and a sheet that does not validate answers 400: the engine never runs on it. The plan is made by a deterministic engine on the chain the signed-in person's plans live on (`GET /v1/me`), from the assets listed there and the shared portfolios that have a recipe there. The sheet names that one chain: another answers 422, and a person with no chain yet gets 409. Stock tokens are never in a plan whose goal is to protect or to earn an income. A line's ceiling comes from the measured exit of its token where there is one; where there is none it is its tier's, and the line and `flags` say so (`ceiling_from_tier:<asset>`). Every line has its reasons; every figure the plan stands on is in `observations` with its source, time, method and provenance. `rollUp` is the plan's concentration by issuer, chain and class and its exit figures, from the same figures; with no stored quote before a buy, its quoted exit is null. The answer's `id` is what `POST /v1/orders` buys (`proposalId`). `candidates` are the plans of the same goal made three ways inside the same limits (Cover, Spread, Carry), each stored with its own `id`, in that fixed order, none marked or selected; each has its `scorecard` (months covered, months paid now and under each named stress, carry observed, exit cost, concentration, credit share, open FX for a goal not in dollars) and, with withdrawals to come, its `status` with the ways to close a gap. Two that come out as one choice, or one that another matches or betters on every line of the scorecard, are not shown: `candidatesNotShown` says why. No odds and no projected return.  `thread` carries bounded guided turns, stored privately once for the whole offered build. `previousPlanId` joins only the caller’s own prior conversation; another owner or linked plan is ignored. These records are separate from model preview history. The plan is not advice: see `disclaimer`.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1944,6 +1944,242 @@
                       "rules",
                       "language"
                     ]
+                  },
+                  "thread": {
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "text": {
+                          "type": "string",
+                          "maxLength": 2000
+                        },
+                        "reply": {
+                          "type": "object",
+                          "properties": {
+                            "say": {
+                              "maxItems": 8,
+                              "type": "array",
+                              "items": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "key": {
+                                        "type": "string",
+                                        "enum": ["understood"]
+                                      }
+                                    },
+                                    "required": ["key"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "key": {
+                                        "type": "string",
+                                        "enum": ["notUnderstood"]
+                                      }
+                                    },
+                                    "required": ["key"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "key": {
+                                        "type": "string",
+                                        "enum": ["held"]
+                                      }
+                                    },
+                                    "required": ["key"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "key": {
+                                        "type": "string",
+                                        "enum": ["set"]
+                                      },
+                                      "fact": {
+                                        "type": "string",
+                                        "enum": ["goal", "amount", "income", "horizon", "risk"]
+                                      }
+                                    },
+                                    "required": ["key", "fact"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "key": {
+                                        "type": "string",
+                                        "enum": ["failed"]
+                                      },
+                                      "why": {
+                                        "type": "string",
+                                        "enum": [
+                                          "too_short",
+                                          "too_long",
+                                          "busy",
+                                          "unreachable",
+                                          "unreadable"
+                                        ]
+                                      }
+                                    },
+                                    "required": ["key", "why"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "key": {
+                                        "type": "string",
+                                        "enum": ["unfit"]
+                                      },
+                                      "fact": {
+                                        "type": "string",
+                                        "enum": ["goal", "amount", "income", "horizon", "risk"]
+                                      }
+                                    },
+                                    "required": ["key", "fact"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "key": {
+                                        "type": "string",
+                                        "enum": ["cantPick"]
+                                      },
+                                      "pick": {
+                                        "type": "string",
+                                        "enum": [
+                                          "nvidia",
+                                          "apple",
+                                          "tesla",
+                                          "microsoft",
+                                          "amazon",
+                                          "google",
+                                          "meta",
+                                          "bitcoin",
+                                          "ether"
+                                        ]
+                                      }
+                                    },
+                                    "required": ["key", "pick"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "key": {
+                                        "type": "string",
+                                        "enum": ["riskTop"]
+                                      }
+                                    },
+                                    "required": ["key"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "key": {
+                                        "type": "string",
+                                        "enum": ["riskBottom"]
+                                      }
+                                    },
+                                    "required": ["key"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "key": {
+                                        "type": "string",
+                                        "enum": ["ready"]
+                                      }
+                                    },
+                                    "required": ["key"],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              }
+                            },
+                            "ask": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": ["goal", "amount", "income", "horizon", "risk"]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "open": {
+                              "maxItems": 5,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": ["goal", "amount", "income", "horizon", "risk"]
+                              }
+                            },
+                            "facts": {
+                              "type": "object",
+                              "properties": {
+                                "goal": {
+                                  "type": "string",
+                                  "enum": ["grow", "income", "protect"]
+                                },
+                                "amountUsd": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 1000000
+                                },
+                                "incomeTargetUsdMonthly": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 1000000
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "horizonMonths": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 480
+                                },
+                                "risk": {
+                                  "type": "string",
+                                  "enum": ["low", "medium", "high"]
+                                },
+                                "chain": {
+                                  "type": "string",
+                                  "enum": ["solana", "base", "robinhood"]
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": ["say", "ask", "open", "facts"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": ["text", "reply"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "previousPlanId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                   }
                 },
                 "required": ["sheet"]
@@ -6610,6 +6846,1529 @@
                     }
                   },
                   "required": ["id", "proposal", "fromLink"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotCashLeg",
+                            "KeeperAssetOff",
+                            "PriceOutOfRange",
+                            "NothingTraded",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "PriceMoved",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        },
+                        "continuedBy": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE",
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED",
+                        "ORDER_CONTINUED",
+                        "STEP_IN_FLIGHT",
+                        "STEP_LANDED",
+                        "NOTHING_LEFT",
+                        "VAULT_CASH_SHORT",
+                        "DEPOSIT_NOT_LANDED",
+                        "ORDER_BUSY",
+                        "CONTINUE_NOT_SUPPORTED"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/baskets/{id}/thread": {
+      "get": {
+        "summary": "A plan’s thread: what was asked, what was understood, and what happened since",
+        "tags": ["plans"],
+        "description": "The signed-in person’s own plan only: another person’s plan, a plan made from a link (it has no thread) and an unknown id all answer the same 404. The thread is the conversation’s: a plan built again in it is in the same thread, so the id of any plan of the conversation answers the whole of it, from the first sentence through every rebuild to the buy and what happened to the vault since. A page holds the newest turns, oldest first, so the newest turn is last; `before` is what to send for the page of older turns, and null when the page starts at the first turn. A `person` turn is their words as typed. An `app` turn is what the app said back, as keys and the facts it used: the screen says it in the person’s language, and no sentence or formatted figure is stored. An `event` turn is written by the server where an order changes state (the plan was built, or built again with the names of the sheet’s fields that changed, an order was made, its deposit landed, the buy was done or stopped, money was taken out): no request writes one. Answered with `Cache-Control: private, no-store`.",
+        "parameters": [
+          {
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{1,18}$"
+            },
+            "in": "query",
+            "name": "before",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "standard",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "planId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "turns": {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                              },
+                              "who": {
+                                "type": "string",
+                                "enum": ["person"]
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["id", "at", "who", "text"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                              },
+                              "who": {
+                                "type": "string",
+                                "enum": ["app"]
+                              },
+                              "reply": {
+                                "type": "object",
+                                "properties": {
+                                  "say": {
+                                    "maxItems": 8,
+                                    "type": "array",
+                                    "items": {
+                                      "oneOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["understood"]
+                                            }
+                                          },
+                                          "required": ["key"],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["notUnderstood"]
+                                            }
+                                          },
+                                          "required": ["key"],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["held"]
+                                            }
+                                          },
+                                          "required": ["key"],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["set"]
+                                            },
+                                            "fact": {
+                                              "type": "string",
+                                              "enum": [
+                                                "goal",
+                                                "amount",
+                                                "income",
+                                                "horizon",
+                                                "risk"
+                                              ]
+                                            }
+                                          },
+                                          "required": ["key", "fact"],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["failed"]
+                                            },
+                                            "why": {
+                                              "type": "string",
+                                              "enum": [
+                                                "too_short",
+                                                "too_long",
+                                                "busy",
+                                                "unreachable",
+                                                "unreadable"
+                                              ]
+                                            }
+                                          },
+                                          "required": ["key", "why"],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["unfit"]
+                                            },
+                                            "fact": {
+                                              "type": "string",
+                                              "enum": [
+                                                "goal",
+                                                "amount",
+                                                "income",
+                                                "horizon",
+                                                "risk"
+                                              ]
+                                            }
+                                          },
+                                          "required": ["key", "fact"],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["cantPick"]
+                                            },
+                                            "pick": {
+                                              "type": "string",
+                                              "enum": [
+                                                "nvidia",
+                                                "apple",
+                                                "tesla",
+                                                "microsoft",
+                                                "amazon",
+                                                "google",
+                                                "meta",
+                                                "bitcoin",
+                                                "ether"
+                                              ]
+                                            }
+                                          },
+                                          "required": ["key", "pick"],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["riskTop"]
+                                            }
+                                          },
+                                          "required": ["key"],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["riskBottom"]
+                                            }
+                                          },
+                                          "required": ["key"],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["ready"]
+                                            }
+                                          },
+                                          "required": ["key"],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "ask": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "enum": ["goal", "amount", "income", "horizon", "risk"]
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "open": {
+                                    "maxItems": 5,
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "enum": ["goal", "amount", "income", "horizon", "risk"]
+                                    }
+                                  },
+                                  "facts": {
+                                    "type": "object",
+                                    "properties": {
+                                      "goal": {
+                                        "type": "string",
+                                        "enum": ["grow", "income", "protect"]
+                                      },
+                                      "amountUsd": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 1000000
+                                      },
+                                      "incomeTargetUsdMonthly": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number",
+                                            "exclusiveMinimum": 0,
+                                            "maximum": 1000000
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "horizonMonths": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 480
+                                      },
+                                      "risk": {
+                                        "type": "string",
+                                        "enum": ["low", "medium", "high"]
+                                      },
+                                      "chain": {
+                                        "type": "string",
+                                        "enum": ["solana", "base", "robinhood"]
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "required": ["say", "ask", "open", "facts"],
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": ["id", "at", "who", "reply"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                              },
+                              "who": {
+                                "type": "string",
+                                "enum": ["event"]
+                              },
+                              "event": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": {
+                                        "type": "string",
+                                        "enum": ["plan_built"]
+                                      },
+                                      "planId": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      }
+                                    },
+                                    "required": ["type", "planId"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": {
+                                        "type": "string",
+                                        "enum": ["plan_rebuilt"]
+                                      },
+                                      "planId": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      },
+                                      "previousPlanId": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      },
+                                      "changed": {
+                                        "maxItems": 16,
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 48,
+                                          "pattern": "^[A-Za-z][A-Za-z0-9]*(?:[._][A-Za-z0-9]+)*$"
+                                        }
+                                      }
+                                    },
+                                    "required": ["type", "planId", "previousPlanId", "changed"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": {
+                                        "type": "string",
+                                        "enum": ["order_made"]
+                                      },
+                                      "orderId": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      },
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": ["buy", "add", "finish", "withdraw"]
+                                      },
+                                      "amountUsd": {
+                                        "type": ["number", "null"]
+                                      }
+                                    },
+                                    "required": ["type", "orderId", "kind", "amountUsd"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": {
+                                        "type": "string",
+                                        "enum": ["deposit_landed"]
+                                      },
+                                      "orderId": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      }
+                                    },
+                                    "required": ["type", "orderId"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": {
+                                        "type": "string",
+                                        "enum": ["buy_done"]
+                                      },
+                                      "orderId": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      }
+                                    },
+                                    "required": ["type", "orderId"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": {
+                                        "type": "string",
+                                        "enum": ["buy_stopped"]
+                                      },
+                                      "orderId": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      }
+                                    },
+                                    "required": ["type", "orderId"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": {
+                                        "type": "string",
+                                        "enum": ["withdrawal_done"]
+                                      },
+                                      "orderId": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      }
+                                    },
+                                    "required": ["type", "orderId"],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              }
+                            },
+                            "required": ["id", "at", "who", "event"],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    },
+                    "before": {
+                      "type": ["string", "null"]
+                    }
+                  },
+                  "required": ["planId", "turns", "before"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "chainCode": {
+                          "type": "string",
+                          "enum": [
+                            "NotKeeper",
+                            "AutoFollowOff",
+                            "KeeperPaused",
+                            "MintNotAccepted",
+                            "RouterNotAllowed",
+                            "SpentTooMuch",
+                            "ReceivedTooLittle",
+                            "OtherAccountDebited",
+                            "AccountTampered",
+                            "PriceStale",
+                            "PriceDeviation",
+                            "MarketClosed",
+                            "MultiplierWindow",
+                            "NotTowardTarget",
+                            "PastTarget",
+                            "Cooldown",
+                            "LossCapReached",
+                            "AssetNotPriced",
+                            "NewAssetNeedsOwner",
+                            "VersionNotEffective",
+                            "CreatorLimit",
+                            "VersionMismatch",
+                            "WrongDestination",
+                            "ParamOutOfBounds",
+                            "NotUpgradeAuthority",
+                            "InvalidTargets",
+                            "NotCashMint",
+                            "ZeroAddress",
+                            "LockedAtLaunch",
+                            "HookNotAllowed",
+                            "AssetListFull",
+                            "SameMint",
+                            "NoPendingVersion",
+                            "NotCreatorOrGuardian",
+                            "NotCashLeg",
+                            "KeeperAssetOff",
+                            "PriceOutOfRange",
+                            "NothingTraded",
+                            "NotOwner",
+                            "CashTokenNotSet",
+                            "DepositShortfall",
+                            "GasTooLow",
+                            "NotAdmin",
+                            "NoCode",
+                            "AssetIsRouter",
+                            "RouterIsAsset",
+                            "NotCreating",
+                            "RouterFailed",
+                            "BalanceUnreadable",
+                            "CashTokenNotRemovable",
+                            "HandoverNotDone",
+                            "AlreadySet",
+                            "RecipeExists",
+                            "BadInput",
+                            "NotSupported",
+                            "TooManyTrades",
+                            "BadTrade",
+                            "VaultNotFound",
+                            "VaultExists",
+                            "RecipeNotFound",
+                            "NotFollowing",
+                            "NotFunded",
+                            "NoGas",
+                            "AllowanceTooLow",
+                            "Expired",
+                            "PriceMoved",
+                            "NotBuiltHere",
+                            "Unavailable",
+                            "Unknown"
+                          ]
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "blocking": {
+                          "type": "object",
+                          "properties": {
+                            "orderId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "legId": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": ["orderId", "legId"],
+                          "additionalProperties": false
+                        },
+                        "continuedBy": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_FUNDED",
+                        "ASSET_NOT_ELIGIBLE",
+                        "GOAL_NOT_ACHIEVABLE",
+                        "NEW_ASSET_NEEDS_APPROVAL",
+                        "VERSION_CHANGED",
+                        "CREATOR_LIMIT",
+                        "ORDER_EXPIRED",
+                        "US_PERSON",
+                        "RATE_LIMITED",
+                        "CHAIN_UNAVAILABLE",
+                        "PLAN_GONE",
+                        "CURRENCY_UNSUPPORTED",
+                        "NO_WALLET_FOR_CHAIN",
+                        "PRICE_MOVED",
+                        "ORDER_CONTINUED",
+                        "STEP_IN_FLIGHT",
+                        "STEP_LANDED",
+                        "NOTHING_LEFT",
+                        "VAULT_CASH_SHORT",
+                        "DEPOSIT_NOT_LANDED",
+                        "ORDER_BUSY",
+                        "CONTINUE_NOT_SUPPORTED"
+                      ]
+                    },
+                    "fix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add a turn to a plan’s thread: the person’s words and what the app said back",
+        "tags": ["plans"],
+        "description": "The signed-in person’s own plan only, with the same 404 as the read. `text` is the person’s words as typed: plain text of at most 2000 characters, with no control characters but a line break and a tab, and none of the marks that reorder text. `reply` is what the app said back, as keys and facts and never a sentence: `facts` takes the sheet’s own values and no other name. A key is one of a closed list (`ThreadSay`), a fact is named from the list of five, and each fact given must be the one the plan’s sheet holds: a figure that is not the plan’s answers 422, naming the fact. Anything else answers 400 and stores nothing. A line break sent as CR LF is stored as LF. No model is called, and the plan does not change: this is the record. An event turn cannot be sent. Counted in the `parse` class of the rate limits.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "reply": {
+                    "type": "object",
+                    "properties": {
+                      "say": {
+                        "maxItems": 8,
+                        "type": "array",
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "key": {
+                                  "type": "string",
+                                  "enum": ["understood"]
+                                }
+                              },
+                              "required": ["key"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "key": {
+                                  "type": "string",
+                                  "enum": ["notUnderstood"]
+                                }
+                              },
+                              "required": ["key"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "key": {
+                                  "type": "string",
+                                  "enum": ["held"]
+                                }
+                              },
+                              "required": ["key"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "key": {
+                                  "type": "string",
+                                  "enum": ["set"]
+                                },
+                                "fact": {
+                                  "type": "string",
+                                  "enum": ["goal", "amount", "income", "horizon", "risk"]
+                                }
+                              },
+                              "required": ["key", "fact"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "key": {
+                                  "type": "string",
+                                  "enum": ["failed"]
+                                },
+                                "why": {
+                                  "type": "string",
+                                  "enum": [
+                                    "too_short",
+                                    "too_long",
+                                    "busy",
+                                    "unreachable",
+                                    "unreadable"
+                                  ]
+                                }
+                              },
+                              "required": ["key", "why"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "key": {
+                                  "type": "string",
+                                  "enum": ["unfit"]
+                                },
+                                "fact": {
+                                  "type": "string",
+                                  "enum": ["goal", "amount", "income", "horizon", "risk"]
+                                }
+                              },
+                              "required": ["key", "fact"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "key": {
+                                  "type": "string",
+                                  "enum": ["cantPick"]
+                                },
+                                "pick": {
+                                  "type": "string",
+                                  "enum": [
+                                    "nvidia",
+                                    "apple",
+                                    "tesla",
+                                    "microsoft",
+                                    "amazon",
+                                    "google",
+                                    "meta",
+                                    "bitcoin",
+                                    "ether"
+                                  ]
+                                }
+                              },
+                              "required": ["key", "pick"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "key": {
+                                  "type": "string",
+                                  "enum": ["riskTop"]
+                                }
+                              },
+                              "required": ["key"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "key": {
+                                  "type": "string",
+                                  "enum": ["riskBottom"]
+                                }
+                              },
+                              "required": ["key"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "key": {
+                                  "type": "string",
+                                  "enum": ["ready"]
+                                }
+                              },
+                              "required": ["key"],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      },
+                      "ask": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": ["goal", "amount", "income", "horizon", "risk"]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "open": {
+                        "maxItems": 5,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": ["goal", "amount", "income", "horizon", "risk"]
+                        }
+                      },
+                      "facts": {
+                        "type": "object",
+                        "properties": {
+                          "goal": {
+                            "type": "string",
+                            "enum": ["grow", "income", "protect"]
+                          },
+                          "amountUsd": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "maximum": 1000000
+                          },
+                          "incomeTargetUsdMonthly": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "exclusiveMinimum": 0,
+                                "maximum": 1000000
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "horizonMonths": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 480
+                          },
+                          "risk": {
+                            "type": "string",
+                            "enum": ["low", "medium", "high"]
+                          },
+                          "chain": {
+                            "type": "string",
+                            "enum": ["solana", "base", "robinhood"]
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": ["say", "ask", "open", "facts"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["text", "reply"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "parse",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "planId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "turns": {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                              },
+                              "who": {
+                                "type": "string",
+                                "enum": ["person"]
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["id", "at", "who", "text"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                              },
+                              "who": {
+                                "type": "string",
+                                "enum": ["app"]
+                              },
+                              "reply": {
+                                "type": "object",
+                                "properties": {
+                                  "say": {
+                                    "maxItems": 8,
+                                    "type": "array",
+                                    "items": {
+                                      "oneOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["understood"]
+                                            }
+                                          },
+                                          "required": ["key"],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["notUnderstood"]
+                                            }
+                                          },
+                                          "required": ["key"],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["held"]
+                                            }
+                                          },
+                                          "required": ["key"],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["set"]
+                                            },
+                                            "fact": {
+                                              "type": "string",
+                                              "enum": [
+                                                "goal",
+                                                "amount",
+                                                "income",
+                                                "horizon",
+                                                "risk"
+                                              ]
+                                            }
+                                          },
+                                          "required": ["key", "fact"],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["failed"]
+                                            },
+                                            "why": {
+                                              "type": "string",
+                                              "enum": [
+                                                "too_short",
+                                                "too_long",
+                                                "busy",
+                                                "unreachable",
+                                                "unreadable"
+                                              ]
+                                            }
+                                          },
+                                          "required": ["key", "why"],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["unfit"]
+                                            },
+                                            "fact": {
+                                              "type": "string",
+                                              "enum": [
+                                                "goal",
+                                                "amount",
+                                                "income",
+                                                "horizon",
+                                                "risk"
+                                              ]
+                                            }
+                                          },
+                                          "required": ["key", "fact"],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["cantPick"]
+                                            },
+                                            "pick": {
+                                              "type": "string",
+                                              "enum": [
+                                                "nvidia",
+                                                "apple",
+                                                "tesla",
+                                                "microsoft",
+                                                "amazon",
+                                                "google",
+                                                "meta",
+                                                "bitcoin",
+                                                "ether"
+                                              ]
+                                            }
+                                          },
+                                          "required": ["key", "pick"],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["riskTop"]
+                                            }
+                                          },
+                                          "required": ["key"],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["riskBottom"]
+                                            }
+                                          },
+                                          "required": ["key"],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "key": {
+                                              "type": "string",
+                                              "enum": ["ready"]
+                                            }
+                                          },
+                                          "required": ["key"],
+                                          "additionalProperties": false
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "ask": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "enum": ["goal", "amount", "income", "horizon", "risk"]
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "open": {
+                                    "maxItems": 5,
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "enum": ["goal", "amount", "income", "horizon", "risk"]
+                                    }
+                                  },
+                                  "facts": {
+                                    "type": "object",
+                                    "properties": {
+                                      "goal": {
+                                        "type": "string",
+                                        "enum": ["grow", "income", "protect"]
+                                      },
+                                      "amountUsd": {
+                                        "type": "number",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 1000000
+                                      },
+                                      "incomeTargetUsdMonthly": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number",
+                                            "exclusiveMinimum": 0,
+                                            "maximum": 1000000
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "horizonMonths": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 480
+                                      },
+                                      "risk": {
+                                        "type": "string",
+                                        "enum": ["low", "medium", "high"]
+                                      },
+                                      "chain": {
+                                        "type": "string",
+                                        "enum": ["solana", "base", "robinhood"]
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "required": ["say", "ask", "open", "facts"],
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": ["id", "at", "who", "reply"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                              },
+                              "who": {
+                                "type": "string",
+                                "enum": ["event"]
+                              },
+                              "event": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": {
+                                        "type": "string",
+                                        "enum": ["plan_built"]
+                                      },
+                                      "planId": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      }
+                                    },
+                                    "required": ["type", "planId"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": {
+                                        "type": "string",
+                                        "enum": ["plan_rebuilt"]
+                                      },
+                                      "planId": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      },
+                                      "previousPlanId": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      },
+                                      "changed": {
+                                        "maxItems": 16,
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 48,
+                                          "pattern": "^[A-Za-z][A-Za-z0-9]*(?:[._][A-Za-z0-9]+)*$"
+                                        }
+                                      }
+                                    },
+                                    "required": ["type", "planId", "previousPlanId", "changed"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": {
+                                        "type": "string",
+                                        "enum": ["order_made"]
+                                      },
+                                      "orderId": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      },
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": ["buy", "add", "finish", "withdraw"]
+                                      },
+                                      "amountUsd": {
+                                        "type": ["number", "null"]
+                                      }
+                                    },
+                                    "required": ["type", "orderId", "kind", "amountUsd"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": {
+                                        "type": "string",
+                                        "enum": ["deposit_landed"]
+                                      },
+                                      "orderId": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      }
+                                    },
+                                    "required": ["type", "orderId"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": {
+                                        "type": "string",
+                                        "enum": ["buy_done"]
+                                      },
+                                      "orderId": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      }
+                                    },
+                                    "required": ["type", "orderId"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": {
+                                        "type": "string",
+                                        "enum": ["buy_stopped"]
+                                      },
+                                      "orderId": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      }
+                                    },
+                                    "required": ["type", "orderId"],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": {
+                                        "type": "string",
+                                        "enum": ["withdrawal_done"]
+                                      },
+                                      "orderId": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      }
+                                    },
+                                    "required": ["type", "orderId"],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              }
+                            },
+                            "required": ["id", "at", "who", "event"],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "required": ["planId", "turns"],
                   "additionalProperties": false
                 }
               }
@@ -16120,6 +17879,1365 @@
                   },
                   "required": ["error"],
                   "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/vaults/{chain}/{address}/conversation": {
+      "get": {
+        "summary": "Read the private conversation for a vault you own",
+        "tags": ["portfolio"],
+        "description": "Owner verified on its chain on every read. Unknown and other-owned vaults give the same 404. Fresh history for legacy, linked, shared and externally created vaults; no creator history is imported. App text is plain display history and never executable authority. Cache-Control: private, no-store.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["solana", "base", "robinhood"]
+            },
+            "in": "path",
+            "name": "chain",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "address",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "standard",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "type": "number",
+                      "enum": [1]
+                    },
+                    "chain": {
+                      "type": "string",
+                      "enum": ["solana", "base", "robinhood"]
+                    },
+                    "address": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string",
+                      "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                    },
+                    "network": {
+                      "type": "string",
+                      "enum": ["mainnet", "testnet", "local"]
+                    },
+                    "revision": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "transcript": {
+                      "maxItems": 400,
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64
+                              },
+                              "who": {
+                                "type": "string",
+                                "enum": ["person"]
+                              },
+                              "text": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 2000
+                              }
+                            },
+                            "required": ["id", "who", "text"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64
+                              },
+                              "who": {
+                                "type": "string",
+                                "enum": ["app"]
+                              },
+                              "text": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 8000
+                              }
+                            },
+                            "required": ["id", "who", "text"],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    },
+                    "checkpoint": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "version": {
+                              "type": "number",
+                              "enum": [1]
+                            },
+                            "language": {
+                              "type": "string",
+                              "enum": ["pt", "en"]
+                            },
+                            "words": {
+                              "maxItems": 200,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 2000
+                              }
+                            },
+                            "answers": {
+                              "type": "object",
+                              "properties": {
+                                "goal": {
+                                  "type": "string",
+                                  "enum": ["grow", "income", "protect"]
+                                },
+                                "amountUsd": {
+                                  "type": "number",
+                                  "minimum": 10,
+                                  "maximum": 1000000
+                                },
+                                "incomeTargetUsdMonthly": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0
+                                },
+                                "horizonMonths": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 480
+                                },
+                                "horizonOpen": {
+                                  "type": "boolean"
+                                },
+                                "risk": {
+                                  "type": "string",
+                                  "enum": ["low", "medium", "high"]
+                                },
+                                "currency": {
+                                  "type": "string",
+                                  "pattern": "^[A-Z]{3}$"
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            "answersThen": {
+                              "maxItems": 199,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "goal": {
+                                    "type": "string",
+                                    "enum": ["grow", "income", "protect"]
+                                  },
+                                  "amountUsd": {
+                                    "type": "number",
+                                    "minimum": 10,
+                                    "maximum": 1000000
+                                  },
+                                  "incomeTargetUsdMonthly": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0
+                                  },
+                                  "horizonMonths": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 480
+                                  },
+                                  "horizonOpen": {
+                                    "type": "boolean"
+                                  },
+                                  "risk": {
+                                    "type": "string",
+                                    "enum": ["low", "medium", "high"]
+                                  },
+                                  "currency": {
+                                    "type": "string",
+                                    "pattern": "^[A-Z]{3}$"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "held": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "growthBps": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 10000
+                                    },
+                                    "dollarYieldBps": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 10000
+                                    },
+                                    "goldBps": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 10000
+                                    },
+                                    "cashBps": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 10000
+                                    }
+                                  },
+                                  "required": ["growthBps", "dollarYieldBps", "goldBps", "cashBps"],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "questionThen": {
+                              "maxItems": 199,
+                              "type": "array",
+                              "items": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": ["interestClarification"]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "pendingInterest": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "quote": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 160
+                                    },
+                                    "sourceTurn": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 9007199254740991
+                                    }
+                                  },
+                                  "required": ["quote", "sourceTurn"],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "allocationKeptThrough": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "allocation": {
+                              "type": "object",
+                              "properties": {
+                                "text": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 2000
+                                },
+                                "baseline": {
+                                  "type": "null"
+                                },
+                                "minimum": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": ["text", "baseline", "minimum"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": ["version", "language", "words", "answers", "answersThen"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "chain",
+                    "address",
+                    "provenance",
+                    "network",
+                    "revision",
+                    "transcript",
+                    "checkpoint",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "code": {
+                          "type": "string",
+                          "enum": ["CONVERSATION_STORE_UNAVAILABLE"]
+                        }
+                      },
+                      "required": ["error", "code"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object",
+                          "properties": {
+                            "chainCode": {
+                              "type": "string",
+                              "enum": [
+                                "NotKeeper",
+                                "AutoFollowOff",
+                                "KeeperPaused",
+                                "MintNotAccepted",
+                                "RouterNotAllowed",
+                                "SpentTooMuch",
+                                "ReceivedTooLittle",
+                                "OtherAccountDebited",
+                                "AccountTampered",
+                                "PriceStale",
+                                "PriceDeviation",
+                                "MarketClosed",
+                                "MultiplierWindow",
+                                "NotTowardTarget",
+                                "PastTarget",
+                                "Cooldown",
+                                "LossCapReached",
+                                "AssetNotPriced",
+                                "NewAssetNeedsOwner",
+                                "VersionNotEffective",
+                                "CreatorLimit",
+                                "VersionMismatch",
+                                "WrongDestination",
+                                "ParamOutOfBounds",
+                                "NotUpgradeAuthority",
+                                "InvalidTargets",
+                                "NotCashMint",
+                                "ZeroAddress",
+                                "LockedAtLaunch",
+                                "HookNotAllowed",
+                                "AssetListFull",
+                                "SameMint",
+                                "NoPendingVersion",
+                                "NotCreatorOrGuardian",
+                                "NotCashLeg",
+                                "KeeperAssetOff",
+                                "PriceOutOfRange",
+                                "NothingTraded",
+                                "NotOwner",
+                                "CashTokenNotSet",
+                                "DepositShortfall",
+                                "GasTooLow",
+                                "NotAdmin",
+                                "NoCode",
+                                "AssetIsRouter",
+                                "RouterIsAsset",
+                                "NotCreating",
+                                "RouterFailed",
+                                "BalanceUnreadable",
+                                "CashTokenNotRemovable",
+                                "HandoverNotDone",
+                                "AlreadySet",
+                                "RecipeExists",
+                                "BadInput",
+                                "NotSupported",
+                                "TooManyTrades",
+                                "BadTrade",
+                                "VaultNotFound",
+                                "VaultExists",
+                                "RecipeNotFound",
+                                "NotFollowing",
+                                "NotFunded",
+                                "NoGas",
+                                "AllowanceTooLow",
+                                "Expired",
+                                "PriceMoved",
+                                "NotBuiltHere",
+                                "Unavailable",
+                                "Unknown"
+                              ]
+                            },
+                            "retryable": {
+                              "type": "boolean"
+                            },
+                            "blocking": {
+                              "type": "object",
+                              "properties": {
+                                "orderId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "legId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": ["orderId", "legId"],
+                              "additionalProperties": false
+                            },
+                            "continuedBy": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "NOT_FUNDED",
+                            "ASSET_NOT_ELIGIBLE",
+                            "GOAL_NOT_ACHIEVABLE",
+                            "NEW_ASSET_NEEDS_APPROVAL",
+                            "VERSION_CHANGED",
+                            "CREATOR_LIMIT",
+                            "ORDER_EXPIRED",
+                            "US_PERSON",
+                            "RATE_LIMITED",
+                            "CHAIN_UNAVAILABLE",
+                            "PLAN_GONE",
+                            "CURRENCY_UNSUPPORTED",
+                            "NO_WALLET_FOR_CHAIN",
+                            "PRICE_MOVED",
+                            "ORDER_CONTINUED",
+                            "STEP_IN_FLIGHT",
+                            "STEP_LANDED",
+                            "NOTHING_LEFT",
+                            "VAULT_CASH_SHORT",
+                            "DEPOSIT_NOT_LANDED",
+                            "ORDER_BUSY",
+                            "CONTINUE_NOT_SUPPORTED"
+                          ]
+                        },
+                        "fix": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["error"],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Save private vault conversation history with an expected revision",
+        "tags": ["portfolio"],
+        "description": "User-authored transcript and replay checkpoint only, never a confirmed sheet or financial authority. expectedNetwork must match the fresh authoritative network before any write; a mismatch gives409 NETWORK_CONFLICT. Replaces the history atomically when expectedRevision matches; stale writes give 409 with details.reason=REVISION_CONFLICT and current revision. Stores no public plan or browser-selected thread id, invokes no model, and builds or executes no financial operation. Cache-Control: private, no-store.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "number",
+                    "enum": [1]
+                  },
+                  "expectedNetwork": {
+                    "type": "string",
+                    "enum": ["mainnet", "testnet", "local"]
+                  },
+                  "expectedRevision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 2147483646
+                  },
+                  "transcript": {
+                    "maxItems": 400,
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 64
+                            },
+                            "who": {
+                              "type": "string",
+                              "enum": ["person"]
+                            },
+                            "text": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 2000
+                            }
+                          },
+                          "required": ["id", "who", "text"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 64
+                            },
+                            "who": {
+                              "type": "string",
+                              "enum": ["app"]
+                            },
+                            "text": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 8000
+                            }
+                          },
+                          "required": ["id", "who", "text"],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  },
+                  "checkpoint": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "version": {
+                            "type": "number",
+                            "enum": [1]
+                          },
+                          "language": {
+                            "type": "string",
+                            "enum": ["pt", "en"]
+                          },
+                          "words": {
+                            "maxItems": 200,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 2000
+                            }
+                          },
+                          "answers": {
+                            "type": "object",
+                            "properties": {
+                              "goal": {
+                                "type": "string",
+                                "enum": ["grow", "income", "protect"]
+                              },
+                              "amountUsd": {
+                                "type": "number",
+                                "minimum": 10,
+                                "maximum": 1000000
+                              },
+                              "incomeTargetUsdMonthly": {
+                                "type": "number",
+                                "exclusiveMinimum": 0
+                              },
+                              "horizonMonths": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 480
+                              },
+                              "horizonOpen": {
+                                "type": "boolean"
+                              },
+                              "risk": {
+                                "type": "string",
+                                "enum": ["low", "medium", "high"]
+                              },
+                              "currency": {
+                                "type": "string",
+                                "pattern": "^[A-Z]{3}$"
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "answersThen": {
+                            "maxItems": 199,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "goal": {
+                                  "type": "string",
+                                  "enum": ["grow", "income", "protect"]
+                                },
+                                "amountUsd": {
+                                  "type": "number",
+                                  "minimum": 10,
+                                  "maximum": 1000000
+                                },
+                                "incomeTargetUsdMonthly": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0
+                                },
+                                "horizonMonths": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 480
+                                },
+                                "horizonOpen": {
+                                  "type": "boolean"
+                                },
+                                "risk": {
+                                  "type": "string",
+                                  "enum": ["low", "medium", "high"]
+                                },
+                                "currency": {
+                                  "type": "string",
+                                  "pattern": "^[A-Z]{3}$"
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          },
+                          "held": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "growthBps": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "dollarYieldBps": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "goldBps": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "cashBps": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  }
+                                },
+                                "required": ["growthBps", "dollarYieldBps", "goldBps", "cashBps"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "questionThen": {
+                            "maxItems": 199,
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": ["interestClarification"]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "pendingInterest": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "quote": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 160
+                                  },
+                                  "sourceTurn": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  }
+                                },
+                                "required": ["quote", "sourceTurn"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "allocationKeptThrough": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "allocation": {
+                            "type": "object",
+                            "properties": {
+                              "text": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 2000
+                              },
+                              "baseline": {
+                                "type": "null"
+                              },
+                              "minimum": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": ["text", "baseline", "minimum"],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": ["version", "language", "words", "answers", "answersThen"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "version",
+                  "expectedNetwork",
+                  "expectedRevision",
+                  "transcript",
+                  "checkpoint"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["solana", "base", "robinhood"]
+            },
+            "in": "path",
+            "name": "chain",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "in": "path",
+            "name": "address",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "accessToken": [],
+            "identityToken": []
+          }
+        ],
+        "x-rate-limit": "standard",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "type": "number",
+                      "enum": [1]
+                    },
+                    "chain": {
+                      "type": "string",
+                      "enum": ["solana", "base", "robinhood"]
+                    },
+                    "address": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string",
+                      "enum": ["live", "mock", "sandbox", "fixture", "prior_dataset"]
+                    },
+                    "network": {
+                      "type": "string",
+                      "enum": ["mainnet", "testnet", "local"]
+                    },
+                    "revision": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "transcript": {
+                      "maxItems": 400,
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64
+                              },
+                              "who": {
+                                "type": "string",
+                                "enum": ["person"]
+                              },
+                              "text": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 2000
+                              }
+                            },
+                            "required": ["id", "who", "text"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64
+                              },
+                              "who": {
+                                "type": "string",
+                                "enum": ["app"]
+                              },
+                              "text": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 8000
+                              }
+                            },
+                            "required": ["id", "who", "text"],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    },
+                    "checkpoint": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "version": {
+                              "type": "number",
+                              "enum": [1]
+                            },
+                            "language": {
+                              "type": "string",
+                              "enum": ["pt", "en"]
+                            },
+                            "words": {
+                              "maxItems": 200,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 2000
+                              }
+                            },
+                            "answers": {
+                              "type": "object",
+                              "properties": {
+                                "goal": {
+                                  "type": "string",
+                                  "enum": ["grow", "income", "protect"]
+                                },
+                                "amountUsd": {
+                                  "type": "number",
+                                  "minimum": 10,
+                                  "maximum": 1000000
+                                },
+                                "incomeTargetUsdMonthly": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0
+                                },
+                                "horizonMonths": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 480
+                                },
+                                "horizonOpen": {
+                                  "type": "boolean"
+                                },
+                                "risk": {
+                                  "type": "string",
+                                  "enum": ["low", "medium", "high"]
+                                },
+                                "currency": {
+                                  "type": "string",
+                                  "pattern": "^[A-Z]{3}$"
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            "answersThen": {
+                              "maxItems": 199,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "goal": {
+                                    "type": "string",
+                                    "enum": ["grow", "income", "protect"]
+                                  },
+                                  "amountUsd": {
+                                    "type": "number",
+                                    "minimum": 10,
+                                    "maximum": 1000000
+                                  },
+                                  "incomeTargetUsdMonthly": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0
+                                  },
+                                  "horizonMonths": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 480
+                                  },
+                                  "horizonOpen": {
+                                    "type": "boolean"
+                                  },
+                                  "risk": {
+                                    "type": "string",
+                                    "enum": ["low", "medium", "high"]
+                                  },
+                                  "currency": {
+                                    "type": "string",
+                                    "pattern": "^[A-Z]{3}$"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "held": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "growthBps": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 10000
+                                    },
+                                    "dollarYieldBps": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 10000
+                                    },
+                                    "goldBps": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 10000
+                                    },
+                                    "cashBps": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 10000
+                                    }
+                                  },
+                                  "required": ["growthBps", "dollarYieldBps", "goldBps", "cashBps"],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "questionThen": {
+                              "maxItems": 199,
+                              "type": "array",
+                              "items": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": ["interestClarification"]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "pendingInterest": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "quote": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 160
+                                    },
+                                    "sourceTurn": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 9007199254740991
+                                    }
+                                  },
+                                  "required": ["quote", "sourceTurn"],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "allocationKeptThrough": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "allocation": {
+                              "type": "object",
+                              "properties": {
+                                "text": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 2000
+                                },
+                                "baseline": {
+                                  "type": "null"
+                                },
+                                "minimum": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": ["text", "baseline", "minimum"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": ["version", "language", "words", "answers", "answersThen"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "chain",
+                    "address",
+                    "provenance",
+                    "network",
+                    "revision",
+                    "transcript",
+                    "checkpoint",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "code": {
+                          "type": "string",
+                          "enum": ["CONVERSATION_STORE_UNAVAILABLE"]
+                        }
+                      },
+                      "required": ["error", "code"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object",
+                          "properties": {
+                            "reason": {
+                              "type": "string",
+                              "enum": ["REVISION_CONFLICT"]
+                            },
+                            "revision": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": ["reason", "revision"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": ["error", "details"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object",
+                          "properties": {
+                            "reason": {
+                              "type": "string",
+                              "enum": ["NETWORK_CONFLICT"]
+                            }
+                          },
+                          "required": ["reason"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": ["error", "details"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object",
+                          "properties": {
+                            "chainCode": {
+                              "type": "string",
+                              "enum": [
+                                "NotKeeper",
+                                "AutoFollowOff",
+                                "KeeperPaused",
+                                "MintNotAccepted",
+                                "RouterNotAllowed",
+                                "SpentTooMuch",
+                                "ReceivedTooLittle",
+                                "OtherAccountDebited",
+                                "AccountTampered",
+                                "PriceStale",
+                                "PriceDeviation",
+                                "MarketClosed",
+                                "MultiplierWindow",
+                                "NotTowardTarget",
+                                "PastTarget",
+                                "Cooldown",
+                                "LossCapReached",
+                                "AssetNotPriced",
+                                "NewAssetNeedsOwner",
+                                "VersionNotEffective",
+                                "CreatorLimit",
+                                "VersionMismatch",
+                                "WrongDestination",
+                                "ParamOutOfBounds",
+                                "NotUpgradeAuthority",
+                                "InvalidTargets",
+                                "NotCashMint",
+                                "ZeroAddress",
+                                "LockedAtLaunch",
+                                "HookNotAllowed",
+                                "AssetListFull",
+                                "SameMint",
+                                "NoPendingVersion",
+                                "NotCreatorOrGuardian",
+                                "NotCashLeg",
+                                "KeeperAssetOff",
+                                "PriceOutOfRange",
+                                "NothingTraded",
+                                "NotOwner",
+                                "CashTokenNotSet",
+                                "DepositShortfall",
+                                "GasTooLow",
+                                "NotAdmin",
+                                "NoCode",
+                                "AssetIsRouter",
+                                "RouterIsAsset",
+                                "NotCreating",
+                                "RouterFailed",
+                                "BalanceUnreadable",
+                                "CashTokenNotRemovable",
+                                "HandoverNotDone",
+                                "AlreadySet",
+                                "RecipeExists",
+                                "BadInput",
+                                "NotSupported",
+                                "TooManyTrades",
+                                "BadTrade",
+                                "VaultNotFound",
+                                "VaultExists",
+                                "RecipeNotFound",
+                                "NotFollowing",
+                                "NotFunded",
+                                "NoGas",
+                                "AllowanceTooLow",
+                                "Expired",
+                                "PriceMoved",
+                                "NotBuiltHere",
+                                "Unavailable",
+                                "Unknown"
+                              ]
+                            },
+                            "retryable": {
+                              "type": "boolean"
+                            },
+                            "blocking": {
+                              "type": "object",
+                              "properties": {
+                                "orderId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "legId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": ["orderId", "legId"],
+                              "additionalProperties": false
+                            },
+                            "continuedBy": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "NOT_FUNDED",
+                            "ASSET_NOT_ELIGIBLE",
+                            "GOAL_NOT_ACHIEVABLE",
+                            "NEW_ASSET_NEEDS_APPROVAL",
+                            "VERSION_CHANGED",
+                            "CREATOR_LIMIT",
+                            "ORDER_EXPIRED",
+                            "US_PERSON",
+                            "RATE_LIMITED",
+                            "CHAIN_UNAVAILABLE",
+                            "PLAN_GONE",
+                            "CURRENCY_UNSUPPORTED",
+                            "NO_WALLET_FOR_CHAIN",
+                            "PRICE_MOVED",
+                            "ORDER_CONTINUED",
+                            "STEP_IN_FLIGHT",
+                            "STEP_LANDED",
+                            "NOTHING_LEFT",
+                            "VAULT_CASH_SHORT",
+                            "DEPOSIT_NOT_LANDED",
+                            "ORDER_BUSY",
+                            "CONTINUE_NOT_SUPPORTED"
+                          ]
+                        },
+                        "fix": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["error"],
+                      "additionalProperties": false
+                    }
+                  ]
                 }
               }
             }
