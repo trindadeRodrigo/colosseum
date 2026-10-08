@@ -30,8 +30,8 @@ export function conversationKey(
 // What our server refuses in a conversation's text (VaultConversationTranscript in packages/schemas):
 // control characters but tab and line feed, and the marks that reorder text. A carriage return ends a
 // line as a line feed does.
-// biome-ignore lint/suspicious/noControlCharactersInRegex: these are the characters taken out
 const NOT_PLAIN =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: these are the characters taken out
   /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u061C\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 
 /** A message as our server keeps it: one that held such a character would refuse every later save. */
