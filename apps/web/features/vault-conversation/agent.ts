@@ -38,7 +38,14 @@ export type VaultStrategyPreview = {
   weightNotes: WeightNote[];
 };
 export type WeightNote = {
-  code: 'equal_split' | 'stated' | 'scaled' | 'pick_dropped' | 'share_unmet' | 'share_unread';
+  code:
+    | 'equal_split'
+    | 'stated'
+    | 'scaled'
+    | 'pick_dropped'
+    | 'share_unmet'
+    | 'share_unread'
+    | 'share_withdrawn';
   assetIds: string[];
   quote?: string;
 };
@@ -49,6 +56,7 @@ const NOTE_CODES = new Set<WeightNote['code']>([
   'pick_dropped',
   'share_unmet',
   'share_unread',
+  'share_withdrawn',
 ]);
 const WARNING_CODES = new Set(['over_exit_capacity', 'outside_goal_requested']);
 /** Independent from the new-goal wizard; the provider owns grounded dialogue and policy checks. */

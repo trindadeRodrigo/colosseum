@@ -7,7 +7,7 @@ import { Composer } from '../../components/ui/Composer';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { dictionary } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
-import { ApplyVaultMix } from '../mix/ApplyVaultMix';
+import { VaultMixFlow } from '../mix/VaultMixFlow';
 import { AssetMark } from '../order/PlanView';
 import { displayName } from '../order/plain';
 import { dollars, share } from '../portfolio/figures';
@@ -66,7 +66,7 @@ export function VaultConversation({
   const [storage, setStorage] = useState<'local' | 'server' | 'conflict'>('local');
   const [error, setError] = useState<string>();
   const [reply, setReply] = useState<VaultAgentReply | null>(null);
-  // The preview the person chose to apply: the review stays only while that preview is the one shown.
+  // The preview the person chose to apply: its editor stays only while that preview is the one shown.
   const [applying, setApplying] = useState<VaultAgentReply | null>(null);
   const generation = useRef(0);
   const sending = useRef(false);
@@ -433,12 +433,18 @@ export function VaultConversation({
             />
             {reply && applying === reply && (
               <div className="mt-4">
-                <ApplyVaultMix
+                <VaultMixFlow
                   chain={read.chain}
                   vault={read.vault}
-                  lines={proposal.allocations}
-                  origin="model"
-                  onBack={() => setApplying(null)}
+                  seed={proposal.allocations}
+                  from="model"
+                  provenance={read.provenance}
+                  names={Object.fromEntries(
+                    proposal.allocations.flatMap((line) =>
+                      line.symbol ? [[line.assetId, line.symbol]] : [],
+                    ),
+                  )}
+                  onClose={() => setApplying(null)}
                 />
               </div>
             )}

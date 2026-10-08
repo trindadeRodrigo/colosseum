@@ -9,8 +9,8 @@ import {
   cashLeft,
   confirmable,
   editorIssues,
-  linesOfTargets,
   mixOf,
+  sameMix,
   textOf,
   unticked,
 } from './mix';
@@ -45,15 +45,12 @@ describe('the weight editor', () => {
       line('solana:spy', 7000),
       line('solana:nvda', 3000),
     ]);
-    expect(
-      linesOfTargets(
-        [
-          { asset: 'solana:spy', weightBps: 5000 },
-          { asset: cash, weightBps: 1 },
-        ],
-        cash,
-      ),
-    ).toEqual([line('solana:spy', 5000)]);
+    // The same mix whatever the order; a line at zero is not held, and a changed weight is another mix.
+    const seed = [line('solana:spy', 7000), line('solana:nvda', 3000)];
+    expect(sameMix([line('solana:nvda', 3000), line('solana:spy', 7000)], seed)).toBe(true);
+    expect(sameMix([...seed, line('solana:tsla', 0)], seed)).toBe(true);
+    expect(sameMix([line('solana:spy', 7001), line('solana:nvda', 2999)], seed)).toBe(false);
+    expect(sameMix([line('solana:spy', 7000)], seed)).toBe(false);
   });
 
   it('says what to change: too many, a repeat, cash as a line, over the whole, nothing held', () => {

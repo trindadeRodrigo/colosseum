@@ -2192,6 +2192,7 @@ export const pt: Dictionary = {
         unmet: (quote: string) => `Estas escolhas não conseguem cumprir “${quote}”.`,
         unread: (quote: string) =>
           `Não apliquei “${quote}”. Diga como proporção, por exemplo “40% em ouro”, e eu aplico.`,
+        withdrawn: (quote: string) => `Não sigo mais “${quote}” nos pesos: você retirou.`,
       },
       warning: {
         overExit: (name: string) =>
@@ -2250,6 +2251,10 @@ export const pt: Dictionary = {
       title: 'Os pesos do seu cofre',
       lead: 'Escolha o que seu cofre guarda e quanto. O que ficar sem peso fica em caixa.',
       edit: 'Editar pesos',
+      weights: 'Pesos',
+      fromChat:
+        'Estes são os pesos da conversa. Mude qualquer um aqui; os que estiverem nestes campos são os que eu confiro.',
+      close: 'Voltar à conversa',
       unit: 'Digitar pesos em',
       percent: 'Porcentagem',
       bps: 'Pontos-base',

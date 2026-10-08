@@ -8,15 +8,19 @@ import { Field, Input, Select } from '../../components/ui/Field';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { MAX_USD, MIN_USD } from '../order/InvestCard';
 import { rememberPlan } from '../order/plan-store';
-import { useApiFetch } from '../wallet/WalletProvider';
+import { onMock } from '../order/readiness';
+import { unitsFor } from '../order/units';
+import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { useFailureText } from './failure';
 import { MixReviewCard } from './MixReviewCard';
-import { acceptedOf } from './mix';
+import { acceptedOf, mixOf, sameMix } from './mix';
 import { acceptGoalMix } from './mix-api';
+import { linesOf, WeightEditor, type Weights, weightsOf } from './WeightEditor';
 
 // A new goal's mix from the conversation, made into a plan (gate ANY-COMPOSITION, #191): the amount
 // and what it is for, the server's review with each warning ticked, then the plan is stored and the
-// existing buy takes it by its id, unchanged. The weights are the server's, from the preview.
+// existing buy takes it by its id, unchanged. The preview's weights are only where the fields start:
+// the person may change any of them, and the review is of what the fields say.
 
 type Goal = 'grow' | 'income' | 'protect';
 type Risk = 'low' | 'medium' | 'high';
@@ -36,13 +40,14 @@ export function UseGoalMix({
 }: {
   chain: ChainId;
   userId: string;
-  allocations: readonly MixLine[];
+  allocations: readonly (MixLine & { symbol?: string })[];
   onClose: () => void;
 }) {
   const t = useT();
   const lang = useLang();
   const g = t.mix.goal;
   const api = useApiFetch();
+  const port = useWalletPort();
   const router = useRouter();
   const failureText = useFailureText();
   const titleId = useId();
@@ -56,18 +61,25 @@ export function UseGoalMix({
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const amount = amountOf(amountText);
-  const lines = allocations.map(({ assetId, weightBps }) => ({ assetId, weightBps }));
+  const mock = onMock(port, chain);
+  const cash = unitsFor(chain, mock)?.cash ?? null;
+  const start = allocations
+    .filter((line) => line.assetId !== cash)
+    .map(({ assetId, weightBps }) => ({ assetId, weightBps }));
+  const [weights, setWeights] = useState<Weights | null>(null);
+  const shown = weights ?? weightsOf(start);
+  const lines = cash ? linesOf(shown, cash) : null;
 
   const base = () =>
-    amount !== null && goal && risk
+    amount !== null && goal && risk && lines && cash
       ? {
           version: 1 as const,
-          origin: 'model' as const,
+          origin: sameMix(lines, start) ? ('model' as const) : ('person' as const),
           language: lang,
           goal,
           risk,
           amountUsd: amount,
-          allocations: lines,
+          allocations: mixOf(lines, cash),
         }
       : null;
 
@@ -144,7 +156,7 @@ export function UseGoalMix({
     );
 
   return (
-    <Card as="section" aria-labelledby={titleId} data-ui="use-goal-mix">
+    <Card as="section" aria-labelledby={titleId}>
       <CardHeader id={titleId} title={g.title} level={2} meta={t.chain.names[chain]} />
       <CardBody className="flex flex-col gap-4">
         <p className="max-w-(--tf-measure-body) text-body-sm">{g.lead}</p>
@@ -195,13 +207,36 @@ export function UseGoalMix({
             </Select>
           )}
         </Field>
+        {cash ? (
+          <fieldset className="flex min-w-0 flex-col gap-3">
+            <legend className="text-caption font-medium">{t.mix.editor.weights}</legend>
+            <p className="max-w-(--tf-measure-body) text-body-sm">{t.mix.editor.fromChat}</p>
+            <WeightEditor
+              chain={chain}
+              mock={mock}
+              cash={cash}
+              value={shown}
+              onChange={setWeights}
+              names={Object.fromEntries(
+                allocations.flatMap((line) => (line.symbol ? [[line.assetId, line.symbol]] : [])),
+              )}
+            />
+          </fieldset>
+        ) : (
+          <p className="max-w-(--tf-measure-body) text-body-sm">{t.mix.failure.readOnly}</p>
+        )}
         {failure && (
           <p role="alert" className="max-w-(--tf-measure-body) text-body-sm text-destructive">
             {failure}
           </p>
         )}
         <div className="flex flex-wrap gap-3">
-          <Button variant="primary" data-action="mix-review" disabled={busy} onClick={ask}>
+          <Button
+            variant="primary"
+            data-action="mix-review"
+            disabled={busy || !lines}
+            onClick={ask}
+          >
             {busy ? g.reviewing : g.review}
           </Button>
           <Button variant="secondary" disabled={busy} onClick={onClose}>

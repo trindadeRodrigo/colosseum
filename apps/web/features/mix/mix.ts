@@ -1,4 +1,4 @@
-import type { MixLine, MixReview, Target } from '@colosseum/schemas';
+import type { MixLine, MixReview } from '@colosseum/schemas';
 
 // The arithmetic of a mix the person edits or takes from a conversation, before the server checks it
 // again (gate ANY-COMPOSITION, #191). A vault holds at most 16 assets besides cash; the cash token is
@@ -85,11 +85,15 @@ export function mixOf(lines: readonly EditorLine[], cash: string): MixLine[] {
   ];
 }
 
-/** A vault's targets as lines to edit; the cash they leave is not a line. */
-export function linesOfTargets(targets: readonly Target[], cash: string): EditorLine[] {
-  return targets
-    .filter((target) => target.asset !== cash)
-    .map((target) => ({ assetId: target.asset, weightBps: target.weightBps }));
+/** The same assets at the same weights, whatever their order; a line at zero is not held. */
+export function sameMix(a: readonly EditorLine[], b: readonly EditorLine[]): boolean {
+  const text = (lines: readonly EditorLine[]) =>
+    lines
+      .filter((line) => line.weightBps > 0)
+      .map((line) => `${line.assetId}=${line.weightBps}`)
+      .sort()
+      .join(' ');
+  return text(a) === text(b);
 }
 
 /** The warnings of a review the person has not ticked yet. */

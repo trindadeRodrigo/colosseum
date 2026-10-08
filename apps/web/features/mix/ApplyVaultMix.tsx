@@ -60,21 +60,25 @@ export function ApplyVaultMix({
     ...(read && confirm ? { reviewHash: read.reviewHash } : {}),
   });
 
-  // The review is asked for once per set of lines; nothing is built or stored by it.
+  // The review is asked for once per set of lines; nothing is built or stored by it. An ask that is
+  // dropped before its answer (the screen left, or mounted twice in development) is made again.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the lines are compared by their text
   useEffect(() => {
     if (asked.current === sent) return;
     asked.current = sent;
     let mine = true;
+    let answered = false;
     setReview(null);
     setFailure(null);
     applyVaultMix(api, chain, vault.address, vault.owner, body(false, null)).then((answer) => {
       if (!mine) return;
+      answered = true;
       if (answer.kind !== 'ok') return setFailure(failureText(answer));
       setReview(answer.value.review);
     });
     return () => {
       mine = false;
+      if (!answered) asked.current = null;
     };
   }, [api, chain, vault.address, vault.owner, sent]);
 

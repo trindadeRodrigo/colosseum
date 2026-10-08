@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import type { MixReview } from '@colosseum/schemas';
 import { vaultOf } from '@colosseum/sdk';
-import { createElement } from 'react';
+import { createElement, StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, find, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
@@ -115,6 +115,7 @@ const answer = {
     { code: 'stated', assetIds: ['solana:gldx'], quote: '40% gold' },
     { code: 'equal_split', assetIds: ['solana:usdc'] },
     { code: 'share_unread', assetIds: [], quote: 'mostly safe' },
+    { code: 'share_withdrawn', assetIds: [], quote: '70% TSLA' },
   ],
 };
 
@@ -154,6 +155,7 @@ describe('a vault conversation’s preview, applied to the vault', () => {
     expect(notes).toContain(en.mix.preview.note.stated('tGLDx', '40% gold'));
     expect(notes).toContain(en.mix.preview.note.equalRest('USDC'));
     expect(notes).toContain(en.mix.preview.note.unread('mostly safe'));
+    expect(notes).toContain(en.mix.preview.note.withdrawn('70% TSLA'));
     const warnings = find(host, '[data-ui="mix-warnings"]');
     expect(warnings.textContent).toContain(en.mix.preview.warning.overExit('tGLDx'));
     expect(warnings.querySelector('[data-ui="pin"]')).not.toBeNull();
@@ -179,6 +181,11 @@ describe('a vault conversation’s preview, applied to the vault', () => {
     await click(find(host, '[data-ui="composer-send"]'));
     await settle();
     await click(buttonNamed(host, en.mix.preview.apply));
+    await settle();
+    // The preview's weights are where the fields start; nothing is asked of the server yet.
+    expect(calls.filter((c) => c.url.endsWith('/targets'))).toEqual([]);
+    expect(find<HTMLInputElement>(host, '[data-ui="targets-lines"] input').value).toBe('40');
+    await click(find(host, '[data-action="targets-review"]'));
     await settle();
     const asked = calls.find((c) => c.url.endsWith('/targets'));
     expect(asked?.url).toBe(`/v1/vaults/solana/${read.vault.address}/targets`);
@@ -219,6 +226,47 @@ describe('a vault conversation’s preview, applied to the vault', () => {
       origin: 'model',
     });
   });
+
+  it('sends a weight the person changed as their own, and the review is of what the field says', async () => {
+    const calls: Call[] = [];
+    portStore.setApi(async (url, init) => {
+      if (init?.method !== 'POST') return json({}, 404);
+      const body = JSON.parse(String(init.body));
+      calls.push({ url, body });
+      if (url.endsWith('/conversation/reply'))
+        return json({ ...answer, messageId: body.messageId });
+      if (!url.endsWith('/targets')) return json({}, 404);
+      const [gold, cash] = reviewOf().lines.slice().reverse();
+      return json({
+        status: 'review',
+        review: reviewOf({
+          origin: 'person',
+          lines: [
+            { ...cash, weightBps: 4500, amountUsd: 45 },
+            { ...gold, weightBps: 5500, amountUsd: 55 },
+          ] as MixReview['lines'],
+        }),
+      });
+    });
+    const host = await mount(withAccount('en', createElement(VaultConversation, { read, userId })));
+    await type(find<HTMLTextAreaElement>(host, 'textarea'), 'Put 40% in gold');
+    await click(find(host, '[data-ui="composer-send"]'));
+    await settle();
+    await click(buttonNamed(host, en.mix.preview.apply));
+    await settle();
+    await type(find<HTMLInputElement>(host, '[data-ui="targets-lines"] input'), '55');
+    await click(find(host, '[data-action="targets-review"]'));
+    await settle();
+    expect(calls.find((c) => c.url.endsWith('/targets'))?.body).toMatchObject({
+      origin: 'person',
+      confirm: false,
+      allocations: [
+        { assetId: 'solana:gldx', weightBps: 5500 },
+        { assetId: 'solana:usdc', weightBps: 4500 },
+      ],
+    });
+    expect(find(host, '[data-ui="mix-review-lines"]').textContent).toContain('55%');
+  });
 });
 
 describe('a new goal’s mix, made into a plan', () => {
@@ -257,7 +305,7 @@ describe('a new goal’s mix, made into a plan', () => {
     await click(find(host, '[data-action="mix-review"]'));
     expect(calls).toEqual([]);
     expect(host.textContent).toContain(en.mix.goal.errors.amount);
-    await type(find<HTMLInputElement>(host, 'input'), '100');
+    await type(host.querySelector('input') as HTMLInputElement, '100');
     const [goal, risk] = [...host.querySelectorAll('select')];
     if (!goal || !risk) throw new Error('goal and risk are asked');
     goal.value = 'protect';
@@ -269,7 +317,17 @@ describe('a new goal’s mix, made into a plan', () => {
     await settle();
     expect(calls[0]).toMatchObject({
       url: '/v1/conversations/solana/goal/accept',
-      body: { origin: 'model', goal: 'protect', risk: 'low', amountUsd: 100, confirm: false },
+      body: {
+        origin: 'model',
+        goal: 'protect',
+        risk: 'low',
+        amountUsd: 100,
+        confirm: false,
+        allocations: [
+          { assetId: 'solana:gldx', weightBps: 4000 },
+          { assetId: 'solana:usdc', weightBps: 6000 },
+        ],
+      },
     });
     await click(find(host, '[data-ui="mix-review-warnings"] input[type="checkbox"]'));
     await click(find(host, '[data-action="mix-confirm"]'));
@@ -320,7 +378,7 @@ describe('a new goal’s mix, made into a plan', () => {
         }),
       ),
     );
-    await type(find<HTMLInputElement>(host, 'input'), '100');
+    await type(host.querySelector('input') as HTMLInputElement, '100');
     for (const [i, value] of ['grow', 'medium'].entries()) {
       const select = host.querySelectorAll('select')[i] as HTMLSelectElement;
       select.value = value;
@@ -336,6 +394,54 @@ describe('a new goal’s mix, made into a plan', () => {
     expect(host.textContent).toContain(en.mix.review.changed);
     expect(find(host, '[data-action="mix-confirm"]').getAttribute('aria-disabled')).toBe('true');
     expect(router.push).not.toHaveBeenCalled();
+  });
+});
+
+describe('a new goal’s mix, with a weight the person changed', () => {
+  it('reviews the weights in the fields and says the person chose them', async () => {
+    const calls: Call[] = [];
+    portStore.setApi(async (url, init) => {
+      if (!url.endsWith('/goal/accept')) return json({}, 404);
+      calls.push({ url, body: JSON.parse(String(init?.body ?? '{}')) });
+      return json({}, 500);
+    });
+    const host = await mount(
+      withAccount(
+        'en',
+        createElement(UseGoalMix, {
+          chain: 'solana',
+          userId,
+          allocations: [
+            { assetId: 'solana:usdc', weightBps: 6000 },
+            { assetId: 'solana:gldx', weightBps: 4000 },
+          ],
+          onClose: () => {},
+        }),
+      ),
+    );
+    await type(host.querySelector('input') as HTMLInputElement, '100');
+    for (const [i, value] of ['grow', 'medium'].entries()) {
+      const select = host.querySelectorAll('select')[i] as HTMLSelectElement;
+      select.value = value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    const weight = find<HTMLInputElement>(host, '[data-ui="targets-lines"] input');
+    expect(weight.value).toBe('40');
+    // a weight that does not read holds the review back
+    await type(weight, '140');
+    expect(find(host, '[data-action="mix-review"]').getAttribute('aria-disabled')).toBe('true');
+    await type(weight, '25');
+    await settle();
+    await click(find(host, '[data-action="mix-review"]'));
+    await settle();
+    expect(calls[0]?.body).toMatchObject({
+      origin: 'person',
+      confirm: false,
+      allocations: [
+        { assetId: 'solana:gldx', weightBps: 2500 },
+        { assetId: 'solana:usdc', weightBps: 7500 },
+      ],
+    });
   });
 });
 
@@ -359,8 +465,16 @@ describe('the weight editor of a vault the person owns', () => {
       return json({}, 404);
     });
     const { TargetsScreen } = await import('./TargetsScreen');
+    // Mounted twice, as development does: the review still arrives.
     const host = await mount(
-      withAccount('en', createElement(TargetsScreen, { chain: 'solana', address: derived })),
+      withAccount(
+        'en',
+        createElement(
+          StrictMode,
+          null,
+          createElement(TargetsScreen, { chain: 'solana', address: derived }),
+        ),
+      ),
     );
     await settle();
     return host;

@@ -2326,6 +2326,8 @@ export const en = {
         unmet: (quote: string) => `These picks can’t meet “${quote}”.`,
         unread: (quote: string) =>
           `I didn’t apply “${quote}”. Give it as a share, such as “40% in gold”, and I will.`,
+        withdrawn: (quote: string) =>
+          `I no longer hold the weights to “${quote}”: you took it back.`,
       },
       warning: {
         overExit: (name: string) =>
@@ -2384,6 +2386,10 @@ export const en = {
       title: 'Your vault’s weights',
       lead: 'Choose what your vault holds and how much. Whatever you leave unassigned stays in cash.',
       edit: 'Edit weights',
+      weights: 'Weights',
+      fromChat:
+        'These are the weights from the conversation. Change any of them here; the ones in these fields are the ones I check.',
+      close: 'Back to the conversation',
       unit: 'Type weights in',
       percent: 'Percent',
       bps: 'Basis points',

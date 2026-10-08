@@ -84,6 +84,8 @@ export function StrategyPreview({
         return m.note.unmet(note.quote ?? '');
       case 'share_unread':
         return m.note.unread(note.quote ?? '');
+      case 'share_withdrawn':
+        return m.note.withdrawn(note.quote ?? '');
     }
   };
   const change = (bps: number) =>
