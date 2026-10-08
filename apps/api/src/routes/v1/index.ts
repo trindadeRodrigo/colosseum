@@ -55,7 +55,9 @@ import { registerOrderRoutes } from './orders';
 import { registerPortfolioRoute } from './portfolio';
 import { registerSharedRoutes } from './shared';
 import { registerTestnetRoute } from './testnet';
+import { registerThreadRoutes } from './thread';
 import { registerVaultRoute } from './vault';
+import { registerVaultConversationRoutes } from './vault-conversation';
 import { registerVaultConversationReplyRoute } from './vault-conversation-reply';
 
 /**
@@ -142,7 +144,13 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
       solana,
       robinhood,
     });
-  const orderDeps: OrderDeps = { db, chains, now: deps.now ?? (() => new Date()) };
+  const orderDeps: OrderDeps = {
+    db,
+    chains,
+    now: deps.now ?? (() => new Date()),
+    // The kind of failure only: what was being written is a person's own words, and is not logged.
+    onRecordError: (what) => app.log.error(what, 'a plan’s thread could not be written'),
+  };
   const modelSettings = intakeSettings(env);
   const quota = createModelQuota({ ...modelSettings, now: deps.now });
   const intakeModel =
@@ -227,9 +235,11 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
       deps.linkedPlans,
     );
     registerIntakeRoute(scope, orderDeps, intakeModel, deps.planInputs);
+    registerThreadRoutes(scope, orderDeps);
     registerPortfolioRoute(scope, orderDeps);
     registerSharedRoutes(scope, orderDeps);
     registerVaultRoute(scope, orderDeps);
+    registerVaultConversationRoutes(scope, orderDeps);
     registerVaultConversationReplyRoute(scope, orderDeps, vaultAgentModel, deps.planInputs);
     registerGoalConversationReplyRoute(scope, orderDeps, vaultAgentModel, deps.planInputs);
     // Out of the route table altogether unless a chain runs on the mock.
