@@ -1027,6 +1027,207 @@ describe('model-led private vault proposals', () => {
     },
   );
 
+  // The other listed stock, for a message that names two.
+  const otherStock = assets.find(
+    (asset) => (asset.cls === 'stock' || asset.cls === 'etf') && asset.id !== stock.id,
+  );
+  if (!otherStock) throw new Error('The fixture needs two stocks');
+  const requestedFor = async (text: string, language: 'en' | 'pt' = 'en') => {
+    const model = fake(proposal());
+    const out = await replyToVaultConversation(
+      { ...request(text), language },
+      { ...context, currentGoals: [{ goal: 'income' }] },
+      model,
+    );
+    const sent = vi.mocked(model.read).mock.calls[0]?.[1] as VaultAgentPrompt;
+    return { out, requested: sent.requestedOutsideGoal };
+  };
+
+  // Naming a stock beside an asking verb is not asking for it: to remove, reduce, compare against or
+  // worry about it leaves it out of an income plan (review of #194, blocking 1).
+  it.each([
+    [`I want to get rid of ${stock.symbol}.`, 'en'],
+    [`I want to reduce ${stock.symbol}.`, 'en'],
+    [`I want to move away from ${stock.symbol}.`, 'en'],
+    [`I want something safer than ${stock.symbol}.`, 'en'],
+    [`I prefer bonds to ${stock.symbol}.`, 'en'],
+    [`I want steady income, ${stock.symbol} worries me.`, 'en'],
+    [`I want to swap ${stock.symbol} for income.`, 'en'],
+    [`Quero sair de ${stock.symbol}.`, 'pt'],
+    [`Quero reduzir ${stock.symbol}.`, 'pt'],
+    [`Quero trocar ${stock.symbol} por renda.`, 'pt'],
+    [`Quero renda, ${stock.symbol} me preocupa.`, 'pt'],
+    // Unclear is not asking either.
+    [`I want protection from ${stock.symbol}.`, 'en'],
+    [`I want income, ${stock.symbol} is in the news.`, 'en'],
+    [`I want ${stock.symbol} sold.`, 'en'],
+    ['I want protection from stocks.', 'en'],
+    [`I want ${stock.symbol} to shrink.`, 'en'],
+    [`I want ${stock.symbol} off my plan.`, 'en'],
+    [`I do not want ${otherStock.symbol} or ${stock.symbol}.`, 'en'],
+    [`Sell ${otherStock.symbol} and ${stock.symbol}.`, 'en'],
+    [`Sell ${otherStock.symbol}, just ${stock.symbol}.`, 'en'],
+  ] as const)('does not read "%s" as asking for the stock', async (text, language) => {
+    const { out, requested } = await requestedFor(text, language);
+    expect(requested).toEqual([]);
+    if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
+    expect(out.reply.proposal?.allocations.map((line) => line.assetId)).toEqual([
+      reserve.id,
+      otherReserve.id,
+    ]);
+    expect(out.reply.warnings).toEqual([]);
+    expect(out.reply.weightNotes).toContainEqual({
+      code: 'pick_outside_goal',
+      assetIds: [stock.id],
+    });
+  });
+
+  it.each([
+    [`Add ${stock.symbol}`, 'en'],
+    [`I want some ${stock.symbol} in it`, 'en'],
+    [`I want to add ${stock.symbol} to my vault.`, 'en'],
+    [`keep ${stock.symbol}`, 'en'],
+    [`More ${stock.symbol}, please.`, 'en'],
+    [`I want steady income and a little ${stock.symbol}.`, 'en'],
+    [`Can you add ${stock.symbol}?`, 'en'],
+    [`Sell ${otherStock.symbol} and add ${stock.symbol}.`, 'en'],
+    [`I want less ${otherStock.symbol}, more ${stock.symbol}.`, 'en'],
+    [`Quero incluir ${stock.symbol}`, 'pt'],
+    [`Quero manter ${stock.symbol}.`, 'pt'],
+    [`Vende ${otherStock.symbol} e compra ${stock.symbol}.`, 'pt'],
+  ] as const)('reads "%s" as asking for that stock alone', async (text, language) => {
+    const { out, requested } = await requestedFor(text, language);
+    expect(requested).toEqual([stock.id]);
+    if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
+    expect(out.reply.warnings).toEqual([
+      { code: 'outside_goal_requested', assetId: stock.id, evidenceId: `catalog:${stock.id}` },
+    ]);
+  });
+
+  it('reads a list after one asking verb, and a list after one refusal', async () => {
+    expect(
+      (await requestedFor(`I want ${otherStock.symbol}, ${stock.symbol} and a reserve.`)).requested,
+    ).toEqual(expect.arrayContaining([stock.id, otherStock.id]));
+    // The later refusal withdraws the earlier ask.
+    expect(
+      (await requestedFor(`Add ${stock.symbol}. I want to get rid of ${stock.symbol}.`)).requested,
+    ).toEqual([]);
+  });
+
+  // The model wrote about a pick the server then removed, on both attempts (review of #194, blocking 2).
+  it.each([
+    [
+      'en',
+      `This draft leaves out ${stock.symbol}: a plan with your goal cannot hold it.`,
+      'Keep my savings safe.',
+    ],
+    [
+      'pt',
+      `Esta proposta deixa de fora ${stock.symbol}: um plano com o seu objetivo não pode ter esse ativo.`,
+      'Quero proteger minhas economias.',
+    ],
+  ] as const)(
+    'serves no sentence about a pick it left out, and says what was left out (%s)',
+    async (language, said, asked) => {
+      const value = proposal();
+      value.message = `I added ${stock.symbol} next to a reserve.`;
+      value.proposal.summary = `This draft holds ${stock.symbol} and a reserve.`;
+      value.proposal.tradeoffs = [`${stock.symbol} can fall.`, 'A reserve earns less.'];
+      value.proposal.unknowns = [`How ${stock.symbol} trades next is unknown. Rates may change.`];
+      value.proposal.allocations = value.proposal.allocations.slice(0, 2);
+      const out = await replyToVaultConversation(
+        { ...request(asked), language },
+        { ...context, currentGoals: [{ goal: 'income' }] },
+        fake(value),
+      );
+      if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
+      expect(out.repair).toEqual(leftOutTwice);
+      expect(out.reply.message).toBe(said);
+      expect(out.reply.proposal).toMatchObject({
+        objective: 'Seek growth while keeping a liquid cushion',
+        summary: said,
+        tradeoffs: ['A reserve earns less.'],
+        allocations: [{ assetId: reserve.id, weightBps: 10_000 }],
+      });
+      expect(out.reply.proposal?.unknowns).toContain('Rates may change.');
+      const prose = JSON.stringify(out.reply).replaceAll(said, '');
+      expect(prose).not.toContain(stock.symbol);
+    },
+  );
+
+  it('keeps the sentences that do not name the pick, whole, and ends a sentence at no full stop inside a name or a number', async () => {
+    const value = picking(stock, reserve, crypto);
+    value.message = `You said: “keep 1.5 safe” so ${crypto.symbol} is in. I also added ${crypto.symbol} next to Fixture Holdings Inc. as a pair. The reserve stays liquid!`;
+    (value as { question: string | null }).question = `Is ${crypto.symbol} right for you?`;
+    value.proposal.allocations[1] = {
+      assetId: reserve.id,
+      why: `It steadies the draft. It offsets ${crypto.symbol}.`,
+      evidenceIds: [`catalog:${reserve.id}`],
+    };
+    const out = await replyToVaultConversation(
+      request(`I want ${stock.symbol} in this vault, keep 1.5 safe`),
+      {
+        ...withOthers('income'),
+        stockAttributes: {
+          stocks: [{ symbol: stock.symbol, company: 'Fixture Holdings Inc.' }],
+        } as never,
+      },
+      fake(value),
+    );
+    if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
+    expect(out.reply.message).toBe(
+      `The reserve stays liquid! This draft leaves out ${crypto.symbol}: a plan with your goal cannot hold it.`,
+    );
+    expect(out.reply.question).toBeNull();
+    expect(out.reply.proposal?.allocations.map((line) => [line.assetId, line.why])).toEqual([
+      [stock.id, 'This follows the direction you described.'],
+      [reserve.id, 'It steadies the draft.'],
+    ]);
+  });
+
+  it('asks the model again, and fails, when a kept pick has no reason left without the removed asset', async () => {
+    const value = picking(reserve, crypto);
+    value.proposal.allocations[0] = {
+      assetId: reserve.id,
+      why: `It offsets ${crypto.symbol}.`,
+      evidenceIds: [`catalog:${reserve.id}`],
+    };
+    const model = fake(value);
+    expect(await replyToVaultConversation(request(), withOthers('income'), model)).toEqual(
+      rejected('allocation_ineligible'),
+    );
+    expect(vi.mocked(model.read).mock.calls[1]?.[2]?.problems.join(' ')).toContain(crypto.id);
+  });
+
+  // A share on an asset the goal cannot hold is unmet whatever the model picks: the reply says the
+  // goal is why, and never that the requirement still stands.
+  it.each([
+    ['en', `I want 30% ${commodity.symbol}`, 'a plan with your goal cannot hold that asset'],
+    ['pt', `Quero 30% ${commodity.symbol}`, 'um plano com o seu objetivo não pode ter esse ativo'],
+  ] as const)('says the goal is why a share cannot be met (%s)', async (language, asked, said) => {
+    for (const picked of [picking(reserve), picking(commodity, reserve)]) {
+      const model = fake(picked);
+      const out = await replyToVaultConversation(
+        { ...request(asked), language },
+        withOthers('income'),
+        model,
+      );
+      if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
+      expect(out.reply.proposal).toBeNull();
+      expect(out.reply.message).toContain(said);
+      expect(out.reply.message).toContain(`30% ${commodity.symbol}`);
+      expect(out.reply.message).not.toMatch(/still stands|continua valendo/u);
+      expect(out.reply.question).not.toMatch(/within that limit|respeitando esse limite/u);
+      expect(out.reply.weightNotes).toContainEqual({
+        code: 'share_unmet',
+        assetIds: [commodity.id],
+        quote: `30% ${commodity.symbol}`,
+      });
+      // The model's one correction is told the goal is why.
+      expect(vi.mocked(model.read).mock.calls[1]?.[2]?.problems.join(' ')).toContain('cannot hold');
+    }
+  });
+
   it('returns the corrected reply of the model when its repair leaves the pick out', async () => {
     const read = vi
       .fn<VaultAgentModel['read']>()
