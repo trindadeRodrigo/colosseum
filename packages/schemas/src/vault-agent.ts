@@ -44,10 +44,23 @@ export const VaultAgentPick = z.strictObject({
 export const VaultAgentAllocation = VaultAgentPick.extend({
   weightBps: Bps.refine((value) => value > 0, 'An allocation must have a positive share.'),
 });
+/**
+ * A share the person stated, as the model reports it (Rodrigo's `stated`): the assets it covers, exact,
+ * at least or at most, in basis points, and the person's own words. The server uses it only when those
+ * words are in a person message and hold that number (ANY-COMPOSITION); it is never served back.
+ */
+export const VaultAgentStatedShare = z.strictObject({
+  assetIds: z.array(AssetId).min(1).max(64),
+  kind: z.enum(['exact', 'min', 'max']),
+  bps: Bps,
+  quote: prose(400),
+});
+export type VaultAgentStatedShare = z.infer<typeof VaultAgentStatedShare>;
 export const VaultAgentModelProposal = z.strictObject({
   objective: prose(800),
   summary: prose(1600),
   allocations: z.array(VaultAgentPick).min(1).max(64),
+  stated: z.array(VaultAgentStatedShare).max(16),
   tradeoffs: z.array(prose(600)).max(12),
   unknowns: z.array(prose(600)).max(12),
 });
@@ -67,7 +80,7 @@ export const VaultAgentSource = Sourced.extend({
   unit: prose(80).optional(),
 });
 export type VaultAgentSource = z.infer<typeof VaultAgentSource>;
-export const VaultAgentProposal = VaultAgentModelProposal.extend({
+export const VaultAgentProposal = VaultAgentModelProposal.omit({ stated: true }).extend({
   allocations: z
     .array(VaultAgentAllocation.extend({ symbol: prose(80) }))
     .min(1)
@@ -88,7 +101,23 @@ export const VaultAgentWarning = z.strictObject({
   evidenceId: prose(160),
 });
 export type VaultAgentWarning = z.infer<typeof VaultAgentWarning>;
-/** The reply's fields; `VaultAgentReply` adds the rule that ties its warnings to its proposal. */
+/**
+ * What the server did with the weights, so nothing it did is silent (ANY-COMPOSITION). The screen writes
+ * the words from the code, the served weights and the person's own `quote`; no figure here is the
+ * model's. `equal_split`: these picks share equally. `stated`: these picks follow the person's share in
+ * `quote`. `scaled`: the shares the person gave did not add up to the whole and were scaled to it.
+ * `pick_dropped`: the person's shares left nothing for this pick, so it is not in the proposal.
+ * `share_unmet`: the picks cannot meet the share in `quote`, and the person is asked about it.
+ * `share_unread`: the person's latest message states a share the server could not apply (`quote`),
+ * such as "mostly Tesla"; the weights do not follow it.
+ */
+export const VaultAgentWeightNote = z.strictObject({
+  code: z.enum(['equal_split', 'stated', 'scaled', 'pick_dropped', 'share_unmet', 'share_unread']),
+  assetIds: z.array(AssetId).max(64),
+  quote: prose(400).optional(),
+});
+export type VaultAgentWeightNote = z.infer<typeof VaultAgentWeightNote>;
+/** The reply's fields; `VaultAgentReply` adds the rule that ties its notes to its proposal. */
 export const VaultAgentReplyShape = z.strictObject({
   version: z.literal(1),
   messageId: prose(64),
@@ -96,10 +125,15 @@ export const VaultAgentReplyShape = z.strictObject({
   question: prose(500).nullable(),
   proposal: VaultAgentProposal.nullable(),
   warnings: z.array(VaultAgentWarning).max(128),
+  weightNotes: z.array(VaultAgentWeightNote).max(64),
 });
-/** A warning belongs to the proposal: none without one, and each on one of its assets and sources. */
+/**
+ * A warning belongs to the proposal: none without one, and each on one of its assets and sources. A
+ * note on served weights (`equal_split`, `stated`, `scaled`) names served picks; without a proposal only
+ * `share_unmet` and `share_unread` can stand.
+ */
 export function warningsBelong(
-  reply: Pick<z.infer<typeof VaultAgentReplyShape>, 'proposal' | 'warnings'>,
+  reply: Pick<z.infer<typeof VaultAgentReplyShape>, 'proposal' | 'warnings' | 'weightNotes'>,
   context: z.RefinementCtx,
 ): void {
   const assets = new Set(reply.proposal?.allocations.map((line) => line.assetId));
@@ -110,6 +144,18 @@ export function warningsBelong(
         code: 'custom',
         path: ['warnings', index],
         message: 'A warning names an asset and a source of the proposal.',
+      });
+  });
+  reply.weightNotes.forEach((note, index) => {
+    const served = note.code === 'equal_split' || note.code === 'stated' || note.code === 'scaled';
+    if (
+      (served && (!reply.proposal || note.assetIds.some((id) => !assets.has(id)))) ||
+      (note.code === 'pick_dropped' && !reply.proposal)
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['weightNotes', index],
+        message: 'A note on served weights names picks of the proposal.',
       });
   });
 }

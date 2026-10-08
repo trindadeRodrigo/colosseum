@@ -8,7 +8,9 @@ import {
   VaultAgentRequest,
   type VaultAgentResult,
   VaultAgentSource,
+  type VaultAgentStatedShare,
   type VaultAgentWarning,
+  type VaultAgentWeightNote,
 } from '@colosseum/schemas';
 import type { VaultAgentModel, VaultAgentRepair } from '../vault-agent-model';
 import type { ChainEntry } from './chains';
@@ -319,7 +321,9 @@ const REPAIR_HINTS: Record<string, string> = {
   allocation_evidence:
     'An allocation cited an evidenceId that does not exist in evidence or belongs to a different asset.',
   allocation_constraint:
-    'The picks cannot meet a share the person stated: allocationConstraints names the assets it covers. Pick assets that let the server meet it, or ask the person about it in question. The limits are theirs and still stand.',
+    'The picks cannot meet a share the person stated in stated. Pick the assets it covers, with room for the rest, so the server can meet it, or ask the person about it in question. The share is theirs and still stands.',
+  stated_ungrounded:
+    'A share in stated was not accepted. Each needs quote copied exactly from one of the person\'s messages, holding the same number as bps ("70%", "70 percent", "metade", "70/30"), and naming every asset in assetIds. A return, yield, growth or loss figure ("10% a year") is not a share. A preference with no number ("mostly Tesla") is not a share: leave it out and ask what share they want. Correct or remove it.',
   reply_shape:
     'The proposal did not fit the final preview limits once the server added its own unknowns and sources: keep fields shorter and lists smaller.',
 };
@@ -360,9 +364,11 @@ const REFUSES = word(
 );
 // Someone else's view, a condition or a wish to talk about it: not the person's instruction.
 const NOT_THEIRS = word(
-  'if|whether|should|my\\s+friend|my\\s+advisor|someone|somebody|said|says|suggests?|suggested|quoted|explain|discuss|talk\\s+about|learn|example|imagine|suppose|se|caso|meu\\s+amigo|disse|diz|sugere|sugeriu|discutir|exemplo',
+  'if|whether|should|my\\s+friend|my\\s+advisor|someone|somebody|said|says|suggests?|suggested|quoted|explain|discuss|talk\\s+about|learn|example|imagine|suppose|know|understand|compare|see|look|something\\s+like|style|se|caso|meu\\s+amigo|disse|diz|sugere|sugeriu|discutir|exemplo|saber|conhecer|entender|comparar|ver|como\\s+[ao]s?|algo\\s+como|estilo',
   'iu',
 );
+// A condition anywhere in a sentence voids all of it: "Quero ações, mas só se for seguro."
+const CONDITION = word('if|unless|only\\s+if|se|caso|só\\s+se|a\\s+menos\\s+que', 'iu');
 const ASKS_A_QUESTION =
   /^(?:why|what|which|how|is|are|was|should|can|could|would|do|does|did|will|por\s*que|porque|o\s+que|qual|quais|como|será|sera|devo|vale)(?![\p{L}\p{N}])/iu;
 // Company short names that are everyday words; the ticker still names the asset.
@@ -370,9 +376,8 @@ const COMMON_NAMES = new Set(['meta', 'strategy', 'circle', 'oracle', 'target', 
 const CORPORATE =
   /\s+(?:inc\.?|incorporated|corp\.?|corporation|company|co\.?|limited|ltd\.?|lp|n\.v\.|plc|group|holdings?|platforms|global|technologies|markets|trust|series\s+\d+)$/iu;
 
-/** The case-sensitive tickers and the case-insensitive company names that name one asset. */
-function assetNames(asset: BasketAsset, companies: string[]): RegExp[] {
-  const tickers = [...new Set([asset.symbol, asset.underlying])].map(literal);
+/** The company names a person may use: the registered name and its short form ("Apple"). */
+function companyNames(companies: string[]): string[] {
   const names = new Set<string>();
   for (const company of companies) {
     let name = company.split(',')[0]?.trim() ?? '';
@@ -383,9 +388,13 @@ function assetNames(asset: BasketAsset, companies: string[]): RegExp[] {
     }
     names.add(name.replace(/\.com$/iu, ''));
   }
-  const spoken = [...names].filter(
-    (name) => name.length > 2 && !COMMON_NAMES.has(name.toLowerCase()),
-  );
+  return [...names].filter((name) => name.length > 2);
+}
+
+/** The case-sensitive tickers and the case-insensitive company names that name one asset. */
+function assetNames(asset: BasketAsset, companies: string[]): RegExp[] {
+  const tickers = [...new Set([asset.symbol, asset.underlying])].map(literal);
+  const spoken = companyNames(companies).filter((name) => !COMMON_NAMES.has(name.toLowerCase()));
   return [
     word(tickers.join('|'), 'u'),
     ...(spoken.length ? [word(spoken.map(literal).join('|'), 'iu')] : []),
@@ -421,9 +430,14 @@ function requestedStocks(
     const text = message.text.trim();
     if (/^["“‘']/u.test(text)) continue;
     const questioned = text.includes('?');
-    const sentences = text.split(
-      /[.;!?\n]+|(?<![\p{L}\p{N}])(?:but|however|mas|porém|porem|contudo)(?![\p{L}\p{N}])/iu,
-    );
+    const sentences = text
+      .split(/[.;!?\n]+/u)
+      .filter((sentence) => !CONDITION.test(sentence))
+      .flatMap((sentence) =>
+        sentence.split(
+          /(?<![\p{L}\p{N}])(?:but|however|mas|porém|porem|contudo)(?![\p{L}\p{N}])/iu,
+        ),
+      );
     for (const sentence of sentences) {
       let asking = false;
       for (const clause of sentence.split(',').map((part) => part.trim())) {
@@ -571,6 +585,110 @@ function holdingConstraints(
   return [...constraints.values()];
 }
 
+// A share of the vault is never a return, a yield, growth or a loss: "10% a year" sets no weight.
+const RETURNS = word(
+  'a\\s+year|per\\s+year|yearly|annual(?:ly)?|a\\s+month|per\\s+month|monthly|earn|earns|earning|return|returns|yield|yields|interest|gain|gains|profit|grow|grows|growth|lose|loses|losing|loss|losses|drawdown|ao\\s+ano|por\\s+ano|anual|ao\\s+m[eê]s|por\\s+m[eê]s|mensal|render|rende|rendimento|retorno|juros|ganho|ganhar|lucro|crescer|cresça|cresce|crescimento|perder|perda|perdas|queda',
+  'iu',
+);
+// What reads as a share in the person's words, applied or not.
+const SHARE_WORDS =
+  /\d+(?:[.,]\d+)?\s*(?:%|percent|per\s*cent|por\s*cento)|(?<![\d.,])\d+\s*\/\s*\d+(?![\d.,])|(?<![\p{L}\p{N}])(?:half|metade|mostly|mainly|majority|most\s+of|maioria|maior\s+parte|principalmente|sobretudo)(?![\p{L}\p{N}])/iu;
+const CLASS_WORDS: Array<[(asset: BasketAsset) => boolean, string[]]> = [
+  [isStock, STOCK_WORDS],
+  [(asset) => asset.cls === 'cash', ['cash', 'caixa']],
+  [(asset) => asset.cls === 'gold', ['gold', 'ouro']],
+  [(asset) => asset.cls === 'crypto', ['crypto', 'cripto', 'criptomoedas?']],
+];
+const normalized = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[“”«»]/gu, '"')
+    .replace(/[‘’]/gu, "'")
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .replace(/^["'\s]+|["'.!?;:,\s]+$/gu, '');
+
+/** The shares a quote holds, in basis points: "70%", "70 percent", "70 por cento", "half", "metade", and both sides of "70/30". */
+function quotedBps(quote: string): Set<number> {
+  const found = new Set<number>();
+  const bps = (text: string) => Math.round(Number(text.replace(',', '.')) * 100);
+  for (const match of quote.matchAll(
+    /(\d+(?:[.,]\d+)?)\s*(?:%|percent|per\s*cent|por\s*cento|pct)/giu,
+  ))
+    found.add(bps(match[1] ?? ''));
+  for (const match of quote.matchAll(
+    /(?<![\d.,])(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)(?![\d.,])/gu,
+  )) {
+    const [a, b] = [bps(match[1] ?? ''), bps(match[2] ?? '')];
+    if (a + b === 10_000) found.add(a).add(b);
+  }
+  if (word('half|metade', 'iu').test(quote)) found.add(5000);
+  return found;
+}
+
+type Grounded = { share: VaultAgentStatedShare; at: number };
+
+/**
+ * The shares the model reports that the person's words hold (gate ANY-COMPOSITION, Rodrigo's `stated`):
+ * the quote is in one person message, it holds the share's number, it is not about a return, a yield,
+ * growth or a loss, and it names every asset the share covers (a ticker or company name in any case,
+ * since the quote binds it, or the asset's class). The latest message wins: an earlier share whose
+ * assets a later one all covers is dropped. Everything else is `rejected`, with why, for the repair.
+ */
+function groundShares(
+  stated: readonly VaultAgentStatedShare[],
+  messages: VaultAgentRequest['messages'],
+  catalog: Map<string, BasketAsset>,
+  companies: Map<string, string[]>,
+): { accepted: VaultAgentStatedShare[]; rejected: string[] } {
+  const people = messages.flatMap((message, at) =>
+    message.who === 'person' ? [{ at, text: normalized(message.text) }] : [],
+  );
+  const names = (quote: string, asset: BasketAsset) =>
+    word(
+      [asset.symbol, asset.underlying, ...companyNames(companies.get(asset.id) ?? [])]
+        .map(literal)
+        .join('|'),
+      'iu',
+    ).test(quote) ||
+    CLASS_WORDS.some(
+      ([matches, words]) => matches(asset) && word(words.join('|'), 'iu').test(quote),
+    );
+  const grounded: Grounded[] = [];
+  const rejected: string[] = [];
+  stated.forEach((share, index) => {
+    const quote = normalized(share.quote);
+    const at = people.filter((person) => quote && person.text.includes(quote)).at(-1)?.at;
+    const why =
+      at === undefined
+        ? "its quote is not the person's own words from one message"
+        : RETURNS.test(share.quote)
+          ? 'its quote is about a return, a yield, growth or a loss, not a share of the vault'
+          : !quotedBps(share.quote).has(share.bps)
+            ? 'the number in its quote is not its bps; a preference with no number, such as "mostly", is not a share'
+            : share.assetIds.some((id) => {
+                  const asset = catalog.get(id);
+                  return !asset || !names(share.quote, asset);
+                })
+              ? 'its quote does not name every asset in its assetIds'
+              : null;
+    if (why || at === undefined) rejected.push(`At stated.${index} (“${share.quote}”): ${why}.`);
+    else grounded.push({ share, at });
+  });
+  const ordered = grounded
+    .map((entry, order) => ({ ...entry, order }))
+    .sort((a, b) => a.at - b.at || a.order - b.order);
+  const accepted = ordered
+    .filter(
+      (entry, i) =>
+        !entry.share.assetIds.every((id) =>
+          ordered.slice(i + 1).some((later) => later.share.assetIds.includes(id)),
+        ),
+    )
+    .map((entry) => entry.share);
+  return { accepted, rejected };
+}
+
 export async function replyToVaultConversation(
   request: VaultAgentRequest,
   context: ConversationAgentContext,
@@ -683,7 +801,8 @@ export async function replyToVaultConversation(
     failed: detail,
     problems: [REPAIR_HINTS[detail] ?? detail, ...extra],
   });
-  const check = (output: Output): Checked => {
+  // `final` is the repair attempt: a share it still reports without the person's words is ignored.
+  const check = (output: Output, final = false): Checked => {
     if ('why' in output)
       return {
         result: {
@@ -730,6 +849,7 @@ export async function replyToVaultConversation(
             ...conversation,
             proposal: null,
             warnings: [],
+            weightNotes: [],
           },
         },
       };
@@ -755,20 +875,58 @@ export async function replyToVaultConversation(
     )
       return rejected('allocation_lines');
     // The weights come from the person's words, never from the model (Rodrigo's rule 2): an equal
-    // split, or the shares the server parsed from what the person said. A pick their shares leave
-    // nothing for is dropped.
-    const picks = proposal.allocations.map((allocation) => ({
+    // split, or the shares the person stated that their words hold. A pick their shares leave nothing
+    // for is dropped, and every such step is said in a weight note.
+    const { stated, ...preview } = proposal;
+    const grounded = groundShares(stated, parsed.data.messages, catalog, companies);
+    if (grounded.rejected.length && !final) return rejected('stated_ungrounded', grounded.rejected);
+    const shares = grounded.accepted;
+    const picks = preview.allocations.map((allocation) => ({
       allocation,
       asset: catalog.get(allocation.assetId) as BasketAsset,
     }));
-    const { weights, unmet } = personWeights(
+    const members = shares.map((share) =>
+      picks.flatMap(({ asset }, i) => (share.assetIds.includes(asset.id) ? [i] : [])),
+    );
+    const { weights, unmet, scaled } = personWeights(
       picks.length,
-      constraints.map((constraint) => ({
-        members: picks.flatMap(({ asset }, i) => (constraint.matches(asset) ? [i] : [])),
-        min: constraint.min,
-        max: constraint.max,
+      shares.map((share, i) => ({
+        members: members[i] ?? [],
+        min: share.kind === 'max' ? 0 : share.bps,
+        max: share.kind === 'min' ? 10_000 : share.bps,
       })),
     );
+    const missed = unmet[0] === undefined ? undefined : shares[unmet[0]];
+    if (missed) {
+      // Which share, in words: its place and the person's quote, never a weight.
+      return {
+        failed: 'allocation_constraint',
+        problems: [
+          REPAIR_HINTS.allocation_constraint ?? 'allocation_constraint',
+          `At stated.${stated.indexOf(missed)} (the person said “${missed.quote}”): the picks cannot meet it.`,
+        ],
+        result: {
+          kind: 'reply',
+          reply: {
+            version: 1,
+            messageId: request.messageId,
+            proposal: null,
+            warnings: [],
+            weightNotes: [
+              { code: 'share_unmet', assetIds: missed.assetIds.slice(0, 64), quote: missed.quote },
+            ],
+            message:
+              request.language === 'pt'
+                ? `A proposta não respeitou seu pedido: “${missed.quote}”. Esse limite continua valendo; nada foi aplicado.`
+                : `The draft did not meet your request: “${missed.quote}”. That requirement still stands; nothing was applied.`,
+            question:
+              request.language === 'pt'
+                ? 'Quer que eu proponha outra divisão respeitando esse limite, ou prefere alterá-lo?'
+                : 'Would you like another draft within that limit, or would you like to change the requirement?',
+          },
+        },
+      };
+    }
     const sources = new Set<string>();
     const warnings: VaultAgentWarning[] = [];
     const lines = picks.flatMap(({ allocation, asset }, i) => {
@@ -795,55 +953,48 @@ export async function replyToVaultConversation(
       for (const id of allocation.evidenceIds) sources.add(id);
       return [{ ...allocation, weightBps, symbol: asset.symbol }];
     });
-    for (const index of unmet.slice(0, 1)) {
-      const constraint = constraints[index];
-      if (constraint) {
-        const actual = picks.reduce(
-          (weight, { asset }, i) => weight + (constraint.matches(asset) ? (weights[i] ?? 0) : 0),
-          0,
-        );
-        // Which limit, in words: the server's own constraint and the person's quote.
-        const side =
-          actual < constraint.min
-            ? 'the picks it covers cannot reach its minWeightBps'
-            : 'the other picks cannot take enough to keep it under its maxWeightBps';
-        return {
-          failed: 'allocation_constraint',
-          problems: [
-            REPAIR_HINTS.allocation_constraint ?? 'allocation_constraint',
-            `At allocationConstraints.${index} (the person said “${constraint.quote}”): ${side}.`,
-          ],
-          result: {
-            kind: 'reply',
-            reply: {
-              version: 1,
-              messageId: request.messageId,
-              proposal: null,
-              warnings: [],
-              message:
-                request.language === 'pt'
-                  ? `A proposta não respeitou seu pedido: “${constraint.quote}”. Esse limite continua valendo; nada foi aplicado.`
-                  : `The draft did not meet your request: “${constraint.quote}”. That requirement still stands; nothing was applied.`,
-              question:
-                request.language === 'pt'
-                  ? 'Quer que eu proponha outra divisão respeitando esse limite, ou prefere alterá-lo?'
-                  : 'Would you like another draft within that limit, or would you like to change the requirement?',
-            },
-          },
-        };
-      }
-    }
+    const served = (indexes: readonly number[]) =>
+      indexes.filter((i) => (weights[i] ?? 0) > 0).map((i) => picks[i]?.asset.id as string);
+    const held = new Set(members.flat());
+    const free = served(picks.map((_, i) => i).filter((i) => !held.has(i)));
+    const quotes = shares.map((share) => normalized(share.quote));
+    const latest = parsed.data.messages.filter((message) => message.who === 'person').at(-1);
+    const weightNotes: VaultAgentWeightNote[] = [
+      ...shares.flatMap((share, i) => {
+        const assetIds = served(members[i] ?? []);
+        return assetIds.length ? [{ code: 'stated' as const, assetIds, quote: share.quote }] : [];
+      }),
+      ...(scaled ? [{ code: 'scaled' as const, assetIds: served(picks.map((_, i) => i)) }] : []),
+      ...(free.length ? [{ code: 'equal_split' as const, assetIds: free }] : []),
+      ...picks.flatMap(({ asset }, i) =>
+        (weights[i] ?? 0) === 0 ? [{ code: 'pick_dropped' as const, assetIds: [asset.id] }] : [],
+      ),
+      // A share in the person's latest words that no grounded share covers is said, never dropped.
+      ...(latest?.text.split(/[.;!?\n,]+/u) ?? [])
+        .map((clause) => clause.trim())
+        .filter((clause) => SHARE_WORDS.test(clause) && !RETURNS.test(clause))
+        .filter((clause) => {
+          const words = normalized(clause);
+          return !quotes.some((quote) => words.includes(quote) || quote.includes(words));
+        })
+        .map((clause) => ({
+          code: 'share_unread' as const,
+          assetIds: [],
+          quote: clause.slice(0, 400),
+        })),
+    ].slice(0, 64);
     const reply = VaultAgentReply.safeParse({
       version: 1,
       messageId: request.messageId,
       ...conversation,
       proposal: {
-        ...proposal,
+        ...preview,
         allocations: lines,
-        unknowns: [...new Set([...context.unknowns, ...proposal.unknowns])].slice(0, 12),
+        unknowns: [...new Set([...context.unknowns, ...preview.unknowns])].slice(0, 12),
         sources: [...sources].map((id) => sourceById.get(id)),
       },
       warnings,
+      weightNotes,
     });
     return reply.success
       ? { result: { kind: 'reply', reply: reply.data } }
@@ -859,6 +1010,7 @@ export async function replyToVaultConversation(
       problems: checked.problems,
       elapsedMs: Date.now() - started,
     }),
+    true,
   );
   const repair = {
     failed: checked.failed,

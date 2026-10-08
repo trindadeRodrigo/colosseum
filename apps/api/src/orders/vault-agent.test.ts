@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { checkCreatorLimits } from '@colosseum/basket';
-import type { Price, VaultState } from '@colosseum/schemas';
+import type { Price, VaultAgentStatedShare, VaultState } from '@colosseum/schemas';
 import { VaultAgentRequest } from '@colosseum/schemas';
 import { describe, expect, it, vi } from 'vitest';
 import { launchShelf } from '../../../../packages/engine/src/personal/testing';
@@ -108,9 +108,27 @@ const proposal = () => ({
         evidenceIds: [`catalog:${otherReserve.id}`],
       },
     ],
+    stated: [] as VaultAgentStatedShare[],
     tradeoffs: ['Stock concentration can increase losses.'],
     unknowns: ['The future price path is unknown.'],
   },
+});
+const listedStocks = assets
+  .filter((asset) => asset.cls === 'stock' || asset.cls === 'etf')
+  .map((asset) => asset.id);
+/** The shares the model reports the person stated, with the person's own words. */
+const withStated = <T extends ReturnType<typeof proposal>>(
+  value: T,
+  ...stated: VaultAgentStatedShare[]
+): T => {
+  value.proposal.stated = stated;
+  return value;
+};
+const stocksAtLeast = (bps: number, quote: string): VaultAgentStatedShare => ({
+  assetIds: listedStocks,
+  kind: 'min',
+  bps,
+  quote,
 });
 /** Picks with no stock: a stated stock minimum cannot be met by them. */
 const reservesOnly = () => {
@@ -192,7 +210,8 @@ describe('model-led private vault proposals', () => {
 
   it('keeps an explicit stock minimum through later refinement and asks when the picks cannot meet it', async () => {
     const minimum = request('I want at least 40% stocks in this vault.');
-    const wrong = fake(reservesOnly());
+    const forty = stocksAtLeast(4000, 'I want at least 40% stocks in this vault.');
+    const wrong = fake(withStated(reservesOnly(), forty));
     const result = await replyToVaultConversation(minimum, context, wrong);
     expect(result.kind).toBe('reply');
     if (result.kind !== 'reply') throw new Error('Missing explanation');
@@ -205,6 +224,9 @@ describe('model-led private vault proposals', () => {
     expect(result.reply.proposal).toBeNull();
     expect(result.reply.message).toContain(minimum.messages[1]?.text);
     expect(result.reply.question).toContain('within that limit');
+    expect(result.reply.weightNotes).toEqual([
+      { code: 'share_unmet', assetIds: listedStocks, quote: forty.quote },
+    ]);
     const later = {
       ...minimum,
       messages: [
@@ -213,23 +235,61 @@ describe('model-led private vault proposals', () => {
         { who: 'person' as const, text: 'Please keep it diversified.' },
       ],
     };
-    const held = await replyToVaultConversation(later, context, fake(reservesOnly()));
+    const held = await replyToVaultConversation(
+      later,
+      context,
+      fake(withStated(reservesOnly(), forty)),
+    );
     if (held.kind !== 'reply') throw new Error('Missing explanation');
     expect(held.reply.proposal).toBeNull();
     // With a stock among the picks the server meets the minimum itself: the stock at 40%, the
     // reserves sharing the rest equally.
-    const correct = await replyToVaultConversation(minimum, context, fake(proposal()));
+    const correct = await replyToVaultConversation(
+      minimum,
+      context,
+      fake(withStated(proposal(), forty)),
+    );
     expect(weightsOf(correct)).toEqual([4000, 3000, 3000]);
-    expect(weightsOf(await replyToVaultConversation(later, context, fake(proposal())))).toEqual([
-      4000, 3000, 3000,
+    expect(correct.kind === 'reply' && correct.reply.weightNotes).toEqual([
+      { code: 'stated', assetIds: [stock.id], quote: forty.quote },
+      { code: 'equal_split', assetIds: [reserve.id, otherReserve.id] },
     ]);
+    expect(
+      weightsOf(
+        await replyToVaultConversation(later, context, fake(withStated(proposal(), forty))),
+      ),
+    ).toEqual([4000, 3000, 3000]);
     const amended = {
       ...later,
       messages: [...later.messages, { who: 'person' as const, text: 'Make that at least 10%.' }],
     };
     // An equal split already meets the amended minimum, so nothing moves.
-    const replacement = await replyToVaultConversation(amended, context, fake(proposal()));
+    const ten = stocksAtLeast(1000, 'Make that at least 10% stocks.');
+    const replacement = await replyToVaultConversation(
+      { ...amended, messages: [...later.messages, { who: 'person', text: ten.quote }] },
+      context,
+      fake(withStated(proposal(), ten)),
+    );
     expect(weightsOf(replacement)).toEqual([3334, 3333, 3333]);
+    // "Make that at least 10%." names no asset, so it is no share the server can hold the model to:
+    // the split is equal, and the person is told their share was not applied.
+    const unnamed = { ...ten, quote: 'Make that at least 10%.' };
+    const unread = await replyToVaultConversation(
+      amended,
+      context,
+      fake(withStated(proposal(), unnamed)),
+    );
+    expect(unread).toMatchObject({
+      kind: 'reply',
+      repair: { failed: 'stated_ungrounded', outcome: 'repaired' },
+      reply: {
+        weightNotes: [
+          { code: 'equal_split', assetIds: [stock.id, reserve.id, otherReserve.id] },
+          { code: 'share_unread', assetIds: [], quote: 'Make that at least 10%' },
+        ],
+      },
+    });
+    expect(weightsOf(unread)).toEqual([3334, 3333, 3333]);
     const dropped = {
       ...later,
       messages: [...later.messages, { who: 'person' as const, text: 'Ignore that stock minimum.' }],
@@ -273,14 +333,21 @@ describe('model-led private vault proposals', () => {
 
   it('preserves the exact reported stock-minimum wording across its sentence boundary', async () => {
     const text = 'i think i want way more stocks on them. like at least 40%';
-    const out = await replyToVaultConversation(request(text), context, fake(reservesOnly()));
+    const share = stocksAtLeast(4000, text);
+    const out = await replyToVaultConversation(
+      request(text),
+      context,
+      fake(withStated(reservesOnly(), share)),
+    );
     if (out.kind !== 'reply') throw new Error('Missing conflict explanation');
     expect(out.reply.message).toContain(text);
     expect(out.reply.proposal).toBeNull();
     expect(out.reply.question).toBeTruthy();
     // With a stock picked, the server meets the stated minimum itself.
     expect(
-      weightsOf(await replyToVaultConversation(request(text), context, fake(proposal()))),
+      weightsOf(
+        await replyToVaultConversation(request(text), context, fake(withStated(proposal(), share))),
+      ),
     ).toEqual([4000, 3000, 3000]);
   });
 
@@ -496,8 +563,18 @@ describe('model-led private vault proposals', () => {
     const minimum = request('I want at least 40% stocks in this vault.');
     const read = vi
       .fn()
-      .mockResolvedValueOnce({ reply: reservesOnly() })
-      .mockResolvedValueOnce({ reply: proposal() });
+      .mockResolvedValueOnce({
+        reply: withStated(
+          reservesOnly(),
+          stocksAtLeast(4000, 'I want at least 40% stocks in this vault.'),
+        ),
+      })
+      .mockResolvedValueOnce({
+        reply: withStated(
+          proposal(),
+          stocksAtLeast(4000, 'I want at least 40% stocks in this vault.'),
+        ),
+      });
     const repaired = await replyToVaultConversation(minimum, context, { read });
     expect(repaired).toMatchObject({
       kind: 'reply',
@@ -508,32 +585,43 @@ describe('model-led private vault proposals', () => {
     const problems: string[] = read.mock.calls[1]?.[2].problems;
     expect(problems).toEqual([
       expect.stringContaining('cannot meet a share the person stated'),
-      'At allocationConstraints.0 (the person said “I want at least 40% stocks in this vault.”): the picks it covers cannot reach its minWeightBps.',
+      'At stated.0 (the person said “I want at least 40% stocks in this vault.”): the picks cannot meet it.',
     ]);
     // No weight is repeated back: the server's equal split is not the model's to argue with.
     expect(problems.join(' ')).not.toMatch(/5000|3334|3333/);
     // A maximum over every pick cannot be met: only stocks were picked.
     const maximum = request('I want at most 10% stocks in this vault.');
-    const onlyStock = proposal();
+    const atMost: VaultAgentStatedShare = {
+      assetIds: listedStocks,
+      kind: 'max',
+      bps: 1000,
+      quote: 'I want at most 10% stocks in this vault.',
+    };
+    const onlyStock = withStated(proposal(), atMost);
     onlyStock.proposal.allocations = onlyStock.proposal.allocations.slice(0, 1);
     const over = vi
       .fn()
       .mockResolvedValueOnce({ reply: onlyStock })
-      .mockResolvedValueOnce({ reply: proposal() });
+      .mockResolvedValueOnce({ reply: withStated(proposal(), atMost) });
     const capped = await replyToVaultConversation(maximum, context, { read: over });
     expect(capped).toMatchObject({
       kind: 'reply',
       repair: { failed: 'allocation_constraint', outcome: 'repaired' },
     });
     expect(weightsOf(capped)).toEqual([1000, 4500, 4500]);
-    expect(over.mock.calls[1]?.[2].problems[1]).toContain('keep it under its maxWeightBps');
+    expect(over.mock.calls[1]?.[2].problems[1]).toContain('At stated.0');
   });
 
   it('keeps the question about a stated limit when its repair fails another way', async () => {
     const minimum = request('I want at least 40% stocks in this vault.');
     const read = vi
       .fn()
-      .mockResolvedValueOnce({ reply: reservesOnly() })
+      .mockResolvedValueOnce({
+        reply: withStated(
+          reservesOnly(),
+          stocksAtLeast(4000, 'I want at least 40% stocks in this vault.'),
+        ),
+      })
       .mockResolvedValueOnce({ reply: null, why: 'timeout', detail: 'model_timeout' });
     const out = await replyToVaultConversation(minimum, context, { read });
     expect(out).toMatchObject({
@@ -547,7 +635,12 @@ describe('model-led private vault proposals', () => {
     // A repair that fails a structure check also leaves the question standing.
     const schema = vi
       .fn()
-      .mockResolvedValueOnce({ reply: reservesOnly() })
+      .mockResolvedValueOnce({
+        reply: withStated(
+          reservesOnly(),
+          stocksAtLeast(4000, 'I want at least 40% stocks in this vault.'),
+        ),
+      })
       .mockResolvedValueOnce({ reply: { question: null, proposal: null } });
     expect(await replyToVaultConversation(minimum, context, { read: schema })).toMatchObject({
       kind: 'reply',
@@ -657,7 +750,18 @@ describe('model-led private vault proposals', () => {
     expect(weightsOf(await replyToVaultConversation(request(), context, fake(proposal())))).toEqual(
       [3334, 3333, 3333],
     );
-    const out = await replyToVaultConversation(seventy, context, fake(proposal()));
+    const out = await replyToVaultConversation(
+      seventy,
+      context,
+      fake(
+        withStated(proposal(), {
+          assetIds: [stock.id],
+          kind: 'exact',
+          bps: 7000,
+          quote: `70% ${stock.symbol}`,
+        }),
+      ),
+    );
     if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
     expect(out.reply.proposal?.allocations.map((line) => line.weightBps)).toEqual([
       7000, 1500, 1500,
@@ -875,7 +979,14 @@ describe('model-led private vault proposals', () => {
     const under = await replyToVaultConversation(
       request(`I want at most 5% ${stock.symbol}.`),
       built,
-      fake(proposal()),
+      fake(
+        withStated(proposal(), {
+          assetIds: [stock.id],
+          kind: 'max',
+          bps: 500,
+          quote: `at most 5% ${stock.symbol}`,
+        }),
+      ),
     );
     expect(weightsOf(under)).toEqual([500, 4750, 4750]);
     expect(under.kind === 'reply' && under.reply.warnings).toEqual([]);

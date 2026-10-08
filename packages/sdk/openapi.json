@@ -7420,6 +7420,41 @@
                         "additionalProperties": false
                       }
                     },
+                    "weightNotes": {
+                      "maxItems": 64,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "enum": [
+                              "equal_split",
+                              "stated",
+                              "scaled",
+                              "pick_dropped",
+                              "share_unmet",
+                              "share_unread"
+                            ]
+                          },
+                          "assetIds": {
+                            "maxItems": 64,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                            }
+                          },
+                          "quote": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 400
+                          }
+                        },
+                        "required": ["code", "assetIds"],
+                        "additionalProperties": false
+                      }
+                    },
                     "chain": {
                       "type": "string",
                       "enum": ["solana", "base", "robinhood"]
@@ -7432,6 +7467,7 @@
                     "question",
                     "proposal",
                     "warnings",
+                    "weightNotes",
                     "chain"
                   ],
                   "additionalProperties": false
@@ -16464,6 +16500,41 @@
                         "additionalProperties": false
                       }
                     },
+                    "weightNotes": {
+                      "maxItems": 64,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "enum": [
+                              "equal_split",
+                              "stated",
+                              "scaled",
+                              "pick_dropped",
+                              "share_unmet",
+                              "share_unread"
+                            ]
+                          },
+                          "assetIds": {
+                            "maxItems": 64,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                            }
+                          },
+                          "quote": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 400
+                          }
+                        },
+                        "required": ["code", "assetIds"],
+                        "additionalProperties": false
+                      }
+                    },
                     "chain": {
                       "type": "string",
                       "enum": ["solana", "base", "robinhood"]
@@ -16481,6 +16552,7 @@
                     "question",
                     "proposal",
                     "warnings",
+                    "weightNotes",
                     "chain",
                     "address"
                   ],

@@ -442,6 +442,7 @@ const draft = (language: 'en' | 'pt' = 'en'): VaultAgentModelReply => ({
         evidenceIds: [`catalog:${cash.id}`],
       },
     ],
+    stated: [],
     tradeoffs: [
       language === 'pt'
         ? 'Concentração em uma empresa pode ampliar perdas.'
@@ -529,7 +530,22 @@ describe('conversation context and grounded replies through the provider stub', 
           ? 'Quero investir em veículos elétricos, com pelo menos 40% em ações.'
           : 'I want electric vehicle stocks, with at least 40% stocks.';
       const messages: VaultAgentRequest['messages'] = [{ who: 'person', text: instruction }];
-      respond(draft(language));
+      // The model reports the person's minimum with their words; the server holds it to them.
+      const minimum = {
+        assetIds: catalog
+          .filter((asset) => asset.cls === 'stock' || asset.cls === 'etf')
+          .map((asset) => asset.id),
+        kind: 'min' as const,
+        bps: 4000,
+        quote: instruction,
+      };
+      const drafted = () => {
+        const value = draft(language);
+        if (!value.proposal) throw new Error('Missing fixture proposal');
+        value.proposal.stated = [minimum];
+        return value;
+      };
+      respond(drafted());
       const first = await replyToVaultConversation(
         turn(messages, language),
         conversationContext,
@@ -538,6 +554,10 @@ describe('conversation context and grounded replies through the provider stub', 
       expect(first.kind).toBe('reply');
       if (first.kind !== 'reply' || !first.reply.proposal) throw new Error('Preview rejected');
       expect(first.reply.question).toBeNull();
+      expect(first.reply.weightNotes).toEqual([
+        { code: 'stated', assetIds: [tesla.id], quote: instruction },
+        { code: 'equal_split', assetIds: [cash.id] },
+      ]);
       expect(first.reply.proposal.objective).toBe(draft(language).proposal?.objective);
       // Two picks, equal: the stated minimum of stocks is already met.
       expect(first.reply.proposal.allocations[0]).toMatchObject({
@@ -557,7 +577,7 @@ describe('conversation context and grounded replies through the provider stub', 
           text: language === 'pt' ? 'Mantenha uma reserva em caixa.' : 'Keep a cash cushion.',
         },
       );
-      respond(draft(language));
+      respond(drafted());
       const refined = await replyToVaultConversation(
         turn(messages, language),
         conversationContext,
@@ -582,7 +602,7 @@ describe('conversation context and grounded replies through the provider stub', 
       });
       expect(sentPrompt().vault?.positions[0]?.asset).toBe(nvidia.id);
       expect(sentPrompt().vault?.positions[0]?.targetBps).toBe(1000);
-      const reduced = draft(language);
+      const reduced = drafted();
       if (!reduced.proposal) throw new Error('Missing fixture proposal');
       // Cash alone cannot hold the stock minimum.
       reduced.proposal.allocations = reduced.proposal.allocations.filter(
@@ -602,9 +622,7 @@ describe('conversation context and grounded replies through the provider stub', 
         failed: 'allocation_constraint',
         outcome: 'allocation_constraint',
       });
-      expect(sdk.create.mock.calls.at(-1)?.[0].messages[2].content).toContain(
-        'At allocationConstraints.0',
-      );
+      expect(sdk.create.mock.calls.at(-1)?.[0].messages[2].content).toContain('At stated.0');
       expect(mismatch.reply.proposal).toBeNull();
       expect(mismatch.reply.message).toContain(instruction);
       messages.push({

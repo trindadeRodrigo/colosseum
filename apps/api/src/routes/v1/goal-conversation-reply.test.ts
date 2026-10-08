@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import type { Db } from '@colosseum/db';
-import { parseChainConfigs, parseFlags } from '@colosseum/schemas';
+import { parseChainConfigs, parseFlags, type VaultAgentStatedShare } from '@colosseum/schemas';
 import Fastify from 'fastify';
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -103,6 +103,7 @@ async function setup(available = true) {
           evidenceIds: [`catalog:${cash.id}`],
         },
       ],
+      stated: [] as VaultAgentStatedShare[],
       tradeoffs: ['The business may lose value.'],
       unknowns: [],
     },
@@ -124,6 +125,10 @@ async function setup(available = true) {
     proposal,
     logs,
     asset,
+    cash,
+    stocks: listed
+      .filter((item) => item.cls === 'stock' || item.cls === 'etf')
+      .map((item) => item.id),
   };
 }
 
@@ -188,7 +193,11 @@ describe('new-goal model preview route', () => {
     const s = await setup();
     vi.mocked(s.model.read).mockResolvedValueOnce({ reply: s.proposal() });
     const first = await s.post();
-    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: s.proposal() });
+    const seventy = s.proposal();
+    seventy.proposal.stated = [
+      { assetIds: [s.asset.id], kind: 'exact', bps: 7000, quote: `70% ${s.asset.symbol}` },
+    ];
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: seventy });
     const second = await s.post(s.owner, {
       ...s.body,
       messages: [{ who: 'person', text: `I want 70% ${s.asset.symbol}, the rest in cash.` }],
@@ -198,6 +207,13 @@ describe('new-goal model preview route', () => {
       res.json().proposal.allocations.map((line: { weightBps: number }) => line.weightBps);
     expect(weights(first)).toEqual([5000, 5000]);
     expect(weights(second)).toEqual([7000, 3000]);
+    expect(first.json().weightNotes).toEqual([
+      { code: 'equal_split', assetIds: [s.asset.id, s.cash.id] },
+    ]);
+    expect(second.json().weightNotes).toEqual([
+      { code: 'stated', assetIds: [s.asset.id], quote: `70% ${s.asset.symbol}` },
+      { code: 'equal_split', assetIds: [s.cash.id] },
+    ]);
     expect(second.json().proposal.unknowns.join(' ')).toContain(
       'Funding requires fresh confirmation',
     );
@@ -207,8 +223,11 @@ describe('new-goal model preview route', () => {
   it('retains the explicit stock minimum and returns a useful question for a conflicting model draft', async () => {
     const s = await setup();
     // Cash alone cannot hold a stock minimum, and the repair sends the same picks: the person is asked.
-    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: s.proposal(true) });
-    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: s.proposal(true) });
+    const text = 'i think i want way more stocks on them. like at least 40%';
+    const cashOnly = s.proposal(true);
+    cashOnly.proposal.stated = [{ assetIds: s.stocks, kind: 'min', bps: 4000, quote: text }];
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: cashOnly });
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: cashOnly });
     const res = await s.post(s.owner, {
       ...s.body,
       messages: [

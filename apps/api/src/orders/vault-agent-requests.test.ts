@@ -80,6 +80,7 @@ const proposal = () => ({
         evidenceIds: [`catalog:${otherReserve.id}`],
       },
     ],
+    stated: [],
     tradeoffs: ['Stock concentration can increase losses.'],
     unknowns: ['The future price path is unknown.'],
   },
@@ -146,6 +147,15 @@ describe('a refusal, a question, a withdrawal or an everyday word is not a reque
     ['income', ['Quero renda, sem ações.'], 'pt'],
     ['protect', ['I want at most 5% stocks.']],
     ['protect', ['"I want TSLA", my brother told me.']],
+    ['protect', ['I want to know more about TSLA.']],
+    ['protect', ['I want to understand AAPL first.']],
+    ['protect', ['Quero saber mais sobre a TSLA.'], 'pt'],
+    ['protect', ['I want to compare AAPL and TSLA.']],
+    ['protect', ['I want to see what AAPL would look like.']],
+    ['protect', ['I want something like AAPL but safer.']],
+    ['protect', ['I want my savings safe from TSLA-style crashes.']],
+    ['protect', ['Quero investir como a TSLA investe em inovação.'], 'pt'],
+    ['protect', ['Quero ações, mas só se for seguro.'], 'pt'],
   ])('%s: %j', async (goal, turns, language = 'en', expected = []) => {
     const { out, requested } = await read(goal, turns, language);
     const want = expected.includes(STOCKS)
@@ -246,6 +256,292 @@ describe("a stated share reads tickers as written, so the person's shares drive 
   });
 });
 
+// Gate ANY-COMPOSITION: the weights follow only the shares the person's words hold. The model reports
+// each with the person's quote; the server checks the quote, its number, that it is not a return, and
+// the assets it names. Cases from the second review of #189.
+describe("the person's stated shares, as their words hold them", () => {
+  const pick = (ticker: string) => ({
+    assetId: symbol(ticker),
+    why: 'The person named it.',
+    evidenceIds: [`catalog:${symbol(ticker)}`],
+  });
+  const evidence = assets.map((asset) => ({
+    id: `catalog:${asset.id}`,
+    assetId: asset.id,
+    source: 'offline catalog',
+    method: 'listed assets',
+    fetchedAt: now,
+    provenance: 'mock' as const,
+  }));
+  const shareOf = (
+    tickers: string[],
+    kind: 'exact' | 'min' | 'max',
+    bps: number,
+    quote: string,
+  ) => ({ assetIds: tickers.map(symbol), kind, bps, quote });
+  async function served(
+    turns: Turn[],
+    tickers: string[],
+    stated: ReturnType<typeof shareOf>[],
+    language: 'en' | 'pt' = 'en',
+    extra: Partial<VaultAgentContext> = {},
+  ) {
+    const value = proposal();
+    value.proposal.allocations = tickers.map(pick);
+    (value.proposal as { stated: unknown[] }).stated = stated;
+    const messages = turns.map((turn) =>
+      Array.isArray(turn)
+        ? { who: turn[0], text: turn[1] }
+        : { who: 'person' as const, text: turn },
+    );
+    const out = await replyToVaultConversation(
+      { version: 1, language, messageId: 'turn', messages },
+      { ...context, evidence, ...extra },
+      fake(value),
+    );
+    if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
+    return {
+      weights: out.reply.proposal?.allocations.map((line) => line.weightBps),
+      notes: out.reply.weightNotes,
+      repair: out.repair,
+      reply: out.reply,
+    };
+  }
+  const three = ['AAPL', 'TSLA', 'GLD'];
+
+  it.each<[string, ReturnType<typeof shareOf>[], ('en' | 'pt')?]>([
+    ['I want 10% a year, mostly stocks.', [shareOf(['AAPL', 'TSLA'], 'min', 1000, '10% a year')]],
+    [
+      'Quero render 10% ao ano com ouro.',
+      [shareOf(['GLD'], 'exact', 1000, 'render 10% ao ano com ouro')],
+      'pt',
+    ],
+    [
+      'I want 8% a year with some TSLA.',
+      [shareOf(['TSLA'], 'exact', 800, '8% a year with some TSLA')],
+    ],
+    [
+      'I want TSLA to grow 20% a year.',
+      [shareOf(['TSLA'], 'exact', 2000, 'TSLA to grow 20% a year')],
+    ],
+    [
+      'I want to lose at most 10% with TSLA.',
+      [shareOf(['TSLA'], 'max', 1000, 'lose at most 10% with TSLA')],
+    ],
+  ])('sets no weight from a return or a loss: %s', async (text, stated, language = 'en') => {
+    const out = await served([text], three, stated, language);
+    expect(out.weights).toEqual([3334, 3333, 3333]);
+    // Refused once, with the reason, then ignored: the repair sent the same share again.
+    expect(out.repair).toEqual({ failed: 'stated_ungrounded', outcome: 'repaired' });
+    expect(out.notes[0]).toEqual({ code: 'equal_split', assetIds: three.map(symbol) });
+  });
+
+  it('says that "mostly stocks" was not applied, rather than splitting in silence', async () => {
+    const out = await served(['I want 10% a year, mostly stocks.'], three, []);
+    expect(out.weights).toEqual([3334, 3333, 3333]);
+    expect(out.notes).toEqual([
+      { code: 'equal_split', assetIds: three.map(symbol) },
+      { code: 'share_unread', assetIds: [], quote: 'mostly stocks' },
+    ]);
+    expect(out.repair).toBeUndefined();
+    // A preference with no number reported as a share is refused for its number.
+    const mostly = await served(
+      ['I want mostly TSLA.'],
+      ['TSLA', 'GLD'],
+      [shareOf(['TSLA'], 'min', 7000, 'mostly TSLA')],
+    );
+    expect(mostly.weights).toEqual([5000, 5000]);
+    expect(mostly.notes).toContainEqual({
+      code: 'share_unread',
+      assetIds: [],
+      quote: 'I want mostly TSLA',
+    });
+  });
+
+  it.each<[string, string[], ReturnType<typeof shareOf>[], number[], ('en' | 'pt')?]>([
+    [
+      'I want 70/30 TSLA and NVDA.',
+      ['TSLA', 'NVDA'],
+      [
+        shareOf(['TSLA'], 'exact', 7000, '70/30 TSLA and NVDA'),
+        shareOf(['NVDA'], 'exact', 3000, '70/30 TSLA and NVDA'),
+      ],
+      [7000, 3000],
+    ],
+    [
+      'I want 70% tsla.',
+      ['TSLA', 'GLD'],
+      [shareOf(['TSLA'], 'exact', 7000, '70% tsla')],
+      [7000, 3000],
+    ],
+    [
+      '70% em TSLA',
+      ['TSLA', 'GLD'],
+      [shareOf(['TSLA'], 'exact', 7000, '70% em TSLA')],
+      [7000, 3000],
+      'pt',
+    ],
+    [
+      'Put 70 percent in TSLA.',
+      ['TSLA', 'GLD'],
+      [shareOf(['TSLA'], 'exact', 7000, '70 percent in TSLA')],
+      [7000, 3000],
+    ],
+    [
+      'Quero 70 por cento em TSLA.',
+      ['TSLA', 'GLD'],
+      [shareOf(['TSLA'], 'exact', 7000, '70 por cento em TSLA')],
+      [7000, 3000],
+      'pt',
+    ],
+    [
+      'I want half in AAPL.',
+      ['AAPL', 'GLD', 'TSLA'],
+      [shareOf(['AAPL'], 'exact', 5000, 'half in AAPL')],
+      [5000, 2500, 2500],
+    ],
+    ['I want 50% SOL.', ['SOL', 'GLD'], [shareOf(['SOL'], 'exact', 5000, '50% SOL')], [5000, 5000]],
+    [
+      'I want at least 30% gold.',
+      three,
+      [shareOf(['GLD'], 'min', 3000, 'at least 30% gold')],
+      [3334, 3333, 3333],
+    ],
+    [
+      'I want at least 40% gold.',
+      three,
+      [shareOf(['GLD'], 'min', 4000, 'at least 40% gold')],
+      [3000, 3000, 4000],
+    ],
+  ])(
+    'follows a share the words hold: %s',
+    async (text, tickers, stated, weights, language = 'en') => {
+      const out = await served([text], tickers, stated, language);
+      expect(out.weights).toEqual(weights);
+      expect(out.repair).toBeUndefined();
+      expect(out.notes.filter((note) => note.code === 'share_unread')).toEqual([]);
+    },
+  );
+
+  it('reads company names in a quote: "metade em Apple", "70% Tesla", "70% Meta"', async () => {
+    const stockAttributes = {
+      stocks: [
+        { symbol: 'AAPLx', company: 'Apple Inc.' },
+        { symbol: 'TSLAx', company: 'Tesla, Inc.' },
+        { symbol: 'METAx', company: 'Meta Platforms, Inc.' },
+      ],
+    } as unknown as VaultAgentContext['stockAttributes'];
+    const apple = await served(
+      ['Quero metade em Apple.'],
+      ['AAPL', 'GLD'],
+      [shareOf(['AAPL'], 'exact', 5000, 'metade em Apple')],
+      'pt',
+      { stockAttributes },
+    );
+    expect(apple.weights).toEqual([5000, 5000]);
+    expect(apple.notes).toEqual([
+      { code: 'stated', assetIds: [symbol('AAPL')], quote: 'metade em Apple' },
+      { code: 'equal_split', assetIds: [symbol('GLD')] },
+    ]);
+    for (const [name, ticker] of [
+      ['Tesla', 'TSLA'],
+      ['Meta', 'META'],
+    ] as const) {
+      const out = await served(
+        [`I want 70% ${name}.`],
+        [ticker, 'GLD'],
+        [shareOf([ticker], 'exact', 7000, `70% ${name}`)],
+        'en',
+        { stockAttributes },
+      );
+      expect(out.weights).toEqual([7000, 3000]);
+    }
+  });
+
+  it('gives the same weights whatever order the shares come in', async () => {
+    const text = 'I want at least 20% AAPL and 60% NVDA.';
+    const stated = [
+      shareOf(['AAPL'], 'min', 2000, 'at least 20% AAPL'),
+      shareOf(['NVDA'], 'exact', 6000, '60% NVDA'),
+    ];
+    const picks = ['AAPL', 'NVDA', 'TSLA', 'GLD'];
+    const forward = await served([text], picks, stated);
+    const backward = await served([text], picks, [...stated].reverse());
+    expect(forward.weights).toEqual([2000, 6000, 1000, 1000]);
+    expect(backward.weights).toEqual(forward.weights);
+  });
+
+  it('never scales or drops in silence', async () => {
+    const twice = [
+      shareOf(['TSLA'], 'exact', 6000, '60% TSLA'),
+      shareOf(['NVDA'], 'exact', 6000, '60% NVDA'),
+    ];
+    const scaled = await served(['I want 60% TSLA and 60% NVDA.'], ['TSLA', 'NVDA'], twice);
+    expect(scaled.weights).toEqual([5000, 5000]);
+    expect(scaled.notes).toEqual([
+      { code: 'stated', assetIds: [symbol('TSLA')], quote: '60% TSLA' },
+      { code: 'stated', assetIds: [symbol('NVDA')], quote: '60% NVDA' },
+      { code: 'scaled', assetIds: [symbol('TSLA'), symbol('NVDA')] },
+    ]);
+    // Over three picks the two shares cannot both hold: the person is asked, with the quote.
+    const value = proposal();
+    value.proposal.allocations = ['TSLA', 'NVDA', 'GLD'].map(pick);
+    (value.proposal as { stated: unknown[] }).stated = twice;
+    const asked = await replyToVaultConversation(
+      {
+        version: 1,
+        language: 'en',
+        messageId: 'turn',
+        messages: [{ who: 'person', text: 'I want 60% TSLA and 60% NVDA.' }],
+      },
+      { ...context, evidence },
+      fake(value),
+    );
+    expect(asked).toMatchObject({
+      kind: 'reply',
+      reply: { proposal: null, weightNotes: [{ code: 'share_unmet', quote: '60% NVDA' }] },
+    });
+    const dropped = await served(
+      ['I want 99.99% TSLA.'],
+      ['TSLA', 'NVDA', 'AAPL'],
+      [shareOf(['TSLA'], 'exact', 9999, '99.99% TSLA')],
+    );
+    expect(dropped.weights).toEqual([9999, 1]);
+    expect(dropped.notes).toContainEqual({ code: 'pick_dropped', assetIds: [symbol('AAPL')] });
+  });
+
+  it('holds a share to the person: their message, their number, their assets, the latest word', async () => {
+    const cases: Array<[Turn[], ReturnType<typeof shareOf>[]]> = [
+      // Not in any person message (an app message does not count).
+      [
+        [['app', 'Shall I put 70% TSLA?'], 'Yes please.'],
+        [shareOf(['TSLA'], 'exact', 7000, '70% TSLA')],
+      ],
+      // A number the quote does not hold.
+      [['I want 70% TSLA.'], [shareOf(['TSLA'], 'exact', 9000, '70% TSLA')]],
+      // An asset the quote does not name.
+      [['I want 70% TSLA.'], [shareOf(['NVDA'], 'exact', 7000, '70% TSLA')]],
+    ];
+    for (const [turns, stated] of cases) {
+      const out = await served(turns, ['TSLA', 'NVDA'], stated);
+      expect(out.weights).toEqual([5000, 5000]);
+      expect(out.repair).toEqual({ failed: 'stated_ungrounded', outcome: 'repaired' });
+    }
+    // A later share on the same asset replaces the earlier one.
+    const later = await served(
+      ['I want 70% TSLA.', ['app', 'Noted.'], 'Make it 50% TSLA.'],
+      ['TSLA', 'NVDA', 'GLD'],
+      [shareOf(['TSLA'], 'exact', 7000, '70% TSLA'), shareOf(['TSLA'], 'exact', 5000, '50% TSLA')],
+    );
+    expect(later.weights).toEqual([5000, 2500, 2500]);
+    expect(later.notes[0]).toEqual({
+      code: 'stated',
+      assetIds: [symbol('TSLA')],
+      quote: '50% TSLA',
+    });
+  });
+});
+
 describe('the reply schema ties warnings to the proposal', () => {
   it('refuses a warning without a proposal, or on an asset or source the proposal lacks', () => {
     const warning = {
@@ -253,7 +549,7 @@ describe('the reply schema ties warnings to the proposal', () => {
       assetId: stock.id,
       evidenceId: `catalog:${stock.id}`,
     };
-    const base = { version: 1, messageId: 'turn', message: 'Hi.', question: null };
+    const base = { version: 1, messageId: 'turn', message: 'Hi.', question: null, weightNotes: [] };
     expect(VaultAgentReply.safeParse({ ...base, proposal: null, warnings: [] }).success).toBe(true);
     expect(
       VaultAgentReply.safeParse({ ...base, proposal: null, warnings: [warning] }).success,
@@ -261,7 +557,7 @@ describe('the reply schema ties warnings to the proposal', () => {
     const withProposal = {
       ...base,
       proposal: {
-        ...proposal().proposal,
+        ...(({ stated, ...rest }) => rest)(proposal().proposal),
         allocations: proposal().proposal.allocations.map((line, i) => ({
           ...line,
           symbol: 'X',
