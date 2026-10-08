@@ -18,6 +18,7 @@ import {
   assertNoneInFlight,
   buildLeg,
   cancelLeg,
+  failureOf,
   type OrderDeps,
   refreshOrder,
   reportLeg,
@@ -36,6 +37,7 @@ import {
   loadOrder,
   type StoredOrder,
 } from '../../orders/store';
+import { noteOrder } from '../../orders/thread';
 import { holds } from '../../plugins/auth';
 import { loggable } from '../../plugins/loggable';
 
@@ -156,6 +158,7 @@ const detail = (stored: StoredOrder): OrderDetail => ({
 
 export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
   const f = scope.withTypeProvider<ZodTypeProvider>();
+  const recordError = (e: unknown) => deps.onRecordError?.(failureOf(e));
   const tags = ['orders'];
 
   f.post(
@@ -333,6 +336,9 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: OrderDeps) {
         seen,
       });
       if (existing) return answerMade(existing);
+      // The first order stopped: said in the plan's thread now. That this one was made is said when
+      // its first step is built (thread.ts).
+      await noteOrder(deps.db, fresh, { stopped: true, onError: recordError });
       return detail({ order, request, attempts: [] });
     },
   );

@@ -16,7 +16,11 @@ import type {
   OrderType,
   Price,
   Target,
+  ThreadEvent,
+  ThreadReply,
   Trade,
+  VaultConversationCheckpoint,
+  VaultConversationTranscript,
   VaultPosition,
   VaultState,
   VaultView,
@@ -92,6 +96,40 @@ export const users = pgTable('users', {
   chainPickedAt: ts('chain_picked_at'),
   createdAt: ts('created_at').notNull().defaultNow(),
 });
+
+/** Private history for a verified vault owner; never imported from a public plan. */
+export const vaultConversations = pgTable(
+  'vault_conversations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    chainId: text('chain_id')
+      .$type<ChainId>()
+      .notNull()
+      .references(() => chains.id),
+    address: text('address').notNull(),
+    provenance: provenanceEnum('provenance').notNull(),
+    network: text('network').$type<Network>().notNull(),
+    revision: integer('revision').notNull().default(1),
+    version: integer('version').notNull().default(1),
+    transcript: jsonb('transcript').$type<VaultConversationTranscript>().notNull(),
+    checkpoint: jsonb('checkpoint').$type<VaultConversationCheckpoint>(),
+    updatedAt: ts('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    unique('vault_conversations_owner_vault_key').on(
+      t.userId,
+      t.chainId,
+      t.address,
+      t.provenance,
+      t.network,
+    ),
+    check('vault_conversations_revision_positive', sql`${t.revision} > 0`),
+    check('vault_conversations_version_one', sql`${t.version} = 1`),
+  ],
+);
 
 /** A person's wallets. One address belongs to one person. */
 export const userWallets = pgTable(
@@ -210,11 +248,66 @@ export const proposals = pgTable(
      * by anybody holding its id, and a buyer's vault numbered from the plan and the buyer.
      */
     fromLink: boolean('from_link').notNull().default(false),
+    /**
+     * The thread the plan is in (gate PLAN-THREAD): a conversation's, shared by every plan built in
+     * it. Set by the server alone, and null for a plan made from a link, which has none.
+     */
+    threadId: uuid('thread_id').references(() => planThreads.id, { onDelete: 'set null' }),
     createdAt: ts('created_at').notNull().defaultNow(),
   },
   (t) => [
+    index('proposals_thread_idx').on(t.threadId),
     // The daily cap and the cleanup read the plans made from a link by their time, and only those.
     index('proposals_from_link_created_idx').on(t.createdAt).where(sql`${t.fromLink}`),
+  ],
+);
+
+/**
+ * A thread (gate PLAN-THREAD): one conversation of one person's, from its first sentence through
+ * every plan built in it to the vault the last one funded. A plan names its thread
+ * (`proposals.thread_id`), so a plan built again in the same conversation is in the same thread.
+ */
+export const planThreads = pgTable('plan_threads', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** Whose it is: the only person who reads or writes it. */
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: ts('created_at').notNull().defaultNow(),
+});
+
+/**
+ * A thread's turns: one row a turn, in the order they were written (`seq`). A person's turn holds
+ * their words as typed; the app's holds what it said back as keys and the facts it used, never a
+ * sentence; an event's holds what happened, written by the server where a plan is built or an order
+ * changes state (`event_key` makes each one a row once). A turn names the plan it was written under,
+ * and goes with that plan. The words are personal: read by the thread's own person and nobody else.
+ */
+export const planTurns = pgTable(
+  'plan_turns',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** The order of the thread: an identity, so two turns written at one instant still have one. */
+    seq: bigint('seq', { mode: 'number' }).notNull().generatedAlwaysAsIdentity(),
+    threadId: uuid('thread_id')
+      .notNull()
+      .references(() => planThreads.id, { onDelete: 'cascade' }),
+    /** The plan the turn was written under: the one the conversation had reached. */
+    proposalId: uuid('proposal_id')
+      .notNull()
+      .references(() => proposals.id, { onDelete: 'cascade' }),
+    who: text('who').$type<'person' | 'app' | 'event'>().notNull(),
+    text: text('text'),
+    reply: jsonb('reply').$type<ThreadReply>(),
+    event: jsonb('event').$type<ThreadEvent>(),
+    /** For an event: its kind and what it is about (`deposit_landed:<order id>`), once per thread. */
+    eventKey: text('event_key'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('plan_turns_thread_seq_idx').on(t.threadId, t.seq),
+    index('plan_turns_plan_idx').on(t.proposalId),
+    uniqueIndex('plan_turns_event_once_idx').on(t.threadId, t.eventKey),
   ],
 );
 

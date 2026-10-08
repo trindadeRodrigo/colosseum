@@ -131,8 +131,10 @@ describe('loadStockAttributes', () => {
         model,
       );
       expect(out.kind).toBe('reply');
+      // The row without its source list: each source reaches the model as evidence it may cite.
+      const { sources: _sources, ...teslaRow } = tesla;
       expect(sent?.stockAttributes?.stocks.find((row) => row.symbol === tesla.symbol)).toEqual(
-        tesla,
+        teslaRow,
       );
       const listed = sent?.catalog.find((candidate) => candidate.id === asset.id);
       expect(listed).toMatchObject({ symbol: tesla.symbol });
@@ -140,7 +142,14 @@ describe('loadStockAttributes', () => {
       expect(listed).not.toHaveProperty('maxWeightBps');
       for (const source of primarySources) {
         const sourceIndex = tesla.sources.indexOf(source);
-        expect(sent?.evidence).toContainEqual(
+        // The model reads the source's title; its address and read day stay with the server's evidence.
+        expect(sent?.evidence).toContainEqual({
+          id: `stock:${asset.id}:${sourceIndex}`,
+          assetId: asset.id,
+          label: source.title,
+          provenance: 'fixture',
+        });
+        expect(context.evidence).toContainEqual(
           expect.objectContaining({
             id: `stock:${asset.id}:${sourceIndex}`,
             assetId: asset.id,

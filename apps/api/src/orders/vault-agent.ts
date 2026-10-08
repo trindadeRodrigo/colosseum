@@ -1,6 +1,16 @@
 import { EXIT_WINDOW_DAYS, personWeights } from '@colosseum/basket';
 import { eligibleForGoal, PERSONAL_PARAMS } from '@colosseum/engine/personal';
-import type { BasketAsset, ChainId, Price, Shelf, VaultState } from '@colosseum/schemas';
+import type {
+  BasketAsset,
+  ChainId,
+  FactNullReason,
+  FactRegime,
+  FactUnit,
+  Price,
+  Provenance,
+  Shelf,
+  VaultState,
+} from '@colosseum/schemas';
 import {
   type VaultAgentSource as AgentSource,
   VaultAgentModelReply,
@@ -8,7 +18,6 @@ import {
   VaultAgentRequest,
   type VaultAgentResult,
   VaultAgentSource,
-  type VaultAgentStatedShare,
   type VaultAgentWarning,
   type VaultAgentWeightNote,
 } from '@colosseum/schemas';
@@ -17,6 +26,90 @@ import type { ChainEntry } from './chains';
 import type { PlanInputs } from './personalize';
 
 type Figures = Awaited<ReturnType<PlanInputs>>;
+
+/** One figure of an asset's analytics: a measured value with its pin, or null with the reason. */
+type AnalyticsMetric = {
+  metric:
+    | 'exit_worst'
+    | 'exit'
+    | 'weekend'
+    | 'lp_top1'
+    | 'lp_exit'
+    | 'cap_variation'
+    | 'volume_28d'
+    | 'volatility'
+    | 'drawdown';
+  regime?: FactRegime;
+};
+export type AnalyticsFigure =
+  | (AnalyticsMetric & {
+      value: number;
+      unit: FactUnit;
+      source: string;
+      method: string;
+      fetchedAt: string;
+      provenance: Provenance;
+      /** Measured at this size, not the analytics' size: the nearest grid point above it. */
+      sizeUsd?: number;
+      /** The true value is at least this: the deepest point the data measures. */
+      lowerBound?: boolean;
+    })
+  | (AnalyticsMetric & { value: null; reason: FactNullReason });
+/**
+ * Bearing's figures for the listed assets at one size, projected from their fact sheets on the server
+ * (agent-analytics.ts). `modelledOn` names the mainnet token a test-network token's figures are read from.
+ * Null figures: Bearing has no sheet for the asset, or, with `unread`, its sheet is still being read or its
+ * read failed. `unavailable` and `incomplete`: codes, for the log.
+ */
+export type AgentAnalyticsResult =
+  | {
+      sizeUsd: number;
+      basis: 'reference' | 'vault';
+      /** Cost tolerance behind the capacity figures, as a fraction. */
+      tau: number;
+      assets: Array<{
+        assetId: string;
+        modelledOn: string | null;
+        figures: AnalyticsFigure[] | null;
+        unread?: 'reading' | 'failed';
+      }>;
+      incomplete?: string;
+    }
+  | { unavailable: string };
+type AgentAnalyticsQuery = {
+  db: Parameters<PlanInputs>[0]['db'];
+  chain: ChainId;
+  assets: BasketAsset[];
+  provenance?: Provenance;
+  /** The size the costs refer to: the vault's value, or null for the reference size. */
+  sizeUsd: number | null;
+};
+/**
+ * Reads the analytics; injected, like `PlanInputs`, so nothing under /v1 reads a file or a fixture. `warm`
+ * keeps a chain's reference-size reads current from the server's start; `stop` ends that.
+ */
+export type AgentAnalytics = ((q: AgentAnalyticsQuery) => Promise<AgentAnalyticsResult>) & {
+  warm?: (q: Omit<AgentAnalyticsQuery, 'sizeUsd'>) => void;
+  stop?: () => void;
+};
+/** The code a route logs for analytics that were not all read, or null. */
+export function analyticsGap(read: AgentAnalyticsResult | null): string | null {
+  if (!read) return null;
+  return 'unavailable' in read ? read.unavailable : (read.incomplete ?? null);
+}
+
+/** The analytics when the server has a reader. A reader that throws is a code, never a failed reply. */
+export async function readAgentAnalytics(
+  read: AgentAnalytics | undefined,
+  query: Parameters<AgentAnalytics>[0],
+): Promise<AgentAnalyticsResult | null> {
+  if (!read) return null;
+  try {
+    return await read(query);
+  } catch {
+    return { unavailable: 'analytics_threw' };
+  }
+}
 type AgentContextData = {
   person: string;
   assets: BasketAsset[];
@@ -25,6 +118,8 @@ type AgentContextData = {
   stockAttributes: Figures['stocks'] | null;
   liquidity: Array<{ assetId: string; observation: unknown | null }>;
   unknowns: string[];
+  /** Bearing's analytics behind the evidence, for the model: their size and what is not measured. */
+  analytics?: VaultAgentPrompt['analytics'];
   /**
    * The share of the vault each asset's measured exit capacity can sell at its current size, keyed by
    * asset, each with its `liquidity:<asset>` source. A weight above it is allowed with a warning
@@ -52,16 +147,48 @@ export type VaultAgentPrompt = {
       'id' | 'symbol' | 'underlying' | 'cls' | 'tier' | 'issuer' | 'provenance' | 'sheet'
     >
   >;
-  evidence: AgentSource[];
-  stockAttributes: Figures['stocks'] | null;
+  /** What the model cites; source and method stay on the server, which writes them into the reply. */
+  evidence: Array<Pick<AgentSource, 'id' | 'assetId' | 'label' | 'value' | 'unit' | 'provenance'>>;
+  /** The stock rows without their source lists, which are evidence already (`stock:<asset>:<n>`). */
+  stockAttributes:
+    | (Omit<NonNullable<Figures['stocks']>, 'stocks'> & {
+        stocks: Array<Omit<NonNullable<Figures['stocks']>['stocks'][number], 'sources'>>;
+      })
+    | null;
   liquidity: VaultAgentContext['liquidity'];
   unknowns: string[];
+  /**
+   * The size Bearing's analytics evidence refers to, and the figures it does not measure with why. Null
+   * when no analytics were read.
+   */
+  analytics: {
+    sizeUsd?: number;
+    basis?: 'reference' | 'vault';
+    /** What each id measures, `<asset>` standing for the asset's id; units are in the evidence. */
+    legend?: Record<string, string>;
+    /** The measured figures by id, each id citable as evidence of its asset. */
+    assets?: Array<{
+      assetId: string;
+      values: Record<string, number>;
+      /** One label for every figure, or each figure's. */
+      provenance: Provenance | Record<string, Provenance>;
+      modelledOn?: string;
+      worstRegime?: FactRegime;
+      /** Ids whose value is a lower bound: the true figure is at least this. */
+      lowerBound?: string[];
+      /** Ids measured at the nearest measured size above `sizeUsd`. */
+      largerSize?: string[];
+    }>;
+    unknowns: string[];
+  } | null;
+  /** The cost tolerance behind every capacity figure, as a fraction. */
+  exitCostTolerance: number;
   /** Measured exit capacity as a share of the vault; above it is allowed and warned, not refused. */
   exitCapacityBps: Record<string, number>;
   eligibilityGoal: 'grow' | 'income' | 'protect' | null;
   /** Assets outside eligibilityGoal that the person asked for in their own words. */
   requestedOutsideGoal: string[];
-  /** Person-authored limits projected onto the supplied catalog, never allocation choices. */
+  /** The shares the server read in the person's own words, which set the weights; `personQuote` is those words. */
   allocationConstraints: Array<{
     assetIds: string[];
     minWeightBps: number;
@@ -78,7 +205,20 @@ type ContextInput = {
   person: string;
   currentGoals?: readonly unknown[];
   confirmedGoal?: 'grow' | 'income' | 'protect';
+  analytics?: AgentAnalyticsResult | null;
 };
+
+/** The vault's value at the reference prices, or null when a holding has no usable price. */
+export function vaultNotionalUsd(state: VaultState, prices: Price[]): number | null {
+  const byAsset = new Map(prices.map((price) => [price.asset, Number(price.usdPerToken)]));
+  const values = [state.cash, ...state.positions].map((holding) => {
+    const price = byAsset.get(holding.asset);
+    return price === undefined ? null : Number(holding.display) * price;
+  });
+  return values.every((value) => value !== null && Number.isFinite(value))
+    ? values.reduce<number>((sum, value) => sum + (value ?? 0), 0)
+    : null;
+}
 
 export function buildVaultAgentContext(
   input: ContextInput & { state: VaultState },
@@ -96,6 +236,191 @@ export function buildGoalAgentContext(
   input: ContextInput & { chain: ChainId; observedAt: string },
 ): GoalAgentContext {
   return buildAgentContext({ ...input, kind: 'new_goal', state: null }) as GoalAgentContext;
+}
+
+const REGIME_NAMES: Record<FactRegime, string> = {
+  us_market_hours: 'US market hours',
+  us_offhours_weekday: 'weekday off-hours',
+  weekend: 'weekend',
+  us_holiday: 'US holiday',
+};
+const NULL_REASONS: Record<FactNullReason, string> = {
+  no_samples_in_regime: 'no samples in that regime yet',
+  insufficient_samples: 'too few samples',
+  beyond_measured_size: 'the size is beyond the measured depth',
+  no_reference_price: 'no reference prices collected',
+  no_external_source: 'no external price source',
+  chain_not_covered: 'this chain is not measured',
+  not_collected: 'not collected yet',
+  not_imported: 'not imported yet',
+  not_followed: 'not traced',
+  gate_open: 'waiting on a decision',
+  not_applicable: 'does not apply',
+};
+const UNITS: Record<FactUnit, string> = {
+  fraction: 'fraction',
+  usd: 'USD',
+  ratio: 'ratio',
+  count: 'count',
+  hours: 'hours',
+};
+
+/** What each analytics id measures, for the model's legend and, with the asset's details, the reply. */
+const MEASURES: Record<AnalyticsFigure['metric'], { id: string; says: string }> = {
+  exit_worst: { id: 'exit:<asset>:worst', says: 'Exit cost at {size}, worst measured regime' },
+  exit: { id: 'exit:<asset>:<regime>', says: 'Exit cost at {size} in that regime' },
+  weekend: { id: 'weekend:<asset>', says: 'Weekend ÷ market-hours exit capacity' },
+  lp_top1: {
+    id: 'lp:<asset>:top1',
+    says: "Largest liquidity provider's share of the main dollar pool",
+  },
+  lp_exit: {
+    id: 'lpexit:<asset>',
+    says: 'Exit cost at {size} if the largest liquidity providers leave',
+  },
+  cap_variation: {
+    id: 'capvar:<asset>',
+    says: 'How much exit capacity varies between snapshots (deviation ÷ mean)',
+  },
+  volume_28d: { id: 'volume:<asset>', says: 'Traded volume over the last four weeks' },
+  volatility: { id: 'vol:<asset>', says: 'Annualised price volatility' },
+  drawdown: { id: 'drawdown:<asset>', says: 'Largest price drawdown' },
+};
+const LOWER_BOUND = '; a lower bound, the true figure is at least this';
+
+/**
+ * Bearing's analytics as evidence: each measured figure an id the model may cite, with a label that says
+ * the size and the regime it refers to in words (the figures themselves are structured, so a label holds
+ * no number the model could repeat); each missing one a line of what is unknown and why, never zero, one
+ * line per figure and reason with the assets it holds for. The model reads the figures as one compact
+ * block; the full sources stay on the server for the reply.
+ */
+function analyticsEvidence(
+  analytics: AgentAnalyticsResult | null,
+  listed: Map<string, BasketAsset>,
+): { evidence: AgentSource[]; prompt: NonNullable<VaultAgentPrompt['analytics']> } | null {
+  if (!analytics) return null;
+  const evidence: AgentSource[] = [];
+  const unknowns: string[] = [];
+  if ('unavailable' in analytics)
+    return {
+      evidence,
+      prompt: {
+        unknowns: [
+          "Bearing's exit, liquidity and market analytics could not be read for this reply; those figures are unknown, not zero.",
+        ],
+      },
+    };
+  const size = analytics.basis === 'vault' ? "about the vault's size" : 'the reference size';
+  const unsheeted: string[] = [];
+  const unread = { reading: [] as string[], failed: [] as string[] };
+  const read: string[] = [];
+  const missing = new Map<string, string[]>();
+  const assets: NonNullable<NonNullable<VaultAgentPrompt['analytics']>['assets']> = [];
+  // An id names one figure: a second row for an asset, or a second figure under an id, is left out, since
+  // the reply refuses a context whose evidence repeats an id.
+  const taken = new Set<string>();
+  for (const row of analytics.assets) {
+    const asset = listed.get(row.assetId);
+    if (!asset || asset.cls === 'cash' || taken.has(asset.id)) continue;
+    taken.add(asset.id);
+    if (row.unread) {
+      unread[row.unread].push(asset.symbol);
+      continue;
+    }
+    if (!row.figures) {
+      unsheeted.push(asset.symbol);
+      continue;
+    }
+    read.push(asset.symbol);
+    const compact: (typeof assets)[number] = { assetId: asset.id, values: {}, provenance: {} };
+    for (const figure of row.figures) {
+      const regime = figure.regime ? REGIME_NAMES[figure.regime] : null;
+      const measure = MEASURES[figure.metric];
+      const id = measure.id
+        .replace('<asset>', asset.id)
+        .replace('<regime>', figure.regime ?? 'unknown');
+      if (taken.has(id)) continue;
+      taken.add(id);
+      const larger = figure.value !== null && figure.sizeUsd !== undefined;
+      const said = measure.says.replace(
+        '{size}',
+        larger ? `the nearest measured size above ${size}` : size,
+      );
+      const label =
+        figure.metric === 'exit_worst' ||
+        figure.metric === 'exit' ||
+        figure.metric === 'cap_variation'
+          ? `${said}${regime ? ` (${regime})` : ''}`
+          : said;
+      const twin = row.modelledOn ? `; ${row.modelledOn} mainnet figures on a test network` : '';
+      // A stored figure that does not make a valid source is unknown too: it never fails the reply.
+      const parsed =
+        figure.value === null
+          ? null
+          : VaultAgentSource.safeParse({
+              id,
+              assetId: asset.id,
+              label: `${label}${figure.lowerBound ? LOWER_BOUND : ''}${twin}`,
+              value: figure.value,
+              unit: UNITS[figure.unit],
+              source: figure.source,
+              // the size it was measured at is a figure: it goes in the pin, not in the words
+              method:
+                figure.sizeUsd === undefined
+                  ? figure.method
+                  : `${figure.method}; measured at $${figure.sizeUsd.toLocaleString('en-US')}`,
+              fetchedAt: figure.fetchedAt,
+              provenance: figure.provenance,
+            });
+      if (parsed?.success && figure.value !== null) {
+        evidence.push(parsed.data);
+        compact.values[id] = parsed.data.value as number;
+        (compact.provenance as Record<string, Provenance>)[id] = parsed.data.provenance;
+        if (figure.metric === 'exit_worst' && figure.regime) compact.worstRegime = figure.regime;
+        if (figure.lowerBound) compact.lowerBound = [...(compact.lowerBound ?? []), id];
+        if (larger) compact.largerSize = [...(compact.largerSize ?? []), id];
+        continue;
+      }
+      const reason =
+        figure.value === null ? NULL_REASONS[figure.reason] : 'the stored figure could not be read';
+      const line = `${label}: unknown (${reason})`;
+      missing.set(line, [...(missing.get(line) ?? []), asset.symbol]);
+    }
+    // One label when every figure of the asset has the same, which is the usual case.
+    const labels = new Set(Object.values(compact.provenance as Record<string, Provenance>));
+    if (labels.size <= 1) compact.provenance = [...labels][0] ?? asset.provenance;
+    if (row.modelledOn) compact.modelledOn = row.modelledOn;
+    if (Object.keys(compact.values).length) assets.push(compact);
+  }
+  for (const [line, symbols] of missing)
+    unknowns.push(
+      `${line}, for ${symbols.length === read.length && read.length > 1 ? 'every asset with a sheet' : symbols.join(', ')}.`,
+    );
+  if (unsheeted.length)
+    unknowns.push(
+      `No Bearing fact sheet, so exit, liquidity and market figures are unknown, for ${unsheeted.join(', ')}.`,
+    );
+  if (unread.reading.length)
+    unknowns.push(
+      `Bearing's figures are still being read, so unknown for this reply, for ${unread.reading.join(', ')}.`,
+    );
+  if (unread.failed.length)
+    unknowns.push(
+      `Bearing's figures could not be read this time, so unknown for this reply, for ${unread.failed.join(', ')}.`,
+    );
+  return {
+    evidence,
+    prompt: {
+      sizeUsd: analytics.sizeUsd,
+      basis: analytics.basis,
+      legend: Object.fromEntries(
+        Object.values(MEASURES).map((m) => [m.id, m.says.replace('{size}', size)]),
+      ),
+      assets,
+      unknowns,
+    },
+  };
 }
 
 function buildAgentContext(
@@ -187,16 +512,7 @@ function buildAgentContext(
     });
   }
   const unknowns: string[] = [];
-  const holdings = state ? [state.cash, ...state.positions] : [];
-  const prices = new Map(input.prices.map((price) => [price.asset, Number(price.usdPerToken)]));
-  const values = holdings.map((holding) => {
-    const price = prices.get(holding.asset);
-    return price === undefined ? null : Number(holding.display) * price;
-  });
-  const notionalUsd =
-    state && values.every((value) => value !== null && Number.isFinite(value))
-      ? values.reduce<number>((sum, value) => sum + (value ?? 0), 0)
-      : null;
+  const notionalUsd = state ? vaultNotionalUsd(state, input.prices) : null;
   if (notionalUsd === null)
     unknowns.push(
       state
@@ -233,8 +549,39 @@ function buildAgentContext(
       });
     return { assetId: asset.id, observation };
   });
+  // Size-free for a new goal, which has no amount yet: the most that sells at the cost tolerance.
+  const measuredCapacity = new Set<string>();
+  const provider = prepared.figures.liquidity?.provider;
+  if (input.kind === 'new_goal' && provider && prepared.figures.liquidity)
+    for (const asset of assets) {
+      if (asset.cls === 'cash') continue;
+      const capacity = provider.exitCapacity(asset.id, PERSONAL_PARAMS.tau, EXIT_WINDOW_DAYS);
+      if (!capacity || capacity.samples <= 0 || !capacity.dataTo) continue;
+      // A reading that does not make a valid source is not measured: the unknown below says so.
+      const source = VaultAgentSource.safeParse({
+        id: `capacity:${asset.id}`,
+        assetId: asset.id,
+        label: `Largest sale within the cost tolerance, worst regime of the exit window; does not depend on an amount${capacity.lowerBound ? LOWER_BOUND : ''}`,
+        value: capacity.capacityUsd,
+        unit: 'USD',
+        source: prepared.figures.liquidity.source,
+        fetchedAt: capacity.dataTo,
+        method: `${provider.methodVersion}; cost tolerance ${PERSONAL_PARAMS.tau}`,
+        provenance: provider.provenance,
+      });
+      if (!source.success) continue;
+      measuredCapacity.add(asset.id);
+      evidence.push(source.data);
+    }
+  const analytics = analyticsEvidence(input.analytics ?? null, listed);
+  for (const source of analytics?.evidence ?? []) add(source);
   if (
-    liquidity.some((item) => listed.get(item.assetId)?.cls !== 'cash' && item.observation === null)
+    liquidity.some(
+      (item) =>
+        listed.get(item.assetId)?.cls !== 'cash' &&
+        item.observation === null &&
+        !measuredCapacity.has(item.assetId),
+    )
   )
     unknowns.push(
       'Measured exit evidence is missing for some listed assets; missing evidence is not zero exit cost.',
@@ -260,6 +607,7 @@ function buildAgentContext(
     stockAttributes: prepared.figures.stocks ?? null,
     liquidity,
     unknowns,
+    ...(analytics ? { analytics: analytics.prompt } : {}),
     caps,
     ...(input.confirmedGoal ? { confirmedGoal: input.confirmedGoal } : {}),
   } as ConversationAgentContext;
@@ -321,9 +669,9 @@ const REPAIR_HINTS: Record<string, string> = {
   allocation_evidence:
     'An allocation cited an evidenceId that does not exist in evidence or belongs to a different asset.',
   allocation_constraint:
-    'The picks cannot meet a share the person stated in stated. Pick the assets it covers, with room for the rest, so the server can meet it, or ask the person about it in question. The share is theirs and still stands.',
+    'The picks cannot meet a share the person stated, which the server read in their own words (allocationConstraints). Pick the assets it covers, with room for the rest, so the server can meet it, or ask the person about it in question. The share is theirs and still stands until they say "forget" or "drop" it, or ask for an equal split.',
   stated_ungrounded:
-    'A share in stated was not accepted. Each needs quote copied exactly from one of the person\'s messages, holding the same number as bps ("70%", "70 percent", "metade", "70/30"), and naming every asset in assetIds. A return, yield, growth or loss figure ("10% a year") is not a share. A preference with no number ("mostly Tesla") is not a share: leave it out and ask what share they want. Correct or remove it.',
+    'A share in stated is not one the server read in the person\'s words, so it is not applied. The server reads a share only where the person plainly asked for it with the number beside the asset ("I want 70% TSLA", "TSLA 70%", "at least 40% stocks", "70/30 TSLA and NVDA"), in a sentence with nothing else in it, no refusal and no return, yield, growth or loss word; allocationConstraints lists what it read. Remove the share, do not describe it as applied, and ask the person in question to say it as a percentage beside the asset name.',
   reply_shape:
     'The proposal did not fit the final preview limits once the server added its own unknowns and sources: keep fields shorter and lists smaller.',
 };
@@ -339,9 +687,6 @@ function claimsApplied(text: string): boolean {
   );
 }
 
-/** A quote, a hypothetical, someone else's view or a request to talk: not the person's instruction. */
-const NOT_AN_INSTRUCTION =
-  /^["“‘']|\b(?:if|should\s+i|my\s+friend|my\s+advisor|someone|said|quoted|explain|understand|discuss|talk\s+about|learn|example|se\s+eu|meu\s+amigo|disse|entender|discutir|exemplo)\b/iu;
 const STOCK_WORDS = ['stocks?', 'shares?', 'equities', 'ações', 'acoes'];
 const isStock = (asset: Pick<BasketAsset, 'cls'>) => asset.cls === 'stock' || asset.cls === 'etf';
 const literal = (word: string) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -473,220 +818,462 @@ function requestedStocks(
   );
 }
 
-type HoldingConstraint = {
-  key: string;
-  matches(asset: BasketAsset): boolean;
-  min: number;
-  max: number;
-  quote: string;
+// The person's shares, read by the server from their own messages (gate ANY-COMPOSITION). The weights
+// are a preview the person confirms on an editable review screen, so the bar is a deterministic read
+// that is never silent: a few fixed patterns set a share, and anything else that looks like one is
+// said back as unread. Nothing here comes from the model.
+const BOUNDS = {
+  min: 'at\\s+least|no\\s+less\\s+than|not\\s+less\\s+than|more\\s+than|over|above|mais\\s+de|acima\\s+de|(?:a\\s+)?minimum(?:\\s+of)?|min|pelo\\s+menos|ao\\s+menos|no\\s+m[ií]nimo|m[ií]nimo\\s+de',
+  max: 'at\\s+most|up\\s+to|no\\s+more\\s+than|not\\s+more\\s+than|less\\s+than|under|below|menos\\s+de|abaixo\\s+de|(?:a\\s+)?maximum(?:\\s+of)?|max|no\\s+m[aá]ximo|m[aá]ximo\\s+de|até',
+  exact: 'exactly|exatamente',
 };
-
-/** Bounded person-authored percentage limits are guards only; nothing here assigns a weight. */
-function holdingConstraints(
-  messages: VaultAgentRequest['messages'],
-  assets: BasketAsset[],
-  companies: Map<string, string[]> = new Map(),
-): HoldingConstraint[] {
-  const constraints = new Map<string, HoldingConstraint>();
-  const named = (words: string[]) => {
-    const pattern = word(words.join('|'), 'iu');
-    return (text: string) => pattern.test(text);
-  };
-  // Tickers as written and company names in any case, as the stock-request reader reads them.
-  const targets: Array<{
-    key: string;
-    test(text: string): boolean;
-    matches(asset: BasketAsset): boolean;
-  }> = [
-    { key: 'stocks', test: named(STOCK_WORDS), matches: isStock },
-    { key: 'cash', test: named(['cash', 'caixa']), matches: (asset) => asset.cls === 'cash' },
-    { key: 'gold', test: named(['gold', 'ouro']), matches: (asset) => asset.cls === 'gold' },
-    {
-      key: 'crypto',
-      test: named(['crypto', 'cripto']),
-      matches: (asset) => asset.cls === 'crypto',
-    },
-    ...assets.map((asset) => {
-      const names = assetNames(asset, companies.get(asset.id) ?? []);
-      return {
-        key: asset.id,
-        test: (text: string) => names.some((pattern) => pattern.test(text)),
-        matches: (candidate: BasketAsset) => candidate.id === asset.id,
-      };
-    }),
-  ];
-  let last: HoldingConstraint | undefined;
-  for (const message of messages) {
-    if (message.who !== 'person') continue;
-    const text = message.text.trim();
-    if (NOT_AN_INSTRUCTION.test(text)) continue;
-    const instruction =
-      /^(?:please\s+)?(?:i\s+(?:think\s+i\s+)?(?:want|would\s+like|would\s+prefer)|we\s+want|put|allocate|hold|keep|set|make|increase|reduce|replace|quero|prefiro|coloque|aloque|mantenha|aumente|reduza|faça|faca)\b/iu.test(
-        text,
-      );
-    if (
-      /^(?:ignore|drop|remove|forget|esqueça|esqueca|ignore|remova)\b/iu.test(text) &&
-      /\b(?:limit|requirement|constraint|minimum|maximum|limite|mínimo|minimo|máximo|maximo)\b/iu.test(
-        text,
-      )
-    ) {
-      const dropped = targets.filter((target) => target.test(text));
-      if (dropped.length > 0) for (const target of dropped) constraints.delete(target.key);
-      else if (/\b(?:that|this|esse|este)\b/iu.test(text) && last) constraints.delete(last.key);
-      continue;
-    }
-    if (
-      !instruction ||
-      /\b(?:do\s+not|don't|não|nao)\s+(?:want|quero|allocate|put|increase|invest)\b/iu.test(text)
-    )
-      continue;
-    const percent =
-      /(?:(at\s+least|at\s+most|no\s+more\s+than|minimum|maximum|exactly|pelo\s+menos|no\s+m[ií]nimo|no\s+m[aá]ximo)\s*)?(\d+(?:[.,]\d+)?)\s*%/giu;
-    for (const match of text.matchAll(percent)) {
-      const bps = Number(match[2]?.replace(',', '.')) * 100;
-      if (!Number.isInteger(bps) || bps < 0 || bps > 10000) continue;
-      const after =
-        text
-          .slice((match.index ?? 0) + match[0].length)
-          .split(/[,;.!?](?!\d)|\b(?:and|but|e|mas)\b/iu)[0] ?? '';
-      const before =
-        text
-          .slice(0, match.index)
-          .split(/[,;.!?](?!\d)|\b(?:and|but|e|mas)\b/iu)
-          .at(-1) ?? '';
-      const afterNames = targets.filter((target) => target.test(after));
-      const beforeNames =
-        afterNames.length === 0 ? targets.filter((target) => target.test(before)) : [];
-      const wholeNames = targets.filter((target) => target.test(text));
-      const target =
-        afterNames.length === 1
-          ? afterNames[0]
-          : beforeNames.length === 1
-            ? beforeNames[0]
-            : afterNames.length === 0 && beforeNames.length === 0 && /^make\s+that\b/iu.test(text)
-              ? last
-              : afterNames.length === 0 && beforeNames.length === 0 && wholeNames.length === 1
-                ? wholeNames[0]
-                : undefined;
-      if (!target) continue;
-      const bound = match[1]?.toLocaleLowerCase() ?? '';
-      const minimum = /least|minimum|pelo\s+menos|m[ií]nimo/u.test(bound);
-      const maximum = /most|no\s+more|maximum|m[aá]ximo/u.test(bound);
-      last = {
-        key: target.key,
-        matches: target.matches,
-        min: maximum ? 0 : bps,
-        max: minimum ? 10000 : bps,
-        quote: text,
-      };
-      constraints.set(target.key, last);
-    }
-  }
-  return [...constraints.values()];
-}
-
-// A share of the vault is never a return, a yield, growth or a loss: "10% a year" sets no weight.
+const BOUND = `${BOUNDS.min}|${BOUNDS.max}|${BOUNDS.exact}`;
+// "70%", "70 percent", "70 por cento", "half", "metade", with the bound written before it.
+const NUMBER = new RegExp(
+  `(?<![\\p{L}\\p{N}.,/])(?:(${BOUND})\\s+)?(?:(\\d+(?:[.,]\\d+)?)\\s*(?:%|(?:percent|per\\s*cent|por\\s*cento|pct)(?![\\p{L}\\p{N}]))|(half|metade)(?![\\p{L}\\p{N}]))`,
+  'giu',
+);
+// "70/30", read only with the two assets it splits written beside it, in order.
+const RATIO = /(?<![\p{L}\p{N}.,/])(\d{1,3})\s*\/\s*(\d{1,3})(?![\p{N}.,/%])/gu;
+// What may stand between a number and the asset after it ("70% in TSLA", "70% da carteira em TSLA"),
+// between an asset and the number after it ("TSLA at 70%"), and between two assets of a ratio.
+const NUMBER_THEN_ASSET =
+  /^\s*(?:(?:of\s+(?:my|the)\s+(?:vault|portfolio|money|savings)|d[ao]\s+(?:meu\s+|minha\s+)?(?:cofre|carteira|dinheiro))\s+)?(?:(?:in|into|to|em|no|na|nos|nas|de|para|pra)\s+)?$/iu;
+const ASSET_THEN_NUMBER = /^\s*(?:(?:at|to|a|em|com|=|:|-)\s*)?$/iu;
+const JOINS = /^\s*(?:and|e|&|\+|\/)\s*$/iu;
+// A share of the vault is never a return, a yield, a price move, a fee or a loss: a clause with one
+// of these words sets no share ("10% a year", "TSLA fell 30%", "90% do CDI").
 const RETURNS = word(
-  'a\\s+year|per\\s+year|yearly|annual(?:ly)?|a\\s+month|per\\s+month|monthly|earn|earns|earning|return|returns|yield|yields|interest|gain|gains|profit|grow|grows|growth|lose|loses|losing|loss|losses|drawdown|ao\\s+ano|por\\s+ano|anual|ao\\s+m[eê]s|por\\s+m[eê]s|mensal|render|rende|rendimento|retorno|juros|ganho|ganhar|lucro|crescer|cresça|cresce|crescimento|perder|perda|perdas|queda',
+  'a\\s+year|per\\s+year|yearly|annual(?:ly)?|per\\s+annum|a\\s+month|per\\s+month|monthly|earn|earns|earning|return|returns|yield|yields|interest|apy|apr|dividends?|fees?|gain|gains|profit|upside|downside|grow|grows|growth|rise|rises|rose|fell|fall|falls|dropped|lose|loses|losing|loss|losses|drawdown|ao\\s+ano|por\\s+ano|anual|a\\.a|ao\\s+m[eê]s|por\\s+m[eê]s|mensal|render|rende|rendendo|rendimento|rentabilidade|retorno|juros|taxa|cdi|selic|ipca|dividendos?|ganho|ganhar|ganhe|lucro|valoriz\\p{L}+|desvaloriz\\p{L}+|crescer|cresça|cresce|crescimento|subir|suba|sobe|subiu|cair|caia|cai|caiu|perder|perca|perde|perda|perdas|queda',
   'iu',
 );
+// A refusal: the sentence sets no share. It withdraws nothing either; only the exact forms below do.
+const SHARE_REFUSES = word(
+  "no|not|never|none|without|except|excluding|exclude|avoid|avoiding|sell|selling|remove|drop|forget|ignore|scratch|cancel|stop|instead\\s+of|rather\\s+than|too\\s+much|no\\s+longer|anymore|don'?t|do\\s+not|doesn'?t|won'?t|wouldn'?t|can'?t|cannot|isn'?t|não|nao|nunca|jamais|sem|nem|exceto|menos|nenhum|nenhuma|tirar|tire|tira|vender|venda|vende|evitar|evite|evita|esqueça|esqueca|esquece|ignora|remova|cancele|cancela|chega\\s+de|demais",
+  'iu',
+);
+// A share is applied only where the person plainly asks for it. What may stand before the first share
+// of a piece when no asking verb does, between two shares, and after the last one.
+const LEADS =
+  /^(?:\s*(?:and|e|ok|okay|yes|sim|so|then|also|actually|just|like|with|com|please|por\s+favor|make\s+(?:it|that)|(?:change|set)\s+(?:it|that)\s+to)(?![\p{L}\p{N}]))*\s*$/iu;
+const BETWEEN_SHARES = /^\s*(?:(?:and|e|&|\+)\s*)?$/iu;
+const AFTER_SHARES =
+  /^\s*(?:(?:in|for|on)\s+(?:this|the|my)\s+(?:vault|portfolio|plan)|n[oa]\s+(?:meu\s+|minha\s+)?(?:cofre|carteira|plano)|overall|in\s+total|no\s+total|ao\s+todo|please|por\s+favor)?\s*$/iu;
+const COURTESY = /^(?:please|por\s+favor|ok|okay|yes|sim|thanks|thank\s+you|obrigad[oa])$/iu;
+// "the rest in gold": never read as a share; said back unless the rest did go where it says.
+const REST = word('rest|remainder|remaining|resto|restante', 'iu');
+const REST_AFTER_SHARES = /^\s*(?:and|e|&|\+)\s+/iu;
+const ADVERSATIVE = /((?<![\p{L}\p{N}])(?:but|however|mas|porém|porem|contudo)(?![\p{L}\p{N}]))/iu;
+// The only words that withdraw a share (with the asset or class of a standing share, or a kind of
+// limit when one such share stands), and the only way to ask for an equal split again.
+const WITHDRAWS =
+  /^(?:(?:please|actually|ok|okay|por\s+favor)\s+)*(?:forget|drop|remove|ignore|scratch|cancel|esqueça|esqueca|esquece|tire|tira|remova|ignora|cancele|cancela)\s+(?:(?:the|that|this|my|o|a|os|as|esse|essa|este|esta|aquele|aquela|meu|minha)\s+)?(.+?)(?:\s+(?:please|por\s+favor))?$/iu;
+const LIMIT_KINDS: Array<[PersonShare['kind'] | 'any', string]> = [
+  ['min', 'minimum|min|m[ií]nimo'],
+  ['max', 'maximum|max|m[aá]ximo'],
+  ['any', 'shares?|limits?|requirements?|percentages?|limites?|percentual|porcentagem|parte'],
+];
+const EQUAL_SPLIT =
+  /^(?:(?:please|actually|ok|okay|just|por\s+favor|i\s+want|quero|make\s+it)\s+)*(?:(?:an?\s+)?equal\s+split|split\s+(?:(?:it|them|everything|all)\s+)?(?:equally|evenly)|equal\s+(?:parts|shares|weights)|(?:divid[ai]r?\s+)?(?:tudo\s+)?(?:em\s+)?partes\s+iguais|divid[ai]r?\s+(?:tudo\s+)?igualmente|divis[aã]o\s+igual)(?:\s+(?:please|por\s+favor))?$/iu;
+// "Make that at least 10%": a new number for the one share that stands, naming no asset.
+const AMENDS =
+  /^(?:(?:please|por\s+favor)\s+)?(?:(?:make|change|set)\s+(?:that|it)(?:\s+to)?|(?:mude|muda|altere|troque|faça|faca|faz)(?:\s+isso)?\s+(?:para|pra))\s+/iu;
 // What reads as a share in the person's words, applied or not.
 const SHARE_WORDS =
-  /\d+(?:[.,]\d+)?\s*(?:%|percent|per\s*cent|por\s*cento)|(?<![\d.,])\d+\s*\/\s*\d+(?![\d.,])|(?<![\p{L}\p{N}])(?:half|metade|mostly|mainly|majority|most\s+of|maioria|maior\s+parte|principalmente|sobretudo)(?![\p{L}\p{N}])/iu;
+  /%|(?<![\p{L}\p{N}])(?:percent|per\s*cent|por\s*cento)(?![\p{L}\p{N}])|(?<![\d.,])\d+\s*\/\s*\d+(?![\d.,])|(?<![\p{L}\p{N}])(?:half|metade|mostly|mainly|majority|most\s+of|maioria|maior\s+parte|principalmente|sobretudo)(?![\p{L}\p{N}])/iu;
+// A quantity that reads as a share only beside a named asset: a bare number that is not money or
+// time ("70 TSLA", "70-30", "0.7"), a fraction, a whole or a multiple. Never read, only said back.
+const QUANTITY =
+  /(?<![$€£]\s?)(?<![\p{L}\p{N}.,])\d+(?:[.,]\d+)?(?![\p{L}\p{N}])(?!\s*(?:days?|weeks?|months?|years?|dias?|semanas?|m[eê]s|meses|anos?|usd|dollars?|d[oó]lares|reais|brl)(?![\p{L}]))|(?<![\p{L}\p{N}])(?:thirds?|quarters?|terços?|tercos?|quartos?|all|everything|tudo|double|twice|dobro|triple|triplo)(?![\p{L}\p{N}])/iu;
 const CLASS_WORDS: Array<[(asset: BasketAsset) => boolean, string[]]> = [
   [isStock, STOCK_WORDS],
   [(asset) => asset.cls === 'cash', ['cash', 'caixa']],
   [(asset) => asset.cls === 'gold', ['gold', 'ouro']],
   [(asset) => asset.cls === 'crypto', ['crypto', 'cripto', 'criptomoedas?']],
 ];
-const normalized = (text: string) =>
-  text
-    .toLowerCase()
-    .replace(/[“”«»]/gu, '"')
-    .replace(/[‘’]/gu, "'")
-    .replace(/\s+/gu, ' ')
-    .trim()
-    .replace(/^["'\s]+|["'.!?;:,\s]+$/gu, '');
+// Tickers that are everyday words in English or Portuguese ("na minha meta", "pump"): beside a number
+// they name the asset only as written (META, METAx) or as the company is capitalised (Meta).
+const EVERYDAY = new Set([
+  ...COMMON_NAMES,
+  'met',
+  'pump',
+  'coin',
+  'hood',
+  'ray',
+  'aero',
+  'virtual',
+  'mu',
+]);
 
-/** The shares a quote holds, in basis points: "70%", "70 percent", "70 por cento", "half", "metade", and both sides of "70/30". */
-function quotedBps(quote: string): Set<number> {
-  const found = new Set<number>();
-  const bps = (text: string) => Math.round(Number(text.replace(',', '.')) * 100);
-  for (const match of quote.matchAll(
-    /(\d+(?:[.,]\d+)?)\s*(?:%|percent|per\s*cent|por\s*cento|pct)/giu,
-  ))
-    found.add(bps(match[1] ?? ''));
-  for (const match of quote.matchAll(
-    /(?<![\d.,])(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)(?![\d.,])/gu,
-  )) {
-    const [a, b] = [bps(match[1] ?? ''), bps(match[2] ?? '')];
-    if (a + b === 10_000) found.add(a).add(b);
+type Named = { start: number; end: number; ids: string[] };
+/** The bound and the basis points one NUMBER match holds. */
+const isBound = (kind: keyof typeof BOUNDS, text: string) =>
+  new RegExp(`^(?:${BOUNDS[kind]})$`, 'iu').test(text);
+const numberOf = (match: RegExpMatchArray): Pick<PersonShare, 'kind' | 'bps'> => ({
+  kind: isBound('min', match[1] ?? '') ? 'min' : isBound('max', match[1] ?? '') ? 'max' : 'exact',
+  bps: match[3] ? 5000 : Math.round(Number((match[2] ?? '').replace(',', '.')) * 100),
+});
+const wholeBps = (share: Pick<PersonShare, 'bps'>) =>
+  Number.isInteger(share.bps) && share.bps >= 0 && share.bps <= 10_000;
+/** A share and where it sits in its piece. */
+type Found = PersonShare & { start: number; end: number };
+type PersonShare = {
+  assetIds: string[];
+  kind: 'exact' | 'min' | 'max';
+  bps: number;
+  /** The person's words that hold the share: the number and the asset beside it. */
+  quote: string;
+};
+
+/** Finds the assets and classes a text names, longest name first, each with the catalog ids it covers. */
+function assetNamer(
+  assets: BasketAsset[],
+  companies: Map<string, string[]>,
+): (text: string) => Named[] {
+  const patterns: Array<{ pattern: RegExp; ids: string[] }> = [];
+  const global = (regex: RegExp) => new RegExp(regex.source, `${regex.flags}g`);
+  for (const asset of assets) {
+    const names = [
+      ...new Set([asset.symbol, asset.underlying, ...companyNames(companies.get(asset.id) ?? [])]),
+    ];
+    const asWritten = names.filter((name) => EVERYDAY.has(name.toLowerCase()));
+    const anyCase = names.filter((name) => !EVERYDAY.has(name.toLowerCase()));
+    if (asWritten.length)
+      patterns.push({
+        pattern: global(word(asWritten.map(literal).join('|'), 'u')),
+        ids: [asset.id],
+      });
+    if (anyCase.length)
+      patterns.push({
+        pattern: global(word(anyCase.map(literal).join('|'), 'iu')),
+        ids: [asset.id],
+      });
   }
-  if (word('half|metade', 'iu').test(quote)) found.add(5000);
-  return found;
+  for (const [matches, words] of CLASS_WORDS) {
+    const ids = assets.filter(matches).map((asset) => asset.id);
+    if (ids.length) patterns.push({ pattern: global(word(words.join('|'), 'iu')), ids });
+  }
+  return (text) => {
+    const spans = new Map<string, Named>();
+    for (const { pattern, ids } of patterns)
+      for (const match of text.matchAll(pattern)) {
+        const start = match.index;
+        const end = start + match[0].length;
+        const span = spans.get(`${start}:${end}`) ?? { start, end, ids: [] };
+        span.ids = [...new Set([...span.ids, ...ids])];
+        spans.set(`${start}:${end}`, span);
+      }
+    const kept: Named[] = [];
+    for (const span of [...spans.values()].sort((a, b) => b.end - b.start - (a.end - a.start)))
+      if (!kept.some((other) => span.start < other.end && other.start < span.end)) kept.push(span);
+    return kept.sort((a, b) => a.start - b.start);
+  };
 }
 
-type Grounded = { share: VaultAgentStatedShare; at: number };
+/**
+ * The shares one comma-separated piece of a clause sets, from fixed patterns only: a number with the
+ * asset written straight after it ("70% TSLA", "at least 40% in stocks", "metade em Apple"), an asset
+ * with the number straight after it ("TSLA 70%", "TSLA at 70%"), or a ratio with its two assets in
+ * order ("70/30 TSLA and NVDA"). Every number in the piece must pair the same way, or none is read: a
+ * number with something else beside it ("10% upside in gold"), or one number over two joined assets
+ * ("40% in TSLA and NVDA"), sets nothing.
+ */
+function sharesInPiece(piece: string, named: (text: string) => Named[]): Found[] {
+  const assets = named(piece);
+  const after = (at: number) => assets.find((asset) => asset.start >= at);
+  const before = (at: number) => assets.filter((asset) => asset.end <= at).at(-1);
+  const ratios = [...piece.matchAll(RATIO)];
+  const numbers = [...piece.matchAll(NUMBER)];
+  if (ratios.length) {
+    const ratio = ratios[0];
+    if (!ratio || ratios.length > 1 || numbers.length) return [];
+    const parts = [Number(ratio[1]) * 100, Number(ratio[2]) * 100];
+    if ((parts[0] ?? 0) + (parts[1] ?? 0) !== 10_000) return [];
+    const [from, to] = [ratio.index, ratio.index + ratio[0].length];
+    let pair: [Named, Named] | undefined;
+    let span: [number, number] | undefined;
+    const first = after(to);
+    const second = first && after(first.end);
+    const earlier = before(from);
+    const earliest = earlier && before(earlier.start);
+    if (
+      first &&
+      second &&
+      NUMBER_THEN_ASSET.test(piece.slice(to, first.start)) &&
+      JOINS.test(piece.slice(first.end, second.start))
+    ) {
+      const third = after(second.end);
+      if (third && JOINS.test(piece.slice(second.end, third.start))) return [];
+      pair = [first, second];
+      span = [from, second.end];
+    } else if (
+      earlier &&
+      earliest &&
+      ASSET_THEN_NUMBER.test(piece.slice(earlier.end, from)) &&
+      JOINS.test(piece.slice(earliest.end, earlier.start))
+    ) {
+      const third = before(earliest.start);
+      if (third && JOINS.test(piece.slice(third.end, earliest.start))) return [];
+      pair = [earliest, earlier];
+      span = [earliest.start, to];
+    }
+    if (!pair || !span) return [];
+    const [start, end] = span;
+    return pair.map((asset, i) => ({
+      assetIds: asset.ids,
+      kind: 'exact' as const,
+      bps: parts[i] as number,
+      quote: piece.slice(start, end),
+      start,
+      end,
+    }));
+  }
+  if (!numbers.length) return [];
+  const spans = numbers.map((match) => [match.index, match.index + match[0].length] as const);
+  const forward = spans.map(([, end]) => {
+    const asset = after(end);
+    return asset && NUMBER_THEN_ASSET.test(piece.slice(end, asset.start)) ? asset : undefined;
+  });
+  const backward = spans.map(([start]) => {
+    const asset = before(start);
+    return asset && ASSET_THEN_NUMBER.test(piece.slice(asset.end, start)) ? asset : undefined;
+  });
+  const isForward = forward.every(Boolean);
+  if (isForward === backward.every(Boolean)) return [];
+  const paired = (isForward ? forward : backward) as Named[];
+  // One number over two joined assets ("40% in TSLA and NVDA") does not say whose share it is.
+  for (const asset of paired) {
+    const other = isForward ? after(asset.end) : before(asset.start);
+    if (!other || paired.includes(other)) continue;
+    const between = isForward
+      ? piece.slice(asset.end, other.start)
+      : piece.slice(other.end, asset.start);
+    if (JOINS.test(between)) return [];
+  }
+  const shares = numbers.map((match, i) => {
+    const asset = paired[i] as Named;
+    const [start, end] = spans[i] as readonly [number, number];
+    const [from, to] = isForward ? [start, asset.end] : [asset.start, end];
+    return {
+      assetIds: asset.ids,
+      ...numberOf(match),
+      quote: piece.slice(from, to),
+      start: from,
+      end: to,
+    };
+  });
+  return shares.every(wholeBps) ? shares : [];
+}
+
+/** "Make that at least 10%": the one share that stands, with the new number and nothing else. */
+function amendedShare(piece: string, only: PersonShare): Found[] {
+  const rest = piece.replace(AMENDS, '').trim();
+  const [match, ...others] = [...rest.matchAll(NUMBER)];
+  if (!AMENDS.test(piece) || !match || others.length || match[0].length !== rest.length) return [];
+  const share = {
+    assetIds: only.assetIds,
+    ...numberOf(match),
+    quote: piece,
+    start: 0,
+    end: piece.length,
+  };
+  return wholeBps(share) ? [share] : [];
+}
+const sameAssets = (a: Pick<PersonShare, 'assetIds'>, b: Pick<PersonShare, 'assetIds'>) =>
+  a.assetIds.length === b.assetIds.length && a.assetIds.every((id) => b.assetIds.includes(id));
+/** A later share on the same asset or class replaces an earlier one, unless they are a floor and a ceiling that fit. */
+const replaces = (next: PersonShare, earlier: PersonShare) =>
+  sameAssets(next, earlier) &&
+  (next.kind === earlier.kind ||
+    next.kind === 'exact' ||
+    earlier.kind === 'exact' ||
+    (next.kind === 'min' ? next.bps > earlier.bps : next.bps < earlier.bps));
 
 /**
- * The shares the model reports that the person's words hold (gate ANY-COMPOSITION, Rodrigo's `stated`):
- * the quote is in one person message, it holds the share's number, it is not about a return, a yield,
- * growth or a loss, and it names every asset the share covers (a ticker or company name in any case,
- * since the quote binds it, or the asset's class). The latest message wins: an earlier share whose
- * assets a later one all covers is dropped. Everything else is `rejected`, with why, for the repair.
+ * The shares the person stated, read by the server from their own messages and from nothing else (gate
+ * ANY-COMPOSITION). The default is not to apply: unread and said back is always acceptable, applied or
+ * withdrawn wrongly is not.
+ *
+ * Applied: a sentence (or its side of "but" that has its own asking verb) sets shares only when it is
+ * no question, condition, someone else's view or refusal and holds no return or loss word, and every
+ * comma-separated piece of it is a plain ask: shares read by `sharesInPiece` with nothing before them
+ * but a short lead or an asking verb ("I want", "put", "quero", "make it"), nothing between them but
+ * "and", and nothing after them but "in this vault", "overall" or what the rest should do. A piece
+ * that only asks ("I want EV stocks"), only says where the rest goes, or is a courtesy may stand
+ * beside them. Anything else in the sentence ("70% TSLA is too risky", "Hypothetically, 70% in TSLA",
+ * "Increase TSLA 10%") and none of it is applied.
+ *
+ * Replaced: a later share on exactly the same asset or class. A class share and an asset share stand
+ * together. "Make that at least 10%" re-numbers the one share that stands.
+ *
+ * Withdrawn, by these whole sentences only: "forget/drop/remove [the] X [share/limit]" where X is the
+ * asset or class of a standing share; "drop the minimum/maximum/limit" when exactly one such share
+ * stands; and "split it equally" / "equal split" / "partes iguais".
+ *
+ * `standing` is what holds now and `read` everything ever read (to compare with what the model
+ * reports). For the latest message: `withdrawn` the shares it withdrew, `unread` the pieces that read
+ * as a share and set none, and `rest` where it said the rest should go, with the assets it named.
  */
-function groundShares(
-  stated: readonly VaultAgentStatedShare[],
+function personShares(
   messages: VaultAgentRequest['messages'],
-  catalog: Map<string, BasketAsset>,
+  language: 'en' | 'pt',
+  assets: BasketAsset[],
   companies: Map<string, string[]>,
-): { accepted: VaultAgentStatedShare[]; rejected: string[] } {
-  const people = messages.flatMap((message, at) =>
-    message.who === 'person' ? [{ at, text: normalized(message.text) }] : [],
-  );
-  const names = (quote: string, asset: BasketAsset) =>
-    word(
-      [asset.symbol, asset.underlying, ...companyNames(companies.get(asset.id) ?? [])]
-        .map(literal)
-        .join('|'),
-      'iu',
-    ).test(quote) ||
-    CLASS_WORDS.some(
-      ([matches, words]) => matches(asset) && word(words.join('|'), 'iu').test(quote),
-    );
-  const grounded: Grounded[] = [];
-  const rejected: string[] = [];
-  stated.forEach((share, index) => {
-    const quote = normalized(share.quote);
-    const at = people.filter((person) => quote && person.text.includes(quote)).at(-1)?.at;
-    const why =
-      at === undefined
-        ? "its quote is not the person's own words from one message"
-        : RETURNS.test(share.quote)
-          ? 'its quote is about a return, a yield, growth or a loss, not a share of the vault'
-          : !quotedBps(share.quote).has(share.bps)
-            ? 'the number in its quote is not its bps; a preference with no number, such as "mostly", is not a share'
-            : share.assetIds.some((id) => {
-                  const asset = catalog.get(id);
-                  return !asset || !names(share.quote, asset);
-                })
-              ? 'its quote does not name every asset in its assetIds'
-              : null;
-    if (why || at === undefined) rejected.push(`At stated.${index} (“${share.quote}”): ${why}.`);
-    else grounded.push({ share, at });
-  });
-  const ordered = grounded
-    .map((entry, order) => ({ ...entry, order }))
-    .sort((a, b) => a.at - b.at || a.order - b.order);
-  const accepted = ordered
-    .filter(
-      (entry, i) =>
-        !entry.share.assetIds.every((id) =>
-          ordered.slice(i + 1).some((later) => later.share.assetIds.includes(id)),
-        ),
-    )
-    .map((entry) => entry.share);
-  return { accepted, rejected };
+): {
+  standing: PersonShare[];
+  read: PersonShare[];
+  withdrawn: PersonShare[];
+  unread: string[];
+  rest: Array<{ quote: string; assetIds: string[] }>;
+} {
+  const named = assetNamer(assets, companies);
+  const idsIn = (text: string) => [...new Set(named(text).flatMap((asset) => asset.ids))];
+  const bounds = new RegExp(`(?<![\\p{L}\\p{N}])(?:${BOUND})(?![\\p{L}\\p{N}])`, 'giu');
+  // Reads as a share: a share word anywhere, or a quantity beside a named asset. A bare return
+  // target ("10% a year") is not a share of anything.
+  const noticed = (piece: string) =>
+    (SHARE_WORDS.test(piece) || QUANTITY.test(piece)) &&
+    (named(piece).length > 0 ||
+      (SHARE_WORDS.test(piece) && !RETURNS.test(piece.replace(bounds, ' '))));
+  let standing: PersonShare[] = [];
+  const read: PersonShare[] = [];
+  let withdrawn: PersonShare[] = [];
+  let unread: string[] = [];
+  let rest: Array<{ quote: string; assetIds: string[] }> = [];
+  const withdraw = (gone: (share: PersonShare) => boolean) => {
+    withdrawn.push(...standing.filter(gone));
+    standing = standing.filter((share) => !gone(share));
+  };
+  /** True when the sentence is one of the withdrawal forms, whether or not it found a share. */
+  const withdraws = (sentence: string): boolean => {
+    if (EQUAL_SPLIT.test(sentence)) {
+      withdraw(() => true);
+      return true;
+    }
+    const body = WITHDRAWS.exec(sentence)?.[1]?.trim();
+    if (!body) return false;
+    for (const [kind, words] of LIMIT_KINDS) {
+      const fits = (share: PersonShare) => kind === 'any' || share.kind === kind;
+      if (new RegExp(`^(?:${words})$`, 'iu').test(body)) {
+        // "Drop the minimum" names no asset: it is that share only when one such share stands.
+        const [only, ...others] = standing.filter(fits);
+        if (only && !others.length) withdraw((share) => share === only);
+        else unread.push(sentence.slice(0, 400));
+        return true;
+      }
+      const target =
+        new RegExp(`^(.+?)\\s+(?:${words})$`, 'iu').exec(body)?.[1] ??
+        new RegExp(`^(?:${words})\\s+(?:of|on|for|in|de|do|da|dos|das|em)\\s+(.+)$`, 'iu').exec(
+          body,
+        )?.[1];
+      if (target && withdrawsOn(target, fits)) return true;
+    }
+    return withdrawsOn(body, () => true);
+  };
+  const withdrawsOn = (target: string, fits: (share: PersonShare) => boolean): boolean => {
+    const whole = (span?: { start: number; end: number }) =>
+      span?.start === 0 && span.end === target.length;
+    const [asset, ...more] = named(target);
+    const [share, ...extra] = sharesInPiece(target, named);
+    const on =
+      !more.length && whole(asset)
+        ? asset?.ids
+        : !extra.length && whole(share)
+          ? share?.assetIds
+          : null;
+    if (!on) return false;
+    withdraw((standing) => fits(standing) && sameAssets(standing, { assetIds: on }));
+    return true;
+  };
+  for (const message of messages) {
+    if (message.who !== 'person') continue;
+    withdrawn = [];
+    unread = [];
+    rest = [];
+    const text = message.text.trim();
+    const quoted = /^["“‘']/u.test(text);
+    for (const [, sentence = '', end = ''] of text.matchAll(
+      /((?:[^.;!?\n]|(?<=\d)\.(?=\d))+)([.;!?\n]*)/gu,
+    )) {
+      if (!quoted && !end.includes('?') && withdraws(sentence.trim())) continue;
+      // "but" starts a clause of its own only when what follows asks for something.
+      const clauses: string[] = [];
+      sentence.split(ADVERSATIVE).forEach((part, i, parts) => {
+        if (i % 2) return;
+        if (i === 0 || ASKS.test(part)) clauses.push(part);
+        else clauses[clauses.length - 1] += `${parts[i - 1]}${part}`;
+      });
+      for (const clause of clauses) {
+        const pieces = clause
+          .split(/(?<!\d),|,(?!\d)/u)
+          .map((piece) => piece.trim())
+          .filter(Boolean);
+        // Bounds hold words that would read as a refusal or a move ("no more than", "up to").
+        const plain = clause.replace(bounds, ' ');
+        const spoken = language === 'pt' ? plain.replace(word('no', 'giu'), 'em') : plain;
+        const open =
+          !quoted &&
+          !end.includes('?') &&
+          !NOT_THEIRS.test(plain) &&
+          !CONDITION.test(plain) &&
+          !ASKS_A_QUESTION.test(clause.trim()) &&
+          !RETURNS.test(plain) &&
+          !SHARE_REFUSES.test(spoken);
+        const only = standing.length === 1 ? standing[0] : undefined;
+        const parts = pieces.map((piece) => {
+          const found =
+            only && named(piece).length === 0
+              ? amendedShare(piece, only)
+              : sharesInPiece(piece, named);
+          const [first, last] = [found[0], found.at(-1)];
+          if (first && last) {
+            const before = piece.slice(0, first.start);
+            const after = piece.slice(last.end);
+            const trailing = REST_AFTER_SHARES.test(after) && REST.test(after);
+            const plainAsk =
+              (LEADS.test(before) || ASKS.test(before) || POLITE_ASK.test(before.trim())) &&
+              found.every(
+                (share, i) =>
+                  i === 0 ||
+                  share.start === found[i - 1]?.start ||
+                  BETWEEN_SHARES.test(piece.slice(found[i - 1]?.end, share.start)),
+              ) &&
+              (AFTER_SHARES.test(after) || trailing);
+            if (plainAsk)
+              return {
+                piece,
+                found,
+                fits: true,
+                rest: trailing ? after.replace(REST_AFTER_SHARES, '').trim() : '',
+              };
+          }
+          const says = REST.test(piece) && !SHARE_WORDS.test(piece);
+          return {
+            piece,
+            found: [],
+            fits: says || COURTESY.test(piece) || (ASKS.test(piece) && !noticed(piece)),
+            rest: says ? piece : '',
+          };
+        });
+        const applies =
+          open && parts.every((part) => part.fits) && parts.some((part) => part.found.length);
+        for (const part of parts) {
+          if (part.rest && open && (applies || !part.found.length))
+            rest.push({ quote: part.rest.slice(0, 400), assetIds: idsIn(part.rest) });
+          if (applies && part.found.length) {
+            const shares = part.found.map(({ start: _start, end: _end, ...share }) => share);
+            read.push(...shares);
+            standing = [
+              ...standing.filter((earlier) => !shares.some((next) => replaces(next, earlier))),
+              ...shares,
+            ];
+          } else if ((part.found.length || !part.rest) && noticed(part.piece))
+            unread.push(part.piece.slice(0, 400));
+        }
+      }
+    }
+  }
+  return { standing, read, withdrawn, unread, rest };
 }
 
 export async function replyToVaultConversation(
@@ -727,12 +1314,21 @@ export async function replyToVaultConversation(
     )
   )
     return invalid('context_caps');
+  const inAnalytics = new Set(
+    (context.analytics?.assets ?? []).flatMap((row) => Object.keys(row.values)),
+  );
   const goal = eligibilityGoal(context);
   const companies = new Map<string, string[]>();
   for (const row of context.stockAttributes?.stocks ?? [])
     for (const asset of catalog.values())
       if (asset.symbol === row.symbol) companies.set(asset.id, [row.company]);
-  const constraints = holdingConstraints(parsed.data.messages, [...catalog.values()], companies);
+  // Read once, from the person's messages alone: the same shares whatever the model replies.
+  const person = personShares(
+    parsed.data.messages,
+    parsed.data.language,
+    [...catalog.values()],
+    companies,
+  );
   const requested = requestedStocks(
     parsed.data.messages,
     parsed.data.language,
@@ -760,10 +1356,27 @@ export async function replyToVaultConversation(
         sheet,
       }),
     ),
-    evidence: [...sourceById.values()],
-    stockAttributes: context.stockAttributes,
+    // The analytics' figures go once, in their compact block; every other source goes here.
+    evidence: [...sourceById.values()]
+      .filter(({ id }) => !inAnalytics.has(id))
+      .map(({ id, assetId, label, value, unit, provenance }) => ({
+        id,
+        ...(assetId === undefined ? {} : { assetId }),
+        ...(label === undefined ? {} : { label }),
+        ...(value === undefined ? {} : { value }),
+        ...(unit === undefined ? {} : { unit }),
+        provenance,
+      })),
+    stockAttributes: context.stockAttributes
+      ? {
+          ...context.stockAttributes,
+          stocks: context.stockAttributes.stocks.map(({ sources: _sources, ...row }) => row),
+        }
+      : null,
     liquidity: context.liquidity,
     unknowns: context.unknowns,
+    analytics: context.analytics ?? null,
+    exitCostTolerance: PERSONAL_PARAMS.tau,
     exitCapacityBps: caps,
     eligibilityGoal: goal,
     requestedOutsideGoal: goal
@@ -771,11 +1384,11 @@ export async function replyToVaultConversation(
           .filter((asset) => requested.has(asset.id) && !eligibleForGoal(asset, goal))
           .map((asset) => asset.id)
       : [],
-    allocationConstraints: constraints.map((constraint) => ({
-      assetIds: [...catalog.values()].filter(constraint.matches).map((asset) => asset.id),
-      minWeightBps: constraint.min,
-      maxWeightBps: constraint.max,
-      personQuote: constraint.quote,
+    allocationConstraints: person.standing.map((share) => ({
+      assetIds: share.assetIds,
+      minWeightBps: share.kind === 'max' ? 0 : share.bps,
+      maxWeightBps: share.kind === 'min' ? 10_000 : share.bps,
+      personQuote: share.quote,
     })),
   };
   type Output = Awaited<ReturnType<VaultAgentModel['read']>>;
@@ -875,12 +1488,24 @@ export async function replyToVaultConversation(
     )
       return rejected('allocation_lines');
     // The weights come from the person's words, never from the model (Rodrigo's rule 2): an equal
-    // split, or the shares the person stated that their words hold. A pick their shares leave nothing
-    // for is dropped, and every such step is said in a weight note.
+    // split, or the shares the server read in the person's messages. What the model reports in
+    // `stated` sets nothing: a share there that the server did not read is named once for the repair,
+    // so the model asks the person instead of describing a share that was not applied.
     const { stated, ...preview } = proposal;
-    const grounded = groundShares(stated, parsed.data.messages, catalog, companies);
-    if (grounded.rejected.length && !final) return rejected('stated_ungrounded', grounded.rejected);
-    const shares = grounded.accepted;
+    const unconfirmed = stated.flatMap((share, index) =>
+      person.read.some(
+        (own) =>
+          own.bps === share.bps &&
+          own.kind === share.kind &&
+          own.assetIds.some((id) => share.assetIds.includes(id)),
+      )
+        ? []
+        : [
+            `At stated.${index} (“${share.quote}”): the server did not read this share in the person's words, so it is not applied.`,
+          ],
+    );
+    if (unconfirmed.length && !final) return rejected('stated_ungrounded', unconfirmed);
+    const shares = person.standing;
     const picks = preview.allocations.map((allocation) => ({
       allocation,
       asset: catalog.get(allocation.assetId) as BasketAsset,
@@ -903,7 +1528,7 @@ export async function replyToVaultConversation(
         failed: 'allocation_constraint',
         problems: [
           REPAIR_HINTS.allocation_constraint ?? 'allocation_constraint',
-          `At stated.${stated.indexOf(missed)} (the person said “${missed.quote}”): the picks cannot meet it.`,
+          `The person said “${missed.quote}”: the picks cannot meet it.`,
         ],
         result: {
           kind: 'reply',
@@ -957,8 +1582,6 @@ export async function replyToVaultConversation(
       indexes.filter((i) => (weights[i] ?? 0) > 0).map((i) => picks[i]?.asset.id as string);
     const held = new Set(members.flat());
     const free = served(picks.map((_, i) => i).filter((i) => !held.has(i)));
-    const quotes = shares.map((share) => normalized(share.quote));
-    const latest = parsed.data.messages.filter((message) => message.who === 'person').at(-1);
     const weightNotes: VaultAgentWeightNote[] = [
       ...shares.flatMap((share, i) => {
         const assetIds = served(members[i] ?? []);
@@ -969,19 +1592,24 @@ export async function replyToVaultConversation(
       ...picks.flatMap(({ asset }, i) =>
         (weights[i] ?? 0) === 0 ? [{ code: 'pick_dropped' as const, assetIds: [asset.id] }] : [],
       ),
-      // A share in the person's latest words that no grounded share covers is said, never dropped.
-      ...(latest?.text.split(/[.;!?\n,]+/u) ?? [])
-        .map((clause) => clause.trim())
-        .filter((clause) => SHARE_WORDS.test(clause) && !RETURNS.test(clause))
-        .filter((clause) => {
-          const words = normalized(clause);
-          return !quotes.some((quote) => words.includes(quote) || quote.includes(words));
-        })
-        .map((clause) => ({
-          code: 'share_unread' as const,
-          assetIds: [],
-          quote: clause.slice(0, 400),
-        })),
+      // What the person's latest words withdrew, and what reads as a share in them and set none, is
+      // said, never dropped. "The rest in gold" is said unless the rest did go only where it names.
+      ...person.withdrawn.map((share) => ({
+        code: 'share_withdrawn' as const,
+        assetIds: share.assetIds.slice(0, 64),
+        quote: share.quote,
+      })),
+      ...[
+        ...new Set([
+          ...person.unread,
+          ...person.rest
+            .filter(
+              ({ assetIds }) =>
+                assetIds.length > 0 && !(free.length && free.every((id) => assetIds.includes(id))),
+            )
+            .map(({ quote }) => quote),
+        ]),
+      ].map((quote) => ({ code: 'share_unread' as const, assetIds: [], quote })),
     ].slice(0, 64);
     const reply = VaultAgentReply.safeParse({
       version: 1,

@@ -249,10 +249,13 @@ describe("a stated share reads tickers as written, so the person's shares drive 
     };
     expect(await limits('I want 10% for my meta.')).toEqual([]);
     expect(await limits('Quero 10% na minha meta de aposentadoria.', 'pt')).toEqual([]);
-    for (const text of ['I want 10% META.', 'I want 10% Meta Platforms.'])
-      expect(await limits(text)).toEqual([
-        { assetIds: [symbol('META')], minWeightBps: 1000, maxWeightBps: 1000, personQuote: text },
+    for (const said of ['10% META', '10% Meta Platforms', '10% Meta'])
+      expect(await limits(`I want ${said}.`)).toEqual([
+        { assetIds: [symbol('META')], minWeightBps: 1000, maxWeightBps: 1000, personQuote: said },
       ]);
+    // Beside a number too, the everyday word is not the ticker.
+    expect(await limits('Quero colocar 10% na meta de aposentadoria.', 'pt')).toEqual([]);
+    expect(await limits('I want 10% in meta.')).toEqual([]);
   });
 });
 
@@ -517,15 +520,26 @@ describe("the person's stated shares, as their words hold them", () => {
         [['app', 'Shall I put 70% TSLA?'], 'Yes please.'],
         [shareOf(['TSLA'], 'exact', 7000, '70% TSLA')],
       ],
-      // A number the quote does not hold.
-      [['I want 70% TSLA.'], [shareOf(['TSLA'], 'exact', 9000, '70% TSLA')]],
-      // An asset the quote does not name.
-      [['I want 70% TSLA.'], [shareOf(['NVDA'], 'exact', 7000, '70% TSLA')]],
     ];
     for (const [turns, stated] of cases) {
       const out = await served(turns, ['TSLA', 'NVDA'], stated);
       expect(out.weights).toEqual([5000, 5000]);
       expect(out.repair).toEqual({ failed: 'stated_ungrounded', outcome: 'repaired' });
+    }
+    // A number or an asset the person's words do not hold: the model's report is refused once, and
+    // the weights are the person's own 70% TSLA either way.
+    for (const stated of [
+      [shareOf(['TSLA'], 'exact', 9000, '70% TSLA')],
+      [shareOf(['NVDA'], 'exact', 7000, '70% TSLA')],
+    ]) {
+      const out = await served(['I want 70% TSLA.'], ['TSLA', 'NVDA'], stated);
+      expect(out.weights).toEqual([7000, 3000]);
+      expect(out.repair).toEqual({ failed: 'stated_ungrounded', outcome: 'repaired' });
+      expect(out.notes[0]).toEqual({
+        code: 'stated',
+        assetIds: [symbol('TSLA')],
+        quote: '70% TSLA',
+      });
     }
     // A later share on the same asset replaces the earlier one.
     const later = await served(
@@ -539,6 +553,502 @@ describe("the person's stated shares, as their words hold them", () => {
       assetIds: [symbol('TSLA')],
       quote: '50% TSLA',
     });
+  });
+
+  // Third review of #189: the server reads the number and its asset itself, so nothing the model
+  // reports in `stated` can set, move or swap a weight. Picks are TSLA, NVDA, GLD unless noted.
+  const equal = [3334, 3333, 3333];
+  const tng = ['TSLA', 'NVDA', 'GLD'];
+  const unreadOf = (out: Awaited<ReturnType<typeof served>>) =>
+    out.notes.filter((note) => note.code === 'share_unread').map((note) => note.quote);
+
+  it.each<[string, string[], ReturnType<typeof shareOf>[], number[], (string | null)?]>([
+    [
+      "I don't want 70% TSLA, keep it small.",
+      tng,
+      [shareOf(['TSLA'], 'exact', 7000, '70% TSLA')],
+      equal,
+      "I don't want 70% TSLA",
+    ],
+    [
+      'Never put 70% in TSLA.',
+      tng,
+      [shareOf(['TSLA'], 'exact', 7000, '70% in TSLA')],
+      equal,
+      'Never put 70% in TSLA',
+    ],
+    [
+      'I want 70% TSLA and 30% NVDA.',
+      ['TSLA', 'NVDA'],
+      [
+        shareOf(['NVDA'], 'exact', 7000, 'I want 70% TSLA and 30% NVDA.'),
+        shareOf(['TSLA'], 'exact', 3000, 'I want 70% TSLA and 30% NVDA.'),
+      ],
+      [7000, 3000],
+    ],
+    [
+      'I want 70/30 TSLA and NVDA.',
+      ['TSLA', 'NVDA'],
+      [
+        shareOf(['NVDA'], 'exact', 7000, '70/30 TSLA and NVDA'),
+        shareOf(['TSLA'], 'exact', 3000, '70/30 TSLA and NVDA'),
+      ],
+      [7000, 3000],
+    ],
+    [
+      'I want 70% TSLA, rest in gold.',
+      tng,
+      [shareOf(['GLD'], 'exact', 7000, '70% TSLA, rest in gold')],
+      [7000, 1500, 1500],
+      // The rest went to NVDA and gold equally, not to gold: said back (fourth review).
+      'rest in gold',
+    ],
+    ['I want 15% TSLA.', tng, [shareOf(['TSLA'], 'exact', 500, '5% TSLA')], [1500, 4250, 4250]],
+    ['I want 10% TSLA.', tng, [shareOf(['TSLA'], 'max', 0, '0% TSLA')], [1000, 4500, 4500]],
+    ['I want at most 70% TSLA.', tng, [shareOf(['TSLA'], 'min', 7000, 'at most 70% TSLA')], equal],
+    ['I want at least 40% stocks.', tng, [shareOf(['TSLA'], 'exact', 4000, '40% stocks')], equal],
+  ])(
+    "serves the person's share, not what the model reports: %s",
+    async (text, tickers, stated, weights, unread = null) => {
+      const out = await served([text], tickers, stated);
+      expect(out.weights).toEqual(weights);
+      // The misreport is refused once and changes nothing: the same reply as with no report at all.
+      expect(out.repair).toEqual({ failed: 'stated_ungrounded', outcome: 'repaired' });
+      const silent = await served([text], tickers, []);
+      expect(silent.repair).toBeUndefined();
+      expect([silent.weights, silent.notes]).toEqual([out.weights, out.notes]);
+      expect(unreadOf(out)).toEqual(unread ? [unread] : []);
+    },
+  );
+
+  it('says whose words each applied share came from, with its bound', async () => {
+    const most = await served(['I want at most 70% TSLA.'], tng, []);
+    expect(most.notes).toEqual([
+      { code: 'stated', assetIds: [symbol('TSLA')], quote: 'at most 70% TSLA' },
+      { code: 'equal_split', assetIds: [symbol('NVDA'), symbol('GLD')] },
+    ]);
+    const least = await served(['I want at least 40% stocks.'], tng, []);
+    expect(least.notes).toEqual([
+      { code: 'stated', assetIds: [symbol('TSLA'), symbol('NVDA')], quote: 'at least 40% stocks' },
+      { code: 'equal_split', assetIds: [symbol('GLD')] },
+    ]);
+    const capped = await served(['I want at most 10% TSLA.'], tng, []);
+    expect(capped.weights).toEqual([1000, 4500, 4500]);
+    const swapped = await served(['I want 70/30 TSLA and NVDA.'], ['TSLA', 'NVDA'], []);
+    expect(swapped.notes).toEqual([
+      { code: 'stated', assetIds: [symbol('TSLA')], quote: '70/30 TSLA and NVDA' },
+      { code: 'stated', assetIds: [symbol('NVDA')], quote: '70/30 TSLA and NVDA' },
+    ]);
+  });
+
+  it.each<[string, string, string, ('en' | 'pt')?]>([
+    ['I want to earn 10% with TSLA.', 'TSLA', '10% with TSLA'],
+    ['I want 10% upside in gold.', 'GLD', '10% upside in gold'],
+    ['I want 10% APY on gold.', 'GLD', '10% APY on gold'],
+    ['I want a 4% dividend from TSLA.', 'TSLA', 'a 4% dividend from TSLA'],
+    ['TSLA fell 30%.', 'TSLA', 'TSLA fell 30%'],
+    ['I accept a 2% fee on TSLA.', 'TSLA', 'a 2% fee on TSLA'],
+    ['TSLA up 20%.', 'TSLA', 'TSLA up 20%'],
+    ['Quero que o ouro renda 10%.', 'GLD', 'o ouro renda 10%', 'pt'],
+    ['Quero 10% de rentabilidade no ouro.', 'GLD', '10% de rentabilidade no ouro', 'pt'],
+    ['Quero que TSLA valorize 20%.', 'TSLA', 'TSLA valorize 20%', 'pt'],
+    ['Quero 90% do CDI com ouro.', 'GLD', '90% do CDI com ouro', 'pt'],
+  ])(
+    'sets no weight from a return, a price move or a fee, and says so: %s',
+    async (text, ticker, quote, language = 'en') => {
+      const figure = Number(/(\d+)%/u.exec(quote)?.[1]) * 100;
+      const out = await served([text], tng, [shareOf([ticker], 'exact', figure, quote)], language);
+      expect(out.weights).toEqual(equal);
+      expect(out.repair).toEqual({ failed: 'stated_ungrounded', outcome: 'repaired' });
+      expect(out.notes).toEqual([
+        { code: 'equal_split', assetIds: tng.map(symbol) },
+        { code: 'share_unread', assetIds: [], quote: text.replace(/\.$/u, '') },
+      ]);
+    },
+  );
+
+  it.each<[string, ('en' | 'pt')?]>([
+    ['I want 60% TSLA for growth.'],
+    ['I want 30% gold to limit losses.'],
+    ['Quero 60% em TSLA para crescer.', 'pt'],
+  ])(
+    'says back a share it leaves unapplied for a return or loss word: %s',
+    async (text, language = 'en') => {
+      const out = await served([text], tng, [], language);
+      expect(out.weights).toEqual(equal);
+      expect(out.repair).toBeUndefined();
+      expect(out.notes).toEqual([
+        { code: 'equal_split', assetIds: tng.map(symbol) },
+        { code: 'share_unread', assetIds: [], quote: text.replace(/\.$/u, '') },
+      ]);
+    },
+  );
+
+  it.each<[string, number[], ('en' | 'pt')?]>([
+    ['TSLA 70%.', [7000, 1500, 1500]],
+    ['I want TSLA at 70% and the rest spread out.', [7000, 1500, 1500]],
+    ['TSLA: 50%, NVDA: 30%, GLD: 20%', [5000, 3000, 2000]],
+    ['TSLA 50% NVDA 30%', [5000, 3000, 2000]],
+    ['Put 70% of my portfolio in TSLA.', [7000, 1500, 1500]],
+    ['Quero 70% no TSLA.', [7000, 1500, 1500], 'pt'],
+    ['Quero 70% da carteira em TSLA.', [7000, 1500, 1500], 'pt'],
+    ['I want 12,5% TSLA.', [1250, 4375, 4375]],
+    ['I want 0,5% TSLA.', [50, 4975, 4975]],
+    ['I want no more than 10% TSLA.', [1000, 4500, 4500]],
+    ['I want less than 10% TSLA.', [1000, 4500, 4500]],
+    ['Quero mais de 50% em TSLA.', [5000, 2500, 2500], 'pt'],
+    ["I don't want NVDA to dominate, but I want 70% TSLA.", [7000, 1500, 1500]],
+  ])('reads the fixed patterns: %s', async (text, weights, language = 'en') => {
+    const out = await served([text], tng, [], language);
+    expect(out.weights).toEqual(weights);
+    expect(unreadOf(out)).toEqual([]);
+  });
+
+  it.each<[string, string[], ('en' | 'pt')?]>([
+    ['I want $70 in TSLA.', []],
+    ['I want TSLA in 70 days.', []],
+    ['I want 60/30 TSLA and NVDA.', ['I want 60/30 TSLA and NVDA']],
+    ['I want 40% in TSLA and NVDA.', ['I want 40% in TSLA and NVDA']],
+    ['I want between 20% and 30% TSLA.', ['I want between 20% and 30% TSLA']],
+    ['TSLA 70% NVDA', ['TSLA 70% NVDA']],
+    ['Should I put 70% in TSLA?', ['Should I put 70% in TSLA']],
+    ['If it is safe, I want 70% TSLA.', ['I want 70% TSLA']],
+    ['My friend said I want 70% TSLA.', ['My friend said I want 70% TSLA']],
+    ['"I want 70% TSLA"', ['"I want 70% TSLA"']],
+    ['I want 70% TSLA, not NVDA.', ['I want 70% TSLA']],
+    ['Não quero 70% em TSLA.', ['Não quero 70% em TSLA'], 'pt'],
+    ['Quero tudo menos 70% em TSLA.', ['Quero tudo menos 70% em TSLA'], 'pt'],
+    ['I want half.', ['I want half']],
+  ])(
+    'sets nothing from what the patterns do not hold, and says so: %s',
+    async (text, unread, language = 'en') => {
+      const out = await served([text], tng, [], language);
+      expect(out.weights).toEqual(equal);
+      expect(unreadOf(out)).toEqual(unread);
+    },
+  );
+
+  it('reads an app message, or a share stitched across two messages, as no share', async () => {
+    const app = await served([['app', 'Shall I put 70% in TSLA?'], 'Yes, do that.'], tng, [
+      shareOf(['TSLA'], 'exact', 7000, '70% in TSLA'),
+    ]);
+    expect(app.weights).toEqual(equal);
+    const stitched = await served(['I want 70%', 'TSLA and gold please.'], tng, [
+      shareOf(['TSLA'], 'exact', 7000, '70% TSLA'),
+    ]);
+    expect(stitched.weights).toEqual(equal);
+  });
+
+  it("withdraws a share on the person's word, and keeps it until then", async () => {
+    const first = 'I want 70% TSLA.';
+    // A later turn that says nothing about the share leaves it standing, whatever the model reports.
+    const kept = await served([first, ['app', 'Noted.'], 'Add gold too.'], tng, []);
+    expect(kept.weights).toEqual([7000, 1500, 1500]);
+    expect(kept.notes[0]).toEqual({
+      code: 'stated',
+      assetIds: [symbol('TSLA')],
+      quote: '70% TSLA',
+    });
+    // Only the exact forms withdraw it, and the reply says what was withdrawn.
+    for (const [next, language] of [
+      ['Forget TSLA.', 'en'],
+      ['Forget the 70% TSLA.', 'en'],
+      ['Drop the TSLA share.', 'en'],
+      ['Drop that limit.', 'en'],
+      ['Just split it equally.', 'en'],
+      ['Esqueça TSLA.', 'pt'],
+      ['Divida em partes iguais.', 'pt'],
+    ] as const) {
+      const out = await served([first, ['app', 'Noted.'], next], ['NVDA', 'GLD'], [], language);
+      expect(out.weights, next).toEqual([5000, 5000]);
+      expect(out.notes, next).toEqual([
+        { code: 'equal_split', assetIds: [symbol('NVDA'), symbol('GLD')] },
+        { code: 'share_withdrawn', assetIds: [symbol('TSLA')], quote: '70% TSLA' },
+      ]);
+    }
+    // A refusal that names the asset withdraws nothing: with TSLA no longer picked, the share cannot
+    // be met and the person is asked about it.
+    for (const [next, language] of [
+      ['No more TSLA, just NVDA and GLD.', 'en'],
+      ["Actually I don't want 70% TSLA.", 'en'],
+      ['Não quero mais TSLA.', 'pt'],
+    ] as const) {
+      const out = await served([first, ['app', 'Noted.'], next], ['NVDA', 'GLD'], [], language);
+      expect(out.reply.proposal, next).toBeNull();
+      expect(out.notes, next).toEqual([
+        { code: 'share_unmet', assetIds: [symbol('TSLA')], quote: '70% TSLA' },
+      ]);
+    }
+    // A return sentence or a question about the asset withdraws nothing.
+    for (const next of ['I hope TSLA does not lose 20%.', 'Is TSLA not too risky?']) {
+      const out = await served([first, ['app', 'Noted.'], next], tng, []);
+      expect(out.weights, next).toEqual([7000, 1500, 1500]);
+    }
+    // A class share and an asset share stand together, in one message or two.
+    const together = await served(['I want 50% TSLA and at least 80% stocks.'], tng, []);
+    expect(together.weights).toEqual([5000, 3000, 2000]);
+    const both = await served([first, 'I want at most 20% stocks.'], tng, []);
+    expect(both.reply.proposal).toBeNull();
+    expect(both.notes.map((note) => note.code)).toEqual(['share_unmet']);
+    // A floor and a ceiling on one asset stand together; a ceiling under the floor replaces it.
+    const band = await served(['I want at least 20% TSLA and at most 40% TSLA.'], tng, []);
+    expect(band.notes.filter((note) => note.code === 'stated').map((note) => note.quote)).toEqual([
+      'at least 20% TSLA',
+      'at most 40% TSLA',
+    ]);
+    const lowered = await served(
+      ['I want at least 60% TSLA.', 'I want at most 40% TSLA.'],
+      tng,
+      [],
+    );
+    expect(lowered.weights).toEqual(equal);
+    expect(lowered.notes[0]).toMatchObject({ code: 'stated', quote: 'at most 40% TSLA' });
+  });
+
+  // Fourth review of #189: the default is not to apply. A share is set only by a plain ask, withdrawn
+  // only by an exact form, and anything else that reads as a share is said back.
+  const noted = ['app', 'Noted.'] as ['app', string];
+  it.each<[string, ('en' | 'pt')?]>([
+    ['Split the rest evenly between NVDA and gold.'],
+    ['Split the rest evenly.'],
+    ['Divida o resto igualmente.', 'pt'],
+    ['O resto em partes iguais.', 'pt'],
+    ["Don't change the split."],
+    ["Don't change the percentages, they are fine."],
+    ['Não mude a divisão.', 'pt'],
+    ['Remove NVDA and keep TSLA.'],
+    ['Tira NVDA e mantém TSLA.', 'pt'],
+    ["Don't touch TSLA, just add gold."],
+    ['Não mexa em TSLA, só adicione ouro.', 'pt'],
+    ['Never sell my TSLA.'],
+    ['TSLA is not negotiable.'],
+    ['No more changes.'],
+    ['I want no limits on gold.'],
+  ])('keeps 70% TSLA after: %s', async (next, language = 'en') => {
+    const first = language === 'pt' ? 'Quero 70% em TSLA.' : 'I want 70% TSLA.';
+    for (const turns of [[first, noted, next], [`${first} ${next}`]]) {
+      const out = await served(turns, tng, [], language);
+      expect(out.weights).toEqual([7000, 1500, 1500]);
+      expect(out.notes.map((note) => note.code)).toEqual(['stated', 'equal_split']);
+    }
+  });
+
+  it('withdraws by the exact forms only, each with a note', async () => {
+    // A broader later share does not remove a narrower earlier one.
+    const overall = await served(
+      ['I want 70% TSLA.', noted, 'And at least 90% stocks overall.'],
+      tng,
+      [],
+    );
+    expect(overall.weights).toEqual([7000, 2000, 1000]);
+    expect(overall.notes.map((note) => note.quote)).toEqual([
+      '70% TSLA',
+      'at least 90% stocks',
+      undefined,
+    ]);
+    const geral = await served(
+      ['Quero 70% em TSLA.', noted, 'E pelo menos 90% em ações no total.'],
+      tng,
+      [],
+      'pt',
+    );
+    expect(geral.weights).toEqual([7000, 2000, 1000]);
+    // Refusing one stock does not withdraw a share on all stocks.
+    const four = ['NVDA', 'GLD', 'USD', 'SOL'];
+    const one = await served(['I want at least 40% stocks.', noted, 'No TSLA please.'], four, []);
+    expect(one.weights).toEqual([4000, 2000, 2000, 2000]);
+    // "Drop the minimum" drops the minimum, not the last share stated.
+    const mix = ['TSLA', 'GLD', 'USD', 'SOL'];
+    for (const [first, next, language, quote] of [
+      [
+        'I want at least 40% stocks and at most 10% gold.',
+        'Drop the minimum.',
+        'en',
+        'at least 40% stocks',
+      ],
+      [
+        'Quero pelo menos 40% em ações e no máximo 10% em ouro.',
+        'Tira o mínimo.',
+        'pt',
+        'pelo menos 40% em ações',
+      ],
+    ] as const) {
+      const before = await served([first], mix, [], language);
+      expect(before.weights).toEqual([4000, 1000, 2500, 2500]);
+      const out = await served([first, noted, next], mix, [], language);
+      expect(out.weights).toEqual([3000, 1000, 3000, 3000]);
+      expect(out.notes.at(-1)).toMatchObject({ code: 'share_withdrawn', quote });
+      expect(out.notes.filter((note) => note.code === 'stated')).toHaveLength(1);
+    }
+    // With two shares standing, "that limit" is neither: both stand and the words are said back.
+    const two = await served(['I want 70% TSLA and 20% NVDA.', noted, 'Drop that limit.'], tng, []);
+    expect(two.weights).toEqual([7000, 2000, 1000]);
+    expect(unreadOf(two)).toEqual(['Drop that limit']);
+    const cleared = await served(
+      ['I want 70% TSLA and 20% NVDA.', noted, 'Split it equally.'],
+      tng,
+      [],
+    );
+    expect(cleared.weights).toEqual(equal);
+    expect(cleared.notes.filter((note) => note.code === 'share_withdrawn')).toEqual([
+      { code: 'share_withdrawn', assetIds: [symbol('TSLA')], quote: '70% TSLA' },
+      { code: 'share_withdrawn', assetIds: [symbol('NVDA')], quote: '20% NVDA' },
+    ]);
+    // Forgetting an asset leaves a class share that covers it.
+    const cls = await served(['I want at least 40% stocks.', noted, 'Forget TSLA.'], four, []);
+    expect(cls.weights).toEqual([4000, 2000, 2000, 2000]);
+  });
+
+  it.each<[string, string, ('en' | 'pt')?]>([
+    // Rejected or hypothetical.
+    ['70% TSLA is too risky for me.', '70% TSLA is too risky for me'],
+    ['70% TSLA is too high.', '70% TSLA is too high'],
+    ['70% TSLA would be crazy.', '70% TSLA would be crazy'],
+    ['70% TSLA scares me.', '70% TSLA scares me'],
+    ['I hate the idea of 70% TSLA.', 'I hate the idea of 70% TSLA'],
+    ['Anything but 70% TSLA.', 'Anything but 70% TSLA'],
+    ['Hypothetically, 70% in TSLA.', '70% in TSLA'],
+    ['Lower than 70% TSLA.', 'Lower than 70% TSLA'],
+    ['I want less TSLA, 70% TSLA is a lot.', '70% TSLA is a lot'],
+    ['I want 70% TSLA, I mean NVDA.', 'I want 70% TSLA'],
+    ['70% em TSLA é muito arriscado.', '70% em TSLA é muito arriscado', 'pt'],
+    ['70% em TSLA seria loucura.', '70% em TSLA seria loucura', 'pt'],
+    ['70% em TSLA me assusta.', '70% em TSLA me assusta', 'pt'],
+    ['Tenho medo de 70% em TSLA.', 'Tenho medo de 70% em TSLA', 'pt'],
+    ['Talvez 70% em TSLA.', 'Talvez 70% em TSLA', 'pt'],
+    // The app's draft, said back.
+    ['You gave me 70% TSLA. That is wrong.', 'You gave me 70% TSLA'],
+    ['You gave me 70% TSLA, why?', 'You gave me 70% TSLA'],
+    ['The 70% TSLA you proposed is wrong.', 'The 70% TSLA you proposed is wrong'],
+    ['I asked for 30% TSLA, you gave 70% TSLA.', 'you gave 70% TSLA'],
+    ['TSLA at 70% is fine but NVDA 30% is wrong.', 'TSLA at 70% is fine but NVDA 30% is wrong'],
+    ['Você colocou 70% em TSLA, está errado.', 'Você colocou 70% em TSLA', 'pt'],
+    // A past result or a fact.
+    ['I lost 30% in TSLA last year, so keep it small.', 'I lost 30% in TSLA last year'],
+    ["I'm down 30% in TSLA.", "I'm down 30% in TSLA"],
+    ["I'm up 20% in TSLA.", "I'm up 20% in TSLA"],
+    ['I made 20% in TSLA and want to keep going.', 'I made 20% in TSLA and want to keep going'],
+    ['I think TSLA is 30% overvalued.', 'I think TSLA is 30% overvalued'],
+    ['TSLA is 50% off its high.', 'TSLA is 50% off its high'],
+    ['TSLA is 5% of the S&P.', 'TSLA is 5% of the S&P'],
+    [
+      'My old portfolio was 70% TSLA and I got burned.',
+      'My old portfolio was 70% TSLA and I got burned',
+    ],
+    ['Right now I hold 70% TSLA elsewhere.', 'Right now I hold 70% TSLA elsewhere'],
+    ['My wife wants 70% TSLA, I am unsure.', 'My wife wants 70% TSLA'],
+    ['I pay 15% in cash taxes.', 'I pay 15% in cash taxes'],
+    ['Bitcoin dominance is 60% in crypto.', 'Bitcoin dominance is 60% in crypto'],
+    ['Perdi 30% em TSLA ano passado.', 'Perdi 30% em TSLA ano passado', 'pt'],
+    ['Ganhei 20% em TSLA.', 'Ganhei 20% em TSLA', 'pt'],
+    ['TSLA perdeu 30%.', 'TSLA perdeu 30%', 'pt'],
+    ['TSLA rendeu 20%.', 'TSLA rendeu 20%', 'pt'],
+    ['Minha carteira antiga tinha 70% em TSLA.', 'Minha carteira antiga tinha 70% em TSLA', 'pt'],
+    // A change is not a level.
+    ['Increase TSLA 10%.', 'Increase TSLA 10%'],
+    ['Increase TSLA to 80%.', 'Increase TSLA to 80%'],
+    ['Cut TSLA to half.', 'Cut TSLA to half'],
+    ['Reduce TSLA from 70% to 50%.', 'Reduce TSLA from 70% to 50%'],
+    ['Move TSLA from 70% to 50%.', 'Move TSLA from 70% to 50%'],
+    ['Change 70% TSLA to 50% NVDA.', 'Change 70% TSLA to 50% NVDA'],
+    ['I want double the TSLA.', 'I want double the TSLA'],
+    ['Aumente TSLA em 10%.', 'Aumente TSLA em 10%', 'pt'],
+    ['Reduza TSLA em 10%.', 'Reduza TSLA em 10%', 'pt'],
+    ['Reduz TSLA a metade.', 'Reduz TSLA a metade', 'pt'],
+    ['Quero diminuir TSLA de 70% para 50%.', 'Quero diminuir TSLA de 70% para 50%', 'pt'],
+    ['Quero o dobro de TSLA.', 'Quero o dobro de TSLA', 'pt'],
+    // A share with no percent sign, a fraction or a whole: noticed, not read.
+    ['I want 70 TSLA and 30 NVDA.', 'I want 70 TSLA and 30 NVDA'],
+    ['TSLA 70, NVDA 30.', 'TSLA 70'],
+    ['I want 70-30 TSLA and NVDA.', 'I want 70-30 TSLA and NVDA'],
+    ['I want 70:30 TSLA and NVDA.', 'I want 70:30 TSLA and NVDA'],
+    ['seventy percent TSLA', 'seventy percent TSLA'],
+    ['I want 0.7 TSLA.', 'I want 0.7 TSLA'],
+    ['I want 7000 bps TSLA.', 'I want 7000 bps TSLA'],
+    ['I want a third in TSLA.', 'I want a third in TSLA'],
+    ['I want two thirds TSLA.', 'I want two thirds TSLA'],
+    ['I want a quarter in gold.', 'I want a quarter in gold'],
+    ['All in TSLA.', 'All in TSLA'],
+    ['I want 60% stocks (40% TSLA).', 'I want 60% stocks (40% TSLA)'],
+    ['I want TSLA (70%) and NVDA (30%).', 'I want TSLA (70%) and NVDA (30%)'],
+    ['I want 70% TSLA and 30% in NVDA and GLD.', 'I want 70% TSLA and 30% in NVDA and GLD'],
+    [
+      'I want 70% of what I have in stocks to be TSLA.',
+      'I want 70% of what I have in stocks to be TSLA',
+    ],
+    ['I want $500 and 70% of the rest in TSLA.', 'I want $500 and 70% of the rest in TSLA'],
+    ['Quero 70 em TSLA e 30 em NVDA.', 'Quero 70 em TSLA e 30 em NVDA', 'pt'],
+    ['Quero setenta por cento em TSLA.', 'Quero setenta por cento em TSLA', 'pt'],
+    ['Quero um terço em TSLA.', 'Quero um terço em TSLA', 'pt'],
+    ['Quero dois terços em TSLA.', 'Quero dois terços em TSLA', 'pt'],
+    ['Quero tudo em TSLA.', 'Quero tudo em TSLA', 'pt'],
+  ])('applies nothing and says it back: %s', async (text, quote, language = 'en') => {
+    const out = await served([text], tng, [], language);
+    expect(out.weights).toEqual(equal);
+    expect(out.notes[0]).toEqual({ code: 'equal_split', assetIds: tng.map(symbol) });
+    expect(unreadOf(out)).toContain(quote);
+    // And it withdraws nothing: an earlier share stands.
+    const after = await served(
+      [language === 'pt' ? 'Quero 20% em ouro.' : 'I want 20% gold.', noted, text],
+      tng,
+      [],
+      language,
+    );
+    expect(after.weights).toEqual([4000, 4000, 2000]);
+    expect(unreadOf(after)).toContain(quote);
+  });
+
+  it.each<[string, number[], ('en' | 'pt')?]>([
+    ['I want 70% TSLA,30% NVDA.', [7000, 3000]],
+    ['TSLA 70%,NVDA 30%', [7000, 3000]],
+    ['I want 70% TSLA.30% NVDA.', [7000, 3000]],
+    ['TSLA: 70%; NVDA: 30%', [7000, 3000]],
+    ['Quero 70% em TSLA,30% em NVDA.', [7000, 3000], 'pt'],
+    ['Quero 70% TSLA, 30% NVDA.', [7000, 3000], 'pt'],
+    ['Quero 12,5% em TSLA.', [1250, 4375, 4375], 'pt'],
+    ['70 % TSLA', [7000, 1500, 1500]],
+    ['70pct TSLA', [7000, 1500, 1500]],
+    ['TSLA=70%', [7000, 1500, 1500]],
+    ['70% TSLAx', [7000, 1500, 1500]],
+    ['I want 70 per cent TSLA.', [7000, 1500, 1500]],
+    ['Please put 70% in TSLA.', [7000, 1500, 1500]],
+    ['Ok, 70% TSLA and 30% NVDA please', [7000, 3000]],
+    ['Quero 70% no ouro.', [1500, 1500, 7000], 'pt'],
+  ])('reads a plain ask whatever its punctuation: %s', async (text, weights, language = 'en') => {
+    const out = await served([text], tng, [], language);
+    expect(out.weights).toEqual(weights);
+    expect(unreadOf(out)).toEqual([]);
+    // Two exact shares over three picks leave nothing for the third, and say so.
+    if (weights.length === 2)
+      expect(out.notes).toContainEqual({ code: 'pick_dropped', assetIds: [symbol('GLD')] });
+  });
+
+  it('says back where the rest should go unless it went there', async () => {
+    const mostly = await served(['I want 70% TSLA and mostly gold for the rest.'], tng, []);
+    expect(mostly.weights).toEqual([7000, 1500, 1500]);
+    expect(unreadOf(mostly)).toEqual(['mostly gold for the rest']);
+    const gold = await served(['I want 70% TSLA, rest in gold.'], tng, []);
+    expect(unreadOf(gold)).toEqual(['rest in gold']);
+    // With gold the only other pick, the rest is in gold: nothing to say.
+    const went = await served(['I want 70% TSLA, rest in gold.'], ['TSLA', 'GLD'], []);
+    expect(went.weights).toEqual([7000, 3000]);
+    expect(went.notes.map((note) => note.code)).toEqual(['stated', 'equal_split']);
+    const spread = await served(
+      ['I want 70% TSLA.', noted, 'Split the rest evenly between NVDA and gold.'],
+      tng,
+      [],
+    );
+    expect(unreadOf(spread)).toEqual([]);
+    const other = await served(
+      ['I want 70% TSLA.', noted, 'Split the rest evenly between NVDA and AAPL.'],
+      tng,
+      [],
+    );
+    expect(unreadOf(other)).toEqual(['Split the rest evenly between NVDA and AAPL']);
+    // A number of its own in the sentence that no asset holds: none of the sentence is applied.
+    const loose = await served(['I want 70% TSLA, 20% NVDA and the rest, 10%, safe.'], tng, []);
+    expect(loose.weights).toEqual(equal);
+    expect(unreadOf(loose)).toEqual(['I want 70% TSLA', '20% NVDA and the rest', '10%']);
   });
 });
 

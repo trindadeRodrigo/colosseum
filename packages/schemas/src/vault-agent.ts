@@ -45,9 +45,10 @@ export const VaultAgentAllocation = VaultAgentPick.extend({
   weightBps: Bps.refine((value) => value > 0, 'An allocation must have a positive share.'),
 });
 /**
- * A share the person stated, as the model reports it (Rodrigo's `stated`): the assets it covers, exact,
- * at least or at most, in basis points, and the person's own words. The server uses it only when those
- * words are in a person message and hold that number (ANY-COMPOSITION); it is never served back.
+ * A share the person stated, as the model understood it (Rodrigo's `stated`): the assets it covers,
+ * exact, at least or at most, in basis points, and the person's own words. It sets no weight: the
+ * server reads the person's shares from their messages itself (ANY-COMPOSITION), and a share here that
+ * it did not read is refused once so the model asks the person. It is never served back.
  */
 export const VaultAgentStatedShare = z.strictObject({
   assetIds: z.array(AssetId).min(1).max(64),
@@ -103,16 +104,28 @@ export const VaultAgentWarning = z.strictObject({
 export type VaultAgentWarning = z.infer<typeof VaultAgentWarning>;
 /**
  * What the server did with the weights, so nothing it did is silent (ANY-COMPOSITION). The screen writes
- * the words from the code, the served weights and the person's own `quote`; no figure here is the
- * model's. `equal_split`: these picks share equally. `stated`: these picks follow the person's share in
- * `quote`. `scaled`: the shares the person gave did not add up to the whole and were scaled to it.
+ * the words from the code, the served weights and the person's own `quote`, which the server cut from
+ * their message; no figure or word here is the model's. `equal_split`: these picks share equally.
+ * `stated`: these picks follow the share the server read in the person's words, `quote` ("from your
+ * words: 70% TSLA"). `scaled`: the shares the person gave did not add up to the whole and were scaled to it.
  * `pick_dropped`: the person's shares left nothing for this pick, so it is not in the proposal.
  * `share_unmet`: the picks cannot meet the share in `quote`, and the person is asked about it.
- * `share_unread`: the person's latest message states a share the server could not apply (`quote`),
- * such as "mostly Tesla"; the weights do not follow it.
+ * `share_unread`: the person's latest message holds what reads as a share and the server did not apply
+ * it (`quote`): anything that is not a plain ask with the number beside the asset ("mostly Tesla",
+ * "70% TSLA is too risky", "a third in TSLA", "I don't want 70% TSLA", "60% TSLA for growth", "the rest
+ * in gold" when the rest did not go there). The weights do not follow it. `share_withdrawn`: the
+ * person's latest message withdrew the share in `quote` ("Forget TSLA", "split it equally").
  */
 export const VaultAgentWeightNote = z.strictObject({
-  code: z.enum(['equal_split', 'stated', 'scaled', 'pick_dropped', 'share_unmet', 'share_unread']),
+  code: z.enum([
+    'equal_split',
+    'stated',
+    'scaled',
+    'pick_dropped',
+    'share_unmet',
+    'share_unread',
+    'share_withdrawn',
+  ]),
   assetIds: z.array(AssetId).max(64),
   quote: prose(400).optional(),
 });

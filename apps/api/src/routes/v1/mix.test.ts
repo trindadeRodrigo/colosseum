@@ -355,6 +355,39 @@ describe('POST /v1/conversations/{chain}/goal/accept', () => {
     expect((await buy(250)).order.depositRaw).toBe('250000000');
   });
 
+  it("refuses gold or crypto in an income plan: only a stock is the person's choice there", async () => {
+    const s = await setup();
+    const res = await s.post(
+      ACCEPT,
+      goal({
+        goal: 'income',
+        amountUsd: 1000,
+        allocations: [
+          { assetId: 'solana:gold', weightBps: 3000 },
+          { assetId: 'solana:tsla', weightBps: 2000 },
+          { assetId: 'solana:yield', weightBps: 5000 },
+        ],
+      }),
+    );
+    expect(res.statusCode, res.body).toBe(422);
+    expect(OrderError.parse(res.json())).toMatchObject({
+      code: 'MIX_NOT_VALID',
+      details: { issues: ['NOT_FOR_GOAL:solana:gold'] },
+    });
+  });
+
+  it('binds the review to the goal, risk and term as well as the lines', async () => {
+    const s = await setup();
+    const hashOf = async (over: object) =>
+      AcceptGoalMixResponse.parse((await s.post(ACCEPT, goal(over))).json()).review.reviewHash;
+    const base = await hashOf({});
+    expect(await hashOf({})).toBe(base);
+    expect(await hashOf({ risk: 'high' })).not.toBe(base);
+    expect(await hashOf({ horizonMonths: 24 })).not.toBe(base);
+    expect(await hashOf({ horizonMonths: 36 })).not.toBe(await hashOf({ horizonMonths: 24 }));
+    expect(await hashOf({ goal: 'protect' })).not.toBe(base);
+  });
+
   it('stores a plan the existing buy turns into legs, unchanged', async () => {
     const s = await setup();
     const res = AcceptGoalMixResponse.parse(
@@ -520,14 +553,14 @@ describe('POST /v1/vaults/{chain}/{address}/targets', () => {
       targets({
         allocations: [
           { assetId: 'robinhood:usdc', weightBps: 5000 },
-          { assetId: 'robinhood:gold', weightBps: 5000 },
+          { assetId: 'robinhood:nvda', weightBps: 5000 },
         ],
       }),
       s.evmOnly,
     );
     const ordered = ApplyVaultMixResponse.parse(res.json());
     if (ordered.status !== 'ordered') throw new Error(res.body);
-    // EVM trades ride together: the sale of SPY and the purchase of gold are one step.
+    // EVM trades ride together: the sale of SPY and the purchase of NVDA are one step.
     expect(ordered.order.legs.map((l) => l.kind)).toEqual(['set_targets', 'swap']);
     expect(ordered.order.owner.evm?.toLowerCase()).toBe(owner.toLowerCase());
   });
