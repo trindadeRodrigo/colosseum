@@ -331,16 +331,17 @@ export function OrderScreen({
     else embed.onStopped?.({ orderId: record.orderId });
   }, [embed, record, running, outcome]);
 
-  // Leaving the page stops the run between steps; what was signed is still reported.
-  useEffect(() => {
-    const signal = stop.current;
-    return () => {
-      signal.aborted = true;
-    };
-  }, []);
+  // Leaving the page stops the run between steps; what was signed is still reported. The signal is
+  // the one of the run under way, read as the screen goes: each press hands the executor a new one.
+  useEffect(
+    () => () => {
+      stop.current.aborted = true;
+    },
+    [],
+  );
 
   const go = useCallback(
-    async (again?: { legId: string; signedTimes: number }) => {
+    async (again?: { legId: string; signedTimes: number }, first = false) => {
       if (!record) return;
       // The order as the review screen showed it, kept from the moment the person approved it.
       let approved = record.approved;
@@ -358,6 +359,8 @@ export function OrderScreen({
         }
         setRecord(next);
       }
+      // Approved only once the order is checked and kept: a press that cannot run locks nothing.
+      if (first) embed?.onApprove();
       // The first press's acceptance of the trust notice, kept once and only when the run begins.
       const begun = () => {
         accepts.current?.();
@@ -999,7 +1002,6 @@ export function OrderScreen({
                   // The first press is the approval of what the card showed: the host keeps the
                   // acceptance of the notice with it, before anything is signed.
                   if (next.kind === 'first') {
-                    embed?.onApprove();
                     // The notice is accepted by a press that starts: kept in `go`, as the run begins.
                     accepts.current = embed
                       ? embed.onStarted
@@ -1011,6 +1013,7 @@ export function OrderScreen({
                     next.kind === 'approve-again'
                       ? { legId: next.legId, signedTimes: next.signedTimes }
                       : undefined,
+                    next.kind === 'first',
                   );
                 }}
               >
