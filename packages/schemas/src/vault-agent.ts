@@ -111,11 +111,21 @@ export type VaultAgentWarning = z.infer<typeof VaultAgentWarning>;
  * `pick_dropped`: the person's shares left nothing for this pick, so it is not in the proposal.
  * `share_unmet`: the picks cannot meet the share in `quote`, and the person is asked about it.
  * `share_unread`: the person's latest message holds what reads as a share and the server did not apply
- * it (`quote`): no number ("mostly Tesla"), no asset beside the number, a refusal ("I don't want 70%
- * TSLA"), or a return or loss word in the sentence ("60% TSLA for growth"). The weights do not follow it.
+ * it (`quote`): anything that is not a plain ask with the number beside the asset ("mostly Tesla",
+ * "70% TSLA is too risky", "a third in TSLA", "I don't want 70% TSLA", "60% TSLA for growth", "the rest
+ * in gold" when the rest did not go there). The weights do not follow it. `share_withdrawn`: the
+ * person's latest message withdrew the share in `quote` ("Forget TSLA", "split it equally").
  */
 export const VaultAgentWeightNote = z.strictObject({
-  code: z.enum(['equal_split', 'stated', 'scaled', 'pick_dropped', 'share_unmet', 'share_unread']),
+  code: z.enum([
+    'equal_split',
+    'stated',
+    'scaled',
+    'pick_dropped',
+    'share_unmet',
+    'share_unread',
+    'share_withdrawn',
+  ]),
   assetIds: z.array(AssetId).max(64),
   quote: prose(400).optional(),
 });

@@ -2065,7 +2065,14 @@ export type PostConversationsByChainGoalReplyResponse = {
     evidenceId: string;
   }[];
   weightNotes: {
-    code: 'equal_split' | 'stated' | 'scaled' | 'pick_dropped' | 'share_unmet' | 'share_unread';
+    code:
+      | 'equal_split'
+      | 'stated'
+      | 'scaled'
+      | 'pick_dropped'
+      | 'share_unmet'
+      | 'share_unread'
+      | 'share_withdrawn';
     assetIds: string[];
     quote?: string;
   }[];
@@ -3536,7 +3543,14 @@ export type PostVaultsByChainByAddressConversationReplyResponse = {
     evidenceId: string;
   }[];
   weightNotes: {
-    code: 'equal_split' | 'stated' | 'scaled' | 'pick_dropped' | 'share_unmet' | 'share_unread';
+    code:
+      | 'equal_split'
+      | 'stated'
+      | 'scaled'
+      | 'pick_dropped'
+      | 'share_unmet'
+      | 'share_unread'
+      | 'share_withdrawn';
     assetIds: string[];
     quote?: string;
   }[];

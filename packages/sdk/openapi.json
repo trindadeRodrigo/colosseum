@@ -10810,7 +10810,8 @@
                               "scaled",
                               "pick_dropped",
                               "share_unmet",
-                              "share_unread"
+                              "share_unread",
+                              "share_withdrawn"
                             ]
                           },
                           "assetIds": {
@@ -21453,7 +21454,8 @@
                               "scaled",
                               "pick_dropped",
                               "share_unmet",
-                              "share_unread"
+                              "share_unread",
+                              "share_withdrawn"
                             ]
                           },
                           "assetIds": {
