@@ -1,7 +1,16 @@
 // @vitest-environment happy-dom
 import { act, createElement, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { click, find, fire, mount, settle, type, unmountAll } from '../../components/ui/test/dom';
+import {
+  click,
+  find,
+  fire,
+  mount,
+  press,
+  settle,
+  type,
+  unmountAll,
+} from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
 import { withAccount } from '../account/test/screen';
 import { PERSONALIZE_PATH, PROPOSE_PATH } from '../goal/build-plan';
@@ -70,6 +79,57 @@ beforeEach(() => {
 afterEach(unmountAll);
 
 describe('private strategy exploration for a new goal', () => {
+  it.each(['en', 'pt'] as const)(
+    'offers keyboard-accessible local starters, then sends only the person’s edited words (%s)',
+    async (lang) => {
+      const host = await show(lang);
+      const starters = find(host, '[data-ui="goal-starters"]');
+      const buttons = [...starters.querySelectorAll<HTMLButtonElement>('button')];
+      expect(buttons.map((button) => button.textContent)).toEqual(
+        dictionary(lang).goal.explore.starters,
+      );
+      const composer = find<HTMLTextAreaElement>(host, 'textarea');
+      for (const button of buttons) {
+        expect(button.type).toBe('button');
+        expect(button.tabIndex).toBe(0);
+        button.focus();
+        expect(document.activeElement).toBe(button);
+        await press(button, 'Enter');
+        // Native buttons activate through a click for Enter/Space, as in Button's DOM tests.
+        await click(button);
+        expect(composer.value).toBe(button.textContent);
+        expect(document.activeElement).toBe(composer);
+        expect(calls).toHaveLength(0);
+        expect(localStorage.getItem(goalConversationKey(userId, 'solana', 'sandbox'))).toBeNull();
+      }
+      const words =
+        lang === 'en' ? 'Explore gold and keep some cash' : 'Explorar ouro e manter parte em caixa';
+      await type(composer, words);
+      expect(calls).toHaveLength(0);
+      await press(composer, 'Enter');
+      await settle();
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({
+        path,
+        body: { messages: [{ who: 'person', text: words }] },
+      });
+      expect(host.querySelector('[data-ui="goal-starters"]')).toBeNull();
+      expect(calls.some((call) => call.path.includes('/orders'))).toBe(false);
+    },
+  );
+  it('keeps signed-out starters disabled without prefilling or sending', async () => {
+    portStore.set(fakePort());
+    const host = await show();
+    const buttons = [...find(host, '[data-ui="goal-starters"]').querySelectorAll('button')];
+    expect(buttons).toHaveLength(3);
+    for (const button of buttons) {
+      expect(button.getAttribute('aria-disabled')).toBe('true');
+      await click(button);
+    }
+    expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe('');
+    expect(find<HTMLTextAreaElement>(host, 'textarea').disabled).toBe(true);
+    expect(calls).toHaveLength(0);
+  });
   it.each(['en', 'pt'] as const)(
     'defaults to truthful explore workbench with no fake vault or funding (%s)',
     async (lang) => {

@@ -185,9 +185,15 @@ export function FamilyScreen({ slug }: { slug: string }) {
   return (
     <div data-ui="family-screen" className="flex flex-col gap-8">
       <header className="flex flex-col gap-3">
+        <Link href="/shelf" className={`${buttonClass({ variant: 'link' })} self-start`}>
+          {t.shared.family.backToShelf}
+        </Link>
         <h1 id={titleId} className={`${PAGE_TITLE} [overflow-wrap:anywhere]`}>
           {family.name}
         </h1>
+        <p className="max-w-(--tf-measure-body) text-body text-muted-foreground">
+          {t.shared.family.nextStep}
+        </p>
         {family.copy && (
           <p className="max-w-(--tf-measure-body) whitespace-pre-line text-body-lg [overflow-wrap:anywhere]">
             {family.copy}

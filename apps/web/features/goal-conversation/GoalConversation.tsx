@@ -45,6 +45,7 @@ export function GoalConversation({
   const sending = useRef(false);
   const held = useRef<Turn[]>([]);
   const prefill = useRef<string | null>(null);
+  const box = useRef<HTMLDivElement>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -177,6 +178,7 @@ export function GoalConversation({
         )}
       </header>
       <div
+        ref={box}
         data-ui="goal-chat"
         className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-24 lg:col-span-5 lg:max-h-[calc(100dvh-8rem)]"
       >
@@ -244,6 +246,29 @@ export function GoalConversation({
             busy: t.shared.vault.conversation.reading,
           }}
         />
+        {loaded && turns.length === 0 && (
+          <ul
+            data-ui="goal-starters"
+            aria-label={t.goal.examples.label}
+            className="flex flex-wrap gap-2"
+          >
+            {copy.starters.map((starter) => (
+              <li key={starter}>
+                <Button
+                  variant="chip"
+                  className="h-auto! min-h-8 py-1"
+                  disabled={!ready || !key || busy}
+                  onClick={() => {
+                    setText(starter);
+                    box.current?.querySelector('textarea')?.focus();
+                  }}
+                >
+                  {starter}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
       <div data-ui="goal-strategy" className="flex min-w-0 flex-col gap-4 lg:col-span-7">
         {reply?.proposal ? (

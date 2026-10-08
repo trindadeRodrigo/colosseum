@@ -19,7 +19,7 @@ import type { CallFailure } from '../order/order-api';
 import { displayName } from '../order/plain';
 import { explorerAddressUrlFor } from '../order/readiness';
 import { dollars, drift, share, shareTenths, tokens } from '../portfolio/figures';
-import { type HoldingRow, holdingsOf, vaultValueSource } from '../portfolio/portfolio';
+import { type HoldingRow, holdingsOf, unpriced, vaultValueSource } from '../portfolio/portfolio';
 import { OwnVaultActions } from '../portfolio/VaultActions';
 import { sameAddress } from '../portfolio/vault-name';
 import { VaultConversation } from '../vault-conversation/VaultConversation';
@@ -124,16 +124,36 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
     <div data-ui="vault-screen" className="flex flex-col gap-8">
       <header className="flex flex-col items-start gap-3">
         <ChainBadge chain={read.chain} />
-        <h1 id={titleId} className={PAGE_TITLE}>
-          {v.title}
-        </h1>
-        <p className="max-w-(--tf-measure-body) text-body-lg">{v.lead(read.name)}</p>
-        <p className="break-all font-mono text-source text-muted-foreground">{vault.address}</p>
+        {mine ? (
+          <OwnVaultActions
+            chain={read.chain}
+            address={vault.address}
+            headingLevel={1}
+            primaryAddMoney
+            fallback={
+              <h1 id={titleId} className={PAGE_TITLE}>
+                {v.title}
+              </h1>
+            }
+          />
+        ) : (
+          <h1 id={titleId} className={PAGE_TITLE}>
+            {v.title}
+          </h1>
+        )}
+        <p className="max-w-(--tf-measure-body) text-body-lg text-muted-foreground">
+          {mine ? v.workspaceLead(read.name) : v.lead(read.name)}
+        </p>
         {/* the way back, and the vault on its chain's own explorer */}
         <p className="flex flex-wrap items-center gap-x-5 gap-y-2">
           <Link href="/monitor" className={buttonClass({ variant: 'link' })}>
             {v.back}
           </Link>
+          {mine && (
+            <a href="#vault-conversation" className={buttonClass({ variant: 'link' })}>
+              {v.conversation.resume}
+            </a>
+          )}
           {explorer && (
             <a
               data-ui="vault-explorer"
@@ -183,14 +203,48 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
         )}
       </header>
 
-      {/* For the vault's owner alone: add money, and its name. */}
-      <OwnVaultActions chain={read.chain} address={vault.address} />
+      {mine && (
+        <Card
+          density="dense"
+          mock={read.provenance !== 'live'}
+          mockLabels={{
+            announce:
+              read.provenance === 'sandbox' ? t.shell.testNetworkLine : t.shell.mockAnnounce,
+          }}
+        >
+          <CardBody density="dense" className="flex flex-col gap-3">
+            <StatRow>
+              <Stat label={v.value}>
+                <ProvenancePin
+                  value={dollars(lang, vault.valueUsd)}
+                  obs={vaultValueSource(
+                    { ...read, vaults: [vault] },
+                    vault,
+                    t.portfolio.vault.valueMethod,
+                  )}
+                  labels={t.pin}
+                />
+              </Stat>
+              <Stat label={v.conversation.holdings}>
+                {rows.filter((row) => !/^0+$/.test(row.raw)).length}
+              </Stat>
+              <Stat label={v.autoFollow}>{vault.autoFollow ? v.on : v.off}</Stat>
+            </StatRow>
+            {unpriced(vault) > 0 && (
+              <p className="text-caption text-muted-foreground">
+                {t.portfolio.vault.unpriced(unpriced(vault))}
+              </p>
+            )}
+          </CardBody>
+        </Card>
+      )}
 
       {mine && port.userId && (
         <VaultConversation
           key={`${port.userId}:${read.chain}:${vault.address}:${read.provenance}:${vault.observedAt}:${account.status === 'ready' ? account.chain : account.status}`}
           read={read}
           userId={port.userId}
+          showValue={false}
         />
       )}
 
@@ -226,6 +280,8 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
               <Stat label={v.autoFollow}>{vault.autoFollow ? v.on : v.off}</Stat>
             </StatRow>
             <dl className="grid gap-x-6 gap-y-1 text-body-sm sm:grid-cols-[auto_1fr]">
+              <dt className="text-muted-foreground">{v.address}</dt>
+              <dd className="break-all font-mono text-source">{vault.address}</dd>
               <dt className="text-muted-foreground">{v.owner}</dt>
               <dd className="break-all font-mono text-source">{vault.owner}</dd>
               <dt className="text-muted-foreground">{v.follows}</dt>

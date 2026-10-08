@@ -246,6 +246,7 @@ export const en = {
       invitation: 'What would you like your strategy to do?',
       lead: 'Tell me your ideas, needs and limits. I can discuss an allocation with its sources and tradeoffs.',
       placeholder: 'Describe what you want to explore…',
+      starters: ['Explore technology stocks', 'Build an income strategy', 'Protect my savings'],
       local: 'This browser · private draft conversation',
       signIn: 'Sign in to explore a private strategy.',
       readingAccount: 'Your account and chain must be ready before I can get a reply.',
@@ -504,7 +505,8 @@ export const en = {
       `No wallet of this sign-in is on ${chain}, so nothing is read there.`,
     title: (vaults: number): string =>
       vaults > 1 ? 'What your vaults hold.' : 'What your vault holds.',
-    lead: 'Read from each chain your plans live on, each time you open this page. Nothing here signs or moves anything.',
+    planDetails: 'Goal and strategy details',
+    lead: 'Your vaults, their holdings and the strategies they follow. Open a vault to continue its conversation or add money.',
     chain: 'Chain',
     reading: 'Reading your vault…',
     signedOut:
@@ -653,9 +655,10 @@ export const en = {
     },
     /** More money into a vault the person has (/vaults/{chain}/{address}/add). */
     add: {
+      strategy: 'Where this deposit goes',
       title: 'Add money to your vault',
       lead: (chain: string) =>
-        `The whole amount goes into this vault on ${chain}, then buys each part at the vault’s targets. Nothing is signed here.`,
+        `Add to this vault on ${chain} using its current strategy. Review the deposit and its steps before your wallet signs.`,
       amountHint: 'From $10 to $1,000,000.',
       missing:
         'I can’t find this vault among yours. Open your portfolio, then choose the vault there.',
@@ -1327,7 +1330,7 @@ export const en = {
     shelf: {
       title: 'Portfolios people have shared.',
       lead: (chain: string) =>
-        `Each is a list of assets and weights its creator published on a chain. These are the ones on ${chain}, where your plans live.`,
+        `Explore published strategies on ${chain}. Open one to review its assets, sources and options for investing or following.`,
       leadAll:
         'Each is a list of assets and weights its creator published on a chain. Sign in to see the ones on your chain.',
       loading: 'Reading the shared portfolios…',
@@ -1406,6 +1409,7 @@ export const en = {
         'One asset of this portfolio can’t be bought on this chain now, so the portfolio can’t be bought as it stands.',
     },
     family: {
+      nextStep: 'Review the strategy, then choose how much to invest.',
       loading: 'Reading this portfolio…',
       missing: 'I can’t find a shared portfolio with that name.',
       backToShelf: 'Back to the shared portfolios',
@@ -1604,6 +1608,19 @@ export const en = {
     vault: {
       title: 'A vault, as its chain holds it',
       conversation: {
+        proposedShare: 'Proposed share',
+        resume: 'Resume conversation',
+        holdings: 'Holdings',
+        explain: 'Explain my holdings',
+        explainPrompt: 'Explain what my vault holds and how it relates to its current strategy.',
+        considerChange: 'Consider a change',
+        changePrompt: 'I want to consider a change to my vault’s strategy.',
+        discuss: 'Discuss this proposal',
+        discussPrompt:
+          'Help me review the proposed strategy, its tradeoffs and what remains unknown.',
+        change: 'Change',
+        points: 'pp',
+        removed: 'Removed from the proposed strategy',
         details: 'Vault details and price sources',
         draftIntro: 'Draft proposal, not applied:',
         comparison: 'Current target → proposed share',
@@ -1639,6 +1656,9 @@ export const en = {
         previewOnly:
           'Preview only. Your vault has not changed. Applying a strategy update is not available here yet.',
       },
+      address: 'Vault address',
+      workspaceLead: (chain: string) =>
+        `Your holdings and strategy on ${chain}. Keep the conversation here as your plans change.`,
       lead: (chain: string) =>
         `Read from ${chain} for this page. Anyone can see a vault: what it holds is public on its chain.`,
       loading: 'Reading the vault…',

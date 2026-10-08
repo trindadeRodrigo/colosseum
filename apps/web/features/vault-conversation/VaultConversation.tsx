@@ -1,6 +1,7 @@
 'use client';
 import type { VaultResponse } from '@colosseum/schemas';
 import { useEffect, useId, useRef, useState } from 'react';
+import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { Composer } from '../../components/ui/Composer';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
@@ -34,19 +35,27 @@ export function VaultConversation({
   read,
   userId,
   agent,
+  showValue = true,
 }: {
   read: VaultResponse;
   userId: string;
   agent?: VaultAgent;
+  showValue?: boolean;
 }) {
   const t = useT();
   const copy = t.shared.vault.conversation;
   const language = useLang();
   const api = useApiFetch();
   const id = useId();
+  const composer = useRef<HTMLDivElement>(null);
+  const transcript = useRef<HTMLOListElement>(null);
   const key = conversationKey(userId, read.chain, read.vault.address, read.provenance);
   const context = `${key}:${read.vault.observedAt}`;
   const [turns, setTurns] = useState<Turn[]>([]);
+  useEffect(() => {
+    if (turns.length > 0 && transcript.current)
+      transcript.current.scrollTop = transcript.current.scrollHeight;
+  }, [turns]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -225,13 +234,19 @@ export function VaultConversation({
   const shares = rows.filter((row) => row.valueUsd !== null && row.weightBps > 0);
   const targets = holdingsOf(read.vault).filter((row) => row.targetBps > 0);
   const proposal = reply?.proposal;
+  const draftMessage = (message: string) => {
+    setText(message);
+    composer.current?.querySelector('textarea')?.focus();
+  };
   return (
     <section
       data-ui="vault-conversation"
+      id="vault-conversation"
+      tabIndex={-1}
       aria-labelledby={`${id}-title`}
-      className="grid min-w-0 gap-6 lg:grid-cols-2"
+      className="grid min-w-0 items-start gap-6 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]"
     >
-      <div className="flex min-w-0 flex-col gap-4">
+      <div className="flex min-w-0 flex-col gap-4 border-t border-border pt-5">
         <header className="flex flex-col gap-2">
           <h2 id={`${id}-title`} className="text-h3">
             {copy.title}
@@ -247,11 +262,36 @@ export function VaultConversation({
           </p>
         </header>
         {turns.length === 0 ? (
-          <p className="text-body text-muted-foreground">{copy.empty}</p>
+          <div className="flex flex-col items-start gap-4 py-4">
+            <p className="max-w-(--tf-measure-body) text-body text-muted-foreground">
+              {copy.empty}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                size="dense"
+                disabled={loading || storage === 'conflict'}
+                onClick={() => draftMessage(copy.explainPrompt)}
+              >
+                {copy.explain}
+              </Button>
+              <Button
+                variant="secondary"
+                size="dense"
+                disabled={loading || storage === 'conflict'}
+                onClick={() => draftMessage(copy.changePrompt)}
+              >
+                {copy.considerChange}
+              </Button>
+            </div>
+          </div>
         ) : (
           <ol
             data-ui="vault-transcript"
-            className="flex max-h-[55vh] min-w-0 flex-col gap-4 overflow-y-auto"
+            ref={transcript}
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: The scrollable transcript needs keyboard focus so arrow keys can read earlier messages.
+            tabIndex={0}
+            className="flex max-h-[55vh] min-w-0 flex-col gap-5 overflow-y-auto pr-2 text-body focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             aria-label={copy.history}
           >
             {turns.map((turn) => (
@@ -275,20 +315,22 @@ export function VaultConversation({
             ))}
           </ol>
         )}
-        <Composer
-          label={copy.title}
-          labelHidden
-          value={text}
-          onChange={setText}
-          onSubmit={send}
-          maxLength={2000}
-          placeholder={copy.placeholder}
-          busy={busy}
-          disabled={loading || storage === 'conflict'}
-          error={error}
-          lang={language}
-          labels={{ submit: copy.submitMessage, busy: copy.reading }}
-        />
+        <div ref={composer} className="min-w-0 border-t border-border pt-4">
+          <Composer
+            label={copy.title}
+            labelHidden
+            value={text}
+            onChange={setText}
+            onSubmit={send}
+            maxLength={2000}
+            placeholder={copy.placeholder}
+            busy={busy}
+            disabled={loading || storage === 'conflict'}
+            error={error}
+            lang={language}
+            labels={{ submit: copy.submitMessage, busy: copy.reading }}
+          />
+        </div>
       </div>
       <div className="flex min-w-0 flex-col gap-4">
         <Card
@@ -302,15 +344,17 @@ export function VaultConversation({
         >
           <CardHeader id={`${id}-held`} title={copy.current} />
           <CardBody className="flex min-w-0 flex-col gap-4">
-            <ProvenancePin
-              value={dollars(language, read.vault.valueUsd)}
-              obs={vaultValueSource(
-                { ...read, vaults: [read.vault] },
-                read.vault,
-                t.portfolio.vault.valueMethod,
-              )}
-              labels={t.pin}
-            />
+            {showValue && (
+              <ProvenancePin
+                value={dollars(language, read.vault.valueUsd)}
+                obs={vaultValueSource(
+                  { ...read, vaults: [read.vault] },
+                  read.vault,
+                  t.portfolio.vault.valueMethod,
+                )}
+                labels={t.pin}
+              />
+            )}
             {unpriced(read.vault) > 0 && (
               <p className="text-caption text-muted-foreground">
                 {t.portfolio.vault.unpriced(unpriced(read.vault))}
@@ -338,25 +382,33 @@ export function VaultConversation({
                 ))}
               </ul>
             )}
-            <div className="flex flex-col gap-2 border-t border-border pt-4">
-              <h3 className="text-caption font-medium">{copy.targets}</h3>
-              <p className="text-caption text-muted-foreground">{copy.targetsNote}</p>
-              <ul className="flex flex-col gap-1 text-body-sm">
-                {targets.map((row) => (
-                  <li key={row.asset} className="flex min-w-0 gap-2">
-                    <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-                      {displayName(row.asset, t.plan)}
-                    </span>
-                    <span className="tabular-nums">{share(language, row.targetBps)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <details className="border-t border-border pt-4">
+              <summary className="cursor-pointer text-body-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+                {copy.targets}
+              </summary>
+              <div className="flex flex-col gap-2 pt-3">
+                <p className="text-caption text-muted-foreground">{copy.targetsNote}</p>
+                <ul className="flex flex-col gap-1 text-body-sm">
+                  {targets.map((row) => (
+                    <li key={row.asset} className="flex min-w-0 gap-2">
+                      <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+                        {displayName(row.asset, t.plan)}
+                      </span>
+                      <span className="tabular-nums">{share(language, row.targetBps)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </details>
           </CardBody>
         </Card>
         {proposal && (
           <section data-ui="vault-proposal">
-            <StrategyPreview proposal={proposal} targets={targets} />
+            <StrategyPreview
+              proposal={proposal}
+              targets={targets}
+              onDiscuss={() => draftMessage(copy.discussPrompt)}
+            />
           </section>
         )}
       </div>

@@ -199,8 +199,26 @@ test('publish a portfolio, find it on the shelf, buy it and follow it, every ste
   await expect(mine.getByRole('button', { name: en.shared.vaults.autoOn })).toBeVisible();
   await mine.getByRole('link').first().click();
   await expect(page).toHaveURL(/\/vaults\/solana\/[^/]+$/);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.shared.vault.title);
-  await expect(page.locator('[data-ui="vault-screen"]')).toContainText('SPY');
+  // This fixture follows a shared strategy and has no private name or goal record.
+  // The owner-proved workspace calls it by its chain, with the existing deposit route.
+  const workspace = page.locator('[data-ui="vault-screen"]');
+  const ownedName = workspace.locator('h1[data-ui="vault-name"]');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+    en.portfolio.actions.unnamed('Solana'),
+  );
+  await expect(ownedName).toHaveText(en.portfolio.actions.unnamed('Solana'));
+  await expect(ownedName).toHaveAttribute('data-named', 'false');
+  const addMoney = workspace.locator('[data-ui="vault-add-money"]');
+  await expect(addMoney).toBeVisible();
+  await expect(addMoney).toHaveAttribute('href', `${new URL(page.url()).pathname}/add`);
+  await expect(addMoney).toHaveClass(/(?:^|\s)bg-primary(?:\s|$)/);
+  const resume = workspace.getByRole('link', {
+    name: en.shared.vault.conversation.resume,
+    exact: true,
+  });
+  await expect(resume).toBeVisible();
+  await expect(resume).toHaveAttribute('href', '#vault-conversation');
+  await expect(workspace).toContainText('SPY');
   await check(page, 'vault');
 });
 

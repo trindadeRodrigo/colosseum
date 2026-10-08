@@ -712,8 +712,14 @@ describe('a vault’s own page, which anybody can open', () => {
   };
 
   it('offers its owner the actions', async () => {
-    api({ vaults: [vault({ name: 'Rent' })] });
+    const server = api({ vaults: [vault({ name: 'Rent' })] });
     const host = await page();
+    expect(find(host, 'h1').textContent).toBe('Rent');
+    expect(host.querySelectorAll('h1')).toHaveLength(1);
+    expect(server.to(PORTFOLIO_PATH)).toHaveLength(1);
+    expect(find(host, 'a[href="#vault-conversation"]').textContent).toBe(
+      en.shared.vault.conversation.resume,
+    );
     expect(find(host, '[data-ui="vault-name"]').textContent).toBe('Rent');
     expect(find(host, '[data-ui="vault-add-money"]').getAttribute('href')).toBe(
       `/vaults/solana/${VAULT}/add`,

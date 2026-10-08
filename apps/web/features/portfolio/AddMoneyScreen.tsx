@@ -311,15 +311,25 @@ export function AddMoneyScreen({
           </Link>
         </p>
       </header>
-      {context}
-      <AmountField
-        text={text}
-        onText={setText}
-        hint={words.amountHint}
-        value={typed}
-        disabled={locked}
-      />
-      {card}
+      <div className="grid min-w-0 items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <section className="flex min-w-0 flex-col gap-5" aria-label={words.title}>
+          <AmountField
+            text={text}
+            onText={setText}
+            hint={words.amountHint}
+            value={typed}
+            disabled={locked}
+          />
+          {card}
+        </section>
+        <section
+          className="flex min-w-0 flex-col gap-4 border-t border-border pt-5"
+          aria-label={words.strategy}
+        >
+          <h2 className="text-h3">{words.strategy}</h2>
+          {context}
+        </section>
+      </div>
     </div>
   );
 }

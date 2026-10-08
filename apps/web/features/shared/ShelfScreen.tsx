@@ -17,6 +17,7 @@ import { useAccount } from '../account/AccountProvider';
 import { chainInAddress } from '../account/chain-choice';
 import { formatBps, tokenName } from '../order/amounts';
 import type { CallFailure } from '../order/order-api';
+import { AssetMark } from '../order/PlanView';
 import { networkFor } from '../order/readiness';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { HoldingsBar } from './HoldingsBar';
@@ -215,7 +216,19 @@ function FamilyCard({ family }: { family: SharedFamily }) {
                 shareBps: x.weightBps,
               }))}
             />
-            <Weights recipe={recipe} locale={locale} />
+            <ul className="grid gap-x-5 gap-y-2 sm:grid-cols-2">
+              {recipe.active.components.map((component) => (
+                <li key={component.asset} className="flex min-w-0 items-center gap-2 text-body-sm">
+                  <AssetMark asset={component.asset} />
+                  <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+                    {tokenName(component.asset)}
+                  </span>{' '}
+                  <span className="shrink-0 tabular-nums">
+                    {formatBps(component.weightBps, locale)}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
         {recipe && (
@@ -244,7 +257,7 @@ function FamilyCard({ family }: { family: SharedFamily }) {
         )}
         {/* What it is for, in the creator's own words: one line, as text. */}
         {family.copy && (
-          <p className="line-clamp-1 max-w-(--tf-measure-body) text-body-sm [overflow-wrap:anywhere]">
+          <p className="line-clamp-2 max-w-(--tf-measure-body) text-body-sm [overflow-wrap:anywhere]">
             {family.copy}
           </p>
         )}

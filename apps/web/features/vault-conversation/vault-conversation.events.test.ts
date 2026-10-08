@@ -8,6 +8,7 @@ import { VaultScreen } from '../shared/VaultScreen';
 import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
 import { agentReplyOf } from './agent';
+import { StrategyPreview } from './StrategyPreview';
 import {
   conversationKey,
   readLocal,
@@ -50,6 +51,100 @@ beforeEach(() => {
 afterEach(unmountAll);
 
 describe('a continuous conversation for one vault', () => {
+  it.each(['en', 'pt'] as const)(
+    'prefills a starter without requesting a reply or submitting it, %s',
+    async (lang) => {
+      const calls: string[] = [];
+      portStore.setApi(async (url, init) => {
+        if (init?.method === 'POST') calls.push(url);
+        return json({}, 404);
+      });
+      const host = await show(lang);
+      const copy = dictionary(lang).shared.vault.conversation;
+      const starter = [...host.querySelectorAll('button')].find(
+        (button) => button.textContent === copy.explain,
+      );
+      if (!starter) throw new Error('The explanation starter is offered.');
+      await click(starter);
+      const composer = find<HTMLTextAreaElement>(host, 'textarea');
+      expect(composer.value).toBe(copy.explainPrompt);
+      expect(document.activeElement).toBe(composer);
+      expect(calls).toEqual([]);
+      expect(host.querySelector('[data-ui="vault-transcript"]')).toBeNull();
+    },
+  );
+
+  it('keeps removed targets in the proposal comparison and names the change in percentage points', async () => {
+    const proposal = agentReplyOf(reply, read)?.proposal;
+    if (!proposal) throw new Error('The fixture provides a validated proposal.');
+    const [first] = proposal.allocations;
+    if (!first) throw new Error('A sourced proposed allocation exists.');
+    const host = await mount(
+      withAccount(
+        'en',
+        createElement(StrategyPreview, {
+          proposal: {
+            ...proposal,
+            allocations: [{ ...first, weightBps: 10000 }],
+          },
+          targets: [
+            { asset: 'solana:gldx', targetBps: 3000 },
+            { asset: 'solana:usdc', targetBps: 7000 },
+          ],
+        }),
+      ),
+    );
+    const rows = [...host.querySelectorAll('tbody tr')];
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.textContent).toContain('30% → 100%');
+    expect(rows[0]?.textContent).toContain('+70 pp');
+    expect(rows[1]?.textContent).toContain('70% → 0%');
+    expect(rows[1]?.textContent).toContain('−70 pp');
+    expect(rows[1]?.textContent).toContain(en.shared.vault.conversation.removed);
+    // Source pins may open; the standalone preview offers no execution or discussion command.
+    expect(host.querySelector('form')).toBeNull();
+    expect(host.querySelector('a[href^="/buy"]')).toBeNull();
+    expect(
+      [...host.querySelectorAll('button')].some(
+        (button) => button.textContent === en.shared.vault.conversation.discuss,
+      ),
+    ).toBe(false);
+    expect(host.textContent).toContain(en.shared.vault.conversation.previewOnly);
+  });
+
+  it.each(['en', 'pt'] as const)(
+    'shows a one-basis-point change and removal precisely, %s',
+    async (lang) => {
+      const proposal = agentReplyOf(reply, read)?.proposal;
+      if (!proposal) throw new Error('The fixture provides a validated proposal.');
+      const [first] = proposal.allocations;
+      if (!first) throw new Error('A sourced proposed allocation exists.');
+      const host = await mount(
+        withAccount(
+          lang,
+          createElement(StrategyPreview, {
+            proposal: { ...proposal, allocations: [{ ...first, weightBps: 10000 }] },
+            targets: [
+              { asset: 'solana:gldx', targetBps: 9999 },
+              { asset: 'solana:usdc', targetBps: 1 },
+            ],
+          }),
+        ),
+      );
+      const rows = [...host.querySelectorAll('tbody tr')];
+      const decimal = lang === 'en' ? '.' : ',';
+      expect(rows[0]?.textContent).toContain(`99${decimal}99% → 100%`);
+      expect(rows[0]?.textContent).toContain(
+        `+0${decimal}01 ${dictionary(lang).shared.vault.conversation.points}`,
+      );
+      expect(rows[1]?.textContent).toContain(`0${decimal}01% → 0%`);
+      expect(rows[1]?.textContent).toContain(
+        `−0${decimal}01 ${dictionary(lang).shared.vault.conversation.points}`,
+      );
+      expect(rows[1]?.textContent).toContain(dictionary(lang).shared.vault.conversation.removed);
+    },
+  );
+
   it.each(['en', 'pt'] as const)(
     'keeps real words on unavailable service and reopens plain history, %s',
     async (lang) => {
@@ -123,6 +218,20 @@ describe('a continuous conversation for one vault', () => {
     );
     expect(saved).not.toHaveProperty('proposal');
     expect(saved).not.toHaveProperty('confirmed');
+    const beforeDiscussion = readLocal(
+      conversationKey(userId, read.chain, read.vault.address, read.provenance),
+    );
+    const discuss = [...proposed.querySelectorAll('button')].find(
+      (button) => button.textContent === en.shared.vault.conversation.discuss,
+    );
+    if (!discuss) throw new Error('The proposal offers discussion.');
+    await click(discuss);
+    expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe(
+      en.shared.vault.conversation.discussPrompt,
+    );
+    expect(
+      readLocal(conversationKey(userId, read.chain, read.vault.address, read.provenance)),
+    ).toEqual(beforeDiscussion);
   });
 
   it('loads account history and writes a revision-checked transcript with no executable checkpoint', async () => {

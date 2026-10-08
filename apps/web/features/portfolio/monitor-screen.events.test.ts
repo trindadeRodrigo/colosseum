@@ -108,6 +108,15 @@ describe('the monitor, for a person with a vault on their chain', () => {
     expect(host.querySelectorAll('.font-display')).toHaveLength(1);
     expect(find(host, '.font-display').closest('[data-ui="goal-card"]')).not.toBeNull();
     expect(vaults(host)).toHaveLength(1);
+    expect(find(host, `a[href="/vaults/solana/${VAULT}#vault-conversation"]`).textContent).toBe(
+      en.shared.vault.conversation.resume,
+    );
+    const goalDetails = [...host.querySelectorAll('details')].find(
+      (details) => details.querySelector('summary')?.textContent === en.portfolio.planDetails,
+    );
+    expect(goalDetails?.open).toBe(false);
+    expect(goalDetails?.querySelector('[data-ui="goal-card"]')).not.toBeNull();
+
     const words = en.portfolio.vault;
     expect(find(host, '[data-ui="card"] h2').textContent).toBe(words.title);
     expect(text(host)).toContain(words.value);

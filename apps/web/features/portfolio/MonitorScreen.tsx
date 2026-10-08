@@ -118,7 +118,11 @@ export function MonitorScreen() {
 
   /** One vault: his guide's "Goal card and plan" side by side, then what the vault holds. */
   const vaultBlock = (entry: PortfolioChain, vault: Vault) => (
-    <div key={vault.address} data-ui="vault" className="flex flex-col gap-6">
+    <section
+      key={vault.address}
+      data-ui="vault"
+      className="flex min-w-0 flex-col gap-5 border-t border-border pt-6"
+    >
       <VaultActions
         chain={entry}
         vault={vault}
@@ -126,24 +130,35 @@ export function MonitorScreen() {
         onRenamed={again}
         level={grouped ? 3 : 2}
       />
+      <Link
+        href={`/vaults/${encodeURIComponent(entry.chain)}/${encodeURIComponent(vault.address)}#vault-conversation`}
+        className={`${buttonClass({ variant: 'link' })} self-start`}
+      >
+        {t.shared.vault.conversation.resume}
+      </Link>
       {unfinishedOf(vault)}
-      <div className="grid items-start gap-6 min-[980px]:grid-cols-2">
-        <VaultGoalCard
-          chain={entry}
-          vault={vault}
-          joined={goalOfVault(vault, history.records, history.deposited)}
-          putIn={putInto(vault, history.records, history.deposited)}
-          followed={familyOfVault(vault, history.records)}
-          tookOut={takenOut(vault, history.withdrawals, words.vault.takenOutMethod) !== null}
-        />
-        <PlanParts vault={vault} />
-      </div>
       <VaultPanel
         chain={entry}
         vault={vault}
         taken={takenOut(vault, history.withdrawals, words.vault.takenOutMethod)}
       />
-    </div>
+      <details>
+        <summary className="cursor-pointer text-body-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+          {words.planDetails}
+        </summary>
+        <div className="grid items-start gap-6 pt-4 min-[980px]:grid-cols-2">
+          <VaultGoalCard
+            chain={entry}
+            vault={vault}
+            joined={goalOfVault(vault, history.records, history.deposited)}
+            putIn={putInto(vault, history.records, history.deposited)}
+            followed={familyOfVault(vault, history.records)}
+            tookOut={takenOut(vault, history.withdrawals, words.vault.takenOutMethod) !== null}
+          />
+          <PlanParts vault={vault} />
+        </div>
+      </details>
+    </section>
   );
 
   /** What a chain's vaults are worth together: one chain's own sum, never one across chains. */

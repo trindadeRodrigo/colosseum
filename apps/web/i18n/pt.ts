@@ -203,6 +203,11 @@ export const pt: Dictionary = {
       invitation: 'O que você quer que sua estratégia faça?',
       lead: 'Conte suas ideias, necessidades e limites. Eu posso discutir uma alocação com fontes e riscos.',
       placeholder: 'Descreva o que quer explorar…',
+      starters: [
+        'Explorar ações de tecnologia',
+        'Criar uma estratégia de renda',
+        'Proteger minhas economias',
+      ],
       local: 'Este navegador · conversa privada de rascunho',
       signIn: 'Entre para explorar uma estratégia privada.',
       readingAccount: 'Sua conta e rede precisam estar prontas antes de eu buscar uma resposta.',
@@ -438,7 +443,8 @@ export const pt: Dictionary = {
       `Nenhuma carteira desta conta está na ${chain}, então nada é lido lá.`,
     title: (vaults: number) =>
       vaults > 1 ? 'O que seus cofres guardam.' : 'O que seu cofre guarda.',
-    lead: 'Lido de cada rede onde seus planos ficam, cada vez que você abre esta página. Nada aqui assina ou move coisa alguma.',
+    planDetails: 'Detalhes da meta e estratégia',
+    lead: 'Seus cofres, seus ativos e as estratégias que seguem. Abra um cofre para continuar a conversa ou adicionar dinheiro.',
     chain: 'Rede',
     reading: 'Lendo seu cofre…',
     signedOut:
@@ -567,9 +573,10 @@ export const pt: Dictionary = {
       },
     },
     add: {
+      strategy: 'Destino deste aporte',
       title: 'Adicione dinheiro ao seu cofre',
       lead: (chain: string) =>
-        `O valor inteiro vai para este cofre na ${chain} e depois compra cada parte nas metas do cofre. Nada é assinado aqui.`,
+        `Adicione a este cofre na ${chain} seguindo sua estratégia atual. Revise o aporte e seus passos antes de assinar na carteira.`,
       amountHint: 'De US$ 10 a US$ 1.000.000.',
       missing:
         'Não encontro este cofre entre os seus. Abra seu portfólio e escolha o cofre por lá.',
@@ -1185,7 +1192,7 @@ export const pt: Dictionary = {
     shelf: {
       title: 'Portfólios que as pessoas compartilharam.',
       lead: (chain: string) =>
-        `Cada um é uma lista de ativos e pesos que quem o criou publicou numa rede. Estes são os da ${chain}, onde ficam seus planos.`,
+        `Explore estratégias publicadas na ${chain}. Abra uma para revisar os ativos, as fontes e as opções de investir ou seguir.`,
       leadAll:
         'Cada um é uma lista de ativos e pesos que quem o criou publicou numa rede. Entre para ver os da sua rede.',
       loading: 'Lendo os portfólios compartilhados…',
@@ -1257,6 +1264,7 @@ export const pt: Dictionary = {
         'Um ativo deste portfólio não pode ser comprado nesta rede agora, então o portfólio não pode ser comprado como está.',
     },
     family: {
+      nextStep: 'Revise a estratégia e escolha quanto investir.',
       loading: 'Lendo este portfólio…',
       missing: 'Não encontro um portfólio compartilhado com esse nome.',
       backToShelf: 'Voltar aos portfólios compartilhados',
@@ -1455,6 +1463,20 @@ export const pt: Dictionary = {
     vault: {
       title: 'Um cofre, como a rede o tem',
       conversation: {
+        proposedShare: 'Fatia proposta',
+        resume: 'Retomar conversa',
+        holdings: 'Ativos',
+        explain: 'Explique meus ativos',
+        explainPrompt:
+          'Explique o que meu cofre tem e como isso se relaciona com sua estratégia atual.',
+        considerChange: 'Considerar uma mudança',
+        changePrompt: 'Quero considerar uma mudança na estratégia do meu cofre.',
+        discuss: 'Conversar sobre esta proposta',
+        discussPrompt:
+          'Ajude a revisar a estratégia proposta, suas consequências e o que ainda não sabemos.',
+        change: 'Mudança',
+        points: 'p.p.',
+        removed: 'Removido da estratégia proposta',
         details: 'Detalhes do cofre e fontes dos preços',
         draftIntro: 'Proposta preliminar, não aplicada:',
         comparison: 'Meta atual → fatia proposta',
@@ -1493,6 +1515,9 @@ export const pt: Dictionary = {
         previewOnly:
           'Somente uma prévia. Seu cofre não mudou. Aplicar uma atualização de estratégia ainda não está disponível aqui.',
       },
+      address: 'Endereço do cofre',
+      workspaceLead: (chain: string) =>
+        `Seus ativos e estratégia na ${chain}. Continue a conversa aqui conforme seus planos mudam.`,
       lead: (chain: string) =>
         `Lido da ${chain} para esta página. Qualquer pessoa pode ver um cofre: o que ele tem é público na rede.`,
       loading: 'Lendo o cofre…',
