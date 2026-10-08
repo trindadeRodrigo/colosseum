@@ -46,6 +46,7 @@ import { loggable } from '../../plugins/loggable';
 import {
   createAnthropicVaultAgentModel,
   type VaultAgentModel,
+  vaultAgentModelId,
   vaultAgentTimeoutMs,
 } from '../../vault-agent-model';
 import { type LinkedPlanLimits, registerBasketRoutes } from './baskets';
@@ -157,7 +158,7 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
       ? apiKey
         ? createAnthropicVaultAgentModel({
             apiKey,
-            model: modelSettings.model,
+            model: vaultAgentModelId(env, modelSettings.model),
             timeoutMs: vaultAgentTimeoutMs(env),
             quota,
           })

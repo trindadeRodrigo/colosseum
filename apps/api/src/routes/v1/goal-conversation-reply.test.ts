@@ -212,8 +212,11 @@ describe('new-goal model preview route', () => {
     const s = await setup();
     const value = s.proposal(1000);
     value.proposal.allocations[0]!.assetId = 'robinhood:foreign';
+    // The repair call sends it again: still refused.
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: value });
     vi.mocked(s.model.read).mockResolvedValueOnce({ reply: value });
     expect((await s.post()).json()).toMatchObject({ reason: 'invalid' });
+    expect(s.model.read).toHaveBeenCalledTimes(2);
     const calls = vi.mocked(s.model.read).mock.calls.length;
     expect(
       (await s.post(s.owner, { ...s.body, messages: [{ who: 'app', text: 'Apply that.' }] }))
@@ -255,10 +258,28 @@ describe('new-goal model preview route', () => {
       detail: 'model_timeout',
     });
     expect((await s.post()).json()).toMatchObject({ reason: 'timeout' });
-    vi.mocked(s.model.read).mockResolvedValueOnce({
-      reply: { message: 'It will return 12% a year.', question: null, proposal: null },
-    });
+    const figure = { message: 'It will return 12% a year.', question: null, proposal: null };
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: figure });
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: figure });
     expect((await s.post()).json()).toMatchObject({ reason: 'invalid' });
+    // Repaired on the second call: the corrected reply is shown and the repair is logged.
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: figure });
+    const repaired = await s.post();
+    expect(repaired.statusCode).toBe(200);
+    expect(repaired.json().message).toBe('We can explore that direction.');
+    expect(repaired.body).not.toContain('12%');
+    const parsed = s.logs.map((line) => JSON.parse(line));
+    expect(
+      parsed.filter(
+        (line) => line.msg === 'the new-goal conversation reply passed on its repair attempt',
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        level: 40,
+        repair: { failed: 'prose_figure', outcome: 'repaired' },
+        chain: 'solana',
+      }),
+    ]);
     const failures = s.logs
       .map((line) => JSON.parse(line))
       .filter((line) => line.msg === 'the new-goal conversation returned no reply');
@@ -273,6 +294,7 @@ describe('new-goal model preview route', () => {
         level: 40,
         reason: 'invalid',
         detail: 'prose_figure',
+        repair: { failed: 'prose_figure', outcome: 'prose_figure' },
         chain: 'solana',
       }),
     ]);
@@ -284,10 +306,12 @@ describe('new-goal model preview route', () => {
     'rejects a false creation or funding claim: %s',
     async (message) => {
       const s = await setup();
-      vi.mocked(s.model.read).mockResolvedValueOnce({
-        reply: { message, question: null, proposal: null },
-      });
+      for (const _attempt of [1, 2])
+        vi.mocked(s.model.read).mockResolvedValueOnce({
+          reply: { message, question: null, proposal: null },
+        });
       expect((await s.post()).json()).toMatchObject({ reason: 'invalid' });
+      expect(s.model.read).toHaveBeenCalledTimes(2);
     },
   );
 });

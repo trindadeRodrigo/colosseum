@@ -14,10 +14,14 @@ import mockStocks from './testing/fixtures/mock-stocks.json';
 import {
   acceptsTemperature,
   createAnthropicVaultAgentModel,
+  repairRequest,
   VAULT_AGENT_MAX_TOKENS,
+  VAULT_AGENT_REPAIR_MARGIN_MS,
+  VAULT_AGENT_REPAIR_MIN_MS,
   VAULT_AGENT_REPLY_SCHEMA,
   VAULT_AGENT_SYSTEM,
   VAULT_AGENT_TIMEOUT_MS,
+  vaultAgentModelId,
   vaultAgentTimeoutMs,
 } from './vault-agent-model';
 
@@ -84,6 +88,7 @@ describe('vault proposal provider uses the existing model settings and a shared 
         messages: [{ role: 'user', content: JSON.stringify(prompt) }],
         output_config: { format: { type: 'json_schema', schema: VAULT_AGENT_REPLY_SCHEMA } },
       }),
+      { timeout: 6000 },
     );
   });
 
@@ -136,6 +141,84 @@ describe('vault proposal provider uses the existing model settings and a shared 
       why: 'unavailable',
       detail: 'model_error_400',
     });
+  });
+
+  it('repairs in one more reserved call that sees its reply and the problem, inside the overall time', async () => {
+    const reserve = vi.fn(() => null);
+    const model = createAnthropicVaultAgentModel({ ...options, quota: { reserve } });
+    const previous = { message: 'I changed your vault.', question: null, proposal: null };
+    sdk.create.mockResolvedValueOnce({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: '{"message":"Hi.","question":null,"proposal":null}' }],
+    });
+    expect(
+      await model.read('owner', prompt, {
+        previous,
+        problems: ['Prose said something was applied.'],
+        elapsedMs: 4000,
+      }),
+    ).toEqual({ reply: { message: 'Hi.', question: null, proposal: null } });
+    expect(reserve).toHaveBeenCalledExactlyOnceWith('owner');
+    expect(sdk.create).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        messages: [
+          { role: 'user', content: JSON.stringify(prompt) },
+          { role: 'assistant', content: JSON.stringify(previous) },
+          { role: 'user', content: repairRequest(['Prose said something was applied.']) },
+        ],
+      }),
+      // 6,000 configured + the margin − 4,000 already spent.
+      { timeout: 6000 + VAULT_AGENT_REPAIR_MARGIN_MS - 4000 },
+    );
+    expect(repairRequest(['A.', 'B.'])).toContain('\n- A.\n- B.\n');
+    const calls = sdk.create.mock.calls.length;
+    // Too little time left: no reservation and no call.
+    const late = 6000 + VAULT_AGENT_REPAIR_MARGIN_MS - VAULT_AGENT_REPAIR_MIN_MS + 1;
+    expect(
+      await model.read('owner', prompt, { previous, problems: ['x'], elapsedMs: late }),
+    ).toEqual({ reply: null, why: 'timeout', detail: 'repair_no_time' });
+    expect(reserve).toHaveBeenCalledOnce();
+    expect(sdk.create.mock.calls.length).toBe(calls);
+    // A spent budget stops the repair like the first call.
+    const spent = createAnthropicVaultAgentModel({
+      ...options,
+      quota: { reserve: () => 'model_person_budget_spent' },
+    });
+    expect(await spent.read('owner', prompt, { previous, problems: ['x'], elapsedMs: 0 })).toEqual({
+      reply: null,
+      why: 'budget',
+      detail: 'model_person_budget_spent',
+    });
+    expect(sdk.create.mock.calls.length).toBe(calls);
+    // A short configured time still gets its first call.
+    sdk.create.mockResolvedValueOnce({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: '{"message":"Hi.","question":null,"proposal":null}' }],
+    });
+    await createAnthropicVaultAgentModel({
+      ...options,
+      timeoutMs: 1000,
+      quota: { reserve: () => null },
+    }).read('owner', prompt);
+    expect(sdk.create).toHaveBeenLastCalledWith(expect.anything(), { timeout: 1000 });
+  });
+
+  it('reads VAULT_AGENT_MODEL, or falls back to the intake model', () => {
+    expect(vaultAgentModelId({}, 'claude-haiku-4-5')).toBe('claude-haiku-4-5');
+    expect(vaultAgentModelId({ VAULT_AGENT_MODEL: ' ' }, 'claude-haiku-4-5')).toBe(
+      'claude-haiku-4-5',
+    );
+    expect(vaultAgentModelId({ VAULT_AGENT_MODEL: 'claude-sonnet-4-6' }, 'claude-haiku-4-5')).toBe(
+      'claude-sonnet-4-6',
+    );
+    expect(() =>
+      vaultAgentModelId({ VAULT_AGENT_MODEL: 'sk-ant private key' }, 'claude-haiku-4-5'),
+    ).toThrow(/^VAULT_AGENT_MODEL must be a model id/);
+    try {
+      vaultAgentModelId({ VAULT_AGENT_MODEL: 'sk-ant private key' }, 'claude-haiku-4-5');
+    } catch (error) {
+      expect(String(error)).not.toContain('sk-ant');
+    }
   });
 
   it('has its own call time, not the intake one, read from VAULT_AGENT_TIMEOUT_MS', () => {
@@ -511,6 +594,8 @@ describe('conversation context and grounded replies through the provider stub', 
         ...(fault === 'over-cap' ? { caps: { [tesla.id]: 1000 } } : {}),
         ...(fault === 'ineligible' ? { currentGoals: [{ goal: 'protect' }] } : {}),
       };
+      // The repair call returns the same reply: it is refused again, never shown or substituted.
+      respond(value);
       respond(value);
       expect(
         await replyToVaultConversation(
@@ -518,8 +603,18 @@ describe('conversation context and grounded replies through the provider stub', 
           context,
           offlineModel(),
         ),
-      ).toEqual({ kind: 'failure', reason: 'invalid', detail });
-      expect(sdk.create).toHaveBeenCalledTimes(1);
+      ).toEqual({
+        kind: 'failure',
+        reason: 'invalid',
+        detail,
+        repair: { failed: detail, outcome: detail },
+      });
+      expect(sdk.create).toHaveBeenCalledTimes(2);
+      expect(sdk.create.mock.calls[1]?.[0].messages).toEqual([
+        sdk.create.mock.calls[0]?.[0].messages[0],
+        { role: 'assistant', content: JSON.stringify(value) },
+        { role: 'user', content: expect.stringContaining('could not accept your previous reply') },
+      ]);
     },
   );
 });

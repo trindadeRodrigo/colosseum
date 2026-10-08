@@ -102,7 +102,12 @@ export function registerGoalConversationReplyRoute(
       if (result.kind === 'failure') {
         // The reason and which check failed: never the person's words or the model's reply.
         req.log.warn(
-          { reason: result.reason, detail: result.detail ?? null, chain },
+          {
+            reason: result.reason,
+            detail: result.detail ?? null,
+            repair: result.repair ?? null,
+            chain,
+          },
           'the new-goal conversation returned no reply',
         );
         return reply.code(503).send({
@@ -111,6 +116,11 @@ export function registerGoalConversationReplyRoute(
           reason: result.reason,
         });
       }
+      if (result.repair)
+        req.log.warn(
+          { repair: result.repair, chain },
+          'the new-goal conversation reply passed on its repair attempt',
+        );
       return { ...result.reply, chain };
     },
   );

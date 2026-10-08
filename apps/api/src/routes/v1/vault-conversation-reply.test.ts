@@ -213,6 +213,17 @@ describe('private model-led vault reply route', () => {
       expect(failed.body).not.toContain('private SQL');
     },
   );
+  it('serves the corrected reply when the first one fails a check, and never the first', async () => {
+    const s = await setup();
+    vi.mocked(s.model.read).mockResolvedValueOnce({
+      reply: { message: 'I rebalanced your portfolio.', question: null, proposal: null },
+    });
+    const res = await s.post();
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().message).toBe('Which direction would you like to explore?');
+    expect(res.body).not.toContain('rebalanced');
+    expect(s.model.read).toHaveBeenCalledTimes(2);
+  });
   it('rejects wrong-chain state and malformed histories before model invocation', async () => {
     const s = await setup();
     s.read.mockResolvedValueOnce({ ...s.state, chain: 'robinhood' });

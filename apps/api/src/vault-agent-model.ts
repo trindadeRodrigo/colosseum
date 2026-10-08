@@ -19,6 +19,24 @@ export function acceptsTemperature(model: string): boolean {
   return !/^claude-(?:(?:opus|sonnet|haiku|fable|mythos)-5|opus-4-[78])(?![0-9])/.test(model);
 }
 
+/**
+ * The conversation's model: `VAULT_AGENT_MODEL`, or the intake's configured model when unset. Checked like
+ * `INTAKE_MODEL`; a value that cannot be read throws without repeating it.
+ */
+export function vaultAgentModelId(env: EnvLike, intakeModel: string): string {
+  const model = env.VAULT_AGENT_MODEL?.trim() || intakeModel;
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:@-]{0,99}$/.test(model))
+    throw new Error('VAULT_AGENT_MODEL must be a model id: letters, digits, dots and dashes');
+  return model;
+}
+
+/**
+ * A reply that fails one of our checks gets one more call to correct itself. Both calls together stay
+ * within the configured time plus this margin; the second is skipped when less than the minimum is left.
+ */
+export const VAULT_AGENT_REPAIR_MARGIN_MS = 15_000;
+export const VAULT_AGENT_REPAIR_MIN_MS = 5_000;
+
 /** One call's time for the conversation, 1,000 to 120,000 ms. A value that cannot be read throws. */
 export function vaultAgentTimeoutMs(env: EnvLike): number {
   const raw = env.VAULT_AGENT_TIMEOUT_MS?.trim();
@@ -33,10 +51,17 @@ export function vaultAgentTimeoutMs(env: EnvLike): number {
 export type VaultAgentQuota = {
   reserve(person: string): 'model_budget_spent' | 'model_person_budget_spent' | null;
 };
+/** The second call: the reply that failed, what was wrong with it in plain words, and the time spent. */
+export type VaultAgentRepair = {
+  previous: unknown;
+  problems: readonly string[];
+  elapsedMs: number;
+};
 export type VaultAgentModel = {
   read(
     person: string,
     prompt: VaultAgentPrompt,
+    repair?: VaultAgentRepair,
   ): Promise<{ reply: unknown } | { reply: null; why: VaultAgentFailure; detail?: string }>;
 };
 
@@ -90,6 +115,15 @@ export const VAULT_AGENT_REPLY_SCHEMA = object({
   },
 });
 
+/** The turn that asks the model to correct a reply the server could not accept. */
+export function repairRequest(problems: readonly string[]): string {
+  return [
+    'The server could not accept your previous reply. Nothing was shown to the person.',
+    ...problems.map((problem) => `- ${problem}`),
+    'Return the complete corrected reply for the same person message, under the same rules. Change only what is needed to fix these problems.',
+  ].join('\n');
+}
+
 /** Settings and shared quota come from the existing configured setup; no environment is read here. */
 export function createAnthropicVaultAgentModel(options: {
   apiKey: string;
@@ -103,18 +137,35 @@ export function createAnthropicVaultAgentModel(options: {
     maxRetries: 0,
   });
   return {
-    async read(person, prompt) {
+    async read(person, prompt, repair) {
+      const timeout = repair
+        ? options.timeoutMs + VAULT_AGENT_REPAIR_MARGIN_MS - repair.elapsedMs
+        : options.timeoutMs;
+      if (repair && timeout < VAULT_AGENT_REPAIR_MIN_MS)
+        return { reply: null, why: 'timeout', detail: 'repair_no_time' };
+      // A repair is a second paid call, so it reserves from the same budget as the first.
       const denied = options.quota.reserve(person);
       if (denied !== null) return { reply: null, why: 'budget', detail: denied };
+      const messages: Anthropic.MessageParam[] = [
+        { role: 'user', content: JSON.stringify(prompt) },
+      ];
+      if (repair)
+        messages.push(
+          { role: 'assistant', content: JSON.stringify(repair.previous) },
+          { role: 'user', content: repairRequest(repair.problems) },
+        );
       try {
-        const response = await client.messages.create({
-          model: options.model,
-          max_tokens: VAULT_AGENT_MAX_TOKENS,
-          ...(acceptsTemperature(options.model) ? { temperature: 0 } : {}),
-          system: VAULT_AGENT_SYSTEM,
-          messages: [{ role: 'user', content: JSON.stringify(prompt) }],
-          output_config: { format: { type: 'json_schema', schema: VAULT_AGENT_REPLY_SCHEMA } },
-        });
+        const response = await client.messages.create(
+          {
+            model: options.model,
+            max_tokens: VAULT_AGENT_MAX_TOKENS,
+            ...(acceptsTemperature(options.model) ? { temperature: 0 } : {}),
+            system: VAULT_AGENT_SYSTEM,
+            messages,
+            output_config: { format: { type: 'json_schema', schema: VAULT_AGENT_REPLY_SCHEMA } },
+          },
+          { timeout },
+        );
         if (response.stop_reason === 'max_tokens')
           return { reply: null, why: 'invalid', detail: 'model_cut_off' };
         if (response.stop_reason === 'refusal')
