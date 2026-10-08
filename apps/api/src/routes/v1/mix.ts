@@ -21,6 +21,7 @@ import { Refusal, refusing } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import {
   checkMix,
+  confirmedReview,
   mixContext,
   mixProposal,
   planRetarget,
@@ -30,7 +31,7 @@ import {
 import type { PlanInputs } from '../../orders/personalize';
 import { plansOf } from '../../orders/plan-join';
 import { ORDER_POLICY } from '../../orders/prepare';
-import { insertOrder, insertProposal } from '../../orders/store';
+import { insertOrder, insertProposal, loadProposal } from '../../orders/store';
 import { resolveVaultConversationOwner } from '../../orders/vault-conversation-owner';
 import { signedIn } from './orders';
 
@@ -41,7 +42,10 @@ import { signedIn } from './orders';
 
 /** Where the routes write. The database's, unless a test hands in its own. */
 export type MixStore = {
+  /** Answers the id of the stored plan: an earlier one where the same person stored the same mix. */
   saveProposal(proposal: BasketProposal, privyId: string): Promise<string>;
+  /** The plan as stored, which is what a buy of its id reads. */
+  loadProposal(id: string): Promise<BasketProposal | null>;
   saveOrder(order: Order, request: IntentRequest): Promise<void>;
   /** The goal and risk of the plan the person's vault was opened for, where the server holds it. */
   planOf(
@@ -53,6 +57,7 @@ export type MixStore = {
 
 export const dbMixStore = (deps: OrderDeps): MixStore => ({
   saveProposal: (proposal, privyId) => insertProposal(deps.db, proposal, privyId),
+  loadProposal: (id) => loadProposal(deps.db, id),
   saveOrder: (order, request) => insertOrder(deps.db, order, request),
   async planOf(chain, address, privyId) {
     const sheet = (await plansOf(deps.db, chain, [address], privyId)).get(address)?.plan.sheet;
@@ -74,7 +79,7 @@ function signsOn(principal: Principal, family: string): boolean {
 }
 
 const DESCRIPTION_CHECKS =
-  'The lines are checked again against the chain now, whoever chose them: each a listed asset of this chain or its own cash token, once, in whole basis points of at least 1, at most 16 that are not cash, and all adding up to exactly 10,000; every asset needs a price the vault can trade on. Any failure answers 422 `MIX_NOT_VALID` with `details.issues` (`CODE` or `CODE:assetId`). What would once have kept a line out is a warning instead: a line over its exit ceiling (measured, or its tier where nothing is measured), over the asset list’s cap, or an asset the asset list does not put in an income or protect plan. Each warning has an `id`; with `confirm` false, or with any warning id missing from `acceptedWarnings`, the answer is `status: review` with `unconfirmed`, and nothing is stored or built. Every figure is the server’s and carries its source; `origin` is the client’s statement of who chose the weights, kept with what is stored. Cache-Control: private, no-store.';
+  'The lines are checked again against the chain now, whoever chose them: each a listed asset of this chain or its own cash token, once, in whole basis points of at least 1, at most 16 that are not cash, and all adding up to exactly 10,000; every asset needs a price the vault can trade on. Any failure answers 422 `MIX_NOT_VALID` with `details.issues` (`CODE` or `CODE:assetId`). What would once have kept a line out is a warning instead: a line over its exit ceiling (measured, or its tier where nothing is measured), over the asset list’s cap, or an asset the asset list does not put in an income or protect plan. Each warning has an `id`, and every review a `reviewHash` over the lines, the amount and every warning with its figures. With `confirm` false, a `reviewHash` that is not the review’s as the server reads it now, or any warning id missing from `acceptedWarnings`, the answer is `status: review` with `unconfirmed`, and nothing is stored or built. Every figure is the server’s and carries its source; `origin` is the client’s statement of who chose the weights, kept with what is stored. Cache-Control: private, no-store.';
 
 export function registerMixRoutes(
   scope: FastifyInstance,
@@ -99,7 +104,7 @@ export function registerMixRoutes(
       schema: {
         tags: ['plans'],
         summary: 'Review a mix for a new goal, and store it as a plan once confirmed',
-        description: `Requires matching sign-in tokens and a verified wallet for the chain. The goal, risk, amount and term are the ones the person confirmed. ${DESCRIPTION_CHECKS} Confirmed with every warning accepted, the mix is stored as a plan in the engine’s shape (\`engineVersion\` \`mix-1\`, \`origin\`), its lines the weights sent, and \`proposalId\` is bought by \`POST /v1/orders\` like any plan. The same mix confirmed again by the same person answers the same id. Nothing is bought or signed here. The plan is not advice: see \`disclaimer\`.`,
+        description: `Requires matching sign-in tokens and a verified wallet for the chain. The goal, risk, amount and term are the ones the person confirmed. ${DESCRIPTION_CHECKS} Confirmed with every warning accepted, the mix is stored as a plan in the engine’s shape (\`engineVersion\` \`mix-1\`, \`origin\`), its lines the weights sent, and \`proposalId\` is bought by \`POST /v1/orders\` like any plan. The same mix confirmed again by the same person answers the same id and the plan as first stored. A buy of it is refused above the amount it was reviewed at (\`AMOUNT_OVER_REVIEW\`). Nothing is bought or signed here. The plan is not advice: see \`disclaimer\`.`,
         params: z.strictObject({ chain: ChainId }),
         body: AcceptGoalMixRequest,
         response: { 200: AcceptGoalMixResponse, default: OrderError },
@@ -124,7 +129,7 @@ export function registerMixRoutes(
         accepted: body.acceptedWarnings,
       });
       const { review } = reviewed;
-      if (!body.confirm || review.unconfirmed.length) return { status: 'review', review };
+      if (!confirmedReview(review, body)) return { status: 'review', review };
       const proposal = mixProposal(ctx, reviewed, checked, {
         person: principal.userId,
         origin: body.origin,
@@ -132,19 +137,22 @@ export function registerMixRoutes(
         language: body.language,
       });
       const proposalId = await store.saveProposal(proposal, principal.userId);
-      return { status: 'stored', review, proposalId, proposal };
+      // The plan as stored: the same mix confirmed again answers the first copy, read back whole.
+      const stored = await store.loadProposal(proposalId);
+      if (!stored) throw new Error('a stored plan could not be read back');
+      return { status: 'stored', review, proposalId, proposal: stored };
     },
   );
 
   f.post(
     '/v1/vaults/:chain/:address/targets',
     {
-      config: { auth: 'user', limit: 'standard' },
+      config: { auth: 'user', limit: 'build' },
       bodyLimit: 64 * 1024,
       schema: {
         tags: ['portfolio'],
         summary: 'Review new targets for a vault you own, and order them once confirmed',
-        description: `Ownership is read from the chain on every call; a missing vault and another person’s answer the same 404. The amount the lines split is the vault’s value at the prices of the review. ${DESCRIPTION_CHECKS} A vault that follows a shared portfolio or has auto-follow on is warned that its own targets end both, as they do on chain. All cash is refused (\`ALL_CASH\`): a vault’s targets cannot be emptied once it is open. Confirmed with every warning accepted, the answer is an order (\`type\` rebalance): a \`set_targets\` step, then the trades that sell what is over its new target and buy what is under, at the prices now, each with the minimum it states, as many per step as the chain takes. It is built, signed, reported and cancelled through \`/v1/orders/{id}\` like any order. The keeper does not trade it meanwhile: own targets switch auto-follow off.`,
+        description: `Ownership is read from the chain on every call; a missing vault and another person’s answer the same 404. The amount the lines split is the vault’s value at the prices of the review. ${DESCRIPTION_CHECKS} A vault that follows a shared portfolio or has auto-follow on is warned that its own targets end both, as they do on chain. All cash is refused (\`ALL_CASH\`): a vault’s targets cannot be emptied once it is open. Confirmed with every warning accepted, the answer is an order (\`type\` rebalance): a \`set_targets\` step, then the trades that sell what is over its new target and buy what is under, at the prices now, each with the minimum it states, as many per step as the chain takes. It is built, signed, reported and cancelled through \`/v1/orders/{id}\` like any order. The keeper does not trade it meanwhile: own targets switch auto-follow off. If a trade step fails after the targets have landed (a price moved past a minimum, the order expired), send the targets again: the new order sets them again and trades from what the vault holds then. A vault that holds an asset no longer listed, or one with no price now, cannot be retargeted (\`NO_PRICE\`): withdraw that token first. A vault worth more than one order may move is refused (\`OVER_ORDER_LIMIT\`).`,
         params: VaultRouteParams,
         body: ApplyVaultMixRequest,
         response: { 200: ApplyVaultMixResponse, default: OrderError },
@@ -173,7 +181,7 @@ export function registerMixRoutes(
         vault: state,
       });
       const { review } = reviewed;
-      if (!body.confirm || review.unconfirmed.length) return { status: 'review', review };
+      if (!confirmedReview(review, body)) return { status: 'review', review };
       // The order is the wallet's as the sign-in names it, so the order routes know it as theirs.
       const family = entry.config.family;
       const owner = principal.wallets.find((w) => {

@@ -1378,6 +1378,7 @@ export type PostConversationsByChainGoalAcceptBody = {
   }[];
   confirm: boolean;
   acceptedWarnings?: string[];
+  reviewHash?: string;
   goal: 'grow' | 'income' | 'protect';
   risk: 'low' | 'medium' | 'high';
   amountUsd: number;
@@ -1441,6 +1442,7 @@ export type PostConversationsByChainGoalAcceptResponse =
           }[];
         }[];
         unconfirmed: string[];
+        reviewHash: string;
         provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
         disclaimer: string;
       };
@@ -1500,6 +1502,7 @@ export type PostConversationsByChainGoalAcceptResponse =
           }[];
         }[];
         unconfirmed: string[];
+        reviewHash: string;
         provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
         disclaimer: string;
       };
@@ -2993,6 +2996,7 @@ export type PostVaultsByChainByAddressTargetsBody = {
   }[];
   confirm: boolean;
   acceptedWarnings?: string[];
+  reviewHash?: string;
   maxSlippageBps?: number;
 };
 
@@ -3053,6 +3057,7 @@ export type PostVaultsByChainByAddressTargetsResponse =
           }[];
         }[];
         unconfirmed: string[];
+        reviewHash: string;
         provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
         disclaimer: string;
       };
@@ -3112,6 +3117,7 @@ export type PostVaultsByChainByAddressTargetsResponse =
           }[];
         }[];
         unconfirmed: string[];
+        reviewHash: string;
         provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
         disclaimer: string;
       };

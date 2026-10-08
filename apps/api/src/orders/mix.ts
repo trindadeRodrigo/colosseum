@@ -22,6 +22,7 @@ import {
   type MixWarningCode,
   normalizeAddress,
   type ObservationRef,
+  ORDER_LIMITS,
   type Order,
   type Price,
   type Target,
@@ -31,7 +32,7 @@ import {
 import { assertBuilds, type ChainEntry } from './chains';
 import { Refusal } from './errors';
 import { type PlanInputs, preparePersonalInputs } from './personalize';
-import { expectedOf, ORDER_POLICY } from './prepare';
+import { expectedOf, MIX_VERSION, ORDER_POLICY } from './prepare';
 
 // A mix taken from the conversation, or chosen by the person, made into something that can be bought
 // (gate ANY-COMPOSITION, Thom, Oct 8). Any composition of the chain's listed assets: each once,
@@ -45,7 +46,7 @@ import { expectedOf, ORDER_POLICY } from './prepare';
 // vault's own targets and whose other steps sell and buy to them at the prices now.
 
 /** The version of this way of making a plan: a stored mix's `engineVersion`. */
-export const MIX_VERSION = 'mix-1';
+export { MIX_VERSION };
 
 /** The figures a mix is checked with, from the chain and the plan inputs, read once. */
 export type MixContext = {
@@ -142,6 +143,9 @@ export async function checkMix(
       if (!asset || !usable(asset, prices.get(id))) issues.push(issue('NO_PRICE', id));
     }
   }
+  // One order moves at most `ORDER_LIMITS.maxAmountUsd`: a rebalance trades up to the vault's value.
+  if (vault && issues.length === 0 && vaultValueUsd(vault, prices) > ORDER_LIMITS.maxAmountUsd)
+    issues.push(issue('OVER_ORDER_LIMIT'));
   if (issues.length)
     throw new Refusal(422, 'this mix cannot be bought as sent', {
       code: 'MIX_NOT_VALID',
@@ -276,10 +280,14 @@ export function reviewMix(
       if (amountUsd > ceiling.usd)
         warn(
           ceiling.measured ? 'EXIT_OVER_CAPACITY' : 'EXIT_OVER_TIER_CEILING',
-          reason(
-            ceiling.measured ? 'MIX_OVER_EXIT' : 'MIX_OVER_TIER',
-            { asset: asset.symbol, usd: amountUsd, maxUsd: ceiling.usd },
-            a.language,
+          // A ceiling whose measurement names no source is not printed: the warning says so instead.
+          (from
+            ? reason(
+                ceiling.measured ? 'MIX_OVER_EXIT' : 'MIX_OVER_TIER',
+                { asset: asset.symbol, usd: amountUsd, maxUsd: ceiling.usd },
+                a.language,
+              )
+            : reason('MIX_OVER_EXIT_UNSOURCED', { asset: asset.symbol, usd: amountUsd }, a.language)
           ).text,
           from ? [{ ...from, label: 'exit ceiling', value: ceiling.usd, unit: 'USD' }] : [],
           asset.id,
@@ -335,6 +343,16 @@ export function reviewMix(
   if (a.vault && (a.vault.recipeOnchainId !== null || a.vault.autoFollow))
     warn('STOPS_FOLLOWING', reason('MIX_STOPS_FOLLOWING', {}, a.language).text, []);
   const accepted = new Set(a.accepted);
+  const body = {
+    chain: entry.chain,
+    origin: a.origin,
+    goal: a.goal,
+    amountUsd: a.amountUsd,
+    lines,
+    targets: checked.targets,
+    cashBps: checked.cashBps,
+    warnings,
+  };
   const review: MixReview = {
     chain: entry.chain,
     origin: a.origin,
@@ -345,11 +363,53 @@ export function reviewMix(
     cashBps: checked.cashBps,
     warnings,
     unconfirmed: warnings.map((w) => w.id).filter((id) => !accepted.has(id)),
+    reviewHash: reviewHashOf(body, a.vault !== undefined),
     provenance: entry.provenance,
     disclaimer: DISCLAIMER[a.language],
   };
   return { review, sheet, fixed };
 }
+
+/**
+ * What a confirmation is bound to: the mix, the goal, the amount and every warning with the figures
+ * it stands on, as the server reads them now. A confirm that sends another hash, or none, saw other
+ * numbers or none, and is answered with the review again. What moves on every read is left out, or
+ * no confirm could ever match: the time of a price or of the request, and, for a vault, its value at
+ * the prices now (a value that moves a line past a ceiling changes the warnings, and so the hash).
+ */
+function reviewHashOf(
+  review: Pick<
+    MixReview,
+    'chain' | 'origin' | 'goal' | 'amountUsd' | 'lines' | 'targets' | 'cashBps' | 'warnings'
+  >,
+  vault: boolean,
+): string {
+  return hash({
+    kind: 'mix-review-1',
+    chain: review.chain,
+    origin: review.origin,
+    goal: review.goal,
+    amountUsd: vault ? null : review.amountUsd,
+    lines: review.lines.map((l) => [
+      l.assetId,
+      l.weightBps,
+      vault ? null : l.amountUsd,
+      l.exitCeiling ? [l.exitCeiling.usd, l.exitCeiling.measured, l.exitCeiling.source] : null,
+    ]),
+    targets: review.targets,
+    cashBps: review.cashBps,
+    warnings: review.warnings.map((w) => [
+      w.id,
+      w.figures.map((f) => [f.label, f.value, f.unit, f.source, f.method, f.provenance]),
+    ]),
+  });
+}
+
+/** The person confirmed this review: `confirm`, its hash, and every warning it carries accepted. */
+export const confirmedReview = (
+  review: MixReview,
+  body: { confirm: boolean; reviewHash?: string | undefined },
+) => body.confirm && body.reviewHash === review.reviewHash && review.unconfirmed.length === 0;
 
 /** Cents split by weights: each rounded down, the rest a cent at a time to the largest remainders. */
 function splitCents(total: number, weights: readonly number[]): number[] {
@@ -472,6 +532,11 @@ export async function planRetarget(
 ): Promise<{ order: Order; request: Extract<IntentRequest, { type: 'rebalance' }> }> {
   const { entry } = ctx;
   assertBuilds(entry);
+  if (vaultValueUsd(vault, checked.prices) > ORDER_LIMITS.maxAmountUsd)
+    throw new Refusal(422, 'this vault is worth more than one order may move', {
+      code: 'MIX_NOT_VALID',
+      details: { issues: ['OVER_ORDER_LIMIT'] },
+    });
   let trades: Trade[];
   try {
     const plan = rebalancePlan(

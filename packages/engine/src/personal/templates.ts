@@ -84,6 +84,11 @@ export const REASON_TEMPLATES = {
     '{asset} at {usd|usd} is more than {maxUsd|usd}, the part of its measured exit a plan counts on: selling all of it could cost more than planned.',
     '{asset} com {usd|usd} passa de {maxUsd|usd}, a parte da saída medida com que um plano conta: vender tudo pode custar mais que o previsto.',
   ),
+  MIX_OVER_EXIT_UNSOURCED: rule(
+    ['mix', 'amount'],
+    '{asset} at {usd|usd} is more than the part of its exit a plan counts on. That measurement names no source, so its limit is not stated.',
+    '{asset} com {usd|usd} passa da parte da saída com que um plano conta. Essa medida não tem fonte, então o limite não é informado.',
+  ),
   MIX_OVER_TIER: rule(
     ['mix', 'amount'],
     '{asset} at {usd|usd} is more than {maxUsd|usd}, the limit for its tier on the asset list. What selling it costs is not measured yet.',

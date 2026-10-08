@@ -24,7 +24,7 @@ import {
   reviewMix,
   vaultValueUsd,
 } from './mix';
-import { prepareOrder } from './prepare';
+import { prepareOrder, slippageOf } from './prepare';
 
 // Gate ANY-COMPOSITION (Thom, Oct 8): any composition of listed assets is checked again by the
 // server, warned about where it goes past an exit or a goal, stored as a plan the buy takes unchanged,
@@ -348,6 +348,48 @@ describe('reviewMix: warnings the person confirms, never refusals', () => {
       accepted: [],
     }).review.warnings.find((w) => w.code === 'NOT_FOR_GOAL')?.text;
     expect(text).toMatch(/^TSLAx está na divisão que você escolheu/);
+  });
+});
+
+describe('reviewMix: a ceiling with no source is not printed', () => {
+  it('says the line is over its exit and states no figure', async () => {
+    const chains = createChainRegistry(parseFlags({}), parseChainConfigs({}), { seed: 'mix:bare' });
+    const ctx = await mixContext(
+      chains.get('solana'),
+      async () => ({
+        liquidity: { provider: fixtureLiquidity({ 'solana:nvda': 2000 }), source: '' },
+      }),
+      NOW,
+    );
+    const checked = await checkMix(ctx, [
+      { assetId: 'solana:usdc', weightBps: 6000 },
+      { assetId: 'solana:nvda', weightBps: 4000 },
+    ]);
+    const { review } = reviewMix(ctx, checked, {
+      origin: 'model',
+      goal: 'grow',
+      risk: 'medium',
+      amountUsd: 10_000,
+      language: 'en',
+      accepted: [],
+    });
+    const [warning] = review.warnings;
+    expect(warning?.id).toBe('EXIT_OVER_CAPACITY:solana:nvda');
+    expect(warning?.figures).toEqual([]);
+    expect(warning?.text).toBe(
+      'NVDAx at $4,000 is more than the part of its exit a plan counts on. That measurement names no source, so its limit is not stated.',
+    );
+    expect(review.lines[1]?.exitCeiling).toBeNull();
+  });
+});
+
+describe('slippageOf: a rebalance builds and shows its trades at its own slippage', () => {
+  it('reads maxSlippageBps of a rebalance as of a buy', () => {
+    const vaults = [mockAddress('solana', 'v')];
+    expect(slippageOf({ type: 'rebalance', vaults, reason: 'manual', maxSlippageBps: 250 })).toBe(
+      250,
+    );
+    expect(slippageOf({ type: 'rebalance', vaults, reason: 'manual' })).toBe(100);
   });
 });
 

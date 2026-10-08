@@ -40,11 +40,14 @@ async function setup() {
   const plans = new Map<string, BasketProposal>();
   const saved: Array<{ order: Order; request: IntentRequest }> = [];
   const store: MixStore = {
+    // As `insertProposal`: the same plan stored again answers the first one's id.
     saveProposal: vi.fn(async (proposal: BasketProposal) => {
+      for (const [id, kept] of plans) if (kept.inputsHash === proposal.inputsHash) return id;
       const id = `00000000-0000-4000-8000-${String(plans.size + 1).padStart(12, '0')}`;
       plans.set(id, proposal);
       return id;
     }),
+    loadProposal: vi.fn(async (id: string) => plans.get(id) ?? null),
     saveOrder: vi.fn(async (order: Order, request: IntentRequest) => {
       saved.push({ order, request });
     }),
@@ -81,7 +84,28 @@ async function setup() {
   );
   const post = (url: string, payload: object, who = owner) =>
     app.inject({ method: 'POST', url, headers: who.headers, payload });
-  return { app, chains, owner, stranger, evmOnly, store, plans, saved, post };
+  /** The review the person sees, then the confirm of it: its hash, and its warnings accepted. */
+  const confirm = async (
+    url: string,
+    payload: Record<string, unknown>,
+    who = owner,
+    accept?: (unconfirmed: string[]) => string[],
+  ) => {
+    const seen = await post(url, { ...payload, confirm: false }, who);
+    if (seen.statusCode !== 200) return seen;
+    const { review } = seen.json() as { review: { reviewHash: string; unconfirmed: string[] } };
+    return post(
+      url,
+      {
+        ...payload,
+        confirm: true,
+        reviewHash: review.reviewHash,
+        acceptedWarnings: accept ? accept(review.unconfirmed) : review.unconfirmed,
+      },
+      who,
+    );
+  };
+  return { app, chains, owner, stranger, evmOnly, store, plans, saved, post, confirm };
 }
 
 const ACCEPT = '/v1/conversations/solana/goal/accept';
@@ -125,13 +149,17 @@ describe('POST /v1/conversations/{chain}/goal/accept', () => {
     ]);
     // Over its measured exit is a warning, not a refusal: confirmed without accepting it, still a review.
     const unaccepted = AcceptGoalMixResponse.parse(
-      (await s.post(ACCEPT, goal({ confirm: true }))).json(),
+      (await s.post(ACCEPT, goal({ confirm: true, reviewHash: body.review.reviewHash }))).json(),
     );
     expect(unaccepted.status).toBe('review');
     expect(s.store.saveProposal).not.toHaveBeenCalled();
     const stored = await s.post(
       ACCEPT,
-      goal({ confirm: true, acceptedWarnings: ['EXIT_OVER_CAPACITY:solana:nvda'] }),
+      goal({
+        confirm: true,
+        reviewHash: body.review.reviewHash,
+        acceptedWarnings: ['EXIT_OVER_CAPACITY:solana:nvda'],
+      }),
     );
     const done = AcceptGoalMixResponse.parse(stored.json());
     if (done.status !== 'stored') throw new Error(stored.body);
@@ -216,23 +244,126 @@ describe('POST /v1/conversations/{chain}/goal/accept', () => {
     expect(first.review.unconfirmed).toEqual(['NOT_FOR_GOAL:solana:tsla']);
     expect(s.store.saveProposal).not.toHaveBeenCalled();
     const second = AcceptGoalMixResponse.parse(
-      (await s.post(ACCEPT, income({ acceptedWarnings: ['NOT_FOR_GOAL:solana:tsla'] }))).json(),
+      (
+        await s.post(
+          ACCEPT,
+          income({
+            reviewHash: first.review.reviewHash,
+            acceptedWarnings: ['NOT_FOR_GOAL:solana:tsla'],
+          }),
+        )
+      ).json(),
     );
     expect(second.status).toBe('stored');
     if (second.status === 'stored')
       expect(second.proposal.flags).toContain('confirmed:NOT_FOR_GOAL:solana:tsla');
   });
 
-  it('stores a plan the existing buy turns into legs, unchanged', async () => {
+  it("takes no confirm made without the review, or on another review's numbers", async () => {
     const s = await setup();
-    const res = AcceptGoalMixResponse.parse(
+    // Guessed ids, no review: the review comes back, nothing stored.
+    const guessed = AcceptGoalMixResponse.parse(
       (
         await s.post(
           ACCEPT,
           goal({
+            amountUsd: 1_000_000,
+            confirm: true,
+            acceptedWarnings: [
+              'EXIT_OVER_CAPACITY:solana:nvda',
+              'EXIT_OVER_TIER_CEILING:solana:yield',
+            ],
+          }),
+        )
+      ).json(),
+    );
+    expect(guessed.status).toBe('review');
+    // The hash of the $10,000 review does not confirm the same mix at $1,000,000.
+    const small = AcceptGoalMixResponse.parse((await s.post(ACCEPT, goal())).json());
+    const stale = AcceptGoalMixResponse.parse(
+      (
+        await s.post(
+          ACCEPT,
+          goal({
+            amountUsd: 1_000_000,
+            confirm: true,
+            reviewHash: small.review.reviewHash,
+            acceptedWarnings: [
+              'EXIT_OVER_CAPACITY:solana:nvda',
+              'EXIT_OVER_TIER_CEILING:solana:yield',
+            ],
+          }),
+        )
+      ).json(),
+    );
+    expect(stale.status).toBe('review');
+    expect(stale.review.reviewHash).not.toBe(small.review.reviewHash);
+    expect(s.store.saveProposal).not.toHaveBeenCalled();
+  });
+
+  it('answers the plan as first stored when the same mix is confirmed again', async () => {
+    const s = await setup();
+    const first = AcceptGoalMixResponse.parse((await s.confirm(ACCEPT, goal())).json());
+    const again = AcceptGoalMixResponse.parse((await s.confirm(ACCEPT, goal())).json());
+    if (first.status !== 'stored' || again.status !== 'stored') throw new Error('not stored');
+    expect(again.proposalId).toBe(first.proposalId);
+    expect(again.proposal).toEqual(s.plans.get(first.proposalId));
+    expect(s.plans.size).toBe(1);
+  });
+
+  it('refuses a buy of a stored mix above the amount it was reviewed at', async () => {
+    const s = await setup();
+    const res = AcceptGoalMixResponse.parse(
+      (await s.post(ACCEPT, goal({ amountUsd: 500, confirm: false }))).json(),
+    );
+    // At $500 the mix carries no warning: stored on the review's hash alone.
+    expect(res.review.warnings).toEqual([]);
+    const stored = AcceptGoalMixResponse.parse(
+      (
+        await s.post(
+          ACCEPT,
+          goal({ amountUsd: 500, confirm: true, reviewHash: res.review.reviewHash }),
+        )
+      ).json(),
+    );
+    if (stored.status !== 'stored') throw new Error('not stored');
+    const buy = (amountUsd: number) =>
+      prepareOrder(
+        { type: 'buy', owner: s.owner.owner, amountUsd, proposalId: stored.proposalId },
+        {
+          principal: {
+            kind: 'user',
+            userId: s.owner.sub,
+            wallets: [{ family: 'solana', address: s.owner.solana }] as never,
+            ip: '127.0.0.1',
+          },
+          chains: s.chains,
+          loadProposal: async (id) => s.plans.get(id) ?? null,
+          homeChain: async () => 'solana',
+          loadFamilies: async () => [],
+          now: '2026-10-08T12:00:00.000Z',
+        },
+      );
+    const over = await buy(1_000_000).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(over).toBeInstanceOf(Refusal);
+    expect((over as Refusal).status).toBe(422);
+    expect((over as Refusal).extra.code).toBe('AMOUNT_OVER_REVIEW');
+    expect((await buy(500)).order.depositRaw).toBe('500000000');
+    expect((await buy(250)).order.depositRaw).toBe('250000000');
+  });
+
+  it('stores a plan the existing buy turns into legs, unchanged', async () => {
+    const s = await setup();
+    const res = AcceptGoalMixResponse.parse(
+      (
+        await s.confirm(
+          ACCEPT,
+          goal({
             origin: 'person',
             amountUsd: 500,
-            confirm: true,
             allocations: [
               { assetId: 'solana:usdc', weightBps: 1000 },
               { assetId: 'solana:spy', weightBps: 5000 },
@@ -334,7 +465,11 @@ describe('POST /v1/vaults/{chain}/{address}/targets', () => {
     expect(s.store.saveOrder).not.toHaveBeenCalled();
     const res = await s.post(
       s.url,
-      targets({ confirm: true, acceptedWarnings: review.review.unconfirmed }),
+      targets({
+        confirm: true,
+        reviewHash: review.review.reviewHash,
+        acceptedWarnings: review.review.unconfirmed,
+      }),
     );
     const ordered = ApplyVaultMixResponse.parse(res.json());
     if (ordered.status !== 'ordered') throw new Error(res.body);
@@ -380,15 +515,13 @@ describe('POST /v1/vaults/{chain}/{address}/targets', () => {
     const [vault] = await entry.adapter.getVaults(owner);
     if (!vault) throw new Error('no vault');
     const url = `/v1/vaults/robinhood/0x${vault.address.slice(2).toUpperCase()}/targets`;
-    const res = await s.post(
+    const res = await s.confirm(
       url,
       targets({
         allocations: [
           { assetId: 'robinhood:usdc', weightBps: 5000 },
           { assetId: 'robinhood:gold', weightBps: 5000 },
         ],
-        confirm: true,
-        acceptedWarnings: ['NOT_FOR_GOAL:robinhood:gold'],
       }),
       s.evmOnly,
     );
@@ -397,6 +530,42 @@ describe('POST /v1/vaults/{chain}/{address}/targets', () => {
     // EVM trades ride together: the sale of SPY and the purchase of gold are one step.
     expect(ordered.order.legs.map((l) => l.kind)).toEqual(['set_targets', 'swap']);
     expect(ordered.order.owner.evm?.toLowerCase()).toBe(owner.toLowerCase());
+  });
+
+  it('refuses a vault worth more than one order may move, with a reason', async () => {
+    const s = await setup();
+    const entry = s.chains.get('solana');
+    const mock = entry.mock;
+    if (!mock) throw new Error('the test chain is the mock');
+    const owner = s.owner.solana as Address;
+    mock.fund(owner, { gasRaw: '100000000000', assets: { 'solana:usdc': '3000000000000' } });
+    await mock.send(
+      await entry.adapter.buildCreateVault({
+        owner,
+        basketId: '12',
+        targets: [{ asset: 'solana:spy', weightBps: 10_000 }],
+        autoFollow: false,
+        depositRaw: '3000000000000',
+        slippageBps: 100,
+      }),
+    );
+    const [vault] = await entry.adapter.getVaults(owner);
+    if (!vault) throw new Error('no vault');
+    const res = await s.post(
+      `/v1/vaults/solana/${vault.address}/targets`,
+      targets({
+        allocations: [
+          { assetId: 'solana:usdc', weightBps: 1000 },
+          { assetId: 'solana:spy', weightBps: 9000 },
+        ],
+      }),
+    );
+    expect(res.statusCode, res.body).toBe(422);
+    expect(OrderError.parse(res.json())).toMatchObject({
+      code: 'MIX_NOT_VALID',
+      details: { issues: ['OVER_ORDER_LIMIT'] },
+    });
+    expect(s.store.saveOrder).not.toHaveBeenCalled();
   });
 
   it('refuses all cash for an open vault', async () => {

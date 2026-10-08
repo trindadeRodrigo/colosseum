@@ -48,6 +48,8 @@ export const MixIssueCode = z.enum([
   'NO_PRICE',
   /** All cash, for a vault that is already open: a vault's own targets cannot be emptied (orders/README item 9). */
   'ALL_CASH',
+  /** A vault worth more than one order may move (`ORDER_LIMITS.maxAmountUsd`): a rebalance trades up to its value. */
+  'OVER_ORDER_LIMIT',
 ]);
 export type MixIssueCode = z.infer<typeof MixIssueCode>;
 
@@ -126,6 +128,11 @@ export const MixReview = z.strictObject({
   warnings: z.array(MixWarning),
   /** The warnings `acceptedWarnings` does not name yet. Empty: the mix can be confirmed as sent. */
   unconfirmed: z.array(z.string()),
+  /**
+   * What a confirm sends back: the hash of the lines, the amount and every warning with its figures,
+   * as the server read them. Another hash, or none, is answered with the review again.
+   */
+  reviewHash: z.string().regex(/^[0-9a-f]{64}$/),
   provenance: Provenance,
   disclaimer: z.string(),
 });
@@ -136,10 +143,15 @@ const confirmation = {
   origin: MixOrigin,
   language: Language,
   allocations: MixLines,
-  /** False: answer the review and store nothing. True: go ahead once every warning is accepted. */
+  /** False: answer the review and store nothing. True: go ahead once `reviewHash` matches and every warning is accepted. */
   confirm: z.boolean(),
   /** The ids of the warnings the person confirmed, from the review they saw. */
   acceptedWarnings: z.array(z.string().min(1).max(200)).max(200).default([]),
+  /** With `confirm`: the `reviewHash` of the review the person saw. */
+  reviewHash: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .optional(),
 };
 
 /** `POST /v1/conversations/{chain}/goal/accept`: a mix for a new vault, with the goal and amount the person confirmed. */
