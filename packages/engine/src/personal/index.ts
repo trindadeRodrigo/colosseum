@@ -11,6 +11,7 @@ export {
   riskForMix,
 } from './compose';
 export { draftFromRules } from './draft';
+export { type FixedLine, type FixedMix, type FixedPick, fixedMix } from './fixed-mix';
 // The guided intake (gate GUIDED-INTAKE, ENG-3 slice 4): the checks after the model, the questions
 // and the read-back. The model call itself is the API's (apps/api/src/llm.ts).
 export {
@@ -130,6 +131,7 @@ export {
   READBACK_TEMPLATES,
   REASON_TEMPLATES,
   type RuleId,
+  reason,
   TERM_SAID,
   TEXT_TEMPLATES,
 } from './templates';
