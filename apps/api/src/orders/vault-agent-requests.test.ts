@@ -752,7 +752,6 @@ describe("the person's stated shares, as their words hold them", () => {
     // Only the exact forms withdraw it, and the reply says what was withdrawn.
     for (const [next, language] of [
       ['Forget TSLA.', 'en'],
-      ['Forget the 70% TSLA.', 'en'],
       ['Drop the TSLA share.', 'en'],
       ['Drop that limit.', 'en'],
       ['Just split it equally.', 'en'],
@@ -996,6 +995,104 @@ describe("the person's stated shares, as their words hold them", () => {
     );
     expect(after.weights).toEqual([4000, 4000, 2000]);
     expect(unreadOf(after)).toContain(quote);
+  });
+
+  // Fifth review of #189: what stands before the first share is matched start to end, so an asking
+  // verb with another subject, a second verb, a tense or a mood before the number is no ask.
+  it.each<[string, ('en' | 'pt')?]>([
+    ['You put 70% in TSLA.'],
+    ['The app put 70% in TSLA.'],
+    ['The model wants 70% TSLA.'],
+    ['Last time I put 70% in TSLA.'],
+    ['I regret that I put 70% in TSLA.'],
+    ['I used to want 70% TSLA.'],
+    ['I was going to put 70% in TSLA.'],
+    ["I'm scared to put 70% in TSLA."],
+    ['It would be crazy to put 70% in TSLA.'],
+    ["I'd hate to put 70% in TSLA."],
+    ['Only a fool would put 70% in TSLA.'],
+    ['I am nervous to invest 70% in TSLA.'],
+    ['People who buy 70% TSLA.'],
+    ['My wife wants to put 70% in TSLA.'],
+    ['My brother told me to buy 70% TSLA.'],
+    ['Everyone tells me to put 70% in TSLA.'],
+    ['Maybe put 70% in TSLA.'],
+    ['I want you to explain 70% TSLA.'],
+    ['I want anything other than 70% TSLA.'],
+    ['I want to move away from 70% TSLA.'],
+    ['I want to reduce 70% TSLA.'],
+    ['I want to lower 70% TSLA.'],
+    ['I want to change 70% TSLA.'],
+    ['I want to think about 70% TSLA.'],
+    ['I want to exit 70% TSLA.'],
+    ['I want to sell 70% TSLA.'],
+    ['I want to trim 70% TSLA.'],
+    ['I want to go below 70% TSLA.'],
+    ['I want more than just 70% TSLA.'],
+    ['I want 70% TSLA or 50% TSLA.'],
+    ['I want 10% more TSLA.'],
+    ['I want 2x more TSLA than NVDA.'],
+    ['Drop gold to 5%.'],
+    ['Remove 30% NVDA.'],
+    ['Você colocou 70% em TSLA.', 'pt'],
+    ['Tenho medo de colocar 70% em TSLA.', 'pt'],
+    ['Seria loucura colocar 70% em TSLA.', 'pt'],
+    ['Minha esposa quer colocar 70% em TSLA.', 'pt'],
+    ['Meu irmão mandou comprar 70% em TSLA.', 'pt'],
+    ['O app quis colocar 70% em TSLA.', 'pt'],
+    ['Da última vez coloquei 70% em TSLA.', 'pt'],
+    ['Talvez colocar 70% em TSLA.', 'pt'],
+    ['Quero reduzir 70% em TSLA.', 'pt'],
+    ['Quero sair de 70% em TSLA.', 'pt'],
+    ['Quero trocar 70% em TSLA.', 'pt'],
+    ['Quero pensar em colocar 70% em TSLA.', 'pt'],
+  ])('reads no ask in: %s', async (text, language = 'en') => {
+    const out = await served([text], tng, [], language);
+    expect(out.weights).toEqual(equal);
+    expect(out.notes).toEqual([
+      { code: 'equal_split', assetIds: tng.map(symbol) },
+      { code: 'share_unread', assetIds: [], quote: text.replace(/\.$/u, '') },
+    ]);
+  });
+
+  it.each<[string, number[], ('en' | 'pt')?]>([
+    ['I want 70% TSLA.', [7000, 1500, 1500]],
+    ['I want to put 70% in TSLA.', [7000, 1500, 1500]],
+    ["I'd like 70% TSLA.", [7000, 1500, 1500]],
+    ['Put 70% in TSLA and 30% in NVDA.', [7000, 3000]],
+    ['Put TSLA 70%, NVDA 30%.', [7000, 3000]],
+    ['Please allocate 70% to TSLA.', [7000, 1500, 1500]],
+    ['Make it 70% TSLA.', [7000, 1500, 1500]],
+    ['70% TSLA, 30% NVDA', [7000, 3000]],
+    ['ok 70% TSLA', [7000, 1500, 1500]],
+    ['so 70% TSLA then', [3334, 3333, 3333]],
+    ['quero 70% em TSLA', [7000, 1500, 1500], 'pt'],
+    ['Quero colocar 70% em TSLA.', [7000, 1500, 1500], 'pt'],
+    ['Queria 70% em TSLA.', [7000, 1500, 1500], 'pt'],
+    ['Coloca 70% em TSLA por favor.', [7000, 1500, 1500], 'pt'],
+    ['Quero 70% em TSLA e 30% em NVDA.', [7000, 3000], 'pt'],
+  ])('still reads the plain ask: %s', async (text, weights, language = 'en') => {
+    const out = await served([text], tng, [], language);
+    expect(out.weights).toEqual(weights);
+    // "then" after the share is not part of a plain ask: unread, and quoted.
+    expect(unreadOf(out)).toEqual(weights[0] === 3334 ? [text] : []);
+  });
+
+  it('quotes the number in a sentence that opens like a withdrawal, and withdraws nothing', async () => {
+    for (const next of [
+      'Drop TSLA to 10%.',
+      'Remove 30% NVDA.',
+      'Drop gold to 5%.',
+      'Forget the 70% TSLA.',
+    ]) {
+      const out = await served(['I want 70% TSLA.', noted, next], tng, []);
+      expect(out.weights, next).toEqual([7000, 1500, 1500]);
+      expect(
+        out.notes.map((note) => note.code),
+        next,
+      ).toEqual(['stated', 'equal_split', 'share_unread']);
+      expect(unreadOf(out), next).toEqual([next.replace(/\.$/u, '')]);
+    }
   });
 
   it.each<[string, number[], ('en' | 'pt')?]>([
