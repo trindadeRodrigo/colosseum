@@ -12,15 +12,18 @@ import {
 } from './orders/vault-agent';
 import mockStocks from './testing/fixtures/mock-stocks.json';
 import {
+  acceptsEffort,
   acceptsTemperature,
   createAnthropicVaultAgentModel,
   repairRequest,
+  VAULT_AGENT_EFFORT,
   VAULT_AGENT_MAX_TOKENS,
   VAULT_AGENT_REPAIR_MARGIN_MS,
   VAULT_AGENT_REPAIR_MIN_MS,
   VAULT_AGENT_REPLY_SCHEMA,
   VAULT_AGENT_SYSTEM,
   VAULT_AGENT_TIMEOUT_MS,
+  vaultAgentEffort,
   vaultAgentModelId,
   vaultAgentTimeoutMs,
 } from './vault-agent-model';
@@ -236,6 +239,69 @@ describe('vault proposal provider uses the existing model settings and a shared 
     expect(VAULT_AGENT_MAX_TOKENS).toBeGreaterThanOrEqual(4096);
   });
 
+  it('leaves room for thinking in the output budget, under the non-streaming limit', () => {
+    expect(VAULT_AGENT_MAX_TOKENS).toBe(16_000);
+  });
+
+  it('reads VAULT_AGENT_EFFORT: low by default, low, medium or high, and nothing else', () => {
+    expect(VAULT_AGENT_EFFORT).toBe('low');
+    expect(vaultAgentEffort({})).toBe('low');
+    expect(vaultAgentEffort({ VAULT_AGENT_EFFORT: ' ' })).toBe('low');
+    expect(vaultAgentEffort({ VAULT_AGENT_EFFORT: 'medium' })).toBe('medium');
+    expect(vaultAgentEffort({ VAULT_AGENT_EFFORT: ' high ' })).toBe('high');
+    for (const bad of ['max', 'xhigh', 'LOW', 'sk-ant private key']) {
+      expect(() => vaultAgentEffort({ VAULT_AGENT_EFFORT: bad })).toThrow(
+        /^VAULT_AGENT_EFFORT must be low, medium or high$/,
+      );
+      try {
+        vaultAgentEffort({ VAULT_AGENT_EFFORT: bad });
+      } catch (error) {
+        expect(String(error)).not.toContain(bad);
+      }
+    }
+  });
+
+  it.each([
+    ['claude-opus-5-5', true],
+    ['claude-sonnet-5-5', true],
+    ['claude-haiku-5-5', true],
+    ['claude-fable-5-1', true],
+    ['claude-opus-5', true],
+    ['claude-sonnet-5', true],
+    ['claude-opus-4-5@20251101', true],
+    ['claude-opus-4-6', true],
+    ['claude-opus-4-7', true],
+    ['claude-opus-4-8', true],
+    ['claude-sonnet-4-6', true],
+    // Haiku 4.5 and Sonnet 4.5 answer 400 to effort; unknown and future ids fail safe.
+    ['claude-haiku-4-5', false],
+    ['claude-haiku-4-5-20251001', false],
+    ['claude-sonnet-4-5', false],
+    ['claude-opus-4-9', false],
+    ['claude-opus-6', false],
+    ['claude-3-7-sonnet-latest', false],
+    ['configured-fixture-model', false],
+  ] as const)('sends effort to %s: %s', async (model, sent) => {
+    expect(acceptsEffort(model)).toBe(sent);
+    for (const effort of [undefined, 'high'] as const) {
+      sdk.create.mockResolvedValueOnce({
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: '{"message":"Hi.","question":null,"proposal":null}' }],
+      });
+      await createAnthropicVaultAgentModel({
+        ...options,
+        model,
+        ...(effort ? { effort } : {}),
+        quota: { reserve: () => null },
+      }).read('owner', prompt);
+      const body = sdk.create.mock.calls.at(-1)?.[0];
+      const format = { type: 'json_schema', schema: VAULT_AGENT_REPLY_SCHEMA };
+      expect(body.output_config).toEqual(sent ? { effort: effort ?? 'low', format } : { format });
+      expect(body.max_tokens).toBe(VAULT_AGENT_MAX_TOKENS);
+      expect(body).not.toHaveProperty('thinking');
+    }
+  });
+
   it.each([
     ['claude-sonnet-5-5', false],
     ['claude-opus-5-5', false],
@@ -243,8 +309,20 @@ describe('vault proposal provider uses the existing model settings and a shared 
     ['claude-sonnet-5', false],
     ['claude-opus-4-8', false],
     ['claude-haiku-5-5', false],
+    ['claude-opus-4-7', false],
+    ['claude-opus-4-8@20260101', false],
+    // Unknown and future ids fail safe: no temperature.
+    ['claude-opus-6', false],
+    ['claude-haiku-4-50', false],
+    ['configured-fixture-model', false],
     ['claude-haiku-4-5', true],
+    ['claude-haiku-4-5-20251001', true],
+    ['claude-sonnet-4-5', true],
     ['claude-sonnet-4-6', true],
+    ['claude-opus-4-5@20251101', true],
+    ['claude-opus-4-6', true],
+    ['claude-3-7-sonnet-latest', true],
+    ['claude-3-haiku-20240307', true],
   ] as const)('sends temperature to %s: %s', async (model, sent) => {
     expect(acceptsTemperature(model)).toBe(sent);
     sdk.create.mockResolvedValueOnce({
@@ -502,6 +580,8 @@ describe('conversation context and grounded replies through the provider stub', 
         ...allocation,
         weightBps: allocation.assetId === tesla.id ? 1000 : 9000,
       }));
+      // The repair call returns the same draft, so the limit is raised with the person.
+      respond(reduced);
       respond(reduced);
       const mismatch = await replyToVaultConversation(
         turn(messages, language),
@@ -510,6 +590,13 @@ describe('conversation context and grounded replies through the provider stub', 
       );
       expect(mismatch.kind).toBe('reply');
       if (mismatch.kind !== 'reply') throw new Error('Missing constraint explanation');
+      expect(mismatch.repair).toEqual({
+        failed: 'allocation_constraint',
+        outcome: 'allocation_constraint',
+      });
+      expect(sdk.create.mock.calls.at(-1)?.[0].messages[2].content).toContain(
+        'At allocationConstraints.0',
+      );
       expect(mismatch.reply.proposal).toBeNull();
       expect(mismatch.reply.message).toContain(instruction);
       messages.push({

@@ -46,6 +46,7 @@ import { loggable } from '../../plugins/loggable';
 import {
   createAnthropicVaultAgentModel,
   type VaultAgentModel,
+  vaultAgentEffort,
   vaultAgentModelId,
   vaultAgentTimeoutMs,
 } from '../../vault-agent-model';
@@ -160,6 +161,7 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
             apiKey,
             model: vaultAgentModelId(env, modelSettings.model),
             timeoutMs: vaultAgentTimeoutMs(env),
+            effort: vaultAgentEffort(env),
             quota,
           })
         : null

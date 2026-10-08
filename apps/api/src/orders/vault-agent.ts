@@ -319,6 +319,8 @@ const REPAIR_HINTS: Record<string, string> = {
   allocation_evidence:
     'An allocation cited an evidenceId that does not exist in evidence or belongs to a different asset.',
   allocation_sum: 'Allocation weightBps did not add up to exactly 10000.',
+  allocation_constraint:
+    'The proposal broke a limit the person stated. The limits in allocationConstraints are theirs and still stand.',
   reply_shape:
     'The proposal did not fit the final preview limits once the server added its own unknowns and sources: keep fields shorter and lists smaller.',
 };
@@ -587,7 +589,9 @@ export async function replyToVaultConversation(
     })),
   };
   type Output = Awaited<ReturnType<VaultAgentModel['read']>>;
-  type Checked = { result: VaultAgentResult; problems?: string[] };
+  // `problems` marks a check the model may repair once; `failed` names it. A broken stated limit already
+  // has its final reply (asking the person about the limit), which stands if the repair fails too.
+  type Checked = { result: VaultAgentResult; failed?: string; problems?: string[] };
   const ask = async (repair?: VaultAgentRepair): Promise<Output> => {
     try {
       return await (repair
@@ -604,6 +608,7 @@ export async function replyToVaultConversation(
       .map((issue) => `At ${issue.path.map(String).join('.') || 'the top'}: ${issue.message}`);
   const rejected = (detail: string, extra: string[] = []): Checked => ({
     result: invalid(detail),
+    failed: detail,
     problems: [REPAIR_HINTS[detail] ?? detail, ...extra],
   });
   const check = (output: Output): Checked => {
@@ -700,13 +705,20 @@ export async function replyToVaultConversation(
         .length > 16
     )
       return rejected('allocation_lines');
-    for (const constraint of constraints) {
+    for (const [index, constraint] of constraints.entries()) {
       const actual = proposal.allocations.reduce((weight, allocation) => {
         const asset = catalog.get(allocation.assetId);
         return weight + (asset && constraint.matches(asset) ? allocation.weightBps : 0);
       }, 0);
       if (actual < constraint.min || actual > constraint.max) {
+        // Which limit, in words: the server's own constraint and the person's quote, never the model's weights.
+        const side = actual < constraint.min ? 'below its minWeightBps' : 'above its maxWeightBps';
         return {
+          failed: 'allocation_constraint',
+          problems: [
+            REPAIR_HINTS.allocation_constraint ?? 'allocation_constraint',
+            `At allocationConstraints.${index} (the person said “${constraint.quote}”): the weightBps of its assetIds together came ${side}.`,
+          ],
           result: {
             kind: 'reply',
             reply: {
@@ -749,15 +761,27 @@ export async function replyToVaultConversation(
   const started = Date.now();
   const first = await ask();
   const checked = check(first);
-  if (!checked.problems || checked.result.kind !== 'failure') return checked.result;
-  const failed = checked.result.detail ?? checked.result.reason;
+  if (!checked.problems || !checked.failed) return checked.result;
   const second = check(
     await ask({
       previous: first.reply,
       problems: checked.problems,
       elapsedMs: Date.now() - started,
     }),
-  ).result;
-  const outcome = second.kind === 'reply' ? 'repaired' : (second.detail ?? second.reason);
-  return { ...second, repair: { failed, outcome } };
+  );
+  const repair = {
+    failed: checked.failed,
+    outcome: second.problems
+      ? (second.failed ?? 'invalid')
+      : second.result.kind === 'reply'
+        ? 'repaired'
+        : (second.result.detail ?? second.result.reason),
+  };
+  // A stated limit the repair still missed, or missed at first and then failed another way: the person
+  // is asked about the limit, as before the repair.
+  const final =
+    second.result.kind === 'failure' && checked.result.kind === 'reply'
+      ? checked.result
+      : second.result;
+  return { ...final, repair };
 }

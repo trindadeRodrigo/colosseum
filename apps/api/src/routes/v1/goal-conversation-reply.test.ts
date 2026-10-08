@@ -197,6 +197,8 @@ describe('new-goal model preview route', () => {
   });
   it('retains the explicit stock minimum and returns a useful question for a conflicting model draft', async () => {
     const s = await setup();
+    // The repair call sends the same draft: the person is asked about the limit.
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: s.proposal(1000) });
     vi.mocked(s.model.read).mockResolvedValueOnce({ reply: s.proposal(1000) });
     const res = await s.post(s.owner, {
       ...s.body,
@@ -207,6 +209,24 @@ describe('new-goal model preview route', () => {
     expect(res.statusCode, res.body).toBe(200);
     expect(res.json().proposal).toBeNull();
     expect(res.json().question).toBeTruthy();
+    expect(res.json().question).toContain('within that limit');
+    expect(s.model.read).toHaveBeenCalledTimes(2);
+    expect(
+      s.logs
+        .map((line) => JSON.parse(line))
+        .filter(
+          (line) =>
+            line.msg ===
+            'the new-goal conversation reply asks about a stated limit its repair attempt still missed',
+        ),
+    ).toEqual([
+      expect.objectContaining({
+        level: 40,
+        repair: { failed: 'allocation_constraint', outcome: 'allocation_constraint' },
+        chain: 'solana',
+      }),
+    ]);
+    expect(s.logs.join('')).not.toContain('at least 40%');
   });
   it('rejects cross-chain assets, malformed last turns and attempted request authority', async () => {
     const s = await setup();
