@@ -510,6 +510,7 @@ export type PostBasketsPersonalizeResponse = {
       }[];
     }[];
     candidate?: 'cover' | 'spread' | 'carry';
+    origin?: 'engine' | 'model' | 'person';
   };
   rollUp: {
     byIssuer: {
@@ -665,6 +666,7 @@ export type PostBasketsPersonalizeResponse = {
         }[];
       }[];
       candidate?: 'cover' | 'spread' | 'carry';
+      origin?: 'engine' | 'model' | 'person';
     };
     rollUp: {
       byIssuer: {
@@ -944,6 +946,7 @@ export type PostBasketsProposeResponse = {
       }[];
     }[];
     candidate?: 'cover' | 'spread' | 'carry';
+    origin?: 'engine' | 'model' | 'person';
   };
   rollUp: {
     byIssuer: {
@@ -1099,6 +1102,7 @@ export type PostBasketsProposeResponse = {
         }[];
       }[];
       candidate?: 'cover' | 'spread' | 'carry';
+      origin?: 'engine' | 'model' | 'person';
     };
     rollUp: {
       byIssuer: {
@@ -1323,6 +1327,7 @@ export type GetBasketsByIdResponse = {
       }[];
     }[];
     candidate?: 'cover' | 'spread' | 'carry';
+    origin?: 'engine' | 'model' | 'person';
   };
   fromLink: boolean;
 };
@@ -1356,6 +1361,285 @@ export type GetConfigResponse = {
     provenance: ('live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset') | null;
   }[];
 };
+
+/** POST /v1/conversations/{chain}/goal/accept: params. Review a mix for a new goal, and store it as a plan once confirmed */
+export type PostConversationsByChainGoalAcceptParams = {
+  chain: 'solana' | 'base' | 'robinhood';
+};
+
+/** POST /v1/conversations/{chain}/goal/accept: body. Review a mix for a new goal, and store it as a plan once confirmed */
+export type PostConversationsByChainGoalAcceptBody = {
+  version: 1;
+  origin: 'model' | 'person';
+  language: 'pt' | 'en';
+  allocations: {
+    assetId: string;
+    weightBps: number;
+  }[];
+  confirm: boolean;
+  acceptedWarnings?: string[];
+  reviewHash?: string;
+  goal: 'grow' | 'income' | 'protect';
+  risk: 'low' | 'medium' | 'high';
+  amountUsd: number;
+  horizonMonths?: number;
+};
+
+/** POST /v1/conversations/{chain}/goal/accept: response. Review a mix for a new goal, and store it as a plan once confirmed */
+export type PostConversationsByChainGoalAcceptResponse =
+  | {
+      status: 'review';
+      review: {
+        chain: 'solana' | 'base' | 'robinhood';
+        origin: 'model' | 'person';
+        goal: ('grow' | 'income' | 'protect') | null;
+        amountUsd: number;
+        lines: {
+          assetId: string;
+          symbol: string;
+          cls: 'stock' | 'etf' | 'gold' | 'commodity' | 'dollar_yield' | 'crypto' | 'cash';
+          weightBps: number;
+          amountUsd: number;
+          price: {
+            source: string;
+            method: string;
+            fetchedAt: string;
+            provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+            usdPerToken: string;
+          } | null;
+          exitCeiling: {
+            source: string;
+            method: string;
+            fetchedAt: string;
+            provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+            usd: number;
+            measured: boolean;
+          } | null;
+        }[];
+        targets: {
+          asset: string;
+          weightBps: number;
+        }[];
+        cashBps: number;
+        warnings: {
+          id: string;
+          code:
+            | 'EXIT_OVER_CAPACITY'
+            | 'EXIT_OVER_TIER_CEILING'
+            | 'OVER_LISTED_CAP'
+            | 'NOT_FOR_GOAL'
+            | 'STOPS_FOLLOWING';
+          assetId?: string;
+          text: string;
+          figures: {
+            source: string;
+            method: string;
+            fetchedAt: string;
+            provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+            label: string;
+            value: number;
+            unit: 'USD' | 'bps';
+          }[];
+        }[];
+        unconfirmed: string[];
+        reviewHash: string;
+        provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+        disclaimer: string;
+      };
+    }
+  | {
+      status: 'stored';
+      review: {
+        chain: 'solana' | 'base' | 'robinhood';
+        origin: 'model' | 'person';
+        goal: ('grow' | 'income' | 'protect') | null;
+        amountUsd: number;
+        lines: {
+          assetId: string;
+          symbol: string;
+          cls: 'stock' | 'etf' | 'gold' | 'commodity' | 'dollar_yield' | 'crypto' | 'cash';
+          weightBps: number;
+          amountUsd: number;
+          price: {
+            source: string;
+            method: string;
+            fetchedAt: string;
+            provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+            usdPerToken: string;
+          } | null;
+          exitCeiling: {
+            source: string;
+            method: string;
+            fetchedAt: string;
+            provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+            usd: number;
+            measured: boolean;
+          } | null;
+        }[];
+        targets: {
+          asset: string;
+          weightBps: number;
+        }[];
+        cashBps: number;
+        warnings: {
+          id: string;
+          code:
+            | 'EXIT_OVER_CAPACITY'
+            | 'EXIT_OVER_TIER_CEILING'
+            | 'OVER_LISTED_CAP'
+            | 'NOT_FOR_GOAL'
+            | 'STOPS_FOLLOWING';
+          assetId?: string;
+          text: string;
+          figures: {
+            source: string;
+            method: string;
+            fetchedAt: string;
+            provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+            label: string;
+            value: number;
+            unit: 'USD' | 'bps';
+          }[];
+        }[];
+        unconfirmed: string[];
+        reviewHash: string;
+        provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+        disclaimer: string;
+      };
+      proposalId: string;
+      proposal: {
+        sheet: {
+          basketType: 'standard';
+          goal: 'grow' | 'income' | 'protect';
+          amountUsd: number;
+          horizonMonths: number;
+          horizonOpen?: boolean;
+          risk: 'low' | 'medium' | 'high';
+          themes: string[];
+          country?: string;
+          chains: ('solana' | 'base' | 'robinhood')[];
+          incomeTargetUsdMonthly?: number;
+          rules: {
+            useHoldings: boolean;
+            glide: boolean;
+          };
+          language: 'pt' | 'en';
+          currency?: string;
+          obligations?: {
+            month: string;
+            amount: number;
+            currency: string;
+          }[];
+          sleeves?: (
+            | {
+                kind: 'goal';
+                shareBps: number;
+              }
+            | {
+                kind: 'theme';
+                shareBps: number;
+                theme: string;
+              }
+            | {
+                kind: 'safe_yield';
+                shareBps: number;
+              }
+          )[];
+          restoreSplit?: boolean;
+        };
+        engineVersion: string;
+        paramsHash: string;
+        shelfVersion: string;
+        inputsHash: string;
+        lines: {
+          chain: 'solana' | 'base' | 'robinhood';
+          assetId: string;
+          viaIndex?: string;
+          weightBps: number;
+          amountUsd: number;
+          reasons: {
+            rule: string;
+            inputs: string[];
+            params: {
+              [key: string]: string | number;
+            };
+            text: string;
+          }[];
+        }[];
+        recipes: {
+          chain: 'solana' | 'base' | 'robinhood';
+          amountUsd: number;
+          components: (
+            | {
+                kind: 'asset';
+                asset: string;
+                weightBps: number;
+              }
+            | {
+                kind: 'index';
+                family: string;
+                weightBps: number;
+              }
+          )[];
+        }[];
+        removed: {
+          ref: string;
+          reasons: {
+            rule: string;
+            inputs: string[];
+            params: {
+              [key: string]: string | number;
+            };
+            text: string;
+          }[];
+        }[];
+        card: {
+          moneyTodayUsd: number;
+          termMonths: number | null;
+          cashFlow: 'none' | 'monthly' | 'at_end';
+          expectedReturn: {
+            lowPct: number;
+            highPct: number;
+            basis: string;
+            lossInFallUsd: number;
+          };
+          exit: {
+            text: string;
+            costBps: number | null;
+          };
+        };
+        verdict?: {
+          met: boolean;
+          gapUsdMonthly: number;
+          ways: {
+            change: string;
+            closesGap: boolean;
+          }[];
+        };
+        flags: string[];
+        observations: {
+          source: string;
+          method: string;
+          fetchedAt: string;
+          provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+          id: string;
+          kind: 'yield' | 'price' | 'liquidity' | 'fx';
+        }[];
+        disclaimer: string;
+        split?: {
+          kind: 'goal' | 'theme' | 'safe_yield';
+          theme?: string;
+          shareBps: number;
+          amountUsd: number;
+          holds: {
+            assetId: string;
+            amountUsd: number;
+          }[];
+        }[];
+        candidate?: 'cover' | 'spread' | 'carry';
+        origin?: 'engine' | 'model' | 'person';
+      };
+    };
 
 /** POST /v1/conversations/{chain}/goal/reply: params. Discuss a new goal and preview model-proposed allocations */
 export type PostConversationsByChainGoalReplyParams = {
@@ -1773,6 +2057,11 @@ export type PostOrdersBody =
       type: 'rebalance';
       vaults: (string | string)[];
       reason: 'manual' | 'index_update' | 'drift';
+      targets?: {
+        asset: string;
+        weightBps: number;
+      }[];
+      maxSlippageBps?: number;
     }
   | {
       type: 'follow';
@@ -2760,6 +3049,246 @@ export type PutVaultsByChainByAddressNameResponse = {
   name: string | null;
 };
 
+/** POST /v1/vaults/{chain}/{address}/targets: params. Review new targets for a vault you own, and order them once confirmed */
+export type PostVaultsByChainByAddressTargetsParams = {
+  chain: 'solana' | 'base' | 'robinhood';
+  address: string;
+};
+
+/** POST /v1/vaults/{chain}/{address}/targets: body. Review new targets for a vault you own, and order them once confirmed */
+export type PostVaultsByChainByAddressTargetsBody = {
+  version: 1;
+  origin: 'model' | 'person';
+  language: 'pt' | 'en';
+  allocations: {
+    assetId: string;
+    weightBps: number;
+  }[];
+  confirm: boolean;
+  acceptedWarnings?: string[];
+  reviewHash?: string;
+  maxSlippageBps?: number;
+};
+
+/** POST /v1/vaults/{chain}/{address}/targets: response. Review new targets for a vault you own, and order them once confirmed */
+export type PostVaultsByChainByAddressTargetsResponse =
+  | {
+      status: 'review';
+      review: {
+        chain: 'solana' | 'base' | 'robinhood';
+        origin: 'model' | 'person';
+        goal: ('grow' | 'income' | 'protect') | null;
+        amountUsd: number;
+        lines: {
+          assetId: string;
+          symbol: string;
+          cls: 'stock' | 'etf' | 'gold' | 'commodity' | 'dollar_yield' | 'crypto' | 'cash';
+          weightBps: number;
+          amountUsd: number;
+          price: {
+            source: string;
+            method: string;
+            fetchedAt: string;
+            provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+            usdPerToken: string;
+          } | null;
+          exitCeiling: {
+            source: string;
+            method: string;
+            fetchedAt: string;
+            provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+            usd: number;
+            measured: boolean;
+          } | null;
+        }[];
+        targets: {
+          asset: string;
+          weightBps: number;
+        }[];
+        cashBps: number;
+        warnings: {
+          id: string;
+          code:
+            | 'EXIT_OVER_CAPACITY'
+            | 'EXIT_OVER_TIER_CEILING'
+            | 'OVER_LISTED_CAP'
+            | 'NOT_FOR_GOAL'
+            | 'STOPS_FOLLOWING';
+          assetId?: string;
+          text: string;
+          figures: {
+            source: string;
+            method: string;
+            fetchedAt: string;
+            provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+            label: string;
+            value: number;
+            unit: 'USD' | 'bps';
+          }[];
+        }[];
+        unconfirmed: string[];
+        reviewHash: string;
+        provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+        disclaimer: string;
+      };
+    }
+  | {
+      status: 'ordered';
+      review: {
+        chain: 'solana' | 'base' | 'robinhood';
+        origin: 'model' | 'person';
+        goal: ('grow' | 'income' | 'protect') | null;
+        amountUsd: number;
+        lines: {
+          assetId: string;
+          symbol: string;
+          cls: 'stock' | 'etf' | 'gold' | 'commodity' | 'dollar_yield' | 'crypto' | 'cash';
+          weightBps: number;
+          amountUsd: number;
+          price: {
+            source: string;
+            method: string;
+            fetchedAt: string;
+            provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+            usdPerToken: string;
+          } | null;
+          exitCeiling: {
+            source: string;
+            method: string;
+            fetchedAt: string;
+            provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+            usd: number;
+            measured: boolean;
+          } | null;
+        }[];
+        targets: {
+          asset: string;
+          weightBps: number;
+        }[];
+        cashBps: number;
+        warnings: {
+          id: string;
+          code:
+            | 'EXIT_OVER_CAPACITY'
+            | 'EXIT_OVER_TIER_CEILING'
+            | 'OVER_LISTED_CAP'
+            | 'NOT_FOR_GOAL'
+            | 'STOPS_FOLLOWING';
+          assetId?: string;
+          text: string;
+          figures: {
+            source: string;
+            method: string;
+            fetchedAt: string;
+            provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+            label: string;
+            value: number;
+            unit: 'USD' | 'bps';
+          }[];
+        }[];
+        unconfirmed: string[];
+        reviewHash: string;
+        provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+        disclaimer: string;
+      };
+      order: {
+        id: string;
+        type: 'buy' | 'rebalance' | 'follow' | 'publish' | 'withdraw' | 'settings';
+        owner: {
+          solana?: string;
+          evm?: string;
+        };
+        summary: string;
+        depositRaw?: string;
+        basketId?: string;
+        continues?: string;
+        legs: {
+          id: string;
+          orderId: string | null;
+          chain: 'solana' | 'base' | 'robinhood';
+          seq: number;
+          kind:
+            | 'approve'
+            | 'create_vault'
+            | 'deposit'
+            | 'swap'
+            | 'set_targets'
+            | 'accept_version'
+            | 'set_auto_follow'
+            | 'withdraw'
+            | 'publish'
+            | 'adopt_version'
+            | 'keeper_leg';
+          signer: 'owner' | 'keeper';
+          description: string;
+          cashRaw?: string;
+          withdrawals?: {
+            asset: string;
+            amountRaw: string | null;
+            heldRaw: string;
+            valued?: {
+              source: string;
+              method: string;
+              fetchedAt: string;
+              provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+              usd: string;
+            };
+          }[];
+          trades: {
+            sell: string;
+            buy: string;
+            amountInRaw: string;
+          }[];
+          expected: {
+            inRaw: string;
+            outRaw: string;
+            minOutRaw: string;
+            costBps: number;
+          }[];
+          status: 'planned' | 'built' | 'sent' | 'confirmed' | 'failed' | 'expired' | 'skipped';
+          attempt: number;
+          txId: string | null;
+          explorerUrl: string | null;
+          validUntil: string | null;
+          error: {
+            code: string;
+            message: string;
+            retryable: boolean;
+          } | null;
+          trigger: 'manual' | 'index_update' | 'drift' | 'liquidity_breach';
+          provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+        }[];
+        warnings: {
+          code: string;
+          text: string;
+        }[];
+        needsConsent: ('auto_follow_on' | 'new_asset' | 'publish')[];
+        fees: {
+          kind: string;
+          bps: number;
+        }[];
+        preparedBy: 'app' | 'api' | 'mcp';
+        agentLabel?: string;
+        status: 'open' | 'partial' | 'done' | 'failed' | 'expired';
+        approvalUrl: string;
+        expiresAt: number;
+        createdAt: string;
+        disclaimer: string;
+        attempts: {
+          id: string;
+          legId: string;
+          n: number;
+          messageHash: string;
+          nonce: number | null;
+          status: 'built' | 'sent' | 'confirmed' | 'failed' | 'expired';
+          txId: string | null;
+          explorerUrl: string | null;
+          validUntil: string | null;
+          builtAt: string;
+        }[];
+      };
+    };
+
 /** Every route of the document, by its method and path: what each takes and answers. */
 export interface ApiRoutes {
   'POST /v1/baskets/intake': { body: PostBasketsIntakeBody; response: PostBasketsIntakeResponse };
@@ -2773,6 +3302,11 @@ export interface ApiRoutes {
   };
   'GET /v1/baskets/{id}': { params: GetBasketsByIdParams; response: GetBasketsByIdResponse };
   'GET /v1/config': { response: GetConfigResponse };
+  'POST /v1/conversations/{chain}/goal/accept': {
+    params: PostConversationsByChainGoalAcceptParams;
+    body: PostConversationsByChainGoalAcceptBody;
+    response: PostConversationsByChainGoalAcceptResponse;
+  };
   'POST /v1/conversations/{chain}/goal/reply': {
     params: PostConversationsByChainGoalReplyParams;
     body: PostConversationsByChainGoalReplyBody;
@@ -2828,5 +3362,10 @@ export interface ApiRoutes {
     params: PutVaultsByChainByAddressNameParams;
     body: PutVaultsByChainByAddressNameBody;
     response: PutVaultsByChainByAddressNameResponse;
+  };
+  'POST /v1/vaults/{chain}/{address}/targets': {
+    params: PostVaultsByChainByAddressTargetsParams;
+    body: PostVaultsByChainByAddressTargetsBody;
+    response: PostVaultsByChainByAddressTargetsResponse;
   };
 }

@@ -121,6 +121,7 @@ describe('the committed OpenAPI document (packages/sdk/openapi.json)', () => {
       'POST /v1/orders/{id}/continue',
       'POST /v1/orders/{id}/legs/{legId}/build',
       'POST /v1/testnet/fund',
+      'POST /v1/vaults/{chain}/{address}/targets',
     ]);
     // The guided intake calls a model: its own, tighter budget.
     expect(classes.parse).toEqual(['POST /v1/baskets/intake']);
