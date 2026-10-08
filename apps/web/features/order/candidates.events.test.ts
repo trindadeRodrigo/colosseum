@@ -163,6 +163,12 @@ describe('the candidates, side by side', () => {
     expect(find(cover, '[data-ui="candidate-score"]').textContent).toContain(
       words.score.paidUnder(words.stress.yields_fall('2%')),
     );
+    // the yield observed, inside the sentence that says what is needed, is on its pin too
+    const said = find(cover, '[data-ui="candidate-status"]');
+    expect(said.textContent).toContain('Needs 6.5% a year on its dollar yield, and 4%');
+    const observed = [...said.querySelectorAll('[data-ui="figure"]')];
+    expect(observed).toHaveLength(1);
+    expect(observed[0]?.querySelector('[data-ui="pin"]')).not.toBeNull();
     // with a gap to close, what closes it is in view, not behind a fold
     expect(find<HTMLDetailsElement>(cover, '[data-ui="candidate-details"]').open).toBe(true);
     // the way is the engine's own sentence, on each candidate that has it
@@ -171,6 +177,42 @@ describe('the candidates, side by side', () => {
     expect(ways[0]?.textContent).toBe('You can put in $9,000 more, $49,000 in all.');
     await click(ways[0] as HTMLElement);
     expect(onWay).toHaveBeenCalledWith('You can put in $9,000 more, $49,000 in all.');
+  });
+
+  it('puts what is owed in another currency on the pin of the rate it was read at', async () => {
+    const base = candidateFor(SHEET, 'cover');
+    const fx = {
+      id: 'USDBRL',
+      kind: 'fx' as const,
+      source: 'a test rate',
+      method: 'fixture',
+      fetchedAt: '2026-10-05T12:00:00.000Z',
+      provenance: 'sandbox' as const,
+    };
+    const host = await shown({
+      names: ['cover'],
+      over: {
+        proposal: { ...base.proposal, observations: [...base.proposal.observations, fx] },
+        scorecard: { ...base.scorecard, openFxUsd: 1200 },
+      },
+    });
+    const cover = cards(host)[0] as HTMLElement;
+    const owed = [...cover.querySelectorAll('[data-ui="candidate-score"] > div')].find(
+      (row) => row.querySelector('dt')?.textContent === words.score.fx,
+    ) as HTMLElement;
+    expect(owed.querySelector('dd')?.textContent).toContain('$1,200');
+    expect(owed.querySelector('[data-ui="pin"]')).not.toBeNull();
+    // with no rate read, the amount is not shown as a bare number
+    await unmountAll();
+    const unread = await shown({
+      names: ['cover'],
+      over: { scorecard: { ...base.scorecard, openFxUsd: 1200 } },
+    });
+    const row = [...unread.querySelectorAll('[data-ui="candidate-score"] > div')].find(
+      (r) => r.querySelector('dt')?.textContent === words.score.fx,
+    ) as HTMLElement;
+    expect(row.querySelector('dd')?.textContent).not.toContain('$1,200');
+    expect(find(row, '[data-ui="figure"]').getAttribute('data-state')).toBe('missing');
   });
 
   it('names the candidates the engine did not offer, each with its reason', async () => {
