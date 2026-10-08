@@ -157,11 +157,27 @@ const lines = (t: ThreadResponse) =>
 describe('a plan’s thread', () => {
   it('groups every distinct candidate with one initial attachment and exact server build identities', async () => {
     const who = await someone();
+    // Input hashes include the clock: a concurrent retry must have the same actual inputs,
+    // including the mock price time and the dated yield fixture, to exercise one stored build.
+    const at = new Date('2026-10-05T00:00:00.000Z');
+    const fixed = await testApp({
+      issuer: issuer.issuer,
+      db: data.db,
+      env: { AGENT_SURFACE: 'on' },
+      planInputs: withMockYield,
+      now: () => at,
+    });
+    undo.push(() => fixed.app.close());
     const started = [{ text: 'My private complete build', reply: reply() }];
     const [a, b] = await Promise.all([
-      make(who, 6_151, { thread: started }),
-      make(who, 6_151, { thread: started }),
+      make(who, 6_151, { thread: started }, fixed.app),
+      make(who, 6_151, { thread: started }, fixed.app),
     ]);
+    expect(b.proposal.inputsHash).toBe(a.proposal.inputsHash);
+    expect(b.candidates.map((c) => c.proposal.inputsHash)).toEqual(
+      a.candidates.map((c) => c.proposal.inputsHash),
+    );
+    expect(b.id).toBe(a.id);
     expect(b.candidates.map((c) => c.id)).toEqual(a.candidates.map((c) => c.id));
     const ids = [...new Set([a.id, ...a.candidates.map((c) => c.id)])];
     const main = await thread(who, a.id);
@@ -179,7 +195,7 @@ describe('a plan’s thread', () => {
     }
     const selected = a.candidates[0];
     if (!selected) throw new Error('expected an offered candidate');
-    const rebuilt = await make(who, 6_152, { previousPlanId: selected.id });
+    const rebuilt = await make(who, 6_152, { previousPlanId: selected.id }, fixed.app);
     const current = await thread(who, rebuilt.id);
     expect(current.turns.slice(0, main.turns.length)).toEqual(main.turns);
     expect(
