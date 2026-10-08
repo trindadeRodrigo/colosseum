@@ -30,9 +30,10 @@ const has = (name: string) => {
 const chain = flag('--chain') ?? 'robinhood';
 const useRecorded = has('--recorded');
 const record = has('--record');
+const chat = has('--chat');
 const text = args.join(' ').trim();
-if (!text) {
-  console.error('usage: pnpm tsx scripts/relaxed/intake.ts [--chain robinhood|solana] [--recorded] [--record] "<what the person wants>"');
+if (!text && !chat) {
+  console.error('usage: pnpm tsx scripts/relaxed/intake.ts [--chain robinhood|solana] [--recorded] [--record] "<what the person wants>"\n       pnpm tsx scripts/relaxed/intake.ts --chat [--chain robinhood|solana]');
   process.exit(2);
 }
 
@@ -92,6 +93,7 @@ Rules:
 - Never choose weights. Equal split is applied after you, unless \`stated\` holds a preference.
 - Answer in the person's language. Keep \`understood\` to one sentence.
 - Output only the JSON.
+- If the person answers a read-back with a correction, write the whole JSON again with the correction applied. If they only agree, write it again unchanged.
 
 Today is ${new Date().toISOString().slice(0, 10)}.
 
@@ -116,7 +118,8 @@ const recordedPath = join(root, 'scripts/relaxed/recorded.json');
 const recorded = (() => { try { return JSON.parse(readFileSync(recordedPath, 'utf8')) as Record<string, unknown>; } catch { return {}; } })();
 const key = `${chain}|${text}`;
 
-async function ask(): Promise<{ reply: unknown; provenance: 'live' | 'recorded' | 'mock' }> {
+type Turn = { role: 'user' | 'assistant'; content: string };
+async function ask(turns: Turn[]): Promise<{ reply: unknown; provenance: 'live' | 'recorded' | 'mock' }> {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (useRecorded || !apiKey) {
     if (!(key in recorded)) {
@@ -133,7 +136,7 @@ async function ask(): Promise<{ reply: unknown; provenance: 'live' | 'recorded' 
       max_tokens: 1200,
       temperature: 0,
       system: SYSTEM,
-      messages: [{ role: 'user', content: text }],
+      messages: turns,
     }),
     signal: AbortSignal.timeout(20_000),
   });
@@ -141,7 +144,7 @@ async function ask(): Promise<{ reply: unknown; provenance: 'live' | 'recorded' 
   const body = (await res.json()) as { content: { type: string; text?: string }[] };
   const raw = body.content.map((c) => (c.type === 'text' ? c.text ?? '' : '')).join('').trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
   const reply = JSON.parse(raw);
-  if (record) {
+  if (record && turns.length === 1) {
     recorded[key] = reply;
     recorded.provenance = 'live-recorded';
     writeFileSync(recordedPath, JSON.stringify(recorded, null, 2) + '\n');
@@ -165,48 +168,81 @@ const noStocks = <L extends { id: string }>(shape: string, lines: L[]): L[] =>
 
 const pct = (bps: number) => `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 2)}%`;
 
-const { reply: rawReply, provenance } = await ask();
-const parsed = Reply.safeParse(rawReply);
-if (!parsed.success) {
-  console.error('the model\'s reply did not fit the sheet:', parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
-  console.error(JSON.stringify(rawReply, null, 2));
-  process.exit(1);
-}
-const r: Reply = parsed.data;
-const assumptions: string[] = [];
-
-const plate = provenance === 'live' ? 'LIVE' : provenance === 'recorded' ? 'RECORDED from a live run' : 'MOCK · reply written by hand, not by a model';
-console.log(`\n[${plate} · ${chain} · shape: ${r.shape}]\n`);
-console.log(r.understood, '\n');
-
-function printBucket(title: string | null, lines: { id: string; why: string }[], shape: string) {
-  const kept = noStocks(shape, keep(lines));
-  if (kept.length !== lines.length && (shape === 'income' || shape === 'protect')) assumptions.push(`${shape}: stock tokens left out (gate PROTECT-NO-STOCKS)`);
-  if (title) console.log(`— ${title}`);
-  if (kept.length === 0) { console.log('  (no line yet)'); return; }
-  const weights = equalSplit(kept.length);
-  kept.forEach((l, i) => console.log(`  ${pct(weights[i] ?? 0).padStart(7)}  ${l.id.padEnd(26)} ${l.why}`));
-}
-
-if (r.shape === 'split' && r.buckets?.length) {
-  const n = r.buckets.length;
-  const shares = r.buckets.every((b) => b.share != null) ? r.buckets.map((b) => Math.round((b.share as number) * 10_000)) : equalSplit(n);
-  assumptions.push(r.buckets.every((b) => b.share != null) ? 'two pots, shares as you said' : 'two pots, equal shares (none stated)');
-  r.buckets.forEach((b, i) => printBucket(`${b.name} · ${pct(shares[i] ?? 0)} of the money · one vault`, b.lines, 'pick'));
-} else {
-  printBucket(null, r.lines, r.shape);
-  if (r.shape === 'pick') assumptions.push('equal split (no weights stated)');
-  else {
-    assumptions.push(`${r.shape} plan: the solver runs on the parameter table`);
-    if (!('risk' in r.stated)) assumptions.push('risk medium (not stated)');
-    if (!('horizon' in r.stated)) assumptions.push('no date set (none stated)');
+function render(rawReply: unknown, provenance: 'live' | 'recorded' | 'mock'): Reply | null {
+  const parsed = Reply.safeParse(rawReply);
+  if (!parsed.success) {
+    console.error('the model\'s reply did not fit the sheet:', parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
+    console.error(JSON.stringify(rawReply, null, 2));
+    return null;
   }
+  const r: Reply = parsed.data;
+  const assumptions: string[] = [];
+  dropped.length = 0;
+
+  const plate = provenance === 'live' ? 'LIVE' : provenance === 'recorded' ? 'RECORDED from a live run' : 'MOCK · reply written by hand, not by a model';
+  console.log(`\n[${plate} · ${chain} · shape: ${r.shape}]\n`);
+  console.log(r.understood, '\n');
+
+  function printBucket(title: string | null, lines: { id: string; why: string }[], shape: string) {
+    const kept = noStocks(shape, keep(lines));
+    if (kept.length !== lines.length && (shape === 'income' || shape === 'protect')) assumptions.push(`${shape}: stock tokens left out (gate PROTECT-NO-STOCKS)`);
+    if (title) console.log(`— ${title}`);
+    if (kept.length === 0) { console.log('  (no line yet)'); return; }
+    const weights = equalSplit(kept.length);
+    kept.forEach((l, i) => console.log(`  ${pct(weights[i] ?? 0).padStart(7)}  ${l.id.padEnd(26)} ${l.why}`));
+  }
+
+  if (r.shape === 'split' && r.buckets?.length) {
+    const n = r.buckets.length;
+    const shares = r.buckets.every((b) => b.share != null) ? r.buckets.map((b) => Math.round((b.share as number) * 10_000)) : equalSplit(n);
+    assumptions.push(r.buckets.every((b) => b.share != null) ? 'two pots, shares as you said' : 'two pots, equal shares (none stated)');
+    r.buckets.forEach((b, i) => printBucket(`${b.name} · ${pct(shares[i] ?? 0)} of the money · one vault`, b.lines, 'pick'));
+  } else {
+    printBucket(null, r.lines, r.shape);
+    if (r.shape === 'pick') assumptions.push('equal split (no weights stated)');
+    else {
+      assumptions.push(`${r.shape} plan: the solver runs on the parameter table`);
+      if (!('risk' in r.stated)) assumptions.push('risk medium (not stated)');
+      if (!('horizon' in r.stated)) assumptions.push('no date set (none stated)');
+    }
+  }
+  if (r.not_available.length) {
+    console.log('\nNot available here:');
+    for (const n of r.not_available) console.log(`  · ${typeof n === 'string' ? n : `${n.name}${n.why ? ` (${n.why})` : ''}`}`);
+  }
+  if (dropped.length) console.log(`\nDropped, not on the table: ${dropped.join(', ')}`);
+  if (Object.keys(r.stated).length) console.log('\nYou said:', JSON.stringify(r.stated));
+  console.log('\nAssumed:'); for (const a of assumptions) console.log(`  · ${a}`);
+  console.log(`\n${r.question ? `Question: ${r.question}` : 'Is that right? (yes / tell me what to change)'}\n`);
+  return r;
 }
-if (r.not_available.length) {
-  console.log('\nNot available here:');
-  for (const n of r.not_available) console.log(`  · ${typeof n === 'string' ? n : `${n.name}${n.why ? ` (${n.why})` : ''}`}`);
+
+const YES = /^(y|yes|yep|ok|sure|right|correct|sim|isso|certo|pode|ok[ae]y?)[.! ]*$/i;
+
+if (!chat) {
+  const { reply, provenance } = await ask([{ role: 'user', content: text }]);
+  if (!render(reply, provenance)) process.exit(1);
+} else {
+  if (!process.env.ANTHROPIC_API_KEY?.trim()) {
+    console.error('chat needs a model: set ANTHROPIC_API_KEY (from a worktree: DOTENV_CONFIG_PATH=<main checkout>/.env pnpm tsx -r dotenv/config ...).');
+    process.exit(1);
+  }
+  const { createInterface } = await import('node:readline/promises');
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const turns: Turn[] = [];
+  console.log(`\nTenonfi · relaxed intake · ${chain} · ${rows.length} assets on the table. Say what you want; "yes" confirms; empty line quits.\n`);
+  let last: Reply | null = null;
+  let line = text || (await rl.question('you > ')).trim();
+  while (line) {
+    if (last && YES.test(line)) {
+      console.log(`\nConfirmed. This is what would go to POST /v1/baskets/personalize:\n${JSON.stringify(last, null, 2)}\n`);
+      break;
+    }
+    turns.push({ role: 'user', content: line });
+    const { reply, provenance } = await ask(turns);
+    turns.push({ role: 'assistant', content: JSON.stringify(reply) });
+    last = render(reply, provenance);
+    line = (await rl.question('you > ')).trim();
+  }
+  rl.close();
 }
-if (dropped.length) console.log(`\nDropped, not on the table: ${dropped.join(', ')}`);
-if (Object.keys(r.stated).length) console.log('\nYou said:', JSON.stringify(r.stated));
-console.log('\nAssumed:'); for (const a of assumptions) console.log(`  · ${a}`);
-console.log(`\n${r.question ? `Question: ${r.question}` : 'Is that right? (yes / tell me what to change)'}\n`);
