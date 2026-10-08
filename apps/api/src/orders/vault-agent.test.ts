@@ -540,6 +540,74 @@ describe('model-led private vault proposals', () => {
     });
   });
 
+  it('repairs a reply that fails the final preview shape, and names where', async () => {
+    // A catalog symbol too long for the preview: only the final reply, with server symbols, fails.
+    const long = { ...otherReserve, symbol: 'R'.repeat(81) };
+    const shapeContext = {
+      ...context,
+      assets: assets.map((asset) => (asset.id === otherReserve.id ? long : asset)),
+      evidence: [
+        ...context.evidence,
+        {
+          id: `catalog:${cash.id}`,
+          assetId: cash.id,
+          source: 'offline catalog',
+          method: 'cash residual',
+          fetchedAt: now,
+          provenance: 'mock' as const,
+        },
+      ],
+    };
+    const fixed = proposal(1000);
+    fixed.proposal.allocations = [
+      proposal(1000).proposal.allocations[0] as (typeof fixed.proposal.allocations)[number],
+      {
+        assetId: cash.id,
+        weightBps: 9000,
+        why: 'Retain the rest as cash.',
+        evidenceIds: [`catalog:${cash.id}`],
+      },
+    ];
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({ reply: proposal(1000) })
+      .mockResolvedValueOnce({ reply: fixed });
+    const out = await replyToVaultConversation(request(), shapeContext, { read });
+    expect(out).toMatchObject({
+      kind: 'reply',
+      repair: { failed: 'reply_shape', outcome: 'repaired' },
+    });
+    expect(read.mock.calls[1]?.[2]).toMatchObject({
+      previous: proposal(1000),
+      problems: [
+        expect.stringContaining('final preview limits'),
+        expect.stringMatching(/^At proposal\.allocations\.2\.symbol: /),
+      ],
+    });
+    // The same reply again is refused with the shape code.
+    expect(await replyToVaultConversation(request(), shapeContext, fake(proposal(1000)))).toEqual(
+      rejected('reply_shape'),
+    );
+  });
+
+  it('gives the repair the time the first call actually took', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(1_000_000);
+      const read = vi
+        .fn()
+        .mockImplementationOnce(async () => {
+          vi.setSystemTime(1_000_000 + 7_250);
+          return { reply: { ...proposal(1000), message: 'I changed your vault.' } };
+        })
+        .mockResolvedValueOnce({ reply: proposal(1000) });
+      await replyToVaultConversation(request(), context, { read });
+      expect(read.mock.calls[1]?.[2]).toMatchObject({ elapsedMs: 7_250 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it.each([
     [{ reply: null, why: 'timeout', detail: 'model_timeout' }, 'timeout'],
     [{ reply: null, why: 'budget', detail: 'model_person_budget_spent' }, 'budget'],
