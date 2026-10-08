@@ -37,7 +37,13 @@ import { Mark } from './Mark';
 const ROUTES = [
   { href: '/shelf', key: 'products', also: ['/indexes', '/publish'] },
   { href: '/goal', key: 'invest', also: ['/plan', '/orders'] },
-  { href: '/monitor', key: 'portfolio', signedIn: true },
+  // the portfolio section's board (/portfolio); the older monitor and a vault's page are under it
+  {
+    href: '/portfolio',
+    key: 'portfolio',
+    signedIn: true,
+    also: ['/portfolio', '/monitor', '/vaults'],
+  },
   // Bearing's analytics: every page of the section is under it
   { href: '/analytics/stocks', key: 'analytics', also: ['/analytics'] },
 ] as const;
@@ -45,7 +51,8 @@ const ROUTES = [
 /** The page a link stands for is the one in view: its own path, or one under it that it leads to. */
 const isCurrent = (pathname: string, route: (typeof ROUTES)[number]) =>
   pathname === route.href ||
-  ('also' in route && route.also.some((p) => pathname.startsWith(`${p}/`)));
+  ('also' in route &&
+    route.also.some((p) => pathname.startsWith(`${p}/`) || (p === '/monitor' && pathname === p)));
 
 export function AppNav() {
   const t = useT();

@@ -4,9 +4,9 @@ import { dollars as whole } from '../goal/sheet';
 import { goalLine } from '../order/plain';
 import type { Plan } from './api';
 
-// The goal of a plan, as its own page says it: the sentence the overview's card states (PlanCard.tsx),
-// word for word, with the same words of the dictionary (overview.card), so the page a card opens is
-// headed by what the card said. plan.events.test.ts mounts the two and holds them to each other.
+// The goal of a plan, as its own page says it: the sentence the overview's row names the vault by
+// (vault-title.ts), word for word, with the same words of the dictionary (overview.card).
+// plan.events.test.ts mounts the two and holds them to each other.
 //
 // A plan made to measure says its goal from its sheet, at what was put in. A vault with no goal of its
 // own says what it follows, what it was opened to follow, its own name, or its chain.

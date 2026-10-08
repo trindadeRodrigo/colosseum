@@ -28,34 +28,36 @@ test.describe('the portfolio section on the stub', () => {
     await check(page, 'overview, signed out');
   });
 
-  test('the overview: a card a plan, the goal first, every figure with its pin, axe clean', async ({
+  test('the overview: the board, the chart and a row a vault, every figure with its pin, axe clean', async ({
     page,
   }) => {
     await openSignedIn(page, '/portfolio');
-    const cards = page.locator('main [data-ui="plan-card"]');
-    await expect(cards).toHaveCount(7);
-    // the heading is the sans face over the cards, whose sentences are the serif
+    const rows = page.locator('main [data-ui="overview-vault"]');
+    await expect(rows).toHaveCount(7);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(w.overview.title);
-    await expect(page.locator('main .font-display')).toHaveCount(7);
-    const grow = page.locator(`main [data-ui="plan-card"][data-address="${GROW}"]`);
-    await expect(grow.locator('h3')).toHaveText('Grow $2,000 over 36 months.');
-    await expect(grow.locator('[data-ui="status"]')).toHaveText(w.status.words.on_track);
-    await expect(grow.locator('[data-ui="plan-figures"] [data-ui="figure"]')).toHaveCount(2);
-    await expect(grow.locator('[data-ui="chain-badge"]')).toHaveText('Solana');
-    await expect(grow.locator('[data-ui="sample-note"]')).toHaveText(t.shell.testNetworkLine);
-    // each status word once at least, and no status where the rule gives none
-    for (const word of Object.values(w.status.words))
-      await expect(cards.locator('[data-ui="status"]', { hasText: word }).first()).toBeVisible();
-    await expect(cards.locator('[data-ui="plan-no-status"]')).toHaveCount(2);
-    // a snapshot older than an hour says so, with its age
-    await expect(cards.locator('[data-ui="stale-plate"]')).toHaveCount(3);
-    await expect(cards.locator('[data-ui="stale-plate"]').first()).toHaveText('stale · 3 h');
-    // and so does the sum of a chain that one of them is in
-    await expect(page.locator('main [data-ui="chain-total"] [data-ui="stale-plate"]')).toHaveCount(
-      2,
+    // the board: Solana's four vaults that were read, added up; the mock chain's left out
+    const board = page.locator(`main section[aria-label="${w.overview.board.total}"]`);
+    await expect(board.locator('[data-ui="board-total"]')).toContainText('$84,047.10');
+    await expect(board.locator('[data-ui="board-vaults"] dd')).toHaveText('5');
+    await expect(board).toContainText(w.overview.board.leftOut('sample chain'));
+    // the chart opens on the line over 30 days, and the stacks are one press away
+    await expect(page.locator('main [data-ui="overview-chart"]')).toHaveAttribute(
+      'data-kind',
+      'line',
     );
-    // each chain's own sum, and the chain that is switched off said in a sentence
-    await expect(page.locator('main [data-ui="chain-total"]')).toHaveCount(2);
+    await page.getByRole('button', { name: w.overview.board.chart.byAsset }).click();
+    await expect(page.locator('main [data-ui="overview-chart"]')).toHaveAttribute(
+      'data-kind',
+      'bars',
+    );
+    await page.getByRole('button', { name: w.overview.board.chart.line }).click();
+    // a row a vault, named as everywhere, with its status as the server says it
+    const grow = page.locator(`main [data-ui="overview-vault"][data-address="${GROW}"]`);
+    await expect(grow.locator('[data-ui="vault-sentence"]')).toHaveText(
+      'Grow $2,000 over 36 months.',
+    );
+    await expect(grow.locator('[data-ui="status"]')).toHaveText(w.status.words.on_track);
+    await expect(grow.locator('[data-ui="chain-badge"]')).toHaveText('Solana');
     await expect(page.locator('main [data-ui="chains-out"]')).toHaveText(
       t.portfolio.chainOff('Base'),
     );
@@ -64,23 +66,14 @@ test.describe('the portfolio section on the stub', () => {
       '/portfolio',
     );
     await pinned(page, 'overview');
-    // a pin opens on its source, its time and its method
-    await grow.locator('[data-ui="figure"] button[data-ui="pin"]').first().click();
-    await expect(grow.locator('[data-ui="pin-source"]')).toContainText('2026-10-07T11:56:00Z');
-    await page.keyboard.press('Escape');
     // the disclaimer is under the page, once: the app's foot does not repeat it
-    await expect(page.locator('main [data-ui="disclaimer"]')).toBeVisible();
     await expect(page.locator('[data-ui="disclaimer"]:visible')).toHaveCount(1);
     // nothing on the page signs
     await expect(page.locator('main [data-variant="primary"]')).toHaveCount(0);
     await check(page, 'overview');
 
-    // the card's one link opens the plan's own page, inside the section, still signed in
-    await grow.getByRole('link', { name: w.overview.card.open }).click();
-    await expect(page).toHaveURL(new RegExp(`/portfolio/plan/solana/${GROW}$`));
-    // the page is headed by the goal its card stated (e2e/portfolio-plan.spec.ts has the rest)
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Grow $2,000 over 36 months.');
-    await expect(page.locator('#portfolio-nav [aria-current="page"]')).toHaveCount(0);
+    // a row opens the vault's own page, where its chat and its plan are
+    await expect(grow.locator('a')).toHaveAttribute('href', `/vaults/solana/${GROW}`);
   });
 
   test('the methodology: every line of the rule, plain text, the disclaimer once, axe clean', async ({
@@ -102,9 +95,9 @@ test.describe('the portfolio section on the stub', () => {
       '/portfolio/methodology',
     );
     await check(page, 'methodology');
-    // and back: the plans were kept while the person was away, so the cards are there at once
+    // and back: the plans were kept while the person was away, so the rows are there at once
     await toPage(page, '/portfolio');
-    await expect(page.locator('main [data-ui="plan-card"]')).toHaveCount(7);
+    await expect(page.locator('main [data-ui="overview-vault"]')).toHaveCount(7);
   });
 
   test('the side menu hides to a rail on a wide screen and comes back', async ({ page }) => {
@@ -134,15 +127,11 @@ test.describe('the portfolio section on the stub', () => {
     await openSignedIn(page, '/portfolio', 'pt');
     await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(pt.overview.title);
-    const grow = page.locator(`main [data-ui="plan-card"][data-address="${GROW}"]`);
+    const grow = page.locator(`main [data-ui="overview-vault"][data-address="${GROW}"]`);
     await expect(grow.locator('[data-ui="status"]')).toHaveText(pt.status.words.on_track);
     // the same figure, written as Brazil writes it
-    await expect(grow.locator('[data-ui="plan-figures"]')).toContainText(/US\$\s2\.051,37/);
-    await expect(grow.getByRole('link')).toHaveText(pt.overview.card.open);
-    await expect(grow.locator('[data-ui="stale-plate"]')).toHaveCount(0);
-    await expect(
-      page.locator('main [data-ui="plan-card"] [data-ui="stale-plate"]').first(),
-    ).toHaveText('desatualizado · 3 h');
+    await expect(grow).toContainText(/US\$\s2\.051,37/);
+    await expect(page.locator('main')).toContainText(pt.overview.table.heading);
     await pinned(page, 'overview in Portuguese');
     await check(page, 'overview in Portuguese');
     await toPage(page, '/portfolio/methodology', 'pt');

@@ -49,5 +49,63 @@ export const overview: Overview = {
     read: (age: string, when: string) => `Lido há ${age}, em ${when}.`,
     open: 'Ver este plano ao longo do tempo',
   },
+  board: {
+    total: 'Valor total do portfólio',
+    vaults: 'Cofres',
+    netIn: 'Depositado líquido',
+    netInMethod:
+      'Depósitos confirmados por este app, menos saques confirmados pelo valor na hora do pedido.',
+    allTime: 'PnL total',
+    allTimeMethod: 'O valor no retrato mais recente, menos o que entrou: depósitos menos saques.',
+    periodMethod:
+      'A variação do valor no período, pelos retratos guardados, menos o que foi depositado ou sacado nele.',
+    chartMethod: 'Seus cofres somados em cada retrato guardado.',
+    pnl: 'PnL',
+    gaining: 'Cofres no positivo',
+    best: 'Melhor cofre',
+    noPnl: 'Ainda não há leituras suficientes neste período.',
+    leftOut: (kind: string) => `Cofres em ${kind} não entram na soma.`,
+    kinds: {
+      sandbox: 'rede de teste',
+      mock: 'rede de exemplo',
+      live: 'rede real',
+      fixture: 'rede de exemplo',
+      prior_dataset: 'rede de exemplo',
+    },
+    unvalued: (n: number) =>
+      n === 1
+        ? '1 saque não tinha preço na hora do pedido, então o depositado líquido o deixa de fora.'
+        : `${n} saques não tinham preço na hora do pedido, então o depositado líquido os deixa de fora.`,
+    chart: {
+      label: 'Gráfico',
+      line: 'Linha',
+      byVault: 'Por cofre',
+      byAsset: 'Por ativo',
+      period: 'Período',
+      periods: { '1d': '1D', '7d': '7D', '30d': '30D', '1y': '1A', ytd: 'No ano', all: 'Tudo' },
+      plot: (from: string, to: string) => `Valor dos seus cofres de ${from} a ${to}`,
+      bars: (from: string, to: string) => `Valor dos seus cofres, empilhado, de ${from} a ${to}`,
+      up: 'Acima do que você depositou',
+      down: 'Abaixo do que você depositou',
+      cash: 'Caixa',
+      empty:
+        'Ainda não há leituras neste período. Uma leitura é feita mais ou menos a cada dez minutos.',
+      reading: 'Lendo o histórico…',
+      hint: 'Aponte para o gráfico, ou use as setas, para ler um dia.',
+    },
+  },
+  table: {
+    heading: 'Seus cofres',
+    vault: 'Cofre',
+    chain: 'Rede',
+    value: 'Valor',
+    netIn: 'Depositado líquido',
+    allTime: 'PnL total',
+    period: (period: string) => `PnL ${period}`,
+    status: 'Situação',
+    open: (vault: string) => `Abrir ${vault}`,
+    newPlan: 'Novo plano',
+    neverRead: 'Ainda não lido',
+  },
   refresh: 'Um novo retrato é tirado mais ou menos a cada dez minutos.',
 };

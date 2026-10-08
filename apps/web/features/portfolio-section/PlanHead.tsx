@@ -14,8 +14,7 @@ import { leastLive, putInPin, snapshotPin } from './pins';
 import { sayStatus } from './status';
 import { useWords } from './words';
 
-// Under the goal, where a plan stands, in the order and the words of the overview's card
-// (PlanCard.tsx): the status as the server says it, with its shape, the chain, the reason and the
+// Under the goal, where a plan stands, in the words of the overview: the status as the server says it, with its shape, the chain, the reason and the
 // rule's name; what the vault is worth now and what the person put in, each on its pin; and when the
 // vault was last read, said as stale when the answer says it is. Nothing is worked out: the status,
 // the two figures, the age and whether the read is stale are the answer's. A vault that was never

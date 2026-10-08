@@ -4,8 +4,8 @@ import { dollars as whole } from '../goal/sheet';
 import { goalLine } from '../order/plain';
 import type { Plan } from './api';
 
-// What a vault is called on a page that lists several: the sentence the overview's card says for it
-// (PlanCard.tsx), which keeps its naming to itself. The same rule, word for word, so a person meets a
+// What a vault is called on a page that lists several: the sentence the overview's row and its chart's
+// legend name it by, and the rebalancing page too. One rule, word for word, so a person meets a
 // vault under one name on every page of the section: its goal at what was put in; else the shared
 // portfolio the chain shows it following, or the one it was opened to follow; else its own name; else
 // its chain. rebalancing.events.test.ts holds the two to the same sentences on the sample plans.

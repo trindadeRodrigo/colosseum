@@ -22,13 +22,7 @@ import { useWords } from './words';
 // and the way to ask again. A page hands `SectionGate` the read it stands on and draws only what was
 // read.
 
-/** A page's heading over goal cards, whose sentences are the serif there (goal-card.md). */
-export const TITLE_OVER_CARDS = 'font-sans text-h2 font-semibold';
-
-/**
- * A page's title and its one paragraph. The title is the page's one serif line: a page that draws
- * goal cards writes its own heading, in `TITLE_OVER_CARDS` once it has cards (OverviewPage.tsx).
- */
+/** A page's title and its one paragraph. The title is the page's one serif line. */
 export function PageHead({ title, lead }: { title: string; lead?: string }) {
   return (
     <header className="flex flex-col gap-3">

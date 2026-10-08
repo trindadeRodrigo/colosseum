@@ -17,10 +17,14 @@ const INCOME = 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4';
 /** A vault the reader never read. */
 const NEVER = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 
-/** From the overview, by the card's own link: the throwaway wallet lives in the page. */
+/** From the overview, by the plan's own address: the throwaway wallet lives in the page. */
 async function toPlan(page: Page, address: string, lang: Lang = 'en') {
-  const card = page.locator(`main [data-ui="plan-card"][data-address="${address}"]`);
-  await card.getByRole('link', { name: portfolioDictionary(lang).overview.card.open }).click();
+  // no link on the overview leads here any more (its rows open the vault's own page): the app's
+  // router goes, so the page and its wallet stay
+  void lang;
+  await page.evaluate((href) => {
+    (window as unknown as { next: { router: { push(h: string): void } } }).next.router.push(href);
+  }, `/portfolio/plan/solana/${address}`);
   await expect(page).toHaveURL(new RegExp(`/portfolio/plan/solana/${address}$`));
   await expect(page.locator('main [data-ui="plan-blocks"]')).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('main [data-ui="waiting"]')).toHaveCount(0, { timeout: 60_000 });
@@ -101,7 +105,7 @@ test.describe('a plan’s page on the stub', () => {
     // the way back, with the plans kept
     await page.locator('main [data-ui="plan-back"]').click();
     await expect(page).toHaveURL(/\/portfolio$/);
-    await expect(page.locator('main [data-ui="plan-card"]')).toHaveCount(7);
+    await expect(page.locator('main [data-ui="overview-vault"]')).toHaveCount(7);
   });
 
   test('a vault never read says so and shows no figure, axe clean', async ({ page }) => {

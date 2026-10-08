@@ -161,14 +161,14 @@ describe('the rebalancing page, for a person with steps on two chains', () => {
       await settle();
       for (const chain of plans().chains)
         for (const plan of chain.plans) {
-          const card = find(host, `[data-ui="plan-card"][data-address="${plan.address}"]`);
+          const card = find(host, `[data-ui="overview-vault"][data-address="${plan.address}"]`);
           const title = vaultTitle(plan, {
             t: dictionary(lang),
             words: portfolioDictionary(lang).overview.card,
             lang,
             chainName: chain.chain === 'solana' ? 'Solana' : 'Robinhood Chain',
           });
-          expect(title.sentence, plan.address).toBe(text(find(card, 'h3')));
+          expect(title.sentence, plan.address).toBe(text(find(card, '[data-ui="vault-sentence"]')));
           expect(title.notes, plan.address).toEqual(
             [...card.querySelectorAll('[data-ui="plan-note"]')].map(text),
           );

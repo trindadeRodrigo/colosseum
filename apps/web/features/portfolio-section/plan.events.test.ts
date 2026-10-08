@@ -31,7 +31,7 @@ import {
 } from './api';
 import { narrowExposure } from './fixtures/narrow';
 import { EXPOSURE_BY_PLAN } from './fixtures/plan';
-import { OverviewPage } from './OverviewPage';
+import { OverviewPage, vaultHref } from './OverviewPage';
 import { PlanPage } from './PlanPage';
 import { planHref } from './pages';
 import { held, type Served, serve } from './test/api';
@@ -656,17 +656,19 @@ describe('the goal of a plan’s page', () => {
       location.pathname = '/portfolio';
       const overview = await mount(inSection(lang, createElement(OverviewPage)));
       await settle();
-      const cards = [...overview.querySelectorAll('[data-ui="plan-card"]')].map((card) => ({
-        chain: card.getAttribute('data-chain') as string,
-        address: card.getAttribute('data-address') as string,
-        sentence: text(find(card, 'h3')),
-        notes: [...card.querySelectorAll('[data-ui="plan-note"]')].map(text),
-        href: find(card, 'a').getAttribute('href'),
+      // each vault is a row of the overview's table, named as its own page names it
+      const cards = [...overview.querySelectorAll('[data-ui="overview-vault"]')].map((row) => ({
+        chain: row.getAttribute('data-chain') as string,
+        address: row.getAttribute('data-address') as string,
+        sentence: text(find(row, '[data-ui="vault-sentence"]')),
+        notes: [...row.querySelectorAll('[data-ui="plan-note"]')].map(text),
+        href: find(row, 'a').getAttribute('href'),
       }));
       expect(cards).toHaveLength(7);
       await unmountAll();
       for (const card of cards) {
-        expect(card.href).toBe(planHref(card.chain as 'solana', card.address));
+        // the row opens the vault's own page, where its chat and its plan are
+        expect(card.href).toBe(vaultHref(card.chain, card.address));
         const host = await open(card.chain, card.address, lang);
         expect(text(find(host, 'h1')), card.address).toBe(card.sentence);
         expect([...host.querySelectorAll('[data-ui="plan-note"]')].map(text)).toEqual(card.notes);

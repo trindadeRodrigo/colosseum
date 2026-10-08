@@ -65,6 +65,71 @@ export const overview = {
     /** The card's one action. */
     open: 'See this plan over time',
   },
+  /** The board at the top of the page: the figures beside the chart. */
+  board: {
+    total: 'Total portfolio value',
+    vaults: 'Vaults',
+    netIn: 'Net deposited',
+    /** The method line of the net deposited figure. */
+    netInMethod:
+      'Confirmed deposits through this app, less confirmed withdrawals at their value when ordered.',
+    allTime: 'All-time PnL',
+    allTimeMethod:
+      'The value at the newest snapshot, less what went in: deposits less withdrawals.',
+    periodMethod:
+      'The change in value over the period, from the snapshots kept, less what was deposited or withdrawn in it.',
+    chartMethod: 'Your vaults added up at each snapshot kept.',
+    pnl: 'PnL',
+    gaining: 'Vaults gaining',
+    best: 'Best vault',
+    /** Under the PnL, where no vault has two readings in the period. */
+    noPnl: 'Not enough readings in this period yet.',
+    /** Where the sums hold one kind of figure and the person also holds another. */
+    leftOut: (kind: string) => `Vaults on a ${kind} are not added in.`,
+    kinds: {
+      sandbox: 'test network',
+      mock: 'sample chain',
+      live: 'live chain',
+      fixture: 'sample chain',
+      prior_dataset: 'sample chain',
+    },
+    /** Withdrawals of a token that had no price when ordered. */
+    unvalued: (n: number) =>
+      n === 1
+        ? '1 withdrawal had no price when ordered, so the net deposited leaves it out.'
+        : `${n} withdrawals had no price when ordered, so the net deposited leaves them out.`,
+    chart: {
+      label: 'Chart',
+      line: 'Line',
+      byVault: 'By vault',
+      byAsset: 'By asset',
+      period: 'Period',
+      periods: { '1d': '1D', '7d': '7D', '30d': '30D', '1y': '1Y', ytd: 'This year', all: 'All' },
+      /** The plot's name for a screen reader. */
+      plot: (from: string, to: string) => `Value of your vaults from ${from} to ${to}`,
+      bars: (from: string, to: string) => `Value of your vaults, stacked, from ${from} to ${to}`,
+      up: 'Above what you put in',
+      down: 'Below what you put in',
+      cash: 'Cash',
+      empty: 'No readings in this period yet. A reading is taken about every ten minutes.',
+      reading: 'Reading the history…',
+      hint: 'Point at the chart, or use the arrow keys, to read a day.',
+    },
+  },
+  /** The table of vaults under the board. */
+  table: {
+    heading: 'Your vaults',
+    vault: 'Vault',
+    chain: 'Chain',
+    value: 'Value',
+    netIn: 'Net deposited',
+    allTime: 'All-time PnL',
+    period: (period: string) => `PnL ${period}`,
+    status: 'Status',
+    open: (vault: string) => `Open ${vault}`,
+    newPlan: 'New plan',
+    neverRead: 'Not read yet',
+  },
   /** At the foot of the page, beside "Read again". */
   refresh: 'A new snapshot is taken about every ten minutes.',
 };

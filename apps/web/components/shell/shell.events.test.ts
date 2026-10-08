@@ -178,12 +178,22 @@ describe('the frame', () => {
       [en.portfolio, 'page'],
       [en.analytics, null],
     ]);
+    // the portfolio's board, a page of its section and a vault's own page are under it too
+    for (const path of ['/portfolio', '/portfolio/plan/solana/abc', '/vaults/solana/abc']) {
+      location.pathname = path;
+      expect(links(await shell()).map((a) => a.getAttribute('aria-current'))).toEqual([
+        null,
+        null,
+        'page',
+        null,
+      ]);
+    }
     // on a phone the same links are in the sheet under the menu button
     const sheet = find(signedIn, '[data-ui="compact-nav-sheet"]');
     expect([...sheet.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual([
       '/shelf',
       '/goal',
-      '/monitor',
+      '/portfolio',
       '/analytics/stocks',
     ]);
     expect(find(signedIn, `button[aria-label="${en.menu}"]`).getAttribute('aria-expanded')).toBe(
