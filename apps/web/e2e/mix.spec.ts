@@ -1,0 +1,174 @@
+import AxeBuilder from '@axe-core/playwright';
+import { expect, type Page, test } from '@playwright/test';
+import { dictionary } from '../i18n';
+import { readyToInvest } from './invest';
+import { inTheme } from './theme';
+
+// A mix, end to end on the mock chain (gate ANY-COMPOSITION, #191): a new goal's mix from the
+// conversation, one weight changed by hand, reviewed with each warning ticked, stored as a plan and
+// bought through the unchanged buy; and a vault's own weights, edited by hand, reviewed, ordered and
+// signed step by step through the guard, which holds the targets step to the reviewed targets. Every screen is checked with axe at
+// 375 px, in light and in dark, and for no sideways scroll.
+
+const en = dictionary('en');
+test.skip(process.env.E2E_CHAIN === 'robinhood', 'the stub runs Robinhood Chain');
+const STUB = `http://localhost:${process.env.E2E_API_PORT ?? 3901}`;
+/** Screenshots are taken only for a run that names a folder for them (SCREENSHOTS_DIR). */
+const SHOTS = process.env.SCREENSHOTS_DIR;
+const WIDTHS = [375, 1280] as const;
+
+async function check(page: Page, name: string) {
+  for (const theme of ['light', 'dark'] as const) {
+    await inTheme(page, theme);
+    const result = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+      .analyze();
+    const found = result.violations.flatMap((v) =>
+      v.nodes.map((n) => `${v.id}: ${n.html.slice(0, 160)} ${n.failureSummary ?? ''}`),
+    );
+    expect(found, `${name}, ${theme}`).toEqual([]);
+    const wide = await page.evaluate(() => document.documentElement.scrollWidth);
+    expect(wide, `${name}, ${theme}: no sideways scroll`).toBeLessThanOrEqual(375);
+    if (SHOTS) {
+      for (const width of WIDTHS) {
+        await page.setViewportSize({ width, height: 812 });
+        await page.screenshot({
+          path: `${SHOTS}/mix-${name}-${width}-${theme}.png`,
+          fullPage: true,
+        });
+      }
+      await page.setViewportSize({ width: 375, height: 812 });
+    }
+  }
+}
+
+async function signIn(page: Page) {
+  await page.request.post(`${STUB}/__stub/reset`);
+  await page.goto('/goal');
+  await page.locator('header a[href="/sign-in"]').click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: en.signIn.passkey.continue }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL(/\/goal$/);
+}
+
+/** Ticks every warning of the review on the page, and checks the confirm waits for the last one. */
+async function tickAll(page: Page, confirm: string) {
+  const press = page.getByRole('button', { name: confirm });
+  const boxes = page.locator('[data-ui="mix-review-warnings"] input[type="checkbox"]');
+  const n = await boxes.count();
+  expect(n).toBeGreaterThan(0);
+  for (let i = 0; i < n; i += 1) {
+    await expect(press).toHaveAttribute('aria-disabled', 'true');
+    await boxes.nth(i).check();
+  }
+  await expect(press).not.toHaveAttribute('aria-disabled', 'true');
+  return press;
+}
+
+test('a new goal’s mix from the conversation: edited, reviewed, ticked, stored and bought', async ({
+  page,
+}) => {
+  await signIn(page);
+  await expect(page.locator('[data-ui="goal-mode"]')).toHaveValue('explore');
+  const box = page.locator('textarea');
+  await box.fill('A broad fund and some gold');
+  await box.press('Enter');
+  const strategy = page.locator('[data-ui="goal-strategy"]');
+  await expect(strategy.locator('[data-ui="weight-notes"]')).toContainText(
+    en.mix.preview.note.equalAll,
+  );
+  await strategy.getByRole('button', { name: en.mix.preview.use }).click();
+
+  await page.getByLabel(en.mix.goal.amount, { exact: true }).fill('100');
+  await page.getByLabel(en.mix.goal.goal, { exact: true }).selectOption('grow');
+  await page.getByLabel(en.mix.goal.risk, { exact: true }).selectOption('medium');
+  // The preview's 50/50 is where the fields start: SPY down to 40 leaves 10 in cash.
+  const spy = page.getByLabel(en.mix.editor.weight('SPY'), { exact: true });
+  await expect(spy).toHaveValue('50');
+  await spy.fill('40');
+  await expect(page.locator('[data-ui="targets-cash"]')).toHaveText(en.mix.editor.cash('10%'));
+  await check(page, 'goal-weights');
+  await page.getByRole('button', { name: en.mix.goal.review }).click();
+
+  const lines = page.locator('[data-ui="mix-review-lines"]');
+  await expect(lines).toContainText('SPY');
+  await expect(lines).toContainText('$40.00');
+  await expect(lines).toContainText('$10.00');
+  await expect(lines.locator('[data-ui="exit-ceiling"]').first()).toContainText(en.mix.review.tier);
+  await check(page, 'goal-review');
+  const confirm = await tickAll(page, en.mix.goal.confirm);
+  await confirm.click();
+
+  // the stored plan, bought through the unchanged buy, at the amount reviewed
+  await expect(page).toHaveURL(/\/plan\/[^/]+\/buy$/);
+  await expect(page.getByLabel(en.buy.amount.label, { exact: true })).toHaveValue('100');
+  const press = await readyToInvest(page, { dollars: '$100' });
+  await press.click();
+  await expect(page.locator('[data-ui="order-status"]')).toHaveText(
+    en.order.outcome.done('Solana'),
+    { timeout: 90_000 },
+  );
+});
+
+test('a vault’s own weights, edited by hand: reviewed, ordered, every step signed', async ({
+  page,
+}) => {
+  await signIn(page);
+  const shownWallet = page.locator('[data-ui="account-menu-button"] span[title]').first();
+  await expect(shownWallet).toHaveAttribute('title', /.+/);
+  const owner = await shownWallet.getAttribute('title');
+  const source = await page.request.post(`${STUB}/__stub/source-vault`, {
+    data: {
+      owner,
+      targets: [
+        { asset: 'solana:spy', weightBps: 6000 },
+        { asset: 'solana:nvda', weightBps: 4000 },
+      ],
+    },
+  });
+  expect(source.ok(), await source.text()).toBe(true);
+  const { address } = await source.json();
+
+  // through the app's own links: the throwaway sign-in does not outlive a page load
+  await page.getByRole('button', { name: en.shell.menu }).click();
+  await page
+    .locator('[data-ui="compact-nav-sheet"]')
+    .getByRole('link', { name: en.shell.portfolio })
+    .click();
+  await page
+    .locator('[data-ui="vault-summary"]')
+    .getByRole('link', { name: en.portfolio.overview.open })
+    .click();
+  await expect(page).toHaveURL(new RegExp(`/vaults/solana/${address}$`));
+  await page.getByRole('link', { name: en.mix.editor.edit }).click();
+  await expect(page).toHaveURL(new RegExp(`/vaults/solana/${address}/targets$`));
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.mix.editor.title);
+  // from 60/40 to 70 SPY, nothing in NVDA, 30 left in cash
+  await page.getByLabel(en.mix.editor.weight('SPY'), { exact: true }).fill('70');
+  await page.getByRole('button', { name: en.mix.editor.remove('NVDA') }).click();
+  await expect(page.locator('[data-ui="targets-cash"]')).toHaveText(en.mix.editor.cash('30%'));
+  await check(page, 'editor');
+  await page.getByRole('button', { name: en.mix.vault.review }).click();
+
+  await expect(page.locator('[data-ui="mix-review-lines"]')).toContainText('SPY');
+  await check(page, 'vault-review');
+  const confirm = await tickAll(page, en.mix.vault.confirm);
+  await confirm.click();
+
+  await expect(page).toHaveURL(/\/orders\/[^/]+$/);
+  await expect(page.getByRole('region', { name: en.mix.order.title })).toContainText('70%');
+  await check(page, 'vault-order');
+  await page.getByRole('button', { name: en.mix.order.signTargets }).click();
+  await expect(page.locator('[data-ui="order-status"]')).toHaveText(
+    en.order.outcome.done('Solana'),
+    { timeout: 90_000 },
+  );
+  const vault = await page.request.get(`${STUB}/v1/vaults/solana/${address}`);
+  const read = await vault.json();
+  expect(
+    read.vault.positions
+      .filter((p: { targetBps: number }) => p.targetBps > 0)
+      .map((p: { asset: string; targetBps: number }) => [p.asset, p.targetBps]),
+  ).toEqual([['solana:spy', 7000]]);
+});

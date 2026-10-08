@@ -1341,6 +1341,8 @@ export const en = {
       VERSION_CHANGED:
         'A shared portfolio in this plan changed after the plan was made. Build the plan again from your goal.',
       ORDER_EXPIRED: 'That order ran out of time. Try again.',
+      AMOUNT_OVER_REVIEW:
+        'This mix was reviewed at a smaller amount, and it’s bought at no more than that. Lower the amount, or review the mix again at the new one.',
       US_PERSON: 'This product isn’t for people in the United States, so the order wasn’t made.',
       RATE_LIMITED: 'Our server asked me to slow down. Wait a minute, then try again.',
       CHAIN_UNAVAILABLE: 'This chain is switched off on our server for now. Nothing was ordered.',
@@ -2307,6 +2309,163 @@ export const en = {
       value: 'Value',
       parts: 'Its parts',
       see: 'See it in tenonfi',
+    },
+  },
+  /** Mixes from the conversation or the person's own hand (gate ANY-COMPOSITION, #191). */
+  mix: {
+    activity: (when: string) => `New targets for your vault · ${when}`,
+    preview: {
+      use: 'Use this mix',
+      apply: 'Apply to my vault',
+      notes: 'How the weights were set',
+      notesAlone: 'About the shares you gave',
+      warnings: 'Before you use it',
+      note: {
+        equalAll: 'The picks share the vault equally: you didn’t give shares.',
+        equalRest: (names: string) => `${names} share the rest equally.`,
+        stated: (names: string, quote: string) => `${names} follow what you said: “${quote}”.`,
+        scaled: 'The shares you gave didn’t add up to the whole, so I scaled them to it.',
+        dropped: (name: string) => `${name} is left out: your shares leave nothing for it.`,
+        unmet: (quote: string) => `These picks can’t meet “${quote}”.`,
+        unread: (quote: string) =>
+          `I didn’t apply “${quote}”. Give it as a share, such as “40% in gold”, and I will.`,
+        withdrawn: (quote: string) =>
+          `I no longer hold the weights to “${quote}”: you took it back.`,
+      },
+      warning: {
+        overExit: (name: string) =>
+          `${name} weighs more than its measured exit can sell at your vault’s size. Selling it may take longer.`,
+        outsideGoal: (name: string) =>
+          `${name} is outside what your goal normally holds. It’s here because you asked for it.`,
+      },
+    },
+    review: {
+      title: 'Check this mix',
+      lead: 'I checked every line again at today’s prices. Nothing is bought or changed yet.',
+      asset: 'Asset',
+      weight: 'Weight',
+      amount: 'Amount',
+      price: 'Price',
+      exit: 'Most it holds and still exits as planned',
+      total: 'Total reviewed',
+      cash: 'Cash',
+      cashPrice: 'counted at one dollar',
+      measured: 'measured',
+      tier: 'tier fallback, not measured',
+      warnings: 'Confirm each of these',
+      left: (n: number) => (n === 1 ? 'One left to confirm.' : `${n} left to confirm.`),
+      allTicked: 'Every warning is confirmed.',
+      changed: 'The figures changed since you looked. Check them again.',
+      back: 'Change the mix',
+    },
+    goal: {
+      title: 'Use this mix for a new goal',
+      lead: 'Say how much and what it’s for. I check the mix at today’s prices before anything is bought.',
+      amount: 'Amount',
+      amountHint: 'In dollars, from $10 to $1,000,000.',
+      goal: 'Goal',
+      goals: { grow: 'Make it grow', income: 'Monthly income', protect: 'Keep it safe' },
+      risk: 'Risk',
+      risks: { low: 'Low', medium: 'Medium', high: 'High' },
+      choose: 'Choose one',
+      review: 'Review this mix',
+      reviewing: 'Reviewing…',
+      confirm: 'Confirm and go to buy',
+      confirming: 'Confirming…',
+      errors: {
+        amount: 'Type an amount from $10 to $1,000,000.',
+        goal: 'Choose what the money is for.',
+        risk: 'Choose a risk.',
+      },
+    },
+    vault: {
+      review: 'Review these targets',
+      reviewing: 'Reviewing…',
+      confirm: 'Confirm and make the order',
+      confirming: 'Making the order…',
+      after:
+        'Next, the order screen shows every step to sign: the targets first, then the sales and purchases.',
+    },
+    editor: {
+      title: 'Your vault’s weights',
+      lead: 'Choose what your vault holds and how much. Whatever you leave unassigned stays in cash.',
+      edit: 'Edit weights',
+      weights: 'Weights',
+      fromChat:
+        'These are the weights from the conversation. Change any of them here; the ones in these fields are the ones I check.',
+      close: 'Back to the conversation',
+      unit: 'Type weights in',
+      percent: 'Percent',
+      bps: 'Basis points',
+      add: 'Add an asset',
+      addButton: 'Add',
+      addNone: 'Every listed asset is already in the mix.',
+      remove: (name: string) => `Remove ${name}`,
+      weight: (name: string) => `Weight of ${name}`,
+      cash: (share: string) => `Cash: ${share}`,
+      lines: (n: number) => `${n} of 16 assets`,
+      issues: {
+        'too-many': 'A vault holds 16 assets besides cash. Remove one.',
+        duplicate: 'Each asset once. Remove the repeat.',
+        'cash-line': 'Cash is what the others leave. Remove it as a line.',
+        'not-whole': 'Use percents with up to two decimals, or whole basis points.',
+        'over-whole': (over: string) =>
+          `The weights add up to more than the whole. Take ${over} off.`,
+        'all-cash': 'Give at least one asset a weight: a vault keeps an asset of its own.',
+      },
+      loading: 'Reading your vault…',
+      notYours: 'This isn’t a vault of yours, or it isn’t there.',
+      failed: 'I couldn’t read this vault just now. Try again.',
+      back: 'Back to your vault',
+    },
+    failure: {
+      invalid: 'I can’t use this mix as it is:',
+      signedOut: 'Your sign-in ran out. Sign in again and try once more.',
+      noWallet: 'Your sign-in has no wallet on this chain. Add one, then try again.',
+      notYours: 'This isn’t a vault of yours.',
+      readOnly: 'This chain only reads for now. Nothing can be bought or changed on it.',
+      busy: 'Too many requests just now. Wait a moment and try again.',
+      unreadable: 'The answer didn’t match what was asked. Nothing was stored. Try again.',
+      unchecked:
+        'The server took your confirmation, but its answer didn’t match what you reviewed, so I stopped here. It may already be stored: look at your portfolio before you try again.',
+      unreachable: 'I couldn’t reach the server. Nothing was stored. Try again.',
+      said: (error: string) => `The server said: ${error}`,
+      noStore:
+        'This browser didn’t keep the order, so it can’t be signed here. Allow site storage and try again.',
+    },
+    issue: (code: string, asset: string) => {
+      switch (code) {
+        case 'WEIGHT_NOT_WHOLE':
+          return 'A weight isn’t a whole number of basis points.';
+        case 'NOT_LISTED':
+          return `${asset} isn’t on this chain’s list now.`;
+        case 'DUPLICATE':
+          return `${asset} is named twice.`;
+        case 'FOREIGN_CASH':
+          return `${asset} is a cash token this chain doesn’t use. Leave cash as the remainder.`;
+        case 'SUM_NOT_10000':
+          return 'The weights don’t add up to the whole.';
+        case 'TOO_MANY_LINES':
+          return 'A vault holds 16 assets besides cash.';
+        case 'NO_PRICE':
+          return `${asset} has no usable price just now.`;
+        case 'NOT_FOR_GOAL':
+          return `${asset} can’t go in a plan for monthly income or for keeping money safe: it can fall in value. Take it out, or choose another goal.`;
+        case 'ALL_CASH':
+          return 'An open vault keeps at least one asset of its own.';
+        case 'OVER_ORDER_LIMIT':
+          return 'This vault is worth more than one order may move.';
+        default:
+          return 'One line can’t be used.';
+      }
+    },
+    order: {
+      title: 'New targets for your vault',
+      signTargets: 'Sign and apply the targets',
+      cash: (share: string) => `The rest stays in cash: ${share}.`,
+      fromConversation: 'Proposed in your conversation, and confirmed by you.',
+      fromPerson: 'Chosen by you.',
+      note: 'The first step sets these targets on chain; the steps after it sell and buy to reach them, each with its minimum.',
     },
   },
 };

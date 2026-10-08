@@ -108,6 +108,7 @@ const CODES: readonly OrderErrorCode[] = [
   'US_PERSON',
   'RATE_LIMITED',
   'CHAIN_UNAVAILABLE',
+  'AMOUNT_OVER_REVIEW',
 ];
 
 /**

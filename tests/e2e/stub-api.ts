@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { familyIdOf, metaHash, view } from '@colosseum/basket';
+import { familyIdOf, metaHash, rebalancePlan, sha256Hex, view } from '@colosseum/basket';
 import {
   createMockAdapter,
   type MockAdapter,
@@ -7,18 +7,26 @@ import {
   mockRecipeId,
 } from '@colosseum/chain-mock';
 import {
+  AcceptGoalMixRequest,
+  AcceptGoalMixResponse,
+  ApplyVaultMixRequest,
+  ApplyVaultMixResponse,
   type BasketSheet,
   ChainError,
+  ChainId,
   ConfigResponse,
   chainProvenance,
   DEFAULT_FLAGS,
   DISCLAIMER,
+  MixReview,
   type OrderDetail,
   parseChainConfigs,
   type Recipe,
   type RecipeVersionView,
   type SharedFamily,
   Target,
+  VaultAgentReplyShape,
+  warningsBelong,
 } from '@colosseum/schemas';
 import {
   ApiRefusal,
@@ -27,6 +35,7 @@ import {
   deploymentsOf,
   type OrderApi,
 } from '@colosseum/sdk';
+import { z } from 'zod';
 import { apiDouble } from '../../packages/sdk/test/api-double';
 import { type MockWorld, tampered } from '../../packages/sdk/test/mock';
 import { riskAnswer } from './stub-risk';
@@ -103,6 +112,8 @@ let testNetwork = false;
 let linked: ReturnType<typeof proposal> | null = null;
 /** The plan a person built (`POST /v1/baskets/personalize`), read back by its id as their own. */
 let built: ReturnType<typeof proposal> | null = null;
+/** The weights of a mix confirmed for a new goal (POST /v1/conversations/{chain}/goal/accept): the buy's. */
+let mixTargets: Target[] | null = null;
 /** The risk roll-up of a plan an agent proposed: MOCK, nothing measured, as on the mock chain. */
 const ROLL_UP = {
   byIssuer: [{ key: 'mock', bps: 10_000 }],
@@ -133,10 +144,11 @@ function config(): ConfigResponse {
   });
 }
 
-function proposal(sheet: BasketSheet) {
+function proposal(sheet: BasketSheet, weights: Target[] = WEIGHTS) {
   const cash = world.adapter.mock.cash;
+  const cashBps = 10_000 - weights.reduce((n, t) => n + t.weightBps, 0);
   const lines = [
-    ...WEIGHTS.map((t) => ({
+    ...weights.map((t) => ({
       chain: CHAIN,
       assetId: t.asset,
       weightBps: t.weightBps,
@@ -145,7 +157,17 @@ function proposal(sheet: BasketSheet) {
         { rule: 'stub', inputs: [], params: {}, text: 'Sample: a reason the stub made up.' },
       ],
     })),
-    { chain: CHAIN, assetId: cash, weightBps: 500, amountUsd: sheet.amountUsd / 20, reasons: [] },
+    ...(cashBps > 0
+      ? [
+          {
+            chain: CHAIN,
+            assetId: cash,
+            weightBps: cashBps,
+            amountUsd: (sheet.amountUsd * cashBps) / 10_000,
+            reasons: [],
+          },
+        ]
+      : []),
   ];
   return {
     sheet,
@@ -158,7 +180,7 @@ function proposal(sheet: BasketSheet) {
       {
         chain: CHAIN,
         amountUsd: sheet.amountUsd,
-        components: WEIGHTS.map((t) => ({ kind: 'asset', asset: t.asset, weightBps: t.weightBps })),
+        components: weights.map((t) => ({ kind: 'asset', asset: t.asset, weightBps: t.weightBps })),
       },
     ],
     removed: [],
@@ -200,7 +222,7 @@ function doubleFor(owner: string) {
   const basketId = linked
     ? basketIdOfLinkedPlan(PLAN_ID, `test:${owner.slice(0, 8)}`)
     : basketIdOfPlan(PLAN_ID);
-  const made = apiDouble(w, { basketId, targets: WEIGHTS });
+  const made = apiDouble(w, { basketId, targets: mixTargets ?? WEIGHTS });
   world.double = { owner, api: made.api, buy: made.buy, place: made.place };
   return world.double;
 }
@@ -497,6 +519,182 @@ async function placeShared(body: Body): Promise<OrderDetail> {
   });
 }
 
+// A mix from the conversation or the person's own hand (gate ANY-COMPOSITION, #191), as apps/api reads
+// it, in its shapes: the review with its figures and warnings, its hash, and on a confirm with every
+// warning ticked, the stored plan or the order. Each body is read with the route's own schema and each
+// answer written through it, so a shape apps/api would refuse is refused here. MOCK throughout: the
+// exit ceiling of every line is a made-up 40% of the amount, so a larger line carries a warning to tick.
+
+type MixBody = Pick<
+  ApplyVaultMixRequest,
+  'origin' | 'allocations' | 'confirm' | 'acceptedWarnings' | 'reviewHash'
+>;
+/** A body as the route's schema reads it, or the 400 apps/api answers a body it cannot read. */
+function bodyOf<T>(schema: z.ZodType<T>, value: unknown): T {
+  const read = schema.safeParse(value);
+  if (!read.success) throw new ApiRefusal(400, { error: z.prettifyError(read.error) });
+  return read.data;
+}
+/** The new-goal conversation's answer, as apps/api declares it (routes/v1/goal-conversation-reply.ts). */
+const GoalReply = VaultAgentReplyShape.extend({ chain: ChainId }).superRefine(warningsBelong);
+const cents = (n: number) => Math.round(n * 100) / 100;
+
+async function mixReview(body: MixBody, amountUsd: number, goal: MixReview['goal']) {
+  const { adapter } = world;
+  const cash = adapter.mock.cash;
+  const listed = new Map((await adapter.listAssets()).map((a) => [a.id, a]));
+  const sent = body.allocations;
+  const issues = [
+    ...sent.filter((l) => !listed.has(l.assetId)).map((l) => `NOT_LISTED:${l.assetId}`),
+    ...(sent.reduce((n, l) => n + l.weightBps, 0) !== 10_000 ? ['SUM_NOT_10000'] : []),
+    ...(sent.filter((l) => l.assetId !== cash).length > 16 ? ['TOO_MANY_LINES'] : []),
+  ];
+  if (issues.length)
+    throw new ApiRefusal(422, {
+      error: 'this mix cannot be bought as it is',
+      code: 'MIX_NOT_VALID',
+      details: { issues },
+    });
+  const ordered = [
+    ...sent.filter((l) => l.assetId === cash),
+    ...sent.filter((l) => l.assetId !== cash),
+  ];
+  const prices = await adapter.getPrices(ordered.map((l) => l.assetId).filter((id) => id !== cash));
+  const warnings: MixReview['warnings'] = [];
+  const lines = ordered.map((l) => {
+    const asset = listed.get(l.assetId);
+    const amount = cents((amountUsd * l.weightBps) / 10_000);
+    if (l.assetId === cash)
+      return {
+        assetId: l.assetId,
+        symbol: CASH_SYMBOL,
+        cls: 'cash' as const,
+        weightBps: l.weightBps,
+        amountUsd: amount,
+        price: null,
+        exitCeiling: null,
+      };
+    const price = prices.find((p) => p.asset === l.assetId);
+    const ceiling = cents(amountUsd * 0.4);
+    if (amount > ceiling)
+      warnings.push({
+        id: `EXIT_OVER_TIER_CEILING:${l.assetId}`,
+        code: 'EXIT_OVER_TIER_CEILING',
+        assetId: l.assetId,
+        text: `Sample: ${asset?.symbol ?? l.assetId} is larger than its tier’s ceiling, and its selling cost isn’t measured.`,
+        figures: [{ label: 'Tier ceiling', value: ceiling, unit: 'USD', ...OBSERVED }],
+      });
+    return {
+      assetId: l.assetId,
+      symbol: asset?.symbol ?? l.assetId,
+      cls: asset?.cls ?? 'stock',
+      weightBps: l.weightBps,
+      amountUsd: amount,
+      price: price ? { usdPerToken: price.usdPerToken, ...OBSERVED } : null,
+      exitCeiling: { usd: ceiling, measured: false, ...OBSERVED },
+    };
+  });
+  const targets = sent
+    .filter((l) => l.assetId !== cash)
+    .map((l) => ({ asset: l.assetId, weightBps: l.weightBps }));
+  const cashBps = 10_000 - targets.reduce((n, t) => n + t.weightBps, 0);
+  const reviewHash = sha256Hex(
+    new TextEncoder().encode(JSON.stringify({ lines, amountUsd, warnings })),
+  );
+  const accepted = new Set(body.acceptedWarnings ?? []);
+  return MixReview.parse({
+    chain: CHAIN,
+    origin: body.origin,
+    goal,
+    amountUsd,
+    lines,
+    targets,
+    cashBps,
+    warnings,
+    unconfirmed: warnings.map((w) => w.id).filter((id) => !accepted.has(id)),
+    reviewHash,
+    provenance: 'mock',
+    disclaimer: DISCLAIMER.en,
+  });
+}
+const confirmed = (body: MixBody, review: MixReview) =>
+  body.confirm && body.reviewHash === review.reviewHash && review.unconfirmed.length === 0;
+
+/** The goal conversation's preview: two picks, equal, and what the server did with the weights. */
+function goalReply(body: { messageId?: string }) {
+  const picks = [`${CHAIN}:spy`, `${CHAIN}:gold`];
+  return GoalReply.parse({
+    version: 1,
+    chain: CHAIN,
+    messageId: body.messageId,
+    message: 'Sample: a broad fund and gold, split equally. Nothing is bought until you confirm.',
+    question: null,
+    proposal: {
+      objective: 'Sample: grow with a hedge',
+      summary: 'Sample: a broad fund and gold.',
+      allocations: picks.map((assetId) => ({
+        assetId,
+        weightBps: 5000,
+        why: 'Sample: a reason the stub made up.',
+        evidenceIds: [`catalog:${assetId}`],
+        symbol: assetId === `${CHAIN}:spy` ? 'SPY' : 'Gold',
+      })),
+      tradeoffs: ['Sample: a fund and gold can both fall.'],
+      unknowns: ['Sample: nothing here is measured.'],
+      sources: picks.map((assetId) => ({
+        id: `catalog:${assetId}`,
+        assetId,
+        label: 'Listed on this chain',
+        ...OBSERVED,
+      })),
+    },
+    warnings: [],
+    weightNotes: [{ code: 'equal_split', assetIds: picks }],
+  });
+}
+
+async function placeRetarget(address: string, body: MixBody): Promise<ApplyVaultMixResponse> {
+  const { adapter } = world;
+  const state = await adapter.getVault(address);
+  if (!state) throw new ApiRefusal(404, { error: 'no vault of yours at that address' });
+  const listed = await adapter.listAssets();
+  const prices = await adapter.getPrices([
+    ...new Set([...state.positions.map((p) => p.asset), ...body.allocations.map((l) => l.assetId)]),
+  ]);
+  const value = Number(view(state, prices, listed).valueUsd);
+  const review = await mixReview(body, cents(value), null);
+  if (!confirmed(body, review)) return { status: 'review', review };
+  const plan = rebalancePlan(
+    state,
+    review.targets,
+    prices,
+    { bandBps: 0, minTradeUsd: 1, costBps: 100 },
+    listed,
+  );
+  // The sales first, so the purchases find their cash.
+  const trades = [...plan.trades].sort(
+    (a, b) => Number(b.buy === adapter.mock.cash) - Number(a.buy === adapter.mock.cash),
+  );
+  const order = await doubleFor(state.owner).place({
+    type: 'rebalance',
+    summary: 'Sample: give your vault its own targets, then trade to them',
+    needsConsent: [],
+    steps: [
+      { kind: 'set_targets', description: 'Set your vault’s targets', trades: [] },
+      ...trades.map((t) => ({
+        kind: 'swap' as const,
+        description: t.buy === adapter.mock.cash ? 'Sell for cash' : 'Buy',
+        trades: [t],
+      })),
+    ],
+    build: (leg) =>
+      leg.kind === 'set_targets'
+        ? adapter.buildSetTargets({ vault: address, targets: review.targets })
+        : adapter.buildOwnerSwap({ vault: address, trades: leg.trades, slippageBps: 100 }),
+  });
+  return ApplyVaultMixResponse.parse({ status: 'ordered', review, order });
+}
+
 /** A vault as the public page reads it: what GET /v1/vaults/{chain}/{address} answers. */
 async function vaultView(address: string) {
   const state = await world.adapter.getVault(address);
@@ -542,6 +740,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     return;
   }
   if (path === '/__stub/reset' && method === 'POST') {
+    mixTargets = null;
     world = freshWorld();
     tamperNext = false;
     testNetwork = false;
@@ -653,6 +852,52 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     const body = (await read(req)) as { sheet: BasketSheet };
     built = proposal(body.sheet);
     return send(res, 200, { id: PLAN_ID, proposal: built });
+  }
+  if (path === `/v1/conversations/${CHAIN}/goal/reply` && method === 'POST')
+    return send(res, 200, goalReply((await read(req)) as { messageId?: string }));
+  if (path === `/v1/conversations/${CHAIN}/goal/accept` && method === 'POST') {
+    const body = bodyOf(AcceptGoalMixRequest, await read(req));
+    const review = await mixReview(body, body.amountUsd, body.goal);
+    if (!confirmed(body, review)) return send(res, 200, { status: 'review', review });
+    const sheet: BasketSheet = {
+      basketType: 'standard',
+      goal: body.goal,
+      amountUsd: body.amountUsd,
+      horizonMonths: body.horizonMonths ?? 120,
+      ...(body.horizonMonths ? {} : { horizonOpen: true }),
+      risk: body.risk,
+      themes: [],
+      chains: [CHAIN],
+      rules: { useHoldings: false, glide: false },
+      language: body.language,
+    } as BasketSheet;
+    mixTargets = review.targets;
+    built = proposal(sheet, review.targets);
+    linked = null;
+    // The buy's double holds the order to the plan's weights: made again for this plan's.
+    world.double = undefined;
+    return send(
+      res,
+      200,
+      AcceptGoalMixResponse.parse({
+        status: 'stored',
+        review,
+        proposalId: PLAN_ID,
+        proposal: built,
+      }),
+    );
+  }
+  const targets = /^\/v1\/vaults\/([^/]+)\/([^/]+)\/targets$/.exec(path);
+  if (targets && method === 'POST') {
+    if (targets[1] !== CHAIN) return send(res, 404, { error: 'no vault of yours at that address' });
+    return send(
+      res,
+      200,
+      await placeRetarget(
+        decodeURIComponent(targets[2] ?? ''),
+        bodyOf(ApplyVaultMixRequest, await read(req)),
+      ),
+    );
   }
   if (path === '/v1/mock/fund' && method === 'POST') {
     const body = (await read(req)) as { cashUsd: number };
