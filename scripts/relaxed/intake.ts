@@ -176,7 +176,6 @@ async function ask(turns: Turn[]): Promise<{ reply: unknown; provenance: 'live' 
     body: JSON.stringify({
       model: process.env.RELAXED_MODEL ?? 'claude-sonnet-5-5',
       max_tokens: 2000,
-      temperature: 0.3,
       system: SYSTEM,
       messages: turns,
     }),
