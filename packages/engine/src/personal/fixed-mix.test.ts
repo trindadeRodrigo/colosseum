@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { fixedMix } from './fixed-mix';
 import { fixtureContext, launchShelf, sheet } from './testing';
 
-// A mix chosen outside the engine (gate MIX-ANY-COMPOSITION): the engine keeps every weight, splits
+// A mix chosen outside the engine (gate ANY-COMPOSITION): the engine keeps every weight, splits
 // the amount to the cent, and says the ceilings and the goal's list, without choosing anything.
 
 const picks = [

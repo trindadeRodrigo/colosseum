@@ -23,7 +23,7 @@ import { person, testIssuer } from '../../testing/harness';
 import { type MixStore, registerMixRoutes } from './mix';
 
 // POST /v1/conversations/{chain}/goal/accept and POST /v1/vaults/{chain}/{address}/targets (gate
-// MIX-ANY-COMPOSITION). The store is in memory and the database is out of reach: a review writes
+// ANY-COMPOSITION). The store is in memory and the database is out of reach: a review writes
 // nothing, and a confirmed mix writes one plan or one order.
 
 const cleanup: (() => Promise<unknown>)[] = [];

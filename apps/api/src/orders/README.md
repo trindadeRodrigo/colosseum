@@ -13,7 +13,7 @@ The order layer behind `/v1/orders` (DESIGN-VAULT 3.3). It plans the legs of an 
 | `plan-join.ts` | The goal join (DESIGN-VAULT section 4): `rememberVault`, `joinVault` and `joinConfirmed` for the order routes, `joinMissed` for the portfolio's read, which it does not change, and `plansOf`, the plan of each vault as the join holds it, for the portfolio section's routes (PORT-2). It writes `vaults`, `baskets` and `users` |
 | `store.ts` | The tables, through Drizzle. Every writer locks the leg row first, then its attempts; an EVM build takes a lock on (chain, wallet) before that |
 | `chains.ts` | The adapter registry by chain mode: the mock for `mock`; for Solana in `live` or `readonly` on `testnet` or `local`, the real adapter, labelled `sandbox`, on the RPC at `SOLANA_RPC_URL` and the network's assets in `basket_assets` (or what `V1Deps.solana` hands in); for Robinhood Chain the same on the EVM adapter, at `ROBINHOOD_RPC_URL` (or `V1Deps.robinhood`) |
-| `mix.ts` | A mix from the conversation or the person's own (gate MIX-ANY-COMPOSITION): `checkMix` (what money depends on, refused with `MIX_NOT_VALID`), `reviewMix` (the lines, figures and warnings the person confirms), `mixProposal` (the mix as a stored plan the buy takes), `planRetarget` and `buildRetarget` (an order of `set_targets`, then the sales and purchases of `rebalancePlan`). Behind `routes/v1/mix.ts` |
+| `mix.ts` | A mix from the conversation or the person's own (gate ANY-COMPOSITION): `checkMix` (what money depends on, refused with `MIX_NOT_VALID`), `reviewMix` (the lines, figures and warnings the person confirms), `mixProposal` (the mix as a stored plan the buy takes), `planRetarget` and `buildRetarget` (an order of `set_targets`, then the sales and purchases of `rebalancePlan`). Behind `routes/v1/mix.ts` |
 | `errors.ts` | A refusal (its body is the shared `OrderError`); a chain's refusal mapped onto the order codes |
 
 ## The rules an order follows
@@ -23,7 +23,7 @@ The order layer behind `/v1/orders` (DESIGN-VAULT 3.3). It plans the legs of an 
 - A buy deposits the whole amount. The order says it once (`depositRaw`): that is the figure to show and to add up. The approval and the step that deposits both repeat it (`cashRaw`), so on a chain that needs an approval the legs add up to twice the deposit. The trades spend the invested share: the deposit times the sum of the targets over 10,000, rounded down. The rest stays in the vault as cash. A plan with no target is all cash.
 - A shared portfolio a plan holds as one line is opened into its assets before the vault sees it. If it has changed since the plan was made, or since the order was made, the answer is `VERSION_CHANGED`.
 
-## A mix the person confirms (MIX-ANY-COMPOSITION)
+## A mix the person confirms (ANY-COMPOSITION)
 
 - Any composition of the chain's listed assets: each once, whole bps of at least 1, at most 16 that are not cash, and the chain's cash token for the rest, all adding up to exactly 10,000, every asset with a price the vault can trade on. Anything else is 422 `MIX_NOT_VALID` with `details.issues`. The client sends the lines back; nothing the client or the model wrote is a figure.
 - An exit ceiling, the asset list's cap and the goal's list are warnings with ids. Nothing is stored or built until `confirm` is true and every id is in `acceptedWarnings`; until then the answer is a review with `unconfirmed`.

@@ -8,7 +8,7 @@ import { OrderDetail } from './order-api';
 import { Target } from './recipe';
 
 // A mix a person takes from the vault or new-goal conversation, or chooses themselves, made into
-// something that can be bought (gate MIX-ANY-COMPOSITION, Thom, Oct 8). The client sends the lines
+// something that can be bought (gate ANY-COMPOSITION, Thom, Oct 8). The client sends the lines
 // back; the server checks them again against the catalog and prices of the chain as they are now, and
 // writes every figure and warning itself. Nothing the model wrote is a number here.
 

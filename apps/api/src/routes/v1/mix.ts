@@ -34,7 +34,7 @@ import { insertOrder, insertProposal } from '../../orders/store';
 import { resolveVaultConversationOwner } from '../../orders/vault-conversation-owner';
 import { signedIn } from './orders';
 
-// A mix from the conversation, or the person's own, made fundable (gate MIX-ANY-COMPOSITION, Thom,
+// A mix from the conversation, or the person's own, made fundable (gate ANY-COMPOSITION, Thom,
 // Oct 8; orders/mix.ts). Both routes answer a review first and act only on `confirm` with every
 // warning accepted: a new goal's mix becomes a stored plan that `POST /v1/orders` buys, and a vault's
 // becomes an order that sets its targets and trades to them.

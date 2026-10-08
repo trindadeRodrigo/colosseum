@@ -412,7 +412,7 @@ export const OrderErrorCode = z.enum([
   /** The order is not one this route finishes: a buy on a chain that trades inside its deposit, or not a buy with a vault. */
   'CONTINUE_NOT_SUPPORTED',
   /**
-   * A mix that cannot be bought or applied as sent (gate MIX-ANY-COMPOSITION): `details.issues` says
+   * A mix that cannot be bought or applied as sent (gate ANY-COMPOSITION): `details.issues` says
    * why, one `MixIssueCode` each, with the asset where there is one.
    */
   'MIX_NOT_VALID',

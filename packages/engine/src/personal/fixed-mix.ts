@@ -7,7 +7,7 @@ import type { ComposeContext, PersonalObservation, PersonalSheet } from './types
 import { buildWorld } from './world';
 
 // A mix whose weights were chosen outside the engine: proposed by the model in the conversation and
-// confirmed by the person, or chosen by the person (gate MIX-ANY-COMPOSITION, Thom, Oct 8). The engine
+// confirmed by the person, or chosen by the person (gate ANY-COMPOSITION, Thom, Oct 8). The engine
 // chooses and changes no weight here. It splits the amount by the weights to the cent and states, from
 // the same world `compose` reads, what the plan's card says, how much each asset's exit allows, and
 // whether the asset list puts each asset in a plan for the goal. Whoever calls it decides what a

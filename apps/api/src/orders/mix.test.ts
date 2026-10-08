@@ -26,7 +26,7 @@ import {
 } from './mix';
 import { prepareOrder } from './prepare';
 
-// Gate MIX-ANY-COMPOSITION (Thom, Oct 8): any composition of listed assets is checked again by the
+// Gate ANY-COMPOSITION (Thom, Oct 8): any composition of listed assets is checked again by the
 // server, warned about where it goes past an exit or a goal, stored as a plan the buy takes unchanged,
 // or ordered onto a vault the person owns.
 

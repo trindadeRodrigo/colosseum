@@ -67,7 +67,7 @@ export const REASON_TEMPLATES = {
     'To hold {sleeveBps|pct} of the plan in stocks and crypto, the plan uses the limits for {risk|risk}: at most {stockCapBps|pct} in one stock or crypto asset, and {issuerCapBps|pct} with one issuer.',
     'Para ter {sleeveBps|pct} do plano em ações e cripto, o plano usa os limites de {risk|risk}: no máximo {stockCapBps|pct} em uma só ação ou cripto, e {issuerCapBps|pct} com um só emissor.',
   ),
-  // A mix whose weights were chosen outside the engine (gate MIX-ANY-COMPOSITION, Oct 8): what each
+  // A mix whose weights were chosen outside the engine (gate ANY-COMPOSITION, Oct 8): what each
   // line says, and what the person is warned of and confirms before it is bought or applied.
   MIX_FROM_MODEL: rule(
     ['mix'],

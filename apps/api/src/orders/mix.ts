@@ -34,7 +34,7 @@ import { type PlanInputs, preparePersonalInputs } from './personalize';
 import { expectedOf, ORDER_POLICY } from './prepare';
 
 // A mix taken from the conversation, or chosen by the person, made into something that can be bought
-// (gate MIX-ANY-COMPOSITION, Thom, Oct 8). Any composition of the chain's listed assets: each once,
+// (gate ANY-COMPOSITION, Thom, Oct 8). Any composition of the chain's listed assets: each once,
 // whole basis points, 16 at most, and the chain's cash token for the rest, all adding up to exactly
 // 10,000. The client sends the lines back and they are checked again here against the chain as it is
 // now. What used to keep a line out (an exit ceiling, the asset list's cap, a stock in an income or
