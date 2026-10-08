@@ -106,7 +106,7 @@ Four rules, which the code after you also enforces:
 
 Shapes, so the code knows what to do next: "pick" for named things, equal split and done; "grow", "income" or "protect" when the words call for it, then the solver sizes the lines on the parameter table; "split" when they want part safe and part risky, one vault per pot. A plan to protect or to pay income holds no stock tokens; pick yield rows, Treasury funds and gold for those.
 
-Answer every turn with one JSON object and nothing else:
+Every turn you answer with this object (the API holds you to its schema):
 {
   "say": the message the person reads. Your words, your reasoning, your questions. One short paragraph, or two when there is a lot to say. Mention the holdings by name, not by id. Do not list weights or repeat the table; the code prints the lines under your message.
   "shape": "pick" | "grow" | "income" | "protect" | "split",
@@ -121,6 +121,49 @@ Today is ${new Date().toISOString().slice(0, 10)}.
 
 TABLE
 ${shelfText}`;
+
+
+// The JSON schema the API holds the model to (structured outputs, output_config.format), the same way
+// apps/api/src/llm.ts does for the guided intake. Every field present, null where unused.
+const nul = (t: object) => ({ anyOf: [t, { type: 'null' }] });
+const LINE = { type: 'object', additionalProperties: false, required: ['id', 'why'], properties: { id: { type: 'string' }, why: { type: 'string' } } };
+const REPLY_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['say', 'shape', 'lines', 'buckets', 'stated', 'not_available', 'open'],
+  properties: {
+    say: { type: 'string' },
+    shape: { type: 'string', enum: ['pick', 'grow', 'income', 'protect', 'split'] },
+    lines: { type: 'array', items: LINE },
+    buckets: nul({
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'share', 'lines'],
+        properties: { name: { type: 'string' }, share: nul({ type: 'number' }), lines: { type: 'array', items: LINE } },
+      },
+    }),
+    stated: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['amount', 'currency', 'when', 'monthly', 'weights', 'risk'],
+      properties: {
+        amount: nul({ type: 'number' }),
+        currency: nul({ type: 'string' }),
+        when: nul({ type: 'string' }),
+        monthly: nul({ type: 'number' }),
+        weights: nul({ type: 'string' }),
+        risk: nul({ type: 'string', enum: ['low', 'medium', 'high'] }),
+      },
+    },
+    not_available: {
+      type: 'array',
+      items: { type: 'object', additionalProperties: false, required: ['name', 'why'], properties: { name: { type: 'string' }, why: nul({ type: 'string' }) } },
+    },
+    open: { type: 'array', items: { type: 'string', enum: ['amount', 'when', 'monthly', 'shares'] } },
+  },
+} as const;
 
 // ---------- 3. The reply, checked by zod; ids checked against the table ----------
 
@@ -175,16 +218,21 @@ async function ask(turns: Turn[]): Promise<{ reply: unknown; provenance: 'live' 
     headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({
       model: process.env.RELAXED_MODEL ?? 'claude-sonnet-5-5',
-      max_tokens: 2000,
+      max_tokens: 4000,
       system: SYSTEM,
       messages: turns,
+      output_config: { format: { type: 'json_schema', schema: REPLY_SCHEMA }, effort: 'medium' },
     }),
     signal: AbortSignal.timeout(20_000),
   });
   if (!res.ok) { console.error(`model call failed: ${res.status} ${(await res.text()).slice(0, 300)}`); process.exit(1); }
-  const body = (await res.json()) as { content: { type: string; text?: string }[] };
-  const raw = body.content.map((c) => (c.type === 'text' ? c.text ?? '' : '')).join('').trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
-  const reply = JSON.parse(raw);
+  const body = (await res.json()) as { content: { type: string; text?: string }[]; stop_reason?: string; stop_details?: { explanation?: string } | null };
+  if (body.stop_reason === 'refusal') { console.error(`the model declined: ${body.stop_details?.explanation ?? ''}`); process.exit(1); }
+  if (body.stop_reason === 'max_tokens') { console.error('the model ran out of room; try again with a shorter message'); process.exit(1); }
+  const raw = body.content.map((c) => (c.type === 'text' ? (c.text ?? '') : '')).join('').trim();
+  const json = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1);
+  let reply: unknown;
+  try { reply = JSON.parse(json); } catch { console.error(`the model did not answer in JSON:\n${raw.slice(0, 400)}`); process.exit(1); }
   if (record && turns.length === 1) {
     recorded[key] = reply;
     recorded.provenance = 'live-recorded';
