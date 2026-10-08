@@ -5,7 +5,7 @@ import { exampleDraft } from '../goal/examples';
 import { preRead, type Words } from '../goal/pre-read';
 import { type ReadFailure, ReadGoalError, readGoal } from '../goal/read-goal';
 import { checkSheet, fieldsOfDraft, parseNumber, type SheetFields } from '../goal/sheet';
-import type { HeldMix, HeldTheme, IntakeAnswers } from './intake';
+import type { HeldMix, HeldTheme, IntakeAnswers, PendingInterest, QuestionOrigin } from './intake';
 
 // The conversation of the Invest screen, behind one small interface (gate INVEST-TWO-PANE): a person
 // sends words or an answer, and gets back the sheet so far, what is still open, and what to say next.
@@ -45,6 +45,11 @@ export type Sheet = {
  * they are asked for again.
  */
 export type IntakeState = {
+  pendingInterest?: PendingInterest | null;
+  questionThen?: QuestionOrigin[];
+  questionOrigin?: QuestionOrigin;
+  /** A resolved interest needs the actual read-back confirmed before funding. */
+  interestReview?: boolean;
   answers: IntakeAnswers;
   /** The answers as they stood when each later message was sent, one for each. */
   answersThen: IntakeAnswers[];
@@ -242,6 +247,10 @@ export function withPersonWord(sheet: Sheet, text: string): Sheet {
       ? {
           intake: {
             ...sheet.intake,
+            questionThen: [
+              ...words.slice(1).map((_, i) => sheet.intake?.questionThen?.[i] ?? null),
+              sheet.intake.questionOrigin ?? null,
+            ],
             answersThen: [
               ...words.slice(1).map((_, i) => sheet.intake?.answersThen[i] ?? {}),
               { ...sheet.intake.answers },
@@ -509,7 +518,7 @@ export function typedAnswer(fact: Fact, text: string, lang: Lang): string | null
 
 /** The sheet as the API takes it, once every fact is known and it is valid for the chain; else null. */
 export function validOf(sheet: Sheet, chain: ChainId | null): BasketSheet | null {
-  if (sheet.allocation) return null;
+  if (sheet.allocation || sheet.intake?.pendingInterest) return null;
   // Read by the guided intake: the sheet is our server's, sent back as it came, on the person's chain.
   if (sheet.intake)
     return sheet.intake.sheet && chain && sheet.intake.sheet.chains[0] === chain

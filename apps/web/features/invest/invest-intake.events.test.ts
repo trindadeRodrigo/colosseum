@@ -29,6 +29,13 @@ vi.mock('../order/Invest', () => ({
 // its sheet, as it came, only once the person says so.
 
 const en = dictionary('en');
+/** Exact expected wire, including the additive capability and chronological question origins. */
+function wire(body: Record<string, unknown> | Record<string, unknown>[]): unknown {
+  if (Array.isArray(body)) return body.map((entry) => wire(entry));
+  const later = (body.followUps ?? []) as string[];
+  return { dialogueVersion: 1, questionThen: later.map(() => null), ...body };
+}
+
 const USER = 'did:privy:test';
 type Call = { path: string; body?: Record<string, unknown> };
 
@@ -53,10 +60,14 @@ function served(o: { intake?: number; me?: number }, ...answers: unknown[]) {
     calls.push({ path, body });
     if (path === '/v1/me') return o.me ? json({}, o.me) : json(person);
     if (path === '/goals') return json(READ_IN_DOLLARS);
-    if (path === INTAKE_PATH)
+    if (path === INTAKE_PATH) {
+      const next = answers[Math.min(at++, answers.length - 1)];
       return o.intake
         ? json({ error: 'Route not found' }, o.intake)
-        : json(answers[Math.min(at++, answers.length - 1)]);
+        : typeof next === 'function'
+          ? next()
+          : json(next);
+    }
     if (path === PERSONALIZE_PATH || path === PROPOSE_PATH)
       return json({ id: 'plan-1', proposal: proposalFor((body as { sheet: BasketSheet }).sheet) });
     return json({ error: 'not found' }, 404);
@@ -128,6 +139,278 @@ beforeEach(() => {
 afterEach(unmountAll);
 
 describe('signed in: the guided intake reads the conversation', () => {
+  it.each([
+    [
+      'en',
+      'i like elon',
+      'When you say “i like elon”, is there a business or industry you want this plan to reflect? Tell me which one.',
+      'I want to invest in electric vehicle businesses',
+    ],
+    [
+      'pt',
+      'eu gosto do elon',
+      'Quando você diz “eu gosto do elon”, há um negócio ou setor que você quer refletir neste plano? Diga qual.',
+      'Quero investir em negócios de veículos elétricos',
+    ],
+  ] as const)(
+    'keeps a contextual interest question unresolved through reload and resumes normal intake only after explicit business intent (%s)',
+    async (lang, text, contextual, business) => {
+      const interest = {
+        ...answer({
+          questions: [
+            {
+              field: 'themes',
+              template: 'interestClarification',
+              text: contextual,
+              options: [lang === 'en' ? 'Ignore that interest.' : 'Ignore esse interesse.'],
+            },
+          ],
+        }),
+        language: lang,
+      };
+      const server = api(interest, interest, {
+        ...answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT] }),
+        language: lang,
+      });
+      let host = await screen(lang);
+      await say(host, text);
+      expect(question(host)).toBe(contextual);
+      expect(replies(host)).toEqual([
+        lang === 'en' ? 'Ignore that interest.' : 'Ignore esse interesse.',
+      ]);
+      expect(host.querySelector('[data-ui="pane-facts"]')).toBeNull();
+      expect(host.querySelector('[data-ui="plan-pane"]')).toBeNull();
+      expect(host.querySelector('[data-ui="invest-card"]')).toBeNull();
+      expect(turns(host).join(' ')).not.toMatch(/Tesla|TSLA|NVDA/);
+      expect(server.to(PERSONALIZE_PATH)).toEqual([]);
+      expect(server.to(PROPOSE_PATH)).toEqual([]);
+      const restored = restoreDraft(window.sessionStorage.getItem(GOAL_DRAFT));
+      expect(restored?.sheet.words).toEqual([text]);
+      expect(restored?.sheet.intake?.sheet).toBeNull();
+      expect(restored?.sheet.intake?.question).toBeNull();
+      await unmountAll();
+      host = await screen(lang);
+      expect(question(host)).toBe(contextual);
+      expect(replies(host)).toEqual([
+        lang === 'en' ? 'Ignore that interest.' : 'Ignore esse interesse.',
+      ]);
+      expect(server.to(PERSONALIZE_PATH)).toEqual([]);
+      await say(host, business);
+      expect(question(host)).toBe(ASK_AMOUNT.text);
+      expect(server.to(INTAKE_PATH).at(-1)?.body).toEqual(
+        wire({
+          text,
+          language: lang,
+          followUps: [business],
+          questionThen: ['interestClarification'],
+          answersThen: [{}],
+        }),
+      );
+      expect(server.to(PERSONALIZE_PATH)).toEqual([]);
+      expect(host.querySelector('[data-ui="invest-card"]')).toBeNull();
+    },
+  );
+
+  it.each(['en', 'pt'] as const)(
+    'keeps old funding paused through contextual yes, reader failure, legacy reply and reload, then confirms actual resolved terms (%s)',
+    async (lang) => {
+      const t = dictionary(lang);
+      const initial = 'Grow $2000 for five years at high risk';
+      const words = lang === 'en' ? 'i like elon' : 'eu gosto do elon';
+      const marker = { quote: words, sourceTurn: 1 };
+      const contextual = {
+        field: 'themes',
+        template: 'interestClarification',
+        text:
+          lang === 'en'
+            ? 'Which business do you want this plan to reflect?'
+            : 'Qual negócio você quer refletir neste plano?',
+      };
+      const server = api(
+        { ...answer({ sheet: SHEET, readBack: READ_BACK }), pendingInterest: null },
+        { ...answer({ draft: SHEET, questions: [contextual] }), pendingInterest: marker },
+        () => json({}, 500),
+        answer({ sheet: SHEET, readBack: READ_BACK }), // legacy cannot discharge a marker
+        answer({ sheet: SHEET, readBack: READ_BACK }), // another yes must keep its contextual origin
+        { ...answer({ draft: SHEET, questions: [contextual] }), pendingInterest: marker },
+        {
+          ...answer({
+            sheet: { ...SHEET, amountUsd: 3000 },
+            readBack: ['Grow $3000 for five years at high risk.'],
+          }),
+          pendingInterest: null,
+        },
+      );
+      let host = await screen(lang);
+      await say(host, initial);
+      await click(reply(host, t.talk.replies.build));
+      await settle();
+      expect(host.querySelector('[data-ui="invest-card"]')).not.toBeNull();
+      await say(host, words);
+      await say(host, lang === 'en' ? 'yes' : 'sim');
+      expect(host.querySelector('[data-ui="invest-card"]')).toBeNull();
+      expect(host.querySelector('[data-ui="pane-stale"]')).not.toBeNull();
+      expect(replies(host)).not.toContain(t.talk.replies.build);
+      expect(server.to(INTAKE_PATH).at(-1)?.body).toMatchObject({
+        dialogueVersion: 1,
+        pendingInterest: marker,
+        followUps: [words, lang === 'en' ? 'yes' : 'sim'],
+        questionThen: [null, 'interestClarification'],
+        answersThen: [{}, {}],
+      });
+      await say(host, lang === 'en' ? 'thanks' : 'obrigado');
+      expect(host.querySelector('[data-ui="invest-card"]')).toBeNull();
+      await say(host, lang === 'en' ? 'yes' : 'sim');
+      expect(host.querySelector('[data-ui="invest-card"]')).toBeNull();
+      expect(server.to(INTAKE_PATH).at(-1)?.body).toMatchObject({
+        questionThen: [
+          null,
+          'interestClarification',
+          'interestClarification',
+          'interestClarification',
+        ],
+      });
+      const stored = sessionStorage.getItem(GOAL_DRAFT);
+      const restored = restoreDraft(stored);
+      expect(restored?.sheet.intake?.pendingInterest).toEqual(marker);
+      expect(restored?.sheet.intake?.questionThen).toEqual([
+        null,
+        'interestClarification',
+        'interestClarification',
+        'interestClarification',
+      ]);
+      expect(restored?.sheet.intake?.sheet).toBeNull();
+      expect(restored?.sheet.intake?.question).toBeNull();
+      await unmountAll();
+      host = await screen(lang);
+      expect(host.querySelector('[data-ui="invest-card"]')).toBeNull();
+      expect(server.to(PERSONALIZE_PATH)).toHaveLength(1);
+      expect(server.to(INTAKE_PATH).at(-1)?.body).toMatchObject({
+        pendingInterest: marker,
+        followUps: [
+          words,
+          lang === 'en' ? 'yes' : 'sim',
+          lang === 'en' ? 'thanks' : 'obrigado',
+          lang === 'en' ? 'yes' : 'sim',
+        ],
+        questionThen: [
+          null,
+          'interestClarification',
+          'interestClarification',
+          'interestClarification',
+        ],
+      });
+      await say(host, 'Grow $3000 for five years at high risk in electric vehicle businesses');
+      expect(replies(host)).toContain(t.talk.replies.build);
+      expect(host.querySelector('[data-ui="invest-card"]')).toBeNull();
+      await click(reply(host, t.talk.replies.build));
+      await settle();
+      expect(server.to(PERSONALIZE_PATH)).toHaveLength(2);
+      expect(server.to(PERSONALIZE_PATH).at(-1)?.body).toEqual({
+        sheet: { ...SHEET, amountUsd: 3000 },
+      });
+      expect(host.querySelector('[data-ui="invest-card"]')).not.toBeNull();
+      expect(server.to('/goals')).toEqual([]);
+      expect(server.calls.some((call) => /\/orders|\/transactions/.test(call.path))).toBe(false);
+    },
+  );
+
+  it.each(['en', 'pt'] as const)(
+    'lets the person ignore the interest even when the model is unavailable, then confirms the actual unchanged read-back (%s)',
+    async (lang) => {
+      const t = dictionary(lang);
+      const words = lang === 'en' ? 'i like elon' : 'eu gosto do elon';
+      const ignore = lang === 'en' ? 'Ignore that interest.' : 'Ignore esse interesse.';
+      const marker = { quote: words, sourceTurn: 1 };
+      const server = api(
+        { ...answer({ sheet: SHEET, readBack: READ_BACK }), pendingInterest: null },
+        {
+          ...answer({
+            questions: [
+              {
+                field: 'themes',
+                template: 'interestClarification',
+                text: 'Which business?',
+                options: [ignore],
+              },
+            ],
+          }),
+          pendingInterest: marker,
+        },
+        {
+          ...answer({ method: 'rules', sheet: SHEET, readBack: READ_BACK }),
+          pendingInterest: null,
+        },
+      );
+      const host = await screen(lang);
+      await say(host, 'Grow $2000 for five years at high risk');
+      await click(reply(host, t.talk.replies.build));
+      await settle();
+      await say(host, words);
+      expect(host.querySelector('[data-ui="invest-card"]')).toBeNull();
+      await click(reply(host, ignore));
+      await settle();
+      expect(server.to(INTAKE_PATH).at(-1)?.body).toMatchObject({
+        pendingInterest: marker,
+        followUps: [words, ignore],
+        questionThen: [null, 'interestClarification'],
+        answersThen: [{}, {}],
+      });
+      expect(replies(host)).toContain(t.talk.replies.build);
+      expect(host.querySelector('[data-ui="invest-card"]')).toBeNull();
+      expect(server.to(PERSONALIZE_PATH)).toHaveLength(1);
+      await click(reply(host, t.talk.replies.build));
+      await settle();
+      expect(server.to(PERSONALIZE_PATH).at(-1)?.body).toEqual({ sheet: SHEET });
+      expect(server.to(PERSONALIZE_PATH)).toHaveLength(2);
+      expect(host.querySelector('[data-ui="invest-card"]')).not.toBeNull();
+    },
+  );
+
+  it('holds an already built plan while a server interest question has no validated sheet', async () => {
+    const interest = {
+      field: 'themes',
+      template: 'interestClarification',
+      text: 'When you say “i like elon”, is there a business or industry you want this plan to reflect? Tell me which one.',
+    };
+    const server = api(
+      answer({ sheet: SHEET, readBack: READ_BACK }),
+      answer({ questions: [interest] }),
+      answer({
+        sheet: { ...SHEET, amountUsd: 3000 },
+        readBack: ['Grow $3000 for five years, at high risk.'],
+      }),
+    );
+    const host = await screen();
+    await say(host, 'Grow $2000 for five years at high risk');
+    await click(reply(host, en.talk.replies.build));
+    await settle();
+    expect(host.querySelector('[data-ui="invest-card"]')).not.toBeNull();
+    await say(host, 'i like elon');
+    expect(question(host)).toBe(interest.text);
+    expect(host.querySelector('[data-ui="invest-card"]')).toBeNull();
+    expect(host.querySelector('[data-ui="pane-stale"]')).not.toBeNull();
+    expect(replies(host)).not.toContain(en.talk.replies.build);
+    expect(server.to(PERSONALIZE_PATH)).toHaveLength(1);
+    await say(
+      host,
+      'I want to invest $3000 in electric vehicle businesses for five years at high risk',
+    );
+    expect(turns(host).at(-1)).not.toContain(interest.text);
+    expect(replies(host)).toContain(en.talk.replies.build);
+    expect(host.querySelector('[data-ui="invest-card"]')).toBeNull();
+    expect(server.to(PERSONALIZE_PATH)).toHaveLength(1);
+    await click(reply(host, en.talk.replies.build));
+    await settle();
+    expect(server.to(PERSONALIZE_PATH).at(-1)?.body).toEqual({
+      sheet: { ...SHEET, amountUsd: 3000 },
+    });
+    expect(server.to(PERSONALIZE_PATH)).toHaveLength(2);
+    expect(host.querySelector('[data-ui="invest-card"]')).not.toBeNull();
+    expect(host.querySelector('[data-ui="pane-stale"]')).toBeNull();
+    expect(server.calls.some((c) => /\/orders|\/transactions/.test(c.path))).toBe(false);
+  });
+
   it.each(['en', 'pt'] as const)(
     'pauses old income funding before an allocation amendment is read, keeps its bound unresolved through growth, and requires confirmation after withdrawal (%s)',
     async (lang) => {
@@ -269,10 +552,12 @@ describe('signed in: the guided intake reads the conversation', () => {
     await say(host, 'I want to grow my savings, 30% in AI');
     // the reader is our server's intake, not the rules reader
     expect(server.to('/goals')).toEqual([]);
-    expect(server.to(INTAKE_PATH)[0]?.body).toEqual({
-      text: 'I want to grow my savings, 30% in AI',
-      language: 'en',
-    });
+    expect(server.to(INTAKE_PATH)[0]?.body).toEqual(
+      wire({
+        text: 'I want to grow my savings, 30% in AI',
+        language: 'en',
+      }),
+    );
     // one question, the first, as the server wrote it
     expect(question(host)).toBe(ASK_AMOUNT.text);
     expect(host.textContent).not.toContain(ASK_RISK.text);
@@ -552,7 +837,7 @@ describe('what Thom’s conversation of Oct 7 showed', () => {
     expect(server.to(INTAKE_PATH)).toHaveLength(1);
     // a new conversation starts from nothing: no earlier message is sent with it
     await say(host, 'Protect $500');
-    expect(server.to(INTAKE_PATH)[1]?.body).toEqual({ text: 'Protect $500', language: 'en' });
+    expect(server.to(INTAKE_PATH)[1]?.body).toEqual(wire({ text: 'Protect $500', language: 'en' }));
     await click(find(host, '[data-ui="invest-start-over"] button'));
     await settle();
     expect(turns(host)).toEqual([]);
@@ -598,7 +883,7 @@ describe('signed out: the rules reader', () => {
     const server = served({ me: 401 }, answer({ sheet: SHEET, readBack: ['x'] }));
     const host = await screen();
     await say(host, 'Forty thousand for an apartment');
-    expect(server.to(INTAKE_PATH)).toEqual([]);
+    expect(server.to(INTAKE_PATH)).toEqual(wire([]));
     expect(server.to('/goals')).toHaveLength(1);
     expect(question(host)).toBe(en.talk.ask.goal);
   });

@@ -57,7 +57,7 @@ import {
   withPersonWord,
 } from './conversation';
 import { takeWay } from './handoff';
-import { type HeldMix, IntakeAnswers } from './intake';
+import { type HeldMix, IntakeAnswers, pendingInterestOf } from './intake';
 import { intakeConversation } from './intake-conversation';
 import { wayChange } from './ways';
 
@@ -261,7 +261,7 @@ export function InvestScreen() {
 
   /** Builds the plan of a valid sheet: the person's own when signed in, a visitor's otherwise. */
   async function buildFrom(sheetToBuild: BasketSheet, own: boolean, quiet = false) {
-    if (sheet?.allocation) return;
+    if (sheet?.allocation || sheet?.intake?.pendingInterest) return;
     wanted.current += 1;
     const mine = wanted.current;
     // A chain our server has switched off: nothing is built there, and it is said.
@@ -404,6 +404,11 @@ export function InvestScreen() {
         ? [...(from?.words ?? []), input.text.trim()].slice(-MAX_WORDS)
         : null;
     setSheet(kept ? { ...reply.sheet, words: kept } : reply.sheet);
+    if (reply.sheet.intake?.pendingInterest || reply.sheet.intake?.interestReview) {
+      wanted.current += 1;
+      setPicked(null);
+      setConfirmed(false);
+    }
     // The limits on the page are no longer the ones a plan was built for.
     if (changed) wanted.current += 1;
     if (!reply.valid) setBuild({ kind: 'idle' });
@@ -455,6 +460,14 @@ export function InvestScreen() {
     if (!valid) return;
     said(words);
     setConfirmed(true);
+    setSheet((current) =>
+      current?.intake
+        ? {
+            ...current,
+            intake: { ...current.intake, interestReview: false },
+          }
+        : current,
+    );
     void buildFrom(valid, signedIn);
   }
 
@@ -530,8 +543,8 @@ export function InvestScreen() {
       if (
         kept.turns.some((turn) => turn.who === 'app' && turn.say.some((x) => x.key === 'built'))
       ) {
-        setConfirmed(true);
-        again.current = true;
+        setConfirmed(!kept.sheet.intake?.pendingInterest && !kept.sheet.intake?.interestReview);
+        again.current = !kept.sheet.intake?.pendingInterest && !kept.sheet.intake?.interestReview;
       }
       // What our server said of the conversation is never read back from the tab: it is asked again.
       replay.current = kept.sheet.intake !== undefined;
@@ -551,6 +564,14 @@ export function InvestScreen() {
       .then((reply) => {
         if (!mine || !readingNow(run)) return;
         setSheet(reply.sheet);
+        if (
+          sheet.intake?.pendingInterest ||
+          reply.sheet.intake?.pendingInterest ||
+          reply.sheet.intake?.interestReview
+        ) {
+          again.current = false;
+          setConfirmed(false);
+        }
         say({
           say: reply.say,
           fields: reply.sheet.fields,
@@ -579,7 +600,16 @@ export function InvestScreen() {
   const again = useRef(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: once, when the kept sheet is valid for the chain
   useEffect(() => {
-    if (!again.current || !valid || sheet?.allocation || built || build.kind !== 'idle') return;
+    if (
+      !again.current ||
+      !valid ||
+      sheet?.allocation ||
+      sheet?.intake?.pendingInterest ||
+      sheet?.intake?.interestReview ||
+      built ||
+      build.kind !== 'idle'
+    )
+      return;
     again.current = false;
     void buildFrom(valid, signedIn, true);
   }, [valid]);
@@ -712,7 +742,11 @@ export function InvestScreen() {
   // The plans on the pane were made from another sheet than the one that is held now.
   const pending =
     built !== null && valid !== null && JSON.stringify(valid) !== JSON.stringify(built.sheet);
-  const toConfirm = !sheet?.allocation && valid !== null && !confirmed && (!built || pending);
+  const toConfirm =
+    !sheet?.allocation &&
+    valid !== null &&
+    !confirmed &&
+    (!built || pending || sheet?.intake?.interestReview === true);
   const fields = sheet?.fields ?? null;
   const planChain = built?.one.proposal.sheet.chains[0] ?? chain;
   const chainName = planChain ? t.chain.names[planChain] : '';
@@ -731,7 +765,14 @@ export function InvestScreen() {
   // built again. It is not invested in, by the card or by a button that names its old amount.
   const stale =
     built !== null &&
-    (build.kind === 'building' || asking !== null || pending || sheet?.allocation !== undefined);
+    (reading ||
+      build.kind === 'building' ||
+      asking !== null ||
+      open?.question != null ||
+      pending ||
+      sheet?.allocation !== undefined ||
+      sheet?.intake?.pendingInterest != null ||
+      (sheet?.intake?.interestReview === true && !confirmed));
   const canInvest = plan?.own === true && signedIn && blocked === null && !stale;
   // The pane's states: nothing yet; the goal as facts; the candidates side by side, none picked; the
   // plan that was picked; and that plan with its invest card.
@@ -1628,6 +1669,13 @@ export function restoreDraft(raw: string | null): { turns: Turn[]; sheet: Sheet 
   // Only this person-origin answer survives; a server's mix/sheet/read-back does not. Null is the
   // person's explicit "none", distinct from not having pressed an allocation answer.
   const held = heldMixOfDraft(state?.held);
+  const pendingInterest = pendingInterestOf(state?.pendingInterest, said);
+  const origins =
+    Array.isArray(state?.questionThen) &&
+    state.questionThen.length === Math.max(0, said.length - 1) &&
+    state.questionThen.every((origin) => origin === null || origin === 'interestClarification')
+      ? (state.questionThen as (null | 'interestClarification')[])
+      : undefined;
   const keptThrough = (sheet as Record<string, unknown>).allocationKeptThrough;
   const resolved =
     typeof keptThrough === 'number' &&
@@ -1668,6 +1716,13 @@ export function restoreDraft(raw: string | null): { turns: Turn[]; sheet: Sheet 
       ...(answers?.success && then?.success && said.length > 0
         ? {
             intake: {
+              ...(pendingInterest
+                ? { pendingInterest, questionOrigin: 'interestClarification' as const }
+                : {}),
+              ...(origins ? { questionThen: origins } : {}),
+              ...(state?.interestReview === true && origins?.includes('interestClarification')
+                ? { interestReview: true }
+                : {}),
               answers: answers.data,
               answersThen: then.data.slice(0, MAX_WORDS),
               ...(held !== undefined ? { held } : {}),

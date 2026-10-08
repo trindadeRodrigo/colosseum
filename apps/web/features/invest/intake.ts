@@ -132,7 +132,30 @@ function narrativeOf(v: unknown): Narrative | null {
 /** A theme the plan holds: its name as the server says it, and its share where it is a sleeve. */
 export type HeldTheme = { name: string; shareBps: number | null };
 
+export type PendingInterest = { quote: string; sourceTurn: number };
+export type QuestionOrigin = 'interestClarification' | null;
+
+/** Conservative origin only: never executable facts or cached server prose. */
+export function pendingInterestOf(
+  value: unknown,
+  words: readonly string[],
+): PendingInterest | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { quote, sourceTurn } = value as Record<string, unknown>;
+  return typeof quote === 'string' &&
+    quote.trim() !== '' &&
+    quote.length <= 160 &&
+    typeof sourceTurn === 'number' &&
+    Number.isInteger(sourceTurn) &&
+    sourceTurn >= 0 &&
+    words[sourceTurn]?.includes(quote)
+    ? { quote, sourceTurn }
+    : null;
+}
+
 export type IntakeReading = {
+  /** Absence is a legacy response, never an acknowledgement that pending interest is resolved. */
+  pendingInterest?: PendingInterest | null;
   reader: { method: 'model' | 'rules'; why: string | null };
   language: Language;
   /** What the text says after the server's checks: every field null that it does not say. */
@@ -162,9 +185,11 @@ function themesOf(narratives: Narrative[], sheet: BasketSheet | null): HeldTheme
 }
 
 /** The route's answer, the parts the screen reads; null when it is not in that shape. */
-function answerOf(body: unknown): IntakeReading | null {
+function answerOf(body: unknown, words: readonly string[]): IntakeReading | null {
   if (typeof body !== 'object' || body === null) return null;
   const a = body as Record<string, unknown>;
+  const pending = a.pendingInterest === null ? null : pendingInterestOf(a.pendingInterest, words);
+  if (a.pendingInterest !== undefined && a.pendingInterest !== null && !pending) return null;
   const reader = (a.reader ?? null) as Record<string, unknown> | null;
   if (!reader || (reader.method !== 'model' && reader.method !== 'rules')) return null;
   const language = Language.safeParse(a.language);
@@ -186,6 +211,7 @@ function answerOf(body: unknown): IntakeReading | null {
   const whole = sheet !== null && questions.length === 0 && readBack !== null;
   const confirmed = whole ? (sheet.data as BasketSheet) : null;
   return {
+    ...(a.pendingInterest !== undefined ? { pendingInterest: pending } : {}),
     reader: { method: reader.method, why: isText(reader.why) ? reader.why : null },
     language: language.data,
     draft: draft.data,
@@ -213,6 +239,8 @@ export type IntakeOutcome =
   | { kind: 'unreadable' };
 
 export type IntakeRequest = {
+  pendingInterest?: PendingInterest | null;
+  questionThen?: QuestionOrigin[];
   text: string;
   language: Language;
   followUps: string[];
@@ -241,6 +269,17 @@ export async function readIntake(apiFetch: ApiFetch, ask: IntakeRequest): Promis
     (ask.mix !== undefined && held === undefined)
   )
     return { kind: 'refused' };
+  if (
+    ask.pendingInterest != null &&
+    !pendingInterestOf(ask.pendingInterest, [text, ...ask.followUps])
+  )
+    return { kind: 'refused' };
+  if (
+    ask.questionThen !== undefined &&
+    (ask.questionThen.length !== ask.followUps.length ||
+      ask.questionThen.some((origin) => origin !== null && origin !== 'interestClarification'))
+  )
+    return { kind: 'refused' };
   let res: Response;
   try {
     res = await apiFetch(INTAKE_PATH, {
@@ -248,6 +287,9 @@ export async function readIntake(apiFetch: ApiFetch, ask: IntakeRequest): Promis
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         text,
+        dialogueVersion: 1,
+        ...(ask.pendingInterest !== undefined ? { pendingInterest: ask.pendingInterest } : {}),
+        ...(ask.questionThen !== undefined ? { questionThen: ask.questionThen } : {}),
         language: ask.language,
         ...(ask.followUps.length > 0 ? { followUps: ask.followUps, answersThen: then.data } : {}),
         ...(Object.keys(answers.data).length > 0 || held !== undefined
@@ -271,6 +313,6 @@ export async function readIntake(apiFetch: ApiFetch, ask: IntakeRequest): Promis
   if (res.status === 401 || res.status === 403) return { kind: 'signed-out' };
   if (res.status >= 400 && res.status < 500) return { kind: 'refused' };
   if (!res.ok) return { kind: 'unreachable' };
-  const reading = answerOf(await res.json().catch(() => null));
+  const reading = answerOf(await res.json().catch(() => null), [text, ...ask.followUps]);
   return reading ? { kind: 'read', reading } : { kind: 'unreadable' };
 }
