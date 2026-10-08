@@ -2,6 +2,7 @@ import {
   ChainError,
   type ChainId,
   chainFamily,
+  type Network,
   normalizeAddress,
   type Principal,
   type Provenance,
@@ -15,6 +16,7 @@ export type ConversationIdentity = {
   chain: ChainId;
   address: string;
   provenance: Provenance;
+  network: Network;
 };
 
 export type OwnedConversationVault = {
@@ -71,7 +73,13 @@ export async function resolveVaultConversationOwner(
   }
   if (actual !== address) throw missing();
   return {
-    identity: { privyId: principal.userId, chain, address, provenance: entry.provenance },
+    identity: {
+      privyId: principal.userId,
+      chain,
+      address,
+      provenance: entry.provenance,
+      network: entry.config.network,
+    },
     state,
     entry,
   };

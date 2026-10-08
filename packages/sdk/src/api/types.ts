@@ -375,6 +375,67 @@ export type PostBasketsPersonalizeBody = {
       creditBps?: number;
     };
   };
+  thread?: {
+    text: string;
+    reply: {
+      say: (
+        | {
+            key: 'understood';
+          }
+        | {
+            key: 'notUnderstood';
+          }
+        | {
+            key: 'held';
+          }
+        | {
+            key: 'set';
+            fact: 'goal' | 'amount' | 'income' | 'horizon' | 'risk';
+          }
+        | {
+            key: 'failed';
+            why: 'too_short' | 'too_long' | 'busy' | 'unreachable' | 'unreadable';
+          }
+        | {
+            key: 'unfit';
+            fact: 'goal' | 'amount' | 'income' | 'horizon' | 'risk';
+          }
+        | {
+            key: 'cantPick';
+            pick:
+              | 'nvidia'
+              | 'apple'
+              | 'tesla'
+              | 'microsoft'
+              | 'amazon'
+              | 'google'
+              | 'meta'
+              | 'bitcoin'
+              | 'ether';
+          }
+        | {
+            key: 'riskTop';
+          }
+        | {
+            key: 'riskBottom';
+          }
+        | {
+            key: 'ready';
+          }
+      )[];
+      ask: ('goal' | 'amount' | 'income' | 'horizon' | 'risk') | null;
+      open: ('goal' | 'amount' | 'income' | 'horizon' | 'risk')[];
+      facts: {
+        goal?: 'grow' | 'income' | 'protect';
+        amountUsd?: number;
+        incomeTargetUsdMonthly?: number | null;
+        horizonMonths?: number;
+        risk?: 'low' | 'medium' | 'high';
+        chain?: 'solana' | 'base' | 'robinhood';
+      };
+    };
+  }[];
+  previousPlanId?: string;
 };
 
 /** POST /v1/baskets/personalize: response. Make a plan from a goal and its limits, and store it. Nothing is bought */
@@ -1330,6 +1391,311 @@ export type GetBasketsByIdResponse = {
     origin?: 'engine' | 'model' | 'person';
   };
   fromLink: boolean;
+};
+
+/** GET /v1/baskets/{id}/thread: params. A plan’s thread: what was asked, what was understood, and what happened since */
+export type GetBasketsByIdThreadParams = {
+  id: string;
+};
+
+/** GET /v1/baskets/{id}/thread: query. A plan’s thread: what was asked, what was understood, and what happened since */
+export type GetBasketsByIdThreadQuery = {
+  limit?: number;
+  before?: string;
+};
+
+/** GET /v1/baskets/{id}/thread: response. A plan’s thread: what was asked, what was understood, and what happened since */
+export type GetBasketsByIdThreadResponse = {
+  planId: string;
+  turns: (
+    | {
+        id: string;
+        at: string;
+        who: 'person';
+        text: string;
+      }
+    | {
+        id: string;
+        at: string;
+        who: 'app';
+        reply: {
+          say: (
+            | {
+                key: 'understood';
+              }
+            | {
+                key: 'notUnderstood';
+              }
+            | {
+                key: 'held';
+              }
+            | {
+                key: 'set';
+                fact: 'goal' | 'amount' | 'income' | 'horizon' | 'risk';
+              }
+            | {
+                key: 'failed';
+                why: 'too_short' | 'too_long' | 'busy' | 'unreachable' | 'unreadable';
+              }
+            | {
+                key: 'unfit';
+                fact: 'goal' | 'amount' | 'income' | 'horizon' | 'risk';
+              }
+            | {
+                key: 'cantPick';
+                pick:
+                  | 'nvidia'
+                  | 'apple'
+                  | 'tesla'
+                  | 'microsoft'
+                  | 'amazon'
+                  | 'google'
+                  | 'meta'
+                  | 'bitcoin'
+                  | 'ether';
+              }
+            | {
+                key: 'riskTop';
+              }
+            | {
+                key: 'riskBottom';
+              }
+            | {
+                key: 'ready';
+              }
+          )[];
+          ask: ('goal' | 'amount' | 'income' | 'horizon' | 'risk') | null;
+          open: ('goal' | 'amount' | 'income' | 'horizon' | 'risk')[];
+          facts: {
+            goal?: 'grow' | 'income' | 'protect';
+            amountUsd?: number;
+            incomeTargetUsdMonthly?: number | null;
+            horizonMonths?: number;
+            risk?: 'low' | 'medium' | 'high';
+            chain?: 'solana' | 'base' | 'robinhood';
+          };
+        };
+      }
+    | {
+        id: string;
+        at: string;
+        who: 'event';
+        event:
+          | {
+              type: 'plan_built';
+              planId: string;
+            }
+          | {
+              type: 'plan_rebuilt';
+              planId: string;
+              previousPlanId: string;
+              changed: string[];
+            }
+          | {
+              type: 'order_made';
+              orderId: string;
+              kind: 'buy' | 'add' | 'finish' | 'withdraw';
+              amountUsd: number | null;
+            }
+          | {
+              type: 'deposit_landed';
+              orderId: string;
+            }
+          | {
+              type: 'buy_done';
+              orderId: string;
+            }
+          | {
+              type: 'buy_stopped';
+              orderId: string;
+            }
+          | {
+              type: 'withdrawal_done';
+              orderId: string;
+            };
+      }
+  )[];
+  before: string | null;
+};
+
+/** POST /v1/baskets/{id}/thread: params. Add a turn to a plan’s thread: the person’s words and what the app said back */
+export type PostBasketsByIdThreadParams = {
+  id: string;
+};
+
+/** POST /v1/baskets/{id}/thread: body. Add a turn to a plan’s thread: the person’s words and what the app said back */
+export type PostBasketsByIdThreadBody = {
+  text: string;
+  reply: {
+    say: (
+      | {
+          key: 'understood';
+        }
+      | {
+          key: 'notUnderstood';
+        }
+      | {
+          key: 'held';
+        }
+      | {
+          key: 'set';
+          fact: 'goal' | 'amount' | 'income' | 'horizon' | 'risk';
+        }
+      | {
+          key: 'failed';
+          why: 'too_short' | 'too_long' | 'busy' | 'unreachable' | 'unreadable';
+        }
+      | {
+          key: 'unfit';
+          fact: 'goal' | 'amount' | 'income' | 'horizon' | 'risk';
+        }
+      | {
+          key: 'cantPick';
+          pick:
+            | 'nvidia'
+            | 'apple'
+            | 'tesla'
+            | 'microsoft'
+            | 'amazon'
+            | 'google'
+            | 'meta'
+            | 'bitcoin'
+            | 'ether';
+        }
+      | {
+          key: 'riskTop';
+        }
+      | {
+          key: 'riskBottom';
+        }
+      | {
+          key: 'ready';
+        }
+    )[];
+    ask: ('goal' | 'amount' | 'income' | 'horizon' | 'risk') | null;
+    open: ('goal' | 'amount' | 'income' | 'horizon' | 'risk')[];
+    facts: {
+      goal?: 'grow' | 'income' | 'protect';
+      amountUsd?: number;
+      incomeTargetUsdMonthly?: number | null;
+      horizonMonths?: number;
+      risk?: 'low' | 'medium' | 'high';
+      chain?: 'solana' | 'base' | 'robinhood';
+    };
+  };
+};
+
+/** POST /v1/baskets/{id}/thread: response. Add a turn to a plan’s thread: the person’s words and what the app said back */
+export type PostBasketsByIdThreadResponse = {
+  planId: string;
+  turns: (
+    | {
+        id: string;
+        at: string;
+        who: 'person';
+        text: string;
+      }
+    | {
+        id: string;
+        at: string;
+        who: 'app';
+        reply: {
+          say: (
+            | {
+                key: 'understood';
+              }
+            | {
+                key: 'notUnderstood';
+              }
+            | {
+                key: 'held';
+              }
+            | {
+                key: 'set';
+                fact: 'goal' | 'amount' | 'income' | 'horizon' | 'risk';
+              }
+            | {
+                key: 'failed';
+                why: 'too_short' | 'too_long' | 'busy' | 'unreachable' | 'unreadable';
+              }
+            | {
+                key: 'unfit';
+                fact: 'goal' | 'amount' | 'income' | 'horizon' | 'risk';
+              }
+            | {
+                key: 'cantPick';
+                pick:
+                  | 'nvidia'
+                  | 'apple'
+                  | 'tesla'
+                  | 'microsoft'
+                  | 'amazon'
+                  | 'google'
+                  | 'meta'
+                  | 'bitcoin'
+                  | 'ether';
+              }
+            | {
+                key: 'riskTop';
+              }
+            | {
+                key: 'riskBottom';
+              }
+            | {
+                key: 'ready';
+              }
+          )[];
+          ask: ('goal' | 'amount' | 'income' | 'horizon' | 'risk') | null;
+          open: ('goal' | 'amount' | 'income' | 'horizon' | 'risk')[];
+          facts: {
+            goal?: 'grow' | 'income' | 'protect';
+            amountUsd?: number;
+            incomeTargetUsdMonthly?: number | null;
+            horizonMonths?: number;
+            risk?: 'low' | 'medium' | 'high';
+            chain?: 'solana' | 'base' | 'robinhood';
+          };
+        };
+      }
+    | {
+        id: string;
+        at: string;
+        who: 'event';
+        event:
+          | {
+              type: 'plan_built';
+              planId: string;
+            }
+          | {
+              type: 'plan_rebuilt';
+              planId: string;
+              previousPlanId: string;
+              changed: string[];
+            }
+          | {
+              type: 'order_made';
+              orderId: string;
+              kind: 'buy' | 'add' | 'finish' | 'withdraw';
+              amountUsd: number | null;
+            }
+          | {
+              type: 'deposit_landed';
+              orderId: string;
+            }
+          | {
+              type: 'buy_done';
+              orderId: string;
+            }
+          | {
+              type: 'buy_stopped';
+              orderId: string;
+            }
+          | {
+              type: 'withdrawal_done';
+              orderId: string;
+            };
+      }
+  )[];
 };
 
 /** GET /v1/config: response. Feature flags and the chains this deployment runs on */
@@ -2904,6 +3270,203 @@ export type GetVaultsByChainByAddressResponse = {
   disclaimer: string;
 };
 
+/** GET /v1/vaults/{chain}/{address}/conversation: params. Read the private conversation for a vault you own */
+export type GetVaultsByChainByAddressConversationParams = {
+  chain: 'solana' | 'base' | 'robinhood';
+  address: string;
+};
+
+/** GET /v1/vaults/{chain}/{address}/conversation: response. Read the private conversation for a vault you own */
+export type GetVaultsByChainByAddressConversationResponse = {
+  version: 1;
+  chain: 'solana' | 'base' | 'robinhood';
+  address: string;
+  provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+  network: 'mainnet' | 'testnet' | 'local';
+  revision: number;
+  transcript: (
+    | {
+        id: string;
+        who: 'person';
+        text: string;
+      }
+    | {
+        id: string;
+        who: 'app';
+        text: string;
+      }
+  )[];
+  checkpoint: {
+    version: 1;
+    language: 'pt' | 'en';
+    words: string[];
+    answers: {
+      goal?: 'grow' | 'income' | 'protect';
+      amountUsd?: number;
+      incomeTargetUsdMonthly?: number;
+      horizonMonths?: number;
+      horizonOpen?: boolean;
+      risk?: 'low' | 'medium' | 'high';
+      currency?: string;
+    };
+    answersThen: {
+      goal?: 'grow' | 'income' | 'protect';
+      amountUsd?: number;
+      incomeTargetUsdMonthly?: number;
+      horizonMonths?: number;
+      horizonOpen?: boolean;
+      risk?: 'low' | 'medium' | 'high';
+      currency?: string;
+    }[];
+    held?: {
+      growthBps: number;
+      dollarYieldBps: number;
+      goldBps: number;
+      cashBps: number;
+    } | null;
+    questionThen?: ('interestClarification' | null)[];
+    pendingInterest?: {
+      quote: string;
+      sourceTurn: number;
+    } | null;
+    allocationKeptThrough?: number;
+    allocation?: {
+      text: string;
+      baseline: null;
+      minimum: boolean;
+    };
+  } | null;
+  updatedAt: string | null;
+};
+
+/** PUT /v1/vaults/{chain}/{address}/conversation: params. Save private vault conversation history with an expected revision */
+export type PutVaultsByChainByAddressConversationParams = {
+  chain: 'solana' | 'base' | 'robinhood';
+  address: string;
+};
+
+/** PUT /v1/vaults/{chain}/{address}/conversation: body. Save private vault conversation history with an expected revision */
+export type PutVaultsByChainByAddressConversationBody = {
+  version: 1;
+  expectedNetwork: 'mainnet' | 'testnet' | 'local';
+  expectedRevision: number;
+  transcript: (
+    | {
+        id: string;
+        who: 'person';
+        text: string;
+      }
+    | {
+        id: string;
+        who: 'app';
+        text: string;
+      }
+  )[];
+  checkpoint: {
+    version: 1;
+    language: 'pt' | 'en';
+    words: string[];
+    answers: {
+      goal?: 'grow' | 'income' | 'protect';
+      amountUsd?: number;
+      incomeTargetUsdMonthly?: number;
+      horizonMonths?: number;
+      horizonOpen?: boolean;
+      risk?: 'low' | 'medium' | 'high';
+      currency?: string;
+    };
+    answersThen: {
+      goal?: 'grow' | 'income' | 'protect';
+      amountUsd?: number;
+      incomeTargetUsdMonthly?: number;
+      horizonMonths?: number;
+      horizonOpen?: boolean;
+      risk?: 'low' | 'medium' | 'high';
+      currency?: string;
+    }[];
+    held?: {
+      growthBps: number;
+      dollarYieldBps: number;
+      goldBps: number;
+      cashBps: number;
+    } | null;
+    questionThen?: ('interestClarification' | null)[];
+    pendingInterest?: {
+      quote: string;
+      sourceTurn: number;
+    } | null;
+    allocationKeptThrough?: number;
+    allocation?: {
+      text: string;
+      baseline: null;
+      minimum: boolean;
+    };
+  } | null;
+};
+
+/** PUT /v1/vaults/{chain}/{address}/conversation: response. Save private vault conversation history with an expected revision */
+export type PutVaultsByChainByAddressConversationResponse = {
+  version: 1;
+  chain: 'solana' | 'base' | 'robinhood';
+  address: string;
+  provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+  network: 'mainnet' | 'testnet' | 'local';
+  revision: number;
+  transcript: (
+    | {
+        id: string;
+        who: 'person';
+        text: string;
+      }
+    | {
+        id: string;
+        who: 'app';
+        text: string;
+      }
+  )[];
+  checkpoint: {
+    version: 1;
+    language: 'pt' | 'en';
+    words: string[];
+    answers: {
+      goal?: 'grow' | 'income' | 'protect';
+      amountUsd?: number;
+      incomeTargetUsdMonthly?: number;
+      horizonMonths?: number;
+      horizonOpen?: boolean;
+      risk?: 'low' | 'medium' | 'high';
+      currency?: string;
+    };
+    answersThen: {
+      goal?: 'grow' | 'income' | 'protect';
+      amountUsd?: number;
+      incomeTargetUsdMonthly?: number;
+      horizonMonths?: number;
+      horizonOpen?: boolean;
+      risk?: 'low' | 'medium' | 'high';
+      currency?: string;
+    }[];
+    held?: {
+      growthBps: number;
+      dollarYieldBps: number;
+      goldBps: number;
+      cashBps: number;
+    } | null;
+    questionThen?: ('interestClarification' | null)[];
+    pendingInterest?: {
+      quote: string;
+      sourceTurn: number;
+    } | null;
+    allocationKeptThrough?: number;
+    allocation?: {
+      text: string;
+      baseline: null;
+      minimum: boolean;
+    };
+  } | null;
+  updatedAt: string | null;
+};
+
 /** POST /v1/vaults/{chain}/{address}/conversation/reply: params. Discuss an owned vault and preview a model-proposed strategy */
 export type PostVaultsByChainByAddressConversationReplyParams = {
   chain: 'solana' | 'base' | 'robinhood';
@@ -3231,6 +3794,16 @@ export interface ApiRoutes {
     response: PostBasketsProposeResponse;
   };
   'GET /v1/baskets/{id}': { params: GetBasketsByIdParams; response: GetBasketsByIdResponse };
+  'GET /v1/baskets/{id}/thread': {
+    params: GetBasketsByIdThreadParams;
+    query: GetBasketsByIdThreadQuery;
+    response: GetBasketsByIdThreadResponse;
+  };
+  'POST /v1/baskets/{id}/thread': {
+    params: PostBasketsByIdThreadParams;
+    body: PostBasketsByIdThreadBody;
+    response: PostBasketsByIdThreadResponse;
+  };
   'GET /v1/config': { response: GetConfigResponse };
   'POST /v1/conversations/{chain}/goal/accept': {
     params: PostConversationsByChainGoalAcceptParams;
@@ -3282,6 +3855,15 @@ export interface ApiRoutes {
   'GET /v1/vaults/{chain}/{address}': {
     params: GetVaultsByChainByAddressParams;
     response: GetVaultsByChainByAddressResponse;
+  };
+  'GET /v1/vaults/{chain}/{address}/conversation': {
+    params: GetVaultsByChainByAddressConversationParams;
+    response: GetVaultsByChainByAddressConversationResponse;
+  };
+  'PUT /v1/vaults/{chain}/{address}/conversation': {
+    params: PutVaultsByChainByAddressConversationParams;
+    body: PutVaultsByChainByAddressConversationBody;
+    response: PutVaultsByChainByAddressConversationResponse;
   };
   'POST /v1/vaults/{chain}/{address}/conversation/reply': {
     params: PostVaultsByChainByAddressConversationReplyParams;
