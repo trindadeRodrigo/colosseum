@@ -196,6 +196,27 @@ export const pt: Dictionary = {
   },
 
   goal: {
+    explore: {
+      mode: 'Conversa',
+      explore: 'Explorar uma estratégia',
+      guided: 'Investimento guiado',
+      invitation: 'O que você quer que sua estratégia faça?',
+      lead: 'Conte suas ideias, necessidades e limites. Eu posso discutir uma alocação com fontes e riscos.',
+      placeholder: 'Descreva o que quer explorar…',
+      local: 'Este navegador · conversa privada de rascunho',
+      signIn: 'Entre para explorar uma estratégia privada.',
+      readingAccount: 'Sua conta e rede precisam estar prontas antes de eu buscar uma resposta.',
+      empty:
+        'A alocação proposta e suas fontes aparecerão aqui após uma resposta. Nenhum cofre foi criado.',
+      previewOnly:
+        'Apenas uma prévia. Este rascunho ainda não pode ser investido aqui. O investimento guiado é um fluxo separado.',
+      unavailable:
+        'O serviço de conversa de estratégia está indisponível. Suas palavras foram mantidas; nenhum rascunho foi produzido.',
+      failed:
+        'Não consegui uma resposta válida. Suas palavras foram mantidas; nenhum rascunho foi produzido.',
+      notSaved: 'Este navegador não conseguiu salvar estas mensagens. Mantenha esta página aberta.',
+      capacity: 'Esta conversa chegou ao limite. Suas mensagens anteriores foram mantidas.',
+    },
     title: 'O que o seu dinheiro precisa fazer?',
     lead: 'Diga em uma frase: com quanto você começa, por quanto tempo e quanto risco aceita. Eu transformo isso em limites que você pode conferir e mudar. Nada é montado antes de você pedir.',
     composer: {

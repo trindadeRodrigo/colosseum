@@ -3,7 +3,16 @@ import type { BasketSheet } from '@colosseum/schemas';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import GoalPage from '../../app/(app)/goal/page';
-import { click, find, mount, press, settle, type, unmountAll } from '../../components/ui/test/dom';
+import {
+  click,
+  find,
+  fire,
+  mount,
+  press,
+  settle,
+  type,
+  unmountAll,
+} from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary, type Lang } from '../../i18n';
@@ -614,6 +623,9 @@ describe('the plan on a phone', () => {
     signedIn();
     const host = await mount(inShell('en', 'light', createElement(GoalPage)));
     await settle();
+    const mode = find<HTMLSelectElement>(host, '[data-ui="goal-mode"]');
+    mode.value = 'guided';
+    await fire(mode, new Event('change', { bubbles: true }));
     await whole(host);
     const background = find(host, '[data-ui="owned-vaults"]');
     const vaultLink = find(background, '[data-ui="owned-vault"] a');

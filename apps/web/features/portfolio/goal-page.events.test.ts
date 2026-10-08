@@ -2,7 +2,7 @@
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import GoalPage from '../../app/(app)/goal/page';
-import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
+import { click, find, fire, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary, type Lang } from '../../i18n';
@@ -58,6 +58,9 @@ function api(person: Person | null, portfolio: () => Response = () => json(portf
 const home = async (lang: Lang = 'en') => {
   const host = await mount(withAccount(lang, createElement(GoalPage)));
   await settle();
+  const mode = find<HTMLSelectElement>(host, '[data-ui="goal-mode"]');
+  mode.value = 'guided';
+  await fire(mode, new Event('change', { bubbles: true }));
   return host;
 };
 const summary = (host: HTMLElement) => host.querySelector<HTMLElement>('[data-ui="owned-vaults"]');

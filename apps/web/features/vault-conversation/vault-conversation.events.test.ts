@@ -111,7 +111,7 @@ describe('a continuous conversation for one vault', () => {
     const proposed = find(host, '[data-ui="vault-proposal"]');
     expect(proposed.textContent).toContain('30% → 40%');
     expect(proposed.textContent).toContain('70% → 60%');
-    expect(proposed.textContent).toContain('Measured cost: 0 bps');
+    expect(proposed.textContent).toContain('Measured cost: 0%');
     expect(proposed.textContent).toContain('Missing observation: —');
     expect(host.textContent).toContain(en.shared.vault.conversation.previewOnly);
     expect(host.querySelector('a[href^="/buy"]')).toBeNull();

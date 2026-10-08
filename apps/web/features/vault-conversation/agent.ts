@@ -1,4 +1,4 @@
-import { AssetId, Provenance, type VaultResponse } from '@colosseum/schemas';
+import { AssetId, type ChainId, Provenance, type VaultResponse } from '@colosseum/schemas';
 import type { ApiFetch } from '../account/person';
 import { sameAddress } from '../portfolio/vault-name';
 import type { Turn } from './storage';
@@ -54,13 +54,11 @@ const texts = (value: unknown, max: number): value is string[] =>
   Array.isArray(value) && value.length <= 20 && value.every((v) => text(v, max));
 
 /** A provider reply is plain data. A preview grants no signing or funded-vault update capability. */
-export function agentReplyOf(value: unknown, vault: VaultResponse): VaultAgentReply | null {
+export function strategyReplyOf(value: unknown, chain: ChainId): VaultAgentReply | null {
   const row = record(value);
   if (
     row?.version !== 1 ||
-    row.chain !== vault.chain ||
-    typeof row.address !== 'string' ||
-    !sameAddress(vault.chain, row.address, vault.vault.address) ||
+    row.chain !== chain ||
     !text(row.messageId, 64) ||
     !text(row.message, 2400) ||
     (row.question != null && !text(row.question, 500))
@@ -123,7 +121,7 @@ export function agentReplyOf(value: unknown, vault: VaultResponse): VaultAgentRe
       if (
         !a ||
         !asset.success ||
-        !asset.data.startsWith(`${vault.chain}:`) ||
+        !asset.data.startsWith(`${chain}:`) ||
         !Number.isInteger(a.weightBps) ||
         (a.weightBps as number) <= 0 ||
         (a.weightBps as number) > 10_000 ||
@@ -159,6 +157,17 @@ export function agentReplyOf(value: unknown, vault: VaultResponse): VaultAgentRe
     ...(row.question ? { question: row.question as string } : {}),
     ...(proposal ? { proposal } : {}),
   };
+}
+
+/** Vault replies additionally bind the owner-only conversation to its actual address. */
+export function agentReplyOf(value: unknown, vault: VaultResponse): VaultAgentReply | null {
+  const row = record(value);
+  if (
+    typeof row?.address !== 'string' ||
+    !sameAddress(vault.chain, row.address, vault.vault.address)
+  )
+    return null;
+  return strategyReplyOf(value, vault.chain);
 }
 
 export function vaultAgent(

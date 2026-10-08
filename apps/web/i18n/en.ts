@@ -239,6 +239,26 @@ export const en = {
   },
 
   goal: {
+    explore: {
+      mode: 'Conversation',
+      explore: 'Explore a strategy',
+      guided: 'Guided investing',
+      invitation: 'What would you like your strategy to do?',
+      lead: 'Tell me your ideas, needs and limits. I can discuss an allocation with its sources and tradeoffs.',
+      placeholder: 'Describe what you want to explore…',
+      local: 'This browser · private draft conversation',
+      signIn: 'Sign in to explore a private strategy.',
+      readingAccount: 'Your account and chain must be ready before I can get a reply.',
+      empty:
+        'Your proposed allocation and its sources will appear here after a reply. No vault has been created.',
+      previewOnly:
+        'Preview only. This draft cannot be invested here yet. Guided investing is a separate flow.',
+      unavailable:
+        'The strategy conversation service is unavailable. Your words are kept; no draft was produced.',
+      failed: 'I could not get a valid reply. Your words are kept; no draft was produced.',
+      notSaved: 'This browser could not save these messages. Keep this page open.',
+      capacity: 'This conversation has reached its limit. Your earlier messages are kept.',
+    },
     title: 'What does your money need to do?',
     lead: 'Say it in a sentence: how much you’re starting with, for how long, and how much risk you’ll take. I read it into limits you can check and change. Nothing is built until you say so.',
     composer: {
