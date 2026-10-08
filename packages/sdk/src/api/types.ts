@@ -1390,9 +1390,9 @@ export type PostConversationsByChainGoalReplyResponse = {
     summary: string;
     allocations: {
       assetId: string;
-      weightBps: number;
       why: string;
       evidenceIds: string[];
+      weightBps: number;
       symbol: string;
     }[];
     tradeoffs: string[];
@@ -2654,9 +2654,9 @@ export type PostVaultsByChainByAddressConversationReplyResponse = {
     summary: string;
     allocations: {
       assetId: string;
-      weightBps: number;
       why: string;
       evidenceIds: string[];
+      weightBps: number;
       symbol: string;
     }[];
     tradeoffs: string[];

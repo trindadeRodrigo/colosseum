@@ -57,7 +57,7 @@ const context: VaultAgentContext = {
   liquidity: [],
   unknowns: ['Measured exit cost is unavailable for this preview.'],
 };
-const proposal = (share: number) => ({
+const proposal = () => ({
   message: 'Here is a possible direction for your vault. This is a preview for discussion.',
   question: null,
   proposal: {
@@ -66,19 +66,16 @@ const proposal = (share: number) => ({
     allocations: [
       {
         assetId: stock.id,
-        weightBps: share,
         why: 'This expresses your stated stock preference.',
         evidenceIds: [`catalog:${stock.id}`],
       },
       {
         assetId: reserve.id,
-        weightBps: 5500 - share,
         why: 'This reserve diversifies the proposed holdings.',
         evidenceIds: [`catalog:${reserve.id}`],
       },
       {
         assetId: otherReserve.id,
-        weightBps: 4500,
         why: 'This retains exposure outside the named stock.',
         evidenceIds: [`catalog:${otherReserve.id}`],
       },
@@ -102,7 +99,7 @@ async function read(
   language: 'en' | 'pt' = 'en',
   extra: Partial<VaultAgentContext> = {},
 ) {
-  const model = fake(proposal(1000));
+  const model = fake(proposal());
   const messages = turns.map((turn) =>
     Array.isArray(turn) ? { who: turn[0], text: turn[1] } : { who: 'person' as const, text: turn },
   );
@@ -241,8 +238,12 @@ describe('the reply schema ties warnings to the proposal', () => {
     const withProposal = {
       ...base,
       proposal: {
-        ...proposal(1000).proposal,
-        allocations: proposal(1000).proposal.allocations.map((line) => ({ ...line, symbol: 'X' })),
+        ...proposal().proposal,
+        allocations: proposal().proposal.allocations.map((line, i) => ({
+          ...line,
+          symbol: 'X',
+          weightBps: [3334, 3333, 3333][i] ?? 0,
+        })),
         sources: context.evidence,
       },
     };

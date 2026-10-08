@@ -7276,11 +7276,6 @@
                                     "type": "string",
                                     "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
                                   },
-                                  "weightBps": {
-                                    "type": "integer",
-                                    "minimum": 0,
-                                    "maximum": 10000
-                                  },
                                   "why": {
                                     "type": "string",
                                     "minLength": 1,
@@ -7296,6 +7291,11 @@
                                       "maxLength": 160
                                     }
                                   },
+                                  "weightBps": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
                                   "symbol": {
                                     "type": "string",
                                     "minLength": 1,
@@ -7304,9 +7304,9 @@
                                 },
                                 "required": [
                                   "assetId",
-                                  "weightBps",
                                   "why",
                                   "evidenceIds",
+                                  "weightBps",
                                   "symbol"
                                 ],
                                 "additionalProperties": false
@@ -16320,11 +16320,6 @@
                                     "type": "string",
                                     "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
                                   },
-                                  "weightBps": {
-                                    "type": "integer",
-                                    "minimum": 0,
-                                    "maximum": 10000
-                                  },
                                   "why": {
                                     "type": "string",
                                     "minLength": 1,
@@ -16340,6 +16335,11 @@
                                       "maxLength": 160
                                     }
                                   },
+                                  "weightBps": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
                                   "symbol": {
                                     "type": "string",
                                     "minLength": 1,
@@ -16348,9 +16348,9 @@
                                 },
                                 "required": [
                                   "assetId",
-                                  "weightBps",
                                   "why",
                                   "evidenceIds",
+                                  "weightBps",
                                   "symbol"
                                 ],
                                 "additionalProperties": false

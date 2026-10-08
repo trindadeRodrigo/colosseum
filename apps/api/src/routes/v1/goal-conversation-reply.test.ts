@@ -80,22 +80,25 @@ async function setup(available = true) {
   const path = '/v1/conversations/solana/goal/reply';
   const post = (who = owner, payload: object = body, url = path) =>
     app.inject({ method: 'POST', url, headers: who.headers, payload });
-  const proposal = (weightBps: number) => ({
+  // Picks only: the server sets the weights. `cashOnly` leaves the listed asset out.
+  const proposal = (cashOnly = false) => ({
     message: 'Here is a draft direction.',
     question: null,
     proposal: {
       objective: 'Explore the named business',
       summary: 'Retain a liquid cushion.',
       allocations: [
-        {
-          assetId: asset.id,
-          weightBps,
-          why: 'Express the stated preference.',
-          evidenceIds: [`catalog:${asset.id}`],
-        },
+        ...(cashOnly
+          ? []
+          : [
+              {
+                assetId: asset.id,
+                why: 'Express the stated preference.',
+                evidenceIds: [`catalog:${asset.id}`],
+              },
+            ]),
         {
           assetId: cash.id,
-          weightBps: 10000 - weightBps,
           why: 'Keep a cushion.',
           evidenceIds: [`catalog:${cash.id}`],
         },
@@ -120,6 +123,7 @@ async function setup(available = true) {
     path,
     proposal,
     logs,
+    asset,
   };
 }
 
@@ -180,15 +184,20 @@ describe('new-goal model preview route', () => {
       /\b(?:homeChain|personChain|compose|personalize|insertProposal|prepareOrder|buildOrder)\s*\(/,
     );
   });
-  it('preserves different model-selected weights and appends server unknowns without creating a buyable plan', async () => {
+  it('weighs the picks equally unless the person stated shares, and appends server unknowns without creating a buyable plan', async () => {
     const s = await setup();
-    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: s.proposal(1000) });
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: s.proposal() });
     const first = await s.post();
-    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: s.proposal(2000) });
-    const second = await s.post();
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: s.proposal() });
+    const second = await s.post(s.owner, {
+      ...s.body,
+      messages: [{ who: 'person', text: `I want 70% ${s.asset.symbol}, the rest in cash.` }],
+    });
     expect([first.statusCode, second.statusCode]).toEqual([200, 200]);
-    expect(first.json().proposal.allocations[0].weightBps).toBe(1000);
-    expect(second.json().proposal.allocations[0].weightBps).toBe(2000);
+    const weights = (res: typeof first) =>
+      res.json().proposal.allocations.map((line: { weightBps: number }) => line.weightBps);
+    expect(weights(first)).toEqual([5000, 5000]);
+    expect(weights(second)).toEqual([7000, 3000]);
     expect(second.json().proposal.unknowns.join(' ')).toContain(
       'Funding requires fresh confirmation',
     );
@@ -197,9 +206,9 @@ describe('new-goal model preview route', () => {
   });
   it('retains the explicit stock minimum and returns a useful question for a conflicting model draft', async () => {
     const s = await setup();
-    // The repair call sends the same draft: the person is asked about the limit.
-    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: s.proposal(1000) });
-    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: s.proposal(1000) });
+    // Cash alone cannot hold a stock minimum, and the repair sends the same picks: the person is asked.
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: s.proposal(true) });
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: s.proposal(true) });
     const res = await s.post(s.owner, {
       ...s.body,
       messages: [
@@ -230,7 +239,7 @@ describe('new-goal model preview route', () => {
   });
   it('rejects cross-chain assets, malformed last turns and attempted request authority', async () => {
     const s = await setup();
-    const value = s.proposal(1000);
+    const value = s.proposal();
     value.proposal.allocations[0]!.assetId = 'robinhood:foreign';
     // The repair call sends it again: still refused.
     vi.mocked(s.model.read).mockResolvedValueOnce({ reply: value });

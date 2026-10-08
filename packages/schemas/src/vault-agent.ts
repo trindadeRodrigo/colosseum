@@ -34,16 +34,20 @@ export const VaultAgentRequest = z
   });
 export type VaultAgentRequest = z.infer<typeof VaultAgentRequest>;
 
-export const VaultAgentAllocation = z.strictObject({
+/** What the model picks: an asset, why, and the evidence. It never sets a weight (ANY-COMPOSITION). */
+export const VaultAgentPick = z.strictObject({
   assetId: AssetId,
-  weightBps: Bps.refine((value) => value > 0, 'An allocation must have a positive share.'),
   why: prose(1000),
   evidenceIds: z.array(prose(160)).min(1).max(16),
+});
+/** A served line: the pick and the weight the server set from the person's words. */
+export const VaultAgentAllocation = VaultAgentPick.extend({
+  weightBps: Bps.refine((value) => value > 0, 'An allocation must have a positive share.'),
 });
 export const VaultAgentModelProposal = z.strictObject({
   objective: prose(800),
   summary: prose(1600),
-  allocations: z.array(VaultAgentAllocation).min(1).max(64),
+  allocations: z.array(VaultAgentPick).min(1).max(64),
   tradeoffs: z.array(prose(600)).max(12),
   unknowns: z.array(prose(600)).max(12),
 });

@@ -206,6 +206,15 @@ describe('vault proposal provider uses the existing model settings and a shared 
     expect(sdk.create).toHaveBeenLastCalledWith(expect.anything(), { timeout: 1000 });
   });
 
+  it('asks the model for picks only: no weight in its schema, and the prompt says the server sets them', () => {
+    expect(JSON.stringify(VAULT_AGENT_REPLY_SCHEMA)).not.toContain('weightBps');
+    expect(VAULT_AGENT_SYSTEM).toContain('the server sets the weights');
+    expect(VAULT_AGENT_SYSTEM).toContain('Never give a weight');
+    expect(VAULT_AGENT_SYSTEM).not.toMatch(
+      /only in weightBps|choose listed assets and allocation weights/,
+    );
+  });
+
   it('reads VAULT_AGENT_MODEL, or falls back to the intake model', () => {
     expect(vaultAgentModelId({}, 'claude-haiku-4-5')).toBe('claude-haiku-4-5');
     expect(vaultAgentModelId({ VAULT_AGENT_MODEL: ' ' }, 'claude-haiku-4-5')).toBe(
@@ -418,7 +427,6 @@ const draft = (language: 'en' | 'pt' = 'en'): VaultAgentModelReply => ({
     allocations: [
       {
         assetId: tesla.id,
-        weightBps: 4000,
         why:
           language === 'pt'
             ? 'Veículos elétricos estão entre os negócios descritos nos atributos de amostra.'
@@ -427,7 +435,6 @@ const draft = (language: 'en' | 'pt' = 'en'): VaultAgentModelReply => ({
       },
       {
         assetId: cash.id,
-        weightBps: 6000,
         why:
           language === 'pt'
             ? 'Caixa preserva flexibilidade fora da empresa escolhida.'
@@ -532,10 +539,11 @@ describe('conversation context and grounded replies through the provider stub', 
       if (first.kind !== 'reply' || !first.reply.proposal) throw new Error('Preview rejected');
       expect(first.reply.question).toBeNull();
       expect(first.reply.proposal.objective).toBe(draft(language).proposal?.objective);
+      // Two picks, equal: the stated minimum of stocks is already met.
       expect(first.reply.proposal.allocations[0]).toMatchObject({
         assetId: tesla.id,
         symbol: tesla.symbol,
-        weightBps: 4000,
+        weightBps: 5000,
       });
       expect(first.reply.proposal.sources).toEqual(
         expect.arrayContaining([
@@ -556,7 +564,7 @@ describe('conversation context and grounded replies through the provider stub', 
         model,
       );
       expect(refined.kind === 'reply' && refined.reply.proposal?.allocations[0]?.weightBps).toBe(
-        4000,
+        5000,
       );
       expect(sentPrompt()).toMatchObject({
         language,
@@ -576,11 +584,11 @@ describe('conversation context and grounded replies through the provider stub', 
       expect(sentPrompt().vault?.positions[0]?.targetBps).toBe(1000);
       const reduced = draft(language);
       if (!reduced.proposal) throw new Error('Missing fixture proposal');
-      reduced.proposal.allocations = reduced.proposal.allocations.map((allocation) => ({
-        ...allocation,
-        weightBps: allocation.assetId === tesla.id ? 1000 : 9000,
-      }));
-      // The repair call returns the same draft, so the limit is raised with the person.
+      // Cash alone cannot hold the stock minimum.
+      reduced.proposal.allocations = reduced.proposal.allocations.filter(
+        (allocation) => allocation.assetId !== tesla.id,
+      );
+      // The repair call returns the same picks, so the limit is raised with the person.
       respond(reduced);
       respond(reduced);
       const mismatch = await replyToVaultConversation(
@@ -603,14 +611,14 @@ describe('conversation context and grounded replies through the provider stub', 
         who: 'person',
         text: language === 'pt' ? 'Quero pelo menos 10% em ações.' : 'Make that at least 10%.',
       });
-      respond(reduced);
+      respond(draft(language));
       const amended = await replyToVaultConversation(
         turn(messages, language),
         conversationContext,
         model,
       );
       expect(amended.kind === 'reply' && amended.reply.proposal?.allocations[0]?.weightBps).toBe(
-        1000,
+        5000,
       );
       expect(sentPrompt().allocationConstraints[0]?.minWeightBps).toBe(1000);
       expect(VAULT_AGENT_SYSTEM).toContain('without requiring a choice of grow/income/protect');

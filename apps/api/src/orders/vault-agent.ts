@@ -1,4 +1,4 @@
-import { EXIT_WINDOW_DAYS } from '@colosseum/basket';
+import { EXIT_WINDOW_DAYS, personWeights } from '@colosseum/basket';
 import { eligibleForGoal, PERSONAL_PARAMS } from '@colosseum/engine/personal';
 import type { BasketAsset, ChainId, Price, Shelf, VaultState } from '@colosseum/schemas';
 import {
@@ -307,7 +307,7 @@ const REPAIR_HINTS: Record<string, string> = {
   reply_schema:
     'The reply did not match the required structure: a field was missing, had the wrong type, or was outside its length or count limits.',
   prose_figure:
-    'Prose contained a financial figure, percentage, price, yield, date or written-out number. Numbers may appear in prose only inside an exact catalog name or an exact quote of the person in attributed quotation marks. Put proposed weights only in weightBps.',
+    'Prose contained a financial figure, percentage, price, yield, date or written-out number. Numbers may appear in prose only inside an exact catalog name or an exact quote of the person in attributed quotation marks. The server sets the weights.',
   prose_claims_applied:
     'Prose said something was applied, created, funded, traded or approved. A proposal is only a private preview; nothing has been applied.',
   allocation_unlisted: "An allocation named an assetId that is not in this chain's catalog.",
@@ -318,9 +318,8 @@ const REPAIR_HINTS: Record<string, string> = {
     'An allocation used an asset that is outside eligibilityGoal (stocks in income or protect) and is not in requestedOutsideGoal. Only the person can ask for such an asset; never add one on your own. If the person seems to want it but has not plainly asked, leave it out and ask them to confirm in question.',
   allocation_evidence:
     'An allocation cited an evidenceId that does not exist in evidence or belongs to a different asset.',
-  allocation_sum: 'Allocation weightBps did not add up to exactly 10000.',
   allocation_constraint:
-    'The proposal broke a limit the person stated. The limits in allocationConstraints are theirs and still stand.',
+    'The picks cannot meet a share the person stated: allocationConstraints names the assets it covers. Pick assets that let the server meet it, or ask the person about it in question. The limits are theirs and still stand.',
   reply_shape:
     'The proposal did not fit the final preview limits once the server added its own unknowns and sources: keep fields shorter and lists smaller.',
 };
@@ -472,20 +471,35 @@ type HoldingConstraint = {
 function holdingConstraints(
   messages: VaultAgentRequest['messages'],
   assets: BasketAsset[],
+  companies: Map<string, string[]> = new Map(),
 ): HoldingConstraint[] {
   const constraints = new Map<string, HoldingConstraint>();
-  const targets: Array<{ key: string; words: string[]; matches(asset: BasketAsset): boolean }> = [
-    { key: 'stocks', words: STOCK_WORDS, matches: isStock },
-    { key: 'cash', words: ['cash', 'caixa'], matches: (asset) => asset.cls === 'cash' },
-    { key: 'gold', words: ['gold', 'ouro'], matches: (asset) => asset.cls === 'gold' },
-    { key: 'crypto', words: ['crypto', 'cripto'], matches: (asset) => asset.cls === 'crypto' },
-    ...assets.map((asset) => ({
-      key: asset.id,
-      words: [asset.symbol, asset.underlying].map((word) =>
-        word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
-      ),
-      matches: (candidate: BasketAsset) => candidate.id === asset.id,
-    })),
+  const named = (words: string[]) => {
+    const pattern = word(words.join('|'), 'iu');
+    return (text: string) => pattern.test(text);
+  };
+  // Tickers as written and company names in any case, as the stock-request reader reads them.
+  const targets: Array<{
+    key: string;
+    test(text: string): boolean;
+    matches(asset: BasketAsset): boolean;
+  }> = [
+    { key: 'stocks', test: named(STOCK_WORDS), matches: isStock },
+    { key: 'cash', test: named(['cash', 'caixa']), matches: (asset) => asset.cls === 'cash' },
+    { key: 'gold', test: named(['gold', 'ouro']), matches: (asset) => asset.cls === 'gold' },
+    {
+      key: 'crypto',
+      test: named(['crypto', 'cripto']),
+      matches: (asset) => asset.cls === 'crypto',
+    },
+    ...assets.map((asset) => {
+      const names = assetNames(asset, companies.get(asset.id) ?? []);
+      return {
+        key: asset.id,
+        test: (text: string) => names.some((pattern) => pattern.test(text)),
+        matches: (candidate: BasketAsset) => candidate.id === asset.id,
+      };
+    }),
   ];
   let last: HoldingConstraint | undefined;
   for (const message of messages) {
@@ -502,12 +516,8 @@ function holdingConstraints(
         text,
       )
     ) {
-      const named = targets.filter((target) =>
-        new RegExp(`(?<![\\p{L}\\p{N}])(?:${target.words.join('|')})(?![\\p{L}\\p{N}])`, 'iu').test(
-          text,
-        ),
-      );
-      if (named.length > 0) for (const target of named) constraints.delete(target.key);
+      const dropped = targets.filter((target) => target.test(text));
+      if (dropped.length > 0) for (const target of dropped) constraints.delete(target.key);
       else if (/\b(?:that|this|esse|este)\b/iu.test(text) && last) constraints.delete(last.key);
       continue;
     }
@@ -530,33 +540,18 @@ function holdingConstraints(
           .slice(0, match.index)
           .split(/[,;.!?](?!\d)|\b(?:and|but|e|mas)\b/iu)
           .at(-1) ?? '';
-      const named = targets.filter((target) =>
-        new RegExp(`(?<![\\p{L}\\p{N}])(?:${target.words.join('|')})(?![\\p{L}\\p{N}])`, 'iu').test(
-          after,
-        ),
-      );
+      const afterNames = targets.filter((target) => target.test(after));
       const beforeNames =
-        named.length === 0
-          ? targets.filter((target) =>
-              new RegExp(
-                `(?<![\\p{L}\\p{N}])(?:${target.words.join('|')})(?![\\p{L}\\p{N}])`,
-                'iu',
-              ).test(before),
-            )
-          : [];
-      const wholeNames = targets.filter((target) =>
-        new RegExp(`(?<![\\p{L}\\p{N}])(?:${target.words.join('|')})(?![\\p{L}\\p{N}])`, 'iu').test(
-          text,
-        ),
-      );
+        afterNames.length === 0 ? targets.filter((target) => target.test(before)) : [];
+      const wholeNames = targets.filter((target) => target.test(text));
       const target =
-        named.length === 1
-          ? named[0]
+        afterNames.length === 1
+          ? afterNames[0]
           : beforeNames.length === 1
             ? beforeNames[0]
-            : named.length === 0 && beforeNames.length === 0 && /^make\s+that\b/iu.test(text)
+            : afterNames.length === 0 && beforeNames.length === 0 && /^make\s+that\b/iu.test(text)
               ? last
-              : named.length === 0 && beforeNames.length === 0 && wholeNames.length === 1
+              : afterNames.length === 0 && beforeNames.length === 0 && wholeNames.length === 1
                 ? wholeNames[0]
                 : undefined;
       if (!target) continue;
@@ -614,12 +609,12 @@ export async function replyToVaultConversation(
     )
   )
     return invalid('context_caps');
-  const constraints = holdingConstraints(parsed.data.messages, [...catalog.values()]);
   const goal = eligibilityGoal(context);
   const companies = new Map<string, string[]>();
   for (const row of context.stockAttributes?.stocks ?? [])
     for (const asset of catalog.values())
       if (asset.symbol === row.symbol) companies.set(asset.id, [row.company]);
+  const constraints = holdingConstraints(parsed.data.messages, [...catalog.values()], companies);
   const requested = requestedStocks(
     parsed.data.messages,
     parsed.data.language,
@@ -739,17 +734,48 @@ export async function replyToVaultConversation(
         },
       };
     const ids = new Set<string>();
-    const sources = new Set<string>();
-    const warnings: VaultAgentWarning[] = [];
-    let sum = 0;
     for (const allocation of proposal.allocations) {
       const asset = catalog.get(allocation.assetId);
       if (!asset) return rejected('allocation_unlisted');
       if (ids.has(asset.id)) return rejected('allocation_duplicate');
-      // Any listed composition may be proposed (ANY-COMPOSITION): exit capacity and a goal's
-      // eligibility warn; only an asset outside the goal that the person never asked for is refused.
+      // Any listed composition may be proposed (ANY-COMPOSITION): only a stock outside the goal that the
+      // person never asked for is refused; exit capacity and an asked-for stock warn, below.
+      if (goal && !eligibleForGoal(asset, goal) && !requested.has(asset.id))
+        return rejected('allocation_ineligible');
+      ids.add(asset.id);
+      for (const id of allocation.evidenceIds) {
+        const source = sourceById.get(id);
+        if (!source || (source.assetId !== undefined && source.assetId !== asset.id))
+          return rejected('allocation_evidence');
+      }
+    }
+    if (
+      proposal.allocations.filter((allocation) => catalog.get(allocation.assetId)?.cls !== 'cash')
+        .length > 16
+    )
+      return rejected('allocation_lines');
+    // The weights come from the person's words, never from the model (Rodrigo's rule 2): an equal
+    // split, or the shares the server parsed from what the person said. A pick their shares leave
+    // nothing for is dropped.
+    const picks = proposal.allocations.map((allocation) => ({
+      allocation,
+      asset: catalog.get(allocation.assetId) as BasketAsset,
+    }));
+    const { weights, unmet } = personWeights(
+      picks.length,
+      constraints.map((constraint) => ({
+        members: picks.flatMap(({ asset }, i) => (constraint.matches(asset) ? [i] : [])),
+        min: constraint.min,
+        max: constraint.max,
+      })),
+    );
+    const sources = new Set<string>();
+    const warnings: VaultAgentWarning[] = [];
+    const lines = picks.flatMap(({ allocation, asset }, i) => {
+      const weightBps = weights[i] ?? 0;
+      if (weightBps === 0) return [];
       const cap = caps[asset.id];
-      if (cap !== undefined && allocation.weightBps > cap) {
+      if (cap !== undefined && weightBps > cap) {
         warnings.push({
           code: 'over_exit_capacity',
           assetId: asset.id,
@@ -758,7 +784,6 @@ export async function replyToVaultConversation(
         sources.add(`liquidity:${asset.id}`);
       }
       if (goal && !eligibleForGoal(asset, goal)) {
-        if (!requested.has(asset.id)) return rejected('allocation_ineligible');
         const listed = sourceById.has(`catalog:${asset.id}`)
           ? `catalog:${asset.id}`
           : allocation.evidenceIds[0];
@@ -767,34 +792,26 @@ export async function replyToVaultConversation(
           sources.add(listed);
         }
       }
-      ids.add(asset.id);
-      sum += allocation.weightBps;
-      for (const id of allocation.evidenceIds) {
-        const source = sourceById.get(id);
-        if (!source || (source.assetId !== undefined && source.assetId !== asset.id))
-          return rejected('allocation_evidence');
-        sources.add(id);
-      }
-    }
-    if (sum !== 10_000) return rejected('allocation_sum');
-    if (
-      proposal.allocations.filter((allocation) => catalog.get(allocation.assetId)?.cls !== 'cash')
-        .length > 16
-    )
-      return rejected('allocation_lines');
-    for (const [index, constraint] of constraints.entries()) {
-      const actual = proposal.allocations.reduce((weight, allocation) => {
-        const asset = catalog.get(allocation.assetId);
-        return weight + (asset && constraint.matches(asset) ? allocation.weightBps : 0);
-      }, 0);
-      if (actual < constraint.min || actual > constraint.max) {
-        // Which limit, in words: the server's own constraint and the person's quote, never the model's weights.
-        const side = actual < constraint.min ? 'below its minWeightBps' : 'above its maxWeightBps';
+      for (const id of allocation.evidenceIds) sources.add(id);
+      return [{ ...allocation, weightBps, symbol: asset.symbol }];
+    });
+    for (const index of unmet.slice(0, 1)) {
+      const constraint = constraints[index];
+      if (constraint) {
+        const actual = picks.reduce(
+          (weight, { asset }, i) => weight + (constraint.matches(asset) ? (weights[i] ?? 0) : 0),
+          0,
+        );
+        // Which limit, in words: the server's own constraint and the person's quote.
+        const side =
+          actual < constraint.min
+            ? 'the picks it covers cannot reach its minWeightBps'
+            : 'the other picks cannot take enough to keep it under its maxWeightBps';
         return {
           failed: 'allocation_constraint',
           problems: [
             REPAIR_HINTS.allocation_constraint ?? 'allocation_constraint',
-            `At allocationConstraints.${index} (the person said “${constraint.quote}”): the weightBps of its assetIds together came ${side}.`,
+            `At allocationConstraints.${index} (the person said “${constraint.quote}”): ${side}.`,
           ],
           result: {
             kind: 'reply',
@@ -822,10 +839,7 @@ export async function replyToVaultConversation(
       ...conversation,
       proposal: {
         ...proposal,
-        allocations: proposal.allocations.map((allocation) => ({
-          ...allocation,
-          symbol: catalog.get(allocation.assetId)?.symbol,
-        })),
+        allocations: lines,
         unknowns: [...new Set([...context.unknowns, ...proposal.unknowns])].slice(0, 12),
         sources: [...sources].map((id) => sourceById.get(id)),
       },
