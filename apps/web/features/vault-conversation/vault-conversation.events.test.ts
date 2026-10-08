@@ -48,6 +48,7 @@ beforeEach(() => {
   vi.stubEnv('NEXT_PUBLIC_CHAIN_NETWORK_SOLANA', 'testnet');
   vi.stubEnv('NEXT_PUBLIC_CHAIN_NETWORK_ROBINHOOD', 'testnet');
   localStorage.clear();
+  sessionStorage.clear();
   portStore.set(signedInPort(EMBEDDED, { userId }));
   portStore.setApi(async () => json({}, 404));
 });
@@ -765,6 +766,46 @@ describe('conservative stored history and provider validation', () => {
       });
     },
   );
+
+  it('asks an API without the history route once a tab, and a vault’s own 404 every time', async () => {
+    const value = { revision: 0, transcript: [] };
+    const missing = vi.fn(async (_path: string) =>
+      json({ message: `Route GET:${path} not found`, error: 'Not Found', statusCode: 404 }, 404),
+    );
+    const one = serverConversation(
+      missing,
+      read.chain,
+      read.vault.address,
+      read.provenance,
+      'testnet',
+    );
+    expect(await one.read()).toBeNull();
+    expect(missing).toHaveBeenCalledTimes(1);
+    // the route is not there: another vault's page, a write, asks nothing more in this tab
+    const two = serverConversation(
+      missing,
+      read.chain,
+      'another-vault',
+      read.provenance,
+      'testnet',
+    );
+    expect(await two.read()).toBeNull();
+    expect(await two.write(value)).toBe('unavailable');
+    expect(missing).toHaveBeenCalledTimes(1);
+    // a 404 for one vault on an API that has the route is that vault's, and is asked again
+    sessionStorage.clear();
+    const notYours = vi.fn(async (_path: string) => json({ error: 'not found' }, 404));
+    const three = serverConversation(
+      notYours,
+      read.chain,
+      read.vault.address,
+      read.provenance,
+      'testnet',
+    );
+    expect(await three.read()).toBeNull();
+    expect(await three.read()).toBeNull();
+    expect(notYours).toHaveBeenCalledTimes(2);
+  });
 
   it('does not ask for private history without a valid configured network', async () => {
     vi.stubEnv('NEXT_PUBLIC_CHAIN_NETWORK_SOLANA', 'invalid-network');

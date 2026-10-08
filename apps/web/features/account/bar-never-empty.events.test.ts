@@ -197,6 +197,11 @@ describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s'
     // order records this browser kept: theirs, and one of somebody else who used this computer
     keepOrder(recordOf());
     keepOrder(recordOf('solana', { orderId: OTHERS_ORDER, userId: 'did:privy:other' }));
+    // and a vault conversation of each
+    const talk = (userId: string) =>
+      `tf-vault-conversation:2:${encodeURIComponent(userId)}:solana:testnet:vault-1:sandbox`;
+    window.localStorage.setItem(talk(USER), '{"revision":0,"transcript":[]}');
+    window.localStorage.setItem(talk('did:privy:other'), '{"revision":0,"transcript":[]}');
     hint(true);
     const host = await shell(lang);
     await later(SLOW_MS);
@@ -210,6 +215,8 @@ describe.each(['en', 'pt'] as const)('a sign-in service that never loads, in %s'
     // nobody is known, so every order record in the browser went with the press, whoever's it was
     expect(recallOrder(ORDER_ID, USER)).toBeNull();
     expect(recallOrder(OTHERS_ORDER, 'did:privy:other')).toBeNull();
+    expect(window.localStorage.getItem(talk(USER))).toBeNull();
+    expect(window.localStorage.getItem(talk('did:privy:other'))).toBeNull();
     // and the wallet provider is told: from now on it hands out no port that names a person until
     // the service says they are out (features/wallet/left-here.events.test.ts)
     expect(left.count).toBe(1);

@@ -1,6 +1,7 @@
 import { type ChainId, chainFamily, type Network, normalizeAddress } from '@colosseum/schemas';
 import type { ApiFetch } from '../account/person';
 import { networkFor } from '../order/readiness';
+import { CONVERSATION_PREFIX } from './forget';
 
 export type Turn = { id: string; who: 'person' | 'app'; text: string };
 export type Transcript = { revision: number; transcript: Turn[] };
@@ -23,7 +24,7 @@ export function conversationKey(
   network: Network | null,
 ) {
   // Version two deliberately does not import history written without a network scope.
-  return `tf-vault-conversation:2:${encodeURIComponent(user)}:${chain}:${network ?? 'unconfigured'}:${normalizeAddress(chainFamily(chain), address)}:${provenance}`;
+  return `${CONVERSATION_PREFIX}2:${encodeURIComponent(user)}:${chain}:${network ?? 'unconfigured'}:${normalizeAddress(chainFamily(chain), address)}:${provenance}`;
 }
 
 /** History is plain text, never a restored sheet, confirmation or executable proposal. */
@@ -86,6 +87,27 @@ export function writeLocal(key: string, value: Transcript): boolean {
   }
 }
 
+// Our server's route for this history is not on every API yet: a 404 that Fastify says is for a route
+// it does not have ("Route GET:… not found") is remembered for the tab, and nothing more is asked of it,
+// read or write. A 404 for one vault is that vault's answer and is not remembered.
+const NOT_SERVED = 'tf-vault-conversation-server:not-served';
+const served = () => {
+  try {
+    return sessionStorage.getItem(NOT_SERVED) === null;
+  } catch {
+    return true;
+  }
+};
+async function noteNotServed(response: Response): Promise<void> {
+  if (response.status !== 404) return;
+  try {
+    const body = (await response.json()) as { message?: unknown } | null;
+    if (/^Route /.test(String(body?.message ?? ''))) sessionStorage.setItem(NOT_SERVED, '1');
+  } catch {
+    // Not read, or not kept: the route is asked again next time.
+  }
+}
+
 /** Optional server adapter. Server text is displayed as history, never replayed as instructions. */
 export function serverConversation(
   api: ApiFetch,
@@ -98,10 +120,13 @@ export function serverConversation(
   const path = `/v1/vaults/${encodeURIComponent(chain)}/${encodeURIComponent(address)}/conversation`;
   return {
     async read() {
-      if (network === null) return null;
+      if (network === null || !served()) return null;
       try {
         const response = await api(path, { signal });
-        if (!response.ok) return null;
+        if (!response.ok) {
+          await noteNotServed(response);
+          return null;
+        }
         const body = await response.json();
         if (
           body.version !== 1 ||
@@ -118,7 +143,7 @@ export function serverConversation(
       }
     },
     async write(value) {
-      if (network === null) return 'unavailable';
+      if (network === null || !served()) return 'unavailable';
       try {
         const response = await api(path, {
           method: 'PUT',
@@ -132,7 +157,10 @@ export function serverConversation(
             checkpoint: null,
           }),
         });
-        if (!response.ok) return response.status === 409 ? 'conflict' : 'unavailable';
+        if (!response.ok) {
+          await noteNotServed(response);
+          return response.status === 409 ? 'conflict' : 'unavailable';
+        }
         const body = await response.json();
         const saved = transcriptOf(body);
         return body.version === 1 &&

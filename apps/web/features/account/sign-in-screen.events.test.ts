@@ -568,6 +568,11 @@ describe('the goal a person typed, kept in the tab', () => {
       order('someone-else').replace('"o"', '"theirs"'),
     );
     window.localStorage.setItem(`tf-trust:${me}`, '{"textVersion":"x"}');
+    // and their private vault conversations; another person's stay
+    const talk = (userId: string) =>
+      `tf-vault-conversation:2:${encodeURIComponent(userId)}:solana:testnet:vault-1:sandbox`;
+    window.localStorage.setItem(talk(me), '{"revision":0,"transcript":[]}');
+    window.localStorage.setItem(talk('someone-else'), '{"revision":0,"transcript":[]}');
     await act(async () => portStore.set(fakePort({ found: FOUND })));
     await settle();
     expect(window.sessionStorage.getItem('tf-goal')).toBeNull();
@@ -576,6 +581,8 @@ describe('the goal a person typed, kept in the tab', () => {
     expect(window.localStorage.getItem('tf-order:mine')).toBeNull();
     expect(window.localStorage.getItem('tf-order:theirs')).not.toBeNull();
     expect(window.localStorage.getItem(`tf-trust:${me}`)).not.toBeNull();
+    expect(window.localStorage.getItem(talk(me))).toBeNull();
+    expect(window.localStorage.getItem(talk('someone-else'))).not.toBeNull();
     window.localStorage.clear();
   });
 
