@@ -147,6 +147,15 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
             </a>
           )}
         </p>
+        {mine && account.status === 'ready' && account.chain === read.chain && (
+          <Link
+            data-ui="vault-share-strategy"
+            href={`/publish?vault=${encodeURIComponent(vault.address)}`}
+            className={buttonClass({ variant: 'secondary' })}
+          >
+            {t.shared.publish.shareStrategy}
+          </Link>
+        )}
         {/* The owner's way out, shown to the owner alone: a vault pays nobody else. */}
         {mine &&
           (empty ? (

@@ -58,6 +58,26 @@ vi.mock('../order/readiness', async (original) => {
 });
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
 vi.mock('next/link', () => import('../wallet/test/mock-next'));
+vi.mock('./publish-vault', async (original) => {
+  const real = await original<typeof import('./publish-vault')>();
+  return {
+    ...real,
+    readPublishVault: vi.fn(async (_api, at) => ({
+      kind: 'read',
+      source: 'chain',
+      components: WEIGHTS,
+      strategy: JSON.stringify(WEIGHTS),
+      value: {
+        chain: at.chain,
+        name: null,
+        provenance: 'sandbox',
+        prices: [],
+        disclaimer: 'd',
+        vault: vaultOf({ address: at.address, basketId: at.basketId, owner: at.owner }),
+      },
+    })),
+  };
+});
 
 // The shared-portfolio screens with real events, against a double of the API (WEB-4): the shelf of the
 // person's chain, the creator's words as text, the auto-follow switch only where it is offered (gate
@@ -935,7 +955,11 @@ describe('the trust notice on a buy the keeper may trade', () => {
 
 describe('the publish form', () => {
   it('works out the family id from the address, holds the limits, and keeps its own text', async () => {
-    const calls = api({ family: null, order: () => publishOrder() });
+    const calls = api({
+      family: null,
+      vaults: [vaultOf({ address: MY_VAULT })],
+      order: () => publishOrder(),
+    });
     const host = await show(createElement(PublishScreen));
     // an empty form says nothing is wrong with it: the person has typed nothing yet
     for (const problem of Object.values(en.shared.publish.problems))
@@ -952,14 +976,10 @@ describe('the publish form', () => {
     await settle(50);
     // the id the form shows is its own: familyIdOf(slug), never the server's
     expect(find(host, '[data-ui="family-id"]').textContent).toBe(FAMILY_ID);
-    // weights that do not add up to 100% are refused before anything is sent
-    await type(field(en.shared.publish.weightOf(1)), '50');
-    await click(button(host, en.shared.publish.review) as HTMLElement);
-    await settle(50);
-    expect(host.textContent).toContain(en.shared.publish.problems.sum);
-    expect(calls.some((c) => c.path === '/v1/orders')).toBe(false);
-
-    await type(field(en.shared.publish.weightOf(1)), '40');
+    // The selected vault supplies immutable targets; holdings never become target weights.
+    expect(host.querySelectorAll('[data-ui="publish-row"]')).toHaveLength(3);
+    expect(host.querySelectorAll('select')).toHaveLength(1);
+    expect(host.querySelector(`input[inputmode="decimal"]`)).toBeNull();
     await click(button(host, en.shared.publish.review) as HTMLElement);
     await settle(50);
     const body = calls.find((c) => c.path === '/v1/orders')?.body;
@@ -981,6 +1001,7 @@ describe('the publish form', () => {
 
   it('does not update a portfolio of the person’s whose id is not its address’s (gate FAMILY-ID)', async () => {
     const calls = api({
+      vaults: [vaultOf({ address: MY_VAULT })],
       family: familyOf('ab'.repeat(32), { recipes: [recipeOf({ creator: SOLANA })] }),
       order: () => publishOrder(),
     });
@@ -1063,7 +1084,7 @@ describe('the publish form', () => {
   });
 
   it('refuses an address that is another creator’s', async () => {
-    api({ family: familyOf(FAMILY_ID) });
+    api({ family: familyOf(FAMILY_ID), vaults: [vaultOf({ address: MY_VAULT })] });
     const host = await show(createElement(PublishScreen));
     const name = [...host.querySelectorAll('label')].find(
       (l) => l.textContent === en.shared.publish.name,
@@ -1347,32 +1368,19 @@ describe('the flow audit’s findings on these screens (34, 38, 42)', () => {
   });
 
   it.each(['en', 'pt'] as const)(
-    'the publish form says no rule before anything is typed, and labels each weight by its asset (%s)',
+    'sharing requires a source vault and never offers manual weight controls (%s)',
     async (lang) => {
       const words = (lang === 'en' ? en : pt).shared.publish;
       api({ family: null, order: () => publishOrder() });
       const host = await mount(withAccount(lang, createElement(PublishScreen)));
       for (let i = 0; i < 4; i += 1) await settle(50);
-      const rules = Object.values(words.problems);
-      // an empty form: nothing is wrong with it yet
-      for (const rule of rules) expect(host.textContent, rule).not.toContain(rule);
+      expect(host.textContent).toContain(words.noVaults);
+      expect(host.querySelectorAll('[data-ui="publish-row"]')).toHaveLength(0);
       const labels = [...host.querySelectorAll('label')].map((l) => l.textContent);
-      expect(labels).toContain(words.weightOf(1));
-      expect(labels).toContain(words.assetOf(1));
-      expect(labels.some((l) => /% \d$/.test(l ?? ''))).toBe(false);
-      // a weight typed: the rules of the weights are said, the name's is not yet
-      const weight = find<HTMLInputElement>(
-        host,
-        `#${CSS.escape([...host.querySelectorAll('label')].find((l) => l.textContent === words.weightOf(1))?.htmlFor ?? '')}`,
-      );
-      await type(weight, '50');
-      await settle(50);
-      expect(host.textContent).toContain(words.problems.sum);
-      expect(host.textContent).not.toContain(words.problems.slug);
-      // asked for the review: every rule the form breaks is said
+      expect(labels).toContain(words.sourceVault);
+      expect(labels).not.toContain(words.weightOf(1));
       await click(button(host, words.review) as HTMLElement);
-      await settle(50);
-      expect(host.textContent).toContain(words.problems.slug);
+      expect(router.push).not.toHaveBeenCalled();
     },
   );
 });

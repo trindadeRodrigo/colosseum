@@ -1528,10 +1528,35 @@ export const en = {
       accept: (n: number) => `Accept version ${n}`,
     },
     publish: {
-      title: 'Publish a portfolio.',
+      title: 'Share your vault strategy.',
       lead: (chain: string) =>
-        `Your list of assets and weights, under a name, on ${chain}. Anyone can see it and follow it. You sign it with your wallet: I check the transaction against this form before your wallet is asked.`,
+        `Share the strategy recorded in your own vault on ${chain}. Review its exact assets and target weights, give it a public name and description, then sign the publication.`,
       signIn: 'Sign in to publish a portfolio.',
+      shareStrategy: 'Share strategy',
+      sourceVault: 'Your source vault',
+      sourceHint: 'Choose a vault you own on the active chain.',
+      chooseVault: 'Choose your vault',
+      noVaults: 'Choose an owned vault on this chain before sharing a strategy.',
+      readingVaults: 'Reading your vaults…',
+      readingStrategy: 'Reading the vault’s strategy…',
+      sourceUnavailable: 'Your vaults could not be read. Open the vault and try sharing again.',
+      editStrategy: 'Return to the vault conversation',
+      privacy:
+        'Only this reviewed strategy, name and description become public. Your vault conversation stays private.',
+      holdings: 'Tokens held now · separate from target weights',
+      strategySource: (source: string) => `Strategy read from ${source}.`,
+      strategyChanged:
+        'The vault strategy changed. The latest targets are now shown. Review them before sharing again.',
+      sourceProblems: {
+        unsupported:
+          'This vault’s full strategy cannot be shared under the current registry rules. Missing, nested, unknown or cash targets are not replaced. Return to the vault conversation to refine the strategy.',
+        unverified:
+          'I could not verify the strategy and owner from this chain. Sharing is paused. Return to the vault and try again.',
+        missing: 'This vault could not be found on chain. Choose a current vault you own.',
+        owner:
+          'This vault does not match the connected owner, chain, address and plan number. Choose a vault you own.',
+        unreachable: 'The vault could not be read. Return to the vault and try again.',
+      },
       about: 'Its name and description',
       name: 'Name',
       nameHint: 'Plain letters, digits and punctuation, up to 280 characters.',
@@ -1541,7 +1566,8 @@ export const en = {
       copyHint: 'Up to 280 characters, with no link.',
       familyId: 'Its id, worked out from the address',
       assets: 'Assets and weights',
-      assetsHint: '3 to 12 assets, each from 2% to 50%, in steps of 0.5%, adding up to 100%.',
+      assetsHint:
+        'These are the vault’s target weights. Sharing requires 3 to 12 listed assets, each from 2% to 50% in 0.5% steps, with no cash target. Change the strategy in your vault before sharing if it does not fit.',
       asset: 'Asset',
       weight: 'Weight, in %',
       /** The labels of a row's two fields. */

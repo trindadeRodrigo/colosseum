@@ -1378,10 +1378,36 @@ export const pt: Dictionary = {
       accept: (n: number) => `Aceitar a versão ${n}`,
     },
     publish: {
-      title: 'Publicar um portfólio.',
+      title: 'Compartilhe a estratégia do seu cofre.',
       lead: (chain: string) =>
-        `Sua lista de ativos e pesos, com um nome, na ${chain}. Qualquer pessoa pode vê-la e segui-la. Você assina com a sua carteira: confiro a transação com este formulário antes de pedir à carteira.`,
+        `Compartilhe a estratégia registrada no seu cofre na ${chain}. Revise os ativos e pesos-alvo exatos, dê um nome e uma descrição públicos e assine a publicação.`,
       signIn: 'Entre para publicar um portfólio.',
+      shareStrategy: 'Compartilhar estratégia',
+      sourceVault: 'Seu cofre de origem',
+      sourceHint: 'Escolha um cofre seu na rede ativa.',
+      chooseVault: 'Escolha seu cofre',
+      noVaults: 'Escolha um cofre seu nesta rede antes de compartilhar uma estratégia.',
+      readingVaults: 'Lendo seus cofres…',
+      readingStrategy: 'Lendo a estratégia do cofre…',
+      sourceUnavailable:
+        'Não consegui ler seus cofres. Abra o cofre e tente compartilhar novamente.',
+      editStrategy: 'Voltar à conversa do cofre',
+      privacy:
+        'Só esta estratégia revisada, o nome e a descrição ficam públicos. A conversa do cofre permanece privada.',
+      holdings: 'Tokens mantidos agora · separados dos pesos-alvo',
+      strategySource: (source: string) => `Estratégia lida de ${source}.`,
+      strategyChanged:
+        'A estratégia do cofre mudou. As metas atuais estão na tela. Revise antes de compartilhar novamente.',
+      sourceProblems: {
+        unsupported:
+          'A estratégia completa deste cofre não pode ser compartilhada nas regras atuais do registro. Metas ausentes, aninhadas, desconhecidas ou de caixa não são substituídas. Volte à conversa do cofre para ajustar a estratégia.',
+        unverified:
+          'Não consegui verificar a estratégia e o proprietário nesta rede. A publicação está pausada. Volte ao cofre e tente novamente.',
+        missing: 'Não encontrei este cofre na rede. Escolha um cofre atual seu.',
+        owner:
+          'Este cofre não corresponde à carteira conectada, rede, endereço e número do plano. Escolha um cofre seu.',
+        unreachable: 'Não consegui ler o cofre. Volte ao cofre e tente novamente.',
+      },
       about: 'Nome e descrição',
       name: 'Nome',
       nameHint: 'Letras, números e pontuação simples, até 280 caracteres.',
@@ -1391,7 +1417,8 @@ export const pt: Dictionary = {
       copyHint: 'Até 280 caracteres, sem link.',
       familyId: 'O identificador dele, calculado a partir do endereço',
       assets: 'Ativos e pesos',
-      assetsHint: 'De 3 a 12 ativos, cada um de 2% a 50%, em passos de 0,5%, somando 100%.',
+      assetsHint:
+        'Estes são os pesos-alvo do cofre. Compartilhar exige de 3 a 12 ativos listados, de 2% a 50% em passos de 0,5%, sem meta de caixa. Ajuste a estratégia no cofre antes de compartilhar se ela não couber.',
       asset: 'Ativo',
       weight: 'Peso, em %',
       assetOf: (n: number) => `Ativo ${n}`,
