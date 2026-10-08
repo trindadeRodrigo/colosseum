@@ -6,6 +6,7 @@ import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createChainRegistry } from '../../orders/chains';
 import { Refusal } from '../../orders/errors';
+import type { AgentAnalytics } from '../../orders/vault-agent';
 import { registerAuth } from '../../plugins/auth';
 import { person, testIssuer } from '../../testing/harness';
 import type { VaultAgentModel } from '../../vault-agent-model';
@@ -15,7 +16,7 @@ const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
   for (const f of cleanup.splice(0).reverse()) await f();
 });
-async function setup(available = true) {
+async function setup(available = true, analytics?: AgentAnalytics) {
   const issuer = await testIssuer('vault-reply');
   const a = await person(issuer, 'passkey');
   const b = await person(issuer, 'passkey');
@@ -90,6 +91,7 @@ async function setup(available = true) {
     { db, chains, now: () => new Date(state.observedAt) },
     available ? model : null,
     inputs,
+    analytics,
   );
   const body = {
     version: 1,
@@ -177,6 +179,36 @@ describe('private model-led vault reply route', () => {
     expect(s.inputs).toHaveBeenCalledWith(
       expect.objectContaining({ chain: 'solana', provenance: 'mock' }),
     );
+  });
+  it("reads Bearing's analytics at the vault's value, and at the reference size when it has none", async () => {
+    const analytics = vi.fn<AgentAnalytics>(async ({ sizeUsd }) => ({
+      sizeUsd: sizeUsd ?? 10_000,
+      basis: sizeUsd === null ? 'reference' : 'vault',
+      tau: 0.01,
+      assets: [],
+    }));
+    const s = await setup(true, analytics);
+    const empty = await s.post();
+    expect(empty.statusCode, empty.body).toBe(200);
+    // An empty vault is worth nothing: the costs refer to the reference size.
+    expect(analytics).toHaveBeenLastCalledWith(
+      expect.objectContaining({ chain: 'solana', provenance: 'mock', sizeUsd: 0 }),
+    );
+    s.state.cash = { ...s.state.cash, raw: '2500000000', display: '2500' };
+    expect((await s.post()).statusCode).toBe(200);
+    const [cashPrice] = await s.chains.get('solana').adapter.getPrices([s.state.cash.asset]);
+    const sized = analytics.mock.calls.at(-1)?.[0].sizeUsd;
+    expect(sized).toBe(2500 * Number(cashPrice?.usdPerToken));
+    expect(sized).toBeGreaterThan(0);
+    expect(vi.mocked(s.model.read).mock.calls.at(-1)?.[1].analytics).toEqual({
+      sizeUsd: sized,
+      basis: 'vault',
+      unknowns: [],
+    });
+    const failing = await setup(true, async () => {
+      throw new Error('the pool is exhausted');
+    });
+    expect((await failing.post()).statusCode).toBe(200);
   });
   it('checks fresh ownership after a transfer and normalizes EVM casing', async () => {
     const s = await setup();

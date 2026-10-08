@@ -10,7 +10,13 @@ import { z } from 'zod';
 import { refusing } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { type PlanInputs, preparePersonalInputs } from '../../orders/personalize';
-import { buildVaultAgentContext, replyToVaultConversation } from '../../orders/vault-agent';
+import {
+  type AgentAnalytics,
+  buildVaultAgentContext,
+  readAgentAnalytics,
+  replyToVaultConversation,
+  vaultNotionalUsd,
+} from '../../orders/vault-agent';
 import { resolveVaultConversationOwner } from '../../orders/vault-conversation-owner';
 import type { VaultAgentModel } from '../../vault-agent-model';
 import { signedIn } from './orders';
@@ -31,6 +37,7 @@ export function registerVaultConversationReplyRoute(
   deps: OrderDeps,
   model: VaultAgentModel | null,
   inputs: PlanInputs = async () => ({}),
+  analytics?: AgentAnalytics,
 ) {
   const path = '/v1/vaults/:chain/:address/conversation/reply';
   scope.addHook('onSend', async (req, reply, payload) => {
@@ -75,8 +82,9 @@ export function registerVaultConversationReplyRoute(
       }
       const context = await refusing(async () => {
         const listed = await entry.adapter.listAssets();
-        const [prices, prepared] = await Promise.all([
-          entry.adapter.getPrices(listed.map((asset) => asset.id)),
+        const pricing = entry.adapter.getPrices(listed.map((asset) => asset.id));
+        const [prices, prepared, read] = await Promise.all([
+          pricing,
           preparePersonalInputs(
             identity.chain,
             listed,
@@ -84,8 +92,30 @@ export function registerVaultConversationReplyRoute(
             entry.provenance,
             (chain, assets, provenance) => inputs({ db: deps.db, chain, assets, provenance }),
           ),
+          // Bearing's analytics at the vault's value, which needs its prices; they never fail the reply.
+          pricing.then((prices) =>
+            readAgentAnalytics(analytics, {
+              db: deps.db,
+              chain: identity.chain,
+              assets: listed,
+              provenance: entry.provenance,
+              sizeUsd: vaultNotionalUsd(state, prices),
+            }),
+          ),
         ]);
-        return buildVaultAgentContext({ state, entry, prices, prepared, person: identity.privyId });
+        if (read && 'unavailable' in read)
+          req.log.warn(
+            { code: read.unavailable, chain: identity.chain },
+            'the vault conversation went on without its analytics',
+          );
+        return buildVaultAgentContext({
+          state,
+          entry,
+          prices,
+          prepared,
+          person: identity.privyId,
+          analytics: read,
+        });
       });
       const result = await replyToVaultConversation(req.body, context, model);
       if (result.kind === 'failure') {

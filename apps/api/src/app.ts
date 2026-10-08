@@ -10,6 +10,7 @@ import {
   type ZodTypeProvider,
 } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { bearingAgentAnalytics } from './agent-analytics';
 import { DEPLOYMENTS_DIR, evmDeployment, solanaDeployment } from './deployments';
 import { V1_SECURITY_SCHEMES, v1Transform } from './openapi';
 import { bearingPlanInputs } from './plan-inputs';
@@ -135,6 +136,7 @@ export async function buildApp(
     solanaRecord: deps.v1?.solanaRecord ?? solana.record,
     robinhoodRecord: deps.v1?.robinhoodRecord ?? robinhood.record,
     planInputs: deps.v1?.planInputs ?? bearingPlanInputs,
+    agentAnalytics: deps.v1?.agentAnalytics ?? bearingAgentAnalytics,
     inScope,
   });
 

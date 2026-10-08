@@ -40,6 +40,7 @@ import {
 import { Refusal, refusalFromChainError } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import type { PlanInputs } from '../../orders/personalize';
+import type { AgentAnalytics } from '../../orders/vault-agent';
 import { authFromEnv, enforceSignIn, identify, type TokenIssuer } from '../../plugins/auth';
 import { type Limits, registerLimits, requireDeclared } from '../../plugins/limits';
 import { loggable } from '../../plugins/loggable';
@@ -91,6 +92,11 @@ export type V1Deps = {
    * ceiling is its tier's and says so. The server hands in the reader of the stored figures.
    */
   planInputs?: PlanInputs;
+  /**
+   * Bearing's per-asset figures the conversations explain each asset with. Default: none, and the
+   * model reads only the plan inputs. The server hands in the reader of the fact sheets.
+   */
+  agentAnalytics?: AgentAnalytics;
   /**
    * The model the guided intake reads a goal with. Default: Anthropic's when `ANTHROPIC_API_KEY` is
    * set, else none, and the intake reads with the rules parser alone. A test hands in a replay.
@@ -240,8 +246,20 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
     registerPortfolioRoute(scope, orderDeps);
     registerSharedRoutes(scope, orderDeps);
     registerVaultRoute(scope, orderDeps);
-    registerVaultConversationReplyRoute(scope, orderDeps, vaultAgentModel, deps.planInputs);
-    registerGoalConversationReplyRoute(scope, orderDeps, vaultAgentModel, deps.planInputs);
+    registerVaultConversationReplyRoute(
+      scope,
+      orderDeps,
+      vaultAgentModel,
+      deps.planInputs,
+      deps.agentAnalytics,
+    );
+    registerGoalConversationReplyRoute(
+      scope,
+      orderDeps,
+      vaultAgentModel,
+      deps.planInputs,
+      deps.agentAnalytics,
+    );
     // Out of the route table altogether unless a chain runs on the mock.
     if (chains.active().some((entry) => entry.mock)) registerMockRoutes(scope, orderDeps);
   });
