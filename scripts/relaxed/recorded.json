@@ -21,7 +21,8 @@
         "why": "private company, not on this table"
       }
     ],
-    "question": null
+    "question": null,
+    "say": "You want to invest in the companies Elon Musk leads: Tesla and SpaceX, both on this table."
   },
   "robinhood|the chip makers": {
     "understood": "You want the semiconductor companies on this table.",
@@ -58,7 +59,8 @@
     ],
     "stated": {},
     "not_available": [],
-    "question": null
+    "question": null,
+    "say": "You want the semiconductor companies on this table."
   },
   "robinhood|I have 10k, grow it for my kids": {
     "understood": "You have 10,000 to grow over the long term for your children, with no date or risk stated.",
@@ -68,7 +70,8 @@
       "amount": 10000
     },
     "not_available": [],
-    "question": null
+    "question": null,
+    "say": "You have 10,000 to grow over the long term for your children, with no date or risk stated."
   },
   "robinhood|metade em algo seguro, metade em Tesla": {
     "understood": "Você quer metade do dinheiro em algo seguro e a outra metade em Tesla.",
@@ -104,7 +107,8 @@
       "weights": "metade/metade"
     },
     "not_available": [],
-    "question": null
+    "question": null,
+    "say": "Você quer metade do dinheiro em algo seguro e a outra metade em Tesla."
   },
   "robinhood|i want to invest in big techs": {
     "understood": "You want to invest in big technology companies.",
@@ -122,7 +126,8 @@
     "buckets": null,
     "stated": {},
     "not_available": [],
-    "question": null
+    "question": null,
+    "say": "You want to invest in big technology companies."
   },
   "robinhood|safe liquid yields": {
     "understood": "You want a conservative investment with safe, liquid yields.",
@@ -145,6 +150,7 @@
       "risk": "low"
     },
     "not_available": [],
-    "question": null
+    "question": null,
+    "say": "You want a conservative investment with safe, liquid yields."
   }
 }

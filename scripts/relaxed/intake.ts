@@ -94,25 +94,28 @@ const shelfText = rows.map((r) => r.text).join('\n');
 
 // ---------- 2. The relaxed prompt (section 4) ----------
 
-const SYSTEM = `You help a person turn what they want into a list of holdings from one table. You see the whole table below.
+const SYSTEM = `You are the planner at Tenonfi. A person tells you what they want to do with their money and you turn it into holdings from one table, the shelf of their chain, which you see in full below. You talk to them the way a sharp, warm friend who knows markets would: plainly, briefly, in their language, with real reasoning. You are not a form.
 
-Read what the person wrote. Work out what they mean, including people, companies, themes and nicknames. A person named means the companies they are known for. A theme means the holdings on the table that belong to it.
+What you are free to do: read intent, including people, companies, themes, nicknames and half-sentences; decide which holdings on the table fit and why; notice when something they named is not on the table and say so; ask what you genuinely need, in a natural sentence, one or two things at a time; keep the whole conversation in mind; change course when they do; explain, compare, and give your view of the shape of the plan.
 
-Then write one JSON object:
-  understood: one sentence in the person's language saying what you understood.
-  shape: "pick" unless the words call for another (for every shape, still fill \`lines\` with what fits: yield rows and Treasury funds for "protect" and "income", growth holdings for "grow"; the plan rules are applied after you): "grow" when they want the money to grow over time, "income" when they want to live off it or want monthly money, "protect" when they want to keep it safe, "split" when they want part safe and part risky or state two shares.
-  lines: holdings from the table, each {id, why}. \`why\` is one short clause, in the person's language, on what the company does and why it fits what they said; never just the theme's name. Only ids that appear in the table. If a thing they named is not on the table, do not pick a stand-in; put it in not_available with one line on why.
-  buckets: only for "split": each {name, share, lines}. Shares as stated, else equal.
-  stated: only what the person actually said, across the whole conversation: amount (a number), currency (a code such as USD or BRL), when (their words for when they need the money or how long they will invest), monthly (a number, the income they want each month), weights (their words), and risk as "low" | "medium" | "high" when they used a risk word (conservative, safe, careful = low; aggressive, high risk = high). Leave out anything they did not say. Never guess a number.
-  not_available: names you understood but could not place on the table.
-  questions: what you still need before the plan can be built, asked as one or two friendly sentences in the person's language, never more than two things per turn. Every plan needs the amount. A "grow" plan also needs when they will need the money. An "income" plan also needs the income they want each month. A "protect" plan also needs when they might need the money. A "split" plan needs the amount and the two shares if not stated. Keep picking lines while you ask. When nothing is missing, questions is an empty list. Never ask what is already in stated, and never ask about risk, themes or assets you can decide yourself.
+Four rules, which the code after you also enforces:
+1. You may only name holdings that appear on the table, by their exact id. If a thing they named is not there (a private company, a stock not on this chain), say so instead of substituting.
+2. You never choose weights. Lines split equally unless the person states a preference, and the code applies that after you.
+3. You never state a yield, price, return or any figure that is not on a table row you are quoting. The only numbers in your words are the person's own.
+4. Nothing is built until the person confirms. Before that, you need: the amount for any plan; when they will need the money for a plan to grow or to protect; the monthly income they want for an income plan; the two shares for a split, if not stated. Ask for what is missing while you work, never for what they already said, and never guess a number.
 
-Rules:
-- Never state a yield, price, return or any figure that is not on the table row you are quoting.
-- Never choose weights. Equal split is applied after you, unless \`stated\` holds a preference.
-- Answer in the person's language. Keep \`understood\` to one sentence.
-- Output only the JSON.
-- If the person answers a read-back with a correction, write the whole JSON again with the correction applied. If they only agree, write it again unchanged.
+Shapes, so the code knows what to do next: "pick" for named things, equal split and done; "grow", "income" or "protect" when the words call for it, then the solver sizes the lines on the parameter table; "split" when they want part safe and part risky, one vault per pot. A plan to protect or to pay income holds no stock tokens; pick yield rows, Treasury funds and gold for those.
+
+Answer every turn with one JSON object and nothing else:
+{
+  "say": the message the person reads. Your words, your reasoning, your questions. One short paragraph, or two when there is a lot to say. Mention the holdings by name, not by id. Do not list weights or repeat the table; the code prints the lines under your message.
+  "shape": "pick" | "grow" | "income" | "protect" | "split",
+  "lines": [{ "id": exact id from the table, "why": one clause on why it fits }],
+  "buckets": only for "split": [{ "name", "share": 0 to 1 or null, "lines": [...] }],
+  "stated": what the person has said so far, nothing guessed: { "amount": number, "currency": "USD" | "BRL" | ..., "when": their words, "monthly": number, "weights": their words, "risk": "low" | "medium" | "high" },
+  "not_available": [{ "name", "why" }],
+  "open": the fields of rule 4 still missing for this shape, as a list of "amount" | "when" | "monthly" | "shares"; empty when the plan is ready to confirm
+}
 
 Today is ${new Date().toISOString().slice(0, 10)}.
 
@@ -123,7 +126,8 @@ ${shelfText}`;
 
 const Line = z.object({ id: z.string(), why: z.string() });
 const Reply = z.object({
-  understood: z.string().min(1),
+  say: z.string().min(1),
+  understood: z.string().nullish(),
   shape: z.enum(['pick', 'grow', 'income', 'protect', 'split']),
   lines: z.array(Line).nullish().transform((v) => v ?? []),
   buckets: z
@@ -148,6 +152,7 @@ const Reply = z.object({
     .transform((v) => v ?? []),
   question: z.string().nullish(),
   questions: z.array(z.string()).nullish().transform((v) => v ?? []),
+  open: z.array(z.string()).nullish().transform((v) => v ?? []),
 });
 type Reply = z.infer<typeof Reply>;
 
@@ -169,9 +174,9 @@ async function ask(turns: Turn[]): Promise<{ reply: unknown; provenance: 'live' 
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({
-      model: process.env.RELAXED_MODEL ?? 'claude-haiku-4-5',
-      max_tokens: 1200,
-      temperature: 0,
+      model: process.env.RELAXED_MODEL ?? 'claude-sonnet-5-5',
+      max_tokens: 2000,
+      temperature: 0.3,
       system: SYSTEM,
       messages: turns,
     }),
@@ -219,7 +224,6 @@ const REQUIRED: Record<Reply['shape'], (keyof Reply['stated'])[]> = {
   protect: ['amount', 'when'],
   split: ['amount'],
 };
-const SAID: Record<string, string> = { amount: 'the amount', when: 'when you need the money', monthly: 'the income you want each month' };
 
 type Plan = {
   shape: Reply['shape'];
@@ -246,17 +250,15 @@ function render(rawReply: unknown, provenance: 'live' | 'recorded' | 'mock'): Pl
   leftOut.length = 0;
 
   const plate = provenance === 'live' ? 'LIVE' : provenance === 'recorded' ? 'RECORDED from a live run' : 'MOCK · reply written by hand, not by a model';
-  console.log(`\n[${plate} · ${chain} · shape: ${r.shape}]\n`);
-  console.log(r.understood, '\n');
+  console.log(`\n${r.say}\n`);
 
   const buckets: Plan['buckets'] = [];
   function bucket(title: string | null, shareBps: number, lines: { id: string; why: string }[], shape: string) {
     const kept = noStocks(shape, keep(lines));
-    if (title) console.log(`— ${title}`);
+    if (title) console.log(`  — ${title}`);
     const weights = kept.length ? equalSplit(kept.length) : [];
     const out = kept.map((l, i) => ({ id: l.id, cls: clsOf.get(l.id) ?? '', weightBps: weights[i] ?? 0, why: l.why }));
-    if (out.length === 0) console.log('  (no line yet)');
-    for (const l of out) console.log(`  ${pct(l.weightBps).padStart(7)}  ${l.id.padEnd(22)} ${l.cls.padEnd(13)} ${l.why}`);
+    for (const l of out) console.log(`  ${pct(l.weightBps).padStart(7)}  ${l.id.replace(`${chain}:`, '').padEnd(14)} ${l.cls.padEnd(13)} ${l.why}`);
     buckets.push({ name: title ?? r.shape, shareBps, lines: out });
   }
 
@@ -264,35 +266,23 @@ function render(rawReply: unknown, provenance: 'live' | 'recorded' | 'mock'): Pl
     const n = r.buckets.length;
     const allShares = r.buckets.every((b) => b.share != null);
     const shares = allShares ? r.buckets.map((b) => Math.round((b.share as number) * 10_000)) : equalSplit(n);
-    assumptions.push(allShares ? 'two pots, shares as you said' : 'two pots, equal shares (none stated)');
-    r.buckets.forEach((b, i) => bucket(`${b.name} · ${pct(shares[i] ?? 0)} of the money · one vault`, shares[i] ?? 0, b.lines, 'pick'));
+    if (!allShares) assumptions.push('equal shares between the pots until you say otherwise');
+    r.buckets.forEach((b, i) => bucket(`${b.name} · ${pct(shares[i] ?? 0)} · one vault`, shares[i] ?? 0, b.lines, 'pick'));
   } else {
     bucket(null, 10_000, r.lines, r.shape);
-    if (r.shape === 'pick') assumptions.push(r.stated.weights ? `weights as you said: ${String(r.stated.weights)}` : 'equal split (no weights stated)');
-    else {
-      assumptions.push(`a plan to ${r.shape === 'grow' ? 'grow' : r.shape === 'income' ? 'pay income' : 'protect'}: these lines start it; the solver sizes them on the parameter table`);
-      if (r.stated.risk) assumptions.push(`risk ${r.stated.risk} (you said so)`);
-      else assumptions.push(r.shape === 'protect' ? 'risk low (a plan to protect)' : 'risk medium (not stated)');
-    }
+    if (r.shape === 'pick' && r.lines.length > 1 && !r.stated.weights) assumptions.push('equal split until you say otherwise');
+    if (r.shape !== 'pick') assumptions.push('the solver sizes these on the parameter table once you confirm');
   }
-  if (r.not_available.length) {
-    console.log('\nNot available here:');
-    for (const n of r.not_available) console.log(`  · ${typeof n === 'string' ? n : `${n.name}${n.why ? ` (${n.why})` : ''}`}`);
-  }
-  if (dropped.length) console.log(`\nDropped, not on the table: ${dropped.join(', ')}`);
-  if (leftOut.length) { console.log('\nLeft out by the plan rules:'); for (const l of leftOut) console.log(`  · ${l}`); }
-
-  const said = Object.entries(r.stated).filter(([, v]) => v != null && v !== '').map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`);
-  if (said.length) console.log(`\nYou said: ${said.join(' · ')}`);
-  console.log('\nAssumed:'); for (const a of assumptions) console.log(`  · ${a}`);
+  const notes = [
+    ...assumptions,
+    ...leftOut.map((l) => `left out by the plan rules: ${l}`),
+    ...(dropped.length ? [`dropped, not on the table: ${dropped.join(', ')}`] : []),
+  ];
+  if (notes.length) console.log(`\n  ${notes.join('\n  ')}`);
+  console.log(`\n  [${plate} · ${chain} · ${r.shape}${r.open.length ? ` · open: ${r.open.join(', ')}` : ' · ready to confirm'}]\n`);
 
   const missing = REQUIRED[r.shape].filter((k) => r.stated[k] == null || r.stated[k] === '');
-  const questions = [...r.questions, ...(r.question ? [r.question] : [])];
-  if (questions.length) console.log(`\n${questions.join(' ')}\n`);
-  else if (missing.length) console.log(`\nBefore this can be built I still need ${missing.map((m) => SAID[m] ?? m).join(' and ')}.\n`);
-  else console.log('\nIs that right? (yes / tell me what to change)\n');
-
-  return { shape: r.shape, understood: r.understood, buckets, stated: r.stated, notAvailable: r.not_available, leftOut: [...leftOut], assumptions, missing, questions };
+  return { shape: r.shape, understood: r.say, buckets, stated: r.stated, notAvailable: r.not_available, leftOut: [...leftOut], assumptions, missing: [...new Set([...missing, ...r.open])], questions: r.open };
 }
 
 const YES = /^(y|yes|yep|ok|sure|right|correct|sim|isso|certo|pode|ok[ae]y?)[.! ]*$/i;
@@ -308,20 +298,15 @@ if (!chat) {
   const { createInterface } = await import('node:readline/promises');
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const turns: Turn[] = [];
-  console.log(`\nTenonfi · relaxed intake · ${chain} · ${rows.length} assets on the table. Say what you want; "yes" confirms; empty line quits.\n`);
+  console.log(`\nTenonfi · ${chain} · ${rows.length} assets on the table · model ${process.env.RELAXED_MODEL ?? 'claude-sonnet-5-5'}. Say what you want; "yes" confirms when the plan is ready; empty line quits.\n`);
   let last: Plan | null = null;
   let line = text || (await rl.question('you > ')).trim();
   while (line) {
     if (last && YES.test(line)) {
-      if (last.questions.length === 0 && last.missing.length === 0) {
+      if (last.missing.length === 0) {
         const payload = { shape: last.shape, understood: last.understood, stated: last.stated, buckets: last.buckets, assumptions: last.assumptions, leftOut: last.leftOut };
         console.log(`\nConfirmed. This is what would go to POST /v1/baskets/personalize, one call per vault:\n${JSON.stringify(payload, null, 2)}\n`);
         break;
-      }
-      if (last.questions.length === 0) {
-        console.log(`\nNot yet: I still need ${last.missing.map((m) => SAID[m] ?? m).join(' and ')}.\n`);
-        line = (await rl.question('you > ')).trim();
-        continue;
       }
     }
     turns.push({ role: 'user', content: line });
