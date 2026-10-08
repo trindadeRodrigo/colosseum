@@ -41,8 +41,8 @@ Tailwind v4 is CSS-first: tokens would go in an `@theme { --color-*: …; --font
 
 | Brand | File | Categories |
 |-------|------|------------|
-| working-brand (provisional name **Tenonfi**) | `.design/branding/working-brand/identity/palettes.json` | Colors: OKLCH 11-stop `wood` (brand, source `#7A5A3A`) and warm `neutral` (source `#6E655B`) palettes plus named tokens, with source/method metadata |
-| working-brand | `.design/branding/working-brand/identity/typography.md` | Typography: Newsreader (display), IBM Plex Sans / Sans Condensed (UI), IBM Plex Mono (numbers, provenance, MOCK label); three scales (Expressive 16px/1.333, Productive 13px/1.125, Embedded partner-1em/1.2) with fluid `clamp()` values; tabular figures |
+| working-brand (provisional name **Tenonfi**) | `.design/branding/working-brand/identity/palettes.json` | Colors (revised 2026-10-08, IDENTITY-2): honey `#F5A83A` as the one brand colour, night / paper grounds, leaf / clay / madder / chalk scales plus named tokens, with contrast ratios |
+| working-brand | `.design/branding/working-brand/identity/typography.md` | Typography (revised 2026-10-08, IDENTITY-2): Inter Tight (display, big numbers), Inter (UI), IBM Plex Mono (numbers, provenance, MOCK label); three scales (Expressive 16px/1.333, Productive 13px/1.125, Embedded partner-1em/1.2) with fluid `clamp()` values; tabular figures |
 | working-brand | `.design/branding/working-brand/identity/color-system.md` | Color roles / semantic mapping |
 
 None of these are wired into `apps/web` yet.

@@ -3,78 +3,92 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>tenonfi — brand guidelines (working-brand, 2026-10-01)</title>
+<title>tenonfi — brand guidelines (working-brand, 2026-10-08)</title>
 <style>
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap");
 
 /* ------------------------------------------------------------------
    Tokens — shadcn-native names, values from working-brand.yml
-   (OKLCH as emitted by theme-css.js). Paste-ready for globals.css.
+   (OKLCH as emitted in working-brand.theme.json, 2026-10-08).
+   Paste-ready for globals.css. The --tf-* block is the brand extension.
    ------------------------------------------------------------------ */
 :root, .on-light {
-  --background: oklch(95.96% 0.0130 82.40);         /* paper #F6F1E8 */
-  --foreground: oklch(20.88% 0.0125 67.03);         /* ink #1C1712 */
-  --card: oklch(97.98% 0.0085 84.59);               /* paper-raised #FBF8F2 */
-  --card-foreground: oklch(20.88% 0.0125 67.03);
-  --popover: oklch(97.98% 0.0085 84.59);
-  --popover-foreground: oklch(20.88% 0.0125 67.03);
-  --primary: oklch(49.32% 0.0626 65.50);            /* hardwood #7A5A3A */
-  --primary-foreground: oklch(97.98% 0.0085 84.59);
-  --secondary: oklch(92.72% 0.0177 81.33);          /* paper-sunk #EDE6DA */
-  --secondary-foreground: oklch(20.88% 0.0125 67.03);
-  --accent: oklch(92.72% 0.0177 81.33);             /* hover surface, not a hue */
-  --accent-foreground: oklch(37.95% 0.0615 60.46);  /* heartwood */
-  --muted: oklch(92.72% 0.0177 81.33);
-  --muted-foreground: oklch(51.21% 0.0192 70.28);   /* stone #6E655B */
-  --destructive: oklch(50.01% 0.1535 12.83);        /* madder #A8324A */
-  --border: oklch(85.32% 0.0278 78.16);             /* hair #D9CDBB — decoration */
-  --input: oklch(60.39% 0.0272 71.23);              /* member #8C7F70 — controls */
-  --ring: oklch(49.32% 0.0626 65.50);
-  --radius: 2px;
-  --chart-1: #7A5A3A; --chart-2: #5A3A1E; --chart-3: #9D7751; --chart-4: #6E655B; --chart-5: #1C1712;
-  --success: #2F4A2A; --warning: #8A5A00; --info: #1C1712;
+  --background: oklch(97.03% 0.0070 88.64);         /* paper #F7F5F0 */
+  --foreground: oklch(20.19% 0.0121 277.81);        /* ink #15161C · 16.57 on paper */
+  --card: oklch(100% 0 0);                          /* paper-2 #FFFFFF */
+  --card-foreground: oklch(20.19% 0.0121 277.81);
+  --popover: oklch(100% 0 0);
+  --popover-foreground: oklch(20.19% 0.0121 277.81);
+  --primary: oklch(78.86% 0.1494 71.36);            /* honey #F5A83A */
+  --primary-foreground: oklch(20.19% 0.0121 277.81);/* ink on honey 9.06 */
+  --secondary: oklch(94.35% 0.0099 87.47);          /* paper-3 #EFECE5 */
+  --secondary-foreground: oklch(20.19% 0.0121 277.81);
+  --accent: oklch(94.20% 0.0300 78.78);             /* honey at 14% over the ground #F7EAD6 */
+  --accent-foreground: oklch(56.69% 0.1248 64.33);  /* honey-l #A8640A · 4.67 on white */
+  --muted: oklch(94.35% 0.0099 87.47);
+  --muted-foreground: oklch(53.59% 0.0175 273.64);  /* muted-l #6A6D78 · 5.16 on white */
+  --destructive: oklch(51.82% 0.1696 16.89);        /* madder-l #B52F44 (darkened 2026-10-08) */
+  --border: oklch(90.43% 0.0129 86.83);             /* line-l #E3DFD6 — hairlines */
+  --input: oklch(82.13% 0.0161 86.44);              /* line-l2 #C9C4B9 — control edges */
+  --ring: oklch(54.02% 0.1193 247.65);              /* chalk-l #2A73B0 — focus only */
+  --radius: 8px; --radius-sm: 6px; --radius-lg: 10px; --radius-xl: 16px; --radius-pill: 9999px; --radius-composer: 20px;
+  --chart-1: #F5A83A; --chart-2: #D9881B; --chart-3: #B9803F; --chart-4: #6A6D78; --chart-5: #15161C;
+  --success: #1B7F45; --warning: #A8481A; --info: #2A73B0;
 
-  /* brand extensions */
-  --tf-success-bg: #DEEEDB; --tf-warning-bg: #FFEADB; --tf-error-bg: #FAEAEC;
-  --tf-primary-hover: #63482E; --tf-primary-pressed: #5A3A1E;
-  --tf-hatch: #6E655B;
-  --tf-hm-1: #F2E6D3; --tf-hm-2: #C9AE86; --tf-hm-3: #8A6C4B; --tf-hm-4: #5A3A1E; --tf-hm-5: #1A1714;
-  --tf-species-pale: #E6D3B7; --tf-species-dark: #7A5A3A;
+  /* brand extensions (--tf-*), from tokens.brand-color */
+  --tf-honey: #F5A83A; --tf-honey-hover: #E99C2E; --tf-honey-deep: #D9881B; --tf-honey-text: #A8640A;
+  --tf-honey-tint: rgba(245,168,58,.14);
+  --tf-leaf: #1B7F45;   --tf-leaf-tint: rgba(63,196,124,.14);
+  --tf-clay: #A8481A;   --tf-clay-tint: rgba(240,112,58,.14);
+  --tf-madder: #B52F44; --tf-madder-tint: rgba(239,90,111,.14);
+  --tf-chalk: #2A73B0;  --tf-chalk-tint: rgba(120,180,232,.14);
+  --tf-wood: #E9C48E;   --tf-wood-deep: #B9803F;
+  --tf-pin: #A8640A; --tf-pin-outline: #C9C4B9;
+  --tf-hatch: #6A6D78;
+  --tf-sample-fg: #6A6D78;                          /* the "Sample figures" line: muted-l (gate MOCK-QUIET: no plate) */
+  --tf-glow: radial-gradient(60% 90% at 78% 30%, rgba(245,168,58,.28), rgba(245,168,58,0) 70%);
+  --tf-curve-fill: linear-gradient(to bottom, rgba(245,168,58,.35), rgba(245,168,58,0));
+  --tf-hm-1: #FFE9C2; --tf-hm-2: #F5A83A; --tf-hm-3: #B06C12; --tf-hm-4: #5C3707; --tf-hm-5: #1A1D26;
+  --tf-shadow-popover: 0 8px 24px rgba(0,0,0,.35);
+  --mark-cut: #15161C;                              /* the cut in the mark is ink on light grounds */
 
-  --font-display: "Newsreader Variable", "Newsreader", Georgia, "Times New Roman", serif;
-  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
-  --font-sans: var(--font-body);
-  --font-condensed: "IBM Plex Sans Condensed", "IBM Plex Sans", "Arial Narrow", sans-serif;
+  --font-display: "Inter Tight", "Inter", system-ui, Arial, sans-serif;
+  --font-sans: "Inter", "Inter Fallback", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  --font-body: var(--font-sans);
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --ease: cubic-bezier(0.2, 0, 0, 1);
   --dur-fast: 160ms; --dur-slide: 320ms;
   --col: 80px;
 }
 .dark, .on-dark {
-  --background: oklch(15.13% 0.0055 67.77);         /* black #0D0B09 */
-  --foreground: oklch(92.14% 0.0206 81.78);         /* washi #ECE4D6 */
-  --card: oklch(20.70% 0.0075 67.36);               /* char #1A1714 */
-  --card-foreground: oklch(92.14% 0.0206 81.78);
-  --popover: oklch(24.62% 0.0110 73.40);            /* char-2 #24201B */
-  --popover-foreground: oklch(92.14% 0.0206 81.78);
-  --primary: oklch(87.52% 0.0429 77.60);            /* hinoki #E6D3B7 */
-  --primary-foreground: oklch(15.13% 0.0055 67.77);
-  --secondary: oklch(24.62% 0.0110 73.40);
-  --secondary-foreground: oklch(92.14% 0.0206 81.78);
-  --accent: oklch(24.62% 0.0110 73.40);
-  --accent-foreground: oklch(87.52% 0.0429 77.60);
-  --muted: oklch(24.62% 0.0110 73.40);
-  --muted-foreground: oklch(69.14% 0.0208 72.45);   /* stone-d #A49A8E */
-  --destructive: oklch(73.48% 0.1134 4.60);         /* madder-d #E58AA0 */
-  --border: oklch(32.31% 0.0179 67.10);             /* hair-d #3A322A */
-  --input: oklch(54.28% 0.0267 69.27);              /* member-d #7A6D5F */
-  --ring: oklch(87.52% 0.0429 77.60);
-  --chart-1: #E6D3B7; --chart-2: #C9AE86; --chart-3: #9D7751; --chart-4: #A49A8E; --chart-5: #ECE4D6;
-  --success: #7FA37A; --warning: #D9A441; --info: #ECE4D6;
-  --tf-success-bg: #050D04; --tf-warning-bg: #180C00; --tf-error-bg: #220409;
-  --tf-primary-hover: #D7C09E; --tf-primary-pressed: #C9AE86;
-  --tf-hatch: #A49A8E;
-  --tf-hm-1: #1A1714; --tf-hm-2: #5A3A1E; --tf-hm-3: #8A6C4B; --tf-hm-4: #C9AE86; --tf-hm-5: #F2E6D3;
+  --background: oklch(16.04% 0.0107 276.24);        /* night #0C0D12 */
+  --foreground: oklch(95.83% 0.0070 88.64);         /* text #F3F1EC · 17.2 on night */
+  --card: oklch(19.69% 0.0144 272.52);              /* night-2 #13151C */
+  --card-foreground: oklch(95.83% 0.0070 88.64);
+  --popover: oklch(23.18% 0.0180 270.53);           /* night-3 #1A1D26 */
+  --popover-foreground: oklch(95.83% 0.0070 88.64);
+  --primary: oklch(78.86% 0.1494 71.36);            /* honey, 9.75 on night */
+  --primary-foreground: oklch(20.19% 0.0121 277.81);/* ink on honey, both modes */
+  --secondary: oklch(23.18% 0.0180 270.53);
+  --secondary-foreground: oklch(95.83% 0.0070 88.64);
+  --accent: oklch(26.44% 0.0246 69.12);             /* honey at 14% over night #2D2318 */
+  --accent-foreground: oklch(78.86% 0.1494 71.36);
+  --muted: oklch(23.18% 0.0180 270.53);
+  --muted-foreground: oklch(69.87% 0.0235 277.32);  /* muted #9A9DAD · 6.77 on night-2 */
+  --destructive: oklch(66.77% 0.1832 15.21);        /* madder #EF5A6F */
+  --border: oklch(28.63% 0.0228 270.50);            /* line #262A36 */
+  --input: oklch(35.43% 0.0287 271.32);             /* line-2 #363B4B */
+  --ring: oklch(74.90% 0.0978 245.75);              /* chalk #78B4E8 */
+  --chart-1: #F5A83A; --chart-2: #E9C48E; --chart-3: #D9881B; --chart-4: #9A9DAD; --chart-5: #F3F1EC;
+  --success: #3FC47C; --warning: #F0703A; --info: #78B4E8;
+  --tf-honey-text: #F5A83A;
+  --tf-leaf: #3FC47C; --tf-clay: #F0703A; --tf-madder: #EF5A6F; --tf-chalk: #78B4E8;
+  --tf-pin: #F5A83A; --tf-pin-outline: #6E7282;
+  --tf-hatch: #9A9DAD;
+  --tf-sample-fg: #9A9DAD;
+  --tf-glow: radial-gradient(60% 90% at 78% 30%, rgba(245,168,58,.22), rgba(245,168,58,0) 70%);
+  --tf-hm-1: #1A1D26; --tf-hm-2: #5C3707; --tf-hm-3: #B06C12; --tf-hm-4: #F5A83A; --tf-hm-5: #FFE9C2;
+  --mark-cut: #0C0D12;                              /* the cut is the ground colour on night */
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
 }
 
@@ -83,121 +97,133 @@
 html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 body { margin: 0; background: var(--background); color: var(--foreground);
-  font: 400 1rem/1.5rem var(--font-body); font-variant-numeric: lining-nums tabular-nums; }
+  font: 400 1rem/1.5rem var(--font-sans); font-variant-numeric: lining-nums tabular-nums; }
 .on-light, .on-dark { background: var(--background); color: var(--foreground); }
 h1, h2, h3, h4, p { margin: 0; }
 h1, h2, h3 { text-wrap: balance; } p, li { text-wrap: pretty; }
-a { color: var(--primary); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+a { color: var(--accent-foreground); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
 a:hover { text-decoration-thickness: 2px; }
 :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .mono { font-family: var(--font-mono); }
 .muted { color: var(--muted-foreground); }
 .tf-figure { font-feature-settings: "tnum" 1, "lnum" 1; }
 svg { display: block; }
+.display { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.02em; }
 
 /* ------------------------------------------------------------------ nav */
 #toc { position: fixed; left: 0; top: 0; height: 100vh; width: 180px; z-index: 50; overflow-y: auto;
   display: flex; flex-direction: column; justify-content: center; padding: 0 28px; gap: 8px;
   border-right: 1px solid var(--border); background: var(--background); }
 #toc .brand { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; color: var(--foreground); text-decoration: none; }
-#toc .brand svg { fill: var(--primary); }
-.wordmark { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.015em; line-height: 1; font-optical-sizing: auto; }
-.toc-link { font: 500 0.875rem/1.5rem var(--font-body); color: var(--muted-foreground); text-decoration: none; padding-left: 10px; border-left: 2px solid transparent; }
+.wordmark { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.02em; line-height: 1; text-transform: lowercase; }
+.wordmark-bearing { font-family: var(--font-sans); font-weight: 500; letter-spacing: 0; line-height: 1; color: var(--muted-foreground); }
+.toc-link { font: 500 0.875rem/1.5rem var(--font-sans); color: var(--muted-foreground); text-decoration: none; padding-left: 10px; border-left: 2px solid transparent; }
 .toc-link:hover { color: var(--foreground); }
-.toc-link.active { color: var(--primary); border-left-color: var(--primary); }
-.theme-toggle { margin-top: 24px; font: 500 0.8125rem/1.25rem var(--font-body); background: transparent; color: var(--foreground);
+.toc-link.active { color: var(--foreground); border-left-color: var(--tf-honey); }
+.theme-toggle { margin-top: 24px; font: 500 0.8125rem/1.25rem var(--font-sans); background: transparent; color: var(--foreground);
   border: 1px solid var(--input); border-radius: var(--radius); padding: 6px 10px; cursor: pointer; text-align: left; }
-.theme-toggle:hover { border-color: var(--primary); color: var(--primary); }
+.theme-toggle:hover { background: var(--secondary); border-color: var(--muted-foreground); }
 
 main { margin-left: 180px; }
 .container { max-width: 1120px; padding: 0 56px; margin: 0 auto; }
 section { padding: 96px 0; border-bottom: 1px solid var(--border); scroll-margin-top: 0; }
-.section-label { font: 500 0.78125rem/1.25rem var(--font-body); letter-spacing: 0.015em; color: var(--muted-foreground); margin-bottom: 12px; display: flex; gap: 12px; }
-.section-label b { color: var(--primary); font-weight: 500; }
-.section-heading { font: 600 clamp(1.9375rem, 1.7562rem + 0.7735vw, 2.375rem)/clamp(2.5rem, 2.2928rem + 0.8840vw, 3rem) var(--font-body); letter-spacing: -0.015em; max-width: 24ch; }
-.section-heading.serif { font-family: var(--font-display); font-weight: 500; font-variation-settings: "opsz" 36; }
+.section-label { font: 500 0.75rem/1rem var(--font-sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted-foreground); margin-bottom: 12px; display: flex; gap: 12px; }
+.section-label b { color: var(--tf-honey-text); font-weight: 600; }
+.section-heading { font-family: var(--font-display); font-weight: 600; font-size: clamp(1.625rem, 1.45rem + 0.8vw, 2.125rem); line-height: 1.15; letter-spacing: -0.02em; max-width: 26ch; }
 .lede { font-size: 1.125rem; line-height: 1.75rem; max-width: 62ch; margin-top: 16px; color: var(--muted-foreground); }
-h3.sub { font: 600 1.25rem/1.75rem var(--font-body); margin: 56px 0 16px; letter-spacing: -0.005em; }
-.rule-note { font-size: 0.875rem; line-height: 1.5rem; color: var(--muted-foreground); max-width: 66ch; margin-top: 12px; }
+h3.sub { font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; line-height: 1.75rem; letter-spacing: -0.015em; margin: 56px 0 16px; }
+.rule-note { font-size: 0.875rem; line-height: 1.375rem; color: var(--muted-foreground); max-width: 66ch; margin-top: 12px; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
 .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
-.panel { border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); padding: 24px; }
-.cap { font: 500 0.78125rem/1.25rem var(--font-body); letter-spacing: 0.015em; color: var(--muted-foreground); }
+.grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
+.panel { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); padding: 24px; }
+.cap { font: 500 0.75rem/1rem var(--font-sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted-foreground); }
+.cap-sc { font: 500 0.8125rem/1.25rem var(--font-sans); color: var(--muted-foreground); }
 .src { font: 400 0.8125rem/1.25rem var(--font-mono); color: var(--muted-foreground); }
+.hair { height: 1px; background: var(--border); }
 
-/* ------------------------------------------------------------------ P2 stepped divider */
-.step-rule { --step: var(--col); --c: var(--border); height: 9px; margin: 48px 0 0; background:
-  linear-gradient(var(--c), var(--c)) right 0 / calc(100% - 2 * var(--step)) 1px no-repeat,
-  linear-gradient(var(--c), var(--c)) right 4px / calc(100% - var(--step)) 1px no-repeat,
-  linear-gradient(var(--c), var(--c)) right 8px / 100% 1px no-repeat; }
-
-/* ------------------------------------------------------------------ P1 kumiko */
+/* ------------------------------------------------------------------ P1 lattice (marketing grounds only) */
 .lattice { position: relative; isolation: isolate; --cell: var(--col); --c: var(--border); }
-.lattice::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+.lattice::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: .6;
   background-image: linear-gradient(to right, var(--c) 1px, transparent 1px), linear-gradient(to bottom, var(--c) 1px, transparent 1px);
   background-size: var(--cell) var(--cell); }
-.lattice--medium { --cell: 24px; }
-.lattice--fine { --cell: 8px; }
 
-/* ------------------------------------------------------------------ P4 hatch = MOCK / stale only */
+/* ------------------------------------------------------------------ P4 hatch = sample / stale only (gate MOCK-QUIET: no boxed MOCK) */
 .hatch { background: repeating-linear-gradient(45deg, var(--tf-hatch) 0 1px, transparent 1px 6px); }
-.mock-band { inline-size: 6px; align-self: stretch; flex: none; }
-.mock-plate { display: inline-block; background: var(--card); color: var(--card-foreground); border: 1px solid var(--tf-hatch);
-  font: 500 0.78125rem/1.125rem var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; padding: 0 6px; }
+.sample-edge { inline-size: 6px; align-self: stretch; flex: none; }
+.sample-card, .sample-row { position: relative; }
+.sample-card::before, .sample-row::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: repeating-linear-gradient(45deg, var(--tf-hatch) 0 1px, transparent 1px 6px); }
+.sample-card { padding-left: 30px; }
+.sample-line { font: 400 0.78125rem/1.125rem var(--font-sans); color: var(--tf-sample-fg); }
 
 /* ------------------------------------------------------------------ provenance pin */
-.pin { display: inline-block; height: .75em; width: 1.125em; vertical-align: baseline; color: var(--primary); overflow: visible; }
+.pin { display: inline-block; height: .75em; width: 1.125em; vertical-align: baseline; overflow: visible; }
 .pin-btn { position: relative; display: inline-flex; align-items: baseline; background: none; border: 0; padding: 0; margin: 0; color: inherit; cursor: pointer; font: inherit; }
 .pin-btn::before { content: ""; position: absolute; left: 50%; top: 50%; width: 24px; height: 24px; transform: translate(-50%, -50%); }
-.pin.stale, .pin.mock { color: var(--tf-hatch); }
 .word-stale { font: 400 0.8125rem/1.25rem var(--font-mono); color: var(--muted-foreground); margin-left: 6px; }
-.popover { background: var(--popover); color: var(--popover-foreground); border: 1px solid var(--input); border-radius: var(--radius); padding: 12px 14px; font: 400 0.8125rem/1.25rem var(--font-mono); max-width: 360px; }
+.popover { background: var(--popover); color: var(--popover-foreground); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--tf-shadow-popover); padding: 12px 14px; font: 400 0.8125rem/1.25rem var(--font-mono); max-width: 360px; }
 .popover dt { color: var(--muted-foreground); } .popover dd { margin: 0 0 6px; }
 
-/* ------------------------------------------------------------------ status squares */
-.status { display: inline-flex; align-items: center; gap: 8px; font: 500 0.875rem/1.25rem var(--font-body); }
+/* ------------------------------------------------------------------ status: word + shape + colour on a 14% tint */
+.status { display: inline-flex; align-items: center; gap: 8px; font: 500 0.875rem/1.25rem var(--font-sans); }
 .status svg { width: 12px; height: 12px; flex: none; }
-.status.on { color: var(--success); } .status.watch { color: var(--warning); } .status.off { color: var(--destructive); }
-.badge { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 0; font: 500 0.78125rem/1.25rem var(--font-body); letter-spacing: 0.015em; }
+.status.on { color: var(--tf-leaf); } .status.watch { color: var(--tf-clay); } .status.off { color: var(--tf-madder); }
+.badge { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: var(--radius-pill); font: 600 0.75rem/1 var(--font-sans); white-space: nowrap; }
 .badge svg { width: 10px; height: 10px; }
-.badge.on { background: var(--tf-success-bg); color: var(--success); }
-.badge.watch { background: var(--tf-warning-bg); color: var(--warning); }
-.badge.off { background: var(--tf-error-bg); color: var(--destructive); }
+.badge.on { background: var(--tf-leaf-tint); color: var(--tf-leaf); }
+.badge.watch { background: var(--tf-clay-tint); color: var(--tf-clay); }
+.badge.off { background: var(--tf-madder-tint); color: var(--tf-madder); }
+.delta { font: 500 0.6875rem/1rem var(--font-sans); font-variant-numeric: tabular-nums; }
+.delta.up { color: var(--tf-leaf); } .delta.down { color: var(--tf-madder); } .delta.flat { color: var(--muted-foreground); }
+.chip { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: var(--radius-pill); border: 1px solid var(--input); background: transparent; color: var(--foreground); font: 500 0.875rem/1 var(--font-sans); cursor: pointer; }
+.chip:hover, .chip.is-hover { background: var(--secondary); }
+.chip.sel { background: var(--tf-honey-tint); color: var(--tf-honey-text); border-color: transparent; }
+.tag { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: var(--radius-sm); background: var(--secondary); color: var(--muted-foreground); font: 500 0.6875rem/1 var(--font-sans); }
 
 /* ------------------------------------------------------------------ controls */
-.btn { display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: var(--radius); font: 500 0.9375rem/1 var(--font-body); cursor: pointer; transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.btn { display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: var(--radius); font: 600 0.9375rem/1 var(--font-sans); cursor: pointer; transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
 .btn-primary { background: var(--primary); color: var(--primary-foreground); border: 0; }
-.btn-primary:hover, .btn-primary.is-hover { background: var(--tf-primary-hover); }
-.btn-primary:active, .btn-primary.is-pressed { background: var(--tf-primary-pressed); }
+.btn-primary:hover, .btn-primary.is-hover { background: var(--tf-honey-hover); }
+.btn-primary:active, .btn-primary.is-pressed { background: var(--tf-honey-deep); }
 .btn-secondary { background: transparent; color: var(--foreground); border: 1px solid var(--input); }
-.btn-secondary:hover, .btn-secondary.is-hover { border-color: var(--primary); color: var(--primary); }
+.btn-secondary:hover, .btn-secondary.is-hover { background: var(--secondary); border-color: var(--muted-foreground); }
+.btn-icon { width: 40px; padding: 0; justify-content: center; }
 .btn.is-focus { outline: 2px solid var(--ring); outline-offset: 2px; }
 .field { display: grid; gap: 6px; }
-.field label { font: 500 0.78125rem/1.25rem var(--font-body); letter-spacing: .015em; }
-.input { height: 40px; padding: 0 12px; border-radius: var(--radius); background: var(--muted); color: var(--foreground); border: 1px solid var(--input); font: 400 1rem var(--font-body); font-variant-numeric: tabular-nums; width: 100%; }
+.field label { font: 500 0.75rem/1rem var(--font-sans); letter-spacing: .04em; text-transform: uppercase; color: var(--muted-foreground); }
+.input { height: 40px; padding: 0 12px; border-radius: var(--radius); background: var(--secondary); color: var(--foreground); border: 1px solid var(--input); font: 400 1rem var(--font-sans); font-variant-numeric: tabular-nums; width: 100%; }
 .input.is-focus { outline: 2px solid var(--ring); outline-offset: 2px; }
 .input.is-error { border-color: var(--destructive); }
 .field .err { font-size: 0.875rem; line-height: 1.25rem; color: var(--destructive); }
 
-/* ------------------------------------------------------------------ hero (always an inverted, warm-black section) */
-#hero { padding: 0; border-bottom: 0; }
-.hero { min-height: 100vh; display: grid; grid-template-rows: 1fr auto; position: relative; overflow: hidden; }
+/* composer: the typing box, 20px, with a round send button */
+.composer { display: flex; align-items: flex-end; gap: 8px; border: 1px solid var(--input); background: var(--card); border-radius: var(--radius-composer); padding: 8px 8px 8px 16px; min-height: 52px; max-width: 560px; }
+.composer .text { flex: 1; font: 400 1rem/1.5rem var(--font-sans); padding: 6px 0; color: var(--foreground); }
+.composer .text .ph { color: var(--muted-foreground); }
+.composer .send { width: 36px; height: 36px; flex: none; border-radius: var(--radius-pill); background: var(--primary); color: var(--primary-foreground); border: 0; display: grid; place-items: center; cursor: pointer; }
+.composer .send:hover { background: var(--tf-honey-hover); }
+.composer.is-focus { outline: 2px solid var(--ring); outline-offset: 2px; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+/* ------------------------------------------------------------------ hero (night ground, honey glow) */
+#hero { padding: 0; border-bottom: 0; background: var(--tf-glow), var(--background); }
+.hero { min-height: min(100vh, 920px); display: grid; grid-template-rows: 1fr auto; position: relative; overflow: hidden; }
 .hero-inner { display: grid; grid-template-columns: 7fr 5fr; gap: 48px; align-items: center; padding: 96px 56px 64px; max-width: 1280px; }
-.hero h1 { font-family: var(--font-display); font-weight: 400; font-optical-sizing: auto;
-  font-size: clamp(3.0625rem, 2.5834rem + 2.0442vw, 4.2188rem); line-height: clamp(3.5rem, 2.9820rem + 2.2099vw, 4.75rem); letter-spacing: -0.015em; max-width: 17ch; }
-.hero .tagline { margin-top: 32px; font: 400 1.125rem/1.75rem var(--font-body); color: var(--muted-foreground); }
+.hero h1 { font-family: var(--font-display); font-weight: 600; font-size: clamp(2.75rem, 2.2rem + 2.2vw, 4rem); line-height: 1.05; letter-spacing: -0.025em; max-width: 16ch; }
+.hero .tagline { margin-top: 24px; font: 400 1.125rem/1.75rem var(--font-sans); color: var(--muted-foreground); max-width: 52ch; }
 .hero .tagline b { color: var(--foreground); font-weight: 500; }
-.hero .eyebrow { display: flex; align-items: center; gap: 12px; margin-bottom: 40px; }
-.hero .eyebrow svg { fill: var(--primary); }
+.hero .eyebrow { display: flex; align-items: center; gap: 10px; margin-bottom: 40px; }
+.hero .composer { margin-top: 32px; }
 .joint { width: 100%; max-width: 440px; justify-self: end; color: var(--foreground); }
-.joint .member { fill: #C9AE86; }       /* two-species hero: members hinoki-deep */
-.joint .pin-fill { fill: #E6D3B7; }     /* pin hinoki */
+.joint .post { fill: var(--tf-honey); }        /* the goal: honey */
+.joint .member { fill: var(--foreground); }    /* the plan: text / ink */
+.joint .pin-fill { fill: var(--tf-honey); }    /* the source: honey */
 .joint .ground { fill: var(--background); }
-.joint .dim { stroke: var(--border); stroke-width: .06; fill: none; }
+.joint .dim { stroke: var(--tf-chalk); stroke-width: .08; fill: none; }
 .joint .dim-label { font-family: var(--font-mono); font-size: 1.05px; fill: var(--muted-foreground); }
 .joint .piece { animation: seat 1100ms var(--ease) 400ms both; }
-.joint .pin-in { animation: pin-drop 500ms var(--ease) 1500ms both; }  /* hero lock ≈ 2.0s total — founder choice 2026-10-01 */
+.joint .pin-in { animation: pin-drop 500ms var(--ease) 1500ms both; }  /* hero lock ≈ 2.0s total — founder choice 2026-10-01, kept 2026-10-08 */
 @keyframes seat { from { transform: translateX(-11px); } to { transform: none; } }
 @keyframes pin-drop { from { transform: translateY(-5px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
@@ -205,167 +231,193 @@ h3.sub { font: 600 1.25rem/1.75rem var(--font-body); margin: 56px 0 16px; letter
   .joint .piece, .joint .pin-in, .leg-anim, .pin-anim { animation: fade 120ms linear both !important; }
 }
 .replay { font: 400 0.8125rem/1.25rem var(--font-mono); color: var(--muted-foreground); background: none; border: 0; cursor: pointer; padding: 4px 0; text-decoration: underline; text-underline-offset: 4px; }
-.metrics { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--border); }
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--border); background: var(--background); }
 .metric { padding: 24px 28px 28px; border-right: 1px solid var(--border); }
 .metric:last-child { border-right: 0; }
-.metric .v { font: 500 1.5rem/2rem var(--font-body); letter-spacing: -0.01em; }
+.metric .v { font: 600 1.5rem/2rem var(--font-display); letter-spacing: -0.02em; }
 .metric .l { font-size: 0.875rem; line-height: 1.25rem; color: var(--muted-foreground); margin-top: 4px; max-width: 28ch; }
 
 /* ------------------------------------------------------------------ logo */
-.ground-pair { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--border); }
+.ground-pair { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
 .ground-pair > div { padding: 40px; }
 .ground-pair > .on-dark { border-left: 1px solid var(--border); }
 .mark-row { display: flex; align-items: flex-end; gap: 28px; flex-wrap: wrap; }
 .mark-cell { display: flex; flex-direction: column; gap: 8px; }
-.mark-cell svg { fill: currentColor; }
 .lab { font: 400 0.75rem/1rem var(--font-mono); color: var(--muted-foreground); }
 .lockup { display: flex; align-items: center; gap: 12px; }
-.lockup svg { fill: var(--primary); }
-.on-light .lockup svg.ink { fill: #1C1712; }
-.donts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 24px; }
-.dont { border: 1px solid var(--border); padding: 20px; display: grid; gap: 12px; justify-items: start; align-content: start; }
-.dont .x { font: 500 0.8125rem/1.25rem var(--font-mono); color: var(--destructive); }
+.stack { display: inline-flex; flex-direction: column; align-items: center; gap: 12px; }
+.tile { border-radius: 16px; display: grid; place-items: center; }
+.donts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-top: 24px; }
+.dont { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; display: grid; gap: 12px; justify-items: start; align-content: start; }
+.dont .x { font: 500 0.8125rem/1.25rem var(--font-mono); color: var(--tf-madder); }
+.credit-card { display: flex; align-items: center; gap: 5px; width: max-content; border-radius: 12px; padding: 14px 16px; font: 400 11px/1.4 -apple-system, system-ui, sans-serif; }
+.credit-card svg { width: 16px; height: 16px; }
 
 /* ------------------------------------------------------------------ positioning */
 .pos-grid { display: grid; grid-template-columns: 5fr 7fr; gap: 56px; margin-top: 48px; }
-.quote { font-family: var(--font-display); font-weight: 400; font-size: clamp(1.5625rem, 1.4719rem + 0.3867vw, 1.7812rem); line-height: 2.25rem; letter-spacing: -0.01em; font-variation-settings: "opsz" 36; }
+.quote { font-family: var(--font-display); font-weight: 600; font-size: clamp(1.5rem, 1.4rem + 0.4vw, 1.75rem); line-height: 1.2; letter-spacing: -0.02em; }
 .kv { display: grid; grid-template-columns: 160px 1fr; border-top: 1px solid var(--border); }
 .kv > * { padding: 16px 0; border-bottom: 1px solid var(--border); }
-.kv dt { font: 500 0.78125rem/1.5rem var(--font-body); color: var(--muted-foreground); }
+.kv dt { font: 500 0.8125rem/1.5rem var(--font-sans); color: var(--muted-foreground); }
 .kv dd { margin: 0; }
 
 /* ------------------------------------------------------------------ color */
 .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
-.sw { border: 1px solid var(--border); background: var(--card); }
-.sw .chip { height: 80px; border-bottom: 1px solid var(--border); }
+.sw { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); overflow: hidden; }
+.sw .chip-c { height: 80px; border-bottom: 1px solid var(--border); }
 .sw .meta { padding: 10px 12px 12px; }
-.sw .n { font: 500 0.875rem/1.25rem var(--font-body); }
+.sw .n { font: 600 0.875rem/1.25rem var(--font-sans); }
 .sw .h, .sw .o { font: 400 0.75rem/1rem var(--font-mono); color: var(--muted-foreground); }
 .sw .r { font-size: 0.75rem; line-height: 1rem; color: var(--muted-foreground); margin-top: 4px; }
 .ramp { display: grid; grid-template-columns: 110px repeat(11, 1fr); gap: 2px; align-items: stretch; margin-bottom: 2px; }
-.ramp .name { font: 500 0.8125rem/1.25rem var(--font-body); align-self: center; }
+.ramp .name { font: 500 0.8125rem/1.25rem var(--font-sans); align-self: center; }
 .ramp .stop { height: 48px; position: relative; }
+.ramp .stop:first-of-type { border-radius: 6px 0 0 6px; } .ramp .stop:last-of-type { border-radius: 0 6px 6px 0; }
 .ramp .stop span { position: absolute; left: 6px; bottom: 4px; font: 400 0.6875rem/1 var(--font-mono); }
 .ramp-head { display: grid; grid-template-columns: 110px repeat(11, 1fr); gap: 2px; font: 400 0.75rem/1rem var(--font-mono); color: var(--muted-foreground); margin-bottom: 6px; }
+.heat-ramp { display: grid; grid-template-columns: 110px repeat(5, 1fr); gap: 2px; align-items: center; margin-top: 2px; }
+.heat-ramp .stop { height: 32px; }
 table.pairs { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
 table.pairs th, table.pairs td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--border); vertical-align: middle; }
-table.pairs th { font: 500 0.78125rem/1.25rem var(--font-body); color: var(--muted-foreground); }
+table.pairs th { font: 500 0.6875rem/1rem var(--font-sans); letter-spacing: .05em; text-transform: uppercase; color: var(--muted-foreground); }
 table.pairs td[data-numeric] { text-align: right; font-family: var(--font-mono); }
-.sample-pair { display: inline-flex; align-items: center; justify-content: center; min-width: 76px; height: 28px; padding: 0 8px; font-weight: 500; border: 1px solid var(--border); }
-.fix { border-left: 2px solid var(--primary); padding: 4px 0 4px 16px; margin-top: 16px; max-width: 72ch; }
-.proportion { display: grid; grid-template-columns: 60fr 30fr 10fr; height: 40px; border: 1px solid var(--border); margin-top: 16px; }
+.sample-pair { display: inline-flex; align-items: center; justify-content: center; min-width: 76px; height: 28px; padding: 0 8px; font-weight: 500; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.fix { border-left: 2px solid var(--tf-honey); padding: 4px 0 4px 16px; margin-top: 16px; max-width: 72ch; }
+.proportion { display: grid; grid-template-columns: 70fr 24fr 6fr; height: 40px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-top: 16px; }
+.glow-demo { position: relative; height: 240px; border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--border); background: var(--tf-glow), var(--background); display: grid; align-content: end; padding: 24px; }
+.curve-demo { height: 240px; border-radius: var(--radius-lg); border: 1px solid var(--border); background: var(--card); padding: 16px; }
 
 /* ------------------------------------------------------------------ type */
 .type-block { border-top: 1px solid var(--border); padding-top: 32px; margin-top: 56px; display: grid; grid-template-columns: 220px 1fr; gap: 32px; }
-.type-block .who h4 { font: 600 1.25rem/1.75rem var(--font-body); }
+.type-block .who h4 { font: 600 1.25rem/1.75rem var(--font-display); letter-spacing: -0.015em; }
 .type-block .who p { font-size: 0.875rem; line-height: 1.5rem; color: var(--muted-foreground); margin-top: 8px; }
 .step { margin-bottom: 32px; }
 .scale-meta { font: 400 0.75rem/1rem var(--font-mono); color: var(--muted-foreground); margin-top: 8px; }
-.t-display { font-family: var(--font-display); font-weight: 400; font-size: clamp(3.0625rem, 2.5834rem + 2.0442vw, 4.2188rem); line-height: clamp(3.5rem, 2.9820rem + 2.2099vw, 4.75rem); letter-spacing: -0.015em; max-width: 18ch; }
-.t-h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(2.4375rem, 2.1397rem + 1.2707vw, 3.1562rem); line-height: clamp(3rem, 2.6892rem + 1.3260vw, 3.75rem); letter-spacing: -0.01em; }
-.t-h2s { font-family: var(--font-display); font-weight: 500; font-variation-settings: "opsz" 36; font-size: clamp(1.9375rem, 1.7562rem + 0.7735vw, 2.375rem); line-height: clamp(2.5rem, 2.2928rem + 0.8840vw, 3rem); letter-spacing: -0.015em; }
-.t-h2 { font: 600 clamp(1.9375rem, 1.7562rem + 0.7735vw, 2.375rem)/clamp(2.5rem, 2.2928rem + 0.8840vw, 3rem) var(--font-body); letter-spacing: -0.015em; }
-.t-h3 { font: 600 clamp(1.5625rem, 1.4719rem + 0.3867vw, 1.7812rem)/clamp(2rem, 1.8964rem + 0.4420vw, 2.25rem) var(--font-body); letter-spacing: -0.01em; }
-.t-h4 { font: 500 clamp(1.25rem, 1.2112rem + 0.1657vw, 1.3438rem)/1.75rem var(--font-body); letter-spacing: -0.005em; }
-.t-bodylg { font: 400 1.125rem/1.75rem var(--font-body); max-width: 66ch; }
-.t-body { font: 400 1rem/1.5rem var(--font-body); max-width: 66ch; }
-.t-bodysm { font: 400 0.875rem/1.5rem var(--font-body); letter-spacing: .01em; max-width: 66ch; }
-.t-caption { font: 500 0.78125rem/1.25rem var(--font-body); letter-spacing: .015em; }
+.t-display { font-family: var(--font-display); font-weight: 600; font-size: clamp(2.75rem, 2.2rem + 2.2vw, 4rem); line-height: 1.05; letter-spacing: -0.025em; max-width: 16ch; }
+.t-h1 { font-family: var(--font-display); font-weight: 600; font-size: clamp(2.125rem, 1.8rem + 1.3vw, 2.875rem); line-height: 1.1; letter-spacing: -0.02em; }
+.t-h2 { font-family: var(--font-display); font-weight: 600; font-size: clamp(1.625rem, 1.45rem + 0.8vw, 2.125rem); line-height: 1.15; letter-spacing: -0.02em; }
+.t-h3 { font-family: var(--font-display); font-weight: 600; font-size: clamp(1.25rem, 1.15rem + 0.4vw, 1.5rem); line-height: 1.25; letter-spacing: -0.015em; }
+.t-figlg { font-family: var(--font-display); font-weight: 600; font-size: 1.75rem; line-height: 2rem; letter-spacing: -0.02em; }
+.t-h4 { font: 600 1.125rem/1.5rem var(--font-sans); letter-spacing: -0.01em; }
+.t-bodylg { font: 400 1.125rem/1.75rem var(--font-sans); max-width: 66ch; }
+.t-body { font: 400 1rem/1.5rem var(--font-sans); max-width: 66ch; }
+.t-bodysm { font: 400 0.875rem/1.375rem var(--font-sans); max-width: 66ch; }
+.t-caption { font: 500 0.75rem/1rem var(--font-sans); letter-spacing: .04em; text-transform: uppercase; }
 .t-source { font: 400 0.8125rem/1.25rem var(--font-mono); }
-.t-mock { font: 500 0.78125rem/1.25rem var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
-.t-bkpi { font: 500 1.4688rem/2rem var(--font-mono); }
-.t-btitle { font: 600 1.3125rem/1.75rem var(--font-body); }
-.t-bsection { font: 600 1.0313rem/1.5rem var(--font-body); }
-.t-bemph { font: 500 0.9063rem/1.25rem var(--font-condensed); }
-.t-bcell { font: 400 0.8125rem/1.25rem var(--font-condensed); }
-.t-bhead { font: 500 0.75rem/1rem var(--font-condensed); }
+.t-sample { font: 400 0.78125rem/1.125rem var(--font-sans); color: var(--tf-sample-fg); }
+.t-bkpi { font: 600 1.375rem/1.75rem var(--font-display); letter-spacing: -0.02em; }
+.t-btitle { font: 600 1.25rem/1.75rem var(--font-display); letter-spacing: -0.015em; }
+.t-bsection { font: 600 0.9375rem/1.5rem var(--font-sans); }
+.t-bemph { font: 600 0.8125rem/1.25rem var(--font-sans); }
+.t-bcell { font: 400 0.8125rem/1.25rem var(--font-sans); }
+.t-bhead { font: 500 0.6875rem/1rem var(--font-sans); letter-spacing: .05em; text-transform: uppercase; }
 .t-bmeta { font: 400 0.75rem/1rem var(--font-mono); }
-.pairing { margin-top: 56px; display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--border); }
+.pairing { margin-top: 56px; display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
 .pairing > div { padding: 24px; border-right: 1px solid var(--border); }
 .pairing > div:last-child { border-right: 0; }
 
 /* ------------------------------------------------------------------ visual elements */
-.pattern-demo { height: 240px; border: 1px solid var(--border); position: relative; }
-.pattern-demo .tag { position: absolute; left: 16px; bottom: 16px; background: var(--background); padding: 2px 8px; font: 400 0.75rem/1rem var(--font-mono); color: var(--muted-foreground); border: 1px solid var(--border); }
+.jcard { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); padding: 20px; display: grid; gap: 12px; }
+.jcard svg { width: 96px; height: 96px; color: var(--foreground); }
+.jk { stroke: var(--tf-honey); } .jl { stroke: currentColor; } .jp { fill: var(--tf-honey); } .jd { stroke: var(--tf-chalk); }
+.jcard .jn { font: 600 0.9375rem/1.5rem var(--font-sans); }
+.jcard .jm { font-size: 0.8125rem; line-height: 1.25rem; color: var(--muted-foreground); }
+.pattern-demo { height: 240px; border: 1px solid var(--border); border-radius: var(--radius-lg); position: relative; overflow: hidden; }
+.pattern-demo .ptag { position: absolute; left: 16px; bottom: 16px; background: var(--background); padding: 2px 8px; font: 400 0.75rem/1rem var(--font-mono); color: var(--muted-foreground); border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .loader { display: inline-grid; grid-template-columns: auto auto; gap: 12px; align-items: center; }
-.loader svg line { stroke: var(--border); stroke-width: 1; }
+.loader .bar { display: flex; gap: 2px; width: 60px; }
+.loader .bar i { height: 6px; flex: 1; background: var(--border); border-radius: 2px; }
+.loader .bar i.f { background: var(--tf-honey); }
 .dl { color: var(--foreground); }
 
 /* ------------------------------------------------------------------ components */
-.goal-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; max-width: 560px; }
-.goal-card .goal { font-family: var(--font-display); font-weight: 400; font-optical-sizing: auto; font-size: clamp(2.4375rem, 2.1397rem + 1.2707vw, 3.1562rem); line-height: clamp(3rem, 2.6892rem + 1.3260vw, 3.75rem); letter-spacing: -0.01em; max-width: 14ch; }
-.goal-card .amt { font-size: 1.125rem; line-height: 1.75rem; margin-top: 8px; }
-.legbar { display: flex; gap: 2px; height: 28px; margin: 24px 0 16px; background: var(--card); }
+.goal-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; max-width: 440px; }
+.goal-card .amt { font: 600 1.75rem/2rem var(--font-display); letter-spacing: -0.02em; margin-top: 8px; }
+.goal-card .line { font-size: 0.875rem; line-height: 1.375rem; margin-top: 4px; }
+.progress { height: 6px; background: var(--border); border-radius: var(--radius-pill); overflow: hidden; margin-top: 16px; }
+.progress i { display: block; height: 100%; background: var(--tf-honey); border-radius: var(--radius-pill); }
+.legbar { display: flex; gap: 2px; height: 14px; margin: 24px 0 16px; border-radius: var(--radius-pill); overflow: hidden; }
 .legbar > div { height: 100%; }
 .leg-anim { animation: seat var(--dur-slide) var(--ease) both; }
 .legs { display: grid; gap: 0; border-top: 1px solid var(--border); }
-.leg-row { display: grid; grid-template-columns: 16px 1fr auto; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border); }
-.leg-row .sq { width: 12px; height: 12px; }
+.leg-row { display: grid; grid-template-columns: 16px 1fr auto; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border); font-size: 0.9375rem; }
+.leg-row .sq { width: 12px; height: 12px; border-radius: 3px; }
 .leg-row .r { text-align: right; }
-.leg-row.mock { grid-template-columns: 16px 1fr auto; }
-.disclaimer { border: 1px solid var(--input); border-radius: var(--radius); padding: 16px 20px; font: 400 1rem/1.5rem var(--font-body); max-width: 66ch; }
+.disclaimer { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 20px; font: 400 1rem/1.5rem var(--font-sans); max-width: 66ch; }
 .disclaimer .cap { display: block; margin-bottom: 4px; }
 .activity { font-size: 0.9375rem; line-height: 1.5rem; padding: 12px 0; border-bottom: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
 .activity .tx { font-family: var(--font-mono); font-size: 0.8125rem; }
 
+/* Bearing rows: 36px, 13px type */
+.brows { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--card); }
+.brow { display: grid; grid-template-columns: 1.4fr 88px 1fr 1fr 110px; align-items: center; height: 36px; padding: 0 12px; font: 400 0.8125rem/1.25rem var(--font-sans); border-top: 1px solid var(--border); }
+.brow.head { height: 28px; border-top: 0; font: 500 0.6875rem/1rem var(--font-sans); letter-spacing: .05em; text-transform: uppercase; color: var(--muted-foreground); background: var(--muted); }
+.brow.sel { background: var(--accent); }
+.brow .asset { display: flex; align-items: center; gap: 8px; }
+.brow .asset b { font-weight: 600; }
+.avatar { width: 22px; height: 22px; border-radius: var(--radius-pill); background: var(--secondary); color: var(--muted-foreground); display: grid; place-items: center; font: 600 9px/1 var(--font-sans); flex: none; }
+.brow .num { text-align: right; font-variant-numeric: tabular-nums; line-height: 1rem; }
+.brow .num .delta { display: block; }
+.brow .st { text-align: right; }
+.spark { width: 64px; height: 20px; }
+
 /* embed: partner skin (example partner tokens, NOT ours) */
 .partner-app { --p-bg: #FFFFFF; --p-fg: #1E1E1E; --p-muted: #6A6A6A; --p-line: #E4E4E4; --p-btn: #1E1E1E; --p-radius: 14px;
-  background: #F2F2F2; padding: 32px; border: 1px solid var(--border); }
+  background: #F2F2F2; padding: 32px; border: 1px solid var(--border); border-radius: var(--radius-lg); }
 .dark .partner-app, .partner-app.p-dark { --p-bg: #17171A; --p-fg: #EEEEEE; --p-muted: #A0A0A0; --p-line: #2C2C30; --p-btn: #EEEEEE; background: #0F0F11; }
 .tf-embed { container-type: inline-size; background: var(--p-bg); color: var(--p-fg); border-radius: var(--p-radius); padding: 20px;
-  font-family: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif; font-size: 15px; line-height: 1.5; max-width: 420px; border: 1px solid var(--p-line); }
+  font-family: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif; font-size: 15px; line-height: 1.5; max-width: 420px; border: 1px solid var(--p-line);
+  --tf-pin: var(--p-muted); --tf-pin-outline: var(--p-muted); --tf-hatch: var(--p-muted); }
 .tf-embed .e-title { font-size: 1.44em; line-height: 1.25; font-weight: 650; }
 .tf-embed .e-lead { font-size: 1.2em; line-height: 1.35; margin-top: .5em; }
 .tf-embed .e-small { font-size: .8333em; color: var(--p-muted); }
 .tf-embed .e-row { display: flex; align-items: stretch; gap: 10px; padding: 10px 0; border-top: 1px solid var(--p-line); }
-.tf-embed .pin { color: var(--p-muted); }
 .tf-embed .e-hatch { background: repeating-linear-gradient(45deg, var(--p-muted) 0 1px, transparent 1px 6px); }
-.tf-embed .e-plate { border: 1px solid var(--p-muted); background: var(--p-bg); color: var(--p-fg); font: 500 .75em/1.5 var(--font-mono); letter-spacing: .08em; padding: 0 6px; align-self: center; }
 .tf-embed .e-btn { margin-top: 14px; width: 100%; height: 44px; border: 0; border-radius: 999px; background: var(--p-btn); color: var(--p-bg); font: 600 1em system-ui, sans-serif; }
 .tf-embed .e-disc { margin-top: 14px; border: 1px solid var(--p-line); border-radius: 8px; padding: 10px 12px; font-size: 1em; }
 .tf-embed .credit { display: flex; align-items: center; gap: 5px; margin-top: 12px; font-size: max(0.6944em, 11px); color: var(--p-muted); }
-.tf-embed .credit svg { width: 12px; height: 12px; fill: currentColor; }
+.tf-embed .credit svg { width: 16px; height: 16px; }
 .tf-embed .credit .wordmark { font-size: 13px; }
 @container (inline-size < 360px) { .tf-embed .e-title { font-size: 1.2em; } }
 
 /* Bearing */
-.bearing { background: var(--background); border: 1px solid var(--border); padding: 24px; }
-.btile { background: var(--card); border: 1px solid var(--border); padding: 16px; }
-.heat { display: grid; grid-template-columns: 32px repeat(24, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); margin-top: 12px; }
+.bearing { background: var(--background); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; }
+.btile { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; }
+.heat { display: grid; grid-template-columns: 32px repeat(24, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; margin-top: 12px; }
 .heat > div { aspect-ratio: 1; min-height: 12px; }
-.heat .lbl { background: var(--card); font: 500 0.75rem/1rem var(--font-condensed); color: var(--muted-foreground); display: flex; align-items: center; aspect-ratio: auto; padding-left: 4px; }
-.heat .ns { background-color: var(--card); background-image: repeating-linear-gradient(45deg, var(--tf-hatch) 0 1px, transparent 1px 4px); }
-.hours { display: grid; grid-template-columns: 32px repeat(24, 1fr); font: 500 0.75rem/1rem var(--font-condensed); color: var(--muted-foreground); margin-top: 4px; }
+.heat .lbl { background: var(--card); font: 500 0.6875rem/1rem var(--font-sans); letter-spacing: .05em; text-transform: uppercase; color: var(--muted-foreground); display: flex; align-items: center; aspect-ratio: auto; padding-left: 4px; }
+.heat .ns { background: var(--card); color: var(--muted-foreground); display: grid; place-items: center; font: 400 10px/1 var(--font-mono); }
+.hours { display: grid; grid-template-columns: 32px repeat(24, 1fr); font: 400 0.6875rem/1rem var(--font-mono); color: var(--muted-foreground); margin-top: 4px; }
 .btable { width: 100%; border-collapse: collapse; margin-top: 16px; }
-.btable th { font: 500 0.75rem/1rem var(--font-condensed); color: var(--muted-foreground); text-align: left; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--border); }
-.btable td { font: 400 0.8125rem/1.25rem var(--font-condensed); padding: 4px 8px 4px 0; min-height: 28px; border-bottom: 1px solid var(--border); }
-.btable td[data-numeric], .btable th[data-numeric] { text-align: right; font-family: var(--font-mono); }
+.btable th { font: 500 0.6875rem/1rem var(--font-sans); letter-spacing: .05em; text-transform: uppercase; color: var(--muted-foreground); text-align: left; padding: 6px 8px 6px 0; border-bottom: 1px solid var(--border); }
+.btable td { font: 400 0.8125rem/1.25rem var(--font-sans); padding: 8px 8px 8px 0; height: 36px; border-bottom: 1px solid var(--border); }
+.btable td[data-numeric], .btable th[data-numeric] { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* personas */
-.persona { border: 1px solid var(--border); background: var(--card); padding: 24px; display: grid; gap: 12px; align-content: start; }
-.persona .who { font: 600 1.125rem/1.5rem var(--font-body); }
+.persona { border: 1px solid var(--border); background: var(--card); border-radius: var(--radius-lg); padding: 24px; display: grid; gap: 12px; align-content: start; }
+.persona .who { font: 600 1.125rem/1.5rem var(--font-display); letter-spacing: -0.015em; }
 .persona .role { font-size: 0.875rem; line-height: 1.25rem; color: var(--muted-foreground); }
-.persona .k { font: 500 0.78125rem/1.25rem var(--font-body); color: var(--muted-foreground); margin-top: 4px; }
+.persona .k { font: 500 0.6875rem/1rem var(--font-sans); letter-spacing: .05em; text-transform: uppercase; color: var(--muted-foreground); margin-top: 4px; }
 .persona .v { font-size: 0.9375rem; line-height: 1.5rem; }
-.persona .quote-s { font-family: var(--font-display); font-size: 1.25rem; line-height: 1.75rem; font-variation-settings: "opsz" 36; border-top: 1px solid var(--border); padding-top: 12px; }
+.persona .quote-s { font: 600 1.125rem/1.5rem var(--font-display); letter-spacing: -0.015em; border-top: 1px solid var(--border); padding-top: 12px; }
 
 /* voice */
-.attrs { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--border); margin-top: 48px; }
+.attrs { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin-top: 48px; }
 .attrs > div { padding: 24px; border-right: 1px solid var(--border); }
 .attrs > div:last-child { border-right: 0; }
-.attrs h4 { font: 600 1.25rem/1.75rem var(--font-body); }
+.attrs h4 { font: 600 1.25rem/1.75rem var(--font-display); letter-spacing: -0.015em; }
 .attrs .do, .attrs .dont-l { font-size: 0.9375rem; line-height: 1.5rem; margin-top: 12px; }
-.attrs .do::before { content: "> "; font-family: var(--font-mono); color: var(--success); }
-.attrs .dont-l::before { content: "x "; font-family: var(--font-mono); color: var(--destructive); }
+.attrs .do::before { content: "> "; font-family: var(--font-mono); color: var(--tf-leaf); }
+.attrs .dont-l::before { content: "x "; font-family: var(--font-mono); color: var(--tf-madder); }
 .never-list, .always-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0; border-top: 1px solid var(--border); }
 .never-list li, .always-list li { padding: 12px 0 12px 28px; border-bottom: 1px solid var(--border); position: relative; font-size: 0.9375rem; line-height: 1.5rem; }
 .never-list li::before, .always-list li::before { position: absolute; left: 0; top: 12px; font: 500 0.875rem/1.5rem var(--font-mono); }
-.never-list li::before { content: "x"; color: var(--destructive); }
-.always-list li::before { content: ">"; color: var(--success); }
+.never-list li::before { content: "x"; color: var(--tf-madder); }
+.always-list li::before { content: ">"; color: var(--tf-leaf); }
 .situations { width: 100%; border-collapse: collapse; margin-top: 16px; }
 .situations td, .situations th { padding: 14px 16px 14px 0; border-bottom: 1px solid var(--border); vertical-align: top; text-align: left; font-size: 0.9375rem; line-height: 1.5rem; }
-.situations th { font: 500 0.78125rem/1.25rem var(--font-body); color: var(--muted-foreground); }
-.situations td.no { color: var(--muted-foreground); text-decoration: line-through; text-decoration-color: var(--destructive); }
+.situations th { font: 500 0.6875rem/1rem var(--font-sans); letter-spacing: .05em; text-transform: uppercase; color: var(--muted-foreground); }
+.situations td.no { color: var(--muted-foreground); text-decoration: line-through; text-decoration-color: var(--tf-madder); }
 
 footer { padding: 48px 0 64px; }
 
@@ -380,14 +432,16 @@ footer { padding: 48px 0 64px; }
   .metrics { grid-template-columns: 1fr 1fr; }
   .metric:nth-child(2) { border-right: 0; }
   .metric:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
-  .grid-2, .grid-3, .grid-4, .pos-grid, .ground-pair, .pairing, .attrs, .type-block, .donts { grid-template-columns: 1fr; }
+  .grid-2, .grid-3, .grid-4, .grid-5, .pos-grid, .ground-pair, .pairing, .attrs, .type-block, .donts { grid-template-columns: 1fr; }
   .ground-pair > .on-dark { border-left: 0; border-top: 1px solid var(--border); }
   .pairing > div, .attrs > div { border-right: 0; border-bottom: 1px solid var(--border); }
   .ramp, .ramp-head { grid-template-columns: 64px repeat(11, 1fr); }
+  .heat-ramp { grid-template-columns: 64px repeat(5, 1fr); }
   .ramp .stop span { display: none; }
   .kv { grid-template-columns: 1fr; }
   .kv dt { padding-bottom: 0; border-bottom: 0; }
   .heat, .hours { grid-template-columns: 24px repeat(24, 1fr); }
+  .brow { grid-template-columns: 1.4fr 1fr 1fr; } .brow .spark, .brow .st { display: none; }
   .situations, .situations tbody, .situations tr, .situations td { display: block; }
   .situations thead { display: none; }
 }
@@ -395,51 +449,93 @@ footer { padding: 48px 0 64px; }
 </head>
 <body>
 
-<!-- ======================= SVG library (from identity/logo-comparison.html + iconography.md) ======================= -->
+<!-- ======================= SVG library (identity/logo/*.svg inlined; pin from working-brand.yml provenance) ======================= -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
-    <!-- A · master (>= 32px): rail | post | tenon end with pin knock-out -->
-    <symbol id="A" viewBox="0 0 32 32">
-      <rect x="1" y="10" width="5" height="12"/>
-      <rect x="7" y="2" width="10" height="28"/>
-      <path fill-rule="evenodd" d="M18 12h12v8H18z M25 14a2 2 0 1 0 0.001 0z"/>
+    <!-- The face · 32 master: honey tile r7, the tenon end cut 18×12 r2 at 7,10, square pin 5×5 r1 at 18,13.5.
+         The cut takes --mark-cut: the ground on night, ink on light grounds and on the honey app tile. -->
+    <symbol id="m32" viewBox="0 0 32 32">
+      <rect width="32" height="32" rx="7" style="fill:var(--tf-honey)"/>
+      <rect x="7" y="10" width="18" height="12" rx="2" style="fill:var(--mark-cut)"/>
+      <rect x="18" y="13.5" width="5" height="5" rx="1" style="fill:var(--tf-honey)"/>
     </symbol>
-    <!-- A · 24 hint (22–31px) -->
-    <symbol id="A24" viewBox="0 0 24 24">
-      <rect x="1" y="7" width="3" height="10"/>
-      <rect x="5" y="1" width="8" height="22"/>
-      <path fill-rule="evenodd" d="M14 9h9v6H14z M19 10.5a1.5 1.5 0 1 0 0.001 0z"/>
+    <!-- 24 hint (20–27 px) -->
+    <symbol id="m24" viewBox="0 0 24 24">
+      <rect width="24" height="24" rx="5" style="fill:var(--tf-honey)"/>
+      <rect x="5" y="7.5" width="14" height="9" rx="1.5" style="fill:var(--mark-cut)"/>
+      <rect x="13.5" y="10" width="4" height="4" rx=".75" style="fill:var(--tf-honey)"/>
     </symbol>
-    <!-- A · small cut (12–21px): no rail, one joint line, enlarged pin -->
-    <symbol id="A16" viewBox="0 0 16 16">
-      <rect x="1" y="1" width="4" height="14"/>
-      <path fill-rule="evenodd" d="M6 4h9v8H6z M11 6a2 2 0 1 0 0.001 0z"/>
+    <!-- 16 small cut (12–19 px) -->
+    <symbol id="m16" viewBox="0 0 16 16">
+      <rect width="16" height="16" rx="4" style="fill:var(--tf-honey)"/>
+      <rect x="3" y="5" width="10" height="6" rx="1" style="fill:var(--mark-cut)"/>
+      <rect x="9" y="6.5" width="3" height="3" rx=".6" style="fill:var(--tf-honey)"/>
     </symbol>
-    <!-- Provenance pin (iconography.md §4.1): viewBox 18x12, 3:2 outline, stroke 1.5 -->
+    <!-- mono cuts: one colour (currentColor), for the "Powered by" credit and single-colour print -->
+    <symbol id="m32-mono" viewBox="0 0 32 32">
+      <path fill="currentColor" fill-rule="evenodd" d="M7 0h18a7 7 0 0 1 7 7v18a7 7 0 0 1-7 7H7a7 7 0 0 1-7-7V7a7 7 0 0 1 7-7ZM9 10a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2H9Z"/>
+      <rect x="18" y="13.5" width="5" height="5" rx="1" fill="currentColor"/>
+    </symbol>
+    <symbol id="m16-mono" viewBox="0 0 16 16">
+      <path fill="currentColor" fill-rule="evenodd" d="M4 0h8a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4H4a4 4 0 0 1-4-4V4a4 4 0 0 1 4-4Zm0 5a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H4Z"/>
+      <rect x="9" y="6.5" width="3" height="3" rx=".6" fill="currentColor"/>
+    </symbol>
+
+    <!-- Provenance pin: viewBox 18×12, outline 3:2 stroke 1.5 radius 2.5 in --tf-pin-outline; SQUARE pin 4×4 r1 set toward the end in --tf-pin -->
     <symbol id="pin-live" viewBox="0 0 18 12">
-      <rect x="0.75" y="0.75" width="16.5" height="10.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
-      <circle cx="9" cy="6" r="2.5" fill="currentColor"/>
+      <rect x="0.75" y="0.75" width="16.5" height="10.5" rx="2.5" fill="none" style="stroke:var(--tf-pin-outline)" stroke-width="1.5"/>
+      <rect x="11" y="4" width="4" height="4" rx="1" style="fill:var(--tf-pin)"/>
     </symbol>
     <symbol id="pin-stale" viewBox="0 0 18 12">
-      <rect x="0.75" y="0.75" width="16.5" height="10.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
-      <circle cx="9" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <rect x="0.75" y="0.75" width="16.5" height="10.5" rx="2.5" fill="none" style="stroke:var(--tf-pin-outline)" stroke-width="1.5"/>
+      <rect x="11.75" y="4.75" width="2.5" height="2.5" rx=".6" fill="none" style="stroke:var(--tf-pin)" stroke-width="1.5"/>
     </symbol>
-    <clipPath id="pin-inner"><rect x="1.5" y="1.5" width="15" height="9"/></clipPath>
-    <symbol id="pin-mock" viewBox="0 0 18 12">
-      <rect x="0.75" y="0.75" width="16.5" height="10.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
-      <g clip-path="url(#pin-inner)" stroke="currentColor" stroke-width="1">
+    <clipPath id="pin-inner"><rect x="1.5" y="1.5" width="15" height="9" rx="1.75"/></clipPath>
+    <clipPath id="glyph-inner"><rect x="1.5" y="1.5" width="9" height="9" rx="1.25"/></clipPath>
+    <symbol id="pin-sample" viewBox="0 0 18 12">
+      <rect x="0.75" y="0.75" width="16.5" height="10.5" rx="2.5" fill="none" style="stroke:var(--tf-pin-outline)" stroke-width="1.5"/>
+      <g clip-path="url(#pin-inner)" style="stroke:var(--tf-hatch)" stroke-width="1">
         <path d="M-10 12L2 0M-5.76 12L6.24 0M-1.52 12L10.48 0M2.72 12L14.72 0M6.96 12L18.96 0M11.2 12L23.2 0M15.44 12L27.44 0"/>
       </g>
     </symbol>
-    <!-- Goal-state squares (color-system.md): solid / half / notched outline -->
-    <symbol id="sq-on" viewBox="0 0 12 12"><rect width="12" height="12" fill="currentColor"/></symbol>
-    <symbol id="sq-watch" viewBox="0 0 12 12"><rect x="0.75" y="0.75" width="10.5" height="10.5" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="0" y="6" width="12" height="6" fill="currentColor"/></symbol>
-    <symbol id="sq-off" viewBox="0 0 12 12"><path d="M0.75 0.75H11.25V7.5H7.5V11.25H0.75Z" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+    <!-- Sample glyph: for a sample figure that has no pin (12×12, hatched, aria-label "sample figure") -->
+    <symbol id="glyph-sample" viewBox="0 0 12 12">
+      <rect x="0.75" y="0.75" width="10.5" height="10.5" rx="2" fill="none" style="stroke:var(--tf-pin-outline)" stroke-width="1.5"/>
+      <g clip-path="url(#glyph-inner)" style="stroke:var(--tf-hatch)" stroke-width="1"><path d="M-6 12L6 0M-1.76 12L10.24 0M2.48 12L14.48 0M6.72 12L18.72 0M10.96 12L22.96 0"/></g>
+    </symbol>
+    <!-- Goal-state squares: solid / half / notched outline -->
+    <symbol id="sq-on" viewBox="0 0 12 12"><rect width="12" height="12" rx="2" fill="currentColor"/></symbol>
+    <symbol id="sq-watch" viewBox="0 0 12 12"><rect x="0.75" y="0.75" width="10.5" height="10.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M1 6h10v3.5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 1 9.5Z" fill="currentColor"/></symbol>
+    <symbol id="sq-off" viewBox="0 0 12 12"><path d="M2.25 0.75h7.5a1.5 1.5 0 0 1 1.5 1.5V7.5H7.5v3.75H2.25a1.5 1.5 0 0 1-1.5-1.5v-7.5a1.5 1.5 0 0 1 1.5-1.5Z" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+    <!-- Arrow up (composer send) -->
+    <symbol id="arrow-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></symbol>
+
+    <!-- Joints J1–J5, line drawings: lines in text / ink, the key member honey, dimension lines chalk -->
+    <symbol id="j1" viewBox="0 0 24 24"><g fill="none" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter">
+      <path class="jl" d="M2.75 9.75H8.75M15.25 9.75H21.25M2.75 14.25H8.75M15.25 14.25H21.25M2.75 9.75V14.25M21.25 9.75V14.25"/>
+      <rect class="jk" x="8.75" y="2.75" width="6.5" height="18.5"/></g>
+      <rect class="jp" x="17" y="10.75" width="2.5" height="2.5" rx=".5"/></symbol>
+    <symbol id="j2" viewBox="0 0 24 24"><g fill="none" stroke-width="1.5" stroke-linecap="square">
+      <path class="jl" d="M2.75 9.75H9.75M14.25 9.75H21.25M2.75 14.25H9.75M14.25 14.25H21.25M2.75 9.75V14.25M21.25 9.75V14.25"/>
+      <rect class="jk" x="9.75" y="2.75" width="4.5" height="18.5"/></g></symbol>
+    <symbol id="j3" viewBox="0 0 24 24"><g fill="none" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter">
+      <path class="jd" stroke-width="1" stroke-dasharray="3 1.5 .01 1.5" d="M12 19V2.5"/>
+      <path class="jl" d="M2.75 20.75V15.25H8L9.5 19.25H14.5L16 15.25H21.25V20.75Z"/>
+      <path class="jk" style="fill:var(--card)" d="M8 6.25H16L14.5 10.25H9.5Z"/></g></symbol>
+    <symbol id="j4" viewBox="0 0 24 24"><g fill="none" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter">
+      <path class="jl" d="M2.75 9.75H11V12H13V15.25H2.75Z"/>
+      <path class="jk" d="M11 7.75H21.25V13.25H13V10.5H11Z"/>
+      <rect class="jk" x="10.75" y="10.75" width="2.5" height="2.5"/></g></symbol>
+    <symbol id="j5" viewBox="0 0 24 24"><g fill="none" stroke-width="1.5" stroke-linecap="square">
+      <rect class="jl" x="10.75" y="15.75" width="2.5" height="5.5"/>
+      <rect class="jl" x="8.75" y="12.75" width="6.5" height="2.5"/>
+      <rect class="jk" x="3.75" y="9.75" width="16.5" height="2.5"/>
+      <rect class="jl" x="3.75" y="5.75" width="2.5" height="3.5"/><rect class="jl" x="10.75" y="5.75" width="2.5" height="3.5"/><rect class="jl" x="17.75" y="5.75" width="2.5" height="3.5"/></g></symbol>
   </defs>
 </svg>
 
 <nav id="toc" aria-label="Contents">
-  <a class="brand" href="#hero" aria-label="tenonfi"><svg width="22" height="22"><use href="#A24"/></svg><span class="wordmark" style="font-size:24px">tenonfi</span></a>
+  <a class="brand" href="#hero" aria-label="tenonfi"><svg width="22" height="22"><use href="#m24"/></svg><span class="wordmark" style="font-size:24px">tenonfi</span></a>
   <a href="#hero" class="toc-link">Brand</a>
   <a href="#logo" class="toc-link">Logo</a>
   <a href="#positioning" class="toc-link">Positioning</a>
@@ -457,19 +553,23 @@ footer { padding: 48px 0 64px; }
 
 <main>
 
-<!-- ================================================================ HERO -->
+<!-- ================================================================ HERO (always night, with the honey glow) -->
 <section id="hero" class="on-dark" aria-label="Brand">
   <div class="hero">
     <div class="hero-inner">
       <div>
-        <div class="eyebrow"><svg width="32" height="32"><use href="#A"/></svg><span class="wordmark" style="font-size:36px">tenonfi</span></div>
-        <h1>No product fits everyone. So we make the pieces — and your goals decide how they fit.</h1>
-        <p class="tagline"><b>Made to measure. Every joint shown.</b><br>Tell us what your money needs to do. tenonfi builds the portfolio that gets it there — and shows you how.</p>
+        <div class="eyebrow"><svg width="32" height="32"><use href="#m32"/></svg><span class="wordmark" style="font-size:30px">tenonfi</span></div>
+        <h1>Tell it the goal. Get the portfolio cut for it.</h1>
+        <p class="tagline">A plan made to measure, with an exit plan before it invests, in your own vault. <b>Every number carries its source.</b></p>
+        <div class="composer" role="group" aria-label="Your goal (sample)">
+          <div class="text">$40,000 by June 2028, cash within 7 days</div>
+          <button class="send" type="button" aria-label="Fit it"><svg width="20" height="20"><use href="#arrow-up"/></svg></button>
+        </div>
       </div>
-      <figure style="margin:0" aria-label="The Open Joint: the plan slides through the goal and a pin locks it.">
+      <figure style="margin:0" aria-label="The plan slides through the goal and a pin locks it.">
         <svg class="joint" id="joint" viewBox="-2 -3 38 38" role="img" aria-labelledby="jointTitle">
           <title id="jointTitle">The plan, cut to fit, slides through the goal and seats; the pin goes in last.</title>
-          <!-- dimension lines (hairline, structure) -->
+          <!-- dimension lines: chalk, the carpenter's line -->
           <g class="dim">
             <path d="M7 -1.6H17 M7 -2.1V-1.1 M17 -2.1V-1.1"/>
             <path d="M18 31.6H30 M18 31.1V32.1 M30 31.1V32.1"/>
@@ -477,18 +577,18 @@ footer { padding: 48px 0 64px; }
           </g>
           <text class="dim-label" x="7" y="-2.4">your goal</text>
           <text class="dim-label" x="18" y="33.6">the plan, cut to fit</text>
-          <!-- moving piece: rail + full tenon -->
+          <!-- moving piece: rail + full tenon, in text -->
           <g class="piece">
-            <rect class="member" x="1" y="10" width="5" height="12"/>
-            <rect class="member" x="6" y="12" width="24" height="8"/>
-            <circle class="ground" cx="25" cy="16" r="2"/>
+            <rect class="member" x="1" y="10" width="5" height="12" rx=".6"/>
+            <rect class="member" x="6" y="12" width="24" height="8" rx=".6"/>
+            <rect class="ground" x="23" y="14" width="4" height="4" rx=".6"/>
           </g>
-          <!-- post, with ground-coloured joint gaps either side -->
+          <!-- the post, in honey, with ground-coloured joint gaps either side -->
           <rect class="ground" x="6" y="2" width="1" height="28"/>
           <rect class="ground" x="17" y="2" width="1" height="28"/>
-          <rect class="member" x="7" y="2" width="10" height="28"/>
-          <!-- pin, last -->
-          <circle class="pin-fill pin-in" cx="25" cy="16" r="2"/>
+          <rect class="post" x="7" y="2" width="10" height="28" rx="1.2"/>
+          <!-- the pin, last: a square, in honey -->
+          <rect class="pin-fill pin-in" x="23" y="14" width="4" height="4" rx=".6"/>
           <path class="dim" d="M25 13.4V9.6 M25 9.6H29"/>
           <text class="dim-label" x="29.4" y="9.9">source</text>
         </svg>
@@ -501,8 +601,8 @@ footer { padding: 48px 0 64px; }
     <div class="metrics">
       <div class="metric"><div class="v">3 surfaces · 1 engine</div><div class="l">Consumer app, partner embed and API, and Bearing, on one deterministic solver</div></div>
       <div class="metric"><div class="v">Since Sept 2026</div><div class="l">Exit depth recorded by size and hour of week. It can't be backfilled</div></div>
-      <div class="metric"><div class="v">2–5.6x</div><div class="l">How far quoted on-chain figures were off, in the founder's prior analytics</div></div>
-      <div class="metric"><div class="v">Live on mainnet</div><div class="l">In the user's own wallet. Every transaction logged with its explorer link</div></div>
+      <div class="metric"><div class="v">2–5.6×</div><div class="l">How far quoted on-chain figures were off, in the founder's prior analytics</div></div>
+      <div class="metric"><div class="v">Live on mainnet</div><div class="l">In the user's own vault. Every transaction logged with its explorer link</div></div>
     </div>
   </div>
 </section>
@@ -511,77 +611,98 @@ footer { padding: 48px 0 64px; }
 <section id="logo">
   <div class="container">
     <div class="section-label"><b>01</b> Logo</div>
-    <h2 class="section-heading">A pinned through-tenon, and a lowercase serif that speaks to you.</h2>
-    <p class="lede">Rail, post, the tenon end coming through, and the pin as a knock-out. Read left to right, it is the product: your goal (the post), the plan passes through it (the tenon), and its source holds it (the pin). The "fi" is one removable group, so the fallback is <span class="wordmark">tenon</span> with no re-kerning.</p>
+    <h2 class="section-heading">The face: a honey tile with the tenon end cut into it, and a square pin.</h2>
+    <p class="lede">The mark is the end view of a pinned through-tenon. The tile is the post (your goal), the cut is the tenon coming through it (the plan), and the pin is what holds it (the source). The cut takes the colour of the ground on night and ink on light grounds, so the tile always reads as one honey piece with something cut into it. The wordmark is <span class="wordmark">tenonfi</span> in Inter Tight 600, lowercase, −0.02em; the fallback is <span class="wordmark">tenon</span>.</p>
 
     <h3 class="sub">Marks and cuts, on both grounds</h3>
     <div class="ground-pair">
       <div class="on-light">
-        <div class="mark-row" style="color:#1C1712">
-          <div class="mark-cell"><svg width="96" height="96"><use href="#A"/></svg><span class="lab">master 96</span></div>
-          <div class="mark-cell"><svg width="48" height="48"><use href="#A"/></svg><span class="lab">48</span></div>
-          <div class="mark-cell"><svg width="32" height="32"><use href="#A"/></svg><span class="lab">32</span></div>
-          <div class="mark-cell"><svg width="24" height="24"><use href="#A24"/></svg><span class="lab">24 hint</span></div>
-          <div class="mark-cell"><svg width="16" height="16"><use href="#A16"/></svg><span class="lab">16 cut</span></div>
-          <div class="mark-cell"><svg width="96" height="96"><g fill="#7A5A3A"><use href="#A"/></g><circle cx="75" cy="48" r="6" fill="#E6D3B7"/></svg><span class="lab">two-species (hero, ≥ 64)</span></div>
+        <div class="mark-row">
+          <div class="mark-cell"><svg width="96" height="96"><use href="#m32"/></svg><span class="lab">master 96</span></div>
+          <div class="mark-cell"><svg width="48" height="48"><use href="#m32"/></svg><span class="lab">48</span></div>
+          <div class="mark-cell"><svg width="32" height="32"><use href="#m32"/></svg><span class="lab">32 master · ≥ 28 px</span></div>
+          <div class="mark-cell"><svg width="24" height="24"><use href="#m24"/></svg><span class="lab">24 hint · 20–27 px</span></div>
+          <div class="mark-cell"><svg width="16" height="16"><use href="#m16"/></svg><span class="lab">16 small · 12–19 px</span></div>
         </div>
-        <div class="lockup" style="margin-top:40px"><svg class="ink" width="40" height="40"><use href="#A"/></svg><span class="wordmark" style="font-size:44px">tenonfi</span></div>
-        <div class="mark-row" style="margin-top:28px;align-items:center">
-          <div class="lockup"><svg class="ink" width="28" height="28"><use href="#A"/></svg><span class="wordmark" style="font-size:31px">tenon</span><span class="lab" style="margin-left:6px">fallback</span></div>
-          <div class="lockup" style="gap:10px"><svg class="ink" width="26" height="26"><use href="#A"/></svg><span class="wordmark" style="font-size:28px">tenonfi</span><span style="font:400 22px/1 var(--font-body);color:#6E655B">Bearing</span></div>
+        <div class="lockup" style="margin-top:40px"><svg width="40" height="40"><use href="#m32"/></svg><span class="wordmark" style="font-size:44px">tenonfi</span></div>
+        <div class="mark-row" style="margin-top:28px;align-items:center;gap:36px">
+          <div class="lockup" style="gap:10px"><svg width="26" height="26"><use href="#m32"/></svg><span class="wordmark" style="font-size:28px">tenonfi</span><span class="wordmark-bearing" style="font-size:28px;margin-left:2px">Bearing</span></div>
+          <div class="lockup"><svg width="26" height="26"><use href="#m32"/></svg><span class="wordmark" style="font-size:28px">tenon</span><span class="lab" style="margin-left:6px">fallback</span></div>
         </div>
       </div>
       <div class="on-dark">
-        <div class="mark-row" style="color:#E6D3B7">
-          <div class="mark-cell"><svg width="96" height="96"><use href="#A"/></svg><span class="lab">master 96</span></div>
-          <div class="mark-cell"><svg width="48" height="48"><use href="#A"/></svg><span class="lab">48</span></div>
-          <div class="mark-cell"><svg width="32" height="32"><use href="#A"/></svg><span class="lab">32</span></div>
-          <div class="mark-cell"><svg width="24" height="24"><use href="#A24"/></svg><span class="lab">24 hint</span></div>
-          <div class="mark-cell"><svg width="16" height="16"><use href="#A16"/></svg><span class="lab">16 cut</span></div>
-          <div class="mark-cell"><svg width="96" height="96"><g fill="#C9AE86"><use href="#A"/></g><circle cx="75" cy="48" r="6" fill="#E6D3B7"/></svg><span class="lab">two-tone (hero, ≥ 64)</span></div>
+        <div class="mark-row">
+          <div class="mark-cell"><svg width="96" height="96"><use href="#m32"/></svg><span class="lab">master 96</span></div>
+          <div class="mark-cell"><svg width="48" height="48"><use href="#m32"/></svg><span class="lab">48</span></div>
+          <div class="mark-cell"><svg width="32" height="32"><use href="#m32"/></svg><span class="lab">32 master · ≥ 28 px</span></div>
+          <div class="mark-cell"><svg width="24" height="24"><use href="#m24"/></svg><span class="lab">24 hint · 20–27 px</span></div>
+          <div class="mark-cell"><svg width="16" height="16"><use href="#m16"/></svg><span class="lab">16 small · 12–19 px</span></div>
         </div>
-        <div class="lockup" style="margin-top:40px"><svg width="40" height="40"><use href="#A"/></svg><span class="wordmark" style="font-size:44px">tenonfi</span></div>
-        <div class="mark-row" style="margin-top:28px;align-items:center">
-          <div class="lockup"><svg width="28" height="28"><use href="#A"/></svg><span class="wordmark" style="font-size:31px">tenon</span><span class="lab" style="margin-left:6px">fallback</span></div>
-          <div class="lockup" style="gap:10px"><svg width="26" height="26"><use href="#A"/></svg><span class="wordmark" style="font-size:28px">tenonfi</span><span style="font:400 22px/1 var(--font-body);color:#A49A8E">Bearing</span></div>
+        <div class="lockup" style="margin-top:40px"><svg width="40" height="40"><use href="#m32"/></svg><span class="wordmark" style="font-size:44px">tenonfi</span></div>
+        <div class="mark-row" style="margin-top:28px;align-items:center;gap:36px">
+          <div class="lockup" style="gap:10px"><svg width="26" height="26"><use href="#m32"/></svg><span class="wordmark" style="font-size:28px">tenonfi</span><span class="wordmark-bearing" style="font-size:28px;margin-left:2px">Bearing</span></div>
+          <div class="lockup"><svg width="26" height="26"><use href="#m32"/></svg><span class="wordmark" style="font-size:28px">tenon</span><span class="lab" style="margin-left:6px">fallback</span></div>
         </div>
+      </div>
+    </div>
+
+    <div class="grid-3" style="margin-top:24px">
+      <div class="panel" style="display:grid;gap:16px;justify-items:center;align-content:start">
+        <div class="cap" style="justify-self:start">Stacked lockup</div>
+        <div class="stack" style="margin-top:8px"><svg width="64" height="64"><use href="#m32"/></svg><span class="wordmark" style="font-size:36px">tenonfi</span></div>
+        <p class="rule-note" style="justify-self:start">For squares and covers. Mark above, wordmark below, gap = the pin's height at that size. Files: <span class="mono">identity/logo/lockup-stacked*.svg</span>.</p>
+      </div>
+      <div class="panel" style="display:grid;gap:16px;align-content:start">
+        <div class="cap">App tiles</div>
+        <div style="display:flex;gap:20px;align-items:flex-end;margin-top:8px">
+          <div class="mark-cell"><svg class="tile" width="96" height="96" viewBox="0 0 32 32" style="--mark-cut:#15161C"><rect width="32" height="32" rx="5.33" style="fill:var(--tf-honey)"/><rect x="7" y="10" width="18" height="12" rx="2" style="fill:var(--mark-cut)"/><rect x="18" y="13.5" width="5" height="5" rx="1" style="fill:var(--tf-honey)"/></svg><span class="lab">honey tile · ink cut</span></div>
+          <div class="mark-cell"><svg class="tile" width="96" height="96" viewBox="0 0 32 32" style="--mark-cut:#0C0D12"><rect width="32" height="32" rx="5.33" fill="#0C0D12"/><g transform="translate(7 7) scale(0.5625)"><rect width="32" height="32" rx="7" style="fill:var(--tf-honey)"/><rect x="7" y="10" width="18" height="12" rx="2" style="fill:var(--mark-cut)"/><rect x="18" y="13.5" width="5" height="5" rx="1" style="fill:var(--tf-honey)"/></g></svg><span class="lab">night tile</span></div>
+        </div>
+        <p class="rule-note">The honey tile is the master at 1024 with the cut in ink (<span class="mono">app-tile-1024.svg</span>); the OS masks the corners. The night tile carries the 32 mark at 56% of the tile. Radius 16 px when we draw the corner ourselves.</p>
+      </div>
+      <div class="panel" style="display:grid;gap:16px;align-content:start">
+        <div class="cap">"Powered by" in a partner card</div>
+        <div class="credit-card" style="margin-top:8px;background:#FFFFFF;color:#6A6A6A;border:1px solid #E4E4E4">Powered by <svg><use href="#m16-mono"/></svg><span class="wordmark" style="font-size:13px">tenonfi</span></div>
+        <div class="credit-card" style="background:#17171A;color:#A0A0A0;border:1px solid #2C2C30">Powered by <svg><use href="#m16-mono"/></svg><span class="wordmark" style="font-size:13px">tenonfi</span></div>
+        <p class="rule-note">The 16 cut in one colour, the partner's muted text colour, never honey: 12 px mark, 11 px text, 13 px wordmark, the partner card's padding as its clear space. Below 12 px, or where a partner forbids marks, text-only "Powered by tenonfi". File: <span class="mono">powered-by.svg</span>.</p>
       </div>
     </div>
 
     <div class="grid-2" style="margin-top:24px">
       <div class="panel">
-        <div class="cap">Construction · 32-unit grid · clear space 0.36H (dashed)</div>
-        <svg viewBox="-4 -4 40 40" width="100%" style="max-width:320px;margin-top:16px;overflow:visible" aria-label="Construction grid of the mark">
+        <div class="cap">Construction · 32-unit grid</div>
+        <svg viewBox="-10 -10 52 52" width="100%" style="max-width:320px;margin-top:16px;overflow:visible" aria-label="Construction grid of the mark">
           <g stroke="var(--border)" stroke-width="0.06" id="cgrid"></g>
-          <rect x="-2.6" y="-0.6" width="35.2" height="33.2" fill="none" stroke="var(--primary)" stroke-width="0.12" stroke-dasharray="0.6 0.4"/>
-          <g fill="var(--foreground)" opacity=".92"><use href="#A" width="32" height="32"/></g>
-          <g stroke="var(--primary)" stroke-width="0.1" fill="none"><line x1="0" y1="16" x2="32" y2="16" stroke-dasharray="0.5 0.3"/><circle cx="25" cy="16" r="2"/></g>
+          <rect x="-8" y="-8" width="48" height="48" rx="11" fill="none" stroke="var(--tf-chalk)" stroke-width="0.12" stroke-dasharray="0.6 0.4"/>
+          <rect width="32" height="32" rx="7" fill="none" stroke="var(--foreground)" stroke-width="0.14"/>
+          <rect x="7" y="10" width="18" height="12" rx="2" fill="none" stroke="var(--foreground)" stroke-width="0.14"/>
+          <rect x="18" y="13.5" width="5" height="5" rx="1" style="fill:var(--tf-honey)"/>
+          <g stroke="var(--tf-chalk)" stroke-width="0.1" fill="none"><line x1="7" y1="-1.6" x2="25" y2="-1.6"/><line x1="7" y1="-2.1" x2="7" y2="-1.1"/><line x1="25" y1="-2.1" x2="25" y2="-1.1"/><line x1="33.6" y1="10" x2="33.6" y2="22"/><line x1="33.1" y1="10" x2="34.1" y2="10"/><line x1="33.1" y1="22" x2="34.1" y2="22"/></g>
           <g font-family="IBM Plex Mono, monospace" font-size="1.2" fill="var(--muted-foreground)">
-            <text x="7" y="-1.4">post 10u = 0.36H</text><text x="18" y="11">tenon 12×8 (3:2)</text><text x="0" y="24">rail 5×12</text><text x="22" y="22.4">pin d4</text>
+            <text x="7" y="-2.6">cut 18 · r2 · x7</text><text x="34.4" y="16.4">12 · y10</text><text x="0.8" y="27.4">tile 32 · r7</text><text x="18" y="25.2">pin 5 · r1 · 18, 13.5</text>
           </g>
         </svg>
-        <p class="rule-note">Post : rail : tenon heights are 7 : 3 : 2. The pin is offset toward the end grain, and the rail is shorter than the tenon. That asymmetry is what stops the mark reading as a plus or a medical cross, so every redraw keeps it.</p>
+        <p class="rule-note">Three cuts, never auto-scaled across a breakpoint: <b>32 master</b> (tile r7; cut 7,10 18×12 r2; pin 18,13.5 5×5 r1), <b>24 hint</b> (r5; cut 5,7.5 14×9 r1.5; pin 13.5,10 4×4 r.75), <b>16 small</b> (r4; cut 3,5 10×6 r1; pin 9,6.5 3×3 r.6). The pin sits toward the end of the cut, never centred: that offset is what keeps it from reading as a button or a coin. Clear space (dashed, chalk): <b>0.25 H on every side</b>, for every cut and lockup (8 px at 32, 4 px at 16); a lockup measures it from the mark's H around the whole lockup box, and in the "Powered by" credit the partner card's padding counts. The cuts switch by rendered size: small cut 12–19 px, 24 hint 20–27 px, master from 28 px; below 12 px, text-only "Powered by tenonfi" (identity/logo-directions.md, LOGO-2).</p>
       </div>
       <div class="panel">
-        <div class="cap">"Powered by" in a partner card, at minimum sizes (12 / 11 / 13 px)</div>
-        <div style="margin-top:16px;background:#FFFFFF;color:#6A6A6A;border:1px solid #E4E4E4;border-radius:12px;padding:14px 16px;font:400 11px/1.4 -apple-system,system-ui,sans-serif;display:flex;align-items:center;gap:5px;width:max-content">
-          Powered by <svg width="12" height="12" fill="currentColor"><use href="#A16"/></svg><span class="wordmark" style="font-size:13px">tenonfi</span>
+        <div class="cap">Wordmark</div>
+        <div style="margin-top:16px;display:grid;gap:12px">
+          <div class="wordmark" style="font-size:56px">tenonfi</div>
+          <div class="lockup" style="gap:10px"><span class="wordmark" style="font-size:32px">tenonfi</span><span class="wordmark-bearing" style="font-size:32px">Bearing</span></div>
         </div>
-        <div style="margin-top:12px;background:#17171A;color:#A0A0A0;border:1px solid #2C2C30;border-radius:12px;padding:14px 16px;font:400 11px/1.4 -apple-system,system-ui,sans-serif;display:flex;align-items:center;gap:5px;width:max-content">
-          Powered by <svg width="12" height="12" fill="currentColor"><use href="#A16"/></svg><span class="wordmark" style="font-size:13px">tenonfi</span>
-        </div>
-        <p class="rule-note">In the partner's muted colour, never in wood. Below the minimum, or where a partner forbids marks, use the text-only "Powered by tenonfi". Minimums: the primary lockup is 96 px wide; the master symbol is 32 px (the 24 hint from 22 px); the small cut is 12 px.</p>
+        <p class="rule-note">Inter Tight 600, −0.02em, lowercase. "Bearing" follows in Inter 500 in the muted colour at the same size, so the x-heights match; there is no separate symbol for Bearing. Colour: ink on light grounds, text on night; never honey. In production the wordmark is outlines (<span class="mono">wordmark*.svg</span>, <span class="mono">lockup*.svg</span>); here it is live type.</p>
       </div>
     </div>
 
     <h3 class="sub">Never</h3>
     <div class="donts">
-      <div class="dont"><svg width="56" height="56" viewBox="0 0 32 32" style="fill:var(--primary)"><rect x="1" y="10" width="5" height="12" rx="2.5"/><rect x="7" y="2" width="10" height="28" rx="4"/><rect x="18" y="12" width="12" height="8" rx="3"/></svg><span class="x">x  rounded corners, bevels, shadows, gradients or wood-grain fills</span></div>
-      <div class="dont"><svg width="56" height="56" style="fill:var(--primary);transform:scaleX(-1)"><use href="#A"/></svg><span class="x">x  mirrored or rotated: the post is vertical, because load runs down</span></div>
-      <div class="dont"><svg width="56" height="56" viewBox="0 0 32 32" style="fill:var(--primary)"><rect x="1" y="10" width="30" height="12"/><rect x="11" y="2" width="10" height="28"/></svg><span class="x">x  closed gaps, a filled pin, or a centred pin: it becomes a plus</span></div>
-      <div class="dont"><span class="wordmark" style="font-size:30px;font-style:italic">Tenonfi</span><span class="x">x  caps, title case, italic, the sans, or a different colour for "fi"</span></div>
+      <div class="dont"><span style="display:inline-grid;place-items:center;width:56px;height:56px;border-radius:12px;background:var(--tf-honey);color:#FFFFFF;font:600 20px/1 var(--font-display)">tf</span><span class="x">x  white on honey (2.0:1). The tile carries ink, or the ground</span></div>
+      <div class="dont"><svg width="56" height="56" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" style="fill:var(--tf-honey)"/><rect x="7" y="10" width="18" height="12" rx="2" style="fill:var(--mark-cut)"/><circle cx="20.5" cy="16" r="2.5" style="fill:var(--tf-honey)"/></svg><span class="x">x  a circle pin, or a centred pin</span></div>
+      <div class="dont"><span style="font:500 30px/1 Georgia, 'Times New Roman', serif;font-style:italic">Tenonfi</span><span class="x">x  a serif, caps, title case or italic wordmark</span></div>
+      <div class="dont"><svg width="80" height="56" viewBox="0 0 32 32" preserveAspectRatio="none"><rect width="32" height="32" rx="7" style="fill:var(--tf-honey)"/><rect x="7" y="10" width="18" height="12" rx="2" style="fill:var(--mark-cut)"/><rect x="18" y="13.5" width="5" height="5" rx="1" style="fill:var(--tf-honey)"/></svg><span class="x">x  stretched, rotated or mirrored</span></div>
+      <div class="dont"><svg width="56" height="56" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#2A73B0"/><rect x="7" y="10" width="18" height="12" rx="2" style="fill:var(--mark-cut)"/><rect x="18" y="13.5" width="5" height="5" rx="1" fill="#EF5A6F"/></svg><span class="x">x  a third colour: no blue tile, no red pin, no gradient</span></div>
     </div>
-    <p class="rule-note">Also never: a red or third-colour pin (no seal or hanko reading), kanji, brush texture, a frame, a circle or rounded badge around the mark, or the mark placed on kumiko or busy photography. Clear space is 0.36H on every side.</p>
+    <p class="rule-note">Also never: a drop shadow or bevel on the tile, wood-grain inside it, the mark after a figure (the provenance pin does that), the pin glyph as a logo, the mark on the lattice or on busy photography. The only motion is the brand's: the cut appears, then the pin drops (160 ms). Reduced motion: no travel.</p>
   </div>
 </section>
 
@@ -589,19 +710,19 @@ footer { padding: 48px 0 64px; }
 <section id="positioning">
   <div class="container">
     <div class="section-label"><b>02</b> Positioning</div>
-    <h2 class="section-heading serif">Others turn an idea into a basket. We turn your goal into a plan made to measure.</h2>
+    <h2 class="section-heading">Others turn an idea into a basket. We turn your goal into a plan made to measure.</h2>
     <div class="pos-grid">
-      <div style="background:var(--background);padding:8px 0">
-        <p class="quote">“Tell us what your money needs to do. tenonfi builds the portfolio that gets it there — and shows you how.”</p>
-        <p class="cap" style="margin-top:12px">Lead line · homepage hero, video open, deck title</p>
-        <div class="step-rule" style="margin-top:32px"></div>
+      <div style="padding:8px 0">
+        <p class="quote">“Tell it the goal. Get the portfolio cut for it.”</p>
+        <p class="cap-sc" style="margin-top:12px">Lead line · homepage hero, video open, deck title</p>
+        <div class="hair" style="margin-top:32px"></div>
         <p class="quote" style="margin-top:32px">“Every portfolio has an exit plan before the agent invests.”</p>
-        <p class="cap" style="margin-top:12px">Proof line · right after the lead line</p>
+        <p class="cap-sc" style="margin-top:12px">Proof line · right after the lead line</p>
       </div>
-      <dl class="kv" style="background:var(--background)">
+      <dl class="kv">
         <dt>For</dt><dd>Anyone with a specific goal for their money: an amount, a date, a yield, cash they must be able to reach.</dd>
         <dt>Category</dt><dd>The agent that works backwards from your goal. Not an "AI portfolio builder", not "RWA baskets".</dd>
-        <dt>Benefit</dt><dd>A portfolio of tokenized real-world assets made to measure for the goal, managed against the odds of reaching it.</dd>
+        <dt>Benefit</dt><dd>A portfolio of tokenized real-world assets made to measure for the goal, held in the person's own vault and managed against the odds of reaching it.</dd>
         <dt>Tie-breaker</dt><dd>An exit plan before it invests, from measured depth. Tokenized doesn't mean liquid.</dd>
         <dt>Every joint in sight</dt><dd>Source · fetched_at · method on every figure, after-haircut yields beside quoted ones, every move logged with an explorer link.</dd>
         <dt>Archetype</dt><dd>Sage (60%) × Caregiver (40%). A master joiner who works for you.</dd>
@@ -615,50 +736,99 @@ footer { padding: 48px 0 64px; }
 <section id="color">
   <div class="container">
     <div class="section-label"><b>03</b> Color</div>
-    <h2 class="section-heading">One material. Two species. Swapped by the ground.</h2>
-    <p class="lede">Wood is the only colour. On paper the brand wood is hardwood; on warm black it is hinoki. The pin and any key member are always the species opposite the ground. There is no accent hue, no blue, and no pure white or black.</p>
-    <div class="proportion" aria-label="Proportion: 60% ground, 30% ink and hairline, 10% wood">
-      <div style="background:var(--background)"></div><div style="background:var(--foreground)"></div><div style="background:var(--primary)"></div>
+    <h2 class="section-heading">One brand colour. Two grounds. Direction in colour, always with a word and a shape.</h2>
+    <p class="lede">Honey is the only accent, in both modes, and it carries ink. Night is a cool near-black with a trace of blue so honey glows instead of sinking; day is warm paper with white cards. Leaf, clay and madder say which way a goal is going, each with a square glyph and a word. Chalk is the carpenter's line: focus rings, "today" lines and guides, never a fill or a brand element.</p>
+    <div class="proportion" aria-label="Proportion: about 70% ground, 24% text and hairline, 6% honey and tints">
+      <div style="background:var(--background)"></div><div style="background:var(--foreground)"></div><div style="background:var(--tf-honey)"></div>
     </div>
-    <p class="cap" style="margin-top:8px">About 60% ground · 30% ink and hairline · 10% wood, placed where it means something (interaction, the pin, the key member)</p>
+    <p class="cap-sc" style="margin-top:8px">About 70% ground · 24% text and hairline · 6% honey, placed where it means something: the action, the pin, the selected row, the glow behind a hero</p>
 
-    <h3 class="sub">Grounds and ink</h3>
-    <div class="swatches" id="sw-grounds"></div>
-    <h3 class="sub">The two species</h3>
-    <div class="swatches" id="sw-species"></div>
-    <h3 class="sub">Lines and muted text</h3>
+    <h3 class="sub">Night (dark mode)</h3>
+    <div class="swatches" id="sw-night"></div>
+    <h3 class="sub">Day (light mode)</h3>
+    <div class="swatches" id="sw-day"></div>
+    <p class="rule-note"><b>line / line-l</b> are hairlines and card edges. <b>line-2 / line-l2</b> are control edges; a control also carries a fill (night-3 / paper-3), and the focus ring carries its state.</p>
+    <h3 class="sub">Honey: the brand colour</h3>
+    <div class="swatches" id="sw-honey"></div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;align-items:center">
+      <span style="display:inline-flex;align-items:center;height:32px;padding:0 14px;border-radius:var(--radius-pill);background:var(--tf-honey-tint);color:var(--tf-honey-text);font:500 .875rem/1 var(--font-sans)">honey-tint · a selected chip</span>
+      <span style="display:inline-flex;align-items:center;height:32px;padding:0 14px;border-radius:var(--radius);background:var(--accent);color:var(--foreground);font:400 .875rem/1 var(--font-sans)">accent · a selected row</span>
+      <span class="cap-sc">Honey at 14% over the ground: #2D2318 on night, #F7EAD6 on paper. Colour sits in surfaces, not only in text.</span>
+    </div>
+    <h3 class="sub">Direction: leaf, clay, madder</h3>
+    <div class="swatches" id="sw-direction"></div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;align-items:center">
+      <span class="badge on"><svg><use href="#sq-on"/></svg>On track</span>
+      <span class="badge watch"><svg><use href="#sq-watch"/></svg>Watch</span>
+      <span class="badge off"><svg><use href="#sq-off"/></svg>Off track</span>
+      <span class="delta up">+0.8 pts</span><span class="delta down">−0.3 pts</span><span class="delta flat">±0.0 pts</span>
+      <span class="cap-sc">Status = word + square + colour on a 14% tint. Deltas signed with a true minus (U+2212): leaf up, madder down, muted flat.</span>
+    </div>
+    <h3 class="sub">Chalk and wood</h3>
     <div class="swatches" id="sw-lines"></div>
-    <p class="rule-note"><b>hair</b> is decoration only (1.39:1), never a control edge. Controls use <b>member</b>, which meets 3:1 on every ground.</p>
-    <h3 class="sub">Goal state: earth pigments, always word + shape + colour</h3>
-    <div class="swatches" id="sw-status"></div>
-    <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:16px">
-      <span class="status on"><svg><use href="#sq-on"/></svg>On track</span>
-      <span class="status watch"><svg><use href="#sq-watch"/></svg>Watch</span>
-      <span class="status off"><svg><use href="#sq-off"/></svg>Off track</span>
+    <p class="rule-note"><b>chalk</b> is a line: the 2 px focus ring, "today" lines, dimension lines, guides and the "test network" plate. It is never a fill, a button or a brand element. <b>wood</b> belongs to imagery and the 3D joint, and to the dark mode's second plan leg; it is not UI chrome.</p>
+
+    <h3 class="sub">Light as gradient: the only gradients allowed</h3>
+    <div class="grid-2">
+      <div>
+        <div class="glow-demo on-dark">
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;max-width:260px">
+            <div class="cap">Apartment fund · Jun 2028</div>
+            <div class="t-figlg" style="margin-top:4px">$12,480&#8239;<svg class="pin"><use href="#pin-live"/></svg></div>
+          </div>
+        </div>
+        <p class="rule-note"><b>glow</b> · <span class="mono">radial-gradient(60% 90% at 78% 30%, honey 22%, transparent 70%)</span> behind heroes and the composer, off-centre to the right. 28% on paper. One hue, fading to nothing: light, not a second colour.</p>
+      </div>
+      <div>
+        <div class="curve-demo">
+          <svg viewBox="0 0 400 180" width="100%" height="100%" aria-label="Base case line with curve fill; a dashed stress case; a dashed chalk today line">
+            <defs><linearGradient id="curveFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F5A83A" stop-opacity=".35"/><stop offset="1" stop-color="#F5A83A" stop-opacity="0"/></linearGradient></defs>
+            <g stroke="var(--border)" stroke-width="1"><line x1="0" y1="150" x2="400" y2="150"/><line x1="0" y1="100" x2="400" y2="100"/><line x1="0" y1="50" x2="400" y2="50"/></g>
+            <path d="M0 150 C 80 140, 140 120, 200 95 S 330 40, 400 22 V180 H0 Z" fill="url(#curveFill)"/>
+            <path d="M0 150 C 80 140, 140 120, 200 95 S 330 40, 400 22" fill="none" stroke="#F5A83A" stroke-width="2"/>
+            <path d="M200 95 C 260 85, 330 70, 400 62" fill="none" stroke="var(--muted-foreground)" stroke-width="1.5" stroke-dasharray="4 3"/>
+            <path d="M200 95 C 260 95, 330 100, 400 112" fill="none" stroke="var(--tf-madder)" stroke-width="1.5" stroke-dasharray="4 3"/>
+            <line x1="200" y1="10" x2="200" y2="160" stroke="var(--tf-chalk)" stroke-width="1" stroke-dasharray="3 3"/>
+            <text x="206" y="20" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--tf-chalk)">today</text>
+            <text x="330" y="16" font-family="Inter, sans-serif" font-size="11" fill="var(--foreground)">base case</text>
+            <text x="332" y="58" font-family="Inter, sans-serif" font-size="11" fill="var(--muted-foreground)">rates −⅓</text>
+            <text x="320" y="128" font-family="Inter, sans-serif" font-size="11" fill="var(--tf-madder)">rate shock</text>
+          </svg>
+        </div>
+        <p class="rule-note"><b>curve-fill</b> · honey 35% → 0 beneath the base-case line only. Stress cases dashed in muted and madder; "today" is a dashed chalk line with a Plex Mono label. Dashed = projected, solid = measured, everywhere.</p>
+      </div>
     </div>
 
     <h3 class="sub">Scales (tints, badges and data only; the named tokens rule UI)</h3>
     <div class="ramp-head"><span></span><span>50</span><span>100</span><span>200</span><span>300</span><span>400</span><span>500</span><span>600</span><span>700</span><span>800</span><span>900</span><span>950</span></div>
     <div id="ramps"></div>
+    <div class="heat-ramp" style="margin-top:16px"><span style="font:500 .8125rem/1.25rem var(--font-sans)">heatmap · dark</span><i class="stop" style="background:#1A1D26;border-radius:6px 0 0 6px"></i><i class="stop" style="background:#5C3707"></i><i class="stop" style="background:#B06C12"></i><i class="stop" style="background:#F5A83A"></i><i class="stop" style="background:#FFE9C2;border-radius:0 6px 6px 0"></i></div>
+    <div class="heat-ramp"><span style="font:500 .8125rem/1.25rem var(--font-sans)">heatmap · light</span><i class="stop" style="background:#FFE9C2;border-radius:6px 0 0 6px"></i><i class="stop" style="background:#F5A83A"></i><i class="stop" style="background:#B06C12"></i><i class="stop" style="background:#5C3707"></i><i class="stop" style="background:#1A1D26;border-radius:0 6px 6px 0"></i></div>
+    <p class="cap-sc" style="margin-top:8px">Low → high depth: night → honey → pale on dark, reversed on light, so more depth is always more contrast against the ground.</p>
 
     <h3 class="sub">Contrast pairs (WCAG 2.2 AA)</h3>
     <table class="pairs">
       <thead><tr><th>Pair</th><th>Sample</th><th>Use</th><th data-numeric style="text-align:right">Ratio</th></tr></thead>
       <tbody>
-        <tr><td>ink on paper</td><td><span class="sample-pair" style="background:#F6F1E8;color:#1C1712">Aa 1,240</span></td><td>body text</td><td data-numeric>15.81</td></tr>
-        <tr><td>stone on paper-sunk</td><td><span class="sample-pair" style="background:#EDE6DA;color:#6E655B">Aa 1,240</span></td><td>muted text (tightest)</td><td data-numeric>4.61</td></tr>
-        <tr><td>paper-raised on hardwood</td><td><span class="sample-pair" style="background:#7A5A3A;color:#FBF8F2">See plan</span></td><td>primary button, light</td><td data-numeric>5.91</td></tr>
-        <tr><td>black on hinoki</td><td><span class="sample-pair" style="background:#E6D3B7;color:#0D0B09">See plan</span></td><td>primary button, dark</td><td data-numeric>13.44</td></tr>
-        <tr><td>washi on black</td><td><span class="sample-pair" style="background:#0D0B09;color:#ECE4D6">Aa 1,240</span></td><td>body text, dark</td><td data-numeric>15.56</td></tr>
-        <tr><td>stone-d on char-2</td><td><span class="sample-pair" style="background:#24201B;color:#A49A8E">Aa 1,240</span></td><td>muted text, dark (tightest)</td><td data-numeric>5.85</td></tr>
-        <tr><td>member on paper-sunk</td><td><span class="sample-pair" style="background:#EDE6DA;border:1px solid #8C7F70;color:#1C1712">input</span></td><td>control edge</td><td data-numeric>3.14</td></tr>
-        <tr><td>wood-400 on paper</td><td><span class="sample-pair" style="background:#F6F1E8"><span style="display:block;width:48px;height:12px;background:#9D7751"></span></span></td><td>plan leg 3, light</td><td data-numeric>3.60</td></tr>
-        <tr><td>hinoki-deep on paper</td><td><span class="sample-pair" style="background:#F6F1E8"><span style="display:block;width:48px;height:12px;background:#C9AE86"></span></span></td><td><span style="color:var(--destructive)">fails: not a light plan leg</span></td><td data-numeric>1.89</td></tr>
-        <tr><td>ink on hatch strokes</td><td><span class="sample-pair hatch" style="background-color:#F6F1E8;color:#1C1712;--tf-hatch:#6E655B">Aa</span></td><td><span style="color:var(--destructive)">fails: text never on hatch</span></td><td data-numeric>3.11</td></tr>
-        <tr><td>hardwood on black</td><td><span class="sample-pair" style="background:#0D0B09;color:#7A5A3A">Aa</span></td><td><span style="color:var(--destructive)">never: the species rule</span></td><td data-numeric>3.13</td></tr>
+        <tr><td>ink on paper</td><td><span class="sample-pair" style="background:#F7F5F0;color:#15161C">Aa 1,240</span></td><td>body text, light</td><td data-numeric>16.57</td></tr>
+        <tr><td>ink on honey</td><td><span class="sample-pair" style="background:#F5A83A;color:#15161C;border-color:transparent">See plan</span></td><td>primary button, both modes</td><td data-numeric>9.06</td></tr>
+        <tr><td>white on honey</td><td><span class="sample-pair" style="background:#F5A83A;color:#FFFFFF;border-color:transparent">See plan</span></td><td><span style="color:var(--tf-madder)">fails: never white on honey</span></td><td data-numeric>2.00</td></tr>
+        <tr><td>honey-l on white</td><td><span class="sample-pair" style="background:#FFFFFF;color:#A8640A">See plan</span></td><td>honey as text or link, light</td><td data-numeric>4.67</td></tr>
+        <tr><td>muted-l on white</td><td><span class="sample-pair" style="background:#FFFFFF;color:#6A6D78">Aa 1,240</span></td><td>muted text, light (4.37 on paper-3: the tightest)</td><td data-numeric>5.16</td></tr>
+        <tr><td>text on night</td><td><span class="sample-pair" style="background:#0C0D12;color:#F3F1EC">Aa 1,240</span></td><td>body text, dark</td><td data-numeric>17.20</td></tr>
+        <tr><td>muted on night-2</td><td><span class="sample-pair" style="background:#13151C;color:#9A9DAD">Aa 1,240</span></td><td>muted text, dark</td><td data-numeric>6.77</td></tr>
+        <tr><td>honey on night</td><td><span class="sample-pair" style="background:#0C0D12;color:#F5A83A">6.40%</span></td><td>the pin, links, deltas on dark</td><td data-numeric>9.75</td></tr>
+        <tr><td>leaf · clay · madder on night</td><td><span class="sample-pair" style="background:#0C0D12;color:#3FC47C">On</span> <span class="sample-pair" style="background:#0C0D12;color:#F0703A">Watch</span> <span class="sample-pair" style="background:#0C0D12;color:#EF5A6F">Off</span></td><td>status words, dark</td><td data-numeric>8.69 · 6.55 · 5.88</td></tr>
+        <tr><td>leaf-l · clay-l · madder-l on white</td><td><span class="sample-pair" style="background:#FFFFFF;color:#1B7F45">On</span> <span class="sample-pair" style="background:#FFFFFF;color:#A8481A">Watch</span> <span class="sample-pair" style="background:#FFFFFF;color:#B52F44">Off</span></td><td>status words, light</td><td data-numeric>5.04 · 5.82 · 6.08</td></tr>
+        <tr><td>chalk on night · chalk-l on white</td><td><span class="sample-pair" style="background:#0C0D12;border:2px solid #78B4E8;color:#F3F1EC">focus</span> <span class="sample-pair" style="background:#FFFFFF;border:2px solid #2A73B0;color:#15161C">focus</span></td><td>the focus ring</td><td data-numeric>8.77 · 5.03</td></tr>
+        <tr><td>muted-2 on night</td><td><span class="sample-pair" style="background:#0C0D12;color:#6E7282">Aa</span></td><td>captions ≥ 18 px, placeholders, the pin's outline: large or non-text only</td><td data-numeric>4.06</td></tr>
+        <tr><td>wood-deep on paper</td><td><span class="sample-pair" style="background:#F7F5F0"><span style="display:block;width:48px;height:12px;background:#B9803F;border-radius:6px"></span></span></td><td>plan leg 3, light (non-text, ≥ 3:1)</td><td data-numeric>3.10</td></tr>
+        <tr><td>honey-deep on paper</td><td><span class="sample-pair" style="background:#F7F5F0"><span style="display:block;width:48px;height:12px;background:#D9881B;border-radius:6px"></span></span></td><td>plan leg 2, light: below 3:1 alone, so legs always carry direct labels and 2 px ground gaps</td><td data-numeric>2.57</td></tr>
+        <tr><td>ink on hatch strokes</td><td><span class="sample-pair hatch" style="background-color:#F7F5F0;color:#15161C;--tf-hatch:#6A6D78">Aa</span></td><td><span style="color:var(--tf-madder)">fails: text never on hatch</span></td><td data-numeric>3.2</td></tr>
+        <tr><td>honey-l on honey</td><td><span class="sample-pair" style="background:#F5A83A;color:#A8640A;border-color:transparent">Aa</span></td><td><span style="color:var(--tf-madder)">never: honey on honey</span></td><td data-numeric>2.35</td></tr>
       </tbody>
     </table>
-    <div class="fix"><b>Usage fixes from the colour pass, binding:</b> light plan legs use <b>wood-400 #9D7751</b>, not hinoki-deep. Text over the MOCK hatch sits on a <b>solid plate</b>. "Watch" ochre is 1.06:1 against hardwood, so it is <b>always carried by its word and half-filled square</b>, never by colour.</div>
+    <div class="fix"><b>Binding usage notes:</b> honey carries <b>ink</b> in both modes; as text on light grounds it is <b>honey-l</b>. "Watch" is never shown by colour alone: clay sits close to honey, so the half-filled square and the word carry it. On light the status pills pass AA on their 14% tints: leaf-l 4.52, clay-l 5.04, madder-l 5.19 at 12 px 600 (clay-l and madder-l were darkened on 2026-10-08 for this).</div>
   </div>
 </section>
 
@@ -666,58 +836,59 @@ footer { padding: 48px 0 64px; }
 <section id="typography">
   <div class="container">
     <div class="section-label"><b>04</b> Typography</div>
-    <h2 class="section-heading">The serif gives the answer. The sans explains. The mono cites.</h2>
-    <p class="lede">Three faces, two families, all OFL with Latin Extended for EN, PT and ES. Newsreader is spent once per screen. The grid unit is 4 px, and every line height lands on it.</p>
+    <h2 class="section-heading">Inter Tight answers. Inter explains. Plex Mono cites.</h2>
+    <p class="lede">Three faces, all OFL with Latin Extended for EN, PT and ES. Inter Tight 600 at −0.02em for display and big numbers, Inter 400/500/600 for everything a person reads or presses, IBM Plex Mono for provenance and code. No serif anywhere in the app, Bearing or the embed. The grid unit is 4 px, and every line height lands on it.</p>
 
     <div class="type-block">
-      <div class="who"><h4>Newsreader</h4><p>Display optical size, upright. 400 for sentences, 500 for short headlines and the wordmark. Never bold, never italic. Marketing and the plan view only: never in the embed, Bearing, tables, buttons, or on pinned numbers.</p></div>
+      <div class="who"><h4>Inter Tight</h4><p>600 only, −0.02em (−0.025em at display size). Headlines, the goal sentence, the amount on a goal card (figure-lg) and Bearing KPIs (b-kpi). Tabular lining figures. Never below 20 px, never for body text.</p></div>
       <div>
-        <div class="step"><div class="t-display">Your apartment fund is on track.</div><div class="scale-meta">display · Newsreader 400 · 49 → 67.5 px · lh 1.1 · −0.015em</div></div>
-        <div class="step"><div class="t-h1">Your goal in. The way out planned.</div><div class="scale-meta">h1 · Newsreader 400 · 39 → 50.5 px · lh 1.15 · −0.01em</div></div>
-        <div class="step"><div class="t-h2s">It holds. And you can see why.</div><div class="scale-meta">h2 (marketing section head only) · Newsreader 500 · opsz 36 · 31 → 38 px · lh 1.2</div></div>
+        <div class="step"><div class="t-display">Tell it the goal. Get the portfolio cut for it.</div><div class="scale-meta">display · Inter Tight 600 · 44 → 64 px · lh 1.05 · −0.025em</div></div>
+        <div class="step"><div class="t-h1">Your apartment fund is on track.</div><div class="scale-meta">h1 · Inter Tight 600 · 34 → 46 px · lh 1.1 · −0.02em</div></div>
+        <div class="step"><div class="t-h2">Access to cash</div><div class="scale-meta">h2 · Inter Tight 600 · 26 → 34 px · lh 1.15 · −0.02em</div></div>
+        <div class="step"><div class="t-h3">Stress cases</div><div class="scale-meta">h3 · Inter Tight 600 · 20 → 24 px · lh 1.25 · −0.015em</div></div>
+        <div class="step"><div class="t-figlg">$12,480&#8239;<svg class="pin"><use href="#pin-live"/></svg></div><div class="scale-meta">figure-lg · Inter Tight 600 · 28 / 32 · −0.02em · the amount on a goal card, with its pin</div></div>
       </div>
     </div>
 
     <div class="type-block">
-      <div class="who"><h4>IBM Plex Sans</h4><p>400 body, 500 labels and buttons, 600 for UI headings only. No light weights. Tabular lining figures everywhere in UI. Condensed for Bearing tables.</p></div>
+      <div class="who"><h4>Inter</h4><p>400 body, 500 labels and links, 600 for buttons, UI headings and emphasis. No light weights. Tabular lining figures everywhere in UI. Captions are the one uppercase style: eyebrows and column heads only, 12 px, +0.04em.</p></div>
       <div>
-        <div class="step"><div class="t-h2">Access to cash</div><div class="scale-meta">h2 · Plex Sans 600 · 31 → 38 px · lh 1.2 · −0.015em</div></div>
-        <div class="step"><div class="t-h3">Stress cases</div><div class="scale-meta">h3 · Plex Sans 600 · 25 → 28.5 px · lh 1.25</div></div>
-        <div class="step"><div class="t-h4">Why this plan?</div><div class="scale-meta">h4 · Plex Sans 500 · 20 → 21.5 px · 28 px</div></div>
-        <div class="step"><p class="t-bodylg">You're on track for June 2028. If rates fall by a third, you'd land in September instead — we'd tell you in March, not in August.</p><div class="scale-meta">body-lg · Plex Sans 400 · 18 / 28</div></div>
-        <div class="step"><p class="t-body">Most of it sits in short-dated treasuries, which is why it holds when rates move. You can get up to $4,000 out within a day, and the rest within a week (illustrative).</p><div class="scale-meta">body · Plex Sans 400 · 16 / 24</div></div>
-        <div class="step"><p class="t-bodysm">Quoted at 9.1%&#8239;<svg class="pin" style="display:inline-block"><use href="#pin-live"/></svg>. After the credit haircut we use 6.4%&#8239;<svg class="pin" style="display:inline-block"><use href="#pin-live"/></svg>. Here's why (illustrative).</p><div class="scale-meta">body-sm · Plex Sans 400 · 14 / 24 · +0.01em</div></div>
-        <div class="step"><div class="t-caption">On track · June 2028</div><div class="scale-meta">caption · Plex Sans 500 · 12.5 / 20 · +0.015em</div></div>
+        <div class="step"><div class="t-h4">Why this plan?</div><div class="scale-meta">h4 · Inter 600 · 18 / 24 · −0.01em</div></div>
+        <div class="step"><p class="t-bodylg">You're on track for June 2028. If rates fall by a third, you'd land in September instead — we'd tell you in March, not in August.</p><div class="scale-meta">body-lg · Inter 400 · 18 / 28</div></div>
+        <div class="step"><p class="t-body">Most of it sits in short-dated treasuries, which is why it holds when rates move. You can get up to $4,000 out within a day, and the rest within a week (illustrative).</p><div class="scale-meta">body · Inter 400 · 16 / 24</div></div>
+        <div class="step"><p class="t-bodysm">Quoted at 9.1%&#8239;<svg class="pin" style="display:inline-block"><use href="#pin-live"/></svg>. After the credit haircut we use 6.4%&#8239;<svg class="pin" style="display:inline-block"><use href="#pin-live"/></svg>. Here's why (illustrative).</p><div class="scale-meta">body-sm · Inter 400 · 14 / 22</div></div>
+        <div class="step"><div class="t-caption">Apartment fund · Jun 2028</div><div class="scale-meta">caption · Inter 500 · 12 / 16 · uppercase · +0.04em · eyebrows and column heads only</div></div>
+        <div class="step"><div class="t-sample">Sample figures · test network</div><div class="scale-meta">sample line · Inter 400 · 12.5 / 18 · muted · once per sample card, beside its hatched edge, no box (gate MOCK-QUIET)</div></div>
+        <div class="step" style="margin-bottom:0"><span class="delta up">+0.8 pts</span> &nbsp; <span class="delta down">−0.3 pts</span><div class="scale-meta">b-delta · Inter 500 · 11 / 16 · signed, coloured by direction, beside or under the value it qualifies</div></div>
       </div>
     </div>
 
     <div class="type-block">
-      <div class="who"><h4>IBM Plex Mono</h4><p>When you see mono, you are looking at a source: the provenance line, hashes, ISO timestamps, code, and the MOCK label. Never for headlines (that is the retro-OS register).</p></div>
+      <div class="who"><h4>IBM Plex Mono</h4><p>When you see mono, you are looking at a source: the provenance line, hashes, ISO timestamps and code. Never for headlines, never for a label.</p></div>
       <div>
-        <div class="step"><div class="t-source">source: ondo/usdy · fetched_at: 2026-10-01T14:02Z · method: haircut v1.2</div><div class="scale-meta">source · Plex Mono 400 · 13 / 20</div></div>
-        <div class="step"><span class="mock-plate">MOCK</span><div class="scale-meta">label-mock · Plex Mono 500 · 12.5 / 20 · uppercase · +0.08em (the only all-caps word)</div></div>
+        <div class="step" style="margin-bottom:0"><div class="t-source">source: ondo/usdy · fetched_at: 2026-10-08T14:02Z · method: haircut v1.2</div><div class="scale-meta">source · Plex Mono 400 · 13 / 20</div></div>
       </div>
     </div>
 
     <div class="type-block">
-      <div class="who"><h4>Bearing (productive)</h4><p>A 13 px base on a 1.125 ratio, fixed, with no clamp. Plex Sans Condensed for cells and Plex Mono for values. Rows are 28 px dense or 32 px comfortable.</p></div>
-      <div class="on-dark" style="padding:24px;border:1px solid var(--border)">
-        <div class="step" style="margin-bottom:16px"><div class="t-bkpi">$1.2M</div><div class="scale-meta">b-kpi · Plex Mono 500 · 23.5 / 32</div></div>
-        <div class="step" style="margin-bottom:16px"><div class="t-btitle">Depth by hour</div><div class="scale-meta">b-title · Plex Sans 600 · 21 / 28</div></div>
-        <div class="step" style="margin-bottom:16px"><div class="t-bsection">Exit capacity</div><div class="scale-meta">b-section · Plex Sans 600 · 16.5 / 24</div></div>
-        <div class="step" style="margin-bottom:16px"><div class="t-bemph">xAAPL · selected</div><div class="scale-meta">b-emph · Condensed 500 · 14.5 / 20</div></div>
-        <div class="step" style="margin-bottom:16px"><div class="t-bcell">Sellable at ≤ 2% impact</div><div class="scale-meta">b-cell · Condensed 400 · 13 / 20</div></div>
-        <div class="step" style="margin-bottom:16px"><div class="t-bhead">Hour of week (UTC)</div><div class="scale-meta">b-head · Condensed 500 · 12 / 16</div></div>
+      <div class="who"><h4>Bearing (productive)</h4><p>A 13 px base, fixed, with no clamp. Inter Tight for the KPI, Inter for cells and heads, Plex Mono for meta. Rows are 36 px: a 20 px line with 8 px padding each side.</p></div>
+      <div class="on-dark" style="padding:24px;border:1px solid var(--border);border-radius:var(--radius-lg)">
+        <div class="step" style="margin-bottom:16px"><div class="t-bkpi">$1.2M&#8239;<svg class="pin"><use href="#pin-live"/></svg> <span class="delta up" style="font-size:.75rem">+4.2%</span></div><div class="scale-meta">b-kpi · Inter Tight 600 · 22 / 28 · −0.02em · with a signed delta</div></div>
+        <div class="step" style="margin-bottom:16px"><div class="t-btitle">Depth by hour</div><div class="scale-meta">b-title · Inter Tight 600 · 20 / 28</div></div>
+        <div class="step" style="margin-bottom:16px"><div class="t-bsection">Exit capacity</div><div class="scale-meta">b-section · Inter 600 · 15 / 24</div></div>
+        <div class="step" style="margin-bottom:16px"><div class="t-bemph">xAAPL · selected</div><div class="scale-meta">b-emph · Inter 600 · 13 / 20</div></div>
+        <div class="step" style="margin-bottom:16px"><div class="t-bcell">Sellable at ≤ 2% impact</div><div class="scale-meta">b-cell · Inter 400 · 13 / 20 · tabular values</div></div>
+        <div class="step" style="margin-bottom:16px"><div class="t-bhead">Hour of week (UTC)</div><div class="scale-meta">b-head · Inter 500 · 11 / 16 · uppercase · +0.05em</div></div>
         <div class="step" style="margin-bottom:0"><div class="t-bmeta">n=412 · method v1.3 · Sun 03:00 UTC</div><div class="scale-meta">b-meta · Plex Mono 400 · 12 / 16</div></div>
       </div>
     </div>
 
     <div class="pairing">
-      <div><div class="cap">Answer</div><p style="font-family:var(--font-display);font-size:1.5rem;line-height:2rem;margin-top:8px">Your apartment fund is on track.</p></div>
+      <div><div class="cap">Answer</div><p class="t-h3" style="margin-top:8px">Your apartment fund is on track.</p></div>
       <div><div class="cap">Reason, risk, action</div><p style="margin-top:8px">Rates dipped this month, so I moved a little into treasuries. You're still landing in June 2028.</p></div>
       <div><div class="cap">Source</div><p class="t-source" style="margin-top:8px">source · fetched_at · method</p></div>
     </div>
-    <p class="rule-note">Pairing: Newsreader's warmth is the Caregiver, and Plex's cut terminals are the Sage. Same skeleton across Plex Sans and Mono, so explaining and citing are one system. In the embed, Plex is replaced by the partner's font. Only the mono provenance line may keep Plex Mono.</p>
+    <p class="rule-note">Pairing: Inter Tight is Inter with the spacing drawn in, so the answer and the explanation are one voice at two sizes; Plex Mono's slab terminals mark the citation. In the embed, Inter and Inter Tight are replaced by the partner's font; only the mono provenance line may keep Plex Mono. Measures: 66ch body, 72ch docs, 16ch display.</p>
   </div>
 </section>
 
@@ -725,94 +896,79 @@ footer { padding: 48px 0 64px; }
 <section id="visuals">
   <div class="container">
     <div class="section-label"><b>05</b> Visual elements</div>
-    <h2 class="section-heading">Kumiko and lattice as structure, never ornament.</h2>
-    <p class="lede">Every pattern is a hairline in hair / hair-d, never a brand species. Patterns never sit behind numbers, text, form fields, charts, the provenance popover or the disclaimer. Only the hatch is diagonal, and the hatch means MOCK.</p>
+    <h2 class="section-heading">Joints as drawings. Light as a gradient. The hatch as a word.</h2>
+    <p class="lede">Five joints carry the metaphor, drawn as line work: lines in the text colour, the key member in honey, dimension lines in chalk. Patterns never sit behind numbers, text, form fields, charts, the provenance popover or the disclaimer. Only the hatch is diagonal, and the hatch means sample (or stale).</p>
+
+    <div class="grid-5" style="margin-top:48px">
+      <div class="jcard"><svg><use href="#j1"/></svg><div class="jn">J1 · Pinned through-tenon</div><div class="jm">The logo, the plan, provenance. Post = the goal, tenon = the plan cut to fit, pin = the source.</div></div>
+      <div class="jcard"><svg><use href="#j2"/></svg><div class="jn">J2 · Half-lap cross</div><div class="jm">Structure and measurement: the unit cell of the lattice, the layout grid, the heatmap.</div></div>
+      <div class="jcard"><svg><use href="#j3"/></svg><div class="jn">J3 · Sliding dovetail, dropped in</div><div class="jm">The exit plan. The way out is the way in, reversed, designed first. The lift-out path is dashed.</div></div>
+      <div class="jcard"><svg><use href="#j4"/></svg><div class="jn">J4 · Keyed scarf splice</div><div class="jm">Rebalance: one section replaced while the structure carries load, locked by a driven key.</div></div>
+      <div class="jcard"><svg><use href="#j5"/></svg><div class="jn">J5 · Bracket set</div><div class="jm">Bearing: load through many small pieces; capacity measured, not assumed. Never beside the wordmark.</div></div>
+    </div>
+    <p class="rule-note">Drawings are inline SVG with <span class="mono">currentColor</span> and CSS variables, 1.5 px strokes, square caps, so the theme swap is free. Figures in drawings are HTML overlays, never SVG text, so the pin and its popover work. Not in the set: furniture dovetails, puzzle boxes, screws, nails, glue.</p>
 
     <div class="grid-2" style="margin-top:48px">
       <div>
-        <div class="pattern-demo lattice"><span class="tag">P1 coarse · cell = 1 column</span></div>
-        <p class="rule-note"><b>P1 coarse kumiko.</b> The layout grid made visible: marketing section grounds, and docs page margins only. On a <code class="mono">::before</code> layer, never on a content box. It stops one grid unit short of any figure.</p>
+        <div class="pattern-demo lattice"><span class="ptag">P1 lattice · cell = 1 column · 60% opacity</span></div>
+        <p class="rule-note"><b>P1 lattice.</b> The layout grid made visible as a faint hairline (line / line-l at 60%), on marketing section grounds only. On a <span class="mono">::before</span> layer, never on a content box, never in the app, Bearing or the embed. It stops one grid unit short of any figure.</p>
       </div>
       <div>
-        <div class="pattern-demo lattice lattice--medium" style="display:grid;place-items:center">
-          <div class="loader" role="status" style="background:var(--background);padding:12px 16px;border:1px solid var(--border)">
-            <svg width="48" height="48" viewBox="0 0 48 48" aria-hidden="true" id="loaderSvg">
-              <g class="lh"><line x1="0" y1="0.5" x2="48" y2="0.5"/><line x1="0" y1="16.5" x2="48" y2="16.5"/><line x1="0" y1="32.5" x2="48" y2="32.5"/><line x1="0" y1="47.5" x2="48" y2="47.5"/></g>
-              <g class="lv"><line x1="0.5" y1="0" x2="0.5" y2="48"/><line x1="16.5" y1="0" x2="16.5" y2="48"/><line x1="32.5" y1="0" x2="32.5" y2="48"/><line x1="47.5" y1="0" x2="47.5" y2="48"/></g>
-            </svg>
+        <div class="pattern-demo" style="display:grid;place-items:center;background:var(--card)">
+          <div class="loader" role="status" style="padding:12px 16px;border:1px solid var(--border);border-radius:var(--radius)">
+            <span class="bar" aria-hidden="true"><i class="f"></i><i class="f"></i><i></i></span>
             <span>Building your plan…</span>
           </div>
-          <span class="tag">P1 medium · 24 px · loading and empty states only</span>
+          <span class="ptag">loader · 3 segments fill in honey, 240 ms each</span>
         </div>
-        <p class="rule-note"><b>P1 medium.</b> Only for loading and empty states. The loader is "the lattice assembles": horizontals slide in on x, then verticals drop on y. It is shown only for waits over 400 ms, always with a text label.</p>
+        <p class="rule-note"><b>Loader.</b> A 3-segment bar fills in honey, left to right, 240 ms per segment, only for waits over 400 ms, always with a text label and <span class="mono">role=status</span>. Reduced motion: static with the label. No spinner, no shimmer, no counting figures.</p>
       </div>
       <div>
-        <div style="display:grid;grid-template-columns:1fr 120px;gap:16px;align-items:stretch">
-          <div style="border:1px solid var(--border);padding:32px 24px">
-            <div class="step-rule" style="margin:0"></div>
-            <p class="cap" style="margin-top:12px">P2 stacked offset · step = 1 column (marketing), 8 px (docs)</p>
-          </div>
-          <div class="pattern-demo lattice lattice--fine" style="height:auto"><span class="tag" style="left:8px;bottom:8px;white-space:nowrap">8 px</span></div>
-        </div>
-        <p class="rule-note"><b>P2 stacked offset</b> closes sections: three hairlines 4 px apart, each one step longer. <b>P1 fine (8 px) is for print and video only.</b> It moirés on screen, so the specimen here is reference, not permission.</p>
-      </div>
-      <div>
-        <div style="border:1px solid var(--border);padding:24px">
+        <div style="border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;background:var(--card)">
           <svg viewBox="0 0 320 64" width="100%" class="dl" aria-label="Dimension line: $40,000 by June 2028">
             <g stroke="var(--border)" fill="none" stroke-width="1">
               <line x1="20" y1="14" x2="20" y2="56"/><line x1="300" y1="14" x2="300" y2="56"/>
             </g>
-            <g stroke="var(--foreground)" fill="none" stroke-width="1">
+            <g stroke="var(--tf-chalk)" fill="none" stroke-width="1">
               <line x1="20" y1="40" x2="300" y2="40"/>
               <line x1="15" y1="45" x2="25" y2="35"/><line x1="295" y1="45" x2="305" y2="35"/>
             </g>
-            <text x="160" y="32" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" fill="var(--foreground)">$40,000 · June 2028</text>
+            <text x="160" y="32" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" fill="var(--tf-chalk)">$40,000 · June 2028</text>
           </svg>
           <svg viewBox="0 0 320 24" width="100%" style="margin-top:12px" aria-hidden="true">
-            <line x1="20" y1="8" x2="300" y2="8" stroke="var(--foreground)" stroke-width="1"/>
-            <line x1="20" y1="18" x2="300" y2="18" stroke="var(--muted-foreground)" stroke-width="1" stroke-dasharray="4 2"/>
+            <line x1="20" y1="8" x2="300" y2="8" stroke="var(--foreground)" stroke-width="1.5"/>
+            <line x1="20" y1="18" x2="300" y2="18" stroke="var(--muted-foreground)" stroke-width="1.5" stroke-dasharray="4 3"/>
           </svg>
-          <p class="cap" style="margin-top:4px">Solid = measured or live · dashed = projected</p>
+          <p class="cap-sc" style="margin-top:4px">Solid = measured or live · dashed = projected</p>
         </div>
-        <p class="rule-note"><b>Dimension lines are constraints:</b> amount, date and exit window. They use 45° architect's ticks, hairline extension lines with a 2 px gap, and the value in Plex Mono above the line.</p>
-      </div>
-    </div>
-
-    <h3 class="sub">P4 section hatch: MOCK and stale only</h3>
-    <div class="grid-2">
-      <div class="panel" style="display:flex;gap:16px;padding:0;overflow:hidden">
-        <div class="mock-band hatch"></div>
-        <div style="padding:20px 20px 20px 0;display:grid;gap:8px">
-          <div class="cap">Kamino USDC · after haircut</div>
-          <div style="display:flex;align-items:center;gap:10px"><span style="font:500 1.5rem/2rem var(--font-body)">5.20%</span><svg class="pin mock" style="height:12px;width:18px" aria-hidden="true"><use href="#pin-mock"/></svg><span class="mock-plate">MOCK</span></div>
-          <div class="src">Kamino rate feed not connected yet. Shown for layout only.</div>
-        </div>
+        <p class="rule-note"><b>Dimension lines are constraints:</b> amount, date and exit window. They are the carpenter's chalk line: 45° ticks, hairline extension lines with a 2 px gap, and the value in Plex Mono above the line, in chalk / chalk-l.</p>
       </div>
       <div>
-        <ul class="always-list">
-          <li>The hatch fills a 6 px edge band or the frame margin. The value and the MOCK label sit on a solid plate.</li>
-          <li>Stroke 1 px at 45°, 6 px pitch (3 px inside glyphs), in stone / stone-d. It passes 3:1 alone, and the word makes it redundant.</li>
-        </ul>
-        <ul class="never-list" style="margin-top:16px;border-top:0">
-          <li>Text on hatch strokes (ink on stone is 3.11:1).</li>
-          <li>The hatch as decoration, as a "real" section, or without the word MOCK or stale.</li>
-        </ul>
+        <div class="panel" style="display:flex;gap:16px;padding:0;overflow:hidden">
+          <div class="sample-edge hatch"></div>
+          <div style="padding:20px 20px 20px 0;display:grid;gap:8px">
+            <div class="cap">Kamino USDC · after haircut</div>
+            <div class="t-figlg">5.20%&#8239;<button class="pin-btn" aria-label="Source for 5.20%, sample figure"><svg class="pin" aria-hidden="true"><use href="#pin-sample"/></svg></button></div>
+            <div class="sample-line">Sample figures · Kamino rate feed not connected yet</div>
+          </div>
+        </div>
+        <p class="rule-note"><b>P4 hatch: sample and stale only.</b> 1 px strokes at 45°, 6 px pitch (3 px inside the pin glyph), in muted / muted-l. It fills the card's 6 px left edge or the frame margin, and the card says so once, in a muted Inter 12.5 px line with no box: "Sample figures", or "Sample figures · test network". No boxed MOCK beside a figure, anywhere (gate MOCK-QUIET). Never text on strokes, never the hatch as decoration, a divider, an empty state or a "no data" cell.</p>
       </div>
     </div>
 
     <h3 class="sub">Never behind numbers</h3>
     <div class="grid-2">
-      <div style="border:1px solid var(--border);height:140px;display:grid;grid-template-columns:2fr 3fr;position:relative">
+      <div style="border:1px solid var(--border);border-radius:var(--radius-lg);height:140px;display:grid;grid-template-columns:2fr 3fr;position:relative;overflow:hidden">
         <div class="lattice" style="--cell:24px;margin:0 24px 0 0;border-right:1px solid var(--border)"></div>
-        <div style="padding:24px 0"><span style="font:500 1.25rem/1.75rem var(--font-body)">6.40%</span> <span class="cap">after haircut</span></div>
-        <span class="lab" style="position:absolute;right:12px;bottom:8px;color:var(--success)">&gt; lattice stops a grid unit short of the figure</span>
+        <div style="padding:24px 0"><span class="t-figlg">6.40%</span> <span class="cap">after haircut</span></div>
+        <span class="lab" style="position:absolute;right:12px;bottom:8px;color:var(--tf-leaf)">&gt; lattice stops a grid unit short of the figure</span>
       </div>
-      <div style="border:1px solid var(--border);padding:24px;height:140px;position:relative;background-image:linear-gradient(to right,var(--border) 1px,transparent 1px),linear-gradient(to bottom,var(--border) 1px,transparent 1px);background-size:24px 24px">
-        <span style="font:500 1.25rem/1.75rem var(--font-body);opacity:.85">6.40%</span>
-        <span class="lab" style="position:absolute;right:12px;bottom:8px;color:var(--destructive);background:var(--background);padding:0 4px">x  figure set on the lattice</span>
+      <div style="border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;height:140px;position:relative;background-image:linear-gradient(to right,var(--border) 1px,transparent 1px),linear-gradient(to bottom,var(--border) 1px,transparent 1px);background-size:24px 24px">
+        <span class="t-figlg" style="opacity:.85">6.40%</span>
+        <span class="lab" style="position:absolute;right:12px;bottom:8px;color:var(--tf-madder);background:var(--background);padding:0 4px">x  figure set on the lattice</span>
       </div>
     </div>
-    <p class="rule-note">Banned motifs: asanoha, kikkō (it also reads as crypto hex), seigaiha, shippō, sakura, crests, and wood-grain wallpaper. Patterns don't move, except the P1-medium loader and video.</p>
+    <p class="rule-note">Banned: two-hue gradients, glass, backdrop blur, neon glow, ambient orbs, gold foil, metallic or wood-grain fills; bevelled chassis, nameplates, LEDs; asanoha, kikkō, seigaiha, shippō, sakura, crests. Patterns don't move.</p>
   </div>
 </section>
 
@@ -821,7 +977,7 @@ footer { padding: 48px 0 64px; }
   <div class="container">
     <div class="section-label"><b>06</b> Provenance pin</div>
     <h2 class="section-heading">Every number carries its source. The pin is how you can tell.</h2>
-    <p class="lede">The tenon end in line mode, with its pin centred so it never reads as a miniature logo. It follows every yield, price and FX figure at cap height and opens <span class="mono">source · fetched_at · method</span>. The state comes from the API and is never inferred in the UI.</p>
+    <p class="lede">The tenon end in line mode: a 3:2 outline with a square pin set toward the end, like the mark's face. It follows every yield, price and FX figure at cap height, with a U+202F thin space before it, and opens <span class="mono">source · fetched_at · method</span>. The state comes from the API and is never inferred in the UI.</p>
 
     <div class="ground-pair" style="margin-top:40px">
       <div class="on-light"><div id="pins-light"></div></div>
@@ -830,25 +986,27 @@ footer { padding: 48px 0 64px; }
 
     <div class="grid-2" style="margin-top:24px;align-items:start">
       <div>
-        <div style="font:500 1.5rem/2rem var(--font-body)">6.40%&#8239;<button class="pin-btn" aria-label="Source for 6.40%" aria-expanded="true"><svg class="pin" aria-hidden="true"><use href="#pin-live"/></svg></button> <span class="cap">after haircut</span></div>
+        <div class="t-figlg">6.40%&#8239;<button class="pin-btn" aria-label="Source for 6.40%" aria-expanded="true"><svg class="pin" aria-hidden="true"><use href="#pin-live"/></svg></button> <span class="cap">after haircut</span></div>
         <dl class="popover" style="margin-top:12px">
           <dt>source</dt><dd>ondo/usdy · api.ondo.finance</dd>
-          <dt>fetched_at</dt><dd>2026-10-01T14:02:11Z</dd>
+          <dt>fetched_at</dt><dd>2026-10-08T14:02:11Z</dd>
           <dt>method</dt><dd>quoted 9.10% − credit haircut v1.2 → 6.40%</dd>
           <dd style="margin:0;color:var(--muted-foreground)">Illustrative values</dd>
         </dl>
+        <p class="rule-note">The popover sits on night-3 / white with a 1 px line and the one shadow in the system (<span class="mono">0 8px 24px rgba(0,0,0,.35)</span>), 8 px radius, Plex Mono.</p>
       </div>
       <table class="pairs">
         <thead><tr><th>State</th><th>Drawing</th><th>Always paired with</th></tr></thead>
         <tbody>
-          <tr><td>Live</td><td>Solid pin in the species opposite the ground</td><td>Popover: source · fetched_at · method</td></tr>
-          <tr><td>Stale</td><td>Hollow pin, in stone</td><td>The word <b>stale</b> + the age. Never shown alone: live and stale differ by only 1.10:1</td></tr>
-          <tr><td>MOCK</td><td>No pin, hatched tenon, in stone</td><td>The word <b>MOCK</b>; the API says <span class="mono">"provenance": "mock"</span></td></tr>
-          <tr><td>Embed</td><td>Pin in the partner's muted text colour</td><td>Same popover, Plex Mono or the partner's mono</td></tr>
+          <tr><td>Live</td><td>Outline in muted-2 / line-l2; solid square pin in honey / honey-l</td><td>Popover: source · fetched_at · method</td></tr>
+          <tr><td>Stale</td><td>Hollow square pin, stroke 1.5, same colours</td><td>The word <b>stale</b> + the age ("stale · 3 h"). Never shown alone</td></tr>
+          <tr><td>Sample</td><td>No pin; 45° hatch at 3 px pitch inside the outline; <span class="mono">aria-label="sample figure"</span>. A sample figure with no pin gets the 12 px hatched glyph <svg width="12" height="12" style="display:inline-block;vertical-align:-1px" role="img" aria-label="sample figure"><use href="#glyph-sample"/></svg></td><td>Nothing boxed beside the figure. The card keeps its 6 px hatched left edge and says so once, in a muted line: <b>Sample figures</b>; the API says <span class="mono">"provenance": "mock"</span> (or <span class="mono">"fixture"</span>, <span class="mono">"prior_dataset"</span>)</td></tr>
+          <tr><td>Test network</td><td>Same as sample</td><td>The same line with the words: <b>Sample figures · test network</b>; <span class="mono">"provenance": "sandbox"</span>. The buy card reads "Test network · Solana · not live". Never shown as live</td></tr>
+          <tr><td>Embed</td><td>Outline and pin in the partner's muted text colour</td><td>Same popover, Plex Mono or the partner's mono</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="rule-note">Accessibility: a <code class="mono">&lt;button aria-label="Source for 6.4%"&gt;</code>, with ", stale, 3 hours old" or ", mock data" appended. It has a 24 × 24 hit area from a transparent <code class="mono">::before</code>, Enter opens it, and there is a U+202F thin no-break space between the figure and the glyph.</p>
+    <p class="rule-note">Accessibility: a <code class="mono">&lt;button aria-label="Source for 6.4%"&gt;</code>, with ", stale, 3 hours old", ", sample figure" or ", sample figure, test network" appended. It has a 24 × 24 hit area from a transparent <code class="mono">::before</code>, Enter opens it, and the focus ring is the 2 px chalk outline. The pin is its own component, never in the icon registry, never reused.</p>
   </div>
 </section>
 
@@ -856,8 +1014,8 @@ footer { padding: 48px 0 64px; }
 <section id="components">
   <div class="container">
     <div class="section-label"><b>07</b> Components</div>
-    <h2 class="section-heading">Square cuts, hairlines, one action.</h2>
-    <p class="lede">Radius is 0–2 px, there are no shadows, and controls are edged in member. The focus ring is the brand species, 2 px with a 2 px offset. Figures below are illustrative.</p>
+    <h2 class="section-heading">Honey carries the action. Ink sits on it.</h2>
+    <p class="lede">Cards are 10 px, buttons, inputs and popovers 8 px, tags 6 px, chips and status badges are pills, and the composer is 20 px with a round send button. No shadows except the popover. The focus ring is a 2 px chalk outline at 2 px offset, following the element's radius. Figures below are illustrative.</p>
 
     <h3 class="sub">Controls</h3>
     <div class="grid-2">
@@ -871,15 +1029,30 @@ footer { padding: 48px 0 64px; }
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
           <button class="btn btn-secondary">Edit your goal</button>
           <button class="btn btn-secondary is-hover" tabindex="-1">Hover</button>
+          <button class="btn btn-secondary btn-icon" aria-label="Copy"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
           <a href="#components">See your plan</a>
         </div>
-        <p class="cap">One primary per view. Never a pill. Consumer flows prefer the underlined link.</p>
+        <div class="chips" style="margin-top:0">
+          <button class="chip">Apartment fund</button><button class="chip sel" aria-pressed="true">Monthly income</button><button class="chip">Trip in 2029</button>
+        </div>
+        <p class="cap-sc">Primary: honey, hover honey-hover, pressed honey-deep, ink text in both modes. One primary per view. Pills belong to chips (selected = honey-tint + honey text), never to buttons.</p>
       </div>
       <div class="panel" style="display:grid;gap:16px">
         <div class="field"><label for="f1">Target amount</label><input id="f1" class="input" value="$40,000"></div>
         <div class="field"><label for="f2">By when</label><input id="f2" class="input is-focus" value="June 2028"></div>
         <div class="field"><label for="f3">Access to cash</label><input id="f3" class="input is-error" value="1 day, 12% yield" aria-describedby="f3e"><span class="err" id="f3e">As set, this doesn't fit: 12% with a one-day exit isn't available without risk you've ruled out. Try a 7-day window, or a lower target.</span></div>
+        <p class="cap-sc">Inputs sit in a well (night-3 / paper-3) with a line-2 / line-l2 edge, 8 px radius, labels above. Error: madder edge + a sentence saying what to change.</p>
       </div>
+    </div>
+
+    <h3 class="sub">The composer</h3>
+    <div class="panel" style="display:grid;gap:12px;max-width:640px">
+      <div class="composer is-focus" role="group" aria-label="Your goal">
+        <div class="text">$40,000 by June 2028, cash within 7 days</div>
+        <button class="send" type="button" aria-label="Fit it"><svg width="20" height="20"><use href="#arrow-up"/></svg></button>
+      </div>
+      <div class="chips"><button class="chip">Apartment fund</button><button class="chip">R$ 5.000 por mês</button><button class="chip">Trip in 2029</button></div>
+      <p class="cap-sc">The one place a person types to us. 20 px container on the card colour with a line-2 / line-l2 edge, 16 px text, a 36 px round honey send button with the ArrowUp icon in ink. The focus ring sits on the container. Enter submits, Shift+Enter breaks a line. Suggestions are pill chips below it. The composer carries no figure, so no pin.</p>
     </div>
 
     <h3 class="sub">Badges and status</h3>
@@ -887,19 +1060,24 @@ footer { padding: 48px 0 64px; }
       <span class="badge on"><svg><use href="#sq-on"/></svg>On track</span>
       <span class="badge watch"><svg><use href="#sq-watch"/></svg>Watch</span>
       <span class="badge off"><svg><use href="#sq-off"/></svg>Off track</span>
-      <span style="display:inline-flex;align-items:stretch;gap:6px"><span class="mock-band hatch"></span><span class="mock-plate">MOCK</span></span>
-      <span style="display:inline-flex;align-items:center;gap:0"><svg class="pin stale" style="width:18px;height:12px"><use href="#pin-stale"/></svg><span class="word-stale">stale · 3 h</span></span>
+      <span style="display:inline-flex;align-items:stretch;gap:10px;height:22px"><span class="sample-edge hatch"></span><span class="sample-line" style="align-self:center">Sample figures · test network</span></span>
+      <span style="display:inline-flex;align-items:center;gap:0"><svg class="pin" style="width:18px;height:12px"><use href="#pin-stale"/></svg><span class="word-stale">stale · 3 h</span></span>
+      <span class="tag">treasuries</span>
+      <span class="delta up">+0.8 pts</span><span class="delta down">−0.3 pts</span><span class="delta flat">±0.0</span>
     </div>
+    <p class="rule-note">Status pills: 22 px, 14% tint fill, the colour as text, Inter 600 12 px, leading with the square glyph (solid / half / notched outline) and the word. There is no MOCK badge (gate MOCK-QUIET): a sample card keeps its 6 px hatched left edge and says so once, in a muted Inter 12.5 px line with no box, "Sample figures" or "Sample figures · test network". Tags on a dense row are 6 px.</p>
 
     <h3 class="sub">Goal card and plan</h3>
     <div class="grid-2" style="align-items:start">
       <div class="goal-card">
-        <p class="goal">Your apartment fund is on track.</p>
-        <div style="margin-top:20px"><span class="status on"><svg><use href="#sq-on"/></svg>On track · June 2028</span></div>
-        <p class="amt">$12,480 of $40,000&#8239;<button class="pin-btn" aria-label="Source for $12,480"><svg class="pin"><use href="#pin-live"/></svg></button> · access to cash within 7 days</p>
-        <p style="margin-top:24px"><a href="#components">See your plan</a></p>
+        <div class="cap">Apartment fund · Jun 2028</div>
+        <div class="amt">$12,480&#8239;<button class="pin-btn" aria-label="Source for $12,480"><svg class="pin"><use href="#pin-live"/></svg></button></div>
+        <p class="line">6.40% net&#8239;<svg class="pin" style="display:inline-block"><use href="#pin-live"/></svg> · access to cash within 7 days</p>
+        <div style="margin-top:12px"><span class="badge on"><svg><use href="#sq-on"/></svg>On track</span></div>
+        <div class="progress" aria-label="31% of $40,000"><i style="width:31%"></i></div>
+        <p style="margin-top:16px;font-size:.9375rem"><a href="#components">See your plan</a></p>
       </div>
-      <div class="panel">
+      <div class="panel sample-card">
         <div class="cap">Your plan · 3 legs · illustrative</div>
         <div class="legbar" id="legbar">
           <div class="leg-anim" style="width:42%;background:var(--chart-1)"></div>
@@ -907,13 +1085,23 @@ footer { padding: 48px 0 64px; }
           <div class="leg-anim" style="width:20%;background:var(--chart-3);animation-delay:120ms"></div>
         </div>
         <div class="legs">
-          <div class="leg-row"><span class="sq" style="background:var(--chart-1)"></span><span><b style="font-weight:500">USDY</b> · 42%</span><span class="r">6.40%&#8239;<svg class="pin"><use href="#pin-live"/></svg> <span class="cap">quoted 9.10%</span></span></div>
-          <div class="leg-row"><span class="sq hatch" style="border:1px solid var(--tf-hatch)"></span><span><b style="font-weight:500">Kamino USDC</b> · 38%</span><span class="r" style="display:inline-flex;gap:8px;align-items:center"><span class="mock-plate" style="text-transform:none;letter-spacing:0">5.20%</span><svg class="pin mock" style="width:18px;height:12px"><use href="#pin-mock"/></svg><span class="mock-plate">MOCK</span></span></div>
-          <div class="leg-row"><span class="sq" style="background:var(--chart-3)"></span><span><b style="font-weight:500">Cash</b> · 20%</span><span class="r">0.00%&#8239;<svg class="pin"><use href="#pin-live"/></svg></span></div>
+          <div class="leg-row"><span class="sq" style="background:var(--chart-1)"></span><span><b style="font-weight:600">USDY</b> · 42%</span><span class="r">6.40%&#8239;<svg class="pin"><use href="#pin-live"/></svg> <span class="cap-sc">quoted 9.10%</span></span></div>
+          <div class="leg-row"><span class="sq hatch" style="border:1px solid var(--border)"></span><span><b style="font-weight:600">Kamino USDC</b> · 38%</span><span class="r">5.20%&#8239;<svg class="pin" role="img" aria-label="sample figure"><use href="#pin-sample"/></svg></span></div>
+          <div class="leg-row"><span class="sq" style="background:var(--chart-3)"></span><span><b style="font-weight:600">Cash</b> · 20%</span><span class="r">0.00%&#8239;<svg class="pin"><use href="#pin-live"/></svg></span></div>
         </div>
-        <p class="cap" style="margin-top:12px">Legs light: hardwood · heartwood · wood-400 · stone. Dark: hinoki · hinoki-deep · wood-400 · stone-d. Direct labels, 2 px gaps.</p>
+        <p class="cap-sc" style="margin-top:12px">Legs light: honey · honey-deep · wood-deep · muted-l. Dark: honey · wood · honey-deep · muted. Pill ends, 2 px ground gaps, direct labels. A sample leg is hatched; its figure keeps the hatched pin, and the card says so once.</p>
+        <div class="sample-line" style="margin-top:8px">Sample figures · Kamino rate feed not connected</div>
       </div>
     </div>
+
+    <h3 class="sub">Bearing rows</h3>
+    <div class="brows" role="table" aria-label="Exit depth by asset, illustrative">
+      <div class="brow head" role="row"><span>Asset</span><span></span><span class="num">Sellable ≤ 2%</span><span class="num">Thinnest hour</span><span class="st">Status</span></div>
+      <div class="brow" role="row"><span class="asset"><span class="avatar">AA</span><b>xAAPL</b><span class="tag">stock</span></span><svg class="spark" viewBox="0 0 64 20" aria-hidden="true"><polyline points="0,16 10,14 20,15 30,10 40,11 50,6 64,4" fill="none" stroke="var(--tf-leaf)" stroke-width="1.5"/></svg><span class="num">$1.2M&#8239;<svg class="pin"><use href="#pin-live"/></svg><span class="delta up">+4.2%</span></span><span class="num">$310K<span class="delta flat">±0.0%</span></span><span class="st t-bmeta muted">Sun 03:00 UTC</span></div>
+      <div class="brow sel" role="row" aria-selected="true"><span class="asset"><span class="avatar">GL</span><b>xGLD</b><span class="tag">stock</span></span><svg class="spark" viewBox="0 0 64 20" aria-hidden="true"><polyline points="0,6 10,8 20,7 30,11 40,12 50,15 64,17" fill="none" stroke="var(--tf-madder)" stroke-width="1.5"/></svg><span class="num">$640K&#8239;<svg class="pin"><use href="#pin-stale"/></svg><span class="delta down">−2.1%</span></span><span class="num">$88K<span class="delta down">−0.6%</span></span><span class="st"><span class="word-stale" style="margin:0">stale · 3 h</span></span></div>
+      <div class="brow sample-row" role="row"><span class="asset"><span class="avatar">TS</span><b>xTSLA</b><span class="tag">stock</span></span><svg class="spark" viewBox="0 0 64 20" aria-hidden="true"><polyline points="0,10 10,10 20,11 30,10 40,10 50,9 64,10" fill="none" stroke="var(--muted-foreground)" stroke-width="1.5"/></svg><span class="num">$540K&#8239;<svg class="pin" role="img" aria-label="sample figure"><use href="#pin-sample"/></svg></span><span class="num">—</span><span class="st sample-line">Sample figures</span></div>
+    </div>
+    <p class="rule-note">36 px rows, 13 px Inter, tabular values with a signed delta beneath, a sparkline coloured by direction, a 22 px avatar and a 6 px type tag. The selected row is honey-tint across. The status cell carries the pin, "stale", or the sample line; a sample row keeps its 6 px hatched left edge.</p>
 
     <h3 class="sub">Disclaimer and activity</h3>
     <div class="grid-2" style="align-items:start">
@@ -924,7 +1112,7 @@ footer { padding: 48px 0 64px; }
       <div>
         <div class="activity" style="border-top:1px solid var(--border)">I moved $1,200 from USDC to USDY because rates dipped and your June date needs a little more income. <span>Source&#8239;<svg class="pin"><use href="#pin-live"/></svg></span> · <a class="tx" href="#components" title="5Hk3pQ7rTn2vWm8yXc4bZ1aLd6eF9gHj0kMs3uVw9xQa">Tx 5Hk3…9xQa ↗</a></div>
         <div class="activity">Rebalanced · 2026-09-28T09:14Z · <a class="tx" href="#components">Tx 8Rt2…Lm4P ↗</a></div>
-        <p class="cap" style="margin-top:8px">Rendered from the <span class="mono">DISCLAIMER</span> constant, verbatim, at body size, directly under the plan. Every mainnet line has its explorer link.</p>
+        <p class="cap-sc" style="margin-top:8px">Rendered from the <span class="mono">DISCLAIMER</span> constant, verbatim, at body size, directly under the plan. Every mainnet line has its explorer link.</p>
       </div>
     </div>
   </div>
@@ -934,8 +1122,8 @@ footer { padding: 48px 0 64px; }
 <section id="embed">
   <div class="container">
     <div class="section-label"><b>08</b> Partner embed</div>
-    <h2 class="section-heading">The joints stay. The wood becomes theirs.</h2>
-    <p class="lede">Inside a partner app, the brand recedes completely: partner colours, font, radius and buttons. What survives is non-negotiable: the pin and its popover, hatch + MOCK, hairline structure, the disclaimer block, explorer links, and the "Powered by" credit in the partner's muted colour.</p>
+    <h2 class="section-heading">The joints stay. The colour becomes theirs.</h2>
+    <p class="lede">Inside a partner app, the brand recedes completely: partner colours, font, radius and buttons. What survives is non-negotiable: the pin and its popover, the hatched edge with its sample line, hairline structure, the disclaimer block, explorer links, and the "Powered by" credit with the 16 px cut in the partner's muted colour.</p>
     <div class="grid-2" style="margin-top:40px;align-items:start">
       <div class="partner-app">
         <div class="tf-embed">
@@ -943,21 +1131,21 @@ footer { padding: 48px 0 64px; }
           <div class="e-title">Apartment fund</div>
           <div class="e-lead">On track for June 2028.</div>
           <div class="e-row" style="margin-top:12px"><span style="flex:1">$12,480 of $40,000</span><span>6.40%&#8239;<svg class="pin"><use href="#pin-live"/></svg></span></div>
-          <div class="e-row"><span class="e-hatch" style="width:6px;flex:none"></span><span style="flex:1">Kamino USDC · 5.20%</span><span class="e-plate">MOCK</span></div>
+          <div class="e-row"><span class="e-hatch" style="width:6px;flex:none"></span><span style="flex:1">Kamino USDC · 5.20%&#8239;<svg class="pin" role="img" aria-label="sample figure"><use href="#pin-sample"/></svg><br><span class="e-small">Sample figures</span></span></div>
           <button class="e-btn" type="button">See your plan</button>
           <div class="e-disc">This tool is not licensed investment advice. It structures and explains an allocation from a goal you state; the decision and custody are yours. The distributor embedding this tool holds the client relationship.</div>
-          <div class="credit">Powered by <svg><use href="#A16"/></svg><span class="wordmark">tenonfi</span></div>
+          <div class="credit">Powered by <svg><use href="#m16-mono"/></svg><span class="wordmark">tenonfi</span></div>
         </div>
       </div>
       <div>
         <ul class="always-list">
-          <li>Font is <span class="mono">inherit</span>, and sizes are em-relative on a 1.2 ratio with container queries. The goal sentence uses the partner's font, not the serif.</li>
-          <li>The pin takes the partner's muted text colour. The provenance line uses <span class="mono">var(--tf-mono, "IBM Plex Mono", ui-monospace)</span>.</li>
-          <li>Hatch + MOCK survive white-label. The disclaimer is never smaller than 1em.</li>
-          <li>The credit sits at the foot, at max(0.6944em, 11px), in muted colour. It is the only text under 12 px in the system.</li>
+          <li>Font is <span class="mono">inherit</span>, and sizes are em-relative on a 1.2 ratio with container queries. The goal sentence uses the partner's font.</li>
+          <li>The pin's outline and square take the partner's muted text colour. The provenance line uses <span class="mono">var(--tf-mono, "IBM Plex Mono", ui-monospace)</span>.</li>
+          <li>The hatched edge and its sample line survive white-label. The disclaimer is never smaller than 1em.</li>
+          <li>The credit sits at the foot, at max(0.6944em, 11px), in muted colour, with the 16 cut in one colour. It is the only text under 12 px in the system.</li>
         </ul>
         <ul class="never-list" style="margin-top:16px;border-top:0">
-          <li>Wood colours, Newsreader, Plex Sans, kumiko, photography or the two-species logo in the embed.</li>
+          <li>Honey, the glow, Inter Tight, the lattice, photography or the mark in colour inside the embed.</li>
           <li>A credit in brand colours, or a credit larger than the partner's own UI text.</li>
         </ul>
       </div>
@@ -970,48 +1158,46 @@ footer { padding: 48px 0 64px; }
   <div class="container">
     <div class="section-label"><b>09</b> tenonfi Bearing</div>
     <h2 class="section-heading">An instrument drawn as a drawing, not hardware.</h2>
-    <p class="lede">Dark by default, on warm black with char and char-2 layers and hairline rows. No bevels, no nameplates, no LED colours. Every metric carries unit · n= · method version · as-of (UTC) · pin. Values below are illustrative.</p>
+    <p class="lede">Dark by default: night-2 tiles on night, 1 px line edges, 10 px radius, 16 px padding, 13 px type and 36 px rows. No bevels, nameplates, LEDs or glow. Every metric carries unit · n= · method version · as-of (UTC) · pin, and a signed delta where there is a previous reading. Values below are illustrative.</p>
     <div class="bearing on-dark" style="margin-top:40px">
-      <div class="lockup" style="gap:8px;margin-bottom:20px"><svg width="22" height="22"><use href="#A24"/></svg><span class="wordmark" style="font-size:22px">tenonfi</span><span style="font:400 17px/1 var(--font-body);color:var(--muted-foreground)">Bearing</span></div>
+      <div class="lockup" style="gap:8px;margin-bottom:20px"><svg width="22" height="22"><use href="#m24"/></svg><span class="wordmark" style="font-size:22px">tenonfi</span><span class="wordmark-bearing" style="font-size:22px">Bearing</span></div>
       <div class="grid-3" style="gap:16px">
         <div class="btile">
           <div class="t-bhead muted">xAAPL · sellable at ≤ 2% impact</div>
-          <div class="t-bkpi" style="margin-top:4px">$1.2M&#8239;<svg class="pin" style="vertical-align:baseline"><use href="#pin-live"/></svg></div>
-          <div class="t-bmeta muted" style="margin-top:4px">Sun 03:00 UTC · n=412 · method v1.3</div>
+          <div class="t-bkpi" style="margin-top:4px">$1.2M&#8239;<svg class="pin" style="vertical-align:baseline"><use href="#pin-live"/></svg> <span class="delta up">+4.2%</span></div>
+          <div class="t-bmeta muted" style="margin-top:4px">USD · n=412 · method v1.3 · Sun 03:00 UTC</div>
         </div>
         <div class="btile">
           <div class="t-bhead muted">xGLD · sellable at ≤ 2% impact</div>
-          <div class="t-bkpi" style="margin-top:4px">$310K&#8239;<svg class="pin stale" style="vertical-align:baseline"><use href="#pin-stale"/></svg></div>
+          <div class="t-bkpi" style="margin-top:4px">$310K&#8239;<svg class="pin" style="vertical-align:baseline"><use href="#pin-stale"/></svg> <span class="delta down">−2.1%</span></div>
           <div class="t-bmeta muted" style="margin-top:4px">stale · 3 h · n=97 · method v1.3</div>
         </div>
-        <div class="btile" style="display:flex;gap:12px;padding-left:0">
-          <span class="mock-band hatch"></span>
-          <div>
-            <div class="t-bhead muted">xTSLA · sellable at ≤ 2% impact</div>
-            <div style="margin-top:4px;display:flex;gap:8px;align-items:center"><span class="t-bkpi">$540K</span><span class="mock-plate">MOCK</span></div>
-            <div class="t-bmeta muted" style="margin-top:4px">feed not connected · layout only</div>
-          </div>
+        <div class="btile sample-card">
+          <div class="t-bhead muted">xTSLA · sellable at ≤ 2% impact</div>
+          <div class="t-bkpi" style="margin-top:4px">$540K&#8239;<svg class="pin" role="img" aria-label="sample figure" style="vertical-align:baseline"><use href="#pin-sample"/></svg></div>
+          <div class="sample-line" style="margin-top:4px">Sample figures · test network</div>
         </div>
       </div>
       <div class="btile" style="margin-top:16px">
         <div class="t-bsection">Depth by hour of week · xAAPL</div>
         <div class="heat" id="heat" aria-label="Heatmap of depth by hour of week, illustrative"></div>
-        <div class="hours"><span></span><span>00</span><span></span><span></span><span></span><span></span><span></span><span>06</span><span></span><span></span><span></span><span></span><span></span><span>12</span><span></span><span></span><span></span><span></span><span></span><span>18</span><span></span><span></span><span></span><span></span><span></span></div>
+        <div class="hours"><span></span><span>00</span><span></span><span></span><span>03</span><span></span><span></span><span>06</span><span></span><span></span><span>09</span><span></span><span></span><span>12</span><span></span><span></span><span>15</span><span></span><span></span><span>18</span><span></span><span></span><span>21</span><span></span><span></span></div>
         <div style="display:flex;gap:16px;align-items:center;margin-top:12px;flex-wrap:wrap" class="t-bhead muted">
           <span>low</span><span style="display:flex;gap:1px"><i style="width:16px;height:10px;background:var(--tf-hm-1);border:1px solid var(--border)"></i><i style="width:16px;height:10px;background:var(--tf-hm-2)"></i><i style="width:16px;height:10px;background:var(--tf-hm-3)"></i><i style="width:16px;height:10px;background:var(--tf-hm-4)"></i><i style="width:16px;height:10px;background:var(--tf-hm-5)"></i></span><span>high</span>
-          <span style="display:inline-flex;gap:6px;align-items:center"><i class="hatch" style="width:16px;height:10px;border:1px solid var(--border)"></i>no sample</span>
-          <span class="t-bmeta">UTC · n=412 · method v1.3 · lightness ramp only</span>
+          <span style="display:inline-flex;gap:6px;align-items:center"><i style="width:16px;height:10px;border:1px solid var(--border);display:grid;place-items:center;font:400 9px/1 var(--font-mono)">–</i>no sample</span>
+          <span class="t-bmeta">UTC · n=412 · method v1.3 · honey ramp, lightness only</span>
         </div>
         <table class="btable">
           <thead><tr><th>Path</th><th data-numeric>Size</th><th data-numeric>Impact</th><th data-numeric>Depth</th><th>As of</th></tr></thead>
           <tbody>
-            <tr><td>xAAPL → USDC · Jupiter</td><td data-numeric>$250,000</td><td data-numeric>0.42%</td><td data-numeric>$1.2M</td><td class="t-bmeta">2026-10-01T03:00Z</td></tr>
-            <tr><td>xAAPL → USDC · Jupiter</td><td data-numeric>$1,000,000</td><td data-numeric>1.86%</td><td data-numeric>$1.2M</td><td class="t-bmeta">2026-10-01T03:00Z</td></tr>
-            <tr><td>xAAPL → USDC · Jupiter</td><td data-numeric>$2,500,000</td><td data-numeric>4.90%</td><td data-numeric>$1.2M</td><td class="t-bmeta">2026-10-01T03:00Z</td></tr>
+            <tr><td>xAAPL → USDC · Jupiter</td><td data-numeric>$250,000</td><td data-numeric>0.42% <span class="delta down">−0.03</span></td><td data-numeric>$1.2M&#8239;<svg class="pin"><use href="#pin-live"/></svg></td><td class="t-bmeta muted">2026-10-08T03:00Z</td></tr>
+            <tr><td>xAAPL → USDC · Jupiter</td><td data-numeric>$1,000,000</td><td data-numeric>1.86% <span class="delta up">+0.12</span></td><td data-numeric>$1.2M&#8239;<svg class="pin"><use href="#pin-live"/></svg></td><td class="t-bmeta muted">2026-10-08T03:00Z</td></tr>
+            <tr><td>xAAPL → USDC · Jupiter</td><td data-numeric>$2,500,000</td><td data-numeric>4.90% <span class="delta flat">±0.00</span></td><td data-numeric>$1.2M&#8239;<svg class="pin"><use href="#pin-live"/></svg></td><td class="t-bmeta muted">2026-10-08T03:00Z</td></tr>
           </tbody>
         </table>
       </div>
     </div>
+    <p class="rule-note">Deltas are signed with a true minus and coloured by direction, never the status colours' fills. No-sample cells carry an en dash, not the hatch: the hatch means sample or stale only. The light mode ships too, with the ramp reversed.</p>
   </div>
 </section>
 
@@ -1035,11 +1221,11 @@ footer { padding: 48px 0 64px; }
     <div class="section-label"><b>11</b> Voice</div>
     <h2 class="section-heading">Clear, candid, kind.</h2>
     <p class="quote" style="margin-top:32px;max-width:40ch">“You're on track for June 2028. If rates fall by a third, you'd land in September instead — we'd tell you in March, not in August.”</p>
-    <p class="cap" style="margin-top:12px">The reference line. Answer, then reason, then risk, then action. Always.</p>
+    <p class="cap-sc" style="margin-top:12px">The reference line. Answer, then reason, then risk, then action. Always.</p>
 
     <div class="attrs">
       <div><h4>Clear</h4><p class="rule-note">The answer first, in plain words, with a date or an amount.</p><p class="do">On track · June 2028.</p><p class="dont-l">Your portfolio is optimally positioned across diversified yield sources.</p></div>
-      <div><h4>Candid</h4><p class="rule-note">The downside out loud, early, with its consequence. Measured, estimated and MOCK kept apart.</p><p class="do">This figure is a MOCK. The live feed isn't connected yet.</p><p class="dont-l">Earn up to 12% APY.</p></div>
+      <div><h4>Candid</h4><p class="rule-note">The downside out loud, early, with its consequence. Measured, estimated, sample and test network kept apart.</p><p class="do">Sample figures. The live feed isn't connected yet.</p><p class="dont-l">Earn up to 12% APY.</p></div>
       <div><h4>Kind</h4><p class="rule-note">Written to one person about their goal. Warn early, offer options, never shame.</p><p class="do">This goal doesn't fit as set. Here are three ways to make it fit.</p><p class="dont-l">You're falling behind on your dream.</p></div>
     </div>
 
@@ -1074,7 +1260,7 @@ footer { padding: 48px 0 64px; }
           <li>"You" for the user, "I" for the agent's own actions, "we" for the company's commitments.</li>
           <li>Numbers with a unit, an anchor date and their source. "After haircut" unless marked "quoted".</li>
           <li>The goal by its name: "your apartment fund".</li>
-          <li>The word MOCK or stale, plus what is missing.</li>
+          <li>"Sample figures", "stale" or "test network", plus what is missing.</li>
           <li>Sentence case, Oxford comma, and one precise conditional rather than many soft hedges.</li>
           <li>"Made to measure" (sob medida / a la medida), never "bespoke".</li>
         </ul>
@@ -1086,7 +1272,7 @@ footer { padding: 48px 0 64px; }
 <footer>
   <div class="container">
     <div class="disclaimer" role="note"><span class="cap">Not licensed advice</span>This tool is not licensed investment advice. It structures and explains an allocation from a goal you state; the decision and custody are yours. The distributor embedding this tool holds the client relationship.</div>
-    <p class="src" style="margin-top:24px">tenonfi (provisional; fallback "tenon") · working-brand · brand guidelines v1 · 2026-10-01 · All figures are illustrative. Wordmarks are live type for review; production uses outlines.</p>
+    <p class="src" style="margin-top:24px">tenonfi (provisional; fallback "tenon") · working-brand · brand guidelines v2 · 2026-10-08 (IDENTITY-2, LOGO-2; v1 of 2026-10-01 superseded) · All figures are illustrative. Wordmarks are live type for review; production uses the outlines in identity/logo.</p>
   </div>
 </footer>
 
@@ -1100,39 +1286,49 @@ footer { padding: 48px 0 64px; }
   setTheme(/theme=dark/.test(location.search) || location.hash === '#dark');
   btn.addEventListener('click', function () { setTheme(!root.classList.contains('dark')); });
 
-  // swatches
+  // swatches: name, hex, oklch, role · ratio (ratios from working-brand.yml comments)
   var S = {
-    'sw-grounds': [['paper','#F6F1E8','oklch(0.960 0.013 82.5)','light ground'],['paper-raised','#FBF8F2','oklch(0.980 0.009 84.7)','cards, popovers'],['paper-sunk','#EDE6DA','oklch(0.927 0.018 81.4)','wells, code, table heads'],['ink','#1C1712','oklch(0.209 0.012 67.1)','text on light · 15.81'],['black','#0D0B09','oklch(0.151 0.005 67.8)','dark ground'],['char','#1A1714','oklch(0.207 0.008 67.4)','panels on dark'],['char-2','#24201B','oklch(0.246 0.011 73.4)','raised on dark'],['washi','#ECE4D6','oklch(0.921 0.021 81.8)','text on dark · 15.56']],
-    'sw-species': [['hardwood','#7A5A3A','oklch(0.493 0.063 65.5)','brand on paper · 5.57'],['heartwood','#5A3A1E','oklch(0.380 0.062 60.5)','pressed on paper · 9.07'],['hinoki','#E6D3B7','oklch(0.875 0.043 77.6)','brand on black · 13.44'],['hinoki-deep','#C9AE86','oklch(0.764 0.062 77.4)','pressed on black · 9.24'],['wood-400','#9D7751','oklch(0.599 0.072 66.2)','plan leg 3 · 3.60']],
-    'sw-lines': [['stone','#6E655B','oklch(0.512 0.019 70.3)','muted text · 5.08'],['stone-d','#A49A8E','oklch(0.691 0.021 72.5)','muted on dark · 7.10'],['hair','#D9CDBB','oklch(0.853 0.028 78.2)','decor only · 1.39'],['hair-d','#3A322A','oklch(0.323 0.018 67.1)','decor only · 1.56'],['member','#8C7F70','oklch(0.604 0.027 71.3)','controls · 3.47'],['member-d','#7A6D5F','oklch(0.543 0.027 69.3)','controls · 3.91']],
-    'sw-status': [['forest','#2F4A2A','oklch(0.378 0.062 140.6)','on track · 8.75'],['forest-d','#7FA37A','oklch(0.677 0.071 141.6)','on track, dark · 6.94'],['ochre','#8A5A00','oklch(0.508 0.108 73.3)','watch · 5.27'],['ochre-d','#D9A441','oklch(0.751 0.130 79.9)','watch, dark · 8.73'],['madder','#A8324A','oklch(0.500 0.154 12.8)','off track · 5.80'],['madder-d','#E58AA0','oklch(0.735 0.113 4.6)','off track, dark · 7.93']]
+    'sw-night': [['night','#0C0D12','oklch(16.0% 0.011 276.2)','ground, dark'],['night-2','#13151C','oklch(19.7% 0.014 272.5)','cards, tiles, nav'],['night-3','#1A1D26','oklch(23.2% 0.018 270.5)','raised: inputs, popovers, wells'],['line','#262A36','oklch(28.6% 0.023 270.5)','hairlines, card edges'],['line-2','#363B4B','oklch(35.4% 0.029 271.3)','control edges'],['text','#F3F1EC','oklch(95.8% 0.007 88.6)','text on night · 17.2'],['muted','#9A9DAD','oklch(69.9% 0.024 277.3)','muted text · 6.77 on night-2'],['muted-2','#6E7282','oklch(55.4% 0.025 274.4)','captions, placeholders, the pin outline · 4.06']],
+    'sw-day': [['paper','#F7F5F0','oklch(97.0% 0.007 88.6)','ground, light'],['paper-2','#FFFFFF','oklch(100% 0 0)','cards, popovers'],['paper-3','#EFECE5','oklch(94.3% 0.010 87.5)','wells, table heads, code'],['line-l','#E3DFD6','oklch(90.4% 0.013 86.8)','hairlines, card edges'],['line-l2','#C9C4B9','oklch(82.1% 0.016 86.4)','control edges, the pin outline'],['ink','#15161C','oklch(20.2% 0.012 277.8)','text on paper · 16.57'],['muted-l','#6A6D78','oklch(53.6% 0.018 273.6)','muted text · 5.16 on white']],
+    'sw-honey': [['honey','#F5A83A','oklch(78.9% 0.149 71.4)','the brand colour · ink on it 9.06 · 9.75 on night'],['honey-hover','#E99C2E','oklch(75.2% 0.148 70.4)','primary hover'],['honey-deep','#D9881B','oklch(69.6% 0.147 66.6)','pressed · plan leg 2 (light)'],['honey-l','#A8640A','oklch(56.7% 0.125 64.3)','honey as text on light · 4.67 on white']],
+    'sw-direction': [['leaf','#3FC47C','oklch(73.1% 0.156 155.3)','on track, up · 8.69 on night'],['leaf-l','#1B7F45','oklch(52.7% 0.126 152.4)','on track, light · 5.04 on white'],['clay','#F0703A','oklch(69.0% 0.172 41.8)','watch · 6.55 on night'],['clay-l','#A8481A','oklch(52.1% 0.139 42.9)','watch, light · 5.82 on white'],['madder','#EF5A6F','oklch(66.8% 0.183 15.2)','off track, down, destructive · 5.88 on night'],['madder-l','#B52F44','oklch(51.8% 0.170 16.9)','off track, light · 6.08 on white']],
+    'sw-lines': [['chalk','#78B4E8','oklch(74.9% 0.098 245.7)','the carpenter’s line, dark · 8.77 on night'],['chalk-l','#2A73B0','oklch(54.0% 0.119 247.7)','the carpenter’s line, light · 5.03 on white'],['wood','#E9C48E','oklch(84.0% 0.082 76.7)','imagery, the 3D joint · plan leg 2 (dark)'],['wood-deep','#B9803F','oklch(64.5% 0.108 67.3)','imagery · plan leg 3 (light) · 3.10 on paper']]
   };
   Object.keys(S).forEach(function (id) {
     document.getElementById(id).innerHTML = S[id].map(function (s) {
-      return '<div class="sw"><div class="chip" style="background:' + s[1] + '"></div><div class="meta"><div class="n">' + s[0] + '</div><div class="h">' + s[1] + '</div><div class="o">' + s[2] + '</div><div class="r">' + s[3] + '</div></div></div>';
+      return '<div class="sw"><div class="chip-c" style="background:' + s[1] + '"></div><div class="meta"><div class="n">' + s[0] + '</div><div class="h">' + s[1] + '</div><div class="o">' + s[2] + '</div><div class="r">' + s[3] + '</div></div></div>';
     }).join('');
   });
 
-  // ramps
+  // ramps (working-brand.yml scales)
   var R = {
-    wood: ['#F8ECE3','#F3D8C4','#DEB48C','#BC946D','#9D7751','#7A5A3A','#63482E','#4A3520','#342515','#20150A','#150D05'],
-    neutral: ['#F1EDE9','#E6DED6','#C8BDB0','#AA9E92','#8D8276','#6E655B','#595149','#433D36','#2E2924','#1C1916','#100E0B'],
-    forest: ['#DEEEDB','#C2DCBD','#92B68B','#6F9168','#4D6E47','#2F4A2A','#263C21','#1C2E18','#132110','#0B1609','#050D04'],
-    ochre: ['#FFEADB','#F7D7BD','#F2B360','#CE933C','#AF7614','#8A5A00','#6F4801','#543500','#3D2500','#241400','#180C00'],
-    madder: ['#FAEAEC','#F6D5D9','#EEA9B2','#E87A8A','#CE5469','#A8324A','#89273B','#6A1C2C','#4D121E','#310811','#220409']
+    honey: ['#FFF6E6','#FFE9C2','#FFD48A','#F9BE5C','#F5A83A','#E99C2E','#D9881B','#B06C12','#85500C','#5C3707','#3A2204'],
+    neutral: ['#F7F5F0','#EFECE5','#E3DFD6','#C9C4B9','#9A9DAD','#6E7282','#4B4F5E','#363B4B','#262A36','#1A1D26','#0C0D12'],
+    leaf: ['#E8F8EE','#C9EFD9','#9AE1B8','#6AD39A','#3FC47C','#2AA866','#1B7F45','#156236','#0F4727','#092E19','#051B0E'],
+    clay: ['#FEEFE7','#FDDACB','#FAB89A','#F5936A','#F0703A','#DA5F2A','#A8481A','#964215','#6F310F','#4A200A','#2D1306'],
+    madder: ['#FDEDF0','#FBD6DC','#F7AEBA','#F38496','#EF5A6F','#DB4259','#B52F44','#9B2A3D','#70202D','#49151E','#2B0C12'],
+    chalk: ['#EAF4FC','#D1E6F8','#A8CFF1','#8FC1EC','#78B4E8','#4F93D0','#2A73B0','#1F588A','#174065','#0F2A43','#081827']
   };
+  function lum(h) { function l(c) { c = parseInt(c, 16) / 255; return c <= .04045 ? c / 12.92 : Math.pow((c + .055) / 1.055, 2.4); }
+    return .2126 * l(h.slice(1, 3)) + .7152 * l(h.slice(3, 5)) + .0722 * l(h.slice(5, 7)); }
   document.getElementById('ramps').innerHTML = Object.keys(R).map(function (k) {
-    return '<div class="ramp"><span class="name">' + k + '</span>' + R[k].map(function (h, i) {
-      return '<div class="stop" style="background:' + h + '"><span style="color:' + (i < 4 ? '#1C1712' : '#ECE4D6') + '">' + h.slice(1) + '</span></div>';
+    return '<div class="ramp"><span class="name">' + k + '</span>' + R[k].map(function (h) {
+      return '<div class="stop" style="background:' + h + '"><span style="color:' + (lum(h) > 0.3 ? '#15161C' : '#F3F1EC') + '">' + h.slice(1) + '</span></div>';
     }).join('') + '</div>';
   }).join('');
 
-  // pin states on both grounds
+  // pin states on both grounds: live, stale, sample, test network (gate MOCK-QUIET: the sample card says so once, no box)
   function pins() {
-    return '<div style="display:grid;gap:20px;font:500 1.25rem/1.75rem var(--font-body)">' +
-      '<div style="display:flex;align-items:baseline;gap:12px"><span style="width:64px" class="cap">Live</span><span>6.40%&#8239;<svg class="pin"><use href="#pin-live"/></svg></span></div>' +
-      '<div style="display:flex;align-items:baseline;gap:12px"><span style="width:64px" class="cap">Stale</span><span>6.40%&#8239;<svg class="pin stale"><use href="#pin-stale"/></svg><span class="word-stale">stale · 3 h</span></span></div>' +
-      '<div style="display:flex;align-items:center;gap:12px"><span style="width:64px" class="cap">MOCK</span><span style="display:inline-flex;align-items:stretch;gap:8px"><span class="mock-band hatch"></span><span style="background:var(--card);border:1px solid var(--tf-hatch);padding:0 8px">5.20%</span></span><svg class="pin mock" style="height:.75em;width:1.125em"><use href="#pin-mock"/></svg><span class="mock-plate">MOCK</span></div>' +
+    function card(line) {
+      return '<div class="sample-card" style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:12px 16px 12px 30px;overflow:hidden;display:grid;gap:4px;max-width:300px">' +
+        '<span class="cap">Kamino USDC · after haircut</span><span>5.20%&#8239;<svg class="pin" role="img" aria-label="sample figure"><use href="#pin-sample"/></svg></span>' +
+        '<span class="sample-line">' + line + '</span></div>';
+    }
+    return '<div style="display:grid;gap:20px;font:600 1.25rem/1.75rem var(--font-display);letter-spacing:-0.02em">' +
+      '<div style="display:flex;align-items:baseline;gap:12px"><span style="width:96px" class="cap">Live</span><span>6.40%&#8239;<svg class="pin"><use href="#pin-live"/></svg></span></div>' +
+      '<div style="display:flex;align-items:baseline;gap:12px"><span style="width:96px" class="cap">Stale</span><span>6.40%&#8239;<svg class="pin"><use href="#pin-stale"/></svg><span class="word-stale">stale · 3 h</span></span></div>' +
+      '<div style="display:flex;align-items:flex-start;gap:12px"><span style="width:96px;flex:none;padding-top:14px" class="cap">Sample</span>' + card('Sample figures') + '</div>' +
+      '<div style="display:flex;align-items:flex-start;gap:12px"><span style="width:96px;flex:none;padding-top:14px" class="cap">Test network</span>' + card('Sample figures · test network') + '</div>' +
       '</div>';
   }
   document.getElementById('pins-light').innerHTML = pins();
@@ -1143,7 +1339,7 @@ footer { padding: 48px 0 64px; }
   for (var i = 0; i <= 32; i++) d += 'M' + i + ' 0V32M0 ' + i + 'H32';
   g.innerHTML = '<path d="' + d + '"/>';
 
-  // heatmap 24 x 7, illustrative and deterministic
+  // heatmap 24 x 7, illustrative and deterministic; no-sample cells carry an en dash (the hatch is sample / stale only)
   var days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'], heat = document.getElementById('heat'), html = '';
   days.forEach(function (day, r) {
     html += '<div class="lbl">' + day + '</div>';
@@ -1152,7 +1348,7 @@ footer { padding: 48px 0 64px; }
       var wk = r < 5 ? 2 : 0;
       var lvl = Math.max(1, Math.min(5, 1 + us + (wk ? (us ? 2 : 1) : 0) - (r === 6 && h < 6 ? 1 : 0) + ((h * 5 + r * 3) % 7 === 0 ? 1 : 0) - ((h * 3 + r * 5) % 9 === 0 ? 1 : 0)));
       var ns = (r === 6 && h >= 2 && h <= 4) || (r === 5 && h === 3);
-      html += ns ? '<div class="ns" title="' + day + ' ' + h + ':00 UTC · no sample"></div>'
+      html += ns ? '<div class="ns" title="' + day + ' ' + h + ':00 UTC · no sample">–</div>'
                  : '<div style="background:var(--tf-hm-' + lvl + ')" title="' + day + ' ' + h + ':00 UTC · level ' + lvl + ' · illustrative"></div>';
     }
   });

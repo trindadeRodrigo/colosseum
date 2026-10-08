@@ -160,7 +160,8 @@
     var w = REASON[code] || String(code || 'not served').replace(/_/g, ' ');
     return '<span class="an-reason"' + (detail ? ' title="' + esc(detail) + '"' : '') + '>' + esc(w) + '</span>';
   }
-  var PIN_SVG = '<svg viewBox="0 0 18 12" aria-hidden="true"><rect class="o" x=".75" y=".75" width="16.5" height="10.5"/><circle class="p" cx="9" cy="6" r="2.5"/></svg>';
+  /* the provenance glyph: the tenon end as an outline (3:2, radius 2.5) with the square pin set toward the end; stale hollows the pin (analytics.css) */
+  var PIN_SVG = '<svg viewBox="0 0 18 12" aria-hidden="true"><rect class="o" x=".75" y=".75" width="16.5" height="10.5" rx="2.5"/><rect class="p" x="11" y="4" width="4" height="4" rx="1"/></svg>';
   function pin(f, shown) {
     var stale = S.mode === 'snapshot';
     var a = stale && f.fetchedAt ? age(f.fetchedAt) : null;

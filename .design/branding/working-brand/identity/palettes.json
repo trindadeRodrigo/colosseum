@@ -1,980 +1,958 @@
 {
-  "$description": "OKLCH 11-stop palettes + named tokens for Tenonfi (working-brand). Wood is the only brand colour.",
-  "$source": "tints.dev API (https://www.tints.dev/api/{name}/{hex}), fetched 2026-10-01; L and H kept, chroma clamped locally (see $method)",
-  "$method": "chroma ceiling = source chroma x 1.15 (madder x 1.00, to stay clear of seal-red/cinnabar); stop 50 <= 0.03, stop 100 <= 0.05 so tints read as paper, not mint/lime/amber. Hex = local OKLCH->sRGB (Ottosson matrices). Contrast = WCAG 2.x relative luminance.",
-  "$generated": "2026-10-01",
-  "wood": {
-    "role": "brand (only brand hue; source = hardwood)",
-    "source": "#7A5A3A",
-    "sourceOklch": "oklch(0.493 0.063 65.50)",
-    "50": {
-      "oklch": "oklch(0.950 0.018 59.50)",
-      "hex": "#F8ECE3"
+  "brand": "working-brand (Tenonfi)",
+  "generated": "2026-10-08",
+  "decision": "IDENTITY-2 (docs/GATES.md)",
+  "method": "sRGB hex → OKLCH (Björn Ottosson), WCAG 2.x contrast; computed locally, no external service",
+  "named": {
+    "night": {
+      "hex": "#0C0D12",
+      "oklch": {
+        "L": 0.1604,
+        "C": 0.0107,
+        "H": 276.24
+      }
     },
-    "100": {
-      "oklch": "oklch(0.899 0.040 58.76)",
-      "hex": "#F3D8C4"
+    "night-2": {
+      "hex": "#13151C",
+      "oklch": {
+        "L": 0.1969,
+        "C": 0.0144,
+        "H": 272.52
+      }
     },
-    "200": {
-      "oklch": "oklch(0.798 0.072 65.08)",
-      "hex": "#DEB48C",
-      "tintsChroma": 0.1
+    "night-3": {
+      "hex": "#1A1D26",
+      "oklch": {
+        "L": 0.2318,
+        "C": 0.018,
+        "H": 270.53
+      }
     },
-    "300": {
-      "oklch": "oklch(0.694 0.072 64.90)",
-      "hex": "#BC946D",
-      "tintsChroma": 0.089
+    "line": {
+      "hex": "#262A36",
+      "oklch": {
+        "L": 0.2863,
+        "C": 0.0228,
+        "H": 270.5
+      }
     },
-    "400": {
-      "oklch": "oklch(0.599 0.072 66.23)",
-      "hex": "#9D7751",
-      "tintsChroma": 0.076
+    "line-2": {
+      "hex": "#363B4B",
+      "oklch": {
+        "L": 0.3543,
+        "C": 0.0287,
+        "H": 271.32
+      }
     },
-    "500": {
-      "oklch": "oklch(0.493 0.063 65.50)",
-      "hex": "#7A5A3A"
+    "text": {
+      "hex": "#F3F1EC",
+      "oklch": {
+        "L": 0.9583,
+        "C": 0.007,
+        "H": 88.64
+      }
     },
-    "600": {
-      "oklch": "oklch(0.424 0.054 64.45)",
-      "hex": "#63482E"
+    "muted": {
+      "hex": "#9A9DAD",
+      "oklch": {
+        "L": 0.6987,
+        "C": 0.0235,
+        "H": 277.32
+      }
     },
-    "700": {
-      "oklch": "oklch(0.347 0.045 65.44)",
-      "hex": "#4A3520"
+    "muted-2": {
+      "hex": "#6E7282",
+      "oklch": {
+        "L": 0.5543,
+        "C": 0.0252,
+        "H": 274.43
+      }
     },
-    "800": {
-      "oklch": "oklch(0.278 0.035 67.34)",
-      "hex": "#342515"
-    },
-    "900": {
-      "oklch": "oklch(0.207 0.027 65.42)",
-      "hex": "#20150A"
-    },
-    "950": {
-      "oklch": "oklch(0.167 0.022 68.75)",
-      "hex": "#150D05"
-    }
-  },
-  "neutral": {
-    "role": "warm neutral (source = stone)",
-    "source": "#6E655B",
-    "sourceOklch": "oklch(0.512 0.019 70.30)",
-    "50": {
-      "oklch": "oklch(0.948 0.007 67.76)",
-      "hex": "#F1EDE9"
-    },
-    "100": {
-      "oklch": "oklch(0.905 0.014 67.66)",
-      "hex": "#E6DED6"
-    },
-    "200": {
-      "oklch": "oklch(0.804 0.022 70.64)",
-      "hex": "#C8BDB0",
-      "tintsChroma": 0.031
-    },
-    "300": {
-      "oklch": "oklch(0.707 0.022 69.29)",
-      "hex": "#AA9E92",
-      "tintsChroma": 0.027
-    },
-    "400": {
-      "oklch": "oklch(0.613 0.022 71.98)",
-      "hex": "#8D8276",
-      "tintsChroma": 0.023
-    },
-    "500": {
-      "oklch": "oklch(0.512 0.019 70.31)",
-      "hex": "#6E655B"
-    },
-    "600": {
-      "oklch": "oklch(0.440 0.017 67.37)",
-      "hex": "#595149"
-    },
-    "700": {
-      "oklch": "oklch(0.364 0.014 71.61)",
-      "hex": "#433D36"
-    },
-    "800": {
-      "oklch": "oklch(0.285 0.012 67.33)",
-      "hex": "#2E2924"
-    },
-    "900": {
-      "oklch": "oklch(0.216 0.007 67.42)",
-      "hex": "#1C1916"
-    },
-    "950": {
-      "oklch": "oklch(0.165 0.007 78.09)",
-      "hex": "#100E0B"
-    }
-  },
-  "forest": {
-    "role": "status: on track",
-    "source": "#2F4A2A",
-    "sourceOklch": "oklch(0.378 0.062 140.60)",
-    "50": {
-      "oklch": "oklch(0.932 0.030 141.22)",
-      "hex": "#DEEEDB",
-      "tintsChroma": 0.082
-    },
-    "100": {
-      "oklch": "oklch(0.866 0.050 140.61)",
-      "hex": "#C2DCBD",
-      "tintsChroma": 0.142
-    },
-    "200": {
-      "oklch": "oklch(0.738 0.071 140.44)",
-      "hex": "#92B68B",
-      "tintsChroma": 0.121
-    },
-    "300": {
-      "oklch": "oklch(0.619 0.071 140.68)",
-      "hex": "#6F9168",
-      "tintsChroma": 0.101
-    },
-    "400": {
-      "oklch": "oklch(0.501 0.071 140.61)",
-      "hex": "#4D6E47",
-      "tintsChroma": 0.082
-    },
-    "500": {
-      "oklch": "oklch(0.378 0.062 140.59)",
-      "hex": "#2F4A2A"
-    },
-    "600": {
-      "oklch": "oklch(0.330 0.054 139.86)",
-      "hex": "#263C21"
-    },
-    "700": {
-      "oklch": "oklch(0.279 0.046 139.95)",
-      "hex": "#1C2E18"
-    },
-    "800": {
-      "oklch": "oklch(0.229 0.037 140.09)",
-      "hex": "#132110"
-    },
-    "900": {
-      "oklch": "oklch(0.185 0.030 140.60)",
-      "hex": "#0B1609"
-    },
-    "950": {
-      "oklch": "oklch(0.146 0.026 140.72)",
-      "hex": "#050D04"
-    }
-  },
-  "ochre": {
-    "role": "status: watch",
-    "source": "#8A5A00",
-    "sourceOklch": "oklch(0.508 0.108 73.30)",
-    "50": {
-      "oklch": "oklch(0.950 0.030 57.93)",
-      "hex": "#FFEADB"
-    },
-    "100": {
-      "oklch": "oklch(0.900 0.050 62.42)",
-      "hex": "#F7D7BD",
-      "tintsChroma": 0.067
-    },
-    "200": {
-      "oklch": "oklch(0.808 0.124 71.89)",
-      "hex": "#F2B360",
-      "tintsChroma": 0.16
-    },
-    "300": {
-      "oklch": "oklch(0.705 0.124 73.48)",
-      "hex": "#CE933C",
-      "tintsChroma": 0.15
-    },
-    "400": {
-      "oklch": "oklch(0.610 0.124 73.52)",
-      "hex": "#AF7614",
-      "tintsChroma": 0.13
-    },
-    "500": {
-      "oklch": "oklch(0.508 0.108 73.29)",
-      "hex": "#8A5A00"
-    },
-    "600": {
-      "oklch": "oklch(0.435 0.092 73.82)",
-      "hex": "#6F4801"
-    },
-    "700": {
-      "oklch": "oklch(0.357 0.076 73.22)",
-      "hex": "#543500"
-    },
-    "800": {
-      "oklch": "oklch(0.288 0.061 72.71)",
-      "hex": "#3D2500"
-    },
-    "900": {
-      "oklch": "oklch(0.208 0.044 72.72)",
-      "hex": "#241400"
-    },
-    "950": {
-      "oklch": "oklch(0.168 0.036 73.31)",
-      "hex": "#180C00"
-    }
-  },
-  "madder": {
-    "role": "status: off track / error",
-    "source": "#A8324A",
-    "sourceOklch": "oklch(0.500 0.154 12.80)",
-    "50": {
-      "oklch": "oklch(0.950 0.018 8.88)",
-      "hex": "#FAEAEC"
-    },
-    "100": {
-      "oklch": "oklch(0.902 0.037 9.62)",
-      "hex": "#F6D5D9"
-    },
-    "200": {
-      "oklch": "oklch(0.803 0.082 10.46)",
-      "hex": "#EEA9B2"
-    },
-    "300": {
-      "oklch": "oklch(0.707 0.136 11.99)",
-      "hex": "#E87A8A"
-    },
-    "400": {
-      "oklch": "oklch(0.609 0.154 12.72)",
-      "hex": "#CE5469",
-      "tintsChroma": 0.187
-    },
-    "500": {
-      "oklch": "oklch(0.500 0.154 12.85)",
-      "hex": "#A8324A"
-    },
-    "600": {
-      "oklch": "oklch(0.431 0.132 12.83)",
-      "hex": "#89273B"
-    },
-    "700": {
-      "oklch": "oklch(0.358 0.110 12.79)",
-      "hex": "#6A1C2C"
-    },
-    "800": {
-      "oklch": "oklch(0.287 0.088 12.85)",
-      "hex": "#4D121E"
-    },
-    "900": {
-      "oklch": "oklch(0.214 0.066 11.79)",
-      "hex": "#310811"
-    },
-    "950": {
-      "oklch": "oklch(0.171 0.054 12.82)",
-      "hex": "#220409"
-    }
-  },
-  "tokens": {
     "paper": {
-      "hex": "#F6F1E8",
-      "oklch": "oklch(0.960 0.013 82.50)"
+      "hex": "#F7F5F0",
+      "oklch": {
+        "L": 0.9703,
+        "C": 0.007,
+        "H": 88.64
+      }
     },
-    "paper-raised": {
-      "hex": "#FBF8F2",
-      "oklch": "oklch(0.980 0.009 84.70)"
+    "paper-2": {
+      "hex": "#FFFFFF",
+      "oklch": {
+        "L": 1,
+        "C": 0,
+        "H": 0
+      }
     },
-    "paper-sunk": {
-      "hex": "#EDE6DA",
-      "oklch": "oklch(0.927 0.018 81.40)"
+    "paper-3": {
+      "hex": "#EFECE5",
+      "oklch": {
+        "L": 0.9435,
+        "C": 0.0099,
+        "H": 87.47
+      }
     },
-    "black": {
-      "hex": "#0D0B09",
-      "oklch": "oklch(0.151 0.005 67.80)"
+    "line-l": {
+      "hex": "#E3DFD6",
+      "oklch": {
+        "L": 0.9043,
+        "C": 0.0129,
+        "H": 86.83
+      }
     },
-    "char": {
-      "hex": "#1A1714",
-      "oklch": "oklch(0.207 0.008 67.40)"
-    },
-    "char-2": {
-      "hex": "#24201B",
-      "oklch": "oklch(0.246 0.011 73.40)"
+    "line-l2": {
+      "hex": "#C9C4B9",
+      "oklch": {
+        "L": 0.8213,
+        "C": 0.0161,
+        "H": 86.44
+      }
     },
     "ink": {
-      "hex": "#1C1712",
-      "oklch": "oklch(0.209 0.012 67.10)"
+      "hex": "#15161C",
+      "oklch": {
+        "L": 0.2019,
+        "C": 0.0121,
+        "H": 277.81
+      }
     },
-    "washi": {
-      "hex": "#ECE4D6",
-      "oklch": "oklch(0.921 0.021 81.80)"
+    "muted-l": {
+      "hex": "#6A6D78",
+      "oklch": {
+        "L": 0.5359,
+        "C": 0.0175,
+        "H": 273.64
+      }
     },
-    "hinoki": {
-      "hex": "#E6D3B7",
-      "oklch": "oklch(0.875 0.043 77.60)"
+    "honey": {
+      "hex": "#F5A83A",
+      "oklch": {
+        "L": 0.7886,
+        "C": 0.1494,
+        "H": 71.36
+      }
     },
-    "hinoki-deep": {
-      "hex": "#C9AE86",
-      "oklch": "oklch(0.764 0.062 77.40)"
+    "honey-hover": {
+      "hex": "#E99C2E",
+      "oklch": {
+        "L": 0.7521,
+        "C": 0.148,
+        "H": 70.42
+      }
     },
-    "hardwood": {
-      "hex": "#7A5A3A",
-      "oklch": "oklch(0.493 0.063 65.50)"
+    "honey-deep": {
+      "hex": "#D9881B",
+      "oklch": {
+        "L": 0.6958,
+        "C": 0.1471,
+        "H": 66.59
+      }
     },
-    "heartwood": {
-      "hex": "#5A3A1E",
-      "oklch": "oklch(0.380 0.062 60.50)"
+    "honey-l": {
+      "hex": "#A8640A",
+      "oklch": {
+        "L": 0.5669,
+        "C": 0.1248,
+        "H": 64.33
+      }
     },
-    "stone": {
-      "hex": "#6E655B",
-      "oklch": "oklch(0.512 0.019 70.30)"
+    "leaf": {
+      "hex": "#3FC47C",
+      "oklch": {
+        "L": 0.7309,
+        "C": 0.1556,
+        "H": 155.29
+      }
     },
-    "stone-d": {
-      "hex": "#A49A8E",
-      "oklch": "oklch(0.691 0.021 72.50)"
+    "leaf-l": {
+      "hex": "#1B7F45",
+      "oklch": {
+        "L": 0.527,
+        "C": 0.1264,
+        "H": 152.44
+      }
     },
-    "hair": {
-      "hex": "#D9CDBB",
-      "oklch": "oklch(0.853 0.028 78.20)"
+    "clay": {
+      "hex": "#F0703A",
+      "oklch": {
+        "L": 0.6899,
+        "C": 0.1718,
+        "H": 41.84
+      }
     },
-    "hair-d": {
-      "hex": "#3A322A",
-      "oklch": "oklch(0.323 0.018 67.10)"
-    },
-    "member": {
-      "hex": "#8C7F70",
-      "oklch": "oklch(0.604 0.027 71.30)"
-    },
-    "member-d": {
-      "hex": "#7A6D5F",
-      "oklch": "oklch(0.543 0.027 69.30)"
-    },
-    "forest": {
-      "hex": "#2F4A2A",
-      "oklch": "oklch(0.378 0.062 140.60)"
-    },
-    "forest-d": {
-      "hex": "#7FA37A",
-      "oklch": "oklch(0.677 0.071 141.60)"
-    },
-    "ochre": {
-      "hex": "#8A5A00",
-      "oklch": "oklch(0.508 0.108 73.30)"
-    },
-    "ochre-d": {
-      "hex": "#D9A441",
-      "oklch": "oklch(0.751 0.130 79.90)"
+    "clay-l": {
+      "hex": "#A8481A",
+      "oklch": {
+        "L": 0.521,
+        "C": 0.1386,
+        "H": 42.89
+      }
     },
     "madder": {
-      "hex": "#A8324A",
-      "oklch": "oklch(0.500 0.154 12.80)"
+      "hex": "#EF5A6F",
+      "oklch": {
+        "L": 0.6677,
+        "C": 0.1832,
+        "H": 15.21
+      }
     },
-    "madder-d": {
-      "hex": "#E58AA0",
-      "oklch": "oklch(0.735 0.113 4.60)"
+    "madder-l": {
+      "hex": "#B52F44",
+      "oklch": {
+        "L": 0.5182,
+        "C": 0.1696,
+        "H": 16.89
+      }
+    },
+    "chalk": {
+      "hex": "#78B4E8",
+      "oklch": {
+        "L": 0.749,
+        "C": 0.0978,
+        "H": 245.75
+      }
+    },
+    "chalk-l": {
+      "hex": "#2A73B0",
+      "oklch": {
+        "L": 0.5402,
+        "C": 0.1193,
+        "H": 247.65
+      }
+    },
+    "wood": {
+      "hex": "#E9C48E",
+      "oklch": {
+        "L": 0.8398,
+        "C": 0.0817,
+        "H": 76.68
+      }
+    },
+    "wood-deep": {
+      "hex": "#B9803F",
+      "oklch": {
+        "L": 0.6449,
+        "C": 0.1076,
+        "H": 67.33
+      }
+    }
+  },
+  "scales": {
+    "honey": {
+      "50": {
+        "hex": "#FFF6E6",
+        "oklch": {
+          "L": 0.9759,
+          "C": 0.0232,
+          "H": 82.12
+        }
+      },
+      "100": {
+        "hex": "#FFE9C2",
+        "oklch": {
+          "L": 0.9421,
+          "C": 0.0561,
+          "H": 81.91
+        }
+      },
+      "200": {
+        "hex": "#FFD48A",
+        "oklch": {
+          "L": 0.8909,
+          "C": 0.1039,
+          "H": 80.38
+        }
+      },
+      "300": {
+        "hex": "#F9BE5C",
+        "oklch": {
+          "L": 0.8368,
+          "C": 0.1329,
+          "H": 77.84
+        }
+      },
+      "400": {
+        "hex": "#F5A83A",
+        "oklch": {
+          "L": 0.7886,
+          "C": 0.1494,
+          "H": 71.36
+        }
+      },
+      "500": {
+        "hex": "#E99C2E",
+        "oklch": {
+          "L": 0.7521,
+          "C": 0.148,
+          "H": 70.42
+        }
+      },
+      "600": {
+        "hex": "#D9881B",
+        "oklch": {
+          "L": 0.6958,
+          "C": 0.1471,
+          "H": 66.59
+        }
+      },
+      "700": {
+        "hex": "#B06C12",
+        "oklch": {
+          "L": 0.5925,
+          "C": 0.1267,
+          "H": 65.78
+        }
+      },
+      "800": {
+        "hex": "#85500C",
+        "oklch": {
+          "L": 0.4818,
+          "C": 0.1029,
+          "H": 65.19
+        }
+      },
+      "900": {
+        "hex": "#5C3707",
+        "oklch": {
+          "L": 0.3736,
+          "C": 0.0782,
+          "H": 66.35
+        }
+      },
+      "950": {
+        "hex": "#3A2204",
+        "oklch": {
+          "L": 0.2769,
+          "C": 0.0561,
+          "H": 67.66
+        }
+      }
+    },
+    "neutral": {
+      "50": {
+        "hex": "#F7F5F0",
+        "oklch": {
+          "L": 0.9703,
+          "C": 0.007,
+          "H": 88.64
+        }
+      },
+      "100": {
+        "hex": "#EFECE5",
+        "oklch": {
+          "L": 0.9435,
+          "C": 0.0099,
+          "H": 87.47
+        }
+      },
+      "200": {
+        "hex": "#E3DFD6",
+        "oklch": {
+          "L": 0.9043,
+          "C": 0.0129,
+          "H": 86.83
+        }
+      },
+      "300": {
+        "hex": "#C9C4B9",
+        "oklch": {
+          "L": 0.8213,
+          "C": 0.0161,
+          "H": 86.44
+        }
+      },
+      "400": {
+        "hex": "#9A9DAD",
+        "oklch": {
+          "L": 0.6987,
+          "C": 0.0235,
+          "H": 277.32
+        }
+      },
+      "500": {
+        "hex": "#6E7282",
+        "oklch": {
+          "L": 0.5543,
+          "C": 0.0252,
+          "H": 274.43
+        }
+      },
+      "600": {
+        "hex": "#4B4F5E",
+        "oklch": {
+          "L": 0.4297,
+          "C": 0.0253,
+          "H": 273.53
+        }
+      },
+      "700": {
+        "hex": "#363B4B",
+        "oklch": {
+          "L": 0.3543,
+          "C": 0.0287,
+          "H": 271.32
+        }
+      },
+      "800": {
+        "hex": "#262A36",
+        "oklch": {
+          "L": 0.2863,
+          "C": 0.0228,
+          "H": 270.5
+        }
+      },
+      "900": {
+        "hex": "#1A1D26",
+        "oklch": {
+          "L": 0.2318,
+          "C": 0.018,
+          "H": 270.53
+        }
+      },
+      "950": {
+        "hex": "#0C0D12",
+        "oklch": {
+          "L": 0.1604,
+          "C": 0.0107,
+          "H": 276.24
+        }
+      }
+    },
+    "leaf": {
+      "50": {
+        "hex": "#E8F8EE",
+        "oklch": {
+          "L": 0.9645,
+          "C": 0.0214,
+          "H": 158.6
+        }
+      },
+      "100": {
+        "hex": "#C9EFD9",
+        "oklch": {
+          "L": 0.919,
+          "C": 0.0494,
+          "H": 159.88
+        }
+      },
+      "200": {
+        "hex": "#9AE1B8",
+        "oklch": {
+          "L": 0.8516,
+          "C": 0.0916,
+          "H": 158.4
+        }
+      },
+      "300": {
+        "hex": "#6AD39A",
+        "oklch": {
+          "L": 0.7888,
+          "C": 0.1286,
+          "H": 157.8
+        }
+      },
+      "400": {
+        "hex": "#3FC47C",
+        "oklch": {
+          "L": 0.7309,
+          "C": 0.1556,
+          "H": 155.29
+        }
+      },
+      "500": {
+        "hex": "#2AA866",
+        "oklch": {
+          "L": 0.6486,
+          "C": 0.1459,
+          "H": 155.04
+        }
+      },
+      "600": {
+        "hex": "#1B7F45",
+        "oklch": {
+          "L": 0.527,
+          "C": 0.1264,
+          "H": 152.44
+        }
+      },
+      "700": {
+        "hex": "#156236",
+        "oklch": {
+          "L": 0.4393,
+          "C": 0.1022,
+          "H": 153.14
+        }
+      },
+      "800": {
+        "hex": "#0F4727",
+        "oklch": {
+          "L": 0.3533,
+          "C": 0.0795,
+          "H": 153.62
+        }
+      },
+      "900": {
+        "hex": "#092E19",
+        "oklch": {
+          "L": 0.2686,
+          "C": 0.0571,
+          "H": 154.47
+        }
+      },
+      "950": {
+        "hex": "#051B0E",
+        "oklch": {
+          "L": 0.1994,
+          "C": 0.0391,
+          "H": 155.45
+        }
+      }
+    },
+    "clay": {
+      "50": {
+        "hex": "#FEEFE7",
+        "oklch": {
+          "L": 0.9618,
+          "C": 0.0195,
+          "H": 50.16
+        }
+      },
+      "100": {
+        "hex": "#FDDACB",
+        "oklch": {
+          "L": 0.9137,
+          "C": 0.0441,
+          "H": 44.56
+        }
+      },
+      "200": {
+        "hex": "#FAB89A",
+        "oklch": {
+          "L": 0.8364,
+          "C": 0.0872,
+          "H": 45.47
+        }
+      },
+      "300": {
+        "hex": "#F5936A",
+        "oklch": {
+          "L": 0.7572,
+          "C": 0.131,
+          "H": 43.13
+        }
+      },
+      "400": {
+        "hex": "#F0703A",
+        "oklch": {
+          "L": 0.6899,
+          "C": 0.1718,
+          "H": 41.84
+        }
+      },
+      "500": {
+        "hex": "#DA5F2A",
+        "oklch": {
+          "L": 0.6321,
+          "C": 0.1676,
+          "H": 41.56
+        }
+      },
+      "600": {
+        "hex": "#A8481A",
+        "oklch": {
+          "L": 0.521,
+          "C": 0.1386,
+          "H": 42.89
+        }
+      },
+      "700": {
+        "hex": "#964215",
+        "oklch": {
+          "L": 0.4831,
+          "C": 0.1256,
+          "H": 44.74
+        }
+      },
+      "800": {
+        "hex": "#6F310F",
+        "oklch": {
+          "L": 0.3923,
+          "C": 0.0986,
+          "H": 45.61
+        }
+      },
+      "900": {
+        "hex": "#4A200A",
+        "oklch": {
+          "L": 0.2997,
+          "C": 0.0717,
+          "H": 45.55
+        }
+      },
+      "950": {
+        "hex": "#2D1306",
+        "oklch": {
+          "L": 0.2225,
+          "C": 0.0483,
+          "H": 46.42
+        }
+      }
+    },
+    "madder": {
+      "50": {
+        "hex": "#FDEDF0",
+        "oklch": {
+          "L": 0.9596,
+          "C": 0.0177,
+          "H": 4.52
+        }
+      },
+      "100": {
+        "hex": "#FBD6DC",
+        "oklch": {
+          "L": 0.9088,
+          "C": 0.042,
+          "H": 6.93
+        }
+      },
+      "200": {
+        "hex": "#F7AEBA",
+        "oklch": {
+          "L": 0.8231,
+          "C": 0.0867,
+          "H": 8.29
+        }
+      },
+      "300": {
+        "hex": "#F38496",
+        "oklch": {
+          "L": 0.7399,
+          "C": 0.1362,
+          "H": 10.65
+        }
+      },
+      "400": {
+        "hex": "#EF5A6F",
+        "oklch": {
+          "L": 0.6677,
+          "C": 0.1832,
+          "H": 15.21
+        }
+      },
+      "500": {
+        "hex": "#DB4259",
+        "oklch": {
+          "L": 0.6053,
+          "C": 0.1886,
+          "H": 16.4
+        }
+      },
+      "600": {
+        "hex": "#B52F44",
+        "oklch": {
+          "L": 0.5182,
+          "C": 0.1696,
+          "H": 16.89
+        }
+      },
+      "700": {
+        "hex": "#9B2A3D",
+        "oklch": {
+          "L": 0.4661,
+          "C": 0.1481,
+          "H": 15.64
+        }
+      },
+      "800": {
+        "hex": "#70202D",
+        "oklch": {
+          "L": 0.3741,
+          "C": 0.1122,
+          "H": 15.05
+        }
+      },
+      "900": {
+        "hex": "#49151E",
+        "oklch": {
+          "L": 0.2835,
+          "C": 0.0792,
+          "H": 13.41
+        }
+      },
+      "950": {
+        "hex": "#2B0C12",
+        "oklch": {
+          "L": 0.2082,
+          "C": 0.0518,
+          "H": 10.84
+        }
+      }
+    },
+    "chalk": {
+      "50": {
+        "hex": "#EAF4FC",
+        "oklch": {
+          "L": 0.962,
+          "C": 0.0151,
+          "H": 241.77
+        }
+      },
+      "100": {
+        "hex": "#D1E6F8",
+        "oklch": {
+          "L": 0.9149,
+          "C": 0.0333,
+          "H": 243.97
+        }
+      },
+      "200": {
+        "hex": "#A8CFF1",
+        "oklch": {
+          "L": 0.838,
+          "C": 0.0633,
+          "H": 244.96
+        }
+      },
+      "300": {
+        "hex": "#8FC1EC",
+        "oklch": {
+          "L": 0.7913,
+          "C": 0.0809,
+          "H": 245.03
+        }
+      },
+      "400": {
+        "hex": "#78B4E8",
+        "oklch": {
+          "L": 0.749,
+          "C": 0.0978,
+          "H": 245.75
+        }
+      },
+      "500": {
+        "hex": "#4F93D0",
+        "oklch": {
+          "L": 0.6451,
+          "C": 0.1151,
+          "H": 247.66
+        }
+      },
+      "600": {
+        "hex": "#2A73B0",
+        "oklch": {
+          "L": 0.5402,
+          "C": 0.1193,
+          "H": 247.65
+        }
+      },
+      "700": {
+        "hex": "#1F588A",
+        "oklch": {
+          "L": 0.449,
+          "C": 0.1009,
+          "H": 248.71
+        }
+      },
+      "800": {
+        "hex": "#174065",
+        "oklch": {
+          "L": 0.3624,
+          "C": 0.0787,
+          "H": 248.95
+        }
+      },
+      "900": {
+        "hex": "#0F2A43",
+        "oklch": {
+          "L": 0.278,
+          "C": 0.0569,
+          "H": 249.05
+        }
+      },
+      "950": {
+        "hex": "#081827",
+        "oklch": {
+          "L": 0.2037,
+          "C": 0.0373,
+          "H": 248.56
+        }
+      }
     }
   },
   "contrast": [
     {
-      "fg": "ink",
-      "bg": "paper",
-      "ratio": 15.81,
-      "use": "text",
-      "pass": true
+      "foreground": "text",
+      "background": "night",
+      "ratio": 17.2,
+      "aa_text": true,
+      "aa_large_or_control": true
     },
     {
-      "fg": "ink",
-      "bg": "paper-raised",
-      "ratio": 16.78,
-      "use": "text",
-      "pass": true
+      "foreground": "text",
+      "background": "night-2",
+      "ratio": 16.15,
+      "aa_text": true,
+      "aa_large_or_control": true
     },
     {
-      "fg": "ink",
-      "bg": "paper-sunk",
-      "ratio": 14.34,
-      "use": "text",
-      "pass": true
+      "foreground": "text",
+      "background": "night-3",
+      "ratio": 14.91,
+      "aa_text": true,
+      "aa_large_or_control": true
     },
     {
-      "fg": "stone",
-      "bg": "paper",
-      "ratio": 5.08,
-      "use": "text",
-      "pass": true
+      "foreground": "muted",
+      "background": "night-2",
+      "ratio": 6.77,
+      "aa_text": true,
+      "aa_large_or_control": true
     },
     {
-      "fg": "stone",
-      "bg": "paper-raised",
-      "ratio": 5.39,
-      "use": "text",
-      "pass": true
+      "foreground": "muted-2",
+      "background": "night-2",
+      "ratio": 3.81,
+      "aa_text": false,
+      "aa_large_or_control": true
     },
     {
-      "fg": "stone",
-      "bg": "paper-sunk",
-      "ratio": 4.61,
-      "use": "text",
-      "pass": true
+      "foreground": "honey",
+      "background": "night",
+      "ratio": 9.75,
+      "aa_text": true,
+      "aa_large_or_control": true
     },
     {
-      "fg": "hardwood",
-      "bg": "paper",
-      "ratio": 5.57,
-      "use": "text",
-      "pass": true
+      "foreground": "ink",
+      "background": "honey",
+      "ratio": 9.06,
+      "aa_text": true,
+      "aa_large_or_control": true
     },
     {
-      "fg": "hardwood",
-      "bg": "paper-raised",
-      "ratio": 5.91,
-      "use": "text",
-      "pass": true
+      "foreground": "ink",
+      "background": "honey-deep",
+      "ratio": 6.44,
+      "aa_text": true,
+      "aa_large_or_control": true
     },
     {
-      "fg": "hardwood",
-      "bg": "paper-sunk",
-      "ratio": 5.05,
-      "use": "text",
-      "pass": true
+      "foreground": "leaf",
+      "background": "night",
+      "ratio": 8.69,
+      "aa_text": true,
+      "aa_large_or_control": true
     },
     {
-      "fg": "heartwood",
-      "bg": "paper",
-      "ratio": 9.07,
-      "use": "text",
-      "pass": true
+      "foreground": "clay",
+      "background": "night",
+      "ratio": 6.55,
+      "aa_text": true,
+      "aa_large_or_control": true
     },
     {
-      "fg": "heartwood",
-      "bg": "paper-raised",
-      "ratio": 9.62,
-      "use": "text",
-      "pass": true
+      "foreground": "madder",
+      "background": "night",
+      "ratio": 5.88,
+      "aa_text": true,
+      "aa_large_or_control": true
     },
     {
-      "fg": "heartwood",
-      "bg": "paper-sunk",
-      "ratio": 8.22,
-      "use": "text",
-      "pass": true
+      "foreground": "chalk",
+      "background": "night",
+      "ratio": 8.77,
+      "aa_text": true,
+      "aa_large_or_control": true
     },
     {
-      "fg": "forest",
-      "bg": "paper",
-      "ratio": 8.75,
-      "use": "text",
-      "pass": true
+      "foreground": "line-2",
+      "background": "night-2",
+      "ratio": 1.64,
+      "aa_text": false,
+      "aa_large_or_control": false
     },
     {
-      "fg": "forest",
-      "bg": "paper-raised",
-      "ratio": 9.28,
-      "use": "text",
-      "pass": true
+      "foreground": "ink",
+      "background": "paper",
+      "ratio": 16.57,
+      "aa_text": true,
+      "aa_large_or_control": true
     },
     {
-      "fg": "forest",
-      "bg": "paper-sunk",
-      "ratio": 7.94,
-      "use": "text",
-      "pass": true
+      "foreground": "ink",
+      "background": "paper-2",
+      "ratio": 18.05,
+      "aa_text": true,
+      "aa_large_or_control": true
     },
     {
-      "fg": "ochre",
-      "bg": "paper",
-      "ratio": 5.27,
-      "use": "text",
-      "pass": true
+      "foreground": "muted-l",
+      "background": "paper-2",
+      "ratio": 5.16,
+      "aa_text": true,
+      "aa_large_or_control": true
     },
     {
-      "fg": "ochre",
-      "bg": "paper-raised",
-      "ratio": 5.59,
-      "use": "text",
-      "pass": true
+      "foreground": "honey-l",
+      "background": "paper-2",
+      "ratio": 4.67,
+      "aa_text": true,
+      "aa_large_or_control": true
     },
     {
-      "fg": "ochre",
-      "bg": "paper-sunk",
-      "ratio": 4.78,
-      "use": "text",
-      "pass": true
+      "foreground": "leaf-l",
+      "background": "paper-2",
+      "ratio": 5.04,
+      "aa_text": true,
+      "aa_large_or_control": true
     },
     {
-      "fg": "madder",
-      "bg": "paper",
-      "ratio": 5.8,
-      "use": "text",
-      "pass": true
+      "foreground": "clay-l",
+      "background": "paper-2",
+      "ratio": 5.82,
+      "aa_text": true,
+      "aa_large_or_control": true
     },
     {
-      "fg": "madder",
-      "bg": "paper-raised",
-      "ratio": 6.15,
-      "use": "text",
-      "pass": true
+      "foreground": "madder-l",
+      "background": "paper-2",
+      "ratio": 6.08,
+      "aa_text": true,
+      "aa_large_or_control": true
     },
     {
-      "fg": "madder",
-      "bg": "paper-sunk",
-      "ratio": 5.26,
-      "use": "text",
-      "pass": true
+      "foreground": "chalk-l",
+      "background": "paper-2",
+      "ratio": 5.03,
+      "aa_text": true,
+      "aa_large_or_control": true
     },
     {
-      "fg": "member",
-      "bg": "paper",
-      "ratio": 3.47,
-      "use": "non-text",
-      "pass": true
+      "foreground": "line-l2",
+      "background": "paper-2",
+      "ratio": 1.74,
+      "aa_text": false,
+      "aa_large_or_control": false
     },
     {
-      "fg": "member",
-      "bg": "paper-raised",
-      "ratio": 3.68,
-      "use": "non-text",
-      "pass": true
+      "foreground": "paper-2",
+      "background": "honey",
+      "ratio": 1.99,
+      "aa_text": false,
+      "aa_large_or_control": false
     },
     {
-      "fg": "member",
-      "bg": "paper-sunk",
-      "ratio": 3.14,
-      "use": "non-text",
-      "pass": true
-    },
-    {
-      "fg": "hardwood",
-      "bg": "paper",
-      "ratio": 5.57,
-      "use": "non-text",
-      "pass": true
-    },
-    {
-      "fg": "hardwood",
-      "bg": "paper-raised",
-      "ratio": 5.91,
-      "use": "non-text",
-      "pass": true
-    },
-    {
-      "fg": "hardwood",
-      "bg": "paper-sunk",
-      "ratio": 5.05,
-      "use": "non-text",
-      "pass": true
-    },
-    {
-      "fg": "washi",
-      "bg": "black",
-      "ratio": 15.56,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "washi",
-      "bg": "char",
-      "ratio": 14.14,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "washi",
-      "bg": "char-2",
-      "ratio": 12.82,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "stone-d",
-      "bg": "black",
-      "ratio": 7.1,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "stone-d",
-      "bg": "char",
-      "ratio": 6.45,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "stone-d",
-      "bg": "char-2",
-      "ratio": 5.85,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "hinoki",
-      "bg": "black",
-      "ratio": 13.44,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "hinoki",
-      "bg": "char",
-      "ratio": 12.21,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "hinoki",
-      "bg": "char-2",
-      "ratio": 11.07,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "hinoki-deep",
-      "bg": "black",
-      "ratio": 9.24,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "hinoki-deep",
-      "bg": "char",
-      "ratio": 8.4,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "hinoki-deep",
-      "bg": "char-2",
-      "ratio": 7.62,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "forest-d",
-      "bg": "black",
-      "ratio": 6.94,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "forest-d",
-      "bg": "char",
-      "ratio": 6.31,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "forest-d",
-      "bg": "char-2",
-      "ratio": 5.72,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "ochre-d",
-      "bg": "black",
-      "ratio": 8.73,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "ochre-d",
-      "bg": "char",
-      "ratio": 7.94,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "ochre-d",
-      "bg": "char-2",
-      "ratio": 7.2,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "madder-d",
-      "bg": "black",
-      "ratio": 7.93,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "madder-d",
-      "bg": "char",
-      "ratio": 7.2,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "madder-d",
-      "bg": "char-2",
-      "ratio": 6.53,
-      "use": "text",
-      "pass": true
-    },
-    {
-      "fg": "member-d",
-      "bg": "black",
-      "ratio": 3.91,
-      "use": "non-text",
-      "pass": true
-    },
-    {
-      "fg": "member-d",
-      "bg": "char",
-      "ratio": 3.55,
-      "use": "non-text",
-      "pass": true
-    },
-    {
-      "fg": "member-d",
-      "bg": "char-2",
-      "ratio": 3.22,
-      "use": "non-text",
-      "pass": true
-    },
-    {
-      "fg": "hinoki",
-      "bg": "black",
-      "ratio": 13.44,
-      "use": "non-text",
-      "pass": true
-    },
-    {
-      "fg": "hinoki",
-      "bg": "char",
-      "ratio": 12.21,
-      "use": "non-text",
-      "pass": true
-    },
-    {
-      "fg": "hinoki",
-      "bg": "char-2",
-      "ratio": 11.07,
-      "use": "non-text",
-      "pass": true
-    },
-    {
-      "fg": "paper-raised",
-      "bg": "hardwood",
-      "ratio": 5.91,
-      "use": "text",
-      "pass": true,
-      "note": "primary button label, light"
-    },
-    {
-      "fg": "paper",
-      "bg": "heartwood",
-      "ratio": 9.07,
-      "use": "text",
-      "pass": true,
-      "note": "pressed button, light"
-    },
-    {
-      "fg": "black",
-      "bg": "hinoki",
-      "ratio": 13.44,
-      "use": "text",
-      "pass": true,
-      "note": "primary button label, dark"
-    },
-    {
-      "fg": "black",
-      "bg": "hinoki-deep",
-      "ratio": 9.24,
-      "use": "text",
-      "pass": true,
-      "note": "pressed button, dark"
-    },
-    {
-      "fg": "forest",
-      "bg": "forest-50 #DEEEDB",
-      "ratio": 8.14,
-      "use": "text",
-      "pass": true,
-      "note": "status badge, light"
-    },
-    {
-      "fg": "ochre",
-      "bg": "ochre-50 #FFEADB",
-      "ratio": 5.09,
-      "use": "text",
-      "pass": true,
-      "note": "status badge, light"
-    },
-    {
-      "fg": "madder",
-      "bg": "madder-50 #FAEAEC",
-      "ratio": 5.6,
-      "use": "text",
-      "pass": true,
-      "note": "status badge, light"
-    },
-    {
-      "fg": "forest-d",
-      "bg": "forest-950 #050D04",
-      "ratio": 6.96,
-      "use": "text",
-      "pass": true,
-      "note": "status badge, dark"
-    },
-    {
-      "fg": "ochre-d",
-      "bg": "ochre-950 #180C00",
-      "ratio": 8.55,
-      "use": "text",
-      "pass": true,
-      "note": "status badge, dark"
-    },
-    {
-      "fg": "madder-d",
-      "bg": "madder-950 #220409",
-      "ratio": 7.78,
-      "use": "text",
-      "pass": true,
-      "note": "status badge, dark"
-    },
-    {
-      "fg": "hinoki-deep",
-      "bg": "paper",
-      "ratio": 1.89,
-      "use": "non-text",
-      "pass": false,
-      "note": "FAILS: was a light-mode plan-leg fill; replaced by wood-400"
-    },
-    {
-      "fg": "wood-400 #9D7751",
-      "bg": "paper",
-      "ratio": 3.6,
-      "use": "non-text",
-      "pass": true,
-      "note": "plan-leg fill, light (replacement)"
-    },
-    {
-      "fg": "ink",
-      "bg": "stone",
-      "ratio": 3.11,
-      "use": "text",
-      "pass": false,
-      "note": "FAILS: text must never sit on hatch strokes; use a solid plate"
-    },
-    {
-      "fg": "hair",
-      "bg": "paper",
-      "ratio": 1.39,
-      "use": "decorative",
-      "pass": null,
-      "note": "exempt: decoration only, never a control boundary"
-    },
-    {
-      "fg": "hair-d",
-      "bg": "black",
-      "ratio": 1.56,
-      "use": "decorative",
-      "pass": null,
-      "note": "exempt: decoration only"
+      "foreground": "honey",
+      "background": "paper-2",
+      "ratio": 1.99,
+      "aa_text": false,
+      "aa_large_or_control": false
     }
   ],
-  "semantic": {
-    "light": {
-      "bg": "paper",
-      "surface": "paper-raised",
-      "sunk": "paper-sunk",
-      "text": "ink",
-      "text-muted": "stone",
-      "brand": "hardwood",
-      "brand-pressed": "heartwood",
-      "on-brand": "paper-raised",
-      "border-control": "member",
-      "border-decor": "hair",
-      "focus": "hardwood",
-      "success": "forest",
-      "warning": "ochre",
-      "error": "madder",
-      "info": "ink",
-      "success-bg": "forest-50",
-      "warning-bg": "ochre-50",
-      "error-bg": "madder-50"
-    },
-    "dark": {
-      "bg": "black",
-      "surface": "char",
-      "sunk": "char-2",
-      "text": "washi",
-      "text-muted": "stone-d",
-      "brand": "hinoki",
-      "brand-pressed": "hinoki-deep",
-      "on-brand": "black",
-      "border-control": "member-d",
-      "border-decor": "hair-d",
-      "focus": "hinoki",
-      "success": "forest-d",
-      "warning": "ochre-d",
-      "error": "madder-d",
-      "info": "washi",
-      "success-bg": "forest-950",
-      "warning-bg": "ochre-950",
-      "error-bg": "madder-950"
-    }
-  },
-  "provenance": {
-    "live": {
-      "light": {
-        "tenon": "stone",
-        "pin": "hardwood (solid)",
-        "label": "stone"
-      },
-      "dark": {
-        "tenon": "stone-d",
-        "pin": "hinoki (solid)",
-        "label": "stone-d"
-      }
-    },
-    "stale": {
-      "light": {
-        "tenon": "stone",
-        "pin": "stone (hollow, 1.5px)",
-        "label": "stone, word 'stale' + age"
-      },
-      "dark": {
-        "tenon": "stone-d",
-        "pin": "stone-d (hollow)",
-        "label": "stone-d"
-      }
-    },
-    "mock": {
-      "light": {
-        "tenon": "stone",
-        "fill": "hatch stone 45deg",
-        "label": "ink 'MOCK' on paper-raised plate, 1px stone border"
-      },
-      "dark": {
-        "tenon": "stone-d",
-        "fill": "hatch stone-d 45deg",
-        "label": "washi 'MOCK' on char plate, 1px stone-d border"
-      }
-    },
-    "hatch": {
-      "light": {
-        "stroke": "stone",
-        "ratio_vs_paper": 5.08,
-        "ratio_vs_paper-raised": 5.39
-      },
-      "dark": {
-        "stroke": "stone-d",
-        "ratio_vs_black": 7.1,
-        "ratio_vs_char-2": 5.85
-      },
-      "spec": "1px strokes at 45deg, 6px pitch (3px under 16px); text never on strokes"
-    }
-  },
-  "data": {
-    "plan-legs-light": [
-      "hardwood",
-      "heartwood",
-      "wood-400",
-      "stone"
-    ],
-    "plan-legs-dark": [
-      "hinoki",
-      "hinoki-deep",
-      "wood-400",
-      "stone-d"
-    ],
-    "heatmap-dark": [
-      "#1A1714",
-      "#5A3A1E",
-      "#8A6C4B",
-      "#C9AE86",
-      "#F2E6D3"
-    ],
-    "heatmap-light": "same ramp reversed"
-  }
+  "notes": [
+    "honey carries ink text in both modes; white on honey fails (2.0)",
+    "honey as small text on light grounds uses honey-l",
+    "line-2 and line-l2 are control edges that also carry a fill; they are not relied on alone for 3:1",
+    "chalk is a line colour (focus, guides, today), never a fill or a brand element"
+  ]
 }

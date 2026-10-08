@@ -108,6 +108,9 @@ export function planTermsOf(terms: SharedTerms): PlanTerms {
     case 'vault':
       // The guard derives the vault from this number and the signing wallet: every step is held to it.
       return { basketId: terms.basketId };
+    case 'retarget':
+      // The targets the review showed, which the `set_targets` step's bytes are held to.
+      return { basketId: terms.basketId, targets: terms.targets };
     case 'withdraw':
       // Everything: any token the vault holds, each once, to its owner. Otherwise the tokens and the
       // amounts reviewed, and nothing else.

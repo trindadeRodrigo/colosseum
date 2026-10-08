@@ -255,3 +255,31 @@ export function sharedShapeOk(
     kinds.includes('accept_version') === (terms.follow !== null)
   );
 }
+
+/**
+ * New targets for a vault the person owns (gate ANY-COMPOSITION, #191): no deposit, no cash moved and
+ * nothing withdrawn; first the one step that sets the targets, then only swaps, each of whose purchases
+ * is one of those targets or the chain's cash. What the swaps sell is the vault's own; the guard holds
+ * the targets step to the reviewed targets and every swap to its bytes and minimums.
+ */
+export function retargetShapeOk(
+  order: Pick<OrderDetail, 'depositRaw' | 'legs'>,
+  terms: Extract<SharedTerms, { kind: 'retarget' }>,
+  units: Pick<ChainUnits, 'cash'> | null,
+): boolean {
+  if (!units || order.depositRaw !== undefined || order.legs.length === 0) return false;
+  const legs = order.legs.slice().sort((a, b) => a.seq - b.seq);
+  if (
+    legs.some((l) => (l.cashRaw !== undefined && l.cashRaw !== '0') || l.withdrawals !== undefined)
+  )
+    return false;
+  const [first, ...rest] = legs;
+  if (first?.kind !== 'set_targets' || first.trades.length > 0) return false;
+  const buys = new Set([...terms.targets.map((t) => t.asset), units.cash]);
+  return rest.every(
+    (l) =>
+      l.kind === 'swap' &&
+      l.trades.length > 0 &&
+      l.trades.every((t) => t.sell !== t.buy && buys.has(t.buy)),
+  );
+}
