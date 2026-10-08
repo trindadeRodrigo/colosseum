@@ -708,9 +708,17 @@ const ASKS_OR_MORE = word(`${ASKS_WORDS}|more|mais`, 'giu');
 // bit of my money in] NVDA"), or around the names of a list that continues one ("TSLA [too]"). Any other
 // word there and the name is not read as asked for.
 const ASK_FILLER = word(
-  'to\\s+(?:have|hold|own|get)|exposure\\s+to|exposição\\s+(?:a|em)|at\\s+least|pelo\\s+menos|as\\s+well|por\\s+favor|por\\s+cento|some|a|an|the|of|in|into|on|my|me|i|more|bit|little|few|lot|also|too|just|please|tokens?|tokenized|position|it|this|that|vault|plan|portfolio|there|here|money|exactly|about|around|percent|half|eu|ter|um|uma|uns|umas|o|os|as|de|do|da|dos|das|em|no|na|nos|nas|meu|minha|mais|pouco|também|tambem|posição|isso|neste|nesse|nele|cofre|plano|carteira|aqui|dinheiro|exatamente|metade',
+  'to\\s+(?:have|hold|own|get)|to\\s+(?:my|the|this|that|it)|for\\s+me|(?:pra|para)\\s+mim|after\\s+all|de\\s+novo|again|now|afinal|agora|exposure\\s+to|exposição\\s+(?:a|em)|at\\s+least|pelo\\s+menos|as\\s+well|por\\s+favor|por\\s+cento|some|a|an|the|of|in|into|at|my|me|i|more|bit|little|few|lot|also|too|just|please|tokens?|tokenized|position|it|this|that|vault|plan|portfolio|there|here|money|mix|exactly|percent|half|eu|ter|um|uma|uns|umas|o|os|as|de|do|da|dos|das|em|no|na|nos|nas|meu|minha|mais|pouco|também|tambem|posição|isso|neste|nesse|nele|cofre|plano|carteira|aqui|dinheiro|exatamente|metade',
   'giu',
 );
+// The kinds of asset a person names without a ticker. A piece that asks for one ("I want bonds") asks
+// for a thing, so a list may continue it; "I want safety, NVDA" asks for no thing.
+const KIND_WORDS = word(
+  'reserves?|bonds?|treasur(?:y|ies)|gold|cash|income|yield|stablecoins?|crypto|commodit(?:y|ies)|renda(?:\\s+fixa)?|ouro|caixa|reservas?|títulos|titulos|tesouro|cripto',
+  'iu',
+);
+const SETS_AGAINST =
+  /^(?:from|against|than|over|to|for|with|about|on|contra|que|para|pra|por|sobre|com)$/iu;
 const EXCEPT = /^(?:just|only|só|apenas|somente)(?![\p{L}\p{N}])/iu;
 // One asking verb or one refusal covers a list: "I want TSLA, NVDA and a reserve", "sell TSLA and NVDA".
 const ASK_PIECES = /,|(?<![\p{L}\p{N}])(?:and|or|then|e|ou|depois)(?![\p{L}\p{N}])/iu;
@@ -798,18 +806,20 @@ function requestedStocks(
       .reduce((rest, pattern) => rest.replace(pattern, ' '), text)
       .replace(/\d+(?:[.,]\d+)?\s*%?/gu, ' ')
       .replace(ASK_FILLER, ' ');
+  const WORDS = /[\p{L}\p{N}'-]+/gu;
   const onlyFiller = (text: string) => !/[\p{L}\p{N}]/u.test(besidesFiller(text));
   // "Stocks" names a kind, so a word or two may describe it ("electric vehicle stocks"), but nothing
   // that sets it against something ("protection from stocks").
   const describes = (text: string) => {
-    const words = besidesFiller(text).match(/[\p{L}\p{N}'-]+/gu) ?? [];
+    const words = besidesFiller(text).match(WORDS) ?? [];
+    return words.length <= 3 && !words.some((one) => SETS_AGAINST.test(one));
+  };
+  // A piece that asks for a kind of asset, with at most one word describing it ("steady income").
+  const asksForKind = (rest: string) => {
+    const words =
+      besidesFiller(rest.replace(new RegExp(KIND_WORDS.source, 'giu'), ' ')).match(WORDS) ?? [];
     return (
-      words.length <= 3 &&
-      !words.some((one) =>
-        /^(?:from|against|than|over|to|for|with|about|contra|que|para|pra|por|sobre|com)$/iu.test(
-          one,
-        ),
-      )
+      KIND_WORDS.test(rest) && words.length <= 1 && !words.some((one) => SETS_AGAINST.test(one))
     );
   };
   // Portuguese "no" is "in the"; its refusals are não, nenhum, nada, sem.
@@ -845,8 +855,13 @@ function requestedStocks(
         at += 1;
         // Where each name first stands in the piece.
         const found = named.flatMap(([key, patterns]) => {
-          const where = patterns.map((pattern) => piece.search(pattern)).filter((i) => i >= 0);
-          return where.length ? [{ key, where: Math.min(...where) }] : [];
+          const first = patterns
+            .flatMap((pattern) => {
+              const match = pattern.exec(piece);
+              return match ? [match] : [];
+            })
+            .sort((a, b) => a.index - b.index)[0];
+          return first ? [{ key, where: first.index, end: first.index + first[0].length }] : [];
         });
         if (refuses(piece)) {
           for (const { key } of found) latest.set(key, { at, asked: false });
@@ -866,16 +881,27 @@ function requestedStocks(
         }
         wanted = true;
         let unclear = false;
-        for (const { key, where } of found) {
+        for (const { key, where, end } of found) {
           const ask = asks.filter((match) => match.index < where).at(-1);
-          // "I want NVDA to shrink" asks for something to happen to it, not for it.
-          const happens = /^\S+\s+to\s+(?!my|the|this|that|it|our)\p{L}/iu.test(piece.slice(where));
           const between = ask ? piece.slice(ask.index + ask[0].length, where) : '';
-          if (ask && !happens && (key === '*' ? describes(between) : onlyFiller(between)))
+          // Only filler may stand before the name and after it: "I want NVDA removed" asks for
+          // something to happen to it, not for it.
+          if (
+            ask &&
+            (key === '*' ? describes(between) : onlyFiller(between)) &&
+            onlyFiller(piece.slice(end))
+          )
             latest.set(key, { at, asked: true });
           else unclear = true;
         }
-        carried = !unclear && (ASKS.test(piece) || found.length > 0) ? true : null;
+        // A list continues only an ask for a thing: a listed asset, stocks, or a kind of asset.
+        const last = asks.at(-1);
+        const rest = last ? piece.slice(last.index + last[0].length) : '';
+        const thing =
+          found.length > 0 ||
+          (onlyFiller(rest) && anyName.some((pattern) => rest.search(pattern) >= 0)) ||
+          asksForKind(rest);
+        carried = !unclear && thing ? true : null;
       }
     }
   }
@@ -1635,19 +1661,38 @@ export async function replyToVaultConversation(
     const gone = leftOut.map((id) => catalog.get(id) as BasketAsset);
     const naming = gone.flatMap((asset) => [
       new RegExp(literal(asset.id), 'u'),
+      // The symbol in any case, and gold by its plain word.
+      word(literal(asset.symbol), 'iu'),
+      ...(asset.cls === 'gold' ? [word('gold|ouro', 'iu')] : []),
       ...assetNames(asset, companies.get(asset.id) ?? []),
     ]);
     const clean = (text: string) =>
       gone.length ? withoutSentencesNaming(text, naming, catalogNames) : text;
-    const symbols = gone
-      .slice(0, 16)
-      .map((asset) => asset.symbol)
-      .join(', ');
-    const leftOutSaid = (
-      request.language === 'pt'
-        ? `Esta proposta deixa de fora ${symbols}: um plano com o seu objetivo não pode ter ${gone.length === 1 ? 'esse ativo' : 'esses ativos'}.`
-        : `This draft leaves out ${symbols}: a plan with your goal cannot hold ${gone.length === 1 ? 'it' : 'them'}.`
-    ).slice(0, 1600);
+    // A stock is left out because the person did not ask for it; any other class because the goal
+    // cannot hold it whoever asks.
+    const pt = request.language === 'pt';
+    const listed = (of: BasketAsset[]) =>
+      of
+        .slice(0, 16)
+        .map((asset) => asset.symbol)
+        .join(', ');
+    const unasked = gone.filter(isStock);
+    const barred = gone.filter((asset) => !isStock(asset));
+    const leftOutSaid = [
+      unasked.length
+        ? pt
+          ? `Esta proposta deixa de fora ${listed(unasked)}: ${unasked.length === 1 ? 'fica fora do objetivo do seu plano e você não pediu esse ativo' : 'ficam fora do objetivo do seu plano e você não pediu esses ativos'}.`
+          : `This draft leaves out ${listed(unasked)}: ${unasked.length === 1 ? 'it is' : 'they are'} outside your plan's goal and you did not ask for ${unasked.length === 1 ? 'it' : 'them'}.`
+        : '',
+      barred.length
+        ? pt
+          ? `Esta proposta deixa de fora ${listed(barred)}: um plano com o seu objetivo não pode ter ${barred.length === 1 ? 'esse ativo' : 'esses ativos'}.`
+          : `This draft leaves out ${listed(barred)}: a plan with your goal cannot hold ${barred.length === 1 ? 'it' : 'them'}.`
+        : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .slice(0, 1600);
     const told = [clean(conversation.message), leftOutSaid].filter(Boolean).join(' ');
     const said = gone.length
       ? {
@@ -1658,7 +1703,8 @@ export async function replyToVaultConversation(
     const { stated, ...preview } = {
       ...proposal,
       objective: clean(proposal.objective),
-      summary: clean(proposal.summary) || leftOutSaid,
+      // The summary describes the draft as the model picked it, so the server's sentence replaces it.
+      summary: gone.length ? leftOutSaid : proposal.summary,
       tradeoffs: proposal.tradeoffs.map(clean).filter(Boolean),
       unknowns: proposal.unknowns.map(clean).filter(Boolean),
       allocations: kept.map((allocation) => ({ ...allocation, why: clean(allocation.why) })),

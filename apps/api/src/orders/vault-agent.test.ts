@@ -1062,6 +1062,35 @@ describe('model-led private vault proposals', () => {
     [`I want income, ${stock.symbol} is in the news.`, 'en'],
     [`I want ${stock.symbol} sold.`, 'en'],
     ['I want protection from stocks.', 'en'],
+    // What stands after the name is read too (re-check of #194, 1).
+    ...[
+      'removed',
+      'dropped',
+      'excluded',
+      'trimmed',
+      'replaced',
+      'lowered',
+      'liquidated',
+      'closed',
+      'zeroed',
+      'halved',
+    ].map((done) => [`I want ${stock.symbol} ${done}.`, 'en'] as const),
+    [`I want ${stock.symbol} swapped for bonds.`, 'en'],
+    [`Keep ${stock.symbol} at zero.`, 'en'],
+    [`I want to keep ${stock.symbol} small.`, 'en'],
+    [`I want to keep ${stock.symbol} from growing.`, 'en'],
+    ['I want stocks removed.', 'en'],
+    [`Quero ${stock.symbol} removido.`, 'pt'],
+    [`Quero a ${stock.symbol} vendida.`, 'pt'],
+    [`Quero ${stock.symbol} zerado.`, 'pt'],
+    // A list carries only from a piece that asked for an asset or a kind of asset (re-check, 2).
+    [`I want protection from volatility and ${stock.symbol}`, 'en'],
+    [`I want to hear about bonds and ${stock.symbol}.`, 'en'],
+    [`I want your opinion on bonds and ${stock.symbol}.`, 'en'],
+    [`I want a break from tech and ${stock.symbol}.`, 'en'],
+    [`I want safety, ${stock.symbol}.`, 'en'],
+    [`Quero proteção contra volatilidade e ${stock.symbol}.`, 'pt'],
+    [`Quero ouvir sobre renda fixa e ${stock.symbol}.`, 'pt'],
     [`I want ${stock.symbol} to shrink.`, 'en'],
     [`I want ${stock.symbol} off my plan.`, 'en'],
     [`I do not want ${otherStock.symbol} or ${stock.symbol}.`, 'en'],
@@ -1093,6 +1122,14 @@ describe('model-led private vault proposals', () => {
     [`Sell ${otherStock.symbol} and add ${stock.symbol}.`, 'en'],
     [`I want less ${otherStock.symbol}, more ${stock.symbol}.`, 'en'],
     [`Quero incluir ${stock.symbol}`, 'pt'],
+    [`Add ${stock.symbol} to the mix, please.`, 'en'],
+    [`I want ${stock.symbol} at 20% in my plan.`, 'en'],
+    [`I want a reserve and ${stock.symbol}.`, 'en'],
+    [`I want bonds and ${stock.symbol} too.`, 'en'],
+    [`I want ${reserve.symbol} and ${stock.symbol}.`, 'en'],
+    [`Quero ${stock.symbol} também.`, 'pt'],
+    [`Coloca ${stock.symbol} pra mim.`, 'pt'],
+    [`Quero renda fixa e ${stock.symbol}.`, 'pt'],
     [`Quero manter ${stock.symbol}.`, 'pt'],
     [`Vende ${otherStock.symbol} e compra ${stock.symbol}.`, 'pt'],
   ] as const)('reads "%s" as asking for that stock alone', async (text, language) => {
@@ -1118,12 +1155,12 @@ describe('model-led private vault proposals', () => {
   it.each([
     [
       'en',
-      `This draft leaves out ${stock.symbol}: a plan with your goal cannot hold it.`,
+      `This draft leaves out ${stock.symbol}: it is outside your plan's goal and you did not ask for it.`,
       'Keep my savings safe.',
     ],
     [
       'pt',
-      `Esta proposta deixa de fora ${stock.symbol}: um plano com o seu objetivo não pode ter esse ativo.`,
+      `Esta proposta deixa de fora ${stock.symbol}: fica fora do objetivo do seu plano e você não pediu esse ativo.`,
       'Quero proteger minhas economias.',
     ],
   ] as const)(
@@ -1183,6 +1220,38 @@ describe('model-led private vault proposals', () => {
       [stock.id, 'This follows the direction you described.'],
       [reserve.id, 'It steadies the draft.'],
     ]);
+  });
+
+  it('serves the server sentence as the summary, and no sentence that names the pick in lower case or as gold', async () => {
+    const gold = { ...stock, id: 'solana:fixture-gold', cls: 'gold' as const, symbol: 'FIXGx' };
+    const value = picking(gold, reserve);
+    value.message =
+      'I added gold as a hedge next to a reserve. Then fixgx balances it. It stays liquid.';
+    value.proposal.summary = 'This draft holds gold and a reserve.';
+    const base = withOthers('income');
+    const out = await replyToVaultConversation(
+      request('Keep my savings safe.'),
+      {
+        ...base,
+        assets: [...base.assets, { ...gold, underlying: 'FIXG' }],
+        evidence: [
+          ...base.evidence,
+          {
+            id: `catalog:${gold.id}`,
+            assetId: gold.id,
+            source: 'offline catalog',
+            method: 'listed assets',
+            fetchedAt: now,
+            provenance: 'mock' as const,
+          },
+        ],
+      },
+      fake(value),
+    );
+    if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
+    const said = 'This draft leaves out FIXGx: a plan with your goal cannot hold it.';
+    expect(out.reply.message).toBe(`It stays liquid. ${said}`);
+    expect(out.reply.proposal?.summary).toBe(said);
   });
 
   it('asks the model again, and fails, when a kept pick has no reason left without the removed asset', async () => {
