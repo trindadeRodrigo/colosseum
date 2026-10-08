@@ -6,7 +6,9 @@ import { z } from 'zod';
 // The model key: from the shell, else from the first env file that has it. The file is only loaded,
 // never printed. From a worktree the main checkout's .env is the usual place.
 if (!process.env.ANTHROPIC_API_KEY) {
-  for (const f of [process.env.DOTENV_CONFIG_PATH, '.env', '../Colosseum/.env'].filter((x): x is string => Boolean(x))) {
+  for (const f of [process.env.DOTENV_CONFIG_PATH, '.env', '../Colosseum/.env'].filter(
+    (x): x is string => Boolean(x),
+  )) {
     loadEnv({ path: resolve(f), quiet: true });
     if (process.env.ANTHROPIC_API_KEY) break;
   }
@@ -43,7 +45,9 @@ const record = has('--record');
 const chat = has('--chat');
 const text = args.join(' ').trim();
 if (!text && !chat) {
-  console.error('usage: pnpm tsx scripts/relaxed/intake.ts [--chain robinhood|solana] [--recorded] [--record] "<what the person wants>"\n       pnpm tsx scripts/relaxed/intake.ts --chat [--chain robinhood|solana]');
+  console.error(
+    'usage: pnpm tsx scripts/relaxed/intake.ts [--chain robinhood|solana] [--recorded] [--record] "<what the person wants>"\n       pnpm tsx scripts/relaxed/intake.ts --chat [--chain robinhood|solana]',
+  );
   process.exit(2);
 }
 
@@ -51,18 +55,38 @@ if (!text && !chat) {
 
 type Row = { id: string; text: string; cls: string };
 const root = process.cwd();
-const stocks = JSON.parse(readFileSync(join(root, `content/stocks/${chain}.json`), 'utf8')).stocks as {
-  symbol: string; company: string; kind: string; sector: string | null; industry: string | null;
-  keywords: string[]; tracks: string | null; sets: string[];
+const stocks = JSON.parse(readFileSync(join(root, `content/stocks/${chain}.json`), 'utf8'))
+  .stocks as {
+  symbol: string;
+  company: string;
+  kind: string;
+  sector: string | null;
+  industry: string | null;
+  keywords: string[];
+  tracks: string | null;
+  sets: string[];
 }[];
 const themeDir = join(root, `content/themes/${chain}`);
-const themes = readdirSync(themeDir).filter((f) => f.endsWith('.json')).map((f) =>
-  JSON.parse(readFileSync(join(themeDir, f), 'utf8')) as { slug: string; name: { en: string }; members: { symbol: string }[] },
-);
-const themesOf = (symbol: string) => themes.filter((t) => t.members.some((m) => m.symbol === symbol)).map((t) => t.slug);
+const themes = readdirSync(themeDir)
+  .filter((f) => f.endsWith('.json'))
+  .map(
+    (f) =>
+      JSON.parse(readFileSync(join(themeDir, f), 'utf8')) as {
+        slug: string;
+        name: { en: string };
+        members: { symbol: string }[];
+      },
+  );
+const themesOf = (symbol: string) =>
+  themes.filter((t) => t.members.some((m) => m.symbol === symbol)).map((t) => t.slug);
 const yieldShelf = JSON.parse(
-  readFileSync(join(root, `packages/engine/src/personal/fixtures/shelves/${chain}-yield.json`), 'utf8'),
-).rows as { asset: { symbol: string; cls: string; underlying: string; issuer: string; tier: string } }[];
+  readFileSync(
+    join(root, `packages/engine/src/personal/fixtures/shelves/${chain}-yield.json`),
+    'utf8',
+  ),
+).rows as {
+  asset: { symbol: string; cls: string; underlying: string; issuer: string; tier: string };
+}[];
 
 // A fund is classed by what it tracks: Treasury bills are dollar yield, bullion is gold or a commodity,
 // an index is an etf. The engine's registry does the same by class (registry.ts, SLEEVE_OF_CLASS).
@@ -74,14 +98,25 @@ const fundClass = (tracks: string | null) => {
   return 'etf';
 };
 const rows: Row[] = [
-  ...stocks.filter((s) => s.sets.includes('shelf') || s.sets.includes('universe') || s.sets.includes('cut')).map((s) => ({
-    id: `${chain}:${s.symbol}`,
-    cls: s.kind === 'fund' ? fundClass(s.tracks) : 'stock',
-    text: [
-      `${chain}:${s.symbol}`, s.company, s.kind === 'fund' ? `${fundClass(s.tracks)} fund tracking ${s.tracks ?? '?'}` : `stock | ${s.sector ?? ''} / ${s.industry ?? ''}`,
-      `keywords: ${s.keywords.join(', ')}`, themesOf(s.symbol).length ? `themes: ${themesOf(s.symbol).join(', ')}` : '',
-    ].filter(Boolean).join(' | '),
-  })),
+  ...stocks
+    .filter(
+      (s) => s.sets.includes('shelf') || s.sets.includes('universe') || s.sets.includes('cut'),
+    )
+    .map((s) => ({
+      id: `${chain}:${s.symbol}`,
+      cls: s.kind === 'fund' ? fundClass(s.tracks) : 'stock',
+      text: [
+        `${chain}:${s.symbol}`,
+        s.company,
+        s.kind === 'fund'
+          ? `${fundClass(s.tracks)} fund tracking ${s.tracks ?? '?'}`
+          : `stock | ${s.sector ?? ''} / ${s.industry ?? ''}`,
+        `keywords: ${s.keywords.join(', ')}`,
+        themesOf(s.symbol).length ? `themes: ${themesOf(s.symbol).join(', ')}` : '',
+      ]
+        .filter(Boolean)
+        .join(' | '),
+    })),
   ...yieldShelf.map((r) => ({
     id: `${chain}:${r.asset.symbol}`,
     cls: r.asset.cls,
@@ -122,11 +157,15 @@ Today is ${new Date().toISOString().slice(0, 10)}.
 TABLE
 ${shelfText}`;
 
-
 // The JSON schema the API holds the model to (structured outputs, output_config.format), the same way
 // apps/api/src/llm.ts does for the guided intake. Every field present, null where unused.
 const nul = (t: object) => ({ anyOf: [t, { type: 'null' }] });
-const LINE = { type: 'object', additionalProperties: false, required: ['id', 'why'], properties: { id: { type: 'string' }, why: { type: 'string' } } };
+const LINE = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id', 'why'],
+  properties: { id: { type: 'string' }, why: { type: 'string' } },
+};
 const REPLY_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -141,7 +180,11 @@ const REPLY_SCHEMA = {
         type: 'object',
         additionalProperties: false,
         required: ['name', 'share', 'lines'],
-        properties: { name: { type: 'string' }, share: nul({ type: 'number' }), lines: { type: 'array', items: LINE } },
+        properties: {
+          name: { type: 'string' },
+          share: nul({ type: 'number' }),
+          lines: { type: 'array', items: LINE },
+        },
       },
     }),
     stated: {
@@ -159,9 +202,17 @@ const REPLY_SCHEMA = {
     },
     not_available: {
       type: 'array',
-      items: { type: 'object', additionalProperties: false, required: ['name', 'why'], properties: { name: { type: 'string' }, why: nul({ type: 'string' }) } },
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'why'],
+        properties: { name: { type: 'string' }, why: nul({ type: 'string' }) },
+      },
     },
-    open: { type: 'array', items: { type: 'string', enum: ['amount', 'when', 'monthly', 'shares'] } },
+    open: {
+      type: 'array',
+      items: { type: 'string', enum: ['amount', 'when', 'monthly', 'shares'] },
+    },
   },
 } as const;
 
@@ -172,9 +223,21 @@ const Reply = z.object({
   say: z.string().min(1),
   understood: z.string().nullish(),
   shape: z.enum(['pick', 'grow', 'income', 'protect', 'split']),
-  lines: z.array(Line).nullish().transform((v) => v ?? []),
+  lines: z
+    .array(Line)
+    .nullish()
+    .transform((v) => v ?? []),
   buckets: z
-    .array(z.object({ name: z.string(), share: z.number().min(0).max(1).nullish(), lines: z.array(Line).nullish().transform((v) => v ?? []) }))
+    .array(
+      z.object({
+        name: z.string(),
+        share: z.number().min(0).max(1).nullish(),
+        lines: z
+          .array(Line)
+          .nullish()
+          .transform((v) => v ?? []),
+      }),
+    )
     .nullish()
     .transform((v) => v ?? undefined),
   stated: z
@@ -194,28 +257,51 @@ const Reply = z.object({
     .nullish()
     .transform((v) => v ?? []),
   question: z.string().nullish(),
-  questions: z.array(z.string()).nullish().transform((v) => v ?? []),
-  open: z.array(z.string()).nullish().transform((v) => v ?? []),
+  questions: z
+    .array(z.string())
+    .nullish()
+    .transform((v) => v ?? []),
+  open: z
+    .array(z.string())
+    .nullish()
+    .transform((v) => v ?? []),
 });
 type Reply = z.infer<typeof Reply>;
 
 const recordedPath = join(root, 'scripts/relaxed/recorded.json');
-const recorded = (() => { try { return JSON.parse(readFileSync(recordedPath, 'utf8')) as Record<string, unknown>; } catch { return {}; } })();
+const recorded = (() => {
+  try {
+    return JSON.parse(readFileSync(recordedPath, 'utf8')) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+})();
 const key = `${chain}|${text}`;
 
 type Turn = { role: 'user' | 'assistant'; content: string };
-async function ask(turns: Turn[]): Promise<{ reply: unknown; provenance: 'live' | 'recorded' | 'mock' }> {
+async function ask(
+  turns: Turn[],
+): Promise<{ reply: unknown; provenance: 'live' | 'recorded' | 'mock' }> {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (useRecorded || !apiKey) {
     if (!(key in recorded)) {
-      console.error(`no recorded reply for "${text}" on ${chain}, and ${apiKey ? '--recorded was asked' : 'ANTHROPIC_API_KEY is not set'}.`);
+      console.error(
+        `no recorded reply for "${text}" on ${chain}, and ${apiKey ? '--recorded was asked' : 'ANTHROPIC_API_KEY is not set'}.`,
+      );
       process.exit(1);
     }
-    return { reply: recorded[key], provenance: recorded.provenance === 'mock' ? 'mock' : 'recorded' };
+    return {
+      reply: recorded[key],
+      provenance: recorded.provenance === 'mock' ? 'mock' : 'recorded',
+    };
   }
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
     body: JSON.stringify({
       model: process.env.RELAXED_MODEL ?? 'claude-sonnet-5-5',
       max_tokens: 4000,
@@ -225,14 +311,35 @@ async function ask(turns: Turn[]): Promise<{ reply: unknown; provenance: 'live' 
     }),
     signal: AbortSignal.timeout(20_000),
   });
-  if (!res.ok) { console.error(`model call failed: ${res.status} ${(await res.text()).slice(0, 300)}`); process.exit(1); }
-  const body = (await res.json()) as { content: { type: string; text?: string }[]; stop_reason?: string; stop_details?: { explanation?: string } | null };
-  if (body.stop_reason === 'refusal') { console.error(`the model declined: ${body.stop_details?.explanation ?? ''}`); process.exit(1); }
-  if (body.stop_reason === 'max_tokens') { console.error('the model ran out of room; try again with a shorter message'); process.exit(1); }
-  const raw = body.content.map((c) => (c.type === 'text' ? (c.text ?? '') : '')).join('').trim();
+  if (!res.ok) {
+    console.error(`model call failed: ${res.status} ${(await res.text()).slice(0, 300)}`);
+    process.exit(1);
+  }
+  const body = (await res.json()) as {
+    content: { type: string; text?: string }[];
+    stop_reason?: string;
+    stop_details?: { explanation?: string } | null;
+  };
+  if (body.stop_reason === 'refusal') {
+    console.error(`the model declined: ${body.stop_details?.explanation ?? ''}`);
+    process.exit(1);
+  }
+  if (body.stop_reason === 'max_tokens') {
+    console.error('the model ran out of room; try again with a shorter message');
+    process.exit(1);
+  }
+  const raw = body.content
+    .map((c) => (c.type === 'text' ? (c.text ?? '') : ''))
+    .join('')
+    .trim();
   const json = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1);
   let reply: unknown;
-  try { reply = JSON.parse(json); } catch { console.error(`the model did not answer in JSON:\n${raw.slice(0, 400)}`); process.exit(1); }
+  try {
+    reply = JSON.parse(json);
+  } catch {
+    console.error(`the model did not answer in JSON:\n${raw.slice(0, 400)}`);
+    process.exit(1);
+  }
   if (record && turns.length === 1) {
     recorded[key] = reply;
     recorded.provenance = 'live-recorded';
@@ -245,7 +352,11 @@ async function ask(turns: Turn[]): Promise<{ reply: unknown; provenance: 'live' 
 
 const dropped: string[] = [];
 const keep = (lines: { id: string; why: string }[]) =>
-  lines.filter((l) => { if (ids.has(l.id)) return true; dropped.push(l.id); return false; });
+  lines.filter((l) => {
+    if (ids.has(l.id)) return true;
+    dropped.push(l.id);
+    return false;
+  });
 
 const equalSplit = (n: number): number[] => {
   // Basis points, summing to 10,000 to the unit: the remainder goes to the first lines.
@@ -257,7 +368,10 @@ const noStocks = <L extends { id: string }>(shape: string, lines: L[]): L[] =>
   shape === 'income' || shape === 'protect'
     ? lines.filter((l) => {
         const ok = !['stock', 'etf'].includes(clsOf.get(l.id) ?? '');
-        if (!ok) leftOut.push(`${l.id} (${clsOf.get(l.id)}, no stock tokens in a plan to ${shape === 'protect' ? 'protect' : 'pay income'})`);
+        if (!ok)
+          leftOut.push(
+            `${l.id} (${clsOf.get(l.id)}, no stock tokens in a plan to ${shape === 'protect' ? 'protect' : 'pay income'})`,
+          );
         return ok;
       })
     : lines;
@@ -275,7 +389,11 @@ const REQUIRED: Record<Reply['shape'], (keyof Reply['stated'])[]> = {
 type Plan = {
   shape: Reply['shape'];
   understood: string;
-  buckets: { name: string; shareBps: number; lines: { id: string; cls: string; weightBps: number; why: string }[] }[];
+  buckets: {
+    name: string;
+    shareBps: number;
+    lines: { id: string; cls: string; weightBps: number; why: string }[];
+  }[];
   stated: Reply['stated'];
   notAvailable: Reply['not_available'];
   leftOut: string[];
@@ -287,7 +405,10 @@ type Plan = {
 function render(rawReply: unknown, provenance: 'live' | 'recorded' | 'mock'): Plan | null {
   const parsed = Reply.safeParse(rawReply);
   if (!parsed.success) {
-    console.error('the model\'s reply did not fit the sheet:', parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
+    console.error(
+      "the model's reply did not fit the sheet:",
+      parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+    );
     console.error(JSON.stringify(rawReply, null, 2));
     return null;
   }
@@ -296,29 +417,53 @@ function render(rawReply: unknown, provenance: 'live' | 'recorded' | 'mock'): Pl
   dropped.length = 0;
   leftOut.length = 0;
 
-  const plate = provenance === 'live' ? 'LIVE' : provenance === 'recorded' ? 'RECORDED from a live run' : 'MOCK · reply written by hand, not by a model';
+  const plate =
+    provenance === 'live'
+      ? 'LIVE'
+      : provenance === 'recorded'
+        ? 'RECORDED from a live run'
+        : 'MOCK · reply written by hand, not by a model';
   console.log(`\n${r.say}\n`);
 
   const buckets: Plan['buckets'] = [];
-  function bucket(title: string | null, shareBps: number, lines: { id: string; why: string }[], shape: string) {
+  function bucket(
+    title: string | null,
+    shareBps: number,
+    lines: { id: string; why: string }[],
+    shape: string,
+  ) {
     const kept = noStocks(shape, keep(lines));
     if (title) console.log(`  — ${title}`);
     const weights = kept.length ? equalSplit(kept.length) : [];
-    const out = kept.map((l, i) => ({ id: l.id, cls: clsOf.get(l.id) ?? '', weightBps: weights[i] ?? 0, why: l.why }));
-    for (const l of out) console.log(`  ${pct(l.weightBps).padStart(7)}  ${l.id.replace(`${chain}:`, '').padEnd(14)} ${l.cls.padEnd(13)} ${l.why}`);
+    const out = kept.map((l, i) => ({
+      id: l.id,
+      cls: clsOf.get(l.id) ?? '',
+      weightBps: weights[i] ?? 0,
+      why: l.why,
+    }));
+    for (const l of out)
+      console.log(
+        `  ${pct(l.weightBps).padStart(7)}  ${l.id.replace(`${chain}:`, '').padEnd(14)} ${l.cls.padEnd(13)} ${l.why}`,
+      );
     buckets.push({ name: title ?? r.shape, shareBps, lines: out });
   }
 
   if (r.shape === 'split' && r.buckets?.length) {
     const n = r.buckets.length;
     const allShares = r.buckets.every((b) => b.share != null);
-    const shares = allShares ? r.buckets.map((b) => Math.round((b.share as number) * 10_000)) : equalSplit(n);
+    const shares = allShares
+      ? r.buckets.map((b) => Math.round((b.share as number) * 10_000))
+      : equalSplit(n);
     if (!allShares) assumptions.push('equal shares between the pots until you say otherwise');
-    r.buckets.forEach((b, i) => bucket(`${b.name} · ${pct(shares[i] ?? 0)} · one vault`, shares[i] ?? 0, b.lines, 'pick'));
+    r.buckets.forEach((b, i) => {
+      bucket(`${b.name} · ${pct(shares[i] ?? 0)} · one vault`, shares[i] ?? 0, b.lines, 'pick');
+    });
   } else {
     bucket(null, 10_000, r.lines, r.shape);
-    if (r.shape === 'pick' && r.lines.length > 1 && !r.stated.weights) assumptions.push('equal split until you say otherwise');
-    if (r.shape !== 'pick') assumptions.push('the solver sizes these on the parameter table once you confirm');
+    if (r.shape === 'pick' && r.lines.length > 1 && !r.stated.weights)
+      assumptions.push('equal split until you say otherwise');
+    if (r.shape !== 'pick')
+      assumptions.push('the solver sizes these on the parameter table once you confirm');
   }
   const notes = [
     ...assumptions,
@@ -326,10 +471,22 @@ function render(rawReply: unknown, provenance: 'live' | 'recorded' | 'mock'): Pl
     ...(dropped.length ? [`dropped, not on the table: ${dropped.join(', ')}`] : []),
   ];
   if (notes.length) console.log(`\n  ${notes.join('\n  ')}`);
-  console.log(`\n  [${plate} · ${chain} · ${r.shape}${r.open.length ? ` · open: ${r.open.join(', ')}` : ' · ready to confirm'}]\n`);
+  console.log(
+    `\n  [${plate} · ${chain} · ${r.shape}${r.open.length ? ` · open: ${r.open.join(', ')}` : ' · ready to confirm'}]\n`,
+  );
 
   const missing = REQUIRED[r.shape].filter((k) => r.stated[k] == null || r.stated[k] === '');
-  return { shape: r.shape, understood: r.say, buckets, stated: r.stated, notAvailable: r.not_available, leftOut: [...leftOut], assumptions, missing: [...new Set([...missing, ...r.open])], questions: r.open };
+  return {
+    shape: r.shape,
+    understood: r.say,
+    buckets,
+    stated: r.stated,
+    notAvailable: r.not_available,
+    leftOut: [...leftOut],
+    assumptions,
+    missing: [...new Set([...missing, ...r.open])],
+    questions: r.open,
+  };
 }
 
 const YES = /^(y|yes|yep|ok|sure|right|correct|sim|isso|certo|pode|ok[ae]y?)[.! ]*$/i;
@@ -339,20 +496,33 @@ if (!chat) {
   if (!render(reply, provenance)) process.exit(1);
 } else {
   if (!process.env.ANTHROPIC_API_KEY?.trim()) {
-    console.error('chat needs a model: no ANTHROPIC_API_KEY in the shell, in ./.env or in ../Colosseum/.env. Add the line ANTHROPIC_API_KEY=<key> to ~/Documents/Colosseum/.env, or run: export ANTHROPIC_API_KEY=<key>');
+    console.error(
+      'chat needs a model: no ANTHROPIC_API_KEY in the shell, in ./.env or in ../Colosseum/.env. Add the line ANTHROPIC_API_KEY=<key> to ~/Documents/Colosseum/.env, or run: export ANTHROPIC_API_KEY=<key>',
+    );
     process.exit(1);
   }
   const { createInterface } = await import('node:readline/promises');
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const turns: Turn[] = [];
-  console.log(`\nTenonfi · ${chain} · ${rows.length} assets on the table · model ${process.env.RELAXED_MODEL ?? 'claude-sonnet-5-5'}. Say what you want; "yes" confirms when the plan is ready; empty line quits.\n`);
+  console.log(
+    `\nTenonfi · ${chain} · ${rows.length} assets on the table · model ${process.env.RELAXED_MODEL ?? 'claude-sonnet-5-5'}. Say what you want; "yes" confirms when the plan is ready; empty line quits.\n`,
+  );
   let last: Plan | null = null;
   let line = text || (await rl.question('you > ')).trim();
   while (line) {
     if (last && YES.test(line)) {
       if (last.missing.length === 0) {
-        const payload = { shape: last.shape, understood: last.understood, stated: last.stated, buckets: last.buckets, assumptions: last.assumptions, leftOut: last.leftOut };
-        console.log(`\nConfirmed. This is what would go to POST /v1/baskets/personalize, one call per vault:\n${JSON.stringify(payload, null, 2)}\n`);
+        const payload = {
+          shape: last.shape,
+          understood: last.understood,
+          stated: last.stated,
+          buckets: last.buckets,
+          assumptions: last.assumptions,
+          leftOut: last.leftOut,
+        };
+        console.log(
+          `\nConfirmed. This is what would go to POST /v1/baskets/personalize, one call per vault:\n${JSON.stringify(payload, null, 2)}\n`,
+        );
         break;
       }
     }
