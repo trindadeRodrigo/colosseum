@@ -337,7 +337,8 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                   key: 'weight',
                   header: v.columns.weight,
                   numeric: true,
-                  cell: (r) => now[at(r.asset)] ?? '',
+                  // a holding with no price has no share that was worked out: never drawn as 0%
+                  cell: (r) => (r.valueUsd === null ? '—' : (now[at(r.asset)] ?? '')),
                 },
                 {
                   key: 'target',
@@ -351,10 +352,12 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
                   numeric: true,
                   // from the two shares as written, so they and their difference agree
                   cell: (r) =>
-                    drift(
-                      lang,
-                      ((nowTenths[at(r.asset)] ?? 0) - (plannedTenths[at(r.asset)] ?? 0)) * 10,
-                    ),
+                    r.valueUsd === null
+                      ? '—'
+                      : drift(
+                          lang,
+                          ((nowTenths[at(r.asset)] ?? 0) - (plannedTenths[at(r.asset)] ?? 0)) * 10,
+                        ),
                 },
               ]}
             />

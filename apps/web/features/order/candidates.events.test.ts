@@ -215,6 +215,39 @@ describe('the candidates, side by side', () => {
     expect(find(row, '[data-ui="figure"]').getAttribute('data-state')).toBe('missing');
   });
 
+  it('does not show a yield as observed while one of its holdings has no reading: the sum would count that holding at nothing', async () => {
+    const base = candidateFor(SHEET, 'cover');
+    const carryOf = (host: HTMLElement) => {
+      const cover = cards(host)[0] as HTMLElement;
+      return [
+        find(cover, '[data-ui="candidate-figures"] [data-figure="yield"] [data-ui="figure"]'),
+        find(
+          [...cover.querySelectorAll('[data-ui="candidate-score"] > div')].find(
+            (row) => row.querySelector('dt')?.textContent === words.score.carry,
+          ) as HTMLElement,
+          '[data-ui="figure"]',
+        ),
+      ];
+    };
+    // every yielding holding read: the figure, on its pin
+    const read = await shown({ names: ['cover'] });
+    for (const figure of carryOf(read)) {
+      expect(figure.getAttribute('data-state')).not.toBe('missing');
+      expect(figure.textContent).toMatch(/\d%/);
+      expect(figure.querySelector('[data-ui="pin"]')).not.toBeNull();
+    }
+    await unmountAll();
+    // one not read, as the engine flags it: no percentage is drawn for the sum, and never 0%
+    const partly = await shown({
+      names: ['cover'],
+      over: { proposal: { ...base.proposal, flags: [...base.proposal.flags, 'yield_not_read'] } },
+    });
+    for (const figure of carryOf(partly)) {
+      expect(figure.getAttribute('data-state')).toBe('missing');
+      expect(figure.textContent).not.toMatch(/\d/);
+    }
+  });
+
   it('names the candidates the engine did not offer, each with its reason', async () => {
     const host = await shown({ names: ['cover', 'carry'] });
     expect(cards(host)).toHaveLength(2);

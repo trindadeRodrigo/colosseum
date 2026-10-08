@@ -370,6 +370,7 @@ export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2
                 {plan.rollUp && (
                   <RiskPanel
                     rollUp={plan.rollUp}
+                    exitObs={exitObs}
                     t={t}
                     share={share}
                     notLive={notLive}
@@ -431,12 +432,15 @@ export function PlanPane({ plan, chain, blocked = null, onWay, invest, level = 2
 /** The risk roll-up as the API sent it with the plan. Nothing here is worked out on the page. */
 function RiskPanel({
   rollUp,
+  exitObs,
   t,
   share,
   notLive,
   sandbox,
 }: {
   rollUp: RiskRollUp;
+  /** The plan's reading of what selling costs: the source of the measured figure. */
+  exitObs: PinSource | null;
   t: Dictionary;
   share: (bps: number) => string;
   notLive: boolean;
@@ -479,7 +483,17 @@ function RiskPanel({
               <dt className="text-muted-foreground">{t.plan.risk.exitQuoted}</dt>
               <dd className="tabular-nums">{bps(rollUp.exit.quotedBps)}</dd>
               <dt className="text-muted-foreground">{t.plan.risk.exitMeasured}</dt>
-              <dd className="tabular-nums">{bps(rollUp.exit.measuredWorstBps)}</dd>
+              <dd className="tabular-nums">
+                {rollUp.exit.measuredWorstBps === null ? (
+                  t.plan.risk.notMeasured
+                ) : (
+                  <ProvenancePin
+                    value={share(rollUp.exit.measuredWorstBps)}
+                    obs={exitObs}
+                    labels={t.pin}
+                  />
+                )}
+              </dd>
               <dt className="text-muted-foreground">{t.plan.risk.measuredShare}</dt>
               <dd className="tabular-nums">{share(rollUp.exit.measuredShareBps)}</dd>
             </dl>

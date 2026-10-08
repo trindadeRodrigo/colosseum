@@ -100,6 +100,23 @@ describe('a goal with no date', () => {
   });
 });
 
+describe('the risk panel under a plan', () => {
+  it('puts what selling costs, as measured, on the pin of the plan’s reading, and says not measured where it is not', async () => {
+    const measured = (host: HTMLElement) =>
+      [...host.querySelectorAll('dt')].find((dt) => dt.textContent === en.plan.risk.exitMeasured)
+        ?.nextElementSibling as HTMLElement;
+    const host = await pane(of('grow'));
+    expect(measured(host).textContent).toContain('0.42%');
+    expect(measured(host).querySelector('[data-ui="figure"] [data-ui="pin"]')).not.toBeNull();
+    await unmountAll();
+    const none = await pane({
+      ...of('grow'),
+      rollUp: { ...ROLL_UP, exit: { ...ROLL_UP.exit, measuredWorstBps: null } },
+    });
+    expect(measured(none).textContent).toBe(en.plan.risk.notMeasured);
+  });
+});
+
 describe('a plan to protect', () => {
   it('leads with what most of it is kept in and the bad-fall figure, with the bar and no curve', async () => {
     const plan = of('protect');

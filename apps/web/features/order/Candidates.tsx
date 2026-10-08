@@ -137,7 +137,9 @@ function Candidate({
   const locale = LOCALE[lang];
   const share = (bps: number) => formatBps(bps, locale);
   const label = planProvenance(proposal);
-  const yieldObs = observed(proposal, 'yield');
+  // A yielding holding with no reading is in the carry at nothing (the engine flags it): the sum is
+  // then not a figure that was observed, and it and what stands on it are shown as not read.
+  const yieldObs = proposal.flags.includes('yield_not_read') ? null : observed(proposal, 'yield');
   const exitObs = observed(proposal, 'liquidity');
   const currency = currencyOf(proposal.sheet);
   const held = proposal.lines.filter((l) => l.weightBps > 0);
