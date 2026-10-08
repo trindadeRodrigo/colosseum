@@ -40,6 +40,7 @@ import {
   type Conversation,
   FACTS,
   type Fact,
+  hasAllocationTerms,
   type IntakeState,
   isFact,
   isGoAhead,
@@ -359,7 +360,12 @@ export function InvestScreen() {
     if (named) return pick(named, words);
     // "start over", "clear it out": the conversation and the pane are emptied
     if (input.kind === 'text' && isStartOver(input.text)) return startOver();
-    if (input.kind === 'text' && from && allocationIntent(input.text, lang)) {
+    if (
+      input.kind === 'text' &&
+      from &&
+      hasAllocationTerms(from) &&
+      allocationIntent(input.text, lang)
+    ) {
       wanted.current += 1;
       setPicked(null);
       setBuild({ kind: 'idle' });
@@ -1691,6 +1697,8 @@ export function restoreDraft(raw: string | null): { turns: Turn[]; sheet: Sheet 
       : null;
   const pending =
     typeof request === 'string' &&
+    (allocationBound(request) ||
+      hasAllocationTerms({ fields: cleanFields, skipped: skipped.filter(isFact) })) &&
     said.slice(resolved).includes(request) &&
     allocationIntent(request, cleanFields.language)
       ? request

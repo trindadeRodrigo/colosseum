@@ -169,6 +169,43 @@ describe('interest origin and conservative pause', () => {
 });
 
 describe('unapplied allocation requests', () => {
+  it('does not latch a startup thematic stock request and allows the contextual decline and replay', async () => {
+    const marker = { quote: 'i like elon', sourceTurn: 0 };
+    const question = {
+      field: 'themes',
+      template: 'interestClarification',
+      text: 'Which particular company or sector?',
+    };
+    const s = server(
+      { ...answer({ questions: [question] }), pendingInterest: marker },
+      { ...answer({ questions: [question] }), pendingInterest: marker },
+      { ...answer({ questions: [question] }), pendingInterest: marker },
+      { ...answer({ questions: [ASK_AMOUNT] }), pendingInterest: null },
+    );
+    const t = allocationConversation(talk(s.api), 'en', 'solana');
+    const first = await t.turn({ kind: 'text', text: 'i like elon' }, null);
+    const named = await t.turn({ kind: 'text', text: 'elon musk!' }, first.sheet);
+    expect(named.say.some((say) => say.key === 'notAnswer')).toBe(false);
+    const stocks = await t.turn(
+      { kind: 'text', text: 'I want to invest in stocks that will benefit from Elon Musk' },
+      named.sheet,
+    );
+    expect(stocks.sheet.allocation).toBeUndefined();
+    expect(stocks.valid).toBeNull();
+    const declined = await t.turn({ kind: 'text', text: 'Ignore that interest.' }, stocks.sheet);
+    expect(declined.sheet.allocation).toBeUndefined();
+    expect(declined.sheet.intake?.pendingInterest).toBeNull();
+    const replay = await t.turn({ kind: 'replay' }, declined.sheet);
+    expect(replay.sheet.allocation).toBeUndefined();
+    expect(s.posted.at(-1)).toMatchObject({
+      followUps: [
+        'elon musk!',
+        'I want to invest in stocks that will benefit from Elon Musk',
+        'Ignore that interest.',
+      ],
+      questionThen: ['interestClarification', 'interestClarification', 'interestClarification'],
+    });
+  });
   it('drops against the current null mix without reviving an older pressed stock mix', async () => {
     const income: BasketSheet = { ...SHEET, goal: 'income', incomeTargetUsdMonthly: 300 };
     const s = server(
@@ -269,7 +306,7 @@ describe('unapplied allocation requests', () => {
 
   it('does not offer growth for an income cash amendment', async () => {
     const income: BasketSheet = { ...SHEET, goal: 'income', incomeTargetUsdMonthly: 300 };
-    const s = server(answer({ sheet: income }));
+    const s = server(answer({ sheet: income, readBack: ['The current income terms.'] }));
     const t = allocationConversation(talk(s.api), 'en', 'solana');
     const first = await t.turn(
       { kind: 'text', text: 'Income $300 monthly from $2000, high risk, five years' },

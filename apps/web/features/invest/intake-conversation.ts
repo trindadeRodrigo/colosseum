@@ -384,6 +384,7 @@ export function intakeConversation(
       }
 
       const reading = outcome.reading;
+      const notices = reading.assumptions.filter((line) => !(state.notices ?? []).includes(line));
       const allocationRejected = reading.flags.some((f) =>
         /(?:mix|themes|sleeves)_(?:dropped|refused|rejected)/.test(f),
       );
@@ -401,6 +402,7 @@ export function intakeConversation(
         state.interestReview === true ||
         (state.pendingInterest != null && reading.pendingInterest === null);
       const next: IntakeState = {
+        notices: [...new Set([...(state.notices ?? []), ...reading.assumptions])].slice(-200),
         ...(pendingInterest !== undefined ? { pendingInterest } : {}),
         ...(interestReview ? { interestReview: true } : {}),
         questionThen: state.questionThen,
@@ -437,7 +439,10 @@ export function intakeConversation(
       // The same question again after words that were meant to answer it: said, so it does not
       // read as a loop.
       const again =
-        input.kind === 'text' && question !== null && held.intake?.question?.text === question.text;
+        input.kind === 'text' &&
+        first?.template !== 'interestClarification' &&
+        question !== null &&
+        held.intake?.question?.text === question.text;
       // The same sheet as before is not said back a second time: only what the read-back says now
       // that it did not say before (that no stock fits a name, say).
       const before = new Set(held.intake?.readBack ?? []);
@@ -463,9 +468,7 @@ export function intakeConversation(
                   ]
                 : []),
               ...(!again && reading.noneYet ? [{ key: 'noneYet' as const }] : []),
-              ...(reading.assumptions.length > 0
-                ? [{ key: 'said' as const, lines: reading.assumptions }]
-                : []),
+              ...(notices.length > 0 ? [{ key: 'said' as const, lines: notices }] : []),
               ...(question && !again ? [{ key: 'first' as const }] : []),
             ];
       // Never an empty turn: with nothing to say and nothing to ask, what is held is said.
@@ -475,8 +478,8 @@ export function intakeConversation(
         sheet,
         open: reading.questions.flatMap((q) => FACT_OF[q.field] ?? []),
         say:
-          same && reading.assumptions.length > 0
-            ? [{ key: 'said', lines: reading.assumptions }, ...say.filter((s) => s.key !== 'held')]
+          same && notices.length > 0
+            ? [{ key: 'said', lines: notices }, ...say.filter((s) => s.key !== 'held')]
             : say,
         ask: first ? (FACT_OF[first.field] ?? null) : null,
         question,

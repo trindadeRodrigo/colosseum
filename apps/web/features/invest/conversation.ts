@@ -66,6 +66,8 @@ export type IntakeState = {
   held?: HeldMix | null;
   /** The read-back our server last gave, to say only what is new of the next one. */
   readBack?: string[];
+  /** Server availability notices already shown in this conversation. */
+  notices?: string[];
 };
 
 /** A quick reply: what it sends, and what it is said by. The screen has the words. */
@@ -230,6 +232,11 @@ export function allocationOf(text: string, _sheet: Sheet) {
   };
 }
 
+/** An amendment guard applies after terms exist, not while discovering a first investment idea. */
+export function hasAllocationTerms(sheet: Sheet): boolean {
+  return sheet.intake?.sheet != null || openFacts(sheet).length === 0;
+}
+
 export function allocationBound(text: string): boolean {
   return /\b(at\s+(?:least|most)|minimum|maximum|no more than|more than|pelo menos|mais de|no mínimo|no minimo|no máximo|no maximo)(?=\s|\d|$)/i.test(
     text,
@@ -298,13 +305,23 @@ export function allocationConversation(
           valid,
         };
       }
+      if (known?.allocation && !known.allocation.minimum && !hasAllocationTerms(known)) {
+        const { allocation: _, ...startup } = known;
+        known = startup;
+      }
       const requested =
-        input.kind === 'text' && known && allocationIntent(input.text, lang)
+        input.kind === 'text' &&
+        known &&
+        hasAllocationTerms(known) &&
+        allocationIntent(input.text, lang)
           ? allocationOf(input.text.trim(), known)
           : null;
-      const pending = known?.allocation?.minimum
-        ? known.allocation
-        : (requested ?? known?.allocation);
+      // Older tabs could latch a first exploratory request before there were any terms to amend.
+      const prior =
+        known && (known.allocation?.minimum || hasAllocationTerms(known))
+          ? known.allocation
+          : undefined;
+      const pending = prior?.minimum ? prior : (requested ?? prior);
       const reply = await base.turn(input, known);
       if (!pending) return reply;
       const conflict =
