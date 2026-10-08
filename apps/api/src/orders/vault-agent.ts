@@ -1,6 +1,16 @@
 import { EXIT_WINDOW_DAYS } from '@colosseum/basket';
 import { eligibleForGoal, PERSONAL_PARAMS } from '@colosseum/engine/personal';
-import type { BasketAsset, ChainId, Price, Shelf, VaultState } from '@colosseum/schemas';
+import type {
+  BasketAsset,
+  ChainId,
+  FactNullReason,
+  FactRegime,
+  FactUnit,
+  Price,
+  Provenance,
+  Shelf,
+  VaultState,
+} from '@colosseum/schemas';
 import {
   type VaultAgentSource as AgentSource,
   VaultAgentModelReply,
@@ -14,6 +24,90 @@ import type { ChainEntry } from './chains';
 import type { PlanInputs } from './personalize';
 
 type Figures = Awaited<ReturnType<PlanInputs>>;
+
+/** One figure of an asset's analytics: a measured value with its pin, or null with the reason. */
+type AnalyticsMetric = {
+  metric:
+    | 'exit_worst'
+    | 'exit'
+    | 'weekend'
+    | 'lp_top1'
+    | 'lp_exit'
+    | 'cap_variation'
+    | 'volume_28d'
+    | 'volatility'
+    | 'drawdown';
+  regime?: FactRegime;
+};
+export type AnalyticsFigure =
+  | (AnalyticsMetric & {
+      value: number;
+      unit: FactUnit;
+      source: string;
+      method: string;
+      fetchedAt: string;
+      provenance: Provenance;
+      /** Measured at this size, not the analytics' size: the nearest grid point above it. */
+      sizeUsd?: number;
+      /** The true value is at least this: the deepest point the data measures. */
+      lowerBound?: boolean;
+    })
+  | (AnalyticsMetric & { value: null; reason: FactNullReason });
+/**
+ * Bearing's figures for the listed assets at one size, projected from their fact sheets on the server
+ * (agent-analytics.ts). `modelledOn` names the mainnet token a test-network token's figures are read from.
+ * Null figures: Bearing has no sheet for the asset, or, with `unread`, its sheet is still being read or its
+ * read failed. `unavailable` and `incomplete`: codes, for the log.
+ */
+export type AgentAnalyticsResult =
+  | {
+      sizeUsd: number;
+      basis: 'reference' | 'vault';
+      /** Cost tolerance behind the capacity figures, as a fraction. */
+      tau: number;
+      assets: Array<{
+        assetId: string;
+        modelledOn: string | null;
+        figures: AnalyticsFigure[] | null;
+        unread?: 'reading' | 'failed';
+      }>;
+      incomplete?: string;
+    }
+  | { unavailable: string };
+type AgentAnalyticsQuery = {
+  db: Parameters<PlanInputs>[0]['db'];
+  chain: ChainId;
+  assets: BasketAsset[];
+  provenance?: Provenance;
+  /** The size the costs refer to: the vault's value, or null for the reference size. */
+  sizeUsd: number | null;
+};
+/**
+ * Reads the analytics; injected, like `PlanInputs`, so nothing under /v1 reads a file or a fixture. `warm`
+ * keeps a chain's reference-size reads current from the server's start; `stop` ends that.
+ */
+export type AgentAnalytics = ((q: AgentAnalyticsQuery) => Promise<AgentAnalyticsResult>) & {
+  warm?: (q: Omit<AgentAnalyticsQuery, 'sizeUsd'>) => void;
+  stop?: () => void;
+};
+/** The code a route logs for analytics that were not all read, or null. */
+export function analyticsGap(read: AgentAnalyticsResult | null): string | null {
+  if (!read) return null;
+  return 'unavailable' in read ? read.unavailable : (read.incomplete ?? null);
+}
+
+/** The analytics when the server has a reader. A reader that throws is a code, never a failed reply. */
+export async function readAgentAnalytics(
+  read: AgentAnalytics | undefined,
+  query: Parameters<AgentAnalytics>[0],
+): Promise<AgentAnalyticsResult | null> {
+  if (!read) return null;
+  try {
+    return await read(query);
+  } catch {
+    return { unavailable: 'analytics_threw' };
+  }
+}
 type AgentContextData = {
   person: string;
   assets: BasketAsset[];
@@ -22,6 +116,8 @@ type AgentContextData = {
   stockAttributes: Figures['stocks'] | null;
   liquidity: Array<{ assetId: string; observation: unknown | null }>;
   unknowns: string[];
+  /** Bearing's analytics behind the evidence, for the model: their size and what is not measured. */
+  analytics?: VaultAgentPrompt['analytics'];
   /** Additional server guardrail caps; these never determine allocation weights. */
   caps?: Record<string, number>;
   /** Only a separately confirmed, server-owned goal change can replace existing eligibility. */
@@ -53,10 +149,42 @@ export type VaultAgentPrompt = {
       | 'sheet'
     >
   >;
-  evidence: AgentSource[];
-  stockAttributes: Figures['stocks'] | null;
+  /** What the model cites; source and method stay on the server, which writes them into the reply. */
+  evidence: Array<Pick<AgentSource, 'id' | 'assetId' | 'label' | 'value' | 'unit' | 'provenance'>>;
+  /** The stock rows without their source lists, which are evidence already (`stock:<asset>:<n>`). */
+  stockAttributes:
+    | (Omit<NonNullable<Figures['stocks']>, 'stocks'> & {
+        stocks: Array<Omit<NonNullable<Figures['stocks']>['stocks'][number], 'sources'>>;
+      })
+    | null;
   liquidity: VaultAgentContext['liquidity'];
   unknowns: string[];
+  /**
+   * The size Bearing's analytics evidence refers to, and the figures it does not measure with why. Null
+   * when no analytics were read.
+   */
+  analytics: {
+    sizeUsd?: number;
+    basis?: 'reference' | 'vault';
+    /** What each id measures, `<asset>` standing for the asset's id; units are in the evidence. */
+    legend?: Record<string, string>;
+    /** The measured figures by id, each id citable as evidence of its asset. */
+    assets?: Array<{
+      assetId: string;
+      values: Record<string, number>;
+      /** One label for every figure, or each figure's. */
+      provenance: Provenance | Record<string, Provenance>;
+      modelledOn?: string;
+      worstRegime?: FactRegime;
+      /** Ids whose value is a lower bound: the true figure is at least this. */
+      lowerBound?: string[];
+      /** Ids measured at the nearest measured size above `sizeUsd`. */
+      largerSize?: string[];
+    }>;
+    unknowns: string[];
+  } | null;
+  /** The cost tolerance behind every capacity figure, as a fraction. */
+  exitCostTolerance: number;
   caps: Record<string, number>;
   eligibilityGoal: 'grow' | 'income' | 'protect' | null;
   /** Person-authored limits projected onto the supplied catalog, never allocation choices. */
@@ -82,7 +210,20 @@ type ContextInput = {
   currentGoals?: readonly unknown[];
   caps?: Record<string, number>;
   confirmedGoal?: 'grow' | 'income' | 'protect';
+  analytics?: AgentAnalyticsResult | null;
 };
+
+/** The vault's value at the reference prices, or null when a holding has no usable price. */
+export function vaultNotionalUsd(state: VaultState, prices: Price[]): number | null {
+  const byAsset = new Map(prices.map((price) => [price.asset, Number(price.usdPerToken)]));
+  const values = [state.cash, ...state.positions].map((holding) => {
+    const price = byAsset.get(holding.asset);
+    return price === undefined ? null : Number(holding.display) * price;
+  });
+  return values.every((value) => value !== null && Number.isFinite(value))
+    ? values.reduce<number>((sum, value) => sum + (value ?? 0), 0)
+    : null;
+}
 
 export function buildVaultAgentContext(
   input: ContextInput & { state: VaultState },
@@ -100,6 +241,191 @@ export function buildGoalAgentContext(
   input: ContextInput & { chain: ChainId; observedAt: string },
 ): GoalAgentContext {
   return buildAgentContext({ ...input, kind: 'new_goal', state: null }) as GoalAgentContext;
+}
+
+const REGIME_NAMES: Record<FactRegime, string> = {
+  us_market_hours: 'US market hours',
+  us_offhours_weekday: 'weekday off-hours',
+  weekend: 'weekend',
+  us_holiday: 'US holiday',
+};
+const NULL_REASONS: Record<FactNullReason, string> = {
+  no_samples_in_regime: 'no samples in that regime yet',
+  insufficient_samples: 'too few samples',
+  beyond_measured_size: 'the size is beyond the measured depth',
+  no_reference_price: 'no reference prices collected',
+  no_external_source: 'no external price source',
+  chain_not_covered: 'this chain is not measured',
+  not_collected: 'not collected yet',
+  not_imported: 'not imported yet',
+  not_followed: 'not traced',
+  gate_open: 'waiting on a decision',
+  not_applicable: 'does not apply',
+};
+const UNITS: Record<FactUnit, string> = {
+  fraction: 'fraction',
+  usd: 'USD',
+  ratio: 'ratio',
+  count: 'count',
+  hours: 'hours',
+};
+
+/** What each analytics id measures, for the model's legend and, with the asset's details, the reply. */
+const MEASURES: Record<AnalyticsFigure['metric'], { id: string; says: string }> = {
+  exit_worst: { id: 'exit:<asset>:worst', says: 'Exit cost at {size}, worst measured regime' },
+  exit: { id: 'exit:<asset>:<regime>', says: 'Exit cost at {size} in that regime' },
+  weekend: { id: 'weekend:<asset>', says: 'Weekend ÷ market-hours exit capacity' },
+  lp_top1: {
+    id: 'lp:<asset>:top1',
+    says: "Largest liquidity provider's share of the main dollar pool",
+  },
+  lp_exit: {
+    id: 'lpexit:<asset>',
+    says: 'Exit cost at {size} if the largest liquidity providers leave',
+  },
+  cap_variation: {
+    id: 'capvar:<asset>',
+    says: 'How much exit capacity varies between snapshots (deviation ÷ mean)',
+  },
+  volume_28d: { id: 'volume:<asset>', says: 'Traded volume over the last four weeks' },
+  volatility: { id: 'vol:<asset>', says: 'Annualised price volatility' },
+  drawdown: { id: 'drawdown:<asset>', says: 'Largest price drawdown' },
+};
+const LOWER_BOUND = '; a lower bound, the true figure is at least this';
+
+/**
+ * Bearing's analytics as evidence: each measured figure an id the model may cite, with a label that says
+ * the size and the regime it refers to in words (the figures themselves are structured, so a label holds
+ * no number the model could repeat); each missing one a line of what is unknown and why, never zero, one
+ * line per figure and reason with the assets it holds for. The model reads the figures as one compact
+ * block; the full sources stay on the server for the reply.
+ */
+function analyticsEvidence(
+  analytics: AgentAnalyticsResult | null,
+  listed: Map<string, BasketAsset>,
+): { evidence: AgentSource[]; prompt: NonNullable<VaultAgentPrompt['analytics']> } | null {
+  if (!analytics) return null;
+  const evidence: AgentSource[] = [];
+  const unknowns: string[] = [];
+  if ('unavailable' in analytics)
+    return {
+      evidence,
+      prompt: {
+        unknowns: [
+          "Bearing's exit, liquidity and market analytics could not be read for this reply; those figures are unknown, not zero.",
+        ],
+      },
+    };
+  const size = analytics.basis === 'vault' ? "about the vault's size" : 'the reference size';
+  const unsheeted: string[] = [];
+  const unread = { reading: [] as string[], failed: [] as string[] };
+  const read: string[] = [];
+  const missing = new Map<string, string[]>();
+  const assets: NonNullable<NonNullable<VaultAgentPrompt['analytics']>['assets']> = [];
+  // An id names one figure: a second row for an asset, or a second figure under an id, is left out, since
+  // the reply refuses a context whose evidence repeats an id.
+  const taken = new Set<string>();
+  for (const row of analytics.assets) {
+    const asset = listed.get(row.assetId);
+    if (!asset || asset.cls === 'cash' || taken.has(asset.id)) continue;
+    taken.add(asset.id);
+    if (row.unread) {
+      unread[row.unread].push(asset.symbol);
+      continue;
+    }
+    if (!row.figures) {
+      unsheeted.push(asset.symbol);
+      continue;
+    }
+    read.push(asset.symbol);
+    const compact: (typeof assets)[number] = { assetId: asset.id, values: {}, provenance: {} };
+    for (const figure of row.figures) {
+      const regime = figure.regime ? REGIME_NAMES[figure.regime] : null;
+      const measure = MEASURES[figure.metric];
+      const id = measure.id
+        .replace('<asset>', asset.id)
+        .replace('<regime>', figure.regime ?? 'unknown');
+      if (taken.has(id)) continue;
+      taken.add(id);
+      const larger = figure.value !== null && figure.sizeUsd !== undefined;
+      const said = measure.says.replace(
+        '{size}',
+        larger ? `the nearest measured size above ${size}` : size,
+      );
+      const label =
+        figure.metric === 'exit_worst' ||
+        figure.metric === 'exit' ||
+        figure.metric === 'cap_variation'
+          ? `${said}${regime ? ` (${regime})` : ''}`
+          : said;
+      const twin = row.modelledOn ? `; ${row.modelledOn} mainnet figures on a test network` : '';
+      // A stored figure that does not make a valid source is unknown too: it never fails the reply.
+      const parsed =
+        figure.value === null
+          ? null
+          : VaultAgentSource.safeParse({
+              id,
+              assetId: asset.id,
+              label: `${label}${figure.lowerBound ? LOWER_BOUND : ''}${twin}`,
+              value: figure.value,
+              unit: UNITS[figure.unit],
+              source: figure.source,
+              // the size it was measured at is a figure: it goes in the pin, not in the words
+              method:
+                figure.sizeUsd === undefined
+                  ? figure.method
+                  : `${figure.method}; measured at $${figure.sizeUsd.toLocaleString('en-US')}`,
+              fetchedAt: figure.fetchedAt,
+              provenance: figure.provenance,
+            });
+      if (parsed?.success && figure.value !== null) {
+        evidence.push(parsed.data);
+        compact.values[id] = parsed.data.value as number;
+        (compact.provenance as Record<string, Provenance>)[id] = parsed.data.provenance;
+        if (figure.metric === 'exit_worst' && figure.regime) compact.worstRegime = figure.regime;
+        if (figure.lowerBound) compact.lowerBound = [...(compact.lowerBound ?? []), id];
+        if (larger) compact.largerSize = [...(compact.largerSize ?? []), id];
+        continue;
+      }
+      const reason =
+        figure.value === null ? NULL_REASONS[figure.reason] : 'the stored figure could not be read';
+      const line = `${label}: unknown (${reason})`;
+      missing.set(line, [...(missing.get(line) ?? []), asset.symbol]);
+    }
+    // One label when every figure of the asset has the same, which is the usual case.
+    const labels = new Set(Object.values(compact.provenance as Record<string, Provenance>));
+    if (labels.size <= 1) compact.provenance = [...labels][0] ?? asset.provenance;
+    if (row.modelledOn) compact.modelledOn = row.modelledOn;
+    if (Object.keys(compact.values).length) assets.push(compact);
+  }
+  for (const [line, symbols] of missing)
+    unknowns.push(
+      `${line}, for ${symbols.length === read.length && read.length > 1 ? 'every asset with a sheet' : symbols.join(', ')}.`,
+    );
+  if (unsheeted.length)
+    unknowns.push(
+      `No Bearing fact sheet, so exit, liquidity and market figures are unknown, for ${unsheeted.join(', ')}.`,
+    );
+  if (unread.reading.length)
+    unknowns.push(
+      `Bearing's figures are still being read, so unknown for this reply, for ${unread.reading.join(', ')}.`,
+    );
+  if (unread.failed.length)
+    unknowns.push(
+      `Bearing's figures could not be read this time, so unknown for this reply, for ${unread.failed.join(', ')}.`,
+    );
+  return {
+    evidence,
+    prompt: {
+      sizeUsd: analytics.sizeUsd,
+      basis: analytics.basis,
+      legend: Object.fromEntries(
+        Object.values(MEASURES).map((m) => [m.id, m.says.replace('{size}', size)]),
+      ),
+      assets,
+      unknowns,
+    },
+  };
 }
 
 function buildAgentContext(
@@ -191,16 +517,7 @@ function buildAgentContext(
     });
   }
   const unknowns: string[] = [];
-  const holdings = state ? [state.cash, ...state.positions] : [];
-  const prices = new Map(input.prices.map((price) => [price.asset, Number(price.usdPerToken)]));
-  const values = holdings.map((holding) => {
-    const price = prices.get(holding.asset);
-    return price === undefined ? null : Number(holding.display) * price;
-  });
-  const notionalUsd =
-    state && values.every((value) => value !== null && Number.isFinite(value))
-      ? values.reduce<number>((sum, value) => sum + (value ?? 0), 0)
-      : null;
+  const notionalUsd = state ? vaultNotionalUsd(state, input.prices) : null;
   if (notionalUsd === null)
     unknowns.push(
       state
@@ -241,8 +558,39 @@ function buildAgentContext(
       });
     return { assetId: asset.id, observation };
   });
+  // Size-free for a new goal, which has no amount yet: the most that sells at the cost tolerance.
+  const measuredCapacity = new Set<string>();
+  const provider = prepared.figures.liquidity?.provider;
+  if (input.kind === 'new_goal' && provider && prepared.figures.liquidity)
+    for (const asset of assets) {
+      if (asset.cls === 'cash') continue;
+      const capacity = provider.exitCapacity(asset.id, PERSONAL_PARAMS.tau, EXIT_WINDOW_DAYS);
+      if (!capacity || capacity.samples <= 0 || !capacity.dataTo) continue;
+      // A reading that does not make a valid source is not measured: the unknown below says so.
+      const source = VaultAgentSource.safeParse({
+        id: `capacity:${asset.id}`,
+        assetId: asset.id,
+        label: `Largest sale within the cost tolerance, worst regime of the exit window; does not depend on an amount${capacity.lowerBound ? LOWER_BOUND : ''}`,
+        value: capacity.capacityUsd,
+        unit: 'USD',
+        source: prepared.figures.liquidity.source,
+        fetchedAt: capacity.dataTo,
+        method: `${provider.methodVersion}; cost tolerance ${PERSONAL_PARAMS.tau}`,
+        provenance: provider.provenance,
+      });
+      if (!source.success) continue;
+      measuredCapacity.add(asset.id);
+      evidence.push(source.data);
+    }
+  const analytics = analyticsEvidence(input.analytics ?? null, listed);
+  for (const source of analytics?.evidence ?? []) add(source);
   if (
-    liquidity.some((item) => listed.get(item.assetId)?.cls !== 'cash' && item.observation === null)
+    liquidity.some(
+      (item) =>
+        listed.get(item.assetId)?.cls !== 'cash' &&
+        item.observation === null &&
+        !measuredCapacity.has(item.assetId),
+    )
   )
     unknowns.push(
       'Measured exit evidence is missing for some listed assets; missing evidence is not zero exit cost.',
@@ -268,6 +616,7 @@ function buildAgentContext(
     stockAttributes: prepared.figures.stocks ?? null,
     liquidity,
     unknowns,
+    ...(analytics ? { analytics: analytics.prompt } : {}),
     caps,
     ...(input.confirmedGoal ? { confirmedGoal: input.confirmedGoal } : {}),
   } as ConversationAgentContext;
@@ -502,6 +851,9 @@ export async function replyToVaultConversation(
   );
   if (Object.values(caps).some((cap) => !Number.isInteger(cap) || cap < 0 || cap > 10_000))
     return invalid('context_caps');
+  const inAnalytics = new Set(
+    (context.analytics?.assets ?? []).flatMap((row) => Object.keys(row.values)),
+  );
   const constraints = holdingConstraints(parsed.data.messages, [...catalog.values()]);
   const prompt: VaultAgentPrompt = {
     version: 1,
@@ -525,10 +877,27 @@ export async function replyToVaultConversation(
         sheet,
       }),
     ),
-    evidence: [...sourceById.values()],
-    stockAttributes: context.stockAttributes,
+    // The analytics' figures go once, in their compact block; every other source goes here.
+    evidence: [...sourceById.values()]
+      .filter(({ id }) => !inAnalytics.has(id))
+      .map(({ id, assetId, label, value, unit, provenance }) => ({
+        id,
+        ...(assetId === undefined ? {} : { assetId }),
+        ...(label === undefined ? {} : { label }),
+        ...(value === undefined ? {} : { value }),
+        ...(unit === undefined ? {} : { unit }),
+        provenance,
+      })),
+    stockAttributes: context.stockAttributes
+      ? {
+          ...context.stockAttributes,
+          stocks: context.stockAttributes.stocks.map(({ sources: _sources, ...row }) => row),
+        }
+      : null,
     liquidity: context.liquidity,
     unknowns: context.unknowns,
+    analytics: context.analytics ?? null,
+    exitCostTolerance: PERSONAL_PARAMS.tau,
     caps,
     eligibilityGoal: eligibilityGoal(context),
     allocationConstraints: constraints.map((constraint) => ({
