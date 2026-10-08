@@ -479,7 +479,9 @@ describe('new-goal model preview route', () => {
     vi.mocked(s.model.read).mockResolvedValueOnce({ reply: figure });
     const res = await s.post();
     expect(res.statusCode).toBe(200);
-    expect(res.json().message).toBe('We can explore that direction.');
+    expect(res.json().message).toBe(
+      'We can explore that direction. Part of this reply was left out because it stated a figure that could not be confirmed.',
+    );
     expect(s.logs.map((line) => JSON.parse(line))).toEqual([
       expect.objectContaining({
         level: 40,

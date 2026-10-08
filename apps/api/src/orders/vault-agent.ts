@@ -632,6 +632,13 @@ function hasNonFiniteNumber(value: unknown): boolean {
   return false;
 }
 
+/**
+ * A caveat, not a promise: the negation stands directly before the word ("not guaranteed", "isn't
+ * risk-free", "nothing here is guaranteed", "não é garantido"). Anything looser still counts as a promise.
+ */
+const NEGATED_PROMISE =
+  /(?:\b(?:not|never|nothing(?:\s+(?:here|in\s+this|about\s+this))?\s+is)|n['’]t)\s+(?:be\s+)?(?:guaranteed|risk[- ]free)\b|\b(?:não|nao|nunca|nem|nada(?:\s+(?:aqui|disso|nisso))?)\s+(?:(?:é|está|são|foi|será)\s+)?(?:garantido|sem risco)\b/giu;
+
 /** Exact attributed person quotes and catalog names may contain numbers; new metrics may not. */
 function hasFinancialFigure(text: string, personWords: string[], catalogNames: string[]): boolean {
   const names = catalogNames.filter((name) => /\p{N}/u.test(name));
@@ -642,7 +649,9 @@ function hasFinancialFigure(text: string, personWords: string[], catalogNames: s
   for (const name of names) remainder = remainder.replaceAll(name, '');
   return (
     /[\p{N}%$€£]/u.test(remainder) ||
-    /\b(?:guaranteed|risk[- ]free|garantido|sem risco)\b/iu.test(text) ||
+    /\b(?:guaranteed|risk[- ]free|garantido|sem risco)\b/iu.test(
+      text.replace(NEGATED_PROMISE, ''),
+    ) ||
     /\b(?:one|two|three|four|five|six|seven|eight|nine|ten|hundred|thousand|million|um|dois|três|tres|quatro|cinco|dez|cem|mil)\s+(?:percent|per\s+cent|basis\s+points?|dollars?|months?|years?|por\s+cento|d[oó]lares|meses|anos)\b/iu.test(
       remainder,
     )
@@ -652,7 +661,8 @@ function hasFinancialFigure(text: string, personWords: string[], catalogNames: s
 /**
  * The text as sentences, each with the space after it. A full stop splits only before a new line or a
  * word that does not start in lower case or with a digit, and never inside a catalog name or quotation
- * marks, so "Tesla, Inc. is listed" and a quote of the person with its attribution stay whole.
+ * marks, so "Tesla, Inc. is listed" and a quote of the person with its attribution stay whole. A line
+ * break alone ends a sentence only before a list marker: a clause that runs over the line goes with it.
  */
 function sentencesOf(text: string, catalogNames: string[]): string[] {
   const held: [number, number][] = [];
@@ -664,7 +674,9 @@ function sentencesOf(text: string, catalogNames: string[]): string[] {
       held.push([at, at + name.length]);
   const sentences: string[] = [];
   let start = 0;
-  for (const stop of text.matchAll(/[.!?…]+[”"'’)\]]*\s+(?![\s\p{Ll}\p{N}])|\s*\n\s*/gu)) {
+  for (const stop of text.matchAll(
+    /[.!?…]+[”"'’)\]]*(?:\s*\n\s*|\s+(?![\s\p{Ll}\p{N}]))|\s*\n\s*(?=(?:[-*•–—]|\p{N}+[.)])\s)/gu,
+  )) {
     if (held.some(([from, to]) => stop.index >= from && stop.index < to)) continue;
     const end = stop.index + stop[0].length;
     sentences.push(text.slice(start, end));
@@ -679,12 +691,19 @@ const FIGURE_REMOVED = {
   en: 'This part of the draft was left out because it stated a figure that could not be confirmed.',
   pt: 'Esta parte da proposta foi omitida porque trazia um número que não pôde ser confirmado.',
 };
+/** Said by the server after what is left of a message, and once in a list that lost an item or part of one. */
+const FIGURE_CUT = {
+  en: 'Part of this reply was left out because it stated a figure that could not be confirmed.',
+  pt: 'Parte desta resposta foi omitida porque trazia um número que não pôde ser confirmado.',
+};
 
 /**
  * The repair attempt's reply without the sentences that state a figure (`figure`), so one stray number
- * does not cost the person the whole reply and none of the model's reaches them. A question, a tradeoff
- * or an unknown left empty is dropped; an objective, a summary or a pick's reason left empty is the
- * server's `FIGURE_REMOVED`, never words made up for the model. Null when nothing of the message is left.
+ * does not cost the person the whole reply and none of the model's reaches them. No cut is silent where
+ * a caveat may have gone with it: the message ends with the server's `FIGURE_CUT`, and a list of
+ * tradeoffs or unknowns that lost an item or part of one holds it once. A question left empty is
+ * dropped; an objective, a summary or a pick's reason left empty is the server's `FIGURE_REMOVED`,
+ * never words made up for the model. Null when nothing of the message is left, or no room for the note.
  */
 function withoutFigureSentences(
   reply: VaultAgentModelReply,
@@ -699,22 +718,30 @@ function withoutFigureSentences(
     const kept = sentences.filter((sentence) => !figure(sentence));
     cut += sentences.length - kept.length;
     const rest = kept.join('').trim();
-    // A figure that only shows across two sentences leaves nothing of the field.
-    return figure(rest) ? '' : rest;
+    // A figure that only shows across two sentences leaves nothing of the field, and counts.
+    if (!figure(rest)) return rest;
+    cut += kept.length;
+    return '';
+  };
+  const list = (items: string[]): string[] => {
+    const before = cut;
+    const kept = items.map(trim).filter(Boolean);
+    return cut === before ? kept : [...kept.slice(0, 11), FIGURE_CUT[language]];
   };
   const message = trim(reply.message);
-  if (!message) return null;
+  const said = cut ? `${message} ${FIGURE_CUT[language]}` : message;
+  if (!message || said.length > 2400) return null;
   const { proposal } = reply;
   return {
     reply: {
-      message,
+      message: said,
       question: (reply.question === null ? null : trim(reply.question)) || null,
       proposal: proposal && {
         ...proposal,
         objective: trim(proposal.objective) || FIGURE_REMOVED[language],
         summary: trim(proposal.summary) || FIGURE_REMOVED[language],
-        tradeoffs: proposal.tradeoffs.map(trim).filter(Boolean),
-        unknowns: proposal.unknowns.map(trim).filter(Boolean),
+        tradeoffs: list(proposal.tradeoffs),
+        unknowns: list(proposal.unknowns),
         allocations: proposal.allocations.map((allocation) => ({
           ...allocation,
           why: trim(allocation.why) || FIGURE_REMOVED[language],
