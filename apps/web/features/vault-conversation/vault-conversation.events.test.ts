@@ -829,6 +829,42 @@ describe('conservative stored history and provider validation', () => {
     expect(plainText('one\r\ntwo\rthree\n\tfour')).toBe('one\ntwo\nthree\n\tfour');
   });
 
+  it('sends our server no character it refuses, whatever text the save is handed', async () => {
+    const value = {
+      revision: 0,
+      transcript: [
+        { id: 'a', who: 'person' as const, text: 'Why\u2066 gold?\r\nTell me.' },
+        { id: 'b', who: 'app' as const, text: 'Gold\u0000 is\u202e here\u0007.\u009f' },
+      ],
+    };
+    let sent: { transcript: unknown } = { transcript: null };
+    const store = serverConversation(
+      async (_path, init) => {
+        sent = JSON.parse(String(init?.body));
+        // our server, by its own schema: a refused row is a 400, as it would be for every save after
+        if (!VaultConversationTranscript.safeParse(sent.transcript).success) return json({}, 400);
+        return json({
+          version: 1,
+          chain: read.chain,
+          address: read.vault.address,
+          provenance: read.provenance,
+          network: 'testnet',
+          revision: 1,
+          transcript: sent.transcript,
+        });
+      },
+      read.chain,
+      read.vault.address,
+      read.provenance,
+      'testnet',
+    );
+    expect(await store.write(value)).toBe('saved');
+    expect(sent.transcript).toEqual([
+      { id: 'a', who: 'person', text: 'Why gold?\nTell me.' },
+      { id: 'b', who: 'app', text: 'Gold is here.' },
+    ]);
+  });
+
   it('saves a reply with characters our server refuses as plain text, so later saves still go through', async () => {
     const writes: { transcript: unknown }[] = [];
     portStore.setApi(async (url, init) => {

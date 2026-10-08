@@ -157,6 +157,9 @@ export function serverConversation(
     },
     async write(value) {
       if (network === null || !served()) return 'unavailable';
+      // The one place a conversation is sent from: nothing leaves here with a character our server
+      // refuses, whoever made the text. One refused row would refuse every later save of this vault's.
+      const transcript = value.transcript.map((row) => ({ ...row, text: plainText(row.text) }));
       try {
         const response = await api(path, {
           method: 'PUT',
@@ -166,7 +169,7 @@ export function serverConversation(
             version: 1,
             expectedNetwork: network,
             expectedRevision: value.revision,
-            transcript: value.transcript,
+            transcript,
             checkpoint: null,
           }),
         });
@@ -183,7 +186,7 @@ export function serverConversation(
             normalizeAddress(chainFamily(chain), address) &&
           body.provenance === provenance &&
           saved?.revision === value.revision + 1 &&
-          JSON.stringify(saved.transcript) === JSON.stringify(value.transcript)
+          JSON.stringify(saved.transcript) === JSON.stringify(transcript)
           ? 'saved'
           : 'unavailable';
       } catch {
