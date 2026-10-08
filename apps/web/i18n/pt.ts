@@ -217,6 +217,12 @@ export const pt: Dictionary = {
         'Apenas uma prévia. Este rascunho ainda não pode ser investido aqui. O investimento guiado é um fluxo separado.',
       unavailable:
         'O serviço de conversa de estratégia está indisponível. Suas palavras foram mantidas; nenhum rascunho foi produzido.',
+      timeout:
+        'A resposta demorou demais. Suas palavras foram mantidas; tente novamente em instantes.',
+      budget:
+        'A conversa atingiu o limite diário de uso. Suas palavras foram mantidas; tente novamente mais tarde.',
+      invalid:
+        'Não consegui produzir uma resposta verificada para este pedido. Suas palavras foram mantidas; nenhum rascunho foi produzido.',
       failed:
         'Não consegui uma resposta válida. Suas palavras foram mantidas; nenhum rascunho foi produzido.',
       notSaved: 'Este navegador não conseguiu salvar estas mensagens. Mantenha esta página aberta.',

@@ -40,7 +40,10 @@ export type VaultAgentReply = {
 };
 export type VaultAgent = (request: VaultAgentRequest) => Promise<unknown>;
 export class VaultAgentError extends Error {
-  constructor(readonly kind: 'unavailable' | 'failed') {
+  constructor(
+    readonly kind: 'unavailable' | 'failed',
+    readonly reason?: 'unavailable' | 'timeout' | 'budget' | 'invalid',
+  ) {
     super(kind);
   }
 }

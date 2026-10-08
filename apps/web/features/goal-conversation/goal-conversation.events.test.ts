@@ -79,6 +79,31 @@ beforeEach(() => {
 afterEach(unmountAll);
 
 describe('private strategy exploration for a new goal', () => {
+  it('keeps the same owner’s new-goal words separate across configured networks', async () => {
+    const first = goalConversationKey(userId, 'solana', 'mock', 'testnet');
+    const other = goalConversationKey(userId, 'solana', 'mock', 'mainnet');
+    expect(first).not.toBe(other);
+    localStorage.setItem(
+      first,
+      JSON.stringify({
+        revision: 0,
+        transcript: [{ id: 'testnet-turn', who: 'person', text: 'Test-network discussion' }],
+      }),
+    );
+    expect(localStorage.getItem(other)).toBeNull();
+    localStorage.setItem(
+      `tf-goal-conversation:1:${encodeURIComponent(userId)}:solana:mock`,
+      JSON.stringify({
+        revision: 0,
+        transcript: [{ id: 'old-turn', who: 'person', text: 'Unscoped older discussion' }],
+      }),
+    );
+    const host = await show();
+    expect(host.textContent).not.toContain('Unscoped older discussion');
+    expect(
+      localStorage.getItem(`tf-goal-conversation:1:${encodeURIComponent(userId)}:solana:mock`),
+    ).toContain('Unscoped older discussion');
+  });
   it.each(['en', 'pt'] as const)(
     'offers keyboard-accessible local starters, then sends only the person’s edited words (%s)',
     async (lang) => {
@@ -215,6 +240,48 @@ describe('private strategy exploration for a new goal', () => {
     const reopened = await show();
     expect(find(reopened, '[data-ui="goal-transcript"]').textContent).toContain(words);
     expect(reopened.querySelector('[data-ui="goal-empty-preview"]')).not.toBeNull();
+  });
+  it.each(['en', 'pt'] as const)(
+    'explains only checked server failures and retains the person words (%s)',
+    async (lang) => {
+      const copy = dictionary(lang).goal.explore;
+      for (const reason of ['timeout', 'budget', 'invalid', 'unavailable'] as const) {
+        portStore.setApi(async (url, init) =>
+          init?.method === 'POST'
+            ? json(
+                { code: 'GOAL_AGENT_UNAVAILABLE', reason, error: '<script>private error</script>' },
+                503,
+              )
+            : baseApi(url),
+        );
+        const host = await show(lang);
+        await send(host, 'Explore electric vehicles');
+        expect(host.textContent).toContain(copy[reason]);
+        expect(host.textContent).not.toContain('private error');
+        expect(find(host, '[data-ui="goal-transcript"]').textContent).toContain(
+          'Explore electric vehicles',
+        );
+        expect(host.querySelector('[data-ui="goal-empty-preview"]')).not.toBeNull();
+        expect(host.querySelector('[data-ui="buy-card"]')).toBeNull();
+        await unmountAll();
+        localStorage.clear();
+      }
+    },
+  );
+  it.each([
+    { code: 'OTHER_ERROR', reason: 'budget' },
+    { code: 'GOAL_AGENT_UNAVAILABLE', reason: '<img src=x onerror=alert(1)>' },
+    { code: 'GOAL_AGENT_UNAVAILABLE', reason: null },
+  ])('keeps unknown failure payloads out of product copy: %j', async (failure) => {
+    portStore.setApi(async (url, init) =>
+      init?.method === 'POST' ? json(failure, 503) : baseApi(url),
+    );
+    const host = await show();
+    await send(host, 'Explore technology');
+    expect(host.textContent).toContain(en.goal.explore.unavailable);
+    expect(host.textContent).not.toContain(en.goal.explore.budget);
+    expect(host.querySelector('img[src="x"]')).toBeNull();
+    expect(host.querySelector('[data-ui="goal-empty-preview"]')).not.toBeNull();
   });
   it('ignores a late reply after a chain or person switch and never writes it into another history', async () => {
     let resolve: (value: Response) => void = () => {};

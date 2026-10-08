@@ -11,6 +11,7 @@ import { agentReplyOf } from './agent';
 import { StrategyPreview } from './StrategyPreview';
 import {
   conversationKey,
+  conversationNetwork,
   readLocal,
   serverConversation,
   transcriptOf,
@@ -44,11 +45,16 @@ const send = async (host: HTMLElement, words: string) => {
 const show = (lang: 'en' | 'pt' = 'en') =>
   mount(withAccount(lang, createElement(VaultConversation, { read, userId })));
 beforeEach(() => {
+  vi.stubEnv('NEXT_PUBLIC_CHAIN_NETWORK_SOLANA', 'testnet');
+  vi.stubEnv('NEXT_PUBLIC_CHAIN_NETWORK_ROBINHOOD', 'testnet');
   localStorage.clear();
   portStore.set(signedInPort(EMBEDDED, { userId }));
   portStore.setApi(async () => json({}, 404));
 });
-afterEach(unmountAll);
+afterEach(async () => {
+  await unmountAll();
+  vi.unstubAllEnvs();
+});
 
 describe('a continuous conversation for one vault', () => {
   it.each(['en', 'pt'] as const)(
@@ -214,12 +220,12 @@ describe('a continuous conversation for one vault', () => {
       host.querySelector('[data-ui="vault-proposal"] button[data-ui="composer-send"]'),
     ).toBeNull();
     const saved = readLocal(
-      conversationKey(userId, read.chain, read.vault.address, read.provenance),
+      conversationKey(userId, read.chain, read.vault.address, read.provenance, 'testnet'),
     );
     expect(saved).not.toHaveProperty('proposal');
     expect(saved).not.toHaveProperty('confirmed');
     const beforeDiscussion = readLocal(
-      conversationKey(userId, read.chain, read.vault.address, read.provenance),
+      conversationKey(userId, read.chain, read.vault.address, read.provenance, 'testnet'),
     );
     const discuss = [...proposed.querySelectorAll('button')].find(
       (button) => button.textContent === en.shared.vault.conversation.discuss,
@@ -230,7 +236,9 @@ describe('a continuous conversation for one vault', () => {
       en.shared.vault.conversation.discussPrompt,
     );
     expect(
-      readLocal(conversationKey(userId, read.chain, read.vault.address, read.provenance)),
+      readLocal(
+        conversationKey(userId, read.chain, read.vault.address, read.provenance, 'testnet'),
+      ),
     ).toEqual(beforeDiscussion);
   });
 
@@ -256,6 +264,7 @@ describe('a continuous conversation for one vault', () => {
           chain: read.chain,
           address: read.vault.address,
           provenance: read.provenance,
+          network: 'testnet',
           revision: value.expectedRevision + 1,
           transcript: value.transcript,
         });
@@ -265,6 +274,7 @@ describe('a continuous conversation for one vault', () => {
         chain: read.chain,
         address: read.vault.address,
         provenance: read.provenance,
+        network: 'testnet',
         revision: 3,
         transcript,
       });
@@ -273,6 +283,7 @@ describe('a continuous conversation for one vault', () => {
     expect(host.textContent).toContain('An earlier actual message.');
     await send(host, 'Continue this discussion.');
     expect(writes.map((write) => write.expectedRevision)).toEqual([3, 4]);
+    expect(writes.every((write) => write.expectedNetwork === 'testnet')).toBe(true);
     expect(writes.every((write) => write.checkpoint === null)).toBe(true);
     expect(host.textContent).toContain(en.shared.vault.conversation.saved);
   });
@@ -291,6 +302,7 @@ describe('a continuous conversation for one vault', () => {
         chain: read.chain,
         address: read.vault.address,
         provenance: read.provenance,
+        network: 'testnet',
         revision: 0,
         transcript: [],
       });
@@ -300,7 +312,7 @@ describe('a continuous conversation for one vault', () => {
     expect(requested).toBe(0);
     expect(host.textContent).toContain(en.shared.vault.conversation.conflict);
     expect(
-      readLocal(conversationKey(userId, read.chain, read.vault.address, read.provenance))
+      readLocal(conversationKey(userId, read.chain, read.vault.address, read.provenance, 'testnet'))
         .transcript[0]?.text,
     ).toBe('My offline message.');
   });
@@ -371,9 +383,186 @@ describe('a continuous conversation for one vault', () => {
     expect(host.querySelector('[data-ui="vault-proposal"]')).toBeNull();
     expect(host.textContent).not.toContain(reply.message);
     expect(
-      readLocal(conversationKey('another-person', read.chain, read.vault.address, read.provenance))
-        .transcript,
+      readLocal(
+        conversationKey(
+          'another-person',
+          read.chain,
+          read.vault.address,
+          read.provenance,
+          'testnet',
+        ),
+      ).transcript,
     ).toEqual([]);
+  });
+
+  it('remounts the same owned vault on a network change and rejects the old in-flight preview', async () => {
+    const oldKey = conversationKey(
+      userId,
+      read.chain,
+      read.vault.address,
+      read.provenance,
+      'testnet',
+    );
+    const nextKey = conversationKey(
+      userId,
+      read.chain,
+      read.vault.address,
+      read.provenance,
+      'mainnet',
+    );
+    writeLocal(oldKey, {
+      revision: 0,
+      transcript: [{ id: 'test', who: 'person', text: 'Test network words.' }],
+    });
+    writeLocal(nextKey, {
+      revision: 0,
+      transcript: [{ id: 'main', who: 'person', text: 'Main network words.' }],
+    });
+    let resolve: (response: Response) => void = () => {};
+    let signal: AbortSignal | null | undefined;
+    let messageId = '';
+    portStore.setApi(async (url, init) => {
+      if (url === '/v1/me')
+        return json({
+          userId,
+          wallets: EMBEDDED,
+          chain: 'solana',
+          chainSource: 'picked',
+          chainOptions: [],
+        });
+      if (url.endsWith('/conversation')) return json({}, 404);
+      if (url.endsWith('/reply')) {
+        signal = init?.signal;
+        messageId = JSON.parse(String(init?.body)).messageId;
+        return new Promise<Response>((done) => {
+          resolve = done;
+        });
+      }
+      return json(read);
+    });
+    const host = await mount(
+      withAccount(
+        'en',
+        createElement(VaultScreen, { chain: read.chain, address: read.vault.address }),
+      ),
+    );
+    await settle();
+    expect(host.textContent).toContain('Test network words.');
+    expect(host.textContent).not.toContain('Main network words.');
+    await send(host, 'A pending test network request.');
+    await act(async () => {
+      vi.stubEnv('NEXT_PUBLIC_CHAIN_NETWORK_SOLANA', 'mainnet');
+      portStore.set(signedInPort(EMBEDDED, { userId }));
+    });
+    await settle();
+    expect(signal?.aborted).toBe(true);
+    expect(host.textContent).toContain('Main network words.');
+    expect(host.textContent).not.toContain('Test network words.');
+    resolve(json({ ...reply, messageId }));
+    await settle();
+    expect(host.querySelector('[data-ui="vault-proposal"]')).toBeNull();
+    expect(host.textContent).not.toContain(reply.message);
+    expect(readLocal(nextKey).transcript).toEqual([
+      { id: 'main', who: 'person', text: 'Main network words.' },
+    ]);
+    expect(readLocal(oldKey).transcript.at(-1)?.text).toBe('A pending test network request.');
+  });
+
+  it('keeps a delayed old-network write out of the remounted network history', async () => {
+    let finishOld: (response: Response) => void = () => {};
+    let oldSignal: AbortSignal | null | undefined;
+    const writes: Record<string, unknown>[] = [];
+    let modelCalls = 0;
+    portStore.setApi(async (url, init) => {
+      if (url === '/v1/me')
+        return json({
+          userId,
+          wallets: EMBEDDED,
+          chain: 'solana',
+          chainSource: 'picked',
+          chainOptions: [],
+        });
+      const network = conversationNetwork(read.chain);
+      if (url.endsWith('/reply')) {
+        modelCalls++;
+        return json({
+          ...reply,
+          messageId: JSON.parse(String(init?.body)).messageId,
+          proposal: null,
+        });
+      }
+      if (url.endsWith('/conversation')) {
+        if (init?.method === 'PUT') {
+          const body = JSON.parse(String(init.body));
+          writes.push(body);
+          if (body.expectedNetwork === 'testnet') {
+            oldSignal = init.signal;
+            return new Promise<Response>((done) => {
+              finishOld = done;
+            });
+          }
+          return json({
+            version: 1,
+            chain: read.chain,
+            address: read.vault.address,
+            provenance: read.provenance,
+            network,
+            revision: body.expectedRevision + 1,
+            transcript: body.transcript,
+          });
+        }
+        return json({
+          version: 1,
+          chain: read.chain,
+          address: read.vault.address,
+          provenance: read.provenance,
+          network,
+          revision: 0,
+          transcript:
+            network === 'mainnet'
+              ? [{ id: 'main', who: 'person', text: 'Current main network history.' }]
+              : [],
+        });
+      }
+      return json(read);
+    });
+    const host = await mount(
+      withAccount(
+        'en',
+        createElement(VaultScreen, { chain: read.chain, address: read.vault.address }),
+      ),
+    );
+    await settle();
+    await send(host, 'Pending test network words.');
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.expectedNetwork).toBe('testnet');
+    expect(writes[0]).not.toHaveProperty('network');
+    await act(async () => {
+      vi.stubEnv('NEXT_PUBLIC_CHAIN_NETWORK_SOLANA', 'mainnet');
+      portStore.set(signedInPort(EMBEDDED, { userId }));
+    });
+    await settle();
+    expect(oldSignal?.aborted).toBe(true);
+    finishOld(json({ details: { reason: 'NETWORK_CONFLICT' } }, 409));
+    await settle();
+    expect(modelCalls).toBe(0);
+    expect(host.textContent).toContain('Current main network history.');
+    expect(host.textContent).not.toContain('Pending test network words.');
+    expect(host.textContent).not.toContain(en.shared.vault.conversation.conflict);
+    const mainKey = conversationKey(
+      userId,
+      read.chain,
+      read.vault.address,
+      read.provenance,
+      'mainnet',
+    );
+    expect(readLocal(mainKey).revision).toBe(0);
+    await send(host, 'Continue on the current network.');
+    expect(writes.slice(1).map((write) => write.expectedNetwork)).toEqual(['mainnet', 'mainnet']);
+    expect(writes.slice(1).map((write) => write.expectedRevision)).toEqual([0, 1]);
+    expect(
+      readLocal(mainKey).transcript.some((turn) => turn.text === 'Pending test network words.'),
+    ).toBe(false);
   });
 });
 
@@ -437,7 +626,13 @@ describe('current context and truthful holdings', () => {
       expect(host.textContent).not.toContain(reply.message);
       expect(
         readLocal(
-          conversationKey(userId, nextRead.chain, nextRead.vault.address, nextRead.provenance),
+          conversationKey(
+            userId,
+            nextRead.chain,
+            nextRead.vault.address,
+            nextRead.provenance,
+            'testnet',
+          ),
         ).transcript,
       ).toEqual([]);
     },
@@ -492,16 +687,113 @@ describe('current context and truthful holdings', () => {
 });
 
 describe('conservative stored history and provider validation', () => {
+  it('uses exact configured networks and does not import old unscoped local history', async () => {
+    expect(conversationNetwork(read.chain)).toBe('testnet');
+    vi.stubEnv('NEXT_PUBLIC_CHAIN_NETWORK_SOLANA', 'mainnet');
+    expect(conversationNetwork(read.chain)).toBe('mainnet');
+    vi.stubEnv('NEXT_PUBLIC_CHAIN_NETWORK_SOLANA', 'testnet');
+    const keys = (['mainnet', 'testnet', 'local', null] as const).map((network) =>
+      conversationKey(userId, read.chain, read.vault.address, read.provenance, network),
+    );
+    expect(new Set(keys).size).toBe(4);
+    const legacy = `tf-vault-conversation:1:${encodeURIComponent(userId)}:${read.chain}:${read.vault.address}:${read.provenance}`;
+    writeLocal(legacy, {
+      revision: 0,
+      transcript: [{ id: 'old', who: 'person', text: 'Unscoped old words.' }],
+    });
+    const host = await show();
+    expect(host.textContent).not.toContain('Unscoped old words.');
+    expect(readLocal(legacy).transcript[0]?.text).toBe('Unscoped old words.');
+  });
+
+  it.each([undefined, 'mainnet', 'local'])(
+    'rejects a server read for missing or different network %s',
+    async (network) => {
+      const store = serverConversation(
+        async () =>
+          json({
+            version: 1,
+            chain: read.chain,
+            address: read.vault.address,
+            provenance: read.provenance,
+            network,
+            revision: 0,
+            transcript: [],
+          }),
+        read.chain,
+        read.vault.address,
+        read.provenance,
+        'testnet',
+      );
+      expect(await store.read()).toBeNull();
+    },
+  );
+
+  it.each([undefined, 'mainnet', 'local', 'testnet'])(
+    'accepts a write acknowledgement only on the exact expected network %s',
+    async (network) => {
+      const value = {
+        revision: 3,
+        transcript: [{ id: 'x', who: 'person' as const, text: 'My words.' }],
+      };
+      let sent: Record<string, unknown> = {};
+      const store = serverConversation(
+        async (_path, init) => {
+          sent = JSON.parse(String(init?.body));
+          return json({
+            version: 1,
+            chain: read.chain,
+            address: read.vault.address,
+            provenance: read.provenance,
+            network,
+            revision: 4,
+            transcript: value.transcript,
+          });
+        },
+        read.chain,
+        read.vault.address,
+        read.provenance,
+        'testnet',
+      );
+      expect(await store.write(value)).toBe(network === 'testnet' ? 'saved' : 'unavailable');
+      expect(sent).toEqual({
+        version: 1,
+        expectedNetwork: 'testnet',
+        expectedRevision: 3,
+        transcript: value.transcript,
+        checkpoint: null,
+      });
+    },
+  );
+
+  it('does not ask for private history without a valid configured network', async () => {
+    vi.stubEnv('NEXT_PUBLIC_CHAIN_NETWORK_SOLANA', 'invalid-network');
+    expect(conversationNetwork(read.chain)).toBeNull();
+    const api = vi.fn(async (_path: string) => json({}));
+    const store = serverConversation(api, read.chain, read.vault.address, read.provenance, null);
+    expect(await store.read()).toBeNull();
+    expect(await store.write({ revision: 0, transcript: [] })).toBe('unavailable');
+    expect(api).not.toHaveBeenCalled();
+    portStore.setApi(api);
+    await show();
+    expect(api.mock.calls.map(([path]) => path)).toEqual(['/v1/me']);
+  });
   it('separates users, chains, provenance, normalized EVM identities and exact Solana identities', () => {
     const lower = '0x204faca1764b154221e35c0d20abb3c525710498';
-    expect(conversationKey(userId, 'robinhood', lower, 'sandbox')).toBe(
-      conversationKey(userId, 'robinhood', lower.toUpperCase().replace('0X', '0x'), 'sandbox'),
+    expect(conversationKey(userId, 'robinhood', lower, 'sandbox', 'testnet')).toBe(
+      conversationKey(
+        userId,
+        'robinhood',
+        lower.toUpperCase().replace('0X', '0x'),
+        'sandbox',
+        'testnet',
+      ),
     );
-    expect(conversationKey(userId, read.chain, read.vault.address, 'sandbox')).not.toBe(
-      conversationKey('another', read.chain, read.vault.address, 'sandbox'),
+    expect(conversationKey(userId, read.chain, read.vault.address, 'sandbox', 'testnet')).not.toBe(
+      conversationKey('another', read.chain, read.vault.address, 'sandbox', 'testnet'),
     );
-    expect(conversationKey(userId, read.chain, read.vault.address, 'sandbox')).not.toBe(
-      conversationKey(userId, read.chain, read.vault.address, 'live'),
+    expect(conversationKey(userId, read.chain, read.vault.address, 'sandbox', 'testnet')).not.toBe(
+      conversationKey(userId, read.chain, read.vault.address, 'live', 'testnet'),
     );
   });
   it('accepts the server’s full 200-character source label and renders it without truncation', async () => {
@@ -599,20 +891,25 @@ describe('conservative stored history and provider validation', () => {
           chain: read.chain,
           address: read.vault.owner,
           provenance: read.provenance,
+          network: 'testnet',
           revision: 0,
           transcript: [],
         }),
       read.chain,
       read.vault.address,
       read.provenance,
+      'testnet',
     );
     expect(await store.read()).toBeNull();
   });
   it('retains local pending words when account load fails', async () => {
-    writeLocal(conversationKey(userId, read.chain, read.vault.address, read.provenance), {
-      revision: 0,
-      transcript: [{ id: 'x', who: 'person', text: 'My retained message' }],
-    });
+    writeLocal(
+      conversationKey(userId, read.chain, read.vault.address, read.provenance, 'testnet'),
+      {
+        revision: 0,
+        transcript: [{ id: 'x', who: 'person', text: 'My retained message' }],
+      },
+    );
     portStore.setApi(async () => {
       throw new Error('offline');
     });

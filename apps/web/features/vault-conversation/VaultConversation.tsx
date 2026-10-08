@@ -23,6 +23,7 @@ import {
 import { StrategyPreview } from './StrategyPreview';
 import {
   conversationKey,
+  conversationNetwork,
   readLocal,
   serverConversation,
   type Turn,
@@ -49,7 +50,8 @@ export function VaultConversation({
   const id = useId();
   const composer = useRef<HTMLDivElement>(null);
   const transcript = useRef<HTMLOListElement>(null);
-  const key = conversationKey(userId, read.chain, read.vault.address, read.provenance);
+  const network = conversationNetwork(read.chain);
+  const key = conversationKey(userId, read.chain, read.vault.address, read.provenance, network);
   const context = `${key}:${read.vault.observedAt}`;
   const [turns, setTurns] = useState<Turn[]>([]);
   useEffect(() => {
@@ -68,7 +70,9 @@ export function VaultConversation({
   const heldTurns = useRef<Turn[]>([]);
   const serverReady = useRef(false);
   const cancellation = useRef<AbortController | null>(null);
-  const remote = useRef(serverConversation(api, read.chain, read.vault.address, read.provenance));
+  const remote = useRef(
+    serverConversation(api, read.chain, read.vault.address, read.provenance, network),
+  );
   const localKey = useRef(key);
   localKey.current = context;
 
@@ -92,6 +96,7 @@ export function VaultConversation({
       read.chain,
       read.vault.address,
       read.provenance,
+      network,
       cancel.signal,
     );
     remote.current = store;
@@ -123,7 +128,7 @@ export function VaultConversation({
       cancel.abort();
       ++generation.current;
     };
-  }, [api, key, read.chain, read.vault.address, read.provenance, context]);
+  }, [api, key, read.chain, read.vault.address, read.provenance, network, context]);
 
   async function save(transcript: Turn[], run: number) {
     if (generation.current !== run) return false;

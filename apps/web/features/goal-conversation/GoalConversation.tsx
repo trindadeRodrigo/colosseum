@@ -1,5 +1,5 @@
 'use client';
-import type { ChainId, Provenance } from '@colosseum/schemas';
+import type { ChainId, Network, Provenance } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
@@ -11,13 +11,24 @@ import { useLang, useT } from '../../i18n/I18nProvider';
 import { share } from '../portfolio/figures';
 import { VaultAgentError, type VaultAgentReply } from '../vault-conversation/agent';
 import { StrategyPreview } from '../vault-conversation/StrategyPreview';
-import { readLocal, type Turn, transcriptOf, writeLocal } from '../vault-conversation/storage';
+import {
+  conversationNetwork,
+  readLocal,
+  type Turn,
+  transcriptOf,
+  writeLocal,
+} from '../vault-conversation/storage';
 import { useApiFetch } from '../wallet/WalletProvider';
 import { goalAgent } from './agent';
 import { consumeGoalHandoff, readGoalHandoff } from './handoff';
 
-export const goalConversationKey = (userId: string, chain: ChainId, provenance: Provenance) =>
-  `tf-goal-conversation:1:${encodeURIComponent(userId)}:${chain}:${provenance}`;
+export const goalConversationKey = (
+  userId: string,
+  chain: ChainId,
+  provenance: Provenance,
+  network: Network | null = conversationNetwork(chain),
+) =>
+  `tf-goal-conversation:2:${encodeURIComponent(userId)}:${chain}:${network ?? 'unconfigured'}:${provenance}`;
 
 /** Plain browser history is never restored as a proposal, confirmation or executable order. */
 export function GoalConversation({
@@ -154,7 +165,13 @@ export function GoalConversation({
       if (active())
         setError(
           cause instanceof VaultAgentError && cause.kind === 'unavailable'
-            ? copy.unavailable
+            ? cause.reason === 'timeout'
+              ? copy.timeout
+              : cause.reason === 'budget'
+                ? copy.budget
+                : cause.reason === 'invalid'
+                  ? copy.invalid
+                  : copy.unavailable
             : copy.failed,
         );
     } finally {

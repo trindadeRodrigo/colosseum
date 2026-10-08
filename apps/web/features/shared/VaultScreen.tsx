@@ -22,6 +22,7 @@ import { dollars, drift, share, shareTenths, tokens } from '../portfolio/figures
 import { type HoldingRow, holdingsOf, unpriced, vaultValueSource } from '../portfolio/portfolio';
 import { OwnVaultActions } from '../portfolio/VaultActions';
 import { sameAddress } from '../portfolio/vault-name';
+import { conversationNetwork } from '../vault-conversation/storage';
 import { VaultConversation } from '../vault-conversation/VaultConversation';
 import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { readVault } from './shared-api';
@@ -241,7 +242,7 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
 
       {mine && port.userId && (
         <VaultConversation
-          key={`${port.userId}:${read.chain}:${vault.address}:${read.provenance}:${vault.observedAt}:${account.status === 'ready' ? account.chain : account.status}`}
+          key={`${port.userId}:${read.chain}:${conversationNetwork(read.chain) ?? 'unconfigured'}:${vault.address}:${read.provenance}:${vault.observedAt}:${account.status === 'ready' ? account.chain : account.status}`}
           read={read}
           userId={port.userId}
           showValue={false}

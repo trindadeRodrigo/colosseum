@@ -256,6 +256,11 @@ export const en = {
         'Preview only. This draft cannot be invested here yet. Guided investing is a separate flow.',
       unavailable:
         'The strategy conversation service is unavailable. Your words are kept; no draft was produced.',
+      timeout: 'The reply took too long. Your words are kept; try again in a moment.',
+      budget:
+        'The conversation has reached its daily usage limit. Your words are kept; try again later.',
+      invalid:
+        'I could not produce a checked reply for this request. Your words are kept; no draft was produced.',
       failed: 'I could not get a valid reply. Your words are kept; no draft was produced.',
       notSaved: 'This browser could not save these messages. Keep this page open.',
       capacity: 'This conversation has reached its limit. Your earlier messages are kept.',

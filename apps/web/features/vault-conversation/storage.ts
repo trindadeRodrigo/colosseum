@@ -1,5 +1,6 @@
-import { type ChainId, chainFamily, normalizeAddress } from '@colosseum/schemas';
+import { type ChainId, chainFamily, type Network, normalizeAddress } from '@colosseum/schemas';
 import type { ApiFetch } from '../account/person';
+import { publicWalletEnv, walletChains } from '../wallet/chains';
 
 export type Turn = { id: string; who: 'person' | 'app'; text: string };
 export type Transcript = { revision: number; transcript: Turn[] };
@@ -8,8 +9,24 @@ export type ConversationStore = {
   write: (value: Transcript) => Promise<'saved' | 'conflict' | 'unavailable'>;
 };
 
-export function conversationKey(user: string, chain: ChainId, address: string, provenance: string) {
-  return `tf-vault-conversation:1:${encodeURIComponent(user)}:${chain}:${normalizeAddress(chainFamily(chain), address)}:${provenance}`;
+/** The app's configured network; a mock label never selects or invents a network. */
+export function conversationNetwork(chain: ChainId): Network | null {
+  try {
+    return walletChains(publicWalletEnv())[chain].config.network;
+  } catch {
+    return null;
+  }
+}
+
+export function conversationKey(
+  user: string,
+  chain: ChainId,
+  address: string,
+  provenance: string,
+  network: Network | null,
+) {
+  // Version two deliberately does not import history written without a network scope.
+  return `tf-vault-conversation:2:${encodeURIComponent(user)}:${chain}:${network ?? 'unconfigured'}:${normalizeAddress(chainFamily(chain), address)}:${provenance}`;
 }
 
 /** History is plain text, never a restored sheet, confirmation or executable proposal. */
@@ -78,11 +95,13 @@ export function serverConversation(
   chain: ChainId,
   address: string,
   provenance: string,
+  network: Network | null,
   signal?: AbortSignal,
 ): ConversationStore {
   const path = `/v1/vaults/${encodeURIComponent(chain)}/${encodeURIComponent(address)}/conversation`;
   return {
     async read() {
+      if (network === null) return null;
       try {
         const response = await api(path, { signal });
         if (!response.ok) return null;
@@ -90,6 +109,7 @@ export function serverConversation(
         if (
           body.version !== 1 ||
           body.chain !== chain ||
+          body.network !== network ||
           normalizeAddress(chainFamily(chain), body.address) !==
             normalizeAddress(chainFamily(chain), address) ||
           body.provenance !== provenance
@@ -101,6 +121,7 @@ export function serverConversation(
       }
     },
     async write(value) {
+      if (network === null) return 'unavailable';
       try {
         const response = await api(path, {
           method: 'PUT',
@@ -108,6 +129,7 @@ export function serverConversation(
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             version: 1,
+            expectedNetwork: network,
             expectedRevision: value.revision,
             transcript: value.transcript,
             checkpoint: null,
@@ -118,6 +140,7 @@ export function serverConversation(
         const saved = transcriptOf(body);
         return body.version === 1 &&
           body.chain === chain &&
+          body.network === network &&
           normalizeAddress(chainFamily(chain), body.address) ===
             normalizeAddress(chainFamily(chain), address) &&
           body.provenance === provenance &&

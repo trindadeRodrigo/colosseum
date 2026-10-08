@@ -27,10 +27,26 @@ export async function goalAgent(
       messages: turns.map(({ who, text }) => ({ who, text })),
     }),
   });
-  if (!response.ok)
+  if (!response.ok) {
+    // Only the server's closed failure vocabulary is surfaced; never its arbitrary error text.
+    if (response.status === 503) {
+      const failure: unknown = await response.json().catch(() => null);
+      if (failure && typeof failure === 'object') {
+        const value = failure as Record<string, unknown>;
+        if (
+          value.code === 'GOAL_AGENT_UNAVAILABLE' &&
+          (value.reason === 'unavailable' ||
+            value.reason === 'timeout' ||
+            value.reason === 'budget' ||
+            value.reason === 'invalid')
+        )
+          throw new VaultAgentError('unavailable', value.reason);
+      }
+    }
     throw new VaultAgentError(
       [404, 405, 501, 503].includes(response.status) ? 'unavailable' : 'failed',
     );
+  }
   const body = await response.json();
   if (body?.messageId !== messageId || body?.address !== undefined)
     throw new VaultAgentError('failed');
