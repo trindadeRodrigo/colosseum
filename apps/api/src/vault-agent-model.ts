@@ -5,10 +5,17 @@ import type { VaultAgentPrompt } from './orders/vault-agent';
 /**
  * The conversation sends the whole catalog, its evidence and the dialogue, and answers in prose with a
  * structured proposal: far more than the intake's read of one goal, so it has its own time and output
- * budget. `VAULT_AGENT_TIMEOUT_MS` overrides the time (`vaultAgentTimeoutMs`).
+ * budget. `VAULT_AGENT_TIMEOUT_MS` overrides the time (`vaultAgentTimeoutMs`). The output budget leaves
+ * room for the thinking the Claude 5 family always does, which counts against it, and stays under the
+ * SDK's limit for a call that is not streamed.
  */
 export const VAULT_AGENT_TIMEOUT_MS = 30_000;
-export const VAULT_AGENT_MAX_TOKENS = 8_192;
+export const VAULT_AGENT_MAX_TOKENS = 16_000;
+
+/** How hard a model that takes `output_config.effort` thinks; `VAULT_AGENT_EFFORT` overrides it. */
+export const VAULT_AGENT_EFFORTS = ['low', 'medium', 'high'] as const;
+export type VaultAgentEffort = (typeof VAULT_AGENT_EFFORTS)[number];
+export const VAULT_AGENT_EFFORT: VaultAgentEffort = 'low';
 
 /**
  * Whether a model takes `temperature`. The Claude 5 family and Opus 4.7/4.8 answer 400 to any sampling
@@ -18,6 +25,25 @@ export const VAULT_AGENT_MAX_TOKENS = 8_192;
  */
 export function acceptsTemperature(model: string): boolean {
   return /^claude-(?:3-|haiku-4-5(?![0-9])|(?:sonnet|opus)-4-[56](?![0-9]))/.test(model);
+}
+
+/**
+ * Whether a model takes `output_config.effort`: the Claude 5 family, Opus 4.5 to 4.8 and Sonnet 4.6.
+ * Haiku 4.5 and Sonnet 4.5 answer 400 to it; any other id, a future one included, goes without it.
+ */
+export function acceptsEffort(model: string): boolean {
+  return /^claude-(?:(?:opus|sonnet|haiku|fable|mythos)-5|opus-4-[5-8]|sonnet-4-6)(?![0-9])/.test(
+    model,
+  );
+}
+
+/** The conversation's effort: `VAULT_AGENT_EFFORT`, low by default. A value that cannot be read throws. */
+export function vaultAgentEffort(env: EnvLike): VaultAgentEffort {
+  const raw = env.VAULT_AGENT_EFFORT?.trim();
+  if (raw === undefined || raw === '') return VAULT_AGENT_EFFORT;
+  const effort = VAULT_AGENT_EFFORTS.find((level) => level === raw);
+  if (effort === undefined) throw new Error('VAULT_AGENT_EFFORT must be low, medium or high');
+  return effort;
 }
 
 /**
@@ -130,8 +156,12 @@ export function createAnthropicVaultAgentModel(options: {
   apiKey: string;
   model: string;
   timeoutMs: number;
+  effort?: VaultAgentEffort;
   quota: VaultAgentQuota;
 }): VaultAgentModel {
+  const effort = acceptsEffort(options.model)
+    ? { effort: options.effort ?? VAULT_AGENT_EFFORT }
+    : {};
   const client = new Anthropic({
     apiKey: options.apiKey,
     timeout: options.timeoutMs,
@@ -163,7 +193,11 @@ export function createAnthropicVaultAgentModel(options: {
             ...(acceptsTemperature(options.model) ? { temperature: 0 } : {}),
             system: VAULT_AGENT_SYSTEM,
             messages,
-            output_config: { format: { type: 'json_schema', schema: VAULT_AGENT_REPLY_SCHEMA } },
+            // No `thinking` parameter: the Claude 5 family rejects turning it off; effort sets its depth.
+            output_config: {
+              ...effort,
+              format: { type: 'json_schema', schema: VAULT_AGENT_REPLY_SCHEMA },
+            },
           },
           { timeout },
         );
