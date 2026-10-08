@@ -1,7 +1,7 @@
 {
   "chain": "solana",
-  "version": 1,
-  "readOn": "2026-10-06",
+  "version": 2,
+  "readOn": "2026-10-08",
   "note": "One row per tracked stock on Solana: the 18 stocks of gate UNIVERSE (docs/risk/PLAN-UNIVERSE.md section 2) and the stock tokens of the launch shelf. Sector, industry and sub-industry are GICS-style names. A field listed under a row's \"unverified\" was not read on a source.",
   "stocks": [
     {
@@ -856,10 +856,20 @@
           "url": "https://en.wikipedia.org/wiki/Global_Industry_Classification_Standard",
           "title": "Global Industry Classification Standard - Wikipedia (table of sectors, industries and sub-industries)",
           "readOn": "2026-10-06"
+        },
+        {
+          "url": "https://www.tesla.com/elon-musk",
+          "title": "Tesla: Elon Musk (co-founder and CEO of Tesla)",
+          "readOn": "2026-10-08"
+        },
+        {
+          "url": "https://ir.tesla.com/corporate",
+          "title": "Tesla Investor Relations: Corporate Governance (Elon Musk listed in leadership)",
+          "readOn": "2026-10-08"
         }
       ],
       "unverified": [],
-      "note": "The filing also reports bitcoin held as digital assets; that is a balance-sheet holding, not a business line, so no crypto label."
+      "note": "The filing also reports bitcoin held as digital assets; that is a balance-sheet holding, not a business line, so no crypto label. Tesla identifies Elon Musk as its co-founder and CEO and lists him in leadership. This affiliation does not establish future investment benefit."
     }
   ]
 }
