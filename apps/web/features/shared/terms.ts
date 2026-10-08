@@ -80,6 +80,21 @@ export type SharedTerms =
       /** Auto-follow is on: the add only deposits, and the keeper invests it. Then no target is named. */
       keeper: boolean;
       source: TermsSource;
+    }
+  /**
+   * New targets for a vault the person owns, as its review showed them (gate ANY-COMPOSITION, #191):
+   * the order sets them, then sells and buys to them. The guard holds the `set_targets` step's bytes
+   * to these targets, which come from the review the person ticked, never from the order the API made.
+   */
+  | {
+      kind: 'retarget';
+      vault: string;
+      /** The plan number of that vault, which the guard derives its address from. */
+      basketId: string;
+      /** Each asset that is not cash, with its weight; cash is what they leave. */
+      targets: Target[];
+      /** Who chose the weights: the conversation's proposal, or the person. */
+      origin: 'model' | 'person';
     };
 
 /**
@@ -206,6 +221,27 @@ export function readTerms(value: unknown): SharedTerms | null {
       targets: targets.data,
       keeper: t.keeper,
       source,
+    };
+  }
+  if (t.kind === 'retarget') {
+    const targets = Target.array().min(1).max(16).safeParse(t.targets);
+    if (
+      !isText(t.vault) ||
+      !t.vault ||
+      !isText(t.basketId) ||
+      !RAW.test(t.basketId) ||
+      !targets.success ||
+      new Set(targets.data.map((x) => x.asset)).size !== targets.data.length ||
+      targets.data.reduce((n, x) => n + x.weightBps, 0) > 10_000 ||
+      (t.origin !== 'model' && t.origin !== 'person')
+    )
+      return null;
+    return {
+      kind: 'retarget',
+      vault: t.vault,
+      basketId: t.basketId,
+      targets: targets.data,
+      origin: t.origin,
     };
   }
   if (t.kind === 'publish') {

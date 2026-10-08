@@ -3,13 +3,11 @@ import { type BasketLine, DISCLAIMER, DISCLAIMER_SHORT } from '@colosseum/schema
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buttonClass } from '../../components/ui/button-class';
-import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
+import { find, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
 import type { Person } from '../account/person';
 import { inShell, withAccount } from '../account/test/screen';
-import { takeWay } from '../invest/handoff';
 import { EMBEDDED, json, signedInPort } from '../wallet/test/fake-port';
-import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { PlanScreen } from './PlanScreen';
 import { bindingReason, leftOut, planSummary, reasonsOf } from './plain';
@@ -243,28 +241,18 @@ describe('an income plan and its gap (the flow audit, findings 11 and 14)', () =
     expect((await shown()).querySelector('[data-ui="plan-monthly"]')).toBeNull();
   });
 
-  it('says the gap to the cent first, and makes each way the API gives a button that leads to the Invest screen with it', async () => {
+  it('says the gap to the cent first, and each way the API gives as a sentence', async () => {
     rememberPlan(short());
-    router.push.mockClear();
     const host = await shown();
     // the answer is the first thing in the plan's block
     const block = find(host, '[data-ui="plan-pane"] [data-ui="plan-verdict"]');
     expect(find(block, '[data-ui="plan-answer"]').textContent).toBe(en.plan.verdict.gap('$152.80'));
-    const ways = [...find(block, '[data-ui="plan-ways"]').querySelectorAll('button')];
-    // each is the engine's own sentence, with its own figures
-    expect(ways.map((b) => b.textContent)).toEqual(WAYS.map((w) => w.change));
-    // pressed, the plan's goal and the way go to the Invest screen, where the plan is built again
-    await click(ways[1] as HTMLElement);
-    expect(router.push).toHaveBeenCalledWith('/goal');
-    const handed = takeWay();
-    expect(handed?.way).toBe(WAYS[1]?.change);
-    expect(handed?.sheet).toMatchObject({
-      goal: 'income',
-      amountUsd: 80000,
-      incomeTargetUsdMonthly: 300,
-    });
-    // taken once
-    expect(takeWay()).toBeNull();
+    const ways = find(block, '[data-ui="plan-ways"]');
+    // each is the engine's own sentence, with its own figures, and none is a button
+    expect([...ways.querySelectorAll('li')].map((li) => li.textContent)).toEqual(
+      WAYS.map((w) => w.change),
+    );
+    expect(ways.querySelector('button')).toBeNull();
   });
 
   it('offers no way and no button when the income is met', async () => {

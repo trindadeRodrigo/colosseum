@@ -183,9 +183,11 @@ export type VaultAgentReply = z.infer<typeof VaultAgentReply>;
 export type VaultAgentFailure = 'unavailable' | 'timeout' | 'budget' | 'invalid';
 /**
  * Present when the first reply failed check `failed` and the model was asked once to correct it:
- * `outcome` is `repaired`, or the code the second attempt ended on. Codes only, for the server log.
+ * `outcome` is `repaired`, `prose_figure_trimmed` when the second attempt was served without the
+ * `sentencesCut` sentences that still stated a figure, or the code the second attempt ended on. Codes
+ * and a count only, for the server log.
  */
-export type VaultAgentRepairNote = { failed: string; outcome: string };
+export type VaultAgentRepairNote = { failed: string; outcome: string; sentencesCut?: number };
 export type VaultAgentResult =
   | { kind: 'reply'; reply: VaultAgentReply; repair?: VaultAgentRepairNote }
   /** `detail` is a fixed code for the server log (which check failed); never the person's text. */

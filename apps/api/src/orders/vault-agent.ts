@@ -652,6 +652,100 @@ function hasFinancialFigure(text: string, personWords: string[], catalogNames: s
 }
 
 /**
+ * The text as sentences, each with the space after it. A full stop splits only before a new line or a
+ * word that does not start in lower case or with a digit, and never inside a catalog name or quotation
+ * marks, so "Tesla, Inc. is listed" and a quote of the person with its attribution stay whole. A line
+ * break alone ends a sentence only before a list marker: a clause that runs over the line goes with it.
+ */
+function sentencesOf(text: string, catalogNames: string[]): string[] {
+  const held: [number, number][] = [];
+  // up to the quote's last character: a full stop that ends the quote ends the sentence after it
+  for (const quote of text.matchAll(/[“"][^”"]*[”"]/gu))
+    held.push([quote.index, quote.index + quote[0].length - 2]);
+  for (const name of new Set(catalogNames.filter((value) => /[.!?…]/u.test(value))))
+    for (let at = text.indexOf(name); at !== -1; at = text.indexOf(name, at + name.length))
+      held.push([at, at + name.length]);
+  const sentences: string[] = [];
+  let start = 0;
+  for (const stop of text.matchAll(
+    /[.!?…]+[”"'’)\]]*(?:\s*\n\s*|\s+(?![\s\p{Ll}\p{N}]))|\s*\n\s*(?=(?:[-*•–—]|\p{N}+[.)])\s)/gu,
+  )) {
+    if (held.some(([from, to]) => stop.index >= from && stop.index < to)) continue;
+    const end = stop.index + stop[0].length;
+    sentences.push(text.slice(start, end));
+    start = end;
+  }
+  if (start < text.length) sentences.push(text.slice(start));
+  return sentences;
+}
+
+/** Said by the server in place of a required field of the proposal whose every sentence was removed. */
+const FIGURE_REMOVED = {
+  en: 'This part of the draft was left out because it stated a figure that could not be confirmed.',
+  pt: 'Esta parte da proposta foi omitida porque trazia um número que não pôde ser confirmado.',
+};
+/** Said by the server on a line of its own after what is left of a message, and once in a list that lost an item or part of one. */
+const FIGURE_CUT = {
+  en: 'Part of this reply was left out because it stated a figure that could not be confirmed.',
+  pt: 'Parte desta resposta foi omitida porque trazia um número que não pôde ser confirmado.',
+};
+
+/**
+ * The repair attempt's reply without the sentences that state a figure (`figure`), so one stray number
+ * does not cost the person the whole reply and none of the model's reaches them. No cut is silent where
+ * a caveat may have gone with it: the message ends with the server's `FIGURE_CUT`, and a list of
+ * tradeoffs or unknowns that lost an item or part of one holds it once. A question left empty is
+ * dropped; an objective, a summary or a pick's reason left empty is the server's `FIGURE_REMOVED`,
+ * never words made up for the model. Null when nothing of the message is left, or no room for the note.
+ */
+function withoutFigureSentences(
+  reply: VaultAgentModelReply,
+  figure: (text: string) => boolean,
+  catalogNames: string[],
+  language: 'en' | 'pt',
+): { reply: VaultAgentModelReply; cut: number } | null {
+  let cut = 0;
+  const trim = (text: string): string => {
+    if (!figure(text)) return text;
+    const sentences = sentencesOf(text, catalogNames);
+    const kept = sentences.filter((sentence) => !figure(sentence));
+    cut += sentences.length - kept.length;
+    const rest = kept.join('').trim();
+    // A figure that only shows across two sentences leaves nothing of the field, and counts.
+    if (!figure(rest)) return rest;
+    cut += kept.length;
+    return '';
+  };
+  const list = (items: string[]): string[] => {
+    const before = cut;
+    const kept = items.map(trim).filter(Boolean);
+    return cut === before ? kept : [...kept.slice(0, 11), FIGURE_CUT[language]];
+  };
+  const message = trim(reply.message);
+  const said = cut ? `${message}\n${FIGURE_CUT[language]}` : message;
+  if (!message || said.length > 2400) return null;
+  const { proposal } = reply;
+  return {
+    reply: {
+      message: said,
+      question: (reply.question === null ? null : trim(reply.question)) || null,
+      proposal: proposal && {
+        ...proposal,
+        objective: trim(proposal.objective) || FIGURE_REMOVED[language],
+        summary: trim(proposal.summary) || FIGURE_REMOVED[language],
+        tradeoffs: list(proposal.tradeoffs),
+        unknowns: list(proposal.unknowns),
+        allocations: proposal.allocations.map((allocation) => ({
+          ...allocation,
+          why: trim(allocation.why) || FIGURE_REMOVED[language],
+        })),
+      },
+    },
+    cut,
+  };
+}
+
+/**
  * What each repairable check means, in the words the model reads on its one repair call. Only checks on
  * the model's own reply are here: a timeout, a spent budget or a bad request is not the model's to fix.
  */
@@ -659,7 +753,7 @@ const REPAIR_HINTS: Record<string, string> = {
   reply_schema:
     'The reply did not match the required structure: a field was missing, had the wrong type, or was outside its length or count limits.',
   prose_figure:
-    'Prose contained a financial figure, percentage, price, yield, date or written-out number. Numbers may appear in prose only inside an exact catalog name or an exact quote of the person in attributed quotation marks. The server sets the weights.',
+    'Prose contained a financial figure, percentage, price, yield, date or written-out number. Numbers may appear in prose only inside an exact catalog name or an exact quote of the person in attributed quotation marks. The server sets the weights. Rewrite every prose field with no digit, no percent or currency sign and no "guaranteed" or "risk-free": describe a measured figure in words and cite its id in evidenceIds instead of repeating its value.',
   prose_claims_applied:
     'Prose said something was applied, created, funded, traded or approved. A proposal is only a private preview; nothing has been applied.',
   allocation_unlisted: "An allocation named an assetId that is not in this chain's catalog.",
@@ -959,19 +1053,21 @@ function requestedStocks(
 }
 
 /**
- * `text` without the sentences that name one of `named`. A sentence ends at a stop followed by a space,
- * so a stop between digits ends none, and neither does one inside a catalog name ("Apple Inc. and").
+ * `text` without the sentences that name one of `named`, cut where `sentencesOf` cuts. Each line is
+ * read on its own, so the server's note on a line of its own (`FIGURE_CUT`) stays when the line before
+ * it goes.
  */
 function withoutSentencesNaming(text: string, named: RegExp[], catalogNames: string[]): string {
-  const held = catalogNames
-    .filter((name) => name.includes('.'))
-    .sort((a, b) => b.length - a.length)
-    .reduce((rest, name) => rest.replaceAll(name, name.replaceAll('.', '\u0000')), text);
-  return held
-    .split(/(?<=[.!?…]["”’)\]]*)\s+/u)
-    .map((sentence) => sentence.replaceAll('\u0000', '.'))
-    .filter((sentence) => !named.some((pattern) => pattern.test(sentence)))
-    .join(' ');
+  return text
+    .split('\n')
+    .map((line) =>
+      sentencesOf(line, catalogNames)
+        .filter((sentence) => !named.some((pattern) => pattern.test(sentence)))
+        .join('')
+        .trim(),
+    )
+    .filter(Boolean)
+    .join('\n');
 }
 
 // The person's shares, read by the server from their own messages (gate ANY-COMPOSITION). The weights
@@ -1586,6 +1682,8 @@ export async function replyToVaultConversation(
     failed: detail,
     problems: [REPAIR_HINTS[detail] ?? detail, ...extra],
   });
+  // Sentences the repair attempt lost for stating a figure; a count for the log, never their words.
+  let sentencesCut = 0;
   // `final` is the repair attempt: a share it still reports without the person's words is ignored.
   const check = (output: Output, final = false): Checked => {
     if ('why' in output)
@@ -1598,20 +1696,6 @@ export async function replyToVaultConversation(
       };
     const candidate = VaultAgentModelReply.safeParse(output.reply);
     if (!candidate.success) return rejected('reply_schema', where(candidate.error.issues));
-    const { proposal, ...conversation } = candidate.data;
-    const prose = [
-      conversation.message,
-      conversation.question ?? '',
-      ...(proposal
-        ? [
-            proposal.objective,
-            proposal.summary,
-            ...proposal.tradeoffs,
-            ...proposal.unknowns,
-            ...proposal.allocations.map((allocation) => allocation.why),
-          ]
-        : []),
-    ];
     const personWords = parsed.data.messages
       .filter((message) => message.who === 'person')
       .map((message) => message.text);
@@ -1621,8 +1705,32 @@ export async function replyToVaultConversation(
         .filter((row) => [...catalog.values()].some((asset) => asset.symbol === row.symbol))
         .map((row) => row.company),
     ];
-    if (prose.some((text) => hasFinancialFigure(text, personWords, catalogNames)))
-      return rejected('prose_figure');
+    const figure = (text: string) => hasFinancialFigure(text, personWords, catalogNames);
+    const proseOf = ({ message, question, proposal: draft }: VaultAgentModelReply) => [
+      message,
+      question ?? '',
+      ...(draft
+        ? [
+            draft.objective,
+            draft.summary,
+            ...draft.tradeoffs,
+            ...draft.unknowns,
+            ...draft.allocations.map((allocation) => allocation.why),
+          ]
+        : []),
+    ];
+    // A figure is repaired once; one still there on the repair attempt costs its sentence, not the reply.
+    let model = candidate.data;
+    if (proseOf(model).some(figure)) {
+      const kept = final
+        ? withoutFigureSentences(model, figure, catalogNames, request.language)
+        : null;
+      if (!kept) return rejected('prose_figure');
+      model = kept.reply;
+      sentencesCut = kept.cut;
+    }
+    const { proposal, ...conversation } = model;
+    const prose = proseOf(model);
     if (prose.some(claimsApplied)) return rejected('prose_claims_applied');
     if (!proposal)
       return {
@@ -1735,9 +1843,15 @@ export async function replyToVaultConversation(
       .join(' ')
       .slice(0, 1600);
     const told = [clean(conversation.message), leftOutSaid].filter(Boolean).join(' ');
+    // With no room for what is left of the message, the server's notes alone: the figure's, if the
+    // message carried it, and this one.
+    const figureCut = FIGURE_CUT[request.language];
+    const notes = conversation.message.includes(figureCut)
+      ? `${figureCut} ${leftOutSaid}`
+      : leftOutSaid;
     const said = gone.length
       ? {
-          message: told.length > 2400 ? leftOutSaid : told,
+          message: told.length > 2400 ? notes : told,
           question: clean(conversation.question ?? '') || null,
         }
       : conversation;
@@ -1754,6 +1868,10 @@ export async function replyToVaultConversation(
     // fits its place: the model is asked again, and the reply fails if it is still so.
     if (!preview.objective || preview.allocations.some((allocation) => !allocation.why))
       return rejected('allocation_ineligible', [`Left out: ${leftOut.join(', ')}.`]);
+    // What is served is read whole for a figure once more, after both cuts and with the server's own
+    // sentences in it.
+    if (gone.length && proseOf({ ...said, proposal: { ...preview, stated } }).some(figure))
+      return rejected('prose_figure');
     const unconfirmed = stated.flatMap((share, index) =>
       person.read.some(
         (own) =>
@@ -1924,8 +2042,11 @@ export async function replyToVaultConversation(
     outcome: second.problems
       ? (second.failed ?? 'invalid')
       : second.result.kind === 'reply'
-        ? 'repaired'
+        ? sentencesCut
+          ? 'prose_figure_trimmed'
+          : 'repaired'
         : (second.result.detail ?? second.result.reason),
+    ...(sentencesCut && second.result.kind === 'reply' ? { sentencesCut } : {}),
   };
   // A stated limit the repair still missed, or missed at first and then failed another way: the person
   // is asked about the limit, as before the repair.

@@ -147,7 +147,9 @@ export function useVaultHistory(): VaultHistory {
                           ? t.activity.follow(when)
                           : record.terms?.kind === 'publish'
                             ? t.activity.publish(when)
-                            : t.activity.order(when),
+                            : record.terms?.kind === 'retarget'
+                              ? t.mix.activity(when)
+                              : t.activity.order(when),
                     executions,
                   },
                 ];

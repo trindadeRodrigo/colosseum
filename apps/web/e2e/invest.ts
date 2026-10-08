@@ -8,6 +8,7 @@ import { dictionary } from '../i18n';
 // button ready to press: nothing has been signed.
 
 const en = dictionary('en');
+const STUB = `http://localhost:${process.env.E2E_API_PORT ?? 3901}`;
 
 export async function readyToInvest(
   page: Page,
@@ -39,44 +40,31 @@ export async function readyToInvest(
 }
 
 /**
- * From the Invest screen to a plan's own page, as a person on a phone does (gate INVEST-TWO-PANE):
- * the goal said in one sentence that names every fact, what our server asks to be sure of confirmed,
- * "Build my plan", the plan opened from the line
- * at the foot, then its own page.
+ * To a plan's own page by its link, as the portfolio's "See the plan" or an agent's link leads there:
+ * the stub stores a $40 plan to grow over three years as the person's own
+ * (`POST /v1/baskets/personalize`), on the chain it runs, and the page reads it back by its id. The
+ * link is opened through sign-in, because a page load gives the throwaway wallet new keys.
  */
-export async function planFromGoal(page: Page, goal: string) {
-  await page.locator('[data-ui="goal-mode"]').selectOption('guided');
-  const box = page.locator('[data-ui="invest-chat"] textarea');
-  await box.fill(goal);
-  await box.press('Enter');
-  // what was understood is said back, and the plan is built only when asked for
-  await expect(page.locator('[data-ui="invest-turns"] [data-who="person"]').first()).toContainText(
-    goal,
-  );
-  // Signed in, our server's intake reads the goal. With no model it asks each thing it read once,
-  // with what it read as the first reply: each is confirmed by a press, until the build is offered.
-  const build = page.getByRole('button', { name: en.talk.replies.build });
-  const first = page.locator('[data-ui="invest-replies"] button').first();
-  const said = page.locator('[data-ui="invest-turns"] [data-who="person"]');
-  for (let asked = 0; asked < 8; asked++) {
-    await expect(first).toBeVisible();
-    if (await build.isVisible()) break;
-    const before = await said.count();
-    await first.click();
-    await expect(said).toHaveCount(before + 1);
-  }
-  await build.click();
-  // on a phone the plan is the line at the foot, which opens
-  await page.getByRole('button', { name: en.talk.pane.open }).click();
-  const pane = page.locator('[data-ui="invest-pane"]');
-  // The plans of the goal are side by side, none picked (gate THREE-PLANS): the first is chosen.
-  // One plan alone is opened as it is.
-  await expect(pane).toHaveAttribute('data-state', /^(choice|plan|invest)$/);
-  if ((await pane.getAttribute('data-state')) === 'choice')
-    await pane.locator('[data-ui="candidate-pick"] button').first().click();
-  // signed in, the invest card is under the plan (`invest`); a visitor has the plan alone
-  await expect(pane).toHaveAttribute('data-state', /^(plan|invest)$/);
-  await expect(pane.locator('[data-ui="plan-pane"]')).toBeVisible();
-  await pane.getByRole('link', { name: en.talk.pane.ownPage }).click();
+export async function openPlan(page: Page) {
+  const made = await page.request.post(`${STUB}/v1/baskets/personalize`, {
+    data: {
+      sheet: {
+        basketType: 'standard',
+        goal: 'grow',
+        amountUsd: 40,
+        horizonMonths: 36,
+        risk: 'medium',
+        themes: [],
+        country: 'BR',
+        chains: [process.env.E2E_CHAIN ?? 'solana'],
+        rules: { useHoldings: false, glide: true },
+        language: 'en',
+      },
+    },
+  });
+  expect(made.status()).toBe(200);
+  const { id } = (await made.json()) as { id: string };
+  await page.goto(`/sign-in?next=${encodeURIComponent(`/plan/${id}`)}`);
+  await page.getByRole('button', { name: en.signIn.passkey.continue }).click();
   await expect(page).toHaveURL(/\/plan\/[^/]+$/);
 }

@@ -468,6 +468,35 @@ describe('new-goal model preview route', () => {
     expect(written).not.toContain('named business');
     expect(written).not.toContain('12%');
   });
+  it('serves a reply whose repair attempt still states a figure without that sentence, and logs a count', async () => {
+    const s = await setup();
+    const figure = {
+      message: 'We can explore that direction. It will return 12% a year.',
+      question: null,
+      proposal: null,
+    };
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: figure });
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: figure });
+    const res = await s.post();
+    expect(res.statusCode).toBe(200);
+    expect(res.json().message).toBe(
+      'We can explore that direction.\nPart of this reply was left out because it stated a figure that could not be confirmed.',
+    );
+    expect(s.logs.map((line) => JSON.parse(line))).toEqual([
+      expect.objectContaining({
+        level: 40,
+        detail: 'prose_figure_trimmed',
+        sentencesCut: 1,
+        repair: { failed: 'prose_figure', outcome: 'prose_figure_trimmed', sentencesCut: 1 },
+        chain: 'solana',
+        msg: 'the new-goal conversation reply was served without the sentences that stated a figure',
+      }),
+    ]);
+    const written = s.logs.join('');
+    expect(written).not.toContain('named business');
+    expect(written).not.toContain('12%');
+    expect(written).not.toContain('explore that direction');
+  });
   it.each(['I created your vault.', 'I funded your portfolio.', 'Eu abri seu cofre.'])(
     'rejects a false creation or funding claim: %s',
     async (message) => {

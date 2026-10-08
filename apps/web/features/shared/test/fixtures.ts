@@ -214,3 +214,23 @@ export const withdrawOrder = (
     ...over,
   });
 };
+
+/**
+ * New targets for a vault, as POST /v1/vaults/{chain}/{address}/targets answers a confirm (#191): the
+ * step that sets them, then a swap into them.
+ */
+export const retargetOrder = (buy = 'solana:gldx') =>
+  order({
+    type: 'rebalance',
+    legs: [
+      { ...leg, id: LEG_A, seq: 0, kind: 'set_targets' },
+      {
+        ...leg,
+        id: LEG_B,
+        seq: 1,
+        kind: 'swap',
+        trades: [{ sell: 'solana:usdc', buy, amountInRaw: '20000000' }],
+        expected: [{ inRaw: '20000000', outRaw: '100', minOutRaw: '99', costBps: 10 }],
+      },
+    ],
+  });

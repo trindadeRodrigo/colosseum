@@ -156,6 +156,293 @@ const rejected = (detail: string) => ({
   detail,
   repair: { failed: detail, outcome: detail },
 });
+// The repair attempt still stated a figure in `cut` sentences and was served without them.
+const trimmed = (cut: number) => ({
+  kind: 'reply',
+  repair: { failed: 'prose_figure', outcome: 'prose_figure_trimmed', sentencesCut: cut },
+});
+const FIGURE_REMOVED =
+  'This part of the draft was left out because it stated a figure that could not be confirmed.';
+// The server's own sentence where a cut may have taken a caveat with it: after a message, once in a list.
+const FIGURE_CUT =
+  'Part of this reply was left out because it stated a figure that could not be confirmed.';
+const FIGURE_CUT_PT =
+  'Parte desta resposta foi omitida porque trazia um número que não pôde ser confirmado.';
+
+describe('a figure the repair attempt still states costs its sentence, not the reply', () => {
+  const twice = async (
+    value: unknown,
+    ask: Parameters<typeof replyToVaultConversation>[0] = request(),
+    on = context,
+  ) => {
+    const model = fake(value);
+    const out = await replyToVaultConversation(ask, on, model);
+    expect(model.read).toHaveBeenCalledTimes(2);
+    return out;
+  };
+
+  it.each([
+    [
+      'Here is a possible direction. It should yield 12% a year. This is a preview for discussion.',
+      'Here is a possible direction. This is a preview for discussion.',
+      1,
+    ],
+    // A full stop between digits does not split: the whole sentence goes, once.
+    ['Costs run near 1.5 of the reference. Keep a reserve.', 'Keep a reserve.', 1],
+    ['Costs run near 1. 5 of the reference. Keep a reserve.', 'Keep a reserve.', 1],
+    ['It pays ten percent annually! Would a reserve help?', 'Would a reserve help?', 1],
+    // "guaranteed" and "risk-free" go the same way.
+    ['Returns are guaranteed. This is a preview. It is risk-free.', 'This is a preview.', 2],
+    [
+      'A reserve helps.\nIt costs $5 to exit.\nA stock adds growth.',
+      'A reserve helps.\nA stock adds growth.',
+      1,
+    ],
+  ])('serves the message without its figure sentences: %s', async (message, kept, cut) => {
+    const out = await twice({ ...proposal(), message });
+    expect(out).toMatchObject({ ...trimmed(cut), reply: { message: `${kept}\n${FIGURE_CUT}` } });
+    if (out.kind !== 'reply') throw new Error('Rejected');
+    // Nothing else moved: the picks, their reasons and the server's weights.
+    expect(out.reply.proposal?.allocations.map((line) => line.why)).toEqual(
+      proposal().proposal.allocations.map((line) => line.why),
+    );
+    expect(weightsOf(out)).toEqual([3334, 3333, 3333]);
+  });
+
+  it('keeps the rest of one pick reason, and says so itself where nothing is left', async () => {
+    const value = proposal();
+    const [first, second] = value.proposal.allocations;
+    if (!first || !second) throw new Error('Incomplete allocation fixture');
+    first.why = 'This expresses your stated stock preference. Its price is $1000.';
+    second.why = 'The yield is 12%.';
+    const out = await twice(value);
+    expect(out).toMatchObject(trimmed(2));
+    if (out.kind !== 'reply') throw new Error('Rejected');
+    expect(out.reply.proposal?.allocations.map((line) => line.why)).toEqual([
+      'This expresses your stated stock preference.',
+      FIGURE_REMOVED,
+      'This retains exposure outside the named stock.',
+    ]);
+    expect(out.reply.proposal?.allocations.map((line) => line.assetId)).toEqual(
+      value.proposal.allocations.map((line) => line.assetId),
+    );
+    expect(out.reply.message).toBe(value.message);
+  });
+
+  it('drops a tradeoff, an unknown and a question made only of a figure', async () => {
+    const value = { ...proposal(), question: 'Would 12% a year be enough?' as string | null };
+    value.proposal.tradeoffs = ['Stock concentration can increase losses.', 'It can lose 30%.'];
+    value.proposal.unknowns = ['Its exit takes two months.', 'The future price path is unknown.'];
+    value.proposal.objective = 'Grow 9% a year.';
+    const out = await twice(value);
+    expect(out).toMatchObject({
+      ...trimmed(4),
+      reply: {
+        question: null,
+        proposal: {
+          objective: FIGURE_REMOVED,
+          summary: value.proposal.summary,
+          tradeoffs: ['Stock concentration can increase losses.', FIGURE_CUT],
+          unknowns: [...context.unknowns, 'The future price path is unknown.', FIGURE_CUT],
+        },
+      },
+    });
+  });
+
+  it('still refuses a reply whose message is only figure sentences', async () => {
+    for (const message of ['The yield is 12%.', 'It pays 12%. Returns are guaranteed.'])
+      expect(await twice({ ...proposal(), message })).toEqual(rejected('prose_figure'));
+    expect(
+      await twice({ message: 'It will return 12% a year.', question: null, proposal: null }),
+    ).toEqual(rejected('prose_figure'));
+  });
+
+  it("leaves the person's quote and a catalog name with digits and a full stop untouched", async () => {
+    const said = 'I want to grow my $2000. Fast.';
+    const named = {
+      ...context,
+      assets: context.assets.map((asset) =>
+        asset.id === stock.id ? { ...asset, underlying: '3M Co. Holdings' } : asset,
+      ),
+    };
+    const kept = `You said “${said}” That fits 3M Co. Holdings as a core pick.`;
+    const out = await twice(
+      { ...proposal(), message: `${kept} It returns 9% a year.` },
+      request(said),
+      named,
+    );
+    expect(out).toMatchObject({ ...trimmed(1), reply: { message: `${kept}\n${FIGURE_CUT}` } });
+    // With no figure beside them the same words pass on the first call, with nothing cut.
+    const model = fake({ ...proposal(), message: kept });
+    const clean = await replyToVaultConversation(request(said), named, model);
+    expect(model.read).toHaveBeenCalledTimes(1);
+    expect(clean).toMatchObject({ kind: 'reply', reply: { message: kept } });
+    expect(clean).not.toHaveProperty('repair');
+  });
+
+  it('does the same in Portuguese, with the server sentence in Portuguese', async () => {
+    const value = proposal();
+    value.message = 'Aqui está uma direção. O retorno é garantido. Rende 12% ao ano. É uma prévia.';
+    value.proposal.summary = 'Rende dez por cento ao ano.';
+    value.proposal.tradeoffs = ['É sem risco.', 'A concentração pode aumentar as perdas.'];
+    const out = await twice(value, {
+      ...request('Quero mais ações e uma reserva'),
+      language: 'pt' as const,
+    });
+    expect(out).toMatchObject({
+      ...trimmed(4),
+      reply: {
+        message: `Aqui está uma direção. É uma prévia.\n${FIGURE_CUT_PT}`,
+        proposal: {
+          summary:
+            'Esta parte da proposta foi omitida porque trazia um número que não pôde ser confirmado.',
+          tradeoffs: ['A concentração pode aumentar as perdas.', FIGURE_CUT_PT],
+        },
+      },
+    });
+  });
+
+  it('cuts nothing when the repair attempt is clean', async () => {
+    const bad = { ...proposal(), message: 'Here is a direction. It yields 12%.' };
+    const read = vi
+      .fn<VaultAgentModel['read']>()
+      .mockResolvedValueOnce({ reply: bad })
+      .mockResolvedValueOnce({ reply: proposal() });
+    const out = await replyToVaultConversation(request(), context, { read });
+    expect(out).toMatchObject({
+      kind: 'reply',
+      repair: { failed: 'prose_figure', outcome: 'repaired' },
+      reply: { message: proposal().message },
+    });
+    expect(out.repair).not.toHaveProperty('sentencesCut');
+    expect(read.mock.calls[1]?.[2]?.problems[0]).toContain('no digit');
+  });
+
+  it('counts the cut when the first reply failed another check', async () => {
+    const bad = { ...proposal(), message: 'Here is a direction. It yields 12%.' };
+    const read = vi
+      .fn<VaultAgentModel['read']>()
+      .mockResolvedValueOnce({ reply: { ...proposal(), message: 'I applied your allocations.' } })
+      .mockResolvedValueOnce({ reply: bad });
+    expect(await replyToVaultConversation(request(), context, { read })).toMatchObject({
+      kind: 'reply',
+      repair: { failed: 'prose_claims_applied', outcome: 'prose_figure_trimmed', sentencesCut: 1 },
+      reply: { message: `Here is a direction.\n${FIGURE_CUT}` },
+    });
+  });
+
+  it('says so after a message that lost a caveat with its figure', async () => {
+    const message =
+      'This mix aims for steady growth. Returns are not guaranteed and it could lose 30% in a bad year.';
+    expect(await twice({ ...proposal(), message })).toMatchObject({
+      ...trimmed(1),
+      reply: { message: `This mix aims for steady growth.\n${FIGURE_CUT}` },
+    });
+  });
+
+  it('says once in a list that items were left out, also when none is left', async () => {
+    const value = proposal();
+    value.proposal.tradeoffs = [
+      'Stocks can fall 40% in a bad year.',
+      'Nothing here is guaranteed.',
+      'Selling may take 3 days.',
+    ];
+    value.proposal.unknowns = ['Stocks can fall. They fell 40% once.'];
+    expect(await twice(value)).toMatchObject({
+      ...trimmed(4),
+      reply: {
+        message: value.message,
+        proposal: {
+          tradeoffs: [FIGURE_CUT],
+          unknowns: [...context.unknowns, 'Stocks can fall.', FIGURE_CUT],
+        },
+      },
+    });
+  });
+
+  it('cuts a clause that runs over a line break with its figure, never the half without it', async () => {
+    const clause = 'Do not expect 10% a year;\nexpect steady growth from this mix.';
+    expect(await twice({ ...proposal(), message: clause })).toEqual(rejected('prose_figure'));
+    const out = await twice({ ...proposal(), message: `Here is a direction. ${clause}` });
+    expect(out).toMatchObject({
+      ...trimmed(1),
+      reply: { message: `Here is a direction.\n${FIGURE_CUT}` },
+    });
+    // A list marker after a line break does start a sentence.
+    expect(
+      await twice({ ...proposal(), message: 'Two points:\n- A reserve helps\n- It yields 5%' }),
+    ).toMatchObject({
+      ...trimmed(1),
+      reply: { message: `Two points:\n- A reserve helps\n${FIGURE_CUT}` },
+    });
+  });
+
+  it('counts a field whose figure runs over a line break', async () => {
+    const value = proposal();
+    value.proposal.summary = 'It yields ten\npercent.';
+    expect(await twice(value)).toMatchObject({
+      ...trimmed(1),
+      reply: { message: value.message, proposal: { summary: FIGURE_REMOVED } },
+    });
+  });
+
+  it.each([
+    'There is no guarantee of a return.',
+    'É um investimento sem garantia.',
+    FIGURE_REMOVED,
+    FIGURE_CUT,
+    FIGURE_CUT_PT,
+    'Esta parte da proposta foi omitida porque trazia um número que não pôde ser confirmado.',
+  ])(
+    'passes a caveat without the word and the server sentences on the first call: %s',
+    async (message) => {
+      const model = fake({ ...proposal(), message });
+      expect(await replyToVaultConversation(request(), context, model)).toMatchObject({
+        kind: 'reply',
+        reply: { message },
+      });
+      expect(model.read).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  // A negated form is not let through: the word can be negated and still promise (review of #197).
+  it.each([
+    'Returns are not guaranteed by a bank but by the protocol itself.',
+    'You will never be guaranteed less than what you put in.',
+    'Your return is never not guaranteed.',
+    'Isn’t guaranteed income what you asked for? This mix gives you exactly that.',
+    'Risky it is not\nGuaranteed income every month.',
+    'O retorno não é garantido pelo banco, mas pelo protocolo.',
+    'Não é não garantido.',
+    'Returns are not guaranteed.',
+    'Nothing here is guaranteed.',
+  ])('never serves "guaranteed" as written, negated or not: %s', async (sentence) => {
+    const read = vi
+      .fn<VaultAgentModel['read']>()
+      .mockResolvedValue({ reply: { ...proposal(), message: `Here is a direction. ${sentence}` } });
+    const out = await replyToVaultConversation(request(), context, { read });
+    // The first call asks for the repair; the repair attempt loses the sentence and says so.
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(read.mock.calls[1]?.[2]?.problems[0]).toContain('guaranteed');
+    expect(out).toMatchObject({ kind: 'reply', repair: { outcome: 'prose_figure_trimmed' } });
+    if (out.kind !== 'reply') throw new Error('Rejected');
+    expect(out.reply.message).toMatch(/^Here is a direction\./);
+    expect(out.reply.message.endsWith(`\n${FIGURE_CUT}`)).toBe(true);
+    expect(out.reply.message).not.toMatch(/guarante|garantid/i);
+  });
+
+  it.each([
+    'Returns are guaranteed.',
+    'This is guaranteed, not speculative.',
+    'No doubt this is guaranteed.',
+    'It is risk-free.',
+    'O retorno é garantido.',
+    'É sem risco.',
+    'Returns are not guaranteed below 5%.',
+  ])('still refuses a promise, and a digit beside a caveat: %s', async (message) => {
+    expect(await twice({ ...proposal(), message })).toEqual(rejected('prose_figure'));
+  });
+});
 
 describe('model-led private vault proposals', () => {
   it('accepts real-catalog cash residual previews and refuses an exit share without its measured figure', async () => {
@@ -348,18 +635,23 @@ describe('model-led private vault proposals', () => {
       (await replyToVaultConversation(request('I want to grow my $2000.'), context, fake(value)))
         .kind,
     ).toBe('reply');
+    // Not the person's words, twice: the sentence is cut from the repair attempt, never served.
     expect(
       await replyToVaultConversation(request('I want to grow my $1000.'), context, fake(value)),
-    ).toEqual(rejected('prose_figure'));
+    ).toMatchObject({ ...trimmed(1), reply: { proposal: { objective: 'Keep a reserve.' } } });
     value.proposal.objective = 'Grow my $2000 while keeping a reserve.';
     expect(
       await replyToVaultConversation(request('I want to grow my $2000.'), context, fake(value)),
-    ).toEqual(rejected('prose_figure'));
+    ).toMatchObject({ ...trimmed(1), reply: { proposal: { objective: FIGURE_REMOVED } } });
     value.proposal.objective = 'Grow with a reserve.';
     value.proposal.allocations[0]!.why = 'The measured price is $1000.';
-    expect(
-      await replyToVaultConversation(request('I want to invest $1000.'), context, fake(value)),
-    ).toEqual(rejected('prose_figure'));
+    const priced = await replyToVaultConversation(
+      request('I want to invest $1000.'),
+      context,
+      fake(value),
+    );
+    expect(priced).toMatchObject(trimmed(1));
+    expect(JSON.stringify(priced)).not.toContain('The measured price');
   });
 
   it('holds a casually worded stock minimum, and says back one that names no asset', async () => {
@@ -412,9 +704,11 @@ describe('model-led private vault proposals', () => {
     expect((await replyToVaultConversation(request(), namedContext, fake(value))).kind).toBe(
       'reply',
     );
-    expect(await replyToVaultConversation(request(), context, fake(value))).toEqual(
-      rejected('prose_figure'),
-    );
+    // Without that name in the catalog the digit is a figure: the summary is the server's sentence.
+    expect(await replyToVaultConversation(request(), context, fake(value))).toMatchObject({
+      ...trimmed(1),
+      reply: { proposal: { summary: FIGURE_REMOVED } },
+    });
   });
 
   it.each([
@@ -488,8 +782,6 @@ describe('model-led private vault proposals', () => {
     'duplicate',
     'evidence',
     'wrong-reference',
-    'financial-figure',
-    'written-figure',
     'symbol',
     'infinity',
   ])('rejects a model reply that violates %s without substituting an allocation', async (fault) => {
@@ -501,8 +793,6 @@ describe('model-led private vault proposals', () => {
       duplicate: 'allocation_duplicate',
       evidence: 'allocation_evidence',
       'wrong-reference': 'allocation_evidence',
-      'financial-figure': 'prose_figure',
-      'written-figure': 'prose_figure',
       symbol: 'reply_schema',
       infinity: 'reply_schema',
     };
@@ -515,8 +805,6 @@ describe('model-led private vault proposals', () => {
     if (fault === 'duplicate') remainder.assetId = stock.id;
     if (fault === 'evidence') allocation.evidenceIds = ['invented-risk-observation'];
     if (fault === 'wrong-reference') allocation.evidenceIds = [`catalog:${reserve.id}`];
-    if (fault === 'financial-figure') allocation.why = 'The yield is 12%.';
-    if (fault === 'written-figure') allocation.why = 'It pays ten percent annually.';
     if (fault === 'symbol') Object.assign(allocation, { symbol: 'MADEUP' });
     if (fault === 'infinity') Object.assign(allocation, { weightBps: Number.POSITIVE_INFINITY });
     expect(await replyToVaultConversation(request(), context, fake(value))).toEqual(
@@ -1282,6 +1570,39 @@ describe('model-led private vault proposals', () => {
     const said = 'This draft leaves out FIXGx: a plan with your goal cannot hold it.';
     expect(out.reply.message).toBe(`It stays liquid. ${said}`);
     expect(out.reply.proposal?.summary).toBe(said);
+  });
+
+  it('cuts a sentence for a figure and a sentence for a pick left out in one reply, and says both', async () => {
+    const value = proposal();
+    value.message = `I added ${stock.symbol} next to a reserve. It may return 5% a year. The reserve stays liquid.`;
+    value.proposal.tradeoffs = [
+      `${stock.symbol} can fall.`,
+      'A reserve can lose 2% in a bad month.',
+    ];
+    value.proposal.allocations = value.proposal.allocations.slice(0, 2);
+    const out = await replyToVaultConversation(
+      request('Keep my savings safe.'),
+      { ...context, currentGoals: [{ goal: 'income' }] },
+      fake(value),
+    );
+    if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
+    const leftOut = `This draft leaves out ${stock.symbol}: it is outside your plan's goal and you did not ask for it.`;
+    expect(out.reply.message).toBe(`The reserve stays liquid.\n${FIGURE_CUT} ${leftOut}`);
+    expect(out.reply.proposal).toMatchObject({
+      summary: leftOut,
+      tradeoffs: [FIGURE_CUT],
+      allocations: [{ assetId: reserve.id, weightBps: 10_000 }],
+    });
+    expect(out.reply.weightNotes).toContainEqual({
+      code: 'pick_outside_goal',
+      assetIds: [stock.id],
+    });
+    expect(out.repair).toEqual({
+      failed: 'prose_figure',
+      outcome: 'allocation_ineligible',
+      sentencesCut: 2,
+    });
+    expect(JSON.stringify(out.reply).replaceAll(leftOut, '')).not.toMatch(/NVDAx|5%|2%/u);
   });
 
   it('asks the model again, and fails, when a kept pick has no reason left without the removed asset', async () => {

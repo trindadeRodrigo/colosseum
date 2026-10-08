@@ -121,6 +121,7 @@ describe('the routes of the app', () => {
       'app/(app)/vaults/[chain]/[address]/add/page.tsx',
       'app/(app)/vaults/[chain]/[address]/loading.tsx',
       'app/(app)/vaults/[chain]/[address]/page.tsx',
+      'app/(app)/vaults/[chain]/[address]/targets/page.tsx',
       'app/(app)/vaults/[chain]/[address]/withdraw/page.tsx',
       'app/(embed)/embed/[chain]/[address]/page.tsx',
       'app/(embed)/embed/page.tsx',
@@ -180,7 +181,7 @@ describe('rule 1: nothing the product ships imports from a dev, test or fixtures
   );
 
   it('reads the app: the product’s screens and what they are tested with', () => {
-    expect(shipped).toContain('features/invest/InvestScreen.tsx');
+    expect(shipped).toContain('features/goal-conversation/GoalConversation.tsx');
     expect(shipped).toContain('features/account/SignInScreen.tsx');
     expect(shipped).toContain('components/shell/AppDocument.tsx');
     for (const helper of [
@@ -202,7 +203,7 @@ describe('rule 1: nothing the product ships imports from a dev, test or fixtures
   it('finds none at all in what the product’s routes are built from', () => {
     const built = [...reach(product).files];
     expect(built.length).toBeGreaterThan(40);
-    expect(built).toContain('features/invest/InvestScreen.tsx');
+    expect(built).toContain('features/goal-conversation/GoalConversation.tsx');
     expect(built).toContain('features/wallet/privy-bridge.tsx');
     expect(built.filter(notShipped)).toEqual([]);
   });
@@ -258,7 +259,10 @@ describe('rule 1: nothing the product ships imports from a dev, test or fixtures
     const bad = (file: string, text: string) =>
       importsOf(file, text).filter((edge) => edge.file !== null && notShipped(edge.file));
     expect(
-      bad('features/invest/InvestScreen.tsx', "import { SHEET } from './test/plan';"),
+      bad(
+        'features/goal-conversation/GoalConversation.tsx',
+        "import { SHEET } from './test/plan';",
+      ),
     ).toHaveLength(1);
     expect(
       bad('app/(app)/goal/page.tsx', "const S = () => import('../dev/ui/Showcase');"),
@@ -343,7 +347,7 @@ describe('rule 3: no screen can reach a key', () => {
   const ORDER_SCREEN = 'features/order/OrderScreen.tsx';
   const ORDER_ROUTE = 'app/(app)/orders/[id]/page.tsx';
   /**
-   * The routes that sign: the order's own, and the three whose card runs an order with one press
+   * The routes that sign: the order's own, and those whose card runs an order with one press
    * (features/order/InvestCard.tsx draws the order screen inside it). Each reaches the runner through
    * the order screen and by no other file.
    */
@@ -354,8 +358,6 @@ describe('rule 3: no screen can reach a key', () => {
     // a shared portfolio's own page mounts the invest card under its holdings (gate PRODUCTS-PLAN-PANE)
     'app/(app)/indexes/[slug]/page.tsx',
     'app/(app)/vaults/[chain]/[address]/add/page.tsx',
-    // the Invest screen's pane mounts the invest card under the plan (gate INVEST-TWO-PANE)
-    'app/(app)/goal/page.tsx',
   ];
 
   /** What a file outside the seam may take from a file of the seam, by name. Types are free. */
@@ -548,7 +550,7 @@ describe('rule 3: no screen can reach a key', () => {
 
   it('reads every file a product route is built from, the screens among them', () => {
     for (const file of [
-      'features/invest/InvestScreen.tsx',
+      'features/goal-conversation/GoalConversation.tsx',
       'features/account/SignInScreen.tsx',
       'features/account/ChainSwitch.tsx',
       'features/account/AccountProvider.tsx',
@@ -687,7 +689,7 @@ describe('rule 3: no screen can reach a key', () => {
   });
 
   it('bites: every way of getting at a signature that is written in the file', () => {
-    const file = 'features/invest/InvestScreen.tsx';
+    const file = 'features/goal-conversation/GoalConversation.tsx';
     const caught: Record<string, string> = {
       'a call': "await port.sign('solana', [tx]);",
       'a call on the hook': 'await useWalletPort().send(chain, tx);',
@@ -724,7 +726,7 @@ describe('rule 3: no screen can reach a key', () => {
   });
 
   it('bites: what is not written in the file is held by what a screen can reach', () => {
-    const file = 'features/invest/InvestScreen.tsx';
+    const file = 'features/goal-conversation/GoalConversation.tsx';
     // A key built at run time, and the port handed to a helper: nothing in the text names a member.
     // The port a screen holds has none, so both come to nothing (the test above), and the typecheck
     // refuses both: the screen's port has no such member and takes no string as a key.

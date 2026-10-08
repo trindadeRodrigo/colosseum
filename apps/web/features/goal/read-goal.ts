@@ -33,7 +33,7 @@ export const GOAL_TEXT = { min: 3, max: 2000 } as const;
  * it is not sent. `busy`: the API asked for fewer requests. `unreachable`: it did not answer.
  * `unreadable`: it answered in a form this app cannot read, a refusal of the request included.
  */
-export type ReadFailure = 'too_short' | 'too_long' | 'busy' | 'unreachable' | 'unreadable';
+type ReadFailure = 'too_short' | 'too_long' | 'busy' | 'unreachable' | 'unreadable';
 
 export class ReadGoalError extends Error {
   readonly kind: ReadFailure;

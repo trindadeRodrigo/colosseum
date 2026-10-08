@@ -8,9 +8,10 @@ import { WORKSPACE_TITLE } from '../../components/ui/heading';
 import { LatticeGlyph } from '../../components/ui/Lattice';
 import { dictionary } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
+import { UseGoalMix } from '../mix/UseGoalMix';
 import { share } from '../portfolio/figures';
 import { VaultAgentError, type VaultAgentReply } from '../vault-conversation/agent';
-import { StrategyPreview } from '../vault-conversation/StrategyPreview';
+import { StrategyPreview, WeightNotes } from '../vault-conversation/StrategyPreview';
 import {
   conversationNetwork,
   readLocal,
@@ -62,6 +63,8 @@ export function GoalConversation({
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [reply, setReply] = useState<VaultAgentReply | null>(null);
+  // The preview the person chose to use: the flow stays only while that preview is the one shown.
+  const [using, setUsing] = useState<VaultAgentReply | null>(null);
   const [error, setError] = useState<string>();
   useEffect(() => {
     ++generation.current;
@@ -101,10 +104,12 @@ export function GoalConversation({
   }
   async function send(words: string) {
     if (!ready || !chain || !key || !loaded || sending.current) return;
-    const next = [
-      ...held.current,
-      { id: crypto.randomUUID(), who: 'person' as const, text: words },
-    ];
+    // Words that got no reply are sent again as the turn they already are, never as a second copy.
+    const last = held.current.at(-1);
+    const next =
+      last?.who === 'person' && last.text === words
+        ? held.current
+        : [...held.current, { id: crypto.randomUUID(), who: 'person' as const, text: words }];
     if (!transcriptOf({ revision: 0, transcript: next })) {
       setError(copy.capacity);
       return;
@@ -162,7 +167,9 @@ export function GoalConversation({
       setReply(result);
       persist(completed);
     } catch (cause) {
-      if (active())
+      if (active()) {
+        // their words go back in the box, unless they have typed something else meanwhile
+        setText((now) => (now === '' ? words : now));
         setError(
           cause instanceof VaultAgentError && cause.kind === 'unavailable'
             ? cause.reason === 'timeout'
@@ -174,6 +181,7 @@ export function GoalConversation({
                   : copy.unavailable
             : copy.failed,
         );
+      }
     } finally {
       if (active()) {
         sending.current = false;
@@ -181,6 +189,8 @@ export function GoalConversation({
       }
     }
   }
+  // The person's last words with no reply after them: a failed reply, or one a reload cut short.
+  const unanswered = !busy && ready && loaded ? turns.at(-1) : undefined;
   return (
     <section
       data-ui="goal-conversation"
@@ -263,6 +273,19 @@ export function GoalConversation({
             busy: t.shared.vault.conversation.reading,
           }}
         />
+        {unanswered?.who === 'person' && (
+          <p
+            data-ui="goal-retry"
+            className="flex flex-wrap items-center gap-x-4 gap-y-1 text-body-sm"
+          >
+            <Button variant="link" data-act="goal-retry" onClick={() => send(unanswered.text)}>
+              {copy.retry}
+            </Button>
+            <Link href="/shelf" className="underline">
+              {copy.elsewhere}
+            </Link>
+          </p>
+        )}
         {loaded && turns.length === 0 && (
           <ul
             data-ui="goal-starters"
@@ -289,7 +312,23 @@ export function GoalConversation({
       </div>
       <div data-ui="goal-strategy" className="flex min-w-0 flex-col gap-4 lg:col-span-7">
         {reply?.proposal ? (
-          <StrategyPreview proposal={reply.proposal} previewOnly={copy.previewOnly} />
+          <>
+            <StrategyPreview
+              proposal={reply.proposal}
+              previewOnly={copy.draftNote}
+              {...(chain && userId && using !== reply
+                ? { use: { label: t.mix.preview.use, onUse: () => setUsing(reply) } }
+                : {})}
+            />
+            {chain && userId && using === reply && (
+              <UseGoalMix
+                chain={chain}
+                userId={userId}
+                allocations={reply.proposal.allocations}
+                onClose={() => setUsing(null)}
+              />
+            )}
+          </>
         ) : (
           <div
             data-ui="goal-empty-preview"
@@ -299,6 +338,7 @@ export function GoalConversation({
             <h2 className="text-body-lg font-medium">{t.talk.workbench.strategy}</h2>
             <p className="max-w-[48ch] text-body-sm text-muted-foreground">{copy.empty}</p>
             <p className="text-caption text-muted-foreground">{copy.previewOnly}</p>
+            {reply?.notes && <WeightNotes notes={reply.notes} />}
           </div>
         )}
       </div>

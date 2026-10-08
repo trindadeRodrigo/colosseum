@@ -47,6 +47,7 @@ import {
   depositLanded,
   leftOfApproved,
   leftOfPlan,
+  retargetShapeOk,
   sharedShapeOk,
   stoppedShort,
 } from './order-check';
@@ -99,6 +100,10 @@ function checkOf(order: OrderDetail, record: OrderRecord, units: ChainUnits | nu
   if (!terms) return checkDeposit(order, record.amountUsd, units);
   if (terms.kind === 'family') return checkFamilyBuy(order, record.amountUsd, units, terms.targets);
   if (terms.kind === 'vault') return checkVaultAdd(order, record.amountUsd, units, terms);
+  if (terms.kind === 'retarget')
+    return retargetShapeOk(order, terms, units)
+      ? { ok: true, depositRaw: 0n, decimals: 0 }
+      : { ok: false, why: 'shape' };
   return sharedShapeOk(order, terms)
     ? { ok: true, depositRaw: 0n, decimals: 0 }
     : { ok: false, why: terms.kind === 'withdraw' ? 'withdraw' : 'shape' };
@@ -658,7 +663,9 @@ export function OrderScreen({
           ? addMoneyPath(chain, terms.vault)
           : terms.kind === 'withdraw'
             ? `/vaults/${encodeURIComponent(chain)}/${encodeURIComponent(terms.vault)}/withdraw`
-            : '/publish';
+            : terms.kind === 'retarget'
+              ? `/vaults/${encodeURIComponent(chain)}/${encodeURIComponent(terms.vault)}/targets`
+              : '/publish';
   const testNetwork = shown.legs[0]?.provenance === 'sandbox';
   // The swaps the order left undone: what an order that finishes it would make, and is held to.
   // The trades are the approved order's own, step by step: of the API's later answer only where each
@@ -718,11 +725,15 @@ export function OrderScreen({
                   ? record.approved
                     ? t.order.shared.resume
                     : t.order.shared.signWithdraw
-                  : record.approved
-                    ? t.order.resume(amount)
-                    : embed
-                      ? t.invest.press(amount)
-                      : t.order.signAndBuy(amount);
+                  : terms?.kind === 'retarget'
+                    ? record.approved
+                      ? t.order.shared.resume
+                      : t.mix.order.signTargets
+                    : record.approved
+                      ? t.order.resume(amount)
+                      : embed
+                        ? t.invest.press(amount)
+                        : t.order.signAndBuy(amount);
   // A deposit is never signed for before the trust notice is accepted (DESIGN-VAULT section 13). The
   // invest card makes the order before that, to show its prices, so the order's own page asks too:
   // an order opened here that nobody approved is held until the notice is accepted, as on the card.

@@ -17,7 +17,7 @@ test('new-goal exploration opens a responsive preview-only workbench', async ({ 
       financialPosts.push(request.url());
   });
   await page.goto('/goal');
-  await expect(page.locator('[data-ui="goal-mode"]')).toHaveValue('explore');
+  await expect(page.locator('[data-ui="goal-mode"]')).toHaveCount(0);
   await expect(page.locator('[data-ui="goal-conversation"]')).toBeVisible();
   await expect(page.locator('[data-ui="goal-empty-preview"]')).toContainText(
     en.goal.explore.previewOnly,
