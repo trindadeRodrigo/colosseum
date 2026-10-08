@@ -465,6 +465,16 @@ export function makeExecute(guard: Guard) {
         // It is written down that the wallet was asked before it is asked: a page that dies between
         // the two does not ask a second time.
         await remember(key, { ...now, proof: null });
+        // Asked to stop while that was written (a store that takes time): the wallet is not asked, and
+        // the record is put back as it was, so the next run does not read this as a send that may
+        // have gone.
+        if (deps.signal?.aborted) {
+          await remember(
+            key,
+            before ?? { times: 0, chain: tx.chainId, messageHash: '', proof: null },
+          );
+          return { stopped: true };
+        }
         try {
           const { txId } = await signer.send(tx.chainId, tx);
           if (typeof txId !== 'string' || !txId)
