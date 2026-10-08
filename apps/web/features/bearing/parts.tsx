@@ -272,7 +272,7 @@ export function MultiSelect({
 }
 
 export const SMALL_BTN =
-  'min-h-7 cursor-pointer rounded-md border border-input px-2.5 py-1 text-[0.8125rem] font-medium hover:border-primary hover:text-primary';
+  'min-h-7 cursor-pointer rounded-md border border-input px-2.5 py-1 text-[0.8125rem] font-medium hover:border-primary hover:text-honey-text';
 
 /** The line under a chart: where its headline figure came from, when, with the pin. */
 /** A chart's pin from its source fact, for the figures its readout names; none for no fact. */
@@ -482,7 +482,7 @@ export function Pie({
     <div data-ui="bearing-pie" onMouseLeave={() => setOn(null)}>
       <div className="mb-2">
         <div className="font-condensed text-caption font-medium text-muted-foreground">{title}</div>
-        <div className="mt-0.5 font-mono text-b-kpi font-medium">{totalHtml}</div>
+        <div className="mt-0.5 font-display text-b-kpi font-semibold tabular-nums">{totalHtml}</div>
         {note && top.length > 0 && <div className="text-caption text-muted-foreground">{note}</div>}
       </div>
       {

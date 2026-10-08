@@ -15,7 +15,7 @@ import { evmSelfTransfer, solanaSelfTransfer } from './self-transfer';
 
 const CHAINS: ChainId[] = ['solana', 'robinhood'];
 const MESSAGE = 'Tenonfi wallet check. This signature moves nothing.';
-const button = 'rounded-[2px] border border-gray-500 px-3 py-1.5 text-sm hover:border-black';
+const button = 'rounded-sm border border-gray-500 px-3 py-1.5 text-sm hover:border-black';
 
 /** Where a figure came from, when and how. Every figure on this page is followed by one. */
 function Source({ of }: { of: Pick<Reading<unknown>, 'source' | 'fetchedAt' | 'method'> }) {

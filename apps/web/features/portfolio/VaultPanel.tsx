@@ -173,7 +173,7 @@ export function VaultPanel({
               href={`/vaults/${vault.chain}/${encodeURIComponent(vault.address)}`}
               title={vault.address}
               aria-label={words.page(shorten(vault.address))}
-              className="font-mono text-primary underline decoration-1 underline-offset-4 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className="font-mono text-honey-text underline decoration-1 underline-offset-4 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
               {shorten(vault.address)}
             </Link>
@@ -246,7 +246,7 @@ export function VaultPanel({
       </CardBody>
       <CardBody density="dense">
         <details data-ui="vault-details">
-          <summary className="w-fit cursor-pointer text-body-sm font-medium text-primary underline decoration-1 underline-offset-4 hover:decoration-2">
+          <summary className="w-fit cursor-pointer text-body-sm font-medium text-honey-text underline decoration-1 underline-offset-4 hover:decoration-2">
             {words.details}
           </summary>
           <dl className="mt-3 grid gap-x-6 gap-y-1 text-body-sm sm:grid-cols-[auto_1fr]">

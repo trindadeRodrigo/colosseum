@@ -246,7 +246,7 @@ export function FundingStep({
       </div>
       {read && (
         <details data-ui="funding-details" className="group/details">
-          <summary className="w-fit cursor-pointer text-body-sm font-medium text-primary underline decoration-1 underline-offset-4 hover:decoration-2">
+          <summary className="w-fit cursor-pointer text-body-sm font-medium text-honey-text underline decoration-1 underline-offset-4 hover:decoration-2">
             {t.buy.funding.details}
           </summary>
           <div className="mt-3 flex flex-col gap-3">

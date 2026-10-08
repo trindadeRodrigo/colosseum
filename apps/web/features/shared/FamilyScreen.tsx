@@ -410,7 +410,7 @@ function RecipeSection({
             {/* The routine check of its words, behind a fold unless a check found something wrong. */}
             {(check.state !== 'read' || check.textMatches === 'pending') && (
               <details data-ui="family-checks" open={alarm || undefined}>
-                <summary className="w-fit cursor-pointer text-body-sm font-medium text-primary underline decoration-1 underline-offset-4 hover:decoration-2">
+                <summary className="w-fit cursor-pointer text-body-sm font-medium text-honey-text underline decoration-1 underline-offset-4 hover:decoration-2">
                   {t.plan.details}
                 </summary>
                 <div className="mt-3 flex flex-col gap-2">
@@ -823,7 +823,7 @@ function VaultsPanel({
                     <span>{t.shared.vault.version(vault.acceptedVersion)}</span>
                   )}
                 </div>
-                <h3 id={heading} className="w-full break-words font-display text-h4">
+                <h3 id={heading} className="w-full break-words font-display font-semibold text-h4">
                   {nameOf(vault)}
                 </h3>
                 <div data-ui="vault-holdings" className="flex w-full min-w-0 flex-col gap-2">

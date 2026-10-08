@@ -156,8 +156,10 @@ const SWATCHES = [
   ['primary', 'bg-primary'],
   ['primary-hover', 'bg-primary-hover'],
   ['primary-pressed', 'bg-primary-pressed'],
-  ['border (hair)', 'bg-border'],
-  ['input (member)', 'bg-input'],
+  ['honey-tint', 'bg-honey-tint'],
+  ['wood', 'bg-wood'],
+  ['border (line)', 'bg-border'],
+  ['input (control edge)', 'bg-input'],
   ['destructive', 'bg-destructive'],
   ['status-on', 'bg-status-on'],
   ['status-on-bg', 'bg-status-on-bg'],
@@ -177,18 +179,20 @@ const SWATCHES = [
 ] as const;
 
 const TYPE = [
-  ['display', 'font-display text-display font-normal', 'Your apartment fund is on track.'],
-  ['h1', 'font-display text-h1 font-normal', 'Made to measure.'],
-  ['h2', 'text-h2 font-semibold', 'Every joint shown'],
-  ['h3', 'text-h3 font-semibold', 'Access to cash'],
-  ['h4', 'text-h4 font-medium', 'How we read your goal'],
-  ['body-lg', 'text-body-lg', 'The serif gives the answer.'],
-  ['body', 'text-body', 'The sans explains. 0123456789'],
+  ['display', 'font-display text-display font-semibold', 'Your apartment fund is on track.'],
+  ['h1', 'font-display text-h1 font-semibold', 'Made to measure.'],
+  ['h2', 'font-display text-h2 font-semibold', 'Every joint shown'],
+  ['h3', 'font-display text-h3 font-semibold', 'Access to cash'],
+  ['h4', 'text-h4 font-semibold', 'How we read your goal'],
+  ['body-lg', 'text-body-lg', 'The display face states.'],
+  ['body', 'text-body', 'The UI face explains. 0123456789'],
   ['body-sm', 'text-body-sm', 'Up to $4,000 within a day.'],
   ['caption', 'text-caption font-medium', 'On track · June 2028'],
   ['source', 'font-mono text-source', 'sample · 2026-10-01T14:02:11Z · v1'],
-  ['b-kpi', 'font-mono text-b-kpi font-medium', '$1.2M'],
-  ['b-cell', 'font-condensed text-b-cell', 'Bearing table cell 1,234.50'],
+  ['figure-lg', 'font-display text-figure-lg font-semibold tabular-nums', '$12,480'],
+  ['sample-line', 'text-sample-line text-sample-foreground', 'Sample figures · test network'],
+  ['b-kpi', 'font-display text-b-kpi font-semibold tabular-nums', '$1.2M'],
+  ['b-cell', 'text-b-cell tabular-nums', 'Bearing table cell 1,234.50'],
 ] as const;
 
 const ICONS: IconName[] = ['ArrowUp', 'ArrowUpRight', 'Check', 'ChevronDown', 'Copy', 'Menu', 'X'];
@@ -216,7 +220,7 @@ const PARTNER: CSSProperties = {
 
 type Parsed = { readonly parsed: true };
 const PARSED: Parsed = { parsed: true };
-const CREDIT = { name: 'tenonfi', href: '#embed-shell-md', symbol: <Mark size={16} /> };
+const CREDIT = { name: 'tenonfi', href: '#embed-shell-md', symbol: <Mark size={16} mono /> };
 
 function WhyThisPlan() {
   const [parted, setParted] = useState(false);
@@ -970,7 +974,7 @@ export function Showcase() {
             />
           </div>
         </Specimen>
-        <Specimen state="suggestion chips sit outside it, square" wide>
+        <Specimen state="suggestion chips sit outside it, as pills" wide>
           <div className="flex flex-wrap gap-2">
             <Button variant="chip">$40,000 by June 2028</Button>
             <Button variant="chip">R$ 5.000 a month from 2029</Button>

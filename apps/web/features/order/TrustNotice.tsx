@@ -81,7 +81,7 @@ export function TrustNotice({
         </ul>
       </div>
       <details data-ui="trust-full">
-        <summary className="w-fit cursor-pointer text-body-sm font-medium text-primary underline decoration-1 underline-offset-4 hover:decoration-2">
+        <summary className="w-fit cursor-pointer text-body-sm font-medium text-honey-text underline decoration-1 underline-offset-4 hover:decoration-2">
           {t.trust.short.full}
         </summary>
         <div className="mt-3 flex flex-col gap-2">

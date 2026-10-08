@@ -224,11 +224,12 @@ describe('the monitor, for a person with a vault on their chain', () => {
     const host = await screen();
     expect(server.to(PORTFOLIO_PATH)).toHaveLength(1);
     expect(find(host, 'h1').textContent).toBe(en.portfolio.title(1));
-    // the serif is spent once, on that line
-    // the serif is spent on the goal: in a list of goal cards the page heading is the sans face
-    // (goal-card.md), and each vault's card has its one serif sentence
-    expect(host.querySelectorAll('.font-display')).toHaveLength(1);
-    expect(find(host, '.font-display').closest('[data-ui="goal-card"]')).not.toBeNull();
+    // the display face is spent on the goal: in a list of goal cards the page heading is the UI face
+    // (goal-card.md), and each vault's card sets its sentence and its amount in Inter Tight
+    const display = [...host.querySelectorAll('.font-display')];
+    expect(display.length).toBeGreaterThanOrEqual(1);
+    expect(display.length).toBeLessThanOrEqual(2);
+    for (const el of display) expect(el.closest('[data-ui="goal-card"]')).not.toBeNull();
     expect(vaults(host)).toHaveLength(1);
     expect(find(host, `a[href="/vaults/solana/${VAULT}#vault-conversation"]`).textContent).toBe(
       en.shared.vault.conversation.resume,

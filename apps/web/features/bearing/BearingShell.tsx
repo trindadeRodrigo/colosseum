@@ -150,7 +150,7 @@ export function BearingShell({ children }: { children: ReactNode }) {
           <div className="font-condensed text-b-head font-medium text-muted-foreground">
             {t.head}
           </div>
-          <h1 className="mt-2 mb-4 max-w-[34ch] font-display text-[clamp(1.75rem,1.3rem+1.4vw,2.5rem)]/[1.15] font-normal tracking-[-0.015em]">
+          <h1 className="mt-2 mb-4 max-w-[34ch] font-display text-[clamp(1.75rem,1.3rem+1.4vw,2.5rem)]/[1.15] font-semibold tracking-[-0.02em]">
             {page.lede}
           </h1>
           <ChainToggle />

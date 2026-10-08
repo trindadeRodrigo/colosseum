@@ -1032,7 +1032,7 @@ export function InvestScreen() {
         )}
         {turns.length === 0 && (
           <div data-ui="invest-invitation" className="flex min-w-0 flex-col gap-2">
-            <p className="font-display text-[1.25rem]/7">{t.goal.title}</p>
+            <p className="font-display font-semibold text-[1.25rem]/7">{t.goal.title}</p>
             <p className="text-body-sm text-muted-foreground">{w.workbench.invitation}</p>
           </div>
         )}
@@ -1310,7 +1310,7 @@ export function InvestScreen() {
         {!workspace && (
           <div
             data-ui="pane-empty"
-            className="flex min-w-0 flex-col items-start justify-center gap-3 rounded-md border border-border bg-card p-4 sm:min-h-60"
+            className="flex min-w-0 flex-col items-start justify-center gap-3 rounded-lg border border-border bg-card p-4 sm:min-h-60"
           >
             <LatticeGlyph size={32} />
             <h2 className="text-body-lg font-medium">{w.workbench.strategy}</h2>

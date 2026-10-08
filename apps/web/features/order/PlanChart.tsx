@@ -158,8 +158,8 @@ function DatedPlanChart({
             <path
               className="motion-safe:animate-crossfade"
               d={`M${x(0)} ${paidY(0)} L${x(months)} ${paidY(high - amountUsd)} L${x(months)} ${paidY(low - amountUsd)} Z`}
-              fill="var(--chart-3)"
-              fillOpacity={0.28}
+              fill="var(--tf-honey)"
+              fillOpacity={0.2}
             />
             <line
               x1={x(0)}
@@ -175,7 +175,7 @@ function DatedPlanChart({
               y1={paidY(0)}
               x2={x(months)}
               y2={paidY(low - amountUsd)}
-              stroke="var(--chart-3)"
+              stroke="var(--muted-foreground)"
               strokeDasharray="3 3"
             />
             <text x={x(months) + 6} y={paidY(high - amountUsd) + 3} fill="var(--foreground)">
@@ -225,8 +225,8 @@ function DatedPlanChart({
             ))}
             <path
               d={`M${x(0)} ${y(amountUsd)} L${x(months)} ${y(high)} L${x(months)} ${y(low)} Z`}
-              fill="var(--chart-3)"
-              fillOpacity={0.28}
+              fill="var(--tf-honey)"
+              fillOpacity={0.2}
             />
             <g data-series="high" opacity={seriesOpacity(focus, 'high')} className={SERIES_FADE}>
               <line
@@ -248,7 +248,7 @@ function DatedPlanChart({
                 y1={y(amountUsd)}
                 x2={x(months)}
                 y2={y(low)}
-                stroke="var(--chart-3)"
+                stroke="var(--muted-foreground)"
                 strokeDasharray="3 3"
               />
               <text x={x(months) + 6} y={y(low) + 12} fill="var(--muted-foreground)">
@@ -269,7 +269,7 @@ function DatedPlanChart({
                   x2={x(m)}
                   y1={TOP}
                   y2={H - BOTTOM}
-                  stroke="var(--muted-foreground)"
+                  stroke="var(--tf-chalk)"
                   strokeDasharray="2 3"
                 />
                 {(

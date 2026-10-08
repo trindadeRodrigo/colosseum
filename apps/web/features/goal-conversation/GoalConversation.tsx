@@ -200,11 +200,11 @@ export function GoalConversation({
       <div
         ref={box}
         data-ui="goal-chat"
-        className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-24 lg:col-span-5 lg:max-h-[calc(100dvh-8rem)]"
+        className="flex min-w-0 flex-col gap-4 bg-glow lg:sticky lg:top-24 lg:col-span-5 lg:max-h-[calc(100dvh-8rem)]"
       >
         {turns.length === 0 && (
           <div className="flex flex-col gap-2">
-            <p className="font-display text-[1.25rem]/7">{copy.invitation}</p>
+            <p className="font-display font-semibold text-[1.25rem]/7">{copy.invitation}</p>
             <p className="text-body-sm text-muted-foreground">{copy.lead}</p>
           </div>
         )}
@@ -312,7 +312,7 @@ export function GoalConversation({
         ) : (
           <div
             data-ui="goal-empty-preview"
-            className="flex min-w-0 flex-col items-start justify-center gap-3 rounded-md border border-border bg-card p-4 sm:min-h-60"
+            className="flex min-w-0 flex-col items-start justify-center gap-3 rounded-lg border border-border bg-card p-4 sm:min-h-60"
           >
             <LatticeGlyph size={32} />
             <h2 className="text-body-lg font-medium">{t.talk.workbench.strategy}</h2>

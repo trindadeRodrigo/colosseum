@@ -107,7 +107,7 @@ export function MonitorScreen() {
     return (
       <div
         data-ui="vault-unfinished"
-        className="flex flex-col items-start gap-2 rounded-md border border-border bg-card p-4"
+        className="flex flex-col items-start gap-2 rounded-lg border border-border bg-card p-4"
       >
         <Status status="watch">{words.vault.unfinished}</Status>
         <Link

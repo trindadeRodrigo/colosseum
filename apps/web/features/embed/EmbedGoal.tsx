@@ -93,7 +93,7 @@ export function EmbedGoal({ style }: { style: CSSProperties }) {
         lang={LOCALE[lang]}
         title={read ? (sentence ?? words.unread) : words.title}
         lead={read ? undefined : words.lead}
-        credit={{ name: 'tenonfi', href: '/', symbol: <Mark size={16} /> }}
+        credit={{ name: 'tenonfi', href: '/', symbol: <Mark size={16} mono /> }}
         labels={{
           loading: words.loading,
           slow: t.shell.wait.slow,
