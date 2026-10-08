@@ -40,9 +40,10 @@ export async function readyToInvest(
 }
 
 /**
- * To a plan's own page, as a person who already has a plan gets there (the portfolio's "See the
- * plan", or a link): the stub stores a $40 plan to grow over three years as the person's own
- * (`POST /v1/baskets/personalize`), on the chain it runs, and the page reads it back by its id.
+ * To a plan's own page by its link, as the portfolio's "See the plan" or an agent's link leads there:
+ * the stub stores a $40 plan to grow over three years as the person's own
+ * (`POST /v1/baskets/personalize`), on the chain it runs, and the page reads it back by its id. The
+ * link is opened through sign-in, because a page load gives the throwaway wallet new keys.
  */
 export async function openPlan(page: Page) {
   const made = await page.request.post(`${STUB}/v1/baskets/personalize`, {
@@ -63,6 +64,7 @@ export async function openPlan(page: Page) {
   });
   expect(made.status()).toBe(200);
   const { id } = (await made.json()) as { id: string };
-  await page.goto(`/plan/${id}`);
+  await page.goto(`/sign-in?next=${encodeURIComponent(`/plan/${id}`)}`);
+  await page.getByRole('button', { name: en.signIn.passkey.continue }).click();
   await expect(page).toHaveURL(/\/plan\/[^/]+$/);
 }

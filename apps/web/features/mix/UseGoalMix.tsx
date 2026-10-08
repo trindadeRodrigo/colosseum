@@ -7,7 +7,7 @@ import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { Field, Input, Select } from '../../components/ui/Field';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { parseNumber } from '../goal/sheet';
-import { MAX_USD, MIN_USD } from '../order/InvestCard';
+import { MAX_USD, MIN_USD } from '../order/limits';
 import { rememberPlan } from '../order/plan-store';
 import { onMock } from '../order/readiness';
 import { unitsFor } from '../order/units';

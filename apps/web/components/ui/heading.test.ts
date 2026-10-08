@@ -35,7 +35,7 @@ describe('a page’s title', () => {
     );
   });
 
-  it('permits only the exact shared workspace title in the two Invest workspaces', () => {
+  it('permits only the exact shared workspace title in the Invest workspace', () => {
     expect(WORKSPACE_TITLE).toBe('text-body-lg font-semibold');
     const title = '<h1 className={WORKSPACE_TITLE}>Invest</h1>';
     for (const file of WORKSPACES) {

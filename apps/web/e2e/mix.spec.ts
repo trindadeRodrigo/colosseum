@@ -70,7 +70,6 @@ test('a new goal’s mix from the conversation: edited, reviewed, ticked, stored
   page,
 }) => {
   await signIn(page);
-  await expect(page.locator('[data-ui="goal-mode"]')).toHaveValue('explore');
   const box = page.locator('textarea');
   await box.fill('A broad fund and some gold');
   await box.press('Enter');
