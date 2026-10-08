@@ -53,7 +53,7 @@ export function registerGoalConversationReplyRoute(
         tags: ['plans'],
         summary: 'Discuss a new goal and preview model-proposed allocations',
         description:
-          'Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. Uses the existing model and shared call quota. A preview requires separate fresh goal and amount confirmation before any financial review.',
+          'Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. Uses the existing model and shared call quota. A preview requires separate fresh goal and amount confirmation before any financial review. No goal is stored for a new goal yet and none is taken from the request, so no pick is checked against one here and `proposal.unknowns` says so: `POST /v1/conversations/{chain}/goal/accept` checks the mix against the goal the person confirms.',
         params: z.strictObject({ chain: ChainId }),
         body: VaultAgentRequest,
         response: {

@@ -186,7 +186,9 @@ export type VaultAgentPrompt = {
   /** Measured exit capacity as a share of the vault; above it is allowed and warned, not refused. */
   exitCapacityBps: Record<string, number>;
   eligibilityGoal: 'grow' | 'income' | 'protect' | null;
-  /** Assets outside eligibilityGoal that the person asked for in their own words. */
+  /** The listed assets a plan for eligibilityGoal cannot hold, by the registry's rule. */
+  outsideGoal: string[];
+  /** The stocks among outsideGoal that the person asked for in their own words. */
   requestedOutsideGoal: string[];
   /** The shares the server read in the person's own words, which set the weights; `personQuote` is those words. */
   allocationConstraints: Array<{
@@ -665,7 +667,7 @@ const REPAIR_HINTS: Record<string, string> = {
   allocation_lines:
     'The proposal held more than sixteen assets besides cash; a vault holds at most sixteen.',
   allocation_ineligible:
-    'An allocation used an asset that is outside eligibilityGoal (stocks in income or protect) and is not in requestedOutsideGoal. Only the person can ask for such an asset; never add one on your own. If the person seems to want it but has not plainly asked, leave it out and ask them to confirm in question.',
+    'An allocation used an asset that is in outsideGoal and not in requestedOutsideGoal, so the server left it out. A plan for eligibilityGoal cannot hold it: a stock only when the person asks for it themselves, any other class never. Remove it and every mention of it as proposed. For a stock the person seems to want but has not plainly asked for, ask them to confirm in question; for any other class, say that a plan with this goal cannot hold it.',
   allocation_evidence:
     'An allocation cited an evidenceId that does not exist in evidence or belongs to a different asset.',
   allocation_constraint:
@@ -1348,6 +1350,12 @@ export async function replyToVaultConversation(
     [...catalog.values()],
     companies,
   );
+  // What a plan for the goal cannot hold, by the rule the review of a mix reads (`eligibleForGoal`).
+  const outside = new Set(
+    goal
+      ? [...catalog.values()].filter((asset) => !eligibleForGoal(asset, goal)).map(({ id }) => id)
+      : [],
+  );
   const prompt: VaultAgentPrompt = {
     version: 1,
     kind: context.kind ?? 'vault',
@@ -1392,11 +1400,8 @@ export async function replyToVaultConversation(
     exitCostTolerance: PERSONAL_PARAMS.tau,
     exitCapacityBps: caps,
     eligibilityGoal: goal,
-    requestedOutsideGoal: goal
-      ? [...catalog.values()]
-          .filter((asset) => requested.has(asset.id) && !eligibleForGoal(asset, goal))
-          .map((asset) => asset.id)
-      : [],
+    outsideGoal: [...outside],
+    requestedOutsideGoal: [...outside].filter((id) => requested.has(id)),
     allocationConstraints: person.standing.map((share) => ({
       assetIds: share.assetIds,
       minWeightBps: share.kind === 'max' ? 0 : share.bps,
@@ -1480,14 +1485,15 @@ export async function replyToVaultConversation(
         },
       };
     const ids = new Set<string>();
+    const leftOut: string[] = [];
     for (const allocation of proposal.allocations) {
       const asset = catalog.get(allocation.assetId);
       if (!asset) return rejected('allocation_unlisted');
       if (ids.has(asset.id)) return rejected('allocation_duplicate');
-      // Any listed composition may be proposed (ANY-COMPOSITION): only a stock outside the goal that the
-      // person never asked for is refused; exit capacity and an asked-for stock warn, below.
-      if (goal && !eligibleForGoal(asset, goal) && !requested.has(asset.id))
-        return rejected('allocation_ineligible');
+      // Any listed composition may be proposed (ANY-COMPOSITION), but for the goal: a pick outside it
+      // is left out, as the review of the mix would refuse it, unless it is a stock the person asked
+      // for (`requested` holds stocks only), which warns below, as exit capacity does.
+      if (outside.has(asset.id) && !requested.has(asset.id)) leftOut.push(asset.id);
       ids.add(asset.id);
       for (const id of allocation.evidenceIds) {
         const source = sourceById.get(id);
@@ -1495,16 +1501,49 @@ export async function replyToVaultConversation(
           return rejected('allocation_evidence');
       }
     }
-    if (
-      proposal.allocations.filter((allocation) => catalog.get(allocation.assetId)?.cls !== 'cash')
-        .length > 16
-    )
+    const kept = proposal.allocations.filter(({ assetId }) => !leftOut.includes(assetId));
+    if (kept.filter((allocation) => catalog.get(allocation.assetId)?.cls !== 'cash').length > 16)
       return rejected('allocation_lines');
+    // Said, never silent, and the model is asked once to write the reply without them. Should that
+    // fail too, the reply stands as corrected here.
+    const outsideNotes: VaultAgentWeightNote[] = leftOut.length
+      ? [{ code: 'pick_outside_goal', assetIds: leftOut.slice(0, 64) }]
+      : [];
+    const corrected = (result: VaultAgentResult): Checked =>
+      leftOut.length
+        ? {
+            result,
+            failed: 'allocation_ineligible',
+            problems: [
+              REPAIR_HINTS.allocation_ineligible ?? 'allocation_ineligible',
+              `Left out: ${leftOut.join(', ')}.`,
+            ],
+          }
+        : { result };
+    if (!kept.length)
+      return corrected({
+        kind: 'reply',
+        reply: {
+          version: 1,
+          messageId: request.messageId,
+          proposal: null,
+          warnings: [],
+          weightNotes: outsideNotes,
+          message:
+            request.language === 'pt'
+              ? 'Um plano com o seu objetivo não pode ter os ativos escolhidos nesta proposta, então nada foi proposto; nada foi aplicado.'
+              : 'A plan with your goal cannot hold the assets picked for this draft, so nothing is proposed; nothing was applied.',
+          question:
+            request.language === 'pt'
+              ? 'Quer uma proposta dentro do seu objetivo?'
+              : 'Would you like a draft within your goal?',
+        },
+      });
     // The weights come from the person's words, never from the model (Rodrigo's rule 2): an equal
     // split, or the shares the server read in the person's messages. What the model reports in
     // `stated` sets nothing: a share there that the server did not read is named once for the repair,
     // so the model asks the person instead of describing a share that was not applied.
-    const { stated, ...preview } = proposal;
+    const { stated, ...preview } = { ...proposal, allocations: kept };
     const unconfirmed = stated.flatMap((share, index) =>
       person.read.some(
         (own) =>
@@ -1552,6 +1591,7 @@ export async function replyToVaultConversation(
             warnings: [],
             weightNotes: [
               { code: 'share_unmet', assetIds: missed.assetIds.slice(0, 64), quote: missed.quote },
+              ...outsideNotes,
             ],
             message:
               request.language === 'pt'
@@ -1579,7 +1619,7 @@ export async function replyToVaultConversation(
         });
         sources.add(`liquidity:${asset.id}`);
       }
-      if (goal && !eligibleForGoal(asset, goal)) {
+      if (outside.has(asset.id)) {
         const listed = sourceById.has(`catalog:${asset.id}`)
           ? `catalog:${asset.id}`
           : allocation.evidenceIds[0];
@@ -1623,7 +1663,8 @@ export async function replyToVaultConversation(
             .map(({ quote }) => quote),
         ]),
       ].map((quote) => ({ code: 'share_unread' as const, assetIds: [], quote })),
-    ].slice(0, 64);
+    ].slice(0, 64 - outsideNotes.length);
+    weightNotes.push(...outsideNotes);
     const reply = VaultAgentReply.safeParse({
       version: 1,
       messageId: request.messageId,
@@ -1638,7 +1679,7 @@ export async function replyToVaultConversation(
       weightNotes,
     });
     return reply.success
-      ? { result: { kind: 'reply', reply: reply.data } }
+      ? corrected({ kind: 'reply', reply: reply.data })
       : rejected('reply_shape', where(reply.error.issues));
   };
   const started = Date.now();

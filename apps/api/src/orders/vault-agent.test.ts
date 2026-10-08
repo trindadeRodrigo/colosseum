@@ -148,6 +148,8 @@ const weightsOf = (out: Awaited<ReturnType<typeof replyToVaultConversation>>) =>
   out.kind === 'reply' ? out.reply.proposal?.allocations.map((line) => line.weightBps) : out;
 const fake = (reply: unknown): VaultAgentModel => ({ read: vi.fn(async () => ({ reply })) });
 // The reply failed `detail`, the model was asked once to correct it, and sent the same reply again.
+// A pick outside the goal was left out, and the model's one correction picked it again.
+const leftOutTwice = { failed: 'allocation_ineligible', outcome: 'allocation_ineligible' };
 const rejected = (detail: string) => ({
   kind: 'failure',
   reason: 'invalid',
@@ -896,23 +898,176 @@ describe('model-led private vault proposals', () => {
         });
       }
       // The model adding a stock on its own, a refusal, a question or a request for another asset
-      // is not the person asking for that stock.
-      for (const unasked of [
-        'Keep my savings safe.',
-        'I do not want stocks.',
-        'Should I buy stocks?',
-        `I want ${reserve.symbol} in this vault.`,
-      ]) {
+      // is not the person asking for that stock: it is left out, and the reply says so.
+      for (const [unasked, language] of [
+        ['Keep my savings safe.', 'en'],
+        ['I do not want stocks.', 'en'],
+        ['Should I buy stocks?', 'en'],
+        [`I want ${reserve.symbol} in this vault.`, 'en'],
+        ['Não quero ações.', 'pt'],
+        ['Devo comprar ações?', 'pt'],
+        ['Quero proteger minhas economias.', 'pt'],
+      ] as const) {
         const model = fake(proposal());
-        expect(await replyToVaultConversation(request(unasked), goalContext, model)).toEqual(
-          rejected('allocation_ineligible'),
+        const out = await replyToVaultConversation(
+          { ...request(unasked), language },
+          goalContext,
+          model,
         );
+        if (out.kind !== 'reply') throw new Error(`${unasked} refused: ${JSON.stringify(out)}`);
+        expect(
+          out.reply.proposal?.allocations.map((line) => [line.assetId, line.weightBps]),
+        ).toEqual([
+          [reserve.id, 5000],
+          [otherReserve.id, 5000],
+        ]);
+        expect(out.reply.warnings).toEqual([]);
+        expect(out.reply.weightNotes).toContainEqual({
+          code: 'pick_outside_goal',
+          assetIds: [stock.id],
+        });
+        expect(out.repair).toEqual(leftOutTwice);
         expect(vi.mocked(model.read).mock.calls[0]?.[1]).toMatchObject({
+          requestedOutsideGoal: [],
+        });
+        // The model is asked once to write the reply without the stock, and told which pick it was.
+        expect(vi.mocked(model.read).mock.calls[1]?.[2]?.problems.join(' ')).toContain(stock.id);
+      }
+    },
+  );
+
+  // A class the review of a mix refuses outright for the goal (mix.ts: `NOT_FOR_GOAL:<asset>`), which
+  // the person asking for it does not change.
+  const crypto = { ...stock, id: 'solana:fixture-crypto', cls: 'crypto' as const, symbol: 'FIXC' };
+  const commodity = {
+    ...stock,
+    id: 'solana:fixture-commodity',
+    cls: 'commodity' as const,
+    symbol: 'FIXO',
+  };
+  const others = [crypto, commodity].map((asset) => ({ ...asset, underlying: asset.symbol }));
+  const withOthers = (goal: 'grow' | 'income' | 'protect'): VaultAgentContext => ({
+    ...context,
+    currentGoals: [{ goal }],
+    assets: [...context.assets, ...others],
+    evidence: [
+      ...context.evidence,
+      ...others.map((asset) => ({
+        id: `catalog:${asset.id}`,
+        assetId: asset.id,
+        source: 'offline catalog',
+        method: 'listed assets',
+        fetchedAt: now,
+        provenance: 'mock' as const,
+      })),
+    ],
+  });
+  const picking = (...picked: Array<{ id: string }>) => {
+    const value = proposal();
+    value.proposal.allocations = picked.map((asset) => ({
+      assetId: asset.id,
+      why: 'This follows the direction you described.',
+      evidenceIds: [`catalog:${asset.id}`],
+    }));
+    return value;
+  };
+
+  it.each(['income', 'protect'] as const)(
+    'in a %s goal, leaves out crypto and commodities even when the person asks, and says so',
+    async (goal) => {
+      for (const [asked, language] of [
+        [`I want ${crypto.symbol} and ${commodity.symbol} in this vault.`, 'en'],
+        [`Quero ${crypto.symbol} e ${commodity.symbol} neste cofre.`, 'pt'],
+      ] as const) {
+        const model = fake(picking(crypto, commodity, reserve));
+        const out = await replyToVaultConversation(
+          { ...request(asked), language },
+          withOthers(goal),
+          model,
+        );
+        if (out.kind !== 'reply') throw new Error(`${asked} refused: ${JSON.stringify(out)}`);
+        expect(
+          out.reply.proposal?.allocations.map((line) => [line.assetId, line.weightBps]),
+        ).toEqual([[reserve.id, 10_000]]);
+        expect(out.reply.warnings).toEqual([]);
+        expect(out.reply.weightNotes).toContainEqual({
+          code: 'pick_outside_goal',
+          assetIds: [crypto.id, commodity.id],
+        });
+        expect(out.reply.proposal?.sources.map((source) => source.id)).toEqual([
+          `catalog:${reserve.id}`,
+        ]);
+        // The model is told what the goal cannot hold, and that only the asked-for stock may pass.
+        expect(vi.mocked(model.read).mock.calls[0]?.[1]).toMatchObject({
+          eligibilityGoal: goal,
+          outsideGoal: expect.arrayContaining([crypto.id, commodity.id, stock.id]),
           requestedOutsideGoal: [],
         });
       }
     },
   );
+
+  it.each([
+    ['en', 'A plan with your goal cannot hold the assets picked for this draft'],
+    ['pt', 'Um plano com o seu objetivo não pode ter os ativos escolhidos'],
+  ] as const)(
+    'proposes nothing when every pick is outside the goal (%s)',
+    async (language, said) => {
+      const out = await replyToVaultConversation(
+        { ...request(`I want ${crypto.symbol}.`), language },
+        withOthers('protect'),
+        fake(picking(crypto)),
+      );
+      if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
+      expect(out.reply.proposal).toBeNull();
+      expect(out.reply.message).toContain(said);
+      expect(out.reply.question).not.toBeNull();
+      expect(out.reply.weightNotes).toEqual([{ code: 'pick_outside_goal', assetIds: [crypto.id] }]);
+      expect(out.repair).toEqual(leftOutTwice);
+    },
+  );
+
+  it('returns the corrected reply of the model when its repair leaves the pick out', async () => {
+    const read = vi
+      .fn<VaultAgentModel['read']>()
+      .mockResolvedValueOnce({ reply: picking(crypto, reserve) })
+      .mockResolvedValueOnce({ reply: picking(reserve) });
+    const out = await replyToVaultConversation(request(), withOthers('income'), { read });
+    if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
+    expect(out.reply.weightNotes.map((note) => note.code)).toEqual(['equal_split']);
+    expect(out.repair).toEqual({ failed: 'allocation_ineligible', outcome: 'repaired' });
+  });
+
+  it('keeps the corrected reply when the repair call fails', async () => {
+    const read = vi
+      .fn<VaultAgentModel['read']>()
+      .mockResolvedValueOnce({ reply: picking(crypto, reserve) })
+      .mockResolvedValueOnce({ reply: null, why: 'timeout', detail: 'model_timeout' });
+    const out = await replyToVaultConversation(request(), withOthers('income'), { read });
+    if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
+    expect(out.reply.proposal?.allocations.map((line) => line.assetId)).toEqual([reserve.id]);
+    expect(out.reply.weightNotes).toContainEqual({
+      code: 'pick_outside_goal',
+      assetIds: [crypto.id],
+    });
+    expect(out.repair).toEqual({ failed: 'allocation_ineligible', outcome: 'model_timeout' });
+  });
+
+  it('holds no pick to a goal in a plan to grow, or where the server holds no goal', async () => {
+    for (const held of [withOthers('grow'), { ...withOthers('grow'), currentGoals: [] }]) {
+      const model = fake(picking(crypto, commodity, stock));
+      const out = await replyToVaultConversation(request(), held, model);
+      if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
+      expect(out.reply.proposal?.allocations.map((line) => line.assetId)).toEqual([
+        crypto.id,
+        commodity.id,
+        stock.id,
+      ]);
+      expect(out.reply.warnings).toEqual([]);
+      expect(out.repair).toBeUndefined();
+      expect(vi.mocked(model.read).mock.calls[0]?.[1]).toMatchObject({ outsideGoal: [] });
+    }
+  });
 
   it('refuses more than sixteen assets besides cash', async () => {
     const many = Array.from({ length: 17 }, (_, index) => ({
@@ -969,13 +1124,20 @@ describe('model-led private vault proposals', () => {
   it.each(['income', 'protect'] as const)(
     'does not silently replace known %s eligibility with a stock proposal',
     async (goal) => {
-      expect(
-        await replyToVaultConversation(
-          request('Let us discuss growth'),
-          { ...context, currentGoals: [{ goal }] },
-          fake(proposal()),
-        ),
-      ).toEqual(rejected('allocation_ineligible'));
+      const kept = await replyToVaultConversation(
+        request('Let us discuss growth'),
+        { ...context, currentGoals: [{ goal }] },
+        fake(proposal()),
+      );
+      if (kept.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(kept)}`);
+      expect(kept.reply.proposal?.allocations.map((line) => line.assetId)).toEqual([
+        reserve.id,
+        otherReserve.id,
+      ]);
+      expect(kept.reply.weightNotes).toContainEqual({
+        code: 'pick_outside_goal',
+        assetIds: [stock.id],
+      });
       const explicit = await replyToVaultConversation(
         request(),
         { ...context, currentGoals: [{ goal }], confirmedGoal: 'grow' },

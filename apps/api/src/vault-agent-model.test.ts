@@ -711,7 +711,6 @@ describe('conversation context and grounded replies through the provider stub', 
     ['invented-source', 'allocation_evidence'],
     ['wrong-asset-source', 'allocation_evidence'],
     ['invented-figure', 'prose_figure'],
-    ['unasked-stock', 'allocation_ineligible'],
   ])(
     'rejects a provider fixture with %s while keeping the grounded proposal boundary',
     async (fault, detail) => {
@@ -721,13 +720,8 @@ describe('conversation context and grounded replies through the provider stub', 
       if (fault === 'invented-source') allocation.evidenceIds = ['stock:invented:0'];
       if (fault === 'wrong-asset-source') allocation.evidenceIds = [`catalog:${cash.id}`];
       if (fault === 'invented-figure') allocation.why = 'The stock will return 12%.';
-      const context = {
-        ...conversationContext,
-        ...(fault === 'unasked-stock' ? { currentGoals: [{ goal: 'protect' }] } : {}),
-      };
-      // The person never asks for a stock in the protect case: the model may not add one.
-      const text =
-        fault === 'unasked-stock' ? 'Keep my savings safe.' : 'I want electric vehicle stocks.';
+      const context = conversationContext;
+      const text = 'I want electric vehicle stocks.';
       // The repair call returns the same reply: it is refused again, never shown or substituted.
       respond(value);
       respond(value);
@@ -747,6 +741,30 @@ describe('conversation context and grounded replies through the provider stub', 
       ]);
     },
   );
+
+  it('leaves out a stock the provider adds on its own in a protect goal, after asking once for a reply without it', async () => {
+    const value = draft();
+    // The repair call returns the same reply: the stock is left out again, and the reply says so.
+    respond(value);
+    respond(value);
+    const out = await replyToVaultConversation(
+      turn([{ who: 'person', text: 'Keep my savings safe.' }]),
+      { ...conversationContext, currentGoals: [{ goal: 'protect' }] },
+      offlineModel(),
+    );
+    if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
+    expect(out.reply.proposal?.allocations.map((line) => line.assetId)).toEqual([cash.id]);
+    expect(out.reply.weightNotes).toContainEqual({
+      code: 'pick_outside_goal',
+      assetIds: [tesla.id],
+    });
+    expect(out.repair).toEqual({
+      failed: 'allocation_ineligible',
+      outcome: 'allocation_ineligible',
+    });
+    expect(sdk.create).toHaveBeenCalledTimes(2);
+    expect(sdk.create.mock.calls[1]?.[0].messages.at(-1)?.content).toContain(tesla.id);
+  });
 
   it('passes a requested stock in a protect goal and a weight over exit capacity, each with a server warning', async () => {
     const value = draft();

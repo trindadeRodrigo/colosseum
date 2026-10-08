@@ -12,6 +12,14 @@ import { registerV1Routes } from '.';
 
 // The whole /v1 table, as the server builds it: the reader handed to it reaches both conversations, and
 // the routes registered beside them are there.
+// A database with no rows: any query, however it is built, answers none. The vault conversation reads
+// the vault's stored plan through it and finds no plan.
+const noRows = (): unknown =>
+  new Proxy(() => noRows(), {
+    get: (_target, key) =>
+      key === 'then' ? (resolve: (rows: unknown[]) => unknown) => resolve([]) : () => noRows(),
+  });
+const emptyDb = new Proxy({}, { get: () => () => noRows() }) as unknown as Db;
 const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0)) await close();
@@ -67,7 +75,7 @@ describe("the conversations' analytics through the /v1 table", () => {
       {},
       {
         auth: issuer.issuer,
-        db: new Proxy({}, { get: () => () => undefined }) as unknown as Db,
+        db: emptyDb,
         chains,
         testFunds: [],
         agentAnalytics: analytics,
