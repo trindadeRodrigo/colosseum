@@ -5,7 +5,7 @@ import { readyToInvest } from './invest';
 import { inTheme } from './theme';
 
 // Shared portfolios end to end in a browser, on the mock chain (WEB-4): sign in with the throwaway
-// wallet, publish a portfolio through the form, review it and sign it, find it on the shelf, open its
+// wallet, share an already-owned vault's fixture strategy, review it and sign it, find it on the shelf, open its
 // page, buy it (which opens a vault that follows it), and see the vault and its public page. Every
 // signature goes through the order screen's executor and the real guard: the publish is held to the
 // form's id, text and weights, the buy to the version the page showed. A second portfolio holds gold,
@@ -78,18 +78,48 @@ async function toFamily(page: Page, name: string) {
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(name);
 }
 
-/** Fills the publish form and signs the publish on the order screen, to its last step. */
+/** Share an owned source's exact strategy and sign the publish, through the unchanged guard. */
 async function publish(page: Page, name: string, weights: [string, string][], photograph = false) {
+  await toShelf(page);
+  await page.getByRole('link', { name: en.shared.shelf.publish }).first().click();
+  await expect(page.getByText(en.shared.publish.noVaults, { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: en.shared.publish.review })).toBeDisabled();
+  await expect(page.locator('[data-ui="publish-row"]')).toHaveCount(0);
+  const shownWallet = page.locator('[data-ui="account-menu-button"] span[title]').first();
+  await expect(shownWallet).toHaveAttribute('title', /.+/);
+  const owner = await shownWallet.getAttribute('title');
+  const source = await page.request.post(`${STUB}/__stub/source-vault`, {
+    data: {
+      owner,
+      targets: weights.map(([asset, weight]) => ({ asset, weightBps: Number(weight) * 100 })),
+    },
+  });
+  expect(source.ok(), await source.text()).toBe(true);
+  const { address } = await source.json();
   await toShelf(page);
   await page.getByRole('link', { name: en.shared.shelf.publish }).first().click();
   await expect(page).toHaveURL(/\/publish$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(en.shared.publish.title);
+  await page
+    .getByRole('combobox', { name: en.shared.publish.sourceVault, exact: true })
+    .selectOption(address);
   await page.getByLabel(en.shared.publish.name, { exact: true }).fill(name);
   await page.getByLabel(en.shared.publish.copy, { exact: true }).fill('Three test tokens.');
-  for (const [i, [asset, weight]] of weights.entries()) {
-    await page.getByLabel(en.shared.publish.assetOf(i + 1), { exact: true }).selectOption(asset);
-    await page.getByLabel(en.shared.publish.weightOf(i + 1), { exact: true }).fill(weight);
+  const allocation = page.getByRole('region', { name: en.shared.publish.assets, exact: true });
+  const symbols: Record<string, string> = {
+    'solana:spy': 'SPY',
+    'solana:nvda': 'NVDA',
+    'solana:tsla': 'TSLA',
+    'solana:gold': 'Gold',
+  };
+  const rows = allocation.locator('[data-ui="publish-row"]');
+  await expect(rows).toHaveCount(weights.length);
+  for (const [asset, weight] of weights) {
+    const row = rows.filter({ has: page.getByText(symbols[asset] ?? asset, { exact: true }) });
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText(`${weight}%`);
   }
+  await expect(allocation.locator('input,select')).toHaveCount(0);
   await expect(page.locator('[data-ui="family-id"]')).not.toHaveText('—');
   if (photograph) await check(page, 'publish');
   await page.getByRole('button', { name: en.shared.publish.review }).click();
