@@ -2,7 +2,7 @@
 import type { Provenance } from '@colosseum/schemas';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
+import { click, find, fire, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { hatchProblems } from '../../components/ui/test/hatch';
 import { parse } from '../../components/ui/test/html';
 import { dictionary, type Lang } from '../../i18n';
@@ -59,12 +59,17 @@ const part = (root: Element, ui: string) => text(find(root, `[data-ui="${ui}"]`)
 const board = (host: HTMLElement, label = en.overview.board.total) =>
   find(host, `section[aria-label="${label}"]`);
 const query = (call: string) => new URL(call, 'http://api.test').searchParams;
-const press = async (host: HTMLElement, group: string, label: string) => {
-  const button = [
-    ...find(host, `[role="group"][aria-label="${group}"]`).querySelectorAll('button'),
-  ].find((b) => b.textContent === label);
-  if (!button) throw new Error(`no ${label} in ${group}`);
-  await click(button);
+/** A chart mode, by its name: the chosen one shows its word, the others their icon alone. */
+const show = async (host: HTMLElement, label: string) => {
+  await click(find(host, `[data-ui="chart-modes"] button[aria-label="${label}"]`));
+  await settle();
+  await settle();
+};
+/** A period, from its drop-down. */
+const choose = async (host: HTMLElement, period: string) => {
+  const select = find<HTMLSelectElement>(host, 'select[data-ui="period"]');
+  select.value = period;
+  await fire(select, new Event('change', { bubbles: true }));
   await settle();
   await settle();
 };
@@ -204,7 +209,7 @@ describe('the board', () => {
     // outside the figures and the vaults' names, which may be a goal, no amount is written
     const copy = page.cloneNode(true) as HTMLElement;
     for (const el of copy.querySelectorAll(
-      '[data-ui="figure"], [data-ui="vault-sentence"], [data-ui="plan-note"], [data-ui="board-best"] span, figcaption, svg',
+      '[data-ui="figure"], [data-ui="vault-sentence"], [data-ui="plan-note"], [data-ui="board-best"] span, [data-ui="chart-legend"], svg',
     ))
       el.remove();
     expect(text(copy)).not.toMatch(/\$\s?\d/);
@@ -217,7 +222,9 @@ describe('the board', () => {
     expect(new Set(pins(host).map((pin) => pin.getAttribute('data-state')))).toEqual(
       new Set(['mock']),
     );
-    expect(board(host).querySelector('[data-ui="hatch-band"]')).not.toBeNull();
+    // no hatch down the board's edge: its plate says it in words, and its figures keep their pins
+    expect(board(host).querySelector('[data-ui="hatch-band"]')).toBeNull();
+    expect(part(board(host), 'board-plate')).toBe(t.shell.testNetworkLine);
     expect(text(host)).not.toContain('MOCK');
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
     await unmountAll();
@@ -225,7 +232,7 @@ describe('the board', () => {
     serve(portStore, { plans: () => json(labelled('live')) });
     signIn();
     const live = await overview();
-    expect(board(live).querySelector('[data-ui="hatch-band"]')).toBeNull();
+    expect(board(live).querySelector('[data-ui="board-plate"]')).toBeNull();
     for (const pin of pins(row(live, SOL_GROW)))
       expect(pin.getAttribute('data-state')).toBe('live');
     // every vault live: nothing is left out of the sums
@@ -245,37 +252,76 @@ describe('the chart', () => {
     expect(q.get('step')).toBe('1h');
     expect(Date.parse(q.get('to') ?? '') - Date.parse(q.get('from') ?? '')).toBe(30 * DAY);
     expect(find(host, '[data-ui="overview-chart"]').getAttribute('data-kind')).toBe('line');
-    const periods = find(host, `[role="group"][aria-label="${en.overview.board.chart.period}"]`);
-    expect(
-      [...periods.querySelectorAll('button')].map((b) => [text(b), b.getAttribute('aria-pressed')]),
-    ).toEqual([
-      ['1D', 'false'],
-      ['7D', 'false'],
-      ['30D', 'true'],
-      ['1Y', 'false'],
-      ['This year', 'false'],
-      ['All', 'false'],
+    // the period is a drop-down, 30D chosen
+    const period = find<HTMLSelectElement>(host, 'select[data-ui="period"]');
+    expect(period.closest('label')?.textContent).toContain(en.overview.board.chart.period);
+    expect(period.value).toBe('30d');
+    expect([...period.options].map((o) => o.textContent)).toEqual([
+      '1D',
+      '7D',
+      '30D',
+      '1Y',
+      'This year',
+      'All',
     ]);
-    // green above what went in, red below, said in the legend
-    expect(text(find(host, '[data-ui="overview-chart"] figcaption'))).toContain(
-      en.overview.board.chart.up,
-    );
+    // the modes: the chosen one a pill with its word, the others their icon alone, each named
+    const modes = [...find(host, '[data-ui="chart-modes"]').querySelectorAll('button')];
+    expect(
+      modes.map((b) => [b.getAttribute('aria-label'), b.getAttribute('aria-pressed'), text(b)]),
+    ).toEqual([
+      [en.overview.board.chart.line, 'true', en.overview.board.chart.line],
+      [en.overview.board.chart.byVault, 'false', ''],
+      [en.overview.board.chart.byAsset, 'false', ''],
+    ]);
+    // nothing is written over the chart until it is pointed at
+    expect(host.querySelector('[data-ui="chart-tooltip"]')).toBeNull();
     expect(
       host.querySelectorAll('[data-ui="line-up"], [data-ui="line-down"]').length,
     ).toBeGreaterThan(0);
+  });
+
+  it('says a point only when the chart is pointed at, in a tooltip with its pins', async () => {
+    serve(portStore);
+    signIn();
+    const host = await overview();
+    const plot = find(host, '[data-ui="overview-chart"] [data-ui="case-plot"]');
+    await fire(plot, new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    const tip = find(host, '[data-ui="chart-tooltip"]');
+    expect(tip.getAttribute('aria-live')).toBe('polite');
+    expect(pins(tip).length).toBe(2);
+    await fire(plot, new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(host.querySelector('[data-ui="chart-tooltip"]')).toBeNull();
+  });
+
+  it('draws a vault read once as a flat line at its value, not an empty chart', async () => {
+    const one = history();
+    for (const chain of one.chains)
+      for (const series of chain.vaults) series.points = series.points.slice(-1);
+    // one reading of one vault: the newest of the plan to grow
+    one.chains = one.chains.map((chain) => ({
+      ...chain,
+      vaults: chain.vaults.filter((series) => series.address === SOL_GROW),
+    }));
+    serve(portStore, { history: () => json(one) });
+    signIn();
+    const host = await overview();
+    const chart = find(host, '[data-ui="overview-chart"]');
+    expect(chart.getAttribute('data-kind')).toBe('line');
+    expect(chart.querySelectorAll('[data-ui="line-up"], [data-ui="line-down"]')).toHaveLength(1);
+    expect(text(host)).not.toContain(en.overview.board.chart.empty);
   });
 
   it('asks the window a period names', async () => {
     const server = serve(portStore);
     signIn();
     const host = await overview();
-    await press(host, en.overview.board.chart.period, '7D');
+    await choose(host, '7d');
     const week = query(server.to(HISTORY_PATH).at(-1) as string);
     expect(week.get('step')).toBe('1h');
     expect(Date.parse(week.get('to') ?? '') - Date.parse(week.get('from') ?? '')).toBe(7 * DAY);
-    await press(host, en.overview.board.chart.period, '1D');
+    await choose(host, '1d');
     expect(query(server.to(HISTORY_PATH).at(-1) as string).get('step')).toBe('10m');
-    await press(host, en.overview.board.chart.period, 'This year');
+    await choose(host, 'ytd');
     const ytd = query(server.to(HISTORY_PATH).at(-1) as string);
     expect(ytd.get('step')).toBe('1d');
     expect(ytd.get('from')).toBe(`${new Date().getUTCFullYear()}-01-01T00:00:00.000Z`);
@@ -285,23 +331,21 @@ describe('the chart', () => {
     const server = serve(portStore);
     signIn();
     const host = await overview();
-    await press(host, en.overview.board.chart.label, en.overview.board.chart.byVault);
+    await show(host, en.overview.board.chart.byVault);
     expect(query(server.to(HISTORY_PATH).at(-1) as string).get('step')).toBe('1d');
     const chart = find(host, '[data-ui="overview-chart"]');
     expect(chart.getAttribute('data-kind')).toBe('bars');
     expect(chart.querySelectorAll('[data-ui="overview-bar"]').length).toBeGreaterThan(0);
     // the legend names the vaults as the table does, and no mock vault is stacked with them
-    const legend = text(find(chart, 'figcaption'));
+    const legend = text(find(chart, '[data-ui="chart-legend"]'));
     const grow = plans().chains[0]?.plans.find((p) => p.address === SOL_GROW);
     if (!grow) throw new Error('no grow plan');
     expect(legend).toContain(
       vaultTitle(grow, { t, words: en.overview.card, lang: 'en', chainName: 'Solana' }).sentence,
     );
     expect(legend).not.toContain('Robinhood');
-    await press(host, en.overview.board.chart.label, en.overview.board.chart.byAsset);
-    expect(text(find(host, '[data-ui="overview-chart"] figcaption'))).toContain(
-      en.overview.board.chart.cash,
-    );
+    await show(host, en.overview.board.chart.byAsset);
+    expect(text(find(host, '[data-ui="chart-legend"]'))).toContain(en.overview.board.chart.cash);
   });
 });
 

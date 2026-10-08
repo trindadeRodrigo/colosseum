@@ -100,22 +100,20 @@ test.describe('the portfolio section on the stub', () => {
     await expect(page.locator('main [data-ui="overview-vault"]')).toHaveCount(7);
   });
 
-  test('the side menu hides to a rail on a wide screen and comes back', async ({ page }) => {
+  test('the pages are tabs over the page, and there is no side menu', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/portfolio/methodology');
-    const toggle = page.locator('button[aria-controls="portfolio-nav"]');
-    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    await expect(toggle).toHaveText(w.shell.menu.hide);
-    await toggle.click();
-    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(page.locator('[data-ui="portfolio"]')).toHaveAttribute('data-collapsed', 'true');
-    // the rail keeps the pages one click away, each still named
-    await expect(page.locator('#portfolio-nav a[href="/portfolio/exposure"]')).toHaveAttribute(
-      'title',
+    await expect(page.locator('button[aria-controls="portfolio-nav"]')).toHaveCount(0);
+    await expect(page.locator('#portfolio-nav a')).toHaveText([
+      w.overview.label,
+      w.rebalancing.label,
       w.exposure.label,
+      w.methodology.label,
+    ]);
+    await expect(page.locator('#portfolio-nav [aria-current="page"]')).toHaveAttribute(
+      'href',
+      '/portfolio/methodology',
     );
-    await toggle.click();
-    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   });
 
   test('in Portuguese for a Portuguese reader, its figures in Brazil’s format, axe clean', async ({

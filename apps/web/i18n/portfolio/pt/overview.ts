@@ -95,7 +95,7 @@ export const overview: Overview = {
     },
   },
   table: {
-    heading: 'Seus cofres',
+    heading: 'Cofres',
     vault: 'Cofre',
     chain: 'Rede',
     value: 'Valor',

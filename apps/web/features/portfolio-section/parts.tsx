@@ -47,7 +47,7 @@ export const sampleLine = (words: Dictionary['shell'], provenance: Provenance): 
   provenance === 'sandbox' ? words.testNetworkLine : words.mockAnnounce;
 
 /** Asks the section's reads afresh. Never the page's primary action. */
-export function ReadAgain() {
+export function ReadAgain({ className }: { className?: string } = {}) {
   const w = useWords();
   const { again, busy } = usePortfolioSection();
   return (
@@ -58,6 +58,7 @@ export function ReadAgain() {
       busyLabel={w.shell.againBusy}
       onClick={again}
       data-action="read-again"
+      className={className}
     >
       {w.shell.again}
     </Button>

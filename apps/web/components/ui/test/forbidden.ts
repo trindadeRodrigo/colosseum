@@ -153,6 +153,15 @@ export const COMPOSER_RADIUS: Record<string, string> = {
   'rounded-round': '9999px',
 };
 
+/**
+ * The portfolio board's corners (STYLE.md, the second exception: gate PORTFOLIO-BOARD): its boxes,
+ * what sits inside them, and, with the composer's `rounded-round`, its toggles and buttons.
+ */
+export const BOARD_RADIUS: Record<string, string> = {
+  'rounded-board': '16px',
+  'rounded-board-inner': '10px',
+};
+
 const classesOf = (selector: string): string[] =>
   [...selector.matchAll(/\.((?:\\.|[\w-])+)/g)].map((m) =>
     (m[1] as string).replace(/\\(.)/g, '$1'),
@@ -249,7 +258,7 @@ export function scanCss(root: Root, vars: Map<string, string>): Finding[] {
     // radius
     if (RADIUS.test(prop)) {
       const classes = classesOf(selectors);
-      const composer = classes.map((c) => COMPOSER_RADIUS[c]).find(Boolean);
+      const composer = classes.map((c) => COMPOSER_RADIUS[c] ?? BOARD_RADIUS[c]).find(Boolean);
       const resolved = resolve(value, vars);
       const corners = resolved.split(/[\s/]+/).filter(Boolean);
       // inside the embed a corner is the partner's (`--embed-radius`, and their buttons'

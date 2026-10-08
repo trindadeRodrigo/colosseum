@@ -118,7 +118,7 @@ export const overview = {
   },
   /** The table of vaults under the board. */
   table: {
-    heading: 'Your vaults',
+    heading: 'Vaults',
     vault: 'Vault',
     chain: 'Chain',
     value: 'Value',

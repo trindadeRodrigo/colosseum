@@ -1,7 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page } from '@playwright/test';
 import { dictionary, type Lang } from '../i18n';
-import { portfolioDictionary } from '../i18n/portfolio';
 
 // What the specs of the portfolio section share (PORT-3): signing in on a page of the section, the
 // side menu on a phone, and the checks every page gets: axe in light and in dark at 375 px and at
@@ -31,12 +30,7 @@ export async function openSignedIn(page: Page, path: string, lang: Lang = 'en') 
 }
 
 /** Follows an item of the section's side menu: on a phone the menu is a drawer, opened first. */
-export async function toPage(page: Page, href: string, lang: Lang = 'en') {
-  const toggle = page.locator('button[aria-controls="portfolio-nav"]');
-  if ((await toggle.getAttribute('aria-expanded')) === 'false') {
-    await toggle.click();
-    await expect(toggle).toHaveText(portfolioDictionary(lang).shell.menu.hide);
-  }
+export async function toPage(page: Page, href: string, _lang: Lang = 'en') {
   await page.locator(`#portfolio-nav a[href="${href}"]`).click();
   await expect(page).toHaveURL(new RegExp(`${href}$`));
 }

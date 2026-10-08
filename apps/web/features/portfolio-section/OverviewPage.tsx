@@ -2,7 +2,6 @@
 import type { PersonWithdrawal, Provenance } from '@colosseum/schemas';
 import Link from 'next/link';
 import { type ReactNode, useState } from 'react';
-import { Card } from '../../components/ui/Card';
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { cn } from '../../components/ui/cn';
 import { PAGE_TITLE } from '../../components/ui/heading';
@@ -10,7 +9,6 @@ import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import type { PinSource } from '../../components/ui/provenance';
 import { SkeletonChart } from '../../components/ui/Skeleton';
 import { Status } from '../../components/ui/StatusMark';
-import { Segmented } from '../../components/ui/TimeChart';
 import { type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { displayName } from '../order/plain';
@@ -103,7 +101,6 @@ function percent(lang: Lang, share: number | null): string | null {
 }
 
 function Board({ answer }: { answer: PlansAnswer }) {
-  const t = useT();
   const w = useWords();
   const [period, setPeriod] = useState<PeriodId>(DEFAULT_PERIOD);
   const [mode, setMode] = useState<Mode>('line');
@@ -151,16 +148,19 @@ function Board({ answer }: { answer: PlansAnswer }) {
       </>
     );
 
+  const words = w.overview.board.chart;
   return (
     <>
       <ChainsOut unavailable={answer.unavailable} />
-      <Card
-        as="section"
+      {/* No hatch down the edge here (Rodrigo, Oct 8): a board that is not live says so in words,
+          in the plate at its top, and every figure on it keeps its hatched pin. */}
+      <section
         aria-label={w.overview.board.total}
-        mock={provenance !== 'live'}
-        mockLabels={{ announce: sampleLine(t.shell, provenance ?? 'mock') }}
+        data-ui="overview-board"
+        data-provenance={provenance ?? undefined}
+        className="overflow-hidden rounded-board border border-border bg-card text-card-foreground"
       >
-        <div className="grid min-w-0 md:grid-cols-[minmax(0,5fr)_minmax(0,9fr)]">
+        <div className="grid min-w-0 lg:grid-cols-[minmax(0,5fr)_minmax(0,9fr)]">
           <Figures
             answer={answer}
             chains={chains}
@@ -171,28 +171,23 @@ function Board({ answer }: { answer: PlansAnswer }) {
             periodWord={periodWord}
             reading={line.reading.kind === 'reading' || line.reading.kind === 'idle'}
           />
-          <div className="flex min-w-0 flex-col gap-4 border-t border-border p-5 md:border-t-0 md:border-l">
+          <div className="flex min-w-0 flex-col gap-4 border-t border-border p-5 lg:border-t-0 lg:border-l">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <Segmented
-                label={w.overview.board.chart.label}
-                options={[
-                  { id: 'line', label: w.overview.board.chart.line },
-                  { id: 'byVault', label: w.overview.board.chart.byVault },
-                  { id: 'byAsset', label: w.overview.board.chart.byAsset },
-                ]}
+              <Modes
+                label={words.label}
                 value={mode}
-                onChange={(id) => setMode(id as Mode)}
-                small
+                onChange={setMode}
+                options={[
+                  { id: 'line', label: words.line, icon: <LineIcon /> },
+                  { id: 'byVault', label: words.byVault, icon: <BarsIcon /> },
+                  { id: 'byAsset', label: words.byAsset, icon: <LayersIcon /> },
+                ]}
               />
-              <Segmented
-                label={w.overview.board.chart.period}
-                options={PERIODS.map((p) => ({
-                  id: p.id,
-                  label: w.overview.board.chart.periods[p.id],
-                }))}
+              <PeriodSelect
+                label={words.period}
                 value={period}
-                onChange={(id) => setPeriod(periodOf(id)?.id ?? DEFAULT_PERIOD)}
-                small
+                onChange={setPeriod}
+                options={PERIODS.map((p) => ({ id: p.id, label: words.periods[p.id] }))}
               />
             </div>
             <Chart
@@ -204,7 +199,7 @@ function Board({ answer }: { answer: PlansAnswer }) {
             />
           </div>
         </div>
-      </Card>
+      </section>
       <Vaults
         answer={answer}
         flows={flows}
@@ -212,11 +207,137 @@ function Board({ answer }: { answer: PlansAnswer }) {
         periodWord={periodWord}
         chains={chains}
       />
-      <p className="flex flex-wrap items-center gap-x-4 gap-y-2 text-body-sm text-muted-foreground">
-        <span>{w.overview.refresh}</span>
-        <ReadAgain />
-      </p>
     </>
+  );
+}
+
+const ICON = {
+  width: 16,
+  height: 16,
+  viewBox: '0 0 16 16',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.5,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+} as const;
+const LineIcon = () => (
+  <svg aria-hidden="true" {...ICON}>
+    <path d="M2 2v12h12" />
+    <path d="M4.5 10.5 7.5 7l2 2 4-4.5" />
+  </svg>
+);
+const BarsIcon = () => (
+  <svg aria-hidden="true" {...ICON}>
+    <path d="M2 14h12" />
+    <path d="M4 11.5V7M8 11.5V3.5M12 11.5V8.5" />
+  </svg>
+);
+const LayersIcon = () => (
+  <svg aria-hidden="true" {...ICON}>
+    <path d="M8 2.5 14 5.5 8 8.5 2 5.5Z" />
+    <path d="M2 8.5 8 11.5 14 8.5" />
+    <path d="M2 11.5 8 14.5 14 11.5" />
+  </svg>
+);
+const ClockIcon = () => (
+  <svg aria-hidden="true" {...ICON}>
+    <circle cx="8" cy="8" r="6" />
+    <path d="M8 4.5V8l2.5 1.5" />
+  </svg>
+);
+const ChevronIcon = () => (
+  <svg aria-hidden="true" {...ICON}>
+    <path d="m4.5 6.5 3.5 3.5 3.5-3.5" />
+  </svg>
+);
+const VaultIcon = () => (
+  <svg aria-hidden="true" {...ICON} width={18} height={18}>
+    <rect x="2" y="3" width="12" height="10" />
+    <circle cx="8" cy="8" r="2" />
+    <path d="M8 6V5M8 11v-1M10 8h1M5 8h1" />
+  </svg>
+);
+
+const RING = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring';
+
+/**
+ * What the chart shows: the one chosen is a pill with its icon and its word, the others a circle with
+ * their icon alone, named for a screen reader and on hover.
+ */
+function Modes({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: Mode;
+  onChange: (mode: Mode) => void;
+  options: { id: Mode; label: string; icon: ReactNode }[];
+}) {
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: a group of toggle buttons
+    <div role="group" aria-label={label} data-ui="chart-modes" className="flex items-center gap-2">
+      {options.map((o) => {
+        const on = o.id === value;
+        return (
+          <button
+            key={o.id}
+            type="button"
+            aria-pressed={on}
+            aria-label={o.label}
+            title={o.label}
+            onClick={() => onChange(o.id)}
+            className={cn(
+              'inline-flex h-9 cursor-pointer items-center justify-center rounded-round text-body-sm font-medium transition-colors',
+              on
+                ? 'gap-2 bg-primary/15 px-4 text-foreground'
+                : 'w-9 border border-border text-muted-foreground hover:border-input hover:text-foreground',
+              RING,
+            )}
+          >
+            {o.icon}
+            {on && <span aria-hidden="true">{o.label}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The period, as a rounded drop-down: the browser's own list, so it works by keyboard and touch. */
+function PeriodSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: PeriodId;
+  onChange: (period: PeriodId) => void;
+  options: { id: PeriodId; label: string }[];
+}) {
+  return (
+    <label className="relative inline-flex h-9 items-center gap-2 rounded-round border border-border pr-2 pl-3 text-body-sm font-medium text-foreground focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring hover:border-input">
+      <ClockIcon />
+      <span className="sr-only">{label}</span>
+      <select
+        data-ui="period"
+        value={value}
+        onChange={(event) => onChange(periodOf(event.target.value)?.id ?? DEFAULT_PERIOD)}
+        className="cursor-pointer appearance-none bg-transparent pr-6 outline-none"
+      >
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <span className="pointer-events-none absolute right-3 text-muted-foreground">
+        <ChevronIcon />
+      </span>
+    </label>
   );
 }
 
@@ -230,29 +351,12 @@ function Figure({ label, children, ui }: { label: string; children: ReactNode; u
   );
 }
 
-/** The value, the count, what went in and what was made, all time and over the period. */
-function Figures({
-  answer,
-  chains,
-  provenance,
-  flows,
-  unvalued,
-  periods,
-  periodWord,
-  reading,
-}: {
-  answer: PlansAnswer;
-  chains: Set<string>;
-  provenance: Provenance | null;
-  flows: readonly Flow[];
-  unvalued: number;
-  periods: readonly VaultPeriod[];
-  periodWord: string;
-  reading: boolean;
-}) {
-  const t = useT();
+/**
+ * What the vaults of the kind the sums hold are worth together, how many there are, what went into
+ * them and the difference, each with its stamp: the board and the vaults' card say the same figures.
+ */
+function useSums(answer: PlansAnswer, chains: Set<string>, flows: readonly Flow[]) {
   const w = useWords();
-  const lang = useLang();
   const nameOf = useChainName();
   const words = w.overview.board;
   const counted = answer.chains.filter((entry) => chains.has(entry.chain));
@@ -287,6 +391,35 @@ function Figures({
   );
   const netObs: PinSource | null = total ? { ...total.obs, method: words.netInMethod } : null;
   const allTime = total ? Number(total.usd) - netIn : null;
+  return { counted, vaults, total, netIn, netObs, allTime };
+}
+
+/** The value, the count, what went in and what was made, all time and over the period. */
+function Figures({
+  answer,
+  chains,
+  provenance,
+  flows,
+  unvalued,
+  periods,
+  periodWord,
+  reading,
+}: {
+  answer: PlansAnswer;
+  chains: Set<string>;
+  provenance: Provenance | null;
+  flows: readonly Flow[];
+  unvalued: number;
+  periods: readonly VaultPeriod[];
+  periodWord: string;
+  reading: boolean;
+}) {
+  const t = useT();
+  const w = useWords();
+  const lang = useLang();
+  const nameOf = useChainName();
+  const words = w.overview.board;
+  const { counted, vaults, total, netIn, netObs, allTime } = useSums(answer, chains, flows);
   const pnl = periods.reduce((sum, v) => sum + v.pnlUsd, 0);
   const share = shareOf(
     pnl,
@@ -316,7 +449,18 @@ function Figures({
     <div className="flex min-w-0 flex-col">
       <div className="flex flex-col gap-4 p-5">
         <div className="flex flex-col gap-1">
-          <p className="text-body-sm text-muted-foreground">{words.total}</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-body-sm text-muted-foreground">{words.total}</p>
+            {provenance && provenance !== 'live' && (
+              // the board's figures are not live: said in words, as the hatch band would have
+              <span
+                data-ui="board-plate"
+                className="rounded-round border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-caption font-medium text-warning"
+              >
+                {sampleLine(t.shell, provenance)}
+              </span>
+            )}
+          </div>
           <p data-ui="board-total" className="text-[2rem]/10 font-semibold tabular-nums">
             {total ? (
               <ProvenancePin value={dollars(lang, total.usd)} obs={total.obs} labels={t.pin} />
@@ -361,7 +505,7 @@ function Figures({
       <div className="flex flex-col gap-4 border-t border-border p-5">
         <div className="flex items-center justify-between gap-3">
           <p className="text-body-sm text-muted-foreground">{words.pnl}</p>
-          <span className="rounded-sm border border-border px-2 py-0.5 font-mono text-caption">
+          <span className="rounded-round border border-border px-2.5 py-0.5 font-mono text-caption">
             {periodWord}
           </span>
         </div>
@@ -381,7 +525,7 @@ function Figures({
               {percent(lang, share) && (
                 <span
                   className={cn(
-                    'rounded-sm px-1.5 py-0.5 text-body-sm tabular-nums',
+                    'rounded-round px-2 py-0.5 text-body-sm tabular-nums',
                     pnl >= 0 ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive',
                   )}
                 >
@@ -453,7 +597,7 @@ function Chart({
   });
   if (mode === 'line') {
     const points = totalLine(history, flows, chains);
-    if (points.length < 2) return <Say sentence={w.overview.board.chart.empty} />;
+    if (points.length === 0) return <Say sentence={w.overview.board.chart.empty} />;
     return (
       <OverviewChart kind="line" line={points} obs={obs} from={history.from} to={history.to} />
     );
@@ -502,28 +646,72 @@ function Vaults({
   const w = useWords();
   const words = w.overview.table;
   const rows = answer.chains.flatMap((entry) => entry.plans.map((plan) => ({ entry, plan })));
-  const head = 'px-4 py-2.5 font-medium';
+  const t = useT();
+  const lang = useLang();
+  const board = w.overview.board;
+  const { vaults, total, netIn, netObs, allTime } = useSums(answer, chains, flows);
+  const head = 'px-5 py-3 font-medium';
+  const stat = 'flex items-baseline gap-2 text-body-sm';
   return (
-    <section aria-labelledby="overview-vaults" className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="overview-vaults" className="text-h3 font-semibold">
+    <section
+      aria-labelledby="overview-vaults"
+      className="overflow-hidden rounded-board border border-border bg-card text-card-foreground"
+    >
+      {/* The card's head, as a portfolio board has it: what it lists and its figures in one line. */}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-border px-5 py-4">
+        <h2
+          id="overview-vaults"
+          className="flex items-center gap-2.5 text-body-lg font-semibold whitespace-nowrap"
+        >
+          <span className="inline-flex size-8 items-center justify-center rounded-board-inner bg-primary/15 text-foreground">
+            <VaultIcon />
+          </span>
           {words.heading}
         </h2>
-        {/* Orange, so the way to a new plan stands out on the page. */}
-        <Link
-          data-ui="new-plan"
-          href="/goal"
-          className="inline-flex h-8 items-center justify-center rounded-md border border-warning bg-transparent px-3 text-[0.875rem]/5 font-medium text-warning transition-colors hover:bg-warning/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-        >
-          {words.newPlan}
-        </Link>
+        {allTime !== null && total && (
+          <p data-ui="vaults-pnl" className={stat}>
+            <span className="text-muted-foreground">{board.allTime}</span>
+            <ProvenancePin
+              value={signed(lang, allTime)}
+              obs={{ ...total.obs, method: board.allTimeMethod }}
+              labels={t.pin}
+              className={cn('font-medium', allTime >= 0 ? UP : DOWN)}
+            />
+          </p>
+        )}
+        {netObs && (
+          <p data-ui="vaults-net-in" className={stat}>
+            <span className="text-muted-foreground">{board.netIn}</span>
+            <ProvenancePin
+              value={dollars(lang, netIn.toFixed(2))}
+              obs={netObs}
+              labels={t.pin}
+              className="font-medium"
+            />
+          </p>
+        )}
+        <p data-ui="vaults-count" className={stat}>
+          <span className="text-muted-foreground">{board.vaults}</span>
+          <span className="font-medium">{vaults}</span>
+        </p>
+        <div className="ml-auto flex items-center gap-2">
+          <ReadAgain className="h-9 rounded-round px-4" />
+          {/* Orange, so the way to a new plan stands out on the page. */}
+          <Link
+            data-ui="new-plan"
+            href="/goal"
+            className="inline-flex h-9 items-center justify-center rounded-round border border-warning bg-transparent px-4 text-body-sm font-medium text-warning transition-colors hover:bg-warning/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            {words.newPlan}
+          </Link>
+        </div>
       </div>
-      <div className="overflow-x-auto rounded-md border border-border">
+      <div className="overflow-x-auto">
         <table
           data-ui="overview-vaults"
           className="w-full min-w-[760px] border-collapse text-body-sm"
         >
-          <thead className="bg-muted text-left text-caption text-muted-foreground">
+          <thead className="text-left text-caption text-muted-foreground">
             <tr>
               <th scope="col" className={head}>
                 {words.vault}
@@ -602,7 +790,7 @@ function VaultRow({
   const { newest } = plan;
   const allTime = newest && netIn !== null ? Number(newest.valueUsd) - netIn : null;
   const share = period ? shareOf(period.pnlUsd, period.baseUsd) : null;
-  const cell = 'px-4 py-3';
+  const cell = 'px-5 py-4';
   // A pinned cell sits over the row's link, so its pin opens rather than the vault.
   const pinned = 'relative z-10 text-right tabular-nums';
   const valuePin = newest ? snapshotPin(newest, entry.provenance, plan.provenance) : null;

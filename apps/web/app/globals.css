@@ -243,9 +243,12 @@
   /* hatch pitch: 6px on surfaces, 3px inside a glyph */
   --tf-hatch-pitch-ui: 6px;
   --tf-hatch-pitch-glyph: 3px;
-  /* shape: square. The typing box and its send button are the only rounded things */
+  /* shape: square. The typing box and its send button are rounded, and the portfolio board
+     (STYLE.md, the second exception, gate PORTFOLIO-BOARD): its boxes, and its toggles round */
   --tf-radius-composer: 20px;
   --tf-radius-round: 9999px;
+  --tf-radius-board: 16px;
+  --tf-radius-board-inner: 10px;
   --tf-border-width: 1px;
   --tf-border-width-key: 1.5px;
   --tf-focus-ring-width: 2px;
@@ -472,6 +475,9 @@
   /* the typing box only: components/ui/Composer.tsx */
   --radius-composer: var(--tf-radius-composer);
   --radius-round: var(--tf-radius-round);
+  /* the portfolio board only: features/portfolio-section/Overview*.tsx */
+  --radius-board: var(--tf-radius-board);
+  --radius-board-inner: var(--tf-radius-board-inner);
 
   /* type */
   --font-sans: var(--tf-font-sans);

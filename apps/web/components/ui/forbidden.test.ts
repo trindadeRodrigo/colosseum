@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { BLUE, isBlueOrViolet, parseColor } from './test/color';
 import { builtCss, read, sourceFiles, variables, WEB } from './test/css';
 import {
-  COMPOSER_RADIUS,
+  BOARD_RADIUS,
   classTokens,
   type Finding,
   type Kind,
@@ -47,6 +47,12 @@ const DRAWN: Record<string, string> = {
   'app/fonts.ts': 'font-family',
   'app/fonts-mono.ts': 'font-family',
 };
+
+/** The portfolio board, the one other place with round corners (STYLE.md, gate PORTFOLIO-BOARD). */
+const BOARD = [
+  'features/portfolio-section/OverviewChart.tsx',
+  'features/portfolio-section/OverviewPage.tsx',
+];
 
 /** The product's own routes and what they are built from: none of it may ever be on the list above. */
 const PRODUCT =
@@ -281,9 +287,16 @@ describe('the forbidden things', () => {
       expect(read(ADAPTER.importedBy)).toContain(ADAPTER.stylesheet);
     });
 
-    it('uses the composer’s rounded utilities in the composer only', () => {
-      for (const name of Object.keys(COMPOSER_RADIUS))
-        expect(users(name), name).toEqual(['components/ui/Composer.tsx']);
+    it('uses the composer’s rounded utilities in the composer, and the board, only', () => {
+      expect(users('rounded-composer')).toEqual(['components/ui/Composer.tsx']);
+      expect(users('rounded-round')).toContain('components/ui/Composer.tsx');
+      for (const file of users('rounded-round'))
+        expect(['components/ui/Composer.tsx', ...BOARD], file).toContain(file);
+    });
+
+    it('uses the board’s corners on the portfolio board only (PORTFOLIO-BOARD)', () => {
+      for (const name of Object.keys(BOARD_RADIUS))
+        for (const file of users(name)) expect(BOARD, `${name} in ${file}`).toContain(file);
     });
   });
 

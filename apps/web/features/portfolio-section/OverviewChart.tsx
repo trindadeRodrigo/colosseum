@@ -15,12 +15,17 @@ import { useWords } from './words';
 // above what had been put in by then and red where it is below, over a faint fill of the same colour;
 // or the same value as stacked bars, one a day (an hour over 1D), cut by vault or by asset. Inline SVG
 // drawn at the element's measured width, as the plan's chart is (PlanValueChart.tsx): no chart
-// library. One tab stop, the arrow keys step from point to point, and the line above it reads the
-// point out.
+// library.
+//
+// The line spans the readings there are, not the whole period asked: a vault read for an hour of a
+// thirty-day window is drawn across the plot, not squeezed into its last pixel. A single reading is a
+// flat line at its value with its point marked. Nothing is written over the chart until it is pointed
+// at: then a tooltip beside the crosshair says the time and the figures, each with its pin, and a
+// screen reader hears the same line. One tab stop, and the arrow keys step from point to point.
 
 const W_DEFAULT = 720;
-const H = 260;
-const TOP = 12;
+const H = 380;
+const TOP = 16;
 const BOTTOM = 24;
 const RIGHT = 12;
 /**
@@ -69,7 +74,7 @@ export function OverviewChart(props: Props) {
   const highs = props.kind === 'line' ? lows : totals;
   const low = Math.min(...lows);
   const high = Math.max(...highs);
-  const pad = (high - low) * 0.08 || Math.max(Math.abs(high) * 0.01, 0.01);
+  const pad = (high - low) * 0.15 || Math.max(Math.abs(high) * 0.01, 0.01);
   const scale = nice(props.kind === 'bars' ? 0 : Math.max(0, low - pad), high + pad, 4);
   const step = (scale.ticks[1] ?? scale.hi) - (scale.ticks[0] ?? scale.lo);
   const digits = step >= 1 ? 0 : 2;
@@ -81,76 +86,54 @@ export function OverviewChart(props: Props) {
   const plotW = W - left - RIGHT;
   const plotH = H - TOP - BOTTOM;
 
-  // Bars sit in slots across the plot; a line's points sit at their times.
-  const t0 = Math.min(Date.parse(props.from), ...times);
-  const t1 = Math.max(Date.parse(props.to), ...times);
+  // The line spans its readings; one reading alone spans the plot. Bars sit in slots.
+  const first = times[0] ?? Date.parse(props.from);
+  const last = times[times.length - 1] ?? Date.parse(props.to);
+  const single = props.kind === 'line' && times.length === 1;
+  const t0 = single ? Date.parse(props.from) : first;
+  const t1 = single ? Date.parse(props.to) : last;
   const slot = props.kind === 'bars' ? plotW / Math.max(1, times.length) : 0;
   const x =
     props.kind === 'bars'
       ? (i: number) => left + slot * (i + 0.5)
       : (time: number) => left + ((time - t0) / (t1 - t0 || 1)) * plotW;
-  const xs = props.kind === 'bars' ? times.map((_, i) => x(i)) : times.map((time) => x(time));
+  const xs =
+    props.kind === 'bars'
+      ? times.map((_, i) => x(i))
+      : single
+        ? [left + plotW]
+        : times.map((time) => x(time));
   const y = (usd: number) => TOP + plotH * (1 - (usd - scale.lo) / (scale.hi - scale.lo || 1));
   const ticks = timeTicks(
-    props.kind === 'bars' ? (times[0] ?? t0) : t0,
-    props.kind === 'bars' ? (times[times.length - 1] ?? t1) : t1,
+    t0,
+    t1 > t0 ? t1 : t0 + 1,
     Math.max(2, Math.floor(plotW / 90)),
     LOCALE[lang],
   );
   const tickX = (time: number) =>
     props.kind === 'bars'
       ? times.length > 1
-        ? x(0) +
-          ((time - (times[0] ?? 0)) / ((times[times.length - 1] ?? 1) - (times[0] ?? 0) || 1)) *
-            (x(times.length - 1) - x(0))
+        ? x(0) + ((time - first) / (last - first || 1)) * (x(times.length - 1) - x(0))
         : x(0)
       : x(time);
 
   const cursor = useChartCursor(times.length, (px, width) =>
     nearestIndex((px / (width || 1)) * W, xs),
   );
-  const i = cursor.at?.i ?? times.length - 1;
-  const readAt = times[i];
+  const i = cursor.at?.i;
+  const at = i === undefined ? undefined : times[i];
+  const point = props.kind === 'line' && i !== undefined ? props.line[i] : undefined;
+  const parts =
+    props.kind === 'bars' && i !== undefined
+      ? (props.stacks[i]?.parts.filter((part) => part.usd > 0) ?? [])
+      : [];
+  // The tooltip sits beside the crosshair, on the side with room.
+  const cx = i === undefined ? 0 : (xs[i] ?? 0);
+  const onLeft = cx > W * 0.6;
 
   return (
-    <figure data-ui="overview-chart" data-kind={props.kind} className="m-0 flex flex-col gap-2">
-      <p
-        aria-live="polite"
-        data-ui="chart-readout"
-        className="flex min-h-5 flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[12px]/5 text-muted-foreground"
-      >
-        {readAt !== undefined && (
-          <>
-            <time dateTime={new Date(readAt).toISOString()} className="text-foreground">
-              {utc(lang, new Date(readAt).toISOString())}
-            </time>
-            <ProvenancePin
-              value={money(totals[i] ?? 0)}
-              obs={props.obs(readAt)}
-              labels={t.pin}
-              className="font-medium text-foreground"
-            />
-            {props.kind === 'line' && props.line[i] && (
-              <ProvenancePin
-                value={`${props.line[i].pnlUsd >= 0 ? '+' : '−'}${money(Math.abs(props.line[i].pnlUsd))}`}
-                obs={props.obs(readAt)}
-                labels={t.pin}
-                className={props.line[i].pnlUsd >= 0 ? 'text-success' : 'text-destructive'}
-              />
-            )}
-            {props.kind === 'bars' &&
-              props.stacks[i]?.parts
-                .filter((part) => part.usd > 0)
-                .map((part) => (
-                  <span key={part.key} className="inline-flex items-center gap-1">
-                    {props.nameOf(part.key)}{' '}
-                    <ProvenancePin value={money(part.usd)} obs={props.obs(readAt)} labels={t.pin} />
-                  </span>
-                ))}
-          </>
-        )}
-      </p>
-      <div ref={box}>
+    <figure data-ui="overview-chart" data-kind={props.kind} className="m-0 flex flex-col gap-3">
+      <div ref={box} className="relative">
         <CasePlot
           label={(props.kind === 'line' ? words.plot : words.bars)(
             utc(lang, props.from),
@@ -195,7 +178,17 @@ export function OverviewChart(props: Props) {
               );
             })}
             {props.kind === 'line' ? (
-              <Line line={props.line} x={x} y={y} floor={y(scale.lo)} />
+              single && props.line[0] ? (
+                <Flat
+                  point={props.line[0]}
+                  y={y}
+                  from={left}
+                  to={left + plotW}
+                  floor={y(scale.lo)}
+                />
+              ) : (
+                <Line line={props.line} x={x} y={y} floor={y(scale.lo)} />
+              )
             ) : (
               props.stacks.map((stack, n) => {
                 let base = 0;
@@ -226,11 +219,11 @@ export function OverviewChart(props: Props) {
                 );
               })
             )}
-            {cursor.at && (
+            {i !== undefined && (
               <line
                 data-ui="chart-cross"
-                x1={xs[cursor.at.i]}
-                x2={xs[cursor.at.i]}
+                x1={cx}
+                x2={cx}
                 y1={TOP}
                 y2={H - BOTTOM}
                 stroke="var(--muted-foreground)"
@@ -240,35 +233,62 @@ export function OverviewChart(props: Props) {
             )}
           </svg>
         </CasePlot>
+        {at !== undefined && i !== undefined && (
+          <div
+            data-ui="chart-tooltip"
+            aria-live="polite"
+            className="pointer-events-none absolute top-2 z-10 flex min-w-40 flex-col gap-1 rounded-board-inner border border-border bg-popover px-3 py-2 font-mono text-[12px]/5 text-popover-foreground"
+            style={
+              onLeft
+                ? { right: `${((W - cx + 12) / W) * 100}%` }
+                : { left: `${((cx + 12) / W) * 100}%` }
+            }
+          >
+            <time dateTime={new Date(at).toISOString()} className="text-muted-foreground">
+              {utc(lang, new Date(at).toISOString())}
+            </time>
+            <ProvenancePin
+              value={money(totals[i] ?? 0)}
+              obs={props.obs(at)}
+              labels={t.pin}
+              className="font-medium"
+            />
+            {point && (
+              <ProvenancePin
+                value={`${point.pnlUsd >= 0 ? '+' : '−'}${money(Math.abs(point.pnlUsd))}`}
+                obs={props.obs(at)}
+                labels={t.pin}
+                className={point.pnlUsd >= 0 ? 'text-success' : 'text-destructive'}
+              />
+            )}
+            {parts.map((part) => (
+              <span key={part.key} className="flex items-center justify-between gap-3">
+                <span className="truncate text-muted-foreground">
+                  {props.kind === 'bars' ? props.nameOf(part.key) : null}
+                </span>
+                <ProvenancePin value={money(part.usd)} obs={props.obs(at)} labels={t.pin} />
+              </span>
+            ))}
+          </div>
+        )}
       </div>
-      <figcaption className="flex flex-col gap-1 text-caption text-muted-foreground">
-        <ul className="flex list-none flex-wrap gap-x-4 gap-y-1 p-0">
-          {props.kind === 'line' ? (
-            <>
-              <li className="inline-flex items-center gap-1.5">
-                <i aria-hidden="true" className="inline-block w-4 border-t-2 border-success" />
-                {words.up}
-              </li>
-              <li className="inline-flex items-center gap-1.5">
-                <i aria-hidden="true" className="inline-block w-4 border-t-2 border-destructive" />
-                {words.down}
-              </li>
-            </>
-          ) : (
-            (props.stacks[0]?.parts ?? []).map((part, k) => (
-              <li key={part.key} className="inline-flex items-center gap-1.5">
-                <i
-                  aria-hidden="true"
-                  className="inline-block size-2.5"
-                  style={{ background: fillOf(k), opacity: fillOpacity(k) }}
-                />
-                {props.nameOf(part.key)}
-              </li>
-            ))
-          )}
+      {props.kind === 'bars' && (
+        <ul
+          data-ui="chart-legend"
+          className="flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-caption text-muted-foreground"
+        >
+          {(props.stacks[0]?.parts ?? []).map((part, k) => (
+            <li key={part.key} className="inline-flex items-center gap-1.5">
+              <i
+                aria-hidden="true"
+                className="inline-block size-2.5 rounded-sm"
+                style={{ background: fillOf(k), opacity: fillOpacity(k) }}
+              />
+              {props.nameOf(part.key)}
+            </li>
+          ))}
         </ul>
-        <span>{words.hint}</span>
-      </figcaption>
+      )}
     </figure>
   );
 }
@@ -315,5 +335,37 @@ function Line({
         );
       })}
     </>
+  );
+}
+
+/** One reading: a flat line at its value across the plot, its point marked at the right end. */
+function Flat({
+  point,
+  y,
+  from,
+  to,
+  floor,
+}: {
+  point: TotalPoint;
+  y: (usd: number) => number;
+  from: number;
+  to: number;
+  floor: number;
+}) {
+  const colour = point.pnlUsd >= 0 ? 'var(--success)' : 'var(--destructive)';
+  const at = y(point.valueUsd);
+  return (
+    <g data-ui={point.pnlUsd >= 0 ? 'line-up' : 'line-down'}>
+      <rect
+        x={from}
+        y={at}
+        width={to - from}
+        height={Math.max(0, floor - at)}
+        fill={colour}
+        fillOpacity={0.08}
+      />
+      <line x1={from} x2={to} y1={at} y2={at} stroke={colour} strokeWidth={2} />
+      <circle cx={to} cy={at} r={3.5} fill={colour} />
+    </g>
   );
 }

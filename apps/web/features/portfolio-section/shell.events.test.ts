@@ -2,7 +2,7 @@
 import { DISCLAIMER } from '@colosseum/schemas';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { click, find, mount, settle, unmountAll } from '../../components/ui/test/dom';
+import { find, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { dictionary, type Lang } from '../../i18n';
 import { portfolioDictionary } from '../../i18n/portfolio';
 import { fakePort } from '../wallet/test/fake-port';
@@ -67,21 +67,17 @@ describe('the addresses of the section', () => {
 
 describe('the frame of the portfolio section', () => {
   it.each(['en', 'pt'] as const)(
-    'lists its pages in a side menu of its own, the methodology under them (%s)',
+    'lists its pages as a row of tabs over the page, the methodology last (%s)',
     async (lang) => {
       const w = portfolioDictionary(lang);
       const host = await frame(null, lang);
-      const shell = find(host, '[data-ui="portfolio"]');
-      // its own section: none of Bearing's marks
+      // its own section: none of Bearing's marks, and no side menu (Rodrigo, Oct 8)
       expect(host.querySelector('[data-ui="bearing"], #bearing-nav')).toBeNull();
-      // the menu's region; the other aside of the frame is the disclaimer
-      expect(find(shell, ':scope > aside').getAttribute('aria-label')).toBe(w.shell.menu.region);
+      expect(host.querySelector('button[aria-controls="portfolio-nav"]')).toBeNull();
       expect(menu(host).getAttribute('aria-label')).toBe(w.shell.menu.nav);
       const links = [...menu(host).querySelectorAll('a')].map((a) => [
         a.getAttribute('href'),
-        // the two letters before a name are for the eye only
-        [...a.querySelectorAll('span:not([aria-hidden])')].map((s) => s.textContent).join('') ||
-          a.textContent,
+        a.textContent,
       ]);
       expect(links).toEqual([
         ['/portfolio', w.overview.label],
@@ -89,7 +85,7 @@ describe('the frame of the portfolio section', () => {
         ['/portfolio/exposure', w.exposure.label],
         ['/portfolio/methodology', w.methodology.label],
       ]);
-      // a plan's page is opened from its card, never from the menu
+      // a plan's page is opened by its address, never from the tabs
       expect(menu(host).querySelector('a[href*="/plan/"]')).toBeNull();
     },
   );
@@ -108,28 +104,6 @@ describe('the frame of the portfolio section', () => {
       expect(current(host), path).toEqual(at);
       await unmountAll();
     }
-  });
-
-  it('hides its menu to a rail and shows it again, says so, and remembers it under its own key', async () => {
-    const host = await frame(null);
-    const toggle = find<HTMLButtonElement>(host, 'button[aria-controls="portfolio-nav"]');
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    expect(toggle.textContent).toBe('Hide menu');
-    await click(toggle);
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    expect(toggle.textContent).toBe('Show menu');
-    expect(find(host, '[data-ui="portfolio"]').hasAttribute('data-collapsed')).toBe(true);
-    expect(localStorage.getItem('tf-portfolio-side')).toBe('1');
-    // Bearing's menu keeps its own memory
-    expect(localStorage.getItem('tf-an2-side')).toBeNull();
-    await unmountAll();
-    // opened again, it is as it was left
-    const again = await frame(null);
-    expect(find(again, 'button[aria-controls="portfolio-nav"]').getAttribute('aria-expanded')).toBe(
-      'false',
-    );
-    await click(find(again, 'button[aria-controls="portfolio-nav"]'));
-    expect(localStorage.getItem('tf-portfolio-side')).toBe('0');
   });
 
   it.each(['en', 'pt'] as const)(
