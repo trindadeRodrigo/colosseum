@@ -13,10 +13,11 @@ export const VAULT_AGENT_MAX_TOKENS = 8_192;
 /**
  * Whether a model takes `temperature`. The Claude 5 family and Opus 4.7/4.8 answer 400 to any sampling
  * parameter (Sonnet 5.5 and Haiku 5.5 to any but the default), so it is sent only to the older models
- * that take it.
+ * known to take it: Claude 3, Haiku 4.5, Sonnet and Opus 4.5/4.6. Any other id, a future one included,
+ * goes without it.
  */
 export function acceptsTemperature(model: string): boolean {
-  return !/^claude-(?:(?:opus|sonnet|haiku|fable|mythos)-5|opus-4-[78])(?![0-9])/.test(model);
+  return /^claude-(?:3-|haiku-4-5(?![0-9])|(?:sonnet|opus)-4-[56](?![0-9]))/.test(model);
 }
 
 /**

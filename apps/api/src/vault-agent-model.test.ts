@@ -243,8 +243,20 @@ describe('vault proposal provider uses the existing model settings and a shared 
     ['claude-sonnet-5', false],
     ['claude-opus-4-8', false],
     ['claude-haiku-5-5', false],
+    ['claude-opus-4-7', false],
+    ['claude-opus-4-8@20260101', false],
+    // Unknown and future ids fail safe: no temperature.
+    ['claude-opus-6', false],
+    ['claude-haiku-4-50', false],
+    ['configured-fixture-model', false],
     ['claude-haiku-4-5', true],
+    ['claude-haiku-4-5-20251001', true],
+    ['claude-sonnet-4-5', true],
     ['claude-sonnet-4-6', true],
+    ['claude-opus-4-5@20251101', true],
+    ['claude-opus-4-6', true],
+    ['claude-3-7-sonnet-latest', true],
+    ['claude-3-haiku-20240307', true],
   ] as const)('sends temperature to %s: %s', async (model, sent) => {
     expect(acceptsTemperature(model)).toBe(sent);
     sdk.create.mockResolvedValueOnce({
