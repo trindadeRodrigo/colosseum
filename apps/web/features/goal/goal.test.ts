@@ -1,9 +1,8 @@
 import { BasketSheet, BasketSheetDraft, type Provenance } from '@colosseum/schemas';
 import { describe, expect, it, vi } from 'vitest';
 import { dictionary } from '../../i18n';
-import { builtFor, CANDIDATE_ID } from '../order/test/candidates';
 import { json } from '../wallet/test/fake-port';
-import { buildPlan, PERSONALIZE_PATH, planProvenance } from './build-plan';
+import { planProvenance } from './build-plan';
 import { COUNTRY_CODES, countryOptions } from './countries';
 import { draftFromFirstReader, GOAL_TEXT, ReadGoalError, readGoal } from './read-goal';
 import {
@@ -21,7 +20,7 @@ import {
 import { proposalFor, READ_IN_DOLLARS, READ_IN_REAIS, SHEET } from './test/plan';
 
 // The goal screen without the screen: how a reading becomes the limits, how the limits are checked
-// against the shared schema, and the two calls to the API (one that exists, one that does not yet).
+// against the shared schema, and the call to the API that reads a goal.
 
 const FIELDS: SheetFields = {
   goal: 'grow',
@@ -154,130 +153,7 @@ describe('reading a goal: POST /goals', () => {
   });
 });
 
-describe('building a plan: the one call, against a double of the route that is not there yet', () => {
-  it('sends the sheet to POST /v1/baskets/personalize and reads back the plan and its id', async () => {
-    const proposal = proposalFor(SHEET);
-    const api = vi.fn(async () => json({ id: 'plan-1', proposal }));
-    expect(await buildPlan(api, SHEET)).toEqual({
-      kind: 'built',
-      id: 'plan-1',
-      proposal,
-      rollUp: null,
-      // a server that sends no candidates: the plan is the one plan
-      candidates: [],
-      notShown: [],
-    });
-    expect(PERSONALIZE_PATH).toBe('/v1/baskets/personalize');
-    expect(api).toHaveBeenCalledWith(PERSONALIZE_PATH, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sheet: SHEET }),
-    });
-  });
-
-  it('reads the candidates in the fixed order, whatever order they came in, each its own stored plan (THREE-PLANS)', async () => {
-    const answer = builtFor(SHEET);
-    const built = await buildPlan(
-      vi.fn(async () => json(answer)),
-      SHEET,
-    );
-    expect(built.kind).toBe('built');
-    if (built.kind !== 'built') return;
-    expect(built.candidates.map((c) => c.candidate)).toEqual(['cover', 'spread', 'carry']);
-    expect(built.candidates.map((c) => c.id)).toEqual([
-      CANDIDATE_ID.cover,
-      CANDIDATE_ID.spread,
-      CANDIDATE_ID.carry,
-    ]);
-    // the ones the engine left out, each with its reason
-    const two = await buildPlan(
-      vi.fn(async () => json(builtFor(SHEET, ['spread', 'cover']))),
-      SHEET,
-    );
-    expect(two.kind === 'built' && two.candidates.map((c) => c.candidate)).toEqual([
-      'cover',
-      'spread',
-    ]);
-    expect(two.kind === 'built' && two.notShown).toEqual([
-      { candidate: 'carry', why: 'carry came out the same as another.' },
-    ]);
-  });
-
-  it('shows none of the candidates when one is not an answer to what was asked', async () => {
-    const answer = builtFor(SHEET);
-    const twice = { ...answer, candidates: [answer.candidates[0], answer.candidates[0]] };
-    const sameId = {
-      ...answer,
-      candidates: answer.candidates.map((c) => ({ ...c, id: CANDIDATE_ID.cover })),
-    };
-    const other = builtFor({ ...SHEET, amountUsd: SHEET.amountUsd + 1 });
-    const mixed = { ...answer, candidates: [answer.candidates[0], other.candidates[1]] };
-    const marked = { ...answer, candidates: [{ ...answer.candidates[0], candidate: 'best' }] };
-    for (const bad of [twice, sameId, mixed, marked, { ...answer, candidates: [] }])
-      expect(
-        await buildPlan(
-          vi.fn(async () => json(bad)),
-          SHEET,
-        ),
-      ).toEqual({ kind: 'unreadable' });
-  });
-
-  it('keeps the risk roll-up the server sends with the plan, and leaves out one that does not parse', async () => {
-    const proposal = proposalFor(SHEET);
-    const rollUp = {
-      byIssuer: [{ key: 'one', bps: 6000 }],
-      byChain: [{ key: 'solana', bps: 10_000 }],
-      byClass: [{ key: 'stock', bps: 6000 }],
-      flags: [],
-      exit: { quotedBps: null, quotedAt: null, measuredWorstBps: 42, measuredShareBps: 6000 },
-    };
-    const sent = (body: unknown) => buildPlan(async () => json(body), SHEET);
-    expect(await sent({ id: 'plan-1', proposal, rollUp })).toMatchObject({ kind: 'built', rollUp });
-    expect(await sent({ id: 'plan-1', proposal, rollUp: { byIssuer: 'all' } })).toMatchObject({
-      kind: 'built',
-      rollUp: null,
-    });
-  });
-
-  it('says the route is not there when the API has none, which is today', async () => {
-    for (const status of [404, 405, 501])
-      expect(await buildPlan(async () => json({ error: 'not found' }, status), SHEET)).toEqual({
-        kind: 'unavailable',
-      });
-  });
-
-  it('shows nothing that is not a plan in the frozen shape', async () => {
-    const proposal = proposalFor(SHEET);
-    const lopsided = {
-      ...proposal,
-      lines: proposal.lines.map((line) => ({ ...line, weightBps: 4000 })),
-    };
-    for (const body of [
-      { id: 'plan-1', proposal: lopsided },
-      { id: 'plan-1', proposal: { lines: [] } },
-      { proposal },
-      { id: '', proposal },
-      proposal,
-      'ok',
-    ])
-      expect(await buildPlan(async () => json(body), SHEET)).toEqual({ kind: 'unreadable' });
-  });
-
-  it('shows no plan that is for another goal, amount or chain than the one asked for', async () => {
-    for (const other of [
-      { ...SHEET, chains: ['robinhood' as const] },
-      { ...SHEET, amountUsd: 25000 },
-      { ...SHEET, goal: 'protect' as const },
-    ])
-      expect(
-        await buildPlan(async () => json({ id: 'plan-1', proposal: proposalFor(other) }), SHEET),
-      ).toEqual({ kind: 'unreadable' });
-    expect(
-      (await buildPlan(async () => json({ id: 'plan-1', proposal: proposalFor(SHEET) }), SHEET))
-        .kind,
-    ).toBe('built');
-  });
-
+describe('how a plan is labelled', () => {
   it('labels a plan live only when every figure it stands on is live, and never when it names none', () => {
     const labelled = (...labels: Provenance[]) => {
       const proposal = proposalFor(SHEET);
@@ -298,39 +174,6 @@ describe('building a plan: the one call, against a double of the route that is n
     expect(labelled('sandbox', 'mock')).toBe('mock');
     expect(labelled('live', 'fixture')).toBe('mock');
     expect(labelled('prior_dataset')).toBe('mock');
-  });
-
-  it('tells a sheet the server refused from limits no plan fits, and both from no answer', async () => {
-    const answers = (status: number, body: unknown = {}) =>
-      buildPlan(async () => json(body, status), SHEET);
-    expect(await answers(400, { error: 'body/sheet/amountUsd too small' })).toEqual({
-      kind: 'refused',
-    });
-    // each thing a person can do something about is told apart from a refusal of the limits
-    expect(await answers(409, { error: 'pick the chain your plans live on first' })).toEqual({
-      kind: 'no-chain',
-    });
-    for (const status of [401, 403])
-      expect(await answers(status, { error: 'sign in first' })).toEqual({ kind: 'signed-out' });
-    expect(await answers(409, { error: 'no plan', code: 'GOAL_NOT_ACHIEVABLE' })).toEqual({
-      kind: 'no-plan',
-    });
-    expect(await answers(422, { error: 'no plan', code: 'GOAL_NOT_ACHIEVABLE' })).toEqual({
-      kind: 'no-plan',
-    });
-    expect(
-      await answers(422, {
-        error: 'Plans are in US dollars for now',
-        code: 'CURRENCY_UNSUPPORTED',
-      }),
-    ).toEqual({ kind: 'currency' });
-    expect(await answers(429)).toEqual({ kind: 'busy' });
-    expect(await answers(500)).toEqual({ kind: 'unreachable' });
-    expect(
-      await buildPlan(async () => {
-        throw new TypeError('fetch failed');
-      }, SHEET),
-    ).toEqual({ kind: 'unreachable' });
   });
 });
 

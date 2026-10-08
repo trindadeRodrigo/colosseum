@@ -11,8 +11,8 @@ import { dollars } from '../goal/sheet';
 import { formatBps, tokenName } from './amounts';
 import { displayName } from './plain';
 
-// A plan, showing how, whatever it is a plan of (gate INVEST-TWO-PANE): the shape the Invest screen's
-// pane, a plan's own page and the product pages share. It knows nothing of where the plan came from:
+// A plan, showing how, whatever it is a plan of (gate INVEST-TWO-PANE): the shape a plan's own page
+// and the product pages share. It knows nothing of where the plan came from:
 // `PlanPane` hands it a goal's plan (features/order/PlanPane.tsx), a product page a shared portfolio.
 //
 // It is a picture first (Thom, Oct 7: "the plan on the side panel could be more visual"). The answer
