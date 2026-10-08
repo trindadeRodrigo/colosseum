@@ -1,415 +1,432 @@
 name: working-brand
 display_name: Tenonfi  # provisional; fallback "Tenon". Slug stays working-brand for tooling.
-description: The Open Joint — one material (wood) on daylight paper or warm black, hairline structure, square cuts, a humanist serif spent once per screen, and a provenance pin on every number
-tags: [joinery, warm-monochrome, hairline, editorial, provenance, square-cut, light-dark-peers, fintech]
+description: Honey on night — one brand colour (fresh-cut hinoki in sunlight) on a cool near-black or warm paper, direction colours from the daylight photograph, Inter Tight and Inter, soft radii, gradients only as light, and a provenance pin on every number
+tags: [joinery, honey, cool-dark, data-dense, provenance, light-dark-peers, fintech]
 source: brand
 generated: 2026-10-01
+revised: 2026-10-08  # IDENTITY-2 (docs/GATES.md) replaces "The Open Joint" material register; LOGO-2 makes "the face" the mark
 
 # ---------------------------------------------------------------------------
-# Inheritance (style_base: humanist-literary → minimal-dark → swiss-minimalist)
-#   humanist-literary: paper ground, serif/sans split, sentence case, calm motion.
-#     DROPPED: terracotta #DA7756 (cinnabar / Teiten territory), pill radii, soft shadows.
-#   minimal-dark: three warm dark layers for dark mode and Bearing.
-#     DROPPED: glass cards, backdrop-blur, ambient orbs, amber #F59E0B, noise, glow
-#     ("no glass, blur, glow or ambient orb in dark mode" — color-system.md).
-#   swiss-minimalist: 0-radius discipline, visible grid, flush-left, asymmetric grid.
-#     DROPPED: red/blue accents, uppercase headings/buttons (brand is sentence case;
-#     the only all-caps word is MOCK), 2px bottom-only inputs.
-# Every value below traces to identity/color-system.md, palettes.json, typography.md,
-# imagery-style.md, iconography.md or logo-directions.md.
+# What changed on 2026-10-08 and why (IDENTITY-2)
+#   The first system sampled its palette from a studio photograph of wood in shadow
+#   and banned every tool that makes a screen feel alive (a saturated accent, blue,
+#   gradients, green and red, white, radius). It read dead. Benchmark for the UI
+#   register: Meteora (cool near-black, one hot accent with 14-16% tints, signed
+#   deltas in green and red, Inter, pills and small radii, the product in the first
+#   viewport). The strategy is unchanged: made to measure, every joint shown.
+#   Every value below traces to identity/color-system.md, palettes.json,
+#   typography.md, imagery-style.md, iconography.md or logo-directions.md.
 # ---------------------------------------------------------------------------
 
 tokens:
   color:
-    # Core — map 1:1 to shadcn/ui :root vars. Light mode = daylight paper.
-    background: "#F6F1E8"           # paper
-    foreground: "#1C1712"           # ink (15.81 on paper)
-    card: "#FBF8F2"                 # paper-raised: a planed face, lighter than ground, no shadow
-    card-foreground: "#1C1712"      # ink (16.78)
-    popover: "#FBF8F2"              # paper-raised
-    popover-foreground: "#1C1712"
-    primary: "#7A5A3A"              # hardwood — the brand wood on paper (5.57 on paper)
-    primary-foreground: "#FBF8F2"   # paper-raised on hardwood (5.91)
-    secondary: "#EDE6DA"            # paper-sunk
-    secondary-foreground: "#1C1712"
-    # accent = shadcn hover/selected surface, NOT a second brand hue. There is no third hue;
-    # the memorable colour is primary (hardwood / hinoki).
-    accent: "#EDE6DA"               # paper-sunk
-    accent-foreground: "#5A3A1E"    # heartwood (8.22 on sunk)
-    muted: "#EDE6DA"                # paper-sunk (recess: table heads, code, input wells)
-    muted-foreground: "#6E655B"     # stone (5.08 paper / 4.61 sunk — tightest pass)
-    destructive: "#A8324A"          # madder (off track / error), 5.80 on paper
-    border: "#D9CDBB"               # hair — decorative structure only, never a control edge (1.39)
-    input: "#8C7F70"                # member — control boundaries, 3.47 non-text pass
-    ring: "#7A5A3A"                 # hardwood, 2px + 2px offset
+    # Core — map 1:1 to shadcn/ui :root vars. Light mode = "day": warm paper, white cards.
+    background: "#F7F5F0"           # paper
+    foreground: "#15161C"           # ink (16.57 on paper)
+    card: "#FFFFFF"                 # paper-2. White is allowed again
+    card-foreground: "#15161C"
+    popover: "#FFFFFF"
+    popover-foreground: "#15161C"
+    primary: "#F5A83A"              # honey — the one brand colour, both modes
+    primary-foreground: "#15161C"   # ink on honey (9.06). Never white on honey (2.0)
+    secondary: "#EFECE5"            # paper-3
+    secondary-foreground: "#15161C"
+    # accent = shadcn hover/selected surface = honey at 14% over the ground (opaque equivalent)
+    accent: "#F7EAD6"
+    accent-foreground: "#A8640A"    # honey-l (4.67 on white)
+    muted: "#EFECE5"                # paper-3 (table heads, input wells, code)
+    muted-foreground: "#6A6D78"     # muted-l (5.16 on white)
+    destructive: "#B52F44"          # madder-l (off track / error), 6.08 on white
+    border: "#E3DFD6"               # line-l — hairlines, card edges
+    input: "#C9C4B9"                # line-l2 — control edges (controls also carry a fill)
+    ring: "#2A73B0"                 # chalk-l — the carpenter's line; focus only (5.03 on white)
 
-    # Sidebar (docs nav, app nav). Flat, separated by a hairline, no fill change.
-    sidebar: "#F6F1E8"
-    sidebar-foreground: "#1C1712"
-    sidebar-primary: "#7A5A3A"
-    sidebar-primary-foreground: "#FBF8F2"
-    sidebar-accent: "#EDE6DA"
-    sidebar-accent-foreground: "#5A3A1E"
-    sidebar-border: "#D9CDBB"
-    sidebar-ring: "#7A5A3A"
+    sidebar: "#F7F5F0"
+    sidebar-foreground: "#15161C"
+    sidebar-primary: "#F5A83A"
+    sidebar-primary-foreground: "#15161C"
+    sidebar-accent: "#F7EAD6"
+    sidebar-accent-foreground: "#A8640A"
+    sidebar-border: "#E3DFD6"
+    sidebar-ring: "#2A73B0"
 
-    # Chart = plan legs (max 4) + base-case line. Single material, lightness-led.
-    # Colour-pass fix kept: light leg 3 is wood-400 #9D7751 (3.60), NOT hinoki-deep (1.89 fails).
-    chart-1: "#7A5A3A"   # hardwood
-    chart-2: "#5A3A1E"   # heartwood
-    chart-3: "#9D7751"   # wood-400
-    chart-4: "#6E655B"   # stone
-    chart-5: "#1C1712"   # ink — base-case projection line (stress cases = dashed stone)
+    # Chart = plan legs (max 4) + base-case line
+    chart-1: "#F5A83A"   # honey
+    chart-2: "#D9881B"   # honey-deep
+    chart-3: "#B9803F"   # wood-deep
+    chart-4: "#6A6D78"   # muted-l
+    chart-5: "#15161C"   # ink — base-case projection line (stress cases dashed muted / madder)
 
     # Extras → --success / --warning / --info
-    success: "#2F4A2A"   # forest — "On track" (+ solid square + word)
-    warning: "#8A5A00"   # ochre — "Watch" (+ half-filled square + word). 1.06:1 vs hardwood: never colour alone
-    info: "#1C1712"      # ink — there is no blue info colour
+    success: "#1B7F45"   # leaf-l — "On track" (+ solid square + word), 5.04 on white
+    warning: "#A8481A"   # clay-l — "Watch" (+ half-filled square + word), 5.82 on white
+    info: "#2A73B0"      # chalk-l — guides, "today" lines, the test-network plate. Never a brand colour
 
   # Brand extension colours (not shadcn core; emitted as --tf-* custom props by the token mapping).
   brand-color:
-    paper: "#F6F1E8"
-    paper-raised: "#FBF8F2"
-    paper-sunk: "#EDE6DA"
-    black: "#0D0B09"
-    char: "#1A1714"
-    char-2: "#24201B"
-    ink: "#1C1712"
-    washi: "#ECE4D6"
-    hinoki: "#E6D3B7"
-    hinoki-deep: "#C9AE86"
-    hardwood: "#7A5A3A"
-    heartwood: "#5A3A1E"
-    stone: "#6E655B"
-    stone-d: "#A49A8E"
-    hair: "#D9CDBB"
-    hair-d: "#3A322A"
-    member: "#8C7F70"
-    member-d: "#7A6D5F"
-    forest: "#2F4A2A"
-    forest-d: "#7FA37A"
-    forest-bg: "#DEEEDB"      # forest-50
-    forest-bg-d: "#050D04"    # forest-950
-    ochre: "#8A5A00"
-    ochre-d: "#D9A441"
-    ochre-bg: "#FFEADB"       # ochre-50
-    ochre-bg-d: "#180C00"     # ochre-950
-    madder: "#A8324A"
-    madder-d: "#E58AA0"
-    madder-bg: "#FAEAEC"      # madder-50
-    madder-bg-d: "#220409"    # madder-950
-    primary-hover: "#63482E"  # wood-600 (light hover; pressed = heartwood)
-    primary-hover-d: "#D7C09E" # midpoint hinoki/hinoki-deep (dark hover; pressed = hinoki-deep)
+    # grounds and lines
+    night: "#0C0D12"
+    night-2: "#13151C"
+    night-3: "#1A1D26"
+    line: "#262A36"
+    line-2: "#363B4B"
+    paper: "#F7F5F0"
+    paper-2: "#FFFFFF"
+    paper-3: "#EFECE5"
+    line-l: "#E3DFD6"
+    line-l2: "#C9C4B9"
+    # text
+    text: "#F3F1EC"        # on night (17.2 on night)
+    muted: "#9A9DAD"       # on night (6.77 on night-2)
+    muted-2: "#6E7282"     # on night: captions, placeholders, the pin's outline (large or non-text only)
+    ink: "#15161C"         # on paper
+    muted-l: "#6A6D78"     # on paper
+    # the brand colour
+    honey: "#F5A83A"
+    honey-hover: "#E99C2E"
+    honey-deep: "#D9881B"   # pressed, chart-2
+    honey-l: "#A8640A"      # honey as text or link on light grounds (4.67 on white)
+    honey-tint: "rgba(245,168,58,0.14)"
+    # direction colours (always with a word and a shape)
+    leaf: "#3FC47C"
+    leaf-l: "#1B7F45"
+    leaf-tint: "rgba(63,196,124,0.14)"
+    clay: "#F0703A"
+    clay-l: "#A8481A"
+    clay-tint: "rgba(240,112,58,0.14)"
+    madder: "#EF5A6F"
+    madder-l: "#B52F44"
+    madder-tint: "rgba(239,90,111,0.14)"
+    # the carpenter's line: guides, selection lines, focus, "today". Never a fill, never a brand element
+    chalk: "#78B4E8"
+    chalk-l: "#2A73B0"
+    chalk-tint: "rgba(120,180,232,0.14)"
+    # wood: imagery, the 3D joint and the logo's companion tones only. Not UI chrome
+    wood: "#E9C48E"
+    wood-deep: "#B9803F"
+    # light as gradient (the only gradients allowed)
+    glow: "radial-gradient(60% 90% at 78% 30%, rgba(245,168,58,0.22), rgba(245,168,58,0) 70%)"
+    glow-l: "radial-gradient(60% 90% at 78% 30%, rgba(245,168,58,0.28), rgba(245,168,58,0) 70%)"
+    curve-fill: "linear-gradient(to bottom, rgba(245,168,58,0.35), rgba(245,168,58,0))"
 
-  # Full OKLCH ramps live in identity/palettes.json. Hex stops for tints, badges and data only.
   scales:
-    wood: { 50: "#F8ECE3", 100: "#F3D8C4", 200: "#DEB48C", 300: "#BC946D", 400: "#9D7751", 500: "#7A5A3A", 600: "#63482E", 700: "#4A3520", 800: "#342515", 900: "#20150A", 950: "#150D05" }
-    neutral: { 50: "#F1EDE9", 100: "#E6DED6", 200: "#C8BDB0", 300: "#AA9E92", 400: "#8D8276", 500: "#6E655B", 600: "#595149", 700: "#433D36", 800: "#2E2924", 900: "#1C1916", 950: "#100E0B" }
-    forest: { 50: "#DEEEDB", 100: "#C2DCBD", 200: "#92B68B", 300: "#6F9168", 400: "#4D6E47", 500: "#2F4A2A", 600: "#263C21", 700: "#1C2E18", 800: "#132110", 900: "#0B1609", 950: "#050D04" }
-    ochre: { 50: "#FFEADB", 100: "#F7D7BD", 200: "#F2B360", 300: "#CE933C", 400: "#AF7614", 500: "#8A5A00", 600: "#6F4801", 700: "#543500", 800: "#3D2500", 900: "#241400", 950: "#180C00" }
-    madder: { 50: "#FAEAEC", 100: "#F6D5D9", 200: "#EEA9B2", 300: "#E87A8A", 400: "#CE5469", 500: "#A8324A", 600: "#89273B", 700: "#6A1C2C", 800: "#4D121E", 900: "#310811", 950: "#220409" }
-    heatmap-dark: ["#1A1714", "#5A3A1E", "#8A6C4B", "#C9AE86", "#F2E6D3"]  # low → high depth
-    heatmap-light: ["#F2E6D3", "#C9AE86", "#8A6C4B", "#5A3A1E", "#1A1714"]  # reversed
+    # Hex ramps for tints, badges and data. The named tokens above stay the source of truth for UI.
+    honey: { 50: "#FFF6E6", 100: "#FFE9C2", 200: "#FFD48A", 300: "#F9BE5C", 400: "#F5A83A", 500: "#E99C2E", 600: "#D9881B", 700: "#B06C12", 800: "#85500C", 900: "#5C3707", 950: "#3A2204" }
+    neutral: { 50: "#F7F5F0", 100: "#EFECE5", 200: "#E3DFD6", 300: "#C9C4B9", 400: "#9A9DAD", 500: "#6E7282", 600: "#4B4F5E", 700: "#363B4B", 800: "#262A36", 900: "#1A1D26", 950: "#0C0D12" }
+    leaf: { 50: "#E8F8EE", 100: "#C9EFD9", 200: "#9AE1B8", 300: "#6AD39A", 400: "#3FC47C", 500: "#2AA866", 600: "#1B7F45", 700: "#156236", 800: "#0F4727", 900: "#092E19", 950: "#051B0E" }
+    clay: { 50: "#FEEFE7", 100: "#FDDACB", 200: "#FAB89A", 300: "#F5936A", 400: "#F0703A", 500: "#DA5F2A", 600: "#A8481A", 700: "#964215", 800: "#6F310F", 900: "#4A200A", 950: "#2D1306" }
+    madder: { 50: "#FDEDF0", 100: "#FBD6DC", 200: "#F7AEBA", 300: "#F38496", 400: "#EF5A6F", 500: "#DB4259", 600: "#B52F44", 700: "#9B2A3D", 800: "#70202D", 900: "#49151E", 950: "#2B0C12" }
+    chalk: { 50: "#EAF4FC", 100: "#D1E6F8", 200: "#A8CFF1", 300: "#8FC1EC", 400: "#78B4E8", 500: "#4F93D0", 600: "#2A73B0", 700: "#1F588A", 800: "#174065", 900: "#0F2A43", 950: "#081827" }
+    heatmap-dark: ["#1A1D26", "#5C3707", "#B06C12", "#F5A83A", "#FFE9C2"]   # low → high depth: night → honey → pale
+    heatmap-light: ["#FFE9C2", "#F5A83A", "#B06C12", "#5C3707", "#1A1D26"]  # reversed
 
   typography:
-    font-family-primary: '"IBM Plex Sans", "Plex Sans Fallback", system-ui, -apple-system, "Segoe UI", Arial, sans-serif'
-    font-family-display: '"Newsreader Variable", "Newsreader", "Newsreader Fallback", Georgia, "Times New Roman", serif'
+    font-family-primary: '"Inter", "Inter Fallback", system-ui, -apple-system, "Segoe UI", Arial, sans-serif'
+    font-family-display: '"Inter Tight", "Inter", system-ui, Arial, sans-serif'
     font-family-mono: '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
-    font-family-condensed: '"IBM Plex Sans Condensed", "IBM Plex Sans", "Arial Narrow", system-ui, sans-serif'  # Bearing only
-    font-weight-heading: 600        # Plex Sans UI headings. Newsreader is 400 (500 for short headlines/wordmark), never bold
+    font-family-condensed: '"Inter Tight", "Inter", system-ui, sans-serif'   # Bearing heads and dense labels
+    font-weight-heading: 600        # Inter Tight 600, −0.02em. Never a serif
     font-weight-body: 400
     font-weight-label: 500
     font-size-base: "16px"
     line-height-base: 1.5
-    figures: "lining-nums tabular-nums in all UI; pinned figures always tabular lining"
-    case: "sentence case everywhere; MOCK is the only all-caps word"
+    figures: "lining-nums tabular-nums in all UI; pinned figures always tabular lining; big numbers in Inter Tight 600"
+    case: "sentence case everywhere; captions and column heads may be uppercase at 11-12px; the word MOCK never appears in the UI (gate MOCK-QUIET)"
 
-    # Expressive register (marketing, plan view, API docs): 16px base, 1.333 desktop / 1.25 mobile, 1.125 below base
+    # Expressive register (marketing, plan view, API docs)
     scale-expressive:
-      display: { face: display, weight: 400, size: "clamp(3.0625rem, 2.5834rem + 2.0442vw, 4.2188rem)", line-height: "clamp(3.5rem, 2.9820rem + 2.2099vw, 4.75rem)", tracking: "-0.015em" }
-      h1: { face: display, weight: 400, size: "clamp(2.4375rem, 2.1397rem + 1.2707vw, 3.1562rem)", line-height: "clamp(3rem, 2.6892rem + 1.3260vw, 3.75rem)", tracking: "-0.01em" }
-      h2: { face: primary, weight: 600, size: "clamp(1.9375rem, 1.7562rem + 0.7735vw, 2.375rem)", line-height: "clamp(2.5rem, 2.2928rem + 0.8840vw, 3rem)", tracking: "-0.015em", note: "marketing section head may be Newsreader 500, opsz 36" }
-      h3: { face: primary, weight: 600, size: "clamp(1.5625rem, 1.4719rem + 0.3867vw, 1.7812rem)", line-height: "clamp(2rem, 1.8964rem + 0.4420vw, 2.25rem)", tracking: "-0.01em" }
-      h4: { face: primary, weight: 500, size: "clamp(1.25rem, 1.2112rem + 0.1657vw, 1.3438rem)", line-height: "1.75rem", tracking: "-0.005em" }
+      display: { face: display, weight: 600, size: "clamp(2.75rem, 2.2rem + 2.2vw, 4rem)", line-height: "1.05", tracking: "-0.025em" }
+      h1: { face: display, weight: 600, size: "clamp(2.125rem, 1.8rem + 1.3vw, 2.875rem)", line-height: "1.1", tracking: "-0.02em" }
+      h2: { face: display, weight: 600, size: "clamp(1.625rem, 1.45rem + 0.8vw, 2.125rem)", line-height: "1.15", tracking: "-0.02em" }
+      h3: { face: display, weight: 600, size: "clamp(1.25rem, 1.15rem + 0.4vw, 1.5rem)", line-height: "1.25", tracking: "-0.015em" }
+      h4: { face: primary, weight: 600, size: "1.125rem", line-height: "1.5rem", tracking: "-0.01em" }
       body-lg: { face: primary, weight: 400, size: "1.125rem", line-height: "1.75rem", tracking: "0" }
       body: { face: primary, weight: 400, size: "1rem", line-height: "1.5rem", tracking: "0" }
-      body-sm: { face: primary, weight: 400, size: "0.875rem", line-height: "1.5rem", tracking: "0.01em" }
-      caption: { face: primary, weight: 500, size: "0.78125rem", line-height: "1.25rem", tracking: "0.015em" }
-      label-mock: { face: mono, weight: 500, size: "0.78125rem", line-height: "1.25rem", tracking: "0.08em", transform: uppercase }
+      body-sm: { face: primary, weight: 400, size: "0.875rem", line-height: "1.375rem", tracking: "0" }
+      caption: { face: primary, weight: 500, size: "0.75rem", line-height: "1rem", tracking: "0.04em", transform: uppercase, note: "eyebrows and column heads only" }
+      figure-lg: { face: display, weight: 600, size: "1.75rem", line-height: "2rem", tracking: "-0.02em", note: "the amount on a goal card" }
+      sample-line: { face: primary, weight: 400, size: "0.78125rem", line-height: "1.25rem", tracking: "0", note: "'Sample figures · test network', muted, once per card" }
       source: { face: mono, weight: 400, size: "0.8125rem", line-height: "1.25rem", tracking: "0" }
 
-    # Productive register (Bearing dashboard): 13px base, 1.125, fixed (no clamp)
+    # Productive register (Bearing): 13px base, fixed
     scale-productive:
-      b-kpi: { face: mono, weight: 500, size: "1.4688rem", line-height: "2rem" }
-      b-title: { face: primary, weight: 600, size: "1.3125rem", line-height: "1.75rem" }
-      b-section: { face: primary, weight: 600, size: "1.0313rem", line-height: "1.5rem" }
-      b-emph: { face: condensed, weight: 500, size: "0.9063rem", line-height: "1.25rem" }
-      b-cell: { face: condensed, weight: 400, size: "0.8125rem", line-height: "1.25rem", values: mono }
-      b-head: { face: condensed, weight: 500, size: "0.75rem", line-height: "1rem" }
+      b-kpi: { face: display, weight: 600, size: "1.375rem", line-height: "1.75rem", tracking: "-0.02em" }
+      b-title: { face: display, weight: 600, size: "1.25rem", line-height: "1.75rem" }
+      b-section: { face: primary, weight: 600, size: "0.9375rem", line-height: "1.5rem" }
+      b-emph: { face: primary, weight: 600, size: "0.8125rem", line-height: "1.25rem" }
+      b-cell: { face: primary, weight: 400, size: "0.8125rem", line-height: "1.25rem", values: "tabular" }
+      b-head: { face: primary, weight: 500, size: "0.6875rem", line-height: "1rem", tracking: "0.05em", transform: uppercase }
       b-meta: { face: mono, weight: 400, size: "0.75rem", line-height: "1rem" }
+      b-delta: { face: primary, weight: 500, size: "0.6875rem", line-height: "1rem", note: "signed, coloured leaf / madder, under the value" }
 
-    # Embedded register (partner embed): partner font, em-relative, 1.2 ratio, container queries
+    # Embedded register (partner embed): partner font, em-relative
     scale-embedded:
       e-title: "1.44em"
-      e-lead: "1.2em"      # goal sentence in the partner font, NOT the serif
+      e-lead: "1.2em"
       e-body: "1em"        # disclaimer never smaller than this
       e-small: "0.8333em"  # provenance line
-      e-credit: "max(0.6944em, 11px)"  # "Powered by tenonfi" only — the one sub-12px text in the system
+      e-credit: "max(0.6944em, 11px)"  # "Powered by tenonfi" only
 
     measure:
       body: "66ch"
       docs: "72ch"
-      display: "18ch"
+      display: "16ch"
 
   shape:
-    # Joinery is square. 0-2px only; the platform app-icon mask is the only other rounding.
-    border-radius-sm: "0px"     # badges, status squares, tags, table cells
-    border-radius-md: "2px"     # cards, inputs, buttons
-    border-radius-lg: "2px"     # → --radius. shadcn's calc(var(--radius) - 4px) clamps to 0 — intended
-    # Founder exception (2026-10-01): the typing box alone is modern and rounded. Composer + subscribe field only.
-    border-radius-composer: "20px"   # → --tf-radius-composer. The goal composer container and the subscribe field
-    border-radius-round: "9999px"    # → --tf-radius-round. The composer's send button only (and the pin)
+    # Soft, not square. Joinery is carried by construction motifs, not by corners.
+    border-radius-sm: "6px"      # tags on a dense row, inline code, the pin's outline
+    border-radius-md: "8px"      # buttons, inputs, selects, popovers  → --radius
+    border-radius-lg: "10px"     # cards, panels, table containers
+    border-radius-xl: "16px"     # app tiles, hero media
+    border-radius-pill: "9999px" # chips, status badges, filter tabs, the composer's send button
+    border-radius-composer: "20px"   # the goal composer container and the subscribe field
     border-width: "1px"
-    border-width-key: "1.5px"   # key member outline in drawings, icon stroke
     focus-ring-width: "2px"
     focus-ring-offset: "2px"
 
   elevation:
-    # No shadows. Depth = three warm layers + hairlines (minimal-dark structure, without its effects).
+    # No drop shadows in the app. Depth = three layers + hairlines + a 14% tint on the selected surface.
     shadow-sm: "none"
     shadow-md: "none"
     shadow-lg: "none"
     shadow-xl: "none"
-    layers-light: ["#EDE6DA", "#F6F1E8", "#FBF8F2"]  # sunk → ground → raised
-    layers-dark: ["#0D0B09", "#1A1714", "#24201B"]   # ground → surface → raised
+    shadow-popover: "0 8px 24px rgba(0,0,0,0.35)"   # popovers and the composer only
+    layers-light: ["#EFECE5", "#F7F5F0", "#FFFFFF"]  # sunk → ground → raised
+    layers-dark: ["#0C0D12", "#13151C", "#1A1D26"]   # ground → surface → raised
 
   spacing:
     base: 4
-    scale: [4, 8, 12, 16, 24, 32, 48, 64, 96]   # --space-1 … --space-9; 24 = one expressive line
-    row-dense: "28px"        # Bearing: 20px line + 4px block padding
-    row-comfortable: "32px"
+    scale: [4, 8, 12, 16, 24, 32, 48, 64, 96]
+    row-dense: "36px"        # Bearing rows: 20px line + 8px padding each side
+    row-comfortable: "44px"
     grid-columns: 12
-    hit-area-min: "24px"     # WCAG 2.5.8, incl. the 12px pin
+    hit-area-min: "24px"
 
   motion:
-    duration-fast: "160ms"     # --dur-fade, --dur-pin
-    duration-normal: "320ms"   # --dur-slide (280-360 range)
-    easing: "cubic-bezier(0.2, 0, 0, 1)"  # --ease-seat: decelerate and seat, no overshoot
+    duration-fast: "160ms"
+    duration-normal: "320ms"
+    easing: "cubic-bezier(0.2, 0, 0, 1)"  # --ease-seat
     delay-pin: "120ms"
-    duration-reduced: "120ms"  # reduced motion: every slide becomes a crossfade
+    duration-reduced: "120ms"
     stagger: "60ms"
 
-  # Patterns (structure only, always hairline, never a brand species)
+  # Patterns (structure only)
   pattern:
     p1-kumiko:
-      coarse: "cell = 1 column of the 12-col grid — marketing section grounds; docs page margins only"
-      medium: "24px — loading and empty states only"
-      fine: "8px — print and video only (moiré on screen)"
-      stroke: "1px hair / hair-d"
-    p2-stacked-offset: "three hairlines 4px apart, each one step longer; step = 1 column (marketing), 8px (docs)"
-    p3-receding-grid: "Bearing landing hero, video, deck covers only; one density; >= 40% of frame empty"
+      use: "marketing section grounds only, as a faint hairline lattice (line / line-l at 60% opacity); never in the app, Bearing or the embed"
+      cell: "1 column of the 12-col grid"
     p4-hatch:
-      meaning: "MOCK and stale ONLY — never decoration, never a real section"
+      meaning: "sample (mock, sandbox) and stale ONLY — never decoration"
       angle: "45deg"
-      stroke: "1px stone (light) / stone-d (dark) — 5.08 / 7.10, valid as a state indicator alone"
-      pitch-ui: "6px"          # colour pass (supersedes imagery's 4px for UI surfaces)
-      pitch-glyph: "3px"       # glyphs under 16px (the MOCK pin)
-      pitch-drawing: "4px"     # SVG drawings (imagery-style.md §3)
-      band: "6px edge band or frame margin on a mocked card; text never on strokes"
-    p5-bracket-set: "Bearing imagery only (photo/render), never a repeat"
+      stroke: "1px muted (night) / muted-l (day)"
+      pitch-ui: "6px"
+      pitch-glyph: "3px"
+      band: "6px left edge band on a sample card; text never on strokes"
+    p5-bracket-set: "Bearing imagery only (photo / render), never a repeat"
+    dimension-lines: "45° ticks and Plex Mono values on drawings and exploded views; chalk / chalk-l"
 
-  # Provenance pin (J1 tenon end in line mode). Its own component, never in the icon registry.
+  # Provenance pin: the logo's tenon end in line mode. Its own component, never in the icon registry.
   provenance:
-    glyph: "viewBox 0 0 18 12; outline rect 3:2 stroke 1.5; height .75em (1cap), width 1.125em; U+202F before it"
+    glyph: "viewBox 0 0 18 12; outline rect 3:2, stroke 1.5, radius 2.5; square pin 4x4 radius 1 set toward the end; height .75em (1cap); U+202F before it"
     live:
-      light: { outline: "#6E655B", pin: "#7A5A3A solid" }
-      dark: { outline: "#A49A8E", pin: "#E6D3B7 solid" }
+      light: { outline: "#C9C4B9", pin: "#A8640A solid square" }
+      dark: { outline: "#6E7282", pin: "#F5A83A solid square" }
       paired: "popover: source · fetched_at · method (Plex Mono)"
     stale:
-      light: { outline: "#6E655B", pin: "#6E655B hollow ring 1.5" }
-      dark: { outline: "#A49A8E", pin: "#A49A8E hollow ring" }
-      paired: "the word 'stale' + age, always (live vs stale pin differ by only 1.10:1 luminance)"
+      light: { outline: "#C9C4B9", pin: "#A8640A hollow square, stroke 1.5" }
+      dark: { outline: "#6E7282", pin: "#F5A83A hollow square" }
+      paired: "the word 'stale' + age, always"
     mock:
-      light: { outline: "#6E655B", fill: "45deg hatch #6E655B, 3px pitch", plate: "ink on paper-raised, 1px stone border" }
-      dark: { outline: "#A49A8E", fill: "45deg hatch #A49A8E", plate: "washi on char, 1px stone-d border" }
-      paired: "the word MOCK, always; API carries \"provenance\": \"mock\""
-    embed: "pin in partner's muted text colour; hatch + MOCK mandatory"
+      light: { outline: "#C9C4B9", fill: "45deg hatch #6A6D78, 3px pitch", pin: "none" }
+      dark: { outline: "#6E7282", fill: "45deg hatch #9A9DAD", pin: "none" }
+      paired: "aria-label 'sample figure'; the card's quiet line 'Sample figures' (gate MOCK-QUIET: never a boxed MOCK word); API carries \"provenance\": \"mock\""
+    sandbox: "same as mock; the card's line reads 'Sample figures · test network'; the buy card says 'Test network · <chain> · not live'"
+    embed: "pin in partner's muted text colour; the hatch and the sample line mandatory"
     a11y: "<button aria-label='Source for 6.4%'> (+ ', stale, 3 hours old' / ', mock data'); 24x24 hit area; Enter opens"
 
   # Goal state: word + shape + colour, never colour alone
   status:
-    on-track: { light: "#2F4A2A", dark: "#7FA37A", bg-light: "#DEEEDB", bg-dark: "#050D04", shape: "solid square", word: "On track" }
-    watch: { light: "#8A5A00", dark: "#D9A441", bg-light: "#FFEADB", bg-dark: "#180C00", shape: "half-filled square", word: "Watch" }
-    off-track: { light: "#A8324A", dark: "#E58AA0", bg-light: "#FAEAEC", bg-dark: "#220409", shape: "square outline with a notch", word: "Off track" }
+    on-track: { light: "#1B7F45", dark: "#3FC47C", tint: "rgba(63,196,124,0.14)", shape: "solid square", word: "On track" }
+    watch: { light: "#A8481A", dark: "#F0703A", tint: "rgba(240,112,58,0.14)", shape: "half-filled square", word: "Watch" }
+    off-track: { light: "#B52F44", dark: "#EF5A6F", tint: "rgba(239,90,111,0.14)", shape: "square outline with a notch", word: "Off track" }
+    delta: "signed (+ / U+2212), leaf for up, madder for down, muted for flat; always beside the value it qualifies"
 
 dark_mode:
   color:
-    # Warm black. The species swap: hardwood → hinoki. Never hardwood on dark (2.58-3.13).
-    background: "#0D0B09"           # black
-    foreground: "#ECE4D6"           # washi (15.56)
-    card: "#1A1714"                 # char
-    card-foreground: "#ECE4D6"
-    popover: "#24201B"              # char-2
-    popover-foreground: "#ECE4D6"
-    primary: "#E6D3B7"              # hinoki (13.44 on black)
-    primary-foreground: "#0D0B09"   # black on hinoki (13.44)
-    secondary: "#24201B"            # char-2
-    secondary-foreground: "#ECE4D6"
-    accent: "#24201B"               # char-2 hover/selected surface
-    accent-foreground: "#E6D3B7"    # hinoki (11.07)
-    muted: "#24201B"                # char-2
-    muted-foreground: "#A49A8E"     # stone-d (7.10 black / 5.85 char-2)
-    destructive: "#E58AA0"          # madder-d
-    border: "#3A322A"               # hair-d — decorative only
-    input: "#7A6D5F"                # member-d (3.91 / 3.22 non-text)
-    ring: "#E6D3B7"                 # hinoki
-    sidebar: "#1A1714"
-    sidebar-foreground: "#ECE4D6"
-    sidebar-primary: "#E6D3B7"
-    sidebar-primary-foreground: "#0D0B09"
-    sidebar-accent: "#24201B"
-    sidebar-accent-foreground: "#E6D3B7"
-    sidebar-border: "#3A322A"
-    sidebar-ring: "#E6D3B7"
-    chart-1: "#E6D3B7"   # hinoki
-    chart-2: "#C9AE86"   # hinoki-deep
-    chart-3: "#9D7751"   # wood-400
-    chart-4: "#A49A8E"   # stone-d
-    chart-5: "#ECE4D6"   # washi — base-case line
-    success: "#7FA37A"   # forest-d
-    warning: "#D9A441"   # ochre-d
-    info: "#ECE4D6"      # washi
+    # "night": a cool near-black, a trace of blue so honey glows instead of sinking.
+    background: "#0C0D12"           # night
+    foreground: "#F3F1EC"           # text (17.2)
+    card: "#13151C"                 # night-2
+    card-foreground: "#F3F1EC"
+    popover: "#1A1D26"              # night-3
+    popover-foreground: "#F3F1EC"
+    primary: "#F5A83A"              # honey (9.75 on night)
+    primary-foreground: "#15161C"   # ink on honey (9.06)
+    secondary: "#1A1D26"            # night-3
+    secondary-foreground: "#F3F1EC"
+    accent: "#2D2318"               # honey at 14% over night (opaque equivalent); selected rows, chips
+    accent-foreground: "#F5A83A"
+    muted: "#1A1D26"
+    muted-foreground: "#9A9DAD"     # muted (6.77 on night-2)
+    destructive: "#EF5A6F"          # madder (5.88 on night)
+    border: "#262A36"               # line
+    input: "#363B4B"                # line-2
+    ring: "#78B4E8"                 # chalk (8.77 on night)
+    sidebar: "#13151C"
+    sidebar-foreground: "#F3F1EC"
+    sidebar-primary: "#F5A83A"
+    sidebar-primary-foreground: "#15161C"
+    sidebar-accent: "#2D2318"
+    sidebar-accent-foreground: "#F5A83A"
+    sidebar-border: "#262A36"
+    sidebar-ring: "#78B4E8"
+    chart-1: "#F5A83A"   # honey
+    chart-2: "#E9C48E"   # wood
+    chart-3: "#D9881B"   # honey-deep
+    chart-4: "#9A9DAD"   # muted
+    chart-5: "#F3F1EC"   # text — base-case line
+    success: "#3FC47C"   # leaf (8.69 on night)
+    warning: "#F0703A"   # clay (6.55)
+    info: "#78B4E8"      # chalk
 
 intensity:
-  variance: 3     # strict 12-col grid, flush left; asymmetry only by one-column P2 offsets and the empty third in heroes
+  variance: 3     # 12-col grid, flush left; asymmetry from the empty third in heroes and the glow's off-centre
   motion: 3       # one vocabulary: slide on one axis, seat, pin drops. Purposeful, never ambient
-  density: 4      # consumer airy (one goal, one sentence above the fold); Bearing tight (13px, 28px rows). Docs between
+  density: 4      # consumer airy; Bearing tight (13px type, 36px rows); docs between
 
 patterns:
   card:
-    border: "1px solid {color.border} (hair / hair-d)"
+    border: "1px solid {color.border} (line / line-l)"
     shadow: "none"
-    radius: "{shape.border-radius-md} (2px); 0 for table panels"
-    background: "{color.card} (paper-raised / char) — lighter than ground on paper, a planed face"
-    padding: "24px (space-5) consumer and docs; 16px Bearing tiles"
-    rule: "at most one Newsreader line per card (the goal sentence); no photography, no pattern inside"
+    radius: "{shape.border-radius-lg} (10px)"
+    background: "{color.card} (white / night-2)"
+    padding: "24px consumer and docs; 16px Bearing tiles"
+    rule: "no photography and no pattern inside; a card holds one goal, one leg or one tile"
   button-primary:
-    background: "{color.primary} (hardwood / hinoki); hover wood-600 #63482E / #D7C09E; pressed heartwood / hinoki-deep"
+    background: "{color.primary} (honey); hover honey-hover #E99C2E; pressed honey-deep #D9881B"
     border: "none"
-    text: "IBM Plex Sans 500, 15-16px, sentence case, no tracking change; {color.primary-foreground}"
-    radius: "{shape.border-radius-md} (2px)"
+    text: "Inter 600, 14-15px, sentence case, ink #15161C on honey in both modes"
+    radius: "{shape.border-radius-md} (8px)"
     height: "40px default, 32px dense"
-    rule: "one primary per view; never a pill; consumer flows prefer a hardwood underlined link ('See your plan')"
+    rule: "one primary per view; pills belong to chips, never to primary buttons"
   button-secondary:
-    background: "transparent"
-    border: "1px solid {color.input} (member / member-d) — a control edge must be seen"
-    text: "IBM Plex Sans 500, sentence case, {color.foreground}"
-    radius: "{shape.border-radius-md} (2px)"
-    hover: "border → {color.primary}, text → {color.primary}"
+    background: "transparent ({color.secondary} on hover)"
+    border: "1px solid {color.input} (line-2 / line-l2)"
+    text: "Inter 600, sentence case, {color.foreground}"
+    radius: "{shape.border-radius-md} (8px)"
+    hover: "background → {color.secondary}; border → muted"
   input:
-    border: "1px solid {color.input} (member / member-d, 3.14+ on every ground)"
-    radius: "{shape.border-radius-md} (2px)"
-    background: "{color.muted} (paper-sunk / char-2) — the input well"
-    focus: "2px solid {color.ring} outline, 2px offset; border unchanged; no glow"
+    border: "1px solid {color.input}"
+    radius: "{shape.border-radius-md} (8px)"
+    background: "{color.secondary} (paper-3 / night-3) — the input well"
+    focus: "2px solid {color.ring} (chalk) outline, 2px offset; border unchanged; no glow"
     error: "border {color.destructive} + a sentence saying what to change ('doesn't fit' — never blame)"
-    text: "Plex Sans 400 16px; values tabular; labels Plex Sans 500 caption above, never placeholder-only"
+    text: "Inter 400 15-16px; values tabular; labels Inter 500 caption above, never placeholder-only"
   badge:
-    shape: "square, 0 radius, 1px border in the text colour at full strength or none; 20px tall"
-    text: "Plex Sans 500 caption (12.5px), sentence case; status badges lead with their square glyph"
-    status: "on track = solid square forest · watch = half square ochre · off track = notched outline madder; bg = 50 / 950 tint"
-    mock: "Plex Mono 500 12.5px uppercase 0.08em 'MOCK', ink on paper-raised (washi on char), 1px stone border, beside a 6px hatch band"
+    shape: "pill, 22px tall, 14% tint of its colour as fill, the colour as text; leads with its square glyph"
+    text: "Inter 600 11.5-12px, sentence case"
+    status: "on track = solid square leaf · watch = half square clay · off track = notched outline madder"
+    sample-line: "Inter 400 12.5px muted-foreground: 'Sample figures' or 'Sample figures · test network', once per card, beside the card's 6px hatched left edge; no plate, no box, no uppercase word (gate MOCK-QUIET)"
+    chip: "filter chips are pills; selected = honey-tint fill + honey text, no border"
   nav:
-    style: "plain horizontal bar on {color.background}, 1px hairline bottom; symbol + wordmark left; no glass, no sticky blur"
-    links: "Plex Sans 500 15px, {color.muted-foreground} → {color.foreground} on hover; active = foreground + 2px {color.primary} underline offset 6px"
-    docs: "left sidebar on {color.sidebar}, 1px {color.sidebar-border} right edge, P1 coarse in page margins only"
+    style: "plain horizontal bar on {color.background}, 1px hairline bottom; mark + wordmark left; the primary action right; no glass, no blur"
+    links: "Inter 500 14px, {color.muted-foreground} → {color.foreground} on hover; active = foreground + 2px honey underline at 6px offset"
+    docs: "left sidebar on {color.sidebar}, 1px {color.sidebar-border} right edge"
   layout:
     archetype: "asymmetric-grid"
-    max-width: "1280px page; 66ch body; 72ch docs prose; 18ch display"
-    section-spacing: "96px (space-9) marketing; 64px (space-8) docs and plan; 32px Bearing panels"
-    grid-gap: "24px (space-5); 16px Bearing"
-    surfaces: "flat paper or warm black, alternating as inverted sections on marketing (60% ground / 30% ink+hairline / 10% wood); P1 coarse kumiko on marketing section grounds via ::before only"
-    decoration: "hairline rules, P2 stepped dividers at section ends, dimension lines with 45deg ticks and Plex Mono values, square numbered callout tags"
+    max-width: "1280px page; 66ch body; 72ch docs prose; 16ch display"
+    section-spacing: "96px marketing; 64px docs and plan; 32px Bearing panels"
+    grid-gap: "24px; 16px Bearing"
+    surfaces: "night or paper, flat; a honey glow (brand-color.glow) behind heroes and the composer; P1 lattice on marketing grounds only"
+    first-viewport: "the product, not a manifesto: the composer with a sample plan beneath it, numbers and pins visible before any scroll"
+    decoration: "hairline rules, dimension lines with 45deg ticks and Plex Mono values (chalk), exploded views"
 
-  # --- Brand-specific patterns (no library equivalent) ---
+  # --- Brand-specific patterns ---
   provenance-pin:
     placement: "after every yield, price and FX figure, at cap height, U+202F thin no-break space between"
-    states: "live = solid pin · stale = hollow pin + 'stale · 3 h' · MOCK = hatched tenon, no pin + MOCK"
-    colour: "the species opposite the ground: hardwood on paper, hinoki on black; partner muted in embed"
-    popover: "Plex Mono source line: source · fetched_at (ISO, UTC) · method; on paper-raised / char-2, 1px border"
-  mock:
-    rule: "hatch + the word MOCK, together, always. Never styled like a live figure"
-    surface: "hatch fills the frame margin or a 6px edge band; the value and MOCK label sit on a solid plate"
+    states: "live = solid square pin · stale = hollow pin + 'stale · 3 h' · sample (mock) = hatched tenon, no pin, named 'sample figure', with the card's quiet line · sandbox = the same line with 'test network'"
+    colour: "pin in honey (night) / honey-l (day); outline in muted-2 / line-l2; partner muted in the embed"
+    popover: "Plex Mono source line: source · fetched_at (ISO, UTC) · method; on night-3 / white, 1px border, shadow-popover"
+  sample:
+    rule: "gate MOCK-QUIET: the hatched left edge + one quiet line ('Sample figures', or '… · test network') + a hatched pin or glyph named 'sample figure'. Never a boxed MOCK word. Never styled like a live figure"
+    surface: "hatch fills a 6px edge band; the line sits in the card's own text, muted"
   goal-card:
-    anatomy: "Newsreader 400 goal sentence → status square + word + date (Plex Sans 500) → amount of target + pin + access to cash (Plex Sans, tabular) → one hardwood underlined link"
-    never: "photography, patterns, leaderboards, big APY number, progress rings"
+    anatomy: "eyebrow (caption: 'Apartment fund · Jun 2028') → amount in figure-lg + pin → one line (net yield · access to cash) → status pill → progress bar (honey on line)"
+    never: "photography, patterns, leaderboards, a big APY as the headline, progress rings"
   plan-leg:
-    bar: "stacked horizontal bar, max 4 legs, 2px ground-colour gap between segments, 0 radius"
-    colours-light: "hardwood, heartwood, wood-400 #9D7751, stone"
-    colours-dark: "hinoki, hinoki-deep, wood-400, stone-d"
-    labels: "direct label per leg (leg · weight · after-haircut yield + pin · 'quoted x%' in stone), never legend-only"
-    mock-leg: "hatched segment; its label on a solid plate with MOCK"
+    bar: "stacked horizontal bar, max 4 legs, 2px ground-colour gap between segments, pill ends"
+    colours-light: "honey, honey-deep, wood-deep, muted-l"
+    colours-dark: "honey, wood, honey-deep, muted"
+    labels: "direct label per leg (leg · weight · after-haircut yield + pin · 'quoted x%' muted), never legend-only"
+    mock-leg: "hatched segment; its label says 'sample'"
+  data-row:
+    anatomy: "asset (avatar 22px, name 600, type chip) · sparkline coloured by direction (leaf / madder / muted) · values tabular with a signed delta beneath · status cell (pin, stale, MOCK)"
+    selected: "honey-tint fill across the row"
+  chart:
+    base-case: "honey 2px line with curve-fill beneath"
+    stress: "dashed muted and dashed madder"
+    today: "1px dashed chalk vertical with a Plex Mono label"
+    rule: "dashed = projected, solid = measured, everywhere; never a rainbow categorical palette"
   disclaimer:
-    rule: "rendered from the DISCLAIMER constant, never paraphrased; hairline-boxed block directly under the plan and at the top of API reference; Plex Sans 400 at body size (>= 1em in embed); never footer micro-text"
+    rule: "rendered from the DISCLAIMER constant, never paraphrased; hairline-boxed block directly under the plan and at the top of API reference; Inter 400 at body size (>= 1em in embed); never footer micro-text"
   embed:
-    rule: "the brand recedes: partner colours, font, radius, buttons. Survives: pin + popover, hatch + MOCK, hairline drawing structure, disclaimer block, explorer links, 'Powered by' credit in partner muted colour"
+    rule: "the brand recedes: partner colours, font, radius, buttons. Survives: pin + popover, the hatch with its sample line, hairline structure, disclaimer block, explorer links, 'Powered by' credit in partner muted colour with the 16 px cut"
   bearing-tile:
-    anatomy: "b-head label (Condensed 500) → b-kpi value (Plex Mono 500) + pin → b-meta line: unit · n= · method version · as-of UTC"
-    surface: "char on black, 1px hair-d, 0 radius, 16px padding; no bevels, nameplates, LEDs or glow"
+    anatomy: "b-head label → b-kpi value (Inter Tight 600) + pin + b-delta → b-meta line: unit · n= · method version · as-of UTC"
+    surface: "night-2 on night, 1px line, 10px radius, 16px padding; no bevels, nameplates, LEDs or glow"
 
 constraints:
   never:
     - "a yield, price or FX figure without its provenance pin (source · fetched_at · method)"
-    - "a mock shown as live — no MOCK figure without hatch + the word MOCK; no text set on hatch strokes"
-    - "the hatch for anything but MOCK or stale; any diagonal other than the hatch"
+    - "a mock shown as live — no sample figure without its hatched pin or glyph and the card's quiet line; no text set on hatch strokes; no sandbox card without 'test network'; no boxed MOCK word anywhere (gate MOCK-QUIET)"
+    - "the hatch for anything but MOCK or stale"
     - "omit, shrink below body size, or paraphrase the disclaimer; present the brand as licensed advice; promise returns ('earn up to', 'guaranteed', 'risk-free')"
-    - "blue, indigo or violet anywhere in UI — including info states, links, charts and focus rings"
-    - "mint, lime, neon, gradients, glass, blur, glow, ambient orbs, gold foil, amber #F59E0B"
-    - "cinnabar, vermilion or seal-red; a red pin; pure #FFFFFF or #000000 UI grounds"
-    - "Japanese clichés: kanji/kana as decoration, torii, ensō, hanko seals, sakura, waves, brush type, washi-paper texture, asanoha, kikkō, seigaiha, Japanese terms in product UI"
-    - "anything like Teiten: bevelled chassis, instrument nameplates, LEDs, screws, retro-OS panels, mono-led headlines, cinnabar signal"
-    - "hardwood on dark grounds or hinoki-deep as a plan-leg fill on paper (fails 3:1) — use wood-400 #9D7751"
-    - "a status ('watch' above all) shown by colour alone — ochre vs hardwood is 1.06:1"
-    - "patterns behind numbers, text, form fields, charts, the provenance popover or the disclaimer (stop >= 1 grid unit away)"
-    - "radius above 2px, pills, circles as containers (round belongs to the pin and the composer's send button alone), drop shadows. Sole exception: the composer container and subscribe field at radius-composer (20px)"
-    - "Newsreader in the embed, in Bearing, in tables, buttons, labels or on pinned numbers; Newsreader bold or italic"
-    - "light font weights; uppercase except the word MOCK; centred or justified body text"
-    - "wood-grain textures as UI backgrounds; text set on photographs; gradient scrims or duotones"
+    - "a second brand colour: honey is the only accent. Chalk is a line, never a fill, a button or a brand element; no blue brand, no blue gradient"
+    - "two-hue gradients, glass, backdrop blur, neon glow, ambient orbs, gold foil, metallic or wood-grain fills in UI"
+    - "white text on honey (2.0:1). Honey carries ink; as text on light grounds use honey-l"
+    - "honey as the 'watch' colour, or any status shown by colour alone"
+    - "cinnabar / vermilion / seal-red; Japanese clichés (kanji/kana as decoration, torii, ensō, hanko, sakura, waves, brush type, asanoha, kikkō, seigaiha, Japanese terms in product UI)"
+    - "anything like Teiten: bevelled chassis, instrument nameplates, LEDs, screws, retro-OS panels, mono-led headlines"
+    - "a serif anywhere in the app, Bearing or the embed. At most one serif line on the marketing site, by decision, not by default"
+    - "patterns behind numbers, text, form fields, charts, the provenance popover or the disclaimer"
+    - "pills on primary or secondary buttons; radius above 16px on anything but chips, badges and the composer"
+    - "font weights below 400; centred or justified body text; uppercase except captions and column heads"
+    - "text set on photographs; gradient scrims; duotones; wood-grain textures as backgrounds"
     - "bounce, spring, overshoot, confetti, counting-up figures, parallax, ambient loops"
-    - "Sparkles/Wand/Rocket/Coins/TrendingUp/Shield-as-promise icons, RefreshCw for rebalance, emoji, exclamation marks"
-    - "brand colour, serif, patterns or photography inside the partner embed"
+    - "Sparkles/Wand/Rocket/Coins/TrendingUp/Shield-as-promise icons, RefreshCw for rebalance, emoji, exclamation marks, mascots, leaderboards"
+    - "brand colour, patterns or photography inside the partner embed"
   always:
-    - "the species rule: brand wood is hardwood on paper, hinoki on warm black; the pin is the species opposite the ground"
+    - "one brand colour: honey, ink on it, in both modes; the pin is honey (night) or honey-l (day)"
     - "light and dark as peers — every component ships both and passes WCAG 2.2 AA in both"
-    - "status = word + shape + colour (solid / half / notched square)"
-    - "MOCK = hatch + MOCK label on a solid plate (ink on paper-raised, washi on char, 1px stone border)"
+    - "status = word + shape + colour (solid / half / notched square) on a 14% tint; deltas signed and coloured by direction"
+    - "sample = hatched edge + the quiet line 'Sample figures' + hatched pin or glyph named 'sample figure'; sandbox adds 'test network' to the line"
     - "stale = hollow pin + the word 'stale' + its age"
     - "the disclaimer from the single DISCLAIMER constant on the plan view and in API docs"
-    - "Newsreader spent once per screen, for the answer to a person; Plex Sans explains; Plex Mono cites"
-    - "tabular lining figures; true minus U+2212; Intl-formatted, 2 decimals on yields"
-    - "controls edged in member / member-d; hair / hair-d for decoration only"
-    - "2px focus ring in the brand species with 2px offset on every interactive element"
-    - "4px grid; line heights snap to multiples of 4"
+    - "Inter Tight for display and big numbers, Inter for UI, Plex Mono for provenance and code; tabular lining figures; true minus U+2212"
+    - "colour sits in surfaces as 14% tints (selected rows, chips, badges), not only in text"
+    - "a 2px chalk focus ring at 2px offset on every interactive element"
+    - "the 4px grid; line heights snap to multiples of 4"
     - "dashed = projected, solid = measured or live — everywhere"
     - "every mainnet transaction line with its explorer link (Plex Mono, 'Tx ↗')"
-    - "flush left, ragged right, sentence case"
+    - "flush left, ragged right, sentence case; the product in the first viewport"
 
 effects:
-  interaction-vocabulary: [seat-slide, pin-drop, hairline-deepen, species-press, underline-draw, part-and-close, crossfade-reduced]
+  interaction-vocabulary: [seat-slide, pin-drop, tint-rise, honey-press, underline-draw, part-and-close, crossfade-reduced]
   hover:
-    card: "hairline-deepen — border hair → member (hair-d → member-d), no lift, no shadow"
-    button: "species-press (rest) — primary bg → wood-600 #63482E (light) / #D7C09E (dark)"
-    link: "underline-draw — 1px underline thickens to 2px, colour stays hardwood / hinoki"
-    row: "background → {color.accent} (paper-sunk / char-2)"
+    card: "border line → line-2 (line-l → line-l2); no lift, no shadow"
+    button: "honey-press — primary bg → honey-hover #E99C2E; secondary bg → secondary surface"
+    link: "underline-draw — 1px underline thickens to 2px; colour honey (night) / honey-l (day)"
+    row: "tint-rise — background → accent (honey at 14%)"
   active:
-    button: "species-press — bg → heartwood (light) / hinoki-deep (dark); no scale, no translate"
+    button: "honey-press — bg → honey-deep #D9881B; no scale, no translate"
   focus:
-    general: "2px solid {color.ring} outline, 2px offset, square corners"
+    general: "2px solid {color.ring} (chalk) outline, 2px offset, follows the element's radius"
     pin: "same ring around the 24x24 hit area; Enter opens the provenance popover"
   transition: "160ms for colour/opacity, 320ms for slides; cubic-bezier(0.2, 0, 0, 1); transform and opacity only for motion"
   choreography:
-    plan-lock: "legs fade in at exploded positions (160ms, 60ms stagger) → slide and seat (280-360ms, ease-seat) → pin drops after 120ms over 160ms"
+    plan-lock: "legs fade in at exploded positions (160ms, 60ms stagger) → slide and seat (280-360ms) → pin drops after 120ms over 160ms"
     why-this-plan: "part-and-close — pieces part 12-24px on their axes, callouts fade in, then close back to locked"
-    loader: "lattice assembles: 3x3 P1-medium, horizontals slide on x then verticals drop on y, 240ms each, 60ms stagger, hold 400ms; only for waits > 400ms, with a text label and role=status"
+    loader: "a 3-segment bar fills in honey, left to right, 240ms per segment; only for waits > 400ms, with a text label and role=status"
     reduced-motion: "every slide becomes a 120ms crossfade; the pin appears without travel; loader is static + label"
 
 compatibility: []
