@@ -252,6 +252,12 @@ export const BasketProposalBase = z.object({
    * written here because plan-candidates.ts imports this file. Additive.
    */
   candidate: z.enum(['cover', 'spread', 'carry']).optional(),
+  /**
+   * Who chose the weights: the engine, or, for a mix taken from the conversation or chosen by the
+   * person (gate ANY-COMPOSITION), the model or the person, as the client said. Left out: the
+   * engine. Additive.
+   */
+  origin: z.enum(['engine', 'model', 'person']).optional(),
 });
 
 export const BasketProposal = BasketProposalBase.refine(

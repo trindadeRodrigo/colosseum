@@ -14,7 +14,7 @@ import {
 } from './chain';
 import { ChainErrorCode } from './chain-error';
 import { Provenance } from './enums';
-import { RecipeDraft } from './recipe';
+import { RecipeDraft, Target } from './recipe';
 import { Trade } from './vault';
 import { WalletAccount } from './wallet';
 
@@ -305,6 +305,13 @@ export const IntentRequest = z.discriminatedUnion('type', [
     type: z.literal('rebalance'),
     vaults: z.array(Address).min(1),
     reason: z.enum(['manual', 'index_update', 'drift']),
+    /**
+     * Written by the server, never taken from this route: the vault's new own targets, for an order
+     * made by `POST /v1/vaults/{chain}/{address}/targets`. `POST /v1/orders` plans no rebalance yet.
+     */
+    targets: z.array(Target).max(16).optional(),
+    /** With `targets`: the slippage the order's trades are built with. */
+    maxSlippageBps: Bps.max(ORDER_LIMITS.maxSlippageBps).optional(),
   }),
   z.object({
     type: z.literal('follow'),
@@ -404,6 +411,13 @@ export const OrderErrorCode = z.enum([
   'ORDER_BUSY',
   /** The order is not one this route finishes: a buy on a chain that trades inside its deposit, or not a buy with a vault. */
   'CONTINUE_NOT_SUPPORTED',
+  /**
+   * A mix that cannot be bought or applied as sent (gate ANY-COMPOSITION): `details.issues` says
+   * why, one `MixIssueCode` each, with the asset where there is one.
+   */
+  'MIX_NOT_VALID',
+  /** A buy of a confirmed mix above the amount it was reviewed at: its warnings were confirmed at that size. */
+  'AMOUNT_OVER_REVIEW',
 ]);
 export type OrderErrorCode = z.infer<typeof OrderErrorCode>;
 
@@ -431,6 +445,8 @@ export const OrderError = ApiError.extend({
       blocking: z.object({ orderId: z.string().min(1), legId: z.string().min(1) }).optional(),
       /** With `ORDER_CONTINUED`: the id of the order that finishes this one. */
       continuedBy: z.string().min(1).optional(),
+      /** With `MIX_NOT_VALID`: what is wrong with the mix, `CODE` or `CODE:assetId` each. */
+      issues: z.array(z.string().min(1)).optional(),
     })
     .optional(),
 });
