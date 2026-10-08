@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppNav } from '../../components/shell/AppNav';
 import { click, find, mount, unmountAll } from '../../components/ui/test/dom';
 import { dictionary, type Lang, SIGNED_IN_COOKIE } from '../../i18n';
-import { GOAL_DRAFT } from '../goal/draft';
 import { keepOrder, recallOrder } from '../order/order-record';
 import { recallPlan, rememberPlan } from '../order/plan-store';
 import { ORDER_ID, PLAN_ID, planOn, recordOf, USER } from '../order/test/fixtures';
@@ -193,13 +192,12 @@ describe('a sign-in that is slow', () => {
     ['nobody: the person signed out meanwhile', () => fakePort()],
     ['another person', () => signedInPort(EMBEDDED, { userId: 'did:privy:other' })],
   ])(
-    'forgets a kept goal draft, the plans and the order records when the wallets come back with %s',
+    'forgets the plans and the order records when the wallets come back with %s',
     async (_, port) => {
       server();
       // a plan and an order's record this browser kept for the person
       rememberPlan(planOn());
       keepOrder(recordOf());
-      window.sessionStorage.setItem(GOAL_DRAFT, 'forty thousand');
       portStore.set(walletsLoading());
       const host = await page('en');
       await later(SLOW_MS);
@@ -207,13 +205,11 @@ describe('a sign-in that is slow', () => {
       await click(find(host, AGAIN));
       // kept while nobody is known to have left: the provider loads again and names nobody
       await act(async () => portStore.set(fakePort({ status: 'loading' })));
-      expect(window.sessionStorage.getItem(GOAL_DRAFT)).toBe('forty thousand');
       expect(recallOrder(ORDER_ID, USER)?.orderId).toBe(ORDER_ID);
       expect(recallPlan(PLAN_ID, USER)).not.toBeNull();
       await act(async () => portStore.set(port()));
       await later(0);
-      expect(window.sessionStorage.getItem(GOAL_DRAFT)).toBeNull();
-      // and so are the plans and the order records kept for the person who was here
+      // the plans and the order records kept for the person who was here are forgotten
       expect(recallOrder(ORDER_ID, USER)).toBeNull();
       expect(recallPlan(PLAN_ID, USER)).toBeNull();
     },

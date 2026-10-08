@@ -160,7 +160,11 @@ describe('private strategy exploration for a new goal', () => {
       });
       expect(calls[0].body).not.toHaveProperty('vault');
       expect(calls[0].body).not.toHaveProperty('address');
+      // on a proposal the line over "Use this mix" says how the draft is bought, not that it cannot be
       expect(find(host, '[data-ui="goal-strategy"]').textContent).toContain(
+        dictionary(lang).goal.explore.draftNote,
+      );
+      expect(find(host, '[data-ui="goal-strategy"]').textContent).not.toContain(
         dictionary(lang).goal.explore.previewOnly,
       );
       expect(find(host, '[data-ui="goal-strategy"]').textContent).not.toContain(
@@ -208,6 +212,56 @@ describe('private strategy exploration for a new goal', () => {
     expect(find(reopened, '[data-ui="goal-transcript"]').textContent).toContain(words);
     expect(reopened.querySelector('[data-ui="goal-empty-preview"]')).not.toBeNull();
   });
+  it.each(['en', 'pt'] as const)(
+    'after a failed reply the words are back in the box, and trying again sends the one turn (%s)',
+    async (lang) => {
+      const copy = dictionary(lang).goal.explore;
+      const words = 'Explore electric vehicles';
+      let down = true;
+      portStore.setApi(async (url, init) => {
+        if (init?.method !== 'POST') return baseApi(url);
+        const body = JSON.parse(String(init.body));
+        calls.push({ path: url, body });
+        return down ? json({}, 503) : json(response(body.messageId));
+      });
+      const host = await show(lang);
+      expect(host.querySelector('[data-ui="goal-retry"]')).toBeNull();
+      await send(host, words);
+      expect(host.textContent).toContain(copy.unavailable);
+      expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe(words);
+      const retry = find(host, '[data-ui="goal-retry"]');
+      const again = find<HTMLButtonElement>(retry, 'button[data-act="goal-retry"]');
+      expect(again.textContent).toBe(copy.retry);
+      const way = find<HTMLAnchorElement>(retry, 'a[href="/shelf"]');
+      expect(way.textContent).toBe(copy.elsewhere);
+      expect(again.tabIndex).toBe(0);
+      expect(way.tabIndex).toBe(0);
+      // still down: "Try again" sends the same turn, and so does sending the box as it stands
+      await click(again);
+      await settle();
+      await click(find(host, '[data-ui="composer-send"]'));
+      await settle();
+      const sent = (i: number) => calls[i].body.messages as { who: string; text: string }[];
+      expect(calls).toHaveLength(3);
+      for (const i of [0, 1, 2]) expect(sent(i)).toEqual([{ who: 'person', text: words }]);
+      const turns = () => [...find(host, '[data-ui="goal-transcript"]').children];
+      expect(turns()).toHaveLength(1);
+      // back up: one more press, the reply follows the one turn, and the box and the row are clear
+      down = false;
+      await click(find(host, 'button[data-act="goal-retry"]'));
+      await settle();
+      expect(sent(3)).toEqual([{ who: 'person', text: words }]);
+      expect(turns().filter((turn) => turn.textContent?.includes(words))).toHaveLength(1);
+      expect(find<HTMLTextAreaElement>(host, 'textarea').value).toBe('');
+      expect(host.querySelector('[data-ui="goal-retry"]')).toBeNull();
+      expect(host.textContent).not.toContain(copy.unavailable);
+      expect(
+        JSON.parse(
+          localStorage.getItem(goalConversationKey(userId, 'solana', 'sandbox')) ?? '{}',
+        ).transcript.filter((turn: { text: string }) => turn.text === words),
+      ).toHaveLength(1);
+    },
+  );
   it.each(['en', 'pt'] as const)(
     'explains only checked server failures and retains the person words (%s)',
     async (lang) => {

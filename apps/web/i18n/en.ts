@@ -250,6 +250,12 @@ export const en = {
       empty:
         'Your proposed allocation and its sources will appear here after a reply. No vault has been created.',
       previewOnly: 'Preview only. This draft cannot be invested here yet.',
+      /** On a proposal, over "Use this mix": the way from the draft to a buy. */
+      draftNote:
+        'A draft from this conversation. Nothing is bought until you review the mix and sign.',
+      /** Under the box when the person's last words got no reply. */
+      retry: 'Try again',
+      elsewhere: 'See shared portfolios',
       unavailable:
         'The strategy conversation service is unavailable. Your words are kept; no draft was produced.',
       timeout: 'The reply took too long. Your words are kept; try again in a moment.',
@@ -696,10 +702,7 @@ export const en = {
     },
   },
 
-  /**
-   * The Invest screen's conversation and pane (gate INVEST-TWO-PANE): the conversation on the left,
-   * the plan on the right. The invest card's own words are `invest`.
-   */
+  /** The Invest workspace (`/goal`): its title, the preview's heading and who spoke. */
   talk: {
     workbench: {
       title: 'Invest',
@@ -717,16 +720,16 @@ export const en = {
       'This plan came from a link: our engine made it from the limits the link carried, which someone else may have set. Check the goal, the amount and the limits above before you buy.',
     missing: {
       title: 'I can’t find this plan for you.',
-      body: 'It isn’t a plan made with this sign-in, or it is no longer kept. Build one from your goal: your limits are kept.',
-      again: 'Build it again',
+      body: 'It isn’t a plan made with this sign-in, or it is no longer kept. Nothing from it carries over: describe your goal in the conversation and I’ll propose a new mix.',
+      again: 'Describe your goal',
     },
     backToGoal: 'Back to your goal',
     /** A plan on a chain no wallet of the person's signs on. */
     unsignable: (plan: string) =>
-      `This plan is on ${plan}, and the wallet you signed in with doesn’t sign there. Sign in with a wallet that does, or build a plan from your goal.`,
+      `This plan is on ${plan}, and the wallet you signed in with doesn’t sign there. Sign in with a wallet that does, or describe your goal in the conversation for a new mix.`,
     /** A plan made before a plan lived on one chain. */
     split:
-      'This plan is spread over two chains, and a plan lives on one. Build it again from your goal.',
+      'This plan is spread over two chains, and a plan lives on one. It can’t be bought as it is: describe your goal in the conversation for a new mix.',
     lead: (chain: string) =>
       `Built for ${chain}, from your limits. Nothing is bought until you review every step and sign it.`,
     holds: 'What it holds',
@@ -998,7 +1001,7 @@ export const en = {
       hint: (planned: string) => `Your plan was built for ${planned}. From $10 to $1,000,000.`,
       /** Under an amount that is not the plan's: its limits were set in dollars at that amount. */
       other: (planned: string) =>
-        `Your plan was built for ${planned}, and its limits were worked out at that amount. To buy another amount, build the plan again for it.`,
+        `Your plan was built for ${planned}, and its limits were worked out at that amount. To buy another amount, describe your goal in the conversation and use the new mix at that amount.`,
     },
     /** The four steps of a buy, one open at a time. */
     steps: {

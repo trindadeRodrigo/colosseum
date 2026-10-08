@@ -211,6 +211,10 @@ export const pt: Dictionary = {
       empty:
         'A alocação proposta e suas fontes aparecerão aqui após uma resposta. Nenhum cofre foi criado.',
       previewOnly: 'Apenas uma prévia. Este rascunho ainda não pode ser investido aqui.',
+      draftNote:
+        'Um rascunho desta conversa. Nada é comprado antes de você revisar a mistura e assinar.',
+      retry: 'Tentar de novo',
+      elsewhere: 'Ver portfólios compartilhados',
       unavailable:
         'O serviço de conversa de estratégia está indisponível. Suas palavras foram mantidas; nenhum rascunho foi produzido.',
       timeout:
@@ -630,14 +634,14 @@ export const pt: Dictionary = {
       'Este plano veio de um link: nosso motor o montou com os limites que o link trazia, que outra pessoa pode ter definido. Confira o objetivo, o valor e os limites acima antes de comprar.',
     missing: {
       title: 'Não encontro este plano para você.',
-      body: 'Não é um plano feito com este login, ou não está mais guardado. Monte um a partir do seu objetivo: seus limites continuam guardados.',
-      again: 'Montar de novo',
+      body: 'Não é um plano feito com este login, ou não está mais guardado. Nada dele é aproveitado: descreva seu objetivo na conversa e eu proponho uma nova mistura.',
+      again: 'Descrever seu objetivo',
     },
     backToGoal: 'Voltar ao seu objetivo',
     unsignable: (plan: string) =>
-      `Este plano está na ${plan}, e a carteira com que você entrou não assina nela. Entre com uma carteira que assine, ou monte um plano a partir do seu objetivo.`,
+      `Este plano está na ${plan}, e a carteira com que você entrou não assina nela. Entre com uma carteira que assine, ou descreva seu objetivo na conversa para uma nova mistura.`,
     split:
-      'Este plano está dividido entre duas redes, e um plano fica em uma só. Monte de novo a partir do seu objetivo.',
+      'Este plano está dividido entre duas redes, e um plano fica em uma só. Ele não pode ser comprado como está: descreva seu objetivo na conversa para uma nova mistura.',
     lead: (chain: string) =>
       `Montado para ${chain}, a partir dos seus limites. Nada é comprado antes de você revisar cada passo e assinar.`,
     holds: 'O que ele tem',
@@ -884,7 +888,7 @@ export const pt: Dictionary = {
       hint: (planned: string) =>
         `Seu plano foi montado para ${planned}. De US$ 10 a US$ 1.000.000.`,
       other: (planned: string) =>
-        `Seu plano foi montado para ${planned}, e os limites dele foram calculados para esse valor. Para comprar outro valor, monte o plano de novo para ele.`,
+        `Seu plano foi montado para ${planned}, e os limites dele foram calculados para esse valor. Para comprar outro valor, descreva seu objetivo na conversa e use a nova mistura nesse valor.`,
     },
     steps: {
       note: {
