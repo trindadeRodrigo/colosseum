@@ -76,7 +76,14 @@ export function VaultConversation({
   const localKey = useRef(key);
   localKey.current = context;
 
+  // A reply under way when the vault is read again was asked of the read before: it is set aside, and
+  // said so. One under way for another person, vault or network is that conversation's, and goes quietly.
+  const shownKey = useRef(key);
+  const said = useRef(copy);
+  said.current = copy;
   useEffect(() => {
+    const interrupted = sending.current && shownKey.current === key;
+    shownKey.current = key;
     const run = ++generation.current;
     const local = readLocal(key);
     heldTurns.current = local.transcript;
@@ -84,7 +91,7 @@ export function VaultConversation({
     setReply(null);
     setBusy(false);
     sending.current = false;
-    setError(undefined);
+    setError(interrupted ? said.current.reread : undefined);
     setStorage('local');
     setLoading(true);
     revision.current = 0;

@@ -242,7 +242,9 @@ export function VaultScreen({ chain, address }: { chain: string; address: string
 
       {mine && port.userId && (
         <VaultConversation
-          key={`${port.userId}:${read.chain}:${conversationNetwork(read.chain) ?? 'unconfigured'}:${vault.address}:${read.provenance}:${vault.observedAt}:${account.status === 'ready' ? account.chain : account.status}`}
+          // a new person, vault or network is another conversation; a new read of the same vault is
+          // the same one, which says so of a reply it set aside (VaultConversation.tsx)
+          key={`${port.userId}:${read.chain}:${conversationNetwork(read.chain) ?? 'unconfigured'}:${vault.address}:${read.provenance}`}
           read={read}
           userId={port.userId}
           showValue={false}

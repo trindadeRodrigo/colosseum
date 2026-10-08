@@ -1515,6 +1515,8 @@ export const pt: Dictionary = {
           'Sua mensagem está salva. O serviço de conversa do cofre ainda não está disponível; nenhuma resposta ou mudança de estratégia foi produzida.',
         failed:
           'Não consegui uma resposta. Suas palavras foram mantidas; nenhuma mudança de estratégia foi produzida.',
+        reread:
+          'O cofre foi lido de novo enquanto eu respondia, então deixei essa resposta de lado. Suas palavras foram mantidas; pergunte de novo para ter uma resposta sobre o que ele tem agora.',
         pending:
           'Uma conversa sobre este cofre, com o que ele tem agora como contexto. O serviço de conversa está sendo conectado.',
         empty:

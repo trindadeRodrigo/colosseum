@@ -1656,6 +1656,8 @@ export const en = {
         unavailable:
           'Your message is saved. The vault conversation service is not available yet; no reply or strategy change was produced.',
         failed: 'I could not get a reply. Your words are kept; no strategy change was produced.',
+        reread:
+          'The vault was read again while I was answering, so I set that answer aside. Your words are kept; ask again for a reply on what it holds now.',
         pending:
           'A conversation about this vault, with its current holdings as context. The conversation service is being connected.',
         empty: 'Ask about what this vault holds, its strategy, or a change you want to consider.',

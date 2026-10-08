@@ -591,6 +591,47 @@ describe('current context and truthful holdings', () => {
     }
   });
 
+  it('sets aside a reply asked of the read before when the same vault is read again, and says so', async () => {
+    let change: (value: typeof read) => void = () => {};
+    let complete: (response: Response) => void = () => {};
+    let messageId = '';
+    let signal: AbortSignal | null | undefined;
+    function Workspace() {
+      const [value, setValue] = useState(read);
+      change = setValue;
+      return createElement(VaultConversation, { read: value, userId });
+    }
+    portStore.setApi(async (url, init) => {
+      if (url.endsWith('/reply')) {
+        messageId = JSON.parse(String(init?.body)).messageId;
+        signal = init?.signal;
+        return new Promise((done) => {
+          complete = done;
+        });
+      }
+      return json({}, 404);
+    });
+    const host = await mount(withAccount('en', createElement(Workspace)));
+    await send(host, 'Should I hold more gold?');
+    const later = new Date(Date.parse(read.vault.observedAt) + 60_000).toISOString();
+    await act(async () => change({ ...read, vault: { ...read.vault, observedAt: later } }));
+    expect(signal?.aborted).toBe(true);
+    complete(json({ ...reply, messageId }));
+    await settle();
+    // the answer was for the read before: not shown, and the person is told why, with their words kept
+    expect(host.querySelector('[data-ui="vault-proposal"]')).toBeNull();
+    expect(host.textContent).not.toContain(reply.message);
+    expect(host.textContent).toContain(en.shared.vault.conversation.reread);
+    expect(host.textContent).toContain('Should I hold more gold?');
+    expect(
+      readLocal(
+        conversationKey(userId, read.chain, read.vault.address, read.provenance, 'testnet'),
+      ).transcript.at(-1)?.text,
+    ).toBe('Should I hold more gold?');
+    // and the box is open again for the same question
+    expect(find<HTMLTextAreaElement>(host, 'textarea').disabled).toBe(false);
+  });
+
   it.each([otherRead, evmRead])(
     'discards an in-flight reply when opening another vault/chain',
     async (nextRead) => {
