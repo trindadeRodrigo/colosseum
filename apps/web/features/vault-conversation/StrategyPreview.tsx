@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { Disclaimer } from '../../components/ui/Disclaimer';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
+import { StatusMark } from '../../components/ui/StatusMark';
 import { type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { AssetMark } from '../order/PlanView';
@@ -30,11 +31,14 @@ export function StrategyPreview({
   targets,
   previewOnly,
   onDiscuss,
+  use,
 }: {
   proposal: VaultStrategyPreview;
   targets?: { asset: string; targetBps: number }[];
   previewOnly?: string;
   onDiscuss?: () => void;
+  /** The one action this preview leads to: buying it for a new goal, or applying it to the vault. */
+  use?: { label: string; onUse: () => void };
 }) {
   const id = useId();
   const t = useT();
@@ -59,6 +63,29 @@ export function StrategyPreview({
       })),
   ];
   const allocationShare = (bps: number) => sourceValue(language, bps / 10000, 'fraction');
+  const m = t.mix.preview;
+  const nameOf = (asset: string) =>
+    proposal.allocations.find((line) => line.assetId === asset)?.symbol ??
+    displayName(asset, t.plan);
+  const names = (assets: readonly string[]) =>
+    new Intl.ListFormat(LOCALE[language], { type: 'conjunction' }).format(assets.map(nameOf));
+  const everyPick = (assets: readonly string[]) => assets.length === proposal.allocations.length;
+  const noteOf = (note: VaultStrategyPreview['weightNotes'][number]): string => {
+    switch (note.code) {
+      case 'equal_split':
+        return everyPick(note.assetIds) ? m.note.equalAll : m.note.equalRest(names(note.assetIds));
+      case 'stated':
+        return m.note.stated(names(note.assetIds), note.quote ?? '');
+      case 'scaled':
+        return m.note.scaled;
+      case 'pick_dropped':
+        return m.note.dropped(names(note.assetIds));
+      case 'share_unmet':
+        return m.note.unmet(note.quote ?? '');
+      case 'share_unread':
+        return m.note.unread(note.quote ?? '');
+    }
+  };
   const change = (bps: number) =>
     `${new Intl.NumberFormat(LOCALE[language], { maximumFractionDigits: 2, signDisplay: 'exceptZero' }).format(bps / 100).replace('-', '−')} ${copy.points}`;
   return (
@@ -134,10 +161,66 @@ export function StrategyPreview({
               ))}
             </tbody>
           </table>
-          {onDiscuss && (
-            <Button variant="secondary" size="dense" className="self-start" onClick={onDiscuss}>
-              {copy.discuss}
-            </Button>
+          {proposal.weightNotes.length > 0 && (
+            <div data-ui="weight-notes">
+              <h3 className="text-caption font-medium">{m.notes}</h3>
+              <ul className="list-inside list-disc text-body-sm">
+                {proposal.weightNotes.map((note) => (
+                  <li
+                    key={`${note.code}:${note.assetIds.join(',')}:${note.quote ?? ''}`}
+                    className="[overflow-wrap:anywhere]"
+                  >
+                    {noteOf(note)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {proposal.warnings.length > 0 && (
+            <div data-ui="mix-warnings" className="flex flex-col gap-2">
+              <h3 className="text-caption font-medium">{m.warnings}</h3>
+              {proposal.warnings.map((warning) => {
+                const figure = proposal.sources.find((source) => source.id === warning.evidenceId);
+                return (
+                  <p
+                    key={`${warning.code}:${warning.assetId}`}
+                    data-warning={warning.code}
+                    className="flex max-w-(--tf-measure-body) items-start gap-1.5 text-body-sm"
+                  >
+                    <StatusMark status="watch" className="mt-1.5" />
+                    <span className="[overflow-wrap:anywhere]">
+                      {warning.code === 'over_exit_capacity'
+                        ? m.warning.overExit(nameOf(warning.assetId))
+                        : m.warning.outsideGoal(nameOf(warning.assetId))}
+                      {warning.code === 'over_exit_capacity' && figure?.value != null && (
+                        <>
+                          {' '}
+                          <ProvenancePin
+                            value={`${figure.label ?? ''}: ${sourceValue(language, figure.value, figure.unit)}`}
+                            obs={figure}
+                            labels={t.pin}
+                          />
+                        </>
+                      )}
+                    </span>
+                  </p>
+                );
+              })}
+            </div>
+          )}
+          {(onDiscuss || use) && (
+            <div className="flex flex-wrap gap-3">
+              {use && (
+                <Button variant="secondary" size="dense" data-action="use-mix" onClick={use.onUse}>
+                  {use.label}
+                </Button>
+              )}
+              {onDiscuss && (
+                <Button variant="secondary" size="dense" onClick={onDiscuss}>
+                  {copy.discuss}
+                </Button>
+              )}
+            </div>
           )}
           <details>
             <summary className="cursor-pointer text-body-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">

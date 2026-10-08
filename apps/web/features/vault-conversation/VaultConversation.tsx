@@ -7,6 +7,7 @@ import { Composer } from '../../components/ui/Composer';
 import { ProvenancePin } from '../../components/ui/ProvenancePin';
 import { dictionary } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
+import { ApplyVaultMix } from '../mix/ApplyVaultMix';
 import { AssetMark } from '../order/PlanView';
 import { displayName } from '../order/plain';
 import { dollars, share } from '../portfolio/figures';
@@ -64,6 +65,8 @@ export function VaultConversation({
   const [storage, setStorage] = useState<'local' | 'server' | 'conflict'>('local');
   const [error, setError] = useState<string>();
   const [reply, setReply] = useState<VaultAgentReply | null>(null);
+  // The preview the person chose to apply: the review stays only while that preview is the one shown.
+  const [applying, setApplying] = useState<VaultAgentReply | null>(null);
   const generation = useRef(0);
   const sending = useRef(false);
   const revision = useRef(0);
@@ -413,7 +416,21 @@ export function VaultConversation({
               proposal={proposal}
               targets={targets}
               onDiscuss={() => draftMessage(copy.discussPrompt)}
+              {...(applying !== reply && reply
+                ? { use: { label: t.mix.preview.apply, onUse: () => setApplying(reply) } }
+                : {})}
             />
+            {reply && applying === reply && (
+              <div className="mt-4">
+                <ApplyVaultMix
+                  chain={read.chain}
+                  vault={read.vault}
+                  lines={proposal.allocations}
+                  origin="model"
+                  onBack={() => setApplying(null)}
+                />
+              </div>
+            )}
           </section>
         )}
       </div>

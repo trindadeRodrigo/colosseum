@@ -8,6 +8,7 @@ import { WORKSPACE_TITLE } from '../../components/ui/heading';
 import { LatticeGlyph } from '../../components/ui/Lattice';
 import { dictionary } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
+import { UseGoalMix } from '../mix/UseGoalMix';
 import { share } from '../portfolio/figures';
 import { VaultAgentError, type VaultAgentReply } from '../vault-conversation/agent';
 import { StrategyPreview } from '../vault-conversation/StrategyPreview';
@@ -62,6 +63,8 @@ export function GoalConversation({
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [reply, setReply] = useState<VaultAgentReply | null>(null);
+  // The preview the person chose to use: the flow stays only while that preview is the one shown.
+  const [using, setUsing] = useState<VaultAgentReply | null>(null);
   const [error, setError] = useState<string>();
   useEffect(() => {
     ++generation.current;
@@ -289,7 +292,23 @@ export function GoalConversation({
       </div>
       <div data-ui="goal-strategy" className="flex min-w-0 flex-col gap-4 lg:col-span-7">
         {reply?.proposal ? (
-          <StrategyPreview proposal={reply.proposal} previewOnly={copy.previewOnly} />
+          <>
+            <StrategyPreview
+              proposal={reply.proposal}
+              previewOnly={copy.previewOnly}
+              {...(chain && userId && using !== reply
+                ? { use: { label: t.mix.preview.use, onUse: () => setUsing(reply) } }
+                : {})}
+            />
+            {chain && userId && using === reply && (
+              <UseGoalMix
+                chain={chain}
+                userId={userId}
+                allocations={reply.proposal.allocations}
+                onClose={() => setUsing(null)}
+              />
+            )}
+          </>
         ) : (
           <div
             data-ui="goal-empty-preview"
