@@ -846,6 +846,7 @@ describe('the /v1 route table', () => {
       '/v1/shelf',
       '/v1/testnet/fund',
       '/v1/vaults/{chain}/{address}',
+      '/v1/vaults/{chain}/{address}/conversation/reply',
       '/v1/vaults/{chain}/{address}/name',
     ]);
     // No route lets a caller through without a token: 503 with no Privy app set, 401 with one.
@@ -914,6 +915,7 @@ describe('no /v1 route can make the server sign', () => {
     expect(files.map((f) => relative(src, f)).sort()).toEqual([
       'faucet/test-funds.ts',
       'llm.ts',
+      'model-quota.ts',
       'orders/chains.ts',
       'orders/continue.ts',
       'orders/errors.ts',
@@ -924,6 +926,8 @@ describe('no /v1 route can make the server sign', () => {
       'orders/prepare.ts',
       'orders/shared.ts',
       'orders/store.ts',
+      'orders/vault-agent.ts',
+      'orders/vault-conversation-owner.ts',
       'orders/withdraw.ts',
       'plugins/auth.ts',
       'plugins/limits.ts',
@@ -940,7 +944,9 @@ describe('no /v1 route can make the server sign', () => {
       'routes/v1/portfolio.ts',
       'routes/v1/shared.ts',
       'routes/v1/testnet.ts',
+      'routes/v1/vault-conversation-reply.ts',
       'routes/v1/vault.ts',
+      'vault-agent-model.ts',
     ]);
     // The chain packages that can sign keep that behind their `./server` entry, and neither the
     // package's root nor that entry is here: the Solana and EVM adapters come in by their key-free
@@ -948,8 +954,8 @@ describe('no /v1 route can make the server sign', () => {
     // arithmetic over what it is handed: it imports the schemas and nothing else. The engine comes in
     // by its `./personal` entry, which reads no clock, network or environment
     // (packages/engine/src/personal/purity.test.ts), not by its root, which holds the model client.
-    // The guided intake's model client is Anthropic's SDK, in llm.ts alone (ENG-3 slice 4): it sends
-    // a goal's text to be read and holds no signing key.
+    // Intake and private vault previews use Anthropic's SDK in these two clients only. Neither
+    // holds a chain signing key; the quota module only reserves model calls.
     expect([...packages.keys()].sort()).toEqual([
       '@anthropic-ai/sdk',
       '@colosseum/basket',
@@ -968,7 +974,10 @@ describe('no /v1 route can make the server sign', () => {
     ]);
     // jose is used to verify and nowhere to sign; node:crypto to hash and to make ids.
     expect([...(packages.get('jose') ?? [])]).toEqual(['plugins/auth.ts']);
-    expect([...(packages.get('@anthropic-ai/sdk') ?? [])]).toEqual(['llm.ts']);
+    expect([...(packages.get('@anthropic-ai/sdk') ?? [])]).toEqual([
+      'llm.ts',
+      'vault-agent-model.ts',
+    ]);
     for (const file of files) {
       // The code, without its comments.
       const text = readFileSync(file, 'utf8')
