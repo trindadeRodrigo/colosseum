@@ -228,11 +228,12 @@ export function intakeConversation(
     ask: ask ?? null,
     // a fact the person reopened is asked in the screen's own words
     question: ask ? null : state.question,
-    valid: ask
-      ? null
-      : state.sheet && chain && state.sheet.chains[0] === chain
-        ? state.sheet
-        : null,
+    valid:
+      ask || state.pendingInterest
+        ? null
+        : state.sheet && chain && state.sheet.chains[0] === chain
+          ? state.sheet
+          : null,
   });
 
   return {
@@ -297,7 +298,14 @@ export function intakeConversation(
             words = [...words, text];
             // one for each later message, also for those a rules reader's turns left none for
             const then = words.slice(1, -1).map((_, i) => state.answersThen[i] ?? {});
-            state = { ...state, answersThen: [...then, state.answers] };
+            state = {
+              ...state,
+              answersThen: [...then, state.answers],
+              questionThen: [
+                ...words.slice(1, -1).map((_, i) => state.questionThen?.[i] ?? null),
+                state.questionOrigin ?? null,
+              ],
+            };
           }
         }
       }
@@ -319,6 +327,8 @@ export function intakeConversation(
         // one for each later message that is sent
         answersThen: later.map((_, i) => state.answersThen[i] ?? {}),
         answers: state.answers,
+        questionThen: later.map((_, i) => state.questionThen?.[i] ?? null),
+        ...(state.pendingInterest !== undefined ? { pendingInterest: state.pendingInterest } : {}),
         ...(state.held !== undefined ? { mix: state.held } : {}),
       });
       if (outcome.kind === 'capacity')
@@ -336,6 +346,14 @@ export function intakeConversation(
       ) {
         // The intake did not answer: this turn is read by the rules, with every fact held carried
         // over, and that is said, once. The next turn asks the intake again.
+        if (state.pendingInterest || state.interestReview) {
+          // A failed reader cannot turn an unanswered interest into the old executable goal.
+          return local(
+            { ...held, words },
+            [{ key: 'failed', why: outcome.kind === 'unreadable' ? 'unreadable' : 'unreachable' }],
+            { ...state, sheet: null },
+          );
+        }
         const { intake: _, ...plain } = held;
         const read = await fallback.turn(
           input.kind === 'hold' || input.kind === 'replay' ? { kind: 'replay' } : input,
@@ -370,14 +388,31 @@ export function intakeConversation(
         /(?:mix|themes|sleeves)_(?:dropped|refused|rejected)/.test(f),
       );
       const first = reading.questions[0] ?? null;
-      const question = first ? questionOf(first, lang) : null;
+      const retainedOrigin =
+        first === null &&
+        reading.pendingInterest === undefined &&
+        state.pendingInterest != null &&
+        state.questionOrigin === 'interestClarification';
+      const question = first ? questionOf(first, lang) : retainedOrigin ? state.question : null;
       const fields = fieldsOf(reading, state.answers, lang);
+      const pendingInterest =
+        reading.pendingInterest !== undefined ? reading.pendingInterest : state.pendingInterest;
+      const interestReview =
+        state.interestReview === true ||
+        (state.pendingInterest != null && reading.pendingInterest === null);
       const next: IntakeState = {
+        ...(pendingInterest !== undefined ? { pendingInterest } : {}),
+        ...(interestReview ? { interestReview: true } : {}),
+        questionThen: state.questionThen,
+        questionOrigin:
+          first?.template === 'interestClarification' || retainedOrigin
+            ? 'interestClarification'
+            : null,
         answers: state.answers,
         answersThen: state.answersThen,
         ...(state.held !== undefined ? { held: state.held } : {}),
         ...(reading.readBack ? { readBack: reading.readBack } : {}),
-        sheet: reading.sheet,
+        sheet: pendingInterest ? null : reading.sheet,
         question,
         mix: reading.mix,
         themes: reading.themes,
@@ -390,7 +425,9 @@ export function intakeConversation(
         intake: next,
       };
       const valid =
-        reading.sheet && chain && reading.sheet.chains[0] === chain ? reading.sheet : null;
+        !pendingInterest && reading.sheet && chain && reading.sheet.chains[0] === chain
+          ? reading.sheet
+          : null;
       // The same sheet as before: nothing changed, and it is not said back a second time.
       const same =
         input.kind !== 'replay' &&

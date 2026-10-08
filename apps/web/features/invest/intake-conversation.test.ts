@@ -18,6 +18,13 @@ import { answer, DRAFT, SHEET } from './test/intake';
 // POST /v1/baskets/intake as `staging` answers it.
 
 const en = dictionary('en');
+/** Exact expected wire, including the additive capability and chronological question origins. */
+function wire(body: Record<string, unknown> | Record<string, unknown>[]): unknown {
+  if (Array.isArray(body)) return body.map((entry) => wire(entry));
+  const later = (body.followUps ?? []) as string[];
+  return { dialogueVersion: 1, questionThen: later.map(() => null), ...body };
+}
+
 type Body = Record<string, unknown>;
 
 /** A server that answers each intake call in turn, and has no other route but the rules reader. */
@@ -54,6 +61,112 @@ const ASK_RISK = {
   text: 'How much can it swing on the way?',
   options: ['low', 'medium', 'high'],
 };
+
+describe('interest origin and conservative pause', () => {
+  const words = 'i like elon';
+  const marker = { quote: words, sourceTurn: 1 };
+  const question = {
+    field: 'themes',
+    template: 'interestClarification',
+    text: 'Which business do you want this plan to reflect?',
+  };
+
+  it.each([500, 404, 401])(
+    'keeps pending interest and exact reply origins through intake %s and replay',
+    async (status) => {
+      const s = server(
+        answer({ sheet: SHEET, readBack: ['Grow $2000 for five years.'] }),
+        { ...answer({ draft: SHEET, questions: [question] }), pendingInterest: marker },
+        () => json({}, status),
+        {
+          ...answer({ sheet: SHEET, readBack: ['The old goal is complete.'] }),
+          pendingInterest: marker,
+        },
+        { ...answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT] }), pendingInterest: null },
+        () => json({}, status),
+        {
+          ...answer({ sheet: SHEET, readBack: ['Grow $2000 for five years.'] }),
+          pendingInterest: null,
+        },
+      );
+      const t = talk(s.api);
+      const first = await t.turn(
+        { kind: 'text', text: 'Grow $2000 for five years at high risk' },
+        null,
+      );
+      const interest = await t.turn({ kind: 'text', text: words }, first.sheet);
+      expect(interest.valid).toBeNull();
+      expect(interest.sheet.intake?.pendingInterest).toEqual(marker);
+      const failed = await t.turn({ kind: 'text', text: 'thanks' }, interest.sheet);
+      expect(failed.valid).toBeNull();
+      expect(failed.sheet.intake?.sheet).toBeNull();
+      expect(failed.sheet.intake?.pendingInterest).toEqual(marker);
+      expect(failed.sheet.words).toEqual([
+        'Grow $2000 for five years at high risk',
+        words,
+        'thanks',
+      ]);
+      expect(failed.sheet.intake?.questionThen).toEqual([null, 'interestClarification']);
+      expect(s.other).toEqual([]); // no executable local reader fallback
+      const replayed = await t.turn({ kind: 'replay' }, failed.sheet);
+      expect(replayed.valid).toBeNull();
+      expect(replayed.sheet.intake?.sheet).toBeNull();
+      expect(s.posted[3]).toMatchObject({
+        dialogueVersion: 1,
+        pendingInterest: marker,
+        followUps: [words, 'thanks'],
+        questionThen: [null, 'interestClarification'],
+        answersThen: [{}, {}],
+      });
+      const clarified = await t.turn(
+        { kind: 'text', text: 'I want this plan to reflect electric vehicle businesses' },
+        replayed.sheet,
+      );
+      expect(clarified.sheet.intake?.pendingInterest).toBeNull();
+      expect(clarified.question?.text).toBe(ASK_AMOUNT.text);
+      expect(clarified.valid).toBeNull(); // resolving interest never resolves remaining facts
+      const nextFailure = await t.turn({ kind: 'text', text: 'thanks again' }, clarified.sheet);
+      expect(nextFailure.valid).toBeNull();
+      expect(nextFailure.sheet.intake?.interestReview).toBe(true);
+      expect(nextFailure.sheet.intake?.pendingInterest).toBeNull();
+      expect(s.other).toEqual([]);
+      const resolved = await t.turn({ kind: 'replay' }, nextFailure.sheet);
+      expect(s.posted.at(-1)?.pendingInterest).toBeNull();
+      expect(resolved.valid).toEqual(SHEET);
+      expect(resolved.sheet.intake?.interestReview).toBe(true);
+    },
+  );
+
+  it('sends yes as the person wrote it with interest origin and keeps pending on a legacy response', async () => {
+    const s = server(
+      { ...answer({ questions: [question] }), pendingInterest: { quote: words, sourceTurn: 0 } },
+      answer({ sheet: SHEET, readBack: ['Historic complete goal.'] }),
+    );
+    const t = talk(s.api);
+    const first = await t.turn({ kind: 'text', text: words }, null);
+    const next = await t.turn({ kind: 'text', text: 'yes' }, first.sheet);
+    expect(s.posted[1]).toMatchObject({
+      dialogueVersion: 1,
+      followUps: ['yes'],
+      questionThen: ['interestClarification'],
+      answersThen: [{}],
+      pendingInterest: { quote: words, sourceTurn: 0 },
+    });
+    expect(next.sheet.words).toEqual([words, 'yes']);
+    expect(next.valid).toBeNull();
+    expect(next.sheet.intake?.sheet).toBeNull();
+    expect(next.sheet.intake?.pendingInterest).toEqual({ quote: words, sourceTurn: 0 });
+  });
+
+  it('rejects a response marker not grounded in its stated original person turn', async () => {
+    const s = server({
+      ...answer({ sheet: SHEET, readBack: ['Old complete goal.'] }),
+      pendingInterest: { quote: 'Tesla', sourceTurn: 0 },
+    });
+    const reply = await talk(s.api).turn({ kind: 'text', text: words }, null);
+    expect(reply.reader?.why).toBe('intake unreadable');
+  });
+});
 
 describe('unapplied allocation requests', () => {
   it('drops against the current null mix without reviving an older pressed stock mix', async () => {
@@ -290,10 +403,115 @@ describe('unapplied allocation requests', () => {
 });
 
 describe('a turn of the guided intake', () => {
+  it.each([
+    [
+      'en',
+      'i like elon',
+      'When you say “i like elon”, is there a business or industry you want this plan to reflect? Tell me which one.',
+      'I want to invest in businesses related to electric vehicles.',
+    ],
+    [
+      'pt',
+      'eu gosto do elon',
+      'Quando você diz “eu gosto do elon”, há um negócio ou setor que você quer refletir neste plano? Diga qual.',
+      'Quero investir em negócios ligados a veículos elétricos.',
+    ],
+  ] as const)(
+    'renders contextual interest without generic goal chips or a fabricated asset (%s)',
+    async (lang, text, question, business) => {
+      const s = server(
+        {
+          ...answer({
+            questions: [
+              {
+                field: 'themes',
+                template: 'interestClarification',
+                text: question,
+                options: [lang === 'en' ? 'Ignore that interest.' : 'Ignore esse interesse.'],
+              },
+            ],
+          }),
+          language: lang,
+        },
+        answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT] }),
+      );
+      const t = intakeConversation(s.api, {
+        lang,
+        chain: 'solana',
+        fallback: readerConversation(s.api, {
+          lang,
+          chain: 'solana',
+          examples: dictionary(lang).goal.examples.list,
+        }),
+      });
+      const pending = await t.turn({ kind: 'text', text }, null);
+      expect(pending.question?.text).toBe(question);
+      expect(pending.question?.replies.map((reply) => reply.posts)).toEqual([
+        { kind: 'text', text: lang === 'en' ? 'Ignore that interest.' : 'Ignore esse interesse.' },
+      ]);
+      expect(pending.valid).toBeNull();
+      expect(pending.sheet.intake?.sheet).toBeNull();
+      expect(pending.sheet.fields.goal).toBe('');
+      expect(pending.sheet.intake?.themes).toEqual([]);
+      expect(s.posted).toEqual(wire([{ text, language: lang }]));
+      const next = await t.turn({ kind: 'text', text: business }, pending.sheet);
+      expect(s.posted[1]).toEqual(
+        wire({
+          text,
+          language: lang,
+          followUps: [business],
+          questionThen: ['interestClarification'],
+          answersThen: [{}],
+        }),
+      );
+      expect(s.posted[1]).not.toHaveProperty('answers');
+      expect(next.question?.text).toBe(ASK_AMOUNT.text);
+      expect(next.valid).toBeNull();
+    },
+  );
+
+  it('posts a grounded natural-language interest option as person words, never a theme slug answer', async () => {
+    const text = 'I like electric vehicles';
+    const option = 'I want to invest in businesses related to electric vehicles.';
+    const s = server(
+      answer({
+        questions: [
+          {
+            field: 'themes',
+            template: 'interestClarification',
+            text: 'Do you want this plan to reflect electric vehicles?',
+            options: [option],
+          },
+        ],
+      }),
+      answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT] }),
+    );
+    const t = talk(s.api);
+    const pending = await t.turn({ kind: 'text', text }, null);
+    const choice = pending.question?.replies[0];
+    expect(choice).toEqual({
+      posts: { kind: 'text', text: option },
+      label: { kind: 'option', text: option },
+    });
+    if (!choice) throw new Error('the grounded interest option is missing');
+    const next = await t.turn(choice.posts, pending.sheet);
+    expect(s.posted[1]).toEqual(
+      wire({
+        text,
+        language: 'en',
+        followUps: [option],
+        questionThen: ['interestClarification'],
+        answersThen: [{}],
+      }),
+    );
+    expect(s.posted[1]).not.toHaveProperty('answers');
+    expect(next.sheet.intake?.answers).not.toHaveProperty('themes');
+    expect(next.valid).toBeNull();
+  });
   it('posts the goal, and asks our server’s first question in its words, with replies one press gives', async () => {
     const s = server(answer({ draft: { goal: 'grow' }, questions: [ASK_AMOUNT, ASK_RISK] }));
     const reply = await talk(s.api).turn({ kind: 'text', text: `  ${GOAL} ` }, null);
-    expect(s.posted).toEqual([{ text: GOAL, language: 'en' }]);
+    expect(s.posted).toEqual(wire([{ text: GOAL, language: 'en' }]));
     expect(reply.question?.text).toBe(ASK_AMOUNT.text);
     expect(reply.ask).toBe('amount');
     expect(reply.open).toEqual(['amount', 'risk']);
@@ -320,7 +538,9 @@ describe('a turn of the guided intake', () => {
       { kind: 'answer', fact: 'amount', value: '10000' },
       first.sheet,
     );
-    expect(s.posted[1]).toEqual({ text: GOAL, language: 'en', answers: { amountUsd: 10_000 } });
+    expect(s.posted[1]).toEqual(
+      wire({ text: GOAL, language: 'en', answers: { amountUsd: 10_000 } }),
+    );
     expect(second.sheet.fields.amount).toBe('10000');
     expect(second.question?.text).toBe(ASK_RISK.text);
     expect(second.question?.replies.map((r) => r.label)).toEqual([
@@ -338,20 +558,24 @@ describe('a turn of the guided intake', () => {
     const b = await t.turn({ kind: 'text', text: 'put 30% in AI' }, a.sheet);
     const c = await t.turn({ kind: 'answer', fact: 'risk', value: 'high' }, b.sheet);
     await t.turn({ kind: 'text', text: 'and it is for my daughter' }, c.sheet);
-    expect(s.posted[1]).toEqual({
-      text: GOAL,
-      language: 'en',
-      followUps: ['put 30% in AI'],
-      answersThen: [{}],
-    });
-    expect(s.posted[3]).toEqual({
-      text: GOAL,
-      language: 'en',
-      followUps: ['put 30% in AI', 'and it is for my daughter'],
-      // the first was said before the risk was answered, the second after
-      answersThen: [{}, { risk: 'high' }],
-      answers: { risk: 'high' },
-    });
+    expect(s.posted[1]).toEqual(
+      wire({
+        text: GOAL,
+        language: 'en',
+        followUps: ['put 30% in AI'],
+        answersThen: [{}],
+      }),
+    );
+    expect(s.posted[3]).toEqual(
+      wire({
+        text: GOAL,
+        language: 'en',
+        followUps: ['put 30% in AI', 'and it is for my daughter'],
+        // the first was said before the risk was answered, the second after
+        answersThen: [{}, { risk: 'high' }],
+        answers: { risk: 'high' },
+      }),
+    );
   });
 
   it('offers what our server read and asks to be sure of as the first reply', async () => {
@@ -379,7 +603,7 @@ describe('a turn of the guided intake', () => {
     );
     const first = await talk(s.api).turn({ kind: 'text', text: GOAL }, null);
     await talk(s.api).turn({ kind: 'text', text: '$2,000', asked: 'amount' }, first.sheet);
-    expect(s.posted[1]).toEqual({ text: GOAL, language: 'en', answers: { amountUsd: 2000 } });
+    expect(s.posted[1]).toEqual(wire({ text: GOAL, language: 'en', answers: { amountUsd: 2000 } }));
   });
 
   it('says back what our server understood, sentence by sentence as given, and hands its sheet on unchanged', async () => {
@@ -586,7 +810,7 @@ describe('where the guided intake cannot read', () => {
     expect((await talk(s.api).turn({ kind: 'text', text: 'x'.repeat(2001) }, null)).say).toEqual([
       { key: 'failed', why: 'too_long' },
     ]);
-    expect(s.posted).toEqual([]);
+    expect(s.posted).toEqual(wire([]));
   });
 
   it('keeps every message and answers snapshot past ten turns, without turning a read-back into form answers', async () => {
@@ -742,13 +966,15 @@ describe('a conversation begun before the person signed in', () => {
     };
     const s = server(answer({ draft: DRAFT, questions: [ASK_RISK] }));
     const reply = await talk(s.api).turn({ kind: 'text', text: 'five years' }, rules);
-    expect(s.posted[0]).toEqual({
-      text: 'Grow $2,000',
-      language: 'en',
-      followUps: ['I like AI', 'five years'],
-      answersThen: [{}, { goal: 'grow', amountUsd: 2000 }],
-      answers: { goal: 'grow', amountUsd: 2000 },
-    });
+    expect(s.posted[0]).toEqual(
+      wire({
+        text: 'Grow $2,000',
+        language: 'en',
+        followUps: ['I like AI', 'five years'],
+        answersThen: [{}, { goal: 'grow', amountUsd: 2000 }],
+        answers: { goal: 'grow', amountUsd: 2000 },
+      }),
+    );
     expect(reply.question?.text).toBe(ASK_RISK.text);
   });
 
@@ -770,7 +996,7 @@ describe('a conversation begun before the person signed in', () => {
       },
     };
     const reply = await talk(s.api).turn({ kind: 'replay' }, kept);
-    expect(s.posted[1]).toEqual({ text: GOAL, language: 'en', answers: { risk: 'high' } });
+    expect(s.posted[1]).toEqual(wire({ text: GOAL, language: 'en', answers: { risk: 'high' } }));
     expect(reply.valid).toEqual(SHEET as BasketSheet);
     expect(reply.say).toEqual([{ key: 'said', lines: ['You want to grow $2,000.'] }]);
   });
@@ -854,11 +1080,13 @@ describe('what Thom’s conversation of Oct 7 showed', () => {
       { kind: 'hold', shareBps: null },
     ]);
     const all = await talk(s.api).turn({ kind: 'hold', shareBps: 10_000 }, first.sheet);
-    expect(s.posted[1]).toEqual({
-      text: GOAL,
-      language: 'en',
-      answers: { mix: { growthBps: 10_000, dollarYieldBps: 0, goldBps: 0, cashBps: 0 } },
-    });
+    expect(s.posted[1]).toEqual(
+      wire({
+        text: GOAL,
+        language: 'en',
+        answers: { mix: { growthBps: 10_000, dollarYieldBps: 0, goldBps: 0, cashBps: 0 } },
+      }),
+    );
     // not sent as words, which could ask the same question again
     expect(s.posted[1]).not.toHaveProperty('followUps');
     await talk(s.api).turn({ kind: 'hold', shareBps: null }, all.sheet);
