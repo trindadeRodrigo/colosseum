@@ -291,7 +291,7 @@ describe('a product’s page, on the plan view', () => {
     ]);
     for (const [asset, src] of [
       ['solana:jlusdc', '/assets/tokens/jlusdc.png'],
-      ['solana:syrupusdc', '/assets/tokens/syrupusdc.svg'],
+      ['solana:syrupusdc', '/assets/tokens/syrupusdc.png'],
     ]) {
       for (const selector of ['data-part', 'data-label', 'data-row']) {
         expect(pane.querySelector(`[${selector}="${asset}"] img`)?.getAttribute('src')).toBe(src);

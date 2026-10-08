@@ -105,7 +105,7 @@ const percent = (value: number, lang: Lang) =>
 /** Locally served, verified token artwork; unknown assets retain their ticker. */
 const ASSET_LOGOS = new Map([
   ['jlusdc', '/assets/tokens/jlusdc.png'],
-  ['syrupusdc', '/assets/tokens/syrupusdc.svg'],
+  ['syrupusdc', '/assets/tokens/syrupusdc.png'],
   ['paxg', '/assets/tokens/paxg.png'],
 ]);
 

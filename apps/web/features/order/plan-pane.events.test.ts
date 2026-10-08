@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { click, find, fire, mount, settle, unmountAll } from '../../components/ui/test/dom';
@@ -213,6 +214,22 @@ describe('a plan for income', () => {
 });
 
 describe('the allocation, as the picture', () => {
+  it.each(['jlusdc', 'syrupusdc', 'paxg'])(
+    'uses real local PNG artwork for native and test %s asset identities',
+    async (token) => {
+      const bytes = readFileSync(`apps/web/public/assets/tokens/${token}.png`);
+      expect(bytes.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
+      expect(bytes.readUInt32BE(16)).toBeGreaterThan(0);
+      expect(bytes.readUInt32BE(20)).toBeGreaterThan(0);
+      for (const asset of [`solana:${token}`, `solana:t${token}`]) {
+        const host = await mount(createElement(AssetMark, { asset }));
+        const mark = find(host, '[data-ui="asset-mark"]');
+        expect(find(mark, 'img').getAttribute('src')).toBe(`/assets/tokens/${token}.png`);
+        expect(mark.textContent).toBe('');
+      }
+    },
+  );
+
   it('keeps asset names available when a local logo fails, without changing allocation controls', async () => {
     const host = await mount(createElement(AssetMark, { asset: 'solana:tjlusdc' }));
     const mark = find(host, '[data-ui="asset-mark"]');
