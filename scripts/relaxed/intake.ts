@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { scaleToWholeBps, splitBps } from '@colosseum/basket';
 import { config as loadEnv } from 'dotenv';
 import { z } from 'zod';
 
@@ -368,11 +369,9 @@ const keep = (lines: { id: string; why: string }[]) =>
     return false;
   });
 
-const equalSplit = (n: number): number[] => {
-  // Basis points, summing to 10,000 to the unit: the remainder goes to the first lines.
-  const base = Math.floor(10_000 / n);
-  return Array.from({ length: n }, (_, i) => base + (i < 10_000 - base * n ? 1 : 0));
-};
+// Basis points, summing to 10,000 to the unit: the remainder goes to the first lines. The same function
+// sets the weights of the vault conversation's picks (`@colosseum/basket`, gate ANY-COMPOSITION).
+const equalSplit = (n: number): number[] => splitBps(n);
 const leftOut: string[] = [];
 const noStocks = <L extends { id: string }>(shape: string, lines: L[]): L[] =>
   shape === 'income' || shape === 'protect'
@@ -466,9 +465,7 @@ function render(rawReply: unknown, provenance: 'live' | 'recorded' | 'mock'): Pl
       // The shares the person gave, scaled to the whole to the unit, whatever they summed to.
       const given = r.buckets.map((b) => b.share as number);
       const sum = given.reduce((a, b) => a + b, 0);
-      shares = sum > 0 ? given.map((g) => Math.round((g / sum) * 10_000)) : equalSplit(n);
-      const drift = 10_000 - shares.reduce((a, b) => a + b, 0);
-      shares[0] = (shares[0] ?? 0) + drift;
+      shares = scaleToWholeBps(given);
       if (Math.abs(sum - 1) > 0.001)
         assumptions.push(
           `the shares you gave summed to ${Math.round(sum * 100)}%; scaled to the whole`,
