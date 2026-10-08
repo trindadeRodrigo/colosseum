@@ -35,6 +35,18 @@ const WAIT_MS = 2_500;
 /** Sheet reads waiting or running at once, about three catalogs; past it a sheet is left for a later turn. */
 const MAX_PENDING = 90;
 const MAX_KEPT = 2_000;
+/** A read with no answer after this long is given up: its place goes to the next, and a later turn reads
+ *  again. Nothing else bounds a query on a connection that went quiet. */
+const READ_MS = 60_000;
+
+/** `work`, or a rejection once `ms` have passed without its answer. */
+function within<T>(ms: number, work: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('no answer')), ms);
+    timer.unref?.();
+    work.then(resolve, reject).finally(() => clearTimeout(timer));
+  });
+}
 
 /** The figures the model reads, from one sheet, each with the regime it is about or none. */
 export function projectSheet(sheet: AssetFacts): AnalyticsFigure[] {
@@ -177,6 +189,7 @@ export function createAgentAnalytics(
     ttlMs?: number;
     waitMs?: number;
     maxPending?: number;
+    readMs?: number;
     now?: () => number;
   } = {},
 ): AgentAnalytics {
@@ -186,6 +199,7 @@ export function createAgentAnalytics(
   const wait = deps.waitMs ?? WAIT_MS;
   const maxPending = deps.maxPending ?? MAX_PENDING;
   const now = deps.now ?? Date.now;
+  const readMs = deps.readMs ?? READ_MS;
   const limit = limiter(deps.concurrency ?? CONCURRENCY);
   const { refSizeUsd, tau } = defaultFactsParams();
   const keptTwins = keeper<Awaited<ReturnType<typeof resolveExitTwins>>>(ttl, now);
@@ -196,7 +210,7 @@ export function createAgentAnalytics(
     keptSheets(`${stored(id)}|${size}`, () => {
       if (pending >= maxPending) return Promise.reject(new Error('busy'));
       pending += 1;
-      return limit(() => sheet(db, stored(id), size))
+      return limit(() => within(readMs, sheet(db, stored(id), size)))
         .then((found) => (found ? projectSheet(finiteFacts(found)) : null))
         .finally(() => {
           pending -= 1;
@@ -207,7 +221,7 @@ export function createAgentAnalytics(
   const start = ({ db, chain, assets, provenance }: Omit<Query, 'sizeUsd'>, size: number) => {
     const listed = assets.filter((asset) => asset.chain === chain && asset.cls !== 'cash');
     const key = [chain, provenance ?? '', ...listed.map((asset) => asset.id).sort()].join('|');
-    const twinsRead = keptTwins(key, () => twins(db, listed, provenance));
+    const twinsRead = keptTwins(key, () => within(readMs, twins(db, listed, provenance)));
     const rows = twinsRead.then((found) => {
       const twinOf = new Map(found.map((twin) => [twin.id, twin]));
       return listed.map((asset) => {

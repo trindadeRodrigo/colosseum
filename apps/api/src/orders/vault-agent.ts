@@ -322,9 +322,13 @@ function analyticsEvidence(
   const read: string[] = [];
   const missing = new Map<string, string[]>();
   const assets: NonNullable<NonNullable<VaultAgentPrompt['analytics']>['assets']> = [];
+  // An id names one figure: a second row for an asset, or a second figure under an id, is left out, since
+  // the reply refuses a context whose evidence repeats an id.
+  const taken = new Set<string>();
   for (const row of analytics.assets) {
     const asset = listed.get(row.assetId);
-    if (!asset || asset.cls === 'cash') continue;
+    if (!asset || asset.cls === 'cash' || taken.has(asset.id)) continue;
+    taken.add(asset.id);
     if (row.unread) {
       unread[row.unread].push(asset.symbol);
       continue;
@@ -341,6 +345,8 @@ function analyticsEvidence(
       const id = measure.id
         .replace('<asset>', asset.id)
         .replace('<regime>', figure.regime ?? 'unknown');
+      if (taken.has(id)) continue;
+      taken.add(id);
       const larger = figure.value !== null && figure.sizeUsd !== undefined;
       const said = measure.says.replace(
         '{size}',

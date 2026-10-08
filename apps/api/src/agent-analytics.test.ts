@@ -384,6 +384,160 @@ describe('createAgentAnalytics', () => {
     expect(sheet).toHaveBeenCalledTimes(listed.length);
   });
 
+  it('gives two turns at once on a cold start one read per sheet, and both go on without waiting for it', async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const sheet = vi.fn(async () => {
+      await gate;
+      return measured();
+    });
+    const twins = vi.fn(async () => []);
+    const read = createAgentAnalytics({ sheet, twins, waitMs: 20 });
+    const query = {
+      db,
+      chain: 'solana' as const,
+      assets,
+      provenance: 'live' as const,
+      sizeUsd: null,
+    };
+    const both = await Promise.all([read(query), read(query)]);
+    for (const turn of both) {
+      if ('unavailable' in turn) throw new Error(turn.unavailable);
+      expect(turn.assets.every((row) => row.unread === 'reading')).toBe(true);
+    }
+    // A third turn while the first two's reads are still running starts nothing new either.
+    await read(query);
+    release();
+    await vi.waitFor(async () => {
+      const next = await read(query);
+      if ('unavailable' in next) throw new Error(next.unavailable);
+      expect(next.incomplete).toBeUndefined();
+    });
+    expect(twins).toHaveBeenCalledTimes(1);
+    expect(sheet).toHaveBeenCalledTimes(listed.length);
+  });
+
+  it('names the one sheet whose read failed, keeps the others, and reads only that one again', async () => {
+    let fail = true;
+    const sheet = vi.fn(async (_db: Db, id: string) => {
+      if (id === stock.address && fail) throw new Error('connection reset');
+      return measured();
+    });
+    const read = createAgentAnalytics({ sheet, twins: noTwins });
+    const query = {
+      db,
+      chain: 'solana' as const,
+      assets,
+      provenance: 'live' as const,
+      sizeUsd: null,
+    };
+    const first = await read(query);
+    if ('unavailable' in first) throw new Error(first.unavailable);
+    expect(first.incomplete).toBe(`analytics_partial_1_of_${listed.length}`);
+    expect(first.assets.find((row) => row.assetId === stock.id)).toEqual({
+      assetId: stock.id,
+      modelledOn: null,
+      figures: null,
+      unread: 'failed',
+    });
+    expect(first.assets.filter((row) => row.figures?.length)).toHaveLength(listed.length - 1);
+    fail = false;
+    const second = await read(query);
+    if ('unavailable' in second) throw new Error(second.unavailable);
+    expect(second.incomplete).toBeUndefined();
+    expect(second.assets.every((row) => row.figures?.length)).toBe(true);
+    expect(sheet).toHaveBeenCalledTimes(listed.length + 1);
+  });
+
+  it('keeps the figures it has when reading them again fails, and tries again on the next turn', async () => {
+    let clock = 0;
+    let fail = false;
+    const sheet = vi.fn(async () => {
+      if (fail) throw new Error('too many connections');
+      return measured();
+    });
+    const read = createAgentAnalytics({ sheet, twins: noTwins, now: () => clock });
+    const query = {
+      db,
+      chain: 'solana' as const,
+      assets: [stock],
+      provenance: 'live' as const,
+      sizeUsd: null,
+    };
+    const fresh = await read(query);
+    clock = 11 * 60_000;
+    fail = true;
+    expect(await read(query)).toEqual(fresh);
+    await vi.waitFor(() => expect(sheet).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // The failed read left the kept figures in place, and the next turn starts another.
+    expect(await read(query)).toEqual(fresh);
+    await vi.waitFor(() => expect(sheet).toHaveBeenCalledTimes(3));
+  });
+
+  it('goes on when the lookup of the mainnet models is slower than the wait, and has them next turn', async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const twins = vi.fn(async () => {
+      await gate;
+      return [];
+    });
+    const sheet = vi.fn(async () => measured());
+    const read = createAgentAnalytics({ sheet, twins, waitMs: 20 });
+    const query = {
+      db,
+      chain: 'solana' as const,
+      assets,
+      provenance: 'live' as const,
+      sizeUsd: null,
+    };
+    expect(await read(query)).toEqual({ unavailable: 'analytics_timeout' });
+    expect(sheet).not.toHaveBeenCalled();
+    release();
+    await vi.waitFor(async () => {
+      const next = await read(query);
+      if ('unavailable' in next) throw new Error(next.unavailable);
+      expect(next.incomplete).toBeUndefined();
+    });
+    expect(twins).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives up a read that never answers, so it does not hold its place or its sheet for good', async () => {
+    let hang = true;
+    const sheet = vi.fn(
+      (): Promise<AssetFacts | null> =>
+        hang ? new Promise(() => {}) : Promise.resolve(measured()),
+    );
+    const read = createAgentAnalytics({
+      sheet,
+      twins: noTwins,
+      waitMs: 10,
+      concurrency: 1,
+      readMs: 30,
+    });
+    const query = {
+      db,
+      chain: 'solana' as const,
+      assets: [stock, stocks[1] as BasketAsset],
+      provenance: 'live' as const,
+      sizeUsd: null,
+    };
+    const first = await read(query);
+    if ('unavailable' in first) throw new Error(first.unavailable);
+    expect(first.assets.every((row) => row.unread === 'reading')).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    hang = false;
+    await vi.waitFor(async () => {
+      const next = await read(query);
+      if ('unavailable' in next) throw new Error(next.unavailable);
+      expect(next.assets.every((row) => row.figures?.length)).toBe(true);
+    });
+  });
+
   it('leaves sheets past the pending limit for a later turn', async () => {
     const sheet = vi.fn((): Promise<AssetFacts | null> => new Promise(() => {}));
     const read = createAgentAnalytics({ sheet, twins: noTwins, waitMs: 10, maxPending: 2 });

@@ -1046,6 +1046,103 @@ describe("Bearing's analytics in the conversation context", () => {
     expect(JSON.stringify(ctx.analytics).length).toBeLessThan(25_000);
   });
 
+  it('keeps the first of two figures that would share an id, so a doubled row never fails the reply', async () => {
+    const twice = [
+      { metric: 'exit_worst' as const, regime: 'weekend' as const, value: 0.02, ...pin },
+      { metric: 'exit' as const, regime: 'us_market_hours' as const, value: 0.002, ...pin },
+      { metric: 'exit' as const, regime: 'us_market_hours' as const, value: 0.009, ...pin },
+      { metric: 'lp_top1' as const, value: 0.4, ...pin },
+    ];
+    const ctx = built(
+      sheet({
+        assets: [
+          { assetId: stock.id, modelledOn: null, figures: twice },
+          {
+            assetId: stock.id,
+            modelledOn: null,
+            figures: [{ metric: 'lp_top1', value: 0.7, ...pin }],
+          },
+        ],
+      }),
+    );
+    const ids = ctx.evidence.map((row) => row.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ctx.evidence.find((row) => row.id === `exit:${stock.id}:us_market_hours`)?.value).toBe(
+      0.002,
+    );
+    expect(ctx.evidence.find((row) => row.id === `lp:${stock.id}:top1`)?.value).toBe(0.4);
+    expect(ctx.analytics?.assets).toHaveLength(1);
+    expect(ctx.analytics?.assets?.[0]?.values).toEqual({
+      [`exit:${stock.id}:worst`]: 0.02,
+      [`exit:${stock.id}:us_market_hours`]: 0.002,
+      [`lp:${stock.id}:top1`]: 0.4,
+    });
+    expect((await replyToVaultConversation(request(), ctx, fake(proposal(1000)))).kind).toBe(
+      'reply',
+    );
+  });
+
+  it('keeps a sixteen-asset test-network vault with every figure measured small, and its words free of numbers', () => {
+    const figures = [
+      {
+        metric: 'exit_worst' as const,
+        regime: 'weekend' as const,
+        value: 0.0123,
+        lowerBound: true,
+      },
+      ...(['us_market_hours', 'us_offhours_weekday', 'us_holiday'] as const).map((regime) => ({
+        metric: 'exit' as const,
+        regime,
+        value: 0.0045,
+      })),
+      { metric: 'weekend' as const, value: 0.42, unit: 'ratio' as const },
+      { metric: 'lp_top1' as const, value: 0.41 },
+      { metric: 'lp_exit' as const, value: 0.031, sizeUsd: 100_000 },
+      { metric: 'cap_variation' as const, regime: 'weekend' as const, value: 0.18 },
+      { metric: 'volume_28d' as const, value: 1_234_567, unit: 'usd' as const },
+      { metric: 'volatility' as const, value: 0.27 },
+      { metric: 'drawdown' as const, value: 0.19 },
+    ].map((figure) => ({ ...pin, provenance: 'sandbox' as const, ...figure }));
+    const sixteen = assets.filter((asset) => asset.cls !== 'cash').slice(0, 16);
+    expect(sixteen).toHaveLength(16);
+    const ctx = built(
+      sheet({
+        sizeUsd: 37_000,
+        basis: 'vault',
+        assets: sixteen.map((asset) => ({
+          assetId: asset.id,
+          modelledOn: asset.symbol,
+          figures,
+        })),
+      }),
+    );
+    expect(ctx.analytics?.assets).toHaveLength(16);
+    expect(ctx.analytics?.unknowns).toEqual([]);
+    // 9,286 characters with every flag set on every asset: each figure once by id, the legend once.
+    expect(JSON.stringify(ctx.analytics).length).toBeLessThan(11_000);
+    const names = assets.flatMap((asset) => [asset.symbol, asset.underlying ?? '']).filter(Boolean);
+    const analyticsRows = ctx.evidence.filter((row) =>
+      /^(?:exit|lp|lpexit|weekend|capvar|volume|vol|drawdown):/.test(row.id),
+    );
+    expect(analyticsRows).toHaveLength(16 * figures.length);
+    for (const text of [
+      ...analyticsRows.map((row) => row.label ?? ''),
+      ...Object.values(ctx.analytics?.legend ?? {}),
+    ])
+      expect([
+        text,
+        /[\p{N}%$]/u.test(names.reduce((rest, name) => rest.replaceAll(name, ''), text)),
+      ]).toEqual([text, false]);
+    // Every figure keeps its pin on the server, and none on a test network says live.
+    for (const row of analyticsRows)
+      expect(row).toMatchObject({
+        source: pin.source,
+        fetchedAt: now,
+        provenance: 'sandbox',
+        method: expect.stringContaining(pin.method),
+      });
+  });
+
   it('says a gap once for every asset it holds for, and names assets still being read', () => {
     const gap = {
       metric: 'volatility' as const,
