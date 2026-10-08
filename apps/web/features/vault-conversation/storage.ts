@@ -1,6 +1,6 @@
 import { type ChainId, chainFamily, type Network, normalizeAddress } from '@colosseum/schemas';
 import type { ApiFetch } from '../account/person';
-import { publicWalletEnv, walletChains } from '../wallet/chains';
+import { networkFor } from '../order/readiness';
 
 export type Turn = { id: string; who: 'person' | 'app'; text: string };
 export type Transcript = { revision: number; transcript: Turn[] };
@@ -11,11 +11,8 @@ export type ConversationStore = {
 
 /** The app's configured network; a mock label never selects or invents a network. */
 export function conversationNetwork(chain: ChainId): Network | null {
-  try {
-    return walletChains(publicWalletEnv())[chain].config.network;
-  } catch {
-    return null;
-  }
+  const network = networkFor(chain, false);
+  return network === 'mock' ? null : network;
 }
 
 export function conversationKey(
