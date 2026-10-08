@@ -51,7 +51,8 @@ async function setup(available = true) {
       },
     },
   ) as Db;
-  const app = Fastify();
+  const logs: string[] = [];
+  const app = Fastify({ logger: { level: 'warn', stream: { write: (line) => logs.push(line) } } });
   cleanup.push(() => app.close());
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
@@ -118,6 +119,7 @@ async function setup(available = true) {
     body,
     path,
     proposal,
+    logs,
   };
 }
 
@@ -195,6 +197,8 @@ describe('new-goal model preview route', () => {
   });
   it('retains the explicit stock minimum and returns a useful question for a conflicting model draft', async () => {
     const s = await setup();
+    // The repair call sends the same draft: the person is asked about the limit.
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: s.proposal(1000) });
     vi.mocked(s.model.read).mockResolvedValueOnce({ reply: s.proposal(1000) });
     const res = await s.post(s.owner, {
       ...s.body,
@@ -205,13 +209,34 @@ describe('new-goal model preview route', () => {
     expect(res.statusCode, res.body).toBe(200);
     expect(res.json().proposal).toBeNull();
     expect(res.json().question).toBeTruthy();
+    expect(res.json().question).toContain('within that limit');
+    expect(s.model.read).toHaveBeenCalledTimes(2);
+    expect(
+      s.logs
+        .map((line) => JSON.parse(line))
+        .filter(
+          (line) =>
+            line.msg ===
+            'the new-goal conversation reply asks about a stated limit its repair attempt still missed',
+        ),
+    ).toEqual([
+      expect.objectContaining({
+        level: 40,
+        repair: { failed: 'allocation_constraint', outcome: 'allocation_constraint' },
+        chain: 'solana',
+      }),
+    ]);
+    expect(s.logs.join('')).not.toContain('at least 40%');
   });
   it('rejects cross-chain assets, malformed last turns and attempted request authority', async () => {
     const s = await setup();
     const value = s.proposal(1000);
     value.proposal.allocations[0]!.assetId = 'robinhood:foreign';
+    // The repair call sends it again: still refused.
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: value });
     vi.mocked(s.model.read).mockResolvedValueOnce({ reply: value });
     expect((await s.post()).json()).toMatchObject({ reason: 'invalid' });
+    expect(s.model.read).toHaveBeenCalledTimes(2);
     const calls = vi.mocked(s.model.read).mock.calls.length;
     expect(
       (await s.post(s.owner, { ...s.body, messages: [{ who: 'app', text: 'Apply that.' }] }))
@@ -245,14 +270,68 @@ describe('new-goal model preview route', () => {
       expect(res.json()).toMatchObject({ code: 'GOAL_AGENT_UNAVAILABLE', reason: why });
     },
   );
+  it('logs the reason and the failed check at warn, without the person or the model words', async () => {
+    const s = await setup();
+    vi.mocked(s.model.read).mockResolvedValueOnce({
+      reply: null,
+      why: 'timeout',
+      detail: 'model_timeout',
+    });
+    expect((await s.post()).json()).toMatchObject({ reason: 'timeout' });
+    const figure = { message: 'It will return 12% a year.', question: null, proposal: null };
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: figure });
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: figure });
+    expect((await s.post()).json()).toMatchObject({ reason: 'invalid' });
+    // Repaired on the second call: the corrected reply is shown and the repair is logged.
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: figure });
+    const repaired = await s.post();
+    expect(repaired.statusCode).toBe(200);
+    expect(repaired.json().message).toBe('We can explore that direction.');
+    expect(repaired.body).not.toContain('12%');
+    const parsed = s.logs.map((line) => JSON.parse(line));
+    expect(
+      parsed.filter(
+        (line) => line.msg === 'the new-goal conversation reply passed on its repair attempt',
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        level: 40,
+        repair: { failed: 'prose_figure', outcome: 'repaired' },
+        chain: 'solana',
+      }),
+    ]);
+    const failures = s.logs
+      .map((line) => JSON.parse(line))
+      .filter((line) => line.msg === 'the new-goal conversation returned no reply');
+    expect(failures).toEqual([
+      expect.objectContaining({
+        level: 40,
+        reason: 'timeout',
+        detail: 'model_timeout',
+        chain: 'solana',
+      }),
+      expect.objectContaining({
+        level: 40,
+        reason: 'invalid',
+        detail: 'prose_figure',
+        repair: { failed: 'prose_figure', outcome: 'prose_figure' },
+        chain: 'solana',
+      }),
+    ]);
+    const written = s.logs.join('');
+    expect(written).not.toContain('named business');
+    expect(written).not.toContain('12%');
+  });
   it.each(['I created your vault.', 'I funded your portfolio.', 'Eu abri seu cofre.'])(
     'rejects a false creation or funding claim: %s',
     async (message) => {
       const s = await setup();
-      vi.mocked(s.model.read).mockResolvedValueOnce({
-        reply: { message, question: null, proposal: null },
-      });
+      for (const _attempt of [1, 2])
+        vi.mocked(s.model.read).mockResolvedValueOnce({
+          reply: { message, question: null, proposal: null },
+        });
       expect((await s.post()).json()).toMatchObject({ reason: 'invalid' });
+      expect(s.model.read).toHaveBeenCalledTimes(2);
     },
   );
 });

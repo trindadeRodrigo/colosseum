@@ -3,6 +3,7 @@ import type { VaultAgentModelReply, VaultAgentRequest, VaultState } from '@colos
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseStockAttributes } from '../../../packages/engine/src/personal/stock-attributes';
 import { launchShelf } from '../../../packages/engine/src/personal/testing';
+import { INTAKE_TIMEOUT_MS, intakeSettings } from './llm';
 import {
   type GoalAgentContext,
   replyToVaultConversation,
@@ -11,17 +12,34 @@ import {
 } from './orders/vault-agent';
 import mockStocks from './testing/fixtures/mock-stocks.json';
 import {
+  acceptsEffort,
+  acceptsTemperature,
   createAnthropicVaultAgentModel,
+  repairRequest,
+  VAULT_AGENT_EFFORT,
+  VAULT_AGENT_MAX_TOKENS,
+  VAULT_AGENT_REPAIR_MARGIN_MS,
+  VAULT_AGENT_REPAIR_MIN_MS,
   VAULT_AGENT_REPLY_SCHEMA,
   VAULT_AGENT_SYSTEM,
+  VAULT_AGENT_TIMEOUT_MS,
+  vaultAgentEffort,
+  vaultAgentModelId,
+  vaultAgentTimeoutMs,
 } from './vault-agent-model';
 
 const sdk = vi.hoisted(() => ({ create: vi.fn(), options: vi.fn() }));
 vi.mock('@anthropic-ai/sdk', () => {
   class Timeout extends Error {}
+  class APIError extends Error {
+    constructor(readonly status: number) {
+      super('provider error text that may echo the request');
+    }
+  }
   return {
     default: class {
       static APIConnectionTimeoutError = Timeout;
+      static APIError = APIError;
       messages = { create: sdk.create };
       constructor(options: unknown) {
         sdk.options(options);
@@ -69,10 +87,11 @@ describe('vault proposal provider uses the existing model settings and a shared 
     expect(sdk.create).toHaveBeenLastCalledWith(
       expect.objectContaining({
         model: options.model,
-        max_tokens: 1024,
+        max_tokens: VAULT_AGENT_MAX_TOKENS,
         messages: [{ role: 'user', content: JSON.stringify(prompt) }],
         output_config: { format: { type: 'json_schema', schema: VAULT_AGENT_REPLY_SCHEMA } },
       }),
+      { timeout: 6000 },
     );
   });
 
@@ -84,7 +103,11 @@ describe('vault proposal provider uses the existing model settings and a shared 
         quota: { reserve: () => reason },
       });
       const before = sdk.create.mock.calls.length;
-      expect(await model.read('owner', prompt)).toEqual({ reply: null, why: 'budget' });
+      expect(await model.read('owner', prompt)).toEqual({
+        reply: null,
+        why: 'budget',
+        detail: reason,
+      });
       expect(sdk.create.mock.calls.length).toBe(before);
     },
   );
@@ -92,14 +115,228 @@ describe('vault proposal provider uses the existing model settings and a shared 
   it('returns typed timeout and malformed-output failures without retrying or using a wizard', async () => {
     const model = createAnthropicVaultAgentModel({ ...options, quota: { reserve: () => null } });
     sdk.create.mockRejectedValueOnce(new Anthropic.APIConnectionTimeoutError({}));
-    expect(await model.read('owner', prompt)).toEqual({ reply: null, why: 'timeout' });
+    expect(await model.read('owner', prompt)).toEqual({
+      reply: null,
+      why: 'timeout',
+      detail: 'model_timeout',
+    });
     sdk.create.mockResolvedValueOnce({ stop_reason: 'max_tokens', content: [] });
-    expect(await model.read('owner', prompt)).toEqual({ reply: null, why: 'invalid' });
+    expect(await model.read('owner', prompt)).toEqual({
+      reply: null,
+      why: 'invalid',
+      detail: 'model_cut_off',
+    });
     sdk.create.mockResolvedValueOnce({
       stop_reason: 'end_turn',
       content: [{ type: 'text', text: 'not JSON' }],
     });
-    expect(await model.read('owner', prompt)).toEqual({ reply: null, why: 'invalid' });
+    expect(await model.read('owner', prompt)).toEqual({
+      reply: null,
+      why: 'invalid',
+      detail: 'model_not_json',
+    });
+    // A 400 (a parameter the model rejects) is named by its status, never by its message.
+    sdk.create.mockRejectedValueOnce(
+      new (Anthropic.APIError as unknown as new (s: number) => Error)(400),
+    );
+    expect(await model.read('owner', prompt)).toEqual({
+      reply: null,
+      why: 'unavailable',
+      detail: 'model_error_400',
+    });
+  });
+
+  it('repairs in one more reserved call that sees its reply and the problem, inside the overall time', async () => {
+    const reserve = vi.fn(() => null);
+    const model = createAnthropicVaultAgentModel({ ...options, quota: { reserve } });
+    const previous = { message: 'I changed your vault.', question: null, proposal: null };
+    sdk.create.mockResolvedValueOnce({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: '{"message":"Hi.","question":null,"proposal":null}' }],
+    });
+    expect(
+      await model.read('owner', prompt, {
+        previous,
+        problems: ['Prose said something was applied.'],
+        elapsedMs: 4000,
+      }),
+    ).toEqual({ reply: { message: 'Hi.', question: null, proposal: null } });
+    expect(reserve).toHaveBeenCalledExactlyOnceWith('owner');
+    expect(sdk.create).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        messages: [
+          { role: 'user', content: JSON.stringify(prompt) },
+          { role: 'assistant', content: JSON.stringify(previous) },
+          { role: 'user', content: repairRequest(['Prose said something was applied.']) },
+        ],
+      }),
+      // 6,000 configured + the margin − 4,000 already spent.
+      { timeout: 6000 + VAULT_AGENT_REPAIR_MARGIN_MS - 4000 },
+    );
+    expect(repairRequest(['A.', 'B.'])).toContain('\n- A.\n- B.\n');
+    const calls = sdk.create.mock.calls.length;
+    // Too little time left: no reservation and no call.
+    const late = 6000 + VAULT_AGENT_REPAIR_MARGIN_MS - VAULT_AGENT_REPAIR_MIN_MS + 1;
+    expect(
+      await model.read('owner', prompt, { previous, problems: ['x'], elapsedMs: late }),
+    ).toEqual({ reply: null, why: 'timeout', detail: 'repair_no_time' });
+    expect(reserve).toHaveBeenCalledOnce();
+    expect(sdk.create.mock.calls.length).toBe(calls);
+    // A spent budget stops the repair like the first call.
+    const spent = createAnthropicVaultAgentModel({
+      ...options,
+      quota: { reserve: () => 'model_person_budget_spent' },
+    });
+    expect(await spent.read('owner', prompt, { previous, problems: ['x'], elapsedMs: 0 })).toEqual({
+      reply: null,
+      why: 'budget',
+      detail: 'model_person_budget_spent',
+    });
+    expect(sdk.create.mock.calls.length).toBe(calls);
+    // A short configured time still gets its first call.
+    sdk.create.mockResolvedValueOnce({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: '{"message":"Hi.","question":null,"proposal":null}' }],
+    });
+    await createAnthropicVaultAgentModel({
+      ...options,
+      timeoutMs: 1000,
+      quota: { reserve: () => null },
+    }).read('owner', prompt);
+    expect(sdk.create).toHaveBeenLastCalledWith(expect.anything(), { timeout: 1000 });
+  });
+
+  it('reads VAULT_AGENT_MODEL, or falls back to the intake model', () => {
+    expect(vaultAgentModelId({}, 'claude-haiku-4-5')).toBe('claude-haiku-4-5');
+    expect(vaultAgentModelId({ VAULT_AGENT_MODEL: ' ' }, 'claude-haiku-4-5')).toBe(
+      'claude-haiku-4-5',
+    );
+    expect(vaultAgentModelId({ VAULT_AGENT_MODEL: 'claude-sonnet-4-6' }, 'claude-haiku-4-5')).toBe(
+      'claude-sonnet-4-6',
+    );
+    expect(() =>
+      vaultAgentModelId({ VAULT_AGENT_MODEL: 'sk-ant private key' }, 'claude-haiku-4-5'),
+    ).toThrow(/^VAULT_AGENT_MODEL must be a model id/);
+    try {
+      vaultAgentModelId({ VAULT_AGENT_MODEL: 'sk-ant private key' }, 'claude-haiku-4-5');
+    } catch (error) {
+      expect(String(error)).not.toContain('sk-ant');
+    }
+  });
+
+  it('has its own call time, not the intake one, read from VAULT_AGENT_TIMEOUT_MS', () => {
+    expect(VAULT_AGENT_TIMEOUT_MS).toBeGreaterThan(INTAKE_TIMEOUT_MS);
+    expect(vaultAgentTimeoutMs({})).toBe(VAULT_AGENT_TIMEOUT_MS);
+    // The intake's own setting does not shorten the conversation's.
+    const env = { INTAKE_MODEL_TIMEOUT_MS: '6000' };
+    expect(intakeSettings(env).timeoutMs).toBe(6000);
+    expect(vaultAgentTimeoutMs(env)).toBe(VAULT_AGENT_TIMEOUT_MS);
+    expect(vaultAgentTimeoutMs({ VAULT_AGENT_TIMEOUT_MS: '45000' })).toBe(45000);
+    for (const bad of ['999', '120001', '30s', '-1'])
+      expect(() => vaultAgentTimeoutMs({ VAULT_AGENT_TIMEOUT_MS: bad })).toThrow(
+        'VAULT_AGENT_TIMEOUT_MS',
+      );
+    expect(VAULT_AGENT_MAX_TOKENS).toBeGreaterThanOrEqual(4096);
+  });
+
+  it('leaves room for thinking in the output budget, under the non-streaming limit', () => {
+    expect(VAULT_AGENT_MAX_TOKENS).toBe(16_000);
+  });
+
+  it('reads VAULT_AGENT_EFFORT: low by default, low, medium or high, and nothing else', () => {
+    expect(VAULT_AGENT_EFFORT).toBe('low');
+    expect(vaultAgentEffort({})).toBe('low');
+    expect(vaultAgentEffort({ VAULT_AGENT_EFFORT: ' ' })).toBe('low');
+    expect(vaultAgentEffort({ VAULT_AGENT_EFFORT: 'medium' })).toBe('medium');
+    expect(vaultAgentEffort({ VAULT_AGENT_EFFORT: ' high ' })).toBe('high');
+    for (const bad of ['max', 'xhigh', 'LOW', 'sk-ant private key']) {
+      expect(() => vaultAgentEffort({ VAULT_AGENT_EFFORT: bad })).toThrow(
+        /^VAULT_AGENT_EFFORT must be low, medium or high$/,
+      );
+      try {
+        vaultAgentEffort({ VAULT_AGENT_EFFORT: bad });
+      } catch (error) {
+        expect(String(error)).not.toContain(bad);
+      }
+    }
+  });
+
+  it.each([
+    ['claude-opus-5-5', true],
+    ['claude-sonnet-5-5', true],
+    ['claude-haiku-5-5', true],
+    ['claude-fable-5-1', true],
+    ['claude-opus-5', true],
+    ['claude-sonnet-5', true],
+    ['claude-opus-4-5@20251101', true],
+    ['claude-opus-4-6', true],
+    ['claude-opus-4-7', true],
+    ['claude-opus-4-8', true],
+    ['claude-sonnet-4-6', true],
+    // Haiku 4.5 and Sonnet 4.5 answer 400 to effort; unknown and future ids fail safe.
+    ['claude-haiku-4-5', false],
+    ['claude-haiku-4-5-20251001', false],
+    ['claude-sonnet-4-5', false],
+    ['claude-opus-4-9', false],
+    ['claude-opus-6', false],
+    ['claude-3-7-sonnet-latest', false],
+    ['configured-fixture-model', false],
+  ] as const)('sends effort to %s: %s', async (model, sent) => {
+    expect(acceptsEffort(model)).toBe(sent);
+    for (const effort of [undefined, 'high'] as const) {
+      sdk.create.mockResolvedValueOnce({
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: '{"message":"Hi.","question":null,"proposal":null}' }],
+      });
+      await createAnthropicVaultAgentModel({
+        ...options,
+        model,
+        ...(effort ? { effort } : {}),
+        quota: { reserve: () => null },
+      }).read('owner', prompt);
+      const body = sdk.create.mock.calls.at(-1)?.[0];
+      const format = { type: 'json_schema', schema: VAULT_AGENT_REPLY_SCHEMA };
+      expect(body.output_config).toEqual(sent ? { effort: effort ?? 'low', format } : { format });
+      expect(body.max_tokens).toBe(VAULT_AGENT_MAX_TOKENS);
+      expect(body).not.toHaveProperty('thinking');
+    }
+  });
+
+  it.each([
+    ['claude-sonnet-5-5', false],
+    ['claude-opus-5-5', false],
+    ['claude-fable-5-1', false],
+    ['claude-sonnet-5', false],
+    ['claude-opus-4-8', false],
+    ['claude-haiku-5-5', false],
+    ['claude-opus-4-7', false],
+    ['claude-opus-4-8@20260101', false],
+    // Unknown and future ids fail safe: no temperature.
+    ['claude-opus-6', false],
+    ['claude-haiku-4-50', false],
+    ['configured-fixture-model', false],
+    ['claude-haiku-4-5', true],
+    ['claude-haiku-4-5-20251001', true],
+    ['claude-sonnet-4-5', true],
+    ['claude-sonnet-4-6', true],
+    ['claude-opus-4-5@20251101', true],
+    ['claude-opus-4-6', true],
+    ['claude-3-7-sonnet-latest', true],
+    ['claude-3-haiku-20240307', true],
+  ] as const)('sends temperature to %s: %s', async (model, sent) => {
+    expect(acceptsTemperature(model)).toBe(sent);
+    sdk.create.mockResolvedValueOnce({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: '{"message":"Hi.","question":null,"proposal":null}' }],
+    });
+    await createAnthropicVaultAgentModel({
+      ...options,
+      model,
+      quota: { reserve: () => null },
+    }).read('owner', prompt);
+    const body = sdk.create.mock.calls.at(-1)?.[0];
+    if (sent) expect(body).toMatchObject({ temperature: 0 });
+    else expect(body).not.toHaveProperty('temperature');
   });
 });
 
@@ -343,6 +580,8 @@ describe('conversation context and grounded replies through the provider stub', 
         ...allocation,
         weightBps: allocation.assetId === tesla.id ? 1000 : 9000,
       }));
+      // The repair call returns the same draft, so the limit is raised with the person.
+      respond(reduced);
       respond(reduced);
       const mismatch = await replyToVaultConversation(
         turn(messages, language),
@@ -351,6 +590,13 @@ describe('conversation context and grounded replies through the provider stub', 
       );
       expect(mismatch.kind).toBe('reply');
       if (mismatch.kind !== 'reply') throw new Error('Missing constraint explanation');
+      expect(mismatch.repair).toEqual({
+        failed: 'allocation_constraint',
+        outcome: 'allocation_constraint',
+      });
+      expect(sdk.create.mock.calls.at(-1)?.[0].messages[2].content).toContain(
+        'At allocationConstraints.0',
+      );
       expect(mismatch.reply.proposal).toBeNull();
       expect(mismatch.reply.message).toContain(instruction);
       messages.push({
@@ -415,9 +661,15 @@ describe('conversation context and grounded replies through the provider stub', 
     expect(VAULT_AGENT_SYSTEM).toContain('do not replace it without explaining and asking');
   });
 
-  it.each(['invented-source', 'wrong-asset-source', 'invented-figure', 'over-cap', 'ineligible'])(
+  it.each([
+    ['invented-source', 'allocation_evidence'],
+    ['wrong-asset-source', 'allocation_evidence'],
+    ['invented-figure', 'prose_figure'],
+    ['over-cap', 'allocation_over_cap'],
+    ['ineligible', 'allocation_ineligible'],
+  ])(
     'rejects a provider fixture with %s while keeping the grounded proposal boundary',
-    async (fault) => {
+    async (fault, detail) => {
       const value = draft();
       const allocation = value.proposal?.allocations[0];
       if (!allocation || !value.proposal) throw new Error('Missing fixture allocation');
@@ -429,6 +681,8 @@ describe('conversation context and grounded replies through the provider stub', 
         ...(fault === 'over-cap' ? { caps: { [tesla.id]: 1000 } } : {}),
         ...(fault === 'ineligible' ? { currentGoals: [{ goal: 'protect' }] } : {}),
       };
+      // The repair call returns the same reply: it is refused again, never shown or substituted.
+      respond(value);
       respond(value);
       expect(
         await replyToVaultConversation(
@@ -436,8 +690,18 @@ describe('conversation context and grounded replies through the provider stub', 
           context,
           offlineModel(),
         ),
-      ).toEqual({ kind: 'failure', reason: 'invalid' });
-      expect(sdk.create).toHaveBeenCalledTimes(1);
+      ).toEqual({
+        kind: 'failure',
+        reason: 'invalid',
+        detail,
+        repair: { failed: detail, outcome: detail },
+      });
+      expect(sdk.create).toHaveBeenCalledTimes(2);
+      expect(sdk.create.mock.calls[1]?.[0].messages).toEqual([
+        sdk.create.mock.calls[0]?.[0].messages[0],
+        { role: 'assistant', content: JSON.stringify(value) },
+        { role: 'user', content: expect.stringContaining('could not accept your previous reply') },
+      ]);
     },
   );
 });

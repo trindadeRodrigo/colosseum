@@ -9,7 +9,7 @@ import {
   type VaultAgentResult,
   VaultAgentSource,
 } from '@colosseum/schemas';
-import type { VaultAgentModel } from '../vault-agent-model';
+import type { VaultAgentModel, VaultAgentRepair } from '../vault-agent-model';
 import type { ChainEntry } from './chains';
 import type { PlanInputs } from './personalize';
 
@@ -309,6 +309,31 @@ function hasFinancialFigure(text: string, personWords: string[], catalogNames: s
   );
 }
 
+/**
+ * What each repairable check means, in the words the model reads on its one repair call. Only checks on
+ * the model's own reply are here: a timeout, a spent budget or a bad request is not the model's to fix.
+ */
+const REPAIR_HINTS: Record<string, string> = {
+  reply_schema:
+    'The reply did not match the required structure: a field was missing, had the wrong type, or was outside its length or count limits.',
+  prose_figure:
+    'Prose contained a financial figure, percentage, price, yield, date or written-out number. Numbers may appear in prose only inside an exact catalog name or an exact quote of the person in attributed quotation marks. Put proposed weights only in weightBps.',
+  prose_claims_applied:
+    'Prose said something was applied, created, funded, traded or approved. A proposal is only a private preview; nothing has been applied.',
+  allocation_unlisted: "An allocation named an assetId that is not in this chain's catalog.",
+  allocation_duplicate: 'The same assetId appeared in more than one allocation.',
+  allocation_over_cap: "An allocation's weightBps was above that asset's limit in caps.",
+  allocation_ineligible:
+    'An allocation used an asset that is not eligible for eligibilityGoal: stocks are not eligible for income or protect.',
+  allocation_evidence:
+    'An allocation cited an evidenceId that does not exist in evidence or belongs to a different asset.',
+  allocation_sum: 'Allocation weightBps did not add up to exactly 10000.',
+  allocation_constraint:
+    'The proposal broke a limit the person stated. The limits in allocationConstraints are theirs and still stand.',
+  reply_shape:
+    'The proposal did not fit the final preview limits once the server added its own unknowns and sources: keep fields shorter and lists smaller.',
+};
+
 function claimsApplied(text: string): boolean {
   return (
     /\bi\s+(?:have\s+)?(?:changed|applied|updated|rebalanced|created|opened|funded)\s+(?:your|the)\s+(?:vault|portfolio|strategy|allocations?)\b/iu.test(
@@ -450,15 +475,19 @@ export async function replyToVaultConversation(
   context: ConversationAgentContext,
   model: VaultAgentModel | null,
 ): Promise<VaultAgentResult> {
+  const invalid = (detail: string): VaultAgentResult => ({
+    kind: 'failure',
+    reason: 'invalid',
+    detail,
+  });
   const parsed = VaultAgentRequest.safeParse(request);
-  if (!parsed.success) return { kind: 'failure', reason: 'invalid' };
-  if (!model) return { kind: 'failure', reason: 'unavailable' };
-  if (hasNonFiniteNumber(context)) return { kind: 'failure', reason: 'invalid' };
+  if (!parsed.success) return invalid('request_shape');
+  if (!model) return { kind: 'failure', reason: 'unavailable', detail: 'no_model' };
+  if (hasNonFiniteNumber(context)) return invalid('context_non_finite');
   const sourceById = new Map<string, AgentSource>();
   for (const raw of context.evidence) {
     const source = VaultAgentSource.safeParse(raw);
-    if (!source.success || sourceById.has(source.data.id))
-      return { kind: 'failure', reason: 'invalid' };
+    if (!source.success || sourceById.has(source.data.id)) return invalid('context_evidence');
     sourceById.set(source.data.id, source.data);
   }
   const chain = context.kind === 'new_goal' ? context.chain : context.state.chain;
@@ -472,7 +501,7 @@ export async function replyToVaultConversation(
     ]),
   );
   if (Object.values(caps).some((cap) => !Number.isInteger(cap) || cap < 0 || cap > 10_000))
-    return { kind: 'failure', reason: 'invalid' };
+    return invalid('context_caps');
   const constraints = holdingConstraints(parsed.data.messages, [...catalog.values()]);
   const prompt: VaultAgentPrompt = {
     version: 1,
@@ -509,109 +538,168 @@ export async function replyToVaultConversation(
       personQuote: constraint.quote,
     })),
   };
-  let output: Awaited<ReturnType<VaultAgentModel['read']>>;
-  try {
-    output = await model.read(context.person, prompt);
-  } catch {
-    return { kind: 'failure', reason: 'unavailable' };
-  }
-  if (output.reply === null)
-    return { kind: 'failure', reason: 'why' in output ? output.why : 'invalid' };
-  const candidate = VaultAgentModelReply.safeParse(output.reply);
-  if (!candidate.success) return { kind: 'failure', reason: 'invalid' };
-  const { proposal, ...conversation } = candidate.data;
-  const prose = [
-    conversation.message,
-    conversation.question ?? '',
-    ...(proposal
-      ? [
-          proposal.objective,
-          proposal.summary,
-          ...proposal.tradeoffs,
-          ...proposal.unknowns,
-          ...proposal.allocations.map((allocation) => allocation.why),
-        ]
-      : []),
-  ];
-  const personWords = parsed.data.messages
-    .filter((message) => message.who === 'person')
-    .map((message) => message.text);
-  const catalogNames = [
-    ...[...catalog.values()].flatMap((asset) => [asset.symbol, asset.underlying]),
-    ...(context.stockAttributes?.stocks ?? [])
-      .filter((row) => [...catalog.values()].some((asset) => asset.symbol === row.symbol))
-      .map((row) => row.company),
-  ];
-  if (
-    prose.some((text) => hasFinancialFigure(text, personWords, catalogNames) || claimsApplied(text))
-  )
-    return { kind: 'failure', reason: 'invalid' };
-  if (!proposal)
-    return {
-      kind: 'reply',
-      reply: { version: 1, messageId: request.messageId, ...conversation, proposal: null },
-    };
-  const ids = new Set<string>();
-  const sources = new Set<string>();
-  let sum = 0;
-  for (const allocation of proposal.allocations) {
-    const asset = catalog.get(allocation.assetId);
-    if (
-      !asset ||
-      ids.has(asset.id) ||
-      allocation.weightBps > (caps[asset.id] ?? 0) ||
-      (prompt.eligibilityGoal && !eligibleForGoal(asset, prompt.eligibilityGoal))
-    )
-      return { kind: 'failure', reason: 'invalid' };
-    ids.add(asset.id);
-    sum += allocation.weightBps;
-    for (const id of allocation.evidenceIds) {
-      const source = sourceById.get(id);
-      if (!source || (source.assetId !== undefined && source.assetId !== asset.id))
-        return { kind: 'failure', reason: 'invalid' };
-      sources.add(id);
+  type Output = Awaited<ReturnType<VaultAgentModel['read']>>;
+  // `problems` marks a check the model may repair once; `failed` names it. A broken stated limit already
+  // has its final reply (asking the person about the limit), which stands if the repair fails too.
+  type Checked = { result: VaultAgentResult; failed?: string; problems?: string[] };
+  const ask = async (repair?: VaultAgentRepair): Promise<Output> => {
+    try {
+      return await (repair
+        ? model.read(context.person, prompt, repair)
+        : model.read(context.person, prompt));
+    } catch {
+      return { reply: null, why: 'unavailable', detail: 'model_threw' };
     }
-  }
-  if (sum !== 10_000) return { kind: 'failure', reason: 'invalid' };
-  for (const constraint of constraints) {
-    const actual = proposal.allocations.reduce((weight, allocation) => {
-      const asset = catalog.get(allocation.assetId);
-      return weight + (asset && constraint.matches(asset) ? allocation.weightBps : 0);
-    }, 0);
-    if (actual < constraint.min || actual > constraint.max) {
+  };
+  // Where a schema check failed and its limit, for the model's repair turn only; never logged.
+  const where = (issues: readonly { path: PropertyKey[]; message: string }[]) =>
+    issues
+      .slice(0, 5)
+      .map((issue) => `At ${issue.path.map(String).join('.') || 'the top'}: ${issue.message}`);
+  const rejected = (detail: string, extra: string[] = []): Checked => ({
+    result: invalid(detail),
+    failed: detail,
+    problems: [REPAIR_HINTS[detail] ?? detail, ...extra],
+  });
+  const check = (output: Output): Checked => {
+    if ('why' in output)
       return {
-        kind: 'reply',
-        reply: {
-          version: 1,
-          messageId: request.messageId,
-          proposal: null,
-          message:
-            request.language === 'pt'
-              ? `A proposta não respeitou seu pedido: “${constraint.quote}”. Esse limite continua valendo; nada foi aplicado.`
-              : `The draft did not meet your request: “${constraint.quote}”. That requirement still stands; nothing was applied.`,
-          question:
-            request.language === 'pt'
-              ? 'Quer que eu proponha outra divisão respeitando esse limite, ou prefere alterá-lo?'
-              : 'Would you like another draft within that limit, or would you like to change the requirement?',
+        result: {
+          kind: 'failure',
+          reason: output.why,
+          ...(output.detail ? { detail: output.detail } : {}),
         },
       };
+    const candidate = VaultAgentModelReply.safeParse(output.reply);
+    if (!candidate.success) return rejected('reply_schema', where(candidate.error.issues));
+    const { proposal, ...conversation } = candidate.data;
+    const prose = [
+      conversation.message,
+      conversation.question ?? '',
+      ...(proposal
+        ? [
+            proposal.objective,
+            proposal.summary,
+            ...proposal.tradeoffs,
+            ...proposal.unknowns,
+            ...proposal.allocations.map((allocation) => allocation.why),
+          ]
+        : []),
+    ];
+    const personWords = parsed.data.messages
+      .filter((message) => message.who === 'person')
+      .map((message) => message.text);
+    const catalogNames = [
+      ...[...catalog.values()].flatMap((asset) => [asset.symbol, asset.underlying]),
+      ...(context.stockAttributes?.stocks ?? [])
+        .filter((row) => [...catalog.values()].some((asset) => asset.symbol === row.symbol))
+        .map((row) => row.company),
+    ];
+    if (prose.some((text) => hasFinancialFigure(text, personWords, catalogNames)))
+      return rejected('prose_figure');
+    if (prose.some(claimsApplied)) return rejected('prose_claims_applied');
+    if (!proposal)
+      return {
+        result: {
+          kind: 'reply',
+          reply: { version: 1, messageId: request.messageId, ...conversation, proposal: null },
+        },
+      };
+    const ids = new Set<string>();
+    const sources = new Set<string>();
+    let sum = 0;
+    for (const allocation of proposal.allocations) {
+      const asset = catalog.get(allocation.assetId);
+      if (!asset) return rejected('allocation_unlisted');
+      if (ids.has(asset.id)) return rejected('allocation_duplicate');
+      if (allocation.weightBps > (caps[asset.id] ?? 0)) return rejected('allocation_over_cap');
+      if (prompt.eligibilityGoal && !eligibleForGoal(asset, prompt.eligibilityGoal))
+        return rejected('allocation_ineligible');
+      ids.add(asset.id);
+      sum += allocation.weightBps;
+      for (const id of allocation.evidenceIds) {
+        const source = sourceById.get(id);
+        if (!source || (source.assetId !== undefined && source.assetId !== asset.id))
+          return rejected('allocation_evidence');
+        sources.add(id);
+      }
     }
-  }
-  const reply = VaultAgentReply.safeParse({
-    version: 1,
-    messageId: request.messageId,
-    ...conversation,
-    proposal: {
-      ...proposal,
-      allocations: proposal.allocations.map((allocation) => ({
-        ...allocation,
-        symbol: catalog.get(allocation.assetId)?.symbol,
-      })),
-      unknowns: [...new Set([...context.unknowns, ...proposal.unknowns])].slice(0, 12),
-      sources: [...sources].map((id) => sourceById.get(id)),
-    },
-  });
-  return reply.success
-    ? { kind: 'reply', reply: reply.data }
-    : { kind: 'failure', reason: 'invalid' };
+    if (sum !== 10_000) return rejected('allocation_sum');
+    for (const [index, constraint] of constraints.entries()) {
+      const actual = proposal.allocations.reduce((weight, allocation) => {
+        const asset = catalog.get(allocation.assetId);
+        return weight + (asset && constraint.matches(asset) ? allocation.weightBps : 0);
+      }, 0);
+      if (actual < constraint.min || actual > constraint.max) {
+        // Which limit, in words: the server's own constraint and the person's quote, never the model's weights.
+        const side = actual < constraint.min ? 'below its minWeightBps' : 'above its maxWeightBps';
+        return {
+          failed: 'allocation_constraint',
+          problems: [
+            REPAIR_HINTS.allocation_constraint ?? 'allocation_constraint',
+            `At allocationConstraints.${index} (the person said “${constraint.quote}”): the weightBps of its assetIds together came ${side}.`,
+          ],
+          result: {
+            kind: 'reply',
+            reply: {
+              version: 1,
+              messageId: request.messageId,
+              proposal: null,
+              message:
+                request.language === 'pt'
+                  ? `A proposta não respeitou seu pedido: “${constraint.quote}”. Esse limite continua valendo; nada foi aplicado.`
+                  : `The draft did not meet your request: “${constraint.quote}”. That requirement still stands; nothing was applied.`,
+              question:
+                request.language === 'pt'
+                  ? 'Quer que eu proponha outra divisão respeitando esse limite, ou prefere alterá-lo?'
+                  : 'Would you like another draft within that limit, or would you like to change the requirement?',
+            },
+          },
+        };
+      }
+    }
+    const reply = VaultAgentReply.safeParse({
+      version: 1,
+      messageId: request.messageId,
+      ...conversation,
+      proposal: {
+        ...proposal,
+        allocations: proposal.allocations.map((allocation) => ({
+          ...allocation,
+          symbol: catalog.get(allocation.assetId)?.symbol,
+        })),
+        unknowns: [...new Set([...context.unknowns, ...proposal.unknowns])].slice(0, 12),
+        sources: [...sources].map((id) => sourceById.get(id)),
+      },
+    });
+    return reply.success
+      ? { result: { kind: 'reply', reply: reply.data } }
+      : rejected('reply_shape', where(reply.error.issues));
+  };
+  const started = Date.now();
+  const first = await ask();
+  const checked = check(first);
+  if (!checked.problems || !checked.failed) return checked.result;
+  const second = check(
+    await ask({
+      previous: first.reply,
+      problems: checked.problems,
+      elapsedMs: Date.now() - started,
+    }),
+  );
+  const repair = {
+    failed: checked.failed,
+    outcome: second.problems
+      ? (second.failed ?? 'invalid')
+      : second.result.kind === 'reply'
+        ? 'repaired'
+        : (second.result.detail ?? second.result.reason),
+  };
+  // A stated limit the repair still missed, or missed at first and then failed another way: the person
+  // is asked about the limit, as before the repair.
+  const final =
+    second.result.kind === 'failure' && checked.result.kind === 'reply'
+      ? checked.result
+      : second.result;
+  return { ...final, repair };
 }
