@@ -16,7 +16,7 @@ These are product rules expressed as design. A screen that breaks one of them is
 3. **The disclaimer is never omitted, and the brand is never presented as advice.** The disclaimer renders from the single `DISCLAIMER` constant, unedited, on the plan view and in the API docs, at body size, in a hairline box. No return promises: no "earn up to", "guaranteed" or "risk-free".
 4. **No Japanese clichés.** The reference is joinery as craft and structure, not culture as costume. No kanji or kana, torii, ensō, hanko or seal-red, sakura, waves, brush type, washi texture, asanoha, kikkō or seigaiha, and no Japanese words in product UI.
 5. **Nothing like Teiten.** No bevelled chassis, instrument nameplates, LEDs, screws, retro-OS panels, mono-led headlines or cinnabar signal. Bearing is an instrument *drawn as a drawing*, not hardware.
-6. **No blue or violet.** Not for links, info states, charts or focus rings. Wood is the only colour. Status pigments (forest, ochre, madder) are earth colours and always come with a word and a shape.
+6. **No blue or violet.** Not for links, info states, charts or focus rings. Wood is the only colour. Status pigments (forest, ochre, madder) are earth colours and always come with a word and a shape. Exception for token identification (Thom, Oct 7): verified token logos retain their original artwork colours; this does not extend to interface controls, status or allocation colours (gate INVEST-TWO-PANE).
 7. **The brand recedes in the embed.** Inside a partner app, the partner's colours, font, radius and buttons take over. What survives: the pin and its popover, hatch + MOCK, hairline structure, the disclaimer block, explorer links, and a "Powered by tenonfi" credit in the partner's muted colour.
 
 ---
@@ -142,7 +142,7 @@ It takes the Sage's structure (Swiss grid discipline, hairlines, tabular figures
 - Hardwood on dark grounds (2.58–3.13:1), or hinoki-deep as a plan-leg fill on paper (1.89:1). Use wood-400 `#9D7751`.
 - A status shown by colour alone. "Watch" ochre is 1.06:1 against hardwood, so the word and the half-filled square carry it.
 - Patterns behind numbers, text, form fields, charts, the provenance popover or the disclaimer. They stop at least one grid unit away.
-- Radius above 2px, pills, circles as containers (round belongs to the pin and the composer's send button alone), or drop shadows. **Sole exception (founder, 2026-10-01):** the typing box. The goal composer container and the subscribe field use `--tf-radius-composer` (20px), with a round 36px send button inside. Nothing else softens.
+- Radius above 2px, pills, circles as containers (round belongs to the pin, the composer's send button and token identification marks), or drop shadows. **Typing-box exception (founder, 2026-10-01):** the typing box. The goal composer container and the subscribe field use `--tf-radius-composer` (20px), with a round 36px send button inside. Additional founder clarification (2026-10-07): token identification icons use a circular `AssetMark` wrapper via the scoped `rounded-asset` utility. This does not round cards, controls, status marks or allocation bars.
 - Newsreader in the embed, in Bearing, in tables, buttons or labels, or on pinned numbers. Newsreader bold or italic.
 - Light font weights, uppercase other than the word MOCK, or centred or justified body text.
 - Wood-grain textures as UI backgrounds, text set on photographs, gradient scrims or duotones.
@@ -233,7 +233,8 @@ It takes the Sage's structure (Swiss grid discipline, hairlines, tabular figures
   --color-leg-1: var(--chart-1); --color-leg-2: var(--chart-2);
   --color-leg-3: var(--chart-3); --color-leg-4: var(--chart-4);
   --radius-sm: 0px; --radius-md: var(--radius); --radius-lg: var(--radius);
-  --radius-composer: 20px; --radius-round: 9999px;   /* typing box only: composer + subscribe field */
+  --radius-composer: 20px; --radius-round: 9999px;   /* typing box, send button and scoped token identification marks */
+  --radius-asset: var(--radius-round); /* AssetMark only */
   --font-display: "Newsreader Variable", "Newsreader Fallback", Georgia, serif;
   --font-sans: "IBM Plex Sans", "Plex Sans Fallback", system-ui, Arial, sans-serif;
   --font-condensed: "IBM Plex Sans Condensed", "IBM Plex Sans", "Arial Narrow", sans-serif;

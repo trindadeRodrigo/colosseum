@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { Address, AssetId, ChainId, Hex32 } from './chain';
+import { AssetClass } from './basket-asset';
+import { Address, AssetId, ChainId, Hex32, Sourced } from './chain';
 import { Provenance } from './enums';
 import { Target } from './recipe';
 
@@ -48,6 +49,47 @@ export const AutoFollowOffer = z.discriminatedUnion('offered', [
 ]);
 export type AutoFollowOffer = z.infer<typeof AutoFollowOffer>;
 
+/**
+ * What the server has measured or stored about one holding of a recipe's version in effect: the same
+ * readings a plan is made from (the stored yield, Bearing's sell depth). Each is null where the server
+ * has none for the token: a stock pays no yield, and a token nobody measured has no exit figure. A
+ * null is never a zero.
+ */
+export const HoldingFigures = z.object({
+  asset: AssetId,
+  /** What kind of asset it is, as the chain's list has it; null for a token that list does not have. */
+  cls: AssetClass.nullable(),
+  /** The token's yield a year, as fractions (0.045 is 4.5%): as quoted, and after the haircut. */
+  yield: Sourced.extend({
+    quoted: z.number(),
+    afterHaircut: z.number(),
+    haircutRule: z.string(),
+  }).nullable(),
+  /**
+   * The most of it, in dollars, that can be sold within `windowDays` at a cost of at most
+   * `maxCostBps`, in the worst conditions measured. `lowerBound`: the market took every size that
+   * was measured, so the true figure is at least this.
+   */
+  exit: Sourced.extend({
+    capacityUsd: z.number().nonnegative(),
+    lowerBound: z.boolean(),
+    windowDays: z.number().int().positive(),
+    maxCostBps: z.number().nonnegative(),
+  }).nullable(),
+});
+export type HoldingFigures = z.infer<typeof HoldingFigures>;
+
+/**
+ * The figures of a recipe's version in effect, a holding at a time. Nothing is added up across the
+ * holdings: a plan's yield range is the engine's to work out (`cardOf`), and it has no entry that
+ * takes a recipe.
+ */
+export const RecipeFigures = z.object({
+  /** One per component of the version in effect, in its order. */
+  holdings: z.array(HoldingFigures),
+});
+export type RecipeFigures = z.infer<typeof RecipeFigures>;
+
 /** A family's recipe on one chain. */
 export const SharedRecipe = z.object({
   chain: ChainId,
@@ -75,6 +117,8 @@ export const SharedRecipe = z.object({
   observedAt: z.string().datetime(),
   /** The label of the chain the recipe is on: `mock`, `sandbox` (a test network) or `live`. */
   provenance: Provenance,
+  /** What the server measured about the version in effect. Left out by a server that reads none. */
+  figures: RecipeFigures.optional(),
 });
 export type SharedRecipe = z.infer<typeof SharedRecipe>;
 

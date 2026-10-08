@@ -12,24 +12,29 @@ import { EMBEDDED, json, SOLANA, signedInPort } from '../wallet/test/fake-port';
 import { router } from '../wallet/test/mock-next';
 import { portStore } from '../wallet/test/mock-provider';
 import { BuyScreen } from './BuyScreen';
+import { Invest } from './Invest';
 import { rememberPlan } from './plan-store';
-import { PLAN_ID, planOn, serverKeepsPlans, USER } from './test/fixtures';
+import { ORDER_ID, orderOn, PLAN_ID, planOn, serverKeepsPlans, USER } from './test/fixtures';
 
 vi.mock('../wallet/WalletProvider', () => import('../wallet/test/mock-provider'));
+// the card draws the order's own screen, which holds the runner: nothing here presses it
+vi.mock('../wallet/signing', () => import('../wallet/test/mock-signing'));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
 vi.mock('next/link', () => import('../wallet/test/mock-next'));
 
-// The buy as four steps (Thom, Oct 6), with real events against a double of the API: the amount the
-// plan was built for, the funds in one line with the test faucet where the server offers it, the four
-// points of the trust notice with the whole notice behind a disclosure, and the review. One step is
-// open at a time; the card carries the test network's plate once.
+// What the invest card shows before the press (gate INVEST-ONE-PRESS), with real events against a
+// double of the API: the amount the plan was built for, the funds in one line with the test faucet
+// where the server offers it, shown because the wallet is short, and the four points of the trust
+// notice with the whole notice behind a disclosure. These cases were the four-step buy's
+// (buy-steps.events.test.ts) and hold the same things on the card. The press and the run are in
+// invest.events.test.ts.
 
 const en = dictionary('en');
 
 type Call = { method: string; path: string; body?: unknown };
 
 /** GET /v1/funding on the test network: nothing held unless `funded`, test funds where `faucet`. */
-const funding = (o: { funded: boolean; faucet?: boolean; provenance?: string }) => {
+const funding = (o: { funded: boolean; faucet?: boolean; provenance?: string; have?: string }) => {
   const provenance = o.provenance ?? 'sandbox';
   const stamp = {
     source: 'devnet RPC',
@@ -48,17 +53,18 @@ const funding = (o: { funded: boolean; faucet?: boolean; provenance?: string }) 
       asset: 'solana:usdc',
       symbol: 'USDC',
       decimals: 6,
-      haveRaw: o.funded ? '50000000000' : '0',
+      haveRaw: o.funded ? '50000000000' : (o.have ?? '0'),
       needRaw: '40000000000',
-      missingRaw: o.funded ? '0' : '40000000000',
+      missingRaw: o.funded ? '0' : (40_000_000_000n - BigInt(o.have ?? '0')).toString(),
     },
     gas: {
       ...stamp,
       symbol: 'SOL',
       decimals: 9,
-      haveRaw: o.funded ? '1000000000' : '0',
+      // a wallet that holds some test dollars has its fees too
+      haveRaw: o.funded || o.have ? '1000000000' : '0',
       needRaw: '10100000',
-      missingRaw: o.funded ? '0' : '10100000',
+      missingRaw: o.funded || o.have ? '0' : '10100000',
     },
     steps: 3,
     newVault: true,
@@ -72,6 +78,8 @@ function api(
     funded?: boolean;
     faucet?: boolean;
     provenance?: string;
+    /** What the wallet holds of the test dollar, in raw units, while it is short. */
+    have?: string;
     /** The answer of POST /v1/testnet/fund. Default: what was sent, and the wallet funded after. */
     fund?: () => Response;
   } = {},
@@ -91,7 +99,9 @@ function api(
       calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
       if (path === '/v1/me') return json(person);
       if (path.startsWith('/v1/funding?'))
-        return json(funding({ funded, faucet: o.faucet ?? false, provenance: o.provenance }));
+        return json(
+          funding({ funded, faucet: o.faucet ?? false, provenance: o.provenance, have: o.have }),
+        );
       if (path === '/v1/testnet/fund' && method === 'POST') {
         if (o.fund) return o.fund();
         funded = true;
@@ -105,6 +115,8 @@ function api(
           left: 2,
         });
       }
+      if (path === '/v1/orders' && method === 'POST') return json(orderOn());
+      if (path === `/v1/orders/${ORDER_ID}`) return json(orderOn());
       return json({ error: 'not found' }, 404);
     }),
   );
@@ -119,21 +131,11 @@ const buy = async () => {
   return host;
 };
 
-const step = (host: HTMLElement, id: string) =>
-  find(host, `[data-ui="buy-step"][data-step="${id}"]`);
-const head = (host: HTMLElement, id: string) =>
-  find<HTMLButtonElement>(step(host, id), 'h2 button');
-const panel = (host: HTMLElement, id: string) =>
-  find(host, `#${CSS.escape(head(host, id).getAttribute('aria-controls') ?? '')}`);
-const next = (host: HTMLElement, id: string) =>
-  find(
-    panel(host, id),
-    ':scope > div > [data-variant="primary"], :scope > form > [data-variant="primary"]',
-  );
-const opened = (host: HTMLElement) =>
-  [...host.querySelectorAll('[data-ui="buy-step"]')]
-    .filter((s) => s.querySelector('h2 button')?.getAttribute('aria-expanded') === 'true')
-    .map((s) => s.getAttribute('data-step'));
+const card = (host: HTMLElement) => find(host, '[data-ui="invest-card"]');
+/** The card's one button: "Invest $X". */
+const press = (host: HTMLElement) => find(host, '[data-ui="invest-card"] [data-variant="primary"]');
+const amountField = (host: HTMLElement) =>
+  find<HTMLInputElement>(host, 'input[inputmode="decimal"]');
 const button = (host: HTMLElement, name: string) =>
   [...host.querySelectorAll('button')].find(
     (b) => b.textContent?.includes(name) && !b.closest('[hidden]'),
@@ -152,37 +154,38 @@ describe('the amount', () => {
   it('starts at the amount the plan was built for, with the limits as a hint', async () => {
     api();
     const host = await buy();
-    const input = find<HTMLInputElement>(host, 'input[inputmode="decimal"]');
     expect(planOn().proposal.sheet.amountUsd).toBe(40_000);
-    expect(input.value).toBe('40000');
+    expect(amountField(host).value).toBe('40000');
     expect(host.textContent).toContain(en.buy.amount.hint('$40,000'));
     expect(en.buy.amount.hint('$40,000')).toMatch(/\$10 to \$1,000,000/);
   });
 
-  it('holds its Continue while the amount is not one from $10 to $1,000,000', async () => {
-    api();
+  it('holds the press, and reads nothing, while the amount is not one from $10 to $1,000,000', async () => {
+    const server = api();
     const host = await buy();
-    const input = find<HTMLInputElement>(host, 'input[inputmode="decimal"]');
-    await type(input, '5');
-    expect(next(host, 'amount').getAttribute('aria-disabled')).toBe('true');
+    const reads = server.to('/v1/funding').length;
+    await type(amountField(host), '5');
+    await settle(350);
+    expect(press(host).getAttribute('aria-disabled')).toBe('true');
     expect(host.textContent).toContain(en.buy.blocked.amount);
-    await click(next(host, 'amount'));
-    expect(opened(host)).toEqual(['amount']);
-    await type(input, '200');
-    expect(next(host, 'amount').getAttribute('aria-disabled')).toBeNull();
+    expect(server.to('/v1/funding')).toHaveLength(reads);
+    await type(amountField(host), '200');
+    await settle(350);
+    await settle();
+    expect(host.textContent).not.toContain(en.buy.blocked.amount);
+    expect(server.to('/v1/funding').at(-1)?.path).toContain('amountUsd=200');
   });
 
   it('reads a lone mark as the page’s language does: three decimals are no amount of money', async () => {
     api();
     const host = await buy();
-    const input = find<HTMLInputElement>(host, 'input[inputmode="decimal"]');
     // in English "10.555" is not ten thousand: it is refused, not read as $10,555
-    await type(input, '10.555');
-    expect(next(host, 'amount').getAttribute('aria-disabled')).toBe('true');
+    await type(amountField(host), '10.555');
+    expect(press(host).getAttribute('aria-disabled')).toBe('true');
     expect(host.textContent).toContain(en.buy.blocked.amount);
     for (const fine of ['10.55', '10,555', '1,000.5']) {
-      await type(input, fine);
-      expect(next(host, 'amount').getAttribute('aria-disabled'), fine).toBeNull();
+      await type(amountField(host), fine);
+      expect(host.textContent, fine).not.toContain(en.buy.blocked.amount);
     }
   });
 
@@ -190,109 +193,61 @@ describe('the amount', () => {
     api();
     const host = await buy();
     expect(host.textContent).not.toContain(en.buy.amount.other('$40,000'));
-    await type(find<HTMLInputElement>(host, 'input[inputmode="decimal"]'), '100');
+    await type(amountField(host), '100');
     expect(host.textContent).toContain(en.buy.amount.other('$40,000'));
     expect(host.textContent).not.toContain(en.buy.amount.hint('$40,000'));
   });
 });
 
-describe('the steps', () => {
-  it('opens one step at a time, marks each done, and moves the focus to the step it opens', async () => {
-    api({ funded: true });
-    const host = await buy();
-    const progress = find(host, 'ol[data-ui="buy-progress"]');
-    expect(progress.getAttribute('aria-label')).toBe(en.buy.steps.label);
-    expect([...progress.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
-      '1Amount',
-      // a funded wallet: the funds are done before the step is opened
-      '2Funds, done',
-      '3Trust',
-      '4Review',
-    ]);
-    const current = () =>
-      progress.querySelector('[aria-current="step"]')?.getAttribute('data-step');
-    expect(opened(host)).toEqual(['amount']);
-    expect(current()).toBe('amount');
-    // the other panels are in the page, hidden
-    expect(panel(host, 'funds').hidden).toBe(true);
-
-    await click(next(host, 'amount'));
-    expect(opened(host)).toEqual(['funds']);
-    expect(current()).toBe('funds');
-    expect(document.activeElement).toBe(head(host, 'funds'));
-    // the amount is done, and says so in words to a screen reader
-    expect(step(host, 'amount').getAttribute('data-done')).toBe('true');
-    expect(head(host, 'amount').textContent).toContain(`, ${en.buy.steps.done}`);
-    expect(head(host, 'amount').textContent).toContain('$40,000');
-    expect(progress.querySelector('[data-step="amount"]')?.textContent).toContain(
-      en.buy.steps.done,
-    );
-
-    // a funded wallet: the funds are done, and the trust notice is next
-    expect(step(host, 'funds').getAttribute('data-done')).toBe('true');
-    await click(next(host, 'funds'));
-    expect(opened(host)).toEqual(['trust']);
-    expect(next(host, 'trust').getAttribute('aria-disabled')).toBe('true');
-    await click(find(panel(host, 'trust'), 'input[type="checkbox"]'));
-    await click(next(host, 'trust'));
-    expect(opened(host)).toEqual(['review']);
-    expect(panel(host, 'review').textContent).toContain(
-      en.buy.steps.reviewLead('$40,000', 'Solana'),
-    );
-    const review = find(panel(host, 'review'), '[data-variant="primary"]');
-    expect(review.getAttribute('aria-disabled')).toBeNull();
-
-    // any step opens again from its heading, and closes the one that was open
-    await click(head(host, 'amount'));
-    expect(opened(host)).toEqual(['amount']);
-    expect(document.activeElement).toBe(head(host, 'amount'));
-  });
-
-  it('keeps every step in place while the wallet is read again: the focus is not lost with it', async () => {
-    // The API says a test network and the wallet's own chain says the mock, as the e2e stub does: the
-    // card's label must not come and go with each read, or its contents are made again.
+describe('the card', () => {
+  it('keeps what is on it in place while the wallet is read, where the read says a test network and the wallet’s chain says the mock', async () => {
+    // As the e2e stub does. A card labelled as a sample draws its contents inside another element:
+    // a label that waited for the first read, or came and went with each one, would make
+    // everything on the card again, and drop what was ticked or focused (#150).
     portStore.set(signedInPort(EMBEDDED, { userId: USER }, 'mock'));
     const server = api({ funded: false, faucet: true });
-    // From before the first read: what a person has focused or typed in is not made again by it.
     const host = await mount(withAccount('en', createElement(BuyScreen, { id: PLAN_ID })));
     await settle();
-    const field = find<HTMLInputElement>(host, 'input[inputmode="decimal"]');
+    const box = () =>
+      find<HTMLInputElement>(host, '[data-ui="trust-notice"] input[type="checkbox"]');
+    const before = box();
+    const full = find<HTMLElement>(host, 'details[data-ui="trust-full"] summary');
+    await click(before);
+    full.focus();
     expect(server.to('/v1/funding')).toHaveLength(0);
+    // the first read arrives
     await settle(350);
     await settle();
     expect(server.to('/v1/funding')).toHaveLength(1);
-    expect(find(host, 'input[inputmode="decimal"]')).toBe(field);
-    await click(next(host, 'amount'));
-    const before = head(host, 'funds');
-    expect(document.activeElement).toBe(before);
+    expect(box()).toBe(before);
+    expect(before.checked).toBe(true);
+    expect(document.activeElement).toBe(full);
+    // and the wallet is read again: while it reads, and once it has
     const reads = server.to('/v1/funding').length;
     await click(button(host, en.buy.funding.readAgain) as HTMLButtonElement);
-    // while it reads, and once it has
-    expect(head(host, 'funds')).toBe(before);
+    expect(box()).toBe(before);
     await settle(350);
     await settle();
     expect(server.to('/v1/funding').length).toBeGreaterThan(reads);
-    expect(head(host, 'funds')).toBe(before);
+    expect(box()).toBe(before);
     expect(before.isConnected).toBe(true);
-    // a step opened now still takes the focus
-    await click(head(host, 'trust'));
-    expect(document.activeElement).toBe(head(host, 'trust'));
+    expect(before.checked).toBe(true);
   });
 
-  it('holds the funds step until the wallet has what the buy needs', async () => {
-    api({ funded: false });
+  it('holds the press until the wallet has what the buy needs, and makes no order', async () => {
+    const server = api({ funded: false });
     const host = await buy();
-    await click(next(host, 'amount'));
-    expect(step(host, 'funds').getAttribute('data-done')).toBe('false');
-    expect(next(host, 'funds').getAttribute('aria-disabled')).toBe('true');
-    expect(head(host, 'funds').textContent).not.toContain(en.buy.steps.done);
+    await settle(1050);
+    expect(press(host).getAttribute('aria-disabled')).toBe('true');
+    expect(host.textContent).toContain(en.buy.blocked.funding);
+    expect(server.to('/v1/orders')).toEqual([]);
   });
 
   it('says once, in a quiet line on the card, that its figures are the test network’s, and never MOCK', async () => {
     api({ funded: false });
     const host = await buy();
-    const card = find(host, 'section[data-ui="card"]');
-    expect(find(card, '[data-ui="data-note"]').textContent).toBe(
+    const section = find(host, 'section[data-ui="card"]');
+    expect(find(section, '[data-ui="data-note"]').textContent).toBe(
       en.buy.steps.note.testNetwork('Solana'),
     );
     expect(host.querySelectorAll('section[data-ui="card"]')).toHaveLength(1);
@@ -308,13 +263,15 @@ describe('the steps', () => {
     // the card's hatch band and its one quiet line at the foot (MOCK-QUIET), and no top line
     expect(find(host, '[data-ui="sample-note"]').textContent).toBe(en.shell.mockAnnounce);
     expect(host.querySelector('[data-ui="data-note"]')).toBeNull();
-    await click(next(host, 'amount'));
     expect(button(host, en.buy.funding.mockFund)).toBeDefined();
     expect(host.textContent).not.toMatch(/MOCK/);
   });
 });
 
-describe('the funds', () => {
+describe('the funds, shown because the wallet is short', () => {
+  // 36,000 of the 40,000 test dollars held: what is missing is within one send of test funds
+  const WITHIN = '36000000000';
+
   it('says the need in one line, with the details behind a disclosure', async () => {
     api({ funded: false });
     const host = await buy();
@@ -328,10 +285,16 @@ describe('the funds', () => {
     expect(details.querySelector('table')).not.toBeNull();
   });
 
-  it('offers test funds where the server can send them, sends for this buy, then reads the wallet again', async () => {
-    const server = api({ funded: false, faucet: true });
+  it('is not shown for a wallet that holds what the buy needs', async () => {
+    api({ funded: true });
     const host = await buy();
-    await click(next(host, 'amount'));
+    expect(host.querySelector('[data-ui="funding-step"]')).toBeNull();
+    expect(host.textContent).not.toContain(en.buy.blocked.funding);
+  });
+
+  it('offers test funds where the server can send them, sends for this buy, then reads the wallet again', async () => {
+    const server = api({ funded: false, faucet: true, have: WITHIN });
+    const host = await buy();
     const get = button(host, en.buy.funding.testFunds);
     expect(get).toBeDefined();
     // the old instructions give way to the button
@@ -347,18 +310,18 @@ describe('the funds', () => {
     await settle(350);
     await settle();
     expect(server.to('/v1/funding').length).toBeGreaterThan(reads);
+    // what arrived is still said once the wallet holds it
     expect(find(host, '[data-ui="test-funds-sent"]').textContent).toBe(
       en.buy.funding.testSent('40,400 USDC and 0.012625 SOL'),
     );
     expect(find(host, '[data-ui="funding-line"]').textContent).toContain(en.buy.funding.ok);
-    expect(next(host, 'funds').getAttribute('aria-disabled')).toBeNull();
+    expect(host.textContent).not.toContain(en.buy.blocked.funding);
   });
 
   it('offers one way to fill the wallet at a time, and names the cash as the plan does', async () => {
-    api({ funded: false, faucet: true });
+    api({ funded: false, faucet: true, have: WITHIN });
     portStore.set(signedInPort(EMBEDDED, { userId: USER, test: true }, 'mock'));
     const host = await buy();
-    await click(next(host, 'amount'));
     expect(button(host, en.buy.funding.testFunds)).toBeDefined();
     expect(button(host, en.buy.funding.mockFund)).toBeUndefined();
     // the source line of the details names the token as every screen does, at the one time format
@@ -373,16 +336,13 @@ describe('the funds', () => {
     api({ funded: false, faucet: false });
     const host = await buy();
     expect(button(host, en.buy.funding.testFunds)).toBeUndefined();
-    await click(next(host, 'amount'));
-    expect(button(host, en.buy.funding.testFunds)).toBeUndefined();
     expect(host.textContent).toContain(en.buy.funding.short('Solana'));
     expect(host.textContent).toContain(en.buy.funding.address(SOLANA));
   });
 
   it('never offers test funds on figures that are not the test network’s', async () => {
-    api({ funded: false, faucet: true, provenance: 'live' });
+    api({ funded: false, faucet: true, provenance: 'live', have: WITHIN });
     const host = await buy();
-    await click(next(host, 'amount'));
     expect(button(host, en.buy.funding.testFunds)).toBeUndefined();
   });
 
@@ -390,17 +350,17 @@ describe('the funds', () => {
     const server = api({
       funded: false,
       faucet: true,
+      have: WITHIN,
       fund: () => json({ error: 'x', code: 'RATE_LIMITED' }, 429),
     });
     const host = await buy();
-    await click(next(host, 'amount'));
     await click(button(host, en.buy.funding.testFunds) as HTMLButtonElement);
     await settle();
-    expect(find(panel(host, 'funds'), '[role="alert"]').textContent).toBe(
+    expect(find(find(host, '[data-ui="funding-step"]'), '[role="alert"]').textContent).toBe(
       en.buy.funding.testFailure.busy,
     );
     expect(server.to('/v1/testnet/fund')).toHaveLength(1);
-    expect(next(host, 'funds').getAttribute('aria-disabled')).toBe('true');
+    expect(press(host).getAttribute('aria-disabled')).toBe('true');
   });
 
   it('says when the faucet’s float is low, and that the team tops it up', async () => {
@@ -408,65 +368,110 @@ describe('the funds', () => {
       [TEST_FUNDS_LOW.cash, en.buy.funding.testFailure.lowCash],
       [TEST_FUNDS_LOW.gas, en.buy.funding.testFailure.lowGas],
     ] as const) {
-      api({ funded: false, faucet: true, fund: () => json({ error }, 409) });
+      api({ funded: false, faucet: true, have: WITHIN, fund: () => json({ error }, 409) });
       const host = await buy();
-      await click(next(host, 'amount'));
       await click(button(host, en.buy.funding.testFunds) as HTMLButtonElement);
       await settle();
-      expect(find(panel(host, 'funds'), '[role="alert"]').textContent).toBe(sentence);
+      expect(find(find(host, '[data-ui="funding-step"]'), '[role="alert"]').textContent).toBe(
+        sentence,
+      );
       await unmountAll();
     }
   });
 });
 
+describe('short by more than one send of test funds gives', () => {
+  // $40,000 asked for, 12,900 test dollars in the wallet, fees covered: 27,100 short, and one send
+  // gives at most $5,000.
+  const HAVE = '12900000000';
+
+  it('says what a send gives before the ask, and sends that much instead of being refused the whole amount', async () => {
+    const server = api({ funded: false, faucet: true, have: HAVE });
+    const host = await buy();
+    expect(find(host, '[data-ui="funding-line"]').textContent).toContain('27,100 USDC');
+    expect(find(host, '[data-ui="test-funds-cap"]').textContent).toContain(
+      en.invest.short.cap('$5,000', 3),
+    );
+    // the button says what it will do, and "Get test funds" is not offered as if it covered it
+    expect(button(host, en.buy.funding.testFunds)).toBeUndefined();
+    const send = button(host, en.invest.short.sendAnyway('$5,000'));
+    expect(send).toBeDefined();
+    await click(send as HTMLButtonElement);
+    await settle();
+    await settle();
+    // asked for what one send covers over what the wallet holds: 4,950 short, which with the
+    // server's 1% over is within its $5,000
+    expect(server.to('/v1/testnet/fund').map((c) => c.body)).toEqual([
+      { proposalId: PLAN_ID, amountUsd: 12_900 + 4_950, wallet: SOLANA },
+    ]);
+    expect(host.textContent).not.toContain(en.buy.funding.testFailure.tooMuch);
+  });
+
+  it('offers the amount the wallet covers in one press, and says how to choose another where it is typed', async () => {
+    const server = api({ funded: false, faucet: true, have: HAVE });
+    const host = await buy();
+    const ways = find(host, '[data-ui="invest-short"]');
+    expect(ways.textContent).toContain(en.invest.short.covers('$12,900'));
+    expect(ways.textContent).toContain(en.invest.short.typeLess);
+    await click(button(ways, en.invest.short.instead('$12,900')) as HTMLButtonElement);
+    await settle(350);
+    await settle();
+    // the amount is the page's field: it changes, and the wallet is read for it
+    expect(amountField(host).value).toBe('12900');
+    expect(server.to('/v1/funding').at(-1)?.path).toContain('amountUsd=12900');
+  });
+
+  it('on a plan’s card the amount is the goal’s: the host is handed the amount, and the card says where to change it', async () => {
+    api({ funded: false, faucet: true, have: HAVE });
+    const chosen = vi.fn();
+    const host = await mount(
+      withAccount(
+        'en',
+        createElement(Invest, { of: { plan: PLAN_ID }, amount: 40_000, onAmount: chosen }),
+      ),
+    );
+    await settle();
+    await settle(350);
+    await settle();
+    const ways = find(host, '[data-ui="invest-short"]');
+    expect(ways.textContent).toContain(en.invest.short.inGoal);
+    expect(ways.textContent).not.toContain(en.invest.short.typeLess);
+    await click(button(ways, en.invest.short.instead('$12,900')) as HTMLButtonElement);
+    expect(chosen).toHaveBeenCalledWith(12_900);
+  });
+
+  it('says none of it for a shortfall one send covers, or where our server sends no test funds', async () => {
+    // 36,000 held: 4,000 short
+    api({ funded: false, faucet: true, have: '36000000000' });
+    const within = await buy();
+    expect(button(within, en.buy.funding.testFunds)).toBeDefined();
+    expect(within.querySelector('[data-ui="invest-short"]')).toBeNull();
+    expect(within.querySelector('[data-ui="test-funds-cap"]')).toBeNull();
+    await unmountAll();
+    api({ funded: false, faucet: false, have: HAVE });
+    const none = await buy();
+    expect(none.querySelector('[data-ui="invest-short"]')).toBeNull();
+    expect(none.textContent).toContain(en.buy.funding.address(SOLANA));
+  });
+});
+
 describe('a notice accepted before', () => {
-  it('is not a step again: three steps, and the notice is still there to read at the review', async () => {
+  it('is not asked again, and is still on the card to read', async () => {
     api({ funded: true });
     window.localStorage.setItem(
       `tf-trust:${USER}`,
       JSON.stringify({ textVersion: TRUST_STATUS.textVersion }),
     );
     const host = await buy();
-    const progress = find(host, 'ol[data-ui="buy-progress"]');
-    expect([...progress.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
-      '1Amount',
-      '2Funds, done',
-      '3Review',
-    ]);
-    expect(host.querySelector('[data-ui="buy-step"][data-step="trust"]')).toBeNull();
-    await click(next(host, 'amount'));
-    await click(next(host, 'funds'));
-    expect(opened(host)).toEqual(['review']);
-    const kept = find<HTMLDetailsElement>(panel(host, 'review'), '[data-ui="trust-kept"]');
+    const kept = find<HTMLDetailsElement>(card(host), '[data-ui="trust-kept"]');
     expect(kept.open).toBe(false);
     expect(kept.textContent).toContain(en.trust.accepted);
-    expect(kept.querySelector('input[type="checkbox"]')).toBeNull();
+    expect(card(host).querySelector('input[type="checkbox"]')).toBeNull();
+    expect(host.textContent).not.toContain(en.buy.blocked.trust);
   });
 });
 
 describe('the first deposit', () => {
-  const reviewButton = (host: HTMLElement) =>
-    find(panel(host, 'review'), ':scope > div > [data-variant="primary"]');
-
-  it('cannot reach an order without the notice: the step is there, and the review holds until it is ticked', async () => {
-    const server = api({ funded: true });
-    const host = await buy();
-    expect(step(host, 'trust')).toBeTruthy();
-    // the review step can be opened from its heading, and its button still refuses
-    await click(head(host, 'review'));
-    expect(reviewButton(host).getAttribute('aria-disabled')).toBe('true');
-    expect(panel(host, 'review').textContent).toContain(en.buy.blocked.trust);
-    await click(reviewButton(host));
-    await settle();
-    expect(server.to('/v1/orders')).toEqual([]);
-    expect(window.localStorage.getItem(`tf-trust:${USER}`)).toBeNull();
-    // ticked, it lets go
-    await click(head(host, 'trust'));
-    await click(find(panel(host, 'trust'), 'input[type="checkbox"]'));
-    await click(head(host, 'review'));
-    expect(reviewButton(host).getAttribute('aria-disabled')).toBeNull();
-  });
-
   it('asks again where the acceptance is not this person’s, not this text’s, or not in this browser', async () => {
     const stored = (who: string, textVersion: string) =>
       window.localStorage.setItem(`tf-trust:${who}`, JSON.stringify({ textVersion }));
@@ -483,9 +488,12 @@ describe('the first deposit', () => {
       seed();
       api({ funded: true });
       const host = await buy();
-      expect(step(host, 'trust')).toBeTruthy();
-      await click(head(host, 'review'));
-      expect(reviewButton(host).getAttribute('aria-disabled')).toBe('true');
+      // the notice is on the card with its box, and the press is held for it
+      expect(
+        card(host).querySelector('[data-ui="trust-notice"] input[type="checkbox"]'),
+      ).not.toBeNull();
+      expect(host.textContent).toContain(en.buy.blocked.trust);
+      expect(press(host).getAttribute('aria-disabled')).toBe('true');
       await unmountAll();
     }
   });

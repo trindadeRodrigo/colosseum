@@ -16,7 +16,7 @@ import {
 
 // The forbidden things (STYLE.md, "Never"), looked for in the source of apps/web and in the stylesheet
 // the app is built from: a blue or a violet, a shadow, a corner that is not 0 or 2px outside the
-// composer, a typeface that is not one of the three, a font fetched from another origin.
+// composer and token identification marks, a typeface that is not one of the three, a font fetched from another origin.
 
 /**
  * What was written before the design system and still breaks it. WEB-2 rebuilds these pages on the
@@ -281,9 +281,16 @@ describe('the forbidden things', () => {
       expect(read(ADAPTER.importedBy)).toContain(ADAPTER.stylesheet);
     });
 
-    it('uses the composer’s rounded utilities in the composer only', () => {
+    it('uses rounded utilities only in the composer or dedicated token wrapper', () => {
       for (const name of Object.keys(COMPOSER_RADIUS))
         expect(users(name), name).toEqual(['components/ui/Composer.tsx']);
+      // The token-only exception is scoped to the component, never the rest of PlanView.
+      const file = 'features/order/PlanView.tsx';
+      expect(users('rounded-asset')).toEqual([file]);
+      const source = read(file);
+      const assetMark = source.match(/export function AssetMark\([\s\S]*?\n}\n/)?.[0] ?? '';
+      expect(classTokens(file, assetMark).has('rounded-asset')).toBe(true);
+      expect(classTokens(file, source.replace(assetMark, '')).has('rounded-asset')).toBe(false);
     });
   });
 
@@ -366,7 +373,7 @@ describe('the forbidden things', () => {
       ]);
     });
 
-    it('rounds nothing but the composer: 20px for the box, a round send button', () => {
+    it('keeps surfaces square, with scoped round composer and token marks', () => {
       const corners = new Map<string, string>();
       root.walkDecls('border-radius', (decl) => {
         const rule = decl.parent as postcss.Rule;
@@ -374,6 +381,12 @@ describe('the forbidden things', () => {
       });
       expect(corners.get('.rounded-composer')).toBe('var(--tf-radius-composer)');
       expect(corners.get('.rounded-round')).toBe('var(--tf-radius-round)');
+      expect(corners.get('.rounded-asset')).toBe('var(--tf-radius-round)');
+      expect(vars.get('--tf-radius-round')).toBe('9999px');
+      // A circular card is still a violation; the exception names only the dedicated utility.
+      expect(
+        scanCss(postcss.parse('.card { border-radius: 9999px }'), vars).map((f) => f.kind),
+      ).toEqual(['radius']);
       expect(vars.get('--tf-radius-composer')).toBe('20px');
       expect(corners.get('.rounded-md')).toBe('var(--radius)');
     });

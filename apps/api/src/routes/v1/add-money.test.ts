@@ -278,6 +278,11 @@ describe('a person with more plans than one page of the list holds', () => {
     // and an add is listed under its vault's plan, on the page that plan is on
     const added = await addTo(who, growVault, 200);
     expect(added.statusCode, added.body).toBe(200);
+    // approved, as the person's press does: its first step is built (an order nobody approved is
+    // no buy, and is in no list)
+    const add = OrderDetail.parse(added.json());
+    const step = [...add.legs].sort((x, y) => x.seq - y.seq)[0];
+    expect((await post(who, `/v1/orders/${add.id}/legs/${step?.id}/build`)).statusCode).toBe(200);
     const second = PersonPlansResponse.parse(
       (await get(who, `/v1/me/plans?before=${encodeURIComponent(first.next as string)}`)).json(),
     );

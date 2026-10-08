@@ -40,6 +40,7 @@ export function FundingStep({
   onReadAgain,
   onMock,
   testFunds,
+  capped,
 }: {
   funding: Funding;
   chainName: string;
@@ -52,6 +53,11 @@ export function FundingStep({
   onReadAgain: () => void;
   onMock: () => void;
   testFunds: TestFundsState;
+  /**
+   * The shortfall is more than one send of test funds gives: what a send gives is said in place of
+   * the plain note, and the button says what it will send.
+   */
+  capped?: { note: string; label: string };
 }) {
   const t = useT();
   const lang = useLang();
@@ -194,7 +200,13 @@ export function FundingStep({
       </div>
       {read && !read.ok && offered && (
         <p className="max-w-(--tf-measure-body) text-body-sm text-muted-foreground">
-          {t.buy.funding.testNote}
+          {capped ? (
+            <span data-ui="test-funds-cap">
+              {capped.note} {t.buy.funding.testNote}
+            </span>
+          ) : (
+            t.buy.funding.testNote
+          )}
         </p>
       )}
       {read && !read.ok && !offered && !mock && (
@@ -214,7 +226,7 @@ export function FundingStep({
             busyLabel={t.buy.funding.testFunding}
             onClick={testFunds.onAsk}
           >
-            {t.buy.funding.testFunds}
+            {capped ? capped.label : t.buy.funding.testFunds}
           </Button>
         )}
         {/* One way to fill the wallet at a time: test funds where the server sends them. */}

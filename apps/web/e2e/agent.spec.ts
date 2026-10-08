@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { type APIRequestContext, expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
-import { throughBuySteps } from './buy-steps';
+import { readyToInvest } from './invest';
 import { inTheme } from './theme';
 
 // An agent's plan, end to end (AGT-3's check, on the stub): an agent calls the MCP server (apps/mcp,
@@ -85,12 +85,11 @@ test('an agent makes a plan through the MCP server, and the person buys it from 
   await expect(page.locator('[data-ui="plan-from-link"]')).toHaveText(en.plan.fromLink);
   await check(page, 'plan-from-link');
 
-  await page.getByRole('link', { name: en.plan.buy }).click();
+  await page.getByRole('link', { name: en.plan.invest('$40') }).click();
   await expect(page).toHaveURL(/\/plan\/[^/]+\/buy$/);
-  await throughBuySteps(page);
-  await page.getByRole('button', { name: en.buy.review('$40') }).click();
-  await expect(page).toHaveURL(/\/orders\/[^/]+$/);
-  await page.getByRole('button', { name: en.order.signAndBuy('$40') }).click();
+  // the order is reviewed on the buy's own card, and one press signs its steps
+  await (await readyToInvest(page)).click();
+  await expect(page).toHaveURL(/\/plan\/[^/]+\/buy$/);
   await expect(page.locator('[data-ui="order-status"]')).toHaveText(
     en.order.outcome.done('Solana'),
     { timeout: 90_000 },

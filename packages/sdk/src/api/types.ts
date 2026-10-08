@@ -2184,6 +2184,31 @@ export type GetIndexesBySlugResponse = {
       source: 'chain' | 'cache';
       observedAt: string;
       provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+      figures?: {
+        holdings: {
+          asset: string;
+          cls: ('stock' | 'etf' | 'gold' | 'commodity' | 'dollar_yield' | 'crypto' | 'cash') | null;
+          yield: {
+            source: string;
+            method: string;
+            fetchedAt: string;
+            provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+            quoted: number;
+            afterHaircut: number;
+            haircutRule: string;
+          } | null;
+          exit: {
+            source: string;
+            method: string;
+            fetchedAt: string;
+            provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+            capacityUsd: number;
+            lowerBound: boolean;
+            windowDays: number;
+            maxCostBps: number;
+          } | null;
+        }[];
+      };
     }[];
   };
   disclaimer: string;
@@ -3183,6 +3208,31 @@ export type GetShelfResponse = {
       source: 'chain' | 'cache';
       observedAt: string;
       provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+      figures?: {
+        holdings: {
+          asset: string;
+          cls: ('stock' | 'etf' | 'gold' | 'commodity' | 'dollar_yield' | 'crypto' | 'cash') | null;
+          yield: {
+            source: string;
+            method: string;
+            fetchedAt: string;
+            provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+            quoted: number;
+            afterHaircut: number;
+            haircutRule: string;
+          } | null;
+          exit: {
+            source: string;
+            method: string;
+            fetchedAt: string;
+            provenance: 'live' | 'mock' | 'sandbox' | 'fixture' | 'prior_dataset';
+            capacityUsd: number;
+            lowerBound: boolean;
+            windowDays: number;
+            maxCostBps: number;
+          } | null;
+        }[];
+      };
     }[];
   }[];
   disclaimer: string;

@@ -3,7 +3,7 @@ import { basketOfPlan } from '../order/readiness';
 import { orderOn, PLAN_ID, recordOf, USER } from '../order/test/fixtures';
 import type { ServerWithdrawal } from './server-withdrawals';
 import { SECOND_VAULT, VAULT, vault } from './test/portfolio';
-import { ordersOfVault, takenOut } from './vault-goal';
+import { goalOfVault, ordersOfVault, takenOut } from './vault-goal';
 
 // A vault is joined to the orders of its plan by the plan's number on chain. A plan made from a link
 // numbers each buyer's vault from the plan and the person (gate AGENT-LINK), so the join does too.
@@ -27,6 +27,40 @@ describe('the orders of a vault', () => {
     expect(ordersOfVault(vault({ chain: 'solana', basketId: '12345' }), [approved])).toEqual([
       approved,
     ]);
+  });
+});
+
+describe('the goal of a vault, and the day its date counts from', () => {
+  const goalAt = (placedAt: string) => ({
+    sheet: {} as never,
+    card: {} as never,
+    verdict: null,
+    placedAt,
+  });
+  const mine = vault({ chain: 'solana', basketId: basketOfPlan(PLAN_ID) });
+  // looked at on the 1st and left unsigned (the invest card makes an order to show its prices),
+  // bought on the 5th, and more added on the 9th
+  const looked = recordOf('solana', {
+    orderId: '00000000-0000-4000-8000-0000000000d1',
+    goal: goalAt('2026-10-01T00:00:00.000Z'),
+  });
+  const bought = recordOf('solana', {
+    orderId: '00000000-0000-4000-8000-0000000000d5',
+    goal: goalAt('2026-10-05T00:00:00.000Z'),
+  });
+  const added = recordOf('solana', {
+    orderId: '00000000-0000-4000-8000-0000000000d9',
+    goal: goalAt('2026-10-09T00:00:00.000Z'),
+  });
+
+  it('counts from the first buy that deposited, never from an order nobody signed', () => {
+    const deposited = new Set([bought.orderId, added.orderId]);
+    expect(goalOfVault(mine, [added, bought, looked], deposited)?.record).toBe(bought);
+  });
+
+  it('counts from the first order of the vault while none is known to have deposited', () => {
+    expect(goalOfVault(mine, [added, bought, looked], new Set())?.record).toBe(looked);
+    expect(goalOfVault(mine, [added, bought, looked])?.record).toBe(looked);
   });
 });
 

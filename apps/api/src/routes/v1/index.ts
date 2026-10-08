@@ -278,7 +278,7 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
     registerIntakeRoute(scope, orderDeps, intakeModel, deps.planInputs);
     registerThreadRoutes(scope, orderDeps);
     registerPortfolioRoute(scope, orderDeps);
-    registerSharedRoutes(scope, orderDeps);
+    registerSharedRoutes(scope, orderDeps, deps.planInputs);
     registerVaultRoute(scope, orderDeps);
     registerVaultConversationRoutes(scope, orderDeps);
     registerVaultConversationReplyRoute(
