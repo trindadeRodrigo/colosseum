@@ -450,15 +450,19 @@ export async function replyToVaultConversation(
   context: ConversationAgentContext,
   model: VaultAgentModel | null,
 ): Promise<VaultAgentResult> {
+  const invalid = (detail: string): VaultAgentResult => ({
+    kind: 'failure',
+    reason: 'invalid',
+    detail,
+  });
   const parsed = VaultAgentRequest.safeParse(request);
-  if (!parsed.success) return { kind: 'failure', reason: 'invalid' };
-  if (!model) return { kind: 'failure', reason: 'unavailable' };
-  if (hasNonFiniteNumber(context)) return { kind: 'failure', reason: 'invalid' };
+  if (!parsed.success) return invalid('request_shape');
+  if (!model) return { kind: 'failure', reason: 'unavailable', detail: 'no_model' };
+  if (hasNonFiniteNumber(context)) return invalid('context_non_finite');
   const sourceById = new Map<string, AgentSource>();
   for (const raw of context.evidence) {
     const source = VaultAgentSource.safeParse(raw);
-    if (!source.success || sourceById.has(source.data.id))
-      return { kind: 'failure', reason: 'invalid' };
+    if (!source.success || sourceById.has(source.data.id)) return invalid('context_evidence');
     sourceById.set(source.data.id, source.data);
   }
   const chain = context.kind === 'new_goal' ? context.chain : context.state.chain;
@@ -472,7 +476,7 @@ export async function replyToVaultConversation(
     ]),
   );
   if (Object.values(caps).some((cap) => !Number.isInteger(cap) || cap < 0 || cap > 10_000))
-    return { kind: 'failure', reason: 'invalid' };
+    return invalid('context_caps');
   const constraints = holdingConstraints(parsed.data.messages, [...catalog.values()]);
   const prompt: VaultAgentPrompt = {
     version: 1,
@@ -513,12 +517,16 @@ export async function replyToVaultConversation(
   try {
     output = await model.read(context.person, prompt);
   } catch {
-    return { kind: 'failure', reason: 'unavailable' };
+    return { kind: 'failure', reason: 'unavailable', detail: 'model_threw' };
   }
-  if (output.reply === null)
-    return { kind: 'failure', reason: 'why' in output ? output.why : 'invalid' };
+  if ('why' in output)
+    return {
+      kind: 'failure',
+      reason: output.why,
+      ...(output.detail ? { detail: output.detail } : {}),
+    };
   const candidate = VaultAgentModelReply.safeParse(output.reply);
-  if (!candidate.success) return { kind: 'failure', reason: 'invalid' };
+  if (!candidate.success) return invalid('reply_schema');
   const { proposal, ...conversation } = candidate.data;
   const prose = [
     conversation.message,
@@ -542,10 +550,9 @@ export async function replyToVaultConversation(
       .filter((row) => [...catalog.values()].some((asset) => asset.symbol === row.symbol))
       .map((row) => row.company),
   ];
-  if (
-    prose.some((text) => hasFinancialFigure(text, personWords, catalogNames) || claimsApplied(text))
-  )
-    return { kind: 'failure', reason: 'invalid' };
+  if (prose.some((text) => hasFinancialFigure(text, personWords, catalogNames)))
+    return invalid('prose_figure');
+  if (prose.some(claimsApplied)) return invalid('prose_claims_applied');
   if (!proposal)
     return {
       kind: 'reply',
@@ -556,23 +563,21 @@ export async function replyToVaultConversation(
   let sum = 0;
   for (const allocation of proposal.allocations) {
     const asset = catalog.get(allocation.assetId);
-    if (
-      !asset ||
-      ids.has(asset.id) ||
-      allocation.weightBps > (caps[asset.id] ?? 0) ||
-      (prompt.eligibilityGoal && !eligibleForGoal(asset, prompt.eligibilityGoal))
-    )
-      return { kind: 'failure', reason: 'invalid' };
+    if (!asset) return invalid('allocation_unlisted');
+    if (ids.has(asset.id)) return invalid('allocation_duplicate');
+    if (allocation.weightBps > (caps[asset.id] ?? 0)) return invalid('allocation_over_cap');
+    if (prompt.eligibilityGoal && !eligibleForGoal(asset, prompt.eligibilityGoal))
+      return invalid('allocation_ineligible');
     ids.add(asset.id);
     sum += allocation.weightBps;
     for (const id of allocation.evidenceIds) {
       const source = sourceById.get(id);
       if (!source || (source.assetId !== undefined && source.assetId !== asset.id))
-        return { kind: 'failure', reason: 'invalid' };
+        return invalid('allocation_evidence');
       sources.add(id);
     }
   }
-  if (sum !== 10_000) return { kind: 'failure', reason: 'invalid' };
+  if (sum !== 10_000) return invalid('allocation_sum');
   for (const constraint of constraints) {
     const actual = proposal.allocations.reduce((weight, allocation) => {
       const asset = catalog.get(allocation.assetId);
@@ -611,7 +616,5 @@ export async function replyToVaultConversation(
       sources: [...sources].map((id) => sourceById.get(id)),
     },
   });
-  return reply.success
-    ? { kind: 'reply', reply: reply.data }
-    : { kind: 'failure', reason: 'invalid' };
+  return reply.success ? { kind: 'reply', reply: reply.data } : invalid('reply_shape');
 }

@@ -1,6 +1,33 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { VaultAgentFailure } from '@colosseum/schemas';
+import type { EnvLike, VaultAgentFailure } from '@colosseum/schemas';
 import type { VaultAgentPrompt } from './orders/vault-agent';
+
+/**
+ * The conversation sends the whole catalog, its evidence and the dialogue, and answers in prose with a
+ * structured proposal: far more than the intake's read of one goal, so it has its own time and output
+ * budget. `VAULT_AGENT_TIMEOUT_MS` overrides the time (`vaultAgentTimeoutMs`).
+ */
+export const VAULT_AGENT_TIMEOUT_MS = 30_000;
+export const VAULT_AGENT_MAX_TOKENS = 8_192;
+
+/**
+ * Whether a model takes `temperature`. The Claude 5 family and Opus 4.7/4.8 answer 400 to any sampling
+ * parameter (Sonnet 5.5 and Haiku 5.5 to any but the default), so it is sent only to the older models
+ * that take it.
+ */
+export function acceptsTemperature(model: string): boolean {
+  return !/^claude-(?:(?:opus|sonnet|haiku|fable|mythos)-5|opus-4-[78])(?![0-9])/.test(model);
+}
+
+/** One call's time for the conversation, 1,000 to 120,000 ms. A value that cannot be read throws. */
+export function vaultAgentTimeoutMs(env: EnvLike): number {
+  const raw = env.VAULT_AGENT_TIMEOUT_MS?.trim();
+  if (raw === undefined || raw === '') return VAULT_AGENT_TIMEOUT_MS;
+  const n = Number(raw);
+  if (!/^\d+$/.test(raw) || n < 1_000 || n > 120_000)
+    throw new Error('VAULT_AGENT_TIMEOUT_MS must be a whole number from 1000 to 120000');
+  return n;
+}
 
 /** Required shared reservation; the provider has no independent daily budget. */
 export type VaultAgentQuota = {
@@ -10,7 +37,7 @@ export type VaultAgentModel = {
   read(
     person: string,
     prompt: VaultAgentPrompt,
-  ): Promise<{ reply: unknown } | { reply: null; why: VaultAgentFailure }>;
+  ): Promise<{ reply: unknown } | { reply: null; why: VaultAgentFailure; detail?: string }>;
 };
 
 export const VAULT_AGENT_SYSTEM = [
@@ -77,30 +104,37 @@ export function createAnthropicVaultAgentModel(options: {
   });
   return {
     async read(person, prompt) {
-      if (options.quota.reserve(person) !== null) return { reply: null, why: 'budget' };
+      const denied = options.quota.reserve(person);
+      if (denied !== null) return { reply: null, why: 'budget', detail: denied };
       try {
         const response = await client.messages.create({
           model: options.model,
-          max_tokens: 1024,
-          temperature: 0,
+          max_tokens: VAULT_AGENT_MAX_TOKENS,
+          ...(acceptsTemperature(options.model) ? { temperature: 0 } : {}),
           system: VAULT_AGENT_SYSTEM,
           messages: [{ role: 'user', content: JSON.stringify(prompt) }],
           output_config: { format: { type: 'json_schema', schema: VAULT_AGENT_REPLY_SCHEMA } },
         });
-        if (response.stop_reason === 'max_tokens' || response.stop_reason === 'refusal')
-          return { reply: null, why: 'invalid' };
+        if (response.stop_reason === 'max_tokens')
+          return { reply: null, why: 'invalid', detail: 'model_cut_off' };
+        if (response.stop_reason === 'refusal')
+          return { reply: null, why: 'invalid', detail: 'model_refused' };
         const block = response.content.find((item) => item.type === 'text');
-        if (block?.type !== 'text') return { reply: null, why: 'invalid' };
+        if (block?.type !== 'text') return { reply: null, why: 'invalid', detail: 'model_no_text' };
         try {
           return { reply: JSON.parse(block.text) as unknown };
         } catch {
-          return { reply: null, why: 'invalid' };
+          return { reply: null, why: 'invalid', detail: 'model_not_json' };
         }
       } catch (error) {
-        return {
-          reply: null,
-          why: error instanceof Anthropic.APIConnectionTimeoutError ? 'timeout' : 'unavailable',
-        };
+        if (error instanceof Anthropic.APIConnectionTimeoutError)
+          return { reply: null, why: 'timeout', detail: 'model_timeout' };
+        // The status and the class only: an error's message can echo the request.
+        const status =
+          error instanceof Anthropic.APIError && typeof error.status === 'number'
+            ? `_${error.status}`
+            : '';
+        return { reply: null, why: 'unavailable', detail: `model_error${status}` };
       }
     },
   };

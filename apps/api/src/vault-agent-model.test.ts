@@ -3,6 +3,7 @@ import type { VaultAgentModelReply, VaultAgentRequest, VaultState } from '@colos
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseStockAttributes } from '../../../packages/engine/src/personal/stock-attributes';
 import { launchShelf } from '../../../packages/engine/src/personal/testing';
+import { INTAKE_TIMEOUT_MS, intakeSettings } from './llm';
 import {
   type GoalAgentContext,
   replyToVaultConversation,
@@ -11,17 +12,27 @@ import {
 } from './orders/vault-agent';
 import mockStocks from './testing/fixtures/mock-stocks.json';
 import {
+  acceptsTemperature,
   createAnthropicVaultAgentModel,
+  VAULT_AGENT_MAX_TOKENS,
   VAULT_AGENT_REPLY_SCHEMA,
   VAULT_AGENT_SYSTEM,
+  VAULT_AGENT_TIMEOUT_MS,
+  vaultAgentTimeoutMs,
 } from './vault-agent-model';
 
 const sdk = vi.hoisted(() => ({ create: vi.fn(), options: vi.fn() }));
 vi.mock('@anthropic-ai/sdk', () => {
   class Timeout extends Error {}
+  class APIError extends Error {
+    constructor(readonly status: number) {
+      super('provider error text that may echo the request');
+    }
+  }
   return {
     default: class {
       static APIConnectionTimeoutError = Timeout;
+      static APIError = APIError;
       messages = { create: sdk.create };
       constructor(options: unknown) {
         sdk.options(options);
@@ -69,7 +80,7 @@ describe('vault proposal provider uses the existing model settings and a shared 
     expect(sdk.create).toHaveBeenLastCalledWith(
       expect.objectContaining({
         model: options.model,
-        max_tokens: 1024,
+        max_tokens: VAULT_AGENT_MAX_TOKENS,
         messages: [{ role: 'user', content: JSON.stringify(prompt) }],
         output_config: { format: { type: 'json_schema', schema: VAULT_AGENT_REPLY_SCHEMA } },
       }),
@@ -84,7 +95,11 @@ describe('vault proposal provider uses the existing model settings and a shared 
         quota: { reserve: () => reason },
       });
       const before = sdk.create.mock.calls.length;
-      expect(await model.read('owner', prompt)).toEqual({ reply: null, why: 'budget' });
+      expect(await model.read('owner', prompt)).toEqual({
+        reply: null,
+        why: 'budget',
+        detail: reason,
+      });
       expect(sdk.create.mock.calls.length).toBe(before);
     },
   );
@@ -92,14 +107,75 @@ describe('vault proposal provider uses the existing model settings and a shared 
   it('returns typed timeout and malformed-output failures without retrying or using a wizard', async () => {
     const model = createAnthropicVaultAgentModel({ ...options, quota: { reserve: () => null } });
     sdk.create.mockRejectedValueOnce(new Anthropic.APIConnectionTimeoutError({}));
-    expect(await model.read('owner', prompt)).toEqual({ reply: null, why: 'timeout' });
+    expect(await model.read('owner', prompt)).toEqual({
+      reply: null,
+      why: 'timeout',
+      detail: 'model_timeout',
+    });
     sdk.create.mockResolvedValueOnce({ stop_reason: 'max_tokens', content: [] });
-    expect(await model.read('owner', prompt)).toEqual({ reply: null, why: 'invalid' });
+    expect(await model.read('owner', prompt)).toEqual({
+      reply: null,
+      why: 'invalid',
+      detail: 'model_cut_off',
+    });
     sdk.create.mockResolvedValueOnce({
       stop_reason: 'end_turn',
       content: [{ type: 'text', text: 'not JSON' }],
     });
-    expect(await model.read('owner', prompt)).toEqual({ reply: null, why: 'invalid' });
+    expect(await model.read('owner', prompt)).toEqual({
+      reply: null,
+      why: 'invalid',
+      detail: 'model_not_json',
+    });
+    // A 400 (a parameter the model rejects) is named by its status, never by its message.
+    sdk.create.mockRejectedValueOnce(
+      new (Anthropic.APIError as unknown as new (s: number) => Error)(400),
+    );
+    expect(await model.read('owner', prompt)).toEqual({
+      reply: null,
+      why: 'unavailable',
+      detail: 'model_error_400',
+    });
+  });
+
+  it('has its own call time, not the intake one, read from VAULT_AGENT_TIMEOUT_MS', () => {
+    expect(VAULT_AGENT_TIMEOUT_MS).toBeGreaterThan(INTAKE_TIMEOUT_MS);
+    expect(vaultAgentTimeoutMs({})).toBe(VAULT_AGENT_TIMEOUT_MS);
+    // The intake's own setting does not shorten the conversation's.
+    const env = { INTAKE_MODEL_TIMEOUT_MS: '6000' };
+    expect(intakeSettings(env).timeoutMs).toBe(6000);
+    expect(vaultAgentTimeoutMs(env)).toBe(VAULT_AGENT_TIMEOUT_MS);
+    expect(vaultAgentTimeoutMs({ VAULT_AGENT_TIMEOUT_MS: '45000' })).toBe(45000);
+    for (const bad of ['999', '120001', '30s', '-1'])
+      expect(() => vaultAgentTimeoutMs({ VAULT_AGENT_TIMEOUT_MS: bad })).toThrow(
+        'VAULT_AGENT_TIMEOUT_MS',
+      );
+    expect(VAULT_AGENT_MAX_TOKENS).toBeGreaterThanOrEqual(4096);
+  });
+
+  it.each([
+    ['claude-sonnet-5-5', false],
+    ['claude-opus-5-5', false],
+    ['claude-fable-5-1', false],
+    ['claude-sonnet-5', false],
+    ['claude-opus-4-8', false],
+    ['claude-haiku-5-5', false],
+    ['claude-haiku-4-5', true],
+    ['claude-sonnet-4-6', true],
+  ] as const)('sends temperature to %s: %s', async (model, sent) => {
+    expect(acceptsTemperature(model)).toBe(sent);
+    sdk.create.mockResolvedValueOnce({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: '{"message":"Hi.","question":null,"proposal":null}' }],
+    });
+    await createAnthropicVaultAgentModel({
+      ...options,
+      model,
+      quota: { reserve: () => null },
+    }).read('owner', prompt);
+    const body = sdk.create.mock.calls.at(-1)?.[0];
+    if (sent) expect(body).toMatchObject({ temperature: 0 });
+    else expect(body).not.toHaveProperty('temperature');
   });
 });
 
@@ -415,9 +491,15 @@ describe('conversation context and grounded replies through the provider stub', 
     expect(VAULT_AGENT_SYSTEM).toContain('do not replace it without explaining and asking');
   });
 
-  it.each(['invented-source', 'wrong-asset-source', 'invented-figure', 'over-cap', 'ineligible'])(
+  it.each([
+    ['invented-source', 'allocation_evidence'],
+    ['wrong-asset-source', 'allocation_evidence'],
+    ['invented-figure', 'prose_figure'],
+    ['over-cap', 'allocation_over_cap'],
+    ['ineligible', 'allocation_ineligible'],
+  ])(
     'rejects a provider fixture with %s while keeping the grounded proposal boundary',
-    async (fault) => {
+    async (fault, detail) => {
       const value = draft();
       const allocation = value.proposal?.allocations[0];
       if (!allocation || !value.proposal) throw new Error('Missing fixture allocation');
@@ -436,7 +518,7 @@ describe('conversation context and grounded replies through the provider stub', 
           context,
           offlineModel(),
         ),
-      ).toEqual({ kind: 'failure', reason: 'invalid' });
+      ).toEqual({ kind: 'failure', reason: 'invalid', detail });
       expect(sdk.create).toHaveBeenCalledTimes(1);
     },
   );

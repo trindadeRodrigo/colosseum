@@ -81,4 +81,5 @@ export type VaultAgentReply = z.infer<typeof VaultAgentReply>;
 export type VaultAgentFailure = 'unavailable' | 'timeout' | 'budget' | 'invalid';
 export type VaultAgentResult =
   | { kind: 'reply'; reply: VaultAgentReply }
-  | { kind: 'failure'; reason: VaultAgentFailure };
+  /** `detail` is a fixed code for the server log (which check failed); never the person's text. */
+  | { kind: 'failure'; reason: VaultAgentFailure; detail?: string };

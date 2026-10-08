@@ -43,7 +43,11 @@ import type { PlanInputs } from '../../orders/personalize';
 import { authFromEnv, enforceSignIn, identify, type TokenIssuer } from '../../plugins/auth';
 import { type Limits, registerLimits, requireDeclared } from '../../plugins/limits';
 import { loggable } from '../../plugins/loggable';
-import { createAnthropicVaultAgentModel, type VaultAgentModel } from '../../vault-agent-model';
+import {
+  createAnthropicVaultAgentModel,
+  type VaultAgentModel,
+  vaultAgentTimeoutMs,
+} from '../../vault-agent-model';
 import { type LinkedPlanLimits, registerBasketRoutes } from './baskets';
 import { buildConfig, registerConfigRoute } from './config';
 import { registerFundingRoute } from './funding';
@@ -151,7 +155,12 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
   const vaultAgentModel =
     deps.vaultAgentModel === undefined
       ? apiKey
-        ? createAnthropicVaultAgentModel({ apiKey, ...modelSettings, quota })
+        ? createAnthropicVaultAgentModel({
+            apiKey,
+            model: modelSettings.model,
+            timeoutMs: vaultAgentTimeoutMs(env),
+            quota,
+          })
         : null
       : deps.vaultAgentModel;
 

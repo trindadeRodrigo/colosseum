@@ -169,7 +169,7 @@ describe('model-led private vault proposals', () => {
         { ...cashContext, caps: { [cash.id]: 5000 } },
         fake(value),
       ),
-    ).toEqual({ kind: 'failure', reason: 'invalid' });
+    ).toEqual({ kind: 'failure', reason: 'invalid', detail: 'allocation_over_cap' });
   });
 
   it('keeps an explicit stock minimum through later refinement and asks about a mismatched draft without reweighting', async () => {
@@ -236,16 +236,16 @@ describe('model-led private vault proposals', () => {
     ).toBe('reply');
     expect(
       await replyToVaultConversation(request('I want to grow my $1000.'), context, fake(value)),
-    ).toEqual({ kind: 'failure', reason: 'invalid' });
+    ).toEqual({ kind: 'failure', reason: 'invalid', detail: 'prose_figure' });
     value.proposal.objective = 'Grow my $2000 while keeping a reserve.';
     expect(
       await replyToVaultConversation(request('I want to grow my $2000.'), context, fake(value)),
-    ).toEqual({ kind: 'failure', reason: 'invalid' });
+    ).toEqual({ kind: 'failure', reason: 'invalid', detail: 'prose_figure' });
     value.proposal.objective = 'Grow with a reserve.';
     value.proposal.allocations[0]!.why = 'The measured price is $1000.';
     expect(
       await replyToVaultConversation(request('I want to invest $1000.'), context, fake(value)),
-    ).toEqual({ kind: 'failure', reason: 'invalid' });
+    ).toEqual({ kind: 'failure', reason: 'invalid', detail: 'prose_figure' });
   });
 
   it('preserves the exact reported stock-minimum wording across its sentence boundary', async () => {
@@ -272,6 +272,7 @@ describe('model-led private vault proposals', () => {
     expect(await replyToVaultConversation(request(), context, fake(value))).toEqual({
       kind: 'failure',
       reason: 'invalid',
+      detail: 'prose_figure',
     });
   });
 
@@ -287,7 +288,7 @@ describe('model-led private vault proposals', () => {
   ])('rejects a false application assertion: %s', async (message) => {
     expect(
       await replyToVaultConversation(request(), context, fake({ ...proposal(1000), message })),
-    ).toEqual({ kind: 'failure', reason: 'invalid' });
+    ).toEqual({ kind: 'failure', reason: 'invalid', detail: 'prose_claims_applied' });
   });
 
   it.each([
@@ -345,6 +346,19 @@ describe('model-led private vault proposals', () => {
     'symbol',
     'infinity',
   ])('rejects a model reply that violates %s without substituting an allocation', async (fault) => {
+    const expected: Record<string, string> = {
+      asset: 'allocation_unlisted',
+      crosschain: 'allocation_unlisted',
+      cap: 'allocation_over_cap',
+      sum: 'allocation_sum',
+      duplicate: 'allocation_duplicate',
+      evidence: 'allocation_evidence',
+      'wrong-reference': 'allocation_evidence',
+      'financial-figure': 'prose_figure',
+      'written-figure': 'prose_figure',
+      symbol: 'reply_schema',
+      infinity: 'reply_schema',
+    };
     const value = proposal(1000);
     const [allocation, remainder] = value.proposal.allocations;
     if (!allocation || !remainder) throw new Error('Incomplete allocation fixture');
@@ -369,7 +383,7 @@ describe('model-led private vault proposals', () => {
         { ...context, ...(caps ? { caps } : {}) },
         fake(value),
       ),
-    ).toEqual({ kind: 'failure', reason: 'invalid' });
+    ).toEqual({ kind: 'failure', reason: 'invalid', detail: expected[fault] });
   });
 
   it('returns a conversational question without inventing an allocation from admiration', async () => {
@@ -395,6 +409,14 @@ describe('model-led private vault proposals', () => {
         kind: 'failure',
         reason: why,
       });
+      const detailed: VaultAgentModel = {
+        read: async () => ({ reply: null, why, detail: 'model_error_400' }),
+      };
+      expect(await replyToVaultConversation(request(), context, detailed)).toEqual({
+        kind: 'failure',
+        reason: why,
+        detail: 'model_error_400',
+      });
     },
   );
 
@@ -408,7 +430,7 @@ describe('model-led private vault proposals', () => {
         { ...context, evidence: [{ ...firstSource, value: Number.NaN }] },
         model,
       ),
-    ).toEqual({ kind: 'failure', reason: 'invalid' });
+    ).toEqual({ kind: 'failure', reason: 'invalid', detail: 'context_non_finite' });
     expect(model.read).not.toHaveBeenCalled();
   });
 
@@ -421,7 +443,7 @@ describe('model-led private vault proposals', () => {
           { ...context, currentGoals: [{ goal }] },
           fake(proposal(1000)),
         ),
-      ).toEqual({ kind: 'failure', reason: 'invalid' });
+      ).toEqual({ kind: 'failure', reason: 'invalid', detail: 'allocation_ineligible' });
       const explicit = await replyToVaultConversation(
         request(),
         { ...context, currentGoals: [{ goal }], confirmedGoal: 'grow' },
@@ -460,6 +482,7 @@ describe('model-led private vault proposals', () => {
     expect(await replyToVaultConversation(request(), built, fake(proposal(1000)))).toEqual({
       kind: 'failure',
       reason: 'invalid',
+      detail: 'allocation_over_cap',
     });
     const crowded = proposal(1000);
     crowded.proposal.unknowns = Array.from({ length: 12 }, () => 'Model uncertainty.');

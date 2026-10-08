@@ -51,7 +51,8 @@ async function setup(available = true) {
       },
     },
   ) as Db;
-  const app = Fastify();
+  const logs: string[] = [];
+  const app = Fastify({ logger: { level: 'warn', stream: { write: (line) => logs.push(line) } } });
   cleanup.push(() => app.close());
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
@@ -118,6 +119,7 @@ async function setup(available = true) {
     body,
     path,
     proposal,
+    logs,
   };
 }
 
@@ -245,6 +247,39 @@ describe('new-goal model preview route', () => {
       expect(res.json()).toMatchObject({ code: 'GOAL_AGENT_UNAVAILABLE', reason: why });
     },
   );
+  it('logs the reason and the failed check at warn, without the person or the model words', async () => {
+    const s = await setup();
+    vi.mocked(s.model.read).mockResolvedValueOnce({
+      reply: null,
+      why: 'timeout',
+      detail: 'model_timeout',
+    });
+    expect((await s.post()).json()).toMatchObject({ reason: 'timeout' });
+    vi.mocked(s.model.read).mockResolvedValueOnce({
+      reply: { message: 'It will return 12% a year.', question: null, proposal: null },
+    });
+    expect((await s.post()).json()).toMatchObject({ reason: 'invalid' });
+    const failures = s.logs
+      .map((line) => JSON.parse(line))
+      .filter((line) => line.msg === 'the new-goal conversation returned no reply');
+    expect(failures).toEqual([
+      expect.objectContaining({
+        level: 40,
+        reason: 'timeout',
+        detail: 'model_timeout',
+        chain: 'solana',
+      }),
+      expect.objectContaining({
+        level: 40,
+        reason: 'invalid',
+        detail: 'prose_figure',
+        chain: 'solana',
+      }),
+    ]);
+    const written = s.logs.join('');
+    expect(written).not.toContain('named business');
+    expect(written).not.toContain('12%');
+  });
   it.each(['I created your vault.', 'I funded your portfolio.', 'Eu abri seu cofre.'])(
     'rejects a false creation or funding claim: %s',
     async (message) => {

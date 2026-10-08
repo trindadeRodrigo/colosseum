@@ -70,12 +70,17 @@ export function registerGoalConversationReplyRoute(
           403,
           'Sign in with a wallet for this chain before discussing a new goal.',
         );
-      if (!model)
+      if (!model) {
+        req.log.warn(
+          { reason: 'unavailable', detail: 'no_model', chain },
+          'the new-goal conversation has no model configured',
+        );
         return reply.code(503).send({
           error: 'The new-goal conversation is not available yet.',
           code: 'GOAL_AGENT_UNAVAILABLE',
           reason: 'unavailable',
         });
+      }
       const context = await refusing(async () => {
         const listed = await entry.adapter.listAssets();
         const [prices, prepared] = await Promise.all([
@@ -94,12 +99,18 @@ export function registerGoalConversationReplyRoute(
         });
       });
       const result = await replyToVaultConversation(req.body, context, model);
-      if (result.kind === 'failure')
+      if (result.kind === 'failure') {
+        // The reason and which check failed: never the person's words or the model's reply.
+        req.log.warn(
+          { reason: result.reason, detail: result.detail ?? null, chain },
+          'the new-goal conversation returned no reply',
+        );
         return reply.code(503).send({
           error: 'A valid new-goal preview could not be returned. No plan or order was created.',
           code: 'GOAL_AGENT_UNAVAILABLE',
           reason: result.reason,
         });
+      }
       return { ...result.reply, chain };
     },
   );
