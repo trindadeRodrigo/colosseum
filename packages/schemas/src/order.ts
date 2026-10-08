@@ -416,6 +416,8 @@ export const OrderErrorCode = z.enum([
    * why, one `MixIssueCode` each, with the asset where there is one.
    */
   'MIX_NOT_VALID',
+  /** A buy of a confirmed mix above the amount it was reviewed at: its warnings were confirmed at that size. */
+  'AMOUNT_OVER_REVIEW',
 ]);
 export type OrderErrorCode = z.infer<typeof OrderErrorCode>;
 

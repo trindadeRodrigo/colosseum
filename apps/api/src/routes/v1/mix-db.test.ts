@@ -73,6 +73,7 @@ describe.skipIf(!DB)('a mix, stored and bought, and a vault retargeted, in the d
     );
     const res = await post(who, '/v1/conversations/solana/goal/accept', {
       ...accept,
+      reviewHash: first.review.reviewHash,
       acceptedWarnings: first.review.unconfirmed,
     });
     const stored = AcceptGoalMixResponse.parse(res.json());
@@ -89,11 +90,24 @@ describe.skipIf(!DB)('a mix, stored and bought, and a vault retargeted, in the d
       (
         await post(who, '/v1/conversations/solana/goal/accept', {
           ...accept,
+          reviewHash: first.review.reviewHash,
           acceptedWarnings: first.review.unconfirmed,
         })
       ).json(),
     );
-    expect(again.status === 'stored' && again.proposalId).toBe(stored.proposalId);
+    if (again.status !== 'stored') throw new Error('not stored again');
+    expect(again.proposalId).toBe(stored.proposalId);
+    expect(again.proposal).toEqual(stored.proposal);
+
+    // Above the amount it was reviewed at, the buy is refused; at it, the existing buy takes it.
+    const over = await post(who, '/v1/orders', {
+      type: 'buy',
+      owner: who.owner,
+      amountUsd: 101,
+      proposalId: stored.proposalId,
+    });
+    expect(over.statusCode).toBe(422);
+    expect(over.json().code).toBe('AMOUNT_OVER_REVIEW');
 
     // The existing buy, by the plan's id: its legs buy the mix's targets, and they settle.
     const bought = await order(who, { proposalId: stored.proposalId, amountUsd: 100 });
@@ -129,6 +143,7 @@ describe.skipIf(!DB)('a mix, stored and bought, and a vault retargeted, in the d
     const placed = await post(who, url, {
       ...body,
       confirm: true,
+      reviewHash: review.review.reviewHash,
       acceptedWarnings: review.review.unconfirmed,
     });
     const ordered = ApplyVaultMixResponse.parse(placed.json());
