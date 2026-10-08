@@ -12,6 +12,7 @@ import type { OrderDeps } from '../../orders/legs';
 import { type PlanInputs, preparePersonalInputs } from '../../orders/personalize';
 import {
   type AgentAnalytics,
+  analyticsGap,
   buildVaultAgentContext,
   readAgentAnalytics,
   replyToVaultConversation,
@@ -103,9 +104,10 @@ export function registerVaultConversationReplyRoute(
             }),
           ),
         ]);
-        if (read && 'unavailable' in read)
+        const gap = analyticsGap(read);
+        if (gap)
           req.log.warn(
-            { code: read.unavailable, chain: identity.chain },
+            { code: gap, chain: identity.chain },
             'the vault conversation went on without its analytics',
           );
         return buildVaultAgentContext({

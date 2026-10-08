@@ -195,7 +195,7 @@ describe('new-goal model preview route', () => {
             id: `capacity:${s.asset.id}`,
             assetId: s.asset.id,
             label:
-              'Largest sale at no more than 1% cost, worst regime of the exit window; does not depend on an amount',
+              'Largest sale within the cost tolerance, worst regime of the exit window; does not depend on an amount',
             value: 42_000,
             unit: 'USD',
             provenance: 'mock',
@@ -257,21 +257,23 @@ describe('new-goal model preview route', () => {
     );
     expect(analytics.mock.calls[0]?.[0].assets.length).toBeGreaterThan(1);
     const prompt = vi.mocked(s.model.read).mock.calls[0]?.[1];
-    expect(prompt?.analytics).toEqual({
+    expect(prompt?.analytics).toMatchObject({
       sizeUsd: 10_000,
       basis: 'reference',
+      assets: [
+        {
+          assetId: s.asset.id,
+          values: { [`exit:${s.asset.id}:worst`]: 0.004 },
+          provenance: 'mock',
+          worstRegime: 'us_offhours_weekday',
+        },
+      ],
       unknowns: [
         `Annualised price volatility: unknown (no reference prices collected), for ${s.asset.symbol}.`,
       ],
     });
-    expect(prompt?.evidence).toContainEqual({
-      id: `exit:${s.asset.id}:worst`,
-      assetId: s.asset.id,
-      label: 'Exit cost at the $10,000 reference size, worst measured regime (weekday off-hours)',
-      value: 0.004,
-      unit: 'fraction',
-      provenance: 'mock',
-    });
+    // Once, in the analytics block; not again as an evidence row.
+    expect(prompt?.evidence.some((row) => row.id === `exit:${s.asset.id}:worst`)).toBe(false);
     expect(res.json().proposal.sources).toContainEqual(
       expect.objectContaining({
         id: `exit:${s.asset.id}:worst`,

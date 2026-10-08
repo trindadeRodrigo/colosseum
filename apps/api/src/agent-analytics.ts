@@ -22,14 +22,19 @@ import { resolveExitTwins } from './plan-inputs';
 
 type Sheet = (db: Db, id: string, sizeUsd: number) => Promise<AssetFacts | null>;
 type Read = Extract<AgentAnalyticsResult, { assets: unknown }>;
+type Query = Parameters<AgentAnalytics>[0];
 
-/** Ten minutes: the collectors write hourly at most. */
+/** Ten minutes: the collectors write hourly at most. A kept read older than this is served once more while
+ *  it is read again. */
 const TTL_MS = 10 * 60_000;
-/** Sheets read at once across every conversation: each holds one of the pool's 15 connections. */
+/** Sheets read at once across every conversation and the warm-up: each holds one of the pool's 15
+ *  connections. */
 const CONCURRENCY = 3;
-/** The reply goes on without the figures past this; the reads carry on and fill the cache. */
-const TIMEOUT_MS = 8_000;
-const MAX_ENTRIES = 64;
+/** A turn waits this long for reads it does not have kept; they carry on and fill the cache for the next. */
+const WAIT_MS = 2_500;
+/** Sheet reads waiting or running at once, about three catalogs; past it a sheet is left for a later turn. */
+const MAX_PENDING = 90;
+const MAX_KEPT = 2_000;
 
 /** The figures the model reads, from one sheet, each with the regime it is about or none. */
 export function projectSheet(sheet: AssetFacts): AnalyticsFigure[] {
@@ -58,6 +63,7 @@ export function projectSheet(sheet: AssetFacts): AnalyticsFigure[] {
         };
   };
   const worst = sheet.costs.find((cost) => cost.regime === sheet.worstRegime);
+  // The capacity at the tolerance is the plan inputs' (`capacity:`, `liquidity:`): one figure per measure.
   // With no regime measured, every regime's exit says why; the first one speaks for the worst.
   const unmeasured = sheet.costs.find((cost) => cost.exit.total.value === null)?.exit.total;
   const none: Fact = unmeasured ?? { value: null, reason: 'not_collected', unit: 'fraction' };
@@ -68,7 +74,6 @@ export function projectSheet(sheet: AssetFacts): AnalyticsFigure[] {
     ...sheet.costs
       .filter((cost) => cost.regime !== sheet.worstRegime)
       .map((cost) => figure('exit', cost.exit.total, cost.regime)),
-    figure('cap1pct', worst?.exitCapacityUsd ?? { ...none, unit: 'usd' }, sheet.worstRegime),
     figure('weekend', sheet.weekendRatio, null),
     figure('lp_top1', sheet.liquidityStability.lpTop1Share, null),
     figure('lp_exit', sheet.liquidityStability.lpExitCost, null),
@@ -134,94 +139,152 @@ const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 /** The collectors store an EVM address in lower case; a shelf may spell it checksummed. */
 const stored = (address: string) => (EVM_ADDRESS.test(address) ? address.toLowerCase() : address);
 
+/**
+ * A read kept by key: a fresh one is served as it is, an older one is served while it is read again, and
+ * a missing one is read once however many turns ask. A failed read keeps what was there.
+ */
+function keeper<T>(ttl: number, now: () => number) {
+  const kept = new Map<string, { at: number; value?: { v: T }; read?: Promise<T> }>();
+  return (key: string, load: () => Promise<T>): Promise<T> => {
+    if (kept.size > MAX_KEPT)
+      for (const [k, e] of kept) if (!e.read && now() - e.at > 2 * ttl) kept.delete(k);
+    const entry = kept.get(key) ?? { at: 0 };
+    kept.set(key, entry);
+    if (!entry.read && (!entry.value || now() - entry.at > ttl)) {
+      const read = load();
+      entry.read = read;
+      read.then(
+        (v) => {
+          entry.value = { v };
+          entry.at = now();
+          entry.read = undefined;
+        },
+        () => {
+          entry.read = undefined;
+          if (!entry.value) kept.delete(key);
+        },
+      );
+    }
+    return entry.value ? Promise.resolve(entry.value.v) : (entry.read as Promise<T>);
+  };
+}
+
 export function createAgentAnalytics(
   deps: {
     sheet?: Sheet;
     twins?: typeof resolveExitTwins;
     concurrency?: number;
     ttlMs?: number;
-    timeoutMs?: number;
+    waitMs?: number;
+    maxPending?: number;
     now?: () => number;
   } = {},
 ): AgentAnalytics {
   const sheet: Sheet = deps.sheet ?? ((db, id, sizeUsd) => loadAssetFacts(db, id, { sizeUsd }));
   const twins = deps.twins ?? resolveExitTwins;
   const ttl = deps.ttlMs ?? TTL_MS;
-  const timeout = deps.timeoutMs ?? TIMEOUT_MS;
+  const wait = deps.waitMs ?? WAIT_MS;
+  const maxPending = deps.maxPending ?? MAX_PENDING;
   const now = deps.now ?? Date.now;
   const limit = limiter(deps.concurrency ?? CONCURRENCY);
   const { refSizeUsd, tau } = defaultFactsParams();
-  type Entry = { at: number; read: Promise<Read['assets']>; waiting: number; dropped: boolean };
-  const cache = new Map<string, Entry>();
+  const keptTwins = keeper<Awaited<ReturnType<typeof resolveExitTwins>>>(ttl, now);
+  const keptSheets = keeper<AnalyticsFigure[] | null>(ttl, now);
+  let pending = 0;
 
-  return async ({ db, chain, assets, provenance, sizeUsd }) => {
-    const vault = sizeUsd !== null && Number.isFinite(sizeUsd) && sizeUsd >= 1;
-    const size = vault ? roundSize(sizeUsd) : refSizeUsd;
-    const base = { sizeUsd: size, basis: vault ? ('vault' as const) : ('reference' as const), tau };
+  const sheetOf = (db: Db, id: string, size: number) =>
+    keptSheets(`${stored(id)}|${size}`, () => {
+      if (pending >= maxPending) return Promise.reject(new Error('busy'));
+      pending += 1;
+      return limit(() => sheet(db, stored(id), size))
+        .then((found) => (found ? projectSheet(finiteFacts(found)) : null))
+        .finally(() => {
+          pending -= 1;
+        });
+    });
+
+  /** Starts (or reuses) every read a catalog needs at one size; nothing here waits for them. */
+  const start = ({ db, chain, assets, provenance }: Omit<Query, 'sizeUsd'>, size: number) => {
     const listed = assets.filter((asset) => asset.chain === chain && asset.cls !== 'cash');
-    const key = [chain, provenance ?? '', size, ...listed.map((asset) => asset.id).sort()].join(
-      '|',
-    );
-    for (const [k, entry] of cache) if (now() - entry.at > ttl) cache.delete(k);
-    let entry = cache.get(key);
-    if (!entry) {
-      const fresh: Entry = { at: now(), read: Promise.resolve([]), waiting: 0, dropped: false };
-      // A sheet whose every caller has gone on without it is not started.
-      const sheetOf = (id: string) =>
-        limit(() =>
-          fresh.dropped ? Promise.reject(new Error('dropped')) : sheet(db, stored(id), size),
-        );
-      fresh.read = (async () => {
-        const twinOf = new Map(
-          (await twins(db, listed, provenance)).map((twin) => [twin.id, twin]),
-        );
-        return Promise.all(
-          listed.map(async (asset) => {
-            const twin = twinOf.get(asset.id);
-            const found = await sheetOf(twin?.twinMint ?? asset.address);
-            return {
-              assetId: asset.id,
-              modelledOn: twin?.twinSymbol ?? null,
-              figures: found ? relabel(projectSheet(finiteFacts(found)), provenance, twin) : null,
-            };
-          }),
-        );
-      })();
-      entry = fresh;
-      cache.set(key, fresh);
-      if (cache.size > MAX_ENTRIES) cache.delete(cache.keys().next().value as string);
-      // A failed or dropped read is not kept: the next conversation tries again.
-      fresh.read.catch(() => {
-        if (cache.get(key) === fresh) cache.delete(key);
+    const key = [chain, provenance ?? '', ...listed.map((asset) => asset.id).sort()].join('|');
+    const twinsRead = keptTwins(key, () => twins(db, listed, provenance));
+    const rows = twinsRead.then((found) => {
+      const twinOf = new Map(found.map((twin) => [twin.id, twin]));
+      return listed.map((asset) => {
+        const twin = twinOf.get(asset.id);
+        return { asset, twin, figures: sheetOf(db, twin?.twinMint ?? asset.address, size) };
       });
-    }
-    const current = entry;
-    current.waiting += 1;
+    });
+    // Each read's own failure is handled where it is awaited; these only keep it from going unhandled.
+    rows.then(
+      (all) => {
+        for (const row of all) row.figures.catch(() => {});
+      },
+      () => {},
+    );
+    return rows;
+  };
+
+  const read = (async (query) => {
+    const vault = query.sizeUsd !== null && Number.isFinite(query.sizeUsd) && query.sizeUsd >= 1;
+    const size = vault ? roundSize(query.sizeUsd as number) : refSizeUsd;
+    const base = { sizeUsd: size, basis: vault ? ('vault' as const) : ('reference' as const), tau };
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<'late'>((resolve) => {
+      timer = setTimeout(() => resolve('late'), wait);
+    });
     try {
-      const result = await Promise.race([
-        current.read,
-        new Promise<'timeout'>((resolve) => {
-          timer = setTimeout(() => resolve('timeout'), timeout);
-        }),
+      const rows = await Promise.race([start(query, size), late]);
+      if (rows === 'late') return { unavailable: 'analytics_timeout' };
+      const settled = new Map<string, AnalyticsFigure[] | null | 'failed'>();
+      await Promise.race([
+        Promise.all(
+          rows.map((row) =>
+            row.figures.then(
+              (figures) => settled.set(row.asset.id, figures),
+              () => settled.set(row.asset.id, 'failed'),
+            ),
+          ),
+        ),
+        late,
       ]);
-      if (result === 'timeout') {
-        current.waiting -= 1;
-        if (current.waiting === 0) {
-          current.dropped = true;
-          if (cache.get(key) === current) cache.delete(key);
-        }
-        return { unavailable: 'analytics_timeout' };
-      }
-      current.waiting -= 1;
-      return { ...base, assets: result };
+      const assets: Read['assets'] = rows.map(({ asset, twin }) => {
+        const got = settled.get(asset.id);
+        const head = { assetId: asset.id, modelledOn: twin?.twinSymbol ?? null };
+        if (got === undefined) return { ...head, figures: null, unread: 'reading' as const };
+        if (got === 'failed') return { ...head, figures: null, unread: 'failed' as const };
+        return { ...head, figures: got && relabel(got, query.provenance, twin) };
+      });
+      if (assets.length && assets.every((row) => row.unread === 'failed'))
+        return { unavailable: 'analytics_failed' };
+      const unread = assets.filter((row) => row.unread).length;
+      return {
+        ...base,
+        assets,
+        ...(unread ? { incomplete: `analytics_partial_${unread}_of_${assets.length}` } : {}),
+      };
     } catch {
-      current.waiting -= 1;
       return { unavailable: 'analytics_failed' };
     } finally {
       clearTimeout(timer);
     }
+  }) as AgentAnalytics;
+
+  // Keeps a chain's reference-size sheets read, so a new goal's turn finds them kept.
+  const timers: Array<ReturnType<typeof setInterval>> = [];
+  read.warm = (query) => {
+    const once = () => {
+      start(query, refSizeUsd).catch(() => {});
+    };
+    once();
+    const timer = setInterval(once, Math.max(1_000, ttl / 2));
+    timer.unref?.();
+    timers.push(timer);
   };
+  read.stop = () => {
+    for (const timer of timers.splice(0)) clearInterval(timer);
+  };
+  return read;
 }
 
 /** The server's reader: one cache and one limit on reads for every conversation. */

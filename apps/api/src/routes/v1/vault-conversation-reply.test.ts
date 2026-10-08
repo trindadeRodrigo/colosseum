@@ -200,9 +200,10 @@ describe('private model-led vault reply route', () => {
     const sized = analytics.mock.calls.at(-1)?.[0].sizeUsd;
     expect(sized).toBe(2500 * Number(cashPrice?.usdPerToken));
     expect(sized).toBeGreaterThan(0);
-    expect(vi.mocked(s.model.read).mock.calls.at(-1)?.[1].analytics).toEqual({
+    expect(vi.mocked(s.model.read).mock.calls.at(-1)?.[1].analytics).toMatchObject({
       sizeUsd: sized,
       basis: 'vault',
+      assets: [],
       unknowns: [],
     });
     const failing = await setup(true, async () => {

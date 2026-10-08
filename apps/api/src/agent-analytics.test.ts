@@ -86,8 +86,8 @@ describe('projectSheet', () => {
       provenance: 'live',
     });
     expect(of('exit', 'us_market_hours')?.value).toBe(0.004);
-    expect(of('cap1pct')).toMatchObject({ regime: 'us_offhours_weekday', unit: 'usd' });
-    expect(of('cap1pct')?.value).toBeGreaterThan(10_000);
+    // The capacity at the tolerance is the plan inputs' figure: one per measure.
+    expect(figures.some((f) => (f.metric as string) === 'cap1pct')).toBe(false);
     expect(of('lp_top1')).toMatchObject({ value: 0.4, source: 'risk_lp_concentration' });
     expect(of('lp_exit')).toMatchObject({ value: 0.015, unit: 'fraction' });
   });
@@ -114,13 +114,16 @@ describe('projectSheet', () => {
       value: 0.015,
       sizeUsd: 25_000,
     });
-    // The curve never reaches the tolerance: what sells at 1% is at least the deepest measured point.
-    expect(projected.find((f) => f.metric === 'cap1pct')).toMatchObject({
-      value: 100_000,
-      lowerBound: true,
-    });
     expect(projected.find((f) => f.metric === 'exit_worst')).not.toHaveProperty('sizeUsd');
     expect(projected.find((f) => f.metric === 'exit_worst')).not.toHaveProperty('lowerBound');
+    // A fact the data only bounds from below stays one.
+    const bounded = structuredClone(sheet);
+    const worst = bounded.costs.find((c) => c.regime === bounded.worstRegime)?.exit.total;
+    if (!worst || worst.value === null) throw new Error('fixture has no worst exit');
+    worst.quality = 'lower_bound';
+    expect(projectSheet(bounded).find((f) => f.metric === 'exit_worst')).toMatchObject({
+      lowerBound: true,
+    });
   });
 
   it('keeps every missing figure as null with its reason, never zero', () => {
@@ -152,7 +155,6 @@ describe('projectSheet', () => {
       'exit',
       'exit',
       'exit',
-      'cap1pct',
       'weekend',
       'lp_top1',
       'lp_exit',
@@ -289,7 +291,7 @@ describe('createAgentAnalytics', () => {
     expect(sheet).toHaveBeenCalledWith(db, '0xabcdef0123456789abcdef0123456789abcdef01', 10_000);
   });
 
-  it('keeps a read for ten minutes, and reads again after', async () => {
+  it('keeps a read for ten minutes, then serves it once more while it is read again', async () => {
     let clock = 0;
     const sheet = vi.fn(async () => measured());
     const read = createAgentAnalytics({ sheet, twins: noTwins, now: () => clock });
@@ -305,8 +307,11 @@ describe('createAgentAnalytics', () => {
     await read(query);
     expect(sheet).toHaveBeenCalledTimes(listed.length);
     clock = 11 * 60_000;
-    await read(query);
-    expect(sheet).toHaveBeenCalledTimes(2 * listed.length);
+    const stale = await read(query);
+    if ('unavailable' in stale) throw new Error(stale.unavailable);
+    // The kept figures answer at once; the new read fills the cache behind them.
+    expect(stale.assets.every((row) => row.figures !== null && !row.unread)).toBe(true);
+    await vi.waitFor(() => expect(sheet).toHaveBeenCalledTimes(2 * listed.length));
   });
 
   it('reads at most the set number of sheets at once, across conversations', async () => {
@@ -328,7 +333,7 @@ describe('createAgentAnalytics', () => {
     expect(most).toBe(2);
   });
 
-  it('answers a code instead of figures when the reads fail or run late, and does not keep a failure', async () => {
+  it('answers a code when every read fails, and does not keep a failure', async () => {
     const failing = vi.fn(async (): Promise<AssetFacts | null> => {
       throw new Error('too many connections');
     });
@@ -343,21 +348,18 @@ describe('createAgentAnalytics', () => {
     expect(await read(query)).toEqual({ unavailable: 'analytics_failed' });
     expect(await read(query)).toEqual({ unavailable: 'analytics_failed' });
     expect(failing).toHaveBeenCalledTimes(2);
-
-    const late = createAgentAnalytics({
-      sheet: () => new Promise(() => {}),
-      twins: noTwins,
-      timeoutMs: 10,
-    });
-    expect(await late(query)).toEqual({ unavailable: 'analytics_timeout' });
   });
 
-  it('does not start the queued sheets of a read every caller has gone on without', async () => {
-    const sheet = vi.fn(
-      (): Promise<AssetFacts | null> =>
-        new Promise((resolve) => setTimeout(() => resolve(null), 30)),
-    );
-    const read = createAgentAnalytics({ sheet, twins: noTwins, concurrency: 1, timeoutMs: 10 });
+  it('waits a short while, then goes on; the reads carry on and the next turn gets them', async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const sheet = vi.fn(async () => {
+      await gate;
+      return measured();
+    });
+    const read = createAgentAnalytics({ sheet, twins: noTwins, waitMs: 20 });
     const query = {
       db,
       chain: 'solana' as const,
@@ -365,13 +367,58 @@ describe('createAgentAnalytics', () => {
       provenance: 'live' as const,
       sizeUsd: null,
     };
-    expect(await read(query)).toEqual({ unavailable: 'analytics_timeout' });
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    // The sheet that held the one slot finished; the rest were never started.
-    expect(sheet).toHaveBeenCalledTimes(1);
-    // And the read is not kept: the next conversation reads again.
-    sheet.mockImplementation(async () => null);
-    expect(await read(query)).toMatchObject({ basis: 'reference' });
-    expect(sheet).toHaveBeenCalledTimes(1 + listed.length);
+    const first = await read(query);
+    if ('unavailable' in first) throw new Error(first.unavailable);
+    expect(first.incomplete).toBe(`analytics_partial_${listed.length}_of_${listed.length}`);
+    expect(first.assets.every((row) => row.unread === 'reading' && row.figures === null)).toBe(
+      true,
+    );
+    release();
+    await vi.waitFor(async () => {
+      const second = await read(query);
+      if ('unavailable' in second) throw new Error(second.unavailable);
+      expect(second.incomplete).toBeUndefined();
+      expect(second.assets.every((row) => row.figures?.length)).toBe(true);
+    });
+    // One read per sheet, however many turns asked.
+    expect(sheet).toHaveBeenCalledTimes(listed.length);
+  });
+
+  it('leaves sheets past the pending limit for a later turn', async () => {
+    const sheet = vi.fn((): Promise<AssetFacts | null> => new Promise(() => {}));
+    const read = createAgentAnalytics({ sheet, twins: noTwins, waitMs: 10, maxPending: 2 });
+    const result = await read({
+      db,
+      chain: 'solana',
+      assets,
+      provenance: 'live',
+      sizeUsd: null,
+    });
+    if ('unavailable' in result) throw new Error(result.unavailable);
+    expect(sheet).toHaveBeenCalledTimes(2);
+    expect(result.assets.filter((row) => row.unread === 'reading')).toHaveLength(2);
+    expect(result.assets.filter((row) => row.unread === 'failed')).toHaveLength(listed.length - 2);
+  });
+
+  it("warms a chain's reference-size reads from the start, so the first new goal finds them kept", async () => {
+    vi.useFakeTimers();
+    try {
+      const sheet = vi.fn(async () => measured());
+      const read = createAgentAnalytics({ sheet, twins: noTwins, ttlMs: 60_000 });
+      read.warm?.({ db, chain: 'solana', assets, provenance: 'live' });
+      await vi.waitFor(() => expect(sheet).toHaveBeenCalledTimes(listed.length));
+      const first = await read({ db, chain: 'solana', assets, provenance: 'live', sizeUsd: null });
+      if ('unavailable' in first) throw new Error(first.unavailable);
+      expect(first.incomplete).toBeUndefined();
+      expect(sheet).toHaveBeenCalledTimes(listed.length);
+      // Kept current on a timer, and stopped with the server.
+      await vi.advanceTimersByTimeAsync(91_000);
+      await vi.waitFor(() => expect(sheet).toHaveBeenCalledTimes(2 * listed.length));
+      read.stop?.();
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(sheet).toHaveBeenCalledTimes(2 * listed.length);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

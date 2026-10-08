@@ -137,6 +137,10 @@ export async function buildApp(
     robinhoodRecord: deps.v1?.robinhoodRecord ?? robinhood.record,
     planInputs: deps.v1?.planInputs ?? bearingPlanInputs,
     agentAnalytics: deps.v1?.agentAnalytics ?? bearingAgentAnalytics,
+    // The server's own reader is warmed from the start; a test's, or a test of the server's, is not.
+    warmAgentAnalytics:
+      deps.v1?.warmAgentAnalytics ??
+      (deps.v1?.agentAnalytics === undefined && process.env.NODE_ENV !== 'test'),
     inScope,
   });
 
