@@ -34,6 +34,9 @@ import { planWithdraw } from './withdraw';
  * The numbers the order layer applies. One place, so the review screen and the bytes agree. The most
  * a request may ask for is `ORDER_LIMITS` in packages/schemas, which the request's own schema holds.
  */
+/** The `engineVersion` of a plan stored from a mix the person confirmed (orders/mix.ts). */
+export const MIX_VERSION = 'mix-1';
+
 export const ORDER_POLICY = {
   /**
    * The slippage a build is given where the buy names none (`maxSlippageBps`), and what a leg's
@@ -48,9 +51,10 @@ export const ORDER_POLICY = {
   maxLines: 16,
 } as const;
 
-/** The slippage every trade of an order is built with: the buy's own figure, or the server's. */
+/** The slippage every trade of an order is built with: the buy's or the rebalance's own figure, or the server's. */
 export function slippageOf(request: IntentRequest): number {
-  return request.type === 'buy' && request.maxSlippageBps !== undefined
+  return (request.type === 'buy' || request.type === 'rebalance') &&
+    request.maxSlippageBps !== undefined
     ? request.maxSlippageBps
     : ORDER_POLICY.slippageBps;
 }
@@ -307,6 +311,14 @@ export async function planBuy(
     );
 
   const cents = amountOf(req);
+  // A mix's warnings were confirmed at the amount it was reviewed at (gate ANY-COMPOSITION): an exit
+  // ceiling that was no warning then can be one at a larger size, so it is bought at no more.
+  if (proposal.engineVersion === MIX_VERSION && cents > centsOf(proposal.sheet.amountUsd))
+    throw new Refusal(
+      422,
+      `this mix was reviewed at ${usd(centsOf(proposal.sheet.amountUsd))}: it is bought at no more than that`,
+      { code: 'AMOUNT_OVER_REVIEW', fix: 'Review the mix again at the new amount, then buy it.' },
+    );
 
   return refusing(async () => {
     const assets = await entry.adapter.listAssets();

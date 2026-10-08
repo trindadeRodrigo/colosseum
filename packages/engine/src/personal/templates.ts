@@ -67,6 +67,48 @@ export const REASON_TEMPLATES = {
     'To hold {sleeveBps|pct} of the plan in stocks and crypto, the plan uses the limits for {risk|risk}: at most {stockCapBps|pct} in one stock or crypto asset, and {issuerCapBps|pct} with one issuer.',
     'Para ter {sleeveBps|pct} do plano em ações e cripto, o plano usa os limites de {risk|risk}: no máximo {stockCapBps|pct} em uma só ação ou cripto, e {issuerCapBps|pct} com um só emissor.',
   ),
+  // A mix whose weights were chosen outside the engine (gate ANY-COMPOSITION, Oct 8): what each
+  // line says, and what the person is warned of and confirms before it is bought or applied.
+  MIX_FROM_MODEL: rule(
+    ['mix'],
+    '{asset} at {weightBps|pct}: proposed in your conversation, and confirmed by you.',
+    '{asset} com {weightBps|pct}: proposto na sua conversa, e confirmado por você.',
+  ),
+  MIX_FROM_PERSON: rule(
+    ['mix'],
+    'You chose {weightBps|pct} for {asset}.',
+    'Você escolheu {weightBps|pct} para {asset}.',
+  ),
+  MIX_OVER_EXIT: rule(
+    ['mix', 'amount'],
+    '{asset} at {usd|usd} is more than {maxUsd|usd}, the part of its measured exit a plan counts on: selling all of it could cost more than planned.',
+    '{asset} com {usd|usd} passa de {maxUsd|usd}, a parte da saída medida com que um plano conta: vender tudo pode custar mais que o previsto.',
+  ),
+  MIX_OVER_EXIT_UNSOURCED: rule(
+    ['mix', 'amount'],
+    '{asset} at {usd|usd} is more than the part of its exit a plan counts on. That measurement names no source, so its limit is not stated.',
+    '{asset} com {usd|usd} passa da parte da saída com que um plano conta. Essa medida não tem fonte, então o limite não é informado.',
+  ),
+  MIX_OVER_TIER: rule(
+    ['mix', 'amount'],
+    '{asset} at {usd|usd} is more than {maxUsd|usd}, the limit for its tier on the asset list. What selling it costs is not measured yet.',
+    '{asset} com {usd|usd} passa de {maxUsd|usd}, o limite da faixa dele na lista de ativos. O custo de vender ainda não está medido.',
+  ),
+  MIX_OVER_LISTED: rule(
+    ['mix'],
+    '{asset} at {weightBps|pct} weighs more than {maxBps|pct}, its cap on the asset list.',
+    '{asset} com {weightBps|pct} pesa mais que {maxBps|pct}, o teto dele na lista de ativos.',
+  ),
+  MIX_NOT_FOR_GOAL: rule(
+    ['mix', 'goal'],
+    '{asset} is in the mix you chose. The asset list does not put it in a plan for {goal|goal}: it can fall in value.',
+    '{asset} está na divisão que você escolheu. A lista de ativos não o coloca em um plano para {goal|goal}: ele pode perder valor.',
+  ),
+  MIX_STOPS_FOLLOWING: rule(
+    ['mix'],
+    'Your own targets replace the shared portfolio this vault follows, and auto-follow goes off.',
+    'As suas metas substituem a carteira compartilhada que este cofre segue, e o acompanhamento automático é desligado.',
+  ),
   // The limits a read-back could state are the ones the mix takes on its own. Where the plan takes
   // higher ones for what else the person's sheet carries, it says so, and names what raised them.
   MIX_LIMITS_RAISED: rule(

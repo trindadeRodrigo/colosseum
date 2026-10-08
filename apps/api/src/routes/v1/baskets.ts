@@ -2,18 +2,20 @@ import { PersonalSheet } from '@colosseum/engine/personal';
 import {
   BasketProposal,
   type ChainId,
+  factsNotHeld,
   OrderError,
   PersonPlansQuery,
   PersonPlansResponse,
   PlanCandidate,
   PlanCandidateNotShown,
   RiskRollUp,
+  ThreadStart,
 } from '@colosseum/schemas';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { Refusal } from '../../orders/errors';
-import type { OrderDeps } from '../../orders/legs';
+import { failureOf, type OrderDeps } from '../../orders/legs';
 import { homeChain } from '../../orders/person';
 import { type PlanInputs, personalize } from '../../orders/personalize';
 import {
@@ -24,6 +26,7 @@ import {
   loadFamilies,
   loadReadablePlan,
 } from '../../orders/store';
+import { placePlans } from '../../orders/thread';
 import { signedIn } from './orders';
 
 // The plan routes (DESIGN-VAULT 3.6 and section 7). The web's side is apps/web/features/goal/build-plan.ts.
@@ -34,6 +37,21 @@ import { signedIn } from './orders';
  */
 export const PersonalizeRequest = z.object({ sheet: PersonalSheet });
 export type PersonalizeRequest = z.infer<typeof PersonalizeRequest>;
+
+/**
+ * The same, for the signed-in person's own plan, with the thread so far where the conversation began
+ * before the plan was theirs (signed out, in the tab): stored once, with the plan (gate PLAN-THREAD).
+ * A plan made from a link takes none: `POST /v1/baskets/propose` has no such field.
+ */
+export const OwnPlanRequest = PersonalizeRequest.extend({
+  thread: ThreadStart.optional(),
+  /**
+   * The plan this one is built after, in the same conversation: the new plan joins that plan's thread.
+   * Honoured only when that plan is the caller's own; any other id is as if none was sent.
+   */
+  previousPlanId: z.string().uuid().optional(),
+});
+export type OwnPlanRequest = z.infer<typeof OwnPlanRequest>;
 
 /**
  * The stored plan's id, which a buy names (`proposalId`), the plan, and its risk roll-up; and the
@@ -125,19 +143,43 @@ export function registerBasketRoutes(
     '/v1/baskets/personalize',
     {
       config: { auth: 'user', limit: 'build' },
+      bodyLimit: 512 * 1024,
       schema: {
         tags: ['plans'],
         summary: 'Make a plan from a goal and its limits, and store it. Nothing is bought',
         description:
-          "The sheet is validated before anything is computed, and a sheet that does not validate answers 400: the engine never runs on it. The plan is made by a deterministic engine on the chain the signed-in person's plans live on (`GET /v1/me`), from the assets listed there and the shared portfolios that have a recipe there. The sheet names that one chain: another answers 422, and a person with no chain yet gets 409. Stock tokens are never in a plan whose goal is to protect or to earn an income. A line's ceiling comes from the measured exit of its token where there is one; where there is none it is its tier's, and the line and `flags` say so (`ceiling_from_tier:<asset>`). Every line has its reasons; every figure the plan stands on is in `observations` with its source, time, method and provenance. `rollUp` is the plan's concentration by issuer, chain and class and its exit figures, from the same figures; with no stored quote before a buy, its quoted exit is null. The answer's `id` is what `POST /v1/orders` buys (`proposalId`). `candidates` are the plans of the same goal made three ways inside the same limits (Cover, Spread, Carry), each stored with its own `id`, in that fixed order, none marked or selected; each has its `scorecard` (months covered, months paid now and under each named stress, carry observed, exit cost, concentration, credit share, open FX for a goal not in dollars) and, with withdrawals to come, its `status` with the ways to close a gap. Two that come out as one choice, or one that another matches or betters on every line of the scorecard, are not shown: `candidatesNotShown` says why. No odds and no projected return. The plan is not advice: see `disclaimer`.",
-        body: PersonalizeRequest,
+          "The sheet is validated before anything is computed, and a sheet that does not validate answers 400: the engine never runs on it. The plan is made by a deterministic engine on the chain the signed-in person's plans live on (`GET /v1/me`), from the assets listed there and the shared portfolios that have a recipe there. The sheet names that one chain: another answers 422, and a person with no chain yet gets 409. Stock tokens are never in a plan whose goal is to protect or to earn an income. A line's ceiling comes from the measured exit of its token where there is one; where there is none it is its tier's, and the line and `flags` say so (`ceiling_from_tier:<asset>`). Every line has its reasons; every figure the plan stands on is in `observations` with its source, time, method and provenance. `rollUp` is the plan's concentration by issuer, chain and class and its exit figures, from the same figures; with no stored quote before a buy, its quoted exit is null. The answer's `id` is what `POST /v1/orders` buys (`proposalId`). `candidates` are the plans of the same goal made three ways inside the same limits (Cover, Spread, Carry), each stored with its own `id`, in that fixed order, none marked or selected; each has its `scorecard` (months covered, months paid now and under each named stress, carry observed, exit cost, concentration, credit share, open FX for a goal not in dollars) and, with withdrawals to come, its `status` with the ways to close a gap. Two that come out as one choice, or one that another matches or betters on every line of the scorecard, are not shown: `candidatesNotShown` says why. No odds and no projected return.  `thread` carries bounded guided turns, stored privately once for the whole offered build. `previousPlanId` joins only the caller’s own prior conversation; another owner or linked plan is ignored. These records are separate from model preview history. The plan is not advice: see `disclaimer`.",
+        body: OwnPlanRequest,
         response: { 200: PersonalizeResponse, default: OrderError },
       },
     },
     async (req): Promise<PersonalizeResponse> => {
       const principal = signedIn(req);
-      const made = await make(req.body.sheet, () => homeChain(deps.db, principal));
-      return stored(made, principal.userId ?? null, false);
+      // The conversation ends at this plan: what its last reply says the facts are is this sheet's.
+      const last = req.body.thread?.at(-1);
+      const off = last ? factsNotHeld(last.reply.facts, req.body.sheet) : [];
+      if (off.length > 0)
+        throw new Refusal(
+          422,
+          `the thread’s last reply holds what the sheet does not: ${off.join(', ')}`,
+        );
+      const result = await stored(
+        await make(req.body.sheet, () => homeChain(deps.db, principal)),
+        principal.userId ?? null,
+        false,
+      );
+      // Link the whole offered build once, retaining every distinct candidate's actual ID.
+      try {
+        await placePlans(deps.db, {
+          planIds: [result.id, ...result.candidates.map((candidate) => candidate.id)],
+          privyId: principal.userId ?? null,
+          ...(req.body.previousPlanId ? { previousPlanId: req.body.previousPlanId } : {}),
+          turns: req.body.thread ?? [],
+        });
+      } catch (e) {
+        deps.onRecordError?.(failureOf(e));
+      }
+      return result;
     },
   );
 

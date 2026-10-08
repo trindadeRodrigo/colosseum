@@ -655,6 +655,26 @@ export const pt: Dictionary = {
       withdrawalsShort: 'Nem todo saque é pago em dia com o que está separado.',
       notLive:
         'Alguns números vêm de uma rede de teste ou de dados de exemplo, não de mercados ao vivo.',
+      origin: (who: string) =>
+        who === 'model'
+          ? 'Esta divisão foi proposta na sua conversa, e você a confirmou.'
+          : 'Você mesmo escolheu esta divisão.',
+      confirmed: (warning: string, asset: string) => {
+        switch (warning) {
+          case 'EXIT_OVER_CAPACITY':
+            return `Você confirmou ter mais ${asset} do que a saída medida comporta no plano.`;
+          case 'EXIT_OVER_TIER_CEILING':
+            return `Você confirmou ter mais ${asset} do que o limite da faixa dele, enquanto o custo de venda não está medido.`;
+          case 'OVER_LISTED_CAP':
+            return `Você confirmou mais ${asset} do que o teto dele na lista de ativos.`;
+          case 'NOT_FOR_GOAL':
+            return `Você confirmou ${asset}, que um plano com este objetivo normalmente não tem.`;
+          case 'STOPS_FOLLOWING':
+            return 'Você confirmou que as suas metas substituem a carteira compartilhada que este cofre seguia.';
+          default:
+            return 'Você confirmou um aviso sobre esta divisão.';
+        }
+      },
       other: 'O plano traz mais uma observação que ainda não sabemos descrever.',
       simple: {
         exit_not_measured: 'Nenhuma parte deste plano tem custo de venda medido ainda.',
