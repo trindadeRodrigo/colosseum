@@ -134,10 +134,10 @@ describe('loadStockAttributes', () => {
       expect(sent?.stockAttributes?.stocks.find((row) => row.symbol === tesla.symbol)).toEqual(
         tesla,
       );
-      expect(sent?.catalog.find((candidate) => candidate.id === asset.id)).toMatchObject({
-        symbol: tesla.symbol,
-        maxWeightBps: asset.maxWeightBps,
-      });
+      const listed = sent?.catalog.find((candidate) => candidate.id === asset.id);
+      expect(listed).toMatchObject({ symbol: tesla.symbol });
+      // The shared-portfolio ceiling is not sent for the person's own vault (ANY-COMPOSITION).
+      expect(listed).not.toHaveProperty('maxWeightBps');
       for (const source of primarySources) {
         const sourceIndex = tesla.sources.indexOf(source);
         expect(sent?.evidence).toContainEqual(

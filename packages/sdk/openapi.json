@@ -7276,11 +7276,6 @@
                                     "type": "string",
                                     "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
                                   },
-                                  "weightBps": {
-                                    "type": "integer",
-                                    "minimum": 0,
-                                    "maximum": 10000
-                                  },
                                   "why": {
                                     "type": "string",
                                     "minLength": 1,
@@ -7296,6 +7291,11 @@
                                       "maxLength": 160
                                     }
                                   },
+                                  "weightBps": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
                                   "symbol": {
                                     "type": "string",
                                     "minLength": 1,
@@ -7304,9 +7304,9 @@
                                 },
                                 "required": [
                                   "assetId",
-                                  "weightBps",
                                   "why",
                                   "evidenceIds",
+                                  "weightBps",
                                   "symbol"
                                 ],
                                 "additionalProperties": false
@@ -7396,12 +7396,80 @@
                         }
                       ]
                     },
+                    "warnings": {
+                      "maxItems": 128,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "enum": ["over_exit_capacity", "outside_goal_requested"]
+                          },
+                          "assetId": {
+                            "type": "string",
+                            "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                          },
+                          "evidenceId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 160
+                          }
+                        },
+                        "required": ["code", "assetId", "evidenceId"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "weightNotes": {
+                      "maxItems": 64,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "enum": [
+                              "equal_split",
+                              "stated",
+                              "scaled",
+                              "pick_dropped",
+                              "share_unmet",
+                              "share_unread"
+                            ]
+                          },
+                          "assetIds": {
+                            "maxItems": 64,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                            }
+                          },
+                          "quote": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 400
+                          }
+                        },
+                        "required": ["code", "assetIds"],
+                        "additionalProperties": false
+                      }
+                    },
                     "chain": {
                       "type": "string",
                       "enum": ["solana", "base", "robinhood"]
                     }
                   },
-                  "required": ["version", "messageId", "message", "question", "proposal", "chain"],
+                  "required": [
+                    "version",
+                    "messageId",
+                    "message",
+                    "question",
+                    "proposal",
+                    "warnings",
+                    "weightNotes",
+                    "chain"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -16600,11 +16668,6 @@
                                     "type": "string",
                                     "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
                                   },
-                                  "weightBps": {
-                                    "type": "integer",
-                                    "minimum": 0,
-                                    "maximum": 10000
-                                  },
                                   "why": {
                                     "type": "string",
                                     "minLength": 1,
@@ -16620,6 +16683,11 @@
                                       "maxLength": 160
                                     }
                                   },
+                                  "weightBps": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10000
+                                  },
                                   "symbol": {
                                     "type": "string",
                                     "minLength": 1,
@@ -16628,9 +16696,9 @@
                                 },
                                 "required": [
                                   "assetId",
-                                  "weightBps",
                                   "why",
                                   "evidenceIds",
+                                  "weightBps",
                                   "symbol"
                                 ],
                                 "additionalProperties": false
@@ -16720,6 +16788,65 @@
                         }
                       ]
                     },
+                    "warnings": {
+                      "maxItems": 128,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "enum": ["over_exit_capacity", "outside_goal_requested"]
+                          },
+                          "assetId": {
+                            "type": "string",
+                            "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                          },
+                          "evidenceId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 160
+                          }
+                        },
+                        "required": ["code", "assetId", "evidenceId"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "weightNotes": {
+                      "maxItems": 64,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "enum": [
+                              "equal_split",
+                              "stated",
+                              "scaled",
+                              "pick_dropped",
+                              "share_unmet",
+                              "share_unread"
+                            ]
+                          },
+                          "assetIds": {
+                            "maxItems": 64,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "pattern": "^(?:solana|base|robinhood):[a-z0-9][a-z0-9-]*$"
+                            }
+                          },
+                          "quote": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 400
+                          }
+                        },
+                        "required": ["code", "assetIds"],
+                        "additionalProperties": false
+                      }
+                    },
                     "chain": {
                       "type": "string",
                       "enum": ["solana", "base", "robinhood"]
@@ -16736,6 +16863,8 @@
                     "message",
                     "question",
                     "proposal",
+                    "warnings",
+                    "weightNotes",
                     "chain",
                     "address"
                   ],

@@ -1390,9 +1390,9 @@ export type PostConversationsByChainGoalReplyResponse = {
     summary: string;
     allocations: {
       assetId: string;
-      weightBps: number;
       why: string;
       evidenceIds: string[];
+      weightBps: number;
       symbol: string;
     }[];
     tradeoffs: string[];
@@ -1409,6 +1409,16 @@ export type PostConversationsByChainGoalReplyResponse = {
       unit?: string;
     }[];
   } | null;
+  warnings: {
+    code: 'over_exit_capacity' | 'outside_goal_requested';
+    assetId: string;
+    evidenceId: string;
+  }[];
+  weightNotes: {
+    code: 'equal_split' | 'stated' | 'scaled' | 'pick_dropped' | 'share_unmet' | 'share_unread';
+    assetIds: string[];
+    quote?: string;
+  }[];
   chain: 'solana' | 'base' | 'robinhood';
 };
 
@@ -2699,9 +2709,9 @@ export type PostVaultsByChainByAddressConversationReplyResponse = {
     summary: string;
     allocations: {
       assetId: string;
-      weightBps: number;
       why: string;
       evidenceIds: string[];
+      weightBps: number;
       symbol: string;
     }[];
     tradeoffs: string[];
@@ -2718,6 +2728,16 @@ export type PostVaultsByChainByAddressConversationReplyResponse = {
       unit?: string;
     }[];
   } | null;
+  warnings: {
+    code: 'over_exit_capacity' | 'outside_goal_requested';
+    assetId: string;
+    evidenceId: string;
+  }[];
+  weightNotes: {
+    code: 'equal_split' | 'stated' | 'scaled' | 'pick_dropped' | 'share_unmet' | 'share_unread';
+    assetIds: string[];
+    quote?: string;
+  }[];
   chain: 'solana' | 'base' | 'robinhood';
   address: string;
 };

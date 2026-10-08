@@ -1,4 +1,4 @@
-import { EXIT_WINDOW_DAYS } from '@colosseum/basket';
+import { EXIT_WINDOW_DAYS, personWeights } from '@colosseum/basket';
 import { eligibleForGoal, PERSONAL_PARAMS } from '@colosseum/engine/personal';
 import type { BasketAsset, ChainId, Price, Shelf, VaultState } from '@colosseum/schemas';
 import {
@@ -8,6 +8,9 @@ import {
   VaultAgentRequest,
   type VaultAgentResult,
   VaultAgentSource,
+  type VaultAgentStatedShare,
+  type VaultAgentWarning,
+  type VaultAgentWeightNote,
 } from '@colosseum/schemas';
 import type { VaultAgentModel, VaultAgentRepair } from '../vault-agent-model';
 import type { ChainEntry } from './chains';
@@ -22,7 +25,11 @@ type AgentContextData = {
   stockAttributes: Figures['stocks'] | null;
   liquidity: Array<{ assetId: string; observation: unknown | null }>;
   unknowns: string[];
-  /** Additional server guardrail caps; these never determine allocation weights. */
+  /**
+   * The share of the vault each asset's measured exit capacity can sell at its current size, keyed by
+   * asset, each with its `liquidity:<asset>` source. A weight above it is allowed with a warning
+   * (ANY-COMPOSITION); it never chooses a weight.
+   */
   caps?: Record<string, number>;
   /** Only a separately confirmed, server-owned goal change can replace existing eligibility. */
   confirmedGoal?: 'grow' | 'income' | 'protect';
@@ -42,23 +49,18 @@ export type VaultAgentPrompt = {
   catalog: Array<
     Pick<
       BasketAsset,
-      | 'id'
-      | 'symbol'
-      | 'underlying'
-      | 'cls'
-      | 'tier'
-      | 'issuer'
-      | 'maxWeightBps'
-      | 'provenance'
-      | 'sheet'
+      'id' | 'symbol' | 'underlying' | 'cls' | 'tier' | 'issuer' | 'provenance' | 'sheet'
     >
   >;
   evidence: AgentSource[];
   stockAttributes: Figures['stocks'] | null;
   liquidity: VaultAgentContext['liquidity'];
   unknowns: string[];
-  caps: Record<string, number>;
+  /** Measured exit capacity as a share of the vault; above it is allowed and warned, not refused. */
+  exitCapacityBps: Record<string, number>;
   eligibilityGoal: 'grow' | 'income' | 'protect' | null;
+  /** Assets outside eligibilityGoal that the person asked for in their own words. */
+  requestedOutsideGoal: string[];
   /** Person-authored limits projected onto the supplied catalog, never allocation choices. */
   allocationConstraints: Array<{
     assetIds: string[];
@@ -68,11 +70,6 @@ export type VaultAgentPrompt = {
   }>;
 };
 
-/** Cash is the residual balance, not a capped creator target (compose's cash convention). */
-function catalogCap(asset: BasketAsset): number {
-  return asset.cls === 'cash' ? 10000 : asset.maxWeightBps;
-}
-
 /** This reads observations and guardrails only. It never calls an allocator, stores, or trades. */
 type ContextInput = {
   entry: ChainEntry;
@@ -80,7 +77,6 @@ type ContextInput = {
   prepared: { shelf: Shelf; figures: Figures };
   person: string;
   currentGoals?: readonly unknown[];
-  caps?: Record<string, number>;
   confirmedGoal?: 'grow' | 'income' | 'protect';
 };
 
@@ -121,14 +117,14 @@ function buildAgentContext(
     add({
       id: `catalog:${asset.id}`,
       assetId: asset.id,
-      label: `${asset.symbol} catalog cap`,
-      value: catalogCap(asset),
-      unit: 'bps',
+      // A shared portfolio's ceiling (maxWeightBps) does not bind the person's own vault, so it is not
+      // offered as a figure here (ANY-COMPOSITION).
+      label: `${asset.symbol} listed on this chain`,
       source: entry.source,
       fetchedAt: input.observedAt,
       method:
         asset.cls === 'cash'
-          ? 'listed asset catalog; cash residual has no catalog holding cap'
+          ? 'listed asset catalog; cash is the residual balance'
           : 'listed asset catalog',
       provenance: entry.provenance,
     });
@@ -207,7 +203,7 @@ function buildAgentContext(
         ? 'Some current holdings lack a usable reference price; the full vault value is unknown.'
         : 'No planning amount has been confirmed for this new goal; size-dependent exit capacity and feasibility are unknown. There is no existing vault or current holdings.',
     );
-  const caps = { ...input.caps };
+  const caps: Record<string, number> = {};
   const liquidity = assets.map((asset) => {
     const observed =
       asset.cls !== 'cash' && notionalUsd !== null && notionalUsd > 0
@@ -221,11 +217,7 @@ function buildAgentContext(
     if (observation && notionalUsd !== null && notionalUsd > 0) {
       if (!Number.isFinite(observation.capacityUsd) || observation.capacityUsd < 0)
         throw new Error('Invalid measured exit capacity');
-      caps[asset.id] = Math.min(
-        catalogCap(asset),
-        caps[asset.id] ?? catalogCap(asset),
-        Math.min(10000, Math.floor((observation.capacityUsd / notionalUsd) * 10000)),
-      );
+      caps[asset.id] = Math.min(10000, Math.floor((observation.capacityUsd / notionalUsd) * 10000));
     }
     if (observation?.dataTo && prepared.figures.liquidity)
       add({
@@ -317,19 +309,21 @@ const REPAIR_HINTS: Record<string, string> = {
   reply_schema:
     'The reply did not match the required structure: a field was missing, had the wrong type, or was outside its length or count limits.',
   prose_figure:
-    'Prose contained a financial figure, percentage, price, yield, date or written-out number. Numbers may appear in prose only inside an exact catalog name or an exact quote of the person in attributed quotation marks. Put proposed weights only in weightBps.',
+    'Prose contained a financial figure, percentage, price, yield, date or written-out number. Numbers may appear in prose only inside an exact catalog name or an exact quote of the person in attributed quotation marks. The server sets the weights.',
   prose_claims_applied:
     'Prose said something was applied, created, funded, traded or approved. A proposal is only a private preview; nothing has been applied.',
   allocation_unlisted: "An allocation named an assetId that is not in this chain's catalog.",
   allocation_duplicate: 'The same assetId appeared in more than one allocation.',
-  allocation_over_cap: "An allocation's weightBps was above that asset's limit in caps.",
+  allocation_lines:
+    'The proposal held more than sixteen assets besides cash; a vault holds at most sixteen.',
   allocation_ineligible:
-    'An allocation used an asset that is not eligible for eligibilityGoal: stocks are not eligible for income or protect.',
+    'An allocation used an asset that is outside eligibilityGoal (stocks in income or protect) and is not in requestedOutsideGoal. Only the person can ask for such an asset; never add one on your own. If the person seems to want it but has not plainly asked, leave it out and ask them to confirm in question.',
   allocation_evidence:
     'An allocation cited an evidenceId that does not exist in evidence or belongs to a different asset.',
-  allocation_sum: 'Allocation weightBps did not add up to exactly 10000.',
   allocation_constraint:
-    'The proposal broke a limit the person stated. The limits in allocationConstraints are theirs and still stand.',
+    'The picks cannot meet a share the person stated in stated. Pick the assets it covers, with room for the rest, so the server can meet it, or ask the person about it in question. The share is theirs and still stands.',
+  stated_ungrounded:
+    'A share in stated was not accepted. Each needs quote copied exactly from one of the person\'s messages, holding the same number as bps ("70%", "70 percent", "metade", "70/30"), and naming every asset in assetIds. A return, yield, growth or loss figure ("10% a year") is not a share. A preference with no number ("mostly Tesla") is not a share: leave it out and ask what share they want. Correct or remove it.',
   reply_shape:
     'The proposal did not fit the final preview limits once the server added its own unknowns and sources: keep fields shorter and lists smaller.',
 };
@@ -345,6 +339,140 @@ function claimsApplied(text: string): boolean {
   );
 }
 
+/** A quote, a hypothetical, someone else's view or a request to talk: not the person's instruction. */
+const NOT_AN_INSTRUCTION =
+  /^["“‘']|\b(?:if|should\s+i|my\s+friend|my\s+advisor|someone|said|quoted|explain|understand|discuss|talk\s+about|learn|example|se\s+eu|meu\s+amigo|disse|entender|discutir|exemplo)\b/iu;
+const STOCK_WORDS = ['stocks?', 'shares?', 'equities', 'ações', 'acoes'];
+const isStock = (asset: Pick<BasketAsset, 'cls'>) => asset.cls === 'stock' || asset.cls === 'etf';
+const literal = (word: string) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const word = (pattern: string, flags: string) =>
+  new RegExp(`(?<![\\p{L}\\p{N}])(?:${pattern})(?![\\p{L}\\p{N}])`, flags);
+
+// The reader of "the person asked for this stock" (gate ANY-COMPOSITION). It errs towards missing a
+// request: a stock outside an income or protect goal that the person did not plainly ask for is refused,
+// and the model is told to ask them instead.
+const ASKS = word(
+  "want|wanna|i'?d\\s+like|would\\s+like|prefer|add|include|put|buy|allocate|invest|quero|queria|gostaria|prefiro|adicione|adiciona|adicionar|inclua|inclui|incluir|compre|compra|comprar|coloque|coloca|colocar|aloque|aloca|alocar|invista|investir|bote|bota|botar|põe|ponha|pôr",
+  'iu',
+);
+const POLITE_ASK =
+  /^(?:please\s+)?(?:can|could|would)\s+you\s+(?:please\s+)?(?:add|put|include|buy)\b|^(?:você\s+|voce\s+)?(?:pode|poderia)\s+(?:por\s+favor\s+)?(?:colocar|adicionar|incluir|comprar|pôr|botar)(?![\p{L}\p{N}])/iu;
+// A refusal, an exclusion, an upper bound, a withdrawal or a sale: the clause asks for nothing.
+const REFUSES = word(
+  "no|not|none|never|nothing|without|except|excluding|exclude|avoid|avoiding|out|sell|selling|remove|drop|scratch|cut|minus|instead|rather|risky|less|fewer|stop|don'?t|do\\s+not|doesn'?t|won'?t|at\\s+most|no\\s+more|max|maximum|up\\s+to|already|menos|sem|não|nao|nada|nenhum|nenhuma|nunca|exceto|tirar|tire|tira|vender|venda|vende|evitar|evite|evita|arriscad[ao]s?|fora|máximo|maximo|até|já",
+  'iu',
+);
+// Someone else's view, a condition or a wish to talk about it: not the person's instruction.
+const NOT_THEIRS = word(
+  'if|whether|should|my\\s+friend|my\\s+advisor|someone|somebody|said|says|suggests?|suggested|quoted|explain|discuss|talk\\s+about|learn|example|imagine|suppose|know|understand|compare|see|look|something\\s+like|style|se|caso|meu\\s+amigo|disse|diz|sugere|sugeriu|discutir|exemplo|saber|conhecer|entender|comparar|ver|como\\s+[ao]s?|algo\\s+como|estilo',
+  'iu',
+);
+// A condition anywhere in a sentence voids all of it: "Quero ações, mas só se for seguro."
+const CONDITION = word('if|unless|only\\s+if|se|caso|só\\s+se|a\\s+menos\\s+que', 'iu');
+const ASKS_A_QUESTION =
+  /^(?:why|what|which|how|is|are|was|should|can|could|would|do|does|did|will|por\s*que|porque|o\s+que|qual|quais|como|será|sera|devo|vale)(?![\p{L}\p{N}])/iu;
+// Company short names that are everyday words; the ticker still names the asset.
+const COMMON_NAMES = new Set(['meta', 'strategy', 'circle', 'oracle', 'target', 'block']);
+const CORPORATE =
+  /\s+(?:inc\.?|incorporated|corp\.?|corporation|company|co\.?|limited|ltd\.?|lp|n\.v\.|plc|group|holdings?|platforms|global|technologies|markets|trust|series\s+\d+)$/iu;
+
+/** The company names a person may use: the registered name and its short form ("Apple"). */
+function companyNames(companies: string[]): string[] {
+  const names = new Set<string>();
+  for (const company of companies) {
+    let name = company.split(',')[0]?.trim() ?? '';
+    names.add(name);
+    for (let shorter = name.replace(CORPORATE, ''); shorter !== name; ) {
+      name = shorter;
+      shorter = name.replace(CORPORATE, '');
+    }
+    names.add(name.replace(/\.com$/iu, ''));
+  }
+  return [...names].filter((name) => name.length > 2);
+}
+
+/** The case-sensitive tickers and the case-insensitive company names that name one asset. */
+function assetNames(asset: BasketAsset, companies: string[]): RegExp[] {
+  const tickers = [...new Set([asset.symbol, asset.underlying])].map(literal);
+  const spoken = companyNames(companies).filter((name) => !COMMON_NAMES.has(name.toLowerCase()));
+  return [
+    word(tickers.join('|'), 'u'),
+    ...(spoken.length ? [word(spoken.map(literal).join('|'), 'iu')] : []),
+  ];
+}
+
+/**
+ * The stocks the person asked for in their own words, read clause by clause. A stock, its company or
+ * "stocks" counts only in an affirmative clause: an asking verb before it in the sentence, and in that
+ * clause no refusal, exclusion, upper bound, sale, condition or someone else's view. A message with a
+ * question mark counts only through a polite request ("can you add", "pode colocar"). The latest mention
+ * of a stock wins, so "no AAPL" withdraws an earlier "I want AAPL". The model's reply never counts.
+ */
+function requestedStocks(
+  messages: VaultAgentRequest['messages'],
+  language: 'en' | 'pt',
+  assets: BasketAsset[],
+  companies: Map<string, string[]>,
+): Set<string> {
+  const stocks = assets.filter(isStock);
+  const names = new Map(
+    stocks.map((asset) => [asset.id, assetNames(asset, companies.get(asset.id) ?? [])]),
+  );
+  const general = word(STOCK_WORDS.join('|'), 'iu');
+  // Portuguese "no" is "in the"; its refusals are não, nenhum, nada, sem.
+  const refuses = (clause: string) =>
+    REFUSES.test(language === 'pt' ? clause.replace(word('no', 'iu'), 'em') : clause);
+  // The latest affirmative (true) or refusing (false) mention of each stock, and of stocks in general.
+  const latest = new Map<string, { at: number; asked: boolean }>();
+  let at = 0;
+  for (const message of messages) {
+    if (message.who !== 'person') continue;
+    const text = message.text.trim();
+    if (/^["“‘']/u.test(text)) continue;
+    const questioned = text.includes('?');
+    const sentences = text
+      .split(/[.;!?\n]+/u)
+      .filter((sentence) => !CONDITION.test(sentence))
+      .flatMap((sentence) =>
+        sentence.split(
+          /(?<![\p{L}\p{N}])(?:but|however|mas|porém|porem|contudo)(?![\p{L}\p{N}])/iu,
+        ),
+      );
+    for (const sentence of sentences) {
+      let asking = false;
+      for (const clause of sentence.split(',').map((part) => part.trim())) {
+        if (!clause) continue;
+        const polite = POLITE_ASK.test(clause);
+        if (NOT_THEIRS.test(clause) || (!polite && (questioned || ASKS_A_QUESTION.test(clause)))) {
+          asking = false;
+          continue;
+        }
+        const verb = polite ? 0 : clause.search(ASKS);
+        if (verb >= 0) asking = true;
+        const refused = refuses(clause);
+        if (!refused && !asking) continue;
+        // An affirmative clause asks for what follows its own verb; a refusal covers the whole clause.
+        const read = refused || verb < 0 ? clause : clause.slice(verb);
+        at += 1;
+        if (general.test(read)) latest.set('*', { at, asked: !refused });
+        for (const asset of stocks)
+          if (names.get(asset.id)?.some((pattern) => pattern.test(read)))
+            latest.set(asset.id, { at, asked: !refused });
+      }
+    }
+  }
+  return new Set(
+    stocks
+      .filter((asset) => {
+        const own = latest.get(asset.id);
+        const all = latest.get('*');
+        const last = !own ? all : !all || own.at >= all.at ? own : all;
+        return last?.asked === true;
+      })
+      .map((asset) => asset.id),
+  );
+}
+
 type HoldingConstraint = {
   key: string;
   matches(asset: BasketAsset): boolean;
@@ -357,35 +485,41 @@ type HoldingConstraint = {
 function holdingConstraints(
   messages: VaultAgentRequest['messages'],
   assets: BasketAsset[],
+  companies: Map<string, string[]> = new Map(),
 ): HoldingConstraint[] {
   const constraints = new Map<string, HoldingConstraint>();
-  const targets: Array<{ key: string; words: string[]; matches(asset: BasketAsset): boolean }> = [
+  const named = (words: string[]) => {
+    const pattern = word(words.join('|'), 'iu');
+    return (text: string) => pattern.test(text);
+  };
+  // Tickers as written and company names in any case, as the stock-request reader reads them.
+  const targets: Array<{
+    key: string;
+    test(text: string): boolean;
+    matches(asset: BasketAsset): boolean;
+  }> = [
+    { key: 'stocks', test: named(STOCK_WORDS), matches: isStock },
+    { key: 'cash', test: named(['cash', 'caixa']), matches: (asset) => asset.cls === 'cash' },
+    { key: 'gold', test: named(['gold', 'ouro']), matches: (asset) => asset.cls === 'gold' },
     {
-      key: 'stocks',
-      words: ['stocks?', 'shares?', 'equities', 'ações', 'acoes'],
-      matches: (asset) => asset.cls === 'stock' || asset.cls === 'etf',
+      key: 'crypto',
+      test: named(['crypto', 'cripto']),
+      matches: (asset) => asset.cls === 'crypto',
     },
-    { key: 'cash', words: ['cash', 'caixa'], matches: (asset) => asset.cls === 'cash' },
-    { key: 'gold', words: ['gold', 'ouro'], matches: (asset) => asset.cls === 'gold' },
-    { key: 'crypto', words: ['crypto', 'cripto'], matches: (asset) => asset.cls === 'crypto' },
-    ...assets.map((asset) => ({
-      key: asset.id,
-      words: [asset.symbol, asset.underlying].map((word) =>
-        word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
-      ),
-      matches: (candidate: BasketAsset) => candidate.id === asset.id,
-    })),
+    ...assets.map((asset) => {
+      const names = assetNames(asset, companies.get(asset.id) ?? []);
+      return {
+        key: asset.id,
+        test: (text: string) => names.some((pattern) => pattern.test(text)),
+        matches: (candidate: BasketAsset) => candidate.id === asset.id,
+      };
+    }),
   ];
   let last: HoldingConstraint | undefined;
   for (const message of messages) {
     if (message.who !== 'person') continue;
     const text = message.text.trim();
-    if (
-      /^["“‘']|\b(?:if|should\s+i|my\s+friend|my\s+advisor|someone|said|quoted|explain|understand|discuss|talk\s+about|learn|example|se\s+eu|meu\s+amigo|disse|entender|discutir|exemplo)\b/iu.test(
-        text,
-      )
-    )
-      continue;
+    if (NOT_AN_INSTRUCTION.test(text)) continue;
     const instruction =
       /^(?:please\s+)?(?:i\s+(?:think\s+i\s+)?(?:want|would\s+like|would\s+prefer)|we\s+want|put|allocate|hold|keep|set|make|increase|reduce|replace|quero|prefiro|coloque|aloque|mantenha|aumente|reduza|faça|faca)\b/iu.test(
         text,
@@ -396,12 +530,8 @@ function holdingConstraints(
         text,
       )
     ) {
-      const named = targets.filter((target) =>
-        new RegExp(`(?<![\\p{L}\\p{N}])(?:${target.words.join('|')})(?![\\p{L}\\p{N}])`, 'iu').test(
-          text,
-        ),
-      );
-      if (named.length > 0) for (const target of named) constraints.delete(target.key);
+      const dropped = targets.filter((target) => target.test(text));
+      if (dropped.length > 0) for (const target of dropped) constraints.delete(target.key);
       else if (/\b(?:that|this|esse|este)\b/iu.test(text) && last) constraints.delete(last.key);
       continue;
     }
@@ -424,33 +554,18 @@ function holdingConstraints(
           .slice(0, match.index)
           .split(/[,;.!?](?!\d)|\b(?:and|but|e|mas)\b/iu)
           .at(-1) ?? '';
-      const named = targets.filter((target) =>
-        new RegExp(`(?<![\\p{L}\\p{N}])(?:${target.words.join('|')})(?![\\p{L}\\p{N}])`, 'iu').test(
-          after,
-        ),
-      );
+      const afterNames = targets.filter((target) => target.test(after));
       const beforeNames =
-        named.length === 0
-          ? targets.filter((target) =>
-              new RegExp(
-                `(?<![\\p{L}\\p{N}])(?:${target.words.join('|')})(?![\\p{L}\\p{N}])`,
-                'iu',
-              ).test(before),
-            )
-          : [];
-      const wholeNames = targets.filter((target) =>
-        new RegExp(`(?<![\\p{L}\\p{N}])(?:${target.words.join('|')})(?![\\p{L}\\p{N}])`, 'iu').test(
-          text,
-        ),
-      );
+        afterNames.length === 0 ? targets.filter((target) => target.test(before)) : [];
+      const wholeNames = targets.filter((target) => target.test(text));
       const target =
-        named.length === 1
-          ? named[0]
+        afterNames.length === 1
+          ? afterNames[0]
           : beforeNames.length === 1
             ? beforeNames[0]
-            : named.length === 0 && beforeNames.length === 0 && /^make\s+that\b/iu.test(text)
+            : afterNames.length === 0 && beforeNames.length === 0 && /^make\s+that\b/iu.test(text)
               ? last
-              : named.length === 0 && beforeNames.length === 0 && wholeNames.length === 1
+              : afterNames.length === 0 && beforeNames.length === 0 && wholeNames.length === 1
                 ? wholeNames[0]
                 : undefined;
       if (!target) continue;
@@ -468,6 +583,110 @@ function holdingConstraints(
     }
   }
   return [...constraints.values()];
+}
+
+// A share of the vault is never a return, a yield, growth or a loss: "10% a year" sets no weight.
+const RETURNS = word(
+  'a\\s+year|per\\s+year|yearly|annual(?:ly)?|a\\s+month|per\\s+month|monthly|earn|earns|earning|return|returns|yield|yields|interest|gain|gains|profit|grow|grows|growth|lose|loses|losing|loss|losses|drawdown|ao\\s+ano|por\\s+ano|anual|ao\\s+m[eê]s|por\\s+m[eê]s|mensal|render|rende|rendimento|retorno|juros|ganho|ganhar|lucro|crescer|cresça|cresce|crescimento|perder|perda|perdas|queda',
+  'iu',
+);
+// What reads as a share in the person's words, applied or not.
+const SHARE_WORDS =
+  /\d+(?:[.,]\d+)?\s*(?:%|percent|per\s*cent|por\s*cento)|(?<![\d.,])\d+\s*\/\s*\d+(?![\d.,])|(?<![\p{L}\p{N}])(?:half|metade|mostly|mainly|majority|most\s+of|maioria|maior\s+parte|principalmente|sobretudo)(?![\p{L}\p{N}])/iu;
+const CLASS_WORDS: Array<[(asset: BasketAsset) => boolean, string[]]> = [
+  [isStock, STOCK_WORDS],
+  [(asset) => asset.cls === 'cash', ['cash', 'caixa']],
+  [(asset) => asset.cls === 'gold', ['gold', 'ouro']],
+  [(asset) => asset.cls === 'crypto', ['crypto', 'cripto', 'criptomoedas?']],
+];
+const normalized = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[“”«»]/gu, '"')
+    .replace(/[‘’]/gu, "'")
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .replace(/^["'\s]+|["'.!?;:,\s]+$/gu, '');
+
+/** The shares a quote holds, in basis points: "70%", "70 percent", "70 por cento", "half", "metade", and both sides of "70/30". */
+function quotedBps(quote: string): Set<number> {
+  const found = new Set<number>();
+  const bps = (text: string) => Math.round(Number(text.replace(',', '.')) * 100);
+  for (const match of quote.matchAll(
+    /(\d+(?:[.,]\d+)?)\s*(?:%|percent|per\s*cent|por\s*cento|pct)/giu,
+  ))
+    found.add(bps(match[1] ?? ''));
+  for (const match of quote.matchAll(
+    /(?<![\d.,])(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)(?![\d.,])/gu,
+  )) {
+    const [a, b] = [bps(match[1] ?? ''), bps(match[2] ?? '')];
+    if (a + b === 10_000) found.add(a).add(b);
+  }
+  if (word('half|metade', 'iu').test(quote)) found.add(5000);
+  return found;
+}
+
+type Grounded = { share: VaultAgentStatedShare; at: number };
+
+/**
+ * The shares the model reports that the person's words hold (gate ANY-COMPOSITION, Rodrigo's `stated`):
+ * the quote is in one person message, it holds the share's number, it is not about a return, a yield,
+ * growth or a loss, and it names every asset the share covers (a ticker or company name in any case,
+ * since the quote binds it, or the asset's class). The latest message wins: an earlier share whose
+ * assets a later one all covers is dropped. Everything else is `rejected`, with why, for the repair.
+ */
+function groundShares(
+  stated: readonly VaultAgentStatedShare[],
+  messages: VaultAgentRequest['messages'],
+  catalog: Map<string, BasketAsset>,
+  companies: Map<string, string[]>,
+): { accepted: VaultAgentStatedShare[]; rejected: string[] } {
+  const people = messages.flatMap((message, at) =>
+    message.who === 'person' ? [{ at, text: normalized(message.text) }] : [],
+  );
+  const names = (quote: string, asset: BasketAsset) =>
+    word(
+      [asset.symbol, asset.underlying, ...companyNames(companies.get(asset.id) ?? [])]
+        .map(literal)
+        .join('|'),
+      'iu',
+    ).test(quote) ||
+    CLASS_WORDS.some(
+      ([matches, words]) => matches(asset) && word(words.join('|'), 'iu').test(quote),
+    );
+  const grounded: Grounded[] = [];
+  const rejected: string[] = [];
+  stated.forEach((share, index) => {
+    const quote = normalized(share.quote);
+    const at = people.filter((person) => quote && person.text.includes(quote)).at(-1)?.at;
+    const why =
+      at === undefined
+        ? "its quote is not the person's own words from one message"
+        : RETURNS.test(share.quote)
+          ? 'its quote is about a return, a yield, growth or a loss, not a share of the vault'
+          : !quotedBps(share.quote).has(share.bps)
+            ? 'the number in its quote is not its bps; a preference with no number, such as "mostly", is not a share'
+            : share.assetIds.some((id) => {
+                  const asset = catalog.get(id);
+                  return !asset || !names(share.quote, asset);
+                })
+              ? 'its quote does not name every asset in its assetIds'
+              : null;
+    if (why || at === undefined) rejected.push(`At stated.${index} (“${share.quote}”): ${why}.`);
+    else grounded.push({ share, at });
+  });
+  const ordered = grounded
+    .map((entry, order) => ({ ...entry, order }))
+    .sort((a, b) => a.at - b.at || a.order - b.order);
+  const accepted = ordered
+    .filter(
+      (entry, i) =>
+        !entry.share.assetIds.every((id) =>
+          ordered.slice(i + 1).some((later) => later.share.assetIds.includes(id)),
+        ),
+    )
+    .map((entry) => entry.share);
+  return { accepted, rejected };
 }
 
 export async function replyToVaultConversation(
@@ -494,15 +713,32 @@ export async function replyToVaultConversation(
   const catalog = new Map(
     context.assets.filter((asset) => asset.chain === chain).map((asset) => [asset.id, asset]),
   );
-  const caps = Object.fromEntries(
-    [...catalog.values()].map((asset) => [
-      asset.id,
-      Math.min(catalogCap(asset), context.caps?.[asset.id] ?? catalogCap(asset)),
-    ]),
-  );
-  if (Object.values(caps).some((cap) => !Number.isInteger(cap) || cap < 0 || cap > 10_000))
+  // Every exit-capacity share must be a listed asset's, whole, in range and backed by its measured
+  // figure: a warning cites that figure, so a share without one is a server fault.
+  const caps = context.caps ?? {};
+  if (
+    Object.entries(caps).some(
+      ([id, cap]) =>
+        !catalog.has(id) ||
+        !Number.isInteger(cap) ||
+        cap < 0 ||
+        cap > 10_000 ||
+        !sourceById.has(`liquidity:${id}`),
+    )
+  )
     return invalid('context_caps');
-  const constraints = holdingConstraints(parsed.data.messages, [...catalog.values()]);
+  const goal = eligibilityGoal(context);
+  const companies = new Map<string, string[]>();
+  for (const row of context.stockAttributes?.stocks ?? [])
+    for (const asset of catalog.values())
+      if (asset.symbol === row.symbol) companies.set(asset.id, [row.company]);
+  const constraints = holdingConstraints(parsed.data.messages, [...catalog.values()], companies);
+  const requested = requestedStocks(
+    parsed.data.messages,
+    parsed.data.language,
+    [...catalog.values()],
+    companies,
+  );
   const prompt: VaultAgentPrompt = {
     version: 1,
     kind: context.kind ?? 'vault',
@@ -513,14 +749,13 @@ export async function replyToVaultConversation(
     vault: context.state,
     currentGoals: context.currentGoals,
     catalog: [...catalog.values()].map(
-      ({ id, symbol, underlying, cls, tier, issuer, maxWeightBps, provenance, sheet }) => ({
+      ({ id, symbol, underlying, cls, tier, issuer, provenance, sheet }) => ({
         id,
         symbol,
         underlying,
         cls,
         tier,
         issuer,
-        maxWeightBps: cls === 'cash' ? 10000 : maxWeightBps,
         provenance,
         sheet,
       }),
@@ -529,8 +764,13 @@ export async function replyToVaultConversation(
     stockAttributes: context.stockAttributes,
     liquidity: context.liquidity,
     unknowns: context.unknowns,
-    caps,
-    eligibilityGoal: eligibilityGoal(context),
+    exitCapacityBps: caps,
+    eligibilityGoal: goal,
+    requestedOutsideGoal: goal
+      ? [...catalog.values()]
+          .filter((asset) => requested.has(asset.id) && !eligibleForGoal(asset, goal))
+          .map((asset) => asset.id)
+      : [],
     allocationConstraints: constraints.map((constraint) => ({
       assetIds: [...catalog.values()].filter(constraint.matches).map((asset) => asset.id),
       minWeightBps: constraint.min,
@@ -561,7 +801,8 @@ export async function replyToVaultConversation(
     failed: detail,
     problems: [REPAIR_HINTS[detail] ?? detail, ...extra],
   });
-  const check = (output: Output): Checked => {
+  // `final` is the repair attempt: a share it still reports without the person's words is ignored.
+  const check = (output: Output, final = false): Checked => {
     if ('why' in output)
       return {
         result: {
@@ -602,75 +843,158 @@ export async function replyToVaultConversation(
       return {
         result: {
           kind: 'reply',
-          reply: { version: 1, messageId: request.messageId, ...conversation, proposal: null },
+          reply: {
+            version: 1,
+            messageId: request.messageId,
+            ...conversation,
+            proposal: null,
+            warnings: [],
+            weightNotes: [],
+          },
         },
       };
     const ids = new Set<string>();
-    const sources = new Set<string>();
-    let sum = 0;
     for (const allocation of proposal.allocations) {
       const asset = catalog.get(allocation.assetId);
       if (!asset) return rejected('allocation_unlisted');
       if (ids.has(asset.id)) return rejected('allocation_duplicate');
-      if (allocation.weightBps > (caps[asset.id] ?? 0)) return rejected('allocation_over_cap');
-      if (prompt.eligibilityGoal && !eligibleForGoal(asset, prompt.eligibilityGoal))
+      // Any listed composition may be proposed (ANY-COMPOSITION): only a stock outside the goal that the
+      // person never asked for is refused; exit capacity and an asked-for stock warn, below.
+      if (goal && !eligibleForGoal(asset, goal) && !requested.has(asset.id))
         return rejected('allocation_ineligible');
       ids.add(asset.id);
-      sum += allocation.weightBps;
       for (const id of allocation.evidenceIds) {
         const source = sourceById.get(id);
         if (!source || (source.assetId !== undefined && source.assetId !== asset.id))
           return rejected('allocation_evidence');
-        sources.add(id);
       }
     }
-    if (sum !== 10_000) return rejected('allocation_sum');
-    for (const [index, constraint] of constraints.entries()) {
-      const actual = proposal.allocations.reduce((weight, allocation) => {
-        const asset = catalog.get(allocation.assetId);
-        return weight + (asset && constraint.matches(asset) ? allocation.weightBps : 0);
-      }, 0);
-      if (actual < constraint.min || actual > constraint.max) {
-        // Which limit, in words: the server's own constraint and the person's quote, never the model's weights.
-        const side = actual < constraint.min ? 'below its minWeightBps' : 'above its maxWeightBps';
-        return {
-          failed: 'allocation_constraint',
-          problems: [
-            REPAIR_HINTS.allocation_constraint ?? 'allocation_constraint',
-            `At allocationConstraints.${index} (the person said “${constraint.quote}”): the weightBps of its assetIds together came ${side}.`,
-          ],
-          result: {
-            kind: 'reply',
-            reply: {
-              version: 1,
-              messageId: request.messageId,
-              proposal: null,
-              message:
-                request.language === 'pt'
-                  ? `A proposta não respeitou seu pedido: “${constraint.quote}”. Esse limite continua valendo; nada foi aplicado.`
-                  : `The draft did not meet your request: “${constraint.quote}”. That requirement still stands; nothing was applied.`,
-              question:
-                request.language === 'pt'
-                  ? 'Quer que eu proponha outra divisão respeitando esse limite, ou prefere alterá-lo?'
-                  : 'Would you like another draft within that limit, or would you like to change the requirement?',
-            },
+    if (
+      proposal.allocations.filter((allocation) => catalog.get(allocation.assetId)?.cls !== 'cash')
+        .length > 16
+    )
+      return rejected('allocation_lines');
+    // The weights come from the person's words, never from the model (Rodrigo's rule 2): an equal
+    // split, or the shares the person stated that their words hold. A pick their shares leave nothing
+    // for is dropped, and every such step is said in a weight note.
+    const { stated, ...preview } = proposal;
+    const grounded = groundShares(stated, parsed.data.messages, catalog, companies);
+    if (grounded.rejected.length && !final) return rejected('stated_ungrounded', grounded.rejected);
+    const shares = grounded.accepted;
+    const picks = preview.allocations.map((allocation) => ({
+      allocation,
+      asset: catalog.get(allocation.assetId) as BasketAsset,
+    }));
+    const members = shares.map((share) =>
+      picks.flatMap(({ asset }, i) => (share.assetIds.includes(asset.id) ? [i] : [])),
+    );
+    const { weights, unmet, scaled } = personWeights(
+      picks.length,
+      shares.map((share, i) => ({
+        members: members[i] ?? [],
+        min: share.kind === 'max' ? 0 : share.bps,
+        max: share.kind === 'min' ? 10_000 : share.bps,
+      })),
+    );
+    const missed = unmet[0] === undefined ? undefined : shares[unmet[0]];
+    if (missed) {
+      // Which share, in words: its place and the person's quote, never a weight.
+      return {
+        failed: 'allocation_constraint',
+        problems: [
+          REPAIR_HINTS.allocation_constraint ?? 'allocation_constraint',
+          `At stated.${stated.indexOf(missed)} (the person said “${missed.quote}”): the picks cannot meet it.`,
+        ],
+        result: {
+          kind: 'reply',
+          reply: {
+            version: 1,
+            messageId: request.messageId,
+            proposal: null,
+            warnings: [],
+            weightNotes: [
+              { code: 'share_unmet', assetIds: missed.assetIds.slice(0, 64), quote: missed.quote },
+            ],
+            message:
+              request.language === 'pt'
+                ? `A proposta não respeitou seu pedido: “${missed.quote}”. Esse limite continua valendo; nada foi aplicado.`
+                : `The draft did not meet your request: “${missed.quote}”. That requirement still stands; nothing was applied.`,
+            question:
+              request.language === 'pt'
+                ? 'Quer que eu proponha outra divisão respeitando esse limite, ou prefere alterá-lo?'
+                : 'Would you like another draft within that limit, or would you like to change the requirement?',
           },
-        };
-      }
+        },
+      };
     }
+    const sources = new Set<string>();
+    const warnings: VaultAgentWarning[] = [];
+    const lines = picks.flatMap(({ allocation, asset }, i) => {
+      const weightBps = weights[i] ?? 0;
+      if (weightBps === 0) return [];
+      const cap = caps[asset.id];
+      if (cap !== undefined && weightBps > cap) {
+        warnings.push({
+          code: 'over_exit_capacity',
+          assetId: asset.id,
+          evidenceId: `liquidity:${asset.id}`,
+        });
+        sources.add(`liquidity:${asset.id}`);
+      }
+      if (goal && !eligibleForGoal(asset, goal)) {
+        const listed = sourceById.has(`catalog:${asset.id}`)
+          ? `catalog:${asset.id}`
+          : allocation.evidenceIds[0];
+        if (listed) {
+          warnings.push({ code: 'outside_goal_requested', assetId: asset.id, evidenceId: listed });
+          sources.add(listed);
+        }
+      }
+      for (const id of allocation.evidenceIds) sources.add(id);
+      return [{ ...allocation, weightBps, symbol: asset.symbol }];
+    });
+    const served = (indexes: readonly number[]) =>
+      indexes.filter((i) => (weights[i] ?? 0) > 0).map((i) => picks[i]?.asset.id as string);
+    const held = new Set(members.flat());
+    const free = served(picks.map((_, i) => i).filter((i) => !held.has(i)));
+    const quotes = shares.map((share) => normalized(share.quote));
+    const latest = parsed.data.messages.filter((message) => message.who === 'person').at(-1);
+    const weightNotes: VaultAgentWeightNote[] = [
+      ...shares.flatMap((share, i) => {
+        const assetIds = served(members[i] ?? []);
+        return assetIds.length ? [{ code: 'stated' as const, assetIds, quote: share.quote }] : [];
+      }),
+      ...(scaled ? [{ code: 'scaled' as const, assetIds: served(picks.map((_, i) => i)) }] : []),
+      ...(free.length ? [{ code: 'equal_split' as const, assetIds: free }] : []),
+      ...picks.flatMap(({ asset }, i) =>
+        (weights[i] ?? 0) === 0 ? [{ code: 'pick_dropped' as const, assetIds: [asset.id] }] : [],
+      ),
+      // A share in the person's latest words that no grounded share covers is said, never dropped.
+      ...(latest?.text.split(/[.;!?\n,]+/u) ?? [])
+        .map((clause) => clause.trim())
+        .filter((clause) => SHARE_WORDS.test(clause) && !RETURNS.test(clause))
+        .filter((clause) => {
+          const words = normalized(clause);
+          return !quotes.some((quote) => words.includes(quote) || quote.includes(words));
+        })
+        .map((clause) => ({
+          code: 'share_unread' as const,
+          assetIds: [],
+          quote: clause.slice(0, 400),
+        })),
+    ].slice(0, 64);
     const reply = VaultAgentReply.safeParse({
       version: 1,
       messageId: request.messageId,
       ...conversation,
       proposal: {
-        ...proposal,
-        allocations: proposal.allocations.map((allocation) => ({
-          ...allocation,
-          symbol: catalog.get(allocation.assetId)?.symbol,
-        })),
-        unknowns: [...new Set([...context.unknowns, ...proposal.unknowns])].slice(0, 12),
+        ...preview,
+        allocations: lines,
+        unknowns: [...new Set([...context.unknowns, ...preview.unknowns])].slice(0, 12),
         sources: [...sources].map((id) => sourceById.get(id)),
       },
+      warnings,
+      weightNotes,
     });
     return reply.success
       ? { result: { kind: 'reply', reply: reply.data } }
@@ -686,6 +1010,7 @@ export async function replyToVaultConversation(
       problems: checked.problems,
       elapsedMs: Date.now() - started,
     }),
+    true,
   );
   const repair = {
     failed: checked.failed,

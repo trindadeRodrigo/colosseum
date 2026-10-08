@@ -206,6 +206,15 @@ describe('vault proposal provider uses the existing model settings and a shared 
     expect(sdk.create).toHaveBeenLastCalledWith(expect.anything(), { timeout: 1000 });
   });
 
+  it('asks the model for picks only: no weight in its schema, and the prompt says the server sets them', () => {
+    expect(JSON.stringify(VAULT_AGENT_REPLY_SCHEMA)).not.toContain('weightBps');
+    expect(VAULT_AGENT_SYSTEM).toContain('the server sets the weights');
+    expect(VAULT_AGENT_SYSTEM).toContain('Never give a weight');
+    expect(VAULT_AGENT_SYSTEM).not.toMatch(
+      /only in weightBps|choose listed assets and allocation weights/,
+    );
+  });
+
   it('reads VAULT_AGENT_MODEL, or falls back to the intake model', () => {
     expect(vaultAgentModelId({}, 'claude-haiku-4-5')).toBe('claude-haiku-4-5');
     expect(vaultAgentModelId({ VAULT_AGENT_MODEL: ' ' }, 'claude-haiku-4-5')).toBe(
@@ -418,7 +427,6 @@ const draft = (language: 'en' | 'pt' = 'en'): VaultAgentModelReply => ({
     allocations: [
       {
         assetId: tesla.id,
-        weightBps: 4000,
         why:
           language === 'pt'
             ? 'Veículos elétricos estão entre os negócios descritos nos atributos de amostra.'
@@ -427,7 +435,6 @@ const draft = (language: 'en' | 'pt' = 'en'): VaultAgentModelReply => ({
       },
       {
         assetId: cash.id,
-        weightBps: 6000,
         why:
           language === 'pt'
             ? 'Caixa preserva flexibilidade fora da empresa escolhida.'
@@ -435,6 +442,7 @@ const draft = (language: 'en' | 'pt' = 'en'): VaultAgentModelReply => ({
         evidenceIds: [`catalog:${cash.id}`],
       },
     ],
+    stated: [],
     tradeoffs: [
       language === 'pt'
         ? 'Concentração em uma empresa pode ampliar perdas.'
@@ -522,7 +530,22 @@ describe('conversation context and grounded replies through the provider stub', 
           ? 'Quero investir em veículos elétricos, com pelo menos 40% em ações.'
           : 'I want electric vehicle stocks, with at least 40% stocks.';
       const messages: VaultAgentRequest['messages'] = [{ who: 'person', text: instruction }];
-      respond(draft(language));
+      // The model reports the person's minimum with their words; the server holds it to them.
+      const minimum = {
+        assetIds: catalog
+          .filter((asset) => asset.cls === 'stock' || asset.cls === 'etf')
+          .map((asset) => asset.id),
+        kind: 'min' as const,
+        bps: 4000,
+        quote: instruction,
+      };
+      const drafted = () => {
+        const value = draft(language);
+        if (!value.proposal) throw new Error('Missing fixture proposal');
+        value.proposal.stated = [minimum];
+        return value;
+      };
+      respond(drafted());
       const first = await replyToVaultConversation(
         turn(messages, language),
         conversationContext,
@@ -531,11 +554,16 @@ describe('conversation context and grounded replies through the provider stub', 
       expect(first.kind).toBe('reply');
       if (first.kind !== 'reply' || !first.reply.proposal) throw new Error('Preview rejected');
       expect(first.reply.question).toBeNull();
+      expect(first.reply.weightNotes).toEqual([
+        { code: 'stated', assetIds: [tesla.id], quote: instruction },
+        { code: 'equal_split', assetIds: [cash.id] },
+      ]);
       expect(first.reply.proposal.objective).toBe(draft(language).proposal?.objective);
+      // Two picks, equal: the stated minimum of stocks is already met.
       expect(first.reply.proposal.allocations[0]).toMatchObject({
         assetId: tesla.id,
         symbol: tesla.symbol,
-        weightBps: 4000,
+        weightBps: 5000,
       });
       expect(first.reply.proposal.sources).toEqual(
         expect.arrayContaining([
@@ -549,14 +577,14 @@ describe('conversation context and grounded replies through the provider stub', 
           text: language === 'pt' ? 'Mantenha uma reserva em caixa.' : 'Keep a cash cushion.',
         },
       );
-      respond(draft(language));
+      respond(drafted());
       const refined = await replyToVaultConversation(
         turn(messages, language),
         conversationContext,
         model,
       );
       expect(refined.kind === 'reply' && refined.reply.proposal?.allocations[0]?.weightBps).toBe(
-        4000,
+        5000,
       );
       expect(sentPrompt()).toMatchObject({
         language,
@@ -574,13 +602,13 @@ describe('conversation context and grounded replies through the provider stub', 
       });
       expect(sentPrompt().vault?.positions[0]?.asset).toBe(nvidia.id);
       expect(sentPrompt().vault?.positions[0]?.targetBps).toBe(1000);
-      const reduced = draft(language);
+      const reduced = drafted();
       if (!reduced.proposal) throw new Error('Missing fixture proposal');
-      reduced.proposal.allocations = reduced.proposal.allocations.map((allocation) => ({
-        ...allocation,
-        weightBps: allocation.assetId === tesla.id ? 1000 : 9000,
-      }));
-      // The repair call returns the same draft, so the limit is raised with the person.
+      // Cash alone cannot hold the stock minimum.
+      reduced.proposal.allocations = reduced.proposal.allocations.filter(
+        (allocation) => allocation.assetId !== tesla.id,
+      );
+      // The repair call returns the same picks, so the limit is raised with the person.
       respond(reduced);
       respond(reduced);
       const mismatch = await replyToVaultConversation(
@@ -594,23 +622,21 @@ describe('conversation context and grounded replies through the provider stub', 
         failed: 'allocation_constraint',
         outcome: 'allocation_constraint',
       });
-      expect(sdk.create.mock.calls.at(-1)?.[0].messages[2].content).toContain(
-        'At allocationConstraints.0',
-      );
+      expect(sdk.create.mock.calls.at(-1)?.[0].messages[2].content).toContain('At stated.0');
       expect(mismatch.reply.proposal).toBeNull();
       expect(mismatch.reply.message).toContain(instruction);
       messages.push({
         who: 'person',
         text: language === 'pt' ? 'Quero pelo menos 10% em ações.' : 'Make that at least 10%.',
       });
-      respond(reduced);
+      respond(draft(language));
       const amended = await replyToVaultConversation(
         turn(messages, language),
         conversationContext,
         model,
       );
       expect(amended.kind === 'reply' && amended.reply.proposal?.allocations[0]?.weightBps).toBe(
-        1000,
+        5000,
       );
       expect(sentPrompt().allocationConstraints[0]?.minWeightBps).toBe(1000);
       expect(VAULT_AGENT_SYSTEM).toContain('without requiring a choice of grow/income/protect');
@@ -665,8 +691,7 @@ describe('conversation context and grounded replies through the provider stub', 
     ['invented-source', 'allocation_evidence'],
     ['wrong-asset-source', 'allocation_evidence'],
     ['invented-figure', 'prose_figure'],
-    ['over-cap', 'allocation_over_cap'],
-    ['ineligible', 'allocation_ineligible'],
+    ['unasked-stock', 'allocation_ineligible'],
   ])(
     'rejects a provider fixture with %s while keeping the grounded proposal boundary',
     async (fault, detail) => {
@@ -678,18 +703,16 @@ describe('conversation context and grounded replies through the provider stub', 
       if (fault === 'invented-figure') allocation.why = 'The stock will return 12%.';
       const context = {
         ...conversationContext,
-        ...(fault === 'over-cap' ? { caps: { [tesla.id]: 1000 } } : {}),
-        ...(fault === 'ineligible' ? { currentGoals: [{ goal: 'protect' }] } : {}),
+        ...(fault === 'unasked-stock' ? { currentGoals: [{ goal: 'protect' }] } : {}),
       };
+      // The person never asks for a stock in the protect case: the model may not add one.
+      const text =
+        fault === 'unasked-stock' ? 'Keep my savings safe.' : 'I want electric vehicle stocks.';
       // The repair call returns the same reply: it is refused again, never shown or substituted.
       respond(value);
       respond(value);
       expect(
-        await replyToVaultConversation(
-          turn([{ who: 'person', text: 'I want electric vehicle stocks.' }]),
-          context,
-          offlineModel(),
-        ),
+        await replyToVaultConversation(turn([{ who: 'person', text }]), context, offlineModel()),
       ).toEqual({
         kind: 'failure',
         reason: 'invalid',
@@ -704,4 +727,44 @@ describe('conversation context and grounded replies through the provider stub', 
       ]);
     },
   );
+
+  it('passes a requested stock in a protect goal and a weight over exit capacity, each with a server warning', async () => {
+    const value = draft();
+    respond(value);
+    const measured = {
+      id: `liquidity:${tesla.id}`,
+      assetId: tesla.id,
+      label: 'Measured exit capacity at the current vault size',
+      value: 120,
+      unit: 'USD',
+      source: 'offline measured fixture',
+      method: 'offline-exit-fixture',
+      fetchedAt: observedAt,
+      provenance: 'mock' as const,
+    };
+    const out = await replyToVaultConversation(
+      turn([{ who: 'person', text: 'I want electric vehicle stocks.' }]),
+      {
+        ...conversationContext,
+        currentGoals: [{ goal: 'protect' }],
+        evidence: [...conversationContext.evidence, measured],
+        caps: { [tesla.id]: 100 },
+      },
+      offlineModel(),
+    );
+    if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
+    expect(out.reply.warnings).toEqual([
+      { code: 'over_exit_capacity', assetId: tesla.id, evidenceId: measured.id },
+      { code: 'outside_goal_requested', assetId: tesla.id, evidenceId: `catalog:${tesla.id}` },
+    ]);
+    expect(sdk.create).toHaveBeenCalledTimes(1);
+    expect(sentPrompt()).toMatchObject({
+      eligibilityGoal: 'protect',
+      exitCapacityBps: { [tesla.id]: 100 },
+      requestedOutsideGoal: expect.arrayContaining([tesla.id]),
+    });
+    expect(VAULT_AGENT_SYSTEM).toContain('any composition of listed assets');
+    expect(VAULT_AGENT_SYSTEM).toContain('requestedOutsideGoal');
+    expect(VAULT_AGENT_SYSTEM).not.toContain('catalog and guardrail caps');
+  });
 });
