@@ -72,10 +72,11 @@ export const VaultAgentProposal = VaultAgentModelProposal.extend({
 });
 /**
  * Server-written notes on a proposal the person may still choose (gate ANY-COMPOSITION). The code names
- * the condition and `evidenceId` the sourced figure behind it, one of the reply's `proposal.sources`; the
- * screen writes the words. `over_exit_capacity`: the weight is above what the measured exit capacity can
- * sell at the vault's current size. `outside_goal_requested`: the asset is outside the goal's eligibility
- * (stocks in an income or protect goal) and is there because the person asked for it.
+ * the condition and `evidenceId` the source behind it, one of the reply's `proposal.sources`; the screen
+ * writes the words. `over_exit_capacity`: the weight is above what the measured exit capacity can sell
+ * at the vault's current size, and the source is that measured figure. `outside_goal_requested`: a stock
+ * outside the goal's eligibility (an income or protect goal) that is there because the person asked for
+ * it, and the source is the asset's catalog listing.
  */
 export const VaultAgentWarning = z.strictObject({
   code: z.enum(['over_exit_capacity', 'outside_goal_requested']),
@@ -83,7 +84,8 @@ export const VaultAgentWarning = z.strictObject({
   evidenceId: prose(160),
 });
 export type VaultAgentWarning = z.infer<typeof VaultAgentWarning>;
-export const VaultAgentReply = z.strictObject({
+/** The reply's fields; `VaultAgentReply` adds the rule that ties its warnings to its proposal. */
+export const VaultAgentReplyShape = z.strictObject({
   version: z.literal(1),
   messageId: prose(64),
   message: prose(2400),
@@ -91,6 +93,23 @@ export const VaultAgentReply = z.strictObject({
   proposal: VaultAgentProposal.nullable(),
   warnings: z.array(VaultAgentWarning).max(128),
 });
+/** A warning belongs to the proposal: none without one, and each on one of its assets and sources. */
+export function warningsBelong(
+  reply: Pick<z.infer<typeof VaultAgentReplyShape>, 'proposal' | 'warnings'>,
+  context: z.RefinementCtx,
+): void {
+  const assets = new Set(reply.proposal?.allocations.map((line) => line.assetId));
+  const sources = new Set(reply.proposal?.sources.map((source) => source.id));
+  reply.warnings.forEach((warning, index) => {
+    if (!assets.has(warning.assetId) || !sources.has(warning.evidenceId))
+      context.addIssue({
+        code: 'custom',
+        path: ['warnings', index],
+        message: 'A warning names an asset and a source of the proposal.',
+      });
+  });
+}
+export const VaultAgentReply = VaultAgentReplyShape.superRefine(warningsBelong);
 export type VaultAgentReply = z.infer<typeof VaultAgentReply>;
 export type VaultAgentFailure = 'unavailable' | 'timeout' | 'budget' | 'invalid';
 /**

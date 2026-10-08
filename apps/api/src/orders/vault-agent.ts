@@ -315,7 +315,7 @@ const REPAIR_HINTS: Record<string, string> = {
   allocation_lines:
     'The proposal held more than sixteen assets besides cash; a vault holds at most sixteen.',
   allocation_ineligible:
-    'An allocation used an asset that is outside eligibilityGoal (stocks in income or protect) and is not in requestedOutsideGoal. Only the person can ask for such an asset; never add one on your own.',
+    'An allocation used an asset that is outside eligibilityGoal (stocks in income or protect) and is not in requestedOutsideGoal. Only the person can ask for such an asset; never add one on your own. If the person seems to want it but has not plainly asked, leave it out and ask them to confirm in question.',
   allocation_evidence:
     'An allocation cited an evidenceId that does not exist in evidence or belongs to a different asset.',
   allocation_sum: 'Allocation weightBps did not add up to exactly 10000.',
@@ -341,46 +341,123 @@ const NOT_AN_INSTRUCTION =
   /^["“‘']|\b(?:if|should\s+i|my\s+friend|my\s+advisor|someone|said|quoted|explain|understand|discuss|talk\s+about|learn|example|se\s+eu|meu\s+amigo|disse|entender|discutir|exemplo)\b/iu;
 const STOCK_WORDS = ['stocks?', 'shares?', 'equities', 'ações', 'acoes'];
 const isStock = (asset: Pick<BasketAsset, 'cls'>) => asset.cls === 'stock' || asset.cls === 'etf';
-const namesAny = (text: string, words: string[]) =>
-  words.length > 0 &&
-  new RegExp(`(?<![\\p{L}\\p{N}])(?:${words.join('|')})(?![\\p{L}\\p{N}])`, 'iu').test(text);
 const literal = (word: string) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const word = (pattern: string, flags: string) =>
+  new RegExp(`(?<![\\p{L}\\p{N}])(?:${pattern})(?![\\p{L}\\p{N}])`, flags);
+
+// The reader of "the person asked for this stock" (gate ANY-COMPOSITION). It errs towards missing a
+// request: a stock outside an income or protect goal that the person did not plainly ask for is refused,
+// and the model is told to ask them instead.
+const ASKS = word(
+  "want|wanna|i'?d\\s+like|would\\s+like|prefer|add|include|put|buy|allocate|invest|quero|queria|gostaria|prefiro|adicione|adiciona|adicionar|inclua|inclui|incluir|compre|compra|comprar|coloque|coloca|colocar|aloque|aloca|alocar|invista|investir|bote|bota|botar|põe|ponha|pôr",
+  'iu',
+);
+const POLITE_ASK =
+  /^(?:please\s+)?(?:can|could|would)\s+you\s+(?:please\s+)?(?:add|put|include|buy)\b|^(?:você\s+|voce\s+)?(?:pode|poderia)\s+(?:por\s+favor\s+)?(?:colocar|adicionar|incluir|comprar|pôr|botar)(?![\p{L}\p{N}])/iu;
+// A refusal, an exclusion, an upper bound, a withdrawal or a sale: the clause asks for nothing.
+const REFUSES = word(
+  "no|not|none|never|nothing|without|except|excluding|exclude|avoid|avoiding|out|sell|selling|remove|drop|scratch|cut|minus|instead|rather|risky|less|fewer|stop|don'?t|do\\s+not|doesn'?t|won'?t|at\\s+most|no\\s+more|max|maximum|up\\s+to|already|menos|sem|não|nao|nada|nenhum|nenhuma|nunca|exceto|tirar|tire|tira|vender|venda|vende|evitar|evite|evita|arriscad[ao]s?|fora|máximo|maximo|até|já",
+  'iu',
+);
+// Someone else's view, a condition or a wish to talk about it: not the person's instruction.
+const NOT_THEIRS = word(
+  'if|whether|should|my\\s+friend|my\\s+advisor|someone|somebody|said|says|suggests?|suggested|quoted|explain|discuss|talk\\s+about|learn|example|imagine|suppose|se|caso|meu\\s+amigo|disse|diz|sugere|sugeriu|discutir|exemplo',
+  'iu',
+);
+const ASKS_A_QUESTION =
+  /^(?:why|what|which|how|is|are|was|should|can|could|would|do|does|did|will|por\s*que|porque|o\s+que|qual|quais|como|será|sera|devo|vale)(?![\p{L}\p{N}])/iu;
+// Company short names that are everyday words; the ticker still names the asset.
+const COMMON_NAMES = new Set(['meta', 'strategy', 'circle', 'oracle', 'target', 'block']);
+const CORPORATE =
+  /\s+(?:inc\.?|incorporated|corp\.?|corporation|company|co\.?|limited|ltd\.?|lp|n\.v\.|plc|group|holdings?|platforms|global|technologies|markets|trust|series\s+\d+)$/iu;
+
+/** The case-sensitive tickers and the case-insensitive company names that name one asset. */
+function assetNames(asset: BasketAsset, companies: string[]): RegExp[] {
+  const tickers = [...new Set([asset.symbol, asset.underlying])].map(literal);
+  const names = new Set<string>();
+  for (const company of companies) {
+    let name = company.split(',')[0]?.trim() ?? '';
+    names.add(name);
+    for (let shorter = name.replace(CORPORATE, ''); shorter !== name; ) {
+      name = shorter;
+      shorter = name.replace(CORPORATE, '');
+    }
+    names.add(name.replace(/\.com$/iu, ''));
+  }
+  const spoken = [...names].filter(
+    (name) => name.length > 2 && !COMMON_NAMES.has(name.toLowerCase()),
+  );
+  return [
+    word(tickers.join('|'), 'u'),
+    ...(spoken.length ? [word(spoken.map(literal).join('|'), 'iu')] : []),
+  ];
+}
 
 /**
- * Assets the person asked for in their own words: a kept percentage minimum on them, or an instruction
- * that names the asset, its company or stocks in general and refuses nothing. The model's reply never
- * counts. Gate ANY-COMPOSITION: an asset outside the goal's eligibility is allowed only from here.
+ * The stocks the person asked for in their own words, read clause by clause. A stock, its company or
+ * "stocks" counts only in an affirmative clause: an asking verb before it in the sentence, and in that
+ * clause no refusal, exclusion, upper bound, sale, condition or someone else's view. A message with a
+ * question mark counts only through a polite request ("can you add", "pode colocar"). The latest mention
+ * of a stock wins, so "no AAPL" withdraws an earlier "I want AAPL". The model's reply never counts.
  */
-function requestedAssets(
+function requestedStocks(
   messages: VaultAgentRequest['messages'],
+  language: 'en' | 'pt',
   assets: BasketAsset[],
   companies: Map<string, string[]>,
-  constraints: HoldingConstraint[],
 ): Set<string> {
-  const requested = new Set<string>();
-  for (const constraint of constraints)
-    if (constraint.min > 0)
-      for (const asset of assets) if (constraint.matches(asset)) requested.add(asset.id);
+  const stocks = assets.filter(isStock);
+  const names = new Map(
+    stocks.map((asset) => [asset.id, assetNames(asset, companies.get(asset.id) ?? [])]),
+  );
+  const general = word(STOCK_WORDS.join('|'), 'iu');
+  // Portuguese "no" is "in the"; its refusals are não, nenhum, nada, sem.
+  const refuses = (clause: string) =>
+    REFUSES.test(language === 'pt' ? clause.replace(word('no', 'iu'), 'em') : clause);
+  // The latest affirmative (true) or refusing (false) mention of each stock, and of stocks in general.
+  const latest = new Map<string, { at: number; asked: boolean }>();
+  let at = 0;
   for (const message of messages) {
     if (message.who !== 'person') continue;
     const text = message.text.trim();
-    if (
-      NOT_AN_INSTRUCTION.test(text) ||
-      !/\b(?:want|would\s+like|prefer|add|include|buy|put|allocate|invest|hold|keep|quero|queria|prefiro|adicione|inclua|compre|coloque|aloque|invista|mantenha)\b/iu.test(
-        text,
-      ) ||
-      /\b(?:do\s+not|don't|dont|never|without|não|nao|nunca|sem)\b/iu.test(text)
-    )
-      continue;
-    for (const asset of assets) {
-      const words = [asset.symbol, asset.underlying, ...(companies.get(asset.id) ?? [])].map(
-        literal,
-      );
-      if (namesAny(text, words) || (isStock(asset) && namesAny(text, STOCK_WORDS)))
-        requested.add(asset.id);
+    if (/^["“‘']/u.test(text)) continue;
+    const questioned = text.includes('?');
+    const sentences = text.split(
+      /[.;!?\n]+|(?<![\p{L}\p{N}])(?:but|however|mas|porém|porem|contudo)(?![\p{L}\p{N}])/iu,
+    );
+    for (const sentence of sentences) {
+      let asking = false;
+      for (const clause of sentence.split(',').map((part) => part.trim())) {
+        if (!clause) continue;
+        const polite = POLITE_ASK.test(clause);
+        if (NOT_THEIRS.test(clause) || (!polite && (questioned || ASKS_A_QUESTION.test(clause)))) {
+          asking = false;
+          continue;
+        }
+        const verb = polite ? 0 : clause.search(ASKS);
+        if (verb >= 0) asking = true;
+        const refused = refuses(clause);
+        if (!refused && !asking) continue;
+        // An affirmative clause asks for what follows its own verb; a refusal covers the whole clause.
+        const read = refused || verb < 0 ? clause : clause.slice(verb);
+        at += 1;
+        if (general.test(read)) latest.set('*', { at, asked: !refused });
+        for (const asset of stocks)
+          if (names.get(asset.id)?.some((pattern) => pattern.test(read)))
+            latest.set(asset.id, { at, asked: !refused });
+      }
     }
   }
-  return requested;
+  return new Set(
+    stocks
+      .filter((asset) => {
+        const own = latest.get(asset.id);
+        const all = latest.get('*');
+        const last = !own ? all : !all || own.at >= all.at ? own : all;
+        return last?.asked === true;
+      })
+      .map((asset) => asset.id),
+  );
 }
 
 type HoldingConstraint = {
@@ -543,11 +620,11 @@ export async function replyToVaultConversation(
   for (const row of context.stockAttributes?.stocks ?? [])
     for (const asset of catalog.values())
       if (asset.symbol === row.symbol) companies.set(asset.id, [row.company]);
-  const requested = requestedAssets(
+  const requested = requestedStocks(
     parsed.data.messages,
+    parsed.data.language,
     [...catalog.values()],
     companies,
-    constraints,
   );
   const prompt: VaultAgentPrompt = {
     version: 1,
