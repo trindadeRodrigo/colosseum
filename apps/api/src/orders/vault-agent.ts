@@ -852,10 +852,22 @@ const SHARE_REFUSES = word(
   "no|not|never|none|without|except|excluding|exclude|avoid|avoiding|sell|selling|remove|drop|forget|ignore|scratch|cancel|stop|instead\\s+of|rather\\s+than|too\\s+much|no\\s+longer|anymore|don'?t|do\\s+not|doesn'?t|won'?t|wouldn'?t|can'?t|cannot|isn'?t|não|nao|nunca|jamais|sem|nem|exceto|menos|nenhum|nenhuma|tirar|tire|tira|vender|venda|vende|evitar|evite|evita|esqueça|esqueca|esquece|ignora|remova|cancele|cancela|chega\\s+de|demais",
   'iu',
 );
-// A share is applied only where the person plainly asks for it. What may stand before the first share
-// of a piece when no asking verb does, between two shares, and after the last one.
-const LEADS =
-  /^(?:\s*(?:and|e|ok|okay|yes|sim|so|then|also|actually|just|like|with|com|please|por\s+favor|make\s+(?:it|that)|(?:change|set)\s+(?:it|that)\s+to)(?![\p{L}\p{N}]))*\s*$/iu;
+// A share is applied only where the person plainly asks for it. All that may stand before the first
+// share of a piece, start to end: leads, then a first-person subject, then one asking verb. Any other
+// word there ("You put", "I'm scared to put", "I want to reduce", "My wife wants") and it is unread.
+const ASK_LEAD =
+  '(?:\\s*(?:and|e|ok|okay|yes|sim|so|then|also|actually|just|like|with|com|now|agora|então|entao|please|por\\s+favor)(?![\\p{L}\\p{N}]))*\\s*';
+const ASK_SUBJECT =
+  "(?:i\\s+want(?:\\s+to)?|we\\s+want(?:\\s+to)?|i(?:'d|\\s+would)\\s+like(?:\\s+to)?|(?:eu\\s+)?(?:quero|queria|gostaria\\s+de))";
+const ASK_VERB =
+  '(?:put|make\\s+(?:it|that)|(?:change|set)\\s+(?:it|that)\\s+to|set|give(?:\\s+me)?|allocate|use|add|coloc(?:ar|a|que)|p[oô]r|ponha|põe|bot(?:ar|a|e)|deix(?:ar|a|e)|aloc(?:ar|a|que)|us(?:ar|a|e))';
+const END_OF_WORD = '(?![\\p{L}\\p{N}])';
+const ASK_BEFORE = new RegExp(
+  `^${ASK_LEAD}(?:${ASK_SUBJECT}${END_OF_WORD})?\\s*(?:${ASK_VERB}${END_OF_WORD})?\\s*$`,
+  'iu',
+);
+// A piece that asks for something and holds no share ("I want EV stocks") opens the same way.
+const ASK_START = new RegExp(`^${ASK_LEAD}(?:${ASK_SUBJECT}|${ASK_VERB})${END_OF_WORD}`, 'iu');
 const BETWEEN_SHARES = /^\s*(?:(?:and|e|&|\+)\s*)?$/iu;
 const AFTER_SHARES =
   /^\s*(?:(?:in|for|on)\s+(?:this|the|my)\s+(?:vault|portfolio|plan)|n[oa]\s+(?:meu\s+|minha\s+)?(?:cofre|carteira|plano)|overall|in\s+total|no\s+total|ao\s+todo|please|por\s+favor)?\s*$/iu;
@@ -884,7 +896,7 @@ const SHARE_WORDS =
 // A quantity that reads as a share only beside a named asset: a bare number that is not money or
 // time ("70 TSLA", "70-30", "0.7"), a fraction, a whole or a multiple. Never read, only said back.
 const QUANTITY =
-  /(?<![$€£]\s?)(?<![\p{L}\p{N}.,])\d+(?:[.,]\d+)?(?![\p{L}\p{N}])(?!\s*(?:days?|weeks?|months?|years?|dias?|semanas?|m[eê]s|meses|anos?|usd|dollars?|d[oó]lares|reais|brl)(?![\p{L}]))|(?<![\p{L}\p{N}])(?:thirds?|quarters?|terços?|tercos?|quartos?|all|everything|tudo|double|twice|dobro|triple|triplo)(?![\p{L}\p{N}])/iu;
+  /(?<![$€£]\s?)(?<![\p{L}\p{N}.,])\d+(?:[.,]\d+)?(?![\p{L}\p{N}])(?!\s*(?:days?|weeks?|months?|years?|dias?|semanas?|m[eê]s|meses|anos?|usd|dollars?|d[oó]lares|reais|brl)(?![\p{L}]))|(?<![\p{L}\p{N}.,])\d+(?:[.,]\d+)?x(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])(?:thirds?|quarters?|terços?|tercos?|quartos?|all|everything|tudo|double|twice|dobro|triple|triplo)(?![\p{L}\p{N}])/iu;
 const CLASS_WORDS: Array<[(asset: BasketAsset) => boolean, string[]]> = [
   [isStock, STOCK_WORDS],
   [(asset) => asset.cls === 'cash', ['cash', 'caixa']],
@@ -1097,7 +1109,8 @@ const replaces = (next: PersonShare, earlier: PersonShare) =>
  * Applied: a sentence (or its side of "but" that has its own asking verb) sets shares only when it is
  * no question, condition, someone else's view or refusal and holds no return or loss word, and every
  * comma-separated piece of it is a plain ask: shares read by `sharesInPiece` with nothing before them
- * but a short lead or an asking verb ("I want", "put", "quero", "make it"), nothing between them but
+ * but leads, a first-person subject and one asking verb, start to end ("I want", "please put", "quero",
+ * "make it"; not "You put", "I'm scared to put", "I want to reduce"), nothing between them but
  * "and", and nothing after them but "in this vault", "overall" or what the rest should do. A piece
  * that only asks ("I want EV stocks"), only says where the rest goes, or is a courtesy may stand
  * beside them. Anything else in the sentence ("70% TSLA is too risky", "Hypothetically, 70% in TSLA",
@@ -1173,14 +1186,10 @@ function personShares(
   const withdrawsOn = (target: string, fits: (share: PersonShare) => boolean): boolean => {
     const whole = (span?: { start: number; end: number }) =>
       span?.start === 0 && span.end === target.length;
+    // The target is the asset or class alone: with a number beside it ("Drop TSLA to 10%", "Remove
+    // 30% NVDA") the sentence is no withdrawal, and is said back as unread.
     const [asset, ...more] = named(target);
-    const [share, ...extra] = sharesInPiece(target, named);
-    const on =
-      !more.length && whole(asset)
-        ? asset?.ids
-        : !extra.length && whole(share)
-          ? share?.assetIds
-          : null;
+    const on = !more.length && whole(asset) ? asset?.ids : null;
     if (!on) return false;
     withdraw((standing) => fits(standing) && sameAssets(standing, { assetIds: on }));
     return true;
@@ -1195,7 +1204,11 @@ function personShares(
     for (const [, sentence = '', end = ''] of text.matchAll(
       /((?:[^.;!?\n]|(?<=\d)\.(?=\d))+)([.;!?\n]*)/gu,
     )) {
-      if (!quoted && !end.includes('?') && withdraws(sentence.trim())) continue;
+      if (!quoted && !end.includes('?') && withdraws(sentence.trim())) {
+        const said = sentence.trim().slice(0, 400);
+        if (noticed(said) && !unread.includes(said)) unread.push(said);
+        continue;
+      }
       // "but" starts a clause of its own only when what follows asks for something.
       const clauses: string[] = [];
       sentence.split(ADVERSATIVE).forEach((part, i, parts) => {
@@ -1231,7 +1244,7 @@ function personShares(
             const after = piece.slice(last.end);
             const trailing = REST_AFTER_SHARES.test(after) && REST.test(after);
             const plainAsk =
-              (LEADS.test(before) || ASKS.test(before) || POLITE_ASK.test(before.trim())) &&
+              ASK_BEFORE.test(before) &&
               found.every(
                 (share, i) =>
                   i === 0 ||
@@ -1251,7 +1264,7 @@ function personShares(
           return {
             piece,
             found: [],
-            fits: says || COURTESY.test(piece) || (ASKS.test(piece) && !noticed(piece)),
+            fits: says || COURTESY.test(piece) || (ASK_START.test(piece) && !noticed(piece)),
             rest: says ? piece : '',
           };
         });
