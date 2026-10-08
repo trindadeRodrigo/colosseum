@@ -92,34 +92,48 @@ describe('ProvenancePin (provenance-pin.md)', () => {
         expect(svg.attrs.viewBox).toBe('0 0 18 12');
         expect(svg.attrs['aria-hidden']).toBe('true');
         expect(classes(svg)).toEqual(expect.arrayContaining(['h-[0.75em]', 'w-[1.125em]']));
-        const outline = one(svg, tag('rect'));
+        const outline = all(svg, tag('rect'))[0] as ReturnType<typeof one>;
         expect(outline.attrs).toMatchObject({
           x: '0.75',
           y: '0.75',
           width: '16.5',
           height: '10.5',
+          rx: '2.5',
         });
+        // the logo's tenon end in line mode: no circle anywhere (LOGO-2: the pin is square)
+        expect(all(svg, tag('circle'))).toHaveLength(0);
         expect(outline.attrs.stroke).toBe('var(--tf-pin-outline)');
         expect(outline.attrs['stroke-width']).toBe('1.5');
         expect(outline.attrs.fill).toBe('none');
       }
     });
 
-    it('live: a solid pin in the brand wood', () => {
-      const dot = one(glyph(pin.live), tag('circle'));
-      expect(dot.attrs).toMatchObject({ cx: '9', cy: '6', r: '2.5', fill: 'var(--tf-pin)' });
+    it('live: a solid square pin, 4 by 4 with a corner of 1, set toward the end, in honey (honey-l on day)', () => {
+      const square = all(glyph(pin.live), tag('rect'))[1];
+      expect(square?.attrs).toMatchObject({
+        x: '11',
+        y: '4',
+        width: '4',
+        height: '4',
+        rx: '1',
+        fill: 'var(--tf-pin)',
+      });
     });
 
-    it('stale: a hollow ring in the outline colour, the same size as the pin', () => {
-      const ring = one(glyph(pin.stale), tag('circle'));
-      expect(ring.attrs.fill).toBe('none');
-      expect(ring.attrs.stroke).toBe('var(--tf-pin-outline)');
-      expect(Number(ring.attrs.r) + Number(ring.attrs['stroke-width']) / 2).toBe(2.5);
+    it('stale: the same square, hollow, in the pin colour', () => {
+      const square = all(glyph(pin.stale), tag('rect'))[1];
+      expect(square?.attrs.fill).toBe('none');
+      expect(square?.attrs.stroke).toBe('var(--tf-pin)');
+      // its outer edge is the live pin's: 11 to 15 and 4 to 8
+      const half = Number(square?.attrs['stroke-width']) / 2;
+      expect(Number(square?.attrs.x) - half).toBe(11);
+      expect(Number(square?.attrs.width) + 2 * half).toBe(4);
     });
 
     it('MOCK: no pin at all, and a 45° hatch at a 3px pitch inside the outline', () => {
       const svg = glyph(pin.mock);
-      expect(all(svg, tag('circle'))).toHaveLength(0);
+      // the outline alone: no square pin
+      expect(all(svg, tag('rect'))).toHaveLength(1);
       const hatch = one(svg, tag('path'));
       expect(hatch.attrs.stroke).toBe('var(--tf-hatch)');
       expect(hatch.attrs['stroke-width']).toBe('1');
@@ -212,7 +226,7 @@ describe('ProvenancePin (provenance-pin.md)', () => {
       expect(text(one(root, ui('stale-tag')))).toBe('stale · age unknown');
       expect(text(one(root, ui('pin-popover')))).toContain('stale · age unknown');
       expect(text(root)).not.toMatch(/NaN|Infinity/);
-      expect(all(one(root, ui('pin-glyph')), tag('circle'))[0]?.attrs.fill).toBe('none');
+      expect(all(one(root, ui('pin-glyph')), tag('rect'))[1]?.attrs.fill).toBe('none');
       expect(text(one(render(pin.staleNegative), ui('stale-tag')))).toBe('stale · age unknown');
       // an age of nothing is still an age
       expect(staleWords({ ...LIVE_SPECIMEN, staleAgeSec: 0 })).toBe('stale · 1 min');
@@ -225,7 +239,7 @@ describe('ProvenancePin (provenance-pin.md)', () => {
         expect(all(root, (el) => 'data-hatch' in el.attrs)).toHaveLength(1);
         expect(text(root)).not.toContain('MOCK');
         expect(one(root, ui('pin')).attrs['aria-label']).toMatch(/, sample figure$/);
-        expect(all(root, tag('circle'))).toHaveLength(0);
+        expect(all(one(root, ui('pin-glyph')), tag('rect'))).toHaveLength(1); // no pin
       }
       expect(all(render(pin.live), (el) => 'data-hatch' in el.attrs)).toHaveLength(0);
     });
@@ -294,7 +308,7 @@ describe('ProvenancePin (provenance-pin.md)', () => {
         const root = render(node); // `kinds['__proto__']` is an object: React cannot draw one
         expect(text(one(root, ui('pin-popover')))).toContain('not live');
         expect(all(root, (el) => 'data-hatch' in el.attrs)).toHaveLength(1);
-        expect(all(root, tag('circle'))).toHaveLength(0);
+        expect(all(one(root, ui('pin-glyph')), tag('rect'))).toHaveLength(1); // no pin
       }
       for (const odd of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', '', 'replayed'])
         expect(kindWords(odd), odd).toBe('not live');

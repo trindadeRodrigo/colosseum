@@ -17,10 +17,17 @@ describe('StatusMark (STYLE.md, rule 6: a word, a shape and a colour)', () => {
     expect(one(off, tag('path')).attrs.fill).toBe('none');
   });
 
-  it('colours each with its earth pigment', () => {
-    expect(classes(one(render(status.on), ui('status')))).toContain('text-status-on');
+  it('colours each with leaf, clay or madder, on its 14% tint, as a 22px pill', () => {
+    expect(classes(one(render(status.on), ui('status')))).toEqual(
+      expect.arrayContaining(['text-status-on', 'bg-status-on-bg', 'rounded-full', 'h-[22px]']),
+    );
     expect(classes(one(render(status.watch), ui('status-badge')))).toEqual(
-      expect.arrayContaining(['text-status-watch', 'bg-status-watch-bg', 'rounded-none', 'h-5']),
+      expect.arrayContaining([
+        'text-status-watch',
+        'bg-status-watch-bg',
+        'rounded-full',
+        'h-[22px]',
+      ]),
     );
     expect(classes(one(render(status.off), ui('status-mark')))).toContain('text-status-off');
   });

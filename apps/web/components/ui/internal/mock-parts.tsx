@@ -20,7 +20,7 @@ export function HatchBand({ className }: { className?: string }) {
     <span
       aria-hidden="true"
       data-ui="hatch-band"
-      className={cn('tf-hatch block w-1.5 shrink-0 self-stretch', className)}
+      className={cn('tf-hatch block w-1.5 shrink-0 self-stretch rounded-l-[inherit]', className)}
     />
   );
 }
@@ -64,7 +64,7 @@ export function SampleNote({
   className?: string;
 }) {
   return (
-    <p data-ui="sample-note" className={cn('text-caption text-muted-foreground', className)}>
+    <p data-ui="sample-note" className={cn('text-sample-line text-sample-foreground', className)}>
       {line ?? SAMPLE_LINE}
       {note ? ` · ${note}` : ''}
     </p>

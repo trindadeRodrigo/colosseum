@@ -17,7 +17,7 @@ export function Skeleton({ className, style }: { className?: string; style?: CSS
       aria-hidden="true"
       data-ui="skeleton"
       style={style}
-      className={cn('block rounded-[2px] bg-muted', className)}
+      className={cn('block rounded-sm bg-muted', className)}
     />
   );
 }

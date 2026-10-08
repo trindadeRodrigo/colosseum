@@ -12,19 +12,44 @@ describe('GoalCard (goal-card.md)', () => {
     expect(name(card, root)).toBe('Your apartment fund is on track.');
   });
 
-  it('sets the sentence, and nothing else, in the serif: regular, upright, at most 18ch', () => {
-    const serif = all(card, (e) => classes(e).includes('font-display'));
-    expect(serif).toHaveLength(1);
-    expect(text(serif[0] as never)).toBe('Your apartment fund is on track.');
-    const list = classes(serif[0] as never);
-    expect(list).toEqual(
-      expect.arrayContaining(['font-normal', 'text-h3', 'max-w-(--tf-measure-display)']),
+  it('sets the sentence and the amount in the display face, Inter Tight 600 at −2%; never a serif', () => {
+    const display = all(card, (e) => classes(e).includes('font-display'));
+    expect(display.map(text)).toEqual([
+      'Your apartment fund is on track.',
+      expect.stringContaining('$12,480 of $40,000'),
+    ]);
+    const [sentence, amount] = display.map((e) => classes(e as never));
+    expect(sentence).toEqual(
+      expect.arrayContaining([
+        'font-semibold',
+        'tracking-[-0.02em]',
+        'text-h3',
+        'max-w-(--tf-measure-display)',
+      ]),
     );
-    expect(list.join(' ')).not.toMatch(/italic|font-(bold|semibold|medium)/);
+    // the amount is the card's big number: 28px, tabular, with its pin inside it
+    expect(amount).toEqual(
+      expect.arrayContaining(['font-semibold', 'text-[1.75rem]/8', 'tabular-nums']),
+    );
+    expect(all(display[1] as never, ui('pin'))).toHaveLength(1);
+    for (const list of [sentence, amount])
+      expect((list ?? []).join(' ')).not.toMatch(/italic|font-normal|opsz/);
     expect(
       classes(one(render(goalCard.header), (e) => classes(e).includes('font-display'))),
     ).toContain('text-display');
     expect(one(render(goalCard.header), (e) => classes(e).includes('font-display')).tag).toBe('h1');
+  });
+
+  it('reads eyebrow-free from the top: the sentence, the amount and its line, then the status pill', () => {
+    const order = all(
+      card,
+      (e) =>
+        ['goal-amount', 'status'].includes(e.attrs['data-ui'] as string) ||
+        classes(e).includes('text-h3'),
+    ).map((e) => (classes(e).includes('text-h3') ? 'sentence' : e.attrs['data-ui']));
+    expect(order).toEqual(['sentence', 'goal-amount', 'status']);
+    const status = one(card, ui('status'));
+    expect(classes(status)).toEqual(expect.arrayContaining(['rounded-full', 'bg-status-on-bg']));
   });
 
   it('shows the status as a mark, a word and a date', () => {
@@ -51,7 +76,7 @@ describe('GoalCard (goal-card.md)', () => {
     expect(links).toHaveLength(1);
     expect(text(links[0] as never)).toBe('See your plan');
     expect(classes(links[0] as never)).toEqual(
-      expect.arrayContaining(['underline', 'text-primary', 'after:absolute', 'after:inset-0']),
+      expect.arrayContaining(['underline', 'text-honey-text', 'after:absolute', 'after:inset-0']),
     );
     expect(all(card, tag('button')).filter((b) => b.attrs['data-ui'] !== 'pin')).toHaveLength(0);
   });

@@ -11,7 +11,8 @@ import { Status, type StatusKind, statusWord } from './StatusMark';
 
 // goal-card.md. One goal, one sentence, where it stands, and where to look next. The card answers a
 // person; it does not sell yield. No photograph, no pattern, no leaderboard, no big rate, no progress
-// ring. The sentence is the only serif on the card, and the status comes from the engine.
+// ring. The sentence and the amount are the display face (Inter Tight 600, IDENTITY-2), the amount
+// big and pinned; the status is a pill on its tint, and comes from the engine.
 
 export type GoalCardLabels = {
   /** While the card waits for its goal. */
@@ -101,7 +102,7 @@ export function GoalCard(props: GoalCardProps) {
       <article
         data-ui="goal-card"
         data-state="loading"
-        className={cn('rounded-md border border-border bg-card p-6', className)}
+        className={cn('rounded-lg border border-border bg-card p-6', className)}
       >
         <LatticeStatus label={labels?.loading ?? GOAL_CARD_LABELS.loading} />
       </article>
@@ -113,7 +114,7 @@ export function GoalCard(props: GoalCardProps) {
       data-state={props.state ?? 'ready'}
       aria-labelledby={sentenceId}
       className={cn(
-        'group/goal relative flex rounded-md border border-border bg-card text-card-foreground transition-colors hover:border-input',
+        'group/goal relative flex rounded-lg border border-border bg-card text-card-foreground transition-colors hover:border-input',
         className,
       )}
     >
@@ -122,8 +123,8 @@ export function GoalCard(props: GoalCardProps) {
         <Heading
           id={sentenceId}
           className={cn(
-            'max-w-(--tf-measure-display) font-display font-normal text-balance',
-            header ? 'text-display' : "text-h3 [font-variation-settings:'opsz'_36]",
+            'max-w-(--tf-measure-display) font-display font-semibold tracking-[-0.02em] text-balance',
+            header ? 'text-display' : 'text-h3',
           )}
         >
           {sentence}
@@ -133,6 +134,26 @@ export function GoalCard(props: GoalCardProps) {
           <p className="text-caption font-medium text-foreground">{props.note}</p>
         ) : (
           <>
+            {(props.amount || props.detail) && (
+              <div className="flex flex-col gap-1">
+                {props.amount && (
+                  <p
+                    data-ui="goal-amount"
+                    className="font-display text-[1.75rem]/8 font-semibold tracking-[-0.02em] tabular-nums"
+                  >
+                    <ProvenancePin
+                      value={props.amount.figure}
+                      labelValue={props.amount.labelValue}
+                      obs={props.amount.obs}
+                      labels={props.pinLabels}
+                    />
+                  </p>
+                )}
+                {props.detail && (
+                  <p className="text-body-sm text-muted-foreground tabular-nums">{props.detail}</p>
+                )}
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               {props.status ? (
                 <Status status={props.status.kind}>
@@ -150,20 +171,6 @@ export function GoalCard(props: GoalCardProps) {
               {chain && <ChainBadge chain={chain} />}
             </div>
             {props.reason && <p className="text-body-sm text-foreground">{props.reason}</p>}
-            {(props.amount || props.detail) && (
-              <p className="text-body-sm tabular-nums">
-                {props.amount && (
-                  <ProvenancePin
-                    value={props.amount.figure}
-                    labelValue={props.amount.labelValue}
-                    obs={props.amount.obs}
-                    labels={props.pinLabels}
-                  />
-                )}
-                {props.amount && props.detail && ' · '}
-                {props.detail}
-              </p>
-            )}
           </>
         )}
 

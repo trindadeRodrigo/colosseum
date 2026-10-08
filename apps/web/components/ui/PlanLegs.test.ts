@@ -27,11 +27,15 @@ describe('PlanLegs (plan-leg.md)', () => {
     expect(labels).toHaveLength(4);
   });
 
-  it('draws the bar flat: 12px, square, with 2px gaps in the ground colour', () => {
+  it('draws the bar flat: 12px, pill ends, with 2px gaps in the ground colour', () => {
     expect(classes(bar)).toEqual(
       expect.arrayContaining(['flex', 'gap-0.5', 'bg-background', 'h-3']),
     );
-    for (const s of segments) expect(classes(s)).toContain('rounded-none');
+    // the bar's two ends are round (first and last segment), the joints between legs square
+    for (const s of segments)
+      expect(classes(s)).toEqual(
+        expect.arrayContaining(['first:rounded-l-full', 'last:rounded-r-full']),
+      );
     expect(classes(one(render(planLegs.hero), ui('plan-legs-bar')))).toContain('h-6');
   });
 

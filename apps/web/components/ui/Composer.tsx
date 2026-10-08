@@ -16,8 +16,8 @@ import { COMPOSER_LABELS, type ComposerLabels } from './labels';
 import { StatusMark } from './StatusMark';
 
 // composer.md. The typing box: the one place where a person talks to us in their own words, and the
-// only rounded shape in the system (20px, with a round send button). Everything around it stays
-// square. It sends the text and nothing else: what reads it, and what happens next, is the caller's.
+// roundest box in the system (20px, with a round honey send button and the ink arrow on it). It sends
+// the text and nothing else: what reads it, and what happens next, is the caller's.
 // It never shows a figure, so it carries no pin.
 
 export type { ComposerLabels } from './labels';
@@ -213,7 +213,7 @@ export function Composer({
           aria-busy={busy || undefined}
           tabIndex={disabled ? -1 : undefined}
           className={cn(
-            'grid h-9 shrink-0 place-items-center rounded-round transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+            'grid h-9 shrink-0 place-items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
             wordy ? 'min-w-9 px-0 min-[520px]:px-4' : 'w-9',
             inert && !busy
               ? 'cursor-default bg-muted text-muted-foreground'

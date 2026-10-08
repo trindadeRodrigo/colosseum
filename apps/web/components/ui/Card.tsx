@@ -3,9 +3,9 @@ import { cn } from './cn';
 import { HatchBand, SampleNote } from './internal/mock-parts';
 import { LatticeGlyph, LatticeStatus } from './Lattice';
 
-// card.md. A card is a planed face: lighter than the ground, a hairline edge, no shadow, and at most
-// one serif line. Depth comes from the three layers, never from a shadow. No photograph and no
-// pattern goes inside one.
+// card.md. A card is a planed face: one layer up from the ground, a hairline edge, 10px corners, no
+// shadow. Depth comes from the three layers, never from a shadow. No photograph and no pattern goes
+// inside one.
 
 /** 24px of padding for consumer screens and docs; 16px for Monitor and Bearing. */
 export type CardDensity = 'default' | 'dense';
@@ -14,14 +14,14 @@ const PAD: Record<CardDensity, string> = { default: 'p-6', dense: 'p-4' };
 
 export type CardProps = {
   density?: CardDensity;
-  /** A table panel: square corners, and the table inside owns its cells. */
+  /** A table panel: the table inside owns its cells (and its pins keep their popovers: nothing is clipped). */
   table?: boolean;
   /**
    * The card can be followed as a link: its edge deepens from hair to member on hover and it shows the
    * focus ring when the link inside has focus. Put the one link on the title (`CardHeader href`).
    */
   interactive?: boolean;
-  /** A 2px edge in the brand wood on the left. Say it to assistive technology too, with `current`. */
+  /** A 2px honey edge on the left. Say it to assistive technology too, with `current`. */
   selected?: boolean;
   /** Sets `aria-current` on a selected card. */
   current?: 'page' | 'true';
@@ -63,7 +63,7 @@ export function Card({
       aria-current={selected ? (current ?? 'true') : undefined}
       className={cn(
         'group/card relative border border-border bg-card text-card-foreground',
-        table ? 'rounded-none' : 'rounded-md',
+        'rounded-lg',
         interactive &&
           'transition-colors hover:border-input focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring',
         selected && 'border-l-2 border-l-primary',
@@ -184,7 +184,7 @@ export function Stat({ label, children, density = 'default', className }: StatPr
       <dt className="text-caption text-muted-foreground">{label}</dt>
       <dd
         className={cn(
-          'font-mono font-medium tabular-nums',
+          'font-display font-semibold tracking-[-0.02em] tabular-nums',
           density === 'dense' ? 'text-b-kpi' : 'text-[1.125rem]/7',
         )}
       >

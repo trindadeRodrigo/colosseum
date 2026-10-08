@@ -3,7 +3,7 @@ import { cn } from './cn';
 import { MockWord } from './internal/mock-parts';
 import { Status, type StatusKind, statusTint, statusWord } from './StatusMark';
 
-// data-table.md. A financial table: a caption, scoped headers, figures in the mono face on the right,
+// data-table.md. A financial table: a caption, scoped headers, tabular figures on the right,
 // a status as a word and a shape (a tinted row alone is not allowed), a scroll region the keyboard
 // can reach, and, on a phone, stacked rows when there are more than four columns.
 // A yield, a price or an FX figure goes into a cell as a `ProvenancePin`: one pin per figure, never
@@ -20,7 +20,7 @@ export type Column<Row> = {
   /** Sentence case. */
   header: string;
   cell: (row: Row) => ReactNode;
-  /** A figure column: on the right, mono, tabular. */
+  /** A figure column: on the right, tabular lining figures in the UI face. */
   numeric?: boolean;
   /** A source column: `source · fetched_at · method` in the mono face, muted, cut to one line. */
   source?: boolean;
@@ -40,7 +40,7 @@ export type DataTableProps<Row> = {
   columns: readonly Column<Row>[];
   rows: readonly Row[];
   rowKey: (row: Row) => string;
-  /** 28px rows and the condensed face: Monitor and Bearing. */
+  /** 36px rows and the 13px cell: Monitor and Bearing. */
   dense?: boolean;
   /**
    * A row's status. It adds a status cell (the mark and the word) at the end of the row and tints the
@@ -74,13 +74,13 @@ export function DataTable<Row>({
   const stacks = width > 4;
   const head = columns.find((c) => c.rowHeader) ?? columns[0];
   const height = dense ? 'h-(--tf-row-dense)' : 'h-(--tf-row-comfortable)';
-  const face = dense ? 'font-condensed text-b-cell' : 'text-body-sm';
+  const face = dense ? 'text-b-cell' : 'text-body-sm';
 
   const cellClass = (column: Column<Row>) =>
     cn(
       'px-3 py-1 align-middle',
       height,
-      column.numeric && 'text-right font-mono tabular-nums',
+      column.numeric && 'text-right tabular-nums',
       column.source && 'max-w-[28ch] truncate font-mono text-source text-muted-foreground',
       column.projected && 'text-muted-foreground',
     );
@@ -222,7 +222,7 @@ export function DataTable<Row>({
                           <dd
                             className={cn(
                               'text-right',
-                              column.numeric && 'font-mono tabular-nums',
+                              column.numeric && 'tabular-nums',
                               column.source && 'font-mono text-source text-muted-foreground',
                               column.projected && 'text-muted-foreground',
                             )}

@@ -8,15 +8,15 @@ const root = (node: Parameters<typeof render>[0]) => {
 };
 
 describe('Card (card.md)', () => {
-  it('is a planed face: raised surface, hairline, 2px corners, no shadow', () => {
+  it('is a planed face: raised surface, hairline, 10px corners, no shadow', () => {
     const list = classes(root(card.plain).card);
     expect(list).toEqual(
-      expect.arrayContaining(['bg-card', 'border', 'border-border', 'rounded-md']),
+      expect.arrayContaining(['bg-card', 'border', 'border-border', 'rounded-lg']),
     );
     for (const node of Object.values(card))
       for (const el of all(render(node)))
         expect(classes(el).join(' ')).not.toMatch(
-          /shadow|rounded-(lg|xl|2xl|full)|backdrop|\b(bg|border)-[a-z0-9-]+\/\d+/,
+          /shadow|rounded-(md|xl|2xl|full|none)\b|backdrop|\b(bg|border)-[a-z0-9-]+\/\d+/,
         );
   });
 
@@ -45,7 +45,7 @@ describe('Card (card.md)', () => {
     expect(classes(root(card.plain).card)).not.toContain('hover:border-input');
   });
 
-  it('shows selection with a 2px edge in the brand wood and says it', () => {
+  it('shows selection with a 2px honey edge and says it', () => {
     const { card: c } = root(card.selected);
     expect(classes(c)).toEqual(expect.arrayContaining(['border-l-2', 'border-l-primary']));
     expect(c.attrs['aria-current']).toBe('page');
@@ -56,7 +56,9 @@ describe('Card (card.md)', () => {
     expect(all(c, ui('hatch-band'))).toHaveLength(1);
     const line = one(tree, ui('sample-note'));
     expect(text(line)).toBe('Sample figures');
-    expect(classes(line)).toContain('text-muted-foreground');
+    expect(classes(line)).toEqual(
+      expect.arrayContaining(['text-sample-line', 'text-sample-foreground']),
+    );
     expect(text(tree)).not.toContain('MOCK');
     expect(classes(c)).not.toContain('tf-hatch');
     expect(all(tree, (e) => classes(e).includes('tf-hatch') && text(e) !== '')).toHaveLength(0);
@@ -85,8 +87,8 @@ describe('Card (card.md)', () => {
     expect(text(one(root(card.mockTold).tree, ui('sample-note')))).toBe('Números de exemplo');
   });
 
-  it('has square corners as a table panel', () => {
-    expect(classes(root(card.table).card)).toContain('rounded-none');
+  it('has the same 10px corners as a table panel', () => {
+    expect(classes(root(card.table).card)).toContain('rounded-lg');
   });
 
   it('waits and stands empty in words, beside the still lattice', () => {
@@ -98,7 +100,7 @@ describe('Card (card.md)', () => {
     expect(all(empty, ui('button'))).toHaveLength(1);
   });
 
-  it('sets stat cells side by side with hairlines between, a muted label over a mono value', () => {
+  it('sets stat cells side by side with hairlines between, a muted label over a display-face value', () => {
     const tree = render(card.stats);
     const rowEl = one(tree, ui('stat-row'));
     expect(classes(rowEl)).toEqual(expect.arrayContaining(['divide-x', 'divide-border']));
@@ -106,7 +108,7 @@ describe('Card (card.md)', () => {
     const stats = all(tree, ui('stat'));
     expect(stats).toHaveLength(2);
     expect(classes(one(stats[0] as never, (e) => e.tag === 'dd'))).toEqual(
-      expect.arrayContaining(['font-mono', 'font-medium', 'tabular-nums']),
+      expect.arrayContaining(['font-display', 'font-semibold', 'tabular-nums']),
     );
     // a count has no pin; a rate has one
     expect(all(stats[0] as never, ui('pin'))).toHaveLength(0);

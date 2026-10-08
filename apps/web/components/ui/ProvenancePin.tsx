@@ -30,9 +30,10 @@ export type { PinLabels, PinSource, PinState } from './provenance';
 // provenance-pin.md. The tenon end with its pin, after every yield, price and FX figure. It opens
 // `source · fetched_at · method`. No pin, no number: a figure with no source is not shown at all.
 //
-// The glyph is specified three ways across the design files (size, outline colour, hatch pitch). This
-// follows provenance-pin.md and working-brand.yml, as the .yml wins: an 18 by 12 box, 0.75em tall, a
-// stone outline, the pin in the brand wood, and a 3px hatch for MOCK.
+// The glyph is the logo's tenon end in line mode (LOGO-2), as provenance-pin.md and working-brand.yml
+// draw it: an 18 by 12 box, 0.75em tall, an outline with 2.5 corners, and a square pin, 4 by 4 with a
+// corner of 1, set toward the end (x 11, y 4): honey on night, honey-l on day. Stale is the same square
+// hollow; sample is no pin and a 3px hatch.
 
 // The hatch of the MOCK glyph: 45°, 1px strokes at a 3px pitch, cut to the inside of the outline.
 // Each line is x + y = k; the middle one passes through the centre of the box.
@@ -69,26 +70,31 @@ export function PinGlyph({ state, drop = false, className }: PinGlyphProps) {
         y="0.75"
         width="16.5"
         height="10.5"
+        rx="2.5"
         fill="none"
         stroke="var(--tf-pin-outline)"
         strokeWidth="1.5"
       />
       {state === 'live' && (
-        <circle
-          cx="9"
-          cy="6"
-          r="2.5"
+        <rect
+          x="11"
+          y="4"
+          width="4"
+          height="4"
+          rx="1"
           fill="var(--tf-pin)"
           className={drop ? 'animate-pin-drop' : undefined}
         />
       )}
       {state === 'stale' && (
-        <circle
-          cx="9"
-          cy="6"
-          r="1.75"
+        <rect
+          x="11.75"
+          y="4.75"
+          width="2.5"
+          height="2.5"
+          rx="0.5"
           fill="none"
-          stroke="var(--tf-pin-outline)"
+          stroke="var(--tf-pin)"
           strokeWidth="1.5"
           className={drop ? 'animate-pin-drop' : undefined}
         />
@@ -321,7 +327,7 @@ export function ProvenancePin({
               href={docs.href}
               target="_blank"
               rel="noopener"
-              className="inline-flex items-center gap-1 text-primary underline decoration-1 underline-offset-4 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className="inline-flex items-center gap-1 text-honey-text underline decoration-1 underline-offset-4 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
               {docs.label}
               <Icon name="ArrowUpRight" size={16} />
@@ -349,7 +355,7 @@ function Popover({ ref, id, name, place, children }: PopoverProps) {
     'data-ui': 'pin-popover',
     style: place ? ({ position: 'fixed', top: place.top, left: place.left } as const) : undefined,
     className: cn(
-      'z-20 flex w-max max-w-[min(44ch,calc(100vw-2rem))] flex-col items-start gap-1 rounded-md border border-border bg-popover px-3 py-2 text-left font-mono text-source font-normal whitespace-normal text-popover-foreground',
+      'z-20 flex w-max max-w-[min(44ch,calc(100vw-2rem))] flex-col items-start gap-1 rounded-md border border-border bg-popover shadow-popover px-3 py-2 text-left font-mono text-source font-normal whitespace-normal text-popover-foreground',
       // The 8px between the pin and the popover belong to the popover, on whichever side the pin is.
       "before:absolute before:inset-x-0 before:-top-2 before:h-2 before:content-[''] after:absolute after:inset-x-0 after:-bottom-2 after:h-2 after:content-['']",
       !place && 'absolute top-full left-0 mt-2',

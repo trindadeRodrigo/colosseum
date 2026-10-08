@@ -133,7 +133,7 @@ export function PlanLegs({
                 } as CSSProperties
               }
               className={cn(
-                'min-w-0.5 rounded-none border-foreground transition-transform duration-(--tf-dur-slide) ease-seat motion-reduce:transition-none',
+                'min-w-0.5 border-foreground transition-transform first:rounded-l-full last:rounded-r-full duration-(--tf-dur-slide) ease-seat motion-reduce:transition-none',
                 isMock(leg) ? 'tf-hatch bg-card' : FILL[index],
                 MARK[index],
                 lock && 'animate-seat',
@@ -174,7 +174,7 @@ export function PlanLegs({
                   />
                   <span className="font-medium">{leg.name}</span>
                   <span aria-hidden="true">·</span>
-                  <span className="font-mono tabular-nums">{leg.weightLabel}</span>
+                  <span className="tabular-nums">{leg.weightLabel}</span>
                   {/* a leg with no rate says nothing about one: no dash in its place */}
                   {leg.rate !== null && (
                     <>

@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 import { cn } from './cn';
 
-// Goal state is a word, a shape and an earth colour, never the colour alone (STYLE.md, rule 6).
-// On track: a solid square, forest. Watch: a half-filled square, ochre. Off track: a square outline
-// with a notch, madder. The state comes from the engine; nothing here works it out.
+// Goal state is a word, a shape and a colour on its 14% tint, never the colour alone (STYLE.md,
+// rule 7). On track: a solid square, leaf. Watch: a half-filled square, clay. Off track: a square
+// outline with a notch, madder. The state comes from the engine; nothing here works it out.
 
 export type StatusKind = 'on-track' | 'watch' | 'off-track';
 
@@ -94,18 +94,17 @@ export type StatusProps = {
   className?: string;
 };
 
-/** The mark and its word on one line, in the status colour. */
+/** The pill: 22px tall, the tint behind the mark and the word (STYLE.md, "Chip and badge"). */
+const PILL = 'inline-flex h-[22px] items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold';
+
+/** The mark and its word on one line, in the status colour, on its tint: a status pill. */
 export function Status({ status, children, className }: StatusProps) {
   if (!says(children)) throw new Error(NO_WORD);
   return (
     <span
       data-ui="status"
       data-status={status}
-      className={cn(
-        'inline-flex items-center gap-2 text-caption font-medium',
-        COLOUR[status],
-        className,
-      )}
+      className={cn(PILL, COLOUR[status], TINT[status], className)}
     >
       <StatusMark status={status} />
       <span>{children}</span>
@@ -113,19 +112,14 @@ export function Status({ status, children, className }: StatusProps) {
   );
 }
 
-/** A status badge: square, 20px tall, the tint behind the mark and the word. */
+/** A status badge: the same pill, where a table or a panel names it a badge. */
 export function StatusBadge({ status, children, className }: StatusProps) {
   if (!says(children)) throw new Error(NO_WORD);
   return (
     <span
       data-ui="status-badge"
       data-status={status}
-      className={cn(
-        'inline-flex h-5 items-center gap-1.5 rounded-none px-2 text-caption font-medium',
-        COLOUR[status],
-        TINT[status],
-        className,
-      )}
+      className={cn(PILL, COLOUR[status], TINT[status], className)}
     >
       <StatusMark status={status} />
       <span>{children}</span>

@@ -164,7 +164,9 @@ export function ChartHead({
     >
       <div className="min-w-0">
         <div className="font-condensed text-caption font-medium text-muted-foreground">{title}</div>
-        {value != null && <div className="mt-0.5 font-mono text-b-kpi font-medium">{value}</div>}
+        {value != null && (
+          <div className="mt-0.5 font-display text-b-kpi font-semibold tabular-nums">{value}</div>
+        )}
         {note != null && (
           <div className="max-w-[72ch] text-caption text-muted-foreground">{note}</div>
         )}
@@ -545,14 +547,7 @@ function Cross({
   const pane = py == null ? undefined : geo.panes.find((g) => py >= g.top && py <= g.top + g.h);
   return (
     <g data-ui="chart-cross">
-      <line
-        x1={px}
-        x2={px}
-        y1={0}
-        y2={geo.plotH}
-        stroke="var(--muted-foreground)"
-        strokeDasharray="2 3"
-      />
+      <line x1={px} x2={px} y1={0} y2={geo.plotH} stroke="var(--tf-chalk)" strokeDasharray="2 3" />
       <Tag
         x={px}
         y={geo.plotH + 11}
@@ -566,7 +561,7 @@ function Cross({
             x2={8 + geo.plotW}
             y1={py}
             y2={py}
-            stroke="var(--muted-foreground)"
+            stroke="var(--tf-chalk)"
             strokeDasharray="2 3"
           />
           <Tag

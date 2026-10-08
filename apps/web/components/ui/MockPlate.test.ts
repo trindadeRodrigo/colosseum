@@ -38,7 +38,9 @@ describe('MockPlate (mock-plate.md, as MOCK-QUIET changed it)', () => {
     expect(one(render(mockPlate.quiet), ui('sample-glyph')).attrs['aria-hidden']).toBe('true');
     const note = one(render(mockPlate.frame), ui('sample-note'));
     expect(text(note)).toBe('Sample figures');
-    expect(classes(note)).toContain('text-muted-foreground');
+    expect(classes(note)).toEqual(
+      expect.arrayContaining(['text-sample-line', 'text-sample-foreground']),
+    );
     expect(classes(note).join(' ')).not.toMatch(/border|bg-/);
   });
 

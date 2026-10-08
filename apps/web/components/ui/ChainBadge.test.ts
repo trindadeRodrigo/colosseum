@@ -24,11 +24,11 @@ describe('ChainBadge', () => {
     expect(dictionary('pt').chain.names).toEqual(CHAIN_NAMES);
   });
 
-  it('is text on a square hairline: no mark, no pill, no blue or violet', () => {
+  it('is text on a hairline tag (6px): no mark, no pill, no blue or violet', () => {
     const badge = one(render(createElement(ChainBadge, { chain: 'solana' })), ui('chain-badge'));
     expect(all(badge, tag('svg'))).toHaveLength(0);
     expect(all(badge, tag('img'))).toHaveLength(0);
-    expect(classes(badge)).toContain('rounded-md');
+    expect(classes(badge)).toContain('rounded-sm');
     expect(classes(badge).join(' ')).not.toMatch(/rounded-(full|lg|xl)|blue|violet|indigo|purple/);
   });
 
