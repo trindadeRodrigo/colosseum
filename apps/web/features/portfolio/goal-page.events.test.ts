@@ -14,6 +14,7 @@ import { PLAN_ID, planOn, recordOf } from '../order/test/fixtures';
 import { shortAddress } from '../shared/use-person';
 import { fakePort, json, PHANTOM, signedInPort } from '../wallet/test/fake-port';
 import { portStore } from '../wallet/test/mock-provider';
+import { sharesOf } from './figures';
 import { PORTFOLIO_PATH } from './portfolio';
 import {
   chainOf,
@@ -72,6 +73,85 @@ beforeEach(() => {
 afterEach(unmountAll);
 
 describe('home', () => {
+  it.each(['en', 'pt'] as const)(
+    'shows measured holdings and cash rather than planned weights, with compact wrapping labels (%s)',
+    async (lang) => {
+      const t = dictionary(lang);
+      const calls = api(onSolana);
+      portStore.set(signedInPort(PHANTOM));
+      const card = owned(await home(lang))[0];
+      const held = find(card, '[data-ui="owned-vault-holdings"]');
+      expect(held.textContent).toContain(t.plan.holds);
+      const bar = find(held, '[data-ui="holdings-bar"]');
+      expect([...bar.children].map((el) => (el as HTMLElement).style.width)).toEqual([
+        '63.46%',
+        '12.5%',
+        '24.04%',
+      ]);
+      const labels = [...held.querySelectorAll('[data-asset]')];
+      const shares = sharesOf(lang, [6346, 1250, 2404]);
+      expect(labels.map((el) => el.querySelector('span.min-w-0')?.textContent)).toEqual([
+        `USDY ${shares[0]}`,
+        `PAXG ${shares[1]}`,
+        `USDC ${shares[2]}`,
+      ]);
+      expect(
+        labels.every(
+          (el) => el.classList.contains('min-w-0') && el.classList.contains('max-w-full'),
+        ),
+      ).toBe(true);
+      expect(held.querySelectorAll('[data-ui="asset-mark"]')).toHaveLength(3);
+      expect(card.querySelector('[data-ui="card"]')?.classList.contains('h-full')).toBe(false);
+      expect(calls.filter((path) => path === PORTFOLIO_PATH)).toHaveLength(1);
+      expect(calls.some((path) => /\/me\/(plans|withdrawals)|\/orders/.test(path))).toBe(false);
+    },
+  );
+
+  it('shows cash alone at its measured 100%, excluding zero positions even when their target is nonzero', async () => {
+    const original = vault();
+    const cashOnly = vault({
+      valueUsd: '250',
+      positions: original.positions.map((row) => ({
+        ...row,
+        raw: '0',
+        display: '0',
+        valueUsd: '0',
+        weightBps: 0,
+      })),
+    });
+    api(onSolana, () => json(portfolioBody(chainOf([cashOnly]))));
+    portStore.set(signedInPort(PHANTOM));
+    const held = find(owned(await home())[0], '[data-ui="owned-vault-holdings"]');
+    expect(held.querySelectorAll('[data-asset]')).toHaveLength(1);
+    expect(held.textContent).toContain('USDC 100%');
+    expect(held.textContent).not.toMatch(/USDY|PAXG/);
+    expect(
+      (find(held, '[data-ui="holdings-bar"]').firstElementChild as HTMLElement).style.width,
+    ).toBe('100%');
+  });
+
+  it('names an empty vault honestly without a target allocation bar', async () => {
+    const original = vault();
+    const empty = vault({
+      valueUsd: '0',
+      cash: { ...original.cash, raw: '0', display: '0' },
+      positions: original.positions.map((row) => ({
+        ...row,
+        raw: '0',
+        display: '0',
+        valueUsd: '0',
+        weightBps: 0,
+      })),
+    });
+    api(onSolana, () => json(portfolioBody(chainOf([empty]))));
+    portStore.set(signedInPort(PHANTOM));
+    const card = owned(await home())[0];
+    expect(find(card, '[data-ui="owned-vault-holdings"]').textContent).toContain(en.withdraw.empty);
+    expect(card.querySelector('[data-ui="holdings-bar"]')).toBeNull();
+    expect(card.querySelectorAll('[data-asset]')).toHaveLength(0);
+    expect(find(card, '[data-ui="figure"]').textContent).toBe('$0.00\u202f');
+    expect(find(card, 'a').getAttribute('href')).toBe(`/vaults/solana/${VAULT}`);
+  });
   it('is the goal, first: the one serif question and the typing box, and nothing else for a visitor', async () => {
     const calls = api(null);
     const host = await home();
@@ -153,7 +233,9 @@ describe('home', () => {
     expect(card.textContent).not.toContain('$1,066.50');
     const badges = [...card.querySelectorAll('[data-ui="chain-badge"]')];
     expect(badges.map((b) => b.getAttribute('data-chain'))).toEqual(['solana', 'robinhood']);
-    expect(card.textContent).not.toMatch(/usdc/i);
+    expect(owned(host)[0].textContent).toContain('USDC');
+    expect(owned(host)[1].textContent).toContain('tUSDG');
+    expect(owned(host)[1].textContent).not.toMatch(/usdc/i);
   });
 
   it.each([
@@ -212,7 +294,12 @@ describe('home', () => {
       'Grow $40,000 over 36 months.',
       en.shared.vaults.address(shortAddress('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')),
     ]);
-    expect(host.querySelector('img')).toBeNull();
+    expect(cards.every((card) => find(card, 'h3').querySelector('img') === null)).toBe(true);
+    expect(
+      Array.from(host.querySelectorAll('img')).every(
+        (image) => image.getAttribute('src') === '/assets/tokens/paxg.png' && !image.hasAttribute('onerror'),
+      ),
+    ).toBe(true);
     expect(calls.filter((path) => path === PORTFOLIO_PATH)).toHaveLength(1);
     expect(calls.some((path) => /\/me\/(plans|withdrawals)|\/orders/.test(path))).toBe(false);
     expect(cards.every((card) => card.querySelectorAll('a').length === 1)).toBe(true);
@@ -247,6 +334,14 @@ describe('home', () => {
     const card = owned(host)[0];
     expect(find(card, '[data-ui="sample-note"]').textContent).toBe(en.shell.testNetworkLine);
     expect(card.textContent).toContain(en.portfolio.vault.unpriced(1));
+    const held = find(card, '[data-ui="owned-vault-holdings"]');
+    expect(find(held, '[data-asset="solana:usdy"]').textContent).toContain('USDY —');
+    expect(find(held, '[data-ui="holdings-bar"]').children).toHaveLength(2);
+    expect(
+      [...find(held, '[data-ui="holdings-bar"]').children].map(
+        (el) => (el as HTMLElement).style.width,
+      ),
+    ).toEqual(['12.5%', '24.04%']);
     expect(find(card, '[data-ui="figure"]').textContent).toBe('$380.00\u202f');
     const pin = find(card, '[data-ui="figure"]').querySelector('button') as HTMLElement;
     await click(pin);
