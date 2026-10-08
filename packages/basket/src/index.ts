@@ -6,3 +6,4 @@ export * from './plan-rebalance';
 export * from './roll-up';
 export { sha256Hex } from './sha256';
 export { measureVault, view } from './view';
+export * from './weights';

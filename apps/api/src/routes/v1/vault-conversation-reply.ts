@@ -1,8 +1,9 @@
 import {
   OrderError,
-  VaultAgentReply,
+  VaultAgentReplyShape,
   VaultAgentRequest,
   VaultRouteParams,
+  warningsBelong,
 } from '@colosseum/schemas';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -22,10 +23,10 @@ import { resolveVaultConversationOwner } from '../../orders/vault-conversation-o
 import type { VaultAgentModel } from '../../vault-agent-model';
 import { signedIn } from './orders';
 
-export const VaultConversationReply = VaultAgentReply.extend({
+export const VaultConversationReply = VaultAgentReplyShape.extend({
   chain: VaultRouteParams.shape.chain,
   address: VaultRouteParams.shape.address,
-});
+}).superRefine(warningsBelong);
 export const VaultConversationReplyError = z.strictObject({
   error: z.string(),
   code: z.literal('VAULT_AGENT_UNAVAILABLE'),
