@@ -138,7 +138,18 @@ export function registerVaultConversationReplyRoute(
           reason: result.reason,
         });
       }
-      if (result.repair)
+      if (result.repair?.outcome === 'prose_figure_trimmed')
+        // A code and a count: never the sentences, the person's words or the model's reply.
+        req.log.warn(
+          {
+            detail: 'prose_figure_trimmed',
+            sentencesCut: result.repair.sentencesCut ?? 0,
+            repair: result.repair,
+            chain: identity.chain,
+          },
+          'the vault conversation reply was served without the sentences that stated a figure',
+        );
+      else if (result.repair)
         req.log.warn(
           { repair: result.repair, chain: identity.chain },
           result.repair.outcome === 'repaired'
