@@ -663,14 +663,8 @@ export function InvestScreen() {
       void buildFrom(valid, true, true);
   }, [ready, visitorPlan, valid]);
 
-  // A plan lives on one chain (gate ONE-CHAIN). When the person moves to another, the plan on the
-  // page is another chain's: it is built again for the chain they are on.
+  // The chain the plan on the page was built for.
   const planOn = built?.one.proposal.sheet.chains[0] ?? null;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: when the chain is no longer the plan's
-  useEffect(() => {
-    if (planOn && chain && planOn !== chain && valid && build.kind !== 'building')
-      void buildFrom(valid, signedIn && built?.own === true);
-  }, [planOn, chain, valid]);
 
   // A new turn is brought into view without reserving a viewport-height conversation.
   const count = turns.length;
@@ -695,6 +689,14 @@ export function InvestScreen() {
   // From the press that approves an order until it is done or stops, the run is on the pane: its card
   // stays, with its Stop, and nothing that would change or take away the plan is offered meanwhile.
   const [ordering, setOrdering] = useState(false);
+  // A plan lives on one chain (gate ONE-CHAIN). When the person moves to another, the plan on the
+  // page is another chain's: it is built again for the chain they are on. Not while its order is
+  // being run: that plan's card stays until the run ends, and the plan is built again then.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: when the chain is no longer the plan's, or a run has ended
+  useEffect(() => {
+    if (planOn && chain && planOn !== chain && valid && build.kind !== 'building' && !ordering)
+      void buildFrom(valid, signedIn && built?.own === true);
+  }, [planOn, chain, valid, ordering]);
   function onProgress(progress: InvestProgress) {
     setOrdering(true);
     if (progress.line === '' || progress.line === lastLine.current) return;

@@ -161,18 +161,32 @@ export function OrderScreen({
     setRecord(recallOrder(id, userId));
   }, [id, userId]);
 
+  // The order and the person the read on the screen is of. A second look at the same one (the wallet
+  // reported again, a step landed) leaves the screen as it is until the answer is here, and an answer
+  // that is no read leaves it standing: an order that is being run is never taken off the screen by
+  // a look at it.
+  const readOf = useRef<string | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `round` reads the order again
   useEffect(() => {
     if (port.status !== 'ready') return;
     let mine = true;
-    setLoad({ kind: 'loading' });
+    const of = `${id}|${userId ?? ''}`;
+    const again = readOf.current === of;
+    if (!again) {
+      readOf.current = null;
+      setLoad({ kind: 'loading' });
+    }
     readOrder(apiFetch, id).then((read) => {
-      if (mine) setLoad(read);
+      if (!mine) return;
+      if (read.kind === 'read') readOf.current = of;
+      setLoad((before) =>
+        again && read.kind !== 'read' && before.kind === 'read' ? before : read,
+      );
     });
     return () => {
       mine = false;
     };
-  }, [id, apiFetch, port.status, round]);
+  }, [id, userId, apiFetch, port.status, round]);
 
   // An order that stopped for good is the one case a buy may be finished from: only then is the
   // server asked whether it can. Stopped as this page just saw it, or as the order itself says when
@@ -339,6 +353,20 @@ export function OrderScreen({
     },
     [],
   );
+
+  // The same when the screen stays and the order's steps are not on it: the person signed out, the
+  // wallet is being read again, the record of what they approved is another person's. A run is only
+  // ever under way with its steps shown; where they are not, the executor is told to stop, and it asks
+  // the wallet for nothing more (packages/sdk, `signal`).
+  const onScreen =
+    port.status !== 'loading' &&
+    port.status !== 'signed-out' &&
+    account.status !== 'loading' &&
+    load.kind === 'read' &&
+    !!record;
+  useEffect(() => {
+    if (running && !onScreen) stop.current.aborted = true;
+  }, [running, onScreen]);
 
   const go = useCallback(
     async (again?: { legId: string; signedTimes: number }, first = false) => {

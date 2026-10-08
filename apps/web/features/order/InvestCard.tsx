@@ -279,9 +279,17 @@ export function InvestCard({
   const open = useRef<string | null>(null);
   const forget = useRef((orderId: string) => forgetUnapproved(orderId, userId));
   forget.current = (orderId: string) => forgetUnapproved(orderId, userId);
+  // The order whose steps are being run from this card. If the card goes before they end, the run is
+  // stopped with it (OrderScreen) and nothing is left to say so: the host is told here, once, so what
+  // it locked for the run (an amount field, a conversation) is the person's again.
+  const runOf = useRef<string | null>(null);
+  const stoppedTo = useRef(onStopped);
+  stoppedTo.current = onStopped;
   useEffect(
     () => () => {
       if (open.current) forget.current(open.current);
+      if (runOf.current) stoppedTo.current?.({ orderId: runOf.current });
+      runOf.current = null;
     },
     [],
   );
@@ -637,6 +645,7 @@ export function InvestCard({
                 onApprove: () => {
                   // The order is the person's now: it is kept, whatever becomes of the card.
                   open.current = null;
+                  runOf.current = made.orderId;
                   setStarted(true);
                   onProgress?.({ orderId: made.orderId, step: 0, of: 0, line: '' });
                 },
@@ -647,13 +656,24 @@ export function InvestCard({
                 onAgain: () => {
                   // asked for by the person: made whatever the card has made by itself
                   asked.current = want ? `${want}|${orderRound + 1}` : null;
+                  runOf.current = null;
                   setStarted(false);
                   setMade(null);
                   setOrderRound((n) => n + 1);
                 },
-                onProgress,
-                onDone: ({ orderId }) => void done(orderId),
-                onStopped,
+                onProgress: (progress) => {
+                  // also a run begun again after it stopped: finish, try again
+                  runOf.current = progress.orderId;
+                  onProgress?.(progress);
+                },
+                onDone: ({ orderId }) => {
+                  runOf.current = null;
+                  void done(orderId);
+                },
+                onStopped: (stopped) => {
+                  runOf.current = null;
+                  onStopped?.(stopped);
+                },
               }}
             />
           ) : (
