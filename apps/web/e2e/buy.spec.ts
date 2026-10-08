@@ -240,7 +240,8 @@ async function toBuy(page: Page, o: { fund?: 'mock' | 'test' } = {}) {
   await goal.fill('Grow $40 for three years, medium risk');
   await goal.press('Enter');
   await page.getByLabel(en.goal.fields.amount, { exact: true }).fill('40');
-  await page.getByLabel(en.goal.fields.country, { exact: true }).selectOption('BR');
+  // the country is not asked for: it shapes no plan and sits folded away (gate COUNTRY-REMOVED)
+  await expect(page.getByLabel(en.goal.fields.country, { exact: true })).toBeHidden();
   await page.getByRole('button', { name: en.goal.sheet.build }).click();
   await page.getByRole('link', { name: en.goal.built.done.see }).click();
 

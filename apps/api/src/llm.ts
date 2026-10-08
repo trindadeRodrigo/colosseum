@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import { MARKET_FILTER_BY, MARKET_IDS } from '@colosseum/engine/personal';
 import type { EnvLike, Language } from '@colosseum/schemas';
+import { createModelQuota, type ModelQuota } from './model-quota';
 
 // The model behind the guided intake (gate GUIDED-INTAKE; DESIGN-VAULT section 7): Claude Haiku 4.5 on
 // Anthropic's Messages API with structured outputs. It reads a goal into fields and says which it could
@@ -51,8 +52,42 @@ export const INTAKE_REPLY_SCHEMA = {
     'markets',
     'marketFilter',
     'mix',
+    'clarification',
+    'interestResolution',
   ],
   properties: {
+    interestResolution: {
+      anyOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: ['kind', 'quote'],
+          properties: {
+            kind: { type: 'string', enum: ['business', 'allocation', 'decline'] },
+            quote: { type: 'string' },
+          },
+        },
+        { type: 'null' },
+      ],
+    },
+    // Non-executable metadata: the API authors the question, never the model's prose.
+    clarification: {
+      anyOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: ['kind', 'quote', 'keywords'],
+          properties: {
+            kind: { type: 'string', enum: ['interest'] },
+            // Length bounds are checked by the API: Anthropic's raw schema omits unsupported
+            // minLength/maxLength/maxItems constraints (no SDK parse helper is used here).
+            quote: { type: 'string' },
+            keywords: { type: 'array', items: { type: 'string' } },
+          },
+        },
+        { type: 'null' },
+      ],
+    },
     goal: { anyOf: [{ type: 'string', enum: ['grow', 'income', 'protect'] }, { type: 'null' }] },
     amountUsd: { anyOf: [{ type: 'number' }, { type: 'null' }] },
     incomeTargetUsdMonthly: { anyOf: [{ type: 'number' }, { type: 'null' }] },
@@ -157,6 +192,8 @@ export const INTAKE_REPLY_SCHEMA = {
 export const INTAKE_SYSTEM = [
   "You read one person's financial goal into fields. The text may be in any language (English, Portuguese, Spanish, French or another): read it as written, and never translate a value. You are a reader, not an adviser.",
   'Fill a field only with what the text says. When the text does not say it, give null. Never guess, never pick a value for the person, never suggest anything.',
+  'clarification: non-executable metadata for a contextual follow-up, not an investment instruction. For a personal exploratory interest in the latest message ("I like Elon", "eu gosto do Elon"), whose investment meaning is still unclear, give kind interest, quote an exact span of that latest message (at most 160 characters), and keywords an empty list unless that span itself names values from the supplied shelf keywords. Do not infer Tesla, an asset, an allocation, a business or an industry from admiration for a person. The API writes the question; return no prose, prices, yields or advice. Give null for a quotation, someone else\'s preference, a story, a negated interest, a hypothetical, or an interest that a later message has already clarified. A clear request to invest in a business or market goes in markets or marketFilter as usual, not clarification. A complete financial instruction must proceed normally. Consider the latest message in context, but never keep an earlier exploratory interest alive after an explicit clarification.',
+  'interestResolution: non-executable metadata only when the latest message explicitly resolves an exploratory interest: business for a personal request to invest in a named business/industry/market, allocation for a personal instruction saying what to hold, or decline for an explicit instruction to ignore/drop that interest. quote the exact complete latest message (at most 2000 characters). A quotation, third-party story, negation of the investment request, hypothetical, thanks, a plain yes/no, or merely answering a missing fact is not resolution: null. Never choose any business, company, asset or share; execution fields still follow all the checks above. Clarification and resolution must not both be non-null.',
   'goal: grow (make the money grow), income (earn a monthly income from it) or protect (keep it safe). risk: low, medium or high, only as the person says it ("conservative" is low, "aggressive" is high). A mix is not a risk: "all in stocks" gives risk null.',
   'mix: only when the person states what they want held, of the whole money: "all of it in stocks" (growthPct 100), "70% stocks and 30% cash" (growthPct 70, cashPct 30), "only credit" or "only high yield" (dollarYieldPct 100, creditPct 100), "all in gold" (goldPct 100), "tudo em ações". growthPct is stocks and crypto; dollarYieldPct is dollar yield, including credit and bonds; creditPct is the part of dollarYieldPct in credit or high yield, else null. The four add up to 100, each as written. A market or a trend ("big tech", "AI") is not a mix, and a share of the money for one ("put 50% in big tech") is not a mix either. What the person rules out, only asks about, or says of what they or someone else already hold is not stated ("I wouldn\'t put all of it in stocks", "Should I put all of it in stocks?", "I already have everything in stocks at my broker"): null. Nothing stated to hold: null.',
   'markets: markets, industries or trends the person names to invest in, only from this list: big_tech ("big tech", "Magnificent 7", "US tech giants"), us_market ("the S&P", "the US market", "US stocks"), ai ("AI", "artificial intelligence"), semiconductors ("semiconductors", "chips", "chip makers"), ai_infrastructure ("AI infrastructure", "data centers"), crypto_economy ("crypto stocks", "crypto companies"; "crypto" alone is an asset, not this), fintech ("fintech", "brokers"), space ("space stocks", "rockets"), quantum ("quantum computing"), ev_autonomy ("electric vehicles", "EVs", "self-driving"), cloud_software ("cloud", "software", "SaaS"), emerging_markets ("emerging markets", "Asia"), commodities ("commodities", "oil", "silver"; gold is not this: "all in gold" is a mix), broad_market ("index funds", "the whole market"), retail_favourites ("meme stocks"), defense ("defense stocks", "weapons"), health_care ("health care stocks", "pharma", "pharmaceuticals"), social_media ("social media stocks", "social networks"). One the person rules out ("no big tech", "I would never invest in big tech", "anything but AI") or already holds elsewhere ("I already invest in the S&P 500 through my pension") is not named. None: an empty list. Do not name a portfolio, a company or a ticker for them.',
@@ -184,6 +221,14 @@ export type IntakeVocabulary = {
   keywords: string[];
 };
 
+/** Exact person turns and the contextual question boundary, never synthetic person words. */
+export type IntakeDialogueContext = {
+  turns: readonly string[];
+  latestTurn: number;
+  pendingInterest: { quote: string; sourceTurn: number } | null;
+  questionOrigin: 'interestClarification' | null;
+};
+
 /** What the intake reads with: a model, or nothing. Tests hand in a replay of recorded replies. */
 export type IntakeModel = {
   id: string;
@@ -200,6 +245,7 @@ export type IntakeModel = {
     language: Language | undefined,
     who: string,
     vocabulary?: IntakeVocabulary,
+    dialogue?: IntakeDialogueContext,
   ): Promise<{ reply: unknown } | { reply: null; why: string }>;
 };
 
@@ -209,6 +255,7 @@ export type ReadCall = (
   nowMonth: string,
   language?: Language,
   vocabulary?: IntakeVocabulary,
+  dialogue?: IntakeDialogueContext,
 ) => Promise<{ reply: unknown } | { reply: null; why: string }>;
 
 const listed = (values: string[]) => (values.length > 0 ? values.join(', ') : 'none');
@@ -221,26 +268,40 @@ export function intakeUserMessage(
   nowMonth: string,
   language?: Language,
   vocabulary?: IntakeVocabulary,
+  dialogue?: IntakeDialogueContext,
 ): string {
   const head = `Current month: ${nowMonth}.${language ? ` Page language: ${language}.` : ''}`;
   const values = vocabulary
     ? `\nAttribute values on this shelf: sectors: ${listed(vocabulary.sectors)}; industries: ${listed(vocabulary.industries)}; sub-industries: ${listed(vocabulary.subIndustries)}; keywords: ${listed(vocabulary.keywords)}.`
     : '';
-  return `${head}${values}\n\nThe goal:\n${text}`;
+  const boundary = dialogue
+    ? `\n\nPerson dialogue (exact chronological turns; latestTurn is zero-based):\n${JSON.stringify(dialogue)}\nLatest person message:\n${dialogue.turns[dialogue.latestTurn] ?? ''}`
+    : '';
+  return `${head}${values}\n\nThe goal:\n${text}${boundary}`;
 }
 
 /** Claude Haiku 4.5 over Anthropic's Messages API, with structured outputs. */
-export function anthropicCall(apiKey: string): ReadCall {
-  const client = new Anthropic({ apiKey, timeout: INTAKE_TIMEOUT_MS, maxRetries: 0 });
-  return async (text, nowMonth, language, vocabulary) => {
+export function anthropicCall(
+  apiKey: string,
+  o: { model?: string; timeoutMs?: number } = {},
+): ReadCall {
+  const client = new Anthropic({
+    apiKey,
+    timeout: o.timeoutMs ?? INTAKE_TIMEOUT_MS,
+    maxRetries: 0,
+  });
+  return async (text, nowMonth, language, vocabulary, dialogue) => {
     try {
       const response = await client.messages.create({
-        model: INTAKE_MODEL_ID,
+        model: o.model ?? INTAKE_MODEL_ID,
         max_tokens: 1_024,
         temperature: 0,
         system: INTAKE_SYSTEM,
         messages: [
-          { role: 'user', content: intakeUserMessage(text, nowMonth, language, vocabulary) },
+          {
+            role: 'user',
+            content: intakeUserMessage(text, nowMonth, language, vocabulary, dialogue),
+          },
         ],
         output_config: { format: { type: 'json_schema', schema: INTAKE_REPLY_SCHEMA } },
       });
@@ -275,6 +336,7 @@ const keyOf = (
   nowMonth: string,
   language?: Language,
   vocabulary?: IntakeVocabulary,
+  dialogue?: IntakeDialogueContext,
 ) =>
   createHash('sha256')
     .update(
@@ -290,6 +352,7 @@ const keyOf = (
               [...vocabulary.keywords].sort(),
             ]
           : null,
+        dialogue ?? null,
       ]),
     )
     .digest('hex');
@@ -309,33 +372,23 @@ export function budgetedModel(
     dailyCalls?: number;
     dailyCallsPerPerson?: number;
     now?: () => Date;
+    quota?: ModelQuota;
   } = {},
 ): IntakeModel {
   const dailyCalls = opts.dailyCalls ?? INTAKE_DAILY_CALLS;
   const perPerson = opts.dailyCallsPerPerson ?? INTAKE_DAILY_CALLS_PER_PERSON;
   const now = opts.now ?? (() => new Date());
   const cache = new Map<string, unknown>();
-  let day = '';
-  let used = 0;
-  const usedBy = new Map<string, number>();
+  const quota = opts.quota ?? createModelQuota({ dailyCalls, dailyCallsPerPerson: perPerson, now });
   return {
     id: opts.id ?? INTAKE_MODEL_ID,
     provenance: opts.provenance ?? 'live',
-    async read(text, nowMonth, language, who, vocabulary) {
-      const key = keyOf(text, nowMonth, language, vocabulary);
+    async read(text, nowMonth, language, who, vocabulary, dialogue) {
+      const key = keyOf(text, nowMonth, language, vocabulary, dialogue);
       if (cache.has(key)) return { reply: cache.get(key) };
-      const today = now().toISOString().slice(0, 10);
-      if (today !== day) {
-        day = today;
-        used = 0;
-        usedBy.clear();
-      }
-      const mine = usedBy.get(who) ?? 0;
-      if (mine >= perPerson) return { reply: null, why: 'model_person_budget_spent' };
-      if (used >= dailyCalls) return { reply: null, why: 'model_budget_spent' };
-      used += 1;
-      usedBy.set(who, mine + 1);
-      const answer = await call(text, nowMonth, language, vocabulary);
+      const denied = quota.reserve(who);
+      if (denied) return { reply: null, why: denied };
+      const answer = await call(text, nowMonth, language, vocabulary, dialogue);
       if (answer.reply !== null) {
         if (cache.size >= CACHE_SIZE) cache.delete(cache.keys().next().value as string);
         cache.set(key, answer.reply);
@@ -347,22 +400,62 @@ export function budgetedModel(
 
 /**
  * The model the server runs with: Anthropic's, when `ANTHROPIC_API_KEY` is set, with the budgets from
- * `INTAKE_MODEL_DAILY_CALLS` (everyone) and `INTAKE_MODEL_DAILY_CALLS_PER_PERSON` (one person). Null when no key is set: the intake reads with the rules parser alone.
+ * `INTAKE_MODEL_DAILY_CALLS` (everyone) and `INTAKE_MODEL_DAILY_CALLS_PER_PERSON` (one person), the
+ * model from `INTAKE_MODEL` and a call's time from `INTAKE_MODEL_TIMEOUT_MS` (`intakeSettings`). Null
+ * when no key is set: the intake reads with the rules parser alone.
  */
-export function intakeModelFromEnv(env: EnvLike, now?: () => Date): IntakeModel | null {
+export function intakeModelFromEnv(
+  env: EnvLike,
+  now?: () => Date,
+  quota?: ModelQuota,
+): IntakeModel | null {
+  // Read with or without a key, so a value that cannot be read stops the start either way.
+  const settings = intakeSettings(env);
   // As written: keys are case-sensitive.
   const key = env.ANTHROPIC_API_KEY?.trim();
   if (!key) return null;
-  const count = (value: string | undefined, fallback: number) => {
-    const n = Number(value ?? fallback);
-    return Number.isInteger(n) && n >= 0 ? n : fallback;
-  };
-  return budgetedModel(anthropicCall(key), {
-    dailyCalls: count(env.INTAKE_MODEL_DAILY_CALLS, INTAKE_DAILY_CALLS),
-    dailyCallsPerPerson: count(
-      env.INTAKE_MODEL_DAILY_CALLS_PER_PERSON,
-      INTAKE_DAILY_CALLS_PER_PERSON,
-    ),
+  return budgetedModel(anthropicCall(key, settings), {
+    id: settings.model,
+    dailyCalls: settings.dailyCalls,
+    dailyCallsPerPerson: settings.dailyCallsPerPerson,
     now,
+    quota,
   });
+}
+
+/**
+ * The intake model's settings, from the environment, each with today's value as its default:
+ * `INTAKE_MODEL` (the model's id), `INTAKE_MODEL_TIMEOUT_MS` (one call's time, 500 to 60,000) and the
+ * two budgets of calls a day. A value that cannot be read throws, naming the variable and what it
+ * takes: the server does not start on a setting it would have to guess. The message never holds a
+ * value, and the key is not read here.
+ */
+export function intakeSettings(env: EnvLike): {
+  model: string;
+  timeoutMs: number;
+  dailyCalls: number;
+  dailyCallsPerPerson: number;
+} {
+  const whole = (name: string, fallback: number, min: number, max: number) => {
+    const raw = env[name]?.trim();
+    if (raw === undefined || raw === '') return fallback;
+    const n = Number(raw);
+    if (!/^\d+$/.test(raw) || !Number.isSafeInteger(n) || n < min || n > max)
+      throw new Error(`${name} must be a whole number from ${min} to ${max}`);
+    return n;
+  };
+  const model = env.INTAKE_MODEL?.trim() || INTAKE_MODEL_ID;
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:@-]{0,99}$/.test(model))
+    throw new Error('INTAKE_MODEL must be a model id: letters, digits, dots and dashes');
+  return {
+    model,
+    timeoutMs: whole('INTAKE_MODEL_TIMEOUT_MS', INTAKE_TIMEOUT_MS, 500, 60_000),
+    dailyCalls: whole('INTAKE_MODEL_DAILY_CALLS', INTAKE_DAILY_CALLS, 0, 10_000_000),
+    dailyCallsPerPerson: whole(
+      'INTAKE_MODEL_DAILY_CALLS_PER_PERSON',
+      INTAKE_DAILY_CALLS_PER_PERSON,
+      0,
+      10_000_000,
+    ),
+  };
 }

@@ -13,7 +13,7 @@ import {
   type SolanaDeploymentRecord,
   type VaultNodeRpc,
 } from '@colosseum/chain-solana/vault';
-import { basketAssets, createDb, type Db } from '@colosseum/db';
+import { basketAssets, type Db, sharedDb } from '@colosseum/db';
 import {
   BasketAsset,
   ChainError,
@@ -29,7 +29,8 @@ import {
   type TestFunds,
   type TestFundsSender,
 } from '../../faucet/test-funds';
-import { type IntakeModel, intakeModelFromEnv } from '../../llm';
+import { type IntakeModel, intakeModelFromEnv, intakeSettings } from '../../llm';
+import { createModelQuota } from '../../model-quota';
 import {
   type ChainRegistry,
   createChainRegistry,
@@ -41,9 +42,12 @@ import type { OrderDeps } from '../../orders/legs';
 import type { PlanInputs } from '../../orders/personalize';
 import { authFromEnv, enforceSignIn, identify, type TokenIssuer } from '../../plugins/auth';
 import { type Limits, registerLimits, requireDeclared } from '../../plugins/limits';
+import { loggable } from '../../plugins/loggable';
+import { createAnthropicVaultAgentModel, type VaultAgentModel } from '../../vault-agent-model';
 import { type LinkedPlanLimits, registerBasketRoutes } from './baskets';
 import { buildConfig, registerConfigRoute } from './config';
 import { registerFundingRoute } from './funding';
+import { registerGoalConversationReplyRoute } from './goal-conversation-reply';
 import { registerIntakeRoute } from './intake';
 import { registerMeRoutes } from './me';
 import { registerMockRoutes } from './mock';
@@ -52,6 +56,7 @@ import { registerPortfolioRoute } from './portfolio';
 import { registerSharedRoutes } from './shared';
 import { registerTestnetRoute } from './testnet';
 import { registerVaultRoute } from './vault';
+import { registerVaultConversationReplyRoute } from './vault-conversation-reply';
 
 /**
  * What the /v1 routes run on. Left out, each comes from the environment the app hands in. A test hands
@@ -86,6 +91,8 @@ export type V1Deps = {
    * set, else none, and the intake reads with the rules parser alone. A test hands in a replay.
    */
   intakeModel?: IntakeModel | null;
+  /** Private, non-executable vault dialogue. Uses the configured intake model and shared quota. */
+  vaultAgentModel?: VaultAgentModel | null;
   /** The rate limits. Default: `LIMITS`, the ones a server runs with. */
   limits?: Limits;
   /** The daily cap and the keeping time of plans made from a link. Default: `LINKED_PLANS`. */
@@ -114,10 +121,9 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
   const issuer = deps.auth === undefined ? authFromEnv(env) : deps.auth;
   let db = deps.db;
   if (!db) {
-    // Opens no connection until the first query.
-    const own = createDb();
-    db = own.db;
-    app.addHook('onClose', () => own.client.end());
+    // The process's one pool, shared with the routes outside /v1 (packages/db: `sharedDb`). Opens no
+    // connection until the first query.
+    db = sharedDb().db;
   }
   // Read only when the registry is made here: a test that hands in its chains hands in its senders.
   const solana = deps.chains
@@ -137,6 +143,17 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
       robinhood,
     });
   const orderDeps: OrderDeps = { db, chains, now: deps.now ?? (() => new Date()) };
+  const modelSettings = intakeSettings(env);
+  const quota = createModelQuota({ ...modelSettings, now: deps.now });
+  const intakeModel =
+    deps.intakeModel === undefined ? intakeModelFromEnv(env, deps.now, quota) : deps.intakeModel;
+  const apiKey = env.ANTHROPIC_API_KEY?.trim();
+  const vaultAgentModel =
+    deps.vaultAgentModel === undefined
+      ? apiKey
+        ? createAnthropicVaultAgentModel({ apiKey, ...modelSettings, quota })
+        : null
+      : deps.vaultAgentModel;
 
   // The test faucet. Its key-holding file is loaded only here, only when a faucet key is set for a
   // chain on a test network (DESIGN-VAULT section 2, rule 5): otherwise it is never in the process.
@@ -191,7 +208,9 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
           .code(status)
           .send({ error: ours ? err.message : 'the request body could not be read as JSON' });
       }
-      req.log.error({ err }, 'a /v1 route failed');
+      // By what it is called and its code where it has one, and nothing else of it: a database's
+      // error repeats the statement's values, which name the person (plugins/loggable.ts).
+      req.log.error({ err: loggable(err) }, 'a /v1 route failed');
       // The request id and nothing else: no SQL, no stack.
       return reply.code(500).send({ error: `the server failed on this request (${req.id})` });
     });
@@ -207,15 +226,12 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
       { agentSurface: flags.agentSurface },
       deps.linkedPlans,
     );
-    registerIntakeRoute(
-      scope,
-      orderDeps,
-      deps.intakeModel === undefined ? intakeModelFromEnv(env, deps.now) : deps.intakeModel,
-      deps.planInputs,
-    );
+    registerIntakeRoute(scope, orderDeps, intakeModel, deps.planInputs);
     registerPortfolioRoute(scope, orderDeps);
     registerSharedRoutes(scope, orderDeps);
     registerVaultRoute(scope, orderDeps);
+    registerVaultConversationReplyRoute(scope, orderDeps, vaultAgentModel, deps.planInputs);
+    registerGoalConversationReplyRoute(scope, orderDeps, vaultAgentModel, deps.planInputs);
     // Out of the route table altogether unless a chain runs on the mock.
     if (chains.active().some((entry) => entry.mock)) registerMockRoutes(scope, orderDeps);
   });

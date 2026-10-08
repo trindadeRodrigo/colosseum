@@ -6,6 +6,7 @@ import { PERSONAL_PARAMS } from '@colosseum/engine/personal';
 import { chainFamily, type YieldObservation } from '@colosseum/schemas';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { loadLiquidityProvider, RISK_METHOD_VERSION } from './liquidity';
+import { modelContent } from './model-content';
 import {
   asSandbox,
   exitTwins,
@@ -69,7 +70,10 @@ export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets, provena
   const lists = loadThemeLists(chain);
   const stocks = loadStockAttributes(chain);
   // What is read from `content/`: the theme lists and the stock attributes of the chain.
-  const content = { ...(lists.length ? { themes: lists } : {}), ...(stocks ? { stocks } : {}) };
+  const content = modelContent(chain, assets, provenance, {
+    ...(lists.length ? { themes: lists } : {}),
+    ...(stocks ? { stocks } : {}),
+  });
   const addresses = assets.filter((a) => a.cls !== 'cash').map((a) => a.address);
   if (!addresses.length) return content;
   // On a chain that runs as a test network, a test-network token reads the depth of the mainnet token it

@@ -5,6 +5,8 @@ import {
   INTAKE_REPLY_SCHEMA,
   INTAKE_SYSTEM,
   type IntakeVocabulary,
+  intakeModelFromEnv,
+  intakeSettings,
   intakeUserMessage,
   type ReadCall,
 } from './llm';
@@ -23,6 +25,18 @@ const VOCABULARY: IntakeVocabulary = {
 };
 
 describe('what the model is asked for', () => {
+  it('asks for bounded non-executable latest-person interest metadata, never advice or an inferred company', () => {
+    const [interest, none] = INTAKE_REPLY_SCHEMA.properties.clarification.anyOf;
+    expect(none).toEqual({ type: 'null' });
+    expect(interest.additionalProperties).toBe(false);
+    expect(interest.required).toEqual(['kind', 'quote', 'keywords']);
+    expect(interest.properties.quote).toEqual({ type: 'string' });
+    expect(interest.properties.keywords).toEqual({ type: 'array', items: { type: 'string' } });
+    expect(INTAKE_SYSTEM).toContain('latest message');
+    expect(INTAKE_SYSTEM).toContain('Do not infer Tesla');
+    expect(INTAKE_SYSTEM).toContain("someone else's preference");
+    expect(INTAKE_SYSTEM).toContain('A complete financial instruction must proceed normally');
+  });
   it('names a market only by an id of the engine list, and a filter only as one attribute and one value', () => {
     const { properties, required } = INTAKE_REPLY_SCHEMA;
     expect(properties.markets.items.enum).toEqual([...MARKET_IDS]);
@@ -119,6 +133,35 @@ describe('what the model is sent', () => {
 });
 
 describe('the cache around a call', () => {
+  it('sends exact latest-turn context and distinguishes pending-question boundaries in the same call cache', async () => {
+    const calls: unknown[] = [];
+    const model = budgetedModel(
+      async (_text, _month, _language, _vocabulary, dialogue) => {
+        calls.push(dialogue);
+        return { reply: { read: calls.length } };
+      },
+      { provenance: 'mock' },
+    );
+    const context = {
+      turns: ['i like elon', 'elon musk!'],
+      latestTurn: 1,
+      pendingInterest: { quote: 'i like elon', sourceTurn: 0 },
+      questionOrigin: 'interestClarification' as const,
+    };
+    const text = context.turns.join('\n\n');
+    const first = await model.read(text, '2026-10', 'en', 'person', undefined, context);
+    expect(await model.read(text, '2026-10', 'en', 'person', undefined, context)).toEqual(first);
+    expect(
+      await model.read(text, '2026-10', 'en', 'person', undefined, {
+        ...context,
+        questionOrigin: null,
+      }),
+    ).not.toEqual(first);
+    expect(calls).toHaveLength(2);
+    const message = intakeUserMessage(text, '2026-10', 'en', undefined, context);
+    expect(message).toContain(JSON.stringify(context));
+    expect(message).toContain('Latest person message:\nelon musk!');
+  });
   it('hands the vocabulary to the call, and reads the same goal with another vocabulary again', async () => {
     const seen: (IntakeVocabulary | undefined)[] = [];
     const call: ReadCall = async (_text, _month, _language, vocabulary) => {
@@ -165,5 +208,73 @@ describe('the cache around a call', () => {
       reply: { read: 2 },
     });
     expect(calls).toBe(2);
+  });
+});
+
+describe('the model’s settings, from the environment', () => {
+  it('are today’s values where nothing is set, and the environment’s where it is', () => {
+    expect(intakeSettings({})).toEqual({
+      model: 'claude-haiku-4-5',
+      timeoutMs: 6_000,
+      dailyCalls: 1_000,
+      dailyCallsPerPerson: 30,
+    });
+    expect(
+      intakeSettings({
+        INTAKE_MODEL: ' claude-sonnet-5-5 ',
+        INTAKE_MODEL_TIMEOUT_MS: '12000',
+        INTAKE_MODEL_DAILY_CALLS: '0',
+        INTAKE_MODEL_DAILY_CALLS_PER_PERSON: '200',
+      }),
+    ).toEqual({
+      model: 'claude-sonnet-5-5',
+      timeoutMs: 12_000,
+      dailyCalls: 0,
+      dailyCallsPerPerson: 200,
+    });
+    // set and empty is not set
+    expect(intakeSettings({ INTAKE_MODEL: '', INTAKE_MODEL_TIMEOUT_MS: ' ' }).timeoutMs).toBe(
+      6_000,
+    );
+  });
+
+  it('stop the start on a value that cannot be read, naming the variable and never a value', () => {
+    const KEY = 'a-test-key-not-real';
+    for (const [name, value] of [
+      ['INTAKE_MODEL', 'haiku please'],
+      ['INTAKE_MODEL', 'x'.repeat(101)],
+      ['INTAKE_MODEL_TIMEOUT_MS', '6s'],
+      ['INTAKE_MODEL_TIMEOUT_MS', '100'],
+      ['INTAKE_MODEL_TIMEOUT_MS', '600000'],
+      ['INTAKE_MODEL_DAILY_CALLS', '-1'],
+      ['INTAKE_MODEL_DAILY_CALLS', '1e3'],
+      ['INTAKE_MODEL_DAILY_CALLS_PER_PERSON', 'thirty'],
+      ['INTAKE_MODEL_DAILY_CALLS_PER_PERSON', '2.5'],
+    ] as const) {
+      // with a key and without one: the setting is read either way
+      for (const env of [{ [name]: value }, { [name]: value, ANTHROPIC_API_KEY: KEY }]) {
+        let said = '';
+        try {
+          intakeModelFromEnv(env);
+        } catch (e) {
+          said = (e as Error).message;
+        }
+        expect(said, `${name}=${value}`).toMatch(new RegExp(`^${name} must be `));
+        expect(said).not.toContain(value);
+        expect(said).not.toContain(KEY);
+      }
+    }
+  });
+
+  it('give no model with no key, and one that says the model it runs with a key', () => {
+    expect(intakeModelFromEnv({ INTAKE_MODEL: 'claude-sonnet-5-5' })).toBeNull();
+    const model = intakeModelFromEnv({
+      ANTHROPIC_API_KEY: 'a-test-key-not-real',
+      INTAKE_MODEL: 'claude-sonnet-5-5',
+    });
+    expect(model).toMatchObject({ id: 'claude-sonnet-5-5', provenance: 'live' });
+    expect(intakeModelFromEnv({ ANTHROPIC_API_KEY: 'a-test-key-not-real' })?.id).toBe(
+      'claude-haiku-4-5',
+    );
   });
 });

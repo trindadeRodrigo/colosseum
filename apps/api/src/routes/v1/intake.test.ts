@@ -335,17 +335,28 @@ describe('POST /v1/baskets/intake', () => {
       [slow, 'model_timeout', 10],
       [budget, 'model_budget_spent', 0],
     ] as const) {
+      const logged: string[] = [];
       const { app: own } = await testApp({
         issuer: issuer.issuer,
         db: data.db,
         now,
-        intakeModel: budgetedModel(call, { provenance: 'mock', dailyCalls, now }),
+        intakeModel: budgetedModel(call, { id: 'a-model', provenance: 'mock', dailyCalls, now }),
+        logTo: { write: (line) => logged.push(line) },
       });
       try {
         const who = await someone('solana');
-        const res = await post(who, PATH, { text: goal('en-grow-10y-high').text }, own);
+        const text = goal('en-grow-10y-high').text;
+        const res = await post(who, PATH, { text }, own);
         expect(res.statusCode, res.body).toBe(200);
         expect(IntakeResponse.parse(res.json()).reader).toMatchObject({ method: 'rules', why });
+        // and the log says so, at warn, with why and the request's id, and no word of the goal
+        const fell = logged
+          .map((line) => JSON.parse(line))
+          .filter((line) => line.msg === 'the intake fell back to the rules parser');
+        expect(fell).toHaveLength(1);
+        expect(fell[0]).toMatchObject({ level: 40, why, model: 'a-model' });
+        expect(fell[0].reqId).toBeTruthy();
+        expect(logged.join('\n')).not.toContain(text.slice(0, 20));
       } finally {
         await own.close();
       }
@@ -1105,6 +1116,10 @@ describe('POST /v1/baskets/intake', () => {
       { text: 'Grow $5,000', answers: { amountUsd: 5 } },
       { text: 'Grow $5,000', answers: { weights: { nvda: 5000 } } },
       { text: 'Grow $5,000', language: 'fr' },
+      { text: 'Grow $5,000', followUps: Array.from({ length: 200 }, () => 'another detail') },
+      { text: 'Grow $5,000', answersThen: Array.from({ length: 200 }, () => ({})) },
+      { text: 'Grow $5,000', followUps: ['yes'], answersThen: [] },
+      { text: 'x'.repeat(2000), followUps: Array.from({ length: 11 }, () => 'x'.repeat(2000)) },
     ]) {
       const res = await post(who, PATH, bad);
       expect(res.statusCode, JSON.stringify(bad)).toBe(400);

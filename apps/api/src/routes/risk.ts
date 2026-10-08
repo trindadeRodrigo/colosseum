@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   assets as assetsTable,
-  createDb,
   riskAssetSnapshots,
   riskDepthCurves,
   riskEvents,
@@ -13,6 +12,7 @@ import {
   riskPoolFlow,
   riskPoolSnapshots,
   riskPools,
+  sharedDb,
 } from '@colosseum/db';
 import {
   type AssetCurves,
@@ -32,7 +32,13 @@ import {
   regimesIn,
   weekendRatio,
 } from '@colosseum/risk';
-import { AssetFacts, DISCLAIMER, LendingPoolFacts, PlanFacts } from '@colosseum/schemas';
+import {
+  AssetFacts,
+  DISCLAIMER,
+  finiteFacts,
+  LendingPoolFacts,
+  PlanFacts,
+} from '@colosseum/schemas';
 import { and, desc, eq, gte, inArray, like, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -79,7 +85,8 @@ const EVM_POOLS_NOT_IN_REGISTRY =
   'not collected on Robinhood Chain: its pools are not in the pool registry (PLAN-UNIVERSE RU.14, DU6)';
 
 export async function registerRiskRoutes(app: FastifyInstance) {
-  const { db } = createDb();
+  // The process's one pool (packages/db: `sharedDb`).
+  const { db } = sharedDb();
   const f = app.withTypeProvider<ZodTypeProvider>();
 
   async function resolveAsset(id: string) {
@@ -260,7 +267,8 @@ export async function registerRiskRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const sheet = await loadAssetFacts(db, req.params.id, req.query);
       if (!sheet) return reply.code(404).send({ error: `unknown asset ${req.params.id}` });
-      return { ...sheet, disclaimer: DISCLAIMER.en };
+      // No figure goes out that is not a finite number (schemas: `finiteFacts`).
+      return { ...finiteFacts(sheet), disclaimer: DISCLAIMER.en };
     },
   );
 
@@ -354,7 +362,7 @@ export async function registerRiskRoutes(app: FastifyInstance) {
         .limit(1);
       if (!row) return reply.code(404).send({ error: `no fact sheet for ${req.params.account}` });
       return {
-        ...(row.sheet as LendingPoolFacts),
+        ...finiteFacts(row.sheet as LendingPoolFacts),
         reportAt: row.reportAt.toISOString(),
         disclaimer: DISCLAIMER.en,
       };
@@ -386,7 +394,8 @@ export async function registerRiskRoutes(app: FastifyInstance) {
         withdrawals: req.body.withdrawals,
         windowDays: req.body.windowDays,
       });
-      return { ...sheet, disclaimer: DISCLAIMER.en };
+      // No figure goes out that is not a finite number (schemas: `finiteFacts`).
+      return { ...finiteFacts(sheet), disclaimer: DISCLAIMER.en };
     },
   );
 
