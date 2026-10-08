@@ -967,6 +967,28 @@ export const en = {
       noQuote: 'There’s no recent price quote for selling all of it yet.',
       withdrawalsShort: 'Not every withdrawal is paid on time with what is set aside.',
       notLive: 'Some figures come from a test network or sample data, not from live markets.',
+      /** Who chose the weights of a mix (gate ANY-COMPOSITION). */
+      origin: (who: string): string =>
+        who === 'model'
+          ? 'This mix was proposed in your conversation, and you confirmed it.'
+          : 'You chose this mix yourself.',
+      /** A warning the person confirmed before the mix was stored. */
+      confirmed: (warning: string, asset: string): string => {
+        switch (warning) {
+          case 'EXIT_OVER_CAPACITY':
+            return `You confirmed holding more ${asset} than its measured exit is planned for.`;
+          case 'EXIT_OVER_TIER_CEILING':
+            return `You confirmed holding more ${asset} than its tier’s limit, while its selling cost isn’t measured.`;
+          case 'OVER_LISTED_CAP':
+            return `You confirmed more ${asset} than its cap on the asset list.`;
+          case 'NOT_FOR_GOAL':
+            return `You confirmed ${asset}, which a plan for this goal doesn’t normally hold.`;
+          case 'STOPS_FOLLOWING':
+            return 'You confirmed that your own targets replace the shared portfolio this vault followed.';
+          default:
+            return 'You confirmed a warning about this mix.';
+        }
+      },
       /** A flag this app has no sentence for yet: said plainly, once, never as its code. */
       other: 'The plan carries one more note we can’t describe yet.',
       simple: {

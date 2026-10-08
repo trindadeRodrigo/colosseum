@@ -56,6 +56,7 @@ import { registerFundingRoute } from './funding';
 import { registerGoalConversationReplyRoute } from './goal-conversation-reply';
 import { registerIntakeRoute } from './intake';
 import { registerMeRoutes } from './me';
+import { registerMixRoutes } from './mix';
 import { registerMockRoutes } from './mock';
 import { registerOrderRoutes } from './orders';
 import { registerPortfolioRoute } from './portfolio';
@@ -254,6 +255,7 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
     registerVaultConversationRoutes(scope, orderDeps);
     registerVaultConversationReplyRoute(scope, orderDeps, vaultAgentModel, deps.planInputs);
     registerGoalConversationReplyRoute(scope, orderDeps, vaultAgentModel, deps.planInputs);
+    registerMixRoutes(scope, orderDeps, deps.planInputs);
     // Out of the route table altogether unless a chain runs on the mock.
     if (chains.active().some((entry) => entry.mock)) registerMockRoutes(scope, orderDeps);
   });

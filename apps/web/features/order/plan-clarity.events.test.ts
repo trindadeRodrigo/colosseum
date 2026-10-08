@@ -184,6 +184,28 @@ describe('the plan in plain words', () => {
     expect(kindLabel('something_else', en.plan.kinds)).toBe(en.plan.kinds.other);
   });
 
+  it('says the flags of a confirmed mix as sentences: who chose it and each warning accepted', () => {
+    const flags = [
+      'origin:model',
+      'origin:person',
+      'confirmed:EXIT_OVER_CAPACITY:solana:spyx',
+      'confirmed:EXIT_OVER_TIER_CEILING:solana:spyx',
+      'confirmed:OVER_LISTED_CAP:solana:spyx',
+      'confirmed:NOT_FOR_GOAL:solana:spyx',
+      'confirmed:STOPS_FOLLOWING',
+    ];
+    for (const d of [en, pt])
+      for (const flag of flags) {
+        const said = flagSentence(flag, d.plan, (id) => displayName(id, d.plan));
+        expect(said, flag).not.toMatch(/[A-Z]+_[A-Z_]+|[a-z]+_[a-z_]+|solana:|:/);
+        expect(said, flag).not.toBe(d.plan.flagWords.other);
+        expect(said, flag).toMatch(/\.$/);
+      }
+    expect(
+      flagSentence('confirmed:NOT_FOR_GOAL:solana:spyx', en.plan, (id) => displayName(id, en.plan)),
+    ).toBe('You confirmed SPYx, which a plan for this goal doesn’t normally hold.');
+  });
+
   it('renders no engine code anywhere on the page, the closed details included', async () => {
     rememberPlan(small());
     const host = await shown();
