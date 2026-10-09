@@ -374,12 +374,12 @@ describe('relaxed intake: the split', () => {
     expect(notes(reply)).toContain('the other 20% of the money is held in USDC');
   });
 
-  it('the preview note is true whichever step buys it: nothing before the person confirms', async () => {
+  it('the preview note is true: the deposit step buys it exactly, no solver', async () => {
     const reply = await run({ shape: 'grow', lines: [line('solana:usdy')] }, 'grow');
     expect(notes(reply)).toContain(
-      'Nothing is bought from this draft until you confirm it, and the server checks every line again then.',
+      'The deposit step buys exactly these holdings and shares, after the server checks every line again.',
     );
-    expect(notes(reply)).not.toMatch(/solver|deposit step/);
+    expect(notes(reply)).not.toContain('solver');
   });
 });
 
@@ -1045,8 +1045,8 @@ describe('relaxed intake: caps', () => {
     expect(first).toContain('Above the cap listed today: SOL at 60% (cap 15%)');
     // what the deposit step does with it (`goal/accept`): a warning to confirm, never a refusal
     expect(first).toContain('The vault accepts any composition');
-    expect(first).toContain('to confirm before anything is bought');
-    expect(first).not.toContain('deposit step');
+    expect(first).toContain('the deposit step shows this as a warning');
+    expect(first).toContain('asks you to confirm it before anything is bought');
     expect(JSON.stringify(reply)).not.toMatch(/would refuse|cap is lifted/);
     expect(reply.proposal?.summary).toMatch(/^⚠ Above the cap listed today/);
   });
