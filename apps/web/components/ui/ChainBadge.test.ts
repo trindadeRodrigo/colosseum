@@ -36,9 +36,9 @@ describe('ChainBadge', () => {
       height: '12',
     });
     // a chain with no file is its name alone
-    const plain = one(render(createElement(ChainBadge, { chain: 'robinhood' })), ui('chain-badge'));
+    const plain = one(render(createElement(ChainBadge, { chain: 'base' })), ui('chain-badge'));
     expect(all(plain, tag('img'))).toHaveLength(0);
-    expect(text(plain)).toBe('Robinhood Chain');
+    expect(text(plain)).toBe('Base');
     expect(classes(badge)).toContain('rounded-sm');
     expect(classes(badge).join(' ')).not.toMatch(/rounded-(full|lg|xl)|blue|violet|indigo|purple/);
   });

@@ -6,14 +6,15 @@ import { cn } from './cn';
 
 // A chain's own mark, at a fixed size, where a screen names a chain (Thom, 2026-10-09: "the logo of the
 // chain on the chat"; open for Rodrigo, whose specs have no chain mark). The files and their sources are
-// in public/assets/tokens/README.md. A chain with no file, or whose file fails to load, has no picture:
+// in public/assets/tokens/README.md. A chain with no file (Base), or whose file fails to load, has no picture:
 // beside its name nothing is drawn, and standing alone the name is written. Named ChainLogo because
 // features/account's ChainMark is the test-network mark.
 
 const FILES: Partial<Record<ChainId, string>> = {
   // Solana's logomark, the SVG as solana.com/branding serves it.
   solana: '/assets/tokens/sol.svg',
-  // Robinhood Chain: its kit is a zip and its guidelines ask for the full logo, so none yet.
+  // Robinhood Chain's feather symbol, from its brand kit: the kit's mark for compact interface elements.
+  robinhood: '/assets/chains/robinhood.png',
 };
 
 export function ChainLogo({

@@ -17,6 +17,18 @@ describe('ChainLogo', () => {
     expect(existsSync(`apps/web/public${mark.getAttribute('src')}`)).toBe(true);
   });
 
+  it('has a file for each chain a plan can be on', async () => {
+    for (const [chain, name] of [
+      ['solana', 'Solana'],
+      ['robinhood', 'Robinhood Chain'],
+    ] as const) {
+      const host = await mount(createElement(ChainLogo, { chain }));
+      const mark = find(host, 'img[data-ui="chain-logo"]');
+      expect(mark.getAttribute('alt')).toBe(name);
+      expect(existsSync(`apps/web/public${mark.getAttribute('src')}`)).toBe(true);
+    }
+  });
+
   it('beside the name, is hidden from a screen reader', async () => {
     const host = await mount(createElement(ChainLogo, { chain: 'solana', decorative: true }));
     const mark = find(host, 'img');
@@ -25,10 +37,10 @@ describe('ChainLogo', () => {
   });
 
   it('with no file, writes the name when alone and draws nothing beside it', async () => {
-    const alone = await mount(createElement(ChainLogo, { chain: 'robinhood' }));
+    const alone = await mount(createElement(ChainLogo, { chain: 'base' }));
     expect(alone.querySelector('img')).toBeNull();
-    expect(find(alone, '[data-ui="chain-logo"]').textContent).toBe('Robinhood Chain');
-    const beside = await mount(createElement(ChainLogo, { chain: 'robinhood', decorative: true }));
+    expect(find(alone, '[data-ui="chain-logo"]').textContent).toBe('Base');
+    const beside = await mount(createElement(ChainLogo, { chain: 'base', decorative: true }));
     expect(beside.innerHTML).toBe('');
   });
 

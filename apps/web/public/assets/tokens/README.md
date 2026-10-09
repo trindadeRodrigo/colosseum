@@ -29,6 +29,16 @@ Verified token marks, served locally as PNGs for asset identification: transpare
 | syrupUSDG (Maple) | syrupusdg.png | https://maple.finance/transparency | Inline SVG beside the syrupUSDG label |
 | JUP (Jupiter) | jup.png | The `image` of the on-chain metadata of mint `JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN`, on Jupiter's host | https://static.jup.ag/jup/icon.png |
 | SOL (Solana) | sol.png | https://solana.com/branding ("Logomark") | https://solana.com/src/img/branding/solanaLogoMark.svg |
+| USDC (Circle) | usdc.png | https://www.circle.com/pressroom#brandkit ("Download USDC logos") | `Token Logo/USDC Token.svg` in https://6778953.fs1.hubspotusercontent-na1.net/hubfs/6778953/Pressroom/brandkit/logo-downloads/usdc.zip |
+| CRCL (Circle, Robinhood Chain) | crcl.png | https://www.circle.com/pressroom#brandkit ("Download Circle logos") | `circle-logo/icon svg/circle-icon.svg` in https://6778953.fs1.hubspotusercontent-na1.net/hubfs/6778953/Pressroom/brandkit/logo-downloads/circle-logo-2024.zip |
+| AAPL (Apple, Robinhood Chain) | aapl.png | https://www.apple.com/ (the `logo` of the page's structured data) | https://www.apple.com/ac/structured-data/images/knowledge_graph_logo.png, 302×302, byte for byte |
+| MSFT (Microsoft, Robinhood Chain) | msft.png | https://news.microsoft.com/source/ (the site's icon) | https://news.microsoft.com/source/wp-content/uploads/2022/10/cropped-Microsoft_logo.svg_-300x300-1.png, 300×300, set on a 424×424 transparent canvas |
+| NVDA (NVIDIA, Robinhood Chain) | nvda.png | https://www.nvidia.com/en-us/about-nvidia/legal-info/logo-brand-usage/ ("NVIDIA vertical (preferred) format") | https://www.nvidia.com/content/dam/en-zz/Solutions/about-nvidia/logo-and-brand/nvidia-logo-vert.svg |
+| GOOGL (Alphabet, Robinhood Chain) | googl.png | Google's own asset host, the "G" of google.com | https://www.gstatic.com/images/branding/googleg/2x/googleg_standard_color_128dp.png, 256×256, byte for byte |
+| AMZN (Amazon, Robinhood Chain) | amzn.png | https://www.aboutamazon.com/ (the site's touch icon) | https://www.aboutamazon.com/_next/static/media/apple-touch-icon.706b1b87.png, 180×180, byte for byte |
+| META (Meta, Robinhood Chain) | meta.png | https://www.meta.com/brand/resources/meta/company-brand/ (the page's icon) | https://static.xx.fbcdn.net/rsrc.php/yf/r/-7pQO6hUGK_.svg |
+| QQQ (Invesco, Robinhood Chain) | qqq.png | https://www.invesco.com/qqq-etf/en/home.html (the site's touch icon) | https://www.invesco.com/etc.clientlibs/invesco/clientlibs/main/resources/images/apple-touch-icon.png, 180×180, byte for byte |
+| GLD (SPDR Gold Shares, Robinhood Chain) | gld.png | https://www.spdrgoldshares.com/ (the site's touch icon) | https://www.spdrgoldshares.com/apple-touch-icon.png, 180×180, byte for byte |
 
 Artwork belongs to the respective providers: Jupiter, Maple and Paxos. Retrieved October 7, 2026. The Maple source SVG is retained beside the PNG. Its three paths were rechecked against the official transparency page on October 7, 2026; all matched exactly. The source contains a title and paths only, without scripts, event handlers, embedded images or external resources. Conversion uses `sharp("syrupusdc.svg", { density: 1536 }).resize(512, 512).png()`; the artwork colours and geometry are unchanged. All three served PNGs decode at 512×512 with transparent pixels.
 
@@ -39,7 +49,9 @@ Added October 9, 2026 (Thom: tokens show the issuer's own artwork, else the comp
 - usdy.svg, syrupusdt.svg, syrupusdg.svg and sol.svg are kept beside their PNGs. Each was read as text: paths, a clip path or a gradient referenced inside the file, no scripts, event handlers, embedded images or external resources. A `<title>` naming the token was added to each, as in syrupusdc.svg, for the linter; nothing else in them is changed, and the PNGs are the same bytes with or without it. Conversion is the one above (sharp 0.35.5 / librsvg 2.63.2). The Solana logomark is not square, so it sits whole inside the round frame with clear space around it: `sharp("sol.svg", { density: 1536 }).resize(352, 352, { fit: "contain" }).extend(80)`, transparent.
 - Every file was looked at on the light and the dark tile; none needed an alternate version.
 
-Tokens that keep their ticker, and why, are the `NO_ARTWORK` list in `features/order/asset-logos.ts`; `asset-logos.test.ts` fails for a listed token that is in neither list. In short: USDC (Circle's Brand Use Policy: "Circle does not permit any use of its Brand Assets for commercial purposes", and its kit is a zip); JitoSOL (no brand kit found, and the on-chain image sits on a generic storage host); cbBTC and cbETH (Coinbase asks for consent); and Robinhood Chain's stock and fund tokens, which have no artwork of their own: Apple, Microsoft, NVIDIA, Google, Amazon and Meta allow their logos only under a licence or with approval, Circle's own marks need written authorisation, and for Tesla, Strategy, SpaceX, TSMC and the funds' sponsors (State Street for SPY and GLD, Invesco for QQQ, iShares for SGOV) no brand kit was found that offers a mark for this use.
+Added later on October 9, 2026, after Thom, shown that the companies' own terms license their logos and that Circle's policy allows no commercial use, decided in chat: "both chains, and yes download the robinhood mark". Company and fund marks are shown to identify the asset, on a test-network product; the terms were read and the decision is his. Each Robinhood Chain stock or fund token takes the company's or the fund's own mark from its own site, never the xStocks image of the same company (a test holds that). Site icons and Apple's and Google's files are kept byte for byte; Microsoft's four squares sit on a transparent canvas so the round frame does not cut their corners; usdc.svg, crcl.svg, nvda.svg and meta.svg are kept beside their PNGs, read as text (paths and gradients inside the file only), with a `<title>` added where there was none. The two Circle files and the Robinhood Chain symbol came out of brand-kit zips, each unpacked in an empty folder, one image taken, nothing run.
+
+Tokens that still keep their ticker, and why, are the `NO_ARTWORK` list in `features/order/asset-logos.ts`; `asset-logos.test.ts` fails for a listed token that is in neither list. In short: TSLA, MSTR and TSM (tesla.com, strategy.com and tsmc.com refuse automated fetches of their files; a person can save each mark from the site); SPCX (spacex.com serves its mark only as an .ico and an inline drawing); SPY and SGOV (State Street's and iShares' only marks are wide wordmarks, unreadable in a 24px round frame, and the iShares one is black); cbBTC and cbETH (no token picture found on Coinbase's site, which refuses automated fetches); JitoSOL (no brand kit found, and the on-chain image sits on a generic storage host). NVIDIA's file has wide empty margins; the picture is its drawing without them, whole, on a transparent canvas (`sharp("nvda.svg", { density: 72 }).trim()`, then contained in 360 and extended by 76). Its wordmark under the eye is black and is lost on the dark tile; the eye reads on both.
 
 SHA-256:
 
@@ -73,6 +85,20 @@ SHA-256:
 - jup.png: 5f460c59d968c0af5a4dee3e19c5e51f0298f15ae3fac907e9e4c0904bec7506
 - sol.png: 6dbe58a11a904b798faea5a0073bee2078893bcd5af9649d0b4a93bdda727665
 - sol.svg (source): 14381e02ce4a59b3811bf94522b1121f7cac67833db5a2d0c3d7561c193556fc
+- usdc.png: fcb748fc9dcdfcd897daa47d7b64999e176db88cbee5c3e0cb82365391be90d8
+- usdc.svg (source): 4ae875acb0482a7710534eff8ad877ae6f6c2e51cfe8ebd5a0d8c80e3ab73464
+- crcl.png: 28a48492ba8d13c70c7707f716c3f88015bd1fe18a9e030f9dc4a2107750cbed
+- crcl.svg (source): f2a9a3e4c60ba5b8df2eed36b9340c287663b5d3d084b922e86f1c48b833d2d4
+- aapl.png: 4ea439d373443bf940df4c21ddfbd479fcaf3ecbe61928fa16004c67c28834cd
+- msft.png: 06a51f852fcfaa7f8b5b363c9f365e604090e480300cf72037b7b68d4fd6bfac
+- nvda.png: c535a3a39d27f5b4a217438fdb39e5c6556dcdf73bf06670d6c7d5ea634dba83
+- nvda.svg (source): ed8789134f6e1c1d571726bfe448ae526d87c3b3c73f6379160a0e675fb69357
+- googl.png: 6fae509b81bc94fef1b4ac2cdae8f1889df2da9f736f050cd32e337517494084
+- amzn.png: f8184c36ab5439a22007f105d0366f10bbb782ab1d379e38759e452965c18805
+- meta.png: e0eadea7cd4765938eeafe4a1aa5c418290973cb49dc35aaf8aff143b6315194
+- meta.svg (source): 10e7cda48a0b974e2e4ffbe25f922bc3212d4379891684444918dc72598f0c0d
+- qqq.png: 2c2d479fdf3d7ebcefff53a6407e4f43ca83b0ed6f60a4de908e0d0af66b1fc9
+- gld.png: 624f86d35f7169834c7bf6bbcf4d61cde79f90b0d5b02f372a085dd2023b8c5e
 
 ## Chain marks
 
@@ -81,7 +107,7 @@ Thom, 2026-10-09: a chain's own mark stands before its name (`components/ui/Chai
 | Chain | File | Official evidence | Original asset |
 |---|---|---|---|
 | Solana | sol.svg | https://solana.com/branding ("Logomark") | https://solana.com/src/img/branding/solanaLogoMark.svg, the file above, served as it is |
-| Robinhood Chain | none: its name alone | https://docs.robinhood.com/chain/brand-guidelines/ | The kit is one zip, not an image file; the guidelines also ask for the full Robinhood Chain logo over the feather except in "designated symbol spaces", at 20px high or more, and not combined with other text. Needs a person to fetch the kit and decide |
+| Robinhood Chain | ../chains/robinhood.png | https://docs.robinhood.com/chain/brand-guidelines/ ("Logo: Feather Symbol", for "compact digital interface elements") | `Robinhood Feather Symbol/Robinhood_Avatar.jpg` in https://cdn.robinhood.com/robinhood_chain/brand_assets/robinhood-chain-brand-assets-v1.zip (SHA-256 of the JPG d480c7cbcfa79f017a6bff8d6482cd1e85c98e5fe70dc5491588e3153274a4c5), 1000×1000, converted to a 512×512 PNG and nothing else. The full Robinhood Chain logo, which the guidelines prefer, is a wordmark that cannot be read at 12 to 16px; the feather is the kit's mark for that size. SHA-256 of robinhood.png: cd5744bf6ece7545132026dc3fd6a0efaaa053f52b94e1d38c341f94c0245d10 |
 
 ## Decision, and what is still text
 

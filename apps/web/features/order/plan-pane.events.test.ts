@@ -261,8 +261,8 @@ describe('the allocation, as the picture', () => {
 
   it('writes the ticker, and draws no picture, for a token left without artwork', async () => {
     for (const [asset, letters] of [
-      ['solana:usdc', 'USD'],
-      ['robinhood:taapl', 'AAP'],
+      ['solana:jitosol', 'Jit'],
+      ['robinhood:tsgov', 'SGO'],
     ] as const) {
       const host = await mount(createElement(AssetMark, { asset }));
       const mark = find(host, '[data-ui="asset-mark"]');
