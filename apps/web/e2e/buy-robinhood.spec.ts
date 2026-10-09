@@ -1,9 +1,9 @@
 import { expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
-import { planFromGoal, readyToInvest } from './invest';
+import { openPlan, readyToInvest } from './invest';
 
 // A person's buy on Robinhood Chain, end to end in a browser, on the mock chain: they switch the bar to
-// Robinhood Chain before they sign in, see its shelf, and the plan they build is on it (CHAIN-SWITCH).
+// Robinhood Chain before they sign in, see its shelf, and the plan they open is on it (CHAIN-SWITCH).
 // The stub runs its mock as Robinhood Chain (E2E_CHAIN=robinhood sets STUB_CHAIN), so the order is what apps/api plans
 // on an EVM chain: an approval of the deposit, then a create that deposits and trades. The executor
 // builds each step from the stub, holds it to the review with the real guard, has the throwaway wallet
@@ -49,7 +49,7 @@ test('a buy on Robinhood Chain on the mock: an approval, then a create that buys
     'robinhood',
   );
 
-  await planFromGoal(page, 'Grow $40 for three years, medium risk');
+  await openPlan(page);
   await expect(page).toHaveURL(/\/plan\/[^/]+$/);
   await named(page);
   await page.getByRole('link', { name: en.plan.invest('$40') }).click();

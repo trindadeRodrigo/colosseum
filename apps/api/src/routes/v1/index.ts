@@ -204,6 +204,8 @@ export async function registerV1Routes(app: FastifyInstance, env: EnvLike, deps:
             timeoutMs: vaultAgentTimeoutMs(env),
             effort: vaultAgentEffort(env),
             quota,
+            // Token counts only: how much of each prompt the cache wrote and read.
+            onUsage: (usage) => app.log.info(usage, 'the conversation model answered'),
           })
         : null
       : deps.vaultAgentModel;

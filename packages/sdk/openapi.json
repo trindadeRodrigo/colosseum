@@ -10505,7 +10505,7 @@
       "post": {
         "summary": "Discuss a new goal and preview model-proposed allocations",
         "tags": ["plans"],
-        "description": "Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. Uses the existing model and shared call quota. A preview requires separate fresh goal and amount confirmation before any financial review.",
+        "description": "Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. Uses the existing model and shared call quota. A preview requires separate fresh goal and amount confirmation before any financial review. No goal is stored for a new goal yet and none is taken from the request, so no pick is checked against one here and `proposal.unknowns` says so: `POST /v1/conversations/{chain}/goal/accept` checks the mix against the goal the person confirms.",
         "requestBody": {
           "required": true,
           "content": {
@@ -10811,7 +10811,8 @@
                               "pick_dropped",
                               "share_unmet",
                               "share_unread",
-                              "share_withdrawn"
+                              "share_withdrawn",
+                              "pick_outside_goal"
                             ]
                           },
                           "assetIds": {
@@ -24300,7 +24301,7 @@
       "post": {
         "summary": "Discuss an owned vault and preview a model-proposed strategy",
         "tags": ["portfolio"],
-        "description": "Fresh chain ownership on every call; missing and other-owned vaults return the same 404. The model receives the supplied conversation, real current vault state, listed assets and sourced risk inputs. It may choose preview weights, which the server validates without calling the allocation engine. Sources and numerical metrics are server-authored. No history, plan, order, target or account-chain change is stored. Existing configured model and shared intake call quota apply. Cache-Control: private, no-store.",
+        "description": "Fresh chain ownership on every call; missing and other-owned vaults return the same 404. The model receives the supplied conversation, real current vault state, listed assets and sourced risk inputs. It picks assets and the server sets the preview weights, without calling the allocation engine. The goal is the one of the plan the vault was opened for, read on the server as `POST /v1/vaults/{chain}/{address}/targets` reads it, never from the request: in an income or protect plan a stock is proposed only where the person asked for it in their own words, with the warning `outside_goal_requested`, and any other pick outside the goal is left out with the note `pick_outside_goal`, since the targets review would refuse it. A vault the server holds no plan for has no goal to check against, and `proposal.unknowns` says so. Sources and numerical metrics are server-authored. No history, plan, order, target or account-chain change is stored. Existing configured model and shared intake call quota apply. Cache-Control: private, no-store.",
         "requestBody": {
           "required": true,
           "content": {
@@ -24616,7 +24617,8 @@
                               "pick_dropped",
                               "share_unmet",
                               "share_unread",
-                              "share_withdrawn"
+                              "share_withdrawn",
+                              "pick_outside_goal"
                             ]
                           },
                           "assetIds": {

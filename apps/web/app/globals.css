@@ -675,6 +675,89 @@
   }
 }
 
+/* The mix joint (plan-leg.md, "The mix joint"; features/vault-conversation/MixJoint.tsx). A new mix is
+ * the plan-lock: each piece fades in a little apart (160ms), then slides its tenon home (320ms), one
+ * after another; its row fades in as it seats and the share drops in like a pin. A changed mix moves
+ * only the difference: a piece slides to its new place and its face grows or shrinks, a new piece
+ * seats, a dropped one fades where it lay. Only transform and opacity move, so nothing shifts, and
+ * with reduced motion nothing moves at all. */
+.tf-joint-arrive {
+  animation: joint-arrive 480ms var(--tf-ease-seat) var(--tf-joint-delay, 0ms) both;
+}
+.tf-joint-move {
+  animation: joint-move var(--tf-dur-slide) var(--tf-ease-seat) both;
+}
+.tf-joint-size {
+  animation: joint-size var(--tf-dur-slide) var(--tf-ease-seat) both;
+}
+.tf-joint-leave {
+  /* gone unless it is fading: a page with its animations switched off never shows a dropped piece */
+  opacity: 0;
+  animation: joint-leave var(--tf-dur-fade) linear both;
+}
+.tf-joint-row {
+  animation: fade var(--tf-dur-fade) var(--tf-ease-seat) var(--tf-joint-delay, 0ms) both;
+}
+.tf-joint-figure {
+  animation: pin-drop var(--tf-dur-fade) var(--tf-ease-seat)
+    calc(var(--tf-joint-delay, 0ms) + var(--tf-delay-pin)) both;
+}
+
+@keyframes joint-arrive {
+  0% {
+    transform: translateX(14px);
+    opacity: 0;
+  }
+  34% {
+    transform: translateX(14px);
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes joint-move {
+  from {
+    transform: translateX(var(--tf-joint-x, 0px));
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes joint-size {
+  from {
+    transform: scaleX(var(--tf-joint-sx, 1));
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes joint-leave {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tf-joint-arrive,
+  .tf-joint-move,
+  .tf-joint-size,
+  .tf-joint-row,
+  .tf-joint-figure {
+    animation: none;
+  }
+  .tf-joint-leave {
+    display: none;
+  }
+}
+
 /* The loader (STYLE.md, "the lattice assembles"): a 3x3 lattice whose horizontals slide in on x, then
  * whose verticals drop on y, 240ms each with a 60ms stagger, then a 400ms hold, over and over while a
  * wait lasts. Under reduced motion it is the still lattice. */

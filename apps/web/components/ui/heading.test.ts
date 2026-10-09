@@ -14,10 +14,7 @@ const OWN = new Set([
   'features/wallet/dev/DevWallet.tsx',
 ]);
 
-const WORKSPACES = new Set([
-  'features/invest/InvestScreen.tsx',
-  'features/goal-conversation/GoalConversation.tsx',
-]);
+const WORKSPACES = new Set(['features/goal-conversation/GoalConversation.tsx']);
 
 /** Every <h1 …> in a file whose class is not the page title's. */
 export function otherTitles(text: string, file?: string): string[] {
@@ -40,7 +37,7 @@ describe('a page’s title', () => {
     expect(PAGE_TITLE.split(' ')).not.toEqual(expect.arrayContaining(['font-normal']));
   });
 
-  it('permits only the exact shared workspace title in the two Invest workspaces', () => {
+  it('permits only the exact shared workspace title in the Invest workspace', () => {
     expect(WORKSPACE_TITLE).toBe('text-body-lg font-semibold');
     const title = '<h1 className={WORKSPACE_TITLE}>Invest</h1>';
     for (const file of WORKSPACES) {

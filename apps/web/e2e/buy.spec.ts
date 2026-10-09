@@ -1,11 +1,11 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { dictionary } from '../i18n';
-import { planFromGoal, readyToInvest } from './invest';
+import { openPlan, readyToInvest } from './invest';
 import { inTheme } from './theme';
 
-// A person's buy, end to end in a browser, on the mock chain: sign in with the throwaway wallet, read a
-// goal, build the plan, look at it, buy it, review every step and sign. The order screen's executor
+// A person's buy, end to end in a browser, on the mock chain: sign in with the throwaway wallet, open
+// a plan, look at it, buy it, review every step and sign. The order screen's executor
 // builds each step from the stub API, holds it to the review with the real guard, has the throwaway
 // wallet sign it and reports it, until the stub's mock chain confirms every step. A second buy has the
 // stub lie about one step, and the guard refuses it. Every screen is checked with axe at 375 px, in
@@ -120,7 +120,9 @@ test('his landing page: the hero alone, its faces, its numbers, and "Start a pla
     .getByRole('link', { name: en.landing.hero.start })
     .click();
   await expect(page).toHaveURL(/\/goal$/);
-  await expect(page.locator('[data-ui="goal-mode"]')).toHaveValue('explore');
+  // The hero's link opens /goal with nothing sent: no reply is asked for until an explicit Send.
+  await expect(page.locator('[data-ui="goal-transcript"] li')).toHaveCount(0);
+  await expect(page.locator('[data-ui="invest-screen"], [data-ui="invest-card"]')).toHaveCount(0);
   expect(automaticPosts).toEqual([]);
 });
 
@@ -154,7 +156,7 @@ async function toBuy(page: Page, o: { fund?: 'mock' | 'test' } = {}) {
   await expect(page).toHaveURL(/\/goal$/);
   await check(page, 'home');
 
-  await planFromGoal(page, 'Grow $40 for three years, medium risk');
+  await openPlan(page);
 
   await expect(page).toHaveURL(/\/plan\/[^/]+$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Grow $40 over 36 months.');

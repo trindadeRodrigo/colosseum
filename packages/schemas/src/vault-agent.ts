@@ -115,6 +115,9 @@ export type VaultAgentWarning = z.infer<typeof VaultAgentWarning>;
  * "70% TSLA is too risky", "a third in TSLA", "I don't want 70% TSLA", "60% TSLA for growth", "the rest
  * in gold" when the rest did not go there). The weights do not follow it. `share_withdrawn`: the
  * person's latest message withdrew the share in `quote` ("Forget TSLA", "split it equally").
+ * `pick_outside_goal`: the model picked these assets and a plan for the vault's goal cannot hold them
+ * (in an income or protect plan: any class outside the goal but a stock, which the review of the
+ * targets refuses, or a stock the person did not ask for), so they are not in the proposal.
  */
 export const VaultAgentWeightNote = z.strictObject({
   code: z.enum([
@@ -125,6 +128,7 @@ export const VaultAgentWeightNote = z.strictObject({
     'share_unmet',
     'share_unread',
     'share_withdrawn',
+    'pick_outside_goal',
   ]),
   assetIds: z.array(AssetId).max(64),
   quote: prose(400).optional(),
@@ -143,7 +147,8 @@ export const VaultAgentReplyShape = z.strictObject({
 /**
  * A warning belongs to the proposal: none without one, and each on one of its assets and sources. A
  * note on served weights (`equal_split`, `stated`, `scaled`) names served picks; without a proposal only
- * `share_unmet` and `share_unread` can stand.
+ * `share_unmet`, `share_unread` and `pick_outside_goal` can stand. An asset left out for the goal is
+ * not among the proposal's.
  */
 export function warningsBelong(
   reply: Pick<z.infer<typeof VaultAgentReplyShape>, 'proposal' | 'warnings' | 'weightNotes'>,
@@ -163,12 +168,13 @@ export function warningsBelong(
     const served = note.code === 'equal_split' || note.code === 'stated' || note.code === 'scaled';
     if (
       (served && (!reply.proposal || note.assetIds.some((id) => !assets.has(id)))) ||
-      (note.code === 'pick_dropped' && !reply.proposal)
+      (note.code === 'pick_dropped' && !reply.proposal) ||
+      (note.code === 'pick_outside_goal' && note.assetIds.some((id) => assets.has(id)))
     )
       context.addIssue({
         code: 'custom',
         path: ['weightNotes', index],
-        message: 'A note on served weights names picks of the proposal.',
+        message: 'A note names picks of the proposal, or for the goal none of them.',
       });
   });
 }
@@ -177,9 +183,11 @@ export type VaultAgentReply = z.infer<typeof VaultAgentReply>;
 export type VaultAgentFailure = 'unavailable' | 'timeout' | 'budget' | 'invalid';
 /**
  * Present when the first reply failed check `failed` and the model was asked once to correct it:
- * `outcome` is `repaired`, or the code the second attempt ended on. Codes only, for the server log.
+ * `outcome` is `repaired`, `prose_figure_trimmed` when the second attempt was served without the
+ * `sentencesCut` sentences that still stated a figure, or the code the second attempt ended on. Codes
+ * and a count only, for the server log.
  */
-export type VaultAgentRepairNote = { failed: string; outcome: string };
+export type VaultAgentRepairNote = { failed: string; outcome: string; sentencesCut?: number };
 export type VaultAgentResult =
   | { kind: 'reply'; reply: VaultAgentReply; repair?: VaultAgentRepairNote }
   /** `detail` is a fixed code for the server log (which check failed); never the person's text. */

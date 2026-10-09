@@ -1,4 +1,6 @@
 import {
+  type BasketSheet,
+  type ChainId,
   OrderError,
   VaultAgentReplyShape,
   VaultAgentRequest,
@@ -11,6 +13,7 @@ import { z } from 'zod';
 import { refusing } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { type PlanInputs, preparePersonalInputs } from '../../orders/personalize';
+import { planSheetOf } from '../../orders/plan-join';
 import {
   type AgentAnalytics,
   analyticsGap,
@@ -33,6 +36,16 @@ export const VaultConversationReplyError = z.strictObject({
   reason: z.enum(['unavailable', 'timeout', 'budget', 'invalid']),
 });
 
+/**
+ * The goal of the plan the vault was opened for, as the server holds it: the one the review of the
+ * vault's targets checks a mix against (`MixStore.planOf`). Never taken from the request.
+ */
+export type VaultPlanGoal = (
+  chain: ChainId,
+  address: string,
+  privyId: string,
+) => Promise<Pick<BasketSheet, 'goal' | 'risk'> | null>;
+
 /** One private preview: no DB writes, allocation engine, financial order or target mutation. */
 export function registerVaultConversationReplyRoute(
   scope: FastifyInstance,
@@ -40,6 +53,8 @@ export function registerVaultConversationReplyRoute(
   model: VaultAgentModel | null,
   inputs: PlanInputs = async () => ({}),
   analytics?: AgentAnalytics,
+  planOf: VaultPlanGoal = (chain, address, privyId) =>
+    planSheetOf(deps.db, chain, address, privyId),
 ) {
   const path = '/v1/vaults/:chain/:address/conversation/reply';
   scope.addHook('onSend', async (req, reply, payload) => {
@@ -55,7 +70,7 @@ export function registerVaultConversationReplyRoute(
         tags: ['portfolio'],
         summary: 'Discuss an owned vault and preview a model-proposed strategy',
         description:
-          'Fresh chain ownership on every call; missing and other-owned vaults return the same 404. The model receives the supplied conversation, real current vault state, listed assets and sourced risk inputs. It may choose preview weights, which the server validates without calling the allocation engine. Sources and numerical metrics are server-authored. No history, plan, order, target or account-chain change is stored. Existing configured model and shared intake call quota apply. Cache-Control: private, no-store.',
+          'Fresh chain ownership on every call; missing and other-owned vaults return the same 404. The model receives the supplied conversation, real current vault state, listed assets and sourced risk inputs. It picks assets and the server sets the preview weights, without calling the allocation engine. The goal is the one of the plan the vault was opened for, read on the server as `POST /v1/vaults/{chain}/{address}/targets` reads it, never from the request: in an income or protect plan a stock is proposed only where the person asked for it in their own words, with the warning `outside_goal_requested`, and any other pick outside the goal is left out with the note `pick_outside_goal`, since the targets review would refuse it. A vault the server holds no plan for has no goal to check against, and `proposal.unknowns` says so. Sources and numerical metrics are server-authored. No history, plan, order, target or account-chain change is stored. Existing configured model and shared intake call quota apply. Cache-Control: private, no-store.',
         params: VaultRouteParams,
         body: VaultAgentRequest,
         response: {
@@ -85,7 +100,7 @@ export function registerVaultConversationReplyRoute(
       const context = await refusing(async () => {
         const listed = await entry.adapter.listAssets();
         const pricing = entry.adapter.getPrices(listed.map((asset) => asset.id));
-        const [prices, prepared, read] = await Promise.all([
+        const [prices, prepared, read, plan] = await Promise.all([
           pricing,
           preparePersonalInputs(
             identity.chain,
@@ -104,6 +119,8 @@ export function registerVaultConversationReplyRoute(
               sizeUsd: vaultNotionalUsd(state, prices),
             }),
           ),
+          // The stored plan's goal, which the picks are held to as the review of the targets holds them.
+          planOf(identity.chain, state.address, identity.privyId),
         ]);
         const gap = analyticsGap(read);
         if (gap)
@@ -118,6 +135,8 @@ export function registerVaultConversationReplyRoute(
           prepared,
           person: identity.privyId,
           analytics: read,
+          // No plan of this person's for the vault: no goal, and the reply says it was not checked.
+          ...(plan ? { currentGoals: [{ goal: plan.goal, risk: plan.risk }] } : {}),
         });
       });
       const result = await replyToVaultConversation(req.body, context, model);
@@ -138,12 +157,23 @@ export function registerVaultConversationReplyRoute(
           reason: result.reason,
         });
       }
-      if (result.repair)
+      if (result.repair?.outcome === 'prose_figure_trimmed')
+        // A code and a count: never the sentences, the person's words or the model's reply.
+        req.log.warn(
+          {
+            detail: 'prose_figure_trimmed',
+            sentencesCut: result.repair.sentencesCut ?? 0,
+            repair: result.repair,
+            chain: identity.chain,
+          },
+          'the vault conversation reply was served without the sentences that stated a figure',
+        );
+      else if (result.repair)
         req.log.warn(
           { repair: result.repair, chain: identity.chain },
           result.repair.outcome === 'repaired'
             ? 'the vault conversation reply passed on its repair attempt'
-            : 'the vault conversation reply asks about a stated limit its repair attempt still missed',
+            : 'the vault conversation reply is the one the server corrected: its repair attempt failed a check too',
         );
       return { ...result.reply, chain: identity.chain, address: identity.address };
     },

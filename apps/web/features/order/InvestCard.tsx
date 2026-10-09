@@ -14,6 +14,7 @@ import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { formatBps } from './amounts';
 import { type Funding, FundingStep } from './FundingStep';
 import type { InvestProgress } from './invest-words';
+import { MAX_USD, MIN_USD } from './limits';
 import { OrderScreen } from './OrderScreen';
 import {
   type BuyOf,
@@ -49,8 +50,7 @@ export const AUTO_ORDERS = 4;
 /** How long the press is held after an order takes another's place on the card. */
 export const READ_MS = 1_500;
 
-export const MIN_USD = 10;
-export const MAX_USD = 1_000_000;
+export { MAX_USD, MIN_USD };
 
 /** An order made for the card, or why none was, in the words the card shows. */
 export type InvestPlaced =
