@@ -52,17 +52,25 @@ export const pt: Dictionary = {
     language: 'Idioma',
     testNetwork: 'rede de teste',
     testNetworkLine: 'Rede de teste',
+    marketClosed: 'Mercado fechado · último preço',
+    marketClosedWhy: 'O mercado deste ativo está fechado. Este é o último preço.',
     chainRun: {
       shown: { sandbox: 'Rede de teste', mock: 'Exemplo' },
       said: { sandbox: 'rede de teste', mock: 'exemplo' },
     },
     slowDown: 'Nosso servidor pediu para eu ir mais devagar. Espere um minuto e tente de novo.',
     mockAnnounce: 'Números de exemplo',
+    sample: 'Exemplo',
     sampleFigure: 'número de exemplo',
     wait: {
       slow: 'Ainda carregando. O servidor pode estar acordando.',
       over: 'Nosso servidor não respondeu a tempo, então nada aparece aqui ainda.',
       retry: 'Tentar de novo',
+    },
+    missing: {
+      title: 'Não há página neste endereço',
+      body: 'O link pode ser antigo, ou o endereço foi digitado errado. Nada seu foi afetado.',
+      action: 'Ir para Investir',
     },
   },
 
@@ -732,6 +740,7 @@ export const pt: Dictionary = {
 
   plan: {
     title: 'Seu plano',
+    description: 'Um plano feito dos seus limites: o que ele tem, e o plano de saída.',
     signedOut: 'Entre para ver este plano. Um plano é de uma pessoa, na rede da carteira dela.',
     fromLink:
       'Este plano veio de um link: nosso motor o montou com os limites que o link trazia, que outra pessoa pode ter definido. Confira o objetivo, o valor e os limites acima antes de comprar.',

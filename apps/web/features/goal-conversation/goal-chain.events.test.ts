@@ -146,12 +146,14 @@ describe('the chain of a new plan, chosen on /goal', () => {
     expect(solana.textContent).toContain(c.wallet(SOLANA));
     expect(robinhood.textContent).toContain('Robinhood Chain');
     expect(robinhood.textContent).toContain(c.wallet(EVM));
-    // never shown as live: the sample glyph, named, with the words
+    // never shown as live: the words under the name, and read with it. No hatched glyph: an option
+    // holds no figure (Thom, Oct 9)
     for (const option of [solana, robinhood]) {
-      expect(find(option, '[data-ui="sample-glyph"]').getAttribute('aria-label')).toBe(
-        en.shell.sampleFigure,
-      );
-      expect(option.textContent).toContain(en.shell.testNetwork);
+      expect(option.querySelector('[data-ui="sample-glyph"]')).toBeNull();
+      expect(find(option, '[data-ui="chain-how"]').textContent).toBe(en.shell.testNetworkLine);
+      // read with the name: "Solana, test network"
+      expect(option.textContent).toMatch(/^(Solana|Robinhood Chain), test network/);
+      expect(find(option, '[data-ui="chain-logo"]').getAttribute('alt')).toBe('');
     }
     expect(puts).toEqual([]);
     expect(host.querySelector('[data-act="chain-change"]')).toBeNull();
@@ -418,7 +420,8 @@ describe('the chain of a new plan, chosen on /goal', () => {
     const line = find(host, '[data-ui="goal-chain"]');
     expect(line.textContent).toContain(c.onlyWallet('Robinhood Chain'));
     expect(line.textContent).not.toContain('Solana');
-    expect(line.textContent).toContain(en.shell.testNetwork);
+    expect(find(line, '[data-ui="chain-how"]').textContent).toBe(en.shell.testNetworkLine);
+    expect(line.querySelector('[data-ui="sample-glyph"]')).toBeNull();
     // and after the first words: the badge, with nothing to change to
     await send(host, 'Consider gold');
     expect(replies).toEqual(['robinhood']);

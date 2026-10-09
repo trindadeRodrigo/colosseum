@@ -97,7 +97,7 @@ test('someone with a passkey: "Use my passkey" signs in, and leads the pair the 
   );
 });
 
-test('a wallet: one list with where each plan lives, and the chain asked for a wallet that does both', async ({
+test('a wallet: one list with where each vault lives, and the chain asked for a wallet that does both', async ({
   page,
 }) => {
   await page.goto('/goal');

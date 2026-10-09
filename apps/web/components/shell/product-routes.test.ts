@@ -96,6 +96,8 @@ const older = routes.filter((file) => file.startsWith('app/(structurer)/'));
 describe('the routes of the app', () => {
   it('are the product’s, under one layout, and the pages not yet rebuilt, under theirs', () => {
     expect(product.sort()).toEqual([
+      // an address no route answers: 404 in the product's shell (not-found.tsx, below)
+      'app/(app)/[...missing]/page.tsx',
       'app/(app)/analytics/[page]/loading.tsx',
       'app/(app)/analytics/[page]/page.tsx',
       'app/(app)/analytics/layout.tsx',
@@ -108,6 +110,7 @@ describe('the routes of the app', () => {
       'app/(app)/indexes/[slug]/page.tsx',
       'app/(app)/layout.tsx',
       'app/(app)/monitor/page.tsx',
+      'app/(app)/not-found.tsx',
       'app/(app)/orders/[id]/loading.tsx',
       'app/(app)/orders/[id]/page.tsx',
       'app/(app)/plan/[id]/buy/loading.tsx',
@@ -141,8 +144,6 @@ describe('the routes of the app', () => {
       'app/(marketing)/page.tsx',
     ]);
     expect(older.sort()).toEqual([
-      // an address no route answers: 404 inside this group's layout, as before there were two
-      'app/(structurer)/[...missing]/page.tsx',
       'app/(structurer)/layout.tsx',
       'app/(structurer)/plans/[id]/page.tsx',
     ]);

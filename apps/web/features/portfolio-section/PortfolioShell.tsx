@@ -30,7 +30,7 @@ export function PortfolioShell({ children }: { children: ReactNode }) {
   return (
     <div data-ui="portfolio" className="group/portfolio flex min-w-0 flex-col gap-6">
       <nav id="portfolio-nav" aria-label={w.shell.menu.nav} className="min-w-0 overflow-x-auto">
-        <ul className="flex w-max min-w-full list-none gap-6 border-b border-border p-0">
+        <ul className="flex w-max min-w-full list-none gap-4 border-b border-border p-0 sm:gap-6">
           {tabs.map((tab) => (
             <li key={tab.id}>
               <Link

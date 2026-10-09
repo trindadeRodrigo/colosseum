@@ -243,8 +243,8 @@ export function FamilyScreen({ slug }: { slug: string }) {
             provenance: r.provenance,
           }))}
           labels={{
-            testNetwork: t.shell.testNetwork,
-            sampleFigure: t.shell.sampleFigure,
+            testNetwork: t.shell.testNetworkLine,
+            sample: t.shell.sample,
             wallet: t.chain.choice.wallet,
             saving: t.chain.switch.saving,
           }}
@@ -386,7 +386,15 @@ function RecipeSection({
           f.versionN(active.version),
           f.since(utcMinute(new Date(active.effectiveAt * 1000).toISOString())),
         )}
-        answer={p.answer(list(kindShares(holdings, locale, t.plan.kinds)), chainName)}
+        answer={p.answer(
+          // a sentence: only its first kind keeps its capital
+          list(
+            kindShares(holdings, locale, t.plan.kinds).map((kind, i) =>
+              i === 0 ? kind : kind.charAt(0).toLowerCase() + kind.slice(1),
+            ),
+          ),
+          chainName,
+        )}
         chain={recipe.chain}
         provenance={recipe.provenance}
         holdings={holdings.map((h) => ({

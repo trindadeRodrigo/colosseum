@@ -241,7 +241,7 @@ describe('the check that runs after every production build', () => {
       ...CLEAN,
       'server/app-paths-manifest.json': JSON.stringify({
         '/(app)/goal/page': 'app/(app)/goal/page.js',
-        '/(structurer)/[...missing]/page': 'app/(structurer)/[...missing]/page.js',
+        '/(app)/[...missing]/page': 'app/(app)/[...missing]/page.js',
       }),
       'server/app/(app)/goal.html': '',
       'server/app/(app)/developers.html': '',

@@ -66,6 +66,24 @@ describe('the words of the product: vault and deposit, never mix or buy', () => 
       ).toBe(true);
   });
 
+  // Gate WORDS-ONE-NAME: on `/goal` the thing is the vault or its draft, a shared portfolio is a
+  // portfolio, and what a vault aims at is its targets. Neither "strategy" nor "allocation" names
+  // any of them, so neither is said under `goal`, `talk` or `shared`.
+  const ONE_NAME = /\b(strategy|strategies|allocation|allocations)\b/i;
+  const named = all.filter(([path]) => /^en\.(goal|talk|shared)\./.test(path));
+
+  it('says neither strategy nor allocation on /goal, in a vault’s conversation or of a shared portfolio', () => {
+    expect(named.length).toBeGreaterThan(400);
+    expect(named.map(([, said]) => said)).toContain(en.talk.workbench.strategy);
+    expect(named.map(([, said]) => said)).toContain(en.shared.publish.shareStrategy);
+    expect(
+      named.filter(([, said]) => ONE_NAME.test(said)).map(([path, said]) => `${path}: ${said}`),
+    ).toEqual([]);
+    expect(ONE_NAME.test('Strategy preview')).toBe(true);
+    expect(ONE_NAME.test('Your proposed allocation')).toBe(true);
+    expect(ONE_NAME.test('Your vault’s draft')).toBe(false);
+  });
+
   it('bites: a sentence that says it is found, and a longer word that holds one is not', () => {
     expect(FORBIDDEN.test('Confirm and go to buy')).toBe(true);
     expect(FORBIDDEN.test('Check this mix')).toBe(true);

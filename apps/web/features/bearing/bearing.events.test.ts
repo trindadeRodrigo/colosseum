@@ -830,7 +830,7 @@ describe('the banner: live, stale with time, or the API down', () => {
     );
     await settle(host, settled);
     expect(banner(host).getAttribute('data-mode')).toBe('live');
-    expect(banner(host).textContent).toContain('Live from the collectors, as of 15:07 UTC.');
+    expect(banner(host).textContent).toContain('Newest reading from the collectors: 15:07 UTC.');
     expect(banner(host).textContent).toContain('now: weekend');
   });
 
