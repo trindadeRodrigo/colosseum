@@ -117,7 +117,7 @@ export function basketIdOfBuy(proposalId: string, linked: boolean, userId: strin
   if (!userId)
     throw new Refusal(
       403,
-      'a plan made from a link is bought by a signed-in person, as themselves',
+      'a plan made from a link takes a deposit from a signed-in person, as themselves',
     );
   return basketIdOfLinked(proposalId, userId);
 }
@@ -287,7 +287,10 @@ export async function planBuy(
     throw new Refusal(403, 'the owner in the request is not a wallet of the signed-in person');
   const named = [req.proposalId, req.family, req.vault].filter((x) => x !== undefined).length;
   if (named > 1)
-    throw new Refusal(400, 'a buy names one thing: a plan, a shared portfolio or a vault of yours');
+    throw new Refusal(
+      400,
+      'a deposit names one thing: a plan, a shared portfolio or a vault of yours',
+    );
   // A plan is bought on its own chain and a vault added to on its own: only a shared portfolio,
   // which may have a recipe on more than one, is told which (gate CHAIN-AT-THE-PLAN).
   if (req.chain !== undefined && req.family === undefined)
@@ -306,7 +309,7 @@ export async function planBuy(
   if (req.family !== undefined) return planFamilyBuy(req, req.family, ctx);
   if (req.version !== undefined)
     throw new Refusal(400, '`version` is the version of a shared portfolio: send it with `family`');
-  if (!req.proposalId) throw new Refusal(400, 'a buy names the plan it buys: send proposalId');
+  if (!req.proposalId) throw new Refusal(400, 'a deposit names its plan: send proposalId');
   const proposal = UUID.test(req.proposalId) ? await ctx.loadProposal(req.proposalId) : null;
   if (!proposal) throw new Refusal(404, 'no plan with that id');
 
@@ -388,7 +391,7 @@ function eligible(entry: ChainEntry, assets: BasketAsset[], targets: Target[]) {
   for (const t of targets) {
     const listed = byId.get(t.asset);
     if (!listed || listed.cls === 'cash')
-      throw new Refusal(422, `${t.asset} cannot be bought on ${entry.config.name}`, {
+      throw new Refusal(422, `${t.asset} is not available on ${entry.config.name}`, {
         code: 'ASSET_NOT_ELIGIBLE',
       });
   }
@@ -409,7 +412,8 @@ async function planFamilyBuy(
   ctx: Omit<PrepareContext, 'now'>,
 ): Promise<BuyPlan> {
   const shared = ctx.shared;
-  if (!shared) throw new Refusal(501, 'buying a shared portfolio is not served here: name a plan');
+  if (!shared)
+    throw new Refusal(501, 'a deposit into a shared portfolio is not served here: name a plan');
   const chain = req.chain ?? (await ctx.homeChain());
   // A chain the request names is held to the person's wallets, as a switch of the current chain is.
   if (req.chain !== undefined && !chainsHeld(ctx.principal).includes(chain))
@@ -521,7 +525,7 @@ async function buySteps(
   const cashRaw = cashRawOf(cents, cash.decimals);
   const trades = tradesFor(targets, cashRaw, cash.id);
   if (trades.some((t) => t.amountInRaw === '0'))
-    throw new Refusal(422, `the amount is too small to buy every asset on ${entry.config.name}`);
+    throw new Refusal(422, `the amount is too small to reach every asset on ${entry.config.name}`);
 
   const existing = (await adapter.getVaults(owner)).find((v) => v.basketId === basketId);
   const caps = adapter.capabilities;
@@ -599,7 +603,7 @@ export async function expectedOf(
     if (out <= 0n || lessBps(out, slippageBps) <= 0n)
       throw new Refusal(
         422,
-        `${trade.amountInRaw} raw ${trade.sell} buys no ${trade.buy} that can be held to a minimum: the amount is too small`,
+        `${trade.amountInRaw} raw ${trade.sell} swaps into no ${trade.buy} that can be held to a minimum: the amount is too small`,
         { fix: 'Deposit a larger amount.' },
       );
     expected.push({

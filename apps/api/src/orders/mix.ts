@@ -293,7 +293,8 @@ export function reviewMix(
   const notForGoal: string[] = [];
   const lines: MixReviewLine[] = checked.picks.map(({ asset, weightBps }, i) => {
     const fixedLine = fixed.lines[i];
-    if (!fixedLine || fixedLine.line.assetId !== asset.id) throw new Error('the mix lost a line');
+    if (!fixedLine || fixedLine.line.assetId !== asset.id)
+      throw new Error('the review lost a line');
     const amountUsd = (cents[i] ?? 0) / 100;
     const price = checked.prices.get(asset.id);
     let exitCeiling: MixReviewLine['exitCeiling'] = null;
