@@ -2078,9 +2078,9 @@ export type PostConversationsByChainGoalReplyResponse = {
     quote?: string;
   }[];
   chain: 'solana' | 'base' | 'robinhood';
-  /** What the person said the money is for, as the model read it and only where the words it quotes are in their messages. Null until they have said it; never defaulted. */
+  /** What the person said the money is for, read by the server from plain statements in their own messages; the latest one stands. Null until they have plainly said it, and after they take it back or question it. Never the model’s reading and never defaulted. */
   goal: ('grow' | 'income' | 'protect') | null;
-  /** The risk the person said they accept, read and checked the same way. Null until they have said it; never defaulted. */
+  /** The risk the person said they accept, read the same way. Null until they have plainly said it; never defaulted. */
   risk: ('low' | 'medium' | 'high') | null;
 };
 

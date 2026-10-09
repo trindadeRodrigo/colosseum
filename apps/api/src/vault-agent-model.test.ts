@@ -211,14 +211,10 @@ describe('vault proposal provider uses the existing model settings and a shared 
     expect(sdk.create).toHaveBeenLastCalledWith(expect.anything(), { timeout: 1000 });
   });
 
-  it('asks for the goal and risk as the person said them, with their words, and to ask when unsaid', () => {
-    const { purpose } = VAULT_AGENT_REPLY_SCHEMA.properties as unknown as {
-      purpose: { required: string[] };
-    };
-    expect(purpose.required).toEqual(['goal', 'goalQuote', 'risk', 'riskQuote']);
-    expect(VAULT_AGENT_REPLY_SCHEMA.required).toContain('purpose');
-    expect(VAULT_AGENT_SYSTEM).toContain('copied exactly from one person message');
-    expect(VAULT_AGENT_SYSTEM).toContain('Never infer either');
+  it('leaves the goal and risk to the server: none in the reply schema, and the model asks for what is missing', () => {
+    expect(JSON.stringify(VAULT_AGENT_REPLY_SCHEMA)).not.toMatch(/purpose|goal|risk/);
+    expect(VAULT_AGENT_SYSTEM).toContain('Only the server reads these');
+    expect(VAULT_AGENT_SYSTEM).toContain('Never state, assume or infer a goal or a risk');
     expect(VAULT_AGENT_SYSTEM).toContain('use question to ask for what is missing');
   });
 
