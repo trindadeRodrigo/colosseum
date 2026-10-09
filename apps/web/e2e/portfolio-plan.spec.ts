@@ -99,10 +99,26 @@ test.describe('a plan’s page on the stub', () => {
     await expect(trades.locator('a[href="/portfolio/rebalancing"]')).toHaveText(w.plan.trades.all);
 
     await pinned(page, 'a plan');
-    // a pin opens on its source, its time and its method
+    // a pin opens on plain words: what the number is and where from, how fresh, whether it is live;
+    // the API's own source, time and method are one step further, under "Details" (TOOLTIP-WORDS)
     await head.locator('[data-ui="figure"] button[data-ui="pin"]').first().click();
-    await expect(head.locator('[data-ui="pin-source"]')).toContainText('2026-10-07T11:56:02Z');
+    const said = head.locator('[data-ui="pin-summary"]');
+    await expect(said.locator('[data-ui="pin-what"]')).toHaveText(
+      'Value now from the vault’s own balances on Solana devnet',
+    );
+    await expect(said.locator('[data-ui="pin-read"]')).toHaveText('Read 12 hours ago');
+    await expect(said.locator('[data-ui="pin-state"]')).toHaveText('Test network, not live');
+    await expect(head.locator('[data-ui="pin-source"]')).toHaveCount(0);
+    await head.locator('[data-ui="pin-details"]').click();
+    await expect(head.locator('[data-ui="pin-source"]')).toContainText('7 Oct 2026, 11:56:02 UTC');
+    await expect(head.locator('[data-ui="pin-source"] time')).toHaveAttribute(
+      'datetime',
+      '2026-10-07T11:56:02Z',
+    );
+    // axe with the popover open and its details shown, in both themes and at both widths
+    await check(page, 'a plan, a source open');
     await page.keyboard.press('Escape');
+    await expect(head.locator('[data-ui="pin-popover"]')).toHaveCount(0);
     // exactly one disclaimer: the activity panel's, the frame's and the app's standing down
     await expect(
       page.locator('main [data-ui="plan-activity"] [data-ui="disclaimer"]'),

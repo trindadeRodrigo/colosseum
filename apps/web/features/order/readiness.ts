@@ -120,3 +120,13 @@ export function explorerAddressUrlFor(
     return null;
   }
 }
+
+/**
+ * The same page with `{address}` where the address goes: what a figure's pin is handed, so each
+ * address in its source's details links to the explorer of the network it was read on
+ * (`PinSource.explorer`). Null where `explorerAddressUrlFor` is.
+ */
+export function explorerAddressTemplateFor(chain: ChainId, mock: boolean): string | null {
+  const SLOT = 'ADDRESS-SLOT';
+  return explorerAddressUrlFor(chain, SLOT, mock)?.replace(SLOT, '{address}') ?? null;
+}

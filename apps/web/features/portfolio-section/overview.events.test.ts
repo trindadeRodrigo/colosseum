@@ -280,6 +280,23 @@ describe('the chart', () => {
     ).toBeGreaterThan(0);
   });
 
+  it('keeps focus on a chart mode when it is chosen: the pressed button is the same button', async () => {
+    serve(portStore);
+    signIn();
+    const host = await overview();
+    const label = en.overview.board.chart.byVault;
+    const mode = () =>
+      find<HTMLButtonElement>(host, `[data-ui="chart-modes"] button[aria-label="${label}"]`);
+    const pressed = mode();
+    pressed.focus();
+    await show(host, label);
+    expect(mode().getAttribute('aria-pressed')).toBe('true');
+    expect(mode()).toBe(pressed);
+    expect(document.activeElement).toBe(pressed);
+    // the chosen mode shows its word, so it has no tooltip to repeat it
+    expect(host.querySelector('[data-ui="chart-modes"] [role="tooltip"]')).toBeNull();
+  });
+
   it('says a point only when the chart is pointed at, in a tooltip with its pins', async () => {
     serve(portStore);
     signIn();

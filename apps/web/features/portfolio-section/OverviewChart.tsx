@@ -237,7 +237,7 @@ export function OverviewChart(props: Props) {
           <div
             data-ui="chart-tooltip"
             aria-live="polite"
-            className="pointer-events-none absolute top-2 z-10 flex min-w-40 flex-col gap-1 rounded-lg border border-border bg-popover px-3 py-2 font-mono text-[12px]/5 text-popover-foreground"
+            className="pointer-events-none absolute top-2 z-10 flex min-w-44 flex-col gap-1 rounded-md border border-border bg-popover px-3 py-2 font-sans text-caption/5 tracking-normal text-popover-foreground"
             style={
               onLeft
                 ? { right: `${((W - cx + 12) / W) * 100}%` }
@@ -247,19 +247,27 @@ export function OverviewChart(props: Props) {
             <time dateTime={new Date(at).toISOString()} className="text-muted-foreground">
               {utc(lang, new Date(at).toISOString())}
             </time>
-            <ProvenancePin
-              value={money(totals[i] ?? 0)}
-              obs={props.obs(at)}
-              labels={t.pin}
-              className="font-medium"
-            />
-            {point && (
+            {/* Each figure says what it is: a bare number beside a date is a log line. */}
+            <span className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">{words.value}</span>
               <ProvenancePin
-                value={`${point.pnlUsd >= 0 ? '+' : '−'}${money(Math.abs(point.pnlUsd))}`}
+                value={money(totals[i] ?? 0)}
                 obs={props.obs(at)}
+                what={words.value}
                 labels={t.pin}
-                className={point.pnlUsd >= 0 ? 'text-success' : 'text-destructive'}
+                className="font-medium"
               />
+            </span>
+            {point && (
+              <span className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">{words.pnl}</span>
+                <ProvenancePin
+                  value={`${point.pnlUsd >= 0 ? '+' : '−'}${money(Math.abs(point.pnlUsd))}`}
+                  obs={props.obs(at)}
+                  labels={t.pin}
+                  className={point.pnlUsd >= 0 ? 'text-success' : 'text-destructive'}
+                />
+              </span>
             )}
             {parts.map((part) => (
               <span key={part.key} className="flex items-center justify-between gap-3">

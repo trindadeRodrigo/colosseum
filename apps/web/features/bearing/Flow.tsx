@@ -56,6 +56,8 @@ export function FlowChart(o: {
 }) {
   const fm = useFmt();
   const [focus, setFocus] = useState<number | null>(null);
+  // What the pointer is on, said in full under the drawing: a label there is cut to fit its box.
+  const [said, setSaid] = useState<string | null>(null);
   const nodes: Node[] = [];
   const edges: Edge[] = [];
   const byId = new Map<string, Node>();
@@ -263,7 +265,10 @@ export function FlowChart(o: {
         aria-label={t.region}
         data-ui="bearing-flow"
         className="overflow-x-auto border border-border bg-card py-2"
-        onMouseLeave={() => setFocus(null)}
+        onMouseLeave={() => {
+          setFocus(null);
+          setSaid(null);
+        }}
       >
         <svg
           viewBox={`0 0 ${W} ${H}`}
@@ -292,7 +297,7 @@ export function FlowChart(o: {
             const mx = (x0 + x1) / 2;
             const best = e.path.includes('best');
             return (
-              // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the titles, the legend and the table
+              // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights and fills the readout; the same figures are in the legend and the table
               <path
                 key={e.n}
                 d={`M${x0},${e.y0.toFixed(1)} C${mx},${e.y0.toFixed(1)} ${mx},${e.y1.toFixed(1)} ${x1},${e.y1.toFixed(1)}`}
@@ -303,10 +308,11 @@ export function FlowChart(o: {
                 strokeDasharray={e.path.includes('assume') ? '6 4' : undefined}
                 markerEnd="url(#bearing-arrow)"
                 opacity={dim(e.path) ? 0.12 : focus != null || best ? 1 : 0.55}
-                onMouseEnter={() => setFocus(fOf(e.path))}
-              >
-                <title>{`[${e.n}] ${e.tip}`}</title>
-              </path>
+                onMouseEnter={() => {
+                  setFocus(fOf(e.path));
+                  setSaid(`${e.n}. ${e.tip}`);
+                }}
+              ></path>
             );
           })}
           {labelled.map((e) => {
@@ -314,13 +320,15 @@ export function FlowChart(o: {
             const tw = txt.length * 6.1 + 8;
             const best = e.path.includes('best');
             return (
-              // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the titles, the legend and the table
+              // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights and fills the readout; the same figures are in the legend and the table
               <g
                 key={`l${e.n}`}
                 opacity={dim(e.path) ? 0.12 : 1}
-                onMouseEnter={() => setFocus(fOf(e.path))}
+                onMouseEnter={() => {
+                  setFocus(fOf(e.path));
+                  setSaid(`${e.n}. ${e.tip}`);
+                }}
               >
-                <title>{`[${e.n}] ${e.tip}`}</title>
                 <rect
                   x={e.lx - tw / 2}
                   y={e.ly - 8}
@@ -351,11 +359,14 @@ export function FlowChart(o: {
                   ? 'var(--tf-bearing-cv)'
                   : 'var(--border)';
             return (
-              // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights; the same figures are in the titles, the legend and the table
+              // biome-ignore lint/a11y/noStaticElementInteractions: hover only highlights and fills the readout; the same figures are in the legend and the table
               <g
                 key={nd.id}
                 opacity={isPath && dim(nd.cls) ? 0.45 : 1}
-                onMouseEnter={isPath ? () => setFocus(fOf(nd.cls)) : undefined}
+                onMouseEnter={() => {
+                  if (isPath) setFocus(fOf(nd.cls));
+                  setSaid([nd.label, nd.sub, nd.title].filter(Boolean).join(' · '));
+                }}
               >
                 <rect
                   x={nd.x}
@@ -392,7 +403,6 @@ export function FlowChart(o: {
                     {t.best}
                   </text>
                 )}
-                <title>{`${nd.label} · ${nd.sub}${nd.title ? ` · ${nd.title}` : ''}`}</title>
               </g>
             );
           })}
@@ -408,6 +418,11 @@ export function FlowChart(o: {
           ))}
         </svg>
       </section>
+      {/* The readout of the step under the pointer. Its line is always there, so nothing moves. The
+          same figures are in the legend and the table, which the keyboard and a screen reader read. */}
+      <p data-ui="bearing-flow-readout" aria-hidden="true" className="mt-2 min-h-5 text-caption">
+        {said}
+      </p>
       <p className="mt-2 max-w-[88ch] text-muted-foreground">{t.note(notes.join(' '))}</p>
       <SrcLine f={srcF} what={t.src} />
     </>

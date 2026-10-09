@@ -494,6 +494,32 @@ export const pt: Dictionary = {
       prior_dataset: 'dados anteriores, não reais',
     },
     unknownKind: 'não real',
+    whatFrom: '{what}: {source}',
+    from: 'Fonte: {source}',
+    unnamed: 'Detalhes da fonte abaixo',
+    updated: 'Atualizado {ago}',
+    read: 'Lido {ago}',
+    readAt: 'Lido em {time}',
+    copyFailed: 'Não deu para copiar aqui. A linha inteira está abaixo para selecionar.',
+    staleOverLimit: 'Atualizado {ago}, além do limite de {limit} desta fonte',
+    staleNoLimit: 'Atualizado {ago}, desatualizado',
+    staleNoAge: 'Desatualizado, de idade desconhecida',
+    live: 'Real',
+    ago: {
+      now: 'há menos de um minuto',
+      ago: 'há {n} {unit}',
+      second: ['segundo', 'segundos'],
+      minute: ['minuto', 'minutos'],
+      hour: ['hora', 'horas'],
+      day: ['dia', 'dias'],
+      about: 'cerca de',
+    },
+    details: 'Detalhes',
+    sourceLabel: 'Fonte',
+    timeLabel: 'Lido em',
+    methodLabel: 'Como é calculado',
+    copyAddress: 'Copiar endereço {address}',
+    explorer: 'Ver {address} no explorador',
   },
 
   portfolio: {
@@ -585,6 +611,8 @@ export const pt: Dictionary = {
         drift: 'Diferença',
       },
       noPrice: 'sem preço',
+      noPriceWhy:
+        'Sem preço: esta leitura da rede não trouxe nenhum para este ativo, então ele não tem valor nem parcela aqui.',
       unpriced: (n: number) =>
         n === 1
           ? '1 posição não tem preço, então o valor a deixa de fora.'

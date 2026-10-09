@@ -20,6 +20,7 @@ import { Card } from '../../components/ui/Card';
 import { ChainBadge } from '../../components/ui/ChainBadge';
 import { DataTable } from '../../components/ui/DataTable';
 import { utcMinute } from '../../components/ui/ExecutionList';
+import { Hint } from '../../components/ui/Hint';
 import { PAGE_TITLE } from '../../components/ui/heading';
 import { SkeletonPlan, SkeletonRows } from '../../components/ui/Skeleton';
 import { StatusMark } from '../../components/ui/StatusMark';
@@ -947,13 +948,16 @@ function VaultsPanel({
                   </Button>
                 )}
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <Link
-                    href={`/vaults/${vault.chain}/${encodeURIComponent(vault.address)}`}
-                    className={buttonClass({ variant: 'link' })}
-                    title={vault.address}
+                  <Hint
+                    tip={<span className="font-mono text-source break-all">{vault.address}</span>}
                   >
-                    {v.open}
-                  </Link>
+                    <Link
+                      href={`/vaults/${vault.chain}/${encodeURIComponent(vault.address)}`}
+                      className={buttonClass({ variant: 'link' })}
+                    >
+                      {v.open}
+                    </Link>
+                  </Hint>
                   {!follows && (
                     <Button
                       variant="secondary"

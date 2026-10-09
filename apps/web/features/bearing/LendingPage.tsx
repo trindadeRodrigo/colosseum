@@ -1,6 +1,7 @@
 'use client';
 import { type ReactNode, useState } from 'react';
 import { type Column, DataTable } from '../../components/ui/DataTable';
+import { Hint } from '../../components/ui/Hint';
 import { Sparkline, sparkable } from '../../components/ui/Sparkline';
 import { Segmented, TimeChart } from '../../components/ui/TimeChart';
 import { useAnswer, useBearing } from './BearingProvider';
@@ -172,17 +173,17 @@ function TolBox() {
     if (t !== ui.tol) setUi((s) => ({ ...s, tol: t }));
   };
   return (
-    <label
-      title={w.toleranceTitle}
-      className="relative inline-flex items-center gap-1.5 text-caption text-muted-foreground"
-    >
-      <span>{w.tolerance}</span>
+    // The word says what the box is; what a tolerance means is one hover, focus or tap away, and the
+    // box carries the same sentence for a screen reader.
+    <span className="relative inline-flex items-center gap-1.5 text-caption text-muted-foreground">
+      <Hint tip={w.toleranceTitle}>{w.tolerance}</Hint>
       <input
         type="text"
         inputMode="decimal"
         autoComplete="off"
         value={text}
-        aria-describedby="bearing-tol-err"
+        aria-label={w.tolerance}
+        aria-describedby="bearing-tol-why bearing-tol-err"
         aria-invalid={err ? true : undefined}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
@@ -202,7 +203,10 @@ function TolBox() {
       >
         {err}
       </span>
-    </label>
+      <span id="bearing-tol-why" className="sr-only">
+        {w.toleranceTitle}
+      </span>
+    </span>
   );
 }
 
@@ -460,11 +464,14 @@ function LendBody(p: {
           <>
             <Fig f={f.collF} fmt={fm.usd1} />
             {parts.length > 0 && (
-              <span
-                title={parts.map((x) => x.asset).join(', ')}
-                className="block font-mono text-b-meta text-muted-foreground"
-              >
-                {parts.length === 1 ? parts[0]?.asset : t.table.assets(parts.length)}
+              <span className="block font-mono text-b-meta text-muted-foreground">
+                {parts.length === 1 ? (
+                  parts[0]?.asset
+                ) : (
+                  <Hint tip={parts.map((x) => x.asset).join(', ')}>
+                    {t.table.assets(parts.length)}
+                  </Hint>
+                )}
               </span>
             )}
           </>
