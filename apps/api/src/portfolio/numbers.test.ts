@@ -92,6 +92,41 @@ describe('the numbers of a person’s vaults', () => {
     });
     expect(numbers.of('solana', 'anything')).toBeUndefined();
     expect(said).toHaveLength(1);
+    // And the log is not told again by the next read: a table that is not there fails every one.
+    const again: string[] = [];
+    await vaultNumbersOf(untouched, scope, person, {
+      warn: () => {},
+      error: (_fields, message) => again.push(message),
+    });
+    expect(again).toEqual([]);
+  });
+
+  it('are the ones already held where a new one cannot be given: only that vault has none', async () => {
+    // What the two reads answer, in turn: the person's vaults, then the numbers they have.
+    const answers: unknown[] = [
+      [
+        { chain: 'solana', address: 'A', owner: 'owner', basketId: '1', openedAt: at(1) },
+        { chain: 'solana', address: 'B', owner: 'owner', basketId: '2', openedAt: at(2) },
+      ],
+      [{ chain: 'solana', address: 'A', number: 1 }],
+    ];
+    const query: unknown = new Proxy(
+      {},
+      {
+        get: (_target, key) =>
+          key === 'then' ? (done: (rows: unknown) => void) => done(answers.shift()) : () => query,
+      },
+    );
+    const db = {
+      select: () => query,
+      transaction: async () => {
+        throw new Error('the insert was refused');
+      },
+    } as unknown as Db;
+    const numbers = await vaultNumbersOf(db, scope, person, quiet);
+    expect(numbers.of('solana', 'A')).toBe(1);
+    expect(numbers.of('solana', 'B')).toBeUndefined();
+    expect(answers).toEqual([]);
   });
 
   it('are none, with nothing read, for a caller who is no signed-in person or holds no chain here', async () => {

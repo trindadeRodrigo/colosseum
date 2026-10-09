@@ -1,7 +1,7 @@
 import { baskets, type Db, users, vaultNumbers, vaults } from '@colosseum/db';
 import { type ChainId, chainFamily, type Principal } from '@colosseum/schemas';
 import { eq, or } from 'drizzle-orm';
-import type { JoinLog } from '../orders/plan-join';
+import { type JoinLog, joinMissed } from '../orders/plan-join';
 import { loggable } from '../plugins/loggable';
 import { ownedOn, type PersonScope } from './scope';
 
@@ -81,10 +81,10 @@ async function giveNumbers(db: Db, privyId: string, fresh: readonly Unnumbered[]
       })
       .from(vaultNumbers)
       .where(eq(vaultNumbers.userId, user.id));
-    const numbered = new Set(have.map((row) => keyOf(row.chain, row.address)));
+    const taken = new Set(have.map((row) => keyOf(row.chain, row.address)));
     const given = nextNumbers(
       have.map((row) => row.number),
-      fresh.filter((vault) => !numbered.has(keyOf(vault.chain, vault.address))),
+      fresh.filter((vault) => !taken.has(keyOf(vault.chain, vault.address))),
     );
     if (given.length)
       await tx.insert(vaultNumbers).values(
@@ -99,6 +99,21 @@ async function giveNumbers(db: Db, privyId: string, fresh: readonly Unnumbered[]
   });
 }
 
+/** How long the log stays quiet after it said that the numbers could not be read or given. */
+const SAID_AGAIN_MS = 60_000;
+let saidAt = Number.NEGATIVE_INFINITY;
+
+/**
+ * Says in the log that numbering failed, at most once a minute for the process: a table that is not
+ * there yet (migration 0020 not applied) fails every read, and one line says so as well as a thousand.
+ */
+function say(log: JoinLog, err: unknown, message: string): void {
+  const now = Date.now();
+  if (now - saidAt < SAID_AGAIN_MS) return;
+  saidAt = now;
+  log.error({ err: loggable(err) }, message);
+}
+
 /**
  * The numbers of the signed-in person's vaults, giving one to each vault of theirs that has none.
  *
@@ -107,8 +122,14 @@ async function giveNumbers(db: Db, privyId: string, fresh: readonly Unnumbered[]
  * for a vault the cache holds as the person's now (`ownedOn`), so nobody is answered another person's,
  * and how many vaults a person has is said to them alone.
  *
- * It never fails the read it is part of: where the numbers cannot be read or given, none is answered,
- * the log says why, and the caller names the vault some other way.
+ * Every route that answers a number may be the one that gives it, so the order must not depend on
+ * which route a person reaches first. The order is the opening order's time, which the goal join
+ * holds; a vault whose join was missed is joined here first (`joinMissed`, as the portfolio's read
+ * does), and only then are the vaults put in order.
+ *
+ * It never fails the read it is part of. Where the numbers cannot be read, none is answered; where a
+ * new one cannot be given, the ones already held are answered and only that vault has none. The log
+ * says why, and the caller names the vault some other way.
  */
 export async function vaultNumbersOf(
   db: Db,
@@ -118,12 +139,22 @@ export async function vaultNumbersOf(
 ): Promise<VaultNumbers> {
   const privyId = principal.userId;
   if (principal.kind !== 'user' || !privyId || scope.chains.length === 0) return NONE;
-  try {
-    const mine = await db
-      .select({ chain: vaults.chainId, address: vaults.address, openedAt: baskets.createdAt })
+  const ownVaults = () =>
+    db
+      .select({
+        chain: vaults.chainId,
+        address: vaults.address,
+        owner: vaults.owner,
+        basketId: vaults.onchainBasketId,
+        openedAt: baskets.createdAt,
+      })
       .from(vaults)
       .leftJoin(baskets, eq(baskets.id, vaults.basketId))
       .where(or(...scope.chains.map((scoped) => ownedOn(vaults, scoped))));
+  let mine: Awaited<ReturnType<typeof ownVaults>>;
+  const numberOf = new Map<string, number>();
+  try {
+    mine = await ownVaults();
     if (mine.length === 0) return NONE;
     const have = await db
       .select({
@@ -134,22 +165,40 @@ export async function vaultNumbersOf(
       .from(vaultNumbers)
       .innerJoin(users, eq(users.id, vaultNumbers.userId))
       .where(eq(users.privyId, privyId));
-    const numberOf = new Map(have.map((row) => [keyOf(row.chain, row.address), row.number]));
-    const fresh = mine.filter((vault) => !numberOf.has(keyOf(vault.chain, vault.address)));
-    if (fresh.length)
-      for (const row of await giveNumbers(db, privyId, fresh))
-        numberOf.set(keyOf(row.chain, row.address), row.number);
-    const held = new Set(mine.map((vault) => keyOf(vault.chain, vault.address)));
-    return {
-      of: (chain, address) => {
-        const key = keyOf(chain, address);
-        return held.has(key) ? numberOf.get(key) : undefined;
-      },
-    };
+    for (const row of have) numberOf.set(keyOf(row.chain, row.address), row.number);
   } catch (err) {
-    log.error({ err: loggable(err) }, "the numbers of the person's vaults could not be read");
+    say(log, err, "the numbers of the person's vaults could not be read");
     return NONE;
   }
+  const unnumbered = () => mine.filter((v) => !numberOf.has(keyOf(v.chain, v.address)));
+  if (unnumbered().length)
+    try {
+      // A vault with no plan joined to it has no opening time to be put in order by: join the ones
+      // the confirm missed before the order is decided. `joinMissed` never throws.
+      const unjoined = unnumbered().filter((v) => v.openedAt === null);
+      if (unjoined.length) {
+        for (const { entry } of scope.chains)
+          await joinMissed(
+            db,
+            entry.chain,
+            unjoined.filter((v) => v.chain === entry.chain),
+            principal,
+            log,
+          );
+        mine = await ownVaults();
+      }
+      for (const row of await giveNumbers(db, privyId, unnumbered()))
+        numberOf.set(keyOf(row.chain, row.address), row.number);
+    } catch (err) {
+      say(log, err, "a number could not be given to a vault of the person's");
+    }
+  const held = new Set(mine.map((vault) => keyOf(vault.chain, vault.address)));
+  return {
+    of: (chain, address) => {
+      const key = keyOf(chain, address);
+      return held.has(key) ? numberOf.get(key) : undefined;
+    },
+  };
 }
 
 /** A vault's number as an answer carries it: the field where there is one, and nothing where not. */

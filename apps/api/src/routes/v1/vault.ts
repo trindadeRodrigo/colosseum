@@ -48,6 +48,11 @@ export function registerVaultRoute(scope: FastifyInstance, deps: OrderDeps) {
       },
     },
     async (req, reply) => {
+      // Before anything is read, so a refusal carries them too: the answer depends on who asks (the
+      // owner's has the vault's number), and nothing between a caller and the server keeps one
+      // caller's answer for the next.
+      reply.header('cache-control', 'private, no-store');
+      reply.header('vary', 'Authorization');
       const { chain, address } = req.params;
       if (!isAddressOf(chainFamily(chain), address))
         throw new Refusal(400, `that is not an address of ${deps.chains.name(chain)}`);
@@ -65,7 +70,6 @@ export function registerVaultRoute(scope: FastifyInstance, deps: OrderDeps) {
             w.family === entry.config.family && sameVaultAddress(chain, w.address, vault.owner),
         );
         if (!owns) return answer;
-        reply.header('cache-control', 'private, no-store');
         const numbers = await vaultNumbersOf(
           deps.db,
           personScope(deps.chains, principal),

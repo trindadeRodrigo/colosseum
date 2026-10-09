@@ -163,6 +163,21 @@ describe('a vault’s number', () => {
     expect(series.map((s) => [s.address, s.number])).toEqual([[solana.address, 2]]);
   });
 
+  it('is in the order the vaults were opened whichever route numbers them first, a missed join included', async () => {
+    const a = await someone();
+    await fund(a);
+    const first = await open(a);
+    const second = await open(a);
+    // As a vault whose order confirmed without its plan being joined to it: nothing on the vault
+    // says when it was opened, and only its order does.
+    await data.db.update(vaults).set({ basketId: null }).where(eq(vaults.address, first.address));
+    // The first read is not the portfolio's, which is the one that joined a missed vault before.
+    const read = await plansOf(a);
+    expect(read.numbers.get(first.address)).toBe(1);
+    expect(read.numbers.get(second.address)).toBe(2);
+    expect(read.plans.find((p) => p.address === first.address)?.plan).not.toBeNull();
+  });
+
   it('is there for a vault with a name too: what to show is the reader’s to decide', async () => {
     const a = await someone();
     await fund(a);
@@ -329,7 +344,12 @@ describe('a number is its owner’s alone', () => {
 
     const mine = await vaultOf(owner, vault);
     expect(mine.answer.vault.number).toBe(2);
-    expect(mine.headers['cache-control']).toBe('private, no-store');
+    // Every answer of the route depends on who asks, and says so to anything that would keep it.
+    for (const read of [mine, await vaultOf(null, vault)])
+      expect([read.headers['cache-control'], read.headers.vary]).toEqual([
+        'private, no-store',
+        'Authorization',
+      ]);
 
     // Asked a moment later, so from the answer the route keeps: the owner's number is not in it.
     const anybody = await vaultOf(null, vault);
