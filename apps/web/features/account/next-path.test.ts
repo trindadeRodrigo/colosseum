@@ -79,6 +79,9 @@ describe('the routes sign-in knows', () => {
   it('are the product’s pages, no more and no fewer', () => {
     const pages = [...sourceFiles()]
       .filter((file) => /^app\/\(app\)\/(.+\/)?page\.tsx$/.test(file))
+      // the catch-all is no page to lead to: it answers 404, and as a route sign-in knows its one
+      // free segment would let `?next=` name any address
+      .filter((file) => file !== 'app/(app)/[...missing]/page.tsx')
       .map((file) => file.replace(/^app\/\(app\)/, '').replace(/\/page\.tsx$/, '') || '/')
       .sort();
     expect(pages).toEqual([
