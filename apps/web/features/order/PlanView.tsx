@@ -9,6 +9,7 @@ import { type Lang, LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { dollars } from '../goal/sheet';
 import { formatBps, tokenName } from './amounts';
+import { ASSET_LOGOS } from './asset-logos';
 import { displayName } from './plain';
 
 // A plan, showing how, whatever it is a plan of (gate INVEST-TWO-PANE): the shape a plan's own page
@@ -101,13 +102,6 @@ const percent = (value: number, lang: Lang) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value / 100);
-
-/** Locally served, verified token artwork; unknown assets retain their ticker. */
-const ASSET_LOGOS = new Map([
-  ['jlusdc', '/assets/tokens/jlusdc.png'],
-  ['syrupusdc', '/assets/tokens/syrupusdc.png'],
-  ['paxg', '/assets/tokens/paxg.png'],
-]);
 
 /** The same asset identity in allocation segments, labels and holding rows. */
 export function AssetMark({ asset, className }: { asset: string; className?: string }) {

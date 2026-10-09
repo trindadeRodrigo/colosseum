@@ -1,6 +1,7 @@
 'use client';
 import type { ChainId, Provenance } from '@colosseum/schemas';
 import { useId } from 'react';
+import { ChainLogo } from '../../components/ui/ChainLogo';
 import { cn } from '../../components/ui/cn';
 import { MockPlate } from '../../components/ui/MockPlate';
 import { shortAddress } from '../shared/use-person';
@@ -8,7 +9,8 @@ import { shortAddress } from '../shared/use-person';
 // The chain of one thing, chosen where it starts (gate CHAIN-AT-THE-PLAN): a new plan on /goal, a buy of
 // a shared portfolio that has a recipe on each chain. Two options side by side, a radio group: the
 // chain's name, the person's wallet there cut to its ends, and the sample glyph with "test network"
-// where the chain is not live (MOCK-QUIET). Text only: the brand has no mark for a chain. The chosen
+// where the chain is not live (MOCK-QUIET). The chain's own mark comes before its name where there is a
+// file for it (Thom, 2026-10-09). The chosen
 // one is tinted, never outlined in honey (card.md), and its words stay in the foreground colour: muted
 // text on the tint is under 4.5:1 on day.
 
@@ -83,6 +85,7 @@ export function ChainChoice({
                   if (!disabled) onChange(option.chain);
                 }}
               />
+              <ChainLogo chain={option.chain} size={16} decorative />
               <span className="min-w-0 [overflow-wrap:anywhere]">
                 {busy === option.chain ? labels.saving : option.name}
               </span>
