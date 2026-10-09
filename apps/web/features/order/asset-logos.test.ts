@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { SYMBOLS, tokenName } from './amounts';
 import { ASSET_LOGOS, NO_ARTWORK } from './asset-logos';
@@ -33,7 +34,14 @@ describe('token artwork', () => {
     // the USDG mark ships as 1000 by 1001
     expect(Math.abs(width - height)).toBeLessThanOrEqual(1);
     expect(README).toContain(`| ${name} |`);
-    expect(README).toMatch(new RegExp(`- ${name.replace('.', '\\.')}: [0-9a-f]{64}`));
+    // the hash the README records is the hash of the bytes served
+    expect(README).toContain(`- ${name}: ${createHash('sha256').update(bytes).digest('hex')}`);
+  });
+
+  it('points every name at the file of that name, the test dollar of Robinhood Chain apart', () => {
+    for (const [name, src] of ASSET_LOGOS) {
+      expect(src).toBe(`/assets/tokens/${name === 'tusdg' ? 'usdg' : name}.png`);
+    }
   });
 
   it('serves no picture the mapping does not name', () => {
@@ -43,7 +51,10 @@ describe('token artwork', () => {
 
   it('keeps the source beside every picture drawn from an SVG', () => {
     for (const name of ['syrupusdc', 'syrupusdt', 'syrupusdg', 'usdy', 'sol']) {
-      expect(existsSync(`${DIR}/${name}.svg`)).toBe(true);
+      const source = readFileSync(`${DIR}/${name}.svg`);
+      expect(README).toContain(
+        `- ${name}.svg (source): ${createHash('sha256').update(source).digest('hex')}`,
+      );
     }
   });
 

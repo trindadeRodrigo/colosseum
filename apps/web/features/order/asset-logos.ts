@@ -37,6 +37,7 @@ export const ASSET_LOGOS: ReadonlyMap<string, string> = new Map([
   // Robinhood Chain's dollar on the test network is the same token's stand-in.
   ['tusdg', file('usdg')],
   ['usdy', file('usdy')],
+  // JUP is on no shelf today; an id that names it (`solana:jup`) shows it.
   ['jup', file('jup')],
   ['sol', file('sol')],
   ...XSTOCKS.map((name) => [name, file(name)] as const),
@@ -66,5 +67,6 @@ export const NO_ARTWORK: ReadonlyMap<string, string> = new Map([
   ['qqq', NO_KIT],
   ['gld', NO_KIT],
   ['sgov', NO_KIT],
+  // listed on Robinhood Chain but not on the shelf yet: decided ahead of it
   ['tsm', NO_KIT],
 ]);

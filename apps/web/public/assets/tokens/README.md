@@ -1,6 +1,6 @@
 # Token artwork
 
-Verified token marks, served locally as transparent PNGs for asset identification. Original artwork and colours are preserved; these marks are not partnership badges. Unknown assets and failed image loads keep the ticker fallback. Visible names and shares remain the accessible labels.
+Verified token marks, served locally as PNGs for asset identification: transparent, except the 16 xStocks images, which are the issuer's opaque square tiles. Original artwork and colours are preserved; these marks are not partnership badges. Unknown assets and failed image loads keep the ticker fallback. Visible names and shares remain the accessible labels.
 
 | Token | File | Official evidence | Original asset |
 |---|---|---|---|

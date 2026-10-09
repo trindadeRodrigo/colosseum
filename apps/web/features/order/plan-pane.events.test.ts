@@ -259,6 +259,18 @@ describe('the allocation, as the picture', () => {
     expect(mark.textContent).toBe('jlU');
   });
 
+  it('writes the ticker, and draws no picture, for a token left without artwork', async () => {
+    for (const [asset, letters] of [
+      ['solana:usdc', 'USD'],
+      ['robinhood:taapl', 'AAP'],
+    ] as const) {
+      const host = await mount(createElement(AssetMark, { asset }));
+      const mark = find(host, '[data-ui="asset-mark"]');
+      expect(mark.querySelector('img')).toBeNull();
+      expect(mark.textContent).toBe(letters);
+    }
+  });
+
   it('draws one bar as a picture, a part per holding by its share, with a label to press under each', async () => {
     const host = await pane(of('grow'));
     const bar = find(host, '[data-ui="plan-bar"]');
