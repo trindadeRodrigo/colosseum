@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { Refusal, refusing } from '../../orders/errors';
 import type { OrderDeps } from '../../orders/legs';
 import { type PlanInputs, preparePersonalInputs } from '../../orders/personalize';
+import { statedPurpose } from '../../orders/stated-purpose';
 import {
   type AgentAnalytics,
   analyticsGap,
@@ -30,10 +31,10 @@ import { signedIn } from './orders';
 export const GoalConversationReply = VaultAgentReplyShape.extend({
   chain: ChainId,
   goal: VaultAgentStatedPurpose.shape.goal.describe(
-    'What the person said the money is for, as the model read it and only where the words it quotes are in their messages. Null until they have said it; never defaulted.',
+    'What the person said the money is for, read by the server from plain statements in their own messages; the latest one stands. Null until they have plainly said it, and after they take it back or question it. Never the model’s reading and never defaulted.',
   ),
   risk: VaultAgentStatedPurpose.shape.risk.describe(
-    'The risk the person said they accept, read and checked the same way. Null until they have said it; never defaulted.',
+    'The risk the person said they accept, read the same way. Null until they have plainly said it; never defaulted.',
   ),
 }).superRefine(warningsBelong);
 export const GoalConversationReplyError = z.strictObject({
@@ -64,7 +65,7 @@ export function registerGoalConversationReplyRoute(
         tags: ['plans'],
         summary: 'Discuss a new goal and preview model-proposed allocations',
         description:
-          'Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. Uses the existing model and shared call quota. A preview requires separate fresh goal and amount confirmation before any financial review.',
+          'Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. Uses the existing model and shared call quota. A preview requires separate fresh goal and amount confirmation before any financial review. No goal is stored for a new goal yet and none is taken from the request, so no pick is checked against one here and `proposal.unknowns` says so: `POST /v1/conversations/{chain}/goal/accept` checks the mix against the goal the person confirms.',
         params: z.strictObject({ chain: ChainId }),
         body: VaultAgentRequest,
         response: {
@@ -170,7 +171,8 @@ export function registerGoalConversationReplyRoute(
             ? 'the new-goal conversation reply passed on its repair attempt'
             : 'the new-goal conversation reply asks about a stated limit its repair attempt still missed',
         );
-      return { ...result.reply, chain, goal: null, risk: null, ...result.purpose };
+      // Read from the person's messages alone: the same whichever model attempt is served.
+      return { ...result.reply, chain, ...statedPurpose(req.body.messages) };
     },
   );
 }

@@ -10,7 +10,10 @@ import type { AgentAnalytics } from '../../orders/vault-agent';
 import { registerAuth } from '../../plugins/auth';
 import { person, testIssuer } from '../../testing/harness';
 import type { VaultAgentModel } from '../../vault-agent-model';
-import { registerVaultConversationReplyRoute } from './vault-conversation-reply';
+import {
+  registerVaultConversationReplyRoute,
+  type VaultPlanGoal,
+} from './vault-conversation-reply';
 
 const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
@@ -59,6 +62,8 @@ async function setup(available = true, analytics?: AgentAnalytics) {
   );
   const assets = vi.spyOn(chains.get('solana').adapter, 'listAssets');
   const inputs = vi.fn(async () => ({}));
+  // The stored plan's goal, as the server holds it; the database itself stays out of reach below.
+  const plan = vi.fn<VaultPlanGoal>(async () => null);
   const model: VaultAgentModel = {
     read: vi.fn(async () => ({
       reply: {
@@ -92,6 +97,7 @@ async function setup(available = true, analytics?: AgentAnalytics) {
     available ? model : null,
     inputs,
     analytics,
+    plan,
   );
   const body = {
     version: 1,
@@ -120,6 +126,8 @@ async function setup(available = true, analytics?: AgentAnalytics) {
     read,
     assets,
     inputs,
+    plan,
+    listed,
     setOwner: (value: string) => {
       owner = value;
     },
@@ -232,6 +240,7 @@ describe('private model-led vault reply route', () => {
     });
     expect(s.assets).not.toHaveBeenCalled();
     expect(s.inputs).not.toHaveBeenCalled();
+    expect(s.plan).not.toHaveBeenCalled();
   });
   it.each(['timeout', 'budget', 'invalid'] as const)(
     'returns sanitized %s failures without changed-vault claims',
@@ -257,6 +266,124 @@ describe('private model-led vault reply route', () => {
     expect(res.body).not.toContain('rebalanced');
     expect(s.model.read).toHaveBeenCalledTimes(2);
   });
+  const picks = (...ids: string[]) => ({
+    reply: {
+      message: 'Here is a possible direction for your vault.',
+      question: null,
+      proposal: {
+        objective: 'Follow the direction you described',
+        summary: 'A preview for discussion.',
+        allocations: ids.map((assetId) => ({
+          assetId,
+          why: 'This follows what you asked for.',
+          evidenceIds: [`catalog:${assetId}`],
+        })),
+        stated: [],
+        tradeoffs: [],
+        unknowns: [],
+      },
+    },
+  });
+  const pickable = (s: Awaited<ReturnType<typeof setup>>) => {
+    const of = (cls: string) => s.listed.find((asset) => asset.cls === cls);
+    const [stock, gold, reserve] = [of('stock'), of('gold'), of('dollar_yield')];
+    if (!stock || !gold || !reserve) throw new Error('catalog fixture missing a class');
+    return { stock, gold, reserve };
+  };
+  const said = (s: Awaited<ReturnType<typeof setup>>, text: string, language = 'en') => ({
+    ...s.body,
+    language,
+    messages: [{ who: 'person', text }],
+  });
+
+  it('holds the picks to the goal of the stored plan, read on the server for this person and vault', async () => {
+    const s = await setup();
+    const { stock, gold, reserve } = pickable(s);
+    s.plan.mockResolvedValue({ goal: 'income', risk: 'low' });
+    // Gold pays nothing, so the review of the targets refuses it in an income plan, and the model
+    // added the stock on its own: both are left out, and the reply says so.
+    vi.mocked(s.model.read).mockResolvedValue(picks(stock.id, gold.id, reserve.id));
+    const res = await s.post(s.a, s.path, said(s, 'Keep my income steady.'));
+    expect(res.statusCode, res.body).toBe(200);
+    expect(s.plan).toHaveBeenCalledWith('solana', s.address, s.a.sub);
+    expect(vi.mocked(s.model.read).mock.calls[0]?.[1]).toMatchObject({
+      currentGoals: [{ goal: 'income', risk: 'low' }],
+      eligibilityGoal: 'income',
+      outsideGoal: expect.arrayContaining([stock.id, gold.id]),
+      requestedOutsideGoal: [],
+    });
+    const reply = res.json();
+    expect(reply.proposal.allocations).toEqual([
+      expect.objectContaining({ assetId: reserve.id, weightBps: 10_000 }),
+    ]);
+    expect(reply.weightNotes).toContainEqual({
+      code: 'pick_outside_goal',
+      assetIds: [stock.id, gold.id],
+    });
+    expect(reply.warnings).toEqual([]);
+    expect(reply.proposal.unknowns.join(' ')).not.toContain('goal is unavailable');
+  });
+
+  it.each([
+    ['en', (symbol: string) => `I want ${symbol} in this vault.`],
+    ['pt', (symbol: string) => `Quero ${symbol} neste cofre.`],
+  ] as const)(
+    'keeps a stock the person asked for in a protect plan, with its warning (%s)',
+    async (language, ask) => {
+      const s = await setup();
+      const { stock, gold, reserve } = pickable(s);
+      s.plan.mockResolvedValue({ goal: 'protect', risk: 'low' });
+      vi.mocked(s.model.read).mockResolvedValue(picks(stock.id, gold.id, reserve.id));
+      const res = await s.post(s.a, s.path, said(s, ask(stock.symbol), language));
+      expect(res.statusCode, res.body).toBe(200);
+      const reply = res.json();
+      // A plan to protect holds gold; the stock is the person's own choice.
+      expect(reply.proposal.allocations.map((line: { assetId: string }) => line.assetId)).toEqual([
+        stock.id,
+        gold.id,
+        reserve.id,
+      ]);
+      expect(reply.warnings).toEqual([
+        { code: 'outside_goal_requested', assetId: stock.id, evidenceId: `catalog:${stock.id}` },
+      ]);
+      expect(reply.weightNotes.map((note: { code: string }) => note.code)).not.toContain(
+        'pick_outside_goal',
+      );
+      expect(s.model.read).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('never takes the goal from the request, and checks no pick where the server holds no plan', async () => {
+    const s = await setup();
+    const { stock, gold, reserve } = pickable(s);
+    for (const extra of [{ goal: 'grow' }, { currentGoals: [{ goal: 'grow' }] }])
+      expect((await s.post(s.a, s.path, { ...s.body, ...extra })).statusCode).toBe(400);
+    expect(s.model.read).not.toHaveBeenCalled();
+    // A vault opened outside the app, or one whose plan is not this person's to read.
+    vi.mocked(s.model.read).mockResolvedValue(picks(stock.id, gold.id, reserve.id));
+    const res = await s.post();
+    expect(res.statusCode, res.body).toBe(200);
+    expect(vi.mocked(s.model.read).mock.calls[0]?.[1]).toMatchObject({
+      currentGoals: [],
+      eligibilityGoal: null,
+      outsideGoal: [],
+    });
+    const reply = res.json();
+    expect(reply.proposal.allocations).toHaveLength(3);
+    expect(reply.warnings).toEqual([]);
+    expect(reply.proposal.unknowns).toContain(
+      'The current investment goal is unavailable; this preview has not been checked against income or protection eligibility.',
+    );
+  });
+
+  it('answers no reply when the stored plan cannot be read, and never an unchecked one', async () => {
+    const s = await setup();
+    s.plan.mockRejectedValue(new Error('the pool is exhausted'));
+    const res = await s.post();
+    expect(res.statusCode).toBeGreaterThanOrEqual(400);
+    expect(s.model.read).not.toHaveBeenCalled();
+  });
+
   it('serves a reply whose repair attempt still states a figure without that sentence', async () => {
     const s = await setup();
     const figure = {

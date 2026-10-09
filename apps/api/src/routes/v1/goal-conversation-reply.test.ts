@@ -340,60 +340,78 @@ describe('new-goal model preview route', () => {
     expect(second.json()).not.toHaveProperty('id');
     expect(second.json().proposal).not.toHaveProperty('recipes');
   });
-  it('serves the goal and risk only as the person said them, and never a default', async () => {
+  it('serves the goal and risk the server read in the person’s words, whatever the model replies', async () => {
     const s = await setup();
-    const said = { who: 'person', text: 'I want it to grow and I can take high risk.' };
-    const purpose = (over: object) => ({
-      goal: null,
-      goalQuote: null,
-      risk: null,
-      riskQuote: null,
-      ...over,
-    });
-    const ask = async (reply: object, messages: object[] = [said]) => {
+    const person = (text: string) => ({ who: 'person', text });
+    const ask = async (messages: object[], reply: object = s.proposal()) => {
       vi.mocked(s.model.read).mockResolvedValueOnce({ reply });
       const res = await s.post(s.owner, { ...s.body, messages });
       expect(res.statusCode, res.body).toBe(200);
       return res.json();
     };
-    // unsaid, or a reply from before the field: null, with the proposal still served
-    expect(await ask(s.proposal())).toMatchObject({ goal: null, risk: null });
-    expect(await ask({ ...s.proposal(), purpose: null })).toMatchObject({ goal: null, risk: null });
-    expect((await ask({ ...s.proposal(), purpose: purpose({}) })).proposal).not.toBeNull();
-    // said in the person's own words, whatever the case or spacing of the quote
-    expect(
-      await ask({
-        ...s.proposal(),
-        purpose: purpose({
-          goal: 'grow',
-          goalQuote: 'want it to  GROW',
-          risk: 'high',
-          riskQuote: 'high risk',
-        }),
-      }),
-    ).toMatchObject({ goal: 'grow', risk: 'high' });
-    // a value with no quote, or a quote the person never wrote (the app's own words), is dropped
-    expect(
-      await ask(
-        {
-          message: 'Noted.',
-          question: null,
-          proposal: null,
-          purpose: purpose({
-            goal: 'protect',
-            goalQuote: 'keep it safe',
-            risk: 'low',
-            riskQuote: null,
-          }),
-        },
-        [{ who: 'app', text: 'Do you want to keep it safe?' }, said],
-      ),
-    ).toMatchObject({ goal: null, risk: null, proposal: null });
-    // a value outside the allowed ones fails the reply's shape and is never served
-    vi.mocked(s.model.read).mockResolvedValue({
-      reply: { ...s.proposal(), purpose: purpose({ goal: 'speculate', goalQuote: 'grow' }) },
+    // unsaid: null, with the proposal still served, and the model told what is missing
+    const unsaid = await ask([person('Some of the named business.')]);
+    expect(unsaid).toMatchObject({ goal: null, risk: null });
+    expect(unsaid.proposal).not.toBeNull();
+    expect(vi.mocked(s.model.read).mock.lastCall?.[1]).toMatchObject({
+      statedPurpose: { goal: null, risk: null },
     });
-    expect((await s.post(s.owner, { ...s.body, messages: [said] })).statusCode).toBe(503);
+    const said = await ask([person('I want it to grow, high risk is fine.')]);
+    expect(said).toMatchObject({ goal: 'grow', risk: 'high' });
+    expect(vi.mocked(s.model.read).mock.lastCall?.[1]).toMatchObject({
+      statedPurpose: { goal: 'grow', risk: 'high' },
+    });
+    // a reply with no proposal carries them too, and a field of the model's own is not a way in
+    expect(
+      await ask([person('Keep it safe, low risk.')], {
+        message: 'Noted.',
+        question: null,
+        proposal: null,
+      }),
+    ).toMatchObject({ goal: 'protect', risk: 'low', proposal: null });
+    vi.mocked(s.model.read).mockResolvedValue({
+      reply: { ...s.proposal(), purpose: { goal: 'grow', risk: 'high' } },
+    });
+    expect(
+      (await s.post(s.owner, { ...s.body, messages: [person('Tell me about Tesla.')] })).statusCode,
+    ).toBe(503);
+  });
+  it.each([
+    [['I do not want growth, I am retired.']],
+    [['Only low risk please.'], { goal: null, risk: 'low' }],
+    [['Is protect better than grow for me?']],
+    [
+      ['I want it to grow, high risk is fine.', 'Actually no. Keep it safe, low risk.'],
+      { goal: 'protect', risk: 'low' },
+    ],
+    [['This is for my retirement in Tesla and Nvidia.']],
+    [['Tell me about Tesla.']],
+    [['Go slow, I am incoming to this.']],
+    [['Não quero risco alto nem crescer rápido.']],
+  ] as [string[], { goal: string | null; risk: string | null }?][])(
+    'never serves a goal or risk the person did not state: %j',
+    async (texts, expected = { goal: null, risk: null }) => {
+      const s = await setup();
+      vi.mocked(s.model.read).mockResolvedValueOnce({ reply: s.proposal() });
+      const res = await s.post(s.owner, {
+        ...s.body,
+        messages: texts.map((text) => ({ who: 'person', text })),
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      expect(res.json()).toMatchObject(expected);
+    },
+  );
+  it('does not take a yes to the app’s question as a goal or a risk', async () => {
+    const s = await setup();
+    vi.mocked(s.model.read).mockResolvedValueOnce({ reply: s.proposal() });
+    const res = await s.post(s.owner, {
+      ...s.body,
+      messages: [
+        { who: 'app', text: 'Should this be kept safe, at low risk?' },
+        { who: 'person', text: 'yes' },
+      ],
+    });
+    expect(res.json()).toMatchObject({ goal: null, risk: null });
   });
   it('retains the explicit stock minimum and returns a useful question for a conflicting model draft', async () => {
     const s = await setup();

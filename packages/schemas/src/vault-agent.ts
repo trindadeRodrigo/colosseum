@@ -66,26 +66,19 @@ export const VaultAgentModelProposal = z.strictObject({
   unknowns: z.array(prose(600)).max(12),
 });
 /**
- * What the money is for and the risk the person accepts, as the model read them in a new-goal
- * conversation: each a value the person stated or confirmed, with their own words for it, or null when
- * unsaid. The server keeps a value only where its quote is in one of the person's messages
- * (`VaultAgentStatedPurpose`); it never fills one in.
+ * What a new goal's money is for and the risk the person accepts, as the server read them in the
+ * person's own messages (`statedPurpose`, apps/api). Null: the person has not plainly said it. Never
+ * the model's reading, and never a default.
  */
-export const VaultAgentPurpose = z.strictObject({
+export const VaultAgentStatedPurpose = z.strictObject({
   goal: z.enum(['grow', 'income', 'protect']).nullable(),
-  goalQuote: prose(400).nullable(),
   risk: z.enum(['low', 'medium', 'high']).nullable(),
-  riskQuote: prose(400).nullable(),
 });
-export type VaultAgentPurpose = z.infer<typeof VaultAgentPurpose>;
-/** The goal and risk the person said, as served with a new-goal reply. Null: the person has not said. */
-export const VaultAgentStatedPurpose = VaultAgentPurpose.pick({ goal: true, risk: true });
 export type VaultAgentStatedPurpose = z.infer<typeof VaultAgentStatedPurpose>;
 export const VaultAgentModelReply = z.strictObject({
   message: prose(2400),
   question: prose(500).nullable(),
   proposal: VaultAgentModelProposal.nullable(),
-  purpose: VaultAgentPurpose.nullable().optional(),
 });
 export type VaultAgentModelReply = z.infer<typeof VaultAgentModelReply>;
 
@@ -132,6 +125,9 @@ export type VaultAgentWarning = z.infer<typeof VaultAgentWarning>;
  * "70% TSLA is too risky", "a third in TSLA", "I don't want 70% TSLA", "60% TSLA for growth", "the rest
  * in gold" when the rest did not go there). The weights do not follow it. `share_withdrawn`: the
  * person's latest message withdrew the share in `quote` ("Forget TSLA", "split it equally").
+ * `pick_outside_goal`: the model picked these assets and a plan for the vault's goal cannot hold them
+ * (in an income or protect plan: any class outside the goal but a stock, which the review of the
+ * targets refuses, or a stock the person did not ask for), so they are not in the proposal.
  */
 export const VaultAgentWeightNote = z.strictObject({
   code: z.enum([
@@ -142,6 +138,7 @@ export const VaultAgentWeightNote = z.strictObject({
     'share_unmet',
     'share_unread',
     'share_withdrawn',
+    'pick_outside_goal',
   ]),
   assetIds: z.array(AssetId).max(64),
   quote: prose(400).optional(),
@@ -160,7 +157,8 @@ export const VaultAgentReplyShape = z.strictObject({
 /**
  * A warning belongs to the proposal: none without one, and each on one of its assets and sources. A
  * note on served weights (`equal_split`, `stated`, `scaled`) names served picks; without a proposal only
- * `share_unmet` and `share_unread` can stand.
+ * `share_unmet`, `share_unread` and `pick_outside_goal` can stand. An asset left out for the goal is
+ * not among the proposal's.
  */
 export function warningsBelong(
   reply: Pick<z.infer<typeof VaultAgentReplyShape>, 'proposal' | 'warnings' | 'weightNotes'>,
@@ -180,12 +178,13 @@ export function warningsBelong(
     const served = note.code === 'equal_split' || note.code === 'stated' || note.code === 'scaled';
     if (
       (served && (!reply.proposal || note.assetIds.some((id) => !assets.has(id)))) ||
-      (note.code === 'pick_dropped' && !reply.proposal)
+      (note.code === 'pick_dropped' && !reply.proposal) ||
+      (note.code === 'pick_outside_goal' && note.assetIds.some((id) => assets.has(id)))
     )
       context.addIssue({
         code: 'custom',
         path: ['weightNotes', index],
-        message: 'A note on served weights names picks of the proposal.',
+        message: 'A note names picks of the proposal, or for the goal none of them.',
       });
   });
 }
@@ -200,12 +199,6 @@ export type VaultAgentFailure = 'unavailable' | 'timeout' | 'budget' | 'invalid'
  */
 export type VaultAgentRepairNote = { failed: string; outcome: string; sentencesCut?: number };
 export type VaultAgentResult =
-  /** `purpose`: a new-goal reply's goal and risk as the person said them; absent for a vault. */
-  | {
-      kind: 'reply';
-      reply: VaultAgentReply;
-      purpose?: VaultAgentStatedPurpose;
-      repair?: VaultAgentRepairNote;
-    }
+  | { kind: 'reply'; reply: VaultAgentReply; repair?: VaultAgentRepairNote }
   /** `detail` is a fixed code for the server log (which check failed); never the person's text. */
   | { kind: 'failure'; reason: VaultAgentFailure; detail?: string; repair?: VaultAgentRepairNote };

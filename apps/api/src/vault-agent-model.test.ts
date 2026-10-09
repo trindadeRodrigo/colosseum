@@ -23,6 +23,7 @@ import {
   VAULT_AGENT_REPLY_SCHEMA,
   VAULT_AGENT_SYSTEM,
   VAULT_AGENT_TIMEOUT_MS,
+  vaultAgentContent,
   vaultAgentEffort,
   vaultAgentModelId,
   vaultAgentTimeoutMs,
@@ -51,7 +52,11 @@ const prompt = {
   version: 1,
   language: 'en',
   messages: [{ who: 'person', text: 'Discuss my vault.' }],
-} as VaultAgentPrompt;
+  catalog: [],
+  stockAttributes: null,
+  evidence: [],
+  analytics: null,
+} as unknown as VaultAgentPrompt;
 const options = {
   apiKey: 'offline-test-placeholder',
   model: 'configured-fixture-model',
@@ -88,7 +93,7 @@ describe('vault proposal provider uses the existing model settings and a shared 
       expect.objectContaining({
         model: options.model,
         max_tokens: VAULT_AGENT_MAX_TOKENS,
-        messages: [{ role: 'user', content: JSON.stringify(prompt) }],
+        messages: [{ role: 'user', content: vaultAgentContent(prompt) }],
         output_config: { format: { type: 'json_schema', schema: VAULT_AGENT_REPLY_SCHEMA } },
       }),
       { timeout: 6000 },
@@ -165,7 +170,7 @@ describe('vault proposal provider uses the existing model settings and a shared 
     expect(sdk.create).toHaveBeenLastCalledWith(
       expect.objectContaining({
         messages: [
-          { role: 'user', content: JSON.stringify(prompt) },
+          { role: 'user', content: vaultAgentContent(prompt) },
           { role: 'assistant', content: JSON.stringify(previous) },
           { role: 'user', content: repairRequest(['Prose said something was applied.']) },
         ],
@@ -206,14 +211,10 @@ describe('vault proposal provider uses the existing model settings and a shared 
     expect(sdk.create).toHaveBeenLastCalledWith(expect.anything(), { timeout: 1000 });
   });
 
-  it('asks for the goal and risk as the person said them, with their words, and to ask when unsaid', () => {
-    const { purpose } = VAULT_AGENT_REPLY_SCHEMA.properties as unknown as {
-      purpose: { required: string[] };
-    };
-    expect(purpose.required).toEqual(['goal', 'goalQuote', 'risk', 'riskQuote']);
-    expect(VAULT_AGENT_REPLY_SCHEMA.required).toContain('purpose');
-    expect(VAULT_AGENT_SYSTEM).toContain('copied exactly from one person message');
-    expect(VAULT_AGENT_SYSTEM).toContain('Never infer either');
+  it('leaves the goal and risk to the server: none in the reply schema, and the model asks for what is missing', () => {
+    expect(JSON.stringify(VAULT_AGENT_REPLY_SCHEMA)).not.toMatch(/purpose|goal|risk/);
+    expect(VAULT_AGENT_SYSTEM).toContain('Only the server reads these');
+    expect(VAULT_AGENT_SYSTEM).toContain('Never state, assume or infer a goal or a risk');
     expect(VAULT_AGENT_SYSTEM).toContain('use question to ask for what is missing');
   });
 
@@ -476,8 +477,14 @@ function respond(reply: VaultAgentModelReply) {
     content: [{ type: 'text', text: JSON.stringify(reply) }],
   });
 }
-function sentPrompt(): VaultAgentPrompt {
-  return JSON.parse(sdk.create.mock.calls.at(-1)?.[0].messages[0].content);
+/** The prompt the model read: its parts as one object, the evidence of the first and the last together. */
+function sentPrompt(call = sdk.create.mock.calls.at(-1)): VaultAgentPrompt {
+  const parts = ((call?.[0].messages[0].content ?? []) as Array<{ text: string }>).map(({ text }) =>
+    JSON.parse(text),
+  );
+  return Object.assign({}, ...parts, {
+    evidence: parts.flatMap((part) => part.evidence ?? []),
+  });
 }
 const offlineModel = () =>
   createAnthropicVaultAgentModel({ ...options, quota: { reserve: () => null } });
@@ -523,10 +530,13 @@ describe('conversation context and grounded replies through the provider stub', 
       messages,
       latestPerson: messages.at(-1)?.text,
       vault: state,
-      // The rows without their source lists: those reach the model as evidence it may cite.
+      // The rows without their source lists: those reach the model as evidence it may cite. They go
+      // out sorted by symbol, in the cached block.
       stockAttributes: {
         ...attributes,
-        stocks: attributes.stocks.map(({ sources: _sources, ...row }) => row),
+        stocks: attributes.stocks
+          .map(({ sources: _sources, ...row }) => row)
+          .sort((a, b) => (a.symbol < b.symbol ? -1 : 1)),
       },
       allocationConstraints: [],
     });
@@ -722,7 +732,6 @@ describe('conversation context and grounded replies through the provider stub', 
     ['invented-source', 'allocation_evidence'],
     ['wrong-asset-source', 'allocation_evidence'],
     ['invented-figure', 'prose_figure'],
-    ['unasked-stock', 'allocation_ineligible'],
   ])(
     'rejects a provider fixture with %s while keeping the grounded proposal boundary',
     async (fault, detail) => {
@@ -732,13 +741,8 @@ describe('conversation context and grounded replies through the provider stub', 
       if (fault === 'invented-source') allocation.evidenceIds = ['stock:invented:0'];
       if (fault === 'wrong-asset-source') allocation.evidenceIds = [`catalog:${cash.id}`];
       if (fault === 'invented-figure') allocation.why = 'The stock will return 12%.';
-      const context = {
-        ...conversationContext,
-        ...(fault === 'unasked-stock' ? { currentGoals: [{ goal: 'protect' }] } : {}),
-      };
-      // The person never asks for a stock in the protect case: the model may not add one.
-      const text =
-        fault === 'unasked-stock' ? 'Keep my savings safe.' : 'I want electric vehicle stocks.';
+      const context = conversationContext;
+      const text = 'I want electric vehicle stocks.';
       // The repair call returns the same reply: it is refused again, never shown or substituted.
       respond(value);
       respond(value);
@@ -776,6 +780,30 @@ describe('conversation context and grounded replies through the provider stub', 
       ]);
     },
   );
+
+  it('leaves out a stock the provider adds on its own in a protect goal, after asking once for a reply without it', async () => {
+    const value = draft();
+    // The repair call returns the same reply: the stock is left out again, and the reply says so.
+    respond(value);
+    respond(value);
+    const out = await replyToVaultConversation(
+      turn([{ who: 'person', text: 'Keep my savings safe.' }]),
+      { ...conversationContext, currentGoals: [{ goal: 'protect' }] },
+      offlineModel(),
+    );
+    if (out.kind !== 'reply') throw new Error(`refused: ${JSON.stringify(out)}`);
+    expect(out.reply.proposal?.allocations.map((line) => line.assetId)).toEqual([cash.id]);
+    expect(out.reply.weightNotes).toContainEqual({
+      code: 'pick_outside_goal',
+      assetIds: [tesla.id],
+    });
+    expect(out.repair).toEqual({
+      failed: 'allocation_ineligible',
+      outcome: 'allocation_ineligible',
+    });
+    expect(sdk.create).toHaveBeenCalledTimes(2);
+    expect(sdk.create.mock.calls[1]?.[0].messages.at(-1)?.content).toContain(tesla.id);
+  });
 
   it('passes a requested stock in a protect goal and a weight over exit capacity, each with a server warning', async () => {
     const value = draft();
@@ -815,5 +843,248 @@ describe('conversation context and grounded replies through the provider stub', 
     expect(VAULT_AGENT_SYSTEM).toContain('any composition of listed assets');
     expect(VAULT_AGENT_SYSTEM).toContain('requestedOutsideGoal');
     expect(VAULT_AGENT_SYSTEM).not.toContain('catalog and guardrail caps');
+  });
+});
+
+describe('the conversation prompt is ordered for prompt caching', () => {
+  const usage = {
+    input_tokens: 900,
+    cache_creation_input_tokens: 0,
+    cache_read_input_tokens: 5200,
+    output_tokens: 310,
+  };
+  const reference = {
+    sizeUsd: 10_000,
+    basis: 'reference' as const,
+    legend: { 'vol:<asset>': 'Annualised price volatility' },
+    assets: [
+      { assetId: tesla.id, values: { [`vol:${tesla.id}`]: 0.5 }, provenance: 'mock' as const },
+    ],
+    unknowns: [],
+  };
+  const volatility = {
+    id: `vol:${tesla.id}`,
+    assetId: tesla.id,
+    label: 'Annualised price volatility',
+    value: 0.5,
+    unit: 'fraction',
+    source: 'offline analytics fixture',
+    method: 'fixture',
+    fetchedAt: observedAt,
+    provenance: 'mock' as const,
+  };
+  const price = (usd: number, at: string) => ({
+    id: `price:${tesla.id}`,
+    assetId: tesla.id,
+    label: 'Reference price',
+    value: usd,
+    unit: 'USD',
+    source: 'offline reference fixture',
+    method: 'fixture',
+    fetchedAt: at,
+    provenance: 'mock' as const,
+  });
+  // The same data with every object's keys inserted the other way round.
+  const rekeyed = <T>(value: T): T =>
+    (Array.isArray(value)
+      ? value.map(rekeyed)
+      : value && typeof value === 'object'
+        ? Object.fromEntries(
+            Object.entries(value)
+              .reverse()
+              .map(([key, inner]) => [key, rekeyed(inner)]),
+          )
+        : value) as T;
+  const send = async (
+    context: VaultAgentContext | GoalAgentContext,
+    text: string,
+    language: 'en' | 'pt' = 'en',
+  ) => {
+    sdk.create.mockResolvedValueOnce({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: '{"message":"Hi.","question":null,"proposal":null}' }],
+      usage,
+    });
+    const out = await replyToVaultConversation(
+      turn([{ who: 'person', text }], language),
+      context,
+      offlineModel(),
+    );
+    expect(out.kind, JSON.stringify(out)).toBe('reply');
+    return sdk.create.mock.calls.at(-1)?.[0];
+  };
+  const breakpoints = (body: { messages: Array<{ content: unknown }> }) =>
+    ((body.messages[0]?.content ?? []) as Array<{ text: string; cache_control?: unknown }>).map(
+      (block) => block.cache_control ?? null,
+    );
+
+  it('ends the shared part in a breakpoint and leaves what is the person\u2019s after it', async () => {
+    const body = await send(
+      {
+        ...conversationContext,
+        evidence: [...conversationContext.evidence, price(250, observedAt)],
+      },
+      'I want electric vehicle stocks.',
+    );
+    expect(body.system).toBe(VAULT_AGENT_SYSTEM);
+    expect(breakpoints(body)).toEqual([{ type: 'ephemeral' }, null]);
+    const [shared, own] = (body.messages[0].content as Array<{ text: string }>).map(({ text }) =>
+      JSON.parse(text),
+    );
+    expect(Object.keys(shared)).toEqual([
+      'catalog',
+      'chain',
+      'evidence',
+      'exitCostTolerance',
+      'stockAttributes',
+      'version',
+    ]);
+    expect(shared.catalog.map((asset: { id: string }) => asset.id)).toEqual(
+      catalog.map((asset) => asset.id).sort(),
+    );
+    // The listing's evidence is shared; a price is read on every call and is not.
+    expect(shared.evidence.map((source: { id: string }) => source.id)).toEqual(
+      conversationContext.evidence.map((source) => source.id).sort(),
+    );
+    expect(own.evidence).toEqual([expect.objectContaining({ id: `price:${tesla.id}` })]);
+    for (const key of ['messages', 'latestPerson', 'language', 'vault', 'currentGoals', 'kind'])
+      expect(own, key).toHaveProperty(key);
+    for (const key of ['eligibilityGoal', 'outsideGoal', 'requestedOutsideGoal', 'liquidity'])
+      expect(own, key).toHaveProperty(key);
+    for (const key of Object.keys(own).filter((key) => key !== 'evidence'))
+      expect(shared, key).not.toHaveProperty(key);
+    // Nothing of the moment in the shared part: no time, no address, no person.
+    const text = body.messages[0].content[0].text as string;
+    expect(text).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+    expect(text).not.toContain(state.address);
+    expect(text).not.toContain(conversationContext.person);
+  });
+
+  it('sends two people the same bytes up to the breakpoint, whatever order their data came in', async () => {
+    const first = await send(
+      {
+        ...conversationContext,
+        evidence: [...conversationContext.evidence, price(250, observedAt)],
+      },
+      'I want electric vehicle stocks.',
+    );
+    const other: VaultAgentContext = {
+      ...conversationContext,
+      person: 'another-owner',
+      state: {
+        ...state,
+        address: state.owner,
+        observedAt: '2026-10-08T09:30:00.000Z',
+        cash: { ...state.cash, raw: '77000000', display: '77' },
+      },
+      currentGoals: [{ goal: 'protect', risk: 'low' }],
+      // The listing and its evidence arrive in another order too.
+      assets: rekeyed([...conversationContext.assets].reverse()),
+      stockAttributes: rekeyed(conversationContext.stockAttributes),
+      evidence: [
+        price(311, '2026-10-08T09:30:00.000Z'),
+        ...rekeyed([...conversationContext.evidence].reverse()),
+      ],
+      unknowns: ['Something only this vault lacks.'],
+    };
+    const second = await send(other, 'Quero proteger minhas economias.', 'pt');
+    expect(second.system).toBe(first.system);
+    expect(second.model).toBe(first.model);
+    expect(second.output_config).toEqual(first.output_config);
+    expect(second.messages[0].content[0]).toEqual(first.messages[0].content[0]);
+    expect(second.messages[0].content[0].text).toBe(first.messages[0].content[0].text);
+    expect(second.messages[0].content.at(-1).text).not.toBe(first.messages[0].content.at(-1).text);
+    expect(sentPrompt().eligibilityGoal).toBe('protect');
+  });
+
+  it('gives the analytics a breakpoint of their own only at the reference size', async () => {
+    const withAnalytics = (analytics: VaultAgentContext['analytics']) => ({
+      ...conversationContext,
+      evidence: [...conversationContext.evidence, volatility],
+      analytics,
+    });
+    const shared = await send(withAnalytics(reference), 'I want electric vehicle stocks.');
+    expect(breakpoints(shared)).toEqual([{ type: 'ephemeral' }, { type: 'ephemeral' }, null]);
+    expect(JSON.parse(shared.messages[0].content[1].text)).toEqual({ analytics: reference });
+    expect(JSON.parse(shared.messages[0].content[2].text)).not.toHaveProperty('analytics');
+    // At a vault's own value the figures are that person's: after the breakpoint, with the rest.
+    const sized = { ...reference, sizeUsd: 1234, basis: 'vault' as const };
+    const own = await send(withAnalytics(sized), 'I want electric vehicle stocks.');
+    expect(breakpoints(own)).toEqual([{ type: 'ephemeral' }, null]);
+    expect(JSON.parse(own.messages[0].content[1].text).analytics).toEqual(sized);
+    expect(own.messages[0].content[0].text).toBe(shared.messages[0].content[0].text);
+    expect(sentPrompt().analytics).toEqual(sized);
+  });
+
+  it('keeps the first message, breakpoints and all, on the repair call', async () => {
+    const model = offlineModel();
+    const reply = { stop_reason: 'end_turn', content: [{ type: 'text', text: '{}' }], usage };
+    await send(conversationContext, 'I want electric vehicle stocks.');
+    const sent = sentPrompt();
+    sdk.create.mockResolvedValueOnce(reply).mockResolvedValueOnce(reply);
+    await model.read('owner', sent);
+    await model.read('owner', sent, { previous: {}, problems: ['A.'], elapsedMs: 10 });
+    const [first, repair] = sdk.create.mock.calls.slice(-2).map((call) => call[0]);
+    expect(breakpoints(first)).toEqual([{ type: 'ephemeral' }, null]);
+    expect(repair.messages).toHaveLength(3);
+    expect(repair.messages[0]).toEqual(first.messages[0]);
+  });
+
+  it('reports each call\u2019s token counts, cached and not, and nothing of the person', async () => {
+    const onUsage = vi.fn();
+    const model = createAnthropicVaultAgentModel({
+      ...options,
+      quota: { reserve: () => null },
+      onUsage,
+    });
+    const reply = { stop_reason: 'end_turn', content: [{ type: 'text', text: '{}' }] };
+    sdk.create.mockResolvedValueOnce({ ...reply, usage }).mockResolvedValueOnce(reply);
+    await model.read('a-person-id', prompt);
+    await model.read('a-person-id', prompt, { previous: {}, problems: ['A.'], elapsedMs: 10 });
+    expect(onUsage.mock.calls).toEqual([
+      [{ model: options.model, call: 'first', ...usage }],
+      [
+        {
+          model: options.model,
+          call: 'repair',
+          input_tokens: null,
+          cache_creation_input_tokens: null,
+          cache_read_input_tokens: null,
+          output_tokens: null,
+        },
+      ],
+    ]);
+    // A call that fails reports nothing.
+    sdk.create.mockRejectedValueOnce(new Anthropic.APIConnectionTimeoutError({}));
+    await model.read('a-person-id', prompt);
+    expect(onUsage).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns the answer when the usage logger throws', async () => {
+    const model = createAnthropicVaultAgentModel({
+      ...options,
+      quota: { reserve: () => null },
+      onUsage: () => {
+        throw new Error('logger down');
+      },
+    });
+    sdk.create.mockResolvedValueOnce({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: '{"message":"ok"}' }],
+      usage,
+    });
+    expect(await model.read('a-person-id', prompt)).toEqual({ reply: { message: 'ok' } });
+  });
+
+  it('sorts the stock attributes in the cached block, whatever order they were loaded in', () => {
+    const stocks = ['TSLAx', 'AAPLx', 'NVDAx'].map((symbol) => ({ symbol, company: symbol }));
+    const withStocks = (rows: typeof stocks) =>
+      vaultAgentContent({ ...prompt, stockAttributes: { stocks: rows } as never })[0]?.text ?? '';
+    expect(withStocks(stocks)).toBe(withStocks([...stocks].reverse()));
+    expect(
+      JSON.parse(withStocks(stocks)).stockAttributes.stocks.map(
+        (row: { symbol: string }) => row.symbol,
+      ),
+    ).toEqual(['AAPLx', 'NVDAx', 'TSLAx']);
   });
 });

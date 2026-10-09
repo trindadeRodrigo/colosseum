@@ -9,23 +9,23 @@ import type {
   Price,
   Provenance,
   Shelf,
+  VaultAgentStatedPurpose,
   VaultState,
 } from '@colosseum/schemas';
 import {
   type VaultAgentSource as AgentSource,
   VaultAgentModelReply,
-  type VaultAgentPurpose,
   VaultAgentReply,
   VaultAgentRequest,
   type VaultAgentResult,
   VaultAgentSource,
-  type VaultAgentStatedPurpose,
   type VaultAgentWarning,
   type VaultAgentWeightNote,
 } from '@colosseum/schemas';
 import type { VaultAgentModel, VaultAgentRepair } from '../vault-agent-model';
 import type { ChainEntry } from './chains';
 import type { PlanInputs } from './personalize';
+import { statedPurpose } from './stated-purpose';
 
 type Figures = Awaited<ReturnType<PlanInputs>>;
 
@@ -188,7 +188,14 @@ export type VaultAgentPrompt = {
   /** Measured exit capacity as a share of the vault; above it is allowed and warned, not refused. */
   exitCapacityBps: Record<string, number>;
   eligibilityGoal: 'grow' | 'income' | 'protect' | null;
-  /** Assets outside eligibilityGoal that the person asked for in their own words. */
+  /**
+   * For a new goal, the goal and risk the server read in the person's own messages, null where it read
+   * none, so the model asks for what is missing. Null for a vault.
+   */
+  statedPurpose: VaultAgentStatedPurpose | null;
+  /** The listed assets a plan for eligibilityGoal cannot hold, by the registry's rule. */
+  outsideGoal: string[];
+  /** The stocks among outsideGoal that the person asked for in their own words. */
   requestedOutsideGoal: string[];
   /** The shares the server read in the person's own words, which set the weights; `personQuote` is those words. */
   allocationConstraints: Array<{
@@ -627,23 +634,6 @@ function eligibilityGoal(context: ConversationAgentContext): 'grow' | 'income' |
   return null;
 }
 
-/**
- * The goal and risk of a new goal as the person said them: the model's reading, each kept only where
- * the quote it gave is in one of the person's messages. Anything else is null, never a default.
- */
-function statedPurpose(
-  read: VaultAgentPurpose | null | undefined,
-  personWords: readonly string[],
-): VaultAgentStatedPurpose {
-  const plain = (text: string) => text.toLowerCase().replace(/\s+/g, ' ').trim();
-  const said = (quote: string | null | undefined) =>
-    !!quote && personWords.some((words) => plain(words).includes(plain(quote)));
-  return {
-    goal: read?.goal && said(read.goalQuote) ? read.goal : null,
-    risk: read?.risk && said(read.riskQuote) ? read.risk : null,
-  };
-}
-
 function hasNonFiniteNumber(value: unknown): boolean {
   if (typeof value === 'number') return !Number.isFinite(value);
   if (Array.isArray(value)) return value.some(hasNonFiniteNumber);
@@ -778,7 +768,7 @@ const REPAIR_HINTS: Record<string, string> = {
   allocation_lines:
     'The proposal held more than sixteen assets besides cash; a vault holds at most sixteen.',
   allocation_ineligible:
-    'An allocation used an asset that is outside eligibilityGoal (stocks in income or protect) and is not in requestedOutsideGoal. Only the person can ask for such an asset; never add one on your own. If the person seems to want it but has not plainly asked, leave it out and ask them to confirm in question.',
+    'An allocation used an asset that is in outsideGoal and not in requestedOutsideGoal, so the server left it out. A plan for eligibilityGoal cannot hold it: a stock only when the person asks for it themselves, any other class never. Remove it and every mention of it as proposed. For a stock the person seems to want but has not plainly asked for, ask them to confirm in question; for any other class, say that a plan with this goal cannot hold it.',
   allocation_evidence:
     'An allocation cited an evidenceId that does not exist in evidence or belongs to a different asset.',
   allocation_constraint:
@@ -808,16 +798,46 @@ const word = (pattern: string, flags: string) =>
 
 // The reader of "the person asked for this stock" (gate ANY-COMPOSITION). It errs towards missing a
 // request: a stock outside an income or protect goal that the person did not plainly ask for is refused,
-// and the model is told to ask them instead.
-const ASKS = word(
-  "want|wanna|i'?d\\s+like|would\\s+like|prefer|add|include|put|buy|allocate|invest|quero|queria|gostaria|prefiro|adicione|adiciona|adicionar|inclua|inclui|incluir|compre|compra|comprar|coloque|coloca|colocar|aloque|aloca|alocar|invista|investir|bote|bota|botar|põe|ponha|pôr",
+// and the model is told to ask them instead. These are the words for wanting to hold or add something;
+// "prefer" is not one, since it compares ("I prefer bonds to NVDA").
+const ASKS_WORDS =
+  "want|wanna|i'?d\\s+like|would\\s+like|add|include|put|buy|keep|allocate|invest|quero|queria|gostaria|adicione|adiciona|adicionar|inclua|inclui|incluir|compre|compra|comprar|coloque|coloca|colocar|aloque|aloca|alocar|invista|investir|bote|bota|botar|põe|ponha|pôr|manter|mantenha|mantém|mantem";
+const ASKS = word(ASKS_WORDS, 'iu');
+// "more NVDA" asks with no verb, but only for the name right after it.
+const ASKS_OR_MORE = word(`${ASKS_WORDS}|more|mais`, 'giu');
+// All that may stand between an asking word and the name it asks for ("I want [some] NVDA", "put [a
+// bit of my money in] NVDA"), and all that may stand after the name ("NVDA [in my plan, please]"). Two
+// short closed lists: any other word there and the name is not read as asked for. No quantity or degree
+// word stands after a name ("NVDA too little"), and a number counts only as a share, with its sign.
+const ASK_BEFORE_NAME = word(
+  'to\\s+(?:have|hold|own|get)|exposure\\s+to|a\\s+(?:bit|little|lot)(?:\\s+of)?|at\\s+least|exactly|some|a|an|the|of|in|into|my|me|more|also|just|tokenized|half|money|ter|exposição\\s+(?:a|em)|um\\s+pouco(?:\\s+de)?|pelo\\s+menos|exatamente|um|uma|uns|umas|o|os|as|de|do|da|dos|das|em|no|na|nos|nas|meu|minha|mais|também|tambem|metade|dinheiro',
+  'giu',
+);
+const ASK_AFTER_NAME = word(
+  '(?:in|into|to|on)\\s+(?:(?:my|the|this|that)\\s+)?(?:it|there|vault|plan|portfolio|mix)|(?:em|n[oa]|neste|nesse|nesta|nessa|para|pra|pro|ao)\\s+(?:(?:o|a|meu|minha)\\s+)?(?:cofre|plano|carteira)|for\\s+me|(?:pra|para)\\s+mim|after\\s+all|as\\s+well|at\\s+least|pelo\\s+menos|por\\s+favor|de\\s+novo|please|too|also|again|now|there|here|at|exactly|também|tambem|agora|afinal|aqui|nele|nela|em|com|exatamente',
+  'giu',
+);
+// A share: a number with its percent sign. A number without one is no filler.
+const ASK_SHARE =
+  /\d+(?:[.,]\d+)?\s*(?:%|(?:percent|per\s*cent|por\s*cento|pct)(?![\p{L}\p{N}]))/giu;
+// The kinds of asset a person names without a ticker. A piece that asks for one ("I want bonds") asks
+// for a thing, so a list may continue it; "I want safety, NVDA" asks for no thing.
+const KIND_WORDS = word(
+  'reserves?|bonds?|treasur(?:y|ies)|gold|cash|income|yield|stablecoins?|crypto|commodit(?:y|ies)|renda(?:\\s+fixa)?|ouro|caixa|reservas?|títulos|titulos|tesouro|cripto',
   'iu',
 );
+const SETS_AGAINST =
+  /^(?:from|against|than|over|to|for|with|about|on|contra|que|para|pra|por|sobre|com)$/iu;
+const EXCEPT = /^(?:just|only|só|apenas|somente)(?![\p{L}\p{N}])/iu;
+// One asking verb or one refusal covers a list: "I want TSLA, NVDA and a reserve", "sell TSLA and NVDA".
+const ASK_PIECES =
+  /(?<!\d),|,(?!\d)|(?<![\p{L}\p{N}])(?:and|or|then|e|ou|depois)(?![\p{L}\p{N}])/iu;
 const POLITE_ASK =
   /^(?:please\s+)?(?:can|could|would)\s+you\s+(?:please\s+)?(?:add|put|include|buy)\b|^(?:você\s+|voce\s+)?(?:pode|poderia)\s+(?:por\s+favor\s+)?(?:colocar|adicionar|incluir|comprar|pôr|botar)(?![\p{L}\p{N}])/iu;
-// A refusal, an exclusion, an upper bound, a withdrawal or a sale: the clause asks for nothing.
+// A refusal, an exclusion, an upper bound, a withdrawal, a sale, a reduction, a swap, a comparison
+// against or a worry: the clause asks for nothing.
 const REFUSES = word(
-  "no|not|none|never|nothing|without|except|excluding|exclude|avoid|avoiding|out|sell|selling|remove|drop|scratch|cut|minus|instead|rather|risky|less|fewer|stop|don'?t|do\\s+not|doesn'?t|won'?t|at\\s+most|no\\s+more|max|maximum|up\\s+to|already|menos|sem|não|nao|nada|nenhum|nenhuma|nunca|exceto|tirar|tire|tira|vender|venda|vende|evitar|evite|evita|arriscad[ao]s?|fora|máximo|maximo|até|já",
+  "zero|rid|reduce[sd]?|reducing|away|off|lower|trim|shrink\\p{L}*|halve[sd]?|swap|replace|trade|exit|dump|sold|gone|down|smaller|safer|riskier|versus|vs|compared|worr\\p{L}*|scared|afraid|nervous|concern\\p{L}*|sair|saia|reduzir|reduza|reduz|diminuir|diminua|trocar|troque|troca|substituir|substitua|livrar|desfazer|preocup\\p{L}*|medo|receio|mais\\s+segur[oa]s?|do\\s+que|em\\s+vez|ao\\s+invés|no|not|none|never|nothing|without|except|excluding|exclude|avoid|avoiding|out|sell|selling|remove|drop|scratch|cut|minus|instead|rather|risky|less|fewer|stop|don'?t|do\\s+not|doesn'?t|won'?t|at\\s+most|no\\s+more|max|maximum|up\\s+to|already|menos|sem|não|nao|nada|nenhum|nenhuma|nunca|exceto|tirar|tire|tira|vender|venda|vende|evitar|evite|evita|arriscad[ao]s?|fora|máximo|maximo|até|já",
   'iu',
 );
 // Someone else's view, a condition or a wish to talk about it: not the person's instruction.
@@ -860,11 +880,16 @@ function assetNames(asset: BasketAsset, companies: string[]): RegExp[] {
 }
 
 /**
- * The stocks the person asked for in their own words, read clause by clause. A stock, its company or
- * "stocks" counts only in an affirmative clause: an asking verb before it in the sentence, and in that
- * clause no refusal, exclusion, upper bound, sale, condition or someone else's view. A message with a
- * question mark counts only through a polite request ("can you add", "pode colocar"). The latest mention
- * of a stock wins, so "no AAPL" withdraws an earlier "I want AAPL". The model's reply never counts.
+ * The stocks the person asked for in their own words, read piece by piece: a sentence cut at its commas
+ * and at "and", "or", "then". A stock, its company or "stocks" counts only as what an asking word asks
+ * for: the word stands before it in the same piece with nothing but filler between them ("I want some
+ * NVDA", "add NVDA", "more NVDA"), or the piece is a bare list of names continuing such a piece. A piece
+ * with a refusal, an exclusion, an upper bound, a sale, a reduction, a swap, a comparison or a worry
+ * asks for nothing and refuses the names in it, and a bare list after it is refused with it ("sell TSLA
+ * and NVDA"). A condition or someone else's view counts for nothing, and neither does anything unclear
+ * ("I want protection from NVDA"). A message with a question mark counts only through a polite request
+ * ("can you add", "pode colocar"). The latest mention of a stock wins, so "no AAPL" withdraws an
+ * earlier "I want AAPL". The model's reply never counts.
  */
 function requestedStocks(
   messages: VaultAgentRequest['messages'],
@@ -873,13 +898,77 @@ function requestedStocks(
   companies: Map<string, string[]>,
 ): Set<string> {
   const stocks = assets.filter(isStock);
-  const names = new Map(
-    stocks.map((asset) => [asset.id, assetNames(asset, companies.get(asset.id) ?? [])]),
-  );
   const general = word(STOCK_WORDS.join('|'), 'iu');
+  const named: Array<[string, RegExp[]]> = [
+    ['*', [general]],
+    ...stocks.map((asset): [string, RegExp[]] => [
+      asset.id,
+      assetNames(asset, companies.get(asset.id) ?? []),
+    ]),
+  ];
+  // Every listed name, a stock's or not, may stand in a list beside the one read.
+  const anyName = [
+    general,
+    ...assets.flatMap((asset) => assetNames(asset, companies.get(asset.id) ?? [])),
+  ].map((pattern) => new RegExp(pattern.source, `g${pattern.flags}`));
+  const besidesFiller = (text: string) =>
+    anyName
+      .reduce((rest, pattern) => rest.replace(pattern, ' '), text)
+      .replace(ASK_SHARE, ' ')
+      .replace(ASK_BEFORE_NAME, ' ');
+  const WORDS = /[\p{L}\p{N}'-]+/gu;
+  // Another listed name is read only in a bare list, name beside name with at most a share between:
+  // behind a preposition it is where the stock goes ("NVDA in USDC"), not something asked for with it.
+  const NAME = '\u0001';
+  const marked = (text: string) =>
+    anyName.reduce((rest, pattern) => rest.replace(pattern, NAME), text).replace(ASK_SHARE, ' ');
+  const worded = (text: string) => /[\p{L}\p{N}]/u.test(text);
+  /** Between the asking word and the name: filler, then at most a bare run of other names. */
+  const leads = (text: string) => {
+    const all = marked(text);
+    const run = all.indexOf(NAME);
+    return (
+      !worded((run < 0 ? all : all.slice(0, run)).replace(ASK_BEFORE_NAME, ' ')) &&
+      !worded(run < 0 ? '' : all.slice(run))
+    );
+  };
+  /** From the name to the end of the piece: at most a bare run of other names, then filler. */
+  const trails = (text: string) => {
+    const all = marked(text);
+    const run = all.lastIndexOf(NAME) + 1;
+    return !worded(all.slice(0, run)) && !worded(all.slice(run).replace(ASK_AFTER_NAME, ' '));
+  };
+  /** A piece that is a list of names and nothing else: "a little NVDA", "TSLA, NVDA too". */
+  const bareList = (text: string) => {
+    const all = marked(text);
+    const from = all.indexOf(NAME);
+    const to = all.lastIndexOf(NAME) + 1;
+    return (
+      from >= 0 &&
+      !worded(all.slice(0, from).replace(ASK_BEFORE_NAME, ' ')) &&
+      !worded(all.slice(from, to)) &&
+      !worded(all.slice(to).replace(ASK_AFTER_NAME, ' '))
+    );
+  };
+  // "Stocks" names a kind, so a word or two may describe it ("electric vehicle stocks"), but nothing
+  // that sets it against something ("protection from stocks").
+  const describes = (text: string) => {
+    const words = besidesFiller(text).match(WORDS) ?? [];
+    return words.length <= 3 && !words.some((one) => SETS_AGAINST.test(one));
+  };
+  // A piece that asks for a kind of asset, with at most one word describing it ("steady income").
+  const asksForKind = (rest: string) => {
+    const words =
+      besidesFiller(rest.replace(new RegExp(KIND_WORDS.source, 'giu'), ' ')).match(WORDS) ?? [];
+    return (
+      KIND_WORDS.test(rest) && words.length <= 1 && !words.some((one) => SETS_AGAINST.test(one))
+    );
+  };
   // Portuguese "no" is "in the"; its refusals are não, nenhum, nada, sem.
+  // A share of zero, with or without its sign, refuses as well: "NVDA at 0".
   const refuses = (clause: string) =>
-    REFUSES.test(language === 'pt' ? clause.replace(word('no', 'iu'), 'em') : clause);
+    REFUSES.test(language === 'pt' ? clause.replace(word('no', 'iu'), 'em') : clause) ||
+    (clause.match(/\d+(?:[.,]\d+)?/gu) ?? []).some((n) => Number(n.replace(',', '.')) === 0);
   // The latest affirmative (true) or refusing (false) mention of each stock, and of stocks in general.
   const latest = new Map<string, { at: number; asked: boolean }>();
   let at = 0;
@@ -889,7 +978,8 @@ function requestedStocks(
     if (/^["“‘']/u.test(text)) continue;
     const questioned = text.includes('?');
     const sentences = text
-      .split(/[.;!?\n]+/u)
+      // A stop or a comma between digits is part of a number ("0.5%", "0,5%").
+      .split(/[;!?\n]+|\.(?!\d)/u)
       .filter((sentence) => !CONDITION.test(sentence))
       .flatMap((sentence) =>
         sentence.split(
@@ -897,25 +987,63 @@ function requestedStocks(
         ),
       );
     for (const sentence of sentences) {
-      let asking = false;
-      for (const clause of sentence.split(',').map((part) => part.trim())) {
-        if (!clause) continue;
-        const polite = POLITE_ASK.test(clause);
-        if (NOT_THEIRS.test(clause) || (!polite && (questioned || ASKS_A_QUESTION.test(clause)))) {
-          asking = false;
+      // What a bare list of names continues: an ask (true), a refusal (false) or neither.
+      let carried: boolean | null = null;
+      let wanted = false;
+      for (const piece of sentence.split(ASK_PIECES).map((part) => part.trim())) {
+        if (!piece) continue;
+        const polite = POLITE_ASK.test(piece);
+        if (NOT_THEIRS.test(piece) || (!polite && (questioned || ASKS_A_QUESTION.test(piece)))) {
+          carried = null;
           continue;
         }
-        const verb = polite ? 0 : clause.search(ASKS);
-        if (verb >= 0) asking = true;
-        const refused = refuses(clause);
-        if (!refused && !asking) continue;
-        // An affirmative clause asks for what follows its own verb; a refusal covers the whole clause.
-        const read = refused || verb < 0 ? clause : clause.slice(verb);
         at += 1;
-        if (general.test(read)) latest.set('*', { at, asked: !refused });
-        for (const asset of stocks)
-          if (names.get(asset.id)?.some((pattern) => pattern.test(read)))
-            latest.set(asset.id, { at, asked: !refused });
+        // Where each name first stands in the piece.
+        const found = named.flatMap(([key, patterns]) => {
+          const first = patterns
+            .flatMap((pattern) => {
+              const match = pattern.exec(piece);
+              return match ? [match] : [];
+            })
+            .sort((a, b) => a.index - b.index)[0];
+          return first ? [{ key, where: first.index, end: first.index + first[0].length }] : [];
+        });
+        if (refuses(piece)) {
+          for (const { key } of found) latest.set(key, { at, asked: false });
+          carried = false;
+          wanted ||= ASKS.test(piece);
+          continue;
+        }
+        const asks = [...piece.matchAll(ASKS_OR_MORE)];
+        if (!asks.length) {
+          // "I want no stocks, just AAPL": the exception to a refusal the person wanted is asked for.
+          const except = wanted ? piece.replace(EXCEPT, '') : piece;
+          if (carried === null || !found.length || !bareList(except)) carried = null;
+          else
+            for (const { key } of found)
+              latest.set(key, { at, asked: carried || except !== piece });
+          continue;
+        }
+        wanted = true;
+        let unclear = false;
+        for (const { key, where, end } of found) {
+          const ask = asks.filter((match) => match.index < where).at(-1);
+          const between = ask ? piece.slice(ask.index + ask[0].length, where) : '';
+          // Only filler may stand before the name and after it: "I want NVDA removed" asks for
+          // something to happen to it, not for it.
+          if (
+            ask &&
+            (key === '*' ? describes(between) : leads(between)) &&
+            trails(piece.slice(end))
+          )
+            latest.set(key, { at, asked: true });
+          else unclear = true;
+        }
+        // A list continues only an ask for a thing: a listed asset, stocks, or a kind of asset.
+        const last = asks.at(-1);
+        const rest = last ? piece.slice(last.index + last[0].length) : '';
+        const thing = found.length > 0 || bareList(rest) || asksForKind(rest);
+        carried = !unclear && thing ? true : null;
       }
     }
   }
@@ -929,6 +1057,24 @@ function requestedStocks(
       })
       .map((asset) => asset.id),
   );
+}
+
+/**
+ * `text` without the sentences that name one of `named`, cut where `sentencesOf` cuts. Each line is
+ * read on its own, so the server's note on a line of its own (`FIGURE_CUT`) stays when the line before
+ * it goes.
+ */
+function withoutSentencesNaming(text: string, named: RegExp[], catalogNames: string[]): string {
+  return text
+    .split('\n')
+    .map((line) =>
+      sentencesOf(line, catalogNames)
+        .filter((sentence) => !named.some((pattern) => pattern.test(sentence)))
+        .join('')
+        .trim(),
+    )
+    .filter(Boolean)
+    .join('\n');
 }
 
 // The person's shares, read by the server from their own messages (gate ANY-COMPOSITION). The weights
@@ -1461,6 +1607,12 @@ export async function replyToVaultConversation(
     [...catalog.values()],
     companies,
   );
+  // What a plan for the goal cannot hold, by the rule the review of a mix reads (`eligibleForGoal`).
+  const outside = new Set(
+    goal
+      ? [...catalog.values()].filter((asset) => !eligibleForGoal(asset, goal)).map(({ id }) => id)
+      : [],
+  );
   const prompt: VaultAgentPrompt = {
     version: 1,
     kind: context.kind ?? 'vault',
@@ -1505,11 +1657,9 @@ export async function replyToVaultConversation(
     exitCostTolerance: PERSONAL_PARAMS.tau,
     exitCapacityBps: caps,
     eligibilityGoal: goal,
-    requestedOutsideGoal: goal
-      ? [...catalog.values()]
-          .filter((asset) => requested.has(asset.id) && !eligibleForGoal(asset, goal))
-          .map((asset) => asset.id)
-      : [],
+    statedPurpose: context.kind === 'new_goal' ? statedPurpose(parsed.data.messages) : null,
+    outsideGoal: [...outside],
+    requestedOutsideGoal: [...outside].filter((id) => requested.has(id)),
     allocationConstraints: person.standing.map((share) => ({
       assetIds: share.assetIds,
       minWeightBps: share.kind === 'max' ? 0 : share.bps,
@@ -1587,9 +1737,7 @@ export async function replyToVaultConversation(
       model = kept.reply;
       sentencesCut = kept.cut;
     }
-    const { proposal, purpose: read, ...conversation } = model;
-    // A new goal's goal and risk are the person's or nothing: kept only with their own words for it.
-    if (context.kind === 'new_goal') purpose = statedPurpose(read, personWords);
+    const { proposal, ...conversation } = model;
     const prose = proseOf(model);
     if (prose.some(claimsApplied)) return rejected('prose_claims_applied');
     if (!proposal)
@@ -1607,14 +1755,15 @@ export async function replyToVaultConversation(
         },
       };
     const ids = new Set<string>();
+    const leftOut: string[] = [];
     for (const allocation of proposal.allocations) {
       const asset = catalog.get(allocation.assetId);
       if (!asset) return rejected('allocation_unlisted');
       if (ids.has(asset.id)) return rejected('allocation_duplicate');
-      // Any listed composition may be proposed (ANY-COMPOSITION): only a stock outside the goal that the
-      // person never asked for is refused; exit capacity and an asked-for stock warn, below.
-      if (goal && !eligibleForGoal(asset, goal) && !requested.has(asset.id))
-        return rejected('allocation_ineligible');
+      // Any listed composition may be proposed (ANY-COMPOSITION), but for the goal: a pick outside it
+      // is left out, as the review of the mix would refuse it, unless it is a stock the person asked
+      // for (`requested` holds stocks only), which warns below, as exit capacity does.
+      if (outside.has(asset.id) && !requested.has(asset.id)) leftOut.push(asset.id);
       ids.add(asset.id);
       for (const id of allocation.evidenceIds) {
         const source = sourceById.get(id);
@@ -1622,16 +1771,115 @@ export async function replyToVaultConversation(
           return rejected('allocation_evidence');
       }
     }
-    if (
-      proposal.allocations.filter((allocation) => catalog.get(allocation.assetId)?.cls !== 'cash')
-        .length > 16
-    )
+    const kept = proposal.allocations.filter(({ assetId }) => !leftOut.includes(assetId));
+    if (kept.filter((allocation) => catalog.get(allocation.assetId)?.cls !== 'cash').length > 16)
       return rejected('allocation_lines');
+    // Said, never silent, and the model is asked once to write the reply without them. Should that
+    // fail too, the reply stands as corrected here.
+    const outsideNotes: VaultAgentWeightNote[] = leftOut.length
+      ? [{ code: 'pick_outside_goal', assetIds: leftOut.slice(0, 64) }]
+      : [];
+    const corrected = (result: VaultAgentResult): Checked =>
+      leftOut.length
+        ? {
+            result,
+            failed: 'allocation_ineligible',
+            problems: [
+              REPAIR_HINTS.allocation_ineligible ?? 'allocation_ineligible',
+              `Left out: ${leftOut.join(', ')}.`,
+            ],
+          }
+        : { result };
+    if (!kept.length)
+      return corrected({
+        kind: 'reply',
+        reply: {
+          version: 1,
+          messageId: request.messageId,
+          proposal: null,
+          warnings: [],
+          weightNotes: outsideNotes,
+          message:
+            request.language === 'pt'
+              ? 'Um plano com o seu objetivo não pode ter os ativos escolhidos nesta proposta, então nada foi proposto; nada foi aplicado.'
+              : 'A plan with your goal cannot hold the assets picked for this draft, so nothing is proposed; nothing was applied.',
+          question:
+            request.language === 'pt'
+              ? 'Quer uma proposta dentro do seu objetivo?'
+              : 'Would you like a draft within your goal?',
+        },
+      });
     // The weights come from the person's words, never from the model (Rodrigo's rule 2): an equal
     // split, or the shares the server read in the person's messages. What the model reports in
     // `stated` sets nothing: a share there that the server did not read is named once for the repair,
     // so the model asks the person instead of describing a share that was not applied.
-    const { stated, ...preview } = proposal;
+    // The model wrote its prose with the picks left out in it: every sentence that names one goes, and
+    // one sentence of the server's says what was left out and why. No word is added in the model's voice.
+    const gone = leftOut.map((id) => catalog.get(id) as BasketAsset);
+    const naming = gone.flatMap((asset) => [
+      new RegExp(literal(asset.id), 'u'),
+      // The symbol in any case, and gold by its plain word.
+      word(literal(asset.symbol), 'iu'),
+      ...(asset.cls === 'gold' ? [word('gold|ouro', 'iu')] : []),
+      ...assetNames(asset, companies.get(asset.id) ?? []),
+    ]);
+    const clean = (text: string) =>
+      gone.length ? withoutSentencesNaming(text, naming, catalogNames) : text;
+    // A stock is left out because the person did not ask for it; any other class because the goal
+    // cannot hold it whoever asks.
+    const pt = request.language === 'pt';
+    const listed = (of: BasketAsset[]) =>
+      of
+        .slice(0, 16)
+        .map((asset) => asset.symbol)
+        .join(', ');
+    const unasked = gone.filter(isStock);
+    const barred = gone.filter((asset) => !isStock(asset));
+    const leftOutSaid = [
+      unasked.length
+        ? pt
+          ? `Esta proposta deixa de fora ${listed(unasked)}: ${unasked.length === 1 ? 'fica fora do objetivo do seu plano e você não pediu esse ativo' : 'ficam fora do objetivo do seu plano e você não pediu esses ativos'}.`
+          : `This draft leaves out ${listed(unasked)}: ${unasked.length === 1 ? 'it is' : 'they are'} outside your plan's goal and you did not ask for ${unasked.length === 1 ? 'it' : 'them'}.`
+        : '',
+      barred.length
+        ? pt
+          ? `Esta proposta deixa de fora ${listed(barred)}: um plano com o seu objetivo não pode ter ${barred.length === 1 ? 'esse ativo' : 'esses ativos'}.`
+          : `This draft leaves out ${listed(barred)}: a plan with your goal cannot hold ${barred.length === 1 ? 'it' : 'them'}.`
+        : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .slice(0, 1600);
+    const told = [clean(conversation.message), leftOutSaid].filter(Boolean).join(' ');
+    // With no room for what is left of the message, the server's notes alone: the figure's, if the
+    // message carried it, and this one.
+    const figureCut = FIGURE_CUT[request.language];
+    const notes = conversation.message.includes(figureCut)
+      ? `${figureCut} ${leftOutSaid}`
+      : leftOutSaid;
+    const said = gone.length
+      ? {
+          message: told.length > 2400 ? notes : told,
+          question: clean(conversation.question ?? '') || null,
+        }
+      : conversation;
+    const { stated, ...preview } = {
+      ...proposal,
+      objective: clean(proposal.objective),
+      // The summary describes the draft as the model picked it, so the server's sentence replaces it.
+      summary: gone.length ? leftOutSaid : proposal.summary,
+      tradeoffs: proposal.tradeoffs.map(clean).filter(Boolean),
+      unknowns: proposal.unknowns.map(clean).filter(Boolean),
+      allocations: kept.map((allocation) => ({ ...allocation, why: clean(allocation.why) })),
+    };
+    // An objective or a pick's reason that was only about a pick left out has no server sentence that
+    // fits its place: the model is asked again, and the reply fails if it is still so.
+    if (!preview.objective || preview.allocations.some((allocation) => !allocation.why))
+      return rejected('allocation_ineligible', [`Left out: ${leftOut.join(', ')}.`]);
+    // What is served is read whole for a figure once more, after both cuts and with the server's own
+    // sentences in it.
+    if (gone.length && proseOf({ ...said, proposal: { ...preview, stated } }).some(figure))
+      return rejected('prose_figure');
     const unconfirmed = stated.flatMap((share, index) =>
       person.read.some(
         (own) =>
@@ -1663,13 +1911,22 @@ export async function replyToVaultConversation(
     );
     const missed = unmet[0] === undefined ? undefined : shares[unmet[0]];
     if (missed) {
+      // A share on assets the goal cannot hold is unmet whatever the picks: the goal is why, and the
+      // reply says so instead of asking for another draft within a limit no draft can meet.
+      const barred = missed.assetIds.every((id) => outside.has(id) && !requested.has(id));
+      const those = missed.assetIds.length === 1;
       // Which share, in words: its place and the person's quote, never a weight.
       return {
-        failed: 'allocation_constraint',
-        problems: [
-          REPAIR_HINTS.allocation_constraint ?? 'allocation_constraint',
-          `The person said “${missed.quote}”: the picks cannot meet it.`,
-        ],
+        failed: barred ? 'allocation_ineligible' : 'allocation_constraint',
+        problems: barred
+          ? [
+              REPAIR_HINTS.allocation_ineligible ?? 'allocation_ineligible',
+              `The person said “${missed.quote}”: a plan for eligibilityGoal cannot hold ${missed.assetIds.slice(0, 16).join(', ')}, so no picks can meet that share. Propose nothing that needs it and say that a plan with this goal cannot hold it.`,
+            ]
+          : [
+              REPAIR_HINTS.allocation_constraint ?? 'allocation_constraint',
+              `The person said “${missed.quote}”: the picks cannot meet it.`,
+            ],
         result: {
           kind: 'reply',
           reply: {
@@ -1679,13 +1936,20 @@ export async function replyToVaultConversation(
             warnings: [],
             weightNotes: [
               { code: 'share_unmet', assetIds: missed.assetIds.slice(0, 64), quote: missed.quote },
+              ...outsideNotes,
             ],
-            message:
-              request.language === 'pt'
+            message: barred
+              ? request.language === 'pt'
+                ? `Seu pedido, “${missed.quote}”, não pode ser atendido: um plano com o seu objetivo não pode ter ${those ? 'esse ativo' : 'esses ativos'}. Nada foi proposto; nada foi aplicado.`
+                : `Your request, “${missed.quote}”, cannot be met: a plan with your goal cannot hold ${those ? 'that asset' : 'those assets'}. Nothing is proposed; nothing was applied.`
+              : request.language === 'pt'
                 ? `A proposta não respeitou seu pedido: “${missed.quote}”. Esse limite continua valendo; nada foi aplicado.`
                 : `The draft did not meet your request: “${missed.quote}”. That requirement still stands; nothing was applied.`,
-            question:
-              request.language === 'pt'
+            question: barred
+              ? request.language === 'pt'
+                ? 'Quer uma proposta dentro do seu objetivo, sem essa parcela?'
+                : 'Would you like a draft within your goal, without that share?'
+              : request.language === 'pt'
                 ? 'Quer que eu proponha outra divisão respeitando esse limite, ou prefere alterá-lo?'
                 : 'Would you like another draft within that limit, or would you like to change the requirement?',
           },
@@ -1706,7 +1970,7 @@ export async function replyToVaultConversation(
         });
         sources.add(`liquidity:${asset.id}`);
       }
-      if (goal && !eligibleForGoal(asset, goal)) {
+      if (outside.has(asset.id)) {
         const listed = sourceById.has(`catalog:${asset.id}`)
           ? `catalog:${asset.id}`
           : allocation.evidenceIds[0];
@@ -1750,11 +2014,12 @@ export async function replyToVaultConversation(
             .map(({ quote }) => quote),
         ]),
       ].map((quote) => ({ code: 'share_unread' as const, assetIds: [], quote })),
-    ].slice(0, 64);
+    ].slice(0, 64 - outsideNotes.length);
+    weightNotes.push(...outsideNotes);
     const reply = VaultAgentReply.safeParse({
       version: 1,
       messageId: request.messageId,
-      ...conversation,
+      ...said,
       proposal: {
         ...preview,
         allocations: lines,
@@ -1765,17 +2030,13 @@ export async function replyToVaultConversation(
       weightNotes,
     });
     return reply.success
-      ? { result: { kind: 'reply', reply: reply.data } }
+      ? corrected({ kind: 'reply', reply: reply.data })
       : rejected('reply_shape', where(reply.error.issues));
   };
-  // The goal and risk the person said, read with the reply that was checked last: served with any reply.
-  let purpose: VaultAgentStatedPurpose | undefined;
-  const served = (result: VaultAgentResult): VaultAgentResult =>
-    result.kind === 'reply' && purpose ? { ...result, purpose } : result;
   const started = Date.now();
   const first = await ask();
   const checked = check(first);
-  if (!checked.problems || !checked.failed) return served(checked.result);
+  if (!checked.problems || !checked.failed) return checked.result;
   const second = check(
     await ask({
       previous: first.reply,
@@ -1793,7 +2054,7 @@ export async function replyToVaultConversation(
           ? 'prose_figure_trimmed'
           : 'repaired'
         : (second.result.detail ?? second.result.reason),
-    ...(sentencesCut && !second.problems && second.result.kind === 'reply' ? { sentencesCut } : {}),
+    ...(sentencesCut && second.result.kind === 'reply' ? { sentencesCut } : {}),
   };
   // A stated limit the repair still missed, or missed at first and then failed another way: the person
   // is asked about the limit, as before the repair.
@@ -1801,5 +2062,5 @@ export async function replyToVaultConversation(
     second.result.kind === 'failure' && checked.result.kind === 'reply'
       ? checked.result
       : second.result;
-  return served({ ...final, repair });
+  return { ...final, repair };
 }
