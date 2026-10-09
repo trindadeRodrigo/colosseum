@@ -15,6 +15,7 @@ import { dictionary } from '../../i18n';
 import { withAccount } from '../account/test/screen';
 import { GOAL_HANDOFF, GOAL_HANDOFF_OWNER } from '../goal/draft';
 import { Simulate } from '../landing/Simulate';
+import { CHECK_MS } from '../mix/DepositStep';
 import { sourceValue } from '../vault-conversation/StrategyPreview';
 import { preview } from '../vault-conversation/test/fixtures';
 import { fakePort, json, PHANTOM, signedInPort } from '../wallet/test/fake-port';
@@ -539,7 +540,7 @@ describe('the deposit step of a new goal', () => {
         { amountUsd: null },
       );
       const host = await (strict
-        ? mount(withAccount('en', createElement(StrictMode, null, createElement(GoalHome))))
+        ? mount(withAccount('en', createElement(StrictMode, null, createElement(GoalEntry))))
         : show());
       await send(host, 'I want to invest 2k, 70% in safe income and 30% in AI stocks');
       await click(find(host, '[data-action="deposit"]'));
