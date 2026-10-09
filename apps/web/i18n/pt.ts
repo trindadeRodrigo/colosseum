@@ -54,6 +54,7 @@ export const pt: Dictionary = {
     marketClosed: 'Mercado fechado · último fechamento',
     slowDown: 'Nosso servidor pediu para eu ir mais devagar. Espere um minuto e tente de novo.',
     mockAnnounce: 'Números de exemplo',
+    sample: 'Exemplo',
     sampleFigure: 'número de exemplo',
     wait: {
       slow: 'Acordando o serviço de dados: da primeira vez isso pode levar até um minuto.',

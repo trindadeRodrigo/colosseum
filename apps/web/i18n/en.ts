@@ -70,6 +70,8 @@ export const en = {
     slowDown: 'Our server asked me to slow down. Wait a minute, then try again.',
     /** A sample card's one quiet line (MOCK-QUIET). */
     mockAnnounce: 'Sample figures',
+    /** Under a chain's name where it is the sample chain and no figure is beside it (ChainChoice). */
+    sample: 'Sample',
     /** A sample glyph's name for a screen reader. */
     sampleFigure: 'sample figure',
     /** A wait for data (components/ui/Skeleton.tsx). */

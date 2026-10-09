@@ -202,8 +202,8 @@ export function GoalChain({
           provenance: port.network(id)?.provenance ?? 'mock',
         }))}
         labels={{
-          testNetwork: t.shell.testNetwork,
-          sampleFigure: t.shell.sampleFigure,
+          testNetwork: t.shell.testNetworkLine,
+          sample: t.shell.sample,
           wallet: c.wallet,
           saving: t.chain.switch.saving,
         }}

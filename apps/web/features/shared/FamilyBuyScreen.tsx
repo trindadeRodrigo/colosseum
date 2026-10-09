@@ -302,8 +302,8 @@ export function FamilyBuyScreen({
             provenance: r.provenance,
           }))}
           labels={{
-            testNetwork: t.shell.testNetwork,
-            sampleFigure: t.shell.sampleFigure,
+            testNetwork: t.shell.testNetworkLine,
+            sample: t.shell.sample,
             wallet: t.chain.choice.wallet,
             saving: t.chain.switch.saving,
           }}

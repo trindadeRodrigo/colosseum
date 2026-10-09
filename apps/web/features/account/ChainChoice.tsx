@@ -3,13 +3,13 @@ import type { ChainId, Provenance } from '@colosseum/schemas';
 import { useId } from 'react';
 import { ChainLogo } from '../../components/ui/ChainLogo';
 import { cn } from '../../components/ui/cn';
-import { MockPlate } from '../../components/ui/MockPlate';
 import { shortAddress } from '../shared/use-person';
 
 // The chain of one thing, chosen where it starts (gate CHAIN-AT-THE-PLAN): a new plan on /goal, a buy of
 // a shared portfolio that has a recipe on each chain. Two options side by side, a radio group: the
-// chain's name, the person's wallet there cut to its ends, and the sample glyph with "test network"
-// where the chain is not live (MOCK-QUIET). The chain's own mark comes before its name where there is a
+// chain's logo and name, the person's wallet there cut to its ends, and the words "Test network" or
+// "Sample" where the chain is not live. No hatched glyph: the hatch marks a sample figure, and an
+// option holds none (Thom, 2026-10-09). The chain's own mark comes before its name where there is a
 // file for it (Thom, 2026-10-09). The chosen
 // one is tinted, never outlined in honey (card.md), and its words stay in the foreground colour: muted
 // text on the tint is under 4.5:1 on day.
@@ -24,8 +24,10 @@ export type ChainChoiceOption = {
 };
 
 export type ChainChoiceLabels = {
+  /** Under the name on a test network: "Test network". */
   testNetwork: string;
-  sampleFigure: string;
+  /** Under the name on the sample chain: "Sample". */
+  sample: string;
   /** The wallet's whole address, for a screen reader. */
   wallet: (address: string) => string;
   /** In place of the name of the chain being stored. */
@@ -59,6 +61,13 @@ export function ChainChoice({
   'data-ui'?: string;
 }) {
   const name = useId();
+  /** How the chain is run, where it is not live: a test network, or the sample chain. */
+  const how = (option: ChainChoiceOption) =>
+    option.provenance === 'live'
+      ? null
+      : option.provenance === 'sandbox'
+        ? labels.testNetwork
+        : labels.sample;
   return (
     <fieldset
       data-ui={dataUi}
@@ -88,6 +97,8 @@ export function ChainChoice({
               <ChainLogo chain={option.chain} size={16} decorative />
               <span className="min-w-0 [overflow-wrap:anywhere]">
                 {busy === option.chain ? labels.saving : option.name}
+                {/* read with the name: "Solana, test network" */}
+                {how(option) && <span className="sr-only">, {how(option)?.toLowerCase()}</span>}
               </span>
             </span>
             {/* The wallet there, then how the chain is run: one quiet row under the name. */}
@@ -98,11 +109,11 @@ export function ChainChoice({
                   <span className="sr-only">{labels.wallet(option.address)}</span>
                 </span>
               )}
-              {option.provenance !== 'live' && (
-                <>
-                  <MockPlate labels={{ figure: labels.sampleFigure }} />
-                  {option.provenance === 'sandbox' && <span>{labels.testNetwork}</span>}
-                </>
+              {/* Words alone: the hatch marks a sample figure, and an option holds no figure. */}
+              {how(option) && (
+                <span data-ui="chain-how" aria-hidden="true">
+                  {how(option)}
+                </span>
               )}
             </span>
           </label>
