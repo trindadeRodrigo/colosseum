@@ -106,7 +106,7 @@ export function AddMoneyScreen({
           href={
             signedOut && chain
               ? `/sign-in?next=${encodeURIComponent(addMoneyPath(chain, address))}`
-              : '/monitor'
+              : '/portfolio'
           }
           className={buttonClass({ variant: 'secondary' })}
         >
@@ -306,7 +306,7 @@ export function AddMoneyScreen({
           <span className="font-mono text-source text-muted-foreground" title={vault.address}>
             {shorten(vault.address)}
           </span>
-          <Link href="/monitor" className={buttonClass({ variant: 'link' })}>
+          <Link href="/portfolio" className={buttonClass({ variant: 'link' })}>
             {words.back}
           </Link>
         </p>
