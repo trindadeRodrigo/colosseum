@@ -30,7 +30,7 @@
 | Orca Whirlpool: liquidity exact; sales within 3e-4. The gap grows with ticks crossed, consistent with Orca's adaptive fee, which is not yet modelled; our output is slightly optimistic. | same |
 | Meteora DLMM: sales within 3e-5; bins sum to 97–98% of reserves (the rest is likely fees) | `scripts/risk/validate-dlmm.ts` |
 | Raydium CPMM: exact (3e-13) once Token-2022 transfer fees are applied to the fee-bearing leg | `scripts/risk/validate-cpmm.ts` |
-| Byreal (a Raydium CLMM fork): header decodes and small sales match, but its tick arrays differ, so the liquidity check fails. **Not supported yet.** | probe output, 2026-10-01 |
+| Byreal (a Raydium CLMM fork): header decodes and small sales match, but its tick arrays differ, so the liquidity check fails. **Not supported yet.** *Why, 2026-10-07 (`PLAN-UNIVERSE.md` RU.13):* the pool account is Raydium's; the tick arrays are of two kinds, Raydium's fixed one and a second (a 216-byte header with a table of 60 slots, then one 168-byte tick for each slot allocated) that `decodeClmmTickArray` does not read: 32 of the 36 arrays of the pool probed. Its fee is its own too | probe output, 2026-10-01; `fixtures/risk/venues/byreal-5pobXo-20261007T1222.json` |
 | RPC: one `getProgramAccounts` returns a pool's full tick arrays in about 2 s. Some transactions are now version 1 and need `maxSupportedTransactionVersion: 1`. Signatures for a 12-day-old transaction were still served. | `scripts/verify/vr-pools-probe.ts` |
 | Teiten has no Solana pool-state decoding. Reusable, both Python: the swap inference from transfers (`teiten-solana/analysis/solana/lib/dex_census.py`) and the rate-control design (`teiten-solana/ingestion/src/solana_capture.py`). | Teiten survey, 2026-10-01 |
 
