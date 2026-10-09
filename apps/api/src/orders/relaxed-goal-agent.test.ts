@@ -140,7 +140,6 @@ async function run(model: ModelReply, words: string | string[], ctx = context())
     },
     ctx,
   );
-  expect(calls).toHaveLength(1);
   if (result.kind !== 'reply') throw new Error(`no reply: ${JSON.stringify(result)}`);
   lastCall = calls[0] as { system: unknown };
   return result.reply;
@@ -381,6 +380,183 @@ describe('relaxed intake: the split', () => {
       'The deposit step buys exactly these holdings and shares, after the server checks every line again.',
     );
     expect(notes(reply)).not.toContain('solver');
+  });
+});
+
+describe('relaxed intake: one repair attempt, then the cut or the 503', () => {
+  const good = {
+    say: 'Here is a draft.',
+    shape: 'pick',
+    lines: [line('solana:tslax'), line('solana:nvdax')],
+    buckets: null,
+    stated: STATED,
+    not_available: [],
+    open: [],
+  };
+  const FIGURE = 'Tesla will return 40% next year, guaranteed.';
+  /** The agent answering with `replies` in turn (the last one again after that). */
+  const answering = async (replies: unknown[], quota?: ModelQuota) => {
+    const calls: { messages: { role: string; content: string }[] }[] = [];
+    const agent = createRelaxedGoalAgent({
+      apiKey: 'placeholder',
+      log: () => {},
+      ...(quota ? { quota } : {}),
+      create: async (params) => {
+        calls.push(params as never);
+        const reply = replies[Math.min(calls.length, replies.length) - 1];
+        return {
+          stop_reason: 'end_turn',
+          content: [
+            {
+              type: 'text',
+              text: typeof reply === 'string' ? reply : JSON.stringify(reply),
+              citations: null,
+            },
+          ],
+        };
+      },
+    });
+    const result = await agent.reply(
+      {
+        version: 1,
+        language: 'en',
+        messageId: 'm1',
+        messages: [{ who: 'person', text: 'Tesla and Nvidia please' }],
+      },
+      context(),
+    );
+    return { calls, result };
+  };
+  it('asks once more when the reply is not the sheet, and serves the second', async () => {
+    const { calls, result } = await answering(['not json', good]);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.messages.slice(-2).map((m) => m.role)).toEqual(['assistant', 'user']);
+    expect(result).toMatchObject({
+      kind: 'reply',
+      repair: { failed: 'reply_shape', outcome: 'repaired' },
+    });
+  });
+  it('answers the 503 when the second is not the sheet either, after two calls and no more', async () => {
+    const { calls, result } = await answering([{ ...good, shape: 'nonsense' }]);
+    expect(calls).toHaveLength(2);
+    expect(result).toEqual({
+      kind: 'failure',
+      reason: 'invalid',
+      detail: 'reply_shape',
+      repair: { failed: 'reply_shape', outcome: 'reply_shape' },
+    });
+  });
+  it('asks once more when the reply states a figure, and serves a clean second whole', async () => {
+    const { calls, result } = await answering([{ ...good, say: `Two picks. ${FIGURE}` }, good]);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.messages.at(-1)?.content).toContain('no digit');
+    expect(result).toMatchObject({
+      kind: 'reply',
+      reply: { message: expect.stringMatching(/^Here is a draft\./) },
+      repair: { failed: 'prose_figure', outcome: 'repaired' },
+    });
+  });
+  it('cuts the figure when the second states one too', async () => {
+    const { calls, result } = await answering([{ ...good, say: `Two picks. ${FIGURE}` }]);
+    expect(calls).toHaveLength(2);
+    expect(result).toMatchObject({
+      kind: 'reply',
+      repair: { failed: 'prose_figure', outcome: 'prose_figure_trimmed', sentencesCut: 1 },
+    });
+    expect(JSON.stringify(result)).not.toMatch(/40%|guaranteed/);
+  });
+  it('cuts the first reply’s figure when the budget has no call left for the repair', async () => {
+    const { calls, result } = await answering(
+      [{ ...good, say: `Two picks. ${FIGURE}` }, good],
+      createModelQuota({ dailyCalls: 1, dailyCallsPerPerson: 1 }),
+    );
+    expect(calls).toHaveLength(1);
+    expect(result).toMatchObject({ kind: 'reply', repair: { outcome: 'prose_figure_trimmed' } });
+    expect(JSON.stringify(result)).not.toMatch(/40%|guaranteed/);
+  });
+  it('a clean reply is one call and carries no repair note', async () => {
+    const { calls, result } = await answering([good]);
+    expect(calls).toHaveLength(1);
+    expect(result).not.toHaveProperty('repair');
+  });
+});
+
+describe('relaxed intake: the context is checked before the model is paid', () => {
+  const refused = async (ctx: GoalAgentContext) => {
+    let calls = 0;
+    const agent = createRelaxedGoalAgent({
+      apiKey: 'placeholder',
+      log: () => {},
+      create: async () => {
+        calls += 1;
+        throw new Error('not reached');
+      },
+    });
+    const result = await agent.reply(
+      { version: 1, language: 'en', messageId: 'm1', messages: [{ who: 'person', text: 'USDY' }] },
+      ctx,
+    );
+    expect(calls).toBe(0);
+    return result;
+  };
+  it('refuses a context with a number that is not a number', async () => {
+    const base = context();
+    const evidence = base.evidence.map((e, i) => (i === 0 ? { ...e, value: Number.NaN } : e));
+    expect(await refused({ ...base, evidence })).toEqual({
+      kind: 'failure',
+      reason: 'invalid',
+      detail: 'context_non_finite',
+    });
+  });
+  it('refuses evidence that repeats an id or is not a source', async () => {
+    const base = context();
+    for (const evidence of [
+      [...base.evidence, base.evidence[0]],
+      [...base.evidence, { id: 'x' }],
+    ])
+      expect(await refused({ ...base, evidence } as GoalAgentContext)).toEqual({
+        kind: 'failure',
+        reason: 'invalid',
+        detail: 'context_evidence',
+      });
+  });
+});
+
+describe('relaxed intake: an id is matched to one listed asset or to none', () => {
+  const listed = [
+    asset('tqqqx', 'TQQQx', 'etf'),
+    asset('qqqx', 'QQQx', 'etf'),
+    asset('tslax', 'TSLAx', 'stock'),
+    asset('usdc', 'USDC', 'cash', 10_000),
+  ];
+  const ctx = () =>
+    context({
+      assets: listed,
+      evidence: listed.map((a) => source(`catalog:${a.id}`, { assetId: a.id })),
+    });
+  it('takes "QQQ" for QQQx, never for TQQQx listed before it', async () => {
+    for (const id of ['QQQ', 'solana:qqq', 'qqqx', 'solana:QQQx']) {
+      const reply = await run({ shape: 'pick', lines: [line(id)] }, 'the Nasdaq fund', ctx());
+      expect(Object.keys(weights(reply)), id).toEqual(['QQQx']);
+    }
+    const leveraged = await run({ shape: 'pick', lines: [line('TQQQ')] }, 'TQQQ', ctx());
+    expect(Object.keys(weights(leveraged))).toEqual(['TQQQx']);
+  });
+  it('still reads a wrapped symbol by its company’s ticker', async () => {
+    const reply = await run({ shape: 'pick', lines: [line('solana:TSLA')] }, 'Tesla', ctx());
+    expect(Object.keys(weights(reply))).toEqual(['TSLAx']);
+  });
+  it('drops a name two listed assets answer to, and says so', async () => {
+    const twins = [asset('abcx', 'ABCx', 'stock'), asset('tabc', 'tABC', 'stock'), listed[3]];
+    const reply = await run(
+      { shape: 'pick', lines: [line('abc-co'), line('solana:usdc')] },
+      'ABC',
+      context({
+        assets: twins as BasketAsset[],
+        evidence: (twins as BasketAsset[]).map((a) => source(`catalog:${a.id}`, { assetId: a.id })),
+      }),
+    );
+    expect(Object.keys(weights(reply))).toEqual(['USDC']);
   });
 });
 
@@ -735,7 +911,7 @@ describe('relaxed intake: what it logs', () => {
   });
   it('names the check a reply failed, not the reply', async () => {
     const { result, log } = await logged(sheet({ shape: SECRET }));
-    expect(result).toEqual({ kind: 'failure', reason: 'invalid' });
+    expect(result).toMatchObject({ kind: 'failure', reason: 'invalid', detail: 'reply_shape' });
     expect(log).toContain('reply did not fit the sheet');
     expect(log).toContain(':shape');
     expect(log).not.toContain('Tesla');
@@ -743,7 +919,11 @@ describe('relaxed intake: what it logs', () => {
   it('says a reply was not JSON without quoting it', async () => {
     const { result, log } = await logged(SECRET);
     expect(result.kind).toBe('failure');
-    expect(log).toBe('model call failed "reply was not JSON"');
+    expect(log).toBe(
+      ['model call failed "reply was not JSON"', 'model call failed "reply was not JSON"'].join(
+        '\n',
+      ),
+    );
   });
 });
 

@@ -2,9 +2,11 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { BasketAsset } from '@colosseum/schemas';
 import {
   type VaultAgentSource as AgentSource,
+  type VaultAgentRepairNote,
   VaultAgentReply,
   VaultAgentRequest,
   type VaultAgentResult,
+  VaultAgentSource,
 } from '@colosseum/schemas';
 import { z } from 'zod';
 import type { ModelQuota } from '../model-quota';
@@ -18,6 +20,7 @@ import {
   FIGURE_REMOVED,
   type GoalAgentContext,
   hasFinancialFigure,
+  hasNonFiniteNumber,
   personShares,
   requestedStocks,
   statedPurposeIn,
@@ -398,6 +401,11 @@ const clip = (text: string, max: number) =>
 const whereOf = (error: z.ZodError) =>
   error.issues.map((issue) => `${issue.code}:${issue.path.join('.')}`);
 
+const REPAIR_SHAPE =
+  'That was not the JSON object the API holds you to. Answer again with that object and nothing else: every required field, each of the kind it asks for.';
+const REPAIR_FIGURE =
+  'Your reply stated a figure, a price, a yield, a return, a date or a guarantee in "say", in a "why", in a pot\'s name, in "when" or in "not_available". Answer again with the same sheet and no digit, no percent or currency sign, no written-out amount and no "guaranteed" or "risk-free" in any of them. Numbers belong only in "stated" and "share"; to repeat what the person said, quote them exactly: You said “...”.';
+
 export type RelaxedGoalAgent = {
   id: string;
   reply(request: VaultAgentRequest, context: GoalAgentContext): Promise<VaultAgentResult>;
@@ -432,6 +440,17 @@ export function createRelaxedGoalAgent(options: {
       const parsed = VaultAgentRequest.safeParse(request);
       if (!parsed.success) return { kind: 'failure', reason: 'invalid' };
       const { language, messages, messageId } = parsed.data;
+      // The context is the server's own; one that holds a number that is not a number, or evidence
+      // that is not a source or repeats an id, is refused before the model is paid (as vault-agent.ts).
+      if (hasNonFiniteNumber(context))
+        return { kind: 'failure', reason: 'invalid', detail: 'context_non_finite' };
+      const seen = new Set<string>();
+      for (const raw of context.evidence) {
+        const source = VaultAgentSource.safeParse(raw);
+        if (!source.success || seen.has(source.data.id))
+          return { kind: 'failure', reason: 'invalid', detail: 'context_evidence' };
+        seen.add(source.data.id);
+      }
       const assets = context.assets.filter((asset) => asset.chain === context.chain);
       const catalog = new Map(assets.map((asset) => [asset.id, asset]));
       const caps = new Map(
@@ -444,52 +463,73 @@ export function createRelaxedGoalAgent(options: {
       const readings = readingsOf(context.evidence, (id) => catalog.get(id)?.symbol ?? id);
 
       // ---- the model: talks freely, names ids ----
-      // A paid call: reserved from the shared budget first, as the model-led conversation does.
-      const denied = options.quota?.reserve(context.person) ?? null;
-      if (denied !== null) return { kind: 'failure', reason: 'budget', detail: denied };
-      let raw: unknown;
-      try {
-        const response = await create({
-          model,
-          max_tokens: 4000,
-          system: systemBlocks(
-            tableOf(assets, context, caps, readings),
-            language,
-            new Date().toISOString().slice(0, 10),
-          ),
-          messages: turnsOf(messages),
-          output_config: {
-            format: { type: 'json_schema', schema: REPLY_SCHEMA },
-            // only where the model takes it: Haiku 4.5 and Sonnet 4.5 answer 400 to it
-            ...(acceptsEffort(model) ? { effort: 'medium' } : {}),
-          },
-        } as unknown as Anthropic.MessageCreateParamsNonStreaming);
-        if (response.stop_reason !== 'end_turn') {
-          log('model stopped early', response.stop_reason);
-          return { kind: 'failure', reason: 'invalid' };
+      const turns = turnsOf(messages);
+      const system = systemBlocks(
+        tableOf(assets, context, caps, readings),
+        language,
+        new Date().toISOString().slice(0, 10),
+      );
+      type Asked =
+        | { kind: 'read'; data: Reply; text: string }
+        | { kind: 'miss'; text: string }
+        | { kind: 'failure'; result: Extract<VaultAgentResult, { kind: 'failure' }> };
+      /** One paid call, reserved from the shared budget first, as the model-led conversation does. */
+      const ask = async (repair?: { previous: string; problem: string }): Promise<Asked> => {
+        const denied = options.quota?.reserve(context.person) ?? null;
+        if (denied !== null)
+          return { kind: 'failure', result: { kind: 'failure', reason: 'budget', detail: denied } };
+        let text = '';
+        try {
+          const response = await create({
+            model,
+            max_tokens: 4000,
+            system,
+            messages: repair
+              ? [
+                  ...turns,
+                  { role: 'assistant', content: repair.previous },
+                  { role: 'user', content: repair.problem },
+                ]
+              : turns,
+            output_config: {
+              format: { type: 'json_schema', schema: REPLY_SCHEMA },
+              // only where the model takes it: Haiku 4.5 and Sonnet 4.5 answer 400 to it
+              ...(acceptsEffort(model) ? { effort: 'medium' } : {}),
+            },
+          } as unknown as Anthropic.MessageCreateParamsNonStreaming);
+          if (response.stop_reason !== 'end_turn') {
+            log('model stopped early', response.stop_reason);
+            return { kind: 'miss', text: '' };
+          }
+          const block = response.content.find((item) => item.type === 'text');
+          text = block?.type === 'text' ? block.text : '';
+        } catch (error) {
+          log('model call failed', error instanceof Error ? error.message : 'unknown error');
+          return {
+            kind: 'failure',
+            result: {
+              kind: 'failure',
+              reason:
+                error instanceof Anthropic.APIConnectionTimeoutError ? 'timeout' : 'unavailable',
+            },
+          };
         }
-        const block = response.content.find((item) => item.type === 'text');
-        raw = block?.type === 'text' ? JSON.parse(block.text) : null;
-      } catch (error) {
-        // A reply that is not JSON fails in `JSON.parse`, whose message quotes the text: only its kind.
-        log(
-          'model call failed',
-          error instanceof SyntaxError
-            ? 'reply was not JSON'
-            : error instanceof Error
-              ? error.message
-              : 'unknown error',
-        );
-        return {
-          kind: 'failure',
-          reason: error instanceof Anthropic.APIConnectionTimeoutError ? 'timeout' : 'unavailable',
-        };
-      }
-      const read = Reply.safeParse(raw);
-      if (!read.success) {
-        log('reply did not fit the sheet', whereOf(read.error));
-        return { kind: 'failure', reason: 'invalid' };
-      }
+        let raw: unknown;
+        try {
+          raw = JSON.parse(text);
+        } catch {
+          // `JSON.parse`'s own message quotes the text: only what kind of miss it was.
+          log('model call failed', 'reply was not JSON');
+          return { kind: 'miss', text };
+        }
+        const read = Reply.safeParse(raw);
+        if (!read.success) {
+          log('reply did not fit the sheet', whereOf(read.error));
+          return { kind: 'miss', text };
+        }
+        return { kind: 'read', data: read.data, text };
+      };
+
       // ---- code: no figure of the model's reaches the person (CLAUDE.md, RELAXED-INTAKE) ----
       // Every field the model writes that is served goes through the check the vault conversation
       // uses: a sentence with a digit, a percent or currency sign, a written-out amount, "guaranteed"
@@ -502,30 +542,86 @@ export function createRelaxedGoalAgent(options: {
           .map((row) => row.company),
       ];
       const figure = (text: string) => hasFinancialFigure(text, personWords, catalogNames);
-      const trim = (text: string) => trimFigureSentences(text, figure, catalogNames);
-      const said = trim(read.data.say);
-      const cleanLines = (lines: Reply['lines']) =>
-        lines.map((l) => ({ ...l, why: trim(l.why).text || FIGURE_REMOVED[language] }));
-      const r: Reply = {
-        ...read.data,
-        // what is left of the message, then the server's line saying part of it was cut
-        say: said.cut ? [said.text, FIGURE_CUT[language]].filter(Boolean).join('\n') : said.text,
-        lines: cleanLines(read.data.lines),
-        buckets: read.data.buckets?.map((b, i) => ({
-          ...b,
-          name: figure(b.name) || !b.name.trim() ? `Pot ${i + 1}` : b.name,
-          lines: cleanLines(b.lines),
-        })),
-        stated: {
-          ...read.data.stated,
-          // the term in words: the person's own, or nothing
-          when:
-            read.data.stated.when && !figure(read.data.stated.when) ? read.data.stated.when : null,
-        },
-        not_available: read.data.not_available
-          .filter((n) => !figure(n.name))
-          .map((n) => ({ name: n.name, why: n.why ? trim(n.why).text || null : null })),
+      /** The reply with every figure cut, and how many sentences or fields went. */
+      const clean = (data: Reply): { r: Reply; cut: number } => {
+        let cut = 0;
+        const trim = (text: string) => {
+          const trimmed = trimFigureSentences(text, figure, catalogNames);
+          cut += trimmed.cut;
+          return trimmed.text;
+        };
+        const gone = <T>(is: boolean, then: T, otherwise: T) => {
+          if (is) cut += 1;
+          return is ? then : otherwise;
+        };
+        const say = trim(data.say);
+        const said = cut > 0;
+        const cleanLines = (lines: Reply['lines']) =>
+          lines.map((l) => ({ ...l, why: trim(l.why) || FIGURE_REMOVED[language] }));
+        const r: Reply = {
+          ...data,
+          // what is left of the message, then the server's line saying part of it was cut
+          say: said ? [say, FIGURE_CUT[language]].filter(Boolean).join('\n') : say,
+          lines: cleanLines(data.lines),
+          buckets: data.buckets?.map((b, i) => ({
+            ...b,
+            name: gone(figure(b.name), `Pot ${i + 1}`, b.name.trim() || `Pot ${i + 1}`),
+            lines: cleanLines(b.lines),
+          })),
+          stated: {
+            ...data.stated,
+            // the term in words: the person's own, or nothing
+            when: data.stated.when ? gone(figure(data.stated.when), null, data.stated.when) : null,
+          },
+          not_available: data.not_available
+            .filter((n) => !gone(figure(n.name), true, false))
+            .map((n) => ({ name: n.name, why: n.why ? trim(n.why) || null : null })),
+        };
+        return { r, cut };
       };
+
+      // One repair attempt, as the vault conversation makes (`VaultAgentRepairNote`): for a reply
+      // that is not the sheet, and for one that stated a figure. A second miss on the sheet is the
+      // route's 503; a second figure is cut, and so is the first when the repair call cannot be made.
+      let repair: VaultAgentRepairNote | undefined;
+      let asked = await ask();
+      if (asked.kind === 'failure') return asked.result;
+      if (asked.kind === 'miss') {
+        const again = await ask({ previous: asked.text || '{}', problem: REPAIR_SHAPE });
+        if (again.kind === 'failure')
+          return {
+            ...again.result,
+            repair: { failed: 'reply_shape', outcome: again.result.reason },
+          };
+        if (again.kind === 'miss')
+          return {
+            kind: 'failure',
+            reason: 'invalid',
+            detail: 'reply_shape',
+            repair: { failed: 'reply_shape', outcome: 'reply_shape' },
+          };
+        asked = again;
+        repair = { failed: 'reply_shape', outcome: 'repaired' };
+      }
+      let cleaned = clean(asked.data);
+      if (cleaned.cut > 0 && !repair) {
+        const again = await ask({ previous: asked.text, problem: REPAIR_FIGURE });
+        if (again.kind === 'read') cleaned = clean(again.data);
+        repair = cleaned.cut
+          ? { failed: 'prose_figure', outcome: 'prose_figure_trimmed', sentencesCut: cleaned.cut }
+          : { failed: 'prose_figure', outcome: 'repaired' };
+      } else if (cleaned.cut > 0)
+        repair = {
+          failed: 'reply_shape',
+          outcome: 'prose_figure_trimmed',
+          sentencesCut: cleaned.cut,
+        };
+      const r = cleaned.r;
+      const served = (reply: VaultAgentReply): VaultAgentResult => ({
+        kind: 'reply',
+        reply,
+        ...(repair ? { repair } : {}),
+      });
 
       // ---- code: ids, eligibility, split, caps ----
       const notes: string[] = [];
@@ -550,19 +646,29 @@ export function createRelaxedGoalAgent(options: {
         lines: { asset: BasketAsset; why: string; share: number | null }[];
       }[] = [];
       // An id as the model wrote it, matched to the catalog: exactly, then ignoring case, then by the
-      // token's symbol or the company it tracks (Haiku writes `solana:NVDAx` for `solana:nvdax`).
+      // token's symbol, with or without its trailing "x" (Haiku writes `solana:NVDAx` for
+      // `solana:nvdax`). Only then loosely, by the company or the symbol without a leading "t", and
+      // only when one listed asset answers to it: "QQQ" is never taken for TQQQ, and a name two
+      // assets share is dropped and said rather than guessed.
+      const bare = (v: string) => v.toLowerCase().replace(/^[a-z]+:/, '');
       const plain = (v: string) =>
-        v
-          .toLowerCase()
-          .replace(/^[a-z]+:/, '')
+        bare(v)
           .replace(/^t(?=[a-z]{2,}x?$)/, '')
           .replace(/x$/, '');
+      const one = (found: BasketAsset[]) => (found.length === 1 ? found[0] : undefined);
       const resolve = (id: string) =>
         catalog.get(id) ??
         assets.find((a) => a.id.toLowerCase() === id.toLowerCase()) ??
-        assets.find((a) => a.symbol.toLowerCase() === id.toLowerCase().replace(/^[a-z]+:/, '')) ??
-        assets.find(
-          (a) => plain(a.symbol) === plain(id) || a.underlying.toLowerCase() === plain(id),
+        assets.find((a) => a.symbol.toLowerCase() === bare(id)) ??
+        one(
+          assets.filter(
+            (a) => a.symbol.toLowerCase().replace(/x$/, '') === bare(id).replace(/x$/, ''),
+          ),
+        ) ??
+        one(
+          assets.filter(
+            (a) => plain(a.symbol) === plain(id) || a.underlying.toLowerCase() === plain(id),
+          ),
         );
       const keep = (lines: { id: string; why: string; share?: number | null }[], shape: Shape) => {
         const goals = [
@@ -753,7 +859,7 @@ export function createRelaxedGoalAgent(options: {
           proposal: null,
         });
         if (!tooMany.success) return { kind: 'failure', reason: 'invalid' };
-        return { kind: 'reply', reply: tooMany.data };
+        return served(tooMany.data);
       }
       // Lines above their cap today: kept as asked and said plainly. The vault contract accepts any
       // composition (ANY-COMPOSITION, as amended): `goal/accept` warns (`OVER_LISTED_CAP`, the exit
@@ -916,7 +1022,7 @@ export function createRelaxedGoalAgent(options: {
         log('final reply did not validate', whereOf(reply.error));
         return { kind: 'failure', reason: 'invalid' };
       }
-      return { kind: 'reply', reply: reply.data };
+      return served(reply.data);
     },
   };
 }

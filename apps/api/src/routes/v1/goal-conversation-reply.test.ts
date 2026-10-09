@@ -190,6 +190,8 @@ describe('new-goal model preview route', () => {
     const s = await setup();
     const res = await s.post();
     expect(res.statusCode, res.body).toBe(200);
+    // which agent wrote it is said: here the model-led conversation, no relaxed agent being set
+    expect(res.json().agent).toBe('model_led');
     expect(res.json()).toMatchObject({
       version: 1,
       messageId: 'goal-person',
@@ -650,7 +652,12 @@ describe('the goal agent behind /goal (gate RELAXED-INTAKE)', () => {
     const s = await setup(true, undefined, { id: 'relaxed-double', reply } as RelaxedGoalAgent);
     const res = await s.post();
     expect(res.statusCode, res.body).toBe(200);
-    expect(res.json()).toMatchObject({ messageId: 'goal-person', chain: 'solana', proposal: null });
+    expect(res.json()).toMatchObject({
+      messageId: 'goal-person',
+      chain: 'solana',
+      agent: 'relaxed',
+      proposal: null,
+    });
     expect(reply).toHaveBeenCalledWith(
       s.body,
       expect.objectContaining({ kind: 'new_goal', chain: 'solana' }),

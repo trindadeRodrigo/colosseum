@@ -31,6 +31,11 @@ import { signedIn } from './orders';
  */
 export const GoalConversationReply = VaultAgentReplyShape.extend({
   chain: ChainId,
+  agent: z
+    .enum(['relaxed', 'model_led'])
+    .describe(
+      'Which agent wrote this reply: the relaxed intake (gate RELAXED-INTAKE), or the model-led conversation the server answers with when it runs with `GOAL_AGENT=model-led`. Said so that neither is ever taken for the other.',
+    ),
   goal: VaultAgentStatedPurpose.shape.goal.describe(
     'What the person said the money is for, read by the server from plain statements in their own messages; the latest one stands. Null until they have plainly said it, and after they take it back or question it. Never the model’s reading and never defaulted.',
   ),
@@ -69,7 +74,7 @@ export function registerGoalConversationReplyRoute(
         tags: ['plans'],
         summary: 'Discuss a new goal and preview model-proposed allocations',
         description:
-          'Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. Uses the existing model and shared call quota. A preview requires separate fresh goal and amount confirmation before any financial review. No goal is stored for a new goal yet and none is taken from the request, so no pick is checked against one here and `proposal.unknowns` says so: `POST /v1/conversations/{chain}/goal/accept` checks the mix against the goal the person confirms.',
+          'Requires matching sign-in tokens and a verified wallet for the active chain. Uses the real listed catalog, prices and sourced planning inputs. There is no existing vault, holdings or confirmed planning amount; size-dependent feasibility is unknown. No allocation engine, storage, funding, order or account-chain mutation. The relaxed intake answers when a model key is set, unless the server runs with `GOAL_AGENT=model-led`, which chooses the model-led conversation; `agent` says which wrote the reply. Either draws on the shared call quota, sets weights in code from the shares the server reads in the messages (an equal split otherwise), and serves no sentence of the model that states a figure. A preview requires separate fresh goal and amount confirmation before any financial review. No goal is stored for a new goal yet and none is taken from the request, so no pick is checked against one here and `proposal.unknowns` says so: `POST /v1/conversations/{chain}/goal/accept` checks the mix against the goal the person confirms.',
         params: z.strictObject({ chain: ChainId }),
         body: VaultAgentRequest,
         response: {
@@ -179,7 +184,12 @@ export function registerGoalConversationReplyRoute(
             : 'the new-goal conversation reply asks about a stated limit its repair attempt still missed',
         );
       // Read from the person's messages alone: the same whichever model attempt is served.
-      return { ...result.reply, chain, ...statedPurposeIn(req.body.messages, context) };
+      return {
+        ...result.reply,
+        chain,
+        agent: relaxed ? ('relaxed' as const) : ('model_led' as const),
+        ...statedPurposeIn(req.body.messages, context),
+      };
     },
   );
 }

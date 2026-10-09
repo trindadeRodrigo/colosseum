@@ -654,7 +654,7 @@ export function statedPurposeIn(
   ]);
 }
 
-function hasNonFiniteNumber(value: unknown): boolean {
+export function hasNonFiniteNumber(value: unknown): boolean {
   if (typeof value === 'number') return !Number.isFinite(value);
   if (Array.isArray(value)) return value.some(hasNonFiniteNumber);
   if (value && typeof value === 'object') return Object.values(value).some(hasNonFiniteNumber);
