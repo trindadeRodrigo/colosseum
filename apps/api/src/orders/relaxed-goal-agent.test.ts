@@ -384,6 +384,72 @@ describe('relaxed intake: the split', () => {
   });
 });
 
+describe('relaxed intake: what a call costs', () => {
+  type Sent = {
+    model: string;
+    max_tokens: number;
+    system: { type: string; text: string; cache_control?: unknown }[];
+    output_config: { effort?: string };
+  };
+  const sent = async (words: string, ctx = context(), model?: string) => {
+    let params: Sent | undefined;
+    const agent = createRelaxedGoalAgent({
+      apiKey: 'placeholder',
+      log: () => {},
+      ...(model ? { model } : {}),
+      create: async (p) => {
+        params = p as unknown as Sent;
+        return {
+          stop_reason: 'end_turn',
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                say: 'Here is a draft.',
+                shape: 'pick',
+                lines: [line('solana:usdy')],
+                buckets: null,
+                stated: STATED,
+                not_available: [],
+                open: [],
+              }),
+              citations: null,
+            },
+          ],
+        };
+      },
+    });
+    await agent.reply(
+      { version: 1, language: 'en', messageId: 'm1', messages: [{ who: 'person', text: words }] },
+      ctx,
+    );
+    if (!params) throw new Error('no call');
+    return params;
+  };
+  it('sends the rules and the table first, the same bytes for every person, as the cached part', async () => {
+    const one = await sent('I want USDY', context({ person: 'person-1' }));
+    const two = await sent('Tesla and Nvidia, $5,000', context({ person: 'person-2' }));
+    expect(one.system).toHaveLength(2);
+    expect(one.system[0]?.cache_control).toEqual({ type: 'ephemeral' });
+    expect(one.system[0]?.text).toBe(two.system[0]?.text);
+    expect(one.system[0]?.text).toContain('TABLE (id | symbol');
+    expect(one.system[0]?.text).toContain('solana:usdy');
+    // nothing of the person or the day in it
+    expect(one.system[0]?.text).not.toMatch(/person-1|I want USDY|Today is/);
+    expect(one.system[0]?.text).not.toContain(new Date().toISOString().slice(0, 10));
+    // what changes comes after the breakpoint, uncached
+    expect(one.system[1]?.cache_control).toBeUndefined();
+    expect(one.system[1]?.text).toContain(`Today is ${new Date().toISOString().slice(0, 10)}`);
+    expect(one.system[1]?.text).toContain('Answer in English');
+  });
+  it('sends effort only to a model that takes it, and a bounded reply length', async () => {
+    expect((await sent('I want USDY')).output_config.effort).toBe('medium');
+    const older = await sent('I want USDY', context(), 'claude-haiku-4-5');
+    expect(older.output_config).not.toHaveProperty('effort');
+    expect(older.max_tokens).toBeLessThanOrEqual(4000);
+  });
+});
+
 describe('relaxed intake: the projection starts from the person’s own figures', () => {
   const yieldLines = [line('solana:usdy')];
   const sheet = (stated: Record<string, unknown>, words: string | string[]) =>

@@ -8,6 +8,7 @@ import {
 } from '@colosseum/schemas';
 import { z } from 'zod';
 import type { ModelQuota } from '../model-quota';
+import { acceptsEffort } from '../vault-agent-model';
 import { goalFit } from './mix';
 import { ORDER_POLICY } from './prepare';
 import { catalogCap, holdingConstraints, projectionSheet } from './relaxed-limits';
@@ -182,8 +183,27 @@ const REQUIRED: Record<Shape, (keyof Reply['stated'])[]> = {
   split: ['amount'],
 };
 
-function systemPrompt(table: string, language: 'en' | 'pt', today: string) {
-  return `You are the planner at Tenonfi. A person tells you what they want to do with their money and you turn it into holdings from one table, the catalog of their chain, which you see in full below. You talk to them the way a sharp, warm friend who knows markets would: plainly, briefly, in their language, with real reasoning. You are not a form. Answer in ${language === 'pt' ? 'Portuguese' : 'English'} unless the person writes in another language.
+/**
+ * The system prompt, ordered for prompt caching as the vault conversation's is (#196): the rules and
+ * the chain's table first, the same bytes for every person on the chain and ending in a cache
+ * breakpoint; then what changes, the day and the language. The person's words are the messages.
+ */
+function systemBlocks(
+  table: string,
+  language: 'en' | 'pt',
+  today: string,
+): Anthropic.TextBlockParam[] {
+  return [
+    { type: 'text', text: systemPrompt(table), cache_control: { type: 'ephemeral' } },
+    {
+      type: 'text',
+      text: `Today is ${today}. Answer in ${language === 'pt' ? 'Portuguese' : 'English'} unless the person writes in another language.`,
+    },
+  ];
+}
+
+function systemPrompt(table: string) {
+  return `You are the planner at Tenonfi. A person tells you what they want to do with their money and you turn it into holdings from one table, the catalog of their chain, which you see in full below. You talk to them the way a sharp, warm friend who knows markets would: plainly, briefly, in their language, with real reasoning. You are not a form. The language to answer in and today's date follow this text.
 
 What you are free to do: read intent, including people, companies, themes, nicknames and half-sentences; decide which holdings on the table fit and why; notice when something they named is not on the table and say so; ask what you genuinely need, in a natural sentence, one or two things at a time; keep the whole conversation in mind; change course when they do; explain, compare, and give your view of the shape of the plan.
 
@@ -203,8 +223,6 @@ Every turn you answer with the JSON object the API holds you to:
 - "stated": only what the person said, nothing guessed. "need_by" is the day they need the money, as YYYY-MM-DD, read from their words ("March 2027" is 2027-03-01; a term such as "for retirement in 30 years" or "in five years" is that many years from today; ask if it is unclear; null when they gave no term). "monthly" is a monthly withdrawal or income they want; "withdraw_months" how many months of it, when they said or it follows from their words (a three-month trip is 3); "withdraw_start" the day of the first withdrawal as YYYY-MM-DD, when they said it. The code shows the dates it read under your message, so they can correct them.
 - "not_available": things they named that are not on the table.
 - "open": what rule 4 still needs for this shape; empty when the plan is ready to confirm.
-
-Today is ${today}.
 
 A holding's cap is the share above which the deposit step warns today. When you choose holdings yourself (no share stated), pick enough for each pot to stay within the caps. When the person states a share above a cap, follow them.
 
@@ -434,7 +452,7 @@ export function createRelaxedGoalAgent(options: {
         const response = await create({
           model,
           max_tokens: 4000,
-          system: systemPrompt(
+          system: systemBlocks(
             tableOf(assets, context, caps, readings),
             language,
             new Date().toISOString().slice(0, 10),
@@ -442,7 +460,8 @@ export function createRelaxedGoalAgent(options: {
           messages: turnsOf(messages),
           output_config: {
             format: { type: 'json_schema', schema: REPLY_SCHEMA },
-            effort: 'medium',
+            // only where the model takes it: Haiku 4.5 and Sonnet 4.5 answer 400 to it
+            ...(acceptsEffort(model) ? { effort: 'medium' } : {}),
           },
         } as unknown as Anthropic.MessageCreateParamsNonStreaming);
         if (response.stop_reason !== 'end_turn') {
