@@ -10,6 +10,7 @@
   },
   "scripts": {
     "dev": "pnpm -r --parallel --filter @colosseum/api --filter @colosseum/web dev",
+    "dev:devnet": "bash scripts/dev/devnet-local.sh",
     "build": "pnpm -r build",
     "test": "vitest run",
     "test:watch": "vitest",
