@@ -74,6 +74,7 @@ export const bearingPt: BearingDictionary = {
   reasons: {
     no_samples_in_regime: 'ainda sem amostras neste regime',
     insufficient_samples: 'poucas amostras para ajustar',
+    not_a_number: 'o valor guardado não pôde ser usado',
     beyond_measured_size: 'além do maior tamanho medido',
     no_reference_price: 'sem preço de referência',
     no_external_source: 'sem fonte externa para isto',
@@ -97,7 +98,14 @@ export const bearingPt: BearingDictionary = {
     selectAll: 'Todos',
     selectNone: 'Nenhum',
   },
+  /** Beside a figure made of parts when some have no figure: it is of the measured ones only. */
+  partial: (n: number) => `dos ${n} medidos`,
   pie: {
+    /** Under the legend: the pools with no figure, which get no slice. */
+    missing: (n: number) =>
+      n === 1
+        ? '1 pool não tem número e não é desenhado.'
+        : `${n} pools não têm número e não são desenhados.`,
     others: (n: number) => `${n} ${n === 1 ? 'outro pool' : 'outros pools'}`,
     point: 'Aponte para uma fatia ou uma linha para ver o valor.',
   },

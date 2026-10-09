@@ -23,6 +23,12 @@ export type Fact = {
   dataFrom?: string | null;
   regime?: string;
   sizeUsd?: number;
+  /**
+   * For a figure made of parts: how many of them had a figure, and how many there are. With fewer
+   * measured than there are, the figure is of the measured ones only, and says so beside it.
+   */
+  measured?: number;
+  of?: number;
 };
 
 export type FactMeta = Omit<Fact, 'value'>;
@@ -43,8 +49,24 @@ export function mk(value: number | null | undefined, o: FactMeta): Fact {
     dataFrom: o.dataFrom,
     regime: o.regime,
     sizeUsd: o.sizeUsd,
+    measured: o.measured,
+    of: o.of,
     provenance: o.provenance ?? 'live',
   };
+}
+
+/** Whether a figure made of parts lacks some of them: it is then of the measured ones only. */
+export const partial = (f: Fact | null | undefined): f is Fact & { measured: number; of: number } =>
+  f != null && f.value != null && f.measured != null && f.of != null && f.measured < f.of;
+
+/**
+ * Largest first, and what has no figure last: a missing figure is not a zero, so it is never ranked
+ * among the measured ones.
+ */
+export function largestFirst(a: Fact | null | undefined, b: Fact | null | undefined): number {
+  if (!has(a)) return has(b) ? 1 : 0;
+  if (!has(b)) return -1;
+  return b.value - a.value;
 }
 
 export const has = (f: Fact | null | undefined): f is Fact & { value: number } =>
@@ -88,6 +110,8 @@ export function sumFact(
       have.length < facts.length ? ' (the rest have none, so this is a lower bound)' : ''
     }`,
     methodVersion: o.methodVersion ?? have[0]?.methodVersion,
+    measured: have.length,
+    of: facts.length,
     provenance: provenanceOf(have),
   });
 }

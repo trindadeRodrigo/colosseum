@@ -153,7 +153,10 @@ export type LiquidityBody = {
   midPrice: number;
   asset?: string;
   quote?: string;
-  /** Both null when the quote token has no price in dollars; `usdNullReason` says so. */
+  /**
+   * Both null when the quote token has no price in dollars: the band amounts are then not in dollars.
+   * `usdNullReason` says so where the API names its reason.
+   */
   totalAssetUsd?: number | null;
   totalQuoteUsd?: number | null;
   usdNullReason?: string | null;
