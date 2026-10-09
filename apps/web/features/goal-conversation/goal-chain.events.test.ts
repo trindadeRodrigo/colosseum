@@ -13,9 +13,9 @@ import {
   unmountAll,
 } from '../../components/ui/test/dom';
 import { dictionary } from '../../i18n';
-import { ChainSwitch } from '../account/ChainSwitch';
 import type { Person } from '../account/person';
 import { withAccount } from '../account/test/screen';
+import { StartChain } from '../account/test/start-chain';
 import { chainOf, robinhoodChain } from '../portfolio/test/portfolio';
 import { preview } from '../vault-conversation/test/fixtures';
 import {
@@ -99,7 +99,8 @@ function api(start: Person, refuse?: () => Response | null, portfolio?: unknown)
 const show = (withBar = false) =>
   mount(
     withAccount('en', [
-      ...(withBar ? [createElement(ChainSwitch, { key: 'bar' })] : []),
+      // what the account gives every other screen, and a choice made outside this page
+      ...(withBar ? [createElement(StartChain, { key: 'start' })] : []),
       createElement(GoalHome, { key: 'goal' }),
     ]),
   );
@@ -113,8 +114,7 @@ const send = async (host: HTMLElement, words: string) => {
   await settle();
 };
 const picker = (host: HTMLElement) => find<HTMLSelectElement>(host, '[data-ui="goal-picker"]');
-const bar = (host: HTMLElement) =>
-  find(host, '[data-ui="chain-switch"] > button').getAttribute('data-chain');
+const bar = (host: HTMLElement) => find(host, '[data-ui="start-chain"]').getAttribute('data-chain');
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/goal');
@@ -177,12 +177,11 @@ describe('the chain of a new plan, chosen on /goal', () => {
     );
   });
 
-  it('follows the bar’s switch while the bar still has one', async () => {
+  it('follows where new plans start when it is chosen outside this page', async () => {
     api(passkey('solana'));
     const host = await show(true);
     await settle();
-    await click(find(host, '[data-ui="chain-switch"] > button'));
-    await click(find(host, '[data-ui="chain-switch-panel"] button[data-chain="robinhood"]'));
+    await click(find(host, '[data-ui="start-chain"] [data-start="robinhood"]'));
     await settle();
     expect([checked(host), bar(host)]).toEqual(['robinhood', 'robinhood']);
   });

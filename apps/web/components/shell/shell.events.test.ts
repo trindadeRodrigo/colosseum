@@ -190,7 +190,7 @@ describe('the frame', () => {
     }
     // on a phone the same links are in the sheet under the menu button
     const sheet = find(signedIn, '[data-ui="compact-nav-sheet"]');
-    expect([...sheet.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual([
+    expect([...sheet.querySelectorAll(':scope > a')].map((a) => a.getAttribute('href'))).toEqual([
       '/shelf',
       '/goal',
       '/portfolio',
@@ -286,7 +286,7 @@ describe('who is signed in, in the bar', () => {
     expect(invest.className).toContain('aria-[current=page]:underline');
   });
 
-  it('shows the wallet of the chain the plan lives on, and no other, with a way out', async () => {
+  it('shows the person and no chain or address in the bar, and their wallets with a way out in the menu', async () => {
     portStore.setApi(async () =>
       json({
         userId: 'did:privy:test',
@@ -302,28 +302,33 @@ describe('who is signed in, in the bar', () => {
     portStore.set(signedInPort(EMBEDDED, { signOut }));
     const host = await shell();
     await settle();
-    const account = find(host, '[data-ui="account"]');
-    expect(account.textContent).toContain('So11…1112');
-    expect(account.querySelector('[title]')?.getAttribute('title')).toBe(SOLANA);
-    // a real wallet carries no MOCK plate
-    expect(account.querySelector('.tf-mock-plate')).toBeNull();
+    // a person with a wallet on each chain has two addresses: the bar shows neither, and no chain
+    const button = menuButton(host);
+    expect(button.textContent).toBe(en.accountLabel);
+    expect(button.innerHTML).not.toMatch(/So11|0x20|Solana|Robinhood/);
+    expect(button.querySelector('[title]')).toBeNull();
     const menu = await openMenu(host);
-    expect(account.innerHTML).not.toContain(EVM);
-    expect(account.innerHTML).not.toContain('0x20');
+    // a real wallet carries no MOCK plate
+    expect(menu.querySelector('.tf-mock-plate')).toBeNull();
+    expect(
+      [...menu.querySelectorAll('[data-ui="account-address"]')].map((a) => a.getAttribute('title')),
+    ).toEqual([SOLANA, EVM]);
     await click(find(menu, '[data-ui="sign-out"]'));
     await settle();
     expect(signOut).toHaveBeenCalledTimes(1);
     expect(find<HTMLAnchorElement>(host, 'header a[href^="/sign-in"]').textContent).toBe(en.signIn);
   });
 
-  it('shows no address before the chain is known: it does not guess which wallet is the one', async () => {
+  it('is the same control before our server has said anything: the wallets the sign-in holds, and the way out', async () => {
     portStore.set(signedInPort(EMBEDDED));
     const host = await shell();
     await settle();
-    // the control names no chain and no address, and its menu holds the way out alone
-    expect(menuButton(host).textContent).toBe(en.account);
+    // no chain was ever in the bar to wait for: the label is the label
+    expect(menuButton(host).textContent).toBe(en.accountLabel);
+    expect(menuButton(host).hasAttribute('data-ready')).toBe(false);
     const menu = await openMenu(host);
-    expect(menu.textContent).toBe(en.signOut);
+    expect(menu.querySelectorAll('[data-ui="account-wallet"]')).toHaveLength(2);
+    expect([...menu.querySelectorAll('button')].at(-1)?.textContent).toBe(en.signOut);
   });
 
   it('says nothing about anyone before the wallet has loaded: a still box, nothing to press', async () => {
@@ -352,9 +357,10 @@ describe('who is signed in, in the bar', () => {
       );
       const host = await shell();
       await settle();
-      // no address: there is no chain, and no wallet to show for one; the name is "Your wallet"
+      // no wallet to list yet; the name is "Your account" either way
       const button = menuButton(host);
-      expect(button.textContent).toBe(en.account);
+      expect(button.getAttribute('aria-label')).toBe(en.account);
+      expect(button.textContent).toBe(walletsOwed === 'making' ? '' : en.accountLabel);
       const menu = await openMenu(host);
       expect(menu.textContent).toBe(en.signOut);
       await click(find(menu, '[data-ui="sign-out"]'));
@@ -365,8 +371,8 @@ describe('who is signed in, in the bar', () => {
   );
 
   it('keeps the loading look while the wallets of someone signed in are being made, with the way out in it', async () => {
-    // a passing state: no "Your wallet" label that the chip then replaces. The button shows the
-    // chip's still boxes, is named "Your wallet" for a screen reader, and opens "Sign out" at once
+    // a passing state: the button shows a still box where its label will be, is named "Your
+    // account" for a screen reader, and opens "Sign out" at once
     portStore.set(fakePort({ status: 'loading', userId: 'did:privy:test', walletsOwed: 'making' }));
     const host = await shell();
     await settle();
@@ -377,8 +383,8 @@ describe('who is signed in, in the bar', () => {
     expect(find(button, '[data-ui="account-placeholder"]').getAttribute('data-shape')).toBe(
       'account',
     );
-    const label = document.getElementById(button.getAttribute('aria-labelledby') ?? '');
-    expect([label?.textContent, label?.className]).toEqual([en.account, 'sr-only']);
+    expect(button.getAttribute('aria-label')).toBe(en.account);
+    expect(button.querySelector('[data-ui="account-label"]')).toBeNull();
     // the way out without waiting for the help
     expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
     expect((await openMenu(host)).textContent).toBe(en.signOut);
@@ -423,21 +429,24 @@ describe('who is signed in, in the bar', () => {
     expect(find(host, '[data-ui="account-said"]').textContent).toBe('');
   });
 
-  it('marks the throwaway wallet of development with the named sample glyph, never MOCK', async () => {
+  it('marks the throwaway wallet of development with the named sample glyph in its row, never MOCK', async () => {
     portStore.set(signedInPort(PHANTOM, { test: true }, 'mock'));
     const host = await shell();
     await settle();
-    const account = find(host, '[data-ui="account"]');
-    expect(account.querySelector('[data-ui="sample-glyph"]')?.getAttribute('aria-label')).toBe(
+    // nothing in the bar is a figure or an address any more: the mark is where the address is
+    expect(find(host, '[data-ui="account"] > button').querySelector('.tf-hatch')).toBeNull();
+    const menu = await openMenu(host);
+    const row = find(menu, '[data-ui="account-wallet"]');
+    expect(row.querySelector('[data-ui="sample-glyph"]')?.getAttribute('aria-label')).toBe(
       en.sampleFigure,
     );
-    expect(account.querySelectorAll('.tf-hatch')).toHaveLength(1);
-    expect(account.textContent).not.toContain('MOCK');
+    expect(row.querySelectorAll('.tf-hatch')).toHaveLength(1);
+    expect(menu.textContent).not.toContain('MOCK');
     expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
   });
 });
 
-describe('the account control of someone signed in (Thom, Oct 6)', () => {
+describe('the account control of someone signed in (Thom, Oct 6 and Oct 9)', () => {
   const words = dictionary('en');
   /** A passkey person on Solana, and the switches sent to the API. */
   const onSolana = () => {
@@ -460,41 +469,37 @@ describe('the account control of someone signed in (Thom, Oct 6)', () => {
     return puts;
   };
 
-  it('is one button with the chain and the short address, named with the whole address', async () => {
+  it('is one button with a wallet glyph and "Account", named "Your account", of one width', async () => {
     onSolana();
     const host = await shell();
     await settle();
     const bar = find(host, '[data-ui="account-control"]');
     // one control: no chain switcher beside it, no "Sign out" button in the bar
     expect(bar.querySelectorAll('button')).toHaveLength(1);
-    expect(bar.querySelector('[data-ui="chain-switch"]')).toBeNull();
+    expect(host.querySelector('header [data-ui="chain-switch"]')).toBeNull();
     const button = menuButton(host);
     expect(button.getAttribute('aria-expanded')).toBe('false');
-    expect(button.textContent).toContain('Solana');
-    expect(button.textContent).toContain('So11…1112');
-    // a screen reader hears the whole address, not the cut one
-    const heard = [...button.querySelectorAll('*')]
-      .filter((el) => el.children.length === 0 && el.getAttribute('aria-hidden') !== 'true')
-      .map((el) => el.textContent)
-      .join(' ');
-    expect(heard).toContain(en.account);
-    expect(heard).toContain(SOLANA);
-    expect(heard).not.toContain('So11…1112');
-    // its name is "Your wallet" and the address. The chain is a part of its own, which describes the
-    // control and is not in its name, so it can leave the chip without the name changing
-    const named = (button.getAttribute('aria-labelledby') ?? '')
-      .split(' ')
-      .map((id) => document.getElementById(id));
-    expect(named.map((el) => el?.textContent)).toEqual([en.account, `So11…1112${SOLANA}`]);
-    const chainPart = find(button, '[data-part="chain"]');
-    expect(button.getAttribute('aria-describedby')).toBe(chainPart.id);
-    expect(named.some((el) => el && chainPart.contains(el))).toBe(false);
+    expect(button.getAttribute('aria-label')).toBe(en.account);
+    expect(button.textContent).toBe(en.accountLabel);
+    // the person, not a chain: no chain, no address, nothing a chain could change
+    expect(button.hasAttribute('data-chain')).toBe(false);
+    expect(button.hasAttribute('aria-describedby')).toBe(false);
+    expect(button.innerHTML).not.toMatch(/Solana|Robinhood|So11|0x20/);
+    expect(button.querySelectorAll('svg')).toHaveLength(2);
+    // the label sits in a box of one width, the same box the still bar sits in while it loads
+    const box = find(button, '[data-ui="account-label"]').parentElement as HTMLElement;
+    expect(box.className).toMatch(/\bw-\[/);
+    await unmountAll();
+    portStore.set(fakePort({ status: 'loading', userId: 'did:privy:test' }));
+    const waiting = await shell();
+    const bars = find(menuButton(waiting), '[data-ui="account-placeholder"]');
+    expect((bars.parentElement as HTMLElement).className).toBe(box.className);
     // a hairline and 2px corners, never a pill
     expect(button.className).toContain('rounded-md');
     expect(button.className).not.toContain('rounded-full');
   });
 
-  it('opens with the chains, the address, the explorer and "Sign out" last, and closes with Escape', async () => {
+  it('opens with the person’s wallets, one for each chain they have one on, then "Sign out", and closes with Escape', async () => {
     onSolana();
     const host = await shell();
     await settle();
@@ -502,24 +507,41 @@ describe('the account control of someone signed in (Thom, Oct 6)', () => {
     const menu = await openMenu(host);
     expect(menuButton(host).getAttribute('aria-expanded')).toBe('true');
     expect(menuButton(host).getAttribute('aria-controls')).toBe(menu.id);
-    const group = find(menu, '[role="group"]');
-    expect(pressed(group).join('')).toContain('Solana');
+    const list = find(menu, '[data-ui="account-wallets"]');
+    expect(list.getAttribute('aria-label')).toBe(en.wallets);
+    const rows = [...list.querySelectorAll<HTMLElement>('[data-ui="account-wallet"]')];
+    expect(rows.map((r) => r.getAttribute('data-chain'))).toEqual(['solana', 'robinhood']);
+    expect(rows.map((r) => find(r, '[data-ui="account-wallet-chain"]').textContent)).toEqual([
+      'Solana',
+      'Robinhood Chain',
+    ]);
+    // each on a test network here: said beside the chain's name, once for a screen reader
+    for (const row of rows) expect(row.textContent).toContain(en.testNetwork);
     // the address cut short, the whole one for a screen reader and under the pointer
-    const address = find(menu, '[data-ui="account-address"]');
-    expect(find(address, '[aria-hidden="true"]').textContent).toBe('So11…1112');
-    expect(find(address, '.sr-only').textContent).toBe(SOLANA);
-    expect(address.getAttribute('title')).toBe(SOLANA);
+    const [solana, evm] = rows.map((r) => find(r, '[data-ui="account-address"]'));
+    expect(find(solana as HTMLElement, '[aria-hidden="true"]').textContent).toBe('So11…1112');
+    expect(find(solana as HTMLElement, '.sr-only').textContent).toBe(SOLANA);
+    expect(solana?.getAttribute('title')).toBe(SOLANA);
+    expect(evm?.getAttribute('title')).toBe(EVM);
     // its copy is an icon on the same line, not a row of its own
-    const copy = find(address.parentElement as HTMLElement, '[data-ui="copy-button"]');
+    const copy = find(rows[0] as HTMLElement, '[data-ui="copy-button"]');
     expect(copy.getAttribute('aria-label')).toBe(en.copyAddress);
     expect(copy.getAttribute('title')).toContain(SOLANA);
     expect(copy.textContent).toBe('');
     const items = [...menu.querySelectorAll('button, a')].map(
       (el) => el.textContent || el.getAttribute('aria-label'),
     );
-    expect(items.slice(-3)).toEqual([en.copyAddress, en.viewOn('Solscan'), en.signOut]);
-    expect(menu.textContent).not.toContain(en.copyAddress);
-    const explorer = find<HTMLAnchorElement>(menu, '[data-ui="account-explorer"]');
+    expect(items).toEqual([
+      en.copyAddress,
+      en.viewOn('Solscan'),
+      en.copyAddress,
+      en.viewOn('Robinhood explorer'),
+      en.signOut,
+    ]);
+    const explorer = find<HTMLAnchorElement>(
+      rows[0] as HTMLElement,
+      '[data-ui="account-explorer"]',
+    );
     expect(explorer.getAttribute('href')).toContain(`/account/${SOLANA}`);
     expect(explorer.getAttribute('target')).toBe('_blank');
     // from an item inside it: focus goes back to the control
@@ -529,20 +551,49 @@ describe('the account control of someone signed in (Thom, Oct 6)', () => {
     expect(document.activeElement).toBe(menuButton(host));
   });
 
-  it('switches the chain from the menu, closes, and says where the person is now', async () => {
+  it('closes when focus leaves it', async () => {
+    onSolana();
+    const host = await shell();
+    await settle();
+    await openMenu(host);
+    const outside = find<HTMLAnchorElement>(host, `a[aria-label="${en.home}"]`);
+    outside.focus();
+    await settle();
+    expect(host.querySelector('[data-ui="account-menu"]')).toBeNull();
+  });
+
+  it('lists one wallet for a person with one', async () => {
+    portStore.setApi(async () =>
+      json({
+        userId: 'did:privy:test',
+        wallets: PHANTOM,
+        chain: 'solana',
+        chainSource: 'wallet',
+        chainOptions: ['solana'],
+      }),
+    );
+    portStore.set(signedInPort(PHANTOM));
+    const host = await shell();
+    await settle();
+    const menu = await openMenu(host);
+    const rows = [...menu.querySelectorAll('[data-ui="account-wallet"]')];
+    expect(rows.map((r) => r.getAttribute('data-chain'))).toEqual(['solana']);
+    expect(menu.textContent).not.toContain('Robinhood');
+  });
+
+  it('holds nothing that switches a chain: where new plans start is not written from the bar', async () => {
     const puts = onSolana();
     const host = await shell();
     await settle();
     const menu = await openMenu(host);
-    await click(find(menu, 'button[data-chain="robinhood"]'));
+    expect(
+      menu.querySelector('[role="group"], [aria-pressed], input, button[data-chain]'),
+    ).toBeNull();
+    for (const el of menu.querySelectorAll<HTMLElement>('button:not([data-ui="sign-out"])'))
+      await click(el);
     await settle();
-    expect(puts).toEqual(['robinhood']);
-    expect(host.querySelector('[data-ui="account-menu"]')).toBeNull();
-    expect(menuButton(host).textContent).toContain('Robinhood Chain');
-    expect(menuButton(host).textContent).toContain('0x20…0498');
-    expect(find(host, '[data-ui="chain-said"]').textContent).toBe(
-      words.chain.switch.done('Robinhood Chain'),
-    );
+    expect(puts).toEqual([]);
+    expect(host.querySelector('[data-ui="chain-said"]')).toBeNull();
   });
 
   it('copies the whole address, and says "Copied"', async () => {
@@ -553,7 +604,7 @@ describe('the account control of someone signed in (Thom, Oct 6)', () => {
       const host = await shell();
       await settle();
       const menu = await openMenu(host);
-      const copy = find(menu, '[data-ui="copy-button"]');
+      const copy = find(menu, '[data-chain="solana"] [data-ui="copy-button"]');
       const said = () => (copy.nextElementSibling as HTMLElement).textContent;
       const drawn = () =>
         [...copy.querySelectorAll('svg path')].map((path) => path.getAttribute('d')).join(' ');
@@ -574,7 +625,7 @@ describe('the account control of someone signed in (Thom, Oct 6)', () => {
     }
   });
 
-  it('heads the phone’s sheet with the same block: the chains, the address, "Sign out"', async () => {
+  it('heads the phone’s sheet with the same block: the wallets, "Sign out"', async () => {
     const puts = onSolana();
     const signOut = vi.fn(async () => {
       portStore.set(fakePort());
@@ -587,29 +638,29 @@ describe('the account control of someone signed in (Thom, Oct 6)', () => {
     // at its top, before the links
     expect(sheet.firstElementChild?.contains(block)).toBe(true);
     expect(sheet.firstElementChild?.nextElementSibling?.tagName).toBe('A');
-    expect(find(block, '[data-ui="account-address"] [aria-hidden="true"]').textContent).toBe(
-      'So11…1112',
-    );
-    expect(find(block, '[data-ui="copy-button"]').getAttribute('aria-label')).toBe(en.copyAddress);
-    await click(find(block, 'button[data-chain="robinhood"]'));
-    await settle();
-    expect(puts).toEqual(['robinhood']);
+    expect(
+      [...block.querySelectorAll('[data-ui="account-address"] [aria-hidden="true"]')].map(
+        (a) => a.textContent,
+      ),
+    ).toEqual(['So11…1112', '0x20…0498']);
+    expect(block.querySelectorAll('[data-ui="copy-button"]')).toHaveLength(2);
+    expect(block.querySelector('button[data-chain], [role="group"]')).toBeNull();
     await click(find(find(host, '[data-ui="compact-nav-sheet"]'), '[data-ui="sign-out"]'));
     await settle();
     expect(signOut).toHaveBeenCalledTimes(1);
+    expect(puts).toEqual([]);
     // signed out, the sheet has no account block
     expect(
       host.querySelector('[data-ui="compact-nav-sheet"] [data-ui="account-block"]'),
     ).toBeNull();
   });
 
-  it('signed out, keeps the chain switcher and the one primary "Sign in"', async () => {
+  it('signed out, is the one primary "Sign in", with no chain switcher in the bar', async () => {
     const host = await shell();
     await settle();
-    // the chain a visitor looks at is beside the account control, not part of it
     const bar = find(host, '[data-ui="account-control"]');
-    expect(bar.querySelector('[data-ui="chain-switch"]')).toBeNull();
-    expect(bar.parentElement?.querySelector('[data-ui="chain-switch"]')).not.toBeNull();
+    expect(host.querySelector('header [data-ui="chain-switch"]')).toBeNull();
+    expect(find(host, '[data-ui="compact-nav-bar"]').textContent).not.toMatch(/Solana|Robinhood/);
     expect(bar.querySelector('[data-ui="account"]')).toBeNull();
     expect(bar.querySelectorAll('a, button')).toHaveLength(1);
     expect(find<HTMLAnchorElement>(bar, 'a[href^="/sign-in"]').textContent).toBe(en.signIn);

@@ -260,7 +260,13 @@ export function FamilyScreen({ slug }: { slug: string }) {
           family={family}
           recipe={recipe}
           changed={changed}
-          onRunning={setRunning}
+          onRunning={(now) => {
+            // The run is on the recipe on the page. Where the page's own choice was never touched
+            // that recipe came from where the person's new plans start, which /goal can change in
+            // another tab: it is pinned here, so the section is not drawn again under the run.
+            if (now) setPicked(recipe.chain);
+            setRunning(now);
+          }}
           onVersionChanged={() => {
             setChanged(true);
             setRound((n) => n + 1);

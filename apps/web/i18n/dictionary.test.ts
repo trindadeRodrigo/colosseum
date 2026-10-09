@@ -189,7 +189,6 @@ describe('the words of the product, in each language', () => {
     expect(text).not.toMatch(word('ligad[oa]s?|desligad[oa]s?'));
     expect(pt.signIn.failure.passkeyOff).toContain('ativadas');
     expect(pt.chain.noWallet).toContain('vinculada');
-    expect(pt.chain.switch.off('Solana')).toContain('indisponível');
     // one word for dollar yield, which is not income
     expect(text).not.toMatch(/renda em dólar/i);
     expect(pt.goal.fields.glide).toContain('rendimento em dólar');
@@ -262,10 +261,15 @@ describe('the words of the product, in each language', () => {
     expect(en.shell.testNetwork).toBe('test network');
   });
 
-  it('says what a chain switch changes and what it leaves, in both (CHAIN-SWITCH)', () => {
-    // new plans move; plans already made stay on their own chain
-    expect(en.chain.switch.plansStay).toMatch(/^New plans .* stay on their own chain\.$/);
-    expect(pt.chain.switch.plansStay).toMatch(/^Planos novos .* continuam na rede deles\.$/);
+  it('points nobody at the bar for a chain, in both (CHAIN-AT-THE-PLAN)', () => {
+    // the bar shows and switches none: where a plan starts is chosen on /goal
+    for (const d of [en, pt])
+      expect(JSON.stringify(d)).not.toMatch(
+        /from the bar|bar at the top|pela barra|na barra no topo/i,
+      );
+    for (const d of [en, pt]) expect(d.chain.is.picked('Solana')).not.toMatch(/\bbar\b|barra/i);
+    expect(en.goal.blocked.chainNotChosen).toMatch(/Invest/);
+    expect(pt.goal.blocked.chainNotChosen).toMatch(/Investir/);
     // nothing says the chain can't be changed any more
     for (const d of [en, pt])
       expect(JSON.stringify(d.chain)).not.toMatch(/can’t be changed|não pode ser mudad|once\b/);

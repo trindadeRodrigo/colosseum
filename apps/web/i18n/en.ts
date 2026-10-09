@@ -25,7 +25,12 @@ export const en = {
     /** Said to a screen reader once the person is signed out. */
     signedOut: 'You’re signed out.',
     signOutFailed: 'I couldn’t sign you out: the sign-in service didn’t answer. Try again.',
-    account: 'Your wallet',
+    /** The name of the bar's account control: the person, not a chain. */
+    account: 'Your account',
+    /** What it shows. */
+    accountLabel: 'Account',
+    /** The name of the list in its menu: one wallet for each chain the person has one on. */
+    wallets: 'Your wallets',
     /** The bar's account control before it is known who is here: said once, politely. */
     accountLoading: 'Loading your account…',
     /**
@@ -48,8 +53,7 @@ export const en = {
       /** "Try again" pressed while a step of an order is being signed. */
       held: 'A step of your order is being signed. Finish or cancel that step first, then try again.',
     },
-    /** The account menu in the bar: its items under the chains. */
-    address: 'Address',
+    /** The account menu in the bar: beside each wallet's address. */
     copyAddress: 'Copy address',
     copied: 'Copied',
     viewOn: (explorer: string) => `View on ${explorer}`,
@@ -212,23 +216,14 @@ export const en = {
     /** The explorer each chain's transaction links open, named beside the link. */
     explorers: { solana: 'Solscan', robinhood: 'Robinhood explorer', base: 'Basescan' },
     /** The bar's chain switcher (gate CHAIN-SWITCH). */
+    /** What is left of the bar's switch, which is gone (CHAIN-AT-THE-PLAN): words pages still say. */
     switch: {
-      /** The button's name: what it is, and the chain it shows. */
-      current: (chain: string) => `Chain: ${chain}`,
-      group: 'Choose a chain',
-      /** Signed in: what a switch changes, and what it doesn't. */
-      plansStay:
-        'New plans are built on the chain you choose. Plans you already have stay on their own chain.',
-      /** Signed out: what the chain changes. */
-      browsing: 'Shows the shared portfolios of that chain.',
       noWallet: (chain: string) => `The wallet you signed in with doesn’t sign on ${chain}.`,
-      off: (chain: string) => `${chain} is switched off on our server for now.`,
       saving: 'Switching…',
-      done: (chain: string) => `You’re on ${chain} now.`,
     },
     is: {
       picked: (chain: string) =>
-        `New plans are built on ${chain}. You can switch chain from the bar at the top.`,
+        `New plans are built on ${chain}. You choose the chain where you start a plan, on Invest.`,
       wallet: (chain: string) =>
         `New plans are built on ${chain}, the chain of the wallet you connected.`,
     },
@@ -463,7 +458,7 @@ export const en = {
       choose: 'Choose the chain',
     },
     blocked: {
-      chainNotChosen: 'Choose a chain from the bar at the top first.',
+      chainNotChosen: 'Choose the chain for your plan first, where you start one on Invest.',
       chainUnknown:
         'I can’t tell yet which chain your plan lives on, so I can’t build for it. Ask again, above.',
       refused: 'Our server didn’t accept these limits. Check each field, then try again.',

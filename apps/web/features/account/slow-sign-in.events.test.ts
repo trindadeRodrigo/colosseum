@@ -96,7 +96,8 @@ describe.each(['en', 'pt'] as const)('a sign-in that is slow, in %s', (lang) => 
     // the chip's still boxes, in a button that says nothing of slowness: it opens the way out
     expect(frame(host).getAttribute('data-state')).toBe('loading');
     expect(control(host).getAttribute('aria-busy')).toBe('true');
-    expect(control(host).textContent).toBe(t.shell.account);
+    expect(control(host).getAttribute('aria-label')).toBe(t.shell.account);
+    expect(control(host).textContent).toBe('');
     expect(find(host, '[data-ui="account-placeholder"]').getAttribute('data-shape')).toBe(
       'account',
     );
@@ -124,7 +125,8 @@ describe.each(['en', 'pt'] as const)('a sign-in that is slow, in %s', (lang) => 
     expect(find(help, '[data-act="sign-out"]').textContent).toContain(t.shell.signOut);
     expect(said(host)).toBe(t.shell.slow.title);
     // slowness is no control's label, and the old words are nowhere
-    expect(labels(host)).toEqual([t.shell.account]);
+    expect(labels(host)).toEqual(['']);
+    expect(control(host).getAttribute('aria-label')).toBe(t.shell.account);
     expect(host.textContent).not.toMatch(/Sign-in is slow|O login está lento/);
     // nothing was asked again by itself
     expect(restarts.count).toBe(0);
@@ -164,8 +166,8 @@ describe.each(['en', 'pt'] as const)('a sign-in that is slow, in %s', (lang) => 
     await api.answer();
     expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
     expect(frame(host).getAttribute('data-state')).toBe('signed-in');
-    expect(control(host).getAttribute('data-chain')).toBe('solana');
-    expect(control(host).textContent).toContain('So11…1112');
+    expect(control(host).hasAttribute('data-ready')).toBe(true);
+    expect(control(host).textContent).toBe(t.shell.accountLabel);
     // focus was in the help, which is gone: it is on the control that took its place
     expect(document.activeElement).toBe(control(host));
     expect(said(host)).toBe('');
@@ -216,7 +218,7 @@ describe.each(['en', 'pt'] as const)('a sign-in that is slow, in %s', (lang) => 
 
     await api.answer();
     expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
-    expect(control(host).getAttribute('data-chain')).toBe('solana');
+    expect(control(host).hasAttribute('data-ready')).toBe(true);
   });
 
   it('signs out from the help: "Sign in" takes its place, with focus, and a screen reader is told', async () => {
@@ -300,6 +302,6 @@ describe('a sign-in that is slow', () => {
     await api.answer();
     await later(10 * SLOW_MS);
     expect(host.querySelector('[data-ui="sign-in-slow"]')).toBeNull();
-    expect(control(host).getAttribute('data-chain')).toBe('solana');
+    expect(control(host).hasAttribute('data-ready')).toBe(true);
   });
 });
