@@ -1,10 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import {
-  eligibleForGoal,
-  PERSONAL_PARAMS,
-  PersonalSheet,
-  sleeveOfClass,
-} from '@colosseum/engine/personal';
+import { eligibleForGoal } from '@colosseum/engine/personal';
 import type { BasketAsset } from '@colosseum/schemas';
 import {
   type VaultAgentSource as AgentSource,
@@ -568,23 +563,6 @@ export function createRelaxedGoalAgent(options: {
               .join('; ')
           : `${lines.map((l) => l.asset.symbol).join(', ')}`;
       const summary = capWarning ? `⚠ ${capWarning} ${holdings}` : holdings;
-      // The engine's sheet for "Invest in this plan", when the plan can be one.
-      const invest = investSheetOf({
-        lines,
-        catalog: assets,
-        themes: context.themes ?? [],
-        shape: r.shape,
-        potShapes: pots.map((p) => p.shape),
-        stated,
-        chain: context.chain,
-        language,
-        today: new Date(),
-      });
-      if ('why' in invest) log('no investable sheet', invest.why);
-      else if (!stated.risk)
-        notes.push(
-          `To invest, this plan is sized at ${invest.sheet.risk} risk: the lowest level at which the engine lets each single stock hold its share here (up to ${pct(PERSONAL_PARAMS.capPerStockBps[invest.sheet.risk] ?? 0)} each). Say a risk level to change it.`,
-        );
       const reply = VaultAgentReply.safeParse({
         version: 1,
         messageId,
@@ -618,7 +596,6 @@ export function createRelaxedGoalAgent(options: {
                     },
                   }
                 : {}),
-              ...('sheet' in invest ? { investSheet: invest.sheet } : {}),
             }
           : null,
       });
@@ -629,169 +606,4 @@ export function createRelaxedGoalAgent(options: {
       return { kind: 'reply', reply: reply.data };
     },
   };
-}
-
-/**
- * The engine's sheet for a relaxed plan, for "Invest in this plan". The person's
- * split goes in as the engine's mix (stocks and crypto / dollar yield / gold / cash, gate
- * EXPLICIT-MIX), so the engine keeps the proportions and picks the holdings under its own rules.
- * Null, with why, when the plan cannot be one yet: no amount, not in dollars, or the engine's sheet
- * refuses it (a plan to protect or pay income with stocks in it).
- */
-export function investSheetOf(input: {
-  lines: { asset: BasketAsset; bps: number }[];
-  /** Every asset of the chain: those not in the plan go to the engine as ones it cannot hold. */
-  catalog: BasketAsset[];
-  /** The chain's curated theme lists: a named stock reaches the engine through one of them. */
-  themes: { slug: string; members: { symbol: string }[] }[];
-  shape: Shape;
-  potShapes: Shape[];
-  stated: Reply['stated'];
-  chain: string;
-  language: 'en' | 'pt';
-  today: Date;
-}): { sheet: PersonalSheet } | { why: string } {
-  const { stated } = input;
-  if (stated.amount == null || stated.amount < 10) return { why: 'no amount yet' };
-  if (stated.currency && stated.currency.toUpperCase() !== 'USD') return { why: 'not in dollars' };
-  const mix = { growthBps: 0, dollarYieldBps: 0, goldBps: 0, cashBps: 0 };
-  for (const line of input.lines) {
-    const sleeve = sleeveOfClass(line.asset.cls);
-    if (sleeve === 'growth') mix.growthBps += line.bps;
-    else if (sleeve === 'dollarYield') mix.dollarYieldBps += line.bps;
-    else if (sleeve === 'gold') mix.goldBps += line.bps;
-    else mix.cashBps += line.bps;
-  }
-  const shapes = [input.shape, ...input.potShapes];
-  const goal =
-    mix.growthBps > 0
-      ? 'grow'
-      : shapes.includes('income')
-        ? 'income'
-        : shapes.includes('protect')
-          ? 'protect'
-          : 'grow';
-  // Named stocks reach the engine through theme sleeves (its goal sleeve buys broad funds only): each
-  // stock line goes to the smallest curated list that has it, by the company it tracks, with its
-  // share; what is not stocks goes to the safest-yield sleeve. The cannot-hold list below keeps each
-  // sleeve to the holdings of the chat. Without stocks, the split goes in as a mix.
-  const company = (s: string) =>
-    s
-      .replace(/^t(?=[A-Z])/, '')
-      .replace(/x$/i, '')
-      .toLowerCase();
-  const themesOf = (asset: BasketAsset) =>
-    input.themes
-      .filter((t) =>
-        t.members.some(
-          (m) =>
-            company(m.symbol) === company(asset.symbol) ||
-            company(m.symbol) === asset.underlying.toLowerCase(),
-        ),
-      )
-      .map((t) => t.slug);
-  const themeOf = (asset: BasketAsset) =>
-    input.themes
-      .filter((t) =>
-        t.members.some(
-          (m) =>
-            company(m.symbol) === company(asset.symbol) ||
-            company(m.symbol) === asset.underlying.toLowerCase(),
-        ),
-      )
-      .sort((a, b) => a.members.length - b.members.length)[0]?.slug;
-  const growthLines = input.lines.filter((l) => sleeveOfClass(l.asset.cls) === 'growth');
-  let sleeves: { kind: 'theme'; theme: string; shareBps: number }[] | null = null;
-  // All the stocks in one theme when one list has them all: the engine then splits that sleeve evenly
-  // over them. Otherwise each stock goes to the smallest list that has it.
-  const together = input.themes
-    .filter((t) => growthLines.every((l) => themesOf(l.asset).includes(t.slug)))
-    .sort((a, b) => a.members.length - b.members.length)[0]?.slug;
-  // Only broad funds (or nothing) on the growth side: the split goes in as a mix, which the engine fills
-  // with a broad fund and its own yield; themes are for single stocks (tried on Oct 8: a goal sleeve
-  // beside a fund's theme buys more of the fund).
-  const singles = growthLines.filter((l) => l.asset.cls !== 'etf');
-  const funds = growthLines.filter((l) => l.asset.cls === 'etf');
-  if (!singles.length) {
-    sleeves = null;
-  } else if (together) {
-    sleeves = [
-      { kind: 'theme', theme: together, shareBps: growthLines.reduce((a, l) => a + l.bps, 0) },
-    ];
-  } else {
-    const byTheme = new Map<string, number>();
-    for (const l of growthLines) {
-      const slug = themeOf(l.asset);
-      if (!slug) return { why: `${l.asset.symbol} is on no curated list` };
-      byTheme.set(slug, (byTheme.get(slug) ?? 0) + l.bps);
-    }
-    sleeves = [...byTheme].map(([theme, shareBps]) => ({ kind: 'theme', theme, shareBps }));
-  }
-  const rest = 10_000 - (sleeves ?? []).reduce((a, x) => a + x.shareBps, 0);
-  const iso = stated.need_by ?? stated.withdraw_start ?? null;
-  const when = iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T00:00:00.000Z`) : null;
-  const months =
-    when && when > input.today
-      ? (when.getUTCFullYear() - input.today.getUTCFullYear()) * 12 +
-        when.getUTCMonth() -
-        input.today.getUTCMonth()
-      : null;
-  const dated = months != null && months >= 1;
-  const sheet = PersonalSheet.safeParse({
-    basketType: 'standard',
-    goal,
-    amountUsd: stated.amount,
-    horizonMonths: dated ? Math.min(480, months) : PERSONAL_PARAMS.openEndedHorizonMonths,
-    ...(dated ? {} : { horizonOpen: true }),
-    risk: stated.risk ?? riskFor(input.lines),
-    themes: [],
-    chains: [input.chain],
-    ...(goal === 'income' && stated.monthly != null
-      ? { incomeTargetUsdMonthly: stated.monthly }
-      : {}),
-    rules: { useHoldings: false, glide: false },
-    language: input.language,
-    ...(sleeves
-      ? {
-          sleeves: [
-            ...sleeves,
-            // Beside a broad fund the rest is the safest-yield sleeve, so it buys no more of the fund.
-            ...(rest > 0
-              ? [
-                  {
-                    kind: funds.length ? ('safe_yield' as const) : ('goal' as const),
-                    shareBps: rest,
-                  },
-                ]
-              : []),
-          ],
-        }
-      : { mix }),
-    // The holdings the person agreed in the chat are the only ones the engine may pick: every other
-    // token of the chain is one it cannot hold (cash is never on that list: a vault is funded in it).
-    limits: {
-      cannotHold: {
-        assets: input.catalog
-          .filter((a) => a.cls !== 'cash' && !input.lines.some((l) => l.asset.id === a.id))
-          .map((a) => a.id),
-      },
-    },
-  });
-  return sheet.success
-    ? { sheet: sheet.data }
-    : { why: sheet.error.issues.map((i) => i.message).join('; ') };
-}
-
-/**
- * The risk a plan is sized at when the person gave none: the lowest whose per-stock limit
- * (PERSONAL_PARAMS.capPerStockBps) holds the largest single stock or crypto line of the plan, as the
- * engine chooses a risk for a stated mix (gate EXPLICIT-MIX). High when none does.
- */
-export function riskFor(lines: { asset: BasketAsset; bps: number }[]): 'low' | 'medium' | 'high' {
-  const largest = Math.max(
-    0,
-    ...lines.filter((l) => l.asset.cls === 'stock' || l.asset.cls === 'crypto').map((l) => l.bps),
-  );
-  const caps = PERSONAL_PARAMS.capPerStockBps;
-  return (['low', 'medium', 'high'] as const).find((r) => (caps[r] ?? 0) >= largest) ?? 'high';
 }

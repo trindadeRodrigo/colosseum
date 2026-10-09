@@ -656,6 +656,26 @@ describe('the goal agent behind /goal (gate RELAXED-INTAKE)', () => {
     );
     expect(s.model.read).not.toHaveBeenCalled();
   });
+  it('carries the goal and risk the server read in the person’s words, never the relaxed reply’s own', async () => {
+    // a reply that tries to say the goal and risk itself: the route's reading of the words stands
+    const reply = vi.fn(async (request: { messageId: string }) => ({
+      kind: 'reply' as const,
+      reply: { ...relaxedReply(request.messageId), goal: 'protect', risk: 'low' },
+    }));
+    const s = await setup(false, undefined, { id: 'relaxed-double', reply } as RelaxedGoalAgent);
+    const ask = async (text: string) => {
+      const res = await s.post(s.owner, { ...s.body, messages: [{ who: 'person', text }] });
+      expect(res.statusCode, res.body).toBe(200);
+      return res.json();
+    };
+    expect(await ask('I want it to grow, high risk is fine.')).toMatchObject({
+      chain: 'solana',
+      goal: 'grow',
+      risk: 'high',
+    });
+    expect(await ask('Some of the named business.')).toMatchObject({ goal: null, risk: null });
+    expect(reply).toHaveBeenCalledTimes(2);
+  });
   it('answers through the relaxed intake with no model-led model configured', async () => {
     const reply = vi.fn(async (request: { messageId: string }) => ({
       kind: 'reply' as const,

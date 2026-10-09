@@ -121,12 +121,6 @@ export const VaultAgentProposal = VaultAgentModelProposal.omit({ stated: true })
     .max(64),
   sources: z.array(VaultAgentSource).max(1024),
   projection: VaultAgentProjection.optional(),
-  /**
-   * The relaxed intake's engine sheet for this plan (goal, amount, date, the split as a mix), for
-   * "Invest in this plan": the existing personalize route sizes it and the existing buy runs it.
-   * Checked against the engine's PersonalSheet by the server that sends it and again by personalize.
-   */
-  investSheet: z.record(z.string(), z.unknown()).optional(),
 });
 /**
  * Server-written notes on a proposal the person may still choose (gate ANY-COMPOSITION). The code names

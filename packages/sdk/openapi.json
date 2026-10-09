@@ -10827,13 +10827,6 @@
                                 "sourceIds"
                               ],
                               "additionalProperties": false
-                            },
-                            "investSheet": {
-                              "type": "object",
-                              "propertyNames": {
-                                "type": "string"
-                              },
-                              "additionalProperties": {}
                             }
                           },
                           "required": [
@@ -24738,13 +24731,6 @@
                                 "sourceIds"
                               ],
                               "additionalProperties": false
-                            },
-                            "investSheet": {
-                              "type": "object",
-                              "propertyNames": {
-                                "type": "string"
-                              },
-                              "additionalProperties": {}
                             }
                           },
                           "required": [
