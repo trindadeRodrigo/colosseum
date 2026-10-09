@@ -17,7 +17,6 @@ import { PERSONALIZE_PATH, PROPOSE_PATH } from '../goal/build-plan';
 import { GOAL_HANDOFF, GOAL_HANDOFF_OWNER } from '../goal/draft';
 import { proposalFor, READ_IN_DOLLARS } from '../goal/test/plan';
 import { keepWay, readWay } from '../invest/handoff';
-import { Simulate } from '../landing/Simulate';
 import { sourceValue } from '../vault-conversation/StrategyPreview';
 import { preview } from '../vault-conversation/test/fixtures';
 import { fakePort, json, PHANTOM, signedInPort } from '../wallet/test/fake-port';
@@ -413,14 +412,11 @@ describe('private strategy exploration for a new goal', () => {
 });
 
 describe('existing entry handoffs', () => {
-  it('prefills actual landing words in Explore across sign-in, then consumes once on accepted words even if reply fails', async () => {
+  it('prefills handed-over words in Explore across sign-in, then consumes once on accepted words even if reply fails', async () => {
     portStore.set(fakePort());
-    const landing = await mount(withAccount('en', createElement(Simulate)));
+    // The words another screen handed over (features/goal/draft.ts), as the old landing's box did.
     const words = 'Grow $2,000 for ten years';
-    await send(landing, words);
-    expect(router.push).toHaveBeenCalledWith('/goal');
-    expect(sessionStorage.getItem(GOAL_HANDOFF)).toBe(words);
-    await unmountAll();
+    sessionStorage.setItem(GOAL_HANDOFF, words);
     portStore.setApi(async (url) => baseApi(url));
     const host = await show();
     expect(find<HTMLSelectElement>(host, '[data-ui="goal-mode"]').value).toBe('explore');

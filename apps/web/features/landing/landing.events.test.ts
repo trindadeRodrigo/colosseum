@@ -1,874 +1,200 @@
 // @vitest-environment happy-dom
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
-import { DISCLAIMER } from '@colosseum/schemas';
-import { act, createElement } from 'react';
+import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { click, find, mount, press, settle, type, unmountAll } from '../../components/ui/test/dom';
-import { hatchProblems } from '../../components/ui/test/hatch';
-import { parse } from '../../components/ui/test/html';
+import { find, mount, settle, unmountAll } from '../../components/ui/test/dom';
 import { dictionary, type Lang } from '../../i18n';
 import { inLanguage } from '../account/test/screen';
-import { GOAL_HANDOFF } from '../goal/draft';
-import { router } from '../wallet/test/mock-next';
-import { FADE, sceneModule, shownAt } from './JointStage';
 import { Landing } from './Landing';
+import { fromReply, type PlatformStats, platformStats, SAMPLE_STATS } from './stats';
 
-const scene = vi.hoisted(() => ({
-  create: vi.fn((_canvas: HTMLCanvasElement, _options?: { onReady?: () => void }) => ({
-    setProgress: vi.fn(),
-    resize: vi.fn(),
-    setVisible: vi.fn(),
-    dispose: vi.fn(),
-  })),
-}));
-vi.mock('./joint-scene', () => ({ createJointScene: scene.create }));
-const coinsScene = vi.hoisted(() => ({
-  create: vi.fn((_canvas: HTMLCanvasElement, _options?: { onReady?: () => void }) => ({
-    setProgress: vi.fn(),
-    resize: vi.fn(),
-    setVisible: vi.fn(),
-    dispose: vi.fn(),
-  })),
-}));
-vi.mock('./coins-scene', () => ({ createCoinsScene: coinsScene.create }));
 vi.mock('next/navigation', () => import('../wallet/test/mock-next'));
 vi.mock('next/link', () => import('../wallet/test/mock-next'));
 
-// His landing page (hero-3d.html) with real events: the hero and its three steps, the 3D joint only
-// where it can and may run, the two sample cases always MOCK, the typing box that hands a goal to the
-// product, and an email field that sends nothing and says so.
+// His landing page on the new identity (IDENTITY-2): the hero is the whole page. A static bar, the
+// line and "Start a plan" in front, the slow honey fog behind, and the platform's numbers, each pinned.
 
 const en = dictionary('en');
-const landing = async (lang: Lang = 'en', signedIn = false) => {
+const LIVE_REPLY = {
+  plans: 37,
+  wallets: 12,
+  observedValueUsd: 15234.5,
+  asOf: '2026-10-08T12:00:00.000Z',
+};
+
+const landing = async (
+  { lang = 'en', signedIn = false, stats = SAMPLE_STATS } = {} as {
+    lang?: Lang;
+    signedIn?: boolean;
+    stats?: PlatformStats;
+  },
+) => {
   const host = await mount(
-    inLanguage(lang, createElement(Landing, { lang, theme: 'auto', signedIn })),
+    inLanguage(lang, createElement(Landing, { lang, theme: 'auto', signedIn, stats })),
   );
   await settle(10);
   return host;
 };
 
-/** The probe's WebGL context, let go once the stage knows WebGL is there. */
-const released = vi.fn();
-
-/** What the browser says about reduced motion, WebGL, its renderer and saving data, for one test. */
-function browser({ reduce = false, webgl = false, saveData = false, gpu = 'Apple M1' } = {}) {
-  Object.defineProperty(navigator, 'connection', { value: { saveData }, configurable: true });
-  vi.spyOn(window, 'matchMedia').mockImplementation(
-    (query: string) =>
-      ({
-        matches: reduce && query.includes('reduce'),
-        media: query,
-        addEventListener: () => {},
-        removeEventListener: () => {},
-      }) as unknown as MediaQueryList,
-  );
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
-    () =>
-      (webgl
-        ? ({
-            getExtension: () => ({ loseContext: released, UNMASKED_RENDERER_WEBGL: 0x9246 }),
-            getParameter: () => gpu,
-          } as unknown as RenderingContext)
-        : null) as never,
-  );
-}
-
 beforeEach(() => {
-  window.sessionStorage.clear();
-  router.push.mockClear();
-  scene.create.mockClear();
-  coinsScene.create.mockClear();
+  // no WebGL here: the fog stays empty and the page is whole without it
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => null as never);
 });
 afterEach(async () => {
   await unmountAll();
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe('the hero', () => {
-  it('is his line, his tagline and the three steps, each one in the page for anyone to read', async () => {
-    browser();
-    const host = await landing();
+  it.each(['en', 'pt'] as const)('is the line, the lead and the two actions (%s)', async (lang) => {
+    const t = dictionary(lang).landing.hero;
+    const host = await landing({ lang });
     expect(host.querySelectorAll('h1')).toHaveLength(1);
-    expect(find(host, 'h1').textContent).toBe(en.landing.stage.title);
-    const steps = ['step-1', 'step-2', 'step-3'].map((id) => find(host, `#${id}`));
-    expect(steps.map((s) => s.querySelector('h2')?.textContent)).toEqual(
-      en.landing.stage.steps.map((s) => s.title),
-    );
-    // the stage is named, and what is drawn is not read out
-    expect(find(host, '#stage').getAttribute('aria-label')).toBe(en.landing.stage.label);
-    expect(find(host, '#stage canvas').closest('[aria-hidden="true"]')).not.toBeNull();
-  });
-
-  it('offers Products, Invest and Analytics in its bar, and no Resources (Thom, Oct 6)', async () => {
-    browser();
-    const host = await landing();
-    const bar = find(host, '[data-ui="compact-nav"]');
-    expect([...bar.querySelectorAll('nav a')].map((a) => a.getAttribute('href'))).toEqual([
-      '#showcase',
-      '#simulate',
-      '/analytics/stocks',
-      // and the one action
-      '/sign-in?next=/goal',
+    expect(find(host, 'h1').textContent).toBe(t.title);
+    expect(host.textContent).toContain(t.lead);
+    const hero = find(host, '[data-ui="landing-hero"]');
+    const actions = [...hero.querySelectorAll('a')].map((a) => [
+      a.textContent,
+      a.getAttribute('href'),
     ]);
-    expect(bar.textContent).not.toContain(en.landing.nav.resources);
-  });
-
-  it('loads the 3D joint where WebGL runs and motion is allowed, and drives it by scrolling', async () => {
-    browser({ webgl: true });
-    const host = await landing();
-    expect(scene.create).toHaveBeenCalledTimes(1);
-    expect(scene.create).toHaveBeenCalledWith(
-      find(host, '#stage canvas'),
-      expect.objectContaining({ onReady: expect.any(Function), light: expect.any(Boolean) }),
-    );
-    // the context that only asked whether WebGL is there is let go
-    expect(released).toHaveBeenCalled();
-    const made = scene.create.mock.results[0]?.value as { setProgress: ReturnType<typeof vi.fn> };
-    expect(made.setProgress).toHaveBeenCalled();
-    // nothing stands in while it loads, and the canvas shows once its first frame is drawn
-    expect(host.querySelector('.sticky [data-ui="joint-still"]')).toBeNull();
-    expect(find(host, '#stage canvas').className).toContain('opacity-0');
-    await act(async () => scene.create.mock.calls[0]?.[1]?.onReady?.());
-    expect(find(host, '#stage canvas').className).toContain('opacity-100');
-  });
-
-  it('draws no 3D at all with reduced motion: the still, seated, beside the copy', async () => {
-    browser({ webgl: true, reduce: true });
-    const host = await landing();
-    expect(scene.create).not.toHaveBeenCalled();
-    const still = [...host.querySelectorAll('[data-ui="joint-still"]')].find(
-      (d) => d.getAttribute('aria-hidden') !== 'true',
-    );
-    expect(still?.getAttribute('data-seated')).toBe('true');
-    const frames = [...(still?.querySelectorAll('img') ?? [])];
-    expect(frames.map((img) => img.getAttribute('src'))).toEqual([
-      '/landing/joint/joint-seated-dark.svg',
-      '/landing/joint/joint-seated-light.svg',
+    expect(actions).toEqual([
+      [t.start, '/goal'],
+      [t.see, '/shelf'],
     ]);
-    // each frame says what the joint does; the theme shows one of them, so one is read
-    for (const img of frames) expect(img.getAttribute('alt')).toBe(en.landing.stage.drawing);
-    for (const img of frames) expect(img.getAttribute('loading')).toBe('lazy');
-    // and the nav does not wait for the stage: it is compact at once
-    await settle(10);
-    expect(find(host, '[data-ui="compact-nav"]').getAttribute('data-compact')).toBe('true');
   });
 
-  it('shows the stills of the same joint, and loads no scene, where there is no WebGL', async () => {
-    browser({ webgl: false });
+  it('starts a plan with the filled honey action, and shows a plan with the outlined one', async () => {
     const host = await landing();
-    expect(scene.create).not.toHaveBeenCalled();
-    const stills = [...host.querySelectorAll('.sticky [data-ui="joint-still"]')];
-    expect(stills.map((s) => s.getAttribute('data-seated'))).toEqual(['false', 'true']);
+    const [start, see] = [...find(host, '[data-ui="landing-hero"]').querySelectorAll('a')];
+    expect(start?.className).toContain('bg-primary');
+    expect(see?.className).not.toContain('bg-primary');
   });
 
-  it('shows the stills, and loads no scene, where WebGL is only a software rasteriser', async () => {
-    browser({
-      webgl: true,
-      gpu: 'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device), SwiftShader driver)',
-    });
+  it('draws the fog behind the copy, out of the way of a reader and a pointer', async () => {
     const host = await landing();
-    expect(scene.create).not.toHaveBeenCalled();
-    expect(host.querySelectorAll('.sticky [data-ui="joint-still"]')).toHaveLength(2);
+    const fog = find(host, '[data-ui="landing-hero"] [data-ui="honey-fog"]');
+    expect(fog.getAttribute('aria-hidden')).toBe('true');
+    expect(fog.className).toContain('pointer-events-none');
   });
 
-  it('falls back to the stills when the scene’s module does not come (an old page after a deploy)', async () => {
-    browser({ webgl: true });
-    const load = vi.spyOn(sceneModule, 'load').mockRejectedValueOnce(new Error('chunk failed'));
+  it('is the whole page: no stage, showcase, typing box or closing under it', async () => {
     const host = await landing();
-    expect(load).toHaveBeenCalled();
-    expect(scene.create).not.toHaveBeenCalled();
-    expect(host.querySelectorAll('.sticky [data-ui="joint-still"]')).toHaveLength(2);
-  });
-
-  it('falls back to the stills when the scene cannot start', async () => {
-    browser({ webgl: true });
-    scene.create.mockImplementationOnce(() => {
-      throw new Error('no context');
-    });
-    const host = await landing();
-    expect(host.querySelectorAll('.sticky [data-ui="joint-still"]')).toHaveLength(2);
-  });
-
-  it('loads no scene when the visitor saves data: the same drawing stands in as stills', async () => {
-    browser({ webgl: true, saveData: true });
-    const host = await landing();
-    expect(scene.create).not.toHaveBeenCalled();
-    const stills = [...host.querySelectorAll('.sticky [data-ui="joint-still"]')];
-    expect(stills.map((s) => s.getAttribute('data-seated'))).toEqual(['false', 'true']);
-    // only the frame the theme shows is fetched, and only when it is shown
-    for (const img of host.querySelectorAll('.sticky img'))
-      expect(img.getAttribute('loading')).toBe('lazy');
-  });
-});
-describe('the hero on a phone (hero-3d.html, its 820px rule)', () => {
-  /** A copy block placed by a test: its middle at `share` of an 844px screen. */
-  const place = (el: Element, share: number) => {
-    const mid = 844 * share;
-    el.getBoundingClientRect = () =>
-      ({
-        top: mid - 100,
-        bottom: mid + 100,
-        height: 200,
-        width: 390,
-        left: 0,
-        right: 390,
-      }) as DOMRect;
-  };
-  const scrollNow = async () => {
-    await act(async () => {
-      window.dispatchEvent(new Event('scroll'));
-      await new Promise((done) => requestAnimationFrame(() => done(null)));
-    });
-  };
-
-  it('keeps the copy at the foot, and fades a line before it can rise into the joint', async () => {
-    browser();
-    const width = Object.getOwnPropertyDescriptor(window, 'innerWidth');
-    const height = Object.getOwnPropertyDescriptor(window, 'innerHeight');
-    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
-    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 844 });
-    try {
-      const host = await landing();
-      const hero = find(host, '#stage [data-low]');
-      // the copy sits at the foot of the screen on a phone, as his prototype has it
-      expect(hero.parentElement?.parentElement?.className).toContain('max-[819px]:items-end');
-      const step = find(host, '#step-1 [data-on]');
-      // low on the screen: shown
-      place(hero, 0.75);
-      place(step, 0.7);
-      await scrollNow();
-      expect(hero.getAttribute('data-low')).toBe('true');
-      expect(hero.className).not.toContain('max-[819px]:opacity-0');
-      expect(step.getAttribute('data-on')).toBe('true');
-      expect(step.className).not.toContain('max-[819px]:opacity-0');
-      // risen toward the joint, which takes the top third: faded before its plate gets there
-      place(hero, 0.3);
-      place(step, 0.3);
-      await scrollNow();
-      expect(hero.getAttribute('data-low')).toBe('false');
-      expect(hero.className).toContain('max-[819px]:opacity-0');
-      expect(step.getAttribute('data-on')).toBe('false');
-      expect(step.className).toContain('max-[819px]:opacity-0');
-      // with reduced motion nothing is pinned, and nothing fades
-      expect(step.className).toContain('motion-reduce:opacity-100');
-      // the copy marks itself for the bar, which takes its ground when copy reaches it
-      expect(hero.hasAttribute('data-under-bar')).toBe(true);
-      expect(step.hasAttribute('data-under-bar')).toBe(true);
-    } finally {
-      if (width) Object.defineProperty(window, 'innerWidth', width);
-      if (height) Object.defineProperty(window, 'innerHeight', height);
-    }
-  });
-
-  it('fades nothing on a wide screen: the copy stands beside the joint there', async () => {
-    browser();
-    const host = await landing();
-    const step = find(host, '#step-1 [data-on]');
-    place(step, 0.3);
-    await scrollNow();
-    // on a wide screen a step is read from 15% of the way down
-    expect(step.getAttribute('data-on')).toBe('true');
+    const main = find(host, 'main');
+    expect([...main.children].map((c) => c.getAttribute('data-ui'))).toEqual([
+      'landing-hero',
+      'landing-stats',
+    ]);
+    expect(host.querySelectorAll('textarea, input[type="email"]')).toHaveLength(0);
   });
 });
 
-describe('the showcase', () => {
-  it('shows his two sample people, each case sample on every pinned figure and said once', async () => {
-    browser();
+describe('the bar', () => {
+  it('is static: the face and the wordmark home, Plans, Bearing, Docs, and one action', async () => {
     const host = await landing();
-    const cases = [...host.querySelectorAll('article[data-ui="showcase-case"]')];
-    expect(cases.map((c) => c.getAttribute('aria-label'))).toEqual([
-      en.landing.show.trip.label,
-      en.landing.show.growth.label,
+    const bar = find(host, '[data-ui="landing-bar"]');
+    expect(find(bar, 'a[href="/"]').getAttribute('aria-label')).toBe(en.landing.nav.home);
+    expect(bar.textContent).toContain('tenonfi');
+    expect([...bar.querySelectorAll('nav a')].map((a) => a.textContent)).toEqual([
+      en.landing.nav.plans,
+      en.landing.nav.bearing,
+      en.landing.nav.docs,
     ]);
-    for (const c of cases) {
-      // said once at the case's foot, not by a word beside each figure (MOCK-QUIET)
-      expect(c.textContent).not.toContain('MOCK');
-      expect(c.textContent).toContain(en.landing.show.sample);
-      const pins = [...c.querySelectorAll('[data-ui="figure"]')];
-      expect(pins.length).toBeGreaterThan(0);
-      // nothing in a sample case is drawn as live
-      expect(pins.map((p) => p.getAttribute('data-state'))).toEqual(pins.map(() => 'mock'));
-      expect(c.querySelector('[role="img"]')?.getAttribute('aria-label')).toBeTruthy();
-      expect(c.querySelector('blockquote')?.textContent).toMatch(/^“.+”$/);
-    }
-    expect(hatchProblems(parse(host.innerHTML))).toEqual([]);
-    // the page never writes the word MOCK: its foot and each case say "sample" (MOCK-QUIET)
-    expect(host.textContent).not.toMatch(/MOCK/);
-    // once in each case, and once under the closing's plan of coins
+    expect(bar.className).not.toMatch(/\b(fixed|sticky)\b/);
+  });
+
+  it('asks a visitor to sign in, and leads a person signed in back into the app', async () => {
+    const visitor = await landing();
     expect(
-      host.querySelectorAll('article[data-ui="showcase-case"] [data-ui="sample-note"]'),
-    ).toHaveLength(2);
-    expect(host.querySelectorAll('#updates [data-ui="sample-note"]')).toHaveLength(1);
-  });
-
-  it('draws each plan as a joint whose parts are its legend’s, share for share', async () => {
-    browser();
-    const host = await landing();
-    const cases = [...host.querySelectorAll('article[data-ui="showcase-case"]')];
-    expect(cases).toHaveLength(2);
-    for (const c of cases) {
-      const drawing = c.querySelector('svg[data-ui="plan-drawing"]');
-      const drawn = [...(drawing?.querySelectorAll('[data-part="layer"]') ?? [])].map((l) =>
-        Number(l.getAttribute('data-share')),
-      );
-      const legend = [...c.querySelectorAll(`ul[aria-label="${en.landing.show.legs}"] li`)].map(
-        (li) => Number(li.querySelector('.font-mono')?.textContent?.replace('%', '')),
-      );
-      expect(drawn.length).toBeGreaterThan(0);
-      expect(drawn).toEqual(legend);
-      // no photograph, and no caption saying one was there
-      expect(c.querySelector('img, figcaption')).toBeNull();
-    }
-    expect(host.textContent).not.toContain('placeholder photo');
-  });
-
-  it('puts the person and their words above the drawing of their plan, in every case', async () => {
-    browser();
-    const host = await landing();
-    for (const c of host.querySelectorAll('article[data-ui="showcase-case"]')) {
-      const quote = find(c as HTMLElement, 'blockquote');
-      const drawing = find(c as HTMLElement, 'svg[data-ui="plan-drawing"]');
-      // the quote comes first in the page, so it is read and laid out first at every width
-      expect(
-        quote.compareDocumentPosition(drawing) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
-      expect(quote.parentElement?.nextElementSibling).toBe(drawing);
-    }
-  });
-
-  it('lights a part on the drawing and in the list together, from either side', async () => {
-    browser();
-    const host = await landing();
-    const growth = [
-      ...host.querySelectorAll<HTMLElement>('article[data-ui="showcase-case"]'),
-    ][1] as HTMLElement;
-    const layer = (n: number) => find(growth, `[data-part="layer"][data-chart="${n}"]`);
-    const row = (n: number) => find(growth, `[data-ui="case-leg"][data-chart="${n}"]`);
-    const mouse = (type: string, el: Element) =>
-      act(async () => {
-        el.dispatchEvent(
-          new PointerEvent(type, {
-            bubbles: true,
-            pointerType: 'mouse',
-            relatedTarget: document.body,
-          }),
-        );
-      });
-    // the stocks layer, 45%: named for a reader, lit, the others dimmed, and its row lit
-    expect(layer(3).getAttribute('aria-label')).toBe('Tokenized stocks (SPYx, QQQx), 45%');
-    await mouse('pointerover', layer(3));
-    expect(layer(3).getAttribute('data-lit')).toBe('true');
-    expect(layer(3).getAttribute('aria-pressed')).toBe('true');
-    expect(layer(1).getAttribute('class')).toContain('opacity-35');
-    expect(row(3).getAttribute('data-lit')).toBe('true');
-    expect(row(1).getAttribute('class')).toContain('opacity-45');
-    await mouse('pointerout', layer(3));
-    expect(row(3).getAttribute('data-lit')).toBe('false');
-    // and back: a row lights its layer
-    await mouse('pointerover', row(2));
-    expect(layer(2).getAttribute('data-lit')).toBe('true');
-    await mouse('pointerout', row(2));
-    expect(layer(2).getAttribute('data-lit')).toBe('false');
-  });
-
-  it('lights the trip’s bars for the part lit on its drawing', async () => {
-    browser();
-    const host = await landing();
-    const trip = host.querySelector('article[data-ui="showcase-case"]') as HTMLElement;
-    await act(async () => {
-      find(trip, '[data-part="layer"][data-chart="2"]').dispatchEvent(
-        new PointerEvent('pointerover', {
-          bubbles: true,
-          pointerType: 'mouse',
-          relatedTarget: document.body,
-        }),
-      );
-    });
-    const opacity = (n: number) =>
-      new Set(
-        [...trip.querySelectorAll(`rect[data-series="part-${n}"]`)].map((r) =>
-          r.getAttribute('opacity'),
-        ),
-      );
-    expect(opacity(2)).toEqual(new Set(['1']));
-    expect(opacity(1)).toEqual(new Set(['0.25']));
-  });
-
-  it('is one tab stop the arrows step through, layer by layer; Escape lets go', async () => {
-    browser();
-    const host = await landing();
-    const growth = [
-      ...host.querySelectorAll<HTMLElement>('article[data-ui="showcase-case"]'),
-    ][1] as HTMLElement;
-    const layers = [...growth.querySelectorAll<HTMLElement>('[data-part="layer"]')];
-    expect(layers.map((l) => l.getAttribute('tabindex'))).toEqual(['0', '-1', '-1', '-1']);
-    await act(async () => layers[0]?.focus());
-    expect(layers[0]?.getAttribute('data-lit')).toBe('true');
-    expect(find(growth, '[data-ui="case-leg"][data-chart="1"]').getAttribute('data-lit')).toBe(
-      'true',
-    );
-    await press(layers[0] as HTMLElement, 'ArrowUp');
-    expect(document.activeElement).toBe(layers[1]);
-    expect(layers[1]?.getAttribute('data-lit')).toBe('true');
-    expect(layers.map((l) => l.getAttribute('tabindex'))).toEqual(['-1', '0', '-1', '-1']);
-    await press(layers[1] as HTMLElement, 'End');
-    expect(document.activeElement).toBe(layers[3]);
-    await press(layers[3] as HTMLElement, 'Escape');
-    expect(layers.map((l) => l.getAttribute('data-lit'))).toEqual([
-      'false',
-      'false',
-      'false',
-      'false',
-    ]);
-  });
-
-  it('picks a part with a tap and lets it go with a tap outside', async () => {
-    browser();
-    const host = await landing();
-    const growth = [
-      ...host.querySelectorAll<HTMLElement>('article[data-ui="showcase-case"]'),
-    ][1] as HTMLElement;
-    const layer = find(growth, '[data-part="layer"][data-chart="4"]');
-    await act(async () => {
-      layer.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch' }));
-    });
-    expect(layer.getAttribute('data-lit')).toBe('true');
-    await act(async () => {
-      document.body.dispatchEvent(
-        new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' }),
-      );
-    });
-    expect(layer.getAttribute('data-lit')).toBe('false');
-  });
-
-  it('lifts a lit layer only where motion is welcome; with reduced motion only its colour changes', async () => {
-    browser({ reduce: true });
-    const host = await landing();
-    const layer = host.querySelector('[data-part="layer"][data-chart="1"]') as HTMLElement;
-    await act(async () => layer.focus());
-    const cls = layer.getAttribute('class') ?? '';
-    expect(cls).toContain('-translate-y-1.5');
-    expect(cls).toContain('motion-reduce:translate-y-0');
-    expect(cls).toContain('motion-safe:transition-[translate,opacity]');
-    for (const svg of host.querySelectorAll('svg[data-ui="plan-drawing"]'))
-      expect(svg.getAttribute('data-state')).toBe('still');
-  });
-
-  it('keeps a figure’s date in one piece: "Dec 2031" never breaks across lines', async () => {
-    browser();
-    const host = await landing();
-    const growth = [
-      ...host.querySelectorAll<HTMLElement>('article[data-ui="showcase-case"]'),
-    ][1] as HTMLElement;
-    const units = [...growth.querySelectorAll('dd small')];
-    const date = units.find((u) => u.textContent === 'Dec 2031');
-    expect(date?.getAttribute('class')).toContain('whitespace-nowrap');
-  });
-
-  it('settles the joint in from the bottom when the card comes into view, and not with reduced motion', async () => {
-    const seen: ((entries: { isIntersecting: boolean }[]) => void)[] = [];
-    vi.stubGlobal(
-      'IntersectionObserver',
-      class {
-        constructor(cb: (entries: { isIntersecting: boolean }[]) => void) {
-          seen.push(cb);
-        }
-        observe() {}
-        disconnect() {}
-      },
-    );
-    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
-      top: 5000,
-    } as DOMRect);
-    browser();
-    let host = await landing();
-    const drawings = () => [...host.querySelectorAll('svg[data-ui="plan-drawing"]')];
-    expect(drawings().map((d) => d.getAttribute('data-state'))).toEqual(['armed', 'armed']);
-    await act(async () => {
-      for (const cb of seen) cb([{ isIntersecting: true }]);
-    });
-    expect(drawings().map((d) => d.getAttribute('data-state'))).toEqual(['in', 'in']);
+      [...find(visitor, '[data-ui="landing-bar"]').querySelectorAll('a')]
+        .at(-1)
+        ?.getAttribute('href'),
+    ).toBe('/sign-in?next=/goal');
     await unmountAll();
-    vi.restoreAllMocks();
-    // with reduced motion it stands as it is, and nothing waits for it
-    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
-      top: 5000,
-    } as DOMRect);
-    browser({ reduce: true });
-    host = await landing();
-    expect(drawings().map((d) => d.getAttribute('data-state'))).toEqual(['still', 'still']);
-    await unmountAll();
-    vi.restoreAllMocks();
-    // already on screen when the page opens: it stands as it is, nothing hidden to come in
-    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({ top: 120 } as DOMRect);
-    browser();
-    host = await landing();
-    expect(drawings().map((d) => d.getAttribute('data-state'))).toEqual(['still', 'still']);
-    vi.unstubAllGlobals();
-  });
-
-  it('keeps stock tokens out of the income case (PROTECT-NO-STOCKS) and names them in the growth case', async () => {
-    browser();
-    const host = await landing();
-    const [trip, growth] = [...host.querySelectorAll('article[data-ui="showcase-case"]')];
-    const parts = (c: Element | undefined) =>
-      c?.querySelector(`ul[aria-label="${en.landing.show.legs}"]`)?.textContent ?? '';
-    expect(parts(trip)).not.toMatch(/stock/i);
-    expect(parts(growth)).toMatch(/Tokenized stocks/);
-  });
-
-  it('puts the disclaimer, whole, once under the section', async () => {
-    browser();
-    const host = await landing();
-    const blocks = [...host.querySelectorAll('[data-ui="disclaimer"]')];
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0]?.textContent).toBe(DISCLAIMER.en);
-    expect(blocks[0]?.closest('#showcase')).not.toBeNull();
+    const back = await landing({ signedIn: true });
+    const action = [...find(back, '[data-ui="landing-bar"]').querySelectorAll('a')].at(-1);
+    expect(action?.textContent).toBe(en.landing.nav.openApp);
+    expect(action?.getAttribute('href')).toBe('/goal');
+    expect(back.querySelector('a[href^="/sign-in"]')).toBeNull();
   });
 });
 
-describe('the typing box', () => {
-  it('hands the goal to the product to be read there, and reads nothing itself', async () => {
-    browser();
-    const fetch = vi.spyOn(globalThis, 'fetch');
+describe('the numbers', () => {
+  it('pins every figure, and marks a sample strip with the hatch and its quiet line', async () => {
     const host = await landing();
-    const box = find<HTMLTextAreaElement>(host, '#simulate textarea');
-    await type(box, 'Grow $2,000 for ten years');
-    await press(box, 'Enter');
-    expect(window.sessionStorage.getItem(GOAL_HANDOFF)).toBe('Grow $2,000 for ten years');
-    expect(router.push).toHaveBeenCalledWith('/goal');
-    expect(fetch).not.toHaveBeenCalled();
+    const strip = find(host, '[data-ui="landing-stats"]');
+    expect(strip.hasAttribute('data-sample')).toBe(true);
+    expect(strip.querySelectorAll('dt')).toHaveLength(3);
+    expect(strip.querySelectorAll('[data-ui="pin-glyph"][data-state="mock"]')).toHaveLength(3);
+    expect(strip.querySelector('[data-ui="hatch-band"]')).not.toBeNull();
+    expect(find(strip, '[data-ui="sample-note"]').textContent).toBe(en.shell.mockAnnounce);
+    // the word MOCK never shows (MOCK-QUIET)
+    expect(host.textContent).not.toContain('MOCK');
   });
 
-  it('fills the box from an example and sends nothing', async () => {
-    browser();
-    const host = await landing();
-    const example = en.landing.sim.examples[0] as string;
-    await click(
-      [...host.querySelectorAll('#simulate button')].find(
-        (b) => b.textContent === example,
-      ) as HTMLElement,
-    );
-    expect(find<HTMLTextAreaElement>(host, '#simulate textarea').value).toBe(example);
-    expect(router.push).not.toHaveBeenCalled();
-  });
-
-  it('says how to send under the chips, and leads a visitor to sign in for the goal', async () => {
-    browser();
-    const host = await landing();
-    const sim = find(host, '#simulate');
-    const hint = [...sim.querySelectorAll('p')].find(
-      (p) => p.textContent === en.goal.composer.hint,
-    ) as HTMLElement;
-    expect(find(sim, 'textarea').getAttribute('aria-describedby')?.split(' ')).toContain(hint.id);
-    const link = [...sim.querySelectorAll('a')].find((a) => a.textContent === en.goal.visitor.link);
-    expect(link?.getAttribute('href')).toBe('/sign-in?next=/goal');
-  });
-});
-
-describe('the closing', () => {
-  it('sends no address anywhere, and says so before and after', async () => {
-    browser();
-    const fetch = vi.spyOn(globalThis, 'fetch');
-    const host = await landing();
-    const closing = find(host, '#updates');
-    expect(closing.textContent).toContain(en.landing.closing.status.rest);
-    await type(find<HTMLInputElement>(closing, 'input[type="email"]'), 'me@example.com');
-    await click(closing.querySelector('input[type="checkbox"]') as HTMLElement);
-    await act(async () => {
-      find<HTMLFormElement>(closing, 'form').requestSubmit();
-    });
-    expect(closing.textContent).toContain(en.landing.closing.status.success);
-    expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it('says what is wrong with an address before anything else', async () => {
-    browser();
-    const host = await landing();
-    const closing = find(host, '#updates');
-    await type(find<HTMLInputElement>(closing, 'input[type="email"]'), 'me@');
-    await act(async () => {
-      find<HTMLFormElement>(closing, 'form').requestSubmit();
-    });
-    expect(closing.textContent).toContain(en.landing.closing.status['invalid-email']);
-  });
-
-  it('sets the coins behind its heading, with no frame, the words on top (CLOSING-COINS, Oct 6)', async () => {
-    browser();
-    const host = await landing();
-    const closing = find(host, '#updates');
-    expect(closing.querySelector('img, figure, figcaption, [data-ui="subscribe-art"]')).toBeNull();
-    // the joint is gone from the closing: it is the hero's alone
-    expect(closing.querySelector('[data-ui="closing-drawing"]')).toBeNull();
-    const track = find(closing, '[data-ui="closing-track"]');
-    const canvas = find(track, 'canvas[data-ui="closing-canvas"]');
-    const words = find(track, '[data-ui="closing-words"]');
-    expect(words.querySelector('h2')?.textContent).toBe(en.landing.closing.title);
-    expect(canvas.className).toContain('z-0');
-    expect(canvas.className).toContain('pointer-events-none');
-    expect(words.className).toContain('z-10');
-    expect(canvas.compareDocumentPosition(words) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(track.className).toContain('h-[200svh]');
-    expect(find(track, '.sticky').className).toContain('h-svh');
-    expect(track.querySelector('input[type="email"]')).toBeNull();
-    expect(closing.querySelector('input[type="email"]')).not.toBeNull();
-    // the plan's parts, for a screen reader, each with its share
-    const parts = [...find(track, 'ul.sr-only').querySelectorAll('li')].map((li) => li.textContent);
-    expect(parts).toContain('SPY · 15%');
-    expect(parts).toHaveLength(10);
-  });
-
-  it('stands the plan drawn flat, every coin with its ticker and share, where there is no WebGL', async () => {
-    const seen: ((entries: { isIntersecting: boolean }[]) => void)[] = [];
-    vi.stubGlobal(
-      'IntersectionObserver',
-      class {
-        constructor(cb: (entries: { isIntersecting: boolean }[]) => void) {
-          seen.push(cb);
-        }
-        observe() {}
-        disconnect() {}
-      },
-    );
-    browser({ webgl: false });
-    const host = await landing();
-    await act(async () => {
-      for (const cb of seen) cb([{ isIntersecting: true }]);
-    });
-    await settle(10);
-    const track = find(host, '[data-ui="closing-track"]');
-    expect(track.getAttribute('data-mode')).toBe('still');
-    const still = find(track, 'svg[data-ui="coins-still"]');
-    expect(still.getAttribute('aria-label')).toBe(en.landing.closing.drawingAlt);
-    const coins = [...still.querySelectorAll('[data-part="coin"]')];
-    expect(coins).toHaveLength(10);
-    for (const coin of coins) {
-      // the face is text: its ticker and its share, no picture
-      expect(coin.querySelector('text')?.textContent).toBe(coin.getAttribute('data-ticker'));
-      expect(coin.querySelector('[data-part="share"]')?.textContent).toMatch(/^\d+%$/);
-    }
-    expect(still.querySelector('image, foreignObject')).toBeNull();
-    expect(find(track, 'canvas').getAttribute('aria-hidden')).toBe('true');
-    expect(coinsScene.create).not.toHaveBeenCalled();
-    vi.unstubAllGlobals();
-  });
-
-  it('holds nothing and moves nothing with reduced motion: the plan, whole', async () => {
-    vi.stubGlobal(
-      'IntersectionObserver',
-      class {
-        observe() {}
-        disconnect() {}
-      },
-    );
-    browser({ reduce: true, webgl: true });
-    const host = await landing();
-    await settle(10);
-    const track = find(host, '[data-ui="closing-track"]');
-    expect(track.className).toContain('motion-reduce:h-svh');
-    expect(
-      find(track, 'svg[data-ui="coins-still"]').querySelectorAll('[data-part="coin"]'),
-    ).toHaveLength(10);
-    expect(coinsScene.create).not.toHaveBeenCalled();
-    vi.unstubAllGlobals();
-  });
-
-  it('makes one canvas only when the section comes near, and pauses it while it is away', async () => {
-    const observers: { cb: (e: { isIntersecting: boolean }[]) => void; els: Element[] }[] = [];
-    vi.stubGlobal(
-      'IntersectionObserver',
-      class {
-        els: Element[] = [];
-        constructor(cb: (e: { isIntersecting: boolean }[]) => void) {
-          observers.push({ cb, els: this.els });
-        }
-        observe(el: Element) {
-          this.els.push(el);
-        }
-        disconnect() {}
-      },
-    );
-    browser({ webgl: true });
-    const host = await landing();
-    await settle(10);
-    const track = find(host, '[data-ui="closing-track"]');
-    const mine = observers.find((o) => o.els.includes(track));
-    expect(mine).toBeTruthy();
-    expect(coinsScene.create).not.toHaveBeenCalled();
-    await act(async () => mine?.cb([{ isIntersecting: true }]));
-    await settle(10);
-    expect(coinsScene.create).toHaveBeenCalledTimes(1);
-    expect(coinsScene.create.mock.calls[0]?.[0]).toBe(find(track, 'canvas'));
-    const made = coinsScene.create.mock.results[0]?.value as {
-      setVisible: ReturnType<typeof vi.fn>;
-      setProgress: ReturnType<typeof vi.fn>;
-    };
-    expect(made.setProgress).toHaveBeenCalled();
-    await act(async () => mine?.cb([{ isIntersecting: false }]));
-    expect(made.setVisible).toHaveBeenLastCalledWith(false);
-    await act(async () => mine?.cb([{ isIntersecting: true }]));
-    expect(made.setVisible).toHaveBeenLastCalledWith(true);
-    expect(coinsScene.create).toHaveBeenCalledTimes(1);
-    expect(track.querySelectorAll('canvas')).toHaveLength(1);
-    vi.unstubAllGlobals();
-  });
-});
-
-it('ships no closing photograph: nothing in the app names closing.jpg, and the file is gone', () => {
-  const web = join(import.meta.dirname, '..', '..');
-  const found: string[] = [];
-  const walk = (dir: string) => {
-    for (const name of readdirSync(dir)) {
-      if (name === 'node_modules' || name.startsWith('.')) continue;
-      const path = join(dir, name);
-      if (statSync(path).isDirectory()) walk(path);
-      else if (
-        /\.(tsx?|mjs|css|json)$/.test(name) &&
-        readFileSync(path, 'utf8').includes('closing.jpg')
-      )
-        found.push(path.slice(web.length + 1));
-    }
-  };
-  for (const top of ['app', 'components', 'features', 'i18n', 'e2e']) walk(join(web, top));
-  expect(found.filter((f) => !f.endsWith('landing.events.test.ts'))).toEqual([]);
-  expect(existsSync(join(web, 'public', 'landing', 'closing.jpg'))).toBe(false);
-});
-
-it('says the whole page in Portuguese, and calls its figures MOCK in the foot', async () => {
-  browser();
-  const pt = dictionary('pt');
-  const host = await landing('pt');
-  expect(find(host, 'h1').textContent).toBe(pt.landing.stage.title);
-  expect(host.textContent).toContain(pt.landing.show.title);
-  expect(host.textContent).toContain(pt.landing.sim.title);
-  expect(find(host, 'footer').textContent).toContain(pt.landing.foot);
-  expect(host.textContent).not.toContain(en.landing.show.title);
-});
-
-it('keeps “System” as a choice on the landing, so the next visit follows the system too', async () => {
-  browser();
-  const host = await landing();
-  const system = [...find(host, '[data-ui="theme-switch"]').querySelectorAll('button')][0];
-  await click(system as HTMLElement);
-  expect(document.cookie).toContain('tf-theme=auto');
-});
-
-describe('the bar’s action', () => {
-  const action = (host: HTMLElement) =>
-    [...host.querySelectorAll<HTMLAnchorElement>('[data-ui="compact-nav"] a')].filter((a) =>
-      [
-        en.landing.nav.cta,
-        en.landing.nav.openApp,
-        pt.landing.nav.cta,
-        pt.landing.nav.openApp,
-      ].includes(a.textContent ?? ''),
-    );
-  const pt = dictionary('pt');
-
-  it('is "Sign in" for a visitor, and the visitor line asks them to sign in', async () => {
-    browser();
-    const host = await landing();
-    expect(action(host).map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
-      [en.landing.nav.cta, '/sign-in?next=/goal'],
+  it('shows the API’s numbers live on mainnet, with no hatch and no change figure', async () => {
+    vi.stubEnv('NEXT_PUBLIC_CHAIN_NETWORK_SOLANA', 'mainnet');
+    const stats = fromReply(LIVE_REPLY);
+    expect(stats).not.toBeNull();
+    const host = await landing({ stats: stats ?? SAMPLE_STATS });
+    const strip = find(host, '[data-ui="landing-stats"]');
+    expect(strip.hasAttribute('data-sample')).toBe(false);
+    expect(strip.querySelector('[data-ui="hatch-band"]')).toBeNull();
+    expect(strip.querySelectorAll('[data-ui="pin-glyph"][data-state="live"]')).toHaveLength(3);
+    expect([...strip.querySelectorAll('dt')].map((d) => d.textContent)).toEqual([
+      en.landing.stats.plans,
+      en.landing.stats.wallets,
+      en.landing.stats.value,
     ]);
-    expect(host.textContent).toContain(en.goal.visitor.link);
+    expect(strip.textContent).toContain('37');
+    expect(strip.textContent).not.toMatch(/[+−]\d/);
   });
 
-  it.each(['en', 'pt'] as const)(
-    'leads a person signed in back into the app, in the same style, and asks nothing of them (%s)',
-    async (lang) => {
-      browser();
-      const words = dictionary(lang);
-      const host = await landing(lang, true);
-      const [open] = action(host);
-      expect(action(host)).toHaveLength(1);
-      expect(open?.textContent).toBe(words.landing.nav.openApp);
-      expect(open?.getAttribute('href')).toBe('/goal');
-      expect(host.querySelector('a[href^="/sign-in"]')).toBeNull();
-      expect(host.textContent).not.toContain(words.landing.nav.cta);
-      expect(host.textContent).not.toContain(words.goal.visitor.link);
-      // the filled style of "Sign in"
-      await unmountAll();
-      const visitor = await landing(lang);
-      expect(open?.className).toBe(action(visitor)[0]?.className);
-    },
-  );
+  it('says "Test network" on the API’s numbers off mainnet, and keeps the hatch', async () => {
+    vi.stubEnv('NEXT_PUBLIC_CHAIN_NETWORK_SOLANA', 'devnet');
+    const host = await landing({ stats: fromReply(LIVE_REPLY) ?? SAMPLE_STATS });
+    const strip = find(host, '[data-ui="landing-stats"]');
+    expect(strip.hasAttribute('data-sample')).toBe(true);
+    expect(find(strip, '[data-ui="sample-note"]').textContent).toBe(en.shell.testNetworkLine);
+  });
 });
 
-describe('the landing’s type (the design pass, Oct 6)', () => {
+describe('where the numbers come from', () => {
+  it('is the sample strip when the API does not answer, or answers with something else', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('offline'));
+    expect(await platformStats()).toBe(SAMPLE_STATS);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    expect(await platformStats()).toBe(SAMPLE_STATS);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('no', { status: 500 }));
+    expect(await platformStats()).toBe(SAMPLE_STATS);
+  });
+
+  it('is the API’s `/stats`, stamped with the instant it answered', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(Response.json(LIVE_REPLY));
+    const stats = await platformStats();
+    expect(stats.live).toBe(true);
+    for (const item of stats.items) {
+      expect(item.obs.source).toBe('tenonfi API /stats');
+      expect(item.obs.fetchedAt).toBe(LIVE_REPLY.asOf);
+      expect(item.obs.method).not.toBe('');
+    }
+  });
+});
+
+describe('the landing’s type', () => {
   const classesOf = (host: HTMLElement) =>
     [...host.querySelectorAll<HTMLElement>('[class]')].map((el) => el.getAttribute('class') ?? '');
 
-  it('sets a KPI’s label as a sans caption and its value in the mono face at 18px', async () => {
-    browser();
-    const host = await landing();
-    const cells = [...host.querySelectorAll('[data-ui="showcase-case"] dl > div')];
-    expect(cells.length).toBe(8);
-    for (const cell of cells) {
-      const dt = cell.querySelector('dt')?.className ?? '';
-      expect(dt).toContain('text-caption');
-      expect(dt).toContain('font-medium');
-      expect(dt).not.toContain('font-mono');
-      const dd = cell.querySelector('dd')?.className ?? '';
-      expect(dd).toContain('font-mono');
-      expect(dd).toContain('text-[1.125rem]/7');
-      expect(dd).toContain('font-medium');
-    }
-  });
-
-  it('sets nothing under 12px, in the page or in its charts', async () => {
-    browser();
+  it('sets nothing under 12px', async () => {
     const host = await landing();
     expect(classesOf(host).filter((c) => /text-\[(?:[0-9]|1[01])(?:\.\d+)?px\]/.test(c))).toEqual(
       [],
     );
-    const charts = [...host.querySelectorAll<SVGElement>('[data-ui="showcase-chart"] svg')];
-    expect(charts.length).toBe(2);
-    for (const svg of charts) expect(svg.style.fontSize).toBe('12px');
   });
 
   it('keeps every line height on the 4px grid: no bare ratio, a fluid size rounds to 4px', async () => {
-    browser();
     const host = await landing();
-    // a ratio like /[1.15] lands between grid lines on a fluid size
     expect(classesOf(host).filter((c) => /\/\[\d+(?:\.\d+)?\](?:\s|$)/.test(c))).toEqual([]);
-    const rounded = classesOf(host).filter((c) => c.includes('round('));
-    expect(rounded.length).toBeGreaterThanOrEqual(4);
-    for (const c of rounded) expect(c).toMatch(/round\(\d+(?:\.\d+)?em,4px\)/);
-  });
-
-  it('keeps a part’s reason under its own name, whatever the name beside it wraps to', async () => {
-    browser();
-    const host = await landing();
-    const legs = [...host.querySelectorAll('[data-ui="case-leg"]')];
-    expect(legs.length).toBe(7);
-    for (const leg of legs) expect(leg.className).toContain('content-start');
-  });
-});
-
-describe('where the hero hands over to the showcase', () => {
-  afterEach(unmountAll);
-
-  it('has the joint whole until the stage is nearly through, and gone before the pin lets go', () => {
-    const vh = 836;
-    expect(shownAt(vh * 3, vh)).toBe(1);
-    expect(shownAt(vh * (1 + FADE), vh)).toBe(1);
-    expect(shownAt(vh * (1 + FADE / 2), vh)).toBeCloseTo(0.5);
-    // the stage's foot at the window's foot: the pin lets go here, and the showcase comes on screen
-    expect(shownAt(vh, vh)).toBe(0);
-    expect(shownAt(vh * 0.4, vh)).toBe(0);
-  });
-
-  it('lets the pin go at the foot of the stage: the layer keeps its own screen of height', async () => {
-    browser();
-    const host = await landing();
-    const layer = find(host, '[data-ui="joint-layer"]');
-    // a layer pulled up under the copy by a negative margin stays pinned a screen too long, and the
-    // showcase rises over the joint and cuts it
-    expect(layer.className).toContain('sticky');
-    expect(layer.className).not.toContain('-mb-');
-    expect(layer.nextElementSibling?.className).toContain('-mt-[100svh]');
-    expect(layer.nextElementSibling?.className).toContain('motion-reduce:mt-0');
+    for (const c of classesOf(host).filter((c) => c.includes('round(')))
+      expect(c).toMatch(/round\(\d+(?:\.\d+)?em,4px\)/);
   });
 });

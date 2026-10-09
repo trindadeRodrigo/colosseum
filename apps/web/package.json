@@ -13,29 +13,27 @@
   "dependencies": {
     "@colosseum/schemas": "workspace:*",
     "@colosseum/sdk": "workspace:*",
-    "next": "^16.3.8",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "@solana/wallet-adapter-react": "^0.15.40",
-    "@solana/wallet-adapter-react-ui": "^0.9.40",
-    "@solana/wallet-adapter-base": "^0.9.28",
-    "@solana/web3.js": "^1.99.0",
     "@privy-io/react-auth": "3.46.0",
-    "viem": "2.56.0",
-    "@solana/kit": "5.5.1",
     "@solana-program/memo": "0.10.0",
     "@solana-program/system": "0.10.0",
     "@solana-program/token": "0.9.0",
-    "three": "0.186.0"
+    "@solana/kit": "5.5.1",
+    "@solana/wallet-adapter-base": "^0.9.28",
+    "@solana/wallet-adapter-react": "^0.15.40",
+    "@solana/wallet-adapter-react-ui": "^0.9.40",
+    "@solana/web3.js": "^1.99.0",
+    "next": "^16.3.8",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "viem": "2.56.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
     "@playwright/test": "1.63.0",
+    "@tailwindcss/postcss": "^4.1.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
-    "@types/three": "0.186.0",
-    "tailwindcss": "^4.1.0",
-    "@tailwindcss/postcss": "^4.1.0",
-    "postcss": "^8.5.0"
+    "postcss": "^8.5.0",
+    "tailwindcss": "^4.1.0"
   }
 }
