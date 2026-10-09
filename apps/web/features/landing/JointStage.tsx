@@ -36,6 +36,15 @@ export const LOW_LINE = 0.42;
 /** The progress past which the stills show the joint seated: the pin goes in from here. */
 const SEATED = 0.86;
 
+/**
+ * The hand-over to the showcase: the joint fades over this much of a screen, and is gone by the time
+ * the section's foot reaches the foot of the window and the pin lets go. So the joint is either whole
+ * on the screen or not there: it is never cut by the showcase below or by the bar's band above.
+ */
+export const FADE = 0.25;
+/** How much of the joint shows, from where the stage's foot is on a screen `vh` tall. */
+export const shownAt = (foot: number, vh: number) => clamp((foot - vh) / (FADE * vh), 0, 1);
+
 /** Where a still stands in the pinned layer: beside the copy, or above it on a phone. */
 const STILL_FRAME =
   'absolute inset-0 mx-auto flex max-w-page items-center justify-end px-[clamp(16px,4vw,56px)] max-[819px]:items-start max-[819px]:justify-center max-[819px]:pt-20';
@@ -44,6 +53,7 @@ const STILL_SIZE = 'relative w-[min(600px,46vw)] max-[819px]:w-[min(380px,92vw)]
 export function JointStage() {
   const t = useT().landing.stage;
   const stage = useRef<HTMLElement>(null);
+  const layer = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const scene = useRef<JointScene | null>(null);
   /** Whether the reader has reached step 03: the stills cross over to the seated one there. */
@@ -68,6 +78,11 @@ export function JointStage() {
         setSeated(p >= SEATED);
         scene.current?.setProgress(p);
       }
+      // the hand-over: written to the layer itself, a frame at a time, not through a render
+      if (layer.current && stage.current)
+        layer.current.style.opacity = String(
+          shownAt(stage.current.getBoundingClientRect().bottom, vh),
+        );
       // On a phone the joint stands at the top and the copy at the foot (hero-3d.html, its 820px
       // rule): a line of copy is shown only while it is low enough to stay clear of the joint, and
       // fades as it rises toward it.
@@ -157,10 +172,18 @@ export function JointStage() {
 
   return (
     <section ref={stage} id="stage" aria-label={t.label} data-ui="joint-stage" className="relative">
-      {/* The pinned layer: one screen tall, under the copy. Not drawn at all with reduced motion. */}
+      {/* The pinned layer: one screen tall, under the copy. Not drawn at all with reduced motion.
+          It takes its own screen of the section's height and the copy is pulled up over it, so the
+          pin lets go when the section's foot reaches the foot of the window. The joint, seated, has
+          faded by then (FADE), and the empty layer leaves with step 03. (Pulled up under the copy
+          instead, the layer stayed pinned for a screen more and the showcase rose over it, cutting
+          the joint flat.) */}
       <div
+        ref={layer}
         aria-hidden="true"
-        className="sticky top-0 z-0 -mb-[100svh] h-svh overflow-hidden motion-reduce:hidden"
+        data-ui="joint-layer"
+        data-seated={seated}
+        className="sticky top-0 z-0 h-svh overflow-hidden motion-reduce:hidden"
       >
         <canvas
           ref={canvas}
@@ -200,7 +223,7 @@ export function JointStage() {
           </div>
         </noscript>
       </div>
-      <div className="relative z-[1] mx-auto w-full max-w-page px-[clamp(16px,4vw,56px)]">
+      <div className="relative z-[1] mx-auto -mt-[100svh] w-full max-w-page px-[clamp(16px,4vw,56px)] motion-reduce:mt-0">
         <div className="flex min-h-svh items-center max-[819px]:items-end max-[819px]:pb-[10vh] motion-reduce:min-h-0 motion-reduce:items-start motion-reduce:py-28">
           <div className="grid w-full items-center gap-10 min-[820px]:grid-cols-[minmax(0,560px)_1fr]">
             <div
@@ -214,16 +237,16 @@ export function JointStage() {
                 !heroLow && 'max-[819px]:opacity-0 motion-reduce:opacity-100',
               )}
             >
-              <h1 className="font-display text-[clamp(2.4rem,1.6rem+2.6vw,4rem)]/[1.12] font-normal tracking-[-0.015em] [overflow-wrap:break-word]">
+              <h1 className="font-display text-[clamp(2.4rem,1.6rem+2.6vw,4rem)]/[round(1.12em,4px)] font-normal tracking-[-0.015em] [overflow-wrap:break-word]">
                 {t.title}
               </h1>
-              <p className="mt-7 max-w-[44ch] text-[1.125rem]/[1.7] text-muted-foreground">
+              <p className="mt-7 max-w-[44ch] text-[1.125rem]/8 text-muted-foreground">
                 <b className="font-medium text-foreground">{t.taglineStrong}</b>
                 <br />
                 {t.tagline}
               </p>
               {/* A still line, not a loop (joint-stage.md: no ambient motion). */}
-              <p className="mt-10 flex items-center gap-2.5 font-mono text-[12px] text-muted-foreground motion-reduce:hidden">
+              <p className="mt-10 flex items-center gap-2.5 font-mono text-[12px]/4 text-muted-foreground motion-reduce:hidden">
                 <span aria-hidden="true" className="inline-block h-7 w-px bg-muted-foreground" />
                 {t.cue}
               </p>
@@ -252,12 +275,12 @@ export function JointStage() {
                   : 'translate-y-3 motion-reduce:translate-y-0 max-[819px]:opacity-0 motion-reduce:opacity-100',
               )}
             >
-              <p className="font-mono text-[12px] font-medium tracking-[0.04em] text-primary">
+              <p className="font-mono text-[12px]/4 font-medium tracking-[0.04em] text-primary">
                 {step.n}
               </p>
               <h2
                 className={cn(
-                  'my-2 font-display text-[clamp(1.6rem,1.2rem+1.2vw,2.3rem)]/[1.2] font-normal transition-colors duration-[480ms]',
+                  'my-2 font-display text-[clamp(1.6rem,1.2rem+1.2vw,2.3rem)]/[round(1.2em,4px)] font-normal transition-colors duration-[480ms]',
                   on === i
                     ? 'text-foreground'
                     : 'text-muted-foreground motion-reduce:text-foreground',
@@ -269,7 +292,8 @@ export function JointStage() {
             </div>
           </div>
         ))}
-        <div aria-hidden="true" className="h-[45vh] motion-reduce:hidden" />
+        {/* the seated joint is held here for a while, then fades (FADE) */}
+        <div aria-hidden="true" className="h-[55vh] motion-reduce:hidden" />
       </div>
     </section>
   );

@@ -16,3 +16,11 @@ export {
   readSolanaRecipe,
   vaultOf,
 } from './registry';
+export {
+  type ChainTarget,
+  type ChainVault,
+  readEvmVault,
+  readSolanaVault,
+  readSolanaVaultCash,
+  VAULT_ACCOUNT_SIZE,
+} from './vault-read';

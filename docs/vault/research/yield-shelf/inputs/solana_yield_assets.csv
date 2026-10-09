@@ -1,0 +1,56 @@
+Category,Symbol,Name / Issuer,Link,Yield,Access,Route without KYC
+1. Yield-bearing stablecoins,USDY,Ondo US Dollar Yield,ondo.finance/usdy,~3.5–3.75%,Hybrid,Swap on Jupiter/Orca/Raydium; KYC only for direct mint/redeem (non-US)
+1. Yield-bearing stablecoins,syrupUSDC,Maple Syrup USDC,maple.finance,~5%,Permissionless,"Deposit via Syrup app or swap/borrow on Kamino, Jupiter"
+1. Yield-bearing stablecoins,USX / eUSX,Solstice,solstice.finance,Variable (claims ~14% IRR),Hybrid,"Buy USX on DEX, then lock into eUSX in the app without KYC; direct mint is KYC, $500K+"
+1. Yield-bearing stablecoins,strcUSX,Solstice structured,—,Wound down,n/a,Exit only
+1. Yield-bearing stablecoins,stSLX,Solstice staked SLX,solstice.finance/slx,20% target (not guaranteed),Permissionless,"Buy SLX on DEX, stake"
+1. Yield-bearing stablecoins,USD*,Perena USD STAR,perena.org,~9.3%,Permissionless,Mint in app or swap
+1. Yield-bearing stablecoins,USDC+,Reflect,reflect.money,Variable,Permissionless,Deposit USDC in app
+1. Yield-bearing stablecoins,hyUSD / sHYUSD,Hylo,hylo.so,15–20% (stale),Permissionless,Mint with LSTs or swap; stake into the stability pool
+1. Yield-bearing stablecoins,sUSD,Solayer USD,solayer.org,~3.4%,Permissionless,App or DEX
+1. Yield-bearing stablecoins,sUSDS,Sky Savings USDS,sky.money,3.60% SSR,Permissionless,Swap on DEX; verify that it accrues natively on Solana
+1. Yield-bearing stablecoins,sUSDe,Ethena,ethena.fi,~5%,Hybrid,Swap on DEX or Kamino; mint/redeem is KYC'd and whitelisted
+1. Yield-bearing stablecoins,wYLDS,Hastra (Figure),hastra.io,~T-bill rate,"Permissionless, geo-restricted (verify)",Hastra app with USDC; US blocked
+1. Yield-bearing stablecoins,jlJupUSD,Jupiter Lend,jup.ag,Lending rate,Permissionless,Deposit JupUSD in Jupiter Lend
+1. Yield-bearing stablecoins,PYUSD,Paxos,paxos.com,None native; vault rates,Hybrid,"Buy on DEX, lend on Kamino"
+2a. Treasuries / MMFs,BUIDL,BlackRock / Securitize,securitize.io,3.68%,Permissioned,"None; transfers only between allowlisted wallets (QP, $5M min)"
+2a. Treasuries / MMFs,OUSG,Ondo,ondo.finance/ousg,~3.5–3.6%,Permissioned,None; for indirect exposure use USDY
+2a. Treasuries / MMFs,BENJI,Franklin Templeton,franklintempleton.com,3.72%,Permissioned,None (Benji app KYC)
+2a. Treasuries / MMFs,USTB,Invesco / Superstate,superstate.com,3.62%,Permissioned,None (allowlist)
+2a. Treasuries / MMFs,VBILL,VanEck / Securitize,vaneck.com,3.61%,Permissioned,None
+2a. Treasuries / MMFs,USYC,Circle,circle.com,3.39%,Permissioned,None
+2a. Treasuries / MMFs,WTGXX,WisdomTree,wisdomtreeprime.com,3.82%,Permissioned,None
+2a. Treasuries / MMFs,SWEEP / SAFO / BAGEY,State Street-Galaxy / Spiko / Baillie Gifford,—,~T-bill rate,Permissioned,None
+2b. Private credit / specialty / EM,PST,Huma Finance,app.huma.finance,~8%,Permissionless (Huma 2.0),App deposit or DEX; Huma Institutional is the KYC version
+2b. Private credit / specialty / EM,ONyc,OnRe reinsurance,onre.finance,~11%,Hybrid (verify primary),"Buy via DEX, Titan RFQ, or Kamino/Loopscale/Exponent"
+2b. Private credit / specialty / EM,PRIME,Hastra / Figure HELOCs,hastra.io/prime,Up to ~8%,"Permissionless, geo-restricted (verify)",Deposit wYLDS in Hastra; Kamino PRIME market
+2b. Private credit / specialty / EM,AUTO,Hastra / Figure auto loans,hastra.io/auto,~9% target,"Permissionless, geo-restricted (verify)","Hastra app, Kamino"
+2b. Private credit / specialty / EM,ACRED / sACRED,Apollo / Securitize,securitize.io,~9.5%,Permissioned,None
+2b. Private credit / specialty / EM,kicUSDC,Kamino Institutional commodity,kamino.com,7–8% target,Permissioned,None
+2b. Private credit / specialty / EM,oTFY,Obligate trade finance,obligate.com,8.75%,Hybrid (verify),Secondary DeFi pools; issuer primary is KYC
+2b. Private credit / specialty / EM,reUSD,Re Protocol,re.xyz,Not captured,Verify,Unconfirmed on Solana
+2b. Private credit / specialty / EM,CETES / TESOURO / GILTS etc.,Etherfuse Stablebonds,etherfuse.com,"CETES ~5.5% MXN, TESOURO ~11.7% BRL",Hybrid,Swap on Jupiter/Orca; mint is KYC; US IPs blocked
+2b. Private credit / specialty / EM,SCOPE,Hamilton Lane via Libre,libre.xyz,—,Permissioned,None
+2b. Private credit / specialty / EM,Credix pools,Credix,credix.finance,Defunct on-chain,Permissioned,n/a
+3. Liquid staking,JitoSOL,Jito,jito.network,4.85%,Permissionless,Stake or swap
+3. Liquid staking,INF,Sanctum Infinity,sanctum.so,~5.6–6.4%,Permissionless,Sanctum
+3. Liquid staking,JupSOL,Jupiter / Sanctum,jup.ag,5.46%,Permissionless,Jupiter
+3. Liquid staking,mSOL,Marinade,marinade.finance,5.4%,Permissionless,Stake or swap
+3. Liquid staking,bSOL,BlazeStake,stake.solblaze.org,4.86%,Permissionless,Stake or swap
+3. Liquid staking,"hSOL, BNSOL, vSOL, compassSOL, etc.",Sanctum LSTs,sanctum.so,~Sanctum range,Permissionless,Sanctum
+3. Liquid staking,sSOL,Solayer,solayer.org,4.21%,Permissionless,App
+3. Liquid staking,hyloSOL,Hylo,hylo.so,~6–7%,Permissionless,App
+3. Liquid staking,dSOL,Drift / Velocity,—,—,"Permissionless, but caution",Linked to the Drift exploit
+3. Liquid staking,stSOL,Lido,—,Discontinued,n/a,Exit via Sanctum
+3. Liquid staking,Native stake,Validators,solana.com/staking,~5–6% gross,Permissionless,Wallet delegation
+4. Liquid restaking,fragSOL / fragJTO / fragBTC,Fragmetric,fragmetric.xyz,Variable (old figures 8–11%),Permissionless,App or DEX; withdrawal queue
+4. Liquid restaking,sSOL (restaking),Solayer,solayer.org,4.21%,Permissionless,App
+4. Liquid restaking,Jito VRTs,Jito Restaking,jito.network,Variable,Permissionless (vault-dependent),Via the vaults themselves
+4. Liquid restaking,kySOL / kyJTO,Kyros,kyros.fi,7–8.6% (unverified),Permissionless,App
+5. Other vaults / tokens,JLP,Jupiter Perps LP,jup.ag,"Variable, fee-based",Permissionless,Jupiter
+5. Other vaults / tokens,PT- / YT- tokens,Exponent,exponent.finance,Fixed per market,Permissionless,Exponent (some underlyings are geo-restricted)
+5. Other vaults / tokens,jrONyc,Exponent tranche,exponent.finance,~17.9%,Permissionless,Exponent
+5. Other vaults / tokens,RateX PT/YT,RateX,rate-x.io,Variable,Permissionless,RateX
+5. Other vaults / tokens,kTokens / Multiply,Kamino (main markets),kamino.com,Variable,Permissionless,Kamino; Institutional markets are KYC
+5. Other vaults / tokens,jlUSDC etc.,Jupiter Lend,jup.ag,Variable,Permissionless,Jupiter Lend
+5. Other vaults / tokens,nPERENA,Perena / Plume,perena.org,~11%,Permissionless (verify),Perena app

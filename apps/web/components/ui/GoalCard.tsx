@@ -57,7 +57,8 @@ export type GoalCardProps = Common &
          * From the engine, never worked out here. The word is always shown beside the mark: a card
          * handed an empty word throws.
          */
-        status: { kind: StatusKind; word: string; date: string } | null;
+        /** `date` is left out when the word is a whole sentence that needs none after it. */
+        status: { kind: StatusKind; word: string; date?: string } | null;
         /**
          * Said in place of the status when the engine gives none: the card never works one out. The
          * date still stands beside it.
@@ -135,7 +136,8 @@ export function GoalCard(props: GoalCardProps) {
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               {props.status ? (
                 <Status status={props.status.kind}>
-                  {statusWord(props.status.word)} · {props.status.date}
+                  {statusWord(props.status.word)}
+                  {props.status.date !== undefined && ` · ${props.status.date}`}
                 </Status>
               ) : (
                 props.noStatus && (

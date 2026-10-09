@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { configOf, serveNode } from './http';
+import { configOf, MAX_BODY_BYTES, serveNode } from './http';
 import { createTenonfiMcp } from './server';
 
 // The server on Node's HTTP server, as a host runs it (`pnpm --filter @colosseum/mcp start`): its
@@ -92,5 +92,42 @@ describe('the HTTP server', () => {
     const base = await listen(['https://allowed.example']);
     expect((await list(base, { origin: 'https://evil.example' })).status).toBe(403);
     expect((await list(base, { origin: 'https://allowed.example' })).status).toBe(200);
+  });
+
+  it('reads no body larger than a call can be, whether or not its length is said', async () => {
+    const base = await listen();
+    const big = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/list',
+      params: { pad: 'x'.repeat(MAX_BODY_BYTES) },
+    });
+    const send = (body: BodyInit, more: object = {}) =>
+      fetch(`${base}/mcp`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
+        },
+        body,
+        ...more,
+      });
+    const said = await send(big);
+    expect([said.status, await said.json()]).toEqual([413, { error: 'the request is too large' }]);
+    // sent in pieces, with no length up front
+    const pieces = new ReadableStream({
+      start(controller) {
+        for (let i = 0; i < 4; i++)
+          controller.enqueue(new TextEncoder().encode(big.slice(0, 40_000)));
+        controller.close();
+      },
+    });
+    const streamed = await send(pieces, { duplex: 'half' }).then(
+      (res) => res.status,
+      () => 'closed',
+    );
+    expect([413, 'closed']).toContain(streamed);
+    // and a call of the usual size is answered as before
+    expect((await list(base)).status).toBe(200);
   });
 });

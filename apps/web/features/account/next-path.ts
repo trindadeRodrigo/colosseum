@@ -22,6 +22,9 @@ export const APP_ROUTES: readonly string[] = [
   '/shelf',
   '/sign-in',
   '/vaults/[chain]/[address]',
+  '/vaults/[chain]/[address]/add',
+  '/vaults/[chain]/[address]/targets',
+  '/vaults/[chain]/[address]/withdraw',
 ];
 
 /** Where sign-in leads when it is told nothing, or nothing it accepts: the goal. */

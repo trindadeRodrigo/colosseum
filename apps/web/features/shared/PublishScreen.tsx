@@ -1,8 +1,8 @@
 'use client';
-import { type ChainId, chainFamily, type SharedFamily, type Target } from '@colosseum/schemas';
+import { chainFamily, type SharedFamily, type Target } from '@colosseum/schemas';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { CardWait } from '../../components/shell/Wait';
 import { Button } from '../../components/ui/Button';
 import { buttonClass } from '../../components/ui/button-class';
@@ -15,21 +15,21 @@ import { LOCALE } from '../../i18n';
 import { useLang, useT } from '../../i18n/I18nProvider';
 import { formatBps } from '../order/amounts';
 import { keepOrder } from '../order/order-record';
+import { deploymentsFor, networkFor } from '../order/readiness';
 import { assetsFor } from '../order/units';
-import { useApiFetch } from '../wallet/WalletProvider';
+import { tokens } from '../portfolio/figures';
+import { readPortfolio, type Vault } from '../portfolio/portfolio';
+import { sameAddress } from '../portfolio/vault-name';
+import { useApiFetch, useWalletPort } from '../wallet/WalletProvider';
 import { familyIdFor } from './chain-recipe';
+import { type PublishVaultRead, readPublishVault } from './publish-vault';
 import { placeShared, readFamily } from './shared-api';
 import type { SharedTerms } from './terms';
 import { useSharedPerson } from './use-person';
 
-// The publish form (DESIGN-VAULT section 11, gate SHARED-FULL): a name, an address on the shelf, a
-// description, and the assets and weights, on the person's chain. The family id is worked out here
-// from the address (`familyIdOf`), never taken from our server, and shown. The order is reviewed on the
-// order screen and signed through the executor with the consent `publish`: the guard holds the bytes to
-// this form's id, text and weights, and hashes the text itself (AGT-4). The limits a portfolio follows
-// are checked here first so the person is told before anything is asked; the server and the registry
-// check them again. Solana only for now: on an EVM chain the form is not shown, since the guard does not
-// sign a publish there until AGT-4 and our server refuses one.
+// Publish an owner-proved vault's strategy through the existing reviewed order/signature contract.
+// Assets and weights are immutable here. A fresh chain read must still match the displayed snapshot
+// before an order is made, and any person/chain/network/vault change discards a late reply.
 
 export const LIMITS = { min: 3, max: 12, low: 200, high: 5000, step: 50, chars: 280 } as const;
 
@@ -40,8 +40,6 @@ const LINK = /:\/\/|www\.|(?<!\w)[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.[a-z]{2,}(
 const HIDDEN = /\p{Cf}|(?!\n)\p{Cc}/u;
 const ASCII = /^[\x20-\x7e]+$/;
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
-
-type Row = { key: number; asset: string; weight: string };
 
 /** A weight typed in percent, as basis points; null when it is not a number with at most two places. */
 export function bpsOf(text: string): number | null {
@@ -61,12 +59,13 @@ export const slugOf = (name: string) =>
 export type Problem = 'chain' | 'name' | 'slug' | 'copy' | 'count' | 'weight' | 'sum' | 'twice';
 
 /** What the form breaks of the rules a portfolio follows, in the order the form reads. */
-export function problemsOf(
-  form: { name: string; slug: string; copy: string; rows: { asset: string; bps: number | null }[] },
-  chain: ChainId,
-): Problem[] {
+export function problemsOf(form: {
+  name: string;
+  slug: string;
+  copy: string;
+  rows: { asset: string; bps: number | null }[];
+}): Problem[] {
   const out: Problem[] = [];
-  if (chainFamily(chain) !== 'solana') out.push('chain');
   if (
     !ASCII.test(form.name) ||
     form.name.trim() !== form.name ||
@@ -96,7 +95,8 @@ type Existing =
   | { kind: 'mine'; family: SharedFamily; next: number }
   /** The person's own portfolio, whose id is not its slug's: not updated from here (gate FAMILY-ID). */
   | { kind: 'foreign' }
-  | { kind: 'theirs' };
+  | { kind: 'theirs' }
+  | { kind: 'unreadable' };
 
 export function PublishScreen() {
   const t = useT();
@@ -104,6 +104,7 @@ export function PublishScreen() {
   const p = t.shared.publish;
   const router = useRouter();
   const apiFetch = useApiFetch();
+  const port = useWalletPort();
   const person = useSharedPerson();
   const chain = person.kind === 'ready' ? person.chain : null;
   const mock = person.kind === 'ready' ? person.mock : false;
@@ -111,26 +112,100 @@ export function PublishScreen() {
   const [name, setName] = useState('');
   const [slugText, setSlugText] = useState<string | null>(null);
   const [copy, setCopy] = useState('');
-  const [rows, setRows] = useState<Row[] | null>(null);
+  const [vaults, setVaults] = useState<{ key: string; values: Vault[] } | null>(null);
+  const [selected, setSelected] = useState('');
+  const [snapshot, setSnapshot] = useState<{ key: string; read: PublishVaultRead } | null>(null);
+  const [sourceFailure, setSourceFailure] = useState(false);
+  const [requested, setRequested] = useState('');
   const [existing, setExisting] = useState<Existing>({ kind: 'new' });
   const [placing, setPlacing] = useState(false);
+  const inFlight = useRef(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
+  /** The parts of the form the person has put a hand to: a rule is said once its part has been. */
+  const [touched, setTouched] = useState({ name: false, slug: false, copy: false, rows: false });
+  const touch = (part: keyof typeof touched) =>
+    setTouched((was) => (was[part] ? was : { ...was, [part]: true }));
   const reasonId = useId();
   const slug = slugText ?? slugOf(name);
   const owner = person.kind === 'ready' ? person.owner : null;
 
-  // Three rows to start from, on the chain's own assets.
+  // Every asynchronous result belongs to this person, chain, network and selected vault.
+  const deployment = chain ? deploymentsFor(chain, mock)?.[chain] : undefined;
+  const identity = JSON.stringify([
+    person.kind === 'ready' ? person.userId : null,
+    chain,
+    owner,
+    mock,
+    chain ? networkFor(chain, mock) : null,
+    chain ? port.network(chain) : null,
+    person.kind === 'ready' ? [person.signable, person.off, person.publishable] : null,
+    deployment,
+  ]);
+  const sourceKey = `${identity}:${selected}:${vaults?.key === identity ? (vaults.values.find((v) => v.address === selected)?.basketId ?? '') : ''}`;
+  const active = useRef({ key: sourceKey, revision: 0, form: '' });
+  if (active.current.key !== sourceKey) {
+    active.current = { key: sourceKey, revision: active.current.revision + 1, form: '' };
+  }
+  active.current.form = JSON.stringify([name, slug, copy, existing]);
+  const alive = useRef(true);
   useEffect(() => {
-    if (rows !== null || assets.length < LIMITS.min) return;
-    setRows(
-      assets
-        .slice(0, 3)
-        .map((a, i) => ({ key: i, asset: a.id, weight: ['40', '30', '30'][i] ?? '' })),
-    );
-  }, [rows, assets]);
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    setRequested(new URLSearchParams(window.location.search).get('vault') ?? '');
+  }, []);
+  useEffect(() => {
+    if (!chain || !owner) return;
+    let current = true;
+    setVaults(null);
+    setSelected('');
+    setSnapshot(null);
+    inFlight.current = false;
+    setPlacing(false);
+    setFailure(null);
+    setSourceFailure(false);
+    readPortfolio(apiFetch, chain).then((result) => {
+      if (!current) return;
+      if (result.kind !== 'read') return setSourceFailure(true);
+      const values =
+        result.chains
+          .find((entry) => entry.chain === chain)
+          ?.vaults.filter((v) => sameAddress(chain, v.owner, owner)) ?? [];
+      setVaults({ key: identity, values });
+      // An explicit invalid source link never silently selects a different vault.
+      const first = requested
+        ? values.find((v) => sameAddress(chain, v.address, requested))
+        : values[0];
+      setSelected(first?.address ?? '');
+    });
+    return () => {
+      current = false;
+    };
+  }, [apiFetch, chain, owner, identity, requested]);
+  const own = vaults?.key === identity ? vaults.values : [];
+  const source = own.find((v) => v.address === selected);
+  useEffect(() => {
+    setSnapshot(null);
+    setFailure(null);
+    inFlight.current = false;
+    setPlacing(false);
+    if (!chain || !owner || !source) return;
+    let current = true;
+    const at = { chain, owner, address: source.address, basketId: source.basketId, mock };
+    readPublishVault(apiFetch, at).then((read) => {
+      if (current) setSnapshot({ key: sourceKey, read });
+    });
+    return () => {
+      current = false;
+    };
+  }, [apiFetch, chain, owner, source, mock, sourceKey]);
 
   // Whether this address is a portfolio already: the person's own (the next version) or another's.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: account and network changes invalidate the family read
   useEffect(() => {
     if (!chain || !SLUG.test(slug)) {
       setExisting({ kind: 'new' });
@@ -141,9 +216,11 @@ export function PublishScreen() {
     const timer = setTimeout(async () => {
       const read = await readFamily(apiFetch, slug, chain);
       if (!mine) return;
-      if (read.kind !== 'read') return setExisting({ kind: 'new' });
+      if (read.kind !== 'read')
+        return setExisting({ kind: read.kind === 'no-plan' ? 'new' : 'unreadable' });
       const recipe = read.value.family.recipes.find((r) => r.chain === chain);
-      if (!recipe || recipe.creator !== owner) return setExisting({ kind: 'theirs' });
+      if (!recipe || !owner || !sameAddress(chain, recipe.creator, owner))
+        return setExisting({ kind: 'theirs' });
       // An update is only of a portfolio whose id is its slug's: the id the guard holds the bytes to
       // is the one this page works out, never the server's (gate FAMILY-ID).
       if (read.value.family.familyId !== familyIdFor(slug)) return setExisting({ kind: 'foreign' });
@@ -157,7 +234,7 @@ export function PublishScreen() {
       mine = false;
       clearTimeout(timer);
     };
-  }, [apiFetch, slug, chain, owner]);
+  }, [apiFetch, slug, chain, owner, identity]);
 
   if (person.kind === 'loading')
     return (
@@ -185,18 +262,36 @@ export function PublishScreen() {
       </section>
     );
 
-  const list = rows ?? [];
-  const read = list.map((r) => ({ asset: r.asset, bps: bpsOf(r.weight) }));
-  const problems = problemsOf({ name, slug, copy, rows: read }, chain);
+  const sourceRead = snapshot?.key === sourceKey ? snapshot.read : null;
+  const components = sourceRead?.kind === 'read' ? sourceRead.components : [];
+  const read = components.map((r) => ({ asset: r.asset, bps: r.weightBps }));
+  const problems = problemsOf({ name, slug, copy, rows: read });
   const sum = read.reduce((n, r) => n + (r.bps ?? 0), 0);
   // Always the page's own: an update is offered only where the stored id is this one.
   const familyId = familyIdFor(slug || 'x');
   const chainName = t.chain.names[chain];
+  // A rule the form breaks is said after the person has typed in its part, or asked for the review:
+  // an empty form says nothing is wrong with it yet.
+  const partOf = (k: Problem): keyof typeof touched =>
+    k === 'name' || k === 'slug' || k === 'copy' ? k : 'rows';
+  const said = problems.filter(
+    (k) =>
+      tried ||
+      (sourceRead?.kind === 'read' && partOf(k) === 'rows') ||
+      k === 'chain' ||
+      touched[partOf(k)] ||
+      (k === 'slug' && touched.name),
+  );
   const blocked = [
-    ...problems.map((k) => p.problems[k]),
+    ...said.map((k) => p.problems[k]),
+    ...(sourceFailure ? [p.sourceUnavailable] : []),
+    ...(!source ? [vaults ? p.noVaults : p.readingVaults] : []),
+    ...(source && !sourceRead ? [p.readingStrategy] : []),
+    ...(sourceRead && sourceRead.kind !== 'read' ? [p.sourceProblems[sourceRead.kind]] : []),
     ...(existing.kind === 'theirs' ? [p.theirs] : []),
     ...(existing.kind === 'foreign' ? [t.shared.family.foreign] : []),
     ...(existing.kind === 'reading' ? [t.shared.check.reading] : []),
+    ...(existing.kind === 'unreadable' ? [p.failure.unreadable] : []),
     ...(!person.signable || person.off ? [t.shared.family.chainNotReady(chainName)] : []),
     ...(!owner ? [t.buy.blocked.wallet] : []),
   ];
@@ -205,16 +300,106 @@ export function PublishScreen() {
 
   async function review() {
     setTried(true);
-    if (blocked.length > 0 || !chain || !owner || person.kind !== 'ready' || !person.userId) return;
+    if (
+      inFlight.current ||
+      placing ||
+      problems.length > 0 ||
+      blocked.length > 0 ||
+      !source ||
+      sourceRead?.kind !== 'read' ||
+      !chain ||
+      !owner ||
+      person.kind !== 'ready' ||
+      !person.userId
+    )
+      return;
+    inFlight.current = true;
     setPlacing(true);
     setFailure(null);
-    const components: Target[] = read.map((r) => ({ asset: r.asset, weightBps: r.bps ?? 0 }));
+    const guard = { ...active.current };
+    const current = () =>
+      alive.current &&
+      active.current.key === guard.key &&
+      active.current.revision === guard.revision &&
+      active.current.form === guard.form;
+    const fresh = await readPublishVault(apiFetch, {
+      chain,
+      owner,
+      address: source.address,
+      basketId: source.basketId,
+      mock,
+    });
+    if (!current()) return;
+    if (fresh.kind !== 'read') {
+      setSnapshot({ key: sourceKey, read: fresh });
+      inFlight.current = false;
+      setPlacing(false);
+      return;
+    }
+    if (
+      JSON.stringify([
+        fresh.strategy,
+        fresh.components,
+        fresh.source,
+        fresh.value.provenance,
+        fresh.value.vault.recipeOnchainId,
+        fresh.value.vault.acceptedVersion,
+      ]) !==
+      JSON.stringify([
+        sourceRead.strategy,
+        components,
+        sourceRead.source,
+        sourceRead.value.provenance,
+        sourceRead.value.vault.recipeOnchainId,
+        sourceRead.value.vault.acceptedVersion,
+      ])
+    ) {
+      setSnapshot({ key: sourceKey, read: fresh });
+      setFailure(p.strategyChanged);
+      inFlight.current = false;
+      setPlacing(false);
+      return;
+    }
+    const familyRead = await readFamily(apiFetch, slug, chain);
+    if (!current()) return;
+    if (familyRead.kind !== 'read' && familyRead.kind !== 'no-plan') {
+      setFailure(p.failure.unreadable);
+      inFlight.current = false;
+      setPlacing(false);
+      return;
+    }
+    let now: Existing = { kind: 'new' };
+    if (familyRead.kind === 'read') {
+      const recipe = familyRead.value.family.recipes.find((r) => r.chain === chain);
+      now =
+        !recipe || !sameAddress(chain, recipe.creator, owner)
+          ? { kind: 'theirs' }
+          : familyRead.value.family.familyId !== familyId
+            ? { kind: 'foreign' }
+            : {
+                kind: 'mine',
+                family: familyRead.value.family,
+                next: (recipe.pending?.version ?? recipe.active.version) + 1,
+              };
+    }
+    if (
+      now.kind !== existing.kind ||
+      (now.kind === 'mine' && existing.kind === 'mine' && now.next !== existing.next)
+    ) {
+      setExisting(now);
+      setFailure(t.shared.refusal.versionChanged);
+      inFlight.current = false;
+      setPlacing(false);
+      return;
+    }
+    // Freeze the exact display; no private chat text enters these public terms.
+    const frozen: Target[] = fresh.components.map((c) => ({ ...c }));
     // What the guard holds the bytes to: this form's id, text and weights.
     const terms: SharedTerms = {
       kind: 'publish',
       action: existing.kind === 'mine' ? 'update' : 'publish',
       familyId,
-      components,
+      components: frozen,
       text: { slug, name, copy, kind: 'index' },
       version: existing.kind === 'mine' ? existing.next : 1,
     };
@@ -227,11 +412,13 @@ export function PublishScreen() {
         familyId,
         name,
         copy,
-        recipes: [{ chain, components: components.map((c) => ({ kind: 'asset', ...c })) }],
+        recipes: [{ chain, components: frozen.map((c) => ({ kind: 'asset', ...c })) }],
       },
       { chain, owner, type: 'publish' },
     );
+    if (!current()) return;
     if (placed.kind !== 'placed') {
+      inFlight.current = false;
       setPlacing(false);
       setFailure(
         placed.kind === 'said'
@@ -257,17 +444,13 @@ export function PublishScreen() {
       approved: null,
     });
     if (!kept) {
+      inFlight.current = false;
       setPlacing(false);
       setFailure(p.failure.noStore);
       return;
     }
     router.push(`/orders/${encodeURIComponent(placed.order.id)}`);
   }
-
-  const setRow = (key: number, change: Partial<Row>) =>
-    setRows((all) => (all ?? []).map((r) => (r.key === key ? { ...r, ...change } : r)));
-  const unused = (current: string) =>
-    assets.filter((a) => a.id === current || !list.some((r) => r.asset === a.id));
 
   return (
     <div data-ui="publish-screen" className="flex flex-col gap-8">
@@ -284,6 +467,44 @@ export function PublishScreen() {
         }}
         noValidate
       >
+        <Card as="section" aria-label={p.sourceVault} className="lg:col-span-2">
+          <CardBody className="flex flex-col gap-4">
+            <Field label={p.sourceVault} hint={p.sourceHint}>
+              {(control) => (
+                <Select
+                  {...control}
+                  value={selected}
+                  onChange={(e) => setSelected(e.currentTarget.value)}
+                >
+                  <option value="">{p.chooseVault}</option>
+                  {own.map((v) => (
+                    <option key={v.address} value={v.address}>
+                      {v.name ?? v.address}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            {source && (
+              <Link
+                href={`/vaults/${chain}/${encodeURIComponent(source.address)}`}
+                className={buttonClass({ variant: 'link' })}
+              >
+                {p.editStrategy}
+              </Link>
+            )}
+            {source && (
+              <p
+                data-ui="publish-source"
+                className="break-all font-mono text-source text-muted-foreground"
+              >
+                {chainName} · {source.address}
+              </p>
+            )}
+            <p className="max-w-(--tf-measure-body) text-body-sm">{p.privacy}</p>
+          </CardBody>
+        </Card>
+
         <Card
           as="section"
           aria-label={p.about}
@@ -299,10 +520,14 @@ export function PublishScreen() {
               {(control) => (
                 <Input
                   {...control}
+                  disabled={placing}
                   value={name}
                   maxLength={LIMITS.chars}
                   autoComplete="off"
-                  onChange={(e) => setName(e.currentTarget.value)}
+                  onChange={(e) => {
+                    touch('name');
+                    setName(e.currentTarget.value);
+                  }}
                 />
               )}
             </Field>
@@ -320,11 +545,15 @@ export function PublishScreen() {
               {(control) => (
                 <Input
                   {...control}
+                  disabled={placing}
                   value={slug}
                   maxLength={64}
                   autoComplete="off"
                   spellCheck={false}
-                  onChange={(e) => setSlugText(e.currentTarget.value)}
+                  onChange={(e) => {
+                    touch('slug');
+                    setSlugText(e.currentTarget.value);
+                  }}
                 />
               )}
             </Field>
@@ -336,9 +565,13 @@ export function PublishScreen() {
               {(control) => (
                 <Textarea
                   {...control}
+                  disabled={placing}
                   value={copy}
                   maxLength={LIMITS.chars}
-                  onChange={(e) => setCopy(e.currentTarget.value)}
+                  onChange={(e) => {
+                    touch('copy');
+                    setCopy(e.currentTarget.value);
+                  }}
                 />
               )}
             </Field>
@@ -357,66 +590,57 @@ export function PublishScreen() {
           </CardBody>
         </Card>
 
-        <Card as="section" aria-label={p.assets}>
+        <Card
+          as="section"
+          aria-label={p.assets}
+          mock={
+            sourceRead?.kind === 'read' &&
+            (sourceRead.source === 'mock' ||
+              networkFor(chain, mock) !== 'mainnet' ||
+              sourceRead.value.provenance !== 'live')
+          }
+          mockLabels={{
+            announce: t.shell.mockAnnounce,
+            note:
+              sourceRead?.kind === 'read' && sourceRead.source === 'mock'
+                ? t.shell.mockAnnounce
+                : t.shell.testNetworkLine,
+          }}
+        >
           <CardHeader title={p.assets} level={2} meta={p.total(formatBps(sum, locale))} />
           <CardBody className="flex flex-col gap-4">
             <p className="text-body-sm text-muted-foreground">{p.assetsHint}</p>
             <ul className="flex flex-col gap-3">
-              {list.map((row, i) => (
-                <li key={row.key} data-ui="publish-row" className="flex flex-wrap items-end gap-3">
-                  <Field label={`${p.asset} ${i + 1}`} className="min-w-[9rem] flex-1">
-                    {(control) => (
-                      <Select
-                        {...control}
-                        value={row.asset}
-                        onChange={(e) => setRow(row.key, { asset: e.currentTarget.value })}
-                      >
-                        {unused(row.asset).map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.symbol}
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  </Field>
-                  <Field label={`${p.weight} ${i + 1}`}>
-                    {(control) => (
-                      <Input
-                        {...control}
-                        inputMode="decimal"
-                        width="7ch"
-                        align="end"
-                        value={row.weight}
-                        onChange={(e) => setRow(row.key, { weight: e.currentTarget.value })}
-                      />
-                    )}
-                  </Field>
-                  <Button
-                    variant="secondary"
-                    onClick={() => setRows((all) => (all ?? []).filter((r) => r.key !== row.key))}
-                  >
-                    {p.remove(symbolOf(row.asset))}
-                  </Button>
+              {components.map((row) => (
+                <li
+                  key={row.asset}
+                  data-ui="publish-row"
+                  className="flex justify-between gap-3 text-body"
+                >
+                  <span>{symbolOf(row.asset)}</span>
+                  <span className="tabular-nums">{formatBps(row.weightBps, locale)}</span>
                 </li>
               ))}
             </ul>
-            {list.length < LIMITS.max && unused('').length > 0 && (
-              <Button
-                variant="secondary"
-                className="self-start"
-                onClick={() =>
-                  setRows((all) => [
-                    ...(all ?? []),
-                    {
-                      key: Math.max(-1, ...(all ?? []).map((r) => r.key)) + 1,
-                      asset: unused('')[0]?.id ?? '',
-                      weight: '',
-                    },
-                  ])
-                }
-              >
-                {p.add}
-              </Button>
+            {sourceRead?.kind === 'read' && (
+              <>
+                <p className="font-mono text-source text-muted-foreground">
+                  {p.strategySource(
+                    sourceRead.source === 'mock' ? t.shell.mockAnnounce : chainName,
+                  )}
+                </p>
+                <h2 className="text-caption font-medium">{p.holdings}</h2>
+                <ul className="flex flex-col gap-2 text-body-sm">
+                  {[sourceRead.value.vault.cash, ...sourceRead.value.vault.positions].map(
+                    (holding) => (
+                      <li key={holding.asset} className="flex justify-between gap-3">
+                        <span>{symbolOf(holding.asset)}</span>
+                        <span className="tabular-nums">{tokens(lang, holding.display)}</span>
+                      </li>
+                    ),
+                  )}
+                </ul>
+              </>
             )}
           </CardBody>
         </Card>
@@ -427,7 +651,7 @@ export function PublishScreen() {
             variant="primary"
             busy={placing}
             busyLabel={p.reviewing}
-            disabled={(tried && blocked.length > 0) || existing.kind === 'reading'}
+            disabled={blocked.length > 0 || !source || sourceRead?.kind !== 'read'}
             aria-describedby={blocked.length > 0 ? reasonId : undefined}
           >
             {p.review}

@@ -48,6 +48,8 @@ export type EvmEntry = {
   /** Only when the factory holds another proxy than the committed build's. */
   proxyCreationCode?: string;
   routers: string[];
+  /** The shared portfolios' registry. Left out, a publish on the chain is never signed. */
+  registry?: string;
   cash: AssetId;
   /** Each asset's token contract. The field is `address`: a secret scanner reads `token` as a credential. */
   assets: Record<AssetId, { address: string; decimals: number }>;
@@ -204,6 +206,7 @@ function evmOf(
     'beacon',
     'proxyCreationCode',
     'routers',
+    'registry',
     'cash',
     'assets',
     'fee',
@@ -220,7 +223,9 @@ function evmOf(
   const beacon = evmAddress(entry.beacon, 'the beacon');
   must(Array.isArray(entry.routers), 'it names no list of routers');
   const routers = (entry.routers as unknown[]).map((r) => evmAddress(r, 'a router'));
-  const seen = [factory, beacon, ...routers];
+  const registry =
+    entry.registry === undefined ? undefined : evmAddress(entry.registry, 'the registry');
+  const seen = [factory, beacon, ...routers, ...(registry ? [registry] : [])];
   const { cash, assets } = assetsOf(chain, entry, seen, (a, id) => {
     const asset = only(`the asset ${id}`, a, ['address', 'decimals']);
     const token = evmAddress(asset.address, `the token of ${id}`);
@@ -244,6 +249,7 @@ function evmOf(
     beacon,
     ...(proxyCreationCode ? { proxyCreationCode } : {}),
     routers,
+    ...(registry ? { registry } : {}),
     cash,
     assets,
     ...(fee ? { fee } : {}),

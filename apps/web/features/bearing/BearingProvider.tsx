@@ -1,13 +1,18 @@
 'use client';
+import type { ChainId } from '@colosseum/schemas';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   createContext,
   type ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
+import { recallChain, rememberChain } from '../account/chain-choice';
+import { type BearingChain, FIRST, pickChain, withChain } from './chain';
 import { inPool, makeReader, R, type Reader, type Res } from './data';
 import type { DexAsset } from './dex';
 import { type Clock, maxT, STALE_AFTER_MS } from './fact';
@@ -53,12 +58,18 @@ export type Mode = 'loading' | 'live' | 'stale' | 'none';
 
 type Ctx = {
   reader: Reader;
+  /** The chain the figures are read for (chain.ts). */
+  chain: BearingChain;
+  /** Reads another chain: named in the address and remembered as the bar remembers it. */
+  setChain: (chain: BearingChain) => void;
   mode: Mode;
   /** Ages are read against this; `stale` when the collectors' newest reading is old. */
   clock: Clock;
   /** The newest reading of the collectors, when the API gave one. */
   newest: string | null;
+  /** The chain's lists: its assets, pools, lending pools and recorded pools. */
   base: () => Promise<Base>;
+  /** Per asset of the chain, by the symbol the page shows. */
   dex: (ids: readonly string[]) => Promise<Record<string, DexAsset>>;
   lending: () => Promise<LendRow[]>;
   ui: UiState;
@@ -74,6 +85,12 @@ export function useBearing(): Ctx {
   if (!ctx) throw new Error('useBearing: a Bearing page sits inside BearingProvider');
   return ctx;
 }
+
+/** A read that waits for the chain to be known: it settles once the provider asks again. */
+const waitForChain = <T,>(): Promise<T> => new Promise<T>(() => {});
+
+/** What a chain does not have: Robinhood Chain has no lending pools or recorded pools in Bearing. */
+const notOnChain = <T,>(): Res<T> => ({ ok: false, status: 0, body: null, reason: 'not_on_chain' });
 
 /** The collectors' newest reading: the latest end of any asset's capacity curve. */
 export function newestReading(assets: Res<AssetsBody>): string | null {
@@ -96,14 +113,77 @@ export function BearingProvider({
   children,
   reader: given,
   now: fixedNow,
+  barChain,
+  followsBar = false,
+  moveBar,
 }: {
   children: ReactNode;
   /** A reader of a stub, in tests. */
   reader?: Reader;
   /** A fixed clock, in tests. */
   now?: number;
+  /**
+   * The chain the app's bar is on: null when it says none, undefined while it is still finding out
+   * (the account loading). Bearing follows it when it changes.
+   */
+  barChain?: ChainId | null;
+  /** Mounted under the bar: the first pick waits for the bar to settle (BearingFromBar). */
+  followsBar?: boolean;
+  /**
+   * Moves the bar's switcher to the chain chosen here, so the two agree. Given only for someone
+   * signed out: a signed-in person's chain is where their plans are made, and the toggle here only
+   * filters the page.
+   */
+  moveBar?: (chain: BearingChain) => void;
 }) {
   const reader = useMemo(() => given ?? makeReader(), [given]);
+  const router = useRouter();
+  const pathname = usePathname();
+  const [chain, setChainState] = useState<BearingChain>(FIRST);
+  // Nothing is read before the chain is known: a page would otherwise read Solana's routes first.
+  const [known, setKnown] = useState(false);
+  const show = useCallback(
+    (next: BearingChain) => {
+      setChainState(next);
+      rememberChain(next);
+      router.replace(withChain(pathname, window.location.search, next));
+    },
+    [router, pathname],
+  );
+  // The bar has said what it says: at once outside the app, when the account has loaded inside it.
+  const settled = !followsBar || barChain !== undefined;
+  // The bar's chain at the first pick: a later change from it is a move of the bar's switcher.
+  const lastBar = useRef<ChainId | null | undefined>(undefined);
+  // The toggle here: the page reads the chain, and the bar of someone signed out goes with it. The
+  // bar's answer is then not a move of its own to follow.
+  const setChain = useCallback(
+    (next: BearingChain) => {
+      show(next);
+      if (!moveBar) return;
+      lastBar.current = next;
+      moveBar(next);
+    },
+    [show, moveBar],
+  );
+  // On arrival, once the bar has settled: the address's chain, else the bar's, else this browser's,
+  // else Solana, then named in the address so the page can be shared as it is. The account settling
+  // is not a move of the bar: a link that names a chain keeps it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once, when the bar has settled
+  useEffect(() => {
+    if (!settled || known) return;
+    lastBar.current = barChain ?? null;
+    const picked = pickChain(window.location.search, barChain, recallChain());
+    setChainState(picked);
+    setKnown(true);
+    if (new URLSearchParams(window.location.search).get('chain') !== picked)
+      router.replace(withChain(window.location.pathname, window.location.search, picked));
+  }, [settled]);
+  // The bar's switcher moved after the first pick: Bearing follows it.
+  useEffect(() => {
+    if (!known || barChain === undefined || barChain === lastBar.current) return;
+    lastBar.current = barChain;
+    if (barChain === 'solana' || barChain === 'robinhood') show(barChain);
+  }, [barChain, known, show]);
   const [mode, setMode] = useState<Mode>('loading');
   const [newest, setNewest] = useState<string | null>(null);
   const [now, setNow] = useState(() => fixedNow ?? 0);
@@ -119,45 +199,68 @@ export function BearingProvider({
   const modeRef = useRef<Mode>('loading');
   const newestRef = useRef<string | null>(null);
   const memo = useRef<{
-    base?: Promise<Base>;
+    base: Map<BearingChain, Promise<Base>>;
     lend?: Promise<LendRow[]>;
     dex: Map<string, Promise<DexAsset>>;
     generation?: number;
   }>({
+    base: new Map(),
     dex: new Map(),
   });
 
   const api = useMemo(() => {
-    memo.current = { dex: new Map(), generation: gen };
-    const base = () => {
-      memo.current.base ??= Promise.all([
-        reader.get<AssetsBody>(R.assets(TAU)),
-        reader.get<PoolsBody>(R.pools()),
-        reader.get<LendListBody>(R.lendList()),
-        reader.get<RecordedBody>(R.recorded()),
-      ]).then(([assets, pools, lendList, rec]) => ({
-        assets,
-        pools,
-        lendList,
-        recorded: new Set(rec.ok ? rec.body.pools.map((p) => p.address) : []),
-      }));
-      return memo.current.base;
+    if (memo.current.generation !== gen)
+      memo.current = { base: new Map(), dex: new Map(), generation: gen };
+    const baseOf = (c: BearingChain) => {
+      let p = memo.current.base.get(c);
+      if (!p) {
+        // Solana's addresses are read as they always were; Robinhood Chain's name it. Lending pools
+        // and recorded pools are Solana's only.
+        p = Promise.all([
+          reader.get<AssetsBody>(R.assets(TAU, c)),
+          reader.get<PoolsBody>(R.pools(c)),
+          c === 'solana'
+            ? reader.get<LendListBody>(R.lendList())
+            : Promise.resolve(notOnChain<LendListBody>()),
+          c === 'solana'
+            ? reader.get<RecordedBody>(R.recorded())
+            : Promise.resolve(notOnChain<RecordedBody>()),
+        ]).then(([assets, pools, lendList, rec]) => ({
+          assets,
+          pools,
+          lendList,
+          recorded: new Set(rec.ok ? rec.body.pools.map((p) => p.address) : []),
+        }));
+        memo.current.base.set(c, p);
+      }
+      return p;
+    };
+    const base = () => (known ? baseOf(chain) : waitForChain<Base>());
+    // An asset of Robinhood Chain is read by its address (the symbol is its name on the page).
+    const keyOf = async (id: string) => {
+      if (chain === 'solana') return id;
+      const b = await baseOf(chain);
+      return (b.assets.ok && b.assets.body.assets.find((a) => a.symbol === id)?.assetMint) || id;
     };
     const dexOne = (id: string) => {
-      let p = memo.current.dex.get(id);
+      const k = `${chain}:${id}`;
+      let p = memo.current.dex.get(k);
       if (!p) {
         // Per asset: the sheet at $100k (volume, LP share), 30 days of hourly capacity, its pools.
         // The unfiltered pool list stops at 500 rows, so pools are read per asset.
-        p = Promise.all([
-          reader.get<SheetBody>(R.sheet(id, 100_000)),
-          reader.get<HistBody>(R.hist(id, TAU)),
-          reader.get<PoolsBody>(R.poolsOf(id)),
-        ]).then(([sheet, hist, pools]) => ({ sheet, hist, pools }));
-        memo.current.dex.set(id, p);
+        p = keyOf(id).then((key) =>
+          Promise.all([
+            reader.get<SheetBody>(R.sheet(key, 100_000)),
+            reader.get<HistBody>(R.hist(key, TAU)),
+            reader.get<PoolsBody>(R.poolsOf(key, chain)),
+          ]).then(([sheet, hist, pools]) => ({ sheet, hist, pools })),
+        );
+        memo.current.dex.set(k, p);
       }
       return p;
     };
     const dex = async (ids: readonly string[]) => {
+      if (!known) return waitForChain<Record<string, DexAsset>>();
       const out: Record<string, DexAsset> = {};
       await inPool(ids, 6, async (id) => {
         out[id] = await dexOne(id);
@@ -165,7 +268,8 @@ export function BearingProvider({
       return out;
     };
     const lending = () => {
-      memo.current.lend ??= base().then(async (b) => {
+      if (!known) return waitForChain<LendRow[]>();
+      memo.current.lend ??= baseOf('solana').then(async (b) => {
         const list = b.lendList.ok ? b.lendList.body.pools : [];
         const rows = await inPool(list, 4, async (meta) => {
           const [sheet, h7, h30] = await Promise.all([
@@ -181,7 +285,7 @@ export function BearingProvider({
       return memo.current.lend;
     };
     return { base, dex, lending };
-  }, [reader, gen]);
+  }, [reader, gen, chain, known]);
 
   useEffect(() => {
     let live = true;
@@ -230,6 +334,8 @@ export function BearingProvider({
   const value = useMemo<Ctx>(
     () => ({
       reader,
+      chain,
+      setChain,
       mode,
       clock: { now, stale: mode === 'stale' },
       newest,
@@ -238,7 +344,7 @@ export function BearingProvider({
       setUi: (f) => setUiState(f),
       retry: () => setGen((g) => g + 1),
     }),
-    [reader, mode, now, newest, api, ui],
+    [reader, chain, setChain, mode, now, newest, api, ui],
   );
   return <BearingContext.Provider value={value}>{children}</BearingContext.Provider>;
 }

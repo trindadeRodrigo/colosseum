@@ -18,7 +18,7 @@ type TokenFile = {
   id: string;
   /** The real token this one stands in for. */
   modelOf: string;
-  kind: 'stock' | 'gold' | 'dollar_yield';
+  kind: 'stock' | 'etf' | 'gold' | 'dollar_yield';
   tokenProgram?: 'token' | 'token-2022';
   decimals?: number;
   /** Where its price and its one-hour average sit in the price account. A stock's come from the table. */
@@ -60,7 +60,7 @@ export type TokenPlan = {
   /** What the token calls itself: both say it is a test token. */
   symbol: string;
   name: string;
-  kind: 'stock' | 'gold' | 'dollar_yield' | 'cash';
+  kind: 'stock' | 'etf' | 'gold' | 'dollar_yield' | 'cash';
   tokenProgram: 'token' | 'token-2022';
   /** The Token-2022 extension set, in the order the real mint has it; null on the classic program. */
   extensionSet: 'stock' | 'paxg' | null;
@@ -173,7 +173,8 @@ export function planOf(file: ConfigFile): SetupPlan {
   const tokens = file.tokens.map((token): TokenPlan => {
     slug(token.id);
     const real = table.get(token.modelOf);
-    const stock = token.kind === 'stock';
+    // an index fund's token is a stock token: the same token program and index entry
+    const stock = token.kind === 'stock' || token.kind === 'etf';
     if (stock && !real)
       fail(`${token.modelOf} has no entry in fixtures/solana-vault/scope-indexes.json`);
     // A token the index table lists takes its entries from it; a config that says otherwise is wrong.

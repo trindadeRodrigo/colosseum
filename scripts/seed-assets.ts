@@ -5,6 +5,7 @@ import { assets, createDb } from '@colosseum/db';
 import { REGISTRY } from '@colosseum/engine';
 import { Asset, AssetList } from '@colosseum/schemas';
 import { type CutForSeed, evmAssetRows } from './seed-evm';
+import { MODEL_ASSETS } from './seed-models';
 
 // Upserts the registry into `assets`. Idempotent. Run: pnpm db:seed
 // It lives here, not in packages/db, because it joins the engine and the database
@@ -42,6 +43,9 @@ async function upsert(a: Asset) {
 }
 for (const raw of REGISTRY) await upsert(Asset.parse(raw));
 console.log(`seeded ${REGISTRY.length} assets`);
+// The mainnet tokens the test networks' stand-ins model and the registry does not hold (seed-models.ts).
+for (const a of MODEL_ASSETS) await upsert(a);
+console.log(`seeded ${MODEL_ASSETS.length} model assets, none eligible for a plan`);
 for (const chain of EVM_LISTS) {
   const listFile = join(LIST_DIR, `${chain}.json`);
   if (!existsSync(listFile)) {

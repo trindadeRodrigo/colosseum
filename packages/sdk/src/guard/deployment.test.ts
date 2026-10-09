@@ -438,7 +438,9 @@ describe('the loader reads a deployment file and nothing that is nearly one', ()
       /solana: .*not an object/,
     ],
     ['a field nobody reads in an entry', set(sol, 'rpcUrl', 'x'), /rpcUrl/],
-    ['a field nobody reads in an EVM entry', set(evm, 'registry', e.STRANGER), /registry/],
+    ['a field nobody reads in an EVM entry', set(evm, 'keeper', e.STRANGER), /keeper/],
+    ['a registry that is not an address', set(evm, 'registry', 'nowhere'), /registry/],
+    ['a registry that is the factory', set(evm, 'registry', e.FACTORY), /the same/],
     // ---- families
     [
       'an EVM entry for Solana',

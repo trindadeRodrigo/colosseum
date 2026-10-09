@@ -1,7 +1,7 @@
 import { EXIT_WINDOW_DAYS } from '@colosseum/basket';
 import { type BasketAsset, type Reason, sleevesOf } from '@colosseum/schemas';
-import { bpsOf, byName, largestFirst, split, sum, toCents, toUsd } from './money';
-import type { Book, Sized } from './placement';
+import { bpsOf, byName, largestFirst, shareOf, split, sum, toCents, toUsd } from './money';
+import { Book, type Sized } from './placement';
 import { reason } from './templates';
 import { reportsPools } from './types';
 import { monthAfter, type Withdrawal, type World } from './world';
@@ -65,6 +65,7 @@ export function byLiquidity(w: World, assets: BasketAsset[]): BasketAsset[] {
 /**
  * Places what is set aside, `cents` of the plan, before anything else. `rateLegs` are the chain's
  * rate-only dollar-yield tokens; `readYields` puts their yields on the plan before any is ranked.
+ * `also` is said on every line that holds some of it: with a mix, which classes of it gave.
  */
 export function placeSetAside(
   w: World,
@@ -73,6 +74,7 @@ export function placeSetAside(
   sa: SetAside,
   rateLegs: BasketAsset[],
   readYields: () => void,
+  also: Reason[] = [],
 ): void {
   const { lang } = w;
   const said: Reason[] = [
@@ -84,6 +86,7 @@ export function placeSetAside(
     ...sa.window.map((x) =>
       reason('WITHDRAWAL', { amount: x.amount, currency: x.currency, month: x.month }, lang),
     ),
+    ...also,
   ];
   // By currency, each its part of what is set aside (all of it, unless the goal sleeve is short).
   const currencies = [...new Set(sa.window.map((x) => x.currency))].sort();
@@ -126,6 +129,27 @@ export function placeSetAside(
   });
 }
 
+/**
+ * Of what is set aside, how much is held as dollar yield, in basis points of the plan: what the rate
+ * legs take of it when it is placed before anything else. The rest is held as cash: the cash token,
+ * or the matching leg of a withdrawal in another currency. A plan with a mix reads this before it
+ * sizes its sleeves (gate EXPLICIT-MIX): what is set aside counts first as the class of the mix it is
+ * held as. Tried on a book of its own, so nothing is placed here.
+ */
+export function asideInYieldBps(w: World, sa: SetAside, rateLegs: BasketAsset[]): number {
+  const cents = shareOf(w.amount, sa.bps);
+  if (cents <= 0) return 0;
+  const tried = new Book(w);
+  placeSetAside(w, tried, cents, sa, rateLegs, () => {});
+  const inYield = sum(
+    [...tried.lines.values()]
+      .filter((line) => w.sleeveOf(line.asset) === 'dollarYield')
+      .map((line) => line.cents),
+  );
+  const [inYieldBps = 0] = split(sa.bps, [inYield, cents - inYield]);
+  return inYieldBps;
+}
+
 /** A token's part in the check: what it holds, what it may sell in one window, and its cost. */
 type Leg = {
   asset: BasketAsset;
@@ -157,7 +181,7 @@ type Reading = {
  *
  * Where it falls short, the part of a leg that cannot be sold in time moves to cash, the largest
  * first; then stocks, crypto and gold, the largest first. What still falls short is said and flagged.
- * `safe` is what the safe-yield sleeve holds by token: the check does not move it.
+ * `safe` is what the safe-yield and theme sleeves hold by token: the check does not move it.
  */
 export function checkCoverage(w: World, book: Book, sa: SetAside, safe: Map<string, number>): void {
   const { lang, P, liquidity } = w;
@@ -183,9 +207,9 @@ export function checkCoverage(w: World, book: Book, sa: SetAside, safe: Map<stri
         movable: Math.max(0, l.cents - (safe.get(l.asset.id) ?? 0)),
         perWindow: measured ?? w.ceilingOf(l.asset),
         costOf: (cents: number) => {
-          if (measured === null || !liquidity) return P.tau;
+          if (measured === null || !liquidity) return w.unmeasuredCost;
           const cost = liquidity.exitCost(l.asset.id, toUsd(cents), EXIT_WINDOW_DAYS);
-          return cost === null ? P.tau : Math.min(Math.max(0, cost), 1);
+          return cost === null ? w.unmeasuredCost : Math.min(Math.max(0, cost), 1);
         },
         pool: pool ? { id: pool.pool, perWindow: toCents(pool.capacityUsd) } : null,
       };
@@ -282,14 +306,19 @@ export function checkCoverage(w: World, book: Book, sa: SetAside, safe: Map<stri
       for (const line of largestFirst(
         [...book.lines.values()].filter(
           (l) =>
-            l.cents > 0 && (w.sleeveOf(l.asset) === 'growth' || w.sleeveOf(l.asset) === 'gold'),
+            l.cents > (safe.get(l.asset.id) ?? 0) &&
+            (w.sleeveOf(l.asset) === 'growth' || w.sleeveOf(l.asset) === 'gold'),
         ),
         (l) => l.cents,
         (l) => l.asset.id,
       )) {
         if (need <= 0) break;
-        let take = Math.min(line.cents, need);
-        if (line.cents - take < w.minLine) take = line.cents;
+        const kept = safe.get(line.asset.id) ?? 0;
+        const movable = line.cents - kept;
+        let take = Math.min(movable, need);
+        // A line is not left smaller than the least a line can be: what would be left goes too,
+        // unless another sleeve holds part of it.
+        if (line.cents - take < w.minLine && kept === 0) take = line.cents;
         book.toCash(
           line.asset.id,
           take,

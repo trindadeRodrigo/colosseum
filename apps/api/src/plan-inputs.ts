@@ -1,28 +1,178 @@
-import { assets as assetsTable, yieldObservations } from '@colosseum/db';
-import { chainFamily, type YieldObservation } from '@colosseum/schemas';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { EXIT_WINDOW_DAYS } from '@colosseum/basket';
+import { assets as assetsTable, type Db, riskPools, yieldObservations } from '@colosseum/db';
+import { PERSONAL_PARAMS } from '@colosseum/engine/personal';
+import {
+  type BasketAsset,
+  chainFamily,
+  type Provenance,
+  type YieldObservation,
+} from '@colosseum/schemas';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { loadLiquidityProvider, RISK_METHOD_VERSION } from './liquidity';
+import { modelContent } from './model-content';
+import {
+  asSandbox,
+  type ExitTwin,
+  exitTwins,
+  isMeasured,
+  issuerTwins,
+  type RegistryAsset,
+  shelfTiers,
+  standIns,
+  tierTwins,
+  twinSource,
+  twinSymbols,
+} from './model-exits';
 import { type ModelReading, modelledTokens, modelYields } from './model-yields';
 import type { PlanInputs } from './orders/personalize';
+import { loadStockAttributes } from './stock-attributes';
+import { loadThemeLists } from './theme-lists';
 
 // What the server hands `POST /v1/baskets/personalize` (gate EXIT-SOURCE): Bearing's measured sell
-// depth and the stored yields, for the tokens of the person's chain. Both are matched by the token's
-// address, so a token is measured only under its own mint. A token on a test network or the mock has
-// no measurement under its address: its line takes its tier's ceiling and says so. A test-network token
-// that models a mainnet token takes that token's stored reading, labelled sandbox (model-yields.ts).
+// depth and the stored yields, for the tokens of the person's chain, and the curated theme lists of
+// that chain (gate THEMES, `content/themes/<chain>/`). The depth and the yields are matched by the token's
+// address, so a token is measured only under its own mint. A test-network token that models a mainnet
+// token takes that token's stored reading (model-yields.ts) and its measured sell depth (model-exits.ts),
+// both labelled sandbox. A token with neither (the mock, or a model Bearing does not measure) takes its
+// tier's ceiling and says so.
+//
+// And the sourced attributes of the stocks tracked on that chain (gate THEME-MATCHED,
+// `content/stocks/<chain>.json`), which a theme sleeve filled by a filter reads. A chain with no
+// such file hands none: a matched theme then holds no stock, and the plan says so.
 //
 // Outside the /v1 route table: it reads the risk layer's calendar from a file and its switch from the
 // environment, which no file the /v1 routes reach may do (apps/api/src/orders/orders.test.ts).
 
+const ROOT = process.env.REPO_ROOT ?? join(import.meta.dirname, '..', '..', '..');
+const readJson = <T>(file: string): T | null => {
+  try {
+    return JSON.parse(readFileSync(join(ROOT, file), 'utf8')) as T;
+  } catch {
+    return null;
+  }
+};
+/**
+ * The mainnet tokens' tiers, copied from the launch shelf (a proposal, Oct 1), the one place that gives
+ * syrupUSDC and jlUSDC a tier. A stand-in whose model Bearing does not measure takes its model's from
+ * it; without the file it keeps its own (C on a test network).
+ */
+type TierFile = {
+  source: string;
+  fetchedAt: string;
+  rows: Array<{ chain: string; symbol: string; tier: string; issuer?: string }>;
+};
+const TIER_FILE = readJson<TierFile>('fixtures/risk/launch-shelf-tiers.json');
+const SHELF = TIER_FILE ? shelfTiers(TIER_FILE) : [];
+/** The xStocks' mints by symbol (the Solana price index): a Solana stand-in's twin is pinned by mint. */
+const SCOPE = readJson<{ assets: Array<{ symbol: string; mint: string }> }>(
+  'fixtures/solana-vault/scope-indexes.json',
+);
+
 export const BEARING_SOURCE = `Bearing: sell-side depth measured on chain (risk_depth_curves, ${RISK_METHOD_VERSION})`;
 
-export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets }) => {
+/**
+ * The mainnet token each test-network token reads Bearing's figures from (model-exits.ts), on a chain
+ * that runs as a test network; none elsewhere, where every token reads its own. Shared by the plan
+ * inputs and the conversation's analytics (agent-analytics.ts).
+ */
+export async function resolveExitTwins(
+  db: Db,
+  assets: BasketAsset[],
+  provenance: Provenance | undefined,
+): Promise<ExitTwin[]> {
+  const tokens = standIns(assets, provenance);
+  const names = [...new Set(tokens.flatMap(twinSymbols))];
+  const lower = names.map((n) => n.toLowerCase());
+  if (!lower.length) return [];
+  // Solana's stocks are in Bearing's pool registry; the EVM stocks have no pool rows there (PLAN-UNIVERSE
+  // RU.14, DU6) and are found by their seeded `assets` rows, under the collector's spelling.
+  // The pool registry is Solana's; an EVM stock's chain is the prefix of its seeded row's id.
+  const registry: RegistryAsset[] = [
+    ...(SCOPE?.assets ?? [])
+      .filter((a) => names.includes(a.symbol))
+      .map((a) => ({
+        chain: 'solana',
+        assetSymbol: a.symbol,
+        assetMint: a.mint,
+        tvlUsd: null,
+        pinned: true,
+      })),
+    ...(
+      await db
+        .select({
+          assetSymbol: riskPools.assetSymbol,
+          assetMint: riskPools.assetMint,
+          tvlUsd: riskPools.tvlUsd,
+        })
+        .from(riskPools)
+        .where(inArray(sql`lower(${riskPools.assetSymbol})`, lower))
+    ).map((r) => ({ ...r, chain: 'solana' })),
+    ...(
+      await db
+        .select({
+          id: assetsTable.id,
+          assetSymbol: assetsTable.symbol,
+          assetMint: assetsTable.mint,
+        })
+        .from(assetsTable)
+        .where(and(eq(assetsTable.chain, 'evm'), inArray(sql`lower(${assetsTable.symbol})`, lower)))
+    ).flatMap((r) =>
+      r.assetMint
+        ? [
+            {
+              chain: r.id.split(':')[0] as string,
+              assetSymbol: r.assetSymbol,
+              assetMint: r.assetMint,
+              tvlUsd: null,
+            },
+          ]
+        : [],
+    ),
+  ];
+  return exitTwins(tokens, registry);
+}
+
+export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets, provenance }) => {
+  const lists = loadThemeLists(chain);
+  const stocks = loadStockAttributes(chain);
+  // What is read from `content/`: the theme lists and the stock attributes of the chain.
+  const content = modelContent(chain, assets, provenance, {
+    ...(lists.length ? { themes: lists } : {}),
+    ...(stocks ? { stocks } : {}),
+  });
   const addresses = assets.filter((a) => a.cls !== 'cash').map((a) => a.address);
-  if (!addresses.length) return {};
-  const provider = await loadLiquidityProvider(
+  if (!addresses.length) return content;
+  // On a chain that runs as a test network, a test-network token reads the depth of the mainnet token it
+  // models (model-exits.ts); every other token reads its own.
+  const tokens = standIns(assets, provenance);
+  const twins = await resolveExitTwins(db, assets, provenance);
+  const twinOf = new Map(twins.map((t) => [t.id, t.twinMint]));
+  const loaded = await loadLiquidityProvider(
     db,
-    assets.map((a) => ({ id: a.id, mint: a.address })),
+    assets.map((a) => ({ id: a.id, mint: twinOf.get(a.id) ?? a.address })),
   );
+  const read = twins.filter((t) => loaded?.covers(t.id));
+  const measured = (id: string) => isMeasured(loaded, id, PERSONAL_PARAMS.tau, EXIT_WINDOW_DAYS);
+  const tiers = tierTwins(
+    tokens.filter((t) => !measured(t.id)),
+    SHELF,
+  ).map((t) => ({
+    assetId: t.id,
+    tier: t.tier,
+    source: `tier ${t.tier} of ${t.twinSymbol} on mainnet (${TIER_FILE?.source}), applied to the test-network token ${t.symbol}`,
+    method: 'the launch shelf tier of the token it models; its exit is not measured',
+    fetchedAt: TIER_FILE?.fetchedAt ?? '',
+    provenance: 'sandbox' as const,
+  }));
+  const issuers = issuerTwins(tokens, SHELF).map((t) => ({
+    assetId: t.id,
+    issuer: t.issuer,
+    of: t.twinSymbol,
+  }));
+  const provider = loaded && read.length ? asSandbox(loaded) : loaded;
+  const source = read.length ? twinSource(BEARING_SOURCE, read) : BEARING_SOURCE;
   const idOf = new Map(assets.map((a) => [a.address, a.id]));
   const rows = await db
     .select({ y: yieldObservations, mint: assetsTable.mint })
@@ -51,11 +201,11 @@ export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets }) => {
   // The live readings of the mainnet tokens the test-network tokens model, found by the model's symbol
   // (each token's `underlying`) on the same family of chains: on EVM that is any EVM chain, since the
   // assets table names the family and not the chain.
-  const modelled = modelledTokens(assets, own);
+  const modelled = modelledTokens(assets, own, provenance);
   const models = [...new Set(modelled.map((a) => a.underlying))];
   const modelRows = models.length
     ? await db
-        .select({ y: yieldObservations, symbol: assetsTable.symbol })
+        .select({ y: yieldObservations, symbol: assetsTable.symbol, id: assetsTable.id })
         .from(yieldObservations)
         .innerJoin(assetsTable, eq(yieldObservations.assetId, assetsTable.id))
         .where(
@@ -72,11 +222,21 @@ export const bearingPlanInputs: PlanInputs = async ({ db, chain, assets }) => {
     ...own,
     ...modelYields(
       modelled,
-      modelRows.map(({ y, symbol }): ModelReading => ({ symbol, reading: reading(y, y.assetId) })),
+      // the table names the family; an EVM row's chain is the prefix of its id (`robinhood:sgov`)
+      modelRows.map(
+        ({ y, symbol, id }): ModelReading => ({
+          symbol,
+          chain: chainFamily(chain) === 'evm' ? (id.split(':')[0] as string) : 'solana',
+          reading: reading(y, y.assetId),
+        }),
+      ),
     ),
   ];
   return {
-    ...(provider ? { liquidity: { provider, source: BEARING_SOURCE } } : {}),
+    ...(provider ? { liquidity: { provider, source } } : {}),
     ...(yields.length ? { yields } : {}),
+    ...(tiers.length ? { tiers } : {}),
+    ...(issuers.length ? { issuers } : {}),
+    ...content,
   };
 };

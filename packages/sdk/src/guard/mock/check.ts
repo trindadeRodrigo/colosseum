@@ -58,7 +58,7 @@ const FIELDS: Record<string, readonly string[]> = {
   set_targets: ['vault', 'targets'],
   accept_version: ['vault', 'recipeOnchainId', 'expectedVersion'],
   set_auto_follow: ['vault', 'on'],
-  withdraw: ['vault', 'assets'],
+  withdraw: ['vault', 'assets', 'amounts'],
   publish: ['creator', 'recipe'],
 };
 
@@ -313,14 +313,32 @@ export function checkMock(ctx: Context, deployment: MockDeployment): void {
     }
     case 'withdraw': {
       vaultIs();
-      // The mock pays only the vault's owner, and takes whole balances.
+      // The mock pays only the vault's owner. A token leaves in full unless the bytes name an amount.
       const assets = Array.isArray(a.assets) ? a.assets : [];
+      const amounts = isFields(a.amounts) ? a.amounts : {};
       const want = step.withdrawals === 'all' ? null : step.withdrawals.map((w) => w.asset);
       need(
         'asset',
         want === null || (assets.length === want.length && assets.every((id, i) => id === want[i])),
         'the bytes withdraw other tokens than the step names',
       );
+      need(
+        'asset',
+        a.amounts === undefined ||
+          (isFields(a.amounts) && Object.keys(amounts).every((id) => assets.includes(id))),
+        'the bytes name an amount for a token they do not withdraw',
+      );
+      // Everything: any amount of what is there. Named: the amount reviewed, and a whole token only
+      // where the step names none.
+      if (step.withdrawals !== 'all')
+        for (const w of step.withdrawals) {
+          const stated = amounts[w.asset];
+          need(
+            'amount',
+            w.amountRaw === null ? stated === undefined : stated === w.amountRaw,
+            `the bytes withdraw ${String(stated ?? 'all')} of ${w.asset}, and the step ${w.amountRaw ?? 'all'}`,
+          );
+        }
       break;
     }
   }

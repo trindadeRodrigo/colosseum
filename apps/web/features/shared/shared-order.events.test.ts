@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import type { OrderDetail } from '@colosseum/schemas';
+import { type OrderDetail, TRUST_STATUS } from '@colosseum/schemas';
 import { basketIdOfPlan, type ExecutionResult, type ExecutorDeps } from '@colosseum/sdk';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -137,6 +137,12 @@ const FOLLOW: SharedTerms = {
 
 beforeEach(() => {
   window.localStorage.clear();
+  // The person accepted the trust notice before, with the keeper's limits shown: an order opened
+  // here by someone who never did is held for it (see "the trust notice on the order's own page").
+  window.localStorage.setItem(
+    `tf-trust:${USER}`,
+    JSON.stringify({ textVersion: TRUST_STATUS.textVersion, keeperShown: true }),
+  );
   run.calls.length = 0;
   installLocks();
   portStore.set(signedInPort(EMBEDDED, { userId: USER }));
